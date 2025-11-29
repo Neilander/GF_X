@@ -1,0 +1,9 @@
+﻿#	装备表				i18n	i18n		
+#	ID		Identifier	SpriteName	Name	Description	Tags	MaxStack
+#	int		string	string	string	string	int[]	int
+#		备注	在代码中的命名标识符(下划线前与表名一致)	Sprite名	物品名(多语言)	物品描述(多语言)	物品类型标签	最大堆叠数(-1表示无限)
+	1		Equipment_aaa	abc	Item.Equipment.Name1	Item.Equipment.Description1	0	1
+	2		Equipment_bbb	abc	Item.Equipment.Name2	Item.Equipment.Description2	0,1	1
+	3		Equipment_ccc	abc	Item.Equipment.Name3	Item.Equipment.Description3	2	5
+	4		Equipment_ddd	abc	Item.Equipment.Name4	Item.Equipment.Description4	3	-1
+	5		Equipment_eee	abc	Item.Equipment.Name5	Item.Equipment.Description5	0,1,3	1

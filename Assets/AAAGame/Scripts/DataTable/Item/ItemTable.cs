@@ -15,9 +15,9 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName | Obfuz.ObfuzScope.MethodName)]
 #endif
 /// <summary>
-/// UIGroup
+/// 工具表
 /// </summary>
-public class UIGroupTable : DataRowBase
+public class ItemTable : DataRowBase
 {
 	private int m_Id = 0;
 	/// <summary>
@@ -29,7 +29,25 @@ public class UIGroupTable : DataRowBase
     }
 
         /// <summary>
-        /// 
+        /// 在代码中的命名标识符(下划线前与表名一致)
+        /// </summary>
+        public string Identifier
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// Sprite名
+        /// </summary>
+        public string SpriteName
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 物品名(多语言)
         /// </summary>
         public string Name
         {
@@ -38,9 +56,27 @@ public class UIGroupTable : DataRowBase
         }
 
         /// <summary>
-        /// 每个组的起始Order,用于控制显示顺序
+        /// 物品描述(多语言)
         /// </summary>
-        public int Depth
+        public string Description
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 物品类型标签
+        /// </summary>
+        public int[] Tags
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 最大堆叠数(-1表示无限)
+        /// </summary>
+        public int MaxStack
         {
             get;
             private set;
@@ -58,8 +94,12 @@ public class UIGroupTable : DataRowBase
             index++;
             m_Id = int.Parse(columnStrings[index++]);
             index++;
+            Identifier = columnStrings[index++];
+            SpriteName = columnStrings[index++];
             Name = columnStrings[index++];
-            Depth = int.Parse(columnStrings[index++]);
+            Description = columnStrings[index++];
+            Tags = DataTableExtension.ParseArray<int>(columnStrings[index++]);
+            MaxStack = int.Parse(columnStrings[index++]);
 
             return true;
         }
@@ -71,8 +111,12 @@ public class UIGroupTable : DataRowBase
                 using (BinaryReader binaryReader = new BinaryReader(memoryStream, Encoding.UTF8))
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
+                    Identifier = binaryReader.ReadString();
+                    SpriteName = binaryReader.ReadString();
                     Name = binaryReader.ReadString();
-                    Depth = binaryReader.Read7BitEncodedInt32();
+                    Description = binaryReader.ReadString();
+                    Tags = binaryReader.ReadArray<int>();
+                    MaxStack = binaryReader.Read7BitEncodedInt32();
                 }
             }
 

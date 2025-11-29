@@ -21,9 +21,9 @@ public class MenuProcedure : ProcedureBase
     {
         base.OnUpdate(procedureOwner, elapseSeconds, realElapseSeconds);
         // if (lvEntity == null || !lvEntity.IsAllReady)
-        {
-            return;
-        }
+        // {
+        //     return;
+        // }
         //点击屏幕开始游戏
         if (fastEnterGame)
         {

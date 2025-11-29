@@ -1,0 +1,9 @@
+﻿#	工具表				i18n	i18n		
+#	ID		Identifier	SpriteName	Name	Description	Tags	MaxStack
+#	int		string	string	string	string	int[]	int
+#		备注	在代码中的命名标识符(下划线前与表名一致)	Sprite名	物品名(多语言)	物品描述(多语言)	物品类型标签	最大堆叠数(-1表示无限)
+	1		Tool_aaa	abc	Item.Tool.Name1	Item.Tool.Description1	0	1
+	2		Tool_bbb	abc	Item.Tool.Name2	Item.Tool.Description2	0,1	1
+	3		Tool_ccc	abc	Item.Tool.Name3	Item.Tool.Description3	2	1
+	4		Tool_ddd	abc	Item.Tool.Name4	Item.Tool.Description4	3	1
+	5		Tool_eee	abc	Item.Tool.Name5	Item.Tool.Description5	0,1,3	1
