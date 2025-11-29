@@ -145,6 +145,6 @@ public abstract class ValueProperty : IProperty<Fix64>
         string parents = (_parentIds == null || _parentIds.Count == 0)
             ? "None"
             : string.Join(", ", _parentIds);
-        return $"PropertyId: {PropertyId}, ParentId: [{{parents}}], Modifiers: {_modifiers.Count}";
+        return $"PropertyId: {PropertyId}, ParentId: [{parents}], Modifiers: {_modifiers.Count}";
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public static class PropertyHelper
@@ -12,6 +13,10 @@ public static class PropertyHelper
         
         return fatherName+"_"+suffix;
     }
+    public static string ModName(string fatherName,string suffix, string suffix2)
+    {
+        return ModName( ModName(fatherName, suffix),suffix2);
+    }
 
     public static BaseValueProperty CreateBaseProperty(string name, PropertyManager manager)
     {
@@ -20,23 +25,33 @@ public static class PropertyHelper
         return property;
     }
 
-    public static ComputePropertyTree<T,BaseValueProperty> FormComputeBasePropertyTree<T>(string fatherPName,
+    public static ComputePropertyTree<T> FormComputeBasePropertyTree<T>(string fatherPName,
         string selfSuffix, 
         PropertyManager manager, 
         Func<Func<Fix64>[], Func<Fix64>>refFunc, 
-        List<T> referenceBaseProperty = null) where T:Enum
+        Dictionary<T,string> referenceProperties = null) where T:Enum
     {
         Array enumValues = Enum.GetValues(typeof(T));
-        List<BaseValueProperty>  baseList = new List<BaseValueProperty>();
+        List<ValueProperty>  baseList = new List<ValueProperty>();
         for (int i = 0; i < enumValues.Length; i++)
         {
             T enumValue = (T)enumValues.GetValue(i);
             string enumString = enumValues.GetValue(i).ToString();
             string computeId = ModName(ModName(fatherPName, selfSuffix), enumString);
-            BaseValueProperty property = null;
-            if (referenceBaseProperty != null && referenceBaseProperty.Contains(enumValue))
+            ValueProperty property = null;
+            bool needParent = true;
+            if (referenceProperties != null && referenceProperties.Keys.Contains(enumValue))
             {
-                property = manager.GetBaseValueProperty(computeId);
+                string refId = referenceProperties[enumValue];
+                property = manager.GetBaseValueProperty(refId);
+                if (property == null)
+                {
+                    needParent = false;
+                    property = manager.GetComputeValueProperty(refId);
+                }
+                
+                if(property == null)
+                    GF.LogError("在构建属性树的时候，其中一个Reference值并不存在");
             }
             else
             {
@@ -44,7 +59,12 @@ public static class PropertyHelper
                     BaseValueProperty.Create(Fix64.Zero, computeId);
                 property.Register(manager);
             }
-            property.NotifyParentDirty(ModName(fatherPName,selfSuffix));
+
+            if (needParent)
+            {
+                property.NotifyParentDirty(ModName(fatherPName,selfSuffix));
+            }
+            
             baseList.Add(property);
         }
         Func<Fix64>[] funcArray = new Func<Fix64>[baseList.Count];
@@ -61,18 +81,18 @@ public static class PropertyHelper
         if(fatherPName != "")
             compVP.NotifyParentDirty(fatherPName);
         
-        ComputePropertyTree<T,BaseValueProperty> tree = new ComputePropertyTree<T,BaseValueProperty>(baseList, compVP);
+        ComputePropertyTree<T> tree = new ComputePropertyTree<T>(baseList, compVP);
         return tree;
 
     }
 
-    public static ComputePropertyTree<T, ComputeValueProperty> BindComputePropertyToOne<T>(string fatherPName, string selfSuffix,
+    public static ComputePropertyTree<T> BindComputePropertyToOne<T>(string fatherPName, string selfSuffix,
         PropertyManager manager, Func<Func<Fix64>[], Func<Fix64>> refFunc) where T:Enum
     {
         
         Array enumValues = Enum.GetValues(typeof(T));
         Func<Fix64>[] funcArray = new Func<Fix64>[enumValues.Length];
-        List<ComputeValueProperty> baseList = new List<ComputeValueProperty>(enumValues.Length);
+        List<ValueProperty> baseList = new List<ValueProperty>(enumValues.Length);
         
         for (var i = 0; i < funcArray.Length; i++)
         {
@@ -93,22 +113,22 @@ public static class PropertyHelper
         if (fatherPName != "")
             compVP.NotifyParentDirty(fatherPName);
         
-        ComputePropertyTree<T,ComputeValueProperty> tree = new ComputePropertyTree<T,ComputeValueProperty>(baseList, compVP);
+        ComputePropertyTree<T> tree = new ComputePropertyTree<T>(baseList, compVP);
         return tree;
         
     }
 }
 
-public class ComputePropertyTree<T,T2> where T : Enum where T2: ValueProperty
+public class ComputePropertyTree<T> where T : Enum 
 {
-    public Dictionary<T,T2> baseDictionary;
+    public Dictionary<T,ValueProperty> baseDictionary;
     public ComputeValueProperty fatherProperty;
     
     public ComputePropertyTree(
-        List<T2> baseList,
+        List<ValueProperty> baseList,
         ComputeValueProperty father)
     {
-        baseDictionary = new Dictionary<T, T2>();
+        baseDictionary = new Dictionary<T, ValueProperty>();
         fatherProperty = father;
 
         Array enumValues = Enum.GetValues(typeof(T));
