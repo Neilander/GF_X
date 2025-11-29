@@ -13,15 +13,38 @@ public static class PropertyHelper
         return fatherName+"_"+suffix;
     }
 
-    public static ComputePropertyTree<T,BaseValueProperty> FormComputeBasePropertyTree<T>(string fatherPName,string selfSuffix, PropertyManager manager, Func<Func<Fix64>[], Func<Fix64>>refFunc) where T:Enum
+    public static BaseValueProperty CreateBaseProperty(string name, PropertyManager manager)
+    {
+        BaseValueProperty property = BaseValueProperty.Create(Fix64.Zero, name);
+        property.Register(manager);
+        return property;
+    }
+
+    public static ComputePropertyTree<T,BaseValueProperty> FormComputeBasePropertyTree<T>(string fatherPName,
+        string selfSuffix, 
+        PropertyManager manager, 
+        Func<Func<Fix64>[], Func<Fix64>>refFunc, 
+        List<T> referenceBaseProperty = null) where T:Enum
     {
         Array enumValues = Enum.GetValues(typeof(T));
         List<BaseValueProperty>  baseList = new List<BaseValueProperty>();
         for (int i = 0; i < enumValues.Length; i++)
         {
-            BaseValueProperty property =
-                BaseValueProperty.Create(Fix64.Zero, ModName(ModName(fatherPName,selfSuffix) , enumValues.GetValue(i).ToString()));
-            property.Register(manager).NotifyParentDirty(ModName(fatherPName,selfSuffix));
+            T enumValue = (T)enumValues.GetValue(i);
+            string enumString = enumValues.GetValue(i).ToString();
+            string computeId = ModName(ModName(fatherPName, selfSuffix), enumString);
+            BaseValueProperty property = null;
+            if (referenceBaseProperty != null && referenceBaseProperty.Contains(enumValue))
+            {
+                property = manager.GetBaseValueProperty(computeId);
+            }
+            else
+            {
+                property =
+                    BaseValueProperty.Create(Fix64.Zero, computeId);
+                property.Register(manager);
+            }
+            property.NotifyParentDirty(ModName(fatherPName,selfSuffix));
             baseList.Add(property);
         }
         Func<Fix64>[] funcArray = new Func<Fix64>[baseList.Count];

@@ -14,7 +14,7 @@ public abstract class ValueProperty : IProperty<Fix64>
 
     public string PropertyId => _propertyId;
     protected string _propertyId;
-    protected string _parentId;
+    protected List<string> _parentIds;
     public PropertyManager PropertyManager => _propertyManager;
     public IReadOnlyList<IPropertyModifier> Modifiers => _modifiers.AsReadOnly();
 
@@ -119,7 +119,9 @@ public abstract class ValueProperty : IProperty<Fix64>
     //可在父属性注册前注册，用于通知父属性，使其标记为脏
     public ValueProperty NotifyParentDirty(string parentPropertyId)
     {
-        _parentId = parentPropertyId;
+        if (_parentIds == null)
+            _parentIds = new List<string>();
+        _parentIds.Add(parentPropertyId);
         OnDirty(() => _propertyManager.GetProperty(parentPropertyId)?.MakeDirty());
         return this;
     }
@@ -140,6 +142,9 @@ public abstract class ValueProperty : IProperty<Fix64>
     
     public override string ToString()
     {
-        return $"PropertyId: {PropertyId}, ParentId: {_parentId}, Modifiers: {_modifiers.Count}";
+        string parents = (_parentIds == null || _parentIds.Count == 0)
+            ? "None"
+            : string.Join(", ", _parentIds);
+        return $"PropertyId: {PropertyId}, ParentId: [{{parents}}], Modifiers: {_modifiers.Count}";
     }
 }

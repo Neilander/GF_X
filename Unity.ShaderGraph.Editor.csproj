@@ -122,8 +122,8 @@
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Input/CustomInterpolatorNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Math/Trigonometry/DegreesToRadiansNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Blackboard/BlackboardUtils.cs" />
-    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Enumerations/KeywordShaderStage.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/AssetCallbacks/CreateVFXShaderGraph.cs" />
+    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Enumerations/KeywordShaderStage.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/Slots/MultiFloatSlotControlView.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Math/Vector/ProjectionNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Input/Geometry/VertexIDNode.cs" />
@@ -144,8 +144,8 @@
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Collections/PassCollection.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Math/Interpolation/LerpNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/UV/ParallaxMappingNode.cs" />
-    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Procedural/Shape/RectangleNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Data/ConditionalField.cs" />
+    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Procedural/Shape/RectangleNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/UV/TriplanarNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Graphs/ShaderInput.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Controls.cs" />
@@ -211,8 +211,8 @@
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Math/Derivative/DDXNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Graphs/GraphData.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Graphs/GraphDataUtils.cs" />
-    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/Slots/BooleanSlotControlView.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Interfaces/IMayRequireScreenPosition.cs" />
+    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/Slots/BooleanSlotControlView.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/ShaderGraphNodeValidationExtension.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/Slots/TextureSlotControlView.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Graphs/Vector3MaterialSlot.cs" />

@@ -56,8 +56,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Common/RefParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/Packet/SCHeartBeat.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/ConfigExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Vector2IntArrayProperty.cs" />
