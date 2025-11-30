@@ -15,9 +15,9 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName | Obfuz.ObfuzScope.MethodName)]
 #endif
 /// <summary>
-/// EntityGroup
+/// CharacterMainPropertyTable
 /// </summary>
-public class EntityGroupTable : DataRowBase
+public class CharacterMainPropertyTable : DataRowBase
 {
 	private int m_Id = 0;
 	/// <summary>
@@ -29,9 +29,9 @@ public class EntityGroupTable : DataRowBase
     }
 
         /// <summary>
-        /// 
+        /// 请添加字段, 字段名首字母大写
         /// </summary>
-        public string Name
+        public string CharacterKey
         {
             get;
             private set;
@@ -40,7 +40,7 @@ public class EntityGroupTable : DataRowBase
         /// <summary>
         /// 
         /// </summary>
-        public float ReleaseInterval
+        public int PhysicalAtk
         {
             get;
             private set;
@@ -49,7 +49,7 @@ public class EntityGroupTable : DataRowBase
         /// <summary>
         /// 
         /// </summary>
-        public int Capacity
+        public int SpecialAtk
         {
             get;
             private set;
@@ -58,7 +58,7 @@ public class EntityGroupTable : DataRowBase
         /// <summary>
         /// 
         /// </summary>
-        public float ExpireTime
+        public int PhysicalDef
         {
             get;
             private set;
@@ -67,7 +67,34 @@ public class EntityGroupTable : DataRowBase
         /// <summary>
         /// 
         /// </summary>
-        public int Priority
+        public int SpecialDef
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public int Health
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public int Speed
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public int Mana
         {
             get;
             private set;
@@ -85,11 +112,14 @@ public class EntityGroupTable : DataRowBase
             index++;
             m_Id = int.Parse(columnStrings[index++]);
             index++;
-            Name = columnStrings[index++];
-            ReleaseInterval = float.Parse(columnStrings[index++]);
-            Capacity = int.Parse(columnStrings[index++]);
-            ExpireTime = float.Parse(columnStrings[index++]);
-            Priority = int.Parse(columnStrings[index++]);
+            CharacterKey = columnStrings[index++];
+            PhysicalAtk = int.Parse(columnStrings[index++]);
+            SpecialAtk = int.Parse(columnStrings[index++]);
+            PhysicalDef = int.Parse(columnStrings[index++]);
+            SpecialDef = int.Parse(columnStrings[index++]);
+            Health = int.Parse(columnStrings[index++]);
+            Speed = int.Parse(columnStrings[index++]);
+            Mana = int.Parse(columnStrings[index++]);
 
             return true;
         }
@@ -101,11 +131,14 @@ public class EntityGroupTable : DataRowBase
                 using (BinaryReader binaryReader = new BinaryReader(memoryStream, Encoding.UTF8))
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
-                    Name = binaryReader.ReadString();
-                    ReleaseInterval = binaryReader.ReadSingle();
-                    Capacity = binaryReader.Read7BitEncodedInt32();
-                    ExpireTime = binaryReader.ReadSingle();
-                    Priority = binaryReader.Read7BitEncodedInt32();
+                    CharacterKey = binaryReader.ReadString();
+                    PhysicalAtk = binaryReader.Read7BitEncodedInt32();
+                    SpecialAtk = binaryReader.Read7BitEncodedInt32();
+                    PhysicalDef = binaryReader.Read7BitEncodedInt32();
+                    SpecialDef = binaryReader.Read7BitEncodedInt32();
+                    Health = binaryReader.Read7BitEncodedInt32();
+                    Speed = binaryReader.Read7BitEncodedInt32();
+                    Mana = binaryReader.Read7BitEncodedInt32();
                 }
             }
 

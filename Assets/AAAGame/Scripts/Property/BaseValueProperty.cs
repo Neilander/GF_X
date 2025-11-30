@@ -49,6 +49,6 @@ public class BaseValueProperty : ValueProperty
 
     public override string ToString()
     {
-        return base.ToString()+" Type: BaseValueProperty";
+        return base.ToString()+" Type: BaseValueProperty --------- Base Value:"+ _baseValue;
     }
 }

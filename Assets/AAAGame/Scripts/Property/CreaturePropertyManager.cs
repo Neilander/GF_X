@@ -20,17 +20,21 @@ public class CreaturePropertyManager
     
     public const string LevelPropertyName = nameof(RawComponent.Level);
 
-    public CreaturePropertyManager()
+    public CreaturePropertyManager(string creatureType)
     {
         propertyManager = new PropertyManager();
         
         //创建所有属性的基准属性，等级
         CreateLevelProperty();
+        
+        //创建7个基准属性
         Array enumValues = Enum.GetValues(typeof(CreatureMainProperty));
         foreach (var eValue in enumValues)
         {
-            InitNomalValue(eValue.ToString(), RefFuncFactory((CreatureMainProperty)eValue));
+            InitNomalValue((CreatureMainProperty)eValue,creatureType, RefFuncFactory((CreatureMainProperty)eValue));
         }
+        
+        //更新7个数值的初始值
     }
 
     private Func<Func<Fix64>[], Func<Fix64>> RefFuncFactory(CreatureMainProperty mainProperty)
@@ -47,6 +51,24 @@ public class CreaturePropertyManager
             _ => PropertyFuncRef.GetAbilityWithConfigAndLevel
         };
     }
+    
+    private static Fix64 GetConfigValue(CreatureMainProperty prop, string creatureType)
+    {
+        var table = GF.DataTable.GetDataTable<CharacterMainPropertyTable>();
+        var row = table.GetDataRows(r => r.CharacterKey == creatureType)[0];
+
+        return prop switch
+        {
+            CreatureMainProperty.PhysicalAtk => (Fix64)row.PhysicalAtk,
+            CreatureMainProperty.SpecialAtk  => (Fix64)row.SpecialAtk,
+            CreatureMainProperty.PhysicalDef => (Fix64)row.PhysicalDef,
+            CreatureMainProperty.SpecialDef  => (Fix64)row.SpecialDef,
+            CreatureMainProperty.Health      => (Fix64)row.Health,
+            CreatureMainProperty.Speed       => (Fix64)row.Speed,
+            CreatureMainProperty.Mana        => (Fix64)row.Mana,
+            _ => Fix64.Zero
+        };
+    }
 
     void CreateLevelProperty()
     {
@@ -60,8 +82,9 @@ public class CreaturePropertyManager
     /// 最后第三层Value*mul
     /// </summary>
     /// <param name="name"></param>
-    void InitNomalValue(string name, Func<Func<Fix64>[], Func<Fix64>> baseFunc)
+    void InitNomalValue(CreatureMainProperty eName, string creatureType, Func<Func<Fix64>[], Func<Fix64>> baseFunc)
     {
+        string name = eName.ToString();
         if(propertyManager.GetBaseValueProperty(LevelPropertyName)==null)
             GF.LogError("在创建基础属性时，缺失等级");
         
@@ -79,14 +102,20 @@ public class CreaturePropertyManager
         };
         string NameValueBaseFather = PropertyHelper.ModName(name, nameof(NormalComputeTp.Value));
         string NameValueBaseSelf = nameof(NormalBaseValueTp.Base);
-        PropertyHelper.FormComputeBasePropertyTree<RawComponent>(
+        ComputePropertyTree<RawComponent> tree = PropertyHelper.FormComputeBasePropertyTree<RawComponent>(
             NameValueBaseFather,
             NameValueBaseSelf,
             propertyManager,
             baseFunc,
             NameValueBaseReferenceList
             );
-        
+        //初始化Config值
+        BaseValueProperty configProperty = tree.baseDictionary[RawComponent.Config] as BaseValueProperty;
+        if (configProperty != null)
+        {
+            configProperty.SetBaseValue(GetConfigValue(eName, creatureType));
+        }
+
         /*
          * 计算 Name-Value
          * Father: Name

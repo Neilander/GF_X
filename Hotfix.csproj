@@ -182,6 +182,7 @@
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UIGroupTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardMonoBehaviour.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMainPropertyTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/GameProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/GameplayEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/EffectPackage.cs" />
