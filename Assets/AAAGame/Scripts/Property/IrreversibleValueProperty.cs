@@ -72,6 +72,6 @@ public class IrreversibleValueProperty : ValueProperty
     
     public override string ToString()
     {
-        return base.ToString()+" Type: IrreValueProperty";
+        return base.ToString()+" Type: IrreValueProperty ---------- "+ GetValue();
     }
 }

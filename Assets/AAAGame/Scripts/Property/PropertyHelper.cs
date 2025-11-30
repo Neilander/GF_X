@@ -71,7 +71,29 @@ public static class PropertyHelper
         for (int i = 0; i < funcArray.Length; i++)
         {
             int index = i;
-            funcArray[index] = () => manager.GetBaseValueProperty(baseList[index].PropertyId).GetValue();
+            funcArray[index] = () => //manager.GetBaseValueProperty(baseList[index].PropertyId).GetValue();
+            {
+                if (baseList[index] == null)
+                {
+                    Debug.LogError($"BaseList[{index}] is NULL at build time!");
+                    return Fix64.Zero;
+                }
+
+                if (baseList[index].PropertyId == null)
+                {
+                    Debug.LogError($"BaseList[{index}] PropertyId is NULL!");
+                    return Fix64.Zero;
+                }
+
+                var p = manager.GetBaseValueProperty(baseList[index].PropertyId);
+                if (p == null)
+                {
+                    Debug.LogError($"BaseValueProperty '{baseList[index].PropertyId}' NOT FOUND in manager!");
+                    return Fix64.Zero;
+                }
+
+                return p.GetValue();
+            };
         }
 
         ComputeValueProperty compVP = ComputeValueProperty.Create(refFunc(funcArray),

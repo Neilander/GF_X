@@ -126,4 +126,14 @@ public static class PropertyFuncRef
             // 返回 maxValue 的 1%
             return maxValue * (Fix64)0.01m;
         };
+    
+    public static Func<Func<Fix64>[], Func<Fix64>> GetDirectValue =
+        funcArray => () =>
+        {
+            // 0号参数：maxValue
+            Fix64 maxValue = funcArray[0]();
+
+            // 返回 maxValue 的 1%
+            return maxValue;
+        };
 }

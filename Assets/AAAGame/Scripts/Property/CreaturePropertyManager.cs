@@ -20,6 +20,12 @@ public enum CreatureMinorProperty
     ManaRecover
 }
 
+public enum CreatureCurrentProperty
+{
+    HealthCurrent,
+    ManaCurrent
+}
+
 public class CreaturePropertyManager
 {
     public PropertyManager propertyManager { get; private set; }
@@ -38,8 +44,26 @@ public class CreaturePropertyManager
         
         //创建次要属性，如回血回蓝
         CreateMinorProperty();
+        
+        //创建临时属性，如血量蓝量
+        //CreateIrreversibleProperty();
+    }
+
+    public Fix64 GetProperty(CreatureMainProperty property)
+    {
+        return propertyManager.GetComputeValueProperty(property.ToString()).GetValue();
     }
     
+    public Fix64 GetProperty(CreatureMinorProperty property)
+    {
+        return propertyManager.GetComputeValueProperty(property.ToString()).GetValue();
+    }
+    
+    public Fix64 GetProperty(CreatureCurrentProperty property)
+    {
+        return propertyManager.GetIrreversibleValueProperty(property.ToString()).GetValue();
+    }
+
     void CreateLevelProperty()
     {
         PropertyHelper.CreateBaseProperty(LevelPropertyName, propertyManager).SetBaseValue((Fix64)1);
@@ -242,6 +266,25 @@ public class CreaturePropertyManager
         }
         
         PropertyHelper.BindComputePropertyToOne<NormalComputeTp>("", minorPropName, propertyManager, PropertyFuncRef.MultAll);
+    }
+
+    #endregion
+
+    #region CreateIrreversibleValueProperty
+
+    void CreateIrreversibleProperty()
+    {
+        Func<Fix64>[] arr =
+        {
+            () => GetProperty(CreatureMainProperty.Health)
+        };
+        IrreversibleValueProperty.Create(PropertyFuncRef.GetDirectValue(arr), nameof(CreatureCurrentProperty.HealthCurrent)).Register(propertyManager);
+        
+        Func<Fix64>[] arrM =
+        {
+            () => GetProperty(CreatureMainProperty.Mana)
+        };
+        IrreversibleValueProperty.Create(PropertyFuncRef.GetDirectValue(arrM), nameof(CreatureCurrentProperty.ManaCurrent)).Register(propertyManager);
     }
 
     #endregion
