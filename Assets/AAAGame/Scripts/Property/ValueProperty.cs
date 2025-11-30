@@ -121,6 +121,9 @@ public abstract class ValueProperty : IProperty<Fix64>
     {
         if (_parentIds == null)
             _parentIds = new List<string>();
+
+        if (_parentIds.Contains(parentPropertyId))
+            return this;
         _parentIds.Add(parentPropertyId);
         OnDirty(() => _propertyManager.GetProperty(parentPropertyId)?.MakeDirty());
         return this;

@@ -14,6 +14,12 @@ public enum CreatureMainProperty
     Mana
 }
 
+public enum CreatureMinorProperty
+{
+    HealthRecover,
+    ManaRecover
+}
+
 public class CreaturePropertyManager
 {
     public PropertyManager propertyManager { get; private set; }
@@ -28,13 +34,29 @@ public class CreaturePropertyManager
         CreateLevelProperty();
         
         //创建7个基准属性
+        CreateMainProperty(creatureType);
+        
+        //创建次要属性，如回血回蓝
+        CreateMinorProperty();
+    }
+    
+    void CreateLevelProperty()
+    {
+        PropertyHelper.CreateBaseProperty(LevelPropertyName, propertyManager).SetBaseValue((Fix64)1);
+    }
+
+    #region CreateMainProperty
+
+    
+
+    
+    void CreateMainProperty(string creatureType)
+    {
         Array enumValues = Enum.GetValues(typeof(CreatureMainProperty));
         foreach (var eValue in enumValues)
         {
             InitNomalValue((CreatureMainProperty)eValue,creatureType, RefFuncFactory((CreatureMainProperty)eValue));
         }
-        
-        //更新7个数值的初始值
     }
 
     private Func<Func<Fix64>[], Func<Fix64>> RefFuncFactory(CreatureMainProperty mainProperty)
@@ -70,14 +92,9 @@ public class CreaturePropertyManager
         };
     }
 
-    void CreateLevelProperty()
-    {
-        PropertyHelper.CreateBaseProperty(LevelPropertyName, propertyManager).SetBaseValue((Fix64)1);
-    }
-
     /// <summary>
     /// 所有基础属性的初始化方法
-    /// 计算分三层。第一层，根据Value-Base-config和Level计算Value-Base；
+    /// 计算分三层。第一层，根据Name-Value-Base-config和Level计算Name-Value-Base；
     /// 然后第二层根据Value-Base和Value-buff计算Value，Mul-base和Mul-buff计算Mul；
     /// 最后第三层Value*mul
     /// </summary>
@@ -144,9 +161,16 @@ public class CreaturePropertyManager
          *      Name-Mul-Buff
          */
         
-        PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(name, nameof(NormalComputeTp.Mul), propertyManager,
+        ComputePropertyTree<NormalBaseValueTp> mulTree = PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(name, nameof(NormalComputeTp.Mul), propertyManager,
             PropertyFuncRef.SumAll);
         
+        //设置Name-Mul-Base的基础值
+        BaseValueProperty baseMul = mulTree.baseDictionary[NormalBaseValueTp.Base] as BaseValueProperty;
+        if (baseMul != null)
+        {
+            baseMul.SetBaseValue(Fix64.One);
+        }
+
         /*
          * 合成 Name
          * Father: “”
@@ -176,4 +200,49 @@ public class CreaturePropertyManager
         Value,
         Mul
     }
+    #endregion
+
+    #region CreateMinorProperty
+    
+    
+    void CreateMinorProperty()
+    {
+        CreateSingleMinorProperty(nameof(CreatureMainProperty.Health), nameof(CreatureMinorProperty.HealthRecover));
+        CreateSingleMinorProperty(nameof(CreatureMainProperty.Mana), nameof(CreatureMinorProperty.ManaRecover));
+        
+    }
+
+    void CreateSingleMinorProperty(string nameOfDeriver, string minorPropName)
+    {
+        PropertyHelper.FormConnectedComputeProperty(
+            PropertyHelper.ModName(nameOfDeriver,nameof(NormalComputeTp.Value),nameof(NormalBaseValueTp.Base)),
+            PropertyHelper.ModName(minorPropName, nameof(NormalComputeTp.Value),nameof(NormalBaseValueTp.Base)),
+            propertyManager,
+            PropertyFuncRef.GetPercentOfMaxValue);
+        
+        var NameValueReferenceList = new Dictionary<NormalBaseValueTp, string>
+        {
+            [NormalBaseValueTp.Base] = PropertyHelper.ModName(minorPropName, nameof(NormalComputeTp.Value), nameof(NormalBaseValueTp.Base))
+        };
+        PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(
+            minorPropName,
+            nameof(NormalComputeTp.Value), 
+            propertyManager,
+            PropertyFuncRef.SumAll,
+            NameValueReferenceList);
+        
+        ComputePropertyTree<NormalBaseValueTp> mulTree = PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(minorPropName, nameof(NormalComputeTp.Mul), propertyManager,
+            PropertyFuncRef.SumAll);
+        
+        //设置Name-Mul-Base的基础值
+        BaseValueProperty baseMul = mulTree.baseDictionary[NormalBaseValueTp.Base] as BaseValueProperty;
+        if (baseMul != null)
+        {
+            baseMul.SetBaseValue(Fix64.One);
+        }
+        
+        PropertyHelper.BindComputePropertyToOne<NormalComputeTp>("", minorPropName, propertyManager, PropertyFuncRef.MultAll);
+    }
+
+    #endregion
 }

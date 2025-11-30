@@ -46,7 +46,7 @@ public static class PropertyHelper
                 property = manager.GetBaseValueProperty(refId);
                 if (property == null)
                 {
-                    needParent = false;
+                    //needParent = false;
                     property = manager.GetComputeValueProperty(refId);
                 }
                 
@@ -117,7 +117,25 @@ public static class PropertyHelper
         return tree;
         
     }
+
+    public static ComputeValueProperty FormConnectedComputeProperty(
+        string derivePropertyFullId, 
+        string propertyId, 
+        PropertyManager manager,
+        Func<Func<Fix64>[], Func<Fix64>> refFunc)
+    {
+        ComputeValueProperty deriveProperty = manager.GetComputeValueProperty(derivePropertyFullId);
+
+        Func<Fix64>[] funcArray = new Func<Fix64>[1];
+        ComputeValueProperty newProperty = ComputeValueProperty.Create(refFunc(funcArray),
+            propertyId);
+        newProperty.Register(manager);
+        deriveProperty.NotifyParentDirty(newProperty.PropertyId);
+        return newProperty;
+    }
 }
+
+
 
 public class ComputePropertyTree<T> where T : Enum 
 {
