@@ -39,6 +39,6 @@ public class ComputeValueProperty : ValueProperty
     
     public override string ToString()
     {
-        return base.ToString()+" Type: ComputeValueProperty";
+        return base.ToString()+" Type: ComputeValueProperty +++ ";
     }
 }

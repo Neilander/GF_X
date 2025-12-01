@@ -11,6 +11,8 @@ public static class PropertyFuncRef
         funcArray => () =>
         {
             Fix64 total = Fix64.Zero;
+            //GF.Log("[调试]执行SumALL"+funcArray.Length);
+            //return total;
             foreach (var f in funcArray)
                 total += f();
             return total;
@@ -21,6 +23,7 @@ public static class PropertyFuncRef
         funcArray => () =>
         {
             Fix64 total = Fix64.One;
+            //return total;
             foreach (var f in funcArray)
                 total *= f();
             return total;
@@ -29,6 +32,7 @@ public static class PropertyFuncRef
     public static Func<Func<Fix64>[], Func<Fix64>> GetAbilityWithConfigAndLevel =
         funcArray => () =>
         {
+            
             // 1. 获取等级
             Fix64 level = funcArray[0]();
 
@@ -54,11 +58,14 @@ public static class PropertyFuncRef
     public static Func<Func<Fix64>[], Func<Fix64>> GetHealthWithConfigAndLevel =
         funcArray => () =>
         {
+            
             // 1. 获取等级
             Fix64 level = funcArray[0]();
 
             // 2. 获取种族值
             Fix64 race = funcArray[1]();
+            //GF.Log("[调试]执行生命计算"+funcArray.Length);
+            //return Fix64.One;
 
             // 3. 分解等级 level = 10x + y
             Fix64 xFix = Fix64.Floor(level / (Fix64)10);  // Fix64 格式的 x

@@ -16,6 +16,11 @@ public class PropertyManager : IReference
         return _properties.TryGetValue(propertyId, out var property) ? property : null;
     }
 
+    public ValueProperty GetValueProperty(string propertyId)
+    {
+        return _properties.TryGetValue(propertyId, out var property) && property is ValueProperty valueProperty ? valueProperty : null;
+    }
+
     public BaseValueProperty GetBaseValueProperty(string propertyId)
     {
         return _properties.TryGetValue(propertyId, out var property) && property is BaseValueProperty baseValueProperty ? baseValueProperty : null;

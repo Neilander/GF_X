@@ -13,6 +13,6 @@ public class CharacterTestProcedure : ProcedureBase
         GF.Log("正在进行测试，取消测试去修改LaunchProcedure");
         CreaturePropertyManager creaturePropertyManager = new CreaturePropertyManager("Knight");
         GF.Log(creaturePropertyManager.propertyManager.ToString());
-        //GF.Log(creaturePropertyManager.GetProperty(CreatureMainProperty.Health).ToString());
+        GF.Log(creaturePropertyManager.GetProperty(CreatureMainProperty.Health).ToString());
     }
 }

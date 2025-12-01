@@ -43,11 +43,11 @@ public static class PropertyHelper
             if (referenceProperties != null && referenceProperties.Keys.Contains(enumValue))
             {
                 string refId = referenceProperties[enumValue];
-                property = manager.GetBaseValueProperty(refId);
+                property = manager.GetValueProperty(refId);
                 if (property == null)
                 {
                     //needParent = false;
-                    property = manager.GetComputeValueProperty(refId);
+                    property = manager.GetValueProperty(refId);
                 }
                 
                 if(property == null)
@@ -85,7 +85,7 @@ public static class PropertyHelper
                     return Fix64.Zero;
                 }
 
-                var p = manager.GetBaseValueProperty(baseList[index].PropertyId);
+                var p = manager.GetValueProperty(baseList[index].PropertyId);
                 if (p == null)
                 {
                     Debug.LogError($"BaseValueProperty '{baseList[index].PropertyId}' NOT FOUND in manager!");
@@ -122,7 +122,7 @@ public static class PropertyHelper
             var id = ModName(ModName(fatherPName, selfSuffix), enumValues.GetValue(index).ToString());
 
 // 新增：把取到的 ComputeValueProperty 放进 baseList
-            ComputeValueProperty cvp = manager.GetComputeValueProperty(id);
+            ValueProperty cvp = manager.GetValueProperty(id);
             baseList.Add(cvp);
 
 // 原来的 func 捕获也改成基于 cvp
@@ -146,7 +146,7 @@ public static class PropertyHelper
         PropertyManager manager,
         Func<Func<Fix64>[], Func<Fix64>> refFunc)
     {
-        ComputeValueProperty deriveProperty = manager.GetComputeValueProperty(derivePropertyFullId);
+        ValueProperty deriveProperty = manager.GetValueProperty(derivePropertyFullId);
 
         Func<Fix64>[] funcArray = new Func<Fix64>[1];
         ComputeValueProperty newProperty = ComputeValueProperty.Create(refFunc(funcArray),

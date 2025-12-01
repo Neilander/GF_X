@@ -51,17 +51,20 @@ public class CreaturePropertyManager
 
     public Fix64 GetProperty(CreatureMainProperty property)
     {
+        propertyManager.GetValueProperty(property.ToString());
+            //Debug.LogError("暂停");
+
         return propertyManager.GetComputeValueProperty(property.ToString()).GetValue();
     }
     
     public Fix64 GetProperty(CreatureMinorProperty property)
     {
-        return propertyManager.GetComputeValueProperty(property.ToString()).GetValue();
+        return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
     
     public Fix64 GetProperty(CreatureCurrentProperty property)
     {
-        return propertyManager.GetIrreversibleValueProperty(property.ToString()).GetValue();
+        return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
 
     void CreateLevelProperty()
@@ -126,7 +129,7 @@ public class CreaturePropertyManager
     void InitNomalValue(CreatureMainProperty eName, string creatureType, Func<Func<Fix64>[], Func<Fix64>> baseFunc)
     {
         string name = eName.ToString();
-        if(propertyManager.GetBaseValueProperty(LevelPropertyName)==null)
+        if(propertyManager.GetValueProperty(LevelPropertyName)==null)
             GF.LogError("在创建基础属性时，缺失等级");
         
         /*

@@ -9,6 +9,7 @@
 
 using System;
 using System.IO;
+using UnityEngine;
 
 public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
 {
@@ -42,10 +43,30 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
         return new Fix64(value.m_rawValue > 0 ? value.m_rawValue : -value.m_rawValue);
     }
 
+    
     public static Fix64 Floor(Fix64 value)
     {
+        if(value<0)
+            Debug.LogWarning("【注意！！！】在用负数floor，有问题");
         return new Fix64((long)((ulong)value.m_rawValue & 0xFFFFFFFFFFFFF000));
     }
+    
+    /*这是GPT给的方法，没细看
+    public static Fix64 Floor(Fix64 value)
+    {
+        long raw = value.m_rawValue;
+
+        if (raw >= 0)
+        {
+            raw = raw & -Fix64.ONE;
+        }
+        else
+        {
+            raw = -((-raw) & -Fix64.ONE);
+        }
+
+        return Fix64.FromRaw(raw);
+    }*/
 
     public static Fix64 Ceiling(Fix64 value)
     {
@@ -348,6 +369,7 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
         return new Fix64(rawValue);
     }
 
+    /*
     public static Fix64 Pow(Fix64 x, int y)
     {
         if (y == 1) return x;
@@ -360,6 +382,33 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
         else
         {
             result = tmp * tmp;
+        }
+
+        return result;
+    }*/
+    
+    public static Fix64 Pow(Fix64 baseValue, int exponent)
+    {
+        if (exponent < 0)
+        {
+            Debug.LogWarning("【注意！！！】使用了小于0的数作为fix64的幂，错误");
+            return Fix64.Zero;  // 或者改成支持小数幂
+        }
+
+       
+
+        Fix64 result = Fix64.One;
+        Fix64 current = baseValue;
+
+        while (exponent > 0)
+        {
+            if ((exponent & 1) != 0)
+            {
+                result = result * current;
+            }
+            exponent >>= 1;
+            if (exponent > 0)
+                current = current * current;
         }
 
         return result;
