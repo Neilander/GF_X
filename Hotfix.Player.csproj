@@ -71,6 +71,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalAdditiveModifier.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/MAEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameUIForm.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/LanguagesDialog.Variables.cs" />
@@ -101,6 +102,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHeaderBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DOTweenExtension.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoMoveFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/WebRequestResult.cs" />
     <Compile Include="Assets/AAAGame/Scripts/HotfixEntry.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/LanguagesTable.cs" />
@@ -108,6 +110,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/ChangeSceneProcedure.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMAFactoryTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/GF.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UITable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketHeader.cs" />
@@ -137,6 +140,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/ComputeValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameOverUIForm.Variables.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoMoveComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/SoundGroupTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/ColorTable.cs" />

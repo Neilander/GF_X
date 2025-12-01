@@ -5,7 +5,8 @@ public class NoAtkFactory : AtkCompFactory
 {
     public override IAtkComp CreateAtkComp(GameObject gmo)
     {
-        gmo.AddComponent<NoAtkComp>();
+        //gmo.AddComponent<NoAtkComp>();
+        
         return gmo.AddComponent<NoAtkComp>();
     }
 }
@@ -14,4 +15,5 @@ public abstract class AtkCompFactory : ScriptableObject
 {
     public abstract IAtkComp CreateAtkComp(GameObject gmo);
 }
+
 

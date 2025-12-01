@@ -9,6 +9,10 @@ public class GeneralCreature : EntityBase, ITargetable
     public ITargetable Instigator { get; set; }
     public GameObject Gmo { get; private set; }
     
+    public string ReferenceId { get; protected set; }
+
+
+    private CreaturePropertyManager _creaturePropertyManager;
 
     protected override void OnInit(object userData)
     {
@@ -16,13 +20,14 @@ public class GeneralCreature : EntityBase, ITargetable
         Instigator = this;
         Alive = true;
         Gmo = gameObject;
-        
+        ReferenceId = "Knight";
+        _creaturePropertyManager = new CreaturePropertyManager(ReferenceId);
         
     }
 
     public void TakeDamage(float damage, HealthModifyType modType)
     {
-       
+       GF.Log("生物受伤，但是并没Implement");
     }
 }
 
@@ -39,16 +44,7 @@ public interface ITargetable
     bool Alive { get; }
     ITargetable Instigator { get; set; }
     GameObject Gmo { get; }
+    string ReferenceId { get; }
 
     void TakeDamage(float damage, HealthModifyType modType );
-}
-
-public interface ICreatureDataContainer
-{
-    
-}
-
-public interface IPropertyManager
-{
-
 }

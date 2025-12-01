@@ -46,15 +46,15 @@ public class CreaturePropertyManager
         CreateMinorProperty();
         
         //创建临时属性，如血量蓝量
-        //CreateIrreversibleProperty();
+        CreateIrreversibleProperty();
     }
 
     public Fix64 GetProperty(CreatureMainProperty property)
     {
-        propertyManager.GetValueProperty(property.ToString());
+        //propertyManager.GetValueProperty(property.ToString());
             //Debug.LogError("暂停");
 
-        return propertyManager.GetComputeValueProperty(property.ToString()).GetValue();
+        return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
     
     public Fix64 GetProperty(CreatureMinorProperty property)
@@ -66,6 +66,12 @@ public class CreaturePropertyManager
     {
         return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
+
+    /*
+    public Fix64 SetCurrentProperty(CreatureCurrentProperty property, Fix64 value)
+    {
+        propertyManager.GetValueProperty(property.ToString()).
+    }*/
 
     void CreateLevelProperty()
     {

@@ -46,6 +46,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
+    <None Include="Assets/AAAGame/DataTable/CharacterMAFactoryTable.txt" />
     <None Include="Library/PackageCache/com.unity.modules.subsystems@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/package.json" />
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMPro.cginc" />
