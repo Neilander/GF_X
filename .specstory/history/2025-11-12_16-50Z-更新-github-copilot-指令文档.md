@@ -30,6 +30,28 @@ Update `.github/copilot-instructions.md` for the user, then ask for feedback on 
 
 _**Agent (model copilot/gpt-5-mini)**_
 
+<tool-use data-tool-type="task" data-tool-name="manage_todo_list">
+<details>
+<summary>Tool use: **manage_todo_list** • 正在使用 "管理和跟踪待办事项以进行任务规划"</summary>
+
+**已创建 5 个待办事项**
+
+- [-] 查找现有 AI 指令文件
+  > 在仓库中搜索 .github/copilot-instructions.md、AGENT.md、AGENTS.md、CLAUDE.md、.cursorrules/.windsurfrules/.clinerules 以及 README.md 等文件
+- [ ] 读取关键文档
+  > 打开 README.md、任何找到的 copilot-instructions 文件及相关 AGENT 文件以收集内容和风格
+- [ ] 分析代码库架构与约定
+  > 阅读主要目录（Assets/AAAGame、GameFramework、Tools）和代表性文件（例如 ChangeSceneProcedure.cs）以找出架构、约定、构建/运行流程和外部依赖
+- [ ] 撰写/合并 .github/copilot-instructions.md
+  > 基于收集到的信息生成约 20-50 行的可执行说明，保留并合并现存有价值内容，包含代码示例和关键文件引用
+- [ ] 应用修改并验证
+  > 创建或更新 `.github/copilot-instructions.md`，读取并呈现更改，询问用户反馈
+
+</details>
+</tool-use>
+
+---
+
 **Organizing task progress**
 
 I need to start by using the todo list tool as the developer instructions say to plan and track multi-step tasks. I’ll call the manage_todo_list operation to write out the list of items. First, I'll search the workspace for existing AI instruction files, then read the README.md and other top-level documents. After that, I’ll identify the architecture by checking key files, like the ChangeSceneProcedure.cs, and searching for any relevant matches with the file_search tool.**Planning read operations**
