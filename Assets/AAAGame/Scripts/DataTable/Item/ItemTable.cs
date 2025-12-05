@@ -15,7 +15,7 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName | Obfuz.ObfuzScope.MethodName)]
 #endif
 /// <summary>
-/// 工具表
+/// 材料表
 /// </summary>
 public class ItemTable : DataRowBase
 {
@@ -29,7 +29,7 @@ public class ItemTable : DataRowBase
     }
 
         /// <summary>
-        /// 在代码中的命名标识符(下划线前与表名一致)
+        /// 在代码中的命名标识符
         /// </summary>
         public string Identifier
         {
@@ -38,7 +38,25 @@ public class ItemTable : DataRowBase
         }
 
         /// <summary>
-        /// Sprite名
+        /// 品质
+        /// </summary>
+        public ItemRarity Rarity
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 最大堆叠数(-1表示无限)
+        /// </summary>
+        public int MaxStack
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// Sprite路径
         /// </summary>
         public string SpriteName
         {
@@ -67,16 +85,7 @@ public class ItemTable : DataRowBase
         /// <summary>
         /// 物品类型标签
         /// </summary>
-        public int[] Tags
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 最大堆叠数(-1表示无限)
-        /// </summary>
-        public int MaxStack
+        public ItemTag[] Tags
         {
             get;
             private set;
@@ -95,11 +104,12 @@ public class ItemTable : DataRowBase
             m_Id = int.Parse(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
+            Rarity = DataTableExtension.ParseEnum<ItemRarity>(columnStrings[index++]);
+            MaxStack = int.Parse(columnStrings[index++]);
             SpriteName = columnStrings[index++];
             Name = columnStrings[index++];
             Description = columnStrings[index++];
-            Tags = DataTableExtension.ParseArray<int>(columnStrings[index++]);
-            MaxStack = int.Parse(columnStrings[index++]);
+            Tags = DataTableExtension.ParseArray<ItemTag>(columnStrings[index++]);
 
             return true;
         }
@@ -112,11 +122,12 @@ public class ItemTable : DataRowBase
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     Identifier = binaryReader.ReadString();
+                    Rarity = binaryReader.ReadEnum<ItemRarity>();
+                    MaxStack = binaryReader.Read7BitEncodedInt32();
                     SpriteName = binaryReader.ReadString();
                     Name = binaryReader.ReadString();
                     Description = binaryReader.ReadString();
-                    Tags = binaryReader.ReadArray<int>();
-                    MaxStack = binaryReader.Read7BitEncodedInt32();
+                    Tags = binaryReader.ReadArray<ItemTag>();
                 }
             }
 

@@ -21,9 +21,11 @@ MonoBehaviour:
   - Core/SoundGroupTable
   - Core/UIGroupTable
   - Core/UITable
-  - Item/ItemTable_Equipment
+  - Item/CraftingFormulaTable
   - Item/ItemTable_Material
-  - Item/ItemTable_Tool
+  - Item/ItemWithEffectTable_Consumable
+  - Item/ItemWithEffectTable_Equipment
+  - Item/ItemWithEffectTable_Tool
   mConfigs:
   - GameConfig
   mLanguages:

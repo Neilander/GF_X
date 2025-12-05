@@ -54,6 +54,7 @@
     <None Include="Assets\AAAGame\DataTable\Core\LanguagesTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Fonts\chars.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Mobile Overlay.shader" />
+    <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Tool.txt" />
     <None Include="Assets\AAAGame\DataTable\Core\EntityGroupTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Bitmap.shader" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Equipment.txt" />
@@ -64,6 +65,7 @@
     <None Include="Assets\AAAGame\DataTable\Core\UIGroupTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Surface-Mobile.shader" />
     <None Include="Assets\AAAGame\DataTable\CameraViewTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Item\CraftingFormulaTable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Tool.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Surface.shader" />
     <None Include="Assets\AAAGame\Shader\TextMeshFont.shader" />
@@ -79,6 +81,7 @@
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMPro_Surface.cginc" />
     <None Include="Assets\AAAGame\Config\GameConfig.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Resources\LineBreaking Following Characters.txt" />
+    <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Consumable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Material.txt" />
     <None Include="Assets\AAAGame\HotfixDlls\HotfixFileList.txt" />
     <None Include="Assets\AAAGame\Shader\ASE\FastLit.shader" />
@@ -86,6 +89,7 @@
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Bitmap-Mobile.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Fonts\LiberationSans - OFL.txt" />
+    <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Equipment.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Mobile.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Sprite.shader" />
   </ItemGroup>
