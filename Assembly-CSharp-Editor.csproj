@@ -26,7 +26,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>Temp\Bin\Debug\Assembly-CSharp-Editor\</OutputPath>
-    <DefineConstants>UNITY_2022_3_62;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_PROFILER;DEBUG;TRACE;UNITY_ASSERTIONS;UNITY_EDITOR;UNITY_EDITOR_64;UNITY_EDITOR_OSX;ENABLE_UNITY_COLLECTIONS_CHECKS;ENABLE_BURST_AOT;UNITY_TEAM_LICENSE;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER;UNITY_EDITOR_ONLY_COMPILATION</DefineConstants>
+    <DefineConstants>UNITY_2022_3_62;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_PROFILER;DEBUG;TRACE;UNITY_ASSERTIONS;UNITY_EDITOR;UNITY_EDITOR_64;UNITY_EDITOR_OSX;ENABLE_UNITY_COLLECTIONS_CHECKS;ENABLE_BURST_AOT;UNITY_TEAM_LICENSE;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER;UNITY_EDITOR_ONLY_COMPILATION</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <NoWarn>0169,0649</NoWarn>
@@ -47,36 +47,69 @@
   <ItemGroup>
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/EditorToolSettings.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/EditorScriptableSignleton.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DoubleArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DateTimeProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.LongProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector2IntProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector3IntArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/SubPanel/CompressImageFilePanel.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.LongArrayProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector4Processor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector2ArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/EditorToolbarExtension.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/AppConfigsInspector.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/JenkinsBuilder.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.UShortProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.ShortProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/EditorToolBase.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector4ArrayProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/LocalizationScanner/LocalizationTextScannerEditor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.IntProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Fix64ArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.UIntProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Double2DArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.ColorProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector2Processor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/RightClickMemus/RightClickMenuExtension.SpriteAtlasTools.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/CreateNewScriptListener.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Color32Processor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/AssetBuildHandler.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.CommentProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.CharProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.EnumArrayProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/UI/UIFormBaseInspector.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DecimalProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.SByteProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/ResourceRuleEditor/ResourceRuleEditor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.BoolProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.RectProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/AotDllsConfigEditor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DataProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Fix64Processor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/CompressToolSubPanel.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorUtilityExtension.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableCodeGenerator.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/GameDataGenerator.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/GameFrameworkConfigs.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Int4Processor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableUpdater.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/ResourceRuleEditor/ResourceRuleEditorData.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/CompressToolEditor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/BatchOperateTool/BatchOperateToolEditor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.TypeProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.QuaternionProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.GenericDataProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector3Processor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/SubPanel/CompressTexturePanel.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/RightClickMemus/HierarchyRightClickMenus.DataTable.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Int2DArrayProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableGenerator.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.EnumProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector3ArrayProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DataProcessorUtility.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Float2DArrayProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/EditorToolMenuAttribute.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DoubleArrayProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.LongProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector2IntProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector4Processor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/AppConfigsInspector.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.ShortProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/EditorToolBase.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/LocalizationScanner/LocalizationTextScannerEditor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.IntProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Double2DArrayProcessor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector2Processor.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/RightClickMemus/RightClickMenuExtension.SpriteAtlasTools.cs" />
+    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.CommentProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.BoolArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.IdProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Bool2DArrayProcessor.cs" />
@@ -85,66 +118,33 @@
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/CompressTool.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/BatchOperateTool/ImageFontCreator.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/ConstEditor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/UI/UIFormBaseInspector.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DecimalProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.IntArrayProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.SByteProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/ResourceRuleEditor/ResourceRuleEditor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.ULongProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.BoolProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.RectProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/AotDllsConfigEditor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.StringProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DataProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/SubPanel/CreateAtlasPanel.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Fix64Processor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/CompressToolSubPanel.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorUtilityExtension.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/StripLinkConfigTool.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableCodeGenerator.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/UI/UIItemBaseInspector.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/GameDataGenerator.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/GameFrameworkConfigs.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector3IntProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/AppBuildSettings.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/ResourceRuleEditor/ResourceRuleEditorUtility.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Int4Processor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableUpdater.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/LocalizationScanner/LocalizationTextScanner.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/AppBuildEidtor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/ResourceRuleEditor/ResourceRuleEditorData.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/CompressToolEditor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/BatchOperateTool/BatchOperateToolEditor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/UnityEditorToolbar.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.TypeProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.QuaternionProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.GenericDataProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector3Processor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/HybridCLRExtensionTool.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/SubPanel/CompressTexturePanel.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/Common/RightClickMemus/HierarchyRightClickMenus.DataTable.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Int2DArrayProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableGenerator.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/SubPanel/CreateAtlasVariantPanel.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.EnumProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/BatchOperateTool/FontReplaceTool.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.FloatArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/StripLinkConfigEditor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/UtilitySubToolBase.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.StringIntPairArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DoubleProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Vector3ArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.FloatProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.ByteProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.DataProcessorUtility.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Int4ArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/UtilityToolEditorBase.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/CompressTool/SubPanel/CompressAnimClipsPanel.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.Float2DArrayProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.StringFix64PairArrayProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.cs" />
     <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/DataTableGenerator/DataTableProcessor.StringArrayProcessor.cs" />
-    <Compile Include="Assets/AAAGame/ScriptsBuiltin/Editor/EditorTools/EditorToolMenuAttribute.cs" />
     <None Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/Localization/differences.ja.txt" />
     <None Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/Localization/cm-help.ko.txt" />
     <None Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/Localization/semantic.es.txt" />
@@ -1156,6 +1156,14 @@
     <ProjectReference Include="Unity.Timeline.csproj">
       <Project>{754d3890-eee6-8b73-3a98-6463e3549097}</Project>
       <Name>Unity.Timeline</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.InputSystem.csproj">
+      <Project>{742a7b64-1e94-e24c-7213-4b132c22e9c2}</Project>
+      <Name>Unity.InputSystem</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.InputSystem.ForUI.csproj">
+      <Project>{319eae36-e55e-3c33-c655-0f5cf4fbb97b}</Project>
+      <Name>Unity.InputSystem.ForUI</Name>
     </ProjectReference>
     <ProjectReference Include="Newtonsoft.Json.UnityConverters.csproj">
       <Project>{e355a1a2-5f2d-39bc-0eb2-14f9cc18c0ac}</Project>
