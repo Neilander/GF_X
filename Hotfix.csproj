@@ -184,7 +184,6 @@
     <Compile Include="Assets\AAAGame\Scripts\UI\CommonDialog.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Extension\AD\ADComponent.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\GameUIForm.cs" />
-    <Compile Include="Assets\AAAGame\Scripts\Property\Fix64.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\UIVariables\UITopbar.Variables.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\UIVariables\SettingDialog.Variables.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Property\PropertyFuncRef.cs" />
