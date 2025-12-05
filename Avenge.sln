@@ -1,6 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hotfix", "Hotfix.csproj", "{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnityGameFramework.Runtime", "UnityGameFramework.Runtime.csproj", "{272776EE-0496-530C-C4D5-892D0DB04BF3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameFramework", "GameFramework.csproj", "{48397271-74EB-6EA0-40BD-F7D9DCD81DB7}"
@@ -16,8 +18,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DOTween.Extension", "DOTween.Extension.csproj", "{AFB1A04D-87DA-569E-AFAA-DE2123701B10}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask", "UniTask.csproj", "{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hotfix", "Hotfix.csproj", "{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assembly-CSharp-Editor", "Assembly-CSharp-Editor.csproj", "{778B183A-CE20-1426-7407-6F22D71E2EAF}"
 EndProject
@@ -37,6 +37,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Release|Any CPU.Build.0 = Release|Any CPU
 		{272776EE-0496-530C-C4D5-892D0DB04BF3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{272776EE-0496-530C-C4D5-892D0DB04BF3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{272776EE-0496-530C-C4D5-892D0DB04BF3}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -69,10 +73,6 @@ Global
 		{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Release|Any CPU.Build.0 = Release|Any CPU
 		{778B183A-CE20-1426-7407-6F22D71E2EAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{778B183A-CE20-1426-7407-6F22D71E2EAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{778B183A-CE20-1426-7407-6F22D71E2EAF}.Release|Any CPU.ActiveCfg = Release|Any CPU

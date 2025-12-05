@@ -1,0 +1,9 @@
+﻿#	CharacterMAFactoryTable				
+#	ID		CharacterKey	MoveFactoryPath	AttackFactoryPath
+#	int		string	string	string
+#		备注	请添加字段, 字段名首字母大写		
+	1		Archer	Assets/AAAGame/SOs/MoveCompFactory/NoMoveFactory.asset	Assets/AAAGame/SOs/AttackCompFactory/NoAtkFactory.asset
+	2		Shield	Assets/AAAGame/SOs/MoveCompFactory/NoMoveFactory.asset	Assets/AAAGame/SOs/AttackCompFactory/NoAtkFactory.asset
+	3		Scout	Assets/AAAGame/SOs/MoveCompFactory/NoMoveFactory.asset	Assets/AAAGame/SOs/AttackCompFactory/NoAtkFactory.asset
+	4		Wizard	Assets/AAAGame/SOs/MoveCompFactory/NoMoveFactory.asset	Assets/AAAGame/SOs/AttackCompFactory/NoAtkFactory.asset
+	5		Knight	Assets/AAAGame/SOs/MoveCompFactory/NoMoveFactory.asset	Assets/AAAGame/SOs/AttackCompFactory/NoAtkFactory.asset
