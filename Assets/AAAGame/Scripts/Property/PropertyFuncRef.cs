@@ -14,7 +14,11 @@ public static class PropertyFuncRef
             //GF.Log("[调试]执行SumALL"+funcArray.Length);
             //return total;
             foreach (var f in funcArray)
-                total += f();
+            {
+                
+                total += f();   
+            }
+                
             return total;
         };
 

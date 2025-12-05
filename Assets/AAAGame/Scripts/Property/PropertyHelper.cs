@@ -180,3 +180,4 @@ public class ComputePropertyTree<T> where T : Enum
         }
     }
 }
+

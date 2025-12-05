@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 
 //有基础值的属性，比如血量、攻击力、防御力等
 public class BaseValueProperty : ValueProperty
@@ -33,6 +34,7 @@ public class BaseValueProperty : ValueProperty
 
     protected override void ApplyModify(ref Fix64 ret)
     {
+        GF.Log("执行了修改器"+_modifiers.Count);
         ProcessModifiers(ref ret, EModifierMergeType.DirectAdditive);
         ProcessModifiers(ref ret, EModifierMergeType.DirectMultiplicative);
         ProcessModifiers(ref ret, EModifierMergeType.FinalAdditive);
