@@ -17,8 +17,8 @@ public class CharacterTestProcedure : ProcedureBase
         //GF.Log(GF.DataModel.GetDataModel<PlayerDataModel>().Hp.ToString());
         //GF.DataModel.CreateDataModel<PlayerDataModel>();
         //GF.Log(GF.DataModel.GetDataModel<PlayerDataModel>().Hp.ToString());
-        
-        
+
+
 
     }
 }

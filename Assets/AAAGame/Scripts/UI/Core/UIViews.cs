@@ -13,5 +13,6 @@ public enum UIViews : int
 	TermsOfServiceDialog = 7,
 	CommonDialog = 8,
 	LanguagesDialog = 9,
+	CraftingDialog = 11,
 	ToastTips = 10
 }

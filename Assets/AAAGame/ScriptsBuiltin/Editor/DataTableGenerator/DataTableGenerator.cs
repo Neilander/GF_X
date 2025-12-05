@@ -113,7 +113,7 @@ namespace GameFramework.Editor.DataTableTools
                 }
                 string dataTypeKeyword = dataTableProcessor.GetLanguageKeyword(i);
                 string dataComment = dataTableProcessor.GetComment(i);
-                if (dataTypeKeyword == "enum")
+                if (dataTypeKeyword == "enum" || dataTypeKeyword == "enum[]")
                 {
                     var firstEnumValue = GetFirstEnumValue(dataTableProcessor, i);
                     if (!DataTableExtension.TryParseEnum(firstEnumValue, out Type enumType))
@@ -122,11 +122,14 @@ namespace GameFramework.Editor.DataTableTools
                         continue;
                     }
 
+                    string propTypeName = enumType.FullName.Replace('+', '.');
+                    if (dataTypeKeyword == "enum[]") propTypeName += "[]";
+
                     stringBuilder
                     .AppendLine("        /// <summary>")
                     .AppendFormat("        /// {0}", dataTableProcessor.GetComment(i)).AppendLine()
                     .AppendLine("        /// </summary>")
-                    .AppendFormat("        public {0} {1}", enumType.FullName.Replace('+', '.'), dataTableProcessor.GetName(i)).AppendLine()
+                    .AppendFormat("        public {0} {1}", propTypeName, dataTableProcessor.GetName(i)).AppendLine()
                     .AppendLine("        {")
                     .AppendLine("            get;")
                     .AppendLine("            private set;")
@@ -189,7 +192,21 @@ namespace GameFramework.Editor.DataTableTools
                     {
                         if (isArrayType == 1)
                         {
-                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseArray<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), languageKeyword.Replace("[]", string.Empty)).AppendLine();
+                            // special-case enum[] where element type must be detected from data rows
+                            if (languageKeyword.Replace("[]", string.Empty) == "enum")
+                            {
+                                var firstEnumValue = GetFirstEnumValue(dataTableProcessor, i);
+                                if (!DataTableExtension.TryParseEnum(firstEnumValue, out Type enumType))
+                                {
+                                    GFBuiltin.LogError(Utility.Text.Format("解析枚举类型失败:{0}, 配置枚举格式为: EnumType.Item1", firstEnumValue));
+                                    continue;
+                                }
+                                stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseArray<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            }
+                            else
+                            {
+                                stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseArray<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), languageKeyword.Replace("[]", string.Empty)).AppendLine();
+                            }
                         }
                         else if (isArrayType == 2)
                         {
@@ -274,7 +291,20 @@ namespace GameFramework.Editor.DataTableTools
                     {
                         if (isArrayType == 1)
                         {
-                            stringBuilder.AppendFormat("                    {0} = binaryReader.ReadArray<{1}>();", dataTableProcessor.GetName(i), languageKeyword.Replace("[]", string.Empty)).AppendLine();
+                            if (languageKeyword.Replace("[]", string.Empty) == "enum")
+                            {
+                                var firstEnumValue = GetFirstEnumValue(dataTableProcessor, i);
+                                if (!DataTableExtension.TryParseEnum(firstEnumValue, out Type enumType))
+                                {
+                                    GFBuiltin.LogError(Utility.Text.Format("解析枚举类型失败:{0}, 配置枚举格式为: EnumType.Item1", firstEnumValue));
+                                    continue;
+                                }
+                                stringBuilder.AppendFormat("                    {0} = binaryReader.ReadArray<{1}>();", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            }
+                            else
+                            {
+                                stringBuilder.AppendFormat("                    {0} = binaryReader.ReadArray<{1}>();", dataTableProcessor.GetName(i), languageKeyword.Replace("[]", string.Empty)).AppendLine();
+                            }
                         }
                         else if (isArrayType == 2)
                         {

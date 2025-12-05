@@ -61,6 +61,7 @@
     <None Include="Library/PackageCache/com.unity.modules.unitywebrequesttexture@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.modules.ai@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.collections@2.5.7/Unity.Collections.LowLevel.ILSupport/README.txt" />
+    <None Include="Assets/AAAGame/DataTable/Item/ItemWithEffectTable_Tool.txt" />
     <None Include="Library/PackageCache/com.unity.ugui@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.cinemachine@2.10.3/ValidationExceptions.json" />
     <None Include="Library/PackageCache/com.unity.ext.nunit@2.0.3/package.json" />
@@ -74,6 +75,7 @@
     <None Include="Library/PackageCache/com.unity.test-framework.performance@3.0.3/ValidationExceptions.json" />
     <None Include="Assets/AAAGame/Language/Korean.json" />
     <None Include="Library/PackageCache/com.unity.timeline@1.7.7/package.json" />
+    <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Equipment.txt" />
     <None Include="Library/PackageCache/com.code-philosophy.obfuz@5557b27724/package.json" />
     <None Include="Assets/AAAGame/DataTable/Core/UITable.txt" />
     <None Include="Assets/AAAGame/DataTable/LevelTable.txt" />
@@ -105,8 +107,10 @@
     <None Include="Library/PackageCache/com.unity.modules.video@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.shadergraph@14.0.12/ValidationConfig.json" />
     <None Include="Library/PackageCache/com.unity.ide.rider@3.0.38/ValidationExceptions.json" />
+    <None Include="Assets/AAAGame/DataTable/Item/CraftingFormulaTable.txt" />
     <None Include="Library/PackageCache/com.unity.test-framework@1.4.6/package.json" />
     <None Include="Library/PackageCache/com.unity.nuget.mono-cecil@1.11.5/package.json" />
+    <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Tool.txt" />
     <None Include="Library/PackageCache/com.unity.modules.particlesystem@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.modules.physics2d@1.0.0/package.json" />
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Surface.shader" />
@@ -138,7 +142,9 @@
     <None Include="Library/PackageCache/com.code-philosophy.obfuz4hybridclr@59804e17a0/package.json" />
     <None Include="Library/PackageCache/com.unity.modules.unitywebrequestwww@1.0.0/package.json" />
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Resources/LineBreaking Following Characters.txt" />
+    <None Include="Assets/AAAGame/DataTable/Item/ItemWithEffectTable_Consumable.txt" />
     <None Include="Library/PackageCache/com.unity.modules.unitywebrequestaudio@1.0.0/package.json" />
+    <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Material.txt" />
     <None Include="Assets/AAAGame/HotfixDlls/HotfixFileList.txt" />
     <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/Editor Resources/Shaders/TMP_SDF_SSD.cginc" />
     <None Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/ValidationConfig.json" />
@@ -162,6 +168,7 @@
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Fonts/LiberationSans - OFL.txt" />
     <None Include="Library/PackageCache/com.unity.modules.animation@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/package.json" />
+    <None Include="Assets/AAAGame/DataTable/Item/ItemWithEffectTable_Equipment.txt" />
     <None Include="Library/PackageCache/com.unity.nuget.newtonsoft-json@3.2.1/Runtime/Newtonsoft.Json.xml" />
     <None Include="Library/PackageCache/com.unity.collections@2.5.7/pvpExceptions.json" />
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Mobile.shader" />

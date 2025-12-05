@@ -1,0 +1,9 @@
+﻿#	装备表									i18n	i18n	
+#	ID		Identifier	Rarity	MaxStack	PropertyNumerals	EffectNumerals	EffectIntroduction	SpriteName	Name	Description	Tags
+#	int		string	enum	int	StringFix64Pair[]	Fix64[]	string	string	string	string	enum[]
+#		备注	在代码中的命名标识符	品质	最大堆叠数(-1表示无限)	属性数值	效果数值	效果简介(仅供速查)	Sprite名	物品名(多语言)	物品描述(多语言)	物品类型标签
+	1		Equipment_Aaa	ItemRarity.Common	1	[PhysicalAtk,3]	3,5	攻击时有<num1>概率造成<num2>秒击晕	UI/IconMisc/Icon_Star_On.png	Item.Equipment.Name.Aaa	Item.Equipment.Description.Aaa	ItemTag.AAA
+	2		Equipment_Bbb	ItemRarity.Rare	1	[PhysicalAtk,2],[PhysicalDef,2]	2	攻击时回复<num1>生命	UI/IconMisc/Icon_Star_Off.png	Item.Equipment.Name.Bbb	Item.Equipment.Description.Bbb	ItemTag.BBB,ItemTag.AAA
+	3		Equipment_Ccc	ItemRarity.Epic	5	[SpecialAtk,3]	0.6,3	攻击时回复<num1>生命和<num2>魔法	UI/IconMisc/Icon_Setting.png	Item.Equipment.Name.Ccc	Item.Equipment.Description.Ccc	ItemTag.AAA
+	4		Equipment_Ddd	ItemRarity.Legendary	-1	[SpecialAtk,5],[PhysicalAtk,-3]	4,0.5,200	<num1><num2><num3>	UI/IconMisc/Icon_Close02.png	Item.Equipment.Name.Ddd	Item.Equipment.Description.Ddd	ItemTag.AAA
+	5		Equipment_Eee	ItemRarity.Heroic	1	[PhysicalDef,2],[SpecialDef,2]	15.6	<num1>	UI/IconMisc/Icon_Check03_s.png	Item.Equipment.Name.Eee	Item.Equipment.Description.Eee	ItemTag.AAA

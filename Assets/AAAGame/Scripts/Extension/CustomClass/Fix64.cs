@@ -1,4 +1,4 @@
-﻿//
+//
 // @brief: 定点数
 // @version: 1.0.0
 // @author helin
@@ -43,14 +43,14 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
         return new Fix64(value.m_rawValue > 0 ? value.m_rawValue : -value.m_rawValue);
     }
 
-    
+
     public static Fix64 Floor(Fix64 value)
     {
-        if(value<0)
+        if (value < 0)
             Debug.LogWarning("【注意！！！】在用负数floor，有问题");
         return new Fix64((long)((ulong)value.m_rawValue & 0xFFFFFFFFFFFFF000));
     }
-    
+
     /*这是GPT给的方法，没细看
     public static Fix64 Floor(Fix64 value)
     {
@@ -386,7 +386,7 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
 
         return result;
     }*/
-    
+
     public static Fix64 Pow(Fix64 baseValue, int exponent)
     {
         if (exponent < 0)
@@ -395,7 +395,7 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
             return Fix64.Zero;  // 或者改成支持小数幂
         }
 
-       
+
 
         Fix64 result = Fix64.One;
         Fix64 current = baseValue;
