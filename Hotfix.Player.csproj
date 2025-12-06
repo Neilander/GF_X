@@ -138,6 +138,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/TypeIdPair.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/RatingDialog.Variables.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/ItemWithEffectTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UITopbar.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/MenuUIForm.Variables.cs" />
@@ -166,6 +167,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/UtilityEx.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectAdditiveModifier.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/CraftingUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/MAEntity.cs" />
@@ -189,6 +191,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketHeader.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/SettingExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/LevelEntity.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Animation/AnimationExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/Singleton.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyClampModifier.cs" />

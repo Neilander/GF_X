@@ -32,7 +32,7 @@ public class InputManager : GameFrameworkComponent
         var actions = playerInput.actions;
 
         _moveAction = actions.FindAction("Player/Move");
-        _interactAction = actions.FindAction("Player/Interaction");
+        _interactAction = actions.FindAction("Player/Interact");
     }
 
     private void Update()
@@ -63,7 +63,7 @@ public class InputManager : GameFrameworkComponent
             switch (newState)
             {
                 case InputState.Game:
-                    father._model.Reset();
+                    father._model?.Reset();
                     break;
             }
         }
@@ -74,7 +74,7 @@ public class InputManager : GameFrameworkComponent
             switch (lastState)
             {
                 case InputState.Game:
-                    father._model.Reset();
+                    father._model?.Reset();
                     break;
             }
         }
@@ -99,6 +99,7 @@ public class InputManager : GameFrameworkComponent
 
                     // Jump 按下
                     father._model.InteractionPressed = father._interactAction.WasPressedThisFrame();
+                   
                     break;
             }
         }
