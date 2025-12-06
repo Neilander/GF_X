@@ -13,7 +13,8 @@
         "Unity.Jobs",
         "Unity.Collections",
         "Unity.Mathematics",
-        "Obfuz.Runtime"
+        "Obfuz.Runtime",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -1,6 +1,8 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using GameFramework.Resource;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 public class MAEntity :GeneralCreature
 {
@@ -12,5 +14,14 @@ public class MAEntity :GeneralCreature
         string moveFacPath = row.MoveFactoryPath;
         string atkFacPath = row.AttackFactoryPath;
         
+        LoadAssetCallbacks callback = new LoadAssetCallbacks(
+            (assetName,  asset, duration,  userData)=> (asset as MoveCompFactory).CreateMoveComp(gameObject));
+            
+        
+        GF.Resource.LoadAsset( UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),callback );
+        
+        //UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath);
+        
+
     }
 }

@@ -152,6 +152,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/VariablePool/VariablePoolComponent.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/GameOverProcedure.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DataModel/InputModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/ItemRepositoryDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DamageSystem.cs" />
@@ -211,6 +212,7 @@
     <Compile Include="Assets/AAAGame/Scripts/DataClass/Item/ItemWithEffect.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMainPropertyTable.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/StaticUIComponent.cs" />
     <None Include="Assets/AAAGame/Scripts/Hotfix.asmdef" />
     <Reference Include="UnityEngine">
@@ -979,6 +981,10 @@
     <ProjectReference Include="Obfuz.Runtime.csproj">
       <Project>{fd2c1dbd-37c4-149d-36d7-151349add1bc}</Project>
       <Name>Obfuz.Runtime</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.InputSystem.csproj">
+      <Project>{742a7b64-1e94-e24c-7213-4b132c22e9c2}</Project>
+      <Name>Unity.InputSystem</Name>
     </ProjectReference>
     <ProjectReference Include="UnityEditor.UI.csproj">
       <Project>{eaaa251a-fbab-6f2c-35b9-48fd5cade8e4}</Project>
