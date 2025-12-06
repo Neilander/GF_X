@@ -34,7 +34,6 @@ public class BaseValueProperty : ValueProperty
 
     protected override void ApplyModify(ref Fix64 ret)
     {
-        GF.Log("执行了修改器"+_modifiers.Count);
         ProcessModifiers(ref ret, EModifierMergeType.DirectAdditive);
         ProcessModifiers(ref ret, EModifierMergeType.DirectMultiplicative);
         ProcessModifiers(ref ret, EModifierMergeType.FinalAdditive);

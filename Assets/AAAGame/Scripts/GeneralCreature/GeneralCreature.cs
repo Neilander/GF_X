@@ -12,7 +12,7 @@ public class GeneralCreature : EntityBase, ITargetable
     public string ReferenceId { get; protected set; }
 
 
-    private CreaturePropertyManager _creaturePropertyManager;
+    public CreaturePropertyManager CreaturePropertyManager { get; private set; }
 
     protected override void OnInit(object userData)
     {
@@ -21,13 +21,15 @@ public class GeneralCreature : EntityBase, ITargetable
         Alive = true;
         Gmo = gameObject;
         ReferenceId = "Knight";
-        _creaturePropertyManager = new CreaturePropertyManager(ReferenceId);
+        CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
         
     }
 
-    public void TakeDamage(float damage, HealthModifyType modType)
+    public virtual void TakeDamage(float damage, HealthModifyType modType)
     {
-       GF.Log("生物受伤，但是并没Implement");
+       GF.Log("生物受伤，目前只实现了直接扣血");
+       CreaturePropertyManager.ModifyCurrentProperty(CreatureCurrentProperty.HealthCurrent,PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
+       GF.Log("生物当前血量"+CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
     }
 }
 

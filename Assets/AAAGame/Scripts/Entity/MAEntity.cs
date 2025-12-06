@@ -16,11 +16,7 @@ public class MAEntity :GeneralCreature
         //初始化移动和攻击组件
 
         SetUpMAComp();
-        
-        
-        
-        //UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath);
-        
+        TakeDamage(3, HealthModifyType.reduce);
 
     }
 
