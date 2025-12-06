@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class NoAtkComp : MonoBehaviour, IAtkComp
+public class NoAtkComp : IAtkComp
 {
     public void Attack()
     {

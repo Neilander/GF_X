@@ -1,10 +1,11 @@
 using UnityEngine;
 
-public class NoMoveComp : MonoBehaviour, IMoveComp
+public class NoMoveComp :  IMoveComp
 {
     public void Move()
     {
         //这是空行为，什么都不做
+        
     }
 }
 
