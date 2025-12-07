@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 public class GeneralCreature : EntityBase, ITargetable
 {
@@ -10,6 +11,9 @@ public class GeneralCreature : EntityBase, ITargetable
     public GameObject Gmo { get; private set; }
     
     public string ReferenceId { get; protected set; }
+    
+    protected Transform display;
+
 
 
     public CreaturePropertyManager CreaturePropertyManager { get; private set; }
@@ -18,12 +22,22 @@ public class GeneralCreature : EntityBase, ITargetable
     {
         base.OnInit(userData);
         Instigator = this;
-        Alive = true;
+       
         Gmo = gameObject;
+        display = transform.Find("Display");
         ReferenceId = "Knight";
-        CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
         
     }
+
+    protected override void OnShow(object userData)
+    {
+        base.OnShow(userData);
+        Alive = true;
+        CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
+        display.rotation = Quaternion.Euler(38.7f, 0, 0);
+    }
+
+
 
     public virtual void TakeDamage(float damage, HealthModifyType modType)
     {

@@ -14,8 +14,10 @@ public class CharacterTestProcedure : ProcedureBase
         
         //尝试创建物体
         EntityParams newParams = new EntityParams();
+        newParams.position = new Vector3(0, 1, 0);
         GF.Entity.ShowEntity<PlayerEntity>(0,UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),"Player",newParams);
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
+        
 
         //CreaturePropertyManager creaturePropertyManager = new CreaturePropertyManager("Knight");
         //GF.Log(creaturePropertyManager.propertyManager.ToString());

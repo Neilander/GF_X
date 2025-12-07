@@ -163,6 +163,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/DownloadResult.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/UserDataHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleOverrideModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/UtilityEx.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />
@@ -181,6 +182,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/ParticleEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/AdSdkHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHeaderBase.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/InputDirTranslator.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Const.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />

@@ -16,7 +16,6 @@ public class MAEntity :GeneralCreature
         //初始化移动和攻击组件
 
         SetUpMAComp();
-        TakeDamage(3, HealthModifyType.reduce);
 
     }
 
