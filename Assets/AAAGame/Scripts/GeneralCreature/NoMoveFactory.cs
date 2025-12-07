@@ -9,6 +9,7 @@ public class NoMoveFactory : MoveCompFactory
         //gmo.AddComponent<NoAtkComp>();
         NoMoveComp comp = new NoMoveComp();
         gmo.SetMoveComp(comp);
+        comp.Init(gmo);
         return comp;
     }
 }

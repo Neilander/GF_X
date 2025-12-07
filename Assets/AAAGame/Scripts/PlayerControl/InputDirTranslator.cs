@@ -7,7 +7,7 @@ public class InputDirTranslator
 {
     public static Vector2 Translate(Vector2 inputData)
     {
-        Vector2 returnDir =  Vector2.zero;
+        Vector2 returnDir = inputData;
 
 
         return returnDir;

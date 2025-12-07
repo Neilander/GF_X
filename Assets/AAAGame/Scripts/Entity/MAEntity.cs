@@ -9,14 +9,15 @@ public class MAEntity :GeneralCreature
 {
     protected IMoveComp moveComp;
     protected IAtkComp atkComp;
-    
+    public CharacterController cController { get; private set; }
+
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
         //初始化移动和攻击组件
 
         SetUpMAComp();
-
+        cController = GetComponent<CharacterController>();
     }
 
     protected virtual void Update()

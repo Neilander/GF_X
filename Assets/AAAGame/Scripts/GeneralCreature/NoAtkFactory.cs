@@ -9,6 +9,7 @@ public class NoAtkFactory : AtkCompFactory
         //gmo.AddComponent<NoAtkComp>();
         NoAtkComp comp = new NoAtkComp();
         gmo.SetAtkComp(comp);
+        comp.Init(gmo);
         return comp;
     }
 }
