@@ -193,8 +193,8 @@
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Network\NetworkManager.ConnectState.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Sound\PlaySoundParams.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Resource\PackageVersionList.cs" />
-    <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Resource\IResourceGroupCollection.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Sound\ISoundAgent.cs" />
+    <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Resource\IResourceGroupCollection.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Network\NetworkManager.ReceiveState.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Base\DataProvider\ReadDataFailureEventArgs.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Network\NetworkMissHeartBeatEventArgs.cs" />
