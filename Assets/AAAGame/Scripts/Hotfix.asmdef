@@ -12,8 +12,7 @@
         "DOTween.Extension",
         "Unity.Jobs",
         "Unity.Collections",
-        "Unity.Mathematics",
-        "Obfuz.Runtime"
+        "Unity.Mathematics"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -1,0 +1,9 @@
+﻿#	材料表						i18n	i18n	
+#	ID		Identifier	Rarity	MaxStack	SpriteName	Name	Description	Tags
+#	int		string	enum	int	string	string	string	enum[]
+#		备注	在代码中的命名标识符	品质	最大堆叠数(-1表示无限)	Sprite名	物品名(多语言)	物品描述(多语言)	物品类型标签
+	1		Material_Aaa	ItemRarity.Common	1	aaa	Item.Material.Name.Aaa	Item.Material.Description.Aaa	ItemTag.AAA
+	2		Material_Bbb	ItemRarity.Rare	1	bbb	Item.Material.Name.Bbb	Item.Material.Description.Bbb	ItemTag.BBB,ItemTag.AAA
+	3		Material_Ccc	ItemRarity.Epic	5	ccc	Item.Material.Name.Ccc	Item.Material.Description.Ccc	ItemTag.AAA
+	4		Material_Ddd	ItemRarity.Legendary	-1	ddd	Item.Material.Name.Ddd	Item.Material.Description.Ddd	ItemTag.AAA
+	5		Material_Eee	ItemRarity.Heroic	1	eee	Item.Material.Name.Eee	Item.Material.Description.Eee	ItemTag.AAA

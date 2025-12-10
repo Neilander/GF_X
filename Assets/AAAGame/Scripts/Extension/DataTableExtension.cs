@@ -369,11 +369,43 @@ public static class DataTableExtension
         }
         string[] strs = value.Split(',');
         T[] arr = new T[strs.Length];
+        Type t = typeof(T);
         for (int i = 0; i < strs.Length; i++)
         {
             try
             {
-                arr[i] = (T)Convert.ChangeType(strs[i], typeof(T));
+                string s = strs[i].Trim();
+                if (t.IsEnum)
+                {
+                    int enumValue = 0;
+                    var parts = s.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 1)
+                    {
+                        var part = parts[0];
+                        if (part.Contains('.')) part = part.Split('.')[1];
+                        enumValue = (int)Enum.Parse(t, part, true);
+                    }
+                    else
+                    {
+                        foreach (var p in parts)
+                        {
+                            var part = p;
+                            if (part.Contains('.')) part = part.Split('.')[1];
+                            var tmp = (int)Enum.Parse(t, part, true);
+                            enumValue |= tmp;
+                        }
+                    }
+                    arr[i] = (T)Enum.ToObject(t, enumValue);
+                }
+                else if (t == typeof(Fix64))
+                {
+                    var f = Fix64.Parse(s);
+                    arr[i] = (T)(object)f;
+                }
+                else
+                {
+                    arr[i] = (T)Convert.ChangeType(s, typeof(T));
+                }
             }
             catch (Exception e)
             {
@@ -381,6 +413,89 @@ public static class DataTableExtension
             }
         }
         return arr;
+    }
+
+    public static Fix64 ParseFix64(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return Fix64.Zero;
+        return Fix64.Parse(value);
+    }
+    public static Fix64 ReadFix64(this BinaryReader binaryReader)
+    {
+        long raw = binaryReader.ReadInt64();
+        return Fix64.FromRaw(raw);
+    }
+    public static Fix64[] ParseFix64Array(string value)
+    {
+        return ParseArray<Fix64>(value);
+    }
+    public static Fix64[] ReadFix64Array(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        Fix64[] result = new Fix64[length];
+        for (int i = 0; i < length; i++)
+        {
+            result[i] = binaryReader.ReadFix64();
+        }
+        return result;
+    }
+
+    public static StringFix64Pair[] ParseStringFix64PairArray(string value)
+    {
+        string[] arr = ParseArrayElements(value);
+        if (arr == null) return null;
+        StringFix64Pair[] result = new StringFix64Pair[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var parts = arr[i].Split(',', 2);
+            var key = parts.Length > 0 ? parts[0] : string.Empty;
+            var num = parts.Length > 1 ? Fix64.Parse(parts[1]) : Fix64.Zero;
+            result[i] = new StringFix64Pair(key, num);
+        }
+        return result;
+    }
+    public static StringFix64Pair[] ReadStringFix64PairArray(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        StringFix64Pair[] result = new StringFix64Pair[length];
+        for (int i = 0; i < length; i++)
+        {
+            string s = binaryReader.ReadString();
+            long raw = binaryReader.ReadInt64();
+            result[i] = new StringFix64Pair(s, Fix64.FromRaw(raw));
+        }
+        return result;
+    }
+
+    public static StringIntPair[] ParseStringIntPairArray(string value)
+    {
+        string[] arr = ParseArrayElements(value);
+        if (arr == null) return null;
+        StringIntPair[] result = new StringIntPair[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var parts = arr[i].Split(',', 2);
+            var key = parts.Length > 0 ? parts[0] : string.Empty;
+            int num = 0;
+            if (parts.Length > 1)
+            {
+                int.TryParse(parts[1], out num);
+            }
+            result[i] = new StringIntPair(key, num);
+        }
+        return result;
+    }
+    public static StringIntPair[] ReadStringIntPairArray(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        StringIntPair[] result = new StringIntPair[length];
+        for (int i = 0; i < length; i++)
+        {
+            string s = binaryReader.ReadString();
+            int num = binaryReader.Read7BitEncodedInt32();
+            result[i] = new StringIntPair(s, num);
+        }
+        return result;
     }
     public static T[] ReadArray<T>(this BinaryReader binaryReader)
     {
