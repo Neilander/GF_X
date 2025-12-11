@@ -1,35 +1,31 @@
----
-description: AI rules derived by SpecStory from the project AI interaction history
-globs: *
----
+## Project Snapshot
+- Engine: Unity (URP) with HybridCLR hotfix; primary gameplay code under `Assets/AAAGame` (`Scripts` hotfix, `ScriptBuiltin` built-in).
+- Framework: GF_X (UnityGameFramework + HybridCLR + tooling), see `README.md` for workflow overview.
+- Rendering: Custom unlit sprite baseline shader `Assets/AAAGame/Shader/SpriteBaselineProject.shader` driven by binder `Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs`.
 
-## Headers
+## Key Conventions
+- Entities/UI follow GF patterns: `GF.Entity.ShowEntity/HideEntity`, `GF.UI.OpenUIForm/CloseUIForm`; procedures manage flow (`LaunchProcedure` → `CheckAndUpdateProcedure` → hotfix procedures).
+- Prefer collider-based sizing unless `preferSpriteBounds` is true; sprite UVs may be atlased—binder passes `_SpriteUVScale/_SpriteUVOffset`.
+- Sprites stay upright in non-billboard mode; width/height are compensated in shader for camera tilt so screen width = collider width and height = width × sprite aspect.
+- Bottom anchoring: collider mode uses collider bottom center; prefer mode anchors bottom center at `transform.position` so the visible bottom edge matches object position in camera view.
 
-## TECH STACK
+## Binder/Shader Notes
+- Binder outputs: `_BaseA/_BaseB` (baseline ends), `_BaseOrigin` (bottom center anchor), `_SpriteSize` (width,height meters), camera basis (`_CamRight/_CamUp/_CamFwd`), UV scale/offset, alpha clip.
+- Collider path: picks larger XZ axis of Box/Capsule, flattens to ground; width from baseline length; height from collider Y or sprite aspect.
+- Prefer path: uses sprite bounds for size, flattens baseline to ground, height along world up, bottom origin = object position, center = origin + half height.
+- Shader (non-billboard): right = camera right flattened to ground; up = world up; compensates width by 1/cos(tilt) and height by 1/cos(camUp·worldUp); positions derived from `_BaseOrigin` + right/ up with normalized UVs.
+- Shader (billboard): faces camera using center from `_BaseA/_BaseB`; UV normalization uses `_SpriteUVScale/_SpriteUVOffset` for atlased sprites while sampling uses raw UV.
 
-## PROJECT DOCUMENTATION & CONTEXT SYSTEM
+## Build & Hotfix Workflow
+- Built-in vs hotfix: built-in code (`ScriptBuiltin`) must stay AOT-safe; hotfix code (`Scripts`) runs via HybridCLR.
+- First-time HybridCLR setup: Unity menu `HybridCLR -> Installer` then use top toolbar `Build App/Hotfix` panel; initial full build via `Full Build` dropdown.
+- Runtime updates: `Build Resource` for hotfix resources; Jenkins/remote build supported (see README links).
 
-## CODING STANDARDS
+## Debugging & Testing Tips
+- For sprite projection issues: inspect `_SpriteSize`, `_BaseOrigin`, camera basis, and UV scale/offset in material property block; non-billboard must have `referenceCamera` assigned when `faceCamera` is false.
+- Alpha issues: `_AlphaClip` defaults to 0.3; adjust via binder field.
 
-## WORKFLOW & RELEASE RULES
-
-## DEBUGGING
-
-## AI AGENT INSTRUCTIONS
-
-- Analyze the codebase to generate or update `.github/copilot-instructions.md` for guiding AI coding agents.
-- Focus on discovering the essential knowledge that would help an AI agents be immediately productive in this codebase, including:
-    - The "big picture" architecture that requires reading multiple files to understand - major components, service boundaries, data flows, and the "why" behind structural decisions
-    - Critical developer workflows (builds, tests, debugging) especially commands that aren't obvious from file inspection alone
-    - Project-specific conventions and patterns that differ from common practices
-    - Integration points, external dependencies, and cross-component communication patterns
-- Source existing AI conventions from `**/{.github/copilot-instructions.md,AGENT.md,AGENTS.md,CLAUDE.md,.cursorrules,.windsurfrules,.clinerules,.cursor/rules/**,.windsurf/rules/**,.clinerules/**,README.md}` (do one glob search).
-- If `.github/copilot-instructions.md` exists, merge intelligently - preserve valuable content while updating outdated sections
-- Write concise, actionable instructions (~20-50 lines) using markdown structure
-- Include specific examples from the codebase when describing patterns
-- Avoid generic advice ("write tests", "handle errors") - focus on THIS project's specific approaches
-- Document only discoverable patterns, not aspirational practices
-- Reference key files/directories that exemplify important patterns
-- Update `.github/copilot-instructions.md` for the user, then ask for feedback on any unclear or incomplete sections to iterate.
-
-## EXAMPLES & REFERENCES
+## File Pointers
+- Sprite pipeline: `Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs`, `Assets/AAAGame/Shader/SpriteBaselineProject.shader`.
+- Framework entry: `Assets/AAAGame/Scene/Launch` scene, procedures under hotfix scripts.
+- Docs & context: root `README.md` for GF_X workflow and learning links.
