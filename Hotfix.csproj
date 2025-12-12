@@ -73,8 +73,8 @@
     <Compile Include="Assets\AAAGame\Scripts\UI\UIVariables\LanguagesDialog.Variables.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataClass\Item\CraftingFormula.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Network\Packet\CSHeartBeat.cs" />
-    <Compile Include="Assets\AAAGame\Scripts\UI\ToastTips.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\CraftingDialog.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\UI\ToastTips.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Network\CSPacketBase.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\Core\UIItemBase.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Network\NetworkChannelHelper.cs" />
@@ -1138,6 +1138,7 @@
     <ProjectReference Include="Unity.Jobs.csproj" />
     <ProjectReference Include="Unity.Collections.csproj" />
     <ProjectReference Include="Unity.Mathematics.csproj" />
+    <ProjectReference Include="AstarPathfindingProject.csproj" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>

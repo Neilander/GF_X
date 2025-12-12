@@ -70,8 +70,8 @@
     <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\NUnitExtensions\ITestSuiteModifier.cs" />
     <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\NUnitExtensions\Runner\UnityWorkItem.cs" />
     <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\NUnitExtensions\TestResultExtensions.cs" />
-    <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\Utils\AttributeHelper.cs" />
     <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\NUnitExtensions\Runner\CompositeWorkItem.cs" />
+    <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\Utils\AttributeHelper.cs" />
     <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\NUnitExtensions\Commands\TaskTestMethodCommand.cs" />
     <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\Assertions\LogScope\ILogScope.cs" />
     <Compile Include="Library\PackageCache\com.unity.test-framework@1.4.6\UnityEngine.TestRunner\Utils\PrebuildSceneSetupAttribute.cs" />

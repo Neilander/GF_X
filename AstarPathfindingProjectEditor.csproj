@@ -68,8 +68,8 @@
     <Compile Include="Packages\com.arongranberg.astar\Editor\RVOControllerEditor.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Editor\UI\WelcomeScreen.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Editor\RuleEditors\RuleTextureEditor.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Editor\AstarUpdateWindow.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Editor\ModifierEditors\FunnelModifierEditor.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Editor\AstarUpdateWindow.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Editor\SeekerEditor.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Editor\LocalSpaceRichAIEditor.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Editor\GraphMaskDrawer.cs" />

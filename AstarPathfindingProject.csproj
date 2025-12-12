@@ -47,16 +47,16 @@
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.62f3\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\TileBuilder.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Navmesh\NavmeshUpdates.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\TileBuilder.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobManagedOffMeshLinkTransition.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\Pathfinding\HeuristicObjective.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\RVO\RVOCoreSimulator.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\Pathfinding\HeuristicObjective.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Pathfinding\PathReturnQueue.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Pathfinders\ConstantPath.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobRepairPath.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Graphs\Nodes\TriangleMeshNode.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\ReadyToTraverseOffMeshLink.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Graphs\Nodes\TriangleMeshNode.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Behaviors\Patrol.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobApplyGravity.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Utilities\PathTracer.cs" />
@@ -88,13 +88,13 @@
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\RVOSystem.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobRelocateNodes.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Nodes\GridNode.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\Jobs\JobConnectTiles.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\RVO\RVOObstacle.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Serialization\SimpleZipReplacement.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\Pooling\ObjectPool.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\AutoRepathPolicy.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\RVO\RVOObstacle.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\Pooling\ObjectPool.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Pathfinding\PathHandler.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\MovementSettings.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\Jobs\JobConnectTiles.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobManagedMovementOverride.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobNodeGridLayout.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\AI\IAstarAI.cs" />
@@ -105,8 +105,8 @@
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\NavmeshPrefab.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobPrepareRaycasts.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobReadNodeData.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobFilterDiagonalConnections.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\RVO\RVOAgentBurst.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobFilterDiagonalConnections.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Rules\RuleElevationPenalty.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\FollowerControlSystem.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\Voxels\VoxelRegion.cs" />
@@ -129,12 +129,12 @@
     <Compile Include="Packages\com.arongranberg.astar\Pathfinders\RandomPath.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\GridGraphScanData.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\RVO\RVOAgent.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\ManagedMovementOverride.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Pathfinding\GlobalNodeStorage.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\ManagedMovementOverride.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\AI\FollowerEntity.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Modifiers\RaycastModifier.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobStartOffMeshLinkTransition.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\GraphModifier.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobStartOffMeshLinkTransition.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\NodeLink.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\Jobs\JobBuildTileMeshFromVertices.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobMergeRaycastCollisionHits.cs" />
@@ -167,8 +167,8 @@
     <Compile Include="Packages\com.arongranberg.astar\Core\Sync\Promise.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\SimulateMovement.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Utilities\ProceduralGraphMover.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Graphs\NavMeshGraph.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\OffMeshLinks.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Graphs\NavMeshGraph.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\AI\AILerp.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\StartOffMeshLinkTransitionJob.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\MovementStatistics.cs" />
@@ -182,13 +182,13 @@
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\RepairPathJob.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\GridIterationUtilities.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Utilities\RecastNavmeshModifier.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\ManagedOffMeshLinkTransitionJob.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Control\PIDUtilities.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\ManagedOffMeshLinkTransitionJob.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Pathfinders\MultiTargetPath.cs" />
     <Compile Include="Packages\com.arongranberg.astar\RVO\RVOSquareObstacle.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Utilities\Promise.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Utilities\DotNetReplacements.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Utilities\DynamicObstacle.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Utilities\DotNetReplacements.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\NavGraph.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\RepairPathSystem.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\GraphEditorBase.cs" />
@@ -212,13 +212,13 @@
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\SyncDestinationTransformSystem.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\SyncTransformsToEntitiesSystem.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\ResolvedMovement.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\RVO\RVOSimulator.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobAlignAgentWithMovementDirection.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\RVO\RVOSimulator.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Modifiers\Modifiers.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\RVO\RVOCoreSimulatorBurst.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Graphs\Utilities\UtilityJobs.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\PollPendingPathsSystem.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\RecastMeshGatherer.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\PollPendingPathsSystem.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Graphs\Utilities\UtilityJobs.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\AgentCylinderShape.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\AIMoveSystem.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\Jobs\JobTransformTileCoordinates.cs" />
@@ -298,8 +298,8 @@
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Utilities\NavMeshRenderer.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobNodeWalkability.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Components\RVO\RVOAgent.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\AI\LocalSpaceRichAI.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobAllocateNodes.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\AI\LocalSpaceRichAI.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\PathPartWithLinkInfo.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\Voxels\VoxelRasterization.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Grid\Jobs\JobWriteNodeData.cs" />
@@ -307,8 +307,8 @@
     <Compile Include="Packages\com.arongranberg.astar\Core\AstarMath.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Utilities\GraphGizmoHelper.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\NavmeshTile.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobSyncEntitiesToTransforms.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Utilities\JobDependencyTracker.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobSyncEntitiesToTransforms.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\JobClearTemporaryData.cs" />
   </ItemGroup>
   <ItemGroup>

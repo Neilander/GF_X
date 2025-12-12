@@ -1275,6 +1275,7 @@
     <ProjectReference Include="Unity.Jobs.csproj" />
     <ProjectReference Include="com.unity.cinemachine.editor.csproj" />
     <ProjectReference Include="GameFramework.csproj" />
+    <ProjectReference Include="Unity.AI.Navigation.csproj" />
     <ProjectReference Include="Unity.Burst.Editor.csproj" />
     <ProjectReference Include="Newtonsoft.Json.UnityConverters.Mathematics.csproj" />
     <ProjectReference Include="ZString.csproj" />
@@ -1290,6 +1291,7 @@
     <ProjectReference Include="UniTask.TextMeshPro.csproj" />
     <ProjectReference Include="Hotfix.csproj" />
     <ProjectReference Include="Unity.TextMeshPro.csproj" />
+    <ProjectReference Include="Unity.AI.Navigation.Editor.ConversionSystem.csproj" />
     <ProjectReference Include="Unity.VSCode.Editor.csproj" />
     <ProjectReference Include="AstarPathfindingProjectEditor.csproj" />
     <ProjectReference Include="Builtin.Runtime.csproj" />
@@ -1298,13 +1300,15 @@
     <ProjectReference Include="Unity.Burst.csproj" />
     <ProjectReference Include="Unity.Timeline.Editor.csproj" />
     <ProjectReference Include="Unity.VisualStudio.Editor.csproj" />
-    <ProjectReference Include="DOTween.Extension.csproj" />
     <ProjectReference Include="andywiecko.BurstTriangulator.csproj" />
+    <ProjectReference Include="DOTween.Extension.csproj" />
     <ProjectReference Include="Unity.Timeline.csproj" />
+    <ProjectReference Include="Unity.AI.Navigation.Updater.csproj" />
     <ProjectReference Include="Newtonsoft.Json.UnityConverters.csproj" />
     <ProjectReference Include="Unity.Mathematics.csproj" />
     <ProjectReference Include="Unity.TextMeshPro.Editor.csproj" />
     <ProjectReference Include="Unity.Searcher.Editor.csproj" />
+    <ProjectReference Include="Unity.AI.Navigation.Editor.csproj" />
     <ProjectReference Include="DrawingEditor.csproj" />
     <ProjectReference Include="Cinemachine.csproj" />
     <ProjectReference Include="UniTask.DOTween.csproj" />
