@@ -197,6 +197,7 @@ MonoBehaviour:
   sourceCollider: {fileID: 0}
   preferSpriteBounds: 1
   sizeScale: 3
+  positionOffset: {x: 0, y: 0, z: 0.9}
   referenceCamera: {fileID: 0}
   autoAssignTexture: 1
   continuousUpdate: 1

@@ -15,6 +15,9 @@ namespace AAAGame.UI.Utility
         [Tooltip("Uniform scale for width/height; aspect is preserved.")]
         public float sizeScale = 1f;
 
+        [Tooltip("Manual offset of sprite anchor: x along (1,0,1) diag, z along (-1,0,1) diag, y is up.")]
+        public Vector3 positionOffset = Vector3.zero;
+
         [Tooltip("Reference camera for tilt compensation. If null, will use Camera.main.")]
         public Camera referenceCamera;
 
@@ -177,6 +180,14 @@ namespace AAAGame.UI.Utility
                 // approximate bottom using bounds
                 bottomOrigin = center - Vector3.up * ext.y;
             }
+
+            // Apply manual offset: X along (1,0,1), Z along (-1,0,1), Y up.
+            var right45 = new Vector3(1f, 0f, 1f).normalized;
+            var forward45 = new Vector3(-1f, 0f, 1f).normalized;
+            Vector3 offsetWorld = right45 * positionOffset.x + forward45 * positionOffset.z + Vector3.up * positionOffset.y;
+
+            center += offsetWorld;
+            bottomOrigin += offsetWorld;
 
             var baseA = center - halfBaselineVec;
             var baseB = center + halfBaselineVec;
