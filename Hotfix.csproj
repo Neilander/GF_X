@@ -121,6 +121,7 @@
     <Compile Include="Assets\AAAGame\Scripts\Procedures\ChangeSceneProcedure.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataTable\CharacterMAFactoryTable.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Extension\GF.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\Render\BaselineSpriteBinder.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\Item\ItemUnit.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataModel\ItemDataModel.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataTable\Core\UITable.cs" />

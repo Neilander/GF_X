@@ -58,6 +58,7 @@
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Fonts\chars.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Mobile Overlay.shader" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Tool.txt" />
+    <None Include="Assets\AAAGame\Shader\SpriteBaselineProject.shader" />
     <None Include="Assets\AAAGame\DataTable\Core\EntityGroupTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Bitmap.shader" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Equipment.txt" />

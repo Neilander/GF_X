@@ -165,8 +165,8 @@
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Base\GameFrameworkException.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Config\ConfigManager.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Base\DataProvider\ReadDataSuccessEventArgs.cs" />
-    <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\WebRequest\IWebRequestManager.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Resource\ResourceVerifyStartEventArgs.cs" />
+    <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\WebRequest\IWebRequestManager.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Entity\IEntityGroup.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\Resource\LoadResourceAgentHelperReadBytesCompleteEventArgs.cs" />
     <Compile Include="Assets\Plugins\UnityGameFramework\GameFramework\DataTable\IDataRow.cs" />
