@@ -3,3 +3,4 @@
 	DefaultCoins	玩家初始金币数	100
 	DefaultDiamonds	玩家初始金币数	100
 	APPSTORE	苹果商店评分跳转连接	https://apps.apple.com/
+	DisplayRotation		38.7

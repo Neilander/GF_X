@@ -53,7 +53,6 @@ public class CreaturePropertyManager
     {
         //propertyManager.GetValueProperty(property.ToString());
             //Debug.LogError("暂停");
-
         return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
     
@@ -66,6 +65,57 @@ public class CreaturePropertyManager
     {
         return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
+    
+    /// <summary>
+    /// 这个方法修改所有主要属性的白值Buff
+    /// </summary>
+    public void ModifyMainPropertyValueBuff(CreatureMainProperty name,
+        IPropertyModifier modifier,bool ifAdd = true)
+    {
+        string refName = PropertyHelper.ModName(name.ToString(), nameof(NormalComputeTp.Value), nameof(NormalBaseValueTp.Buff));
+        ModifyProperty(refName, modifier, ifAdd);
+    }
+
+    /// <summary>
+    /// 这个方法修改所有主要属性的百分比乘区的基础值或Buff
+    /// </summary>
+    public void ModifyMainPropertyMul(CreatureMainProperty name, NormalBaseValueTp baseValueTp,
+        IPropertyModifier modifier, bool ifAdd = true)
+    {
+        string refName = PropertyHelper.ModName(name.ToString(), nameof(NormalComputeTp.Mul), baseValueTp.ToString());
+        ModifyProperty(refName, modifier, ifAdd);
+    }
+
+    /// <summary>
+    /// 这个方法修改所有过程属性的数值
+    /// </summary>
+    public void ModifyCurrentProperty(CreatureCurrentProperty name, 
+        IPropertyModifier modifier, bool ifAdd = true)
+    {
+        ModifyProperty(name.ToString(), modifier, ifAdd);
+    }
+
+    /// <summary>
+    ///  这个方法可以修改任意属性的任意乘区，但是注意，计算属性大部分修改器不生效
+    /// </summary>
+    /// <param name="fullName">
+    /// 需要手动合成完整名字
+    /// </param>
+    public void UnsafeModifyAnyProperty(string fullName,
+        IPropertyModifier modifier, bool ifAdd = true)
+    {
+        ModifyProperty(fullName, modifier, ifAdd);
+    }
+
+    protected void ModifyProperty(string name, IPropertyModifier modifier, bool ifAdd)
+    {
+        ValueProperty vp = propertyManager.GetValueProperty(name);
+        if(ifAdd)
+            vp.AddModifier(modifier);
+        else
+            vp.RemoveModifier(modifier);
+    }
+
 
     /*
     public Fix64 SetCurrentProperty(CreatureCurrentProperty property, Fix64 value)
@@ -215,24 +265,7 @@ public class CreaturePropertyManager
         PropertyHelper.BindComputePropertyToOne<NormalComputeTp>("", name, propertyManager, PropertyFuncRef.MultAll);
     }
     
-    public enum RawComponent
-    {
-        Level,
-        Config
-        
-    }
     
-    public enum NormalBaseValueTp
-    {
-        Base,
-        Buff
-    }
-
-    public enum NormalComputeTp
-    {
-        Value,
-        Mul
-    }
     #endregion
 
     #region CreateMinorProperty
@@ -297,4 +330,22 @@ public class CreaturePropertyManager
     }
 
     #endregion
+}
+public enum RawComponent
+{
+    Level,
+    Config
+        
+}
+    
+public enum NormalBaseValueTp
+{
+    Base,
+    Buff
+}
+
+public enum NormalComputeTp
+{
+    Value,
+    Mul
 }

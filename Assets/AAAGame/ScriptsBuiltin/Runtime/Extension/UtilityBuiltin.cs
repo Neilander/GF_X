@@ -173,6 +173,16 @@ public static class UtilityBuiltin
         {
             return Utility.Text.Format("Assets/AAAGame/ScriptableAssets/{0}.asset", v);
         }
+
+        public static string GetMoveFactoryPath(string factName)
+        {
+            return Utility.Text.Format("Assets/AAAGame/SOs/MoveCompFactory/{0}.asset", factName);
+        }
+        
+        public static string GetAttackFactoryPath(string factName)
+        {
+            return Utility.Text.Format("Assets/AAAGame/SOs/AttackCompFactory/{0}.asset", factName);
+        }
     }
     public class Json
     {

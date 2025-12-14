@@ -87,6 +87,7 @@ public abstract class ValueProperty : IProperty<Fix64>
             throw new Exception($"Modifier {modifier.GetType().Name} already exists");
         }
         _modifiers.Add(modifier);
+        //GF.Log("成功添加modify"+_modifiers.Count);
         MakeDirty();
     }
 

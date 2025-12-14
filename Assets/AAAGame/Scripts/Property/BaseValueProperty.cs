@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 
 //有基础值的属性，比如血量、攻击力、防御力等
 public class BaseValueProperty : ValueProperty
