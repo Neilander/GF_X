@@ -50,8 +50,36 @@ public class ItemCollectionDataModel : DataModelStorageBase
         SetItemAmount(itemIdentifier, GetItemAmount(itemIdentifier) + delta, triggerEvent);
     }
 
+    public static bool ConsumeItems(StringIntPair[] items, bool triggerEvent = true)
+    {
+        if (!HasItem(items)) return false;
+        foreach (var item in items)
+        {
+            ModifyItemAmount(item.str, -item.num, triggerEvent);
+        }
+        return true;
+    }
+
+    public static void ObtainItems(StringIntPair[] items, bool triggerEvent = true)
+    {
+        foreach (var item in items)
+        {
+            ModifyItemAmount(item.str, item.num, triggerEvent);
+        }
+    }
+
     public static bool HasItem(string itemIdentifier, int quantity = 1)
     {
         return GetItemAmount(itemIdentifier) >= quantity;
+    }
+
+    public static bool HasItem(StringIntPair[] items)
+    {
+        foreach (var item in items)
+        {
+            if (!HasItem(item.str, item.num))
+                return false;
+        }
+        return true;
     }
 }
