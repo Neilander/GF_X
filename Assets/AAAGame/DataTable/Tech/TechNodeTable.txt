@@ -1,0 +1,9 @@
+﻿#	科技表											i18n	i18n
+#	ID		Identifier	PrereqTechIds	Level	Category	CostMaterial	Effects	AllConditions	AnyConditions	SpriteName	Name	Description
+#	int		string	string[]	int	enum	StringIntPair[]	TechEffect[]	TechCondition[]	TechCondition[]	string	string	string
+#		备注	在代码中的命名标识符	前置科技标识符	对应科技等级	科技类型	材料消耗	效果串	AND 条件串	OR 条件串	Sprite路径	节点名(多语言)	节点描述(多语言)
+	1		TechNode_Aaa1		1	TechCategory.Explore	[Material_Aaa, 2],[Material_Bbb, 3]				UI/IconMisc/Icon_Star_On.png	TechNode.Name.Aaa	TechNode.Description.Aaa
+	2		TechNode_Aaa2	TechNode_Aaa1	2	TechCategory.Explore	[Material_Aaa, 2],[Material_Bbb, 4]				UI/IconMisc/Icon_Star_Off.png	TechNode.Name.Bbb	TechNode.Description.Bbb
+	3		TechNode_Aaa3	TechNode_Aaa2	3	TechCategory.Explore	[Material_Aaa, 2],[Material_Bbb, 5]				UI/IconMisc/Icon_Setting.png	TechNode.Name.Ccc	TechNode.Description.Ccc
+	4		TechNode_Bbb	TechNode_Aaa2	3	TechCategory.Fight	[Material_Aaa, 2],[Material_Bbb, 6],[Material_Ddd, 3]				UI/IconMisc/Icon_Close02.png	TechNode.Name.Ddd	TechNode.Description.Ddd
+	5		TechNode_Ccc		3	TechCategory.Profit	[Material_Aaa, 2],[Material_Bbb, 5]				UI/IconMisc/Icon_Check03_s.png	TechNode.Name.Eee	TechNode.Description.Eee

@@ -89,6 +89,8 @@
     <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Consumable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Material.txt" />
     <None Include="Assets\AAAGame\HotfixDlls\HotfixFileList.txt" />
+    <None Include="Assets\AAAGame\DataTable\Build\DeviceTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Tech\TechNodeTable.txt" />
     <None Include="Assets\AAAGame\Shader\ASE\FastLit.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Mobile Masking.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />

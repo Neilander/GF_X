@@ -57,7 +57,15 @@ public static class DataTableExtension
         }
 
         string assetName = UtilityBuiltin.AssetsPath.GetDataTablePath(tableFileName, useBytes);
-        dataTable.ReadData(assetName, userData);
+        try
+        {
+            dataTable.ReadData(assetName, userData);
+        }
+        catch (Exception e)
+        {
+            Log.Error("Load data table '{0}' failed, asset '{1}'. Error: {2}", dataTableName, assetName, e);
+            dataTableComponent.DestroyDataTable(dataTable);
+        }
     }
 
     /// <summary>
@@ -135,7 +143,7 @@ public static class DataTableExtension
     public static Vector2[] ParseVector2Array(string value)
     {
         string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
+        if (arr.Length == 0) return Array.Empty<Vector2>();
         Vector2[] result = new Vector2[arr.Length];
         for (int i = 0; i < arr.Length; i++)
         {
@@ -166,7 +174,7 @@ public static class DataTableExtension
     public static Vector2Int[] ParseVector2IntArray(string value)
     {
         string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
+        if (arr.Length == 0) return Array.Empty<Vector2Int>();
         Vector2Int[] result = new Vector2Int[arr.Length];
         for (int i = 0; i < arr.Length; i++)
         {
@@ -198,7 +206,7 @@ public static class DataTableExtension
     public static Vector3[] ParseVector3Array(string value)
     {
         string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
+        if (arr.Length == 0) return Array.Empty<Vector3>();
         Vector3[] result = new Vector3[arr.Length];
         for (int i = 0; i < arr.Length; i++)
         {
@@ -229,7 +237,7 @@ public static class DataTableExtension
     public static Vector3Int[] ParseVector3IntArray(string value)
     {
         string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
+        if (arr.Length == 0) return Array.Empty<Vector3Int>();
         Vector3Int[] result = new Vector3Int[arr.Length];
         for (int i = 0; i < arr.Length; i++)
         {
@@ -260,7 +268,7 @@ public static class DataTableExtension
     public static Vector4[] ParseVector4Array(string value)
     {
         string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
+        if (arr.Length == 0) return Array.Empty<Vector4>();
 
         Vector4[] result = new Vector4[arr.Length];
         for (int i = 0; i < arr.Length; i++)
@@ -292,8 +300,9 @@ public static class DataTableExtension
 
     public static Unity.Mathematics.int4[] Parseint4Array(string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (string.IsNullOrWhiteSpace(value)) return Array.Empty<Unity.Mathematics.int4>();
         string[] arr = ParseArrayElements(value);
+        if (arr.Length == 0) return Array.Empty<Unity.Mathematics.int4>();
         Unity.Mathematics.int4[] result = new Unity.Mathematics.int4[arr.Length];
         for (int i = 0; i < arr.Length; i++)
         {
@@ -365,46 +374,209 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return null;
+            return Array.Empty<T>();
         }
         string[] strs = value.Split(',');
         T[] arr = new T[strs.Length];
-        Type targetType = typeof(T);
+        Type t = typeof(T);
         for (int i = 0; i < strs.Length; i++)
         {
-            string element = strs[i]?.Trim();
             try
             {
-                if (targetType.IsEnum)
+                string s = strs[i].Trim();
+                if (t.IsEnum)
                 {
-                    if (string.IsNullOrEmpty(element))
+                    int enumValue = 0;
+                    var parts = s.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 1)
                     {
-                        arr[i] = default;
-                        continue;
-                    }
-
-                    // Accept both "EnumName.Value" and "Value" formats.
-                    string enumToken = element.Contains('.') ? element[(element.LastIndexOf('.') + 1)..] : element;
-                    if (Enum.TryParse(targetType, enumToken, true, out object enumValue))
-                    {
-                        arr[i] = (T)enumValue;
+                        var part = parts[0];
+                        if (part.Contains('.')) part = part.Split('.')[1];
+                        enumValue = (int)Enum.Parse(t, part, true);
                     }
                     else
                     {
-                        throw new InvalidCastException(Utility.Text.Format("Invalid enum literal '{0}' for {1}.", element, targetType.Name));
+                        foreach (var p in parts)
+                        {
+                            var part = p;
+                            if (part.Contains('.')) part = part.Split('.')[1];
+                            var tmp = (int)Enum.Parse(t, part, true);
+                            enumValue |= tmp;
+                        }
                     }
+                    arr[i] = (T)Enum.ToObject(t, enumValue);
+                }
+                else if (t == typeof(Fix64))
+                {
+                    var f = Fix64.Parse(s);
+                    arr[i] = (T)(object)f;
                 }
                 else
                 {
-                    arr[i] = (T)Convert.ChangeType(element, targetType);
+                    arr[i] = (T)Convert.ChangeType(s, typeof(T));
                 }
             }
             catch (Exception e)
             {
-                Log.Error("解析失败数据失败! 格式有误:{0}\nError:{1}", element, e.Message);
+                Log.Error("解析失败数据失败! 格式有误:{0}\nError:{1}", strs[i], e.Message);
             }
         }
         return arr;
+    }
+
+    public static Fix64 ParseFix64(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return Fix64.Zero;
+        return Fix64.Parse(value);
+    }
+    public static Fix64 ReadFix64(this BinaryReader binaryReader)
+    {
+        long raw = binaryReader.ReadInt64();
+        return Fix64.FromRaw(raw);
+    }
+    public static Fix64[] ParseFix64Array(string value)
+    {
+        return ParseArray<Fix64>(value);
+    }
+    public static Fix64[] ReadFix64Array(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        Fix64[] result = new Fix64[length];
+        for (int i = 0; i < length; i++)
+        {
+            result[i] = binaryReader.ReadFix64();
+        }
+        return result;
+    }
+
+    public static StringFix64Pair[] ParseStringFix64PairArray(string value)
+    {
+        string[] arr = ParseArrayElements(value);
+        if (arr.Length == 0) return Array.Empty<StringFix64Pair>();
+        StringFix64Pair[] result = new StringFix64Pair[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var parts = arr[i].Split(',', 2);
+            var key = parts.Length > 0 ? parts[0] : string.Empty;
+            var num = parts.Length > 1 ? Fix64.Parse(parts[1]) : Fix64.Zero;
+            result[i] = new StringFix64Pair(key, num);
+        }
+        return result;
+    }
+    public static StringFix64Pair[] ReadStringFix64PairArray(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        StringFix64Pair[] result = new StringFix64Pair[length];
+        for (int i = 0; i < length; i++)
+        {
+            string s = binaryReader.ReadString();
+            long raw = binaryReader.ReadInt64();
+            result[i] = new StringFix64Pair(s, Fix64.FromRaw(raw));
+        }
+        return result;
+    }
+
+    public static StringIntPair[] ParseStringIntPairArray(string value)
+    {
+        string[] arr = ParseArrayElements(value);
+        if (arr.Length == 0) return Array.Empty<StringIntPair>();
+        StringIntPair[] result = new StringIntPair[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var parts = arr[i].Split(',', 2);
+            var key = parts.Length > 0 ? parts[0] : string.Empty;
+            int num = 0;
+            if (parts.Length > 1)
+            {
+                int.TryParse(parts[1], out num);
+            }
+            result[i] = new StringIntPair(key, num);
+        }
+        return result;
+    }
+
+    public static TechCondition[] ParseTechConditionArray(string value)
+    {
+        string[] arr = ParseArrayElements(value);
+        if (arr.Length == 0) return Array.Empty<TechCondition>();
+
+        TechCondition[] result = new TechCondition[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var parts = arr[i].Split(',', 2);
+            var typeStr = parts.Length > 0 ? parts[0].Trim() : string.Empty;
+            var args = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+
+            if (!Enum.TryParse(typeStr, true, out TechConditionType type) || type == TechConditionType.None)
+            {
+                throw new GameFrameworkException(Utility.Text.Format("Invalid TechConditionType '{0}'.", typeStr));
+            }
+
+            result[i] = new TechCondition(type, args);
+        }
+
+        return result;
+    }
+
+    public static TechEffect[] ParseTechEffectArray(string value)
+    {
+        string[] arr = ParseArrayElements(value);
+        if (arr.Length == 0) return Array.Empty<TechEffect>();
+
+        TechEffect[] result = new TechEffect[arr.Length];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            var parts = arr[i].Split(',', 2);
+            var typeStr = parts.Length > 0 ? parts[0].Trim() : string.Empty;
+            var args = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+
+            if (!Enum.TryParse(typeStr, true, out TechEffectType type) || type == TechEffectType.None)
+            {
+                throw new GameFrameworkException(Utility.Text.Format("Invalid TechEffectType '{0}'.", typeStr));
+            }
+
+            result[i] = new TechEffect(type, args);
+        }
+
+        return result;
+    }
+    public static StringIntPair[] ReadStringIntPairArray(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        StringIntPair[] result = new StringIntPair[length];
+        for (int i = 0; i < length; i++)
+        {
+            string s = binaryReader.ReadString();
+            int num = binaryReader.Read7BitEncodedInt32();
+            result[i] = new StringIntPair(s, num);
+        }
+        return result;
+    }
+
+    public static TechCondition[] ReadTechConditionArray(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        TechCondition[] result = new TechCondition[length];
+        for (int i = 0; i < length; i++)
+        {
+            int typeValue = binaryReader.Read7BitEncodedInt32();
+            string args = binaryReader.ReadString();
+            result[i] = new TechCondition((TechConditionType)typeValue, args);
+        }
+        return result;
+    }
+
+    public static TechEffect[] ReadTechEffectArray(this BinaryReader binaryReader)
+    {
+        int length = binaryReader.Read7BitEncodedInt32();
+        TechEffect[] result = new TechEffect[length];
+        for (int i = 0; i < length; i++)
+        {
+            int typeValue = binaryReader.Read7BitEncodedInt32();
+            string args = binaryReader.ReadString();
+            result[i] = new TechEffect((TechEffectType)typeValue, args);
+        }
+        return result;
     }
     public static T[] ReadArray<T>(this BinaryReader binaryReader)
     {
@@ -501,7 +673,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return null;
+            return Array.Empty<T[]>();
         }
         var mats = Regex.Matches(value, "\\[.+?\\]");
         if (mats.Count > 0)
@@ -515,7 +687,7 @@ public static class DataTableExtension
             }
             return arr;
         }
-        return null;
+        return Array.Empty<T[]>();
     }
     public static T[][] Read2DArray<T>(this BinaryReader binaryReader)
     {
@@ -526,114 +698,6 @@ public static class DataTableExtension
             arr[i] = ReadArray<T>(binaryReader);
         }
         return arr;
-    }
-
-    public static Fix64 ParseFix64(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return Fix64.Zero;
-        return Fix64.Parse(value);
-    }
-
-    public static Fix64[] ParseFix64Array(string value)
-    {
-        string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
-        Fix64[] result = new Fix64[arr.Length];
-        for (int i = 0; i < arr.Length; i++)
-        {
-            result[i] = ParseFix64(arr[i]);
-        }
-        return result;
-    }
-
-    public static Fix64 ReadFix64(this BinaryReader binaryReader)
-    {
-        return Fix64.FromRaw(binaryReader.ReadInt64());
-    }
-
-    public static Fix64[] ReadFix64Array(this BinaryReader binaryReader)
-    {
-        int length = binaryReader.Read7BitEncodedInt32();
-        if (length <= 0)
-        {
-            return null;
-        }
-
-        Fix64[] result = new Fix64[length];
-        for (int i = 0; i < length; i++)
-        {
-            result[i] = binaryReader.ReadFix64();
-        }
-
-        return result;
-    }
-
-    public static StringFix64Pair[] ParseStringFix64PairArray(string value)
-    {
-        string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
-        StringFix64Pair[] result = new StringFix64Pair[arr.Length];
-        for (int i = 0; i < arr.Length; i++)
-        {
-            var parts = arr[i].Split(',');
-            var str = parts.Length > 0 ? parts[0] : string.Empty;
-            var num = parts.Length > 1 ? ParseFix64(parts[1]) : Fix64.Zero;
-            result[i] = new StringFix64Pair(str, num);
-        }
-        return result;
-    }
-
-    public static StringFix64Pair[] ReadStringFix64PairArray(this BinaryReader binaryReader)
-    {
-        int length = binaryReader.Read7BitEncodedInt32();
-        if (length <= 0)
-        {
-            return null;
-        }
-
-        StringFix64Pair[] result = new StringFix64Pair[length];
-        for (int i = 0; i < length; i++)
-        {
-            string str = binaryReader.ReadString();
-            Fix64 num = binaryReader.ReadFix64();
-            result[i] = new StringFix64Pair(str, num);
-        }
-
-        return result;
-    }
-
-    public static StringIntPair[] ParseStringIntPairArray(string value)
-    {
-        string[] arr = ParseArrayElements(value);
-        if (arr == null) return null;
-        StringIntPair[] result = new StringIntPair[arr.Length];
-        for (int i = 0; i < arr.Length; i++)
-        {
-            var parts = arr[i].Split(',');
-            var str = parts.Length > 0 ? parts[0] : string.Empty;
-            var num = parts.Length > 1 ? int.Parse(parts[1]) : 0;
-            result[i] = new StringIntPair(str, num);
-        }
-        return result;
-    }
-
-    public static StringIntPair[] ReadStringIntPairArray(this BinaryReader binaryReader)
-    {
-        int length = binaryReader.Read7BitEncodedInt32();
-        if (length <= 0)
-        {
-            return null;
-        }
-
-        StringIntPair[] result = new StringIntPair[length];
-        for (int i = 0; i < length; i++)
-        {
-            string str = binaryReader.ReadString();
-            int num = binaryReader.Read7BitEncodedInt32();
-            result[i] = new StringIntPair(str, num);
-        }
-
-        return result;
     }
 
     public static Type ParseType(string value)
@@ -648,20 +712,19 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return null;
+            return Array.Empty<string>();
         }
-        var mats = Regex.Matches(value, "\\[.+?\\]");
+        var mats = Regex.Matches(value, "\\[(.*?)\\]");
         if (mats.Count > 0)
         {
-            string[] arr = new string[mats.Count];
-            for (int i = 0; i < mats.Count; i++)
-            {
-                string vstr = mats[i].Value;
-                arr[i] = vstr[1..^1];
-            }
-            return arr;
+            var arr = mats
+                .Cast<Match>()
+                .Select(m => m.Value.Length >= 2 ? m.Value[1..^1] : string.Empty)
+                .Where(v => !string.IsNullOrEmpty(v))
+                .ToArray();
+            return arr.Length == 0 ? Array.Empty<string>() : arr;
         }
-        return null;
+        return Array.Empty<string>();
     }
     public static bool TryParseEnum(string enumValue, out Type enumType, out int value)
     {

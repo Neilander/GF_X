@@ -18,6 +18,7 @@ MonoBehaviour:
   - CharacterMAFactoryTable
   - CharacterMainPropertyTable
   - LevelTable
+  - Build/DeviceTable
   - Core/EntityGroupTable
   - Core/LanguagesTable
   - Core/SoundGroupTable
@@ -28,6 +29,7 @@ MonoBehaviour:
   - Item/ItemWithEffectTable_Consumable
   - Item/ItemWithEffectTable_Equipment
   - Item/ItemWithEffectTable_Tool
+  - Tech/TechNodeTable
   mConfigs:
   - GameConfig
   mLanguages:

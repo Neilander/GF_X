@@ -38,5 +38,38 @@ globs: *
     - Ensure array parsing handles edge cases properly by returning null for non-positive lengths and mirroring the writer behavior, especially for string reads.
     - When implementing `BinaryReader` extensions, confirm or create a way to read 7-bit encoded integers since `BinaryReader`'s built-in method is protected. Search the codebase for any existing `Read7BitEncodedInt32` extensions before proceeding.
 - When implementing `ParseArray<T>`, ensure it properly handles enums by detecting if T is an enum type and then parsing each element with ParseEnum, especially when strings like "ItemTag.AAA" include prefixes. Extract the actual enum value portion after the dot and call ParseEnum for each item, considering flags and logging errors if parsing fails.
+- When designing interactable objects:
+    - The core principle is that interactable objects are responsible for defining *what* they can do, while the player/system determines *when* and *how* the interaction occurs. This promotes decoupling and extensibility.
+    - Use the following abstractions:
+        - **IInteractable**: Defines the interactable object's capabilities, including available interaction options, whether interaction is currently possible, and an entry point for initiating interaction.
+        - **InteractionOption**: Represents a specific interaction action (e.g., "Talk (E)", "Chop (Hold F)", "Gather (Timed QTE)"). Contains display text, key binding, input mode, priority, and an execution callback/command.
+        - **InteractionDetector**: A component on the player that detects nearby interactable objects (e.g., using a trigger, raycast, or field of view).
+        - **InteractionResolver**: Selects the single interactable object to display prompts for from a collection of candidates.
+        - **InteractionUI**: Responsible for displaying the interaction options for the currently selected object.
+        - **InputInterpreter**: Translates player input (e.g., key press, hold, timed input) into a trigger for a specific interaction option.
+    - Strive to design the system so that adding new interactable objects, input modes, selection logic, or UI styles requires modifying as few layers as possible.
+    - Consider these architectural approaches:
+        - **方案 A: 组件接口 + 中央 InteractionManager**: Suitable for most Unity projects.
+            - Each interactable object has an `Interactable` component (implementing `IInteractable`) and optional `InteractionProvider` components (offering different interaction options).
+            - The player has an `InteractionDetector` and an `InteractionManager` (which selects the object, drives the UI, listens for input, and triggers interaction).
+            - Use a scoring system in the resolver to determine the best candidate based on factors like distance, viewing angle, screen position, and occlusion. Implement hysteresis to avoid UI flickering.
+            - Implement different `IInteractionInputMode` implementations (e.g., `PressMode`, `HoldMode`, `TimingMode`) to handle different input patterns.
+        - **方案 B: 事件/消息总线 (GameEvent) + 交互命令 (Command)**: Best if the project already uses events extensively.
+            - The `InteractionManager` only selects the target, displays options, and emits an `InteractionRequested` event.
+            - Subscribers (e.g., `DialogueSystem`, `CraftingSystem`, `GatherSystem`) handle the actual execution.
+        - **方案 C: 数据驱动 (ScriptableObject/配置表) + 通用 Interactable**: Suitable for projects with many interactable objects and frequent configuration changes.
+            - The `Interactable` component only stores a reference to an `InteractableConfig` (ScriptableObject or table ID).
+            - The configuration defines the available options, input modes, and execution commands.
+            - An `InteractionExecutor` dispatches the commands based on their type.
+    - When combining approaches, start with the structure of **方案 A** and consider incorporating aspects of **B** and **C** as needed for modularity and data-driven configuration.
+    - Key Interfaces:
+        - `IInteractable.GetOptions(actor)`: Returns a `List<InteractionOption>`.
+        - `InteractionOption`: Contains properties like `displayName`, `InputActionReference action` (or key enum), `IInteractionInputMode mode`, `int priority`, `Func<bool> canExecute`, and `Action execute` (or `CommandId + params`).
+        - `IInteractionResolver.Resolve(candidates, actor)`: Returns the "current target."
+        - `IInteractionInputMode.Update(option, inputState)`: Outputs `Triggered/Progress`.
+    - **For projects using a mature `GameEventArgs` event system and the new InputSystem, the preferred approach for interactable objects is 方案 B: 事件/消息总线 (GameEvent) + 交互命令 (Command).** In this approach:
+        - The `InteractionManager` selects the target, displays options, and emits an `InteractionRequested(optionId, targetId)` event.
+        - Subscribers (e.g., `DialogueSystem`, `CraftingSystem`, `GatherSystem`) handle the actual execution.
+        - Interactive objects provide information about their identity, available options, and necessary context (e.g., resource ID), and do not directly execute UI or animation logic.
 
 ## EXAMPLES & REFERENCES
