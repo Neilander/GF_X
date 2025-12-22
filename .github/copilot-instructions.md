@@ -1,31 +1,42 @@
-## Project Snapshot
-- Engine: Unity (URP) with HybridCLR hotfix; primary gameplay code under `Assets/AAAGame` (`Scripts` hotfix, `ScriptBuiltin` built-in).
-- Framework: GF_X (UnityGameFramework + HybridCLR + tooling), see `README.md` for workflow overview.
-- Rendering: Custom unlit sprite baseline shader `Assets/AAAGame/Shader/SpriteBaselineProject.shader` driven by binder `Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs`.
+---
+description: AI rules derived by SpecStory from the project AI interaction history
+globs: *
+---
 
-## Key Conventions
-- Entities/UI follow GF patterns: `GF.Entity.ShowEntity/HideEntity`, `GF.UI.OpenUIForm/CloseUIForm`; procedures manage flow (`LaunchProcedure` → `CheckAndUpdateProcedure` → hotfix procedures).
-- Prefer collider-based sizing unless `preferSpriteBounds` is true; sprite UVs may be atlased—binder passes `_SpriteUVScale/_SpriteUVOffset`.
-- Sprites stay upright in non-billboard mode; width/height are compensated in shader for camera tilt so screen width = collider width and height = width × sprite aspect.
-- Bottom anchoring: collider mode uses collider bottom center; prefer mode anchors bottom center at `transform.position` so the visible bottom edge matches object position in camera view.
+## Headers
 
-## Binder/Shader Notes
-- Binder outputs: `_BaseA/_BaseB` (baseline ends), `_BaseOrigin` (bottom center anchor), `_SpriteSize` (width,height meters), camera basis (`_CamRight/_CamUp/_CamFwd`), UV scale/offset, alpha clip.
-- Collider path: picks larger XZ axis of Box/Capsule, flattens to ground; width from baseline length; height from collider Y or sprite aspect.
-- Prefer path: uses sprite bounds for size, flattens baseline to ground, height along world up, bottom origin = object position, center = origin + half height.
-- Shader (non-billboard): right = camera right flattened to ground; up = world up; compensates width by 1/cos(tilt) and height by 1/cos(camUp·worldUp); positions derived from `_BaseOrigin` + right/ up with normalized UVs.
-- Shader (billboard): faces camera using center from `_BaseA/_BaseB`; UV normalization uses `_SpriteUVScale/_SpriteUVOffset` for atlased sprites while sampling uses raw UV.
+## TECH STACK
 
-## Build & Hotfix Workflow
-- Built-in vs hotfix: built-in code (`ScriptBuiltin`) must stay AOT-safe; hotfix code (`Scripts`) runs via HybridCLR.
-- First-time HybridCLR setup: Unity menu `HybridCLR -> Installer` then use top toolbar `Build App/Hotfix` panel; initial full build via `Full Build` dropdown.
-- Runtime updates: `Build Resource` for hotfix resources; Jenkins/remote build supported (see README links).
+## PROJECT DOCUMENTATION & CONTEXT SYSTEM
 
-## Debugging & Testing Tips
-- For sprite projection issues: inspect `_SpriteSize`, `_BaseOrigin`, camera basis, and UV scale/offset in material property block; non-billboard must have `referenceCamera` assigned when `faceCamera` is false.
-- Alpha issues: `_AlphaClip` defaults to 0.3; adjust via binder field.
+## CODING STANDARDS
 
-## File Pointers
-- Sprite pipeline: `Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs`, `Assets/AAAGame/Shader/SpriteBaselineProject.shader`.
-- Framework entry: `Assets/AAAGame/Scene/Launch` scene, procedures under hotfix scripts.
-- Docs & context: root `README.md` for GF_X workflow and learning links.
+## WORKFLOW & RELEASE RULES
+
+## DEBUGGING
+
+## AI AGENT INSTRUCTIONS
+
+- Analyze the codebase to generate or update `.github/copilot-instructions.md` for guiding AI coding agents.
+- Focus on discovering the essential knowledge that would help an AI agents be immediately productive in this codebase, including:
+    - The "big picture" architecture that requires reading multiple files to understand - major components, service boundaries, data flows, and the "why" behind structural decisions
+    - Critical developer workflows (builds, tests, debugging) especially commands that aren't obvious from file inspection alone
+    - Project-specific conventions and patterns that differ from common practices
+    - Integration points, external dependencies, and cross-component communication patterns
+- Source existing AI conventions from `**/{.github/copilot-instructions.md,AGENT.md,AGENTS.md,CLAUDE.md,.cursorrules,.windsurfrules,.clinerules,.cursor/rules/**,.windsurf/rules/**,.clinerules/**,README.md}` (do one glob search).
+- If `.github/copilot-instructions.md` exists, merge intelligently - preserve valuable content while updating outdated sections
+- Write concise, actionable instructions (~20-50 lines) using markdown structure
+- Include specific examples from the codebase when describing patterns
+- Avoid generic advice ("write tests", "handle errors") - focus on THIS project's specific approaches
+- Document only discoverable patterns, not aspirational practices
+- Reference key files/directories that exemplify important patterns
+- Update `.github/copilot-instructions.md` for the user, then ask for feedback on any unclear or incomplete sections to iterate.
+- When a user provides compiler errors indicating missing parse functions within `DataTableExtension`, the agent should proactively search for the `DataTableExtension` class file and implement the necessary `Parse...` functions to resolve the errors. The agent should then present the proposed solution to the user for review and approval before committing changes.
+- When implementing missing methods, such as `Parse...` functions in `DataTableExtension`, use the plan tool to outline the implementation steps. Use `grep` to efficiently search for the `DataTableExtension` file and related processors to understand the specifics.
+- If the user reports errors related to missing `Read...` definitions in `BinaryReader`, the agent should implement the corresponding extension methods for `BinaryReader` to resolve these errors. When implementing these extensions:
+    - Place the new read methods like `ReadFix64` right after existing parse functions in `DataTableExtension` for clarity.
+    - Ensure array parsing handles edge cases properly by returning null for non-positive lengths and mirroring the writer behavior, especially for string reads.
+    - When implementing `BinaryReader` extensions, confirm or create a way to read 7-bit encoded integers since `BinaryReader`'s built-in method is protected. Search the codebase for any existing `Read7BitEncodedInt32` extensions before proceeding.
+- When implementing `ParseArray<T>`, ensure it properly handles enums by detecting if T is an enum type and then parsing each element with ParseEnum, especially when strings like "ItemTag.AAA" include prefixes. Extract the actual enum value portion after the dot and call ParseEnum for each item, considering flags and logging errors if parsing fails.
+
+## EXAMPLES & REFERENCES

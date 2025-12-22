@@ -10,7 +10,13 @@ public class LaunchProcedure : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         this.InitSettings();
+        
+        //NOTICE:
+        /*
+         * 这里为了测试，注释掉原来的启动代码。取消测试的话，只要改为执行下面被注释掉的代码就可以了
+         */
         ChangeState(procedureOwner, GFBuiltin.Base.EditorResourceMode ? typeof(LoadHotfixDllProcedure) : typeof(UpdateResourcesProcedure));
+        //ChangeState(procedureOwner, typeof());
     }
 
     private void InitSettings()
@@ -18,6 +24,6 @@ public class LaunchProcedure : ProcedureBase
         CultureInfo.CurrentCulture = CultureInfo.CreateSpecificCulture("en-GB");
 
         GFBuiltin.Debugger.ActiveWindow = AppSettings.Instance.DebugMode;
-        GFBuiltin.Debugger.WindowScale = 1.4f;
+        GFBuiltin.Debugger.WindowScale = 0.4f;
     }
 }

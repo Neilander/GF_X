@@ -5,14 +5,16 @@ using UnityEngine;
 
 public partial class CraftingDialog : UIFormBase
 {
+    public const string P_CraftingFormulas = "CraftingFormulas";
     List<CraftingFormula> craftingFormulas;
     Dictionary<CraftingUnit, CraftingFormula> craftingUnits;
     List<ItemUnit> itemUnits;
+
     protected override void OnOpen(object userData)
     {
         base.OnOpen(userData);
         GF.Event.Subscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
-        craftingFormulas = Params.Get("craftingFormulas") as List<CraftingFormula>;
+        craftingFormulas = Params.Get(P_CraftingFormulas) as List<CraftingFormula>;
         RefreshList();
         RefreshCraftableUnits();
     }
@@ -47,13 +49,13 @@ public partial class CraftingDialog : UIFormBase
             {
                 var itemUnit = SpawnItem<UIItemObject>(varItemUnit, craftingUnit.varRequiredItemPanel).itemLogic as ItemUnit;
                 itemUnits.Add(itemUnit);
-                itemUnit.SetData(quantityItem.str, quantityItem.num);
+                itemUnit.SetData(quantityItem.str, quantityItem.num, true);
             }
             foreach (var quantityItem in formula.ProducedItems)
             {
                 var itemUnit = SpawnItem<UIItemObject>(varItemUnit, craftingUnit.varProducedItemPanel).itemLogic as ItemUnit;
                 itemUnits.Add(itemUnit);
-                itemUnit.SetData(quantityItem.str, quantityItem.num);
+                itemUnit.SetData(quantityItem.str, quantityItem.num, false);
             }
         }
     }

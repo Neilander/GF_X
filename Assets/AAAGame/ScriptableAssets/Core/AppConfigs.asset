@@ -15,8 +15,9 @@ MonoBehaviour:
   m_LoadFromBytes: 0
   mDataTables:
   - CameraViewTable
+  - CharacterMAFactoryTable
+  - CharacterMainPropertyTable
   - LevelTable
-  - Build/DeviceTable
   - Core/EntityGroupTable
   - Core/LanguagesTable
   - Core/SoundGroupTable
@@ -27,7 +28,6 @@ MonoBehaviour:
   - Item/ItemWithEffectTable_Consumable
   - Item/ItemWithEffectTable_Equipment
   - Item/ItemWithEffectTable_Tool
-  - Tech/TechNodeTable
   mConfigs:
   - GameConfig
   mLanguages:
@@ -36,4 +36,10 @@ MonoBehaviour:
   - English
   - Japanese
   - Korean
-  mProcedures: []
+  mProcedures:
+  - ChangeSceneProcedure
+  - CharacterTestProcedure
+  - GameOverProcedure
+  - GameProcedure
+  - MenuProcedure
+  - PreloadProcedure
