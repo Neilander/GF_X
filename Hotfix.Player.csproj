@@ -176,6 +176,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/LanguagesDialog.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/CSPacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemBase.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/FactoryHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/EntityParams.cs" />

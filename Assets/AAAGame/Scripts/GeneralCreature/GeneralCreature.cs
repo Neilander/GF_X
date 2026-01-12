@@ -12,7 +12,8 @@ public class GeneralCreature : EntityBase, ITargetable
     
     public string ReferenceId { get; protected set; }
     
-    protected Transform display;
+    public Transform display{ get; protected set; }
+    public Animator animator { get; protected set; }
 
 
 
@@ -25,6 +26,7 @@ public class GeneralCreature : EntityBase, ITargetable
        
         Gmo = gameObject;
         display = transform.Find("Display");
+        animator = display.GetComponent<Animator>();
         ReferenceId = "Knight";
         
     }
