@@ -30,6 +30,8 @@ MonoBehaviour:
   - Item/ItemWithEffectTable_Equipment
   - Item/ItemWithEffectTable_Tool
   - Tech/TechNodeTable
+  - Text/LocalizationTextTable_InteractionOption
+  - Text/LocalizationTextTable_Misc
   mConfigs:
   - GameConfig
   mLanguages:
@@ -43,5 +45,6 @@ MonoBehaviour:
   - CharacterTestProcedure
   - GameOverProcedure
   - GameProcedure
+  - LevelTestProcedure
   - MenuProcedure
   - PreloadProcedure
