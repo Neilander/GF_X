@@ -72,8 +72,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/Packet/CSHeartBeat.cs" />
     <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/EntityPresetPoint.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/CraftingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/ToastTips.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeData.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/UI/ToastTips.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/NetworkChannelHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/PlayerDataChangedEventArgs.cs" />
@@ -207,8 +207,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/CSPacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/FactoryHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeView.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelBase.cs" />
@@ -223,8 +223,8 @@
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/CraftingDeviceDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Const.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMAFactoryTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemUnit.cs" />
@@ -1044,6 +1044,10 @@
     <ProjectReference Include="Unity.InputSystem.csproj">
       <Project>{742a7b64-1e94-e24c-7213-4b132c22e9c2}</Project>
       <Name>Unity.InputSystem</Name>
+    </ProjectReference>
+    <ProjectReference Include="AstarPathfindingProject.csproj">
+      <Project>{a38f250f-9373-c074-e848-20f36d67f4cc}</Project>
+      <Name>AstarPathfindingProject</Name>
     </ProjectReference>
     <ProjectReference Include="UnityEditor.UI.csproj">
       <Project>{eaaa251a-fbab-6f2c-35b9-48fd5cade8e4}</Project>

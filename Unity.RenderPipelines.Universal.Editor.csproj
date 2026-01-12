@@ -124,8 +124,8 @@
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/ShaderGraph/Targets/UniversalLitSubTarget.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/ScriptableRendererFeatureEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/2D/ShapeEditor/GUIFramework/GenericDefaultControl.cs" />
-    <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/Overrides/ColorCurvesEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/ShaderScriptableStripper.cs" />
+    <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/Overrides/ColorCurvesEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/Overrides/MotionBlurEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/2D/ShapeEditor/View/CreatePointAction.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/GlobalSettings/UniversalGlobalSettingsEditor.cs" />
@@ -178,8 +178,8 @@
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/ShaderGUI/ShadergraphSpriteGUI.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/ShaderGraph/AssetCallbacks/CreateFullscreenShaderGraph.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/2D/ShapeEditor/Selection/RectSelector.cs" />
-    <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/EditorUtils.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/2D/ShapeEditor/GUIFramework/DefaultControl.cs" />
+    <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/EditorUtils.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/2D/PixelPerfectCameraEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/GlobalSettings/SerializedUniversalRenderPipelineGlobalSettings.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.12/Editor/2D/ShapeEditor/EditorTool/ScriptableData.cs" />

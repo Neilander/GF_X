@@ -939,6 +939,10 @@
       <Project>{855f1679-a504-99cf-0a12-b695e4867270}</Project>
       <Name>ZString</Name>
     </ProjectReference>
+    <ProjectReference Include="DrawingPackageToolsEditor.csproj">
+      <Project>{1ec6cbba-be2d-8708-02d2-0cd361ff1d09}</Project>
+      <Name>DrawingPackageToolsEditor</Name>
+    </ProjectReference>
     <ProjectReference Include="UnityGameFramework.Editor.csproj">
       <Project>{1fd92f4e-f5a0-8f95-e9ff-2dc55ecce1ee}</Project>
       <Name>UnityGameFramework.Editor</Name>
@@ -946,6 +950,10 @@
     <ProjectReference Include="Unity.Rider.Editor.csproj">
       <Project>{61252a6a-c91e-52e1-a4a7-4209a12095c9}</Project>
       <Name>Unity.Rider.Editor</Name>
+    </ProjectReference>
+    <ProjectReference Include="Drawing.csproj">
+      <Project>{07b98e6b-0ee5-f8f6-c9ae-c672687d7422}</Project>
+      <Name>Drawing</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.2D.Sprite.Editor.csproj">
       <Project>{e0c5eaac-041c-abdd-5721-c5e735c07fc6}</Project>
@@ -970,6 +978,10 @@
     <ProjectReference Include="Unity.RenderPipelines.Core.ShaderLibrary.csproj">
       <Project>{e7212051-3dc1-aaba-075e-1dba2bc77770}</Project>
       <Name>Unity.RenderPipelines.Core.ShaderLibrary</Name>
+    </ProjectReference>
+    <ProjectReference Include="AstarPathfindingProject.csproj">
+      <Project>{a38f250f-9373-c074-e848-20f36d67f4cc}</Project>
+      <Name>AstarPathfindingProject</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.Collections.csproj">
       <Project>{8e2c96dd-ea76-4bbe-64ef-fd70367d22d9}</Project>
@@ -1003,6 +1015,10 @@
       <Project>{fcf639b0-eb2b-f59d-9797-a57daa45dc04}</Project>
       <Name>Unity.TextMeshPro</Name>
     </ProjectReference>
+    <ProjectReference Include="AstarPathfindingProjectEditor.csproj">
+      <Project>{ee882978-f8de-b273-caf4-5606f9f02d95}</Project>
+      <Name>AstarPathfindingProjectEditor</Name>
+    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Universal.Editor.csproj">
       <Project>{1db8de66-491c-85a9-ee5b-51570039ab4d}</Project>
       <Name>Unity.RenderPipelines.Universal.Editor</Name>
@@ -1018,6 +1034,10 @@
     <ProjectReference Include="UniTask.Linq.csproj">
       <Project>{b7698752-4599-40cc-6dce-99ea8b9b138e}</Project>
       <Name>UniTask.Linq</Name>
+    </ProjectReference>
+    <ProjectReference Include="PackageTools.csproj">
+      <Project>{f03202cb-15a3-265e-9b88-3e510a90956e}</Project>
+      <Name>PackageTools</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Universal.Runtime.csproj">
       <Project>{a157378e-3351-62f0-a4ed-b1a65eadd45e}</Project>
@@ -1039,17 +1059,21 @@
       <Project>{fa4f2f2a-723c-01b2-a373-3e53ec6a26eb}</Project>
       <Name>Unity.ShaderGraph.Editor</Name>
     </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.csproj">
-      <Project>{2c9c9c4c-7348-9e44-2bd1-82cc13255841}</Project>
-      <Name>DOTween.Extension</Name>
-    </ProjectReference>
     <ProjectReference Include="Unity.VisualStudio.Editor.csproj">
       <Project>{bcc14075-965b-e8b6-b561-e67157345ffa}</Project>
       <Name>Unity.VisualStudio.Editor</Name>
     </ProjectReference>
+    <ProjectReference Include="andywiecko.BurstTriangulator.csproj">
+      <Project>{c62bf202-fb12-4dee-3f9a-bb54098aa22d}</Project>
+      <Name>andywiecko.BurstTriangulator</Name>
+    </ProjectReference>
     <ProjectReference Include="UnityEditor.UI.csproj">
       <Project>{eaaa251a-fbab-6f2c-35b9-48fd5cade8e4}</Project>
       <Name>UnityEditor.UI</Name>
+    </ProjectReference>
+    <ProjectReference Include="DOTween.Extension.csproj">
+      <Project>{2c9c9c4c-7348-9e44-2bd1-82cc13255841}</Project>
+      <Name>DOTween.Extension</Name>
     </ProjectReference>
     <ProjectReference Include="UnityEngine.UI.csproj">
       <Project>{3a9bbb42-f862-2c0f-44c6-fef93f2b2344}</Project>
@@ -1095,6 +1119,10 @@
       <Project>{d89a5f01-0481-19e0-7e02-d7acface182f}</Project>
       <Name>Unity.Searcher.Editor</Name>
     </ProjectReference>
+    <ProjectReference Include="DrawingEditor.csproj">
+      <Project>{0bd93394-29b9-5f5c-dc43-408363643f36}</Project>
+      <Name>DrawingEditor</Name>
+    </ProjectReference>
     <ProjectReference Include="Cinemachine.csproj">
       <Project>{736f37b3-d569-b49e-23b8-cef189813f6a}</Project>
       <Name>Cinemachine</Name>
@@ -1102,6 +1130,10 @@
     <ProjectReference Include="UniTask.DOTween.csproj">
       <Project>{98c77608-0dca-ff1d-a9ec-b3b3b05d050d}</Project>
       <Name>UniTask.DOTween</Name>
+    </ProjectReference>
+    <ProjectReference Include="AstarPackageToolsEditor.csproj">
+      <Project>{294b90c4-f43f-a0ff-4eb5-cde6932786fa}</Project>
+      <Name>AstarPackageToolsEditor</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

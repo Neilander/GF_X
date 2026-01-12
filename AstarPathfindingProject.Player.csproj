@@ -12,11 +12,11 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{215f30ce-b9f2-9688-8749-06be759f2bf0}</ProjectGuid>
+    <ProjectGuid>{6ce75395-0b19-da9a-36a7-a274074ccd57}</ProjectGuid>
     <ProjectTypeGuids>{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <AssemblyName>Hotfix</AssemblyName>
+    <AssemblyName>AstarPathfindingProject</AssemblyName>
     <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <BaseDirectory>.</BaseDirectory>
@@ -25,8 +25,8 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>Temp\Bin\Debug\Hotfix\Player\</OutputPath>
-    <DefineConstants>UNITY_2022_3_62;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER</DefineConstants>
+    <OutputPath>Temp\Bin\Debug\AstarPathfindingProject\Player\</OutputPath>
+    <DefineConstants>UNITY_2022_3_62;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;MODULE_BURST;MODULE_MATHEMATICS;MODULE_COLLECTIONS;MODULE_COLLECTIONS_0_11_0_OR_NEWER;MODULE_COLLECTIONS_2_0_0_OR_NEWER;MODULE_COLLECTIONS_2_1_0_OR_NEWER;MODULE_COLLECTIONS_2_2_0_OR_NEWER;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <NoWarn>0169,0649</NoWarn>
@@ -45,234 +45,269 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/ItemTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeView.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/GFEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/ItemModifyUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/MessageBehavior.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketType.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/InteractionFocusChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/RefParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/Packet/SCHeartBeat.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/LocalizationTextTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/DeviceEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/ConfigExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Vector2IntArrayProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/EntityBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/TextLineUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/EntityGroupTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/EntityExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarAction.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/PropertyManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyOverrideModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/MessageSystem.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoAtkFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/ProfileDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/Packet/CSHeartBeat.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/EntityPresetPoint.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/CraftingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeData.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/ToastTips.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/NetworkChannelHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/PlayerDataChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/LanguagesDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIViews.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/MenuUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/PreloadProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/HealthContainer.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyClampModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/InputGetKeyText.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/ToastTips.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DOTweenExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoMoveFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/WebRequestResult.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/HotfixEntry.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/LanguagesTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/ItemDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/CapabilityProgressDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/ChangeSceneProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/InteractOptionUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/GF.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceOpenPanelInteractionOption.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.UIControl.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/IInteractionOption.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/ValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceUpgradeInteractionOption.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/LocalizationExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionHost.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Build/Device.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoAtkComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/CraftingDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/GameOverUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechResearchFailReason.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/CreaturePropertyManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIFormBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/TechNodeDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemModifyUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DirectionMoveCompo.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelStorageBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CameraViewTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/TextLineUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/IrreversibleValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/AbsStatemachine.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/LevelTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/LanguageItem.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/LanguageItem.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/TechNodeDetailTips.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/ComputeValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/InteractOptionTips.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameOverUIForm.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/ColorTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/TargetMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/RatingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/IMoveCompo.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/ItemAmountChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/ItemUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/SampleEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Tech/TechNodeTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandlerBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/CharacterTestProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/FlowLayoutGroup.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CombatUnitTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/LocalizationTextMesh.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/DOTweenSequence.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/SettingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataTableExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandler/SCHeartBeatHandler.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionDetector.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/CommonDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/GameUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/PropertyFuncRef.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/SettingDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ScriptableObject/AppConfigs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/TypeIdPair.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/RatingDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/ItemWithEffectTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Craft/CraftingFormula.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UITopbar.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/MenuUIForm.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/CSPacketHeader.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/Fix64.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UIGroupTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardMonoBehaviour.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/GameProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/GameplayEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/EffectPackage.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/SoundExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/VariablePool/VariablePoolComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/GameOverProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/InputModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/UI/HoldProgress.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DamageSystem.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringIntPair.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Build/BuildManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/DownloadResult.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechResearchFailedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/UserDataHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleOverrideModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/InteractionPanel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/UtilityEx.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/CraftingUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/MAEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameUIForm.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/LanguagesDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/TechProgressDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Craft/ItemWithEffect.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractOptionTipsPresenter.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/CSPacketBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/FactoryHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeView.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/EntityParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/ParticleEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/UI/UIFollowWorldPoint.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/AdSdkHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/InteractOptionUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/ProfileDataChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketHeaderBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/InputDirTranslator.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/CraftingDeviceDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/Const.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMAFactoryTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UITable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketHeader.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/SettingExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/LevelEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/InteractOptionTips.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Build/DeviceTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/MaterialModifyBar.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechUnlockedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Animation/AnimationExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeLine.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/Singleton.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyClampModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarFloat.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/SimpleJoystick.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechCategory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringFix64Pair.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/SoundGroupTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/PlayerDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/UIExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Text/LocalizationTextDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechTreePanZoom.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ADComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/ItemCollectionDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/UITopbar.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/TransformExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/PropertyHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarVector3Array.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/IProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/CameraController.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/TechTreeDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/ShopUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Craft/Item.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/CraftingFormulaTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/InteractionOptionTriggeredEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMainPropertyTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Build/DeviceDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UnlockCondition/UnlockCondition.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/StaticUIComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/MaterialModifyBar.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/LevelTestProcedure.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Navmesh/NavmeshUpdates.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOCoreSimulator.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobRepairPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/ReadyToTraverseOffMeshLink.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Behaviors/Patrol.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobApplyGravity.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/PathProcessor.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/MovementPlaneFromGraphSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/TileHandler.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/DisposeGCHandleJob.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Collections/CircularBuffer.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/CompactVoxelField.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/SyncWithTransform.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Nodes/PointNode.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Collections/BinaryHeap.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/MovementControl.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/IJobParallelForBatched.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/RVOSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobRelocateNodes.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/AutoRepathPolicy.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pooling/ObjectPool.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/MovementSettings.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobManagedMovementOverride.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/Seeker.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOQuadtreeBurst.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Navmesh/NavmeshClipper.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobPrepareRaycasts.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobReadNodeData.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/FollowerControlSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/GraphSnapshot.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/TurnBasedAI.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/WindowsStoreCompatibility.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobBuildTileMeshFromVoxels.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/TurnBased/SingleNodeBlocker.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobPrepareCapsuleCommands.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/GraphUpdateUtilities.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Utilities/GridLookup.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/GridGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AstarData.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/RandomPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/GridGraphScanData.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/ManagedMovementOverride.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/FollowerEntity.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/GraphModifier.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobBuildTileMeshFromVertices.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/DynamicGridObstacle.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/PathUtilities.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/AssemblyInfo.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/LayerGridGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Rules/RuleTexture.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/UnityCompatibility.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/LinkGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobDirtyNodes.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/NodeLink2.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/GridStringPulling.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Behaviors/AIPathAlignedToSurface.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/AgentOffMeshLinkTraversal.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Collections/NativeCircularBuffer.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/TileLayout.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/SimulateMovement.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/ProceduralGraphMover.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/AILerp.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/StartOffMeshLinkTransitionJob.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/MovementStatistics.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/GraphUtilities.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/RVO/RVOController.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/FloodPathTracer.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/PointGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/AssemblySearcher.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/FloodPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/RepairPathJob.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/GridIterationUtilities.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Utilities/RecastNavmeshModifier.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Control/PIDUtilities.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/MultiTargetPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/RVO/RVOSquareObstacle.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/Promise.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/DynamicObstacle.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/DotNetReplacements.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/MovementState.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Rules/RuleAnglePenalty.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/AABBTree.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/AlternativePath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/IRuntimeBaker.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/RadiusModifier.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Collections/HierarchicalBitset.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/PhysicsSceneRef.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/XPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pooling/PathPool.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/astarclasses.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/AIBase.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/SyncDestinationTransformSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/RVO/RVOSimulator.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/Modifiers.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOCoreSimulatorBurst.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/RecastMeshGatherer.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/VoxelContour.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Rules/GridGraphRules.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AstarPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/FunnelModifier.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobColliderHitsToBooleans.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/SimpleSmoothModifier.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Geometry/IntBounds.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/AnimationLinkTraverser.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Geometry/Vector2IntExtensions.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/ITraversalProvider.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobConvertAreasToTags.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/AdvancedSmooth.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Utilities/GraphTransform.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/ABPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/WorkItemProcessor.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Collections/Span.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/FleePath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Control/PIDMovement.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pooling/StackPool.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Sync/SpinLock.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/NavmeshEdges.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/Path.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Collections/AstarMemory.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobPrepareSphereCommands.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Rules/RulePerLayerModifications.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/AstarDebugger.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Navmesh/RelevantGraphSurface.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pooling/ListPool.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Behaviors/AIDestinationSetter.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/RVODestinationCrowdedBehavior.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/ColliderMeshBuilder2D.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Geometry/Int3.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Navmesh/NavmeshAdd.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/TurnBased/BlockManager.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/AgentOffMeshLinkMovementDisabled.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/AgentMovementPlane.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobNodeWalkability.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/RVO/RVOAgent.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/PathPartWithLinkInfo.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AstarMath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/NavmeshTile.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/JobDependencyTracker.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobClearTemporaryData.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/TileBuilder.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobManagedOffMeshLinkTransition.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/HeuristicObjective.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/PathReturnQueue.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Pathfinders/ConstantPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Nodes/TriangleMeshNode.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/PathTracer.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobWriteNodeConnections.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Point/PointKDTree.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/RVO/AgentIndex.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/BBTree.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/DrawFollowerGizmosJob.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Sync/BlockableChannel.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/GravityState.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/AgentMovementPlaneSource.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/GraphCollision.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Sync/RWLock.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobControl.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobBuildNodes.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/LocalSpaceGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobPrepareAgentRaycasts.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Nodes/GridNode.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Serialization/SimpleZipReplacement.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobConnectTiles.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/RVO/RVOObstacle.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/PathHandler.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobNodeGridLayout.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/IAstarAI.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/UnityReferenceHelper.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/NavmeshPrefab.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOAgentBurst.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobFilterDiagonalConnections.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Rules/RuleElevationPenalty.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/VoxelRegion.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/DestinationPoint.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Nodes/LevelGridNode.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/GraphUpdateShape.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOObstacleCache.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Collections/SlabAllocator.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/GridAdjacencyMapper.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOAgent.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/GlobalNodeStorage.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/RaycastModifier.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobStartOffMeshLinkTransition.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/NodeLink.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobMergeRaycastCollisionHits.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/AnimationLink.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/TileMesh.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/NavmeshBase.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/RecastBuilder.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/HierarchicalGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Navmesh/NavmeshCut.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobCheckCollisions.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/RVO/RVONavmesh.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Modifiers/StartEndModifier.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/GraphUpdateScene.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/VoxelMesh.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/PathRequestSettings.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Sync/Promise.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/OffMeshLinks.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/NavMeshGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/Funnel.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/ManagedOffMeshLinkTransitionJob.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/RepairPathSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/NavGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/GraphEditorBase.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/RichAI.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/FallbackResolveMovementSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobCopyBuffers.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/BatchedEvents.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobRaycastAll.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/SyncTransformsToEntitiesSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/ResolvedMovement.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobAlignAgentWithMovementDirection.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/PollPendingPathsSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Utilities/UtilityJobs.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/AgentCylinderShape.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/AIMoveSystem.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobTransformTileCoordinates.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/EntityAccess.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/BlockableChannel.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/AstarChecksum.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/AutoRepathPolicy.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/MeshUtility.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Serialization/TinyJson.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pathfinding/GraphUpdateProcessor.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Systems/AIMovementSystemGroup.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobDrawFollowerGizmos.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOQuadtree.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobCreateTiles.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/ManagedState.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/RecastGraph.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/PathInterpolator.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobPrepareGridRaycast.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Components/SearchState.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/TileMeshes.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/RichPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Pooling/ArrayPool.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobErosion.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/LinkedVoxelField.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Control/MovementUtilities.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Jobs/JobCalculateTriangleConnections.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Nodes/GraphNode.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/PathfindingTag.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Utilities/RecastMeshObj.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/RWLock.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Nodes/GridNodeBase.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Misc/NodeLink3.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobCalculateGridConnections.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/SpinLock.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Utilities/EuclideanEmbedding.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Behaviors/MoveInCircle.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOCoreObstacle.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/Serialization/JsonSerializer.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobMoveAgent.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/VoxelPolygonClipper.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Utilities/NavMeshRenderer.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobAllocateNodes.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/LocalSpaceRichAI.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/VoxelRasterization.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobWriteNodeData.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/AI/AIPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Utilities/GraphGizmoHelper.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Core/ECS/Jobs/JobSyncEntitiesToTransforms.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
     </Reference>
@@ -474,35 +509,11 @@
     <Reference Include="UnityEngine.XRModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.XRModule.dll</HintPath>
     </Reference>
-    <Reference Include="protobuf-net">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/protobuf-net.dll</HintPath>
+    <Reference Include="Pathfinding.Ionic.Zip.Reduced">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Packages/com.arongranberg.astar/Plugins/DotNetZip/Pathfinding.Ionic.Zip.Reduced.dll</HintPath>
     </Reference>
-    <Reference Include="System.Collections.Immutable">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/System.Collections.Immutable.dll</HintPath>
-    </Reference>
-    <Reference Include="Unity.Collections.LowLevel.ILSupport">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collections@2.5.7/Unity.Collections.LowLevel.ILSupport/Unity.Collections.LowLevel.ILSupport.dll</HintPath>
-    </Reference>
-    <Reference Include="nunit.framework">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.ext.nunit@2.0.3/net40/unity-custom/nunit.framework.dll</HintPath>
-    </Reference>
-    <Reference Include="protobuf-net.Core">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/protobuf-net.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="System.IO.Hashing">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collections@2.5.7/Unity.Collections.Tests/System.IO.Hashing/System.IO.Hashing.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Runtime.CompilerServices.Unsafe">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ZString/System.Runtime.CompilerServices.Unsafe.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.nuget.newtonsoft-json@3.2.1/Runtime/AOT/Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="ICSharpCode.SharpZipLib">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/UnityGameFramework/Libraries/ICSharpCode.SharpZipLib.dll</HintPath>
-    </Reference>
-    <Reference Include="DOTween">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/DOTween/DOTween.dll</HintPath>
+    <Reference Include="Clipper2Lib">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Packages/com.arongranberg.astar/Plugins/Clipper/Clipper2Lib.dll</HintPath>
     </Reference>
     <Reference Include="mscorlib">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/UnityReferenceAssemblies/unity-4.8-api/mscorlib.dll</HintPath>
@@ -881,65 +892,37 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="Unity.TextMeshPro.Player.csproj">
-      <Project>{32420c3c-fc51-19e4-da01-50e2a7e0e995}</Project>
-      <Name>Unity.TextMeshPro.Player</Name>
+    <ProjectReference Include="UnityEngine.UI.Player.csproj">
+      <Project>{3ea37e03-c176-a81c-9347-6b3bacbc6e66}</Project>
+      <Name>UnityEngine.UI.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="Cinemachine.Player.csproj">
-      <Project>{dfcd1e6b-3a62-9b8b-d987-006b892276bb}</Project>
-      <Name>Cinemachine.Player</Name>
+    <ProjectReference Include="PackageTools.Player.csproj">
+      <Project>{b039a8e1-1d00-b6a3-16bc-0156fedb3f72}</Project>
+      <Name>PackageTools.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="UnityGameFramework.Runtime.Player.csproj">
-      <Project>{a5032dee-cb58-aed2-20b9-cae849650cc5}</Project>
-      <Name>UnityGameFramework.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Runtime.Player.csproj">
-      <Project>{7f02e66e-a259-1989-5bf2-59ac61e8159c}</Project>
-      <Name>Unity.RenderPipelines.Universal.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Builtin.Runtime.Player.csproj">
-      <Project>{405d4a31-425d-6187-bf6f-c1040e13259d}</Project>
-      <Name>Builtin.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.Player.csproj">
-      <Project>{d97f60d3-8090-5ba8-f2e5-51695edd62e6}</Project>
-      <Name>UniTask.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="GameFramework.Player.csproj">
-      <Project>{7a4b85bd-047c-b186-d8ed-e6dd68ec32e1}</Project>
-      <Name>GameFramework.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.Player.csproj">
-      <Project>{55f4a3f6-de25-ca7d-1190-9e127042adec}</Project>
-      <Name>DOTween.Extension.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Jobs.Player.csproj">
-      <Project>{1fa1c082-4a24-e2d5-abd0-cc4b9bc9a759}</Project>
-      <Name>Unity.Jobs.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Collections.Player.csproj">
-      <Project>{98d2d39c-4c37-ca12-4e4d-8ac6b99d14ee}</Project>
-      <Name>Unity.Collections.Player</Name>
+    <ProjectReference Include="Unity.Burst.Player.csproj">
+      <Project>{e04645d5-db2c-7096-63a0-4267b13f8a55}</Project>
+      <Name>Unity.Burst.Player</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.Mathematics.Player.csproj">
       <Project>{13aac262-e36d-4803-ee8c-5d6659a75a9b}</Project>
       <Name>Unity.Mathematics.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="Obfuz.Runtime.Player.csproj">
-      <Project>{82878617-8f1d-6a27-8c9d-c75bacd83dbd}</Project>
-      <Name>Obfuz.Runtime.Player</Name>
+    <ProjectReference Include="Unity.Collections.Player.csproj">
+      <Project>{98d2d39c-4c37-ca12-4e4d-8ac6b99d14ee}</Project>
+      <Name>Unity.Collections.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="Unity.InputSystem.Player.csproj">
-      <Project>{9588b8c1-1101-4837-7c2d-13b7bad9225c}</Project>
-      <Name>Unity.InputSystem.Player</Name>
+    <ProjectReference Include="Unity.Jobs.Player.csproj">
+      <Project>{1fa1c082-4a24-e2d5-abd0-cc4b9bc9a759}</Project>
+      <Name>Unity.Jobs.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="AstarPathfindingProject.Player.csproj">
-      <Project>{6ce75395-0b19-da9a-36a7-a274074ccd57}</Project>
-      <Name>AstarPathfindingProject.Player</Name>
+    <ProjectReference Include="Drawing.Player.csproj">
+      <Project>{820cd10d-6477-4066-a911-ce41ea001de6}</Project>
+      <Name>Drawing.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="UnityEngine.UI.Player.csproj">
-      <Project>{3ea37e03-c176-a81c-9347-6b3bacbc6e66}</Project>
-      <Name>UnityEngine.UI.Player</Name>
+    <ProjectReference Include="andywiecko.BurstTriangulator.Player.csproj">
+      <Project>{e7525cc8-21a2-1f6b-80a6-67cce185a796}</Project>
+      <Name>andywiecko.BurstTriangulator.Player</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
