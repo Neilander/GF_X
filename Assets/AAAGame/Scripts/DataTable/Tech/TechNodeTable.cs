@@ -74,18 +74,9 @@ public class TechNodeTable : DataRowBase
         }
 
         /// <summary>
-        /// 效果串
-        /// </summary>
-        public TechEffect[] Effects
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
         /// AND 条件串
         /// </summary>
-        public TechCondition[] AllConditions
+        public UnlockCondition[] AllConditions
         {
             get;
             private set;
@@ -94,7 +85,7 @@ public class TechNodeTable : DataRowBase
         /// <summary>
         /// OR 条件串
         /// </summary>
-        public TechCondition[] AnyConditions
+        public UnlockCondition[] AnyConditions
         {
             get;
             private set;
@@ -112,7 +103,7 @@ public class TechNodeTable : DataRowBase
         /// <summary>
         /// 节点名(多语言)
         /// </summary>
-        public string Name
+        public string NameKey
         {
             get;
             private set;
@@ -121,7 +112,7 @@ public class TechNodeTable : DataRowBase
         /// <summary>
         /// 节点描述(多语言)
         /// </summary>
-        public string Description
+        public string DescriptionKey
         {
             get;
             private set;
@@ -144,12 +135,11 @@ public class TechNodeTable : DataRowBase
             Level = int.Parse(columnStrings[index++]);
             Category = DataTableExtension.ParseEnum<TechCategory>(columnStrings[index++]);
             CostMaterial = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
-            Effects = DataTableExtension.ParseTechEffectArray(columnStrings[index++]);
-            AllConditions = DataTableExtension.ParseTechConditionArray(columnStrings[index++]);
-            AnyConditions = DataTableExtension.ParseTechConditionArray(columnStrings[index++]);
+            AllConditions = DataTableExtension.ParseUnlockConditionArray(columnStrings[index++]);
+            AnyConditions = DataTableExtension.ParseUnlockConditionArray(columnStrings[index++]);
             SpriteName = columnStrings[index++];
-            Name = columnStrings[index++];
-            Description = columnStrings[index++];
+            NameKey = columnStrings[index++];
+            DescriptionKey = columnStrings[index++];
 
             return true;
         }
@@ -166,12 +156,11 @@ public class TechNodeTable : DataRowBase
                     Level = binaryReader.Read7BitEncodedInt32();
                     Category = binaryReader.ReadEnum<TechCategory>();
                     CostMaterial = binaryReader.ReadStringIntPairArray();
-                    Effects = binaryReader.ReadTechEffectArray();
-                    AllConditions = binaryReader.ReadTechConditionArray();
-                    AnyConditions = binaryReader.ReadTechConditionArray();
+                    AllConditions = binaryReader.ReadUnlockConditionArray();
+                    AnyConditions = binaryReader.ReadUnlockConditionArray();
                     SpriteName = binaryReader.ReadString();
-                    Name = binaryReader.ReadString();
-                    Description = binaryReader.ReadString();
+                    NameKey = binaryReader.ReadString();
+                    DescriptionKey = binaryReader.ReadString();
                 }
             }
 

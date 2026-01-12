@@ -7,6 +7,13 @@ using Cysharp.Threading.Tasks;
 public class CameraController : MonoBehaviour
 {
     public static CameraController Instance { get; private set; }
+
+    [Header("Legacy Isometric (Orthographic)")]
+    [SerializeField] bool useLegacyIsometricOnFollow = false;
+    [SerializeField] Vector3 legacyPivotLocalPosition = new Vector3(85.6f, -67f, 84.55f);
+    [SerializeField] Vector3 legacyPivotEuler = new Vector3(30f, 45f, 0f);
+    [SerializeField] Vector3 legacyInnerCameraLocalPosition = new Vector3(0f, 0f, -250f);
+    [SerializeField] float legacyOrthographicSize = 30f;
     internal Vector3 GetTargetPosition()
     {
         if (target == null)
@@ -35,7 +42,7 @@ public class CameraController : MonoBehaviour
 
     private void Start()
     {
-        
+
     }
 
     private void InitURP()
@@ -61,8 +68,44 @@ public class CameraController : MonoBehaviour
         followerVCamera.gameObject.SetActive(true);
         followerVCamera.LookAt = target;
         followerVCamera.Follow = target;
-        mainCam.orthographic = false;
-        SetCameraView(1, false);
+
+        if (useLegacyIsometricOnFollow)
+        {
+            ApplyLegacyIsometricView(false);
+        }
+        else
+        {
+            mainCam.orthographic = false;
+            SetCameraView(1, false);
+        }
+    }
+
+    public void SetFollowTargetLegacyIsometric(Transform target, bool smooth = false)
+    {
+        this.target = target;
+        followerVCamera.gameObject.SetActive(true);
+        followerVCamera.LookAt = target;
+        followerVCamera.Follow = target;
+        ApplyLegacyIsometricView(smooth);
+    }
+
+    void ApplyLegacyIsometricView(bool smooth)
+    {
+        followerVCamera.transform.rotation = Quaternion.Euler(legacyPivotEuler);
+
+        var lens = followerVCamera.m_Lens;
+        lens.Orthographic = true;
+        lens.OrthographicSize = legacyOrthographicSize;
+        followerVCamera.m_Lens = lens;
+
+        mainCam.orthographic = true;
+        mainCam.orthographicSize = legacyOrthographicSize;
+
+        var transposer = followerVCamera.GetCinemachineComponent<CinemachineTransposer>();
+        transposer.m_BindingMode = CinemachineTransposer.BindingMode.WorldSpace;
+
+        var offset = legacyPivotLocalPosition + Quaternion.Euler(legacyPivotEuler) * legacyInnerCameraLocalPosition;
+        SwitchCameraView(offset, Vector3.zero, smooth);
     }
 
     internal void SetCameraView(int viewId, bool smooth = true)

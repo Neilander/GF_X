@@ -10,14 +10,13 @@ public partial class ItemUnit : UIItemBase
     public void RefreshAmount()
     {
         var currentAmount = ItemCollectionDataModel.GetItemAmount(itemIdentifier);
+        varNumText.text = $"{quantity}({currentAmount})";
         if (IsRequiredItem)
         {
-            varNumText.text = $"{quantity}/{currentAmount}";
             varNumText.color = currentAmount >= quantity ? Color.white : Color.red;
         }
         else
         {
-            varNumText.text = $"{quantity}({currentAmount})";
             varNumText.color = Color.white;
         }
     }

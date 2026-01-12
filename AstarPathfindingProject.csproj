@@ -245,8 +245,8 @@
     <Compile Include="Packages\com.arongranberg.astar\Graphs\Navmesh\Voxels\VoxelMesh.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\PathRequestSettings.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Sync\Promise.cs" />
-    <Compile Include="Packages\com.arongranberg.astar\Graphs\NavMeshGraph.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\Misc\OffMeshLinks.cs" />
+    <Compile Include="Packages\com.arongranberg.astar\Graphs\NavMeshGraph.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Utilities\Funnel.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Jobs\ManagedOffMeshLinkTransitionJob.cs" />
     <Compile Include="Packages\com.arongranberg.astar\Core\ECS\Systems\RepairPathSystem.cs" />

@@ -67,7 +67,7 @@ public class ItemTable : DataRowBase
         /// <summary>
         /// 物品名(多语言)
         /// </summary>
-        public string Name
+        public string NameKey
         {
             get;
             private set;
@@ -76,7 +76,7 @@ public class ItemTable : DataRowBase
         /// <summary>
         /// 物品描述(多语言)
         /// </summary>
-        public string Description
+        public string DescriptionKey
         {
             get;
             private set;
@@ -107,8 +107,8 @@ public class ItemTable : DataRowBase
             Rarity = DataTableExtension.ParseEnum<ItemRarity>(columnStrings[index++]);
             MaxStack = int.Parse(columnStrings[index++]);
             SpriteName = columnStrings[index++];
-            Name = columnStrings[index++];
-            Description = columnStrings[index++];
+            NameKey = columnStrings[index++];
+            DescriptionKey = columnStrings[index++];
             Tags = DataTableExtension.ParseArray<ItemTag>(columnStrings[index++]);
 
             return true;
@@ -125,8 +125,8 @@ public class ItemTable : DataRowBase
                     Rarity = binaryReader.ReadEnum<ItemRarity>();
                     MaxStack = binaryReader.Read7BitEncodedInt32();
                     SpriteName = binaryReader.ReadString();
-                    Name = binaryReader.ReadString();
-                    Description = binaryReader.ReadString();
+                    NameKey = binaryReader.ReadString();
+                    DescriptionKey = binaryReader.ReadString();
                     Tags = binaryReader.ReadArray<ItemTag>();
                 }
             }

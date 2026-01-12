@@ -63,6 +63,9 @@ public class ChangeSceneProcedure : ProcedureBase
                 //ChangeState<MenuProcedure>(procedureOwner);
                 //GF.Sound.PlayBGM("BillieEilishMusic.wav");
                 break;
+            case "LevelTestScene":
+                ChangeState<LevelTestProcedure>(procedureOwner);
+                break;
         }
     }
 

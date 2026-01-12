@@ -1,0 +1,9 @@
+﻿#	工具表									i18n	i18n	
+#	ID		Identifier	Rarity	MaxStack	PropertyNumerals	EffectNumerals	EffectIntroduction	SpriteName	Name	Description	Tags
+#	int		string	enum	int	StringFix64Pair[]	Fix64[]	string	string	string	string	enum[]
+#		备注	在代码中的命名标识符	品质	最大堆叠数(-1表示无限)	属性数值	效果数值	效果简介(仅供速查)	Sprite名	物品名(多语言)	物品描述(多语言)	物品类型标签
+	1		Tool_Aaa	ItemRarity.Common	1	null	3,5	每<num1>秒对树造成<num2>伤害	aaa	Item.Tool.Name.Aaa	Item.Tool.Description.Aaa	ItemTag.AAA
+	2		Tool_Bbb	ItemRarity.Rare	1	null	2	<num1>	bbb	Item.Tool.Name.Bbb	Item.Tool.Description.Bbb	ItemTag.BBB,ItemTag.AAA
+	3		Tool_Ccc	ItemRarity.Epic	1	null	0.6,3	<num1><num2>	ccc	Item.Tool.Name.Ccc	Item.Tool.Description.Ccc	ItemTag.AAA
+	4		Tool_Ddd	ItemRarity.Legendary	1	null	4,0.5,200	<num1><num2><num3>	ddd	Item.Tool.Name.Ddd	Item.Tool.Description.Ddd	ItemTag.AAA
+	5		Tool_Eee	ItemRarity.Heroic	1	[PhysicalDef,2],[SpecialDef,2]	15.6	<num1>	eee	Item.Tool.Name.Eee	Item.Tool.Description.Eee	ItemTag.AAA

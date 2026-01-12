@@ -1,5 +1,5 @@
 ﻿#	工具表									i18n	i18n	
-#	ID		Identifier	Rarity	MaxStack	PropertyNumerals	EffectNumerals	EffectIntroduction	SpriteName	Name	Description	Tags
+#	ID		Identifier	Rarity	MaxStack	PropertyNumerals	EffectNumerals	EffectIntroduction	SpriteName	NameKey	DescriptionKey	Tags
 #	int		string	enum	int	StringFix64Pair[]	Fix64[]	string	string	string	string	enum[]
 #		备注	在代码中的命名标识符	品质	最大堆叠数(-1表示无限)	属性数值	效果数值	效果简介(仅供速查)	Sprite名	物品名(多语言)	物品描述(多语言)	物品类型标签
 	1		Tool_Aaa	ItemRarity.Common	1	null	3,5	每<num1>秒对树造成<num2>伤害	UI/IconMisc/Icon_Star_On.png	Item.Tool.Name.Aaa	Item.Tool.Description.Aaa	ItemTag.AAA

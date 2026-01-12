@@ -15,12 +15,6 @@ public class MenuProcedure : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         procedure = procedureOwner;
-        //测试合成面版
-        GF.DataModel.CreateDataModel<CraftingDeviceDataModel>();
-        GF.DataModel.CreateDataModel<ItemDataModel>();
-        UIParams uiParams = UIParams.Create();
-        uiParams.Set(CraftingDialog.P_CraftingFormulas, CraftingDeviceDataModel.GetCraftingDeviceData("Device_Aaa"));
-        GF.UI.OpenUIForm(UIViews.CraftingDialog, uiParams);
 
         //ShowLevel();
     }

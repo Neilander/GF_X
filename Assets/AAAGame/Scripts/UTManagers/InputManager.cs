@@ -6,33 +6,43 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 using UnityEngine.InputSystem;
 
-public class InputManager : GameFrameworkComponent
+public partial class InputManager : GameFrameworkComponent
 {
     public InputState CurState => selfStateMachine.curState;
     private InputModel _model;
     private InputSM selfStateMachine;
     public PlayerInput playerInput;
-    
     private InputAction _moveAction;
     private InputAction _interactAction;
+    private InputAction _interact2Action;
+    private InputAction _interact3Action;
+    private InputAction _openTechTreeAction;
 
 
     protected override void Awake()
     {
         base.Awake();
-        
+
     }
 
     private void Start()
     {
         selfStateMachine = new InputSM(this);
-        
-        
-        
+
+        InitializeUIFormControl();
+
         var actions = playerInput.actions;
 
         _moveAction = actions.FindAction("Player/Move");
         _interactAction = actions.FindAction("Player/Interact");
+        _interact2Action = actions.FindAction("Player/Interact2");
+        _interact3Action = actions.FindAction("Player/Interact3");
+        _openTechTreeAction = actions.FindAction("Player/OpenTechTree");
+    }
+
+    private void OnDestroy()
+    {
+        CleanupUIFormControl();
     }
 
     private void Update()
@@ -42,20 +52,20 @@ public class InputManager : GameFrameworkComponent
 
     public void ChangeState(InputState newState)
     {
-        selfStateMachine.StartState(newState);    
+        selfStateMachine.StartState(newState);
     }
 
     public void FindModel()
     {
-        if(_model == null && GF.DataModel!=null)
-            _model = GF.DataModel.GetOrCreate<InputModel>();
+        if (_model == null && GF.DataModel != null)
+            _model = GF.DataModel.GetDataModel<InputModel>();
     }
 
-    private class InputSM : AbsStatemachine<InputState,InputManager>
+    private class InputSM : AbsStatemachine<InputState, InputManager>
     {
-        
+
         public InputSM(InputManager inputManager) : base(inputManager)
-        {}
+        { }
 
         public override void SwitchWhenStart(InputState newState)
         {
@@ -97,9 +107,12 @@ public class InputManager : GameFrameworkComponent
                     father._model.MoveX = (Fix64)move.x;
                     father._model.MoveY = (Fix64)move.y;
 
-                    // Jump 按下
-                    father._model.InteractionPressed = father._interactAction.WasPressedThisFrame();
-                   
+                    // Interact 按下
+                    father._model.InteractionPressed = father._interactAction != null && father._interactAction.WasPressedThisFrame();
+                    father._model.Interaction2Pressed = father._interact2Action != null && father._interact2Action.WasPressedThisFrame();
+                    father._model.Interaction3Pressed = father._interact3Action != null && father._interact3Action.WasPressedThisFrame();
+                    father._model.OpenTechTreePressed = father._openTechTreeAction != null && father._openTechTreeAction.WasPressedThisFrame();
+
                     break;
             }
         }
@@ -110,5 +123,6 @@ public enum InputState
 {
     None,
     StartScreen,
-    Game
+    Game,
+    UIForm
 }

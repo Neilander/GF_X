@@ -1,9 +1,9 @@
-﻿#	设备表						i18n	i18n	
-#	ID		Identifier	CostMaterial	Workload	PrefabName	Name	Description	BuildCapability
-#	int		string	StringIntPair[]	Fix64	string	string	string	string
-#		备注	在代码中的命名标识符	材料消耗	工作量	Prefab路径	设备名(多语言)	设备描述(多语言)	建造条件
-	1		Device_Aaa	[Material_Aaa, 2],[Material_Bbb, 3]	10	Device/Aaa	Item.Material.Name.Aaa	Item.Material.Description.Aaa	
-	2		Device_Bbb	[Material_Aaa, 2],[Material_Bbb, 4]	15	Device/Aaa	Item.Material.Name.Bbb	Item.Material.Description.Bbb	
-	3		Device_Ccc	[Material_Aaa, 2],[Material_Bbb, 5]	20	Device/Aaa	Item.Material.Name.Ccc	Item.Material.Description.Ccc	
-	4		Device_Ddd	[Material_Aaa, 2],[Material_Bbb, 6],[Material_Ddd, 3]	25	Device/Aaa	Item.Material.Name.Ddd	Item.Material.Description.Ddd	
-	5		Device_Eee	[Material_Aaa, 2],[Material_Bbb, 5]	30	Device/Aaa	Item.Material.Name.Eee	Item.Material.Description.Eee	
+﻿#	设备表						i18n	i18n			
+#	ID		Identifier	CostMaterial	Workload	PrefabName	NameKey	DescriptionKey	BuildCondition	UpgradeID	InteractionPanelID
+#	int		string	StringIntPair[]	Fix64	string	string	string	UnlockCondition	string	enum?
+#		备注	在代码中的命名标识符	材料消耗	工作量	Prefab路径	设备名(多语言)	设备描述(多语言)	建造条件	升级设备ID	交互面板UIViews
+	1		Device_Aaa	[Material_Aaa, 2],[Material_Bbb, 3]	10	Device/Aaa	Device.Name.Aaa	Device.Description.Aaa		Device_Bbb	UIViews.CraftingDialog
+	2		Device_Bbb	[Material_Aaa, 2],[Material_Bbb, 4]	15	Device/Aaa	Device.Name.Bbb	Device.Description.Bbb		Device_Ccc	UIViews.CraftingDialog
+	3		Device_Ccc	[Material_Aaa, 2],[Material_Bbb, 5]	20	Device/Aaa	Device.Name.Ccc	Device.Description.Ccc			UIViews.CraftingDialog
+	4		Device_Ddd	[Material_Aaa, 2],[Material_Bbb, 6],[Material_Ddd, 3]	25	Device/Aaa	Device.Name.Ddd	Device.Description.Ddd		Device_Eee	
+	5		Device_Eee	[Material_Aaa, 2],[Material_Bbb, 5]	30	Device/Aaa	Device.Name.Eee	Device.Description.Eee			

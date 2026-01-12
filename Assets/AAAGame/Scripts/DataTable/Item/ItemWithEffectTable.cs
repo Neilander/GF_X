@@ -94,7 +94,7 @@ public class ItemWithEffectTable : DataRowBase
         /// <summary>
         /// 物品名(多语言)
         /// </summary>
-        public string Name
+        public string NameKey
         {
             get;
             private set;
@@ -103,7 +103,7 @@ public class ItemWithEffectTable : DataRowBase
         /// <summary>
         /// 物品描述(多语言)
         /// </summary>
-        public string Description
+        public string DescriptionKey
         {
             get;
             private set;
@@ -137,8 +137,8 @@ public class ItemWithEffectTable : DataRowBase
             EffectNumerals = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             EffectIntroduction = columnStrings[index++];
             SpriteName = columnStrings[index++];
-            Name = columnStrings[index++];
-            Description = columnStrings[index++];
+            NameKey = columnStrings[index++];
+            DescriptionKey = columnStrings[index++];
             Tags = DataTableExtension.ParseArray<ItemTag>(columnStrings[index++]);
 
             return true;
@@ -158,8 +158,8 @@ public class ItemWithEffectTable : DataRowBase
                     EffectNumerals = binaryReader.ReadFix64Array();
                     EffectIntroduction = binaryReader.ReadString();
                     SpriteName = binaryReader.ReadString();
-                    Name = binaryReader.ReadString();
-                    Description = binaryReader.ReadString();
+                    NameKey = binaryReader.ReadString();
+                    DescriptionKey = binaryReader.ReadString();
                     Tags = binaryReader.ReadArray<ItemTag>();
                 }
             }

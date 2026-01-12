@@ -217,20 +217,20 @@ namespace AAAGame.UI.Utility
             float aspect = spriteWorldHeight / spriteWorldWidth;
             float spriteHeight = spriteWidth * aspect; // aspect preserved
 
-#if UNITY_EDITOR
-            // Debug 输出，帮助检查宽度/高度与碰撞体是否一致
-            Debug.LogFormat(
-                gameObject,
-                "[BaselineSpriteBinder] {0}: useCollider={1}, colliderWidth={2:F3}, spriteWorldWidth={3:F3}, spriteWorldHeight={4:F3}, finalWidth={5:F3}, finalHeight={6:F3}",
-                name,
-                useCollider,
-                colliderWidth,
-                spriteWorldWidth,
-                spriteWorldHeight,
-                spriteWidth,
-                spriteHeight
-            );
-#endif
+// #if UNITY_EDITOR
+//             // Debug 输出，帮助检查宽度/高度与碰撞体是否一致
+//             Debug.LogFormat(
+//                 gameObject,
+//                 "[BaselineSpriteBinder] {0}: useCollider={1}, colliderWidth={2:F3}, spriteWorldWidth={3:F3}, spriteWorldHeight={4:F3}, finalWidth={5:F3}, finalHeight={6:F3}",
+//                 name,
+//                 useCollider,
+//                 colliderWidth,
+//                 spriteWorldWidth,
+//                 spriteWorldHeight,
+//                 spriteWidth,
+//                 spriteHeight
+//             );
+// #endif
 
             _renderer.GetPropertyBlock(_mpb);
             _mpb.SetVector(BaseAId, baseA);

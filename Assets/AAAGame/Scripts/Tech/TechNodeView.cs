@@ -1,51 +1,79 @@
 ﻿using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
-/// 科技节点的 UI 脚本（挂在每个节点的 RectTransform 上）。
-/// - 使用极坐标（半径/角度）控制相对中心的布局
-/// - 保存 TechId、Level、Category、前置科技（用于连线）
-/// - 位置可在编辑器中手调（不被生成器覆盖）
+/// 科技节点（预摆 UI）的统一组件：
+/// - 身份数据（techId/rect）供编辑器生成器与运行时扫描使用
+/// - 运行时表现（三态：已研究/可研究/不可研究）与选中高亮
+/// - 点击事件（由 TechTreeDialog 统一打开详情提示框）
 /// </summary>
-[ExecuteAlways]
-public class TechNodeView : MonoBehaviour
+[DisallowMultipleComponent]
+public class TechNodeView : MonoBehaviour, IPointerClickHandler
 {
     [Header("Identity")]
     public string techId;
-    public int level;
-    public TechCategory category;
 
-    [Header("Layout (Polar)")]
-    public float radius;
-    public float angleDeg = 90f;
+    [Header("Runtime")]
 
-    [Header("Links")]
-    public string[] prereqTechIds;
+    [Header("Visual")]
+    [SerializeField] private Image iconImage;
+    [SerializeField] private Graphic stateBorder;
+    [SerializeField] private Graphic selectedBorder;
 
-    [Header("Runtime References")]
-    public RectTransform rect;
+    public event Action<TechNodeView> Clicked;
 
     private void Reset()
     {
-        rect = GetComponent<RectTransform>();
+        iconImage = GetComponent<Image>();
+
+        // 约定名称（可选）：
+        // - Border：用于状态亮度
+        // - Selected：用于选中高亮
+        stateBorder = FindGraphic("Border");
+        selectedBorder = FindGraphic("Selected");
     }
 
-    public void SetPolar(float r, float angle)
+    private Graphic FindGraphic(string childName)
     {
-        radius = r;
-        angleDeg = angle;
-        ApplyPosition(Vector2.zero, 1f);
+        var t = transform.Find(childName);
+        return t != null ? t.GetComponent<Graphic>() : null;
     }
 
-    /// <summary>
-    /// 将极坐标应用到 anchoredPosition。center 为坐标中心（父容器局部），scale 为半径缩放。
-    /// </summary>
-    public void ApplyPosition(Vector2 center, float scale)
+    public void ApplyState(bool unlocked, bool canResearch)
     {
-        if (rect == null) rect = GetComponent<RectTransform>();
-        float rad = angleDeg * Mathf.Deg2Rad;
-        Vector2 pos = center + new Vector2(Mathf.Cos(rad), Mathf.Sin(rad)) * (radius * scale);
-        rect.anchoredPosition = pos;
+        // 3态：
+        // - 已研究：图标正常；边框略暗
+        // - 可研究：图标灰；边框更亮
+        // - 不可研究：图标灰；边框更暗
+        if (iconImage != null)
+        {
+            iconImage.color = unlocked ? Color.white : Color.gray;
+        }
+
+        if (stateBorder != null)
+        {
+            float a;
+            if (unlocked) a = 0.65f;
+            else if (canResearch) a = 1.0f;
+            else a = 0.25f;
+
+            var c = stateBorder.color;
+            stateBorder.color = new Color(c.r, c.g, c.b, a);
+        }
+    }
+
+    public void SetSelected(bool selected)
+    {
+        if (selectedBorder != null)
+        {
+            selectedBorder.gameObject.SetActive(selected);
+        }
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        Clicked?.Invoke(this);
     }
 }

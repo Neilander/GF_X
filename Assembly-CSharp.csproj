@@ -52,7 +52,9 @@
     <Compile Include="Assets\Scripts\SimplePlayerController.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\AAAGame\DataTable\Text\LocalizationTextTable_InteractionOption.txt" />
     <None Include="Assets\AAAGame\DataTable\CharacterMAFactoryTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Text\LocalizationTextTable_Misc.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMPro.cginc" />
     <None Include="Assets\AAAGame\DataTable\Core\LanguagesTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Fonts\chars.txt" />
@@ -60,13 +62,16 @@
     <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Tool.txt" />
     <None Include="Assets\AAAGame\Shader\SpriteBaselineProject.shader" />
     <None Include="Assets\AAAGame\DataTable\Core\EntityGroupTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Item\EquipmentTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Bitmap.shader" />
+    <None Include="Assets\AAAGame\DataTable\Text\InteractOptionTextTable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Equipment.txt" />
     <None Include="Assets\AAAGame\DataTable\Core\UITable.txt" />
     <None Include="Assets\AAAGame\DataTable\LevelTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMPro_Mobile.cginc" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF SSD.shader" />
     <None Include="Assets\AAAGame\DataTable\Core\UIGroupTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Build\DeviceTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Surface-Mobile.shader" />
     <None Include="Assets\AAAGame\DataTable\CameraViewTable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\CraftingFormulaTable.txt" />
@@ -89,10 +94,13 @@
     <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Consumable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Material.txt" />
     <None Include="Assets\AAAGame\HotfixDlls\HotfixFileList.txt" />
-    <None Include="Assets\AAAGame\DataTable\Build\DeviceTable.txt" />
-    <None Include="Assets\AAAGame\DataTable\Tech\TechNodeTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Item\ToolTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Item\MaterialTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\Item\ConsumableTable.txt" />
     <None Include="Assets\AAAGame\Shader\ASE\FastLit.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Mobile Masking.shader" />
+    <None Include="Assets\AAAGame\DataTable\Tech\TechNodeTable.txt" />
+    <None Include="Assets\AAAGame\DataTable\TechNodeTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Bitmap-Mobile.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Fonts\LiberationSans - OFL.txt" />
@@ -1191,14 +1199,22 @@
     <ProjectReference Include="UnityGameFramework.Runtime.csproj" />
     <ProjectReference Include="GameFramework.csproj" />
     <ProjectReference Include="ZString.csproj" />
+    <ProjectReference Include="DrawingPackageToolsEditor.csproj" />
     <ProjectReference Include="UnityGameFramework.Editor.csproj" />
+    <ProjectReference Include="Drawing.csproj" />
+    <ProjectReference Include="AstarPathfindingProject.csproj" />
     <ProjectReference Include="UniTask.csproj" />
     <ProjectReference Include="UniTask.TextMeshPro.csproj" />
     <ProjectReference Include="Hotfix.csproj" />
+    <ProjectReference Include="AstarPathfindingProjectEditor.csproj" />
     <ProjectReference Include="Builtin.Runtime.csproj" />
     <ProjectReference Include="UniTask.Linq.csproj" />
+    <ProjectReference Include="PackageTools.csproj" />
+    <ProjectReference Include="andywiecko.BurstTriangulator.csproj" />
     <ProjectReference Include="DOTween.Extension.csproj" />
+    <ProjectReference Include="DrawingEditor.csproj" />
     <ProjectReference Include="UniTask.DOTween.csproj" />
+    <ProjectReference Include="AstarPackageToolsEditor.csproj" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>

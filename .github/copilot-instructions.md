@@ -6,6 +6,7 @@ globs: *
 ## Headers
 
 ## TECH STACK
+- Unity Input System (package name `com.unity.inputsystem`)
 
 ## PROJECT DOCUMENTATION & CONTEXT SYSTEM
 
@@ -71,5 +72,32 @@ globs: *
         - The `InteractionManager` selects the target, displays options, and emits an `InteractionRequested(optionId, targetId)` event.
         - Subscribers (e.g., `DialogueSystem`, `CraftingSystem`, `GatherSystem`) handle the actual execution.
         - Interactive objects provide information about their identity, available options, and necessary context (e.g., resource ID), and do not directly execute UI or animation logic.
+- When using the Unity Input System (`com.unity.inputsystem`):
+    - Utilize an Action-based input approach, defining `InputActions` (e.g., `Move(Vector2)`, `Jump(Button)`, `Aim(Vector2)`) and binding them to different device inputs.
+    - Leverage the binding system's features like Composites (e.g., 2D Vector, 1D Axis), Processors (e.g., Deadzone, Normalize, Scale, Invert), and Interactions (e.g., Press, Hold, Tap, SlowTap, MultiTap).
+    - Implement Action Maps to manage input contexts (e.g., `Gameplay`, `UI`, `Vehicle`) and enable/disable them based on game state.
+    - Employ both event-driven (`started / performed / canceled` callbacks) and polling (`action.ReadValue<T>()`) input methods as appropriate for different gameplay mechanics.
+    - Utilize `PlayerInput` and `PlayerInputManager` for local multiplayer support, allowing multiple devices to join and be assigned to different players.
+    - Abstract device inputs (keyboard, mouse, gamepad, touch, gyroscope) through Actions for cross-platform compatibility.
+    - Use the Input Debugger to visualize connected devices, control values, and event streams for debugging input issues.
+    - The Unity Input System is an "Action-based" input framework. Define `InputActions` (e.g., `Move(Vector2)`, `Jump(Button)`, `Aim(Vector2)`) and bind them to different device inputs.
+    - Benefits include:
+        - Cross-platform/cross-device cost reduction.
+        - Input logic closer to gameplay semantics, clearer and more maintainable code.
+    - Utilize Composites (2D Vector/1D Axis), Processors (Deadzone, Normalize, Scale, Invert), and Interactions (Press, Hold, Tap, SlowTap, MultiTap).
+    - Control Schemes can differentiate Keyboard&Mouse, Gamepad, Touch, etc., for consistent UI prompts and default bindings.
+    - Support runtime re-binding and player customization (e.g., "press any key to set").
+    - Use Action Maps to manage input contexts (`Gameplay`, `UI`, `Vehicle`). Enable/disable maps based on the game state.
+    - Use both event-driven (`started / performed / canceled` callbacks) and polling (`action.ReadValue<T>()`) input methods.
+    - Native support for multi-device joining using `PlayerInput / PlayerInputManager`.
+    - Supports Gamepad, Keyboard, Mouse, Touch, Pen, XR, accelerometer/gyroscope.
+    - Use the Input Debugger to visualize connected devices, control values, and event streams.
+    - Key aspects of the Event System:
+        - `InputAction` callbacks (`started/performed/canceled`).
+        - Interactions translate input semantics into events.
+        - `CallbackContext` provides information like current value, phase, interaction, control, and time.
+        - Action enabling/disabling affects event dispatch for input context switching.
+        - `PlayerInput` component provides event routing to scripts via UnityEvents, Send/Broadcast Messages, or C# Events.
+        - Lower-level global events (`InputSystem.onDeviceChange`, `InputSystem.onEvent`, `InputSystem.onAfterUpdate / onBeforeUpdate`) are available for advanced use cases.
 
 ## EXAMPLES & REFERENCES
