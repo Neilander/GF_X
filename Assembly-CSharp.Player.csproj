@@ -684,6 +684,10 @@
       <Project>{82878617-8f1d-6a27-8c9d-c75bacd83dbd}</Project>
       <Name>Obfuz.Runtime.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="Boxophobic.Utils.Scripts.Player.csproj">
+      <Project>{a72bcb9d-b17c-69a0-786d-8de67e158fc4}</Project>
+      <Name>Boxophobic.Utils.Scripts.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="Newtonsoft.Json.UnityConverters.Mathematics.Player.csproj">
       <Project>{3aa8d5e6-3b6b-678d-3d60-b30005c4fc5d}</Project>
       <Name>Newtonsoft.Json.UnityConverters.Mathematics.Player</Name>
@@ -699,6 +703,10 @@
     <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.Player.csproj">
       <Project>{75568ae3-b9a4-db7d-c894-5936a8ec5258}</Project>
       <Name>Unity.RenderPipelines.Universal.Config.Runtime.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.Player.csproj">
+      <Project>{15e6472e-0678-968c-cd47-4611dd21b5e0}</Project>
+      <Name>Boxophobic.PolyverseSkies.Runtime.Player</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Core.ShaderLibrary.Player.csproj">
       <Project>{c141044b-38dc-19ad-fd67-a15b2cec2ccb}</Project>
@@ -799,6 +807,10 @@
     <ProjectReference Include="Cinemachine.Player.csproj">
       <Project>{dfcd1e6b-3a62-9b8b-d987-006b892276bb}</Project>
       <Name>Cinemachine.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Scripts.Player.csproj">
+      <Project>{81e95c82-0c7f-156b-264b-f78b7d722dfb}</Project>
+      <Name>Boxophobic.PolyverseSkies.Scripts.Player</Name>
     </ProjectReference>
     <ProjectReference Include="UniTask.DOTween.Player.csproj">
       <Project>{7f86e48f-c933-2059-f2a7-3c9112bb8ec6}</Project>

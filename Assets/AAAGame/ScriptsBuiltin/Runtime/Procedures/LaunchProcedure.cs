@@ -14,6 +14,7 @@ public class LaunchProcedure : ProcedureBase
         //NOTICE:
         /*
          * 这里为了测试，注释掉原来的启动代码。取消测试的话，只要改为执行下面被注释掉的代码就可以了
+         * notice 2 怎么好像不对了
          */
         ChangeState(procedureOwner, GFBuiltin.Base.EditorResourceMode ? typeof(LoadHotfixDllProcedure) : typeof(UpdateResourcesProcedure));
         //ChangeState(procedureOwner, typeof());

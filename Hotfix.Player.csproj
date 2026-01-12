@@ -142,6 +142,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Tech/TechNodeTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelComponent.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DamageSystem/HurtBox.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandlerBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/CharacterTestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/FlowLayoutGroup.cs" />
@@ -176,6 +177,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/VariablePool/VariablePoolComponent.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/PunchBagEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/GameOverProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/InputModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/UI/HoldProgress.cs" />
@@ -237,6 +239,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/MaterialModifyBar.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechUnlockedEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveFactory.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DamageSystem/HitBox.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Animation/AnimationExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeLine.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/Singleton.cs" />

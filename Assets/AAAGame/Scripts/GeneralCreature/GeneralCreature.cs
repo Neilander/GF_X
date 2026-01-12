@@ -15,9 +15,11 @@ public class GeneralCreature : EntityBase, ITargetable
     public Transform display{ get; protected set; }
     public Animator animator { get; protected set; }
 
-
-
+    
     public CreaturePropertyManager CreaturePropertyManager { get; private set; }
+    
+    
+    private HurtBox hurtBox;
 
     protected override void OnInit(object userData)
     {
@@ -26,6 +28,9 @@ public class GeneralCreature : EntityBase, ITargetable
        
         Gmo = gameObject;
         display = transform.Find("Display");
+        
+        SetUpHurtBox();
+        
         animator = display.GetComponent<Animator>();
         ReferenceId = "Knight";
         
@@ -46,6 +51,13 @@ public class GeneralCreature : EntityBase, ITargetable
        GF.Log("生物受伤，目前只实现了直接扣血");
        CreaturePropertyManager.ModifyCurrentProperty(CreatureCurrentProperty.HealthCurrent,PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
        GF.Log("生物当前血量"+CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
+    }
+
+
+    protected virtual void SetUpHurtBox()
+    {
+        hurtBox = transform.Find("HurtBox").GetComponent<HurtBox>();
+        hurtBox.Activate(this);
     }
 }
 

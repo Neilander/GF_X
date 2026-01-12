@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.PlayerLoop;
 
 public class PlayerEntity : MAEntity
 {
@@ -24,4 +25,41 @@ public class PlayerEntity : MAEntity
             transform.position = (userData as EntityParams).position?? Vector3.zero;
         }
     }
+
+    protected override void Update()
+    {
+        base.Update();
+#if UNITY_EDITOR
+        if(Input.GetKeyDown(KeyCode.T))
+            SpawnTestHitBoxAt003();
+#endif
+    }
+
+#if UNITY_EDITOR
+    public void SpawnTestHitBoxAt003()
+    {
+        // 1. 创建空物体
+        GameObject go = new GameObject("TestHitBox_003");
+
+        // 2. 设置世界坐标 (0, 0, 3)
+        go.transform.position = new Vector3(0f, 0f, 3f);
+        go.transform.rotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+
+        // 3. 加 BoxCollider（Trigger）
+        BoxCollider box = go.AddComponent<BoxCollider>();
+        box.isTrigger = true;
+        box.size = Vector3.one; // 测试用，默认 1x1x1
+
+        // 4. 加 HitBox
+        HitBox hitBox = go.AddComponent<HitBox>();
+
+        // 5. 激活 HitBox（测试用 owner = null）
+        hitBox.Activate(null);
+
+        go.AddComponent(typeof(Rigidbody));
+        go.GetComponent<Rigidbody>().isKinematic = true;
+        go.layer = LayerMask.NameToLayer("Hit");
+    }
+#endif
 }

@@ -84,6 +84,7 @@
     <None Include="Library/PackageCache/com.unity.test-framework.performance@3.0.3/ValidationExceptions.json" />
     <None Include="Assets/AAAGame/Language/Korean.json" />
     <None Include="Library/PackageCache/com.unity.timeline@1.7.7/package.json" />
+    <None Include="Assets/BOXOPHOBIC/Utils/Shaders/Channel Preview.shader" />
     <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Equipment.txt" />
     <None Include="Library/PackageCache/com.code-philosophy.obfuz@5557b27724/package.json" />
     <None Include="Assets/AAAGame/DataTable/Core/UITable.txt" />
@@ -157,6 +158,7 @@
     <None Include="Library/PackageCache/com.unity.modules.unitywebrequestaudio@1.0.0/package.json" />
     <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Material.txt" />
     <None Include="Assets/AAAGame/HotfixDlls/HotfixFileList.txt" />
+    <None Include="Assets/BOXOPHOBIC/Polyverse Skies/Core/Shaders/Simple.shader" />
     <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/Editor Resources/Shaders/TMP_SDF_SSD.cginc" />
     <None Include="Assets/AAAGame/DataTable/Item/ToolTable.txt" />
     <None Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/ValidationConfig.json" />
@@ -171,6 +173,7 @@
     <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/Editor Resources/Shaders/TMP_SDF Internal Editor.shader" />
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Mobile Masking.shader" />
     <None Include="Library/PackageCache/com.unity.modules.director@1.0.0/package.json" />
+    <None Include="Assets/BOXOPHOBIC/Polyverse Skies/Generator/Shaders/Rendering Clouds.shader" />
     <None Include="Library/PackageCache/com.unity.modules.terrain@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.2d.sprite@1.0.0/package.json" />
     <None Include="Assets/AAAGame/DataTable/Tech/TechNodeTable.txt" />
@@ -193,6 +196,7 @@
     <None Include="Library/PackageCache/com.unity.modules.unitywebrequest@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.modules.uielements@1.0.0/package.json" />
     <None Include="Library/PackageCache/com.unity.collections@2.5.7/ValidationExceptions.json" />
+    <None Include="Assets/BOXOPHOBIC/Polyverse Skies/Core/Shaders/Standard.shader" />
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Sprites/EmojiOne.json" />
     <None Include="Library/PackageCache/com.unity.modules.ui@1.0.0/package.json" />
     <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Sprite.shader" />
@@ -927,6 +931,10 @@
       <Project>{fd2c1dbd-37c4-149d-36d7-151349add1bc}</Project>
       <Name>Obfuz.Runtime</Name>
     </ProjectReference>
+    <ProjectReference Include="Boxophobic.Utils.Scripts.csproj">
+      <Project>{a1efd1fa-3176-a12b-3a94-7a79de023623}</Project>
+      <Name>Boxophobic.Utils.Scripts</Name>
+    </ProjectReference>
     <ProjectReference Include="HybridCLR.Editor.csproj">
       <Project>{bae3218b-6bde-5db9-a017-2cf1f8eb5747}</Project>
       <Name>HybridCLR.Editor</Name>
@@ -962,6 +970,10 @@
     <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.csproj">
       <Project>{dec95282-ee35-c4b6-fde3-026d52fad664}</Project>
       <Name>Unity.RenderPipelines.Universal.Config.Runtime</Name>
+    </ProjectReference>
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.csproj">
+      <Project>{bebdf91b-11a2-7ca5-625f-19695b574caf}</Project>
+      <Name>Boxophobic.PolyverseSkies.Runtime</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Core.Editor.csproj">
       <Project>{249b63ce-de6b-ef0f-9094-153555eff7be}</Project>
@@ -1083,6 +1095,10 @@
       <Project>{ab9095cc-bd03-cfc2-545c-228422e4cf17}</Project>
       <Name>Unity.RenderPipelines.Universal.2D.Internal</Name>
     </ProjectReference>
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Editor.csproj">
+      <Project>{c3dfbbc2-5cbb-97bb-8fc7-12dfbe9e0e81}</Project>
+      <Name>Boxophobic.PolyverseSkies.Editor</Name>
+    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipeline.Universal.ShaderLibrary.csproj">
       <Project>{44d6af35-0db9-cf7f-cf99-84a5bc7689cc}</Project>
       <Name>Unity.RenderPipeline.Universal.ShaderLibrary</Name>
@@ -1107,6 +1123,10 @@
       <Project>{a354a925-1aee-0a28-609e-a8f98e09c515}</Project>
       <Name>Unity.Mathematics</Name>
     </ProjectReference>
+    <ProjectReference Include="Boxophobic.Utils.Editor.csproj">
+      <Project>{cbaab6c9-afb8-1c07-0a45-d98189e9460e}</Project>
+      <Name>Boxophobic.Utils.Editor</Name>
+    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Universal.Shaders.csproj">
       <Project>{07e2a773-7359-287d-298d-0915fbe69085}</Project>
       <Name>Unity.RenderPipelines.Universal.Shaders</Name>
@@ -1126,6 +1146,10 @@
     <ProjectReference Include="Cinemachine.csproj">
       <Project>{736f37b3-d569-b49e-23b8-cef189813f6a}</Project>
       <Name>Cinemachine</Name>
+    </ProjectReference>
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Scripts.csproj">
+      <Project>{f9d9d5a3-2f55-056c-4948-83e393a5ade9}</Project>
+      <Name>Boxophobic.PolyverseSkies.Scripts</Name>
     </ProjectReference>
     <ProjectReference Include="UniTask.DOTween.csproj">
       <Project>{98c77608-0dca-ff1d-a9ec-b3b3b05d050d}</Project>

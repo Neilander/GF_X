@@ -43,7 +43,7 @@ namespace BaseUtility
 
         }
         
-        public virtual void SwitchWhenUpdate(T1 curState)
+        public virtual void SwitchWhenUpdate(T1 currentState)
         {
             
         }

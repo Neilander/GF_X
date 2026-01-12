@@ -89,10 +89,10 @@ public partial class InputManager : GameFrameworkComponent
             }
         }
 
-        public override void SwitchWhenUpdate(InputState curState)
+        public override void SwitchWhenUpdate(InputState currentState)
         {
-            base.SwitchWhenUpdate(curState);
-            switch (curState)
+            base.SwitchWhenUpdate(currentState);
+            switch (currentState)
             {
                 case InputState.Game:
                     if (father._model == null)
@@ -106,7 +106,7 @@ public partial class InputManager : GameFrameworkComponent
                     // 写入你的 Model
                     father._model.MoveX = (Fix64)move.x;
                     father._model.MoveY = (Fix64)move.y;
-
+                    
                     // Interact 按下
                     father._model.InteractionPressed = father._interactAction != null && father._interactAction.WasPressedThisFrame();
                     father._model.Interaction2Pressed = father._interact2Action != null && father._interact2Action.WasPressedThisFrame();
