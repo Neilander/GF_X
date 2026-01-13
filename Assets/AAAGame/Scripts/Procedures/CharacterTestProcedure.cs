@@ -21,6 +21,7 @@ public class CharacterTestProcedure : ProcedureBase
         EntityParams punchParams = new EntityParams();
         punchParams.position = new Vector3(2, 1, 0);
         GF.Entity.ShowEntity<PunchBagEntity>(1,UtilityBuiltin.AssetsPath.GetPrefab("Entity/PunchBag"),"Level",punchParams);
+        //GF.Entity.ShowEntity<DeviceEntity>(deviceData.PrefabName, Const.EntityGroup.Building, deviceParams);
         
 
         //CreaturePropertyManager creaturePropertyManager = new CreaturePropertyManager("Knight");
