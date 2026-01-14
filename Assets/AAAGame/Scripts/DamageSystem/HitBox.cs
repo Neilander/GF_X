@@ -16,11 +16,12 @@ public class HitBox : EntityBase
 
     protected override void OnShow(object userData)
     {
-        base.OnShow(userData);
         IsActive = false;
         Owner = null;
         HitRecords = new Dictionary<ITargetable, float>();
         DamageInfo = null;
+        base.OnShow(userData);
+       
     }
 
     /// <summary>
@@ -38,6 +39,7 @@ public class HitBox : EntityBase
     {
         if (!IsActive)
             return;
+        //Debug.Log("有东西");
 
         if (!other.TryGetComponent(out HurtBox target))
             return;
@@ -46,7 +48,7 @@ public class HitBox : EntityBase
             return;
 
         var targetOwner = target.Owner;
-
+        
         // 如果是第一次碰到，记录时间
         if (!HitRecords.ContainsKey(targetOwner))
         {

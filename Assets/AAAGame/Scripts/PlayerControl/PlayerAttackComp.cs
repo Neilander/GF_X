@@ -33,6 +33,7 @@ public class PlayerAttackComp : IAtkComp
                 //GF.Log("攻击");
                 _playerEntity.animator.SetTrigger("Attack");
                 actions[0].StartAction(_playerEntity, out _actionInfo);
+                _actionInfo.damageInfo = new Damage(_playerEntity, 1);
             }
         }
         else

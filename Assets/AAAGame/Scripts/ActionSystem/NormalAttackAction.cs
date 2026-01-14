@@ -56,6 +56,7 @@ public class NormalAttackAction : BasicAction
                 info.hitboxID = logic.Entity.Id;
                 
                 logic.transform.localPosition = relativeOffset*Mathf.Sign(info.selfBody.display.transform.localScale.x);
+                ((HitBox)logic).Activate(info.selfBody, info.damageInfo);
             };
 
             var boxID = GF.Entity.ShowEntity<HitBox>(HITBOX_PREFAB_NAME, Const.EntityGroup.Default, hitboxParams);

@@ -100,6 +100,7 @@ public class ActionInfo
     public GeneralCreature selfBody;
     public HitBox hitbox;
     public int hitboxID;
+    public Damage damageInfo;
 
     public float elapsed;
     public bool isRunning;
