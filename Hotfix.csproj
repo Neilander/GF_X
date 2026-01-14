@@ -260,6 +260,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringFix64Pair.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/SoundGroupTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/PlayerDataModel.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/EntitySideHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/UIExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Text/LocalizationTextDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/BasicAction.cs" />

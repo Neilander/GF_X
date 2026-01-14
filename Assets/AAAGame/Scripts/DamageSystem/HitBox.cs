@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class HitBox : EntityBase
@@ -45,6 +46,12 @@ public class HitBox : EntityBase
             return;
 
         if (!target.IsActive)
+            return;
+        
+        if(target.Owner == Owner)
+            return;
+
+        if (!EntitySideHelper.GetHitSide(Owner.Side).Contains(target.Owner.Side))
             return;
 
         var targetOwner = target.Owner;

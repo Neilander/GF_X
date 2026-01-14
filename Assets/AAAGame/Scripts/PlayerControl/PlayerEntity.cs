@@ -26,6 +26,8 @@ public class PlayerEntity : MAEntity
         {
             transform.position = (userData as EntityParams).position?? Vector3.zero;
         }
+
+        Side = SideType.PlayerSide;
     }
 
     protected override void Update()
