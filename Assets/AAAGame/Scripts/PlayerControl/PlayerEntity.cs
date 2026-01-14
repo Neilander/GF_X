@@ -9,10 +9,11 @@ public class PlayerEntity : MAEntity
     {
         //不采用基础的setup，而是手动setup
         string moveFacPath = "PlayerMoveFactory";
-        //string atkFacPath = "PlayerAtkFactory";
+        string atkFacPath = "PlayerAtkFactory";
         //设置组件
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),this);
-        PlayerAttackComp.CreateAtkComp(this);
+        //PlayerAttackComp.CreateAtkComp(this);
+        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),this);
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),MoveCompFactory.MoveFactoryCallBack,this );
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),AtkCompFactory.AtkFactoryCallBack,this );
     }

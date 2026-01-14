@@ -190,6 +190,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DamageSystem.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringIntPair.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />

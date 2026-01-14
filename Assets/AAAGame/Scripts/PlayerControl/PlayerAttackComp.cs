@@ -5,7 +5,12 @@ using UnityEngine;
 public class PlayerAttackComp : IAtkComp
 {
     private InputModel _inputModel;
-    private MAEntity playerEntity;
+    private MAEntity _playerEntity;
+    
+    public BasicAction[] actions;
+
+    private ActionInfo _actionInfo;
+    
     public void Attack()
     {
         if (_inputModel == null)
@@ -14,26 +19,44 @@ public class PlayerAttackComp : IAtkComp
             return;
         }
         
-        if (playerEntity.CreaturePropertyManager == null)
+        if (_playerEntity.CreaturePropertyManager == null)
             return;
         
         //GF.Log(_inputModel.MoveX.ToString());
 
-        if (_inputModel.PlayerAttack)
+        //根据_actionInfo来判断
+        if (_actionInfo == null)
         {
-            GF.Log("攻击");
-            playerEntity.animator.SetTrigger("Attack");
+            //当前没有执行行为，玩家点击即可执行
+            if (_inputModel.PlayerAttack)
+            {
+                //GF.Log("攻击");
+                _playerEntity.animator.SetTrigger("Attack");
+                actions[0].StartAction(_playerEntity, out _actionInfo);
+            }
         }
+        else
+        {
+            actions[0].Tick(_actionInfo, Time.deltaTime);
+            if (_actionInfo.isFinished)
+            {
+                _actionInfo = null;
+            }
+        }
+
+
     }
 
     public void Init(MAEntity entity)
     {
-        playerEntity = entity;
+        _playerEntity = entity;
+        _actionInfo = null;
     }
     
     public void ShutDown() { }
     public void Resume() { }
     
+    /*
     public static IAtkComp CreateAtkComp(MAEntity gmo)
     {
         //gmo.AddComponent<NoAtkComp>();
@@ -41,5 +64,5 @@ public class PlayerAttackComp : IAtkComp
         gmo.SetAtkComp(comp);
         comp.Init(gmo);
         return comp;
-    }
+    }*/
 }

@@ -19,8 +19,11 @@ public abstract class BasicAction : ScriptableObject
     [Header("Config")]
     [SerializeField] protected float duration = 0f;
 
+    protected const string HAS_HITBOX = "HAS_HITBOX";
+    protected const string HITBOX_PREFAB_NAME = "HitBox";
+    
     // ===== runtime creation =====
-    public virtual ActionInfo CreateInfo(GeneralCreature body)
+    protected virtual ActionInfo CreateInfo(GeneralCreature body)
     {
         return new ActionInfo
         {
@@ -34,8 +37,10 @@ public abstract class BasicAction : ScriptableObject
 
     // ===== executor API =====
 
-    public virtual void StartAction(ActionInfo info)
+    public virtual void StartAction(GeneralCreature body, out ActionInfo info)
     {
+        info = CreateInfo(body);
+
         info.elapsed = 0f;
         info.isRunning = true;
         info.isInterrupted = false;
@@ -93,6 +98,8 @@ public abstract class BasicAction : ScriptableObject
 public class ActionInfo
 {
     public GeneralCreature selfBody;
+    public HitBox hitbox;
+    public int hitboxID;
 
     public float elapsed;
     public bool isRunning;
@@ -105,23 +112,12 @@ public class ActionInfo
     public event Action Interrupted;
 
     // 通用数据池
-    public readonly List<bool> bools = new();
-    public readonly List<float> floats = new();
-    public readonly List<int> ints = new();
-    public readonly List<UnityEngine.Object> objects = new();
-    
-    internal void RaiseStarted()
-    {
-        Started?.Invoke();
-    }
+    public readonly Dictionary<string, bool> bools = new();
+    public readonly Dictionary<string, float> floats = new();
+    public readonly Dictionary<string, int> ints = new();
+    public readonly Dictionary<string, UnityEngine.Object> objects = new();
 
-    internal void RaiseFinished()
-    {
-        Finished?.Invoke();
-    }
-
-    internal void RaiseInterrupted()
-    {
-        Interrupted?.Invoke();
-    }
+    internal void RaiseStarted()     => Started?.Invoke();
+    internal void RaiseFinished()    => Finished?.Invoke();
+    internal void RaiseInterrupted() => Interrupted?.Invoke();
 }

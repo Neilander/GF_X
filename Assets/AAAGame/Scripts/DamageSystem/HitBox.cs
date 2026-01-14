@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class HitBox : MonoBehaviour
+public class HitBox : EntityBase
 {
     public bool IsActive { get; private set; }
     public ITargetable Owner { get; private set; }
@@ -12,6 +12,16 @@ public class HitBox : MonoBehaviour
     public Dictionary<ITargetable, float> HitRecords { get; private set; }
     
     public Damage DamageInfo { get; private set; }
+
+
+    protected override void OnShow(object userData)
+    {
+        base.OnShow(userData);
+        IsActive = false;
+        Owner = null;
+        HitRecords = new Dictionary<ITargetable, float>();
+        DamageInfo = null;
+    }
 
     /// <summary>
     /// 开启 HitBox
