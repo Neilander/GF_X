@@ -18,9 +18,11 @@ public abstract class BasicAction : ScriptableObject
     
     [Header("Config")]
     [SerializeField] protected float duration = 0f;
+    [SerializeField] protected float acceptInputFromPercent = 1f;
 
-    protected const string HAS_HITBOX = "HAS_HITBOX";
-    protected const string HITBOX_PREFAB_NAME = "HitBox";
+    public const string HAS_HITBOX = "HAS_HITBOX";
+    public const string HITBOX_PREFAB_NAME = "HitBox";
+    public const string ACCEPTED_INPUT = "Accepted_Input";
     
     // ===== runtime creation =====
     protected virtual ActionInfo CreateInfo(GeneralCreature body)
@@ -45,6 +47,9 @@ public abstract class BasicAction : ScriptableObject
         info.isRunning = true;
         info.isInterrupted = false;
         info.isFinished = false;
+        
+        info.bools[HAS_HITBOX] = false;
+        info.bools[ACCEPTED_INPUT] = false;
 
         info.RaiseStarted();
         OnStart(info);
@@ -85,6 +90,11 @@ public abstract class BasicAction : ScriptableObject
 
         OnFinish(info);
         info.RaiseFinished();
+    }
+
+    public virtual bool AcceptInput(ActionInfo info)
+    {
+        return info.elapsed / duration >= acceptInputFromPercent && !info.bools[ACCEPTED_INPUT];
     }
 
     // ===== hooks =====

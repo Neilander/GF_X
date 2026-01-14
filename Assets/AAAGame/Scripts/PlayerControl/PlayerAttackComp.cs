@@ -10,6 +10,10 @@ public class PlayerAttackComp : IAtkComp
     public BasicAction[] actions;
 
     private ActionInfo _actionInfo;
+
+    private bool ifContinueAction;
+
+    private int currentIndex = 0;
     
     public void Attack()
     {
@@ -32,16 +36,46 @@ public class PlayerAttackComp : IAtkComp
             {
                 //GF.Log("攻击");
                 _playerEntity.animator.SetTrigger("Attack");
-                actions[0].StartAction(_playerEntity, out _actionInfo);
+                actions[currentIndex].StartAction(_playerEntity, out _actionInfo);
                 _actionInfo.damageInfo = new Damage(_playerEntity, 1);
+                ifContinueAction = false;
             }
         }
         else
         {
-            actions[0].Tick(_actionInfo, Time.deltaTime);
+            if (_inputModel.PlayerAttack&& actions[currentIndex].AcceptInput(_actionInfo))
+            {
+                _actionInfo.bools[BasicAction.ACCEPTED_INPUT] = true;
+                ifContinueAction = true;
+                _playerEntity.animator.SetTrigger("Attack");
+            }
+
+
+
+            actions[currentIndex].Tick(_actionInfo, Time.deltaTime);
             if (_actionInfo.isFinished)
             {
-                _actionInfo = null;
+                if (ifContinueAction)
+                {
+                    //GF.Log("接受了预输入，连续执行");
+                    currentIndex += 1;
+                    if (currentIndex >= actions.Length)
+                    {
+                        currentIndex = 0;
+                        //GF.Log("重置攻击段数");
+                    }
+
+                    
+                    actions[currentIndex].StartAction(_playerEntity, out _actionInfo);
+                    _actionInfo.damageInfo = new Damage(_playerEntity, 1);
+                    ifContinueAction = false;
+                }
+                else
+                {
+                    _actionInfo = null;
+                    currentIndex = 0;
+                    //GF.Log("攻击清0");
+                }
             }
         }
 
@@ -52,6 +86,8 @@ public class PlayerAttackComp : IAtkComp
     {
         _playerEntity = entity;
         _actionInfo = null;
+        ifContinueAction = false;
+        currentIndex = 0;
     }
     
     public void ShutDown() { }

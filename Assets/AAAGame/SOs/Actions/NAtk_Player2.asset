@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0d729dbb124cf444faebc0b4863a72ac, type: 3}
-  m_Name: NAtk_Player1
+  m_Name: NAtk_Player2
   m_EditorClassIdentifier: 
   duration: 0.8
   acceptInputFromPercent: 0.5
-  damageStartPercent: 0.4
-  damageEndPercent: 0.6
+  damageStartPercent: 0.25
+  damageEndPercent: 0.7
   hitboxPrefab: {fileID: 980812945412772957, guid: e4154a2386616438cb6a7cd56be67d5b, type: 3}
-  hitboxScale: {x: 2, y: 2, z: 3}
-  relativeOffset: {x: 2, y: 0, z: 0}
+  hitboxScale: {x: 3, y: 2, z: 3}
+  relativeOffset: {x: 2.5, y: 0, z: 0}

@@ -6,7 +6,7 @@ using UnityEngine;
 public class NormalAttackAction : BasicAction
 {
     //const string HAS_HITBOX = "hasHitbox";
-    [SerializeField] protected bool setAnimationWhenStart = true;
+    //[SerializeField] protected bool setAnimationWhenStart = true;
     [SerializeField] protected float damageStartPercent = 0.5f;
     [SerializeField] protected float damageEndPercent = 0.7f;
     [SerializeField] protected GameObject hitboxPrefab;
@@ -15,10 +15,10 @@ public class NormalAttackAction : BasicAction
 
     protected override void OnStart(ActionInfo info)
     {
-        if (setAnimationWhenStart)
-            info.selfBody.animator.SetTrigger("Attack");
+        //if (setAnimationWhenStart)
+            //info.selfBody.animator.SetTrigger("Attack");
 
-        info.bools[HAS_HITBOX] = false;
+        
 
         if (info.hitbox != null)
         {
