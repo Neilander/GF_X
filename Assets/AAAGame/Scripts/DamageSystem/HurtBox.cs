@@ -6,9 +6,9 @@ public class HurtBox : MonoBehaviour
 {
     
     public bool IsActive { get; private set; }
-    public GeneralCreature Owner { get; private set; }
+    public ITargetable Owner { get; private set; }
 
-    public void Activate(GeneralCreature owner)
+    public void Activate(ITargetable owner)
     {
         Owner = owner;
         IsActive = true;

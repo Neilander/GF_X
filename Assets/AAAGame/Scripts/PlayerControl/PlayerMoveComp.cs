@@ -51,4 +51,7 @@ public class PlayerMoveComp : IMoveComp
     {
         playerEntity = entity;
     }
+    
+    public void ShutDown() { }
+    public void Resume() { }
 }

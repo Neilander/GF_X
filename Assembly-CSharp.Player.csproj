@@ -700,13 +700,13 @@
       <Project>{820cd10d-6477-4066-a911-ce41ea001de6}</Project>
       <Name>Drawing.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.Player.csproj">
-      <Project>{75568ae3-b9a4-db7d-c894-5936a8ec5258}</Project>
-      <Name>Unity.RenderPipelines.Universal.Config.Runtime.Player</Name>
-    </ProjectReference>
     <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.Player.csproj">
       <Project>{15e6472e-0678-968c-cd47-4611dd21b5e0}</Project>
       <Name>Boxophobic.PolyverseSkies.Runtime.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.Player.csproj">
+      <Project>{75568ae3-b9a4-db7d-c894-5936a8ec5258}</Project>
+      <Name>Unity.RenderPipelines.Universal.Config.Runtime.Player</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Core.ShaderLibrary.Player.csproj">
       <Project>{c141044b-38dc-19ad-fd67-a15b2cec2ccb}</Project>

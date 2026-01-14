@@ -967,13 +967,13 @@
       <Project>{e0c5eaac-041c-abdd-5721-c5e735c07fc6}</Project>
       <Name>Unity.2D.Sprite.Editor</Name>
     </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.csproj">
-      <Project>{dec95282-ee35-c4b6-fde3-026d52fad664}</Project>
-      <Name>Unity.RenderPipelines.Universal.Config.Runtime</Name>
-    </ProjectReference>
     <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.csproj">
       <Project>{bebdf91b-11a2-7ca5-625f-19695b574caf}</Project>
       <Name>Boxophobic.PolyverseSkies.Runtime</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.csproj">
+      <Project>{dec95282-ee35-c4b6-fde3-026d52fad664}</Project>
+      <Name>Unity.RenderPipelines.Universal.Config.Runtime</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Core.Editor.csproj">
       <Project>{249b63ce-de6b-ef0f-9094-153555eff7be}</Project>

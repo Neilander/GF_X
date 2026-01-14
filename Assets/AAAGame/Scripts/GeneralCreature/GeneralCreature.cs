@@ -7,7 +7,7 @@ public class GeneralCreature : EntityBase, ITargetable
 {
     public SideType Side { get; protected set; }
     public bool Alive { get; protected set; }
-    public ITargetable Instigator { get; set; }
+    //public ITargetable Instigator { get; set; }
     public GameObject Gmo { get; private set; }
     
     public string ReferenceId { get; protected set; }
@@ -24,7 +24,7 @@ public class GeneralCreature : EntityBase, ITargetable
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
-        Instigator = this;
+        //Instigator = this;
        
         Gmo = gameObject;
         display = transform.Find("Display");
@@ -48,7 +48,8 @@ public class GeneralCreature : EntityBase, ITargetable
 
     public virtual void TakeDamage(float damage, HealthModifyType modType)
     {
-       GF.Log("生物受伤，目前只实现了直接扣血");
+       //GF.Log("生物受伤，目前只实现了直接扣血");
+       //GF.Log("生物当前血量"+CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
        CreaturePropertyManager.ModifyCurrentProperty(CreatureCurrentProperty.HealthCurrent,PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
        GF.Log("生物当前血量"+CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
     }
@@ -72,7 +73,7 @@ public interface ITargetable
 {
     SideType Side { get; }
     bool Alive { get; }
-    ITargetable Instigator { get; set; }
+    //ITargetable Instigator { get; set; }
     GameObject Gmo { get; }
     string ReferenceId { get; }
 

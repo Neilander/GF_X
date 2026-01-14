@@ -13,6 +13,8 @@ public class InputModel : DataModelBase
     public bool Interaction3Pressed { get; set; }
     public bool OpenTechTreePressed { get; set; }
 
+    public bool PlayerAttack { get; set; }
+
     public void Reset()
     {
         MoveX = Fix64.Zero;
@@ -21,6 +23,7 @@ public class InputModel : DataModelBase
         Interaction2Pressed = false;
         Interaction3Pressed = false;
         OpenTechTreePressed = false;
+        PlayerAttack = false;
     }
 
     protected override void OnCreate(RefParams userdata)

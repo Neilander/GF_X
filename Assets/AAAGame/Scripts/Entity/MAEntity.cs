@@ -5,7 +5,7 @@ using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public class MAEntity :GeneralCreature
+public class MAEntity :CompCreature
 {
     protected IMoveComp moveComp;
     protected IAtkComp atkComp;
@@ -22,8 +22,11 @@ public class MAEntity :GeneralCreature
 
     protected virtual void Update()
     {
-        moveComp?.Move();
-        atkComp?.Attack();
+        if (CanRun(moveComp))
+            moveComp.Move();
+
+        if (CanRun(atkComp))
+            atkComp.Attack();
     }
 
     #region Move and Attack

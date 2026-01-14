@@ -12,6 +12,7 @@ public class PlayerEntity : MAEntity
         //string atkFacPath = "PlayerAtkFactory";
         //设置组件
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),this);
+        PlayerAttackComp.CreateAtkComp(this);
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),MoveCompFactory.MoveFactoryCallBack,this );
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),AtkCompFactory.AtkFactoryCallBack,this );
     }
@@ -30,8 +31,8 @@ public class PlayerEntity : MAEntity
     {
         base.Update();
 #if UNITY_EDITOR
-        if(Input.GetKeyDown(KeyCode.T))
-            SpawnTestHitBoxAt003();
+        //if(Input.GetKeyDown(KeyCode.T))
+            //SpawnTestHitBoxAt003();
 #endif
     }
 
@@ -54,8 +55,8 @@ public class PlayerEntity : MAEntity
         // 4. 加 HitBox
         HitBox hitBox = go.AddComponent<HitBox>();
 
-        // 5. 激活 HitBox（测试用 owner = null）
-        hitBox.Activate(null);
+        // 5. 激活 HitBox
+        hitBox.Activate(this,new Damage(this,1) );
 
         go.AddComponent(typeof(Rigidbody));
         go.GetComponent<Rigidbody>().isKinematic = true;

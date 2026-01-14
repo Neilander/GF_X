@@ -6,19 +6,22 @@ using UnityEngine;
 public class HitBox : MonoBehaviour
 {
     public bool IsActive { get; private set; }
-    public GeneralCreature Owner { get; private set; }
+    public ITargetable Owner { get; private set; }
 
     // 记录：碰撞到的生物 + 碰撞时间
-    public Dictionary<GeneralCreature, float> HitRecords { get; private set; }
+    public Dictionary<ITargetable, float> HitRecords { get; private set; }
+    
+    public Damage DamageInfo { get; private set; }
 
     /// <summary>
     /// 开启 HitBox
     /// </summary>
-    public void Activate(GeneralCreature owner)
+    public void Activate(ITargetable owner, Damage damageInfo)
     {
         Owner = owner;
         IsActive = true;
-        HitRecords = new Dictionary<GeneralCreature, float>();
+        HitRecords = new Dictionary<ITargetable, float>();
+        DamageInfo = damageInfo;
     }
 
     private void OnTriggerStay(Collider other)
@@ -39,6 +42,7 @@ public class HitBox : MonoBehaviour
         {
             HitRecords.Add(targetOwner, Time.time);
             GF.Log("攻击到了");
+            DamageHelper.DoDamage(targetOwner, DamageInfo);
         }
     }
     

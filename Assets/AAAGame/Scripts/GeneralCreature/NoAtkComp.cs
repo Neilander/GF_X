@@ -11,12 +11,7 @@ public class NoAtkComp : IAtkComp
     {
         //这是空行为，什么都不做
     }
+
+    public void ShutDown() { }
+    public void Resume() { }
 }
-
-public interface IAtkComp
-{
-    void Init(MAEntity entity);
-    void Attack();
-}
-
-
