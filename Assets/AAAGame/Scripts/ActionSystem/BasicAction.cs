@@ -17,90 +17,111 @@ public abstract class BasicAction : ScriptableObject
      */
     
     [Header("Config")]
-    [Tooltip("<= 0 表示不自动结束，由外部或内部手动 Finish")]
     [SerializeField] protected float duration = 0f;
 
-    // Runtime state (not serialized)
-    protected float elapsed;
-    protected bool isRunning;
-    protected bool isInterrupted;
-    protected bool isFinished;
-    protected GeneralCreature selfBody;
-    
-    // Events (executor 订阅)
+    // ===== runtime creation =====
+    public virtual ActionInfo CreateInfo(GeneralCreature body)
+    {
+        return new ActionInfo
+        {
+            selfBody = body,
+            elapsed = 0f,
+            isRunning = false,
+            isInterrupted = false,
+            isFinished = false
+        };
+    }
+
+    // ===== executor API =====
+
+    public virtual void StartAction(ActionInfo info)
+    {
+        info.elapsed = 0f;
+        info.isRunning = true;
+        info.isInterrupted = false;
+        info.isFinished = false;
+
+        info.RaiseStarted();
+        OnStart(info);
+    }
+
+    public virtual void Tick(ActionInfo info, float deltaTime)
+    {
+        if (!info.isRunning || info.isFinished || info.isInterrupted)
+            return;
+
+        info.elapsed += deltaTime;
+
+        OnUpdate(info, deltaTime);
+
+        if (duration > 0f && info.elapsed >= duration)
+            FinishAction(info);
+    }
+
+    public virtual void Interrupt(ActionInfo info)
+    {
+        if (!info.isRunning || info.isFinished || info.isInterrupted)
+            return;
+
+        info.isRunning = false;
+        info.isInterrupted = true;
+
+        OnInterrupt(info);
+        info.RaiseInterrupted();
+    }
+
+    public void FinishAction(ActionInfo info)
+    {
+        if (!info.isRunning || info.isFinished)
+            return;
+
+        info.isRunning = false;
+        info.isFinished = true;
+
+        OnFinish(info);
+        info.RaiseFinished();
+    }
+
+    // ===== hooks =====
+    protected virtual void OnStart(ActionInfo info) { }
+    protected virtual void OnUpdate(ActionInfo info, float deltaTime) { }
+    protected virtual void OnFinish(ActionInfo info) { }
+    protected virtual void OnInterrupt(ActionInfo info) { }
+}
+
+
+public class ActionInfo
+{
+    public GeneralCreature selfBody;
+
+    public float elapsed;
+    public bool isRunning;
+    public bool isInterrupted;
+    public bool isFinished;
+
+    // ===== runtime events =====
     public event Action Started;
     public event Action Finished;
     public event Action Interrupted;
 
-    public bool IsRunning => isRunning;
-    public bool IsFinished => isFinished;
-    public bool IsInterrupted => isInterrupted;
-    public float Elapsed => elapsed;
-    public float Duration => duration;
-
-    // ===== executor API =====
-
-    public virtual void StartAction(GeneralCreature body)
+    // 通用数据池
+    public readonly List<bool> bools = new();
+    public readonly List<float> floats = new();
+    public readonly List<int> ints = new();
+    public readonly List<UnityEngine.Object> objects = new();
+    
+    internal void RaiseStarted()
     {
-        elapsed = 0f;
-        isRunning = true;
-        isInterrupted = false;
-        isFinished = false;
-        selfBody = body;
-
         Started?.Invoke();
-        OnStart();
     }
 
-    public virtual void Tick(float deltaTime)
+    internal void RaiseFinished()
     {
-        if (!isRunning || isFinished || isInterrupted) return;
-
-        elapsed += deltaTime;
-
-        OnUpdate(deltaTime);
-
-        if (duration > 0f && elapsed >= duration)
-            FinishAction();
-    }
-
-    public virtual void Interrupt()
-    {
-        if (!isRunning || isFinished || isInterrupted) return;
-
-        isRunning = false;
-        isInterrupted = true;
-
-        OnInterrupt();
-        Interrupted?.Invoke();
-    }
-
-    // 允许子类在条件满足时主动结束（也允许 executor 直接调用）
-    public void FinishAction()
-    {
-        if (!isRunning || isFinished) return;
-
-        isRunning = false;
-        isFinished = true;
-
-        OnFinish();
         Finished?.Invoke();
     }
 
-    // ===== hooks =====
-    protected virtual void OnStart()
+    internal void RaiseInterrupted()
     {
-    }
-
-    protected virtual void OnUpdate(float deltaTime)
-    {
-    }
-
-    protected virtual void OnFinish()
-    {
-    }
-
-    protected virtual void OnInterrupt()
-    {
+        Interrupted?.Invoke();
     }
 }

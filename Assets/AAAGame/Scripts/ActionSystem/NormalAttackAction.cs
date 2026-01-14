@@ -14,7 +14,7 @@ public class NormalAttackAction : BasicAction
 
     private bool hasInstantiateHitbox = false;
     private GameObject hitbox;
-    
+    /*
     protected override void OnStart()
     {
         base.OnStart();
@@ -47,5 +47,5 @@ public class NormalAttackAction : BasicAction
     {
         base.OnInterrupt();
         //删除hitbox
-    }
+    }*/
 }
