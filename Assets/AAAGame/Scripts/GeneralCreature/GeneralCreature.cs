@@ -48,6 +48,7 @@ public class GeneralCreature : EntityBase, ITargetable
 
     public virtual void TakeDamage(float damage, HealthModifyType modType)
     {
+        animator.SetTrigger( "GetHit");
        //GF.Log("生物受伤，目前只实现了直接扣血");
        //GF.Log("生物当前血量"+CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
        CreaturePropertyManager.ModifyCurrentProperty(CreatureCurrentProperty.HealthCurrent,PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
