@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.PlayerLoop;
 
-public class PlayerEntity : MAEntity
+public class PlayerEntity : SkillEntity
 {
     protected override void SetUpMAComp()
     {
@@ -28,6 +28,12 @@ public class PlayerEntity : MAEntity
         }
 
         Side = SideType.PlayerSide;
+    }
+
+    protected override void SetUpSkillComp()
+    {
+        string skillFacPath = "PlayerSkillFactory";
+        FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath(skillFacPath),this);
     }
 
     protected override void Update()

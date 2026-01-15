@@ -58,6 +58,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/Packet/SCHeartBeat.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/LocalizationTextTable.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/SkillSystem/ISkillComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/DeviceEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/ConfigExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Vector2IntArrayProperty.cs" />
@@ -65,6 +66,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/TextLineUnit.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/EntityGroupTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/CompCreature.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/EntityExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/PropertyManager.cs" />
@@ -151,6 +153,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandlerBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/CharacterTestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/FlowLayoutGroup.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CombatUnitTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/LocalizationTextMesh.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/DOTweenSequence.cs" />
@@ -193,6 +196,7 @@
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/SkillEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAttackComp.cs" />
@@ -255,9 +259,11 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyClampModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarFloat.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/SimpleJoystick.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/SkillSystem/BasicSkill.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechCategory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringFix64Pair.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/GeneralCounter.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/SoundGroupTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/PlayerDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/EntitySideHelper.cs" />

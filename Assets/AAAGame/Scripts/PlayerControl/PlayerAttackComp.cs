@@ -38,6 +38,7 @@ public class PlayerAttackComp : IAtkComp
                 _playerEntity.animator.SetTrigger("Attack");
                 actions[currentIndex].StartAction(_playerEntity, out _actionInfo);
                 _actionInfo.damageInfo = new Damage(_playerEntity, 1);
+                _playerEntity.LockComp(_playerEntity.moveComp, this);
                 ifContinueAction = false;
             }
         }
@@ -74,6 +75,7 @@ public class PlayerAttackComp : IAtkComp
                 {
                     _actionInfo = null;
                     currentIndex = 0;
+                    _playerEntity.ResumeComp(_playerEntity.moveComp, this);
                     //GF.Log("攻击清0");
                 }
             }

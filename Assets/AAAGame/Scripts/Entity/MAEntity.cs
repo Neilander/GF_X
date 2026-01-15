@@ -7,8 +7,8 @@ using UnityGameFramework.Runtime;
 
 public class MAEntity :CompCreature
 {
-    protected IMoveComp moveComp;
-    protected IAtkComp atkComp;
+    public IMoveComp moveComp { get; protected set; }
+    public IAtkComp atkComp{ get; protected set; }
     public CharacterController cController { get; private set; }
 
     protected override void OnInit(object userData)

@@ -18,6 +18,9 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _interact3Action;
     private InputAction _openTechTreeAction;
     private InputAction _attackAction;
+    private InputAction _skill1Action;
+    private InputAction _skill2Action;
+    private InputAction _skill3Action;
 
 
     protected override void Awake()
@@ -40,6 +43,9 @@ public partial class InputManager : GameFrameworkComponent
         _interact3Action = actions.FindAction("Player/Interact3");
         _openTechTreeAction = actions.FindAction("Player/OpenTechTree");
         _attackAction = actions.FindAction("Player/Attack");
+        _skill1Action = actions.FindAction("Player/Skill1");
+        _skill2Action = actions.FindAction("Player/Skill2");
+        _skill3Action = actions.FindAction("Player/Skill3");
     }
 
     private void OnDestroy()
@@ -116,6 +122,9 @@ public partial class InputManager : GameFrameworkComponent
                     father._model.OpenTechTreePressed = father._openTechTreeAction != null && father._openTechTreeAction.WasPressedThisFrame();
 
                     father._model.PlayerAttack = father._attackAction.WasPressedThisFrame();
+                    father._model.Skill1Pressed = father._skill1Action.WasPressedThisFrame();
+                    father._model.Skill2Pressed = father._skill2Action.WasPressedThisFrame();
+                    father._model.Skill3Pressed = father._skill3Action.WasPressedThisFrame();
 
                     break;
             }

@@ -14,6 +14,10 @@ public class InputModel : DataModelBase
     public bool OpenTechTreePressed { get; set; }
 
     public bool PlayerAttack { get; set; }
+    
+    public bool Skill1Pressed { get; set; }
+    public bool Skill2Pressed { get; set; }
+    public bool Skill3Pressed { get; set; }
 
     public void Reset()
     {
@@ -23,6 +27,9 @@ public class InputModel : DataModelBase
         Interaction2Pressed = false;
         Interaction3Pressed = false;
         OpenTechTreePressed = false;
+        Skill1Pressed = false;
+        Skill2Pressed = false;
+        Skill3Pressed = false;
         PlayerAttack = false;
     }
 
