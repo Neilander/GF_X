@@ -25,6 +25,8 @@ public class BasicSkill : ScriptableObject
         info.currentIndex = 0;
         info.isFinished = false;
         actions[0].StartAction(body, out info.currentInfo);
+        info.currentInfo.damageInfo = new Damage(body, 1);
+        body.animator.SetTrigger(actions[0].relatedTriggerString);
     }
 
     public void TickSkill(SkillInfo info, float deltaTime)
@@ -37,6 +39,8 @@ public class BasicSkill : ScriptableObject
                 //说明技能还没执行完，继续执行
                 info.currentIndex += 1;
                 actions[info.currentIndex].StartAction(info.entity, out info.currentInfo);
+                info.currentInfo.damageInfo = new Damage(info.entity, 1);
+                info.entity.animator.SetTrigger(actions[info.currentIndex].relatedTriggerString);
             }
             else
             {

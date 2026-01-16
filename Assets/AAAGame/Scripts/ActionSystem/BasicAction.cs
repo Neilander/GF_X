@@ -19,6 +19,7 @@ public abstract class BasicAction : ScriptableObject
     [Header("Config")]
     [SerializeField] protected float duration = 0f;
     [SerializeField] protected float acceptInputFromPercent = 1f;
+    public string relatedTriggerString;
 
     public const string HAS_HITBOX = "HAS_HITBOX";
     public const string HITBOX_PREFAB_NAME = "HitBox";

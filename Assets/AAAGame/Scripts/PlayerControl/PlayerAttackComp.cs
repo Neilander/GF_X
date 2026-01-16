@@ -35,7 +35,7 @@ public class PlayerAttackComp : IAtkComp
             if (_inputModel.PlayerAttack)
             {
                 //GF.Log("攻击");
-                _playerEntity.animator.SetTrigger("Attack");
+                _playerEntity.animator.SetTrigger(actions[currentIndex].relatedTriggerString);
                 actions[currentIndex].StartAction(_playerEntity, out _actionInfo);
                 _actionInfo.damageInfo = new Damage(_playerEntity, 1);
                 _playerEntity.LockComp(_playerEntity.moveComp, this);
@@ -48,7 +48,7 @@ public class PlayerAttackComp : IAtkComp
             {
                 _actionInfo.bools[BasicAction.ACCEPTED_INPUT] = true;
                 ifContinueAction = true;
-                _playerEntity.animator.SetTrigger("Attack");
+                _playerEntity.animator.SetTrigger(actions[(currentIndex+1)%actions.Length].relatedTriggerString);
             }
 
 

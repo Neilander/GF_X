@@ -14,6 +14,7 @@ public static class DamageHelper
          return;
 
       // 2. 造成伤害
+       
       target.TakeDamage(damage.amount, damage.modType);
 
       // 3. 后续扩展点（现在不做）

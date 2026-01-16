@@ -13,9 +13,12 @@ MonoBehaviour:
   m_Name: TestSkill
   m_EditorClassIdentifier: 
   actions:
-  - {fileID: 11400000, guid: 251b4b871e064417e85b71b64058c97f, type: 2}
+  - {fileID: 11400000, guid: 611627aa165364895bbe1fb9e57cdcd5, type: 2}
   - {fileID: 11400000, guid: 251b4b871e064417e85b71b64058c97f, type: 2}
   coolDownType: 0
   coolDownInterval: 3
+  animTriggers:
+  - Attack
+  - Attack
   banWhenOtherSkill: 1
   banOtherSkillWhenCast: 0
