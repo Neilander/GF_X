@@ -61,6 +61,27 @@ public class GeneralCreature : EntityBase, ITargetable
         hurtBox = transform.Find("HurtBox").GetComponent<HurtBox>();
         hurtBox.Activate(this);
     }
+
+    #region 可选择
+
+    public bool CanBeSelected()
+    {
+        return Alive;
+    }
+
+    public virtual void InSelection(ISelector selector)
+    {
+        GF.Log(gameObject.name+"被选择了");
+        //先留好口子，之后可以加一些高亮什么的
+    }
+
+    public virtual void DeSelection()
+    {
+        //配套口子
+        GF.Log(gameObject.name+"取消选择了");
+    }
+
+    #endregion
 }
 
 public enum SideType
@@ -70,7 +91,7 @@ public enum SideType
     EnemySide
 }
 
-public interface ITargetable
+public interface ITargetable:ISelectable
 {
     SideType Side { get; }
     bool Alive { get; }

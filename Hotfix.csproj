@@ -106,6 +106,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.UIControl.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/IInteractionOption.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/ValueProperty.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/ISelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceUpgradeInteractionOption.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/LocalizationExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionHost.cs" />
@@ -162,6 +163,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandler/SCHeartBeatHandler.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionDetector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/CommonDialog.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/ISelectable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/GameUIForm.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/PropertyFuncRef.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/SettingDialog.Variables.cs" />
@@ -197,6 +199,7 @@
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/CylinderTargetSelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/SkillEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyAdditiveModifier.cs" />
@@ -269,6 +272,7 @@
     <Compile Include="Assets/AAAGame/Scripts/DataModel/PlayerDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/EntitySideHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/UIExtension.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/PositionSelectAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Text/LocalizationTextDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/BasicAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechTreePanZoom.cs" />
@@ -280,6 +284,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/PropertyHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarVector3Array.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/TargetableSelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/IProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/CameraController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/TechTreeDialog.cs" />

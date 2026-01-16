@@ -108,10 +108,13 @@ public abstract class BasicAction : ScriptableObject
 
 public class ActionInfo
 {
+    // ===== 伤害相关 ====
     public GeneralCreature selfBody;
     public HitBox hitbox;
     public int hitboxID;
     public Damage damageInfo;
+    
+    // ===== 范围选择相关 ====
 
     public float elapsed;
     public bool isRunning;

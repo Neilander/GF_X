@@ -40,13 +40,17 @@ public class PlayerEntity : SkillEntity
     {
         base.Update();
 #if UNITY_EDITOR
-        //if(Input.GetKeyDown(KeyCode.T))
+        if (Input.GetKeyDown(KeyCode.T))
+        {
+            //SpawnTestSelector();
             //SpawnTestHitBoxAt003();
+        }
+       
 #endif
     }
 
 #if UNITY_EDITOR
-    public void SpawnTestHitBoxAt003()
+    private void SpawnTestHitBoxAt003()
     {
         // 1. 创建空物体
         GameObject go = new GameObject("TestHitBox_003");
@@ -70,6 +74,19 @@ public class PlayerEntity : SkillEntity
         go.AddComponent(typeof(Rigidbody));
         go.GetComponent<Rigidbody>().isKinematic = true;
         go.layer = LayerMask.NameToLayer("Hit");
+    }
+
+    private void SpawnTestSelector()
+    {
+        var hitboxParams = EntityParams.Create();
+        hitboxParams.OnShowCallback = logic =>
+        {
+            CylinderTargetSelector selector = (CylinderTargetSelector)logic;
+            selector.Activate(new List<ITargetable>(), SideType.PlayerSide);
+            selector.ChangeRange(new Vector3(3,4,0));
+        };
+        
+        GF.Entity.ShowEntity<CylinderTargetSelector>("CylinderSelector", Const.EntityGroup.Default, hitboxParams);
     }
 #endif
 }

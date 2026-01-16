@@ -22,7 +22,7 @@ public class NormalAttackAction : BasicAction
 
         if (info.hitbox != null)
         {
-            GameObject.Destroy(info.hitbox);
+            GameObject.Destroy(info.hitbox.gameObject);
             info.hitbox = null;
         }
     }

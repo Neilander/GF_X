@@ -51,6 +51,9 @@ public class HitBox : EntityBase
         if(target.Owner == Owner)
             return;
 
+        if (!target.Owner.Alive)
+            return;
+
         if (!EntitySideHelper.GetHitSide(Owner.Side).Contains(target.Owner.Side))
             return;
 
