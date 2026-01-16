@@ -184,6 +184,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/SoundExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyModifier.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/ISkillLocker.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/VariablePool/VariablePoolComponent.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DamageSystem/Damage.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/PunchBagEntity.cs" />
