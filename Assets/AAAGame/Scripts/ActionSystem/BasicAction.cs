@@ -15,8 +15,8 @@ public abstract class BasicAction : ScriptableObject
      *
      * 如果Action被打断，会由外部执行器告诉Action，触发打断函数和打断事件
      */
-    
-    [Header("Config")]
+
+    [Header("Config")] [SerializeField] protected bool ifUseDuration = true;
     [SerializeField] protected float duration = 0f;
     [SerializeField] protected float acceptInputFromPercent = 1f;
     public string relatedTriggerString;
@@ -34,7 +34,8 @@ public abstract class BasicAction : ScriptableObject
             elapsed = 0f,
             isRunning = false,
             isInterrupted = false,
-            isFinished = false
+            isFinished = false,
+            inputs = GF.DataModel.GetDataModel<InputModel>()
         };
     }
 
@@ -65,7 +66,7 @@ public abstract class BasicAction : ScriptableObject
 
         OnUpdate(info, deltaTime);
 
-        if (duration > 0f && info.elapsed >= duration)
+        if (duration > 0f && info.elapsed >= duration && ifUseDuration)
             FinishAction(info);
     }
 
@@ -95,6 +96,12 @@ public abstract class BasicAction : ScriptableObject
 
     public virtual bool AcceptInput(ActionInfo info)
     {
+        if (!ifUseDuration)
+        {
+            GF.LogWarning("警告，行为没有启用duration，却在用duration检查是否允许输入");
+            return false;
+        }
+
         return info.elapsed / duration >= acceptInputFromPercent && !info.bools[ACCEPTED_INPUT];
     }
 
@@ -108,13 +115,18 @@ public abstract class BasicAction : ScriptableObject
 
 public class ActionInfo
 {
+    public InputModel inputs;
+    
     // ===== 伤害相关 ====
     public GeneralCreature selfBody;
     public HitBox hitbox;
     public int hitboxID;
     public Damage damageInfo;
     
-    // ===== 范围选择相关 ====
+    // ===== 继承数值 ====
+    public List<ISelectable> selectTargets;
+    public Vector3 selectPos;
+    
 
     public float elapsed;
     public bool isRunning;

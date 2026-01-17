@@ -132,4 +132,9 @@ public abstract class TargetableSelector :EntityBase, ISelector<ITargetable>
         SelectRecords.Remove(owner);
         owner.DeSelection();
     }
+
+    public int GetEntityID()
+    {
+        return Entity.Id;
+    }
 }

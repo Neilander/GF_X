@@ -7,6 +7,8 @@ public interface ISelector
     void Activate();
     void ClearSelected();
     void ChangeRange(Vector3 ratio);
+
+    int GetEntityID();
 }
 
 public interface ISelector<T> : ISelector where T: ISelectable

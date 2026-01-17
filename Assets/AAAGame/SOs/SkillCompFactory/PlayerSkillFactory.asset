@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: PlayerSkillFactory
   m_EditorClassIdentifier: 
   skills:
-  - {fileID: 11400000, guid: 678d7f433e2094a56a9c8c269d015566, type: 2}
+  - {fileID: 11400000, guid: 536d3968e75ee45eda2e1abc9c8470bc, type: 2}
   - {fileID: 11400000, guid: 678d7f433e2094a56a9c8c269d015566, type: 2}
   - {fileID: 11400000, guid: 678d7f433e2094a56a9c8c269d015566, type: 2}

@@ -73,6 +73,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyOverrideModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/MessageSystem.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoAtkFactory.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/SkillSystem/SelectPositionSkill.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/ProfileDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/Packet/CSHeartBeat.cs" />
     <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/EntityPresetPoint.cs" />

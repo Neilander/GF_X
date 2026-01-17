@@ -18,15 +18,26 @@ public class BasicSkill : ScriptableObject
     [Tooltip("其他技能不可插入，默认关闭")]
     public bool banOtherSkillWhenCast = false;
 
-    public void StartSkill(SkillEntity body, out SkillInfo info)
+
+    protected virtual SkillInfo CreateSkillInfo(SkillEntity body)
     {
-        info = new SkillInfo();
-        info.entity = body;
-        info.currentIndex = 0;
-        info.isFinished = false;
+        return new SkillInfo()
+        {
+            entity = body,
+            currentIndex = 0,
+            isFinished = false,
+        };
+    }
+
+    public virtual void StartSkill(SkillEntity body, out SkillInfo info)
+    {
+        info = CreateSkillInfo(body);
+        SetupNewAction(info, 0);
+        /*
         actions[0].StartAction(body, out info.currentInfo);
         info.currentInfo.damageInfo = new Damage(body, 1);
-        body.animator.SetTrigger(actions[0].relatedTriggerString);
+        
+        body.animator.SetTrigger(actions[0].relatedTriggerString);*/
     }
 
     public void TickSkill(SkillInfo info, float deltaTime)
@@ -37,10 +48,7 @@ public class BasicSkill : ScriptableObject
             if (info.currentIndex < actions.Count-1)
             {
                 //说明技能还没执行完，继续执行
-                info.currentIndex += 1;
-                actions[info.currentIndex].StartAction(info.entity, out info.currentInfo);
-                info.currentInfo.damageInfo = new Damage(info.entity, 1);
-                info.entity.animator.SetTrigger(actions[info.currentIndex].relatedTriggerString);
+                SwitchToNextAction(info);
             }
             else
             {
@@ -49,7 +57,25 @@ public class BasicSkill : ScriptableObject
             }
         }
     }
-    
+
+    protected virtual void SwitchToNextAction(SkillInfo info)
+    {
+        info.currentIndex += 1;
+        SetupNewAction(info, info.currentIndex);
+        /*
+        actions[info.currentIndex].StartAction(info.entity, out info.currentInfo);
+        info.currentInfo.damageInfo = new Damage(info.entity, 1);
+        info.entity.animator.SetTrigger(actions[info.currentIndex].relatedTriggerString);*/
+    }
+
+    protected virtual void SetupNewAction(SkillInfo info, int actionIndex)
+    {
+        var action = actions[actionIndex];
+        action.StartAction(info.entity, out info.currentInfo);
+        info.currentInfo.damageInfo = new Damage(info.entity, 1);
+        info.entity.animator.SetTrigger(action.relatedTriggerString);
+    }
+
     public void InterruptSkill()
     {
         GF.LogError("尝试打断了技能，但是并没有实现。感觉是没问题的，就是因为没具体case，所以想有需求了再实现");
