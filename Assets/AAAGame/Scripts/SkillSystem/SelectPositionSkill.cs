@@ -8,6 +8,7 @@ public class SelectPositionSkill : BasicSkill
 {
     [Header("选择相关数据")]
     public float radius = 10f;
+    public Vector3 selectRatio;
     
     protected override SkillInfo CreateSkillInfo(SkillEntity body)
     {
@@ -50,12 +51,13 @@ public class SelectPositionSkill : BasicSkill
     {
         base.SetupNewAction(info, actionIndex);
         //检测新的currentInfo是否为某某某
-        if (!(info.currentInfo is PositionSelectActionInfo))
+        //GF.Log("我是1");
+        if (info.currentInfo is not PositionSelectActionInfo posSelectInfo)
             return;
-        
-        PositionSelectActionInfo posSelectInfo = info.currentInfo as PositionSelectActionInfo;
-        posSelectInfo.center = info.entity.transform.position;
+        //GF.Log("我是2");
+        posSelectInfo.centerTrans = info.entity.transform;
         posSelectInfo.radius = radius;
+        posSelectInfo.selectScale = selectRatio;
     }
 }
 

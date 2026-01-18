@@ -4,18 +4,18 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-public abstract class TargetableSelector :EntityBase, ISelector<ITargetable>
+public abstract class TargetableSelector :EntityBase, ISelector<ISelectable>
 {
     private List<ITargetable> _excludedCreatures;
     private SideType _selfSide;
     
-    public Dictionary<ITargetable, float> SelectRecords { get; private set; }
+    public Dictionary<ISelectable, float> SelectRecords { get; private set; }
     public bool IsActive { get; private set; }
     
     protected override void OnShow(object userData)
     {
         IsActive = false;
-        SelectRecords = new Dictionary<ITargetable, float>();
+        SelectRecords = new Dictionary<ISelectable, float>();
         base.OnShow(userData);
         //初始化
     }
@@ -24,19 +24,32 @@ public abstract class TargetableSelector :EntityBase, ISelector<ITargetable>
     {
         //开始检测可选项
         IsActive = true;
-        SelectRecords = new Dictionary<ITargetable, float>();
+        SelectRecords = new Dictionary<ISelectable, float>();
     }
 
-    public void Activate(List<ITargetable> excludedCreatures)
+    public void Activate(List<ISelectable> excludedCreatures)
     {
-        _excludedCreatures = excludedCreatures;
+        _excludedCreatures = new List<ITargetable>();
+
+        foreach (var selectable in excludedCreatures)
+        {
+            if (selectable is ITargetable targetable)
+            {
+                _excludedCreatures.Add(targetable);
+            }
+        }
         Activate();
     }
 
-    public void Activate(List<ITargetable> excludedCreatures, SideType side)
+    public void Activate(List<ISelectable> excludedCreatures, SideType side)
     {
         _selfSide = side;
         Activate(excludedCreatures);
+    }
+
+    public void SetPosition(Vector3 pos)
+    {
+        transform.position = pos+ Vector3.up*0.2f;
     }
 
     public bool Validate(GameObject obj)
@@ -81,7 +94,7 @@ public abstract class TargetableSelector :EntityBase, ISelector<ITargetable>
     {
         //清理所有选择项
         ReleaseSelection();
-        SelectRecords = new Dictionary<ITargetable, float>();
+        SelectRecords = new Dictionary<ISelectable, float>();
     }
 
     /// <summary>
@@ -96,7 +109,7 @@ public abstract class TargetableSelector :EntityBase, ISelector<ITargetable>
         }
     }
 
-    public int GetSelected(out List<ITargetable> selectedCreatures)
+    public int GetSelected(out List<ISelectable> selectedCreatures)
     {
         selectedCreatures = SelectRecords.Keys.ToList();
         return selectedCreatures.Count;

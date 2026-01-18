@@ -82,7 +82,7 @@ public class PlayerEntity : SkillEntity
         hitboxParams.OnShowCallback = logic =>
         {
             CylinderTargetSelector selector = (CylinderTargetSelector)logic;
-            selector.Activate(new List<ITargetable>(), SideType.PlayerSide);
+            selector.Activate(new List<ISelectable>(), SideType.PlayerSide);
             selector.ChangeRange(new Vector3(3,4,0));
         };
         

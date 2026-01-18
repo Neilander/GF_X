@@ -3,11 +3,13 @@ using UnityEngine;
 public class CylinderTargetSelector:TargetableSelector
 {
     private CapsuleCollider _collider;
+    private SpriteRenderer _spriteRenderer;
 
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
         _collider = GetComponent<CapsuleCollider>();
+        _spriteRenderer = GetComponentInChildren<SpriteRenderer>();
     }
 
     /// <summary>
@@ -18,5 +20,8 @@ public class CylinderTargetSelector:TargetableSelector
     {
         _collider.radius = ratio.x;
         _collider.height = ratio.y+2*ratio.x;
+
+        if (_spriteRenderer != null)
+            _spriteRenderer.transform.localScale = new Vector2(ratio.x , ratio.x );
     }
 }

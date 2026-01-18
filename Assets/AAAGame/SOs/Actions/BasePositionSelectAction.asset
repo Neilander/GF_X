@@ -16,5 +16,4 @@ MonoBehaviour:
   duration: 0
   acceptInputFromPercent: 1
   relatedTriggerString: 
-  positionSelectPrefab: {fileID: 0}
-  selectScale: {x: 0, y: 0, z: 0}
+  posSelectPrefabName: CylinderSkillSelector

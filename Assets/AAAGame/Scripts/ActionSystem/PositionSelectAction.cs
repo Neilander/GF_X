@@ -6,12 +6,13 @@ using UnityEngine;
 public class PositionSelectAction : BasicAction
 {
     [Header("范围选择预制体")]
-    [SerializeField]protected GameObject positionSelectPrefab;
-    [SerializeField] protected Vector3 selectScale;
+    [SerializeField]protected string posSelectPrefabName;
+    //[SerializeField] protected Vector3 selectScale;
 
 
     protected override ActionInfo CreateInfo(GeneralCreature body)
     {
+        //GF.Log("调用了新的创建");
         return new PositionSelectActionInfo
         {
             selfBody = body,
@@ -19,6 +20,8 @@ public class PositionSelectAction : BasicAction
             isRunning = false,
             isInterrupted = false,
             isFinished = false,
+            getPosAlready = false,
+            showSelectorAlready = false,
             inputs = GF.DataModel.GetDataModel<InputModel>()
         };   
     }
@@ -31,8 +34,8 @@ public class PositionSelectAction : BasicAction
         {
             GF.Entity.HideEntity(posInfo.curSelector.GetEntityID());
         }
-
-        posInfo.lastSelectPos = posInfo.center;
+        
+        
     }
 
     protected override void OnUpdate(ActionInfo info, float deltaTime)
@@ -40,7 +43,34 @@ public class PositionSelectAction : BasicAction
         PositionSelectActionInfo posInfo = GetInfo(info);
         Vector2 selectScreenPos = posInfo.inputs.SelectScreenPosition;
         Vector3 selectWorldPos = GetCurrentPos(posInfo, selectScreenPos);
-        GF.Log("当前选中位置：x:"+selectWorldPos.x+",y:"+selectWorldPos.y+",z:"+selectWorldPos.z);
+    
+        //GF.Log("当前选中位置：x:"+selectWorldPos.x+",y:"+selectWorldPos.y+",z:"+selectWorldPos.z);
+        if (posInfo.curSelector == null)
+        {
+            if (posInfo.showSelectorAlready)
+                return;
+
+            posInfo.showSelectorAlready = true;
+            //生成新的selector
+            var selectorParams = EntityParams.Create();
+            selectorParams.OnShowCallback = logic =>
+            {
+                CylinderTargetSelector selector = (CylinderTargetSelector)logic;
+                selector.Activate(new List<ISelectable>(), info.selfBody.Side);
+                selector.ChangeRange(posInfo.selectScale);
+                selector.SetPosition(selectWorldPos);
+                posInfo.curSelector = selector;
+            };
+        
+            GF.Entity.ShowEntity<CylinderTargetSelector>(posSelectPrefabName, Const.EntityGroup.Default, selectorParams);
+            (info.selfBody as SkillEntity).ShowCastRange((posInfo.radius+posInfo.selectScale.x/2)*1.05f);
+        }
+        else
+        {
+            posInfo.curSelector.SetPosition(selectWorldPos);
+        }
+
+
 
     }
 
@@ -62,6 +92,14 @@ public class PositionSelectAction : BasicAction
         Vector2 mouseScreenPos
     )
     {
+        if (!posInfo.getPosAlready || !IsWithinRadiusXZ(posInfo.lastSelectPos, posInfo.centerTrans, posInfo.radius))
+        {
+            posInfo.getPosAlready = true;
+            posInfo.lastSelectPos = posInfo.centerTrans.position;
+        }
+        
+        
+
         Camera cam = Camera.main;
         if (cam == null)
             return posInfo.lastSelectPos;
@@ -78,21 +116,46 @@ public class PositionSelectAction : BasicAction
 
         Vector3 hitPos = hit.point;
 
-        // —— 只判断 XY 平面 ——
-        Vector2 hitXY    = new Vector2(hitPos.x, hitPos.y);
-        Vector2 centerXY = new Vector2(posInfo.center.x, posInfo.center.y);
+        Vector3 centerPos = posInfo.centerTrans.position;
 
-        float dist = Vector2.Distance(hitXY, centerXY);
-
-        if (dist <= posInfo.radius)
+        // 在半径内：直接用 hitPos
+        if (IsWithinRadiusXZ(hitPos, posInfo.centerTrans, posInfo.radius))
         {
-            // 在范围内，更新 lastSelectPos
             posInfo.lastSelectPos = hitPos;
             return hitPos;
         }
 
-        // 超出范围，保持上一次
-        return posInfo.lastSelectPos;
+        // —— 超出半径：沿方向 clamp 到圆周 ——
+        Vector2 dirXZ = new Vector2(
+            hitPos.x - centerPos.x,
+            hitPos.z - centerPos.z
+        );
+
+        Vector2 clampedDir = dirXZ.normalized * posInfo.radius;
+
+        Vector3 clampedPos = new Vector3(
+            centerPos.x + clampedDir.x,
+            hitPos.y, // 保留原来的高度；如果你想锁高度，用 centerPos.y
+            centerPos.z + clampedDir.y
+        );
+
+        posInfo.lastSelectPos = clampedPos;
+        return clampedPos;
+    }
+    
+    private static bool IsWithinRadiusXZ(
+        Vector3 worldPos,
+        Transform centerTrans,
+        float radius
+    )
+    {
+        Vector2 posXZ = new Vector2(worldPos.x, worldPos.z);
+        Vector2 centerXZ = new Vector2(
+            centerTrans.position.x,
+            centerTrans.position.z
+        );
+
+        return Vector2.Distance(posXZ, centerXZ) <= radius;
     }
 }
 
@@ -100,9 +163,12 @@ public class PositionSelectActionInfo : ActionInfo
 {
     public ISelector<ISelectable> curSelector;
     public Vector3 lastSelectPos;
+    public bool getPosAlready;
+    public bool showSelectorAlready;
 
     //需要设置的数值
-    public Vector3 center;
+    public Transform centerTrans;
     public float radius;
-    
+    public Vector3 selectScale;
+
 }
