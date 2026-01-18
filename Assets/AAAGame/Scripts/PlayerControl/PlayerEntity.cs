@@ -42,6 +42,7 @@ public class PlayerEntity : SkillEntity
 #if UNITY_EDITOR
         if (Input.GetKeyDown(KeyCode.T))
         {
+            SpawnTestProjectile();
             //SpawnTestSelector();
             //SpawnTestHitBoxAt003();
         }
@@ -87,6 +88,19 @@ public class PlayerEntity : SkillEntity
         };
         
         GF.Entity.ShowEntity<CylinderTargetSelector>("CylinderSelector", Const.EntityGroup.Default, hitboxParams);
+    }
+
+    private void SpawnTestProjectile()
+    {
+        var projectileParams = EntityParams.Create();
+        
+        projectileParams.OnShowCallback = logic =>
+        {
+            DirectionProjectile dirPro = (DirectionProjectile)logic;
+            logic.transform.position = transform.position+Vector3.up*0.5f;
+            dirPro.StartMoveWithDirection(new Vector3(1,0,0), this, new Damage(this, 1));
+        };
+        GF.Entity.ShowEntity<DirectionProjectile>("TestProjectile", Const.EntityGroup.Default, projectileParams);
     }
 #endif
 }

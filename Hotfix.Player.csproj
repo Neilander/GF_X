@@ -128,12 +128,14 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Projectile/AbstractProjectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/TextLineUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/IrreversibleValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/AbsStatemachine.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/LevelTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/LanguageItem.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/LanguageItem.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/ProjectileSpawnAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/TechNodeDetailTips.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/ComputeValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/InteractOptionTips.Variables.cs" />
@@ -275,6 +277,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/UIExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/PositionSelectAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Text/LocalizationTextDataModel.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Projectile/ProjectileConfig.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/BasicAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechTreePanZoom.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IAtkComp.cs" />
@@ -288,6 +291,7 @@
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/TargetableSelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/IProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/CameraController.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Projectile/DirectionProjectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/TechTreeDialog.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/ShopUIForm.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Craft/Item.cs" />
