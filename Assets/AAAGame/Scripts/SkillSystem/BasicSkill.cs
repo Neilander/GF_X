@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,7 +18,11 @@ public class BasicSkill : ScriptableObject
     public bool banWhenOtherSkill = true;
     [Tooltip("其他技能不可插入，默认关闭")]
     public bool banOtherSkillWhenCast = false;
-
+    
+    //这些数值之后都会读表，根据名字获取到一组float，然后赋值
+    [Header("临时数值，之后淘汰")]
+    public float radius = 10f;
+    public Vector3 selectRatio;
 
     protected virtual SkillInfo CreateSkillInfo(SkillEntity body)
     {
@@ -32,6 +37,7 @@ public class BasicSkill : ScriptableObject
     public virtual void StartSkill(SkillEntity body, out SkillInfo info)
     {
         info = CreateSkillInfo(body);
+        info.tempInfoRecords = new Dictionary<ActionInfo, Type>();
         SetupNewAction(info, 0);
         /*
         actions[0].StartAction(body, out info.currentInfo);
@@ -70,11 +76,51 @@ public class BasicSkill : ScriptableObject
 
     protected virtual void SetupNewAction(SkillInfo info, int actionIndex)
     {
+        //结算之前的信息
+        if (info.currentIndex == 0)
+        {
+            //说明前置没有行为，这是第一次，不用初始化
+        }
+        else
+        {
+            switch (info.currentInfo)
+            {
+                case PositionSelectActionInfo posInfo:
+                    info.tempInfoRecords.Add(posInfo, typeof(PositionSelectActionInfo));
+                    break;
+                
+                case ProjectileSpawnActionInfo projInfo:
+                    info.tempInfoRecords.Add(projInfo, typeof(ProjectileSpawnActionInfo));
+                    break;
+            }
+        }
+        //数据记录完毕，进入下个部分
+
+        //更新信息
         var action = actions[actionIndex];
         action.StartAction(info.entity, out info.currentInfo);
+        info.currentInfo.executeIndex = actionIndex;
         info.currentInfo.damageInfo = new Damage(info.entity, 1);
         info.entity.animator.SetTrigger(action.relatedTriggerString);
+        info.currentInfo.fatherInfo = info;
+
+        //根据新的信息容器类型来注入
+        //只注入固定的设置信息
+        switch (info.currentInfo)
+        {
+            case PositionSelectActionInfo posSelectInfo:
+                posSelectInfo.centerTrans = info.entity.transform;
+                posSelectInfo.radius = radius;
+                posSelectInfo.selectScale = selectRatio;
+                break;
+
+            case ProjectileSpawnActionInfo projectSpawnInfo:
+                //特殊信息自己获取
+                break;
+        }
     }
+    
+    
 
     public void InterruptSkill()
     {
@@ -89,6 +135,7 @@ public class SkillInfo
     public bool isFinished = false;
     public SkillEntity entity;
     public ActionInfo currentInfo;
+    public Dictionary<ActionInfo, Type> tempInfoRecords;
 }
 
 

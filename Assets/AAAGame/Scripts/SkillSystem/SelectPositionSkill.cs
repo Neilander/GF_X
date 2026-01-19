@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(fileName = "SelectPositionSkill", 
-    menuName = "Skills/SelectPositionSkill")]
+    menuName = "Skills/(ZObsolete)SelectPositionSkill")]
 public class SelectPositionSkill : BasicSkill
 {
-    [Header("选择相关数据")]
-    public float radius = 10f;
-    public Vector3 selectRatio;
+    //[Header("选择相关数据")]
+    //public float radius = 10f;
+    //public Vector3 selectRatio;
     
     protected override SkillInfo CreateSkillInfo(SkillEntity body)
     {

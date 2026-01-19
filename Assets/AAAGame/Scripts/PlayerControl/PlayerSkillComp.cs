@@ -55,6 +55,7 @@ public class PlayerSkillComp : ISkillComp
         if (curSkillPressed == -1)
             return;
         GF.Log("使用技能："+(curSkillPressed+1));
+        _entity.LockComp(_entity.atkComp,this);
         SkillSlot curSlot = _skillSlots[curSkillPressed];
        
         

@@ -49,6 +49,7 @@ public class PositionSelectAction : BasicAction
         {
             if (posInfo.showSelectorAlready)
                 return;
+           
 
             posInfo.showSelectorAlready = true;
             //生成新的selector
@@ -68,6 +69,14 @@ public class PositionSelectAction : BasicAction
         else
         {
             posInfo.curSelector.SetPosition(selectWorldPos);
+        }
+
+        if (info.inputs.SkillConfirmPressed)
+        {
+            GF.Entity.HideEntity(posInfo.curSelector.GetEntityID());
+            posInfo.curSelector = null;
+            (info.selfBody as SkillEntity).HideCastRange();
+            FinishAction(info);
         }
 
 

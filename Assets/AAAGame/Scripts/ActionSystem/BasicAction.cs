@@ -116,6 +116,9 @@ public abstract class BasicAction : ScriptableObject
 public class ActionInfo
 {
     public InputModel inputs;
+    public int executeIndex;
+    public SkillInfo fatherInfo;
+    public bool injectInfoAlready = false;
     
     // ===== 伤害相关 ====
     public GeneralCreature selfBody;
