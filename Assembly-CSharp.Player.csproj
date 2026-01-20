@@ -47,6 +47,7 @@
   <ItemGroup>
     <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
     <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
+    <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
     <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
@@ -664,17 +665,21 @@
       <Project>{a5032dee-cb58-aed2-20b9-cae849650cc5}</Project>
       <Name>UnityGameFramework.Runtime.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="Unity.VisualEffectGraph.Runtime.Player.csproj">
+      <Project>{ce35aec1-8db1-f8e0-284a-dcef881601a9}</Project>
+      <Name>Unity.VisualEffectGraph.Runtime.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="HybridCLR.Runtime.Player.csproj">
       <Project>{11693cc5-c957-d32f-ebb7-914a5ef1edbd}</Project>
       <Name>HybridCLR.Runtime.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="Unity.Jobs.Player.csproj">
-      <Project>{1fa1c082-4a24-e2d5-abd0-cc4b9bc9a759}</Project>
-      <Name>Unity.Jobs.Player</Name>
-    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Core.Runtime.Player.csproj">
       <Project>{66057ff6-e2e8-f3a3-726b-3183f5cca348}</Project>
       <Name>Unity.RenderPipelines.Core.Runtime.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.Jobs.Player.csproj">
+      <Project>{1fa1c082-4a24-e2d5-abd0-cc4b9bc9a759}</Project>
+      <Name>Unity.Jobs.Player</Name>
     </ProjectReference>
     <ProjectReference Include="GameFramework.Player.csproj">
       <Project>{7a4b85bd-047c-b186-d8ed-e6dd68ec32e1}</Project>

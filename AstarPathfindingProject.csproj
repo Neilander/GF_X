@@ -142,8 +142,8 @@
     <Compile Include="Packages/com.arongranberg.astar/Core/RVO/RVOCoreSimulatorBurst.cs" />
     <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/RecastMeshGatherer.cs" />
     <Compile Include="Packages/com.arongranberg.astar/Graphs/Navmesh/Voxels/VoxelContour.cs" />
-    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Rules/GridGraphRules.cs" />
     <Compile Include="Packages/com.arongranberg.astar/Core/AstarPath.cs" />
+    <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Rules/GridGraphRules.cs" />
     <Compile Include="Packages/com.arongranberg.astar/Modifiers/FunnelModifier.cs" />
     <Compile Include="Packages/com.arongranberg.astar/Graphs/Grid/Jobs/JobColliderHitsToBooleans.cs" />
     <Compile Include="Packages/com.arongranberg.astar/Modifiers/SimpleSmoothModifier.cs" />

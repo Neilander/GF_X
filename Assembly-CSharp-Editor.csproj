@@ -995,17 +995,21 @@
       <Project>{76b5a940-e855-a48d-3b0a-aa2d9ea6e9a5}</Project>
       <Name>UnityGameFramework.Runtime</Name>
     </ProjectReference>
+    <ProjectReference Include="Unity.VisualEffectGraph.Runtime.csproj">
+      <Project>{5c0b4279-9f9e-6a26-5abd-b83611cb2371}</Project>
+      <Name>Unity.VisualEffectGraph.Runtime</Name>
+    </ProjectReference>
     <ProjectReference Include="HybridCLR.Runtime.csproj">
       <Project>{56e79eba-135f-fc70-a744-24391065bbe9}</Project>
       <Name>HybridCLR.Runtime</Name>
     </ProjectReference>
-    <ProjectReference Include="Unity.Jobs.csproj">
-      <Project>{2049e4d4-ee9d-6ce6-4084-9dc2f35d0d13}</Project>
-      <Name>Unity.Jobs</Name>
-    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Core.Runtime.csproj">
       <Project>{3994101d-487b-ac00-77be-5c3173407ff1}</Project>
       <Name>Unity.RenderPipelines.Core.Runtime</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.Jobs.csproj">
+      <Project>{2049e4d4-ee9d-6ce6-4084-9dc2f35d0d13}</Project>
+      <Name>Unity.Jobs</Name>
     </ProjectReference>
     <ProjectReference Include="com.unity.cinemachine.editor.csproj">
       <Project>{02defc62-2f8f-af45-f7cf-4823fd50b260}</Project>
@@ -1070,6 +1074,10 @@
     <ProjectReference Include="Unity.RenderPipelines.Core.Editor.csproj">
       <Project>{249b63ce-de6b-ef0f-9094-153555eff7be}</Project>
       <Name>Unity.RenderPipelines.Core.Editor</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.VisualEffectGraph.Editor.csproj">
+      <Project>{f4b7d74b-3119-7868-3988-e1d113eeb0b2}</Project>
+      <Name>Unity.VisualEffectGraph.Editor</Name>
     </ProjectReference>
     <ProjectReference Include="Obfuz4HybridCLR.Editor.csproj">
       <Project>{42ca84ab-a72f-ff63-f999-40ec83bb3f6a}</Project>
