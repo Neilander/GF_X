@@ -1,23 +1,33 @@
 ﻿using JetBrains.Annotations;
+using UnityEngine;
 
 public static class BuildManager
 {
-    public static void UpgradeDevice(DeviceEntity device)
+    public static void UpgradeDevice(DeviceEntity device, string upgradeId)
     {
-        if (!HasBuildCapability(device.UpgradeDeviceID)) return;
-        if (!HasBuildCost(device.UpgradeDeviceID)) return;
-        BuildDevice(device.UpgradeDeviceID);
-        GF.Entity.HideEntity(device.Entity);
+        if (!SatisfyBuildCondition(upgradeId) || !HasBuildCost(upgradeId)) return;
+
+        bool built = BuildDevice(upgradeId, device.CachedTransform.position);
+        if (built)
+            GF.Entity.HideEntity(device.Entity);
     }
 
-    public static void BuildDevice(string deviceID)
+
+    public static bool BuildDevice(string deviceID, Vector3 position)
     {
-        if (!HasBuildCapability(deviceID)) return;
-        if (!HasBuildCost(deviceID)) return;
-        Device device = DeviceDataModel.GetDeviceData(deviceID);
-        var deviceParams = EntityParams.Create();
+        if (!SatisfyBuildCondition(deviceID) || !HasBuildCost(deviceID)) return false;
+
+        Device deviceData = DeviceDataModel.GetDeviceData(deviceID);
+        if (deviceData == null) return false;
+
+        if (!ItemCollectionDataModel.ConsumeItems(deviceData.CostMaterial)) return false;
+
+        var deviceParams = EntityParams.Create(position);
+        deviceParams.Set(DeviceEntity.P_DeviceData, deviceData);
         //建造参数
-        GF.Entity.ShowEntity<DeviceEntity>(device.PrefabName, Const.EntityGroup.Building, deviceParams);
+        GF.Entity.ShowEntity<DeviceEntity>(deviceData.PrefabName, Const.EntityGroup.Building, deviceParams);
+
+        return true;
     }
 
     public static bool HasBuildCost(string deviceID)
@@ -28,13 +38,11 @@ public static class BuildManager
     }
 
     /// <summary>
-    /// 检查建造所需能力（Capability），为空则视为无需校验。
+    /// 检查建造所需解锁条件（UnlockCondition），为空/None 则视为无需校验。
     /// </summary>
-    public static bool HasBuildCapability(string deviceID)
+    public static bool SatisfyBuildCondition(string deviceID)
     {
         var device = DeviceDataModel.GetDeviceData(deviceID);
-        if (device == null) return false;
-        if (string.IsNullOrWhiteSpace(device.BuildCapability)) return true;
-        return CapabilityDataModel.HasCapability(device.BuildCapability);
+        return UnlockCondition.IsSatisfied(device.BuildCondition);
     }
 }

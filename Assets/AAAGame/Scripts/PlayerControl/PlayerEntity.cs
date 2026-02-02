@@ -10,7 +10,7 @@ public class PlayerEntity : MAEntity
         string moveFacPath = "PlayerMoveFactory";
         //string atkFacPath = "PlayerAtkFactory";
         //设置组件
-        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),this);
+        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),MoveCompFactory.MoveFactoryCallBack,this );
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),AtkCompFactory.AtkFactoryCallBack,this );
     }
@@ -18,10 +18,10 @@ public class PlayerEntity : MAEntity
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
-        CameraController.Instance.SetFollowTarget(gameObject.transform);
+        CameraController.Instance.SetFollowTargetLegacyIsometric(gameObject.transform, false);
         if (userData is EntityParams)
         {
-            transform.position = (userData as EntityParams).position?? Vector3.zero;
+            transform.position = (userData as EntityParams).position ?? Vector3.zero;
         }
     }
 }

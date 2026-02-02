@@ -18,6 +18,7 @@ MonoBehaviour:
   - CharacterMAFactoryTable
   - CharacterMainPropertyTable
   - LevelTable
+  - Build/DeviceTable
   - Core/EntityGroupTable
   - Core/LanguagesTable
   - Core/SoundGroupTable
@@ -28,6 +29,9 @@ MonoBehaviour:
   - Item/ItemWithEffectTable_Consumable
   - Item/ItemWithEffectTable_Equipment
   - Item/ItemWithEffectTable_Tool
+  - Tech/TechNodeTable
+  - Text/LocalizationTextTable_InteractionOption
+  - Text/LocalizationTextTable_Misc
   mConfigs:
   - GameConfig
   mLanguages:
@@ -41,5 +45,9 @@ MonoBehaviour:
   - CharacterTestProcedure
   - GameOverProcedure
   - GameProcedure
+  - LevelTestProcedure
   - MenuProcedure
   - PreloadProcedure
+  - LaunchProcedure
+  - LoadHotfixDllProcedure
+  - UpdateResourcesProcedure

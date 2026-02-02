@@ -1,0 +1,15 @@
+﻿#	交互选项文本多语言表			i18n
+#	ID		Identifier	Text
+#	int		string	string
+#		备注	在代码中的命名标识符	选项文本(多语言)
+	1		InteractOption_Build	Interact.Option.Text.Build
+	2		InteractOption_Upgrade	Interact.Option.Text.Upgrade
+	3		InteractOption_Open	Interact.Option.Text.Open
+	4		InteractOption_Collect	Interact.Option.Text.Collect
+	5		InteractOption_PickUp	Interact.Option.Text.PickUp
+	6		InteractOption_Chat	Interact.Option.Text.Chat
+	7		InteractOption_Check	Interact.Option.Text.Check
+	8		InteractOption_Enter	Interact.Option.Text.Enter
+	9		InteractOption_Leave	Interact.Option.Text.Leave
+	10		InteractOption_Choose	Interact.Option.Text.Choose
+	11		InteractOption_Craft	Interact.Option.Text.Craft

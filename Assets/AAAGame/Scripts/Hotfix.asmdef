@@ -13,7 +13,8 @@
         "Unity.Jobs",
         "Unity.Collections",
         "Unity.Mathematics",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "AstarPathfindingProject"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -1,0 +1,6 @@
+﻿#	杂项文本多语言表			i18n
+#	ID		Identifier	TextKey
+#	int		string	string
+#		备注	在代码中的命名标识符	选项文本(多语言)
+	1	科技节点研究按钮	Tech_Research	MiscText.Tech.Research
+	2	科技节点已研究按钮	Tech_Researched	MiscText.Tech.Researched

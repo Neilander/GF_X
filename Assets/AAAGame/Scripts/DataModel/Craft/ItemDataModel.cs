@@ -63,8 +63,8 @@ public class ItemDataModel : DataModelBase
                          row.Rarity,
                          row.MaxStack,
                          row.SpriteName,
-                         GF.Localization.GetString(row.Name),
-                         GF.Localization.GetString(row.Description),
+                         row.NameKey,
+                         row.DescriptionKey,
                          itemType,
                          row.Tags);
         return item;
@@ -75,8 +75,8 @@ public class ItemDataModel : DataModelBase
                          row.Rarity,
                          row.MaxStack,
                          row.SpriteName,
-                         GF.Localization.GetString(row.Name),
-                         GF.Localization.GetString(row.Description),
+                         row.NameKey,
+                         row.DescriptionKey,
                          itemType,
                          row.Tags,
                          row.PropertyNumerals,

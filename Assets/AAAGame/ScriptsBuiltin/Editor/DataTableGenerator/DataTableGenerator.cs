@@ -113,7 +113,7 @@ namespace GameFramework.Editor.DataTableTools
                 }
                 string dataTypeKeyword = dataTableProcessor.GetLanguageKeyword(i);
                 string dataComment = dataTableProcessor.GetComment(i);
-                if (dataTypeKeyword == "enum" || dataTypeKeyword == "enum[]")
+                if (dataTypeKeyword == "enum" || dataTypeKeyword == "enum[]" || dataTypeKeyword == "enum?")
                 {
                     var firstEnumValue = GetFirstEnumValue(dataTableProcessor, i);
                     if (!DataTableExtension.TryParseEnum(firstEnumValue, out Type enumType))
@@ -124,6 +124,7 @@ namespace GameFramework.Editor.DataTableTools
 
                     string propTypeName = enumType.FullName.Replace('+', '.');
                     if (dataTypeKeyword == "enum[]") propTypeName += "[]";
+                    else if (dataTypeKeyword == "enum?") propTypeName += "?";
 
                     stringBuilder
                     .AppendLine("        /// <summary>")
@@ -219,7 +220,7 @@ namespace GameFramework.Editor.DataTableTools
                         {
                             stringBuilder.AppendFormat("            {0} = columnStrings[index++];", dataTableProcessor.GetName(i)).AppendLine();
                         }
-                        else if (languageKeyword == "enum")
+                        else if (languageKeyword == "enum" || languageKeyword == "enum?")
                         {
                             var firstEnumValue = GetFirstEnumValue(dataTableProcessor, i);
                             if (!DataTableExtension.TryParseEnum(firstEnumValue, out Type enumType))
@@ -228,7 +229,14 @@ namespace GameFramework.Editor.DataTableTools
                                 continue;
                             }
 
-                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseEnum<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            if (languageKeyword == "enum?")
+                            {
+                                stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseNullableEnum<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            }
+                            else
+                            {
+                                stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseEnum<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            }
                         }
                         else
                         {
@@ -317,7 +325,7 @@ namespace GameFramework.Editor.DataTableTools
                         {
                             stringBuilder.AppendFormat("                    {0} = binaryReader.Read7BitEncoded{1}();", dataTableProcessor.GetName(i), dataTableProcessor.GetType(i).Name).AppendLine();
                         }
-                        else if (languageKeyword == "enum")
+                        else if (languageKeyword == "enum" || languageKeyword == "enum?")
                         {
                             var firstEnumValue = GetFirstEnumValue(dataTableProcessor, i);
                             if (!DataTableExtension.TryParseEnum(firstEnumValue, out Type enumType))
@@ -325,7 +333,14 @@ namespace GameFramework.Editor.DataTableTools
                                 GFBuiltin.LogError(Utility.Text.Format("解析枚举类型失败:{0}, 配置枚举格式为: EnumType.Item1", firstEnumValue));
                                 continue;
                             }
-                            stringBuilder.AppendFormat("                    {0} = binaryReader.ReadEnum<{1}>();", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            if (languageKeyword == "enum?")
+                            {
+                                stringBuilder.AppendFormat("                    {0} = binaryReader.ReadNullableEnum<{1}>();", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            }
+                            else
+                            {
+                                stringBuilder.AppendFormat("                    {0} = binaryReader.ReadEnum<{1}>();", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
+                            }
                         }
                         else
                         {
@@ -368,7 +383,11 @@ namespace GameFramework.Editor.DataTableTools
             {
                 if (!dataTableProcessor.IsCommentRow(i))
                 {
-                    return dataTableProcessor.GetValue(i, col);
+                    var v = dataTableProcessor.GetValue(i, col);
+                    if (!string.IsNullOrWhiteSpace(v))
+                    {
+                        return v;
+                    }
                 }
             }
             return string.Empty;

@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-public partial class CraftingDialog : UIFormBase
+public partial class CraftingDialog : InteractionPanel
 {
-    public const string P_CraftingFormulas = "CraftingFormulas";
+    DeviceEntity _owner;
     List<CraftingFormula> craftingFormulas;
     Dictionary<CraftingUnit, CraftingFormula> craftingUnits;
     List<ItemUnit> itemUnits;
@@ -14,7 +14,8 @@ public partial class CraftingDialog : UIFormBase
     {
         base.OnOpen(userData);
         GF.Event.Subscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
-        craftingFormulas = Params.Get(P_CraftingFormulas) as List<CraftingFormula>;
+        _owner = Params.Get(P_Owner) as DeviceEntity;
+        craftingFormulas = CraftingDeviceDataModel.GetCraftingDeviceData(_owner.deviceData.Identifier);
         RefreshList();
         RefreshCraftableUnits();
     }
@@ -25,6 +26,8 @@ public partial class CraftingDialog : UIFormBase
     }
     private void RefreshList()
     {
+        UnspawnAllItem<UIItemObject>(varItemUnit);
+        UnspawnAllItem<UIItemObject>(varCraftingUnit);
         craftingUnits = new();
         itemUnits = new();
         foreach (var formula in craftingFormulas)

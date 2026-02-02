@@ -39,11 +39,13 @@ public class DeviceDataModel : DataModelBase
     {
         Device device = new(row.Identifier,
                             row.CostMaterial,
-                            row.BuildCapability,
+                            row.BuildCondition,
                             row.Workload,
                             row.PrefabName,
-                            GF.Localization.GetString(row.Name),
-                            GF.Localization.GetString(row.Description));
+                            row.NameKey,
+                            row.DescriptionKey,
+                            row.UpgradeID,
+                            row.InteractionPanelID);
         return device;
     }
 }

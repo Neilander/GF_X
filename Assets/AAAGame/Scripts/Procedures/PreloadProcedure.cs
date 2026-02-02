@@ -62,7 +62,7 @@ public class PreloadProcedure : ProcedureBase
             preloadAllCompleted = true;
             InitGameFrameworkSettings();
             GF.Log("预加载完成, 进入游戏场景.");
-            procedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, "Game");
+            procedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, "LevelTestScene");
             ChangeState<ChangeSceneProcedure>(procedureOwner);
         }
     }

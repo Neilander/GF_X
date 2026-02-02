@@ -73,6 +73,15 @@ public class UITable : DataRowBase
             private set;
         }
 
+        /// <summary>
+        /// 是否屏蔽角色控制
+        /// </summary>
+        public bool BlockCharacterControl
+        {
+            get;
+            private set;
+        }
+
         public override bool ParseDataRow(string dataRowString, object userData)
         {
             string[] columnStrings = dataRowString.Split(DataTableExtension.DataSplitSeparators);
@@ -90,6 +99,7 @@ public class UITable : DataRowBase
             PauseCoveredUI = bool.Parse(columnStrings[index++]);
             UIGroupId = int.Parse(columnStrings[index++]);
             EscapeClose = bool.Parse(columnStrings[index++]);
+            BlockCharacterControl = bool.Parse(columnStrings[index++]);
 
             return true;
         }
@@ -106,6 +116,7 @@ public class UITable : DataRowBase
                     PauseCoveredUI = binaryReader.ReadBoolean();
                     UIGroupId = binaryReader.Read7BitEncodedInt32();
                     EscapeClose = binaryReader.ReadBoolean();
+                    BlockCharacterControl = binaryReader.ReadBoolean();
                 }
             }
 

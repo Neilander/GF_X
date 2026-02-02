@@ -67,7 +67,7 @@ public class DeviceTable : DataRowBase
         /// <summary>
         /// 设备名(多语言)
         /// </summary>
-        public string Name
+        public string NameKey
         {
             get;
             private set;
@@ -76,7 +76,7 @@ public class DeviceTable : DataRowBase
         /// <summary>
         /// 设备描述(多语言)
         /// </summary>
-        public string Description
+        public string DescriptionKey
         {
             get;
             private set;
@@ -85,7 +85,25 @@ public class DeviceTable : DataRowBase
         /// <summary>
         /// 建造条件
         /// </summary>
-        public string BuildCapability
+        public UnlockCondition BuildCondition
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 升级设备ID
+        /// </summary>
+        public string UpgradeID
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 交互面板UIViews
+        /// </summary>
+        public UIViews? InteractionPanelID
         {
             get;
             private set;
@@ -107,9 +125,11 @@ public class DeviceTable : DataRowBase
             CostMaterial = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             Workload = DataTableExtension.ParseFix64(columnStrings[index++]);
             PrefabName = columnStrings[index++];
-            Name = columnStrings[index++];
-            Description = columnStrings[index++];
-            BuildCapability = columnStrings[index++];
+            NameKey = columnStrings[index++];
+            DescriptionKey = columnStrings[index++];
+            BuildCondition = DataTableExtension.ParseUnlockCondition(columnStrings[index++]);
+            UpgradeID = columnStrings[index++];
+            InteractionPanelID = DataTableExtension.ParseNullableEnum<UIViews>(columnStrings[index++]);
 
             return true;
         }
@@ -125,9 +145,11 @@ public class DeviceTable : DataRowBase
                     CostMaterial = binaryReader.ReadStringIntPairArray();
                     Workload = binaryReader.ReadFix64();
                     PrefabName = binaryReader.ReadString();
-                    Name = binaryReader.ReadString();
-                    Description = binaryReader.ReadString();
-                    BuildCapability = binaryReader.ReadString();
+                    NameKey = binaryReader.ReadString();
+                    DescriptionKey = binaryReader.ReadString();
+                    BuildCondition = binaryReader.ReadUnlockCondition();
+                    UpgradeID = binaryReader.ReadString();
+                    InteractionPanelID = binaryReader.ReadNullableEnum<UIViews>();
                 }
             }
 

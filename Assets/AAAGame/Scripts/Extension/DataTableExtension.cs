@@ -355,6 +355,16 @@ public static class DataTableExtension
         }
         return default(TEnum);
     }
+
+    public static TEnum? ParseNullableEnum<TEnum>(string value) where TEnum : struct, Enum
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return ParseEnum<TEnum>(value);
+    }
     public static TEnum ReadEnum<TEnum>(this BinaryReader binaryReader) where TEnum : struct, Enum
     {
         int value = binaryReader.Read7BitEncodedInt32();
@@ -363,6 +373,17 @@ public static class DataTableExtension
             return (TEnum)(object)value;
         }
         throw new GameFrameworkException(Utility.Text.Format("Value {0} is not defined in enum {1}.", value, typeof(TEnum).Name));
+    }
+
+    public static TEnum? ReadNullableEnum<TEnum>(this BinaryReader binaryReader) where TEnum : struct, Enum
+    {
+        bool hasValue = binaryReader.ReadBoolean();
+        if (!hasValue)
+        {
+            return null;
+        }
+
+        return binaryReader.ReadEnum<TEnum>();
     }
     /// <summary>
     /// 解析数据表数组
@@ -495,50 +516,53 @@ public static class DataTableExtension
         return result;
     }
 
-    public static TechCondition[] ParseTechConditionArray(string value)
+    public static UnlockCondition[] ParseUnlockConditionArray(string value)
     {
         string[] arr = ParseArrayElements(value);
-        if (arr.Length == 0) return Array.Empty<TechCondition>();
+        if (arr.Length == 0) return Array.Empty<UnlockCondition>();
 
-        TechCondition[] result = new TechCondition[arr.Length];
+        UnlockCondition[] result = new UnlockCondition[arr.Length];
         for (int i = 0; i < arr.Length; i++)
         {
             var parts = arr[i].Split(',', 2);
             var typeStr = parts.Length > 0 ? parts[0].Trim() : string.Empty;
             var args = parts.Length > 1 ? parts[1].Trim() : string.Empty;
 
-            if (!Enum.TryParse(typeStr, true, out TechConditionType type) || type == TechConditionType.None)
+            if (!Enum.TryParse(typeStr, true, out UnlockConditionType type))
             {
-                throw new GameFrameworkException(Utility.Text.Format("Invalid TechConditionType '{0}'.", typeStr));
+                throw new GameFrameworkException(Utility.Text.Format("Invalid UnlockConditionType '{0}'.", typeStr));
             }
 
-            result[i] = new TechCondition(type, args);
+            result[i] = new UnlockCondition(type, args);
         }
 
         return result;
     }
 
-    public static TechEffect[] ParseTechEffectArray(string value)
+    public static UnlockCondition ParseUnlockCondition(string value)
     {
-        string[] arr = ParseArrayElements(value);
-        if (arr.Length == 0) return Array.Empty<TechEffect>();
-
-        TechEffect[] result = new TechEffect[arr.Length];
-        for (int i = 0; i < arr.Length; i++)
+        if (string.IsNullOrWhiteSpace(value))
         {
-            var parts = arr[i].Split(',', 2);
-            var typeStr = parts.Length > 0 ? parts[0].Trim() : string.Empty;
-            var args = parts.Length > 1 ? parts[1].Trim() : string.Empty;
-
-            if (!Enum.TryParse(typeStr, true, out TechEffectType type) || type == TechEffectType.None)
-            {
-                throw new GameFrameworkException(Utility.Text.Format("Invalid TechEffectType '{0}'.", typeStr));
-            }
-
-            result[i] = new TechEffect(type, args);
+            return null;
         }
 
-        return result;
+        var s = value.Trim();
+        // 兼容可能的单元素数组写法：[Tech,TechNode_Map_1]
+        if (s.Length >= 2 && s[0] == '[' && s[^1] == ']')
+        {
+            s = s.Substring(1, s.Length - 2).Trim();
+        }
+
+        var parts = s.Split(',', 2);
+        var typeStr = parts.Length > 0 ? parts[0].Trim() : string.Empty;
+        var id = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+
+        if (!Enum.TryParse(typeStr, true, out UnlockConditionType type))
+        {
+            throw new GameFrameworkException(Utility.Text.Format("Invalid UnlockConditionType '{0}'.", typeStr));
+        }
+
+        return new UnlockCondition(type, id);
     }
     public static StringIntPair[] ReadStringIntPairArray(this BinaryReader binaryReader)
     {
@@ -553,30 +577,24 @@ public static class DataTableExtension
         return result;
     }
 
-    public static TechCondition[] ReadTechConditionArray(this BinaryReader binaryReader)
+    public static UnlockCondition[] ReadUnlockConditionArray(this BinaryReader binaryReader)
     {
         int length = binaryReader.Read7BitEncodedInt32();
-        TechCondition[] result = new TechCondition[length];
+        UnlockCondition[] result = new UnlockCondition[length];
         for (int i = 0; i < length; i++)
         {
             int typeValue = binaryReader.Read7BitEncodedInt32();
             string args = binaryReader.ReadString();
-            result[i] = new TechCondition((TechConditionType)typeValue, args);
+            result[i] = new UnlockCondition((UnlockConditionType)typeValue, args);
         }
         return result;
     }
 
-    public static TechEffect[] ReadTechEffectArray(this BinaryReader binaryReader)
+    public static UnlockCondition ReadUnlockCondition(this BinaryReader binaryReader)
     {
-        int length = binaryReader.Read7BitEncodedInt32();
-        TechEffect[] result = new TechEffect[length];
-        for (int i = 0; i < length; i++)
-        {
-            int typeValue = binaryReader.Read7BitEncodedInt32();
-            string args = binaryReader.ReadString();
-            result[i] = new TechEffect((TechEffectType)typeValue, args);
-        }
-        return result;
+        int typeValue = binaryReader.Read7BitEncodedInt32();
+        string id = binaryReader.ReadString();
+        return new UnlockCondition((UnlockConditionType)typeValue, id);
     }
     public static T[] ReadArray<T>(this BinaryReader binaryReader)
     {

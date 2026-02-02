@@ -6,7 +6,7 @@ using UnityGameFramework.Runtime;
 
 /// <summary>
 /// 科技进度（持久化）：只记录“已研究的科技”。
-/// 解锁内容（配方/建造/功能）由研究成功后的 Effects 驱动（后续接入）。
+/// 说明：点亮后仅记录，不主动触发任何效果。
 /// </summary>
 public class TechProgressDataModel : DataModelStorageBase
 {
@@ -41,7 +41,7 @@ public class TechProgressDataModel : DataModelStorageBase
             return false;
         }
 
-        var data = TechTreeDataModel.GetNodeData(techId);
+        var data = TechNodeDataModel.GetNodeData(techId);
         if (data == null)
         {
             failReason = TechResearchFailReason.TechNotFound;
@@ -55,8 +55,7 @@ public class TechProgressDataModel : DataModelStorageBase
         }
 
         // 必备条件：基地等级 >= 节点 Level（由表中 TechLevel 决定）
-        var baseDm = GF.DataModel.GetOrCreate<BaseProgressDataModel>();
-        if (baseDm.BaseLevel < data.Level)
+        if (!UnlockCondition.IsSatisfied(new UnlockCondition(UnlockConditionType.BaseLevel, data.Level.ToString())))
         {
             failReason = TechResearchFailReason.BaseLevelTooLow;
             return false;
@@ -68,7 +67,7 @@ public class TechProgressDataModel : DataModelStorageBase
             for (int i = 0; i < data.PrereqTechIds.Length; i++)
             {
                 var prereq = data.PrereqTechIds[i];
-                if (!string.IsNullOrWhiteSpace(prereq) && !IsUnlocked(prereq))
+                if (!string.IsNullOrWhiteSpace(prereq) && !UnlockCondition.IsSatisfied(new UnlockCondition(UnlockConditionType.Tech, prereq)))
                 {
                     failReason = TechResearchFailReason.MissingPrereqTech;
                     return false;
@@ -76,17 +75,14 @@ public class TechProgressDataModel : DataModelStorageBase
             }
         }
 
-        // 条件 - AND（不需要配置 BaseLevelGE；若配置了，也会单独判定，不影响必备等级校验）
+        // 条件 - AND（统一使用 UnlockCondition 判定逻辑）
         if (data.AllConditions != null)
         {
             for (int i = 0; i < data.AllConditions.Length; i++)
             {
-                if (!EvaluateCondition(data.AllConditions[i], out failReason))
+                if (!UnlockCondition.IsSatisfied(data.AllConditions[i]))
                 {
-                    if (failReason == TechResearchFailReason.None)
-                    {
-                        failReason = TechResearchFailReason.ConditionNotMet;
-                    }
+                    failReason = TechResearchFailReason.ConditionNotMet;
                     return false;
                 }
             }
@@ -98,7 +94,7 @@ public class TechProgressDataModel : DataModelStorageBase
             bool anyOk = false;
             for (int i = 0; i < data.AnyConditions.Length; i++)
             {
-                if (EvaluateCondition(data.AnyConditions[i], out _))
+                if (UnlockCondition.IsSatisfied(data.AnyConditions[i]))
                 {
                     anyOk = true;
                     break;
@@ -123,102 +119,27 @@ public class TechProgressDataModel : DataModelStorageBase
 
     public static bool Research(string techId)
     {
+        var dm = GF.DataModel.GetOrCreate<TechProgressDataModel>();
         if (!CanResearch(techId, out var reason))
         {
-            GF.Event.Fire(GF.DataModel.GetOrCreate<TechProgressDataModel>(), TechResearchFailedEventArgs.Create(techId, reason));
+            GF.Event.Fire(dm, TechResearchFailedEventArgs.Create(techId, reason));
             return false;
         }
 
-        var data = TechTreeDataModel.GetNodeData(techId);
-        if (data == null)
-        {
-            GF.Event.Fire(GF.DataModel.GetOrCreate<TechProgressDataModel>(), TechResearchFailedEventArgs.Create(techId, TechResearchFailReason.TechNotFound));
-            return false;
-        }
+        var data = TechNodeDataModel.GetNodeData(techId);
 
         // 扣除成本（物品）
         if (data.CostMaterial != null)
         {
-            for (int i = 0; i < data.CostMaterial.Length; i++)
-            {
-                var cost = data.CostMaterial[i];
-                ItemCollectionDataModel.ModifyItemAmount(cost.str, -cost.num);
-            }
+            ItemCollectionDataModel.ConsumeItems(data.CostMaterial);
         }
 
-        var dm = GF.DataModel.GetOrCreate<TechProgressDataModel>();
         dm.m_UnlockedTechIds.Add(techId);
         dm.m_UnlockOrder.Add(techId);
         dm.m_UnlockTimeTicks[techId] = DateTime.UtcNow.Ticks;
         dm.Save();
 
         GF.Event.Fire(dm, TechUnlockedEventArgs.Create(techId));
-
-        // 应用效果（最小集：仅处理 GrantCapability，作为统一 gate）
-        ApplyEffects(data);
         return true;
-    }
-
-    private static void ApplyEffects(TechNodeData data)
-    {
-        if (data.Effects == null) return;
-        for (int i = 0; i < data.Effects.Length; i++)
-        {
-            var eff = data.Effects[i];
-            switch (eff.Type)
-            {
-                case TechEffectType.GrantCapability:
-                    CapabilityDataModel.Grant(eff.S1);
-                    break;
-                    // 其他类型（GrantRecipe/UnlockBuildable/EnableFeature）可在此转写为 capability 或后续实现
-            }
-        }
-    }
-
-    private static bool EvaluateCondition(TechCondition condition, out TechResearchFailReason failReason)
-    {
-        failReason = TechResearchFailReason.None;
-
-        switch (condition.Type)
-        {
-            case TechConditionType.BaseLevelGE:
-                {
-                    var baseDm = GF.DataModel.GetOrCreate<BaseProgressDataModel>();
-                    if (baseDm.BaseLevel < condition.I1)
-                    {
-                        failReason = TechResearchFailReason.BaseLevelTooLow;
-                        return false;
-                    }
-                    return true;
-                }
-            case TechConditionType.HasTech:
-                {
-                    if (!IsUnlocked(condition.S1))
-                    {
-                        failReason = TechResearchFailReason.MissingPrereqTech;
-                        return false;
-                    }
-                    return true;
-                }
-            case TechConditionType.HasItem:
-                {
-                    if (!ItemCollectionDataModel.HasItem(condition.S1, condition.I1))
-                    {
-                        failReason = TechResearchFailReason.ConditionNotMet;
-                        return false;
-                    }
-                    return true;
-                }
-            case TechConditionType.QuestDone:
-            case TechConditionType.PlotFlag:
-                {
-                    // 预留入口：你做任务/剧情系统后，把这里替换为真实判定即可。
-                    failReason = TechResearchFailReason.ConditionNotMet;
-                    return false;
-                }
-            default:
-                failReason = TechResearchFailReason.UnknownCondition;
-                return false;
-        }
     }
 }
