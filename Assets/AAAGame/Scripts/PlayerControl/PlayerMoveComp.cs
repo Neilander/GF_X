@@ -27,7 +27,20 @@ public class PlayerMoveComp : IMoveComp
 
         move = move.normalized * speed;
 
-        playerEntity.cController.Move(move * Time.deltaTime);
+        playerEntity.cController.Move(move * Time.deltaTime*0.1f);
+        playerEntity.animator.SetFloat("Speed",move.magnitude);
+        if (translated.x < -0.01f)
+        {
+            Vector3 scale = playerEntity.display.localScale;
+            scale.x = -Mathf.Abs(scale.x);
+            playerEntity.display.localScale = scale;
+        }
+        else if (translated.x > 0.01f)
+        {
+            Vector3 scale = playerEntity.display.localScale;
+            scale.x = Mathf.Abs(scale.x);
+            playerEntity.display.localScale = scale;
+        }
         //GF.Log("移动按键的值是"+ _inputModel.MoveX +","+_inputModel.MoveY);
         //GF.Log("交互按键的值是"+ _inputModel.InteractionPressed);
         
@@ -38,4 +51,7 @@ public class PlayerMoveComp : IMoveComp
     {
         playerEntity = entity;
     }
+    
+    public void ShutDown() { }
+    public void Resume() { }
 }

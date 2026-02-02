@@ -17,6 +17,13 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _interact2Action;
     private InputAction _interact3Action;
     private InputAction _openTechTreeAction;
+    private InputAction _attackAction;
+    private InputAction _skill1Action;
+    private InputAction _skill2Action;
+    private InputAction _skill3Action;
+
+    private InputAction _selectPositionAction;
+    private InputAction _skillConfirmAction;
 
 
     protected override void Awake()
@@ -38,6 +45,13 @@ public partial class InputManager : GameFrameworkComponent
         _interact2Action = actions.FindAction("Player/Interact2");
         _interact3Action = actions.FindAction("Player/Interact3");
         _openTechTreeAction = actions.FindAction("Player/OpenTechTree");
+        _attackAction = actions.FindAction("Player/Attack");
+        _skill1Action = actions.FindAction("Player/Skill1");
+        _skill2Action = actions.FindAction("Player/Skill2");
+        _skill3Action = actions.FindAction("Player/Skill3");
+        
+        _selectPositionAction = actions.FindAction("Player/SelectPosition");
+        _skillConfirmAction = actions.FindAction("Player/SkillConfirm");
     }
 
     private void OnDestroy()
@@ -89,10 +103,10 @@ public partial class InputManager : GameFrameworkComponent
             }
         }
 
-        public override void SwitchWhenUpdate(InputState curState)
+        public override void SwitchWhenUpdate(InputState currentState)
         {
-            base.SwitchWhenUpdate(curState);
-            switch (curState)
+            base.SwitchWhenUpdate(currentState);
+            switch (currentState)
             {
                 case InputState.Game:
                     if (father._model == null)
@@ -106,13 +120,22 @@ public partial class InputManager : GameFrameworkComponent
                     // 写入你的 Model
                     father._model.MoveX = (Fix64)move.x;
                     father._model.MoveY = (Fix64)move.y;
-
+                    
                     // Interact 按下
                     father._model.InteractionPressed = father._interactAction != null && father._interactAction.WasPressedThisFrame();
                     father._model.Interaction2Pressed = father._interact2Action != null && father._interact2Action.WasPressedThisFrame();
                     father._model.Interaction3Pressed = father._interact3Action != null && father._interact3Action.WasPressedThisFrame();
                     father._model.OpenTechTreePressed = father._openTechTreeAction != null && father._openTechTreeAction.WasPressedThisFrame();
 
+                    //攻击和技能触发
+                    father._model.PlayerAttack = father._attackAction.WasPressedThisFrame();
+                    father._model.Skill1Pressed = father._skill1Action.WasPressedThisFrame();
+                    father._model.Skill2Pressed = father._skill2Action.WasPressedThisFrame();
+                    father._model.Skill3Pressed = father._skill3Action.WasPressedThisFrame();
+
+                    //技能期间交互
+                    father._model.SelectScreenPosition = father._selectPositionAction.ReadValue<Vector2>();
+                    father._model.SkillConfirmPressed = father._skillConfirmAction.WasPressedThisFrame();
                     break;
             }
         }

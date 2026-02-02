@@ -56,8 +56,8 @@
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/Utilities/BitArray.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/Common/DynamicResolutionHandler.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/Utilities/TextureCurve.cs" />
-    <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/RenderGraph/RenderGraph.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/LookDev/IDataProvider.cs" />
+    <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/RenderGraph/RenderGraph.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/Debugging/Prefabs/Scripts/DebugUIHandlerUIntField.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/Debugging/DebugUpdater.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.12/Runtime/Textures/RTHandle.cs" />

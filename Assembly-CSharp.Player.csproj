@@ -45,7 +45,10 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
     <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
+    <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
+    <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
     </Reference>
@@ -662,17 +665,21 @@
       <Project>{a5032dee-cb58-aed2-20b9-cae849650cc5}</Project>
       <Name>UnityGameFramework.Runtime.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="Unity.VisualEffectGraph.Runtime.Player.csproj">
+      <Project>{ce35aec1-8db1-f8e0-284a-dcef881601a9}</Project>
+      <Name>Unity.VisualEffectGraph.Runtime.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="HybridCLR.Runtime.Player.csproj">
       <Project>{11693cc5-c957-d32f-ebb7-914a5ef1edbd}</Project>
       <Name>HybridCLR.Runtime.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="Unity.Jobs.Player.csproj">
-      <Project>{1fa1c082-4a24-e2d5-abd0-cc4b9bc9a759}</Project>
-      <Name>Unity.Jobs.Player</Name>
-    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Core.Runtime.Player.csproj">
       <Project>{66057ff6-e2e8-f3a3-726b-3183f5cca348}</Project>
       <Name>Unity.RenderPipelines.Core.Runtime.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.Jobs.Player.csproj">
+      <Project>{1fa1c082-4a24-e2d5-abd0-cc4b9bc9a759}</Project>
+      <Name>Unity.Jobs.Player</Name>
     </ProjectReference>
     <ProjectReference Include="GameFramework.Player.csproj">
       <Project>{7a4b85bd-047c-b186-d8ed-e6dd68ec32e1}</Project>
@@ -682,6 +689,10 @@
       <Project>{82878617-8f1d-6a27-8c9d-c75bacd83dbd}</Project>
       <Name>Obfuz.Runtime.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="Boxophobic.Utils.Scripts.Player.csproj">
+      <Project>{a72bcb9d-b17c-69a0-786d-8de67e158fc4}</Project>
+      <Name>Boxophobic.Utils.Scripts.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="Newtonsoft.Json.UnityConverters.Mathematics.Player.csproj">
       <Project>{3aa8d5e6-3b6b-678d-3d60-b30005c4fc5d}</Project>
       <Name>Newtonsoft.Json.UnityConverters.Mathematics.Player</Name>
@@ -690,6 +701,14 @@
       <Project>{612e6bd0-e69c-8fec-9762-a9d018814e40}</Project>
       <Name>ZString.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="Drawing.Player.csproj">
+      <Project>{820cd10d-6477-4066-a911-ce41ea001de6}</Project>
+      <Name>Drawing.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.Player.csproj">
+      <Project>{15e6472e-0678-968c-cd47-4611dd21b5e0}</Project>
+      <Name>Boxophobic.PolyverseSkies.Runtime.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.Player.csproj">
       <Project>{75568ae3-b9a4-db7d-c894-5936a8ec5258}</Project>
       <Name>Unity.RenderPipelines.Universal.Config.Runtime.Player</Name>
@@ -697,6 +716,10 @@
     <ProjectReference Include="Unity.RenderPipelines.Core.ShaderLibrary.Player.csproj">
       <Project>{c141044b-38dc-19ad-fd67-a15b2cec2ccb}</Project>
       <Name>Unity.RenderPipelines.Core.ShaderLibrary.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="AstarPathfindingProject.Player.csproj">
+      <Project>{6ce75395-0b19-da9a-36a7-a274074ccd57}</Project>
+      <Name>AstarPathfindingProject.Player</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.Collections.Player.csproj">
       <Project>{98d2d39c-4c37-ca12-4e4d-8ac6b99d14ee}</Project>
@@ -730,6 +753,10 @@
       <Project>{4f8647d8-55c8-4dc9-c1e5-d68f8ddea6f8}</Project>
       <Name>UniTask.Linq.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="PackageTools.Player.csproj">
+      <Project>{b039a8e1-1d00-b6a3-16bc-0156fedb3f72}</Project>
+      <Name>PackageTools.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Universal.Runtime.Player.csproj">
       <Project>{7f02e66e-a259-1989-5bf2-59ac61e8159c}</Project>
       <Name>Unity.RenderPipelines.Universal.Runtime.Player</Name>
@@ -737,6 +764,10 @@
     <ProjectReference Include="Unity.Burst.Player.csproj">
       <Project>{e04645d5-db2c-7096-63a0-4267b13f8a55}</Project>
       <Name>Unity.Burst.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="andywiecko.BurstTriangulator.Player.csproj">
+      <Project>{e7525cc8-21a2-1f6b-80a6-67cce185a796}</Project>
+      <Name>andywiecko.BurstTriangulator.Player</Name>
     </ProjectReference>
     <ProjectReference Include="DOTween.Extension.Player.csproj">
       <Project>{55f4a3f6-de25-ca7d-1190-9e127042adec}</Project>
@@ -781,6 +812,10 @@
     <ProjectReference Include="Cinemachine.Player.csproj">
       <Project>{dfcd1e6b-3a62-9b8b-d987-006b892276bb}</Project>
       <Name>Cinemachine.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Scripts.Player.csproj">
+      <Project>{81e95c82-0c7f-156b-264b-f78b7d722dfb}</Project>
+      <Name>Boxophobic.PolyverseSkies.Scripts.Player</Name>
     </ProjectReference>
     <ProjectReference Include="UniTask.DOTween.Player.csproj">
       <Project>{7f86e48f-c933-2059-f2a7-3c9112bb8ec6}</Project>

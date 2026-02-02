@@ -246,6 +246,15 @@
         "com.unity.modules.imgui": "1.0.0"
       }
     },
+    "com.unity.visualeffectgraph": {
+      "version": "14.0.12",
+      "depth": 0,
+      "source": "builtin",
+      "dependencies": {
+        "com.unity.shadergraph": "14.0.12",
+        "com.unity.render-pipelines.core": "14.0.12"
+      }
+    },
     "jillejr.newtonsoft.json-for-unity.converters": {
       "version": "1.6.3",
       "depth": 0,

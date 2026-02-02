@@ -5,10 +5,10 @@ using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public class MAEntity :GeneralCreature
+public class MAEntity :CompCreature
 {
-    protected IMoveComp moveComp;
-    protected IAtkComp atkComp;
+    public IMoveComp moveComp { get; protected set; }
+    public IAtkComp atkComp{ get; protected set; }
     public CharacterController cController { get; private set; }
 
     protected override void OnInit(object userData)
@@ -22,8 +22,11 @@ public class MAEntity :GeneralCreature
 
     protected virtual void Update()
     {
-        moveComp?.Move();
-        atkComp?.Attack();
+        if (CanRun(moveComp))
+            moveComp.Move();
+
+        if (CanRun(atkComp))
+            atkComp.Attack();
     }
 
     #region Move and Attack

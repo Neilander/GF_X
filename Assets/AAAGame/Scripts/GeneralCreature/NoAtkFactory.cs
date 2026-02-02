@@ -24,3 +24,5 @@ public abstract class AtkCompFactory : ScriptableObject
 
 
 
+
+

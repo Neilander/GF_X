@@ -13,6 +13,7 @@
         "Unity.Jobs",
         "Unity.Collections",
         "Unity.Mathematics",
+        "Obfuz.Runtime",
         "Unity.InputSystem",
         "AstarPathfindingProject"
     ],
