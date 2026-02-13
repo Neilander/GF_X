@@ -11,10 +11,7 @@ public class NoMoveComp :  IMoveComp
         //这是空行为，什么都不做
         
     }
-}
-
-public interface IMoveComp
-{
-    void Init(MAEntity entity);
-    void Move();
+    
+    public void ShutDown() { }
+    public void Resume() { }
 }

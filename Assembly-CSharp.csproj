@@ -49,6 +49,7 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\SimpleFollowingCamera.cs" />
     <Compile Include="Assets\HybridCLRData\Generated\AOTGenericReferences.cs" />
+    <Compile Include="Assets\MoveToTrailUV\MoveToTrailUV.cs" />
     <Compile Include="Assets\Scripts\SimplePlayerController.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -65,6 +66,7 @@
     <None Include="Assets\AAAGame\DataTable\Item\EquipmentTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Bitmap.shader" />
     <None Include="Assets\AAAGame\DataTable\Text\InteractOptionTextTable.txt" />
+    <None Include="Assets\BOXOPHOBIC\Utils\Shaders\Channel Preview.shader" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Equipment.txt" />
     <None Include="Assets\AAAGame\DataTable\Core\UITable.txt" />
     <None Include="Assets\AAAGame\DataTable\LevelTable.txt" />
@@ -94,11 +96,13 @@
     <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Consumable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemTable_Material.txt" />
     <None Include="Assets\AAAGame\HotfixDlls\HotfixFileList.txt" />
+    <None Include="Assets\BOXOPHOBIC\Polyverse Skies\Core\Shaders\Simple.shader" />
     <None Include="Assets\AAAGame\DataTable\Item\ToolTable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\MaterialTable.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ConsumableTable.txt" />
     <None Include="Assets\AAAGame\Shader\ASE\FastLit.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Mobile Masking.shader" />
+    <None Include="Assets\BOXOPHOBIC\Polyverse Skies\Generator\Shaders\Rendering Clouds.shader" />
     <None Include="Assets\AAAGame\DataTable\Tech\TechNodeTable.txt" />
     <None Include="Assets\AAAGame\DataTable\TechNodeTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />
@@ -106,6 +110,7 @@
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Fonts\LiberationSans - OFL.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Equipment.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF-Mobile.shader" />
+    <None Include="Assets\BOXOPHOBIC\Polyverse Skies\Core\Shaders\Standard.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Sprite.shader" />
   </ItemGroup>
   <ItemGroup>
@@ -1041,6 +1046,10 @@
       <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Unity.VisualEffectGraph.Runtime">
+      <HintPath>Library\ScriptAssemblies\Unity.VisualEffectGraph.Runtime.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="com.unity.cinemachine.editor">
       <HintPath>Library\ScriptAssemblies\com.unity.cinemachine.editor.dll</HintPath>
       <Private>False</Private>
@@ -1075,6 +1084,10 @@
     </Reference>
     <Reference Include="Unity.RenderPipelines.Core.Editor">
       <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.VisualEffectGraph.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.VisualEffectGraph.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Obfuz4HybridCLR.Editor">
@@ -1198,10 +1211,12 @@
     <ProjectReference Include="UniTask.Addressables.csproj" />
     <ProjectReference Include="UnityGameFramework.Runtime.csproj" />
     <ProjectReference Include="GameFramework.csproj" />
+    <ProjectReference Include="Boxophobic.Utils.Scripts.csproj" />
     <ProjectReference Include="ZString.csproj" />
     <ProjectReference Include="DrawingPackageToolsEditor.csproj" />
     <ProjectReference Include="UnityGameFramework.Editor.csproj" />
     <ProjectReference Include="Drawing.csproj" />
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.csproj" />
     <ProjectReference Include="AstarPathfindingProject.csproj" />
     <ProjectReference Include="UniTask.csproj" />
     <ProjectReference Include="UniTask.TextMeshPro.csproj" />
@@ -1212,7 +1227,10 @@
     <ProjectReference Include="PackageTools.csproj" />
     <ProjectReference Include="andywiecko.BurstTriangulator.csproj" />
     <ProjectReference Include="DOTween.Extension.csproj" />
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Editor.csproj" />
+    <ProjectReference Include="Boxophobic.Utils.Editor.csproj" />
     <ProjectReference Include="DrawingEditor.csproj" />
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Scripts.csproj" />
     <ProjectReference Include="UniTask.DOTween.csproj" />
     <ProjectReference Include="AstarPackageToolsEditor.csproj" />
   </ItemGroup>

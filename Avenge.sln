@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstarPathfindingProjectEdit
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask", "UniTask.csproj", "{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boxophobic.Utils.Editor", "Boxophobic.Utils.Editor.csproj", "{EF2B29DC-9F5C-A0D1-FAB7-2E15965207AF}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hotfix", "Hotfix.csproj", "{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask.Linq", "UniTask.Linq.csproj", "{167C30F5-3BD3-646B-38AC-080A3DDFC50F}"
@@ -35,9 +37,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DrawingEditor", "DrawingEdi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask.Addressables", "UniTask.Addressables.csproj", "{FF9B1837-E49D-0A84-F9FF-775135661582}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boxophobic.Utils.Scripts", "Boxophobic.Utils.Scripts.csproj", "{FCB6AC66-7713-CDD7-9BCB-48972101E7A6}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask.TextMeshPro", "UniTask.TextMeshPro.csproj", "{3D6DF92D-52DE-6748-AF6D-6B8E7FBAD1E9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask.DOTween", "UniTask.DOTween.csproj", "{A8462D18-1AED-4D3E-A3E9-65AEA9A6DF08}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boxophobic.PolyverseSkies.Scripts", "Boxophobic.PolyverseSkies.Scripts.csproj", "{587C614C-BDA4-2900-7456-91B86D1DD3CE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boxophobic.PolyverseSkies.Editor", "Boxophobic.PolyverseSkies.Editor.csproj", "{B2E484F3-929F-BF47-0141-C4CCE927493D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DrawingPackageToolsEditor", "DrawingPackageToolsEditor.csproj", "{C43AE948-37AA-B125-B657-7A87B44615C7}"
 EndProject
@@ -46,6 +54,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask.Editor", "UniTask.Editor.csproj", "{352C9EB1-F8E0-ECA0-7604-4BB1DE65D62C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PackageTools", "PackageTools.csproj", "{805A12FD-3A0A-6808-CA49-216E5301C3F8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boxophobic.PolyverseSkies.Runtime", "Boxophobic.PolyverseSkies.Runtime.csproj", "{1C532CB7-EB5B-6E09-6371-579475EB1043}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -97,6 +107,10 @@ Global
 		{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8970869E-8848-D9A0-8D8C-90AEFBA6EDF9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EF2B29DC-9F5C-A0D1-FAB7-2E15965207AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EF2B29DC-9F5C-A0D1-FAB7-2E15965207AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EF2B29DC-9F5C-A0D1-FAB7-2E15965207AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EF2B29DC-9F5C-A0D1-FAB7-2E15965207AF}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3B6BEA57-1ED7-19B9-6021-199E82AC5B70}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -121,6 +135,10 @@ Global
 		{FF9B1837-E49D-0A84-F9FF-775135661582}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FF9B1837-E49D-0A84-F9FF-775135661582}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FF9B1837-E49D-0A84-F9FF-775135661582}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCB6AC66-7713-CDD7-9BCB-48972101E7A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCB6AC66-7713-CDD7-9BCB-48972101E7A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCB6AC66-7713-CDD7-9BCB-48972101E7A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCB6AC66-7713-CDD7-9BCB-48972101E7A6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3D6DF92D-52DE-6748-AF6D-6B8E7FBAD1E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3D6DF92D-52DE-6748-AF6D-6B8E7FBAD1E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3D6DF92D-52DE-6748-AF6D-6B8E7FBAD1E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -129,6 +147,14 @@ Global
 		{A8462D18-1AED-4D3E-A3E9-65AEA9A6DF08}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A8462D18-1AED-4D3E-A3E9-65AEA9A6DF08}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A8462D18-1AED-4D3E-A3E9-65AEA9A6DF08}.Release|Any CPU.Build.0 = Release|Any CPU
+		{587C614C-BDA4-2900-7456-91B86D1DD3CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{587C614C-BDA4-2900-7456-91B86D1DD3CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{587C614C-BDA4-2900-7456-91B86D1DD3CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{587C614C-BDA4-2900-7456-91B86D1DD3CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2E484F3-929F-BF47-0141-C4CCE927493D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2E484F3-929F-BF47-0141-C4CCE927493D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2E484F3-929F-BF47-0141-C4CCE927493D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2E484F3-929F-BF47-0141-C4CCE927493D}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C43AE948-37AA-B125-B657-7A87B44615C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C43AE948-37AA-B125-B657-7A87B44615C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C43AE948-37AA-B125-B657-7A87B44615C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -145,6 +171,10 @@ Global
 		{805A12FD-3A0A-6808-CA49-216E5301C3F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{805A12FD-3A0A-6808-CA49-216E5301C3F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{805A12FD-3A0A-6808-CA49-216E5301C3F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1C532CB7-EB5B-6E09-6371-579475EB1043}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C532CB7-EB5B-6E09-6371-579475EB1043}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C532CB7-EB5B-6E09-6371-579475EB1043}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C532CB7-EB5B-6E09-6371-579475EB1043}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -14,11 +14,11 @@ TagManager:
   - UI
   - Player
   - Enemy
-  - 
-  - 
-  - 
+  - Hit
+  - Hurt
+  - Selector
   - AirWall
-  - 
+  - Ground
   - 
   - 
   - 

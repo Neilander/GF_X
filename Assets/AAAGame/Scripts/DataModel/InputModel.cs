@@ -13,6 +13,15 @@ public class InputModel : DataModelBase
     public bool Interaction3Pressed { get; set; }
     public bool OpenTechTreePressed { get; set; }
 
+    public bool PlayerAttack { get; set; }
+    
+    public bool Skill1Pressed { get; set; }
+    public bool Skill2Pressed { get; set; }
+    public bool Skill3Pressed { get; set; }
+    
+    public Vector2 SelectScreenPosition { get; set; }
+    public bool SkillConfirmPressed { get; set; }
+
     public void Reset()
     {
         MoveX = Fix64.Zero;
@@ -21,6 +30,13 @@ public class InputModel : DataModelBase
         Interaction2Pressed = false;
         Interaction3Pressed = false;
         OpenTechTreePressed = false;
+        Skill1Pressed = false;
+        Skill2Pressed = false;
+        Skill3Pressed = false;
+        PlayerAttack = false;
+
+        SelectScreenPosition = Vector2.zero;
+        SkillConfirmPressed = false;
     }
 
     protected override void OnCreate(RefParams userdata)

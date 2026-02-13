@@ -12,3 +12,4 @@ public class PlayerMoveFactory : MoveCompFactory
         return comp;
     }
 }
+

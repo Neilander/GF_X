@@ -48,6 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\DataTableGenerator\DataTableProcessor.UnlockConditionArrayProcessor.cs" />
+    <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\EditorTools\AppBuildEditor.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\Common\EditorToolSettings.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\Common\EditorScriptableSignleton.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\DataTableGenerator\DataTableProcessor.DateTimeProcessor.cs" />
@@ -134,7 +135,6 @@
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\Common\AppBuildSettings.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\ResourceRuleEditor\ResourceRuleEditorUtility.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\EditorTools\LocalizationScanner\LocalizationTextScanner.cs" />
-    <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\EditorTools\AppBuildEidtor.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\EditorTools\UnityEditorToolbar.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\HybridCLRExtensionTool.cs" />
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\EditorTools\CompressTool\SubPanel\CreateAtlasVariantPanel.cs" />
@@ -1132,6 +1132,10 @@
       <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Unity.VisualEffectGraph.Runtime">
+      <HintPath>Library\ScriptAssemblies\Unity.VisualEffectGraph.Runtime.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="com.unity.cinemachine.editor">
       <HintPath>Library\ScriptAssemblies\com.unity.cinemachine.editor.dll</HintPath>
       <Private>False</Private>
@@ -1166,6 +1170,10 @@
     </Reference>
     <Reference Include="Unity.RenderPipelines.Core.Editor">
       <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.VisualEffectGraph.Editor">
+      <HintPath>Library\ScriptAssemblies\Unity.VisualEffectGraph.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Obfuz4HybridCLR.Editor">
@@ -1290,10 +1298,12 @@
     <ProjectReference Include="UniTask.Addressables.csproj" />
     <ProjectReference Include="UnityGameFramework.Runtime.csproj" />
     <ProjectReference Include="GameFramework.csproj" />
+    <ProjectReference Include="Boxophobic.Utils.Scripts.csproj" />
     <ProjectReference Include="ZString.csproj" />
     <ProjectReference Include="DrawingPackageToolsEditor.csproj" />
     <ProjectReference Include="UnityGameFramework.Editor.csproj" />
     <ProjectReference Include="Drawing.csproj" />
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.csproj" />
     <ProjectReference Include="AstarPathfindingProject.csproj" />
     <ProjectReference Include="UniTask.csproj" />
     <ProjectReference Include="UniTask.TextMeshPro.csproj" />
@@ -1304,7 +1314,10 @@
     <ProjectReference Include="PackageTools.csproj" />
     <ProjectReference Include="andywiecko.BurstTriangulator.csproj" />
     <ProjectReference Include="DOTween.Extension.csproj" />
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Editor.csproj" />
+    <ProjectReference Include="Boxophobic.Utils.Editor.csproj" />
     <ProjectReference Include="DrawingEditor.csproj" />
+    <ProjectReference Include="Boxophobic.PolyverseSkies.Scripts.csproj" />
     <ProjectReference Include="UniTask.DOTween.csproj" />
     <ProjectReference Include="AstarPackageToolsEditor.csproj" />
   </ItemGroup>

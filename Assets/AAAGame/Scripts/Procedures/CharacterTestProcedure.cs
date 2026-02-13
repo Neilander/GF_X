@@ -13,10 +13,41 @@ public class CharacterTestProcedure : ProcedureBase
         GF.Log("正在进行测试，取消测试去修改LaunchProcedure");
         
         //尝试创建物体
+        InitDataModels();
+        
+        var playerParams = EntityParams.Create(
+            position: new Vector3(0, 1, 0)
+        );
+
+        GF.Entity.ShowEntity<PlayerEntity>(
+            0,
+            UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),
+            "Player",
+            playerParams
+        );
+
+        GameEntry.GetComponent<InputManager>()
+            .ChangeState(InputState.Game);
+
+        var punchBagParams = EntityParams.Create(
+            position: new Vector3(2, 1, 0)
+        );
+
+        GF.Entity.ShowEntity<PunchBagEntity>(
+            1,
+            UtilityBuiltin.AssetsPath.GetPrefab("Entity/PunchBag"),
+            "Level",
+            punchBagParams
+        );
+        /*
         EntityParams newParams = new EntityParams();
         newParams.position = new Vector3(0, 1, 0);
         GF.Entity.ShowEntity<PlayerEntity>(0,UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),"Player",newParams);
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
+        EntityParams punchParams = new EntityParams();
+        punchParams.position = new Vector3(2, 1, 0);
+        GF.Entity.ShowEntity<PunchBagEntity>(1,UtilityBuiltin.AssetsPath.GetPrefab("Entity/PunchBag"),"Level",punchParams);*/
+        //GF.Entity.ShowEntity<DeviceEntity>(deviceData.PrefabName, Const.EntityGroup.Building, deviceParams);
         
 
         //CreaturePropertyManager creaturePropertyManager = new CreaturePropertyManager("Knight");
@@ -39,5 +70,21 @@ public class CharacterTestProcedure : ProcedureBase
 
 
 
+    }
+    
+    private void InitDataModels()
+    {
+        GF.DataModel.CreateDataModel<ItemDataModel>();
+        GF.DataModel.CreateDataModel<DeviceDataModel>();
+        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
+        GF.DataModel.CreateDataModel<CraftingDeviceDataModel>();
+        GF.DataModel.CreateDataModel<InputModel>();
+        GF.DataModel.CreateDataModel<TechNodeDataModel>();
+
+
+        GF.DataModel.GetOrCreate<ItemCollectionDataModel>();
+        GF.DataModel.GetOrCreate<CapabilityProgressDataModel>();
+        GF.DataModel.GetOrCreate<ProfileDataModel>();
+        GF.DataModel.GetOrCreate<TechProgressDataModel>();
     }
 }

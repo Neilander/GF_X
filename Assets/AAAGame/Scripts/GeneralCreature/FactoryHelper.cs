@@ -7,6 +7,7 @@ public static class FactoryHelper
 {
     static Dictionary<string, AtkCompFactory> _atkFactories = new();
     static Dictionary<string, MoveCompFactory> _moveFactories = new();
+    static Dictionary<string, SkillCompFactory> _skillFactories = new();
 
     public static void CreateAtkComp(string factoryPath, MAEntity entity)
     {
@@ -37,6 +38,23 @@ public static class FactoryHelper
             factoryPath,
             MoveCompFactory.MoveFactoryCallBack,
             _moveFactories
+        );
+
+        GF.Resource.LoadAsset(factoryPath, wrappedCallback, entity);
+    }
+    
+    public static void CreateSkillComp(string factoryPath, SkillEntity entity)
+    {
+        if (_skillFactories.TryGetValue(factoryPath, out var factory))
+        {
+            factory.CreateSkillComp(entity);
+            return;
+        }
+
+        var wrappedCallback = WrapWithCache(
+            factoryPath,
+            SkillCompFactory.SkillFactoryCallBack,
+            _skillFactories
         );
 
         GF.Resource.LoadAsset(factoryPath, wrappedCallback, entity);
