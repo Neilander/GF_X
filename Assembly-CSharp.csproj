@@ -1034,20 +1034,20 @@
       <HintPath>D:\UnityEditor\2022.3.62f3\Editor\Data\UnityReferenceAssemblies\unity-4.8-api\Facades\System.Xml.XPath.XDocument.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="HybridCLR.Runtime">
-      <HintPath>Library\ScriptAssemblies\HybridCLR.Runtime.dll</HintPath>
+    <Reference Include="Unity.VisualEffectGraph.Runtime">
+      <HintPath>Library\ScriptAssemblies\Unity.VisualEffectGraph.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.Jobs">
-      <HintPath>Library\ScriptAssemblies\Unity.Jobs.dll</HintPath>
+    <Reference Include="HybridCLR.Runtime">
+      <HintPath>Library\ScriptAssemblies\HybridCLR.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.RenderPipelines.Core.Runtime">
       <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.VisualEffectGraph.Runtime">
-      <HintPath>Library\ScriptAssemblies\Unity.VisualEffectGraph.Runtime.dll</HintPath>
+    <Reference Include="Unity.Jobs">
+      <HintPath>Library\ScriptAssemblies\Unity.Jobs.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="com.unity.cinemachine.editor">
