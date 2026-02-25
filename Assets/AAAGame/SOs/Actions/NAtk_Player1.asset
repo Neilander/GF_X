@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0d729dbb124cf444faebc0b4863a72ac, type: 3}
   m_Name: NAtk_Player1
   m_EditorClassIdentifier: 
-  duration: 0.8
+  ifUseDuration: 1
+  duration: 0.4
   acceptInputFromPercent: 0.5
   relatedTriggerString: Attack
   damageStartPercent: 0.4

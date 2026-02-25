@@ -48,6 +48,7 @@ public class PlayerAttackComp : IAtkComp
             {
                 _actionInfo.bools[BasicAction.ACCEPTED_INPUT] = true;
                 ifContinueAction = true;
+                //Debug.LogError("在这里暂停");
                 _playerEntity.animator.SetTrigger(actions[(currentIndex+1)%actions.Length].relatedTriggerString);
             }
 
