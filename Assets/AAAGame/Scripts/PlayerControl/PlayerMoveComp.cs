@@ -27,7 +27,7 @@ public class PlayerMoveComp : IMoveComp
 
         move = move.normalized * speed;
 
-        playerEntity.cController.Move(move * Time.deltaTime*0.1f);
+        playerEntity.moveExecutor.SetInput(move*0.1f);
         playerEntity.animator.SetFloat("Speed",move.magnitude);
         if (translated.x < -0.01f)
         {

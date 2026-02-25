@@ -69,6 +69,7 @@
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/EntityExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarAction.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MoveExecutor.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/PropertyManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyOverrideModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/MessageSystem.cs" />

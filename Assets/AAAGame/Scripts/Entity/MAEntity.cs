@@ -9,7 +9,8 @@ public class MAEntity :CompCreature
 {
     public IMoveComp moveComp { get; protected set; }
     public IAtkComp atkComp{ get; protected set; }
-    public CharacterController cController { get; private set; }
+    private CharacterController cController;
+    public MoveExecutor moveExecutor { get; private set; }
 
     protected override void OnInit(object userData)
     {
@@ -18,6 +19,8 @@ public class MAEntity :CompCreature
 
         SetUpMAComp();
         cController = GetComponent<CharacterController>();
+        moveExecutor = gameObject.AddComponent<MoveExecutor>();
+        moveExecutor.Init(cController);
     }
 
     protected virtual void Update()
@@ -27,6 +30,8 @@ public class MAEntity :CompCreature
 
         if (CanRun(atkComp))
             atkComp.Attack();
+        
+        moveExecutor.Execute();
     }
 
     #region Move and Attack
