@@ -56,5 +56,7 @@ public class MoveExecutor : MonoBehaviour
 
         // 输入每帧重置（非常重要）
         _inputVelocity = Vector3.zero;
+        _hasOverride = false;
+        _externalVelocity = Vector3.zero;
     }
 }

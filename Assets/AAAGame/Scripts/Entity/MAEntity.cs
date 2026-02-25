@@ -11,6 +11,7 @@ public class MAEntity :CompCreature
     public IAtkComp atkComp{ get; protected set; }
     private CharacterController cController;
     public MoveExecutor moveExecutor { get; private set; }
+    public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
 
     protected override void OnInit(object userData)
     {
@@ -18,6 +19,10 @@ public class MAEntity :CompCreature
         //初始化移动和攻击组件
 
         SetUpMAComp();
+        
+        durationMoveEffectComp = new DurationMoveEffectComp();
+        durationMoveEffectComp.Init(this);
+        
         cController = GetComponent<CharacterController>();
         moveExecutor = gameObject.AddComponent<MoveExecutor>();
         moveExecutor.Init(cController);
@@ -30,6 +35,9 @@ public class MAEntity :CompCreature
 
         if (CanRun(atkComp))
             atkComp.Attack();
+        
+        if(CanRun(durationMoveEffectComp))
+            durationMoveEffectComp.ApplyEffect(Time.deltaTime);
         
         moveExecutor.Execute();
     }

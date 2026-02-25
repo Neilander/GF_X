@@ -49,6 +49,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/GFEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/ItemModifyUnit.Variables.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/TimedEffect.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/ActionExecuteComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/MessageBehavior.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/NormalAttackAction.cs" />
@@ -154,6 +155,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Tech/TechNodeTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelComponent.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/DurationMoveEffectComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DamageSystem/HurtBox.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandlerBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/CharacterTestProcedure.cs" />
@@ -223,6 +225,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Entity/MAEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameUIForm.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/LanguagesDialog.Variables.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IDurationMoveEffectComp.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/MoveAttackAction.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/ICapability.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/TechProgressDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Craft/ItemWithEffect.cs" />
