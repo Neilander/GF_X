@@ -45,10 +45,19 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets/AAAGame/BehaviorTree/PortView.cs" />
     <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/SelectorNode.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/CheckPriorityNode.cs" />
     <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/NodeView.cs" />
     <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
     <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/BTContext.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/BehaviorTreeGraph.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/SequenceNode.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/AbstractNode.cs" />
+    <Compile Include="Assets/AAAGame/BehaviorTree/RootNode.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
     </Reference>
