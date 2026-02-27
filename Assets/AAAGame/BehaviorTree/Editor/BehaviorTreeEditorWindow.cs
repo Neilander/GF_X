@@ -25,6 +25,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
     private bool isLinking;
     private AbstractNode linkFromNode;
     private int linkFromPort;
+    private double notificationClearAt;
 
     [MenuItem("Tools/BehaviorTree/Editor")]
     public static void Open()
@@ -80,6 +81,12 @@ public class BehaviorTreeEditorWindow : EditorWindow
 
     private void OnGUI()
     {
+        if (notificationClearAt > 0 && EditorApplication.timeSinceStartup >= notificationClearAt)
+        {
+            RemoveNotification();
+            notificationClearAt = 0;
+        }
+
         HandleZoom();
         HandlePan();
         HandleContextMenu();
@@ -126,20 +133,26 @@ public class BehaviorTreeEditorWindow : EditorWindow
             return;
         }
 
-        Matrix4x4 prevMatrix = GUI.matrix;
+        GUI.EndGroup();  // 打破 Unity 隐式裁剪
 
+        Matrix4x4 prevMatrix = GUI.matrix;
         Matrix4x4 translation = Matrix4x4.TRS(panOffset, Quaternion.identity, Vector3.one);
         Matrix4x4 scale = Matrix4x4.Scale(Vector3.one * zoom);
-
         GUI.matrix = translation * scale;
 
         BeginWindows();
         DrawAllNodes();
         EndWindows();
+        DrawConnections();
         DrawLinkPreview();
+        TryCompleteLink();
 
         GUI.matrix = prevMatrix;
-        TryCompleteLink();
+
+// 补回 Unity 的隐式 group（21 是 tab 高度）
+        GUI.BeginGroup(new Rect(0, 21, position.width, position.height));
+
+        
     }
     
     private void HandleZoom()
@@ -276,6 +289,11 @@ public class BehaviorTreeEditorWindow : EditorWindow
         return (screenPos - panOffset) / zoom;
     }
 
+    private Vector2 GraphToScreen(Vector2 graphPos)
+    {
+        return graphPos * zoom + panOffset;
+    }
+
     private void DrawToolbar()
     {
         using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
@@ -335,6 +353,50 @@ public class BehaviorTreeEditorWindow : EditorWindow
         );
     }
 
+    private void DrawConnections()
+    {
+        if (graph == null) return;
+
+        Handles.BeginGUI();
+
+        DrawNodeConnections(graph.root);
+
+        if (graph.nodes != null)
+        {
+            foreach (var node in graph.nodes)
+            {
+                DrawNodeConnections(node);
+            }
+        }
+
+        Handles.EndGUI();
+    }
+
+    private void DrawNodeConnections(AbstractNode fromNode)
+    {
+        if (fromNode == null || fromNode.children == null)
+            return;
+
+        for (int i = 0; i < fromNode.children.Count; i++)
+        {
+            AbstractNode toNode = fromNode.children[i];
+            if (toNode == null) continue;
+
+            Vector2 start = fromNode.GetOutputPortPos(i);
+            Vector2 end = toNode.GetInputPortPos();
+
+            Handles.DrawBezier(
+                start,
+                end,
+                start + Vector2.up * 50f,
+                end + Vector2.down * 50f,
+                Color.white,
+                null,
+                2f
+            );
+        }
+    }
+
     private void DrawNodeWindow(int id)
     {
         if (graph == null) return;
@@ -366,7 +428,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
             DrawPortButtons(node);
 
         if (Event.current.button == 0)
-            GUI.DragWindow();
+            GUI.DragWindow(new Rect(-100000, -100000, 200000, 200000));
     }
     private void HandleNodeSelection(AbstractNode node)
     {
@@ -405,7 +467,9 @@ public class BehaviorTreeEditorWindow : EditorWindow
         {
             if (node.outputCount > 1)
             {
-                node.children.RemoveAt(node.children.Count - 1);
+                int removeIndex = node.children.Count - 1;
+                DisconnectOutput(node, removeIndex);
+                node.children.RemoveAt(removeIndex);
                 GUI.changed = true;
             }
         }
@@ -475,6 +539,93 @@ public class BehaviorTreeEditorWindow : EditorWindow
 
         return 1f - Mathf.SmoothStep(0f, softness, delta);
     }
+
+    private void ConnectNodes(AbstractNode fromNode, int fromPort, AbstractNode toNode)
+    {
+        if (fromNode == null || toNode == null)
+            return;
+
+        if (fromNode == toNode)
+            return;
+
+        if (fromPort < 0 || fromPort >= fromNode.children.Count)
+            return;
+
+        if (WouldCreateCycle(fromNode, toNode))
+        {
+            ShowQuickNotification("Cannot create cycle", 0.7);
+            return;
+        }
+
+        // Same output can only point to one target.
+        DisconnectOutput(fromNode, fromPort);
+
+        // Each node can only have one parent.
+        DisconnectInput(toNode);
+
+        fromNode.children[fromPort] = toNode;
+        toNode.parent = fromNode;
+
+        GUI.changed = true;
+        EditorUtility.SetDirty(graph);
+    }
+
+    private bool WouldCreateCycle(AbstractNode fromNode, AbstractNode toNode)
+    {
+        AbstractNode current = fromNode;
+        while (current != null)
+        {
+            if (current == toNode)
+                return true;
+            current = current.parent;
+        }
+
+        return false;
+    }
+
+    private void ShowQuickNotification(string message, double durationSeconds)
+    {
+        ShowNotification(new GUIContent(message));
+        notificationClearAt = EditorApplication.timeSinceStartup + durationSeconds;
+    }
+
+    private void DisconnectInput(AbstractNode node)
+    {
+        if (node == null || node.parent == null)
+            return;
+
+        AbstractNode oldParent = node.parent;
+
+        if (oldParent.children != null)
+        {
+            for (int i = 0; i < oldParent.children.Count; i++)
+            {
+                if (oldParent.children[i] == node)
+                    oldParent.children[i] = null;
+            }
+        }
+
+        node.parent = null;
+        GUI.changed = true;
+        EditorUtility.SetDirty(graph);
+    }
+
+    private void DisconnectOutput(AbstractNode parentNode, int portIndex)
+    {
+        if (parentNode == null || parentNode.children == null)
+            return;
+
+        if (portIndex < 0 || portIndex >= parentNode.children.Count)
+            return;
+
+        AbstractNode child = parentNode.children[portIndex];
+        if (child != null && child.parent == parentNode)
+            child.parent = null;
+
+        parentNode.children[portIndex] = null;
+        GUI.changed = true;
+        EditorUtility.SetDirty(graph);
+    }
     
     private void DeleteNode(AbstractNode node)
     {
@@ -483,6 +634,14 @@ public class BehaviorTreeEditorWindow : EditorWindow
         // 可选：不允许删 root
         if (node == graph.root)
             return;
+
+        DisconnectInput(node);
+
+        if (node.children != null)
+        {
+            for (int i = 0; i < node.children.Count; i++)
+                DisconnectOutput(node, i);
+        }
 
         graph.nodes.Remove(node);
 
@@ -521,14 +680,14 @@ public class BehaviorTreeEditorWindow : EditorWindow
             return;
 
         Vector2 start = linkFromNode.GetOutputPortPos(linkFromPort);
-        Vector2 end = ScreenToGraph(Event.current.mousePosition);
+        Vector2 end = Event.current.mousePosition; // 直接用，不转换
 
         Handles.BeginGUI();
         Handles.DrawBezier(
             start,
             end,
-            start + Vector2.up * 50,
-            end + Vector2.down * 50,
+            start + Vector2.up * 50f,
+            end + Vector2.down * 50f,
             Color.white,
             null,
             2f
@@ -548,7 +707,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
         if (e.type != EventType.MouseUp || e.button != 0)
             return;
 
-        Vector2 graphPos = ScreenToGraph(e.mousePosition);
+        Vector2 graphPos = Event.current.mousePosition;
 
         foreach (var node in graph.nodes)
         {
@@ -556,17 +715,11 @@ public class BehaviorTreeEditorWindow : EditorWindow
                 continue;
 
             // 检测 input 口
-            Rect inputRect = new Rect(
-                node.nodeRect.x + node.nodeRect.width / 2 - 6,
-                node.nodeRect.y - 6,
-                12,
-                12
-            );
+            Rect inputRect = PortView.GetInputHitRectInGraph(node);
 
             if (inputRect.Contains(graphPos))
             {
-                // 连接！
-                linkFromNode.children[linkFromPort] = node;
+                ConnectNodes(linkFromNode, linkFromPort, node);
                 Debug.Log($"Linked {linkFromNode.name} -> {node.name}");
                 break;
             }

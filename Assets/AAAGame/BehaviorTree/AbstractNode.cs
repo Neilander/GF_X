@@ -12,6 +12,8 @@ public abstract class AbstractNode : ScriptableObject
     [HideInInspector]
     public List<AbstractNode> children = new List<AbstractNode>();
     [HideInInspector]
+    public AbstractNode parent;
+    [HideInInspector]
     public Rect nodeRect = new Rect(200, 200, 180, 80);
     
     public string nodeID;
