@@ -9,7 +9,9 @@ public class BehaviorTreeEditorWindow : EditorWindow
     private GUIStyle nodeStyle;
     private GUIStyle chipStyle;
     private GUIStyle chipTextStyle;
+    private GUIStyle noteTextAreaStyle;
     private Texture2D chipBgTex;
+    private Texture2D noteBgTex;
     
     private float zoom = 1f;
     private const float zoomMin = 0.5f;
@@ -26,6 +28,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
     private AbstractNode linkFromNode;
     private int linkFromPort;
     private double notificationClearAt;
+    private const string noteControlPrefix = "BTNodeNote_";
 
     [MenuItem("Tools/BehaviorTree/Editor")]
     public static void Open()
@@ -89,6 +92,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
 
         HandleZoom();
         HandlePan();
+        HandleDeselectOnEmptyClick();
         HandleContextMenu();
         HandleDeleteKey();
         // 初始化节点样式
@@ -122,6 +126,21 @@ public class BehaviorTreeEditorWindow : EditorWindow
             chipTextStyle = new GUIStyle(EditorStyles.label);
             chipTextStyle.normal.textColor = Color.white;
             
+        }
+
+        if (noteTextAreaStyle == null)
+        {
+            noteBgTex = new Texture2D(1, 1);
+            noteBgTex.SetPixel(0, 0, new Color(1f, 1f, 1f, 0.08f));
+            noteBgTex.Apply();
+
+            noteTextAreaStyle = new GUIStyle(EditorStyles.textArea);
+            noteTextAreaStyle.normal.background = noteBgTex;
+            noteTextAreaStyle.focused.background = noteBgTex;
+            noteTextAreaStyle.hover.background = noteBgTex;
+            noteTextAreaStyle.active.background = noteBgTex;
+            noteTextAreaStyle.normal.textColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+            noteTextAreaStyle.padding = new RectOffset(6, 6, 4, 4);
         }
 
         DrawBackground();
@@ -219,6 +238,10 @@ public class BehaviorTreeEditorWindow : EditorWindow
             menu.AddItem(new GUIContent("Create/Selector"), false, () =>
             {
                 CreateNode<SelectorNode>(graphPos, "Selector");
+            });
+            menu.AddItem(new GUIContent("Create/Sequence"), false, () =>
+            {
+                CreateNode<SequenceNode>(graphPos, "Sequence");
             });
 
             if (selectedNode != null && selectedNode != graph.root)
@@ -405,7 +428,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
             id == 99999 ? graph.root : graph.nodes[id];
 
         if (node == null) return;
-
+        
         HandleNodeSelection(node);
 
         NodeView.DrawNode(
@@ -416,6 +439,9 @@ public class BehaviorTreeEditorWindow : EditorWindow
             chipTextStyle,
             portTexture
         );
+
+        Rect noteRect = GetNodeNoteRect(node);
+        DrawNodeNoteField(node, noteRect);
         
         int portIndex;
         if (PortView.TryGetClickedOutput(node, Event.current, out portIndex))
@@ -427,8 +453,67 @@ public class BehaviorTreeEditorWindow : EditorWindow
         if (node is SelectorNode || node is SequenceNode)
             DrawPortButtons(node);
 
+        // 只允许上半部分拖动（避开 note 区域）
+        float dragHeight = GetNodeNoteRect(node).y; // note 开始的 y 就是上半部分的高度
+        Rect dragRect = new Rect(0f, 0f, node.nodeRect.width, dragHeight);
+
         if (Event.current.button == 0)
-            GUI.DragWindow(new Rect(-100000, -100000, 200000, 200000));
+            GUI.DragWindow(dragRect);
+    }
+
+    private void DrawNodeNoteField(AbstractNode node, Rect noteRect)
+    {
+        string controlName = noteControlPrefix + node.nodeID;
+    
+        Event e = Event.current;
+        if (e.type == EventType.MouseDown && e.button == 0)
+        {
+            if (!noteRect.Contains(e.mousePosition))
+            {
+                // 点击在 note 以外，强制清掉焦点
+                if (GUI.GetNameOfFocusedControl() == controlName)
+                    GUI.FocusControl(string.Empty);
+            }
+        }
+
+        EditorGUI.BeginChangeCheck();
+        GUI.SetNextControlName(controlName);
+        string next = EditorGUI.TextArea(noteRect, node.note ?? string.Empty, noteTextAreaStyle);
+        if (EditorGUI.EndChangeCheck())
+        {
+            Undo.RecordObject(node, "Edit Node Note");
+            node.note = next;
+            EditorUtility.SetDirty(node);
+            EditorUtility.SetDirty(graph);
+        }
+    }
+
+    private Rect GetNodeNoteRect(AbstractNode node)
+    {
+        float width = node.nodeRect.width - 20f;
+        float height = 24f;
+        float top = (node.nodeRect.height - height) * 0.5f;
+        top = Mathf.Clamp(top, 42f, node.nodeRect.height - height - 14f);
+        return new Rect(10f, top, width, height);
+    }
+
+    private void HandleDeselectOnEmptyClick()
+    {
+        Event e = Event.current;
+
+        if (e.type != EventType.MouseDown || e.button != 0)
+            return;
+
+        Vector2 graphPos = ScreenToGraph(e.mousePosition);
+        if (IsMouseOverAnyNode(graphPos))
+            return;
+
+        if (selectedNode != null)
+        {
+            selectedNode = null;
+            GUI.changed = true;
+            Repaint();
+        }
     }
     private void HandleNodeSelection(AbstractNode node)
     {
@@ -657,6 +742,12 @@ public class BehaviorTreeEditorWindow : EditorWindow
     private void HandleDeleteKey()
     {
         Event e = Event.current;
+        string focusedControl = GUI.GetNameOfFocusedControl();
+        bool typingNote = !string.IsNullOrEmpty(focusedControl) &&
+                          focusedControl.StartsWith(noteControlPrefix);
+
+        if (typingNote)
+            return;
 
         if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Backspace)
         {

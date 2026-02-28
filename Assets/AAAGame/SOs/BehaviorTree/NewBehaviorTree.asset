@@ -17,11 +17,35 @@ MonoBehaviour:
   parent: {fileID: 0}
   nodeRect:
     serializedVersion: 2
-    x: 725.5622
-    y: 15.98584
+    x: 621.5622
+    y: 237.98584
     width: 180
     height: 80
   nodeID: 
+  note: 
+--- !u!114 &-4603656536233420393
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b3666c9303943e5b938b5bffdeb87a4, type: 3}
+  m_Name: Sequence
+  m_EditorClassIdentifier: 
+  children:
+  - {fileID: 0}
+  parent: {fileID: 0}
+  nodeRect:
+    serializedVersion: 2
+    x: 882
+    y: 545
+    width: 200
+    height: 100
+  nodeID: fb1ac856-f96d-4e66-8e00-66a380078821
+  note: 
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -39,6 +63,7 @@ MonoBehaviour:
   - {fileID: 7341286631634302107}
   - {fileID: 220964202842087580}
   - {fileID: 2111920779710995131}
+  - {fileID: -4603656536233420393}
   connections: []
 --- !u!114 &220964202842087580
 MonoBehaviour:
@@ -54,14 +79,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   children:
   - {fileID: 0}
-  parent: {fileID: 0}
+  parent: {fileID: 2111920779710995131}
   nodeRect:
     serializedVersion: 2
-    x: 836.06946
-    y: 587.6121
+    x: 411.02063
+    y: 753.0102
     width: 200
     height: 100
   nodeID: b9e0e2b5-091c-4e8b-bfa3-973be3591850
+  note: 
 --- !u!114 &2111920779710995131
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -75,15 +101,16 @@ MonoBehaviour:
   m_Name: Selector
   m_EditorClassIdentifier: 
   children:
-  - {fileID: 0}
-  parent: {fileID: 0}
+  - {fileID: 220964202842087580}
+  parent: {fileID: 7341286631634302107}
   nodeRect:
     serializedVersion: 2
-    x: 928.15216
-    y: 443.91284
+    x: 438.10217
+    y: 550.6112
     width: 200
     height: 100
   nodeID: 72618766-a4d3-4dac-aff9-91d37c4479ff
+  note: 
 --- !u!114 &7341286631634302107
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -97,13 +124,14 @@ MonoBehaviour:
   m_Name: Selector
   m_EditorClassIdentifier: 
   children:
-  - {fileID: 0}
+  - {fileID: 2111920779710995131}
   - {fileID: 0}
   parent: {fileID: -7708013242204111059}
   nodeRect:
     serializedVersion: 2
-    x: 419
-    y: 398
+    x: 631
+    y: 413
     width: 200
     height: 100
   nodeID: c51eeb72-8f00-4f87-a1cc-a0b33a51a4a8
+  note: dada

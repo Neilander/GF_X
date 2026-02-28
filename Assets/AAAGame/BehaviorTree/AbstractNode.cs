@@ -17,6 +17,8 @@ public abstract class AbstractNode : ScriptableObject
     public Rect nodeRect = new Rect(200, 200, 180, 80);
     
     public string nodeID;
+    [TextArea(2, 5)]
+    public string note;
 
     public int outputCount => children.Count;
 
