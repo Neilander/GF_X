@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Linq;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using System.Reflection;
 
 public class BehaviorTreeEditorWindow : EditorWindow
 {
@@ -29,6 +32,8 @@ public class BehaviorTreeEditorWindow : EditorWindow
     private int linkFromPort;
     private double notificationClearAt;
     private const string noteControlPrefix = "BTNodeNote_";
+    
+    private Dictionary<AbstractNode, SerializedObject> _serializedObjects = new Dictionary<AbstractNode, SerializedObject>();
 
     [MenuItem("Tools/BehaviorTree/Editor")]
     public static void Open()
@@ -174,6 +179,16 @@ public class BehaviorTreeEditorWindow : EditorWindow
         
     }
     
+    private SerializedObject GetSerializedObject(AbstractNode node)
+    {
+        if (!_serializedObjects.TryGetValue(node, out var so) || so == null)
+        {
+            so = new SerializedObject(node);
+            _serializedObjects[node] = so;
+        }
+        return so;
+    }
+    
     private void HandleZoom()
     {
         Event e = Event.current;
@@ -231,26 +246,41 @@ public class BehaviorTreeEditorWindow : EditorWindow
             if (IsMouseOverAnyNode(mousePos))
                 return;
 
-            
             Vector2 graphPos = mousePos;
 
             GenericMenu menu = new GenericMenu();
-            menu.AddItem(new GUIContent("Create/Selector"), false, () =>
+
+            // 组合节点手动加
+            menu.AddItem(new GUIContent("Create/Selector"), false, () => CreateNode<SelectorNode>(graphPos, "Selector"));
+            menu.AddItem(new GUIContent("Create/Sequence"), false, () => CreateNode<SequenceNode>(graphPos, "Sequence"));
+
+            // 自动扫描所有叶节点
+            var leafTypes = TypeCache.GetTypesDerivedFrom<AbstractNode>()
+                .Where(t => !t.IsAbstract
+                            && t != typeof(SelectorNode)
+                            && t != typeof(SequenceNode)
+                            && t != typeof(RootNode));
+
+            foreach (var type in leafTypes)
             {
-                CreateNode<SelectorNode>(graphPos, "Selector");
-            });
-            menu.AddItem(new GUIContent("Create/Sequence"), false, () =>
-            {
-                CreateNode<SequenceNode>(graphPos, "Sequence");
-            });
+                var capturedType = type;
+                string name = type.Name;
+
+                // 如果有 CreateAssetMenu，用它的 menuName 作为路径
+                var attr = type.GetCustomAttribute<CreateAssetMenuAttribute>();
+                if (attr != null && !string.IsNullOrEmpty(attr.menuName))
+                    name = attr.menuName.Replace("BehaviorTree/Leaf/", "");
+
+                menu.AddItem(new GUIContent($"Create/Leaf/{name}"), false, () =>
+                {
+                    var node = CreateNode(capturedType, graphPos, name);
+                });
+            }
 
             if (selectedNode != null && selectedNode != graph.root)
             {
                 menu.AddSeparator("");
-                menu.AddItem(new GUIContent("Delete"), false, () =>
-                {
-                    DeleteNode(selectedNode);
-                });
+                menu.AddItem(new GUIContent("Delete"), false, () => DeleteNode(selectedNode));
             }
 
             menu.ShowAsContext();
@@ -283,24 +313,42 @@ public class BehaviorTreeEditorWindow : EditorWindow
 
         T newNode = ScriptableObject.CreateInstance<T>();
 
-        // 生成唯一ID
         newNode.nodeID = System.Guid.NewGuid().ToString();
 
-        // 默认名字
         newNode.name = string.IsNullOrEmpty(defaultName) 
             ? typeof(T).Name 
             : defaultName;
 
-        // 默认大小
         newNode.nodeRect = new Rect(position.x, position.y, 200, 100);
-        newNode.children.Add(null);
 
-        // 加入Graph
+        // 只有组合节点才默认加一个子节点槽
+        if (newNode is SelectorNode || newNode is SequenceNode)
+            newNode.children.Add(null);
+
         graph.nodes.Add(newNode);
 
-        // 作为子资产
         AssetDatabase.AddObjectToAsset(newNode, graph);
 
+        EditorUtility.SetDirty(graph);
+        AssetDatabase.SaveAssets();
+
+        return newNode;
+    }
+    private AbstractNode CreateNode(System.Type type, Vector2 position, string defaultName = null)
+    {
+        if (graph == null) return null;
+
+        AbstractNode newNode = (AbstractNode)ScriptableObject.CreateInstance(type);
+
+        newNode.nodeID = System.Guid.NewGuid().ToString();
+        newNode.name = string.IsNullOrEmpty(defaultName) ? type.Name : defaultName;
+        newNode.nodeRect = new Rect(position.x, position.y, 200, 100);
+
+        if (newNode is SelectorNode || newNode is SequenceNode)
+            newNode.children.Add(null);
+
+        graph.nodes.Add(newNode);
+        AssetDatabase.AddObjectToAsset(newNode, graph);
         EditorUtility.SetDirty(graph);
         AssetDatabase.SaveAssets();
 
@@ -450,8 +498,14 @@ public class BehaviorTreeEditorWindow : EditorWindow
             Event.current.Use();
         }
 
-        if (node is SelectorNode || node is SequenceNode)
+        // 改成
+        bool isComposite = node is SelectorNode || node is SequenceNode;
+        if (isComposite)
             DrawPortButtons(node);
+        
+        bool isLeaf = node.outputCount == 0 && !(node is RootNode);
+        if (isLeaf)
+            DrawLeafFields(node);
 
         // 只允许上半部分拖动（避开 note 区域）
         float dragHeight = GetNodeNoteRect(node).y; // note 开始的 y 就是上半部分的高度
@@ -459,6 +513,40 @@ public class BehaviorTreeEditorWindow : EditorWindow
 
         if (Event.current.button == 0)
             GUI.DragWindow(dragRect);
+    }
+    
+    private void DrawLeafFields(AbstractNode node)
+    {
+        SerializedObject so = GetSerializedObject(node);
+        so.Update();
+
+        Rect noteRect = GetNodeNoteRect(node);
+        float y = noteRect.yMax + 6f; // note 下方开始
+        float x = 10f;
+        float width = node.nodeRect.width - 20f;
+
+        SerializedProperty prop = so.GetIterator();
+        prop.NextVisible(true);
+        while (prop.NextVisible(false))
+        {
+            if (prop.name == "nodeID" || prop.name == "note" ||
+                prop.name == "children" || prop.name == "parent" ||
+                prop.name == "nodeRect")
+                continue;
+
+            float height = EditorGUI.GetPropertyHeight(prop, true);
+            Rect rect = new Rect(x, y, width, height);
+            EditorGUI.PropertyField(rect, prop, true);
+            y += height + 2f;
+        }
+        float requiredHeight = y + 10f;
+        if (Mathf.Abs(node.nodeRect.height - requiredHeight) > 1f)
+        {
+            node.nodeRect.height = requiredHeight;
+            EditorUtility.SetDirty(node);
+        }
+
+        so.ApplyModifiedProperties();
     }
 
     private void DrawNodeNoteField(AbstractNode node, Rect noteRect)
@@ -729,6 +817,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
         }
 
         graph.nodes.Remove(node);
+        _serializedObjects.Remove(node);
 
         AssetDatabase.RemoveObjectFromAsset(node);
         DestroyImmediate(node, true);

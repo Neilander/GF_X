@@ -1,5 +1,5 @@
 public interface IBTContext
 {
-    int Priority { get; }
+    int priority { get; }
 }
 

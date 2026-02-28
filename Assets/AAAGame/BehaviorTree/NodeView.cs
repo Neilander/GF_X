@@ -20,7 +20,10 @@ public static class NodeView
 
         DrawTitle(node, chipStyle, chipTextStyle);
         PortView.DrawPorts(node, portTexture);
+        
     }
+    
+    
 
     private static void DrawTitle(AbstractNode node, GUIStyle chipStyle, GUIStyle textStyle)
     {

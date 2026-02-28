@@ -37,11 +37,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   children:
   - {fileID: 0}
-  parent: {fileID: 0}
+  parent: {fileID: 7341286631634302107}
   nodeRect:
     serializedVersion: 2
-    x: 882
-    y: 545
+    x: 862
+    y: 698
     width: 200
     height: 100
   nodeID: fb1ac856-f96d-4e66-8e00-66a380078821
@@ -64,6 +64,7 @@ MonoBehaviour:
   - {fileID: 220964202842087580}
   - {fileID: 2111920779710995131}
   - {fileID: -4603656536233420393}
+  - {fileID: 9039958200858241711}
   connections: []
 --- !u!114 &220964202842087580
 MonoBehaviour:
@@ -82,8 +83,8 @@ MonoBehaviour:
   parent: {fileID: 2111920779710995131}
   nodeRect:
     serializedVersion: 2
-    x: 411.02063
-    y: 753.0102
+    x: 454.02063
+    y: 826.0102
     width: 200
     height: 100
   nodeID: b9e0e2b5-091c-4e8b-bfa3-973be3591850
@@ -105,8 +106,8 @@ MonoBehaviour:
   parent: {fileID: 7341286631634302107}
   nodeRect:
     serializedVersion: 2
-    x: 438.10217
-    y: 550.6112
+    x: 418.10217
+    y: 631.6112
     width: 200
     height: 100
   nodeID: 72618766-a4d3-4dac-aff9-91d37c4479ff
@@ -125,7 +126,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   children:
   - {fileID: 2111920779710995131}
-  - {fileID: 0}
+  - {fileID: -4603656536233420393}
   parent: {fileID: -7708013242204111059}
   nodeRect:
     serializedVersion: 2
@@ -134,4 +135,27 @@ MonoBehaviour:
     width: 200
     height: 100
   nodeID: c51eeb72-8f00-4f87-a1cc-a0b33a51a4a8
-  note: dada
+  note: 
+--- !u!114 &9039958200858241711
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1030561dff97341169dee50f3d18d327, type: 3}
+  m_Name: CheckPriority
+  m_EditorClassIdentifier: 
+  children: []
+  parent: {fileID: 0}
+  nodeRect:
+    serializedVersion: 2
+    x: 928.2885
+    y: 941.17957
+    width: 200
+    height: 100
+  nodeID: 431d78fa-6c18-45c0-bb65-00eb388016dd
+  note: 
+  requiredPriority: 5
