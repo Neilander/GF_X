@@ -8,8 +8,10 @@ public static class NodeView
         bool isSelected,
         GUIStyle nodeStyle,
         GUIStyle chipStyle,
+        GUIStyle chipStyleError,
         GUIStyle chipTextStyle,
-        Texture2D portTexture
+        Texture2D portTexture,
+        bool isContextMismatch = false
     )
     {
         if (isSelected)
@@ -18,14 +20,11 @@ public static class NodeView
             EditorGUI.DrawRect(highlight, new Color(0.3f, 0.5f, 1f, 0.25f));
         }
 
-        DrawTitle(node, chipStyle, chipTextStyle);
+        DrawTitle(node, chipStyle, chipStyleError, chipTextStyle, isContextMismatch);
         PortView.DrawPorts(node, portTexture);
-        
     }
-    
-    
 
-    private static void DrawTitle(AbstractNode node, GUIStyle chipStyle, GUIStyle textStyle)
+    private static void DrawTitle(AbstractNode node, GUIStyle chipStyle, GUIStyle chipStyleError, GUIStyle textStyle, bool isContextMismatch = false)
     {
         string nodeName = node.GetNodeName();
         Vector2 size = textStyle.CalcSize(new GUIContent(nodeName));
@@ -35,7 +34,8 @@ public static class NodeView
 
         Rect chipRect = new Rect(8, 10, width, height);
 
-        GUI.Box(chipRect, GUIContent.none, chipStyle);
+        GUI.Box(chipRect, GUIContent.none, isContextMismatch ? chipStyleError : chipStyle);
+
         GUI.Label(
             new Rect(chipRect.x + 12, chipRect.y + 4, size.x, size.y),
             nodeName,

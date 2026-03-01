@@ -14,6 +14,9 @@ public class BehaviorTreeGraph : ScriptableObject
     [HideInInspector]
     public List<NodeConnection> connections = new List<NodeConnection>();
     
+    [HideInInspector]
+    public string boundContextTypeName;
+    
 #if UNITY_EDITOR
     private void OnEnable()
     {

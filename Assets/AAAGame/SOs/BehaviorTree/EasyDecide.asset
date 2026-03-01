@@ -36,16 +36,87 @@ MonoBehaviour:
   m_Name: Sequence
   m_EditorClassIdentifier: 
   children:
-  - {fileID: 0}
+  - {fileID: -1247049717032594353}
+  - {fileID: -2080852669051288199}
   parent: {fileID: 7341286631634302107}
   nodeRect:
     serializedVersion: 2
-    x: 862
-    y: 698
+    x: 784
+    y: 641
     width: 200
     height: 100
   nodeID: fb1ac856-f96d-4e66-8e00-66a380078821
+  note: "\u8840\u91CF\u4F4E\u4E8E5\u70B9"
+--- !u!114 &-2080852669051288199
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f82afd6148d0c4f978a78f425eed5cd8, type: 3}
+  m_Name: SetMessage
+  m_EditorClassIdentifier: 
+  children: []
+  parent: {fileID: -4603656536233420393}
+  nodeRect:
+    serializedVersion: 2
+    x: 909
+    y: 866
+    width: 200
+    height: 158
+  nodeID: b50dea93-4e4f-4759-8225-09a7aaf2eef8
   note: 
+  message: "\u8981\u6B7B\u4E86\u8981\u6B7B\u4E86"
+--- !u!114 &-1247049717032594353
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab0f7cb0a4fcd4a1784838e65b47af55, type: 3}
+  m_Name: CheckHealth
+  m_EditorClassIdentifier: 
+  children: []
+  parent: {fileID: -4603656536233420393}
+  nodeRect:
+    serializedVersion: 2
+    x: 683
+    y: 859
+    width: 200
+    height: 122
+  nodeID: 31f0f4e9-1073-4f00-bc01-958da59a681f
+  note: 
+  threshold: 5
+  isBelow: 1
+--- !u!114 &-718694404872035593
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f82afd6148d0c4f978a78f425eed5cd8, type: 3}
+  m_Name: SetMessage
+  m_EditorClassIdentifier: 
+  children: []
+  parent: {fileID: 3567498238399613158}
+  nodeRect:
+    serializedVersion: 2
+    x: 387
+    y: 838
+    width: 200
+    height: 158
+  nodeID: ed3a8ccf-5dd7-44bc-9773-d6c3b8fca35e
+  note: 
+  message: "\u8840\u91CF\u5065\u5EB7\uFF0C\u8FFD\u51FB"
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -56,17 +127,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 68775785805344399dc6c977634c8f80, type: 3}
-  m_Name: NewBehaviorTree
+  m_Name: EasyDecide
   m_EditorClassIdentifier: 
   root: {fileID: -7708013242204111059}
   nodes:
   - {fileID: 7341286631634302107}
-  - {fileID: 220964202842087580}
-  - {fileID: 2111920779710995131}
   - {fileID: -4603656536233420393}
-  - {fileID: 9039958200858241711}
+  - {fileID: -2080852669051288199}
+  - {fileID: 8878479930582260652}
+  - {fileID: 3567498238399613158}
+  - {fileID: -718694404872035593}
+  - {fileID: -1247049717032594353}
   connections: []
---- !u!114 &220964202842087580
+  boundContextTypeName: BasicEnemyContext
+--- !u!114 &3567498238399613158
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -75,43 +149,21 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4b1f2a06594f495985f198c528174ef7, type: 3}
-  m_Name: Selector
+  m_Script: {fileID: 11500000, guid: 7b3666c9303943e5b938b5bffdeb87a4, type: 3}
+  m_Name: Sequence
   m_EditorClassIdentifier: 
   children:
-  - {fileID: 0}
-  parent: {fileID: 2111920779710995131}
-  nodeRect:
-    serializedVersion: 2
-    x: 454.02063
-    y: 826.0102
-    width: 200
-    height: 100
-  nodeID: b9e0e2b5-091c-4e8b-bfa3-973be3591850
-  note: 
---- !u!114 &2111920779710995131
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4b1f2a06594f495985f198c528174ef7, type: 3}
-  m_Name: Selector
-  m_EditorClassIdentifier: 
-  children:
-  - {fileID: 220964202842087580}
+  - {fileID: 8878479930582260652}
+  - {fileID: -718694404872035593}
   parent: {fileID: 7341286631634302107}
   nodeRect:
     serializedVersion: 2
-    x: 418.10217
-    y: 631.6112
+    x: 346.25574
+    y: 682.7304
     width: 200
     height: 100
-  nodeID: 72618766-a4d3-4dac-aff9-91d37c4479ff
-  note: 
+  nodeID: 1c603000-9c32-451c-9877-44521d021908
+  note: "\u8840\u91CF\u5927\u4E8E\u7B49\u4E8E5\u70B9"
 --- !u!114 &7341286631634302107
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -125,7 +177,7 @@ MonoBehaviour:
   m_Name: Selector
   m_EditorClassIdentifier: 
   children:
-  - {fileID: 2111920779710995131}
+  - {fileID: 3567498238399613158}
   - {fileID: -4603656536233420393}
   parent: {fileID: -7708013242204111059}
   nodeRect:
@@ -136,7 +188,7 @@ MonoBehaviour:
     height: 100
   nodeID: c51eeb72-8f00-4f87-a1cc-a0b33a51a4a8
   note: 
---- !u!114 &9039958200858241711
+--- !u!114 &8878479930582260652
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -145,17 +197,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1030561dff97341169dee50f3d18d327, type: 3}
-  m_Name: CheckPriority
+  m_Script: {fileID: 11500000, guid: ab0f7cb0a4fcd4a1784838e65b47af55, type: 3}
+  m_Name: CheckHealth
   m_EditorClassIdentifier: 
   children: []
-  parent: {fileID: 0}
+  parent: {fileID: 3567498238399613158}
   nodeRect:
     serializedVersion: 2
-    x: 928.2885
-    y: 941.17957
+    x: 139.13312
+    y: 839.8827
     width: 200
-    height: 100
-  nodeID: 431d78fa-6c18-45c0-bb65-00eb388016dd
+    height: 122
+  nodeID: f66c8523-48f6-40ce-a1e3-e5101c50bce5
   note: 
-  requiredPriority: 5
+  threshold: 5
+  isBelow: 0

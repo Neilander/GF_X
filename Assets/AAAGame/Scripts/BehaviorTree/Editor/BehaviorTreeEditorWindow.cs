@@ -34,6 +34,9 @@ public class BehaviorTreeEditorWindow : EditorWindow
     private const string noteControlPrefix = "BTNodeNote_";
     
     private Dictionary<AbstractNode, SerializedObject> _serializedObjects = new Dictionary<AbstractNode, SerializedObject>();
+    
+    private GUIStyle chipStyleError;
+    private Texture2D chipBgTexError;
 
     [MenuItem("Tools/BehaviorTree/Editor")]
     public static void Open()
@@ -130,6 +133,12 @@ public class BehaviorTreeEditorWindow : EditorWindow
 
             chipTextStyle = new GUIStyle(EditorStyles.label);
             chipTextStyle.normal.textColor = Color.white;
+            
+            chipBgTexError = MakeRoundedTex(32, 32, 10, new Color(0.5f, 0.05f, 0.05f, 0.9f));
+            chipStyleError = new GUIStyle();
+            chipStyleError.normal.background = chipBgTexError;
+            chipStyleError.border = new RectOffset(10, 10, 10, 10);
+            chipStyleError.padding = new RectOffset(12, 12, 4, 4);
             
         }
 
@@ -338,8 +347,20 @@ public class BehaviorTreeEditorWindow : EditorWindow
     {
         if (graph == null) return null;
 
-        AbstractNode newNode = (AbstractNode)ScriptableObject.CreateInstance(type);
+        // 校验 Context 类型
+        var requireAttr = type.GetCustomAttribute<RequireContextAttribute>();
+        if (requireAttr != null && !string.IsNullOrEmpty(graph.boundContextTypeName))
+        {
+            var boundType = TypeCache.GetTypesDerivedFrom<IBTContext>()
+                .FirstOrDefault(t => t.FullName == graph.boundContextTypeName);
 
+            if (boundType != null && !requireAttr.ContextType.IsAssignableFrom(boundType))
+            {
+                ShowQuickNotification($"'{type.Name}' requires '{requireAttr.ContextType.Name}'", 2.0);
+            }
+        }
+
+        AbstractNode newNode = (AbstractNode)ScriptableObject.CreateInstance(type);
         newNode.nodeID = System.Guid.NewGuid().ToString();
         newNode.name = string.IsNullOrEmpty(defaultName) ? type.Name : defaultName;
         newNode.nodeRect = new Rect(position.x, position.y, 200, 100);
@@ -353,6 +374,21 @@ public class BehaviorTreeEditorWindow : EditorWindow
         AssetDatabase.SaveAssets();
 
         return newNode;
+    }
+    
+    private bool IsNodeContextMismatch(AbstractNode node)
+    {
+        if (string.IsNullOrEmpty(graph.boundContextTypeName)) return false;
+
+        var requireAttr = node.GetType().GetCustomAttribute<RequireContextAttribute>();
+        if (requireAttr == null) return false;
+
+        var boundType = TypeCache.GetTypesDerivedFrom<IBTContext>()
+            .FirstOrDefault(t => t.FullName == graph.boundContextTypeName);
+
+        if (boundType == null) return false;
+
+        return !requireAttr.ContextType.IsAssignableFrom(boundType);
     }
     
     private Vector2 ScreenToGraph(Vector2 screenPos)
@@ -375,6 +411,30 @@ public class BehaviorTreeEditorWindow : EditorWindow
                 false,
                 GUILayout.Width(300)
             );
+
+            if (graph != null)
+            {
+                // 扫描所有实现 IBTContext 的类
+                var contextTypes = TypeCache.GetTypesDerivedFrom<IBTContext>()
+                    .Where(t => !t.IsAbstract && !t.IsInterface)
+                    .ToList();
+
+                var displayNames = contextTypes.Select(t => t.Name).ToList();
+                displayNames.Insert(0, "None");
+
+                int currentIndex = 0;
+                if (!string.IsNullOrEmpty(graph.boundContextTypeName))
+                    currentIndex = contextTypes.FindIndex(t => t.FullName == graph.boundContextTypeName) + 1;
+
+                int newIndex = EditorGUILayout.Popup("Context", currentIndex, displayNames.ToArray(), EditorStyles.toolbarPopup, GUILayout.Width(400));
+
+                if (newIndex != currentIndex)
+                {
+                    Undo.RecordObject(graph, "Change Context Type");
+                    graph.boundContextTypeName = newIndex == 0 ? "" : contextTypes[newIndex - 1].FullName;
+                    EditorUtility.SetDirty(graph);
+                }
+            }
 
             GUILayout.FlexibleSpace();
 
@@ -484,8 +544,10 @@ public class BehaviorTreeEditorWindow : EditorWindow
             selectedNode == node,
             nodeStyle,
             chipStyle,
+            chipStyleError,
             chipTextStyle,
-            portTexture
+            portTexture,
+            IsNodeContextMismatch(node)
         );
 
         Rect noteRect = GetNodeNoteRect(node);
@@ -521,7 +583,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
         so.Update();
 
         Rect noteRect = GetNodeNoteRect(node);
-        float y = noteRect.yMax + 6f; // note 下方开始
+        float y = noteRect.yMax + 6f;
         float x = 10f;
         float width = node.nodeRect.width - 20f;
 
@@ -534,11 +596,29 @@ public class BehaviorTreeEditorWindow : EditorWindow
                 prop.name == "nodeRect")
                 continue;
 
-            float height = EditorGUI.GetPropertyHeight(prop, true);
-            Rect rect = new Rect(x, y, width, height);
-            EditorGUI.PropertyField(rect, prop, true);
+            float height;
+
+            if (prop.propertyType == SerializedPropertyType.String)
+            {
+                float labelHeight = EditorGUIUtility.singleLineHeight;
+                Rect labelRect = new Rect(x, y, width, labelHeight);
+                EditorGUI.LabelField(labelRect, prop.displayName);
+                y += labelHeight + 2f;
+    
+                height = EditorGUIUtility.singleLineHeight * 3f;
+                Rect rect = new Rect(x, y, width, height);
+                prop.stringValue = EditorGUI.TextArea(rect, prop.stringValue ?? string.Empty);
+            }
+            else
+            {
+                height = EditorGUI.GetPropertyHeight(prop, true);
+                Rect rect = new Rect(x, y, width, height);
+                EditorGUI.PropertyField(rect, prop, true);
+            }
+
             y += height + 2f;
         }
+
         float requiredHeight = y + 10f;
         if (Mathf.Abs(node.nodeRect.height - requiredHeight) > 1f)
         {
@@ -580,8 +660,10 @@ public class BehaviorTreeEditorWindow : EditorWindow
     {
         float width = node.nodeRect.width - 20f;
         float height = 24f;
-        float top = (node.nodeRect.height - height) * 0.5f;
-        top = Mathf.Clamp(top, 42f, node.nodeRect.height - height - 14f);
+    
+        bool isLeaf = node.outputCount == 0 && !(node is RootNode);
+        float top = isLeaf ? 42f : Mathf.Clamp((node.nodeRect.height - height) * 0.5f, 42f, node.nodeRect.height - height - 14f);
+    
         return new Rect(10f, top, width, height);
     }
 
@@ -838,6 +920,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
         if (typingNote)
             return;
 
+        /*
         if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Backspace)
         {
             if (selectedNode != null)
@@ -845,7 +928,7 @@ public class BehaviorTreeEditorWindow : EditorWindow
                 DeleteNode(selectedNode);
                 e.Use();
             }
-        }
+        }*/
     }
     
     public void OpenGraph(BehaviorTreeGraph g)

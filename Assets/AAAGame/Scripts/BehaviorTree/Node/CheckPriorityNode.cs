@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 
+[RequireContext(typeof(BasicEnemyContext))]
 [CreateAssetMenu(menuName = "BehaviorTree/Leaf/CheckPriority")]
 public class CheckPriorityNode : AbstractNode
 {
@@ -17,3 +18,6 @@ public class CheckPriorityNode : AbstractNode
         return NodeState.Failure;
     }
 }
+
+
+

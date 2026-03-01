@@ -36,6 +36,8 @@ public class GeneralCreature : EntityBase, ITargetable
         
     }
 
+    public float health => (float)CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
+
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
@@ -100,4 +102,5 @@ public interface ITargetable:ISelectable
     string ReferenceId { get; }
 
     void TakeDamage(float damage, HealthModifyType modType );
+    float health { get; }
 }
