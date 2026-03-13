@@ -47,6 +47,16 @@ public class PlayerMoveComp : IMoveComp
 
     }
 
+    public void MoveTo(Vector3 destination)
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void StopMove()
+    {
+        throw new System.NotImplementedException();
+    }
+
     public void Init(MAEntity entity)
     {
         playerEntity = entity;

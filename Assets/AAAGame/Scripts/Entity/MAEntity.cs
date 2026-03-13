@@ -9,9 +9,15 @@ public class MAEntity :CompCreature
 {
     public IMoveComp moveComp { get; protected set; }
     public IAtkComp atkComp{ get; protected set; }
+    
+    public ITargetingComp targetComp{ get; protected set; }
+    
     private CharacterController cController;
     public MoveExecutor moveExecutor { get; private set; }
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
+    
+    public IControlBrain Brain { get; private set; } 
+    public void SetBrain(IControlBrain brain) => Brain = brain;
 
     protected override void OnInit(object userData)
     {
@@ -30,6 +36,14 @@ public class MAEntity :CompCreature
 
     protected virtual void Update()
     {
+        if (Brain is ITickBrain tickBrain)
+        {
+            tickBrain.Tick(this, Time.deltaTime);
+        }
+        
+        if (CanRun(targetComp))
+            targetComp.UpdateTargeting();
+        
         if (CanRun(moveComp))
             moveComp.Move();
 
@@ -59,6 +73,8 @@ public class MAEntity :CompCreature
 
     public void SetMoveComp(IMoveComp newMoveComp)=>moveComp = newMoveComp; 
     public void SetAtkComp(IAtkComp newAtkComp)=> atkComp = newAtkComp;
+    
+    public void SetTargetingComp(ITargetingComp newTargetingComp)=> targetComp = newTargetingComp;
 
     #endregion
     

@@ -24,7 +24,7 @@ public class SkillEntity : MAEntity
             skillComp.Skill();
     }
 
-    protected virtual void SetUpSkillComp()
+    protected  virtual void SetUpSkillComp()
     {
         GF.LogError("目前还没有Implement通用的skill装载");
     }

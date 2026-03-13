@@ -11,7 +11,15 @@ public class NoMoveComp :  IMoveComp
         //这是空行为，什么都不做
         
     }
-    
+
+    public void MoveTo(Vector3 destination)
+    {
+    }
+
+    public void StopMove()
+    {
+    }
+
     public void ShutDown() { }
     public void Resume() { }
 }

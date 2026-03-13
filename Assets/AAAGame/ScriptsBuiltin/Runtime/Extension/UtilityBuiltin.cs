@@ -188,6 +188,11 @@ public static class UtilityBuiltin
         {
             return Utility.Text.Format("Assets/AAAGame/SOs/SkillCompFactory/{0}.asset", factName);
         }
+        
+        public static string GetTargetingFactoryPath(string factName)
+        {
+            return Utility.Text.Format("Assets/AAAGame/SOs/TargetingCompFactory/{0}.asset", factName);
+        }
     }
     public class Json
     {

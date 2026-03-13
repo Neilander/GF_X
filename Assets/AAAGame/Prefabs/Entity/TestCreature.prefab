@@ -200,6 +200,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8393770863638230879}
   - component: {fileID: 5656575533096842731}
+  - component: {fileID: -4725007291746679462}
   m_Layer: 0
   m_Name: TestCreature
   m_TagString: Untagged
@@ -246,11 +247,28 @@ CharacterController:
   serializedVersion: 3
   m_Height: 1
   m_Radius: 0.5
-  m_SlopeLimit: 45
-  m_StepOffset: 0.3
+  m_SlopeLimit: 0
+  m_StepOffset: 0
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &-4725007291746679462
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8659235639869018395}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b948b4f7f6064820ba624a158182cdc0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  overrideValues: 1
+  debugAggroRange: 6
+  debugForgetRange: 8
+  debugAttackRange: 1.6
+  debugFollowDistance: 2.2
 --- !u!1001 &4704650220648958818
 PrefabInstance:
   m_ObjectHideFlags: 0

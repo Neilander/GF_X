@@ -12,6 +12,11 @@ public class EntityParams : RefParams
 
     public Vector3? localScale { get; set; } = null;
     public int gameObjectLayer { get; set; } = -1;
+    
+    
+    public SideType Side { get; set; } = SideType.NoSide;
+    public BrainType BrainType { get; set; } = BrainType.Player;
+    public int FollowEntityId { get; set; } = -1;
 
     /// <summary>
     /// 绑定到父实体
@@ -61,6 +66,12 @@ public class EntityParams : RefParams
         this.ParentTransform = null;
         OnShowCallback = null;
         OnHideCallback = null;
+        
+        
+        
+        Side = SideType.NoSide;
+        BrainType = BrainType.Player;
+        FollowEntityId = -1;
     }
 }
 #pragma warning restore IDE1006 // 命名样式
