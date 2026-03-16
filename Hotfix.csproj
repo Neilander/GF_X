@@ -243,8 +243,8 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/FactoryHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeView.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckHealthNode.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelBase.cs" />
