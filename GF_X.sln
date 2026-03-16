@@ -9,9 +9,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unity.VisualEffectGraph.Edi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unity.ShaderGraph.Editor", "Unity.ShaderGraph.Editor.csproj", "{fa4f2f2a-723c-01b2-a373-3e53ec6a26eb}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unity.PlasticSCM.Editor", "Unity.PlasticSCM.Editor.csproj", "{783d6ba9-9ce5-963f-6c35-ec35714c6f1e}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unity.InputSystem", "Unity.InputSystem.csproj", "{742a7b64-1e94-e24c-7213-4b132c22e9c2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unity.PlasticSCM.Editor", "Unity.PlasticSCM.Editor.csproj", "{783d6ba9-9ce5-963f-6c35-ec35714c6f1e}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AstarPathfindingProject", "AstarPathfindingProject.csproj", "{a38f250f-9373-c074-e848-20f36d67f4cc}"
 EndProject
@@ -326,10 +326,10 @@ Global
 		{f4b7d74b-3119-7868-3988-e1d113eeb0b2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{fa4f2f2a-723c-01b2-a373-3e53ec6a26eb}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{fa4f2f2a-723c-01b2-a373-3e53ec6a26eb}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{783d6ba9-9ce5-963f-6c35-ec35714c6f1e}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{783d6ba9-9ce5-963f-6c35-ec35714c6f1e}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{742a7b64-1e94-e24c-7213-4b132c22e9c2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{742a7b64-1e94-e24c-7213-4b132c22e9c2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{783d6ba9-9ce5-963f-6c35-ec35714c6f1e}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{783d6ba9-9ce5-963f-6c35-ec35714c6f1e}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{a38f250f-9373-c074-e848-20f36d67f4cc}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{a38f250f-9373-c074-e848-20f36d67f4cc}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{76b5a940-e855-a48d-3b0a-aa2d9ea6e9a5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU

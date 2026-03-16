@@ -45,6 +45,7 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Plugins/DualShock/DualShockGamepad.cs" />
     <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Editor/Dialog.cs" />
     <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Utilities/PrimitiveValue.cs" />
     <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Editor/ControlPicker/InputControlDropdownItem.cs" />
@@ -446,7 +447,6 @@
     <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Controls/Processors/NormalizeVector2Processor.cs" />
     <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Devices/Remote/InputRemoting.cs" />
     <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Editor/Analytics/InputActionsEditorSessionAnalytic.cs" />
-    <Compile Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Plugins/DualShock/DualShockGamepad.cs" />
     <None Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Editor/UITKAssetEditor/PackageResources/ControlSchemeEditor.uxml" />
     <None Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Editor/UITKAssetEditor/PackageResources/BindingPanelRowTemplate.uxml" />
     <None Include="Library/PackageCache/com.unity.inputsystem@1.14.2/InputSystem/Editor/UITKAssetEditor/PackageResources/InputActionsTreeViewItem.uxml" />
