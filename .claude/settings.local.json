@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/a23544/Documents/GitHub/GF_X -type f -name *Test* -o -name *test* -o -name *Spec*)",
+      "Bash(grep -A 5 -B 5 \"CharacterAndSkillTestScene\\\\|LevelTestScene\" /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/Procedures/*.cs)",
+      "Bash(find /Users/a23544/Documents/GitHub/GF_X/Assets -name *Launch* -o -name *Boot* -o -name *Main* -o -name *Init*)",
+      "Bash(grep -E \"\\\\.cs$\")",
+      "Bash(xargs find:*)",
+      "Bash(grep -E \"\\\\.\\(txt|bytes\\)$\")",
+      "Bash(grep -v \"\\\\.meta$\")",
+      "Read(//Applications/Unity/Hub/Editor/**)",
+      "Read(//Applications/Unity/**)",
+      "Read(//Applications/**)",
+      "Bash(grep -o \"\"m_EditorVersion:.*\"\" /Users/a23544/Documents/GitHub/GF_X/ProjectSettings/ProjectVersion.txt)",
+      "Bash(/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/MacOS/Unity -batchmode -nographics -projectPath /Users/a23544/Documents/GitHub/GF_X -runTests -testPlatform EditMode -testResults /tmp/gfx-test-results.xml)",
+      "Bash(/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/MacOS/Unity -batchmode -nographics -projectPath /Users/a23544/Documents/GitHub/GF_X -logFile /tmp/gfx-compile.log -quit)",
+      "Bash(/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/MacOS/Unity -batchmode -nographics -projectPath /Users/a23544/Documents/GitHub/GF_X -logFile /tmp/gfx-compile2.log -quit)",
+      "Bash(/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/MacOS/Unity -batchmode -nographics -projectPath /Users/a23544/Documents/GitHub/GF_X -logFile /tmp/gfx-compile3.log -quit)",
+      "Bash(/Applications/Unity/Hub/Editor/2022.3.*/Unity.app/Contents/MacOS/Unity)",
+      "Bash(-batchmode -nographics -projectPath /Users/a23544/Documents/GitHub/GF_X -runTests -testPlatform EditMode -testResults /tmp/test_results.xml)",
+      "Bash(pip3 install:*)",
+      "Bash(grep -r \"enum.*Atk\\\\|enum.*Attack\\\\|enum.*Damage\\\\|enum.*Weapon\" /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts --include=*.cs)",
+      "Bash(find /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Tests -name *.cs -type f)",
+      "Bash(grep -r \"WeaponType\\\\|Weapon\\\\|weapon\" /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame --include=*.cs)",
+      "Bash(python3 -c \":*)",
+      "Bash(-batchmode -nographics -projectPath /Users/a23544/Documents/GitHub/GF_X -runTests -testPlatform EditMode -testResults /tmp/test_results2.xml)",
+      "mcp__UnityMCP__read_console",
+      "mcp__UnityMCP__run_tests",
+      "mcp__UnityMCP__get_test_job",
+      "mcp__UnityMCP__manage_asset",
+      "mcp__UnityMCP__create_script",
+      "mcp__UnityMCP__refresh_unity",
+      "mcp__UnityMCP__execute_menu_item",
+      "mcp__UnityMCP__manage_prefabs",
+      "mcp__UnityMCP__manage_editor",
+      "mcp__UnityMCP__manage_scriptable_object"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Event;
 using GameFramework.Fsm;
 using GameFramework.Procedure;
@@ -11,22 +11,13 @@ public class CharacterTestProcedure : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         GF.Log("正在进行测试，取消测试去修改LaunchProcedure");
-        
+
         //尝试创建物体
         InitDataModels();
-        
-        var playerParams = EntityParams.Create(
-            position: new Vector3(0, 1, 0)
-        );
-        
-        // GF.Entity.ShowEntity<PlayerEntity>(
-        //     0,
-        //     UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),
-        //     "Player",
-        //     playerParams
-        // );
-        
-        
+
+        // 订阅实体显示成功事件，给 SoldierEntity 挂血条
+        GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccess);
+
         var pPlayer = EntityParams.Create(
             position: new Vector3(0, 1, 0)
         );
@@ -34,93 +25,54 @@ public class CharacterTestProcedure : ProcedureBase
         pPlayer.BrainType = BrainType.Player;
         GF.Entity.ShowEntity<CharacterEntity>(3, UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"), "Player", pPlayer);
 
-        // 循环生成 5 个友军护卫
+        // 循环生成 5 个友军小兵（使用 SoldierEntity + DirectAtkComp）
         for (int i = 0; i < 5; i++)
         {
-            // 利用循环的 i 给他们一个初始的位置偏移，比如排成一排 (每个间隔 1.5 单位)
             Vector3 spawnPos = new Vector3(1f + (i * 3f), 1f, 0f);
 
             var pFriendly = EntityParams.Create(position: spawnPos);
             pFriendly.Side = SideType.PlayerSide;
             pFriendly.BrainType = BrainType.FriendlyAI;
 
-            // 分配唯一的实体 ID：10, 11, 12, 13, 14
             int entityId = 10 + i;
 
-            GF.Entity.ShowEntity<CharacterEntity>(
-                entityId, 
-                UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"), 
-                "Level", 
+            GF.Entity.ShowEntity<SoldierEntity>(
+                entityId,
+                UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),
+                "Level",
                 pFriendly
             );
         }
-        
+
 
         var pEnemy = EntityParams.Create(
             position: new Vector3(20, 1, 0)
         );
         pEnemy.Side = SideType.EnemySide;
         pEnemy.BrainType = BrainType.EnemyAI;
-        GF.Entity.ShowEntity<CharacterEntity>(5, UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"), "Level", pEnemy);
-        
-        
-        
-        
-        
-        
-        
+        GF.Entity.ShowEntity<SoldierEntity>(5, UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"), "Level", pEnemy);
+
+
         GameEntry.GetComponent<InputManager>()
             .ChangeState(InputState.Game);
-        
-        // var punchBagParams = EntityParams.Create(
-        //     position: new Vector3(2, 1, 0)
-        // );
-        //
-        // GF.Entity.ShowEntity<PunchBagEntity>(
-        //     1,
-        //     UtilityBuiltin.AssetsPath.GetPrefab("Entity/PunchBag"),
-        //     "Level",
-        //     punchBagParams
-        // );
-        
-        
-       
-
-        
-        
-        /*
-        EntityParams newParams = new EntityParams();
-        newParams.position = new Vector3(0, 1, 0);
-        GF.Entity.ShowEntity<PlayerEntity>(0,UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),"Player",newParams);
-        GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
-        EntityParams punchParams = new EntityParams();
-        punchParams.position = new Vector3(2, 1, 0);
-        GF.Entity.ShowEntity<PunchBagEntity>(1,UtilityBuiltin.AssetsPath.GetPrefab("Entity/PunchBag"),"Level",punchParams);*/
-        //GF.Entity.ShowEntity<DeviceEntity>(deviceData.PrefabName, Const.EntityGroup.Building, deviceParams);
-        
-
-        //CreaturePropertyManager creaturePropertyManager = new CreaturePropertyManager("Knight");
-        //GF.Log(creaturePropertyManager.propertyManager.ToString());
-        //GF.Log(creaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent).ToString());
-        //var vp = PropertyDirectAdditiveModifier.Create((Fix64)(1));
-
-
-        //creaturePropertyManager.ModifyMainPropertyMul(CreatureMainProperty.Health,NormalBaseValueTp.Base,vp);
-        //GF.Log(creaturePropertyManager.propertyManager.ToString());
-        //GF.Log(creaturePropertyManager.propertyManager.GetValueProperty("Health_Value_Buff").GetValue().ToString());
-        //GF.Log(creaturePropertyManager.GetProperty(CreatureMainProperty.Health).ToString());
-        //creaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health,vp,false);
-        //GF.Log(creaturePropertyManager.GetProperty(CreatureMainProperty.Health).ToString());
-
-
-        //GF.Log(GF.DataModel.GetDataModel<PlayerDataModel>().Hp.ToString());
-        //GF.DataModel.CreateDataModel<PlayerDataModel>();
-        //GF.Log(GF.DataModel.GetDataModel<PlayerDataModel>().Hp.ToString());
-
-
-
     }
-    
+
+    protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
+    {
+        GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccess);
+        base.OnLeave(procedureOwner, isShutdown);
+    }
+
+    private void OnShowEntitySuccess(object sender, GameEventArgs e)
+    {
+        var args = (ShowEntitySuccessEventArgs)e;
+        if (args.Entity.Logic is GeneralCreature creature)
+        {
+            float max = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+            HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
+        }
+    }
+
     private void InitDataModels()
     {
         GF.DataModel.CreateDataModel<ItemDataModel>();

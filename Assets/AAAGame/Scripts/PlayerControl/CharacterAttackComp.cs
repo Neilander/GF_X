@@ -1,8 +1,8 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public class CharacterAttackComp : IAtkComp
 {
-    private MAEntity _entity;
+    private IEntityContext _ctx;
 
     public BasicAction[] actions;
 
@@ -10,30 +10,30 @@ public class CharacterAttackComp : IAtkComp
     private bool _ifContinueAction;
     private int _currentIndex;
 
-    public void Attack()
+    public void Attack(float deltaTime)
     {
-        if (_entity == null) return;
-        if (_entity.Brain == null) return;
-        // if (_entity.CreaturePropertyManager == null) return;
+        if (_ctx == null) return;
+        if (_ctx.Brain == null) return;
 
         if (actions == null || actions.Length == 0) return;
 
-        bool atkPressed = _entity.Brain.Attack;
+        bool atkPressed = _ctx.Brain.Attack;
 
         if (_actionInfo == null)
         {
             if (!atkPressed) return;
 
-            if (_entity.animator != null)
-                _entity.animator.SetTrigger(actions[_currentIndex].relatedTriggerString);
+            if (_ctx is GeneralCreature gc && gc.animator != null)
+                gc.animator.SetTrigger(actions[_currentIndex].relatedTriggerString);
 
-            actions[_currentIndex].StartAction(_entity, out _actionInfo);
-            if (_actionInfo != null)
-                _actionInfo.damageInfo = new Damage(_entity, 1);
+            if (_ctx is GeneralCreature body)
+            {
+                actions[_currentIndex].StartAction(body, out _actionInfo);
+                if (_actionInfo != null)
+                    _actionInfo.damageInfo = new Damage(body, 1);
+            }
 
-            // 这里第二个参数要求 ICapability：你原 PlayerAttackComp 能传 this，
-            // 说明 IAtkComp 大概率就是 ICapability，或者 CharacterAttackComp 实现了它就行。
-            _entity.LockComp(_entity.moveComp, this);
+            _ctx.LockComp(_ctx.MoveComp, this);
             _ifContinueAction = false;
         }
         else
@@ -44,11 +44,11 @@ public class CharacterAttackComp : IAtkComp
                 _ifContinueAction = true;
 
                 int nextIndex = (_currentIndex + 1) % actions.Length;
-                if (_entity.animator != null)
-                    _entity.animator.SetTrigger(actions[nextIndex].relatedTriggerString);
+                if (_ctx is GeneralCreature gc && gc.animator != null)
+                    gc.animator.SetTrigger(actions[nextIndex].relatedTriggerString);
             }
 
-            actions[_currentIndex].Tick(_actionInfo, Time.deltaTime);
+            actions[_currentIndex].Tick(_actionInfo, deltaTime);
 
             if (_actionInfo.isFinished)
             {
@@ -56,9 +56,12 @@ public class CharacterAttackComp : IAtkComp
                 {
                     _currentIndex = (_currentIndex + 1) % actions.Length;
 
-                    actions[_currentIndex].StartAction(_entity, out _actionInfo);
-                    if (_actionInfo != null)
-                        _actionInfo.damageInfo = new Damage(_entity, 1);
+                    if (_ctx is GeneralCreature body)
+                    {
+                        actions[_currentIndex].StartAction(body, out _actionInfo);
+                        if (_actionInfo != null)
+                            _actionInfo.damageInfo = new Damage(body, 1);
+                    }
 
                     _ifContinueAction = false;
                 }
@@ -66,15 +69,15 @@ public class CharacterAttackComp : IAtkComp
                 {
                     _actionInfo = null;
                     _currentIndex = 0;
-                    _entity.ResumeComp(_entity.moveComp, this);
+                    _ctx.ResumeComp(_ctx.MoveComp, this);
                 }
             }
         }
     }
 
-    public void Init(MAEntity entity)
+    public void Init(IEntityContext ctx)
     {
-        _entity = entity;
+        _ctx = ctx;
         _actionInfo = null;
         _ifContinueAction = false;
         _currentIndex = 0;

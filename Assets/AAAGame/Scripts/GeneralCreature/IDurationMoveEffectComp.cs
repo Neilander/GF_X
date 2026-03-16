@@ -3,7 +3,7 @@ using System;
 
 public interface IDurationMoveEffectComp : ICapability
 {
-    void Init(MAEntity entity);
+    void Init(IEntityContext ctx);
     int StartDurationAdditionalMove(float duration,Vector3 speed, Func<Vector3,Vector3>speedModifier = null);
     int StartDurationOverrideMove(float duration,Vector3 speed, Func<Vector3,Vector3>speedModifier = null);
     

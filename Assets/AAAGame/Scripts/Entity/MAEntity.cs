@@ -1,23 +1,53 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public class MAEntity :CompCreature
+public class MAEntity : CompCreature, IEntityContext
 {
     public IMoveComp moveComp { get; protected set; }
-    public IAtkComp atkComp{ get; protected set; }
-    
-    public ITargetingComp targetComp{ get; protected set; }
-    
+    public IAtkComp atkComp { get; protected set; }
+
+    public ITargetingComp targetComp { get; protected set; }
+
     private CharacterController cController;
-    public MoveExecutor moveExecutor { get; private set; }
+    private MoveExecutor _moveExecutor;
+    public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
-    
-    public IControlBrain Brain { get; private set; } 
+
+    public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
+
+    #region IEntityContext 实现
+
+    public Vector3 Position
+    {
+        get => transform.position;
+        set => transform.position = value;
+    }
+
+    public Quaternion Rotation
+    {
+        get => transform.rotation;
+        set => transform.rotation = value;
+    }
+
+    // Side, Alive, ReferenceId 已在 GeneralCreature 中定义
+
+    IMoveExecutor IEntityContext.MoveExecutor => moveExecutor;
+    IMoveComp IEntityContext.MoveComp => moveComp;
+    IAtkComp IEntityContext.AtkComp => atkComp;
+    ITargetingComp IEntityContext.TargetComp => targetComp;
+
+    public float GetProperty(CreatureMainProperty prop)
+    {
+        if (CreaturePropertyManager == null) return 5f;
+        return (float)CreaturePropertyManager.GetProperty(prop);
+    }
+
+    #endregion
 
     protected override void OnInit(object userData)
     {
@@ -25,34 +55,36 @@ public class MAEntity :CompCreature
         //初始化移动和攻击组件
 
         SetUpMAComp();
-        
+
         durationMoveEffectComp = new DurationMoveEffectComp();
         durationMoveEffectComp.Init(this);
-        
+
         cController = GetComponent<CharacterController>();
-        moveExecutor = gameObject.AddComponent<MoveExecutor>();
-        moveExecutor.Init(cController);
+        _moveExecutor = gameObject.AddComponent<MoveExecutor>();
+        _moveExecutor.Init(cController);
     }
 
     protected virtual void Update()
     {
+        float dt = Time.deltaTime;
+
         if (Brain is ITickBrain tickBrain)
         {
-            tickBrain.Tick(this, Time.deltaTime);
+            tickBrain.Tick(this, dt);
         }
-        
+
         if (CanRun(targetComp))
-            targetComp.UpdateTargeting();
-        
+            targetComp.UpdateTargeting(dt);
+
         if (CanRun(moveComp))
-            moveComp.Move();
+            moveComp.Move(dt);
 
         if (CanRun(atkComp))
-            atkComp.Attack();
-        
-        if(CanRun(durationMoveEffectComp))
-            durationMoveEffectComp.ApplyEffect(Time.deltaTime);
-        
+            atkComp.Attack(dt);
+
+        if (CanRun(durationMoveEffectComp))
+            durationMoveEffectComp.ApplyEffect(dt);
+
         moveExecutor.Execute();
     }
 
@@ -65,18 +97,14 @@ public class MAEntity :CompCreature
         string moveFacPath = row.MoveFactoryPath;
         string atkFacPath = row.AttackFactoryPath;
         //设置组件
-        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),this);
-        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),this);
-        //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),MoveCompFactory.MoveFactoryCallBack,this );
-        //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),AtkCompFactory.AtkFactoryCallBack,this );
+        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
+        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
     }
 
-    public void SetMoveComp(IMoveComp newMoveComp)=>moveComp = newMoveComp; 
-    public void SetAtkComp(IAtkComp newAtkComp)=> atkComp = newAtkComp;
-    
-    public void SetTargetingComp(ITargetingComp newTargetingComp)=> targetComp = newTargetingComp;
+    public void SetMoveComp(IMoveComp newMoveComp) => moveComp = newMoveComp;
+    public void SetAtkComp(IAtkComp newAtkComp) => atkComp = newAtkComp;
+
+    public void SetTargetingComp(ITargetingComp newTargetingComp) => targetComp = newTargetingComp;
 
     #endregion
-    
-    
 }

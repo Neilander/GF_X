@@ -4,23 +4,23 @@ using System.Collections.Generic;
 
 public class DurationMoveEffectComp : IDurationMoveEffectComp
 {
-    private MAEntity _entity;
+    private IEntityContext _ctx;
     //用于计数返回
     private int _additionalIndex;
     private int _overrideIndex;
     private Dictionary<int, TimedMoveEffect> _timedAdditionalEffects;
     private Dictionary<int, TimedMoveEffect> _timedOverrideEffects;
-    
-    public void Init(MAEntity entity)
+
+    public void Init(IEntityContext ctx)
     {
-        _entity = entity;
+        _ctx = ctx;
         _additionalIndex = 0;
         _overrideIndex = 0;
         _timedAdditionalEffects = new Dictionary<int, TimedMoveEffect>();
         _timedOverrideEffects = new Dictionary<int, TimedMoveEffect>();
     }
 
-    public int StartDurationAdditionalMove(float duration, Vector3 speed, Func<Vector3,Vector3> speedModifier = null)
+    public int StartDurationAdditionalMove(float duration, Vector3 speed, Func<Vector3, Vector3> speedModifier = null)
     {
         _additionalIndex++;
         _timedAdditionalEffects.Add(_additionalIndex, new TimedMoveEffect(duration, speed, speedModifier));
@@ -76,7 +76,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
                 _timedAdditionalEffects.Remove(key);
             }
         }
-        
+
         // -------- 计算 Override --------
         var overrideKeys = new List<int>(_timedOverrideEffects.Keys);
         bool hasOverride = overrideKeys.Count > 0;
@@ -84,7 +84,6 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
         {
             var effect = _timedOverrideEffects[key];
 
-            
             finalOverrideVelocity += effect.speed;
 
             if (effect.UpdateAndCheck(deltaTime))
@@ -92,10 +91,10 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
                 _timedOverrideEffects.Remove(key);
             }
         }
-        
+
         // -------- 应用到 MoveExecutor --------
 
-        var executor = _entity.moveExecutor;
+        var executor = _ctx.MoveExecutor;
 
         if (hasOverride)
         {
@@ -108,22 +107,22 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
     {
         StopAllMove();
     }
-    
+
     public void Resume()
     {
-        
+
     }
 
-    class TimedMoveEffect:TimedEffect
+    class TimedMoveEffect : TimedEffect
     {
         public Vector3 speed;
-        public Func<Vector3,Vector3> speedModifier;
-        public TimedMoveEffect(float duration, Vector3 speed, Func<Vector3,Vector3> speedModifier) : base(duration)
+        public Func<Vector3, Vector3> speedModifier;
+        public TimedMoveEffect(float duration, Vector3 speed, Func<Vector3, Vector3> speedModifier) : base(duration)
         {
             this.speed = speed;
             this.speedModifier = speedModifier;
         }
-        
+
         public override bool UpdateAndCheck(float deltaTime)
         {
             if (speedModifier != null)

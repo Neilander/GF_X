@@ -14,7 +14,7 @@ public interface IControlBrain
 /// </summary>
 public interface ITickBrain
 {
-    void Tick(MAEntity self, float dt);
+    void Tick(IEntityContext self, float dt);
 }
 
 public enum BrainType

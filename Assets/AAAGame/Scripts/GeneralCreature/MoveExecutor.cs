@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class MoveExecutor : MonoBehaviour
+public class MoveExecutor : MonoBehaviour, IMoveExecutor
 {
     private CharacterController _controller;
 
@@ -48,11 +48,16 @@ public class MoveExecutor : MonoBehaviour
 
     public void Execute()
     {
+        Execute(Time.deltaTime);
+    }
+
+    public void Execute(float deltaTime)
+    {
         Vector3 finalVelocity = _hasOverride
             ? _overrideVelocity
             : _inputVelocity + _externalVelocity;
 
-        _controller.Move(finalVelocity * Time.deltaTime);
+        _controller.Move(finalVelocity * deltaTime);
 
         // 输入每帧重置（非常重要）
         _inputVelocity = Vector3.zero;
