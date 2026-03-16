@@ -21,5 +21,6 @@ public enum BrainType
 {
     Player = 0,
     EnemyAI = 1,
-    FriendlyAI = 2
+    FriendlyAI = 2,
+    SoldierAI = 3
 }

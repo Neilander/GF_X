@@ -1019,6 +1019,10 @@
       <Project>{101794ce-3295-4fc6-9929-009fdc35ee5d}</Project>
       <Name>GameFramework</Name>
     </ProjectReference>
+    <ProjectReference Include="Unity.AI.Navigation.csproj">
+      <Project>{226d0750-e83f-0aae-de97-a3735c09a6d0}</Project>
+      <Name>Unity.AI.Navigation</Name>
+    </ProjectReference>
     <ProjectReference Include="Unity.Burst.Editor.csproj">
       <Project>{1da6acd5-96ca-8952-954b-dd2f8107cdeb}</Project>
       <Name>Unity.Burst.Editor</Name>
@@ -1131,6 +1135,10 @@
       <Project>{959971c8-63e4-8bb2-b3af-f08110ef9ca7}</Project>
       <Name>MCPForUnity.Editor</Name>
     </ProjectReference>
+    <ProjectReference Include="Unity.AI.Navigation.Editor.ConversionSystem.csproj">
+      <Project>{eb436335-474f-3657-62af-84035e26bc28}</Project>
+      <Name>Unity.AI.Navigation.Editor.ConversionSystem</Name>
+    </ProjectReference>
     <ProjectReference Include="AstarPathfindingProjectEditor.csproj">
       <Project>{ee882978-f8de-b273-caf4-5606f9f02d95}</Project>
       <Name>AstarPathfindingProjectEditor</Name>
@@ -1219,6 +1227,10 @@
       <Project>{319eae36-e55e-3c33-c655-0f5cf4fbb97b}</Project>
       <Name>Unity.InputSystem.ForUI</Name>
     </ProjectReference>
+    <ProjectReference Include="Unity.AI.Navigation.Updater.csproj">
+      <Project>{7ff6e0f4-fcbb-afa7-0c79-710eb3cfce23}</Project>
+      <Name>Unity.AI.Navigation.Updater</Name>
+    </ProjectReference>
     <ProjectReference Include="Newtonsoft.Json.UnityConverters.csproj">
       <Project>{e355a1a2-5f2d-39bc-0eb2-14f9cc18c0ac}</Project>
       <Name>Newtonsoft.Json.UnityConverters</Name>
@@ -1242,6 +1254,10 @@
     <ProjectReference Include="Unity.Searcher.Editor.csproj">
       <Project>{d89a5f01-0481-19e0-7e02-d7acface182f}</Project>
       <Name>Unity.Searcher.Editor</Name>
+    </ProjectReference>
+    <ProjectReference Include="Unity.AI.Navigation.Editor.csproj">
+      <Project>{340ec96c-0e64-4727-f433-359ffc563d2a}</Project>
+      <Name>Unity.AI.Navigation.Editor</Name>
     </ProjectReference>
     <ProjectReference Include="DrawingEditor.csproj">
       <Project>{0bd93394-29b9-5f5c-dc43-408363643f36}</Project>

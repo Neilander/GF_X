@@ -115,6 +115,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.UIControl.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/IInteractionOption.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/ValueProperty.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/EntityRegistry.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/ISelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceUpgradeInteractionOption.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/LocalizationExtension.cs" />
@@ -225,6 +226,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIParams.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DamageSystem.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringIntPair.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Movement/SoldierAIBrain.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
@@ -245,6 +247,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/CraftingUnit.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Movement/SteeringMovement.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/MAEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameUIForm.Variables.cs" />

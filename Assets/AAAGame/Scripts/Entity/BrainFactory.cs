@@ -15,7 +15,13 @@ public static class BrainFactory
                 return new EnemyAIBrain();
 
             case BrainType.FriendlyAI:
-                return new FriendlyAIBrain(); 
+                return new FriendlyAIBrain();
+
+            case BrainType.SoldierAI:
+                var soldierBrain = new SoldierAIBrain();
+                // 惰性注入：Inject 在这里调用，EntityRegistry 提供玩家和全局列表
+                soldierBrain.Inject(EntityRegistry.Player, EntityRegistry.AllEntities);
+                return soldierBrain;
 
             default:
                 return new PlayerBrain();

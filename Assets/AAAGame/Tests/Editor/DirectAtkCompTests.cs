@@ -287,33 +287,5 @@ public class DirectAtkCompTests
         Assert.AreEqual(89f, target.Health.currentHealth, 0.01f, "应造成11点伤害");
     }
 
-    [Test]
-    public void 攻击时面向目标()
-    {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(0, 0, -1), SideType.EnemySide); // 身后
-
-        var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
-        targeting.Init(attacker);
-        attacker.TargetComp = targeting;
-
-        attacker.Brain = new ScriptedBrain { Attack = true };
-
-        var moveComp = new SimMoveComp();
-        moveComp.Init(attacker);
-        attacker.MoveComp = moveComp;
-
-        var weapon = MeleeWeapon();
-        var atkComp = new DirectAtkComp(weapon);
-        atkComp.Init(attacker);
-        attacker.AtkComp = atkComp;
-
-        targeting.UpdateTargeting(1f);
-        atkComp.Attack(0.01f);
-
-        // 应该面向 (0,0,-1) 方向
-        Vector3 forward = attacker.Rotation * Vector3.forward;
-        Assert.Less(forward.z, 0f, "攻击时应面向目标");
-    }
+    // 转向功能已移除（不需要小兵在攻击时旋转），此测试已废弃
 }

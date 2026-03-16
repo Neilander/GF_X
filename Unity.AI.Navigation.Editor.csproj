@@ -12,11 +12,11 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{cb87dd55-d9d1-b8d4-5b0b-902f6612d496}</ProjectGuid>
+    <ProjectGuid>{340ec96c-0e64-4727-f433-359ffc563d2a}</ProjectGuid>
     <ProjectTypeGuids>{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <AssemblyName>Assembly-CSharp</AssemblyName>
+    <AssemblyName>Unity.AI.Navigation.Editor</AssemblyName>
     <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <BaseDirectory>.</BaseDirectory>
@@ -25,12 +25,12 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>Temp\Bin\Debug\Assembly-CSharp\</OutputPath>
-    <DefineConstants>UNITY_2022_3_17;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_PROFILER;DEBUG;TRACE;UNITY_ASSERTIONS;UNITY_EDITOR;UNITY_EDITOR_64;UNITY_EDITOR_OSX;ENABLE_UNITY_COLLECTIONS_CHECKS;ENABLE_BURST_AOT;UNITY_TEAM_LICENSE;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER</DefineConstants>
+    <OutputPath>Temp\Bin\Debug\Unity.AI.Navigation.Editor\</OutputPath>
+    <DefineConstants>UNITY_2022_3_17;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_PROFILER;DEBUG;TRACE;UNITY_ASSERTIONS;UNITY_EDITOR;UNITY_EDITOR_64;UNITY_EDITOR_OSX;ENABLE_UNITY_COLLECTIONS_CHECKS;ENABLE_BURST_AOT;UNITY_TEAM_LICENSE;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER;UNITY_EDITOR_ONLY_COMPILATION</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <NoWarn>0169,0649</NoWarn>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>False</TreatWarningsAsErrors>
   </PropertyGroup>
   <PropertyGroup>
@@ -45,165 +45,18 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
-    <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
-    <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
-    <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
-    <None Include="Assets/AAAGame/DataTable/Text/LocalizationTextTable_InteractionOption.txt" />
-    <None Include="Assets/AAAGame/DataTable/CharacterMAFactoryTable.txt" />
-    <None Include="Assets/AAAGame/DataTable/Text/LocalizationTextTable_Misc.txt" />
-    <None Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/ValidationExceptions.json" />
-    <None Include="Library/PackageCache/com.unity.modules.subsystems@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.9/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMPro.cginc" />
-    <None Include="Library/PackageCache/com.unity.modules.jsonserialize@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.burst@1.8.19/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Core/LanguagesTable.txt" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Fonts/chars.txt" />
-    <None Include="Library/PackageCache/com.unity.modules.screencapture@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.cloth@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Mobile Overlay.shader" />
-    <None Include="Library/PackageCache/com.unity.test-framework.performance@3.0.3/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.unitywebrequesttexture@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.inputsystem@1.14.2/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.ai@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.collections@2.5.7/Unity.Collections.LowLevel.ILSupport/README.txt" />
-    <None Include="Assets/AAAGame/DataTable/Item/ItemWithEffectTable_Tool.txt" />
-    <None Include="Library/PackageCache/com.unity.inputsystem@1.14.2/ValidationConfig.json" />
-    <None Include="Library/PackageCache/com.unity.ugui@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.cinemachine@2.10.3/ValidationExceptions.json" />
-    <None Include="Library/PackageCache/com.unity.ext.nunit@2.0.3/package.json" />
-    <None Include="Assets/AAAGame/Shader/SpriteBaselineProject.shader" />
-    <None Include="Library/PackageCache/com.unity.render-pipelines.universal-config@14.0.9/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Core/EntityGroupTable.txt" />
-    <None Include="Library/PackageCache/com.unity.modules.assetbundle@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Item/EquipmentTable.txt" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Bitmap.shader" />
-    <None Include="Assets/AAAGame/DataTable/Text/InteractOptionTextTable.txt" />
-    <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.imgui@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.tilemap@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.coplaydev.unity-mcp@b2d95d2638/package.json" />
-    <None Include="Library/PackageCache/com.unity.test-framework.performance@3.0.3/ValidationExceptions.json" />
-    <None Include="Assets/AAAGame/Language/Korean.json" />
-    <None Include="Library/PackageCache/com.unity.timeline@1.7.7/package.json" />
-    <None Include="Assets/BOXOPHOBIC/Utils/Shaders/Channel Preview.shader" />
-    <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Equipment.txt" />
-    <None Include="Library/PackageCache/com.code-philosophy.obfuz@5557b27724/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Core/UITable.txt" />
-    <None Include="Assets/AAAGame/DataTable/LevelTable.txt" />
-    <None Include="Assets/AAAGame/Language/English.json" />
-    <None Include="Library/PackageCache/com.unity.ide.visualstudio@2.0.23/ValidationConfig.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMPro_Mobile.cginc" />
-    <None Include="Library/PackageCache/com.unity.modules.terrainphysics@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.mathematics@1.3.2/package.json" />
-    <None Include="Library/PackageCache/com.unity.burst@1.8.19/ValidationExceptions.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF SSD.shader" />
-    <None Include="Assets/AAAGame/Language/Japanese.json" />
-    <None Include="Library/PackageCache/com.unity.timeline@1.7.7/ValidationExceptions.json" />
-    <None Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/package.json" />
-    <None Include="Assets/AAAGame/Language/ChineseTraditional.json" />
-    <None Include="Assets/AAAGame/DataTable/Core/UIGroupTable.txt" />
-    <None Include="Assets/AAAGame/DataTable/Build/DeviceTable.txt" />
-    <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/PackageConversionData.json" />
-    <None Include="Library/PackageCache/com.unity.modules.unitywebrequestassetbundle@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.ide.visualstudio@2.0.23/package.json" />
-    <None Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/ValidationConfig.json" />
-    <None Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Surface-Mobile.shader" />
-    <None Include="Library/PackageCache/com.unity.modules.imageconversion@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/ValidationExceptions.json" />
-    <None Include="Library/PackageCache/com.unity.shadergraph@14.0.9/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.unityanalytics@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/DataTable/CameraViewTable.txt" />
-    <None Include="Library/PackageCache/com.unity.ide.rider@3.0.38/package.json" />
-    <None Include="Library/PackageCache/com.unity.searcher@4.9.2/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.video@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.shadergraph@14.0.9/ValidationConfig.json" />
-    <None Include="Library/PackageCache/com.unity.ide.rider@3.0.38/ValidationExceptions.json" />
-    <None Include="Assets/AAAGame/DataTable/Item/CraftingFormulaTable.txt" />
-    <None Include="Library/PackageCache/com.unity.test-framework@1.4.6/package.json" />
-    <None Include="Library/PackageCache/com.unity.nuget.mono-cecil@1.11.5/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Tool.txt" />
-    <None Include="Library/PackageCache/com.unity.modules.particlesystem@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.physics2d@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Surface.shader" />
-    <None Include="Library/PackageCache/com.unity.modules.vr@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/Shader/TextMeshFont.shader" />
-    <None Include="Assets/HybridCLRData/Generated/link.xml" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Sprites/EmojiOne Attribution.txt" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Bitmap-Custom-Atlas.shader" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF.shader" />
-    <None Include="Library/PackageCache/com.unity.ide.visualstudio@2.0.23/ValidationExceptions.json" />
-    <None Include="Assets/link.xml" />
-    <None Include="Assets/AAAGame/DataTable/Core/SoundGroupTable.txt" />
-    <None Include="Library/PackageCache/com.unity.nuget.newtonsoft-json@3.2.1/link.xml" />
-    <None Include="Library/PackageCache/com.unity.modules.wind@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Mobile SSD.shader" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Resources/LineBreaking Leading Characters.txt" />
-    <None Include="Library/PackageCache/com.unity.modules.umbra@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.nuget.newtonsoft-json@3.2.1/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMPro_Properties.cginc" />
-    <None Include="Library/PackageCache/com.unity.cinemachine@2.10.3/license.txt" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMPro_Surface.cginc" />
-    <None Include="Assets/AAAGame/Config/GameConfig.txt" />
-    <None Include="Library/PackageCache/com.unity.inputsystem@1.14.2/ValidationExceptions.json" />
-    <None Include="Library/PackageCache/com.unity.modules.audio@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.physics@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.9/ValidationExceptions.json" />
-    <None Include="Assets/AAAGame/DataTable/CharacterMainPropertyTable.txt" />
-    <None Include="Library/PackageCache/com.unity.modules.vehicles@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.cinemachine@2.10.3/package.json" />
-    <None Include="Library/PackageCache/com.code-philosophy.obfuz4hybridclr@59804e17a0/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.unitywebrequestwww@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Resources/LineBreaking Following Characters.txt" />
-    <None Include="Assets/AAAGame/DataTable/Item/ItemWithEffectTable_Consumable.txt" />
-    <None Include="Library/PackageCache/com.unity.modules.unitywebrequestaudio@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Item/ItemTable_Material.txt" />
-    <None Include="Assets/AAAGame/HotfixDlls/HotfixFileList.txt" />
-    <None Include="Assets/BOXOPHOBIC/Polyverse Skies/Core/Shaders/Simple.shader" />
-    <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/Editor Resources/Shaders/TMP_SDF_SSD.cginc" />
-    <None Include="Assets/AAAGame/DataTable/Item/ToolTable.txt" />
-    <None Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/ValidationConfig.json" />
-    <None Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.xr@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Item/MaterialTable.txt" />
-    <None Include="Library/PackageCache/com.unity.jobs@0.70.0-preview.7/package.json" />
-    <None Include="Assets/AAAGame/Language/ChineseSimplified.json" />
-    <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/Editor Resources/Shaders/TMP_Properties.cginc" />
-    <None Include="Assets/AAAGame/DataTable/Item/ConsumableTable.txt" />
-    <None Include="Library/PackageCache/com.unity.nuget.newtonsoft-json@3.2.1/Runtime/AOT/Newtonsoft.Json.xml" />
-    <None Include="Assets/AAAGame/Shader/ASE/FastLit.shader" />
-    <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/Editor Resources/Shaders/TMP_SDF Internal Editor.shader" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Mobile Masking.shader" />
-    <None Include="Library/PackageCache/com.unity.modules.director@1.0.0/package.json" />
-    <None Include="Assets/BOXOPHOBIC/Polyverse Skies/Generator/Shaders/Rendering Clouds.shader" />
-    <None Include="Library/PackageCache/com.unity.modules.terrain@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.2d.sprite@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Tech/TechNodeTable.txt" />
-    <None Include="Assets/AAAGame/DataTable/TechNodeTable.txt" />
-    <None Include="Library/PackageCache/com.unity.collections@2.5.7/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.androidjni@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF Overlay.shader" />
-    <None Include="Library/PackageCache/com.unity.textmeshpro@3.0.8/PackageConversionData_Assets.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Bitmap-Mobile.shader" />
-    <None Include="Library/PackageCache/com.unity.mathematics@1.3.2/ValidationExceptions.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Fonts/LiberationSans - OFL.txt" />
-    <None Include="Library/PackageCache/com.unity.modules.animation@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/package.json" />
-    <None Include="Assets/AAAGame/DataTable/Item/ItemWithEffectTable_Equipment.txt" />
-    <None Include="Library/PackageCache/com.unity.nuget.newtonsoft-json@3.2.1/Runtime/Newtonsoft.Json.xml" />
-    <None Include="Library/PackageCache/com.unity.collections@2.5.7/pvpExceptions.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_SDF-Mobile.shader" />
-    <None Include="Library/PackageCache/com.unity.burst@1.8.19/Unity.Burst.Unsafe.xml" />
-    <None Include="Library/PackageCache/com.unity.render-pipelines.universal@14.0.9/ValidationConfig.json" />
-    <None Include="Library/PackageCache/com.unity.modules.unitywebrequest@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.modules.uielements@1.0.0/package.json" />
-    <None Include="Library/PackageCache/com.unity.collections@2.5.7/ValidationExceptions.json" />
-    <None Include="Assets/BOXOPHOBIC/Polyverse Skies/Core/Shaders/Standard.shader" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Sprites/EmojiOne.json" />
-    <None Include="Library/PackageCache/com.unity.modules.ui@1.0.0/package.json" />
-    <None Include="Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Sprite.shader" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavMeshModifierEditor.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavigationPreferences.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavMeshLinkEditor.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavMeshAssetManager.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/ObsoleteNavigationWindowMenuEntry.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/AssemblyInfo.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavMeshSurfaceEditor.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavigationWindow.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavMeshComponentsGUIUtility.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavMeshModifierVolumeEditor.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/NavigationOverlay.cs" />
+    <None Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Editor/Unity.AI.Navigation.Editor.asmdef" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Managed/UnityEngine/UnityEngine.dll</HintPath>
     </Reference>
@@ -281,6 +134,9 @@
     </Reference>
     <Reference Include="UnityEngine.LocalizationModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Managed/UnityEngine/UnityEngine.LocalizationModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.NVIDIAModule">
+      <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Managed/UnityEngine/UnityEngine.NVIDIAModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.ParticleSystemModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Managed/UnityEngine/UnityEngine.ParticleSystemModule.dll</HintPath>
@@ -453,6 +309,18 @@
     <Reference Include="UnityEditor.UnityConnectModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Managed/UnityEngine/UnityEditor.UnityConnectModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEditor.Graphs">
+      <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Managed/UnityEditor.Graphs.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEditor.WebGL.Extensions">
+      <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/PlaybackEngines/WebGLSupport/UnityEditor.WebGL.Extensions.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEditor.OSXStandalone.Extensions">
+      <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.OSXStandalone.Extensions.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEditor.WindowsStandalone.Extensions">
+      <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/PlaybackEngines/WindowsStandaloneSupport/UnityEditor.WindowsStandalone.Extensions.dll</HintPath>
+    </Reference>
     <Reference Include="System.Text.Json">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/System.Text.Json.dll</HintPath>
     </Reference>
@@ -471,6 +339,15 @@
     <Reference Include="nunit.framework">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.ext.nunit@2.0.3/net40/unity-custom/nunit.framework.dll</HintPath>
     </Reference>
+    <Reference Include="unityplastic">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/unityplastic.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.Plastic.Antlr3.Runtime">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/Unity.Plastic.Antlr3.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="DOTweenEditor">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/DOTween/Editor/DOTweenEditor.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.IO.RecyclableMemoryStream">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/EPPlus.6.2/Microsoft.IO.RecyclableMemoryStream.dll</HintPath>
     </Reference>
@@ -479,6 +356,12 @@
     </Reference>
     <Reference Include="protobuf-net.Core">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/protobuf-net.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.Plastic.Newtonsoft.Json">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/Unity.Plastic.Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="log4netPlastic">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/log4netPlastic.dll</HintPath>
     </Reference>
     <Reference Include="System.Text.Encodings.Web">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/System.Text.Encodings.Web.dll</HintPath>
@@ -896,297 +779,29 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="UniTask.Addressables.csproj">
-      <Project>{fc8aa86d-6517-874a-0a11-3f5e120b556b}</Project>
-      <Name>UniTask.Addressables</Name>
-    </ProjectReference>
-    <ProjectReference Include="UnityGameFramework.Runtime.csproj">
-      <Project>{76b5a940-e855-a48d-3b0a-aa2d9ea6e9a5}</Project>
-      <Name>UnityGameFramework.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.VisualEffectGraph.Runtime.csproj">
-      <Project>{5c0b4279-9f9e-6a26-5abd-b83611cb2371}</Project>
-      <Name>Unity.VisualEffectGraph.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="HybridCLR.Runtime.csproj">
-      <Project>{56e79eba-135f-fc70-a744-24391065bbe9}</Project>
-      <Name>HybridCLR.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Core.Runtime.csproj">
-      <Project>{3994101d-487b-ac00-77be-5c3173407ff1}</Project>
-      <Name>Unity.RenderPipelines.Core.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Jobs.csproj">
-      <Project>{2049e4d4-ee9d-6ce6-4084-9dc2f35d0d13}</Project>
-      <Name>Unity.Jobs</Name>
-    </ProjectReference>
-    <ProjectReference Include="com.unity.cinemachine.editor.csproj">
-      <Project>{02defc62-2f8f-af45-f7cf-4823fd50b260}</Project>
-      <Name>com.unity.cinemachine.editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="GameFramework.csproj">
-      <Project>{101794ce-3295-4fc6-9929-009fdc35ee5d}</Project>
-      <Name>GameFramework</Name>
-    </ProjectReference>
     <ProjectReference Include="Unity.AI.Navigation.csproj">
       <Project>{226d0750-e83f-0aae-de97-a3735c09a6d0}</Project>
       <Name>Unity.AI.Navigation</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Burst.Editor.csproj">
-      <Project>{1da6acd5-96ca-8952-954b-dd2f8107cdeb}</Project>
-      <Name>Unity.Burst.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Obfuz.Runtime.csproj">
-      <Project>{fd2c1dbd-37c4-149d-36d7-151349add1bc}</Project>
-      <Name>Obfuz.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Boxophobic.Utils.Scripts.csproj">
-      <Project>{a1efd1fa-3176-a12b-3a94-7a79de023623}</Project>
-      <Name>Boxophobic.Utils.Scripts</Name>
-    </ProjectReference>
-    <ProjectReference Include="HybridCLR.Editor.csproj">
-      <Project>{bae3218b-6bde-5db9-a017-2cf1f8eb5747}</Project>
-      <Name>HybridCLR.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Newtonsoft.Json.UnityConverters.Mathematics.csproj">
-      <Project>{b4bc0e03-78b7-88d2-82a0-b6990a5ef16a}</Project>
-      <Name>Newtonsoft.Json.UnityConverters.Mathematics</Name>
-    </ProjectReference>
-    <ProjectReference Include="ZString.csproj">
-      <Project>{855f1679-a504-99cf-0a12-b695e4867270}</Project>
-      <Name>ZString</Name>
-    </ProjectReference>
-    <ProjectReference Include="DrawingPackageToolsEditor.csproj">
-      <Project>{1ec6cbba-be2d-8708-02d2-0cd361ff1d09}</Project>
-      <Name>DrawingPackageToolsEditor</Name>
-    </ProjectReference>
-    <ProjectReference Include="UnityGameFramework.Editor.csproj">
-      <Project>{1fd92f4e-f5a0-8f95-e9ff-2dc55ecce1ee}</Project>
-      <Name>UnityGameFramework.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Rider.Editor.csproj">
-      <Project>{61252a6a-c91e-52e1-a4a7-4209a12095c9}</Project>
-      <Name>Unity.Rider.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Drawing.csproj">
-      <Project>{07b98e6b-0ee5-f8f6-c9ae-c672687d7422}</Project>
-      <Name>Drawing</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.2D.Sprite.Editor.csproj">
-      <Project>{e0c5eaac-041c-abdd-5721-c5e735c07fc6}</Project>
-      <Name>Unity.2D.Sprite.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.csproj">
-      <Project>{bebdf91b-11a2-7ca5-625f-19695b574caf}</Project>
-      <Name>Boxophobic.PolyverseSkies.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.csproj">
-      <Project>{dec95282-ee35-c4b6-fde3-026d52fad664}</Project>
-      <Name>Unity.RenderPipelines.Universal.Config.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Core.Editor.csproj">
-      <Project>{249b63ce-de6b-ef0f-9094-153555eff7be}</Project>
-      <Name>Unity.RenderPipelines.Core.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.VisualEffectGraph.Editor.csproj">
-      <Project>{f4b7d74b-3119-7868-3988-e1d113eeb0b2}</Project>
-      <Name>Unity.VisualEffectGraph.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Obfuz4HybridCLR.Editor.csproj">
-      <Project>{42ca84ab-a72f-ff63-f999-40ec83bb3f6a}</Project>
-      <Name>Obfuz4HybridCLR.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Mathematics.Editor.csproj">
-      <Project>{6443bb29-c5d9-0e82-897e-b1a5819e4072}</Project>
-      <Name>Unity.Mathematics.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Core.ShaderLibrary.csproj">
-      <Project>{e7212051-3dc1-aaba-075e-1dba2bc77770}</Project>
-      <Name>Unity.RenderPipelines.Core.ShaderLibrary</Name>
-    </ProjectReference>
-    <ProjectReference Include="AstarPathfindingProject.csproj">
-      <Project>{a38f250f-9373-c074-e848-20f36d67f4cc}</Project>
-      <Name>AstarPathfindingProject</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Collections.csproj">
-      <Project>{8e2c96dd-ea76-4bbe-64ef-fd70367d22d9}</Project>
-      <Name>Unity.Collections</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.PlasticSCM.Editor.csproj">
-      <Project>{783d6ba9-9ce5-963f-6c35-ec35714c6f1e}</Project>
-      <Name>Unity.PlasticSCM.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.csproj">
-      <Project>{b49d7349-0051-25e8-207c-31afcc4dbdf5}</Project>
-      <Name>UniTask</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Collections.Editor.csproj">
-      <Project>{3661e2b8-0d85-9bb7-7989-0149fec8f1df}</Project>
-      <Name>Unity.Collections.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.TextMeshPro.csproj">
-      <Project>{2c28711c-0ebd-8fbd-ff10-c5f005bb5efb}</Project>
-      <Name>UniTask.TextMeshPro</Name>
-    </ProjectReference>
-    <ProjectReference Include="PPv2URPConverters.csproj">
-      <Project>{6f4662c6-efe3-63d8-d82c-09964f562cd5}</Project>
-      <Name>PPv2URPConverters</Name>
-    </ProjectReference>
-    <ProjectReference Include="Hotfix.csproj">
-      <Project>{a18bae49-5a0b-11b6-8ac5-729f276e6ca6}</Project>
-      <Name>Hotfix</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.TextMeshPro.csproj">
-      <Project>{fcf639b0-eb2b-f59d-9797-a57daa45dc04}</Project>
-      <Name>Unity.TextMeshPro</Name>
-    </ProjectReference>
-    <ProjectReference Include="MCPForUnity.Editor.csproj">
-      <Project>{959971c8-63e4-8bb2-b3af-f08110ef9ca7}</Project>
-      <Name>MCPForUnity.Editor</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.AI.Navigation.Editor.ConversionSystem.csproj">
       <Project>{eb436335-474f-3657-62af-84035e26bc28}</Project>
       <Name>Unity.AI.Navigation.Editor.ConversionSystem</Name>
     </ProjectReference>
-    <ProjectReference Include="AstarPathfindingProjectEditor.csproj">
-      <Project>{ee882978-f8de-b273-caf4-5606f9f02d95}</Project>
-      <Name>AstarPathfindingProjectEditor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Editor.csproj">
-      <Project>{1db8de66-491c-85a9-ee5b-51570039ab4d}</Project>
-      <Name>Unity.RenderPipelines.Universal.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Builtin.Runtime.csproj">
-      <Project>{09159761-1cd5-ed9d-6a8e-d32e5e7d79a2}</Project>
-      <Name>Builtin.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.csproj">
-      <Project>{98702209-a846-8638-55e9-c94306dc204e}</Project>
-      <Name>Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary</Name>
-    </ProjectReference>
-    <ProjectReference Include="MCPForUnity.Runtime.csproj">
-      <Project>{e1bb82aa-1e1c-d632-ef8a-247cdb91a34b}</Project>
-      <Name>MCPForUnity.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.Linq.csproj">
-      <Project>{b7698752-4599-40cc-6dce-99ea8b9b138e}</Project>
-      <Name>UniTask.Linq</Name>
-    </ProjectReference>
-    <ProjectReference Include="PackageTools.csproj">
-      <Project>{f03202cb-15a3-265e-9b88-3e510a90956e}</Project>
-      <Name>PackageTools</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Runtime.csproj">
-      <Project>{a157378e-3351-62f0-a4ed-b1a65eadd45e}</Project>
-      <Name>Unity.RenderPipelines.Universal.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Burst.csproj">
-      <Project>{6d05e6d1-c6d5-6c04-bbc4-5b8956ee94cd}</Project>
-      <Name>Unity.Burst</Name>
-    </ProjectReference>
-    <ProjectReference Include="Obfuz.Editor.csproj">
-      <Project>{0072d5d5-8cb2-0065-6f3b-9e40835e1da2}</Project>
-      <Name>Obfuz.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Timeline.Editor.csproj">
-      <Project>{19bdbfc7-5f21-6078-1a08-54ddea882c2e}</Project>
-      <Name>Unity.Timeline.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.ShaderGraph.Editor.csproj">
-      <Project>{fa4f2f2a-723c-01b2-a373-3e53ec6a26eb}</Project>
-      <Name>Unity.ShaderGraph.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.VisualStudio.Editor.csproj">
-      <Project>{bcc14075-965b-e8b6-b561-e67157345ffa}</Project>
-      <Name>Unity.VisualStudio.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="andywiecko.BurstTriangulator.csproj">
-      <Project>{c62bf202-fb12-4dee-3f9a-bb54098aa22d}</Project>
-      <Name>andywiecko.BurstTriangulator</Name>
-    </ProjectReference>
     <ProjectReference Include="UnityEditor.UI.csproj">
       <Project>{eaaa251a-fbab-6f2c-35b9-48fd5cade8e4}</Project>
       <Name>UnityEditor.UI</Name>
-    </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.csproj">
-      <Project>{2c9c9c4c-7348-9e44-2bd1-82cc13255841}</Project>
-      <Name>DOTween.Extension</Name>
     </ProjectReference>
     <ProjectReference Include="UnityEngine.UI.csproj">
       <Project>{3a9bbb42-f862-2c0f-44c6-fef93f2b2344}</Project>
       <Name>UnityEngine.UI</Name>
     </ProjectReference>
-    <ProjectReference Include="Boxophobic.PolyverseSkies.Editor.csproj">
-      <Project>{c3dfbbc2-5cbb-97bb-8fc7-12dfbe9e0e81}</Project>
-      <Name>Boxophobic.PolyverseSkies.Editor</Name>
+    <ProjectReference Include="UnityEditor.TestRunner.csproj">
+      <Project>{d407b701-8773-74df-cbfd-feb33e2f1bde}</Project>
+      <Name>UnityEditor.TestRunner</Name>
     </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipeline.Universal.ShaderLibrary.csproj">
-      <Project>{44d6af35-0db9-cf7f-cf99-84a5bc7689cc}</Project>
-      <Name>Unity.RenderPipeline.Universal.ShaderLibrary</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Timeline.csproj">
-      <Project>{754d3890-eee6-8b73-3a98-6463e3549097}</Project>
-      <Name>Unity.Timeline</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.InputSystem.csproj">
-      <Project>{742a7b64-1e94-e24c-7213-4b132c22e9c2}</Project>
-      <Name>Unity.InputSystem</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.InputSystem.ForUI.csproj">
-      <Project>{319eae36-e55e-3c33-c655-0f5cf4fbb97b}</Project>
-      <Name>Unity.InputSystem.ForUI</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.AI.Navigation.Updater.csproj">
-      <Project>{7ff6e0f4-fcbb-afa7-0c79-710eb3cfce23}</Project>
-      <Name>Unity.AI.Navigation.Updater</Name>
-    </ProjectReference>
-    <ProjectReference Include="Newtonsoft.Json.UnityConverters.csproj">
-      <Project>{e355a1a2-5f2d-39bc-0eb2-14f9cc18c0ac}</Project>
-      <Name>Newtonsoft.Json.UnityConverters</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Mathematics.csproj">
-      <Project>{a354a925-1aee-0a28-609e-a8f98e09c515}</Project>
-      <Name>Unity.Mathematics</Name>
-    </ProjectReference>
-    <ProjectReference Include="Boxophobic.Utils.Editor.csproj">
-      <Project>{cbaab6c9-afb8-1c07-0a45-d98189e9460e}</Project>
-      <Name>Boxophobic.Utils.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Shaders.csproj">
-      <Project>{07e2a773-7359-287d-298d-0915fbe69085}</Project>
-      <Name>Unity.RenderPipelines.Universal.Shaders</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.TextMeshPro.Editor.csproj">
-      <Project>{8d488a08-ebbb-7750-10fd-4d861baddbdf}</Project>
-      <Name>Unity.TextMeshPro.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Searcher.Editor.csproj">
-      <Project>{d89a5f01-0481-19e0-7e02-d7acface182f}</Project>
-      <Name>Unity.Searcher.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.AI.Navigation.Editor.csproj">
-      <Project>{340ec96c-0e64-4727-f433-359ffc563d2a}</Project>
-      <Name>Unity.AI.Navigation.Editor</Name>
-    </ProjectReference>
-    <ProjectReference Include="DrawingEditor.csproj">
-      <Project>{0bd93394-29b9-5f5c-dc43-408363643f36}</Project>
-      <Name>DrawingEditor</Name>
-    </ProjectReference>
-    <ProjectReference Include="Cinemachine.csproj">
-      <Project>{736f37b3-d569-b49e-23b8-cef189813f6a}</Project>
-      <Name>Cinemachine</Name>
-    </ProjectReference>
-    <ProjectReference Include="Boxophobic.PolyverseSkies.Scripts.csproj">
-      <Project>{f9d9d5a3-2f55-056c-4948-83e393a5ade9}</Project>
-      <Name>Boxophobic.PolyverseSkies.Scripts</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.DOTween.csproj">
-      <Project>{98c77608-0dca-ff1d-a9ec-b3b3b05d050d}</Project>
-      <Name>UniTask.DOTween</Name>
-    </ProjectReference>
-    <ProjectReference Include="AstarPackageToolsEditor.csproj">
-      <Project>{294b90c4-f43f-a0ff-4eb5-cde6932786fa}</Project>
-      <Name>AstarPackageToolsEditor</Name>
+    <ProjectReference Include="UnityEngine.TestRunner.csproj">
+      <Project>{730b1d7f-f378-8e49-47b0-a0946ec94d0a}</Project>
+      <Name>UnityEngine.TestRunner</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

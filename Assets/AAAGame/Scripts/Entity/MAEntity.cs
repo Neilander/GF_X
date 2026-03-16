@@ -64,6 +64,18 @@ public class MAEntity : CompCreature, IEntityContext
         _moveExecutor.Init(cController);
     }
 
+    protected override void OnShow(object userData)
+    {
+        base.OnShow(userData);
+        EntityRegistry.Register(this);
+    }
+
+    protected override void OnHide(bool isShutdown, object userData)
+    {
+        EntityRegistry.Unregister(this);
+        base.OnHide(isShutdown, userData);
+    }
+
     protected virtual void Update()
     {
         float dt = Time.deltaTime;

@@ -12,11 +12,11 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{3e7cc780-ae86-2f84-b1a9-01ebf4f9d51c}</ProjectGuid>
+    <ProjectGuid>{71501475-980c-439e-2ad3-cfbf87cf89fe}</ProjectGuid>
     <ProjectTypeGuids>{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <AssemblyName>Assembly-CSharp</AssemblyName>
+    <AssemblyName>Unity.AI.Navigation</AssemblyName>
     <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <BaseDirectory>.</BaseDirectory>
@@ -25,12 +25,12 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>Temp\Bin\Debug\Assembly-CSharp\Player\</OutputPath>
-    <DefineConstants>UNITY_2022_3_17;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER</DefineConstants>
+    <OutputPath>Temp\Bin\Debug\Unity.AI.Navigation\Player\</OutputPath>
+    <DefineConstants>UNITY_2022_3_17;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;NMC_CAN_ACCESS_TERRAIN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <NoWarn>0169,0649</NoWarn>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>False</TreatWarningsAsErrors>
   </PropertyGroup>
   <PropertyGroup>
@@ -45,10 +45,11 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
-    <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
-    <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
-    <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Runtime/NavMeshModifier.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Runtime/NavMeshLink.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Runtime/NavMeshSurface.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Runtime/HelpUrls.cs" />
+    <Compile Include="Library/PackageCache/com.unity.ai.navigation@1.1.7/Runtime/NavMeshModifierVolume.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
     </Reference>
@@ -657,173 +658,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="UniTask.Addressables.Player.csproj">
-      <Project>{648b170c-e28c-926d-5eec-87416cde38fa}</Project>
-      <Name>UniTask.Addressables.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="UnityGameFramework.Runtime.Player.csproj">
-      <Project>{a5032dee-cb58-aed2-20b9-cae849650cc5}</Project>
-      <Name>UnityGameFramework.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.VisualEffectGraph.Runtime.Player.csproj">
-      <Project>{ce35aec1-8db1-f8e0-284a-dcef881601a9}</Project>
-      <Name>Unity.VisualEffectGraph.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="HybridCLR.Runtime.Player.csproj">
-      <Project>{11693cc5-c957-d32f-ebb7-914a5ef1edbd}</Project>
-      <Name>HybridCLR.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Core.Runtime.Player.csproj">
-      <Project>{66057ff6-e2e8-f3a3-726b-3183f5cca348}</Project>
-      <Name>Unity.RenderPipelines.Core.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Jobs.Player.csproj">
-      <Project>{1fa1c082-4a24-e2d5-abd0-cc4b9bc9a759}</Project>
-      <Name>Unity.Jobs.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="GameFramework.Player.csproj">
-      <Project>{7a4b85bd-047c-b186-d8ed-e6dd68ec32e1}</Project>
-      <Name>GameFramework.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.AI.Navigation.Player.csproj">
-      <Project>{71501475-980c-439e-2ad3-cfbf87cf89fe}</Project>
-      <Name>Unity.AI.Navigation.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Obfuz.Runtime.Player.csproj">
-      <Project>{82878617-8f1d-6a27-8c9d-c75bacd83dbd}</Project>
-      <Name>Obfuz.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Boxophobic.Utils.Scripts.Player.csproj">
-      <Project>{a72bcb9d-b17c-69a0-786d-8de67e158fc4}</Project>
-      <Name>Boxophobic.Utils.Scripts.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Newtonsoft.Json.UnityConverters.Mathematics.Player.csproj">
-      <Project>{3aa8d5e6-3b6b-678d-3d60-b30005c4fc5d}</Project>
-      <Name>Newtonsoft.Json.UnityConverters.Mathematics.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="ZString.Player.csproj">
-      <Project>{612e6bd0-e69c-8fec-9762-a9d018814e40}</Project>
-      <Name>ZString.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Drawing.Player.csproj">
-      <Project>{820cd10d-6477-4066-a911-ce41ea001de6}</Project>
-      <Name>Drawing.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Boxophobic.PolyverseSkies.Runtime.Player.csproj">
-      <Project>{15e6472e-0678-968c-cd47-4611dd21b5e0}</Project>
-      <Name>Boxophobic.PolyverseSkies.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Config.Runtime.Player.csproj">
-      <Project>{75568ae3-b9a4-db7d-c894-5936a8ec5258}</Project>
-      <Name>Unity.RenderPipelines.Universal.Config.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Core.ShaderLibrary.Player.csproj">
-      <Project>{c141044b-38dc-19ad-fd67-a15b2cec2ccb}</Project>
-      <Name>Unity.RenderPipelines.Core.ShaderLibrary.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="AstarPathfindingProject.Player.csproj">
-      <Project>{6ce75395-0b19-da9a-36a7-a274074ccd57}</Project>
-      <Name>AstarPathfindingProject.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Collections.Player.csproj">
-      <Project>{98d2d39c-4c37-ca12-4e4d-8ac6b99d14ee}</Project>
-      <Name>Unity.Collections.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.Player.csproj">
-      <Project>{d97f60d3-8090-5ba8-f2e5-51695edd62e6}</Project>
-      <Name>UniTask.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.TextMeshPro.Player.csproj">
-      <Project>{4132cd36-31f3-7053-3d2d-2da014892717}</Project>
-      <Name>UniTask.TextMeshPro.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Hotfix.Player.csproj">
-      <Project>{215f30ce-b9f2-9688-8749-06be759f2bf0}</Project>
-      <Name>Hotfix.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.TextMeshPro.Player.csproj">
-      <Project>{32420c3c-fc51-19e4-da01-50e2a7e0e995}</Project>
-      <Name>Unity.TextMeshPro.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Builtin.Runtime.Player.csproj">
-      <Project>{405d4a31-425d-6187-bf6f-c1040e13259d}</Project>
-      <Name>Builtin.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.Player.csproj">
-      <Project>{fc82349c-dfab-dcf3-4365-42b32ef28e3f}</Project>
-      <Name>Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="MCPForUnity.Runtime.Player.csproj">
-      <Project>{499f4c0f-99d0-cca2-fee4-24f27ba48f46}</Project>
-      <Name>MCPForUnity.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.Linq.Player.csproj">
-      <Project>{4f8647d8-55c8-4dc9-c1e5-d68f8ddea6f8}</Project>
-      <Name>UniTask.Linq.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="PackageTools.Player.csproj">
-      <Project>{b039a8e1-1d00-b6a3-16bc-0156fedb3f72}</Project>
-      <Name>PackageTools.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Runtime.Player.csproj">
-      <Project>{7f02e66e-a259-1989-5bf2-59ac61e8159c}</Project>
-      <Name>Unity.RenderPipelines.Universal.Runtime.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Burst.Player.csproj">
-      <Project>{e04645d5-db2c-7096-63a0-4267b13f8a55}</Project>
-      <Name>Unity.Burst.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="andywiecko.BurstTriangulator.Player.csproj">
-      <Project>{e7525cc8-21a2-1f6b-80a6-67cce185a796}</Project>
-      <Name>andywiecko.BurstTriangulator.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.Player.csproj">
-      <Project>{55f4a3f6-de25-ca7d-1190-9e127042adec}</Project>
-      <Name>DOTween.Extension.Player</Name>
-    </ProjectReference>
     <ProjectReference Include="UnityEngine.UI.Player.csproj">
       <Project>{3ea37e03-c176-a81c-9347-6b3bacbc6e66}</Project>
       <Name>UnityEngine.UI.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipeline.Universal.ShaderLibrary.Player.csproj">
-      <Project>{5e6bb4ab-1c84-eba1-566a-ee72cdb5f3d4}</Project>
-      <Name>Unity.RenderPipeline.Universal.ShaderLibrary.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Timeline.Player.csproj">
-      <Project>{dc591249-d32e-a026-3ec7-b7c3ca784d14}</Project>
-      <Name>Unity.Timeline.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.InputSystem.Player.csproj">
-      <Project>{9588b8c1-1101-4837-7c2d-13b7bad9225c}</Project>
-      <Name>Unity.InputSystem.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.InputSystem.ForUI.Player.csproj">
-      <Project>{ba500581-a0cd-07de-71f1-51c079bf4375}</Project>
-      <Name>Unity.InputSystem.ForUI.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Newtonsoft.Json.UnityConverters.Player.csproj">
-      <Project>{b2ca8f25-9866-5b0e-d2e3-1911bbe9dc68}</Project>
-      <Name>Newtonsoft.Json.UnityConverters.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Mathematics.Player.csproj">
-      <Project>{13aac262-e36d-4803-ee8c-5d6659a75a9b}</Project>
-      <Name>Unity.Mathematics.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Shaders.Player.csproj">
-      <Project>{a70a8fc2-1869-172e-5483-13dbfedd10dd}</Project>
-      <Name>Unity.RenderPipelines.Universal.Shaders.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Cinemachine.Player.csproj">
-      <Project>{dfcd1e6b-3a62-9b8b-d987-006b892276bb}</Project>
-      <Name>Cinemachine.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="Boxophobic.PolyverseSkies.Scripts.Player.csproj">
-      <Project>{81e95c82-0c7f-156b-264b-f78b7d722dfb}</Project>
-      <Name>Boxophobic.PolyverseSkies.Scripts.Player</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.DOTween.Player.csproj">
-      <Project>{7f86e48f-c933-2059-f2a7-3c9112bb8ec6}</Project>
-      <Name>UniTask.DOTween.Player</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
