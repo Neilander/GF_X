@@ -19,6 +19,7 @@ public class NoMoveComp : IMoveComp
     {
     }
 
+    public Vector3 GetNavDirection() => Vector3.zero;
     public void ShutDown() { }
     public void Resume() { }
 }

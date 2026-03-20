@@ -135,6 +135,16 @@ public class CharacterMoveComp : IMoveComp
         }
     }
 
+    public Vector3 GetNavDirection()
+    {
+        if (!_targetPos.HasValue || _corners.Length == 0 || _currentPathIndex >= _corners.Length)
+            return Vector3.zero;
+
+        Vector3 targetCorner = _corners[_currentPathIndex];
+        Vector3 offset = new Vector3(targetCorner.x - _ctx.Position.x, 0f, targetCorner.z - _ctx.Position.z);
+        return offset.sqrMagnitude > 0.001f ? offset.normalized : Vector3.zero;
+    }
+
     public void ShutDown() { StopMove(); }
     public void Resume() { }
 }

@@ -32,6 +32,14 @@ public static class EntityRegistry
             _player = null;
     }
 
+    /// <summary>
+    /// 获取离指定位置最近的领袖。目前只返回 Player，后续扩展多领袖时改这里。
+    /// </summary>
+    public static IEntityContext GetClosestLeader(UnityEngine.Vector3 position)
+    {
+        return _player;
+    }
+
     public static void Clear()
     {
         _entities.Clear();

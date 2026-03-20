@@ -66,6 +66,7 @@ public class PlayerMoveComp : IMoveComp
         _ctx = ctx;
     }
 
+    public Vector3 GetNavDirection() => Vector3.zero;
     public void ShutDown() { }
     public void Resume() { }
 }

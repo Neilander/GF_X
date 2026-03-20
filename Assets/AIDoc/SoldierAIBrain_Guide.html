@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoldierAIBrain 代码讲解</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0a0a0a; color: #b0b0b0; }
+
+  header { padding: 36px 48px 28px; border-bottom: 1px solid #222; }
+  header h1 { font-size: 22px; color: #e0e0e0; font-weight: 500; letter-spacing: .5px; }
+  header p  { font-size: 13px; color: #555; margin-top: 8px; font-family: "JetBrains Mono", "Fira Code", monospace; }
+
+  .version-banner {
+    padding: 10px 48px; border-bottom: 1px solid #1a1a1a;
+    font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 11px;
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+  }
+  .version-banner .vb-label { color: #555; }
+  .version-banner .vb-hash { color: #d4a017; }
+  .version-banner .vb-date { color: #666; }
+
+  .toc { padding: 18px 48px; border-bottom: 1px solid #1a1a1a; }
+  .toc h2 { font-size: 12px; color: #555; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; font-weight: 400; }
+  .toc a {
+    display: inline-block; margin: 3px 8px 3px 0; padding: 3px 0;
+    color: #777; text-decoration: none; font-size: 13px;
+    border-bottom: 1px solid transparent; transition: all .2s;
+  }
+  .toc a::after { content: " ·"; color: #333; }
+  .toc a:last-child::after { content: ""; }
+  .toc a:hover { color: #e94560; border-bottom-color: #e94560; }
+
+  .legend {
+    display: flex; gap: 20px; padding: 14px 48px; border-bottom: 1px solid #1a1a1a;
+    font-size: 12px; color: #555; flex-wrap: wrap;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  .section { display: grid; grid-template-columns: 1fr 1fr; }
+  .section:target .section-label { color: #e94560; }
+
+  .code-side, .note-side { padding: 24px 32px; min-height: 60px; }
+  .code-side { border-right: 1px solid #1a1a1a; overflow-x: auto; }
+  .note-side { line-height: 1.8; font-size: 13.5px; padding-left: 36px; }
+  .note-side h3 { color: #ccc; font-size: 14px; margin-bottom: 8px; font-weight: 500; }
+  .note-side p  { margin-bottom: 10px; }
+  .note-side ul { margin-left: 16px; margin-bottom: 10px; }
+  .note-side li { margin-bottom: 3px; }
+  .note-side code { color: #888; background: #151515; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .note-side strong { color: #d0d0d0; font-weight: 500; }
+
+  pre {
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+    font-size: 12.5px; line-height: 1.65; white-space: pre; color: #999;
+  }
+
+  .hl-green  { border-left: 2px solid #238933; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-red    { border-left: 2px solid #e94560; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-yellow { border-left: 2px solid #d4a017; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-blue   { border-left: 2px solid #666;    padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-purple { border-left: 2px solid #9b59b6; padding-left: 8px; display: inline-block; width: 100%; }
+
+  .kw  { color: #cc7a7a; }
+  .tp  { color: #4ec9b0; }
+  .str { color: #8fad7a; }
+  .cm  { color: #555; font-style: italic; }
+  .fn  { color: #b89dcc; }
+  .prop{ color: #7eb87e; }
+
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 3px;
+    font-size: 10px; font-weight: 500; margin-right: 4px; vertical-align: middle;
+    letter-spacing: .3px;
+  }
+  .badge-key   { background: #e9456030; color: #e94560; border: 1px solid #e9456040; }
+  .badge-info  { background: #ffffff08; color: #888; border: 1px solid #333; }
+  .badge-warn  { background: #d4a01720; color: #d4a017; border: 1px solid #d4a01740; }
+  .badge-ok    { background: #23893320; color: #238933; border: 1px solid #23893340; }
+  .badge-pattern { background: #9b59b620; color: #9b59b6; border: 1px solid #9b59b640; }
+
+  .section-label {
+    grid-column: 1 / -1; padding: 14px 48px 10px; margin-top: 8px;
+    font-size: 13px; font-weight: 500; color: #777;
+    border-top: 1px solid #1a1a1a; letter-spacing: .5px;
+  }
+
+  @media (max-width: 900px) {
+    .section { grid-template-columns: 1fr; }
+    .code-side { border-right: none; border-bottom: 1px solid #1a1a1a; }
+    .note-side { padding-left: 32px; }
+    header, .toc, .legend, .section-label { padding-left: 24px; padding-right: 24px; }
+    .code-side, .note-side { padding-left: 24px; padding-right: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SoldierAIBrain — 代码对照讲解</h1>
+  <p>继承链: <code><span class="tp">IControlBrain</span> + <span class="tp">ITickBrain</span> → <span class="tp">SoldierAIBrain</span></code> &nbsp;|&nbsp; 工厂: <code><span class="tp">BrainFactory</span>.Create(BrainType.SoldierAI)</code></p>
+</header>
+
+<div class="version-banner" data-source-hash="57701a665a33599d40ba7110a6a82924">
+  <span><span class="vb-label">源文件:</span> Assets/AAAGame/Scripts/Movement/SoldierAIBrain.cs</span>
+  <span><span class="vb-label">哈希:</span> <span class="vb-hash">57701a66</span></span>
+  <span><span class="vb-label">生成:</span> <span class="vb-date">2026-03-20</span></span>
+</div>
+
+<div class="toc">
+  <h2>目录导航</h2>
+  <a href="#sec-iface">① 接口契约</a>
+  <a href="#sec-state">② 状态枚举与配置参数</a>
+  <a href="#sec-inject">③ 依赖注入 Inject</a>
+  <a href="#sec-tick">④ 主循环 Tick</a>
+  <a href="#sec-updatestate">⑤ 状态机转换 UpdateState</a>
+  <a href="#sec-idle">⑥ TickIdle</a>
+  <a href="#sec-follow">⑦ TickFollow</a>
+  <a href="#sec-combat">⑧ TickCombat 战斗逻辑</a>
+  <a href="#sec-coordinator">⑨ 协调器提交 Submit*</a>
+  <a href="#sec-sync">⑩ SyncTargetComp 索敌</a>
+  <a href="#sec-factory">⑪ BrainFactory 工厂</a>
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:#238933"></span> 核心逻辑</span>
+  <span><span class="dot" style="background:#e94560"></span> 注意/易错</span>
+  <span><span class="dot" style="background:#d4a017"></span> 可调参数</span>
+  <span><span class="dot" style="background:#666"></span> 架构/模式</span>
+  <span><span class="dot" style="background:#9b59b6"></span> 工厂/注入</span>
+</div>
+
+<!-- ① 接口契约 -->
+<div class="section" id="sec-iface">
+  <div class="section-label">① 接口契约 — IControlBrain + ITickBrain</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="cm">// IControlBrain.cs</span>
+<span class="hl-blue"><span class="kw">public interface</span> <span class="tp">IControlBrain</span></span>
+{
+<span class="hl-green">    <span class="tp">Vector2</span> <span class="prop">Move</span> { <span class="kw">get</span>; }</span>
+<span class="hl-green">    <span class="kw">bool</span> <span class="prop">Attack</span> { <span class="kw">get</span>; }</span>
+    <span class="kw">bool</span> <span class="prop">Skill1</span> { <span class="kw">get</span>; }
+    <span class="kw">bool</span> <span class="prop">Skill2</span> { <span class="kw">get</span>; }
+    <span class="kw">bool</span> <span class="prop">Skill3</span> { <span class="kw">get</span>; }
+}
+
+<span class="cm">// ITickBrain — AI brain 需要每帧更新决策</span>
+<span class="hl-blue"><span class="kw">public interface</span> <span class="tp">ITickBrain</span></span>
+{
+<span class="hl-green">    <span class="kw">void</span> <span class="fn">Tick</span>(<span class="tp">IEntityContext</span> self, <span class="kw">float</span> dt);</span>
+}
+
+<span class="kw">public enum</span> <span class="tp">BrainType</span>
+{
+    Player = <span class="str">0</span>,
+    EnemyAI = <span class="str">1</span>,
+    FriendlyAI = <span class="str">2</span>,
+<span class="hl-yellow">    SoldierAI = <span class="str">3</span></span>
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">架构</span> Brain 双接口设计</h3>
+    <p><code>IControlBrain</code> 定义了所有 Brain 的<strong>输出信号</strong>：移动方向 <code>Move</code>、攻击 <code>Attack</code>、技能 <code>Skill1/2/3</code>。不管是玩家手动操控还是 AI 自动操控，下游组件（MoveComp、AtkComp）都只看这个接口。</p>
+    <p><code>ITickBrain</code> 是 AI 专用的扩展——需要每帧被调用 <code>Tick()</code> 来更新决策。玩家的 <code>PlayerBrain</code> 不需要实现它，因为输入来自手指/摇杆。</p>
+    <p>这种<strong>策略模式</strong>让 Entity 不关心"谁在控制我"，只管读取 Brain 接口的值。</p>
+  </div>
+</div>
+
+<!-- ② 状态枚举与配置参数 -->
+<div class="section" id="sec-state">
+  <div class="section-label">② 状态枚举与配置参数</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">public class</span> <span class="tp">SoldierAIBrain</span> : <span class="tp">IControlBrain</span>, <span class="tp">ITickBrain</span>
+{
+    <span class="kw">public enum</span> <span class="tp">SoldierState</span>
+    {
+<span class="hl-green">        Idle,     <span class="cm">// 站着不动，等待玩家靠近</span></span>
+<span class="hl-green">        Follow,   <span class="cm">// 跟随玩家，自然散开</span></span>
+<span class="hl-green">        Combat    <span class="cm">// 发现敌人，散开交战</span></span>
+    }
+
+    <span class="cm">// --- 配置参数 ---</span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">RecruitRadius</span> = <span class="str">8f</span>;        <span class="cm">// 玩家多近时开始跟随</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">FollowDistanceMin</span> = <span class="str">2.5f</span>;  <span class="cm">// 跟随最近距离</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">FollowDistanceMax</span> = <span class="str">5f</span>;    <span class="cm">// 跟随最远距离</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">WeaponRange</span> = <span class="str">1.5f</span>;        <span class="cm">// 武器攻击距离</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">DetectEnemyRange</span> = <span class="str">10f</span>;    <span class="cm">// 发现敌人的距离</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">SeparationRadius</span> = <span class="str">1.5f</span>;   <span class="cm">// 同阵营分离半径</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">SeparationWeight</span> = <span class="str">1.5f</span>;   <span class="cm">// 分离力权重</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">AvoidPlayerRadius</span> = <span class="str">2.5f</span>;  <span class="cm">// 避让玩家半径</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">AvoidPlayerStrength</span> = <span class="str">3f</span>;  <span class="cm">// 避让玩家力度</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">SeekWeight</span> = <span class="str">0.6f</span>;         <span class="cm">// 趋向力权重</span></span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">LeashRange</span> = <span class="str">15f</span>;          <span class="cm">// 脱离战斗回到跟随</span></span></pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-warn">参数</span> 三态状态机 + 调参旋钮</h3>
+    <p>状态机极简：<strong>Idle → Follow → Combat</strong>，只有三个状态。这比行为树简单得多，但对小兵来说足够了。</p>
+    <p>参数分两类：</p>
+    <ul>
+      <li><strong>距离阈值</strong>：<code>RecruitRadius</code>（招募距离）、<code>LeashRange</code>（拴绳距离）控制状态切换</li>
+      <li><strong>力场权重</strong>：<code>SeparationWeight</code>、<code>AvoidPlayerStrength</code>、<code>SeekWeight</code> 控制移动时各种力的混合比例</li>
+    </ul>
+    <p>注意这些参数现在是<strong>写死的默认值</strong>，不是从 ScriptableObject 读取的。实际上 LJ 力场参数已经移到了 <code>GroupMoveManager</code> 的 Inspector 面板上，这里的 <code>SeparationRadius</code> 等字段部分是历史遗留，实际生效的是协调器里的配置。</p>
+  </div>
+</div>
+
+<!-- ③ 依赖注入 -->
+<div class="section" id="sec-inject">
+  <div class="section-label">③ 依赖注入 Inject</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="cm">// --- Brain 接口输出 ---</span>
+<span class="hl-blue">    <span class="kw">public</span> <span class="tp">Vector2</span> <span class="prop">Move</span> { <span class="kw">get</span>; <span class="kw">private set</span>; }</span>
+<span class="hl-blue">    <span class="kw">public</span> <span class="kw">bool</span> <span class="prop">Attack</span> { <span class="kw">get</span>; <span class="kw">private set</span>; }</span>
+    <span class="kw">public</span> <span class="kw">bool</span> <span class="prop">Skill1</span> => <span class="kw">false</span>;
+    <span class="kw">public</span> <span class="kw">bool</span> <span class="prop">Skill2</span> => <span class="kw">false</span>;
+    <span class="kw">public</span> <span class="kw">bool</span> <span class="prop">Skill3</span> => <span class="kw">false</span>;
+
+    <span class="cm">// --- 依赖注入 ---</span>
+<span class="hl-purple">    <span class="kw">private</span> <span class="tp">IEntityContext</span> _player;</span>
+<span class="hl-purple">    <span class="kw">private</span> <span class="tp">IList</span>&lt;<span class="tp">IEntityContext</span>&gt; _allEntities;</span>
+
+    <span class="kw">private</span> <span class="tp">Vector3</span> _desiredMoveDir;
+    <span class="kw">private</span> <span class="kw">bool</span> _joinedGroup;
+
+<span class="hl-purple">    <span class="kw">public void</span> <span class="fn">Inject</span>(<span class="tp">IEntityContext</span> player, <span class="tp">IList</span>&lt;<span class="tp">IEntityContext</span>&gt; allEntities)</span>
+    {
+        _player = player;
+        _allEntities = allEntities;
+    }</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-pattern">注入</span> 构造后惰性注入</h3>
+    <p><code>SoldierAIBrain</code> 是纯 C# 对象（不是 MonoBehaviour），所以不能用 Unity 的 <code>[SerializeField]</code> 或 Inspector 来注入依赖。</p>
+    <p><code>Inject()</code> 在 <code>BrainFactory.Create()</code> 中调用，把两个关键依赖塞进来：</p>
+    <ul>
+      <li><code>_player</code> — 玩家实体引用，用来计算跟随距离</li>
+      <li><code>_allEntities</code> — 全局实体列表，用来自己找敌人</li>
+    </ul>
+    <p>技能全部硬编码 <code>false</code> —— 小兵不释放技能，只有 <code>Move</code> 和 <code>Attack</code> 两个输出信号会被修改。</p>
+    <p><code>_joinedGroup</code> 标记是否已经把玩家注册为协调器中的"领袖"，只做一次。</p>
+  </div>
+</div>
+
+<!-- ④ 主循环 Tick -->
+<div class="section" id="sec-tick">
+  <div class="section-label">④ 主循环 Tick — 每帧决策入口</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="hl-green"><span class="kw">public void</span> <span class="fn">Tick</span>(<span class="tp">IEntityContext</span> self, <span class="kw">float</span> dt)</span>
+{
+    <span class="prop">Move</span> = <span class="tp">Vector2</span>.zero;
+    <span class="prop">Attack</span> = <span class="kw">false</span>;
+    _desiredMoveDir = <span class="tp">Vector3</span>.zero;
+
+<span class="hl-red">    <span class="kw">if</span> (!self.<span class="prop">Alive</span>) <span class="kw">return</span>;</span>
+
+    <span class="cm">// 惰性刷新</span>
+<span class="hl-red">    <span class="kw">if</span> (_player == <span class="kw">null</span> || !_player.<span class="prop">Alive</span>)</span>
+        _player = <span class="tp">EntityRegistry</span>.<span class="prop">Player</span>;
+<span class="hl-red">    <span class="kw">if</span> (_allEntities == <span class="kw">null</span> || _allEntities.Count == <span class="str">0</span>)</span>
+        _allEntities = <span class="tp">EntityRegistry</span>.<span class="prop">AllEntities</span>;
+
+    <span class="cm">// 惰性标记领袖</span>
+<span class="hl-purple">    <span class="kw">if</span> (!_joinedGroup && _player != <span class="kw">null</span> && _player.<span class="prop">Alive</span></span>
+<span class="hl-purple">        && <span class="tp">GroupMoveManager</span>.<span class="prop">HasInstance</span>)</span>
+    {
+<span class="hl-purple">        <span class="kw">int</span> leaderId = (_player <span class="kw">as</span> <span class="tp">MAEntity</span>)?.<span class="fn">GetInstanceID</span>()</span>
+            ?? _player.<span class="fn">GetHashCode</span>();
+<span class="hl-purple">        <span class="tp">GroupMoveManager</span>.Instance.Coordinator.<span class="fn">SetAgentLeader</span>(leaderId, <span class="kw">true</span>);</span>
+        _joinedGroup = <span class="kw">true</span>;
+    }
+
+    <span class="cm">// 同步索敌范围给 TargetComp</span>
+<span class="hl-green">    <span class="kw">if</span> (self.<span class="prop">TargetComp</span> != <span class="kw">null</span>)</span>
+<span class="hl-green">        self.<span class="prop">TargetComp</span>.<span class="prop">AggroRange</span> = <span class="prop">DetectEnemyRange</span>;</span>
+
+    <span class="fn">SyncTargetComp</span>(self);
+    <span class="fn">UpdateState</span>(self);
+
+    <span class="kw">switch</span> (<span class="prop">State</span>)
+    {
+        <span class="kw">case</span> <span class="tp">SoldierState</span>.Idle:   <span class="fn">TickIdle</span>(self, dt);   <span class="kw">break</span>;
+        <span class="kw">case</span> <span class="tp">SoldierState</span>.Follow: <span class="fn">TickFollow</span>(self, dt); <span class="kw">break</span>;
+        <span class="kw">case</span> <span class="tp">SoldierState</span>.Combat: <span class="fn">TickCombat</span>(self, dt); <span class="kw">break</span>;
+    }
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> Tick 主循环结构</h3>
+    <p>每帧执行一次，流程清晰：</p>
+    <ul>
+      <li><strong>重置输出</strong> — 每帧开头把 <code>Move</code> 和 <code>Attack</code> 清零，避免上一帧的值残留</li>
+      <li><strong>存活检查</strong> — 死了就什么都不做</li>
+      <li><strong>惰性刷新</strong> — 如果玩家引用丢了（死亡/重生），从 <code>EntityRegistry</code> 重新拿。这是防御性编程，因为 <code>Inject</code> 只在创建时调用一次</li>
+      <li><strong>领袖注册</strong> — 首次 Tick 时把玩家标记为 LJ 力场的"领袖"节点，这样协调器知道谁是中心</li>
+      <li><strong>同步索敌</strong> — 把 Brain 的 <code>DetectEnemyRange</code> 写进 <code>TargetComp</code>，保持一致</li>
+      <li><strong>状态机</strong> — 先更新状态转换，再执行当前状态的逻辑</li>
+    </ul>
+    <p>注意 <code>UpdateState</code> 在 <code>TickXxx</code> <strong>之前</strong>调用——这意味着状态转换和状态执行在同一帧完成，没有一帧延迟。</p>
+  </div>
+</div>
+
+<!-- ⑤ UpdateState -->
+<div class="section" id="sec-updatestate">
+  <div class="section-label">⑤ 状态机转换 UpdateState</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">private void</span> <span class="fn">UpdateState</span>(<span class="tp">IEntityContext</span> self)
+{
+    <span class="kw">switch</span> (<span class="prop">State</span>)
+    {
+        <span class="kw">case</span> <span class="tp">SoldierState</span>.Idle:
+<span class="hl-green">            <span class="cm">// 有敌人 → 直接进 Combat</span></span>
+<span class="hl-green">            <span class="kw">if</span> (self.<span class="prop">TargetComp</span>?.<span class="prop">CurrentTarget</span> != <span class="kw">null</span>)</span>
+<span class="hl-green">                <span class="prop">State</span> = <span class="tp">SoldierState</span>.Combat;</span>
+<span class="hl-red">            <span class="cm">// 同阵营领袖在附近 → Follow</span></span>
+<span class="hl-red">            <span class="kw">else if</span> (_player != <span class="kw">null</span> && _player.<span class="prop">Alive</span></span>
+<span class="hl-red">                     && self.<span class="prop">Side</span> == _player.<span class="prop">Side</span>)</span>
+            {
+<span class="hl-yellow">                <span class="kw">if</span> (<span class="fn">HorizontalDist</span>(self.<span class="prop">Position</span>, _player.<span class="prop">Position</span>)</span>
+<span class="hl-yellow">                    &lt;= <span class="prop">RecruitRadius</span>)</span>
+                    <span class="prop">State</span> = <span class="tp">SoldierState</span>.Follow;
+            }
+            <span class="kw">break</span>;
+
+        <span class="kw">case</span> <span class="tp">SoldierState</span>.Follow:
+<span class="hl-green">            <span class="kw">if</span> (self.<span class="prop">TargetComp</span>?.<span class="prop">CurrentTarget</span> != <span class="kw">null</span>)</span>
+<span class="hl-green">                <span class="prop">State</span> = <span class="tp">SoldierState</span>.Combat;</span>
+            <span class="kw">break</span>;
+
+        <span class="kw">case</span> <span class="tp">SoldierState</span>.Combat:
+            <span class="kw">var</span> enemy = self.<span class="prop">TargetComp</span>?.<span class="prop">CurrentTarget</span>;
+<span class="hl-green">            <span class="kw">if</span> (enemy == <span class="kw">null</span>)</span>
+<span class="hl-green">                <span class="prop">State</span> = <span class="tp">SoldierState</span>.Follow;</span>
+<span class="hl-red">            <span class="kw">else if</span> (_player != <span class="kw">null</span> && _player.<span class="prop">Alive</span></span>
+<span class="hl-red">                && <span class="fn">HorizontalDist</span>(self.<span class="prop">Position</span>, _player.<span class="prop">Position</span>)</span>
+<span class="hl-red">                   > <span class="prop">LeashRange</span>)</span>
+<span class="hl-red">                <span class="prop">State</span> = <span class="tp">SoldierState</span>.Follow;</span>
+            <span class="kw">break</span>;
+    }
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 状态转换规则</h3>
+    <p>转换逻辑一目了然：</p>
+    <p><strong>Idle →</strong></p>
+    <ul>
+      <li>有敌人？→ 直接 <strong>Combat</strong>（优先级最高）</li>
+      <li>同阵营玩家在 <code>RecruitRadius</code>(8m) 内？→ <strong>Follow</strong></li>
+      <li>注意 <code>self.Side == _player.Side</code> 这个检查——<strong>敌方小兵不会跟随玩家</strong>，只有同阵营的才会</li>
+    </ul>
+    <p><strong>Follow →</strong></p>
+    <ul>
+      <li>发现敌人？→ <strong>Combat</strong></li>
+      <li>注意：Follow 状态下<strong>不会回到 Idle</strong>，一旦招募就永远跟着（除非战斗）</li>
+    </ul>
+    <p><strong>Combat →</strong></p>
+    <ul>
+      <li>敌人死了/消失？→ 回 <strong>Follow</strong></li>
+      <li>离玩家超过 <code>LeashRange</code>(15m)？→ 回 <strong>Follow</strong>（拴绳机制，不让小兵追太远）</li>
+    </ul>
+    <p><span class="badge badge-warn">注意</span> 没有 Combat → Idle 的路径。小兵一旦被招募，战斗结束后回 Follow 而不是 Idle。</p>
+  </div>
+</div>
+
+<!-- ⑥ TickIdle -->
+<div class="section" id="sec-idle">
+  <div class="section-label">⑥ TickIdle — 待机</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">private void</span> <span class="fn">TickIdle</span>(<span class="tp">IEntityContext</span> self, <span class="kw">float</span> dt)
+{
+<span class="hl-blue">    <span class="cm">// Idle 状态：安静站着，只有真正重叠时才推开</span></span>
+<span class="hl-blue">    <span class="cm">// 不每帧 MoveTo，避免抽搐</span></span>
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">设计</span> 空方法的意义</h3>
+    <p>空函数不是偷懒——这是一个<strong>有意的设计决策</strong>。</p>
+    <p>之前的版本在 Idle 状态也算了 separation 力来推开重叠的单位，但这导致小兵站着的时候不停抖动（"抽搐"）。现在 Idle 就是什么都不做，重叠问题交给物理碰撞体自然处理。</p>
+  </div>
+</div>
+
+<!-- ⑦ TickFollow -->
+<div class="section" id="sec-follow">
+  <div class="section-label">⑦ TickFollow — 跟随玩家</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">private void</span> <span class="fn">TickFollow</span>(<span class="tp">IEntityContext</span> self, <span class="kw">float</span> dt)
+{
+<span class="hl-red">    <span class="kw">if</span> (_player == <span class="kw">null</span> || !_player.<span class="prop">Alive</span>) <span class="kw">return</span>;</span>
+
+    <span class="kw">float</span> speed = self.<span class="fn">GetProperty</span>(
+        <span class="tp">CreatureMainProperty</span>.Speed);
+    <span class="prop">Move</span> = <span class="tp">Vector2</span>.zero;
+
+<span class="hl-green">    <span class="cm">// Follow 不需要自己算方向，提交零速度</span></span>
+<span class="hl-green">    <span class="cm">// 协调器的 LJ 吸引力会自然拉向领袖</span></span>
+<span class="hl-green">    <span class="fn">SubmitToCoordinator</span>(self, <span class="tp">Vector3</span>.zero, speed);</span>
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 零速度的魔法</h3>
+    <p>这是整个设计最精妙的地方：<strong>Follow 状态提交零期望速度</strong>。</p>
+    <p>为什么不自己算追踪方向？因为 <code>GroupMoveCoordinator</code> 用 Lennard-Jones 势场模型统一处理所有 agent 的位置关系：</p>
+    <ul>
+      <li><strong>离领袖太远</strong> → LJ 吸引力把你拉过去</li>
+      <li><strong>离领袖太近</strong> → LJ 斥力推你出去</li>
+      <li><strong>同伴太近</strong> → 同阵营斥力推开</li>
+    </ul>
+    <p>Brain 只需要说"我没有自己想去的方向"，协调器就会算出一个让群体自然散开、跟随领袖的合力。这比手写 follow + separation + avoidance 简洁太多了。</p>
+  </div>
+</div>
+
+<!-- ⑧ TickCombat -->
+<div class="section" id="sec-combat">
+  <div class="section-label">⑧ TickCombat — 战斗逻辑</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">private float</span> <span class="fn">GetEffectiveAttackRange</span>()
+{
+<span class="hl-green">    <span class="kw">float</span> enemyEqR = <span class="tp">GroupMoveManager</span>.<span class="prop">HasInstance</span></span>
+<span class="hl-green">        ? <span class="tp">GroupMoveManager</span>.Instance.Coordinator</span>
+<span class="hl-green">            .<span class="prop">EnemyEquilibriumRadius</span></span>
+        : <span class="str">1.5f</span>;
+<span class="hl-green">    <span class="kw">return</span> enemyEqR + <span class="prop">WeaponRange</span>;</span>
+}
+
+<span class="kw">private void</span> <span class="fn">TickCombat</span>(<span class="tp">IEntityContext</span> self, <span class="kw">float</span> dt)
+{
+    <span class="tp">Vector3</span> myPos = self.<span class="prop">Position</span>;
+    <span class="kw">var</span> enemy = self.<span class="prop">TargetComp</span>?.<span class="prop">CurrentTarget</span>;
+<span class="hl-red">    <span class="kw">if</span> (enemy == <span class="kw">null</span> || !enemy.<span class="prop">Alive</span>) <span class="kw">return</span>;</span>
+
+    <span class="kw">float</span> distToEnemy = <span class="fn">HorizontalDist</span>(myPos, enemy.<span class="prop">Position</span>);
+    <span class="kw">float</span> speed = self.<span class="fn">GetProperty</span>(
+        <span class="tp">CreatureMainProperty</span>.Speed);
+    <span class="kw">float</span> effectiveRange = <span class="fn">GetEffectiveAttackRange</span>();
+
+<span class="hl-green">    <span class="kw">if</span> (distToEnemy &lt;= effectiveRange)</span>
+    {
+        <span class="cm">// 在攻击范围内 → 攻击</span>
+<span class="hl-green">        <span class="prop">Attack</span> = <span class="kw">true</span>;</span>
+        <span class="prop">Move</span> = <span class="tp">Vector2</span>.zero;
+        <span class="fn">SubmitToCoordinator</span>(self, <span class="tp">Vector3</span>.zero, speed);
+    }
+    <span class="kw">else</span>
+    {
+        <span class="cm">// 追敌：NavMesh 寻路</span>
+        <span class="prop">Move</span> = <span class="tp">Vector2</span>.zero;
+<span class="hl-green">        self.<span class="prop">MoveComp</span>.<span class="fn">MoveTo</span>(enemy.<span class="prop">Position</span>);</span>
+
+        <span class="cm">// LJ 力叠加到 External</span>
+<span class="hl-green">        <span class="fn">SubmitCombatLJ</span>(self, speed);</span>
+    }
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 双层移动架构</h3>
+    <p><strong>攻击距离计算</strong>：<code>effectiveRange = 敌对斥力平衡半径 + 武器射程</code>。这意味着士兵会被 LJ 斥力推到平衡距离外，而武器射程刚好能从那个位置打到敌人。物理和逻辑完美配合。</p>
+    <p><strong>战斗移动是双层的</strong>：</p>
+    <ul>
+      <li><strong>在范围内</strong>：停下来打。提交零速度给协调器，让 LJ 力处理堆叠推开（多个小兵围殴一个敌人时不会叠在一起）</li>
+      <li><strong>在范围外</strong>：用 <code>MoveComp.MoveTo()</code> 走 NavMesh 寻路到敌人位置，同时 <code>SubmitCombatLJ</code> 把 LJ 力叠加到 <code>MoveExecutor.AddExternal()</code>——这不会覆盖 NavMesh 路径，而是在路径基础上叠加一个推力</li>
+    </ul>
+    <p><span class="badge badge-warn">关键</span> 追敌时 <code>Move</code> 始终是零！小兵不通过 <code>IControlBrain.Move</code> 信号移动，而是直接调用 <code>MoveComp.MoveTo()</code>。这绕过了标准的输入管线。</p>
+  </div>
+</div>
+
+<!-- ⑨ 协调器提交 -->
+<div class="section" id="sec-coordinator">
+  <div class="section-label">⑨ 协调器提交 — SubmitToCoordinator / SubmitCombatLJ / ApplyVelocity</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="cm">/// Combat 追敌时：NavMesh 负责寻路，LJ 力叠加防堆叠</span>
+<span class="kw">private void</span> <span class="fn">SubmitCombatLJ</span>(<span class="tp">IEntityContext</span> self, <span class="kw">float</span> speed)
+{
+    <span class="kw">if</span> (!<span class="tp">GroupMoveManager</span>.<span class="prop">HasInstance</span>) <span class="kw">return</span>;
+    <span class="kw">var</span> coordinator = <span class="tp">GroupMoveManager</span>.Instance.Coordinator;
+    <span class="kw">int</span> agentId = (self <span class="kw">as</span> <span class="tp">MAEntity</span>)?.<span class="fn">GetInstanceID</span>()
+        ?? self.<span class="fn">GetHashCode</span>();
+
+<span class="hl-green">    coordinator.<span class="fn">SubmitDesiredVelocity</span>(agentId, <span class="tp">Vector3</span>.zero,</span>
+<span class="hl-green">        safeVel => {</span>
+<span class="hl-green">            <span class="kw">if</span> (safeVel.sqrMagnitude > <span class="str">0.01f</span>)</span>
+<span class="hl-green">                self.<span class="prop">MoveExecutor</span>.<span class="fn">AddExternal</span>(safeVel);</span>
+        });
+}
+
+<span class="cm">/// 向协调器提交期望速度，回调中执行 MoveTo</span>
+<span class="kw">private void</span> <span class="fn">SubmitToCoordinator</span>(<span class="tp">IEntityContext</span> self,
+    <span class="tp">Vector3</span> desiredVelocity, <span class="kw">float</span> speed)
+{
+    <span class="kw">if</span> (!<span class="tp">GroupMoveManager</span>.<span class="prop">HasInstance</span>) <span class="kw">return</span>;
+    <span class="kw">var</span> coordinator = <span class="tp">GroupMoveManager</span>.Instance.Coordinator;
+    <span class="kw">int</span> agentId = (self <span class="kw">as</span> <span class="tp">MAEntity</span>)?.<span class="fn">GetInstanceID</span>()
+        ?? self.<span class="fn">GetHashCode</span>();
+
+<span class="hl-green">    coordinator.<span class="fn">SubmitDesiredVelocity</span>(agentId, desiredVelocity,</span>
+<span class="hl-green">        safeVel => { <span class="fn">ApplyVelocity</span>(self, safeVel, speed); });</span>
+}
+
+<span class="kw">private void</span> <span class="fn">ApplyVelocity</span>(<span class="tp">IEntityContext</span> self,
+    <span class="tp">Vector3</span> velocity, <span class="kw">float</span> speed)
+{
+<span class="hl-red">    <span class="kw">if</span> (velocity.sqrMagnitude &lt; <span class="str">0.001f</span>)</span>
+    {
+<span class="hl-red">        self.<span class="prop">MoveComp</span>.<span class="fn">StopMove</span>();</span>
+        <span class="kw">return</span>;
+    }
+    <span class="tp">Vector3</span> myPos = self.<span class="prop">Position</span>;
+    <span class="prop">Move</span> = <span class="tp">Vector2</span>.zero;
+<span class="hl-green">    self.<span class="prop">MoveComp</span>.<span class="fn">MoveTo</span>(myPos</span>
+<span class="hl-green">        + velocity.normalized * speed * <span class="str">0.1f</span>);</span>
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-pattern">架构</span> 协调器回调模式</h3>
+    <p>两个 Submit 方法的区别很关键：</p>
+    <p><strong><code>SubmitToCoordinator</code></strong>（Follow 用）：</p>
+    <ul>
+      <li>提交期望速度 → 协调器算出安全速度 → 回调中用 <code>ApplyVelocity</code> 执行 <code>MoveTo</code></li>
+      <li>安全速度 = 期望速度 + LJ 力的合成结果</li>
+    </ul>
+    <p><strong><code>SubmitCombatLJ</code></strong>（Combat 追敌用）：</p>
+    <ul>
+      <li>提交<strong>零</strong>期望速度 → 协调器只返回 LJ 力 → 用 <code>AddExternal</code> 叠加到移动执行器</li>
+      <li>不覆盖 NavMesh 路径，只是额外加一个推力防止堆叠</li>
+    </ul>
+    <p><strong><code>ApplyVelocity</code></strong>：</p>
+    <ul>
+      <li>力太小（< 0.001）就停止移动，避免微抖</li>
+      <li><code>speed * 0.1f</code> 是把目标点设在前方很近的地方（0.1秒的距离），这样 NavMesh 只走一小步就会重新计算，跟随更平滑</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ⑩ SyncTargetComp -->
+<div class="section" id="sec-sync">
+  <div class="section-label">⑩ SyncTargetComp — Brain 自主索敌</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">private void</span> <span class="fn">SyncTargetComp</span>(<span class="tp">IEntityContext</span> self)
+{
+<span class="hl-red">    <span class="kw">if</span> (self.<span class="prop">TargetComp</span> == <span class="kw">null</span> || _allEntities == <span class="kw">null</span>)</span>
+<span class="hl-red">        <span class="kw">return</span>;</span>
+
+    <span class="cm">// 已有活着的目标，不覆盖</span>
+<span class="hl-red">    <span class="kw">if</span> (self.<span class="prop">TargetComp</span>.<span class="prop">CurrentTarget</span> != <span class="kw">null</span></span>
+<span class="hl-red">        && self.<span class="prop">TargetComp</span>.<span class="prop">CurrentTarget</span>.<span class="prop">Alive</span>)</span>
+<span class="hl-red">        <span class="kw">return</span>;</span>
+
+    <span class="cm">// Brain 自己遍历找最近敌人</span>
+    <span class="tp">IEntityContext</span> nearest = <span class="kw">null</span>;
+    <span class="kw">float</span> nearestDist = <span class="prop">DetectEnemyRange</span>;
+
+<span class="hl-green">    <span class="kw">for</span> (<span class="kw">int</span> i = <span class="str">0</span>; i &lt; _allEntities.Count; i++)</span>
+    {
+        <span class="kw">var</span> other = _allEntities[i];
+<span class="hl-red">        <span class="kw">if</span> (other == self || !other.<span class="prop">Alive</span>) <span class="kw">continue</span>;</span>
+<span class="hl-red">        <span class="kw">if</span> (other.<span class="prop">Side</span> == self.<span class="prop">Side</span></span>
+<span class="hl-red">            || other.<span class="prop">Side</span> == <span class="tp">SideType</span>.NoSide) <span class="kw">continue</span>;</span>
+
+        <span class="kw">float</span> dist = <span class="fn">HorizontalDist</span>(
+            self.<span class="prop">Position</span>, other.<span class="prop">Position</span>);
+        <span class="kw">if</span> (dist &lt; nearestDist)
+        {
+            nearestDist = dist;
+            nearest = other;
+        }
+    }
+
+<span class="hl-green">    <span class="kw">if</span> (nearest != <span class="kw">null</span>)</span>
+<span class="hl-green">        self.<span class="prop">TargetComp</span>.<span class="prop">CurrentTarget</span> = nearest;</span>
+}
+
+<span class="kw">private static float</span> <span class="fn">HorizontalDist</span>(<span class="tp">Vector3</span> a, <span class="tp">Vector3</span> b)
+{
+    <span class="kw">float</span> dx = a.x - b.x;
+    <span class="kw">float</span> dz = a.z - b.z;
+    <span class="kw">return</span> <span class="tp">Mathf</span>.<span class="fn">Sqrt</span>(dx * dx + dz * dz);
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 双重索敌保障</h3>
+    <p>为什么 Brain 要自己找敌人？因为 <code>TargetComp</code> 自己的扫描可能漏掉（注释里也写了）。这是一个<strong>冗余机制</strong>：</p>
+    <ul>
+      <li>如果 <code>TargetComp</code> 已经有活着的目标 → 不覆盖，尊重它的选择</li>
+      <li>只在目标为空或已死时，Brain 才自己遍历全局列表找最近敌人</li>
+    </ul>
+    <p><strong>过滤规则</strong>：</p>
+    <ul>
+      <li>跳过自己</li>
+      <li>跳过死亡单位</li>
+      <li>跳过同阵营（<code>Side</code> 相同）</li>
+      <li>跳过中立单位（<code>NoSide</code>）</li>
+    </ul>
+    <p><code>HorizontalDist</code> 只算 X-Z 平面距离，忽略 Y 轴高度差——这对平面战斗游戏是对的，不会因为站在斜坡上就算错距离。</p>
+    <p><span class="badge badge-warn">性能</span> 每帧遍历所有实体是 O(n) 的。如果战场上有几百个单位，这里可能成为瓶颈。但对于当前规模（几十个小兵）完全够用。</p>
+  </div>
+</div>
+
+<!-- ⑪ BrainFactory -->
+<div class="section" id="sec-factory">
+  <div class="section-label">⑪ BrainFactory — 工厂创建与注入</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="cm">// BrainFactory.cs</span>
+<span class="kw">public static class</span> <span class="tp">BrainFactory</span>
+{
+    <span class="kw">public static</span> <span class="tp">IControlBrain</span> <span class="fn">Create</span>(
+        <span class="tp">BrainType</span> tp, <span class="tp">MAEntity</span> entity,
+        <span class="tp">EntityParams</span> p)
+    {
+        <span class="kw">switch</span> (tp)
+        {
+            <span class="kw">case</span> <span class="tp">BrainType</span>.Player:
+                <span class="kw">return new</span> <span class="tp">PlayerBrain</span>();
+
+<span class="hl-red">            <span class="cm">// 注意：这个现在没有使用！</span></span>
+            <span class="kw">case</span> <span class="tp">BrainType</span>.EnemyAI:
+                <span class="kw">return new</span> <span class="tp">EnemyAIBrain</span>();
+
+<span class="hl-red">            <span class="cm">// 注意：这个现在没有使用！</span></span>
+            <span class="kw">case</span> <span class="tp">BrainType</span>.FriendlyAI:
+                <span class="kw">return new</span> <span class="tp">FriendlyAIBrain</span>();
+
+<span class="hl-purple">            <span class="kw">case</span> <span class="tp">BrainType</span>.SoldierAI:</span>
+<span class="hl-purple">                <span class="kw">var</span> soldierBrain = <span class="kw">new</span> <span class="tp">SoldierAIBrain</span>();</span>
+<span class="hl-purple">                soldierBrain.<span class="fn">Inject</span>(</span>
+<span class="hl-purple">                    <span class="tp">EntityRegistry</span>.<span class="prop">Player</span>,</span>
+<span class="hl-purple">                    <span class="tp">EntityRegistry</span>.<span class="prop">AllEntities</span>);</span>
+<span class="hl-purple">                <span class="kw">return</span> soldierBrain;</span>
+
+            <span class="kw">default</span>:
+                <span class="kw">return new</span> <span class="tp">PlayerBrain</span>();
+        }
+    }
+}</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-pattern">工厂</span> 创建 + 即时注入</h3>
+    <p><code>BrainFactory</code> 是简单工厂模式，根据 <code>BrainType</code> 枚举创建对应的 Brain 实例。</p>
+    <p><code>SoldierAI</code> 是唯一需要 <code>Inject</code> 的 Brain 类型——因为它需要知道玩家是谁、场上有哪些实体。其他 Brain（PlayerBrain、EnemyAIBrain）不需要这些依赖。</p>
+    <p><span class="badge badge-warn">注意</span> <code>EnemyAIBrain</code> 和 <code>FriendlyAIBrain</code> 注释标了"现在没有使用"。当前所有 AI 小兵（不管友方敌方）都用 <code>SoldierAIBrain</code>，通过 <code>Side</code> 属性区分阵营行为。</p>
+    <p>注入时机在 <code>Create</code> 里立即执行，但 Brain 在 <code>Tick</code> 中还有惰性刷新逻辑兜底——万一 <code>EntityRegistry.Player</code> 在创建时还没准备好，后续帧会自动补上。</p>
+  </div>
+</div>
+
+<div style="padding:32px 48px; border-top:1px solid #1a1a1a; text-align:center;">
+  <p style="color:#333; font-size:11px; letter-spacing:1px;">SOLDIERAIBRAIN GUIDE — GF_X</p>
+</div>
+
+</body>
+</html>

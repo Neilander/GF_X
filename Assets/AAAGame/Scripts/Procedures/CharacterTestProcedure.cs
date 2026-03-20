@@ -95,7 +95,7 @@ public class CharacterTestProcedure : ProcedureBase
             // SoldierAIBrain 需要重新 Inject（玩家可能在它之后创建）
             if (ma.Brain is SoldierAIBrain soldierBrain)
             {
-                soldierBrain.Inject(EntityRegistry.Player, EntityRegistry.AllEntities);
+                soldierBrain.Inject();
             }
         }
     }

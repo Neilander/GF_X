@@ -43,7 +43,14 @@
       "Bash(ls -la /Users/a23544/Documents/GitHub/GF_X/Assets/AIDoc*)",
       "Bash(open /Users/a23544/Documents/GitHub/GF_X/Assets/AIDoc/CharacterTargetingComp_Guide.html)",
       "Read(//Users/a23544/.claude/skills/**)",
-      "Read(//Users/a23544/.claude/**)"
+      "Read(//Users/a23544/.claude/**)",
+      "Bash(open /Users/a23544/Documents/GitHub/GF_X/Assets/AIDoc/SoldierAIBrain_Guide.html)",
+      "Bash(open /Users/a23544/Documents/GitHub/GF_X/Assets/AIDoc/GroupMoveManager_Guide.html)",
+      "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/Movement/GroupMoveManager.cs)",
+      "Bash(open /Users/a23544/.claude/skills/code-guide/skill.md)",
+      "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/Movement/SoldierAIBrain.cs)",
+      "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/GeneralCreature/CharacterTargetingComp.cs)",
+      "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/PlayerControl/CharacterTargetingComp.cs)"
     ]
   }
 }

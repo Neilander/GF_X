@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -9,6 +9,18 @@ using System.Collections.Generic;
 [TestFixture]
 public class SteeringMovementTests
 {
+    [SetUp]
+    public void SetUp()
+    {
+        EntityRegistry.Clear();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        EntityRegistry.Clear();
+    }
+
     #region Seek
 
     [Test]
@@ -129,12 +141,13 @@ public class SteeringMovementTests
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(5, 0, 0));
 
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+
         var brain = new SoldierAIBrain();
         brain.RecruitRadius = 8f;
+        brain.Inject();
         soldier.Brain = brain;
-
-        var allEntities = new List<IEntityContext> { player, soldier };
-        brain.Inject(player, allEntities);
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State);
 
@@ -149,12 +162,13 @@ public class SteeringMovementTests
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(20, 0, 0));
 
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+
         var brain = new SoldierAIBrain();
         brain.RecruitRadius = 8f;
+        brain.Inject();
         soldier.Brain = brain;
-
-        var allEntities = new List<IEntityContext> { player, soldier };
-        brain.Inject(player, allEntities);
 
         brain.Tick(soldier, 1f / 60f);
 
@@ -168,13 +182,15 @@ public class SteeringMovementTests
         var soldier = MakeSoldier(new Vector3(2, 0, 0));
         var enemy = MakeSoldier(new Vector3(5, 0, 0), SideType.EnemySide);
 
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(enemy);
+
         var brain = new SoldierAIBrain();
         brain.RecruitRadius = 8f;
         brain.DetectEnemyRange = 6f;
+        brain.Inject();
         soldier.Brain = brain;
-
-        var allEntities = new List<IEntityContext> { player, soldier, enemy };
-        brain.Inject(player, allEntities);
 
         // 第一帧：Idle → Follow
         brain.Tick(soldier, 1f / 60f);
@@ -192,13 +208,15 @@ public class SteeringMovementTests
         var soldier = MakeSoldier(new Vector3(2, 0, 0));
         var enemy = MakeSoldier(new Vector3(4, 0, 0), SideType.EnemySide);
 
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(enemy);
+
         var brain = new SoldierAIBrain();
         brain.RecruitRadius = 8f;
         brain.DetectEnemyRange = 6f;
+        brain.Inject();
         soldier.Brain = brain;
-
-        var allEntities = new List<IEntityContext> { player, soldier, enemy };
-        brain.Inject(player, allEntities);
 
         // Idle → Follow → Combat
         brain.Tick(soldier, 1f / 60f);
@@ -248,6 +266,7 @@ public class SteeringMovementTests
         // 小兵间距很近，separation 应让他们自动散开通过
         var player = MakeSoldier(new Vector3(10, 0, 0));
         player.Brain = new ScriptedBrain(); // 玩家不动
+        EntityRegistry.RegisterAsPlayer(player);
 
         var soldiers = new List<SimEntityContext>();
         var brains = new List<SoldierAIBrain>();
@@ -259,16 +278,12 @@ public class SteeringMovementTests
             brain.RecruitRadius = 15f;
             brain.SeparationRadius = 1.2f;
             brain.SeparationWeight = 1.5f;
+            brain.Inject();
             s.Brain = brain;
+            EntityRegistry.Register(s);
             soldiers.Add(s);
             brains.Add(brain);
         }
-
-        var allEntities = new List<IEntityContext> { player };
-        allEntities.AddRange(soldiers);
-
-        foreach (var brain in brains)
-            brain.Inject(player, allEntities);
 
         // 用于 SimulateTicks 的平坦列表
         var allCtx = new List<SimEntityContext> { player };
@@ -293,16 +308,16 @@ public class SteeringMovementTests
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var scriptedPlayerBrain = new ScriptedBrain();
         player.Brain = scriptedPlayerBrain;
+        EntityRegistry.RegisterAsPlayer(player);
 
         var soldier = MakeSoldier(new Vector3(1.5f, 0, 0));
         var brain = new SoldierAIBrain();
         brain.RecruitRadius = 8f;
         brain.AvoidPlayerRadius = 1.8f;
         brain.AvoidPlayerStrength = 3f;
+        brain.Inject();
         soldier.Brain = brain;
-
-        var allEntities = new List<IEntityContext> { player, soldier };
-        brain.Inject(player, allEntities);
+        EntityRegistry.Register(soldier);
 
         // 玩家朝右移动（朝小兵方向）
         scriptedPlayerBrain.Move = new Vector2(1f, 0f);
@@ -323,9 +338,11 @@ public class SteeringMovementTests
     {
         var player = MakeSoldier(new Vector3(-5, 0, 0));
         player.Brain = new ScriptedBrain();
+        EntityRegistry.RegisterAsPlayer(player);
 
         var enemy = MakeSoldier(new Vector3(5, 0, 0), SideType.EnemySide);
         enemy.Brain = new ScriptedBrain();
+        EntityRegistry.Register(enemy);
 
         var soldiers = new List<SimEntityContext>();
         var brains = new List<SoldierAIBrain>();
@@ -339,16 +356,12 @@ public class SteeringMovementTests
             brain.DetectEnemyRange = 10f;
             brain.SeparationRadius = 1.2f;
             brain.SeparationWeight = 1.5f;
+            brain.Inject();
             s.Brain = brain;
+            EntityRegistry.Register(s);
             soldiers.Add(s);
             brains.Add(brain);
         }
-
-        var allEntities = new List<IEntityContext> { player, enemy };
-        allEntities.AddRange(soldiers);
-
-        foreach (var brain in brains)
-            brain.Inject(player, allEntities);
 
         var allCtx = new List<SimEntityContext> { player, enemy };
         allCtx.AddRange(soldiers);

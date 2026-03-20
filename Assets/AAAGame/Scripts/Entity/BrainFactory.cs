@@ -21,8 +21,7 @@ public static class BrainFactory
 
             case BrainType.SoldierAI:
                 var soldierBrain = new SoldierAIBrain();
-                // 惰性注入：Inject 在这里调用，EntityRegistry 提供玩家和全局列表
-                soldierBrain.Inject(EntityRegistry.Player, EntityRegistry.AllEntities);
+                soldierBrain.Inject();
                 return soldierBrain;
 
             default:

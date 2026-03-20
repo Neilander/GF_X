@@ -6,9 +6,11 @@ using UnityEngine;
 /// 群体移动协调器：LJ 力（聚团 + 排斥）+ ORCA（障碍物避让）。
 ///
 /// LJ 力（Lennard-Jones）：
-/// - 同组 agent 之间：近了排斥，远了吸引，在平衡距离处稳定
-/// - 不同组 agent 之间：只有排斥，没有吸引
-/// - 每个 agent 有自己的 EquilibriumRadius（斥力半径），玩家的更大
+/// - 同组 Follow 状态：吸引 + 斥力
+/// - 同组 Combat 状态：只有斥力（不被拉回去）
+/// - 友方不同组：只有斥力
+/// - 敌对阵营：只有斥力
+/// - 组 = 跟随同一个领袖（GroupId = 领袖 entityId）
 ///
 /// ORCA：
 /// - 障碍物避让（权重极大，不可推动）
@@ -21,6 +23,13 @@ using UnityEngine;
 /// </summary>
 public class GroupMoveCoordinator
 {
+    public enum AgentState
+    {
+        Idle,
+        Follow,
+        Combat
+    }
+
     public struct AgentData
     {
         public int Id;
@@ -32,6 +41,8 @@ public class GroupMoveCoordinator
         public float AttractionStrength;   // 吸引力强度
         public SideType Side;             // 阵营
         public bool IsLeader;             // 是否领袖（玩家等）
+        public int GroupId;               // 组 ID（= 领袖 entityId，-1 表示无组）
+        public AgentState State;          // 当前状态
     }
 
     public struct ObstacleData
@@ -175,6 +186,24 @@ public class GroupMoveCoordinator
         }
     }
 
+    public void SetAgentGroup(int id, int groupId)
+    {
+        if (_agents.TryGetValue(id, out var data))
+        {
+            data.GroupId = groupId;
+            _agents[id] = data;
+        }
+    }
+
+    public void SetAgentState(int id, AgentState state)
+    {
+        if (_agents.TryGetValue(id, out var data))
+        {
+            data.State = state;
+            _agents[id] = data;
+        }
+    }
+
     public void UpdateAgentPosition(int id, Vector3 position)
     {
         if (_agents.TryGetValue(id, out var data))
@@ -264,35 +293,46 @@ public class GroupMoveCoordinator
                 continue;
             }
 
-            // 根据阵营关系选力参数
+            // 根据阵营关系 + 组关系选力参数
             bool sameSide = self.Side == other.Side;
             bool isEnemy = self.Side != SideType.NoSide && other.Side != SideType.NoSide && !sameSide;
+            bool sameGroup = sameSide && self.GroupId >= 0 && self.GroupId == other.GroupId;
 
             float eq, maxRange, repStr, attStr;
 
             if (isEnemy)
             {
-                // 敌对之间只有斥力，没有吸引力（追敌靠 Brain 的 NavMesh 寻路）
+                // 敌对：只有斥力
                 eq = EnemyEquilibriumRadius;
                 maxRange = EnemyMaxInfluenceRange;
                 repStr = EnemyRepulsionStrength;
-                attStr = 0f; // 不吸引
+                attStr = 0f;
             }
-            else if (sameSide && other.IsLeader)
+            else if (!sameGroup)
             {
-                // 同阵营领袖：领袖参数
-                eq = other.EquilibriumRadius;
-                maxRange = other.MaxInfluenceRange;
-                repStr = other.RepulsionStrength;
-                attStr = other.AttractionStrength;
-            }
-            else
-            {
-                // 同阵营普通单位：单位参数
+                // 友方不同组：只有斥力
                 eq = Mathf.Max(self.EquilibriumRadius, other.EquilibriumRadius);
                 maxRange = Mathf.Max(self.MaxInfluenceRange, other.MaxInfluenceRange);
                 repStr = Mathf.Max(self.RepulsionStrength, other.RepulsionStrength);
-                attStr = Mathf.Max(self.AttractionStrength, other.AttractionStrength);
+                attStr = 0f;
+            }
+            else if (other.IsLeader)
+            {
+                // 同组领袖：Follow 有吸引，Combat 无吸引
+                eq = other.EquilibriumRadius;
+                maxRange = other.MaxInfluenceRange;
+                repStr = other.RepulsionStrength;
+                attStr = self.State == AgentState.Follow ? other.AttractionStrength : 0f;
+            }
+            else
+            {
+                // 同组普通单位：Follow 有吸引，Combat 无吸引
+                eq = Mathf.Max(self.EquilibriumRadius, other.EquilibriumRadius);
+                maxRange = Mathf.Max(self.MaxInfluenceRange, other.MaxInfluenceRange);
+                repStr = Mathf.Max(self.RepulsionStrength, other.RepulsionStrength);
+                attStr = self.State == AgentState.Follow
+                    ? Mathf.Max(self.AttractionStrength, other.AttractionStrength)
+                    : 0f;
             }
 
             if (dist > maxRange) continue;

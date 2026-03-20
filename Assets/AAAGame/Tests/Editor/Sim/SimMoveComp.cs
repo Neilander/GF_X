@@ -57,6 +57,14 @@ public class SimMoveComp : IMoveComp
         _ctx.MoveExecutor.SetInput(moveDir * speed * 0.1f);
     }
 
+    public Vector3 GetNavDirection()
+    {
+        if (!_targetPos.HasValue || _ctx == null) return Vector3.zero;
+        Vector3 offset = _targetPos.Value - _ctx.Position;
+        offset.y = 0f;
+        return offset.sqrMagnitude > 0.001f ? offset.normalized : Vector3.zero;
+    }
+
     public void ShutDown() { StopMove(); }
     public void Resume() { }
 }

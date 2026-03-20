@@ -1,5 +1,4 @@
 using UnityEngine;
-using System.Collections.Generic;
 
 /// <summary>
 /// 小兵 AI Brain：基于 Steering Behaviors 的流体移动。
@@ -46,22 +45,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     public bool Skill2 => false;
     public bool Skill3 => false;
 
-    // --- 依赖注入 ---
-    private IEntityContext _player;
-    private IList<IEntityContext> _allEntities;
+    // --- 依赖 ---
+    private IEntityContext _leader;
 
     // --- 内部 ---
     private Vector3 _desiredMoveDir;
     private bool _joinedGroup;
+    private SoldierState _lastSyncedState = SoldierState.Idle;
 
     /// <summary>
-    /// 注入玩家引用和全局实体列表。
+    /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
     /// </summary>
-    public void Inject(IEntityContext player, IList<IEntityContext> allEntities)
-    {
-        _player = player;
-        _allEntities = allEntities;
-    }
+    public void Inject() { }
 
     public Vector3 GetDesiredMoveDirection() => _desiredMoveDir;
 
@@ -73,28 +68,25 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
         if (!self.Alive) return;
 
-        // 惰性刷新
-        if (_player == null || !_player.Alive)
-            _player = EntityRegistry.Player;
-        if (_allEntities == null || _allEntities.Count == 0)
-            _allEntities = EntityRegistry.AllEntities;
-
-        // 惰性标记领袖
-        if (!_joinedGroup && _player != null && _player.Alive && GroupMoveManager.HasInstance)
+        // 惰性刷新领袖
+        if (_leader == null || !_leader.Alive)
+            _leader = EntityRegistry.GetClosestLeader(self.Position);
+        // 惰性标记领袖 + 设置组
+        if (!_joinedGroup && _leader != null && _leader.Alive && GroupMoveManager.HasInstance)
         {
-            int leaderId = (_player as MAEntity)?.GetInstanceID() ?? _player.GetHashCode();
-            GroupMoveManager.Instance.Coordinator.SetAgentLeader(leaderId, true);
+            int leaderId = (_leader as MAEntity)?.GetInstanceID() ?? _leader.GetHashCode();
+            int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
+            var coordinator = GroupMoveManager.Instance.Coordinator;
+            coordinator.SetAgentLeader(leaderId, true);
+            coordinator.SetAgentGroup(leaderId, leaderId); // 领袖自己也在组里
+            coordinator.SetAgentGroup(selfId, leaderId);   // 自己加入领袖的组
             _joinedGroup = true;
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.ReferenceId}] 加入组 groupId={leaderId}, leader={_leader.ReferenceId}");
         }
 
-        // 同步索敌范围给 TargetComp
-        if (self.TargetComp != null)
-            self.TargetComp.AggroRange = DetectEnemyRange;
-
-        // Brain 主动找敌人，设给 TargetComp（TargetComp 自己的扫描可能漏掉）
-        SyncTargetComp(self);
-
         UpdateState(self);
+        SyncStateToCoordinator(self);
 
         switch (State)
         {
@@ -121,31 +113,60 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                     State = SoldierState.Combat;
                 }
                 // 同阵营领袖在附近 → Follow（敌方单位不跟随玩家）
-                else if (_player != null && _player.Alive && self.Side == _player.Side)
+                else if (_leader != null && _leader.Alive && self.Side == _leader.Side)
                 {
-                    if (HorizontalDist(self.Position, _player.Position) <= RecruitRadius)
+                    if (HorizontalDist(self.Position, _leader.Position) <= RecruitRadius)
                         State = SoldierState.Follow;
                 }
                 break;
 
             case SoldierState.Follow:
                 if (self.TargetComp?.CurrentTarget != null)
+                {
                     State = SoldierState.Combat;
+                }
+                // 领袖丢失或太远 → 回 Idle，忘掉领袖和组
+                else if (_leader == null || !_leader.Alive ||
+                         HorizontalDist(self.Position, _leader.Position) > LeashRange)
+                {
+                    if (GroupMoveManager.HasInstance)
+                    {
+                        int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
+                        GroupMoveManager.Instance.Coordinator.SetAgentGroup(selfId, -1);
+                        GameDebugSettings.Log(DebugCategory.Brain,
+                            $"[{self.ReferenceId}] 离开组, leader丢失或超距");
+                    }
+                    _leader = null;
+                    _joinedGroup = false;
+                    State = SoldierState.Idle;
+                }
                 break;
 
             case SoldierState.Combat:
+                // 敌人死了才回 Follow，不受领袖距离限制
                 var enemy = self.TargetComp?.CurrentTarget;
                 if (enemy == null)
-                {
                     State = SoldierState.Follow;
-                }
-                else if (_player != null && _player.Alive &&
-                         HorizontalDist(self.Position, _player.Position) > LeashRange)
-                {
-                    State = SoldierState.Follow;
-                }
                 break;
         }
+    }
+
+    private void SyncStateToCoordinator(IEntityContext self)
+    {
+        if (!GroupMoveManager.HasInstance || State == _lastSyncedState) return;
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.ReferenceId}] 状态切换 {_lastSyncedState} → {State}");
+        _lastSyncedState = State;
+
+        int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
+        var coordState = State switch
+        {
+            SoldierState.Idle => GroupMoveCoordinator.AgentState.Idle,
+            SoldierState.Follow => GroupMoveCoordinator.AgentState.Follow,
+            SoldierState.Combat => GroupMoveCoordinator.AgentState.Combat,
+            _ => GroupMoveCoordinator.AgentState.Idle
+        };
+        GroupMoveManager.Instance.Coordinator.SetAgentState(selfId, coordState);
     }
 
     private void TickIdle(IEntityContext self, float dt)
@@ -156,7 +177,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     private void TickFollow(IEntityContext self, float dt)
     {
-        if (_player == null || !_player.Alive) return;
+        if (_leader == null || !_leader.Alive) return;
 
         float speed = self.GetProperty(CreatureMainProperty.Speed);
         Move = Vector2.zero;
@@ -198,35 +219,15 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         }
         else
         {
-            // 追敌：NavMesh 寻路到敌人位置，到了 effectiveRange 内自动切攻击状态
-            Move = Vector2.zero;
+            // 先让 NavMesh 算路径
             self.MoveComp.MoveTo(enemy.Position);
 
-            // LJ 力通过协调器算，结果叠加到 External（不覆盖 NavMesh 路径）
-            SubmitCombatLJ(self, speed);
+            // 拿 NavMesh 方向作为期望速度提交给协调器
+            Vector3 navDir = self.MoveComp.GetNavDirection();
+            Vector3 desiredVel = navDir * speed;
+            Move = Vector2.zero;
+            SubmitToCoordinator(self, desiredVel, speed);
         }
-    }
-
-    /// <summary>
-    /// Combat 追敌时：NavMesh 负责寻路方向（Input），LJ 力叠加到 External 防堆叠。
-    /// </summary>
-    private void SubmitCombatLJ(IEntityContext self, float speed)
-    {
-        if (!GroupMoveManager.HasInstance) return;
-
-        var coordinator = GroupMoveManager.Instance.Coordinator;
-        int agentId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
-
-        // 提交零期望速度，只要 LJ 力
-        coordinator.SubmitDesiredVelocity(agentId, Vector3.zero, safeVel =>
-        {
-            // safeVel 里只有 LJ 力（因为 desiredVelocity 是零）
-            if (safeVel.sqrMagnitude > 0.01f)
-            {
-                // LJ 力通过 External 叠加，不影响 NavMesh 的 Input
-                self.MoveExecutor.AddExternal(safeVel);
-            }
-        });
     }
 
     /// <summary>
@@ -257,34 +258,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         Vector3 myPos = self.Position;
         Move = Vector2.zero;
         self.MoveComp.MoveTo(myPos + velocity.normalized * speed * 0.1f);
-    }
-
-    private void SyncTargetComp(IEntityContext self)
-    {
-        if (self.TargetComp == null || _allEntities == null) return;
-
-        // 如果 TargetComp 已有活着的目标，不覆盖
-        if (self.TargetComp.CurrentTarget != null && self.TargetComp.CurrentTarget.Alive) return;
-
-        // Brain 自己遍历找最近敌人
-        IEntityContext nearest = null;
-        float nearestDist = DetectEnemyRange;
-        for (int i = 0; i < _allEntities.Count; i++)
-        {
-            var other = _allEntities[i];
-            if (other == self || !other.Alive) continue;
-            if (other.Side == self.Side || other.Side == SideType.NoSide) continue;
-
-            float dist = HorizontalDist(self.Position, other.Position);
-            if (dist < nearestDist)
-            {
-                nearestDist = dist;
-                nearest = other;
-            }
-        }
-
-        if (nearest != null)
-            self.TargetComp.CurrentTarget = nearest;
     }
 
     private static float HorizontalDist(Vector3 a, Vector3 b)

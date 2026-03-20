@@ -3039,7 +3039,7 @@ MonoBehaviour:
   targetDebug: 0
   atkDebug: 0
   moveDebug: 0
-  brainDebug: 0
+  brainDebug: 1
 --- !u!4 &1510408148
 Transform:
   m_ObjectHideFlags: 0
