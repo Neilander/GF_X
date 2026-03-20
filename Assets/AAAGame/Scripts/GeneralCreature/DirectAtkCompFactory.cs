@@ -36,6 +36,11 @@ public class DirectAtkCompFactory : AtkCompFactory
         var comp = new DirectAtkComp(weapon);
         gmo.SetAtkComp(comp);
         comp.Init(gmo);
+
+        // 同时创建 WeaponComp 供 Brain 等组件查询武器信息
+        var wc = new WeaponComp(weapon);
+        gmo.SetWeaponComp(wc);
+
         return comp;
     }
 }

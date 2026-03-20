@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0fac7e65b89f440e3977986a6ed36ad6, type: 3}
   m_Name: DirectAtkFactory
   m_EditorClassIdentifier: 
-  damage: 1
+  damage: 5
   attackInterval: 1.5
   weaponType: 0
   attackRange: 150

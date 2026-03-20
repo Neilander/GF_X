@@ -220,12 +220,12 @@ public class GroupMoveManager : MonoBehaviour
                 Gizmos.DrawLine(pos, pos + info.DesiredVelocity.normalized * 1f);
             }
 
-            if (info.SafeVelocity.sqrMagnitude > 0.01f)
-            {
-                Gizmos.color = Color.green;
-                Gizmos.DrawLine(pos, pos + info.SafeVelocity.normalized * 1.2f);
-                DrawArrowHead(pos + info.SafeVelocity.normalized * 1.2f, info.SafeVelocity.normalized, 0.2f);
-            }
+            // if (info.SafeVelocity.sqrMagnitude > 0.01f)
+            // {
+            //     Gizmos.color = Color.green;
+            //     Gizmos.DrawLine(pos, pos + info.SafeVelocity.normalized * 1.2f);
+            //     DrawArrowHead(pos + info.SafeVelocity.normalized * 1.2f, info.SafeVelocity.normalized, 0.2f);
+            // }
         }
     }
 

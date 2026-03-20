@@ -199,6 +199,8 @@ public class GroupMoveCoordinator
     {
         if (_agents.TryGetValue(id, out var data))
         {
+            GameDebugSettings.Log(DebugCategory.GroupMove,
+                $"[Coordinator] SetAgentState id={id} side={data.Side} group={data.GroupId} {data.State}→{state}");
             data.State = state;
             _agents[id] = data;
         }
@@ -296,7 +298,12 @@ public class GroupMoveCoordinator
             // 根据阵营关系 + 组关系选力参数
             bool sameSide = self.Side == other.Side;
             bool isEnemy = self.Side != SideType.NoSide && other.Side != SideType.NoSide && !sameSide;
-            bool sameGroup = sameSide && self.GroupId >= 0 && self.GroupId == other.GroupId;
+            bool sameGroup = sameSide && self.GroupId != 0 && self.GroupId == other.GroupId;
+
+            GameDebugSettings.Log(DebugCategory.GroupMove,
+                $"[Force] self={self.Id}(side={self.Side},grp={self.GroupId},st={self.State}) " +
+                $"other={kvp.Key}(side={other.Side},grp={other.GroupId},leader={other.IsLeader}) " +
+                $"isEnemy={isEnemy} sameGroup={sameGroup} dist={dist:F2}");
 
             float eq, maxRange, repStr, attStr;
 
@@ -318,11 +325,11 @@ public class GroupMoveCoordinator
             }
             else if (other.IsLeader)
             {
-                // 同组领袖：Follow 有吸引，Combat 无吸引
+                // 同组领袖：只有斥力，跟随由 Brain 用 NavMesh 导航实现
                 eq = other.EquilibriumRadius;
                 maxRange = other.MaxInfluenceRange;
                 repStr = other.RepulsionStrength;
-                attStr = self.State == AgentState.Follow ? other.AttractionStrength : 0f;
+                attStr = 0f;
             }
             else
             {
@@ -346,9 +353,17 @@ public class GroupMoveCoordinator
             }
             else
             {
-                float t = (dist - eq) / (maxRange - eq);
-                t = Mathf.Clamp01(t);
-                ljForce += dir * (attStr * (1f - t));
+                if (other.IsLeader)
+                {
+                    // 领袖引力恒定，不随距离衰减
+                    ljForce += dir * attStr;
+                }
+                else
+                {
+                    float t = (dist - eq) / (maxRange - eq);
+                    t = Mathf.Clamp01(t);
+                    ljForce += dir * (attStr * (1f - t));
+                }
             }
         }
 
@@ -452,6 +467,12 @@ public class GroupMoveCoordinator
 
     public bool HasAgent(int id) => _agents.ContainsKey(id);
     public bool HasObstacle(int id) => _obstacles.ContainsKey(id);
+
+    /// <summary>查询某 agent 的斥力半径，找不到返回 defaultValue。</summary>
+    public float GetAgentEquilibriumRadius(int id, float defaultValue = 0f)
+    {
+        return _agents.TryGetValue(id, out var data) ? data.EquilibriumRadius : defaultValue;
+    }
 
     /// <summary>所有已注册 agent（Gizmos 用）</summary>
     public IReadOnlyDictionary<int, AgentData> AllAgents => _agents;

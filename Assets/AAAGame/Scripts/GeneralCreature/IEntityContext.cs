@@ -20,6 +20,7 @@ public interface IEntityContext
     IMoveComp MoveComp { get; }
     IAtkComp AtkComp { get; }
     ITargetingComp TargetComp { get; }
+    WeaponComp WeaponComp { get; }
 
     // 属性查询
     float GetProperty(CreatureMainProperty prop);

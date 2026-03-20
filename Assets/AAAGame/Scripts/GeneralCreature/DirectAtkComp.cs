@@ -59,7 +59,7 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.WindUp:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= _weapon.WindUp)
+                if (_stateTimer >= GetActiveWeapon().WindUp)
                 {
                     DealDamage();
                     EnterState(AtkState.WindDown);
@@ -68,7 +68,7 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.WindDown:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= _weapon.WindDown)
+                if (_stateTimer >= GetActiveWeapon().WindDown)
                 {
                     _ctx.ResumeComp(_ctx.MoveComp, this);
                     EnterState(AtkState.Cooldown);
@@ -77,7 +77,8 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.Cooldown:
                 _stateTimer += deltaTime;
-                float cooldown = _weapon.AttackInterval - _weapon.WindUp - _weapon.WindDown;
+                var w = GetActiveWeapon();
+                float cooldown = w.AttackInterval - w.WindUp - w.WindDown;
                 if (cooldown < 0f) cooldown = 0f;
                 if (_stateTimer >= cooldown)
                 {
@@ -87,50 +88,82 @@ public class DirectAtkComp : IAtkComp
         }
     }
 
+    /// <summary>
+    /// 获取当前生效的武器数据：优先从 WeaponComp 拿最新的，没有则用初始化时的 _weapon。
+    /// </summary>
+    private WeaponData GetActiveWeapon()
+    {
+        return _ctx.WeaponComp?.Data ?? _weapon;
+    }
+
     private void TryStartAttack()
     {
-        if (_ctx.Brain == null) return;
+        if (_ctx.Brain == null)
+        {
+            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.ReferenceId}] TryStart: Brain=null");
+            return;
+        }
         if (!_ctx.Brain.Attack)
         {
-            //Debug.Log($"[ATK_DEBUG] {_ctx.ReferenceId} Brain.Attack=false");
+            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.ReferenceId}] TryStart: Brain.Attack=false");
             return;
         }
 
         var target = _ctx.TargetComp?.CurrentTarget;
         if (target == null || !target.Alive)
         {
-            //Debug.Log($"[ATK_DEBUG] {_ctx.ReferenceId} Brain.Attack=true 但 TargetComp 无目标 (targetComp={(_ctx.TargetComp != null ? "存在" : "null")}, target={target}, alive={target?.Alive})");
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[{_ctx.ReferenceId}] TryStart: 无目标 targetComp={(_ctx.TargetComp != null ? "有" : "null")} target={target} alive={target?.Alive}");
             return;
         }
 
+        var activeWeapon = GetActiveWeapon();
         float dist = Vector3.Distance(_ctx.Position, target.Position);
-        float range = _weapon.AttackRange * 0.01f; // 配表单位是码（百分位），转米
+        float wpnRange = activeWeapon.AttackRange * 0.01f;
+
+        // 攻击范围 = 自己的斥力半径 + 武器射程
+        float myEqR = 0f;
+        if (GroupMoveManager.HasInstance)
+        {
+            int selfId = (_ctx as MAEntity)?.GetInstanceID() ?? _ctx.GetHashCode();
+            myEqR = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
+        }
+        float range = myEqR + wpnRange;
 
         if (dist > range)
         {
-            //Debug.Log($"[ATK_DEBUG] {_ctx.ReferenceId} 目标太远 dist={dist:F2} range={range:F2}");
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[{_ctx.ReferenceId}] TryStart: 超距 dist={dist:F2} range={range:F2} (eqR={myEqR:F2} wpn={wpnRange:F2})");
             return;
         }
 
         _lockedTarget = target;
         AttackCount++;
         _ctx.LockComp(_ctx.MoveComp, this);
-
         EnterState(AtkState.WindUp);
+
+        GameDebugSettings.Log(DebugCategory.Attack,
+            $"[{_ctx.ReferenceId}] → WindUp 第{AttackCount}次攻击 目标={target.ReferenceId} dist={dist:F2} range={range:F2}");
     }
 
     private void DealDamage()
     {
-        if (_lockedTarget == null || !_lockedTarget.Alive) return;
+        if (_lockedTarget == null || !_lockedTarget.Alive)
+        {
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[{_ctx.ReferenceId}] DealDamage: 目标丢失或已死 target={_lockedTarget} alive={_lockedTarget?.Alive}");
+            return;
+        }
 
-        float damage = _weapon.Damage;
+        var activeWeapon = GetActiveWeapon();
+        float damage = activeWeapon.Damage;
 
-        // 护甲减伤：damage = max(1, damage - armor)
-        // 这里暂用简单减法，后续可扩展
+        GameDebugSettings.Log(DebugCategory.Attack,
+            $"[{_ctx.ReferenceId}] DealDamage: 对 {_lockedTarget.ReferenceId} 造成 {damage} 伤害");
+
         _lockedTarget.TakeDamage(damage, HealthModifyType.reduce);
 
-        // 溅射伤害
-        if (_weapon.SplashRadius > 0f)
+        if (activeWeapon.SplashRadius > 0f)
         {
             ApplySplashDamage(damage);
         }
@@ -144,6 +177,8 @@ public class DirectAtkComp : IAtkComp
 
     private void EnterState(AtkState newState)
     {
+        GameDebugSettings.Log(DebugCategory.Attack,
+            $"[{_ctx.ReferenceId}] 状态 {State} → {newState}");
         State = newState;
         _stateTimer = 0f;
     }

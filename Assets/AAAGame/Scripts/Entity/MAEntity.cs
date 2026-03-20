@@ -11,6 +11,7 @@ public class MAEntity : CompCreature, IEntityContext
     public IAtkComp atkComp { get; protected set; }
 
     public ITargetingComp targetComp { get; protected set; }
+    public WeaponComp weaponComp { get; protected set; }
 
     private CharacterController cController;
     private MoveExecutor _moveExecutor;
@@ -40,6 +41,7 @@ public class MAEntity : CompCreature, IEntityContext
     IMoveComp IEntityContext.MoveComp => moveComp;
     IAtkComp IEntityContext.AtkComp => atkComp;
     ITargetingComp IEntityContext.TargetComp => targetComp;
+    WeaponComp IEntityContext.WeaponComp => weaponComp;
 
     public float GetProperty(CreatureMainProperty prop)
     {
@@ -67,7 +69,15 @@ public class MAEntity : CompCreature, IEntityContext
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
+        // 注意：RegisterAgent 移到子类 OnShow 末尾，确保 Side 等字段已赋值
         EntityRegistry.Register(this);
+    }
+
+    /// <summary>
+    /// 子类在 OnShow 末尾（Side 等字段赋值完毕后）调用，注册到 GroupMoveManager。
+    /// </summary>
+    protected void RegisterToGroupMove()
+    {
         if (GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.RegisterAgent(this);
     }
@@ -125,6 +135,7 @@ public class MAEntity : CompCreature, IEntityContext
     public void SetAtkComp(IAtkComp newAtkComp) => atkComp = newAtkComp;
 
     public void SetTargetingComp(ITargetingComp newTargetingComp) => targetComp = newTargetingComp;
+    public void SetWeaponComp(WeaponComp newWeaponComp) => weaponComp = newWeaponComp;
 
     #endregion
 }

@@ -3018,7 +3018,7 @@ GameObject:
   - component: {fileID: 1510408148}
   - component: {fileID: 1510408147}
   m_Layer: 0
-  m_Name: GameObject
+  m_Name: DebugSetting
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3039,7 +3039,8 @@ MonoBehaviour:
   targetDebug: 0
   atkDebug: 0
   moveDebug: 0
-  brainDebug: 1
+  brainDebug: 0
+  groupMoveDebug: 0
 --- !u!4 &1510408148
 Transform:
   m_ObjectHideFlags: 0

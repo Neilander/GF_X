@@ -1,64 +1,64 @@
 # Soldier Logic
 
-<!-- 在这里整理士兵逻辑相关的笔记 -->
+# 整体架构
+项目使用 Entity + Component，每个 Component 独立职能，互不耦合。
+每个 Component 都有 Tick 函数，由 Entity 在 Update 里调用。
 
-# 整体回忆
-项目使用Entity+Component，每个Component都有自己的独立职能，互相不应该耦合，而是要解耦
-每个Component都有个Tick函数，由Entity在Update里调用
-
-Soldier继承自MAEntity，需要查阅相关文档，没有找到就询问用户相关细节；
-
-如果发现不再继承，记得提醒用户更改
-
-同时组件使用“工厂模式”创建，即变量数值依赖So注入，像CharacterTargetingComp就有
-CharcterTargetingFactory
+Soldier 继承自 MAEntity，组件使用工厂模式创建（数值依赖 SO 注入）。
 
 # Entity
-Soldier有5个主要逻辑部分：
-1. Brain
-2. Target
-3. Move
-4. Attack
-5. Weapon - 等我介绍
-除了这些外并没有特殊逻辑，整体继承MAEntity逻辑
+Soldier 有 5 个主要逻辑部分：
+1. Brain — 决策
+2. Target — 索敌
+3. Move — 移动
+4. Attack — 攻击执行
+5. Weapon — 武器信息提供
+
+除此之外继承 MAEntity 通用逻辑。
 
 # Target
-此组件的作用就像是“眼睛”，比如说，当一个人身处危险的环境时，首先会想“我能不能打赢敌人？”然后开始
-找最近的敌人；之后发现打不过，就会想“我能不能跑？”，就开始找最近的出口。这里找最近的敌人，
-找最近的出口，就是Target该做的事。
-
-这个东西会在每一个周期里更新自己的几个变量，方便其他组件取用。
+"眼睛"组件，负责查找目标（最近敌人、最近出口等）。
+每个周期更新自己的变量，供其他组件取用。
 
 # Brain
-此组件是脑子，用于决定现在该执行什么，整体逻辑应该是这样的：
-1. 如果没有目标，就傻站着（Idle）
-2. 如果周围有领袖，就进入一个组（GroupId = 领袖的 entityId），接受组内 LJ 的引力+斥力
-3. 领袖不一定是玩家（目前 EntityRegistry.GetClosestLeader 只返回 Player，之后扩展）。
-   记住一个领袖后只有领袖太远或丢失才会离开组（清除 GroupId，重置 _joinedGroup）
-4. 如果找到敌人进入 Combat，只接受斥力（同组也不受吸引力），期望移动方向由 NavMesh 计算
+决策组件，决定当前该做什么：
 
-### 力的规则（由 Coordinator 根据 AgentState 判断）
-- 敌对阵营：只有斥力
-- 友方不同组：只有斥力
-- 友方同组 + Follow 状态：吸引力 + 斥力
-- 友方同组 + Combat 状态：只有斥力
+1. 没有目标 → 傻站着（Idle）
+2. 周围有领袖 → 进组（GroupId = 领袖 entityId），接受组内 LJ 引力+斥力
+3. 领袖太远或丢失 → 离开组（清除 GroupId）
+4. 发现敌人 → Combat，只受斥力，期望移动方向由 NavMesh 计算
 
-Brain 每帧通过 SyncStateToCoordinator 把状态（Idle/Follow/Combat）同步给 Coordinator，
-Coordinator 的 AgentData.State 字段决定是否施加吸引力。
+### 力的规则
+由 Coordinator 根据 AgentState 判断：
+- 敌对阵营 → 只有斥力
+- 友方不同组 → 只有斥力
+- 友方同组 + Follow → 吸引力 + 斥力
+- 友方同组 + Combat → 只有斥力
 
-同时 Brain 也不应该调整其他物体的数值，而是由其他组件自己根据信息获取改动。
+Brain 每帧通过 SyncStateToCoordinator 同步状态给 Coordinator。
+Brain 不应调整其他物体的数值，各组件自己根据信息获取改动。
 
 ### 状态切换
 - Idle → Follow：领袖在 RecruitRadius 内且同阵营
+- Idle → Combat：直接发现敌人
 - Follow → Combat：TargetComp 发现敌人
 - Follow → Idle：领袖丢失或超过 LeashRange（同时清除组）
-- Combat → Follow：敌人死了（combat 不受领袖距离限制，打到底）
-- Idle → Combat：直接发现敌人
+- Combat → Follow：敌人死了（不受领袖距离限制，打到底）
 
 ### 攻击距离
-有效攻击距离 = 敌对斥力半径（EnemyEquilibriumRadius）+ WeaponRange
+有效攻击距离 = EnemyEquilibriumRadius + WeaponComp.AttackRange（回退到硬编码 WeaponRange）
 
 ### TickCombat
-敌人在攻击范围内就攻击，提交零期望速度让协调器处理推开；
-敌人在范围外，用 NavMesh 算路径方向作为期望速度提交给协调器
+- 敌人在攻击范围内 → 攻击，提交零期望速度，协调器处理推开
+- 敌人在范围外 → NavMesh 算路径方向作为期望速度提交给协调器
 
+# Weapon
+武器系统核心目的：让单位自由切换武器而不重写逻辑。
+
+WeaponComp 是信息提供中心（实现 ICapability），Brain 和 AtkComp 都从这里获取攻击距离等属性，
+保证数据一致。支持运行时 SwapWeapon 切换武器。
+
+WeaponComp 在 DirectAtkCompFactory 创建 AtkComp 时一并创建并 set 到 MAEntity 上。
+
+# Attack
+（待补充）

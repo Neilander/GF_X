@@ -15,6 +15,7 @@ public class GameDebugSettings : MonoBehaviour
     public bool atkDebug;
     public bool moveDebug;
     public bool brainDebug;
+    public bool groupMoveDebug;
 
     private void Awake()
     {
@@ -39,6 +40,7 @@ public class GameDebugSettings : MonoBehaviour
             DebugCategory.Attack    => Instance.atkDebug,
             DebugCategory.Move      => Instance.moveDebug,
             DebugCategory.Brain     => Instance.brainDebug,
+            DebugCategory.GroupMove => Instance.groupMoveDebug,
             _ => false
         };
     }
@@ -55,5 +57,6 @@ public enum DebugCategory
     Targeting,
     Attack,
     Move,
-    Brain
+    Brain,
+    GroupMove
 }

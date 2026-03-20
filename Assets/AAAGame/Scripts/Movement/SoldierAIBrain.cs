@@ -33,7 +33,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     public float AvoidPlayerRadius = 2.5f;  // 避让玩家半径
     public float AvoidPlayerStrength = 3f;  // 避让玩家力度
     public float SeekWeight = 0.6f;         // 趋向力权重
-    public float LeashRange = 15f;          // 脱离战斗回到跟随的距离
+    public float LeashRange = 30f;          // 脱离战斗回到跟随的距离
 
     // --- 状态 ---
     public SoldierState State { get; private set; } = SoldierState.Idle;
@@ -52,6 +52,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     private Vector3 _desiredMoveDir;
     private bool _joinedGroup;
     private SoldierState _lastSyncedState = SoldierState.Idle;
+    private bool _inDeadZone;                // 是否已进入 leader 附近的死区
+    private float _deadZoneRange = 3f;       // 死区宽度：从斥力半径到斥力半径+此值
+    private Vector3? _deadZoneTarget;        // 死区内的随机导航目标点
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -129,6 +132,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 else if (_leader == null || !_leader.Alive ||
                          HorizontalDist(self.Position, _leader.Position) > LeashRange)
                 {
+                    self.MoveComp.StopMove(); // 清掉残留目标，防止被斥力推远
                     if (GroupMoveManager.HasInstance)
                     {
                         int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
@@ -143,10 +147,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 break;
 
             case SoldierState.Combat:
-                // 敌人死了才回 Follow，不受领袖距离限制
+                // 敌人死了或丢失才回 Follow，不受领袖距离限制
                 var enemy = self.TargetComp?.CurrentTarget;
-                if (enemy == null)
+                if (enemy == null || !enemy.Alive)
+                {
+                    // 立即清掉旧 NavMesh 目标，防止继续走向已死敌人
+                    self.MoveComp.StopMove();
+                    GameDebugSettings.Log(DebugCategory.Brain,
+                        $"[{self.ReferenceId}] Combat→Follow: enemy={(enemy == null ? "null" : "dead")}" +
+                        $", leader={(_leader != null ? _leader.ReferenceId : "null")}" +
+                        $", joinedGroup={_joinedGroup}");
                     State = SoldierState.Follow;
+                }
                 break;
         }
     }
@@ -177,26 +189,71 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     private void TickFollow(IEntityContext self, float dt)
     {
-        if (_leader == null || !_leader.Alive) return;
+        if (_leader == null || !_leader.Alive)
+        {
+            self.MoveComp.StopMove();
+            return;
+        }
 
         float speed = self.GetProperty(CreatureMainProperty.Speed);
         Move = Vector2.zero;
 
-        // Follow 不需要自己算方向，提交零速度
-        // 协调器的 LJ 吸引力会自然把 follower 拉向同组 agent 和领袖
-        SubmitToCoordinator(self, Vector3.zero, speed);
+        // 计算死区范围：[leaderEqR, leaderEqR + _deadZoneRange]
+        float leaderEqR = GroupMoveManager.HasInstance
+            ? GroupMoveManager.Instance.Coordinator.LeaderEquilibriumRadius
+            : 1.5f;
+        float deadZoneOuter = leaderEqR + _deadZoneRange;
+        float distToLeader = HorizontalDist(self.Position, _leader.Position);
+
+        if (distToLeader <= deadZoneOuter)
+        {
+            // 在死区内：不主动移动，随波逐流，只接收士兵间的 LJ 力
+            if (!_inDeadZone)
+            {
+                _inDeadZone = true;
+                _deadZoneTarget = null;
+                self.MoveComp.StopMove();
+                GameDebugSettings.Log(DebugCategory.Brain,
+                    $"[{self.ReferenceId}] 进入死区 dist={distToLeader:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+            }
+            SubmitToCoordinator(self, Vector3.zero, speed);
+        }
+        else
+        {
+            // 在死区外：NavMesh 导航到 leader 附近死区内的随机点
+            _inDeadZone = false;
+
+            // 没有目标点或目标点离 leader 太远（leader 移动了）→ 重新算
+            if (!_deadZoneTarget.HasValue ||
+                HorizontalDist(_deadZoneTarget.Value, _leader.Position) > deadZoneOuter)
+            {
+                _deadZoneTarget = PickRandomDeadZonePoint(_leader.Position, leaderEqR, deadZoneOuter);
+                GameDebugSettings.Log(DebugCategory.Brain,
+                    $"[{self.ReferenceId}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
+            }
+
+            self.MoveComp.MoveTo(_deadZoneTarget.Value);
+            Vector3 navDir = self.MoveComp.GetNavDirection();
+            Vector3 desiredVel = navDir * speed;
+            SubmitToCoordinator(self, desiredVel, speed);
+        }
     }
 
     /// <summary>
-    /// 实际攻击判定距离 = 敌对斥力半径 + 武器攻击距离。
-    /// 士兵停在斥力边界外，武器刚好够到敌人。
+    /// 实际攻击判定距离 = 自己的斥力半径 + 武器攻击距离。
+    /// 单位被友方推到自己的 EquilibriumRadius 距离，武器射程要能从该距离打到敌人。
+    /// 优先从 WeaponComp 读攻击距离，没有则用 WeaponRange 回退。
     /// </summary>
-    private float GetEffectiveAttackRange()
+    private float GetEffectiveAttackRange(IEntityContext self)
     {
-        float enemyEqR = GroupMoveManager.HasInstance
-            ? GroupMoveManager.Instance.Coordinator.EnemyEquilibriumRadius
-            : 1.5f;
-        return enemyEqR + WeaponRange;
+        float myEqR = 0f;
+        if (GroupMoveManager.HasInstance)
+        {
+            int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
+            myEqR = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
+        }
+        float wpnRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : WeaponRange;
+        return myEqR + wpnRange;
     }
 
     private void TickCombat(IEntityContext self, float dt)
@@ -208,7 +265,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
         float distToEnemy = HorizontalDist(myPos, enemy.Position);
         float speed = self.GetProperty(CreatureMainProperty.Speed);
-        float effectiveRange = GetEffectiveAttackRange();
+        float effectiveRange = GetEffectiveAttackRange(self);
 
         if (distToEnemy <= effectiveRange)
         {
@@ -256,8 +313,28 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         }
 
         Vector3 myPos = self.Position;
+        Vector3 target = myPos + velocity.normalized * speed * 0.3f;
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.ReferenceId}] ApplyVel state={State} vel={velocity} → target={target}" +
+            $" leaderPos={(_leader != null ? _leader.Position.ToString() : "null")}");
         Move = Vector2.zero;
-        self.MoveComp.MoveTo(myPos + velocity.normalized * speed * 0.1f);
+        self.MoveComp.MoveTo(target);
+    }
+
+    /// <summary>
+    /// 在 leader 周围 [innerR, outerR] 环形区域内随机选一个点，
+    /// 用 NavMesh.SamplePosition 确保在可行走区域上。
+    /// </summary>
+    private static Vector3 PickRandomDeadZonePoint(Vector3 leaderPos, float innerR, float outerR)
+    {
+        float angle = Random.Range(0f, Mathf.PI * 2f);
+        float radius = Random.Range(innerR, outerR);
+        Vector3 candidate = leaderPos + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+
+        if (UnityEngine.AI.NavMesh.SamplePosition(candidate, out var hit, 3f, UnityEngine.AI.NavMesh.AllAreas))
+            return hit.position;
+
+        return candidate;
     }
 
     private static float HorizontalDist(Vector3 a, Vector3 b)

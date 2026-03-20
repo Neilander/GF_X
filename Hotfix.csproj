@@ -243,6 +243,7 @@
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechResearchFailedEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/UserDataHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleOverrideModifier.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/InteractionPanel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/UtilityEx.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />

@@ -58,7 +58,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             : _inputVelocity + _externalVelocity;
 
         // 调试用：整体速度缩放
-        finalVelocity *= 0.1f;
+        finalVelocity *= 0.3f;
 
         _controller.Move(finalVelocity * deltaTime);
 

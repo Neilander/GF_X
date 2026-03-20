@@ -50,7 +50,9 @@
       "Bash(open /Users/a23544/.claude/skills/code-guide/skill.md)",
       "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/Movement/SoldierAIBrain.cs)",
       "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/GeneralCreature/CharacterTargetingComp.cs)",
-      "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/PlayerControl/CharacterTargetingComp.cs)"
+      "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/PlayerControl/CharacterTargetingComp.cs)",
+      "Bash(md5 -q /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs)",
+      "Bash(open /Users/a23544/Documents/GitHub/GF_X/Assets/AIDoc/DirectAtkComp_Guide.html)"
     ]
   }
 }

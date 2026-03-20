@@ -30,6 +30,8 @@ public class CharacterEntity : SkillEntity
 
         // 4. 注入对应的 Brain
         SetBrain(BrainFactory.Create(brainType, this, userData as EntityParams));
+
+        RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 
     protected override void SetUpSkillComp()
