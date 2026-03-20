@@ -39,7 +39,11 @@
       "Bash(find /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame -name \"*.cs\" -exec grep -l \"IControlBrain\\\\|ITickBrain\" {})",
       "Bash(grep -n \"SetBrain\\\\|Brain =\" /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Scripts/Entity/*.cs)",
       "Bash(open /Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Tests/Editor/group_move_test.html)",
-      "Bash(open \"file:///Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Tests/Editor/group_move_test.html\")"
+      "Bash(open \"file:///Users/a23544/Documents/GitHub/GF_X/Assets/AAAGame/Tests/Editor/group_move_test.html\")",
+      "Bash(ls -la /Users/a23544/Documents/GitHub/GF_X/Assets/AIDoc*)",
+      "Bash(open /Users/a23544/Documents/GitHub/GF_X/Assets/AIDoc/CharacterTargetingComp_Guide.html)",
+      "Read(//Users/a23544/.claude/skills/**)",
+      "Read(//Users/a23544/.claude/**)"
     ]
   }
 }

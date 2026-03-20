@@ -90,15 +90,27 @@ public class DirectAtkComp : IAtkComp
     private void TryStartAttack()
     {
         if (_ctx.Brain == null) return;
-        if (!_ctx.Brain.Attack) return;
+        if (!_ctx.Brain.Attack)
+        {
+            //Debug.Log($"[ATK_DEBUG] {_ctx.ReferenceId} Brain.Attack=false");
+            return;
+        }
 
         var target = _ctx.TargetComp?.CurrentTarget;
-        if (target == null || !target.Alive) return;
+        if (target == null || !target.Alive)
+        {
+            //Debug.Log($"[ATK_DEBUG] {_ctx.ReferenceId} Brain.Attack=true 但 TargetComp 无目标 (targetComp={(_ctx.TargetComp != null ? "存在" : "null")}, target={target}, alive={target?.Alive})");
+            return;
+        }
 
         float dist = Vector3.Distance(_ctx.Position, target.Position);
         float range = _weapon.AttackRange * 0.01f; // 配表单位是码（百分位），转米
 
-        if (dist > range) return;
+        if (dist > range)
+        {
+            //Debug.Log($"[ATK_DEBUG] {_ctx.ReferenceId} 目标太远 dist={dist:F2} range={range:F2}");
+            return;
+        }
 
         _lockedTarget = target;
         AttackCount++;

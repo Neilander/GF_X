@@ -10,7 +10,7 @@ public class SimTargetingComp : ITargetingComp
     private IEntityContext _self;
     private List<IEntityContext> _allEntities;
 
-    public IEntityContext CurrentTarget { get; private set; }
+    public IEntityContext CurrentTarget { get; set; }
     public IEntityContext FollowTarget { get; private set; }
 
     public float AggroRange { get; set; } = 6f;

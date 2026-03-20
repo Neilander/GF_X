@@ -17,7 +17,7 @@ public class WeaponData
     public float Damage = 10f;
     public float AttackInterval = 1.5f;
     public WeaponType Type = WeaponType.Melee;
-    public float AttackRange = 150f;
+    public float AttackRange = 600f;
     public float ProjectileSpeed = 0f;
     public float WindUp = 0.4f;
     public float WindDown = 0.5f;

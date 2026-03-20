@@ -3,7 +3,7 @@ using UnityEngine;
 public class NoTargetingComp : ITargetingComp
 {
     // 永远没有目标
-    public IEntityContext CurrentTarget => null;
+    public IEntityContext CurrentTarget { get; set; }
     public IEntityContext FollowTarget => null;
 
     // 范围属性给 0 即可

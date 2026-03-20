@@ -10,6 +10,7 @@ public class CharacterTargetingFactory : TargetingCompFactory
     [Header("默认索敌配置")]
     public float defaultAggroRange = 6f;
     public float defaultForgetRange = 8f;
+    public float defaultFollowRange = 30f;
 
     public override ITargetingComp CreateTargetingComp(MAEntity gmo)
     {
@@ -19,6 +20,7 @@ public class CharacterTargetingFactory : TargetingCompFactory
         // 赋予初始面板值
         comp.AggroRange = defaultAggroRange;
         comp.ForgetRange = defaultForgetRange;
+        comp.FollowSearchRange = defaultFollowRange;
         
         gmo.SetTargetingComp(comp);
         return comp;

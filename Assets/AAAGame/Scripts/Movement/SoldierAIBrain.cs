@@ -27,8 +27,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     public float RecruitRadius = 8f;        // 玩家多近时开始跟随
     public float FollowDistanceMin = 2.5f;  // 跟随最近距离（不贴太紧）
     public float FollowDistanceMax = 5f;    // 跟随最远距离（超过才追）
-    public float AttackRange = 1.5f;        // 攻击距离
-    public float DetectEnemyRange = 6f;     // 发现敌人的距离
+    public float WeaponRange = 1.5f;          // 武器本身的攻击距离（WeaponData.AttackRange * 0.01）
+    public float DetectEnemyRange = 10f;    // 发现敌人的距离
     public float SeparationRadius = 1.5f;   // 同阵营分离半径
     public float SeparationWeight = 1.5f;   // 分离力权重
     public float AvoidPlayerRadius = 2.5f;  // 避让玩家半径
@@ -87,6 +87,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             _joinedGroup = true;
         }
 
+        // 同步索敌范围给 TargetComp
+        if (self.TargetComp != null)
+            self.TargetComp.AggroRange = DetectEnemyRange;
+
+        // Brain 主动找敌人，设给 TargetComp（TargetComp 自己的扫描可能漏掉）
+        SyncTargetComp(self);
+
         UpdateState(self);
 
         switch (State)
@@ -108,7 +115,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         switch (State)
         {
             case SoldierState.Idle:
-                if (_player != null && _player.Alive)
+                // 有敌人 → 直接进 Combat
+                if (self.TargetComp?.CurrentTarget != null)
+                {
+                    State = SoldierState.Combat;
+                }
+                // 同阵营领袖在附近 → Follow（敌方单位不跟随玩家）
+                else if (_player != null && _player.Alive && self.Side == _player.Side)
                 {
                     if (HorizontalDist(self.Position, _player.Position) <= RecruitRadius)
                         State = SoldierState.Follow;
@@ -116,12 +129,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 break;
 
             case SoldierState.Follow:
-                if (FindNearestEnemy(self) != null)
+                if (self.TargetComp?.CurrentTarget != null)
                     State = SoldierState.Combat;
                 break;
 
             case SoldierState.Combat:
-                var enemy = FindNearestEnemy(self);
+                var enemy = self.TargetComp?.CurrentTarget;
                 if (enemy == null)
                 {
                     State = SoldierState.Follow;
@@ -153,17 +166,30 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         SubmitToCoordinator(self, Vector3.zero, speed);
     }
 
+    /// <summary>
+    /// 实际攻击判定距离 = 敌对斥力半径 + 武器攻击距离。
+    /// 士兵停在斥力边界外，武器刚好够到敌人。
+    /// </summary>
+    private float GetEffectiveAttackRange()
+    {
+        float enemyEqR = GroupMoveManager.HasInstance
+            ? GroupMoveManager.Instance.Coordinator.EnemyEquilibriumRadius
+            : 1.5f;
+        return enemyEqR + WeaponRange;
+    }
+
     private void TickCombat(IEntityContext self, float dt)
     {
         Vector3 myPos = self.Position;
 
-        var enemy = FindNearestEnemy(self);
-        if (enemy == null) return;
+        var enemy = self.TargetComp?.CurrentTarget;
+        if (enemy == null || !enemy.Alive) return;
 
         float distToEnemy = HorizontalDist(myPos, enemy.Position);
         float speed = self.GetProperty(CreatureMainProperty.Speed);
+        float effectiveRange = GetEffectiveAttackRange();
 
-        if (distToEnemy <= AttackRange)
+        if (distToEnemy <= effectiveRange)
         {
             // 在攻击范围内 → 攻击，提交零期望速度，协调器处理重叠推开
             Attack = true;
@@ -172,11 +198,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         }
         else
         {
-            // 追敌：NavMesh 寻路到攻击范围边缘（不冲到敌人脚下）
+            // 追敌：NavMesh 寻路到敌人位置，到了 effectiveRange 内自动切攻击状态
             Move = Vector2.zero;
-            Vector3 dirToEnemy = (enemy.Position - myPos).normalized;
-            Vector3 stopPoint = enemy.Position - dirToEnemy * AttackRange;
-            self.MoveComp.MoveTo(stopPoint);
+            self.MoveComp.MoveTo(enemy.Position);
 
             // LJ 力通过协调器算，结果叠加到 External（不覆盖 NavMesh 路径）
             SubmitCombatLJ(self, speed);
@@ -235,13 +259,16 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         self.MoveComp.MoveTo(myPos + velocity.normalized * speed * 0.1f);
     }
 
-    private IEntityContext FindNearestEnemy(IEntityContext self)
+    private void SyncTargetComp(IEntityContext self)
     {
-        if (_allEntities == null) return null;
+        if (self.TargetComp == null || _allEntities == null) return;
 
+        // 如果 TargetComp 已有活着的目标，不覆盖
+        if (self.TargetComp.CurrentTarget != null && self.TargetComp.CurrentTarget.Alive) return;
+
+        // Brain 自己遍历找最近敌人
         IEntityContext nearest = null;
         float nearestDist = DetectEnemyRange;
-
         for (int i = 0; i < _allEntities.Count; i++)
         {
             var other = _allEntities[i];
@@ -256,7 +283,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             }
         }
 
-        return nearest;
+        if (nearest != null)
+            self.TargetComp.CurrentTarget = nearest;
     }
 
     private static float HorizontalDist(Vector3 a, Vector3 b)
