@@ -1108,13 +1108,13 @@
       <Project>{eaaa251a-fbab-6f2c-35b9-48fd5cade8e4}</Project>
       <Name>UnityEditor.UI</Name>
     </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.csproj">
-      <Project>{2c9c9c4c-7348-9e44-2bd1-82cc13255841}</Project>
-      <Name>DOTween.Extension</Name>
-    </ProjectReference>
     <ProjectReference Include="UnityEngine.UI.csproj">
       <Project>{3a9bbb42-f862-2c0f-44c6-fef93f2b2344}</Project>
       <Name>UnityEngine.UI</Name>
+    </ProjectReference>
+    <ProjectReference Include="DOTween.Extension.csproj">
+      <Project>{2c9c9c4c-7348-9e44-2bd1-82cc13255841}</Project>
+      <Name>DOTween.Extension</Name>
     </ProjectReference>
     <ProjectReference Include="Boxophobic.PolyverseSkies.Editor.csproj">
       <Project>{c3dfbbc2-5cbb-97bb-8fc7-12dfbe9e0e81}</Project>

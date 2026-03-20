@@ -68,10 +68,14 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnShow(userData);
         EntityRegistry.Register(this);
+        if (GroupMoveManager.HasInstance)
+            GroupMoveManager.Instance.RegisterAgent(this);
     }
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        if (GroupMoveManager.HasInstance)
+            GroupMoveManager.Instance.UnregisterAgent(this);
         EntityRegistry.Unregister(this);
         base.OnHide(isShutdown, userData);
     }
@@ -79,6 +83,10 @@ public class MAEntity : CompCreature, IEntityContext
     protected virtual void Update()
     {
         float dt = Time.deltaTime;
+
+        // 更新协调器中的位置（在 Brain.Tick 之前）
+        if (GroupMoveManager.HasInstance)
+            GroupMoveManager.Instance.UpdateAgentPosition(this);
 
         if (Brain is ITickBrain tickBrain)
         {

@@ -64,8 +64,8 @@
     <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/VisualElementExtensions.cs" />
     <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/CheckWorkspaceTreeNodeStatus.cs" />
     <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/Views/Shelves/ShelvesViewMenu.cs" />
-    <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/Configuration/CloudEdition/Welcome/CloudEditionWelcomeWindow.cs" />
     <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/UI/Tree/GetChangesOverlayIcon.cs" />
+    <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/Configuration/CloudEdition/Welcome/CloudEditionWelcomeWindow.cs" />
     <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/Hub/CommandLineArguments.cs" />
     <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/Hub/Operations/DownloadRepository.cs" />
     <Compile Include="Library/PackageCache/com.unity.collab-proxy@2.7.1/Editor/BuildGetEventExtraInfoFunction.cs" />

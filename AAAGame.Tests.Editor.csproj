@@ -56,6 +56,7 @@
     <Compile Include="Assets/AAAGame/Tests/Editor/SimMoveExecutorTests.cs" />
     <Compile Include="Assets/AAAGame/Tests/Editor/Sim/SimAtkComp.cs" />
     <Compile Include="Assets/AAAGame/Tests/Editor/Sim/SimMoveExecutor.cs" />
+    <Compile Include="Assets/AAAGame/Tests/Editor/GroupMoveCoordinatorTests.cs" />
     <Compile Include="Assets/AAAGame/Tests/Editor/DirectAtkCompTests.cs" />
     <Compile Include="Assets/AAAGame/Tests/Editor/ComponentLockingTests.cs" />
     <None Include="Assets/AAAGame/Tests/Editor/AAAGame.Tests.Editor.asmdef" />

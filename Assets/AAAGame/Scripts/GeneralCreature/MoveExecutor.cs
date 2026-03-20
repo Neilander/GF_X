@@ -57,6 +57,9 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             ? _overrideVelocity
             : _inputVelocity + _externalVelocity;
 
+        // 调试用：整体速度缩放
+        finalVelocity *= 0.1f;
+
         _controller.Move(finalVelocity * deltaTime);
 
         // 输入每帧重置（非常重要）

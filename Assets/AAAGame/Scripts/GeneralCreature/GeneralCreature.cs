@@ -74,6 +74,7 @@ public class GeneralCreature : EntityBase, ITargetable
         if (cur <= 0)
         {
             Alive = false;
+            GF.Entity.HideEntity(Id);
         }
     }
 

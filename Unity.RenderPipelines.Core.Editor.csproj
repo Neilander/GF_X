@@ -168,8 +168,8 @@
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/Volume/VolumeComponentListEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/Debugging/DebugUIDrawer.Builtins.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/Camera/CameraUI.Output.Drawers.cs" />
-    <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/Lighting/LightAnchorEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/Volume/Drawers/IntParameterDrawer.cs" />
+    <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/Lighting/LightAnchorEditor.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/CoreEditorUtils.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/CoreRenderPipelinePreferences.cs" />
     <Compile Include="Library/PackageCache/com.unity.render-pipelines.core@14.0.9/Editor/Settings/SettingsProviderGUIScope.cs" />

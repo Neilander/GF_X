@@ -105,6 +105,7 @@
     <Compile Include="Assets/AAAGame/Scripts/HotfixEntry.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterSkillComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/LanguagesTable.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveCoordinator.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/ItemDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/SequenceNode.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/CapabilityProgressDataModel.cs" />
@@ -259,6 +260,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Craft/ItemWithEffect.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractOptionTipsPresenter.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IEntityContext.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/NodeView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IMoveExecutor.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/CharacterEntity.cs" />
@@ -269,6 +271,7 @@
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckHealthNode.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Editor/CharacterTestWindow.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/HealthBarComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelBase.cs" />
@@ -307,6 +310,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyClampModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/BTContext.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveObstacle.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarFloat.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/SimpleJoystick.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterMoveComp.cs" />

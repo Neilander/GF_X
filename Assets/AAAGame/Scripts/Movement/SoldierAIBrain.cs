@@ -52,6 +52,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     // --- 内部 ---
     private Vector3 _desiredMoveDir;
+    private bool _joinedGroup;
 
     /// <summary>
     /// 注入玩家引用和全局实体列表。
@@ -77,6 +78,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             _player = EntityRegistry.Player;
         if (_allEntities == null || _allEntities.Count == 0)
             _allEntities = EntityRegistry.AllEntities;
+
+        // 惰性标记领袖
+        if (!_joinedGroup && _player != null && _player.Alive && GroupMoveManager.HasInstance)
+        {
+            int leaderId = (_player as MAEntity)?.GetInstanceID() ?? _player.GetHashCode();
+            GroupMoveManager.Instance.Coordinator.SetAgentLeader(leaderId, true);
+            _joinedGroup = true;
+        }
 
         UpdateState(self);
 
@@ -136,55 +145,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     {
         if (_player == null || !_player.Alive) return;
 
-        Vector3 myPos = self.Position;
-        Vector3 playerPos = _player.Position;
-        float distToPlayer = HorizontalDist(myPos, playerPos);
+        float speed = self.GetProperty(CreatureMainProperty.Speed);
+        Move = Vector2.zero;
 
-        // --- Seek: 带死区的平滑跟随 ---
-        // 在 [FollowDistanceMin, FollowDistanceMax] 之间不追（死区）
-        // 超过 Max 才追，低于 Min 才后退
-        Vector3 seekForce = Vector3.zero;
-        if (distToPlayer > FollowDistanceMax)
-        {
-            // 超出最远距离，追上去。用 FollowDistanceMax 做 arriveRadius
-            seekForce = SteeringMovement.Seek(myPos, playerPos, FollowDistanceMax) * SeekWeight;
-        }
-        else if (distToPlayer < FollowDistanceMin)
-        {
-            // 太近了，轻轻推开
-            Vector3 awayDir = (myPos - playerPos);
-            awayDir.y = 0;
-            if (awayDir.sqrMagnitude > 0.001f)
-                seekForce = awayDir.normalized * 0.3f;
-        }
-        // 在死区内：seekForce = 0，小兵自然停在不同距离
-
-        // Separation（同阵营）
-        var neighborPos = SteeringMovement.CollectSameSideNeighborPositions(self, _allEntities, SeparationRadius);
-        Vector3 sepForce = SteeringMovement.Separation(myPos, neighborPos, SeparationRadius) * SeparationWeight;
-
-        // 避让玩家
-        Vector3 avoidPlayer = SteeringMovement.AvoidEntity(myPos, playerPos, AvoidPlayerRadius, AvoidPlayerStrength);
-
-        Vector3 total = seekForce + sepForce + avoidPlayer;
-        _desiredMoveDir = SteeringMovement.ClampForce(total, 1f);
-
-        // 死区内（没有 seek）时，只有合力足够大才移动，防止微抖
-        bool inDeadZone = (seekForce.sqrMagnitude < 0.001f);
-        float moveThreshold = inDeadZone ? 0.25f : 0.01f;
-
-        if (_desiredMoveDir.sqrMagnitude > moveThreshold)
-        {
-            // 用 MoveTo 驱动，不设 Move（避免 CharacterMoveComp 取消寻路走直线）
-            Move = Vector2.zero;
-            float speed = self.GetProperty(CreatureMainProperty.Speed);
-            self.MoveComp.MoveTo(myPos + _desiredMoveDir * speed * 0.1f);
-        }
-        else
-        {
-            // 力太小，停下来不动
-            self.MoveComp.StopMove();
-        }
+        // Follow 不需要自己算方向，提交零速度
+        // 协调器的 LJ 吸引力会自然把 follower 拉向同组 agent 和领袖
+        SubmitToCoordinator(self, Vector3.zero, speed);
     }
 
     private void TickCombat(IEntityContext self, float dt)
@@ -195,61 +161,78 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         if (enemy == null) return;
 
         float distToEnemy = HorizontalDist(myPos, enemy.Position);
+        float speed = self.GetProperty(CreatureMainProperty.Speed);
 
         if (distToEnemy <= AttackRange)
         {
-            // 在攻击范围内 → 攻击，仅用 separation 避免堆叠
+            // 在攻击范围内 → 攻击，提交零期望速度，协调器处理重叠推开
             Attack = true;
             Move = Vector2.zero;
-            ApplySeparationOnly(self);
+            SubmitToCoordinator(self, Vector3.zero, speed);
         }
         else
         {
-            // 直接 MoveTo 敌人位置，让 CharacterMoveComp 的 NavMesh 寻路
-            // 注意：不设 Move，否则 CharacterMoveComp 会取消 NavMesh 路径走直线
-            self.MoveComp.MoveTo(enemy.Position);
+            // 追敌：NavMesh 寻路到攻击范围边缘（不冲到敌人脚下）
             Move = Vector2.zero;
+            Vector3 dirToEnemy = (enemy.Position - myPos).normalized;
+            Vector3 stopPoint = enemy.Position - dirToEnemy * AttackRange;
+            self.MoveComp.MoveTo(stopPoint);
 
-            // 同时施加 separation（走的过程中不挤在一起）
-            var neighborPos = SteeringMovement.CollectSameSideNeighborPositions(self, _allEntities, SeparationRadius);
-            Vector3 sepForce = SteeringMovement.Separation(myPos, neighborPos, SeparationRadius) * SeparationWeight;
-
-            // 避让玩家
-            if (_player != null && _player.Alive)
-            {
-                sepForce += SteeringMovement.AvoidEntity(myPos, _player.Position, AvoidPlayerRadius, AvoidPlayerStrength);
-            }
-
-            // Separation 通过 external velocity 叠加，不覆盖 MoveTo 寻路
-            if (sepForce.sqrMagnitude > 0.01f)
-            {
-                sepForce = SteeringMovement.ClampForce(sepForce, 0.5f);
-                self.MoveExecutor.AddExternal(sepForce);
-            }
+            // LJ 力通过协调器算，结果叠加到 External（不覆盖 NavMesh 路径）
+            SubmitCombatLJ(self, speed);
         }
     }
 
-    private void ApplySeparationOnly(IEntityContext self)
+    /// <summary>
+    /// Combat 追敌时：NavMesh 负责寻路方向（Input），LJ 力叠加到 External 防堆叠。
+    /// </summary>
+    private void SubmitCombatLJ(IEntityContext self, float speed)
     {
-        if (_allEntities == null) return;
+        if (!GroupMoveManager.HasInstance) return;
+
+        var coordinator = GroupMoveManager.Instance.Coordinator;
+        int agentId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
+
+        // 提交零期望速度，只要 LJ 力
+        coordinator.SubmitDesiredVelocity(agentId, Vector3.zero, safeVel =>
+        {
+            // safeVel 里只有 LJ 力（因为 desiredVelocity 是零）
+            if (safeVel.sqrMagnitude > 0.01f)
+            {
+                // LJ 力通过 External 叠加，不影响 NavMesh 的 Input
+                self.MoveExecutor.AddExternal(safeVel);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 向协调器提交期望速度，回调中执行 MoveTo。
+    /// 如果协调器不可用（测试环境），直接用期望速度。
+    /// </summary>
+    private void SubmitToCoordinator(IEntityContext self, Vector3 desiredVelocity, float speed)
+    {
+        if (!GroupMoveManager.HasInstance) return;
+        var coordinator = GroupMoveManager.Instance.Coordinator;
+        int agentId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
+
+        coordinator.SubmitDesiredVelocity(agentId, desiredVelocity, safeVel =>
+        {
+            ApplyVelocity(self, safeVel, speed);
+        });
+    }
+
+    private void ApplyVelocity(IEntityContext self, Vector3 velocity, float speed)
+    {
+        if (velocity.sqrMagnitude < 0.001f)
+        {
+            // 力为零，停止移动（清掉旧路径）
+            self.MoveComp.StopMove();
+            return;
+        }
 
         Vector3 myPos = self.Position;
-        var neighborPos = SteeringMovement.CollectSameSideNeighborPositions(self, _allEntities, SeparationRadius);
-        Vector3 sepForce = SteeringMovement.Separation(myPos, neighborPos, SeparationRadius) * SeparationWeight;
-
-        if (_player != null && _player.Alive)
-        {
-            sepForce += SteeringMovement.AvoidEntity(myPos, _player.Position, AvoidPlayerRadius, AvoidPlayerStrength);
-        }
-
-        // 提高阈值：只有力度足够大（真正重叠）才移动，避免微抖
-        if (sepForce.sqrMagnitude > 0.25f)
-        {
-            _desiredMoveDir = SteeringMovement.ClampForce(sepForce, 1f);
-            float speed = self.GetProperty(CreatureMainProperty.Speed);
-            Move = Vector2.zero;
-            self.MoveComp.MoveTo(myPos + _desiredMoveDir * speed * 0.1f);
-        }
+        Move = Vector2.zero;
+        self.MoveComp.MoveTo(myPos + velocity.normalized * speed * 0.1f);
     }
 
     private IEntityContext FindNearestEnemy(IEntityContext self)

@@ -777,13 +777,13 @@
       <Project>{e7525cc8-21a2-1f6b-80a6-67cce185a796}</Project>
       <Name>andywiecko.BurstTriangulator.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.Player.csproj">
-      <Project>{55f4a3f6-de25-ca7d-1190-9e127042adec}</Project>
-      <Name>DOTween.Extension.Player</Name>
-    </ProjectReference>
     <ProjectReference Include="UnityEngine.UI.Player.csproj">
       <Project>{3ea37e03-c176-a81c-9347-6b3bacbc6e66}</Project>
       <Name>UnityEngine.UI.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="DOTween.Extension.Player.csproj">
+      <Project>{55f4a3f6-de25-ca7d-1190-9e127042adec}</Project>
+      <Name>DOTween.Extension.Player</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.RenderPipeline.Universal.ShaderLibrary.Player.csproj">
       <Project>{5e6bb4ab-1c84-eba1-566a-ee72cdb5f3d4}</Project>

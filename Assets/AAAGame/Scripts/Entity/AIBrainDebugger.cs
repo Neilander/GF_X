@@ -42,58 +42,6 @@ public class AIBrainDebugger : MonoBehaviour
         }
     }
 
-    // 绘制 Debug 范围框（去掉 Selected，只要脚本挂着就能看见）
-    void OnDrawGizmos()
-    {
-        if (_entity == null) _entity = GetComponent<MAEntity>();
-        if (_entity == null) return;
-
-        float aggro = debugAggroRange;
-        float forget = debugForgetRange;
-        float attack = debugAttackRange;
-        float follow = debugFollowDistance;
-        bool drawFollow = true; // 默认把跟随圈画出来方便预览
-
-        // 如果没有开启覆盖且在运行中，尝试读取底层真正的数值来画圈
-        if (!overrideValues && Application.isPlaying)
-        {
-            if (_entity.targetComp != null)
-            {
-                aggro = _entity.targetComp.AggroRange;
-                forget = _entity.targetComp.ForgetRange;
-            }
-            
-            if (_entity.Brain is EnemyAIBrain enemy)
-            {
-                attack = enemy.AttackRange;
-                drawFollow = false; // 敌人不需要绿圈
-            }
-            else if (_entity.Brain is FriendlyAIBrain friendly)
-            {
-                attack = friendly.AttackRange;
-                follow = friendly.FollowDistance;
-            }
-        }
-
-        Vector3 pos = transform.position;
-
-        // 黄圈：索敌
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(pos, aggro);
-
-        // 灰圈：遗忘丢失
-        Gizmos.color = Color.gray;
-        Gizmos.DrawWireSphere(pos, forget);
-
-        // 红圈：攻击
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(pos, attack);
-
-        // 绿圈：跟随
-        if (drawFollow)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(pos, follow);
-        }
-    }
+    // 暂时禁用旧 Gizmos，改用 GroupMoveManager 的统一可视化
+    // void OnDrawGizmos() { }
 }
