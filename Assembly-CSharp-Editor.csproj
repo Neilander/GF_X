@@ -155,6 +155,7 @@
     <Compile Include="Assets\AAAGame\ScriptsBuiltin\Editor\DataTableGenerator\DataTableProcessor.StringArrayProcessor.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\EasyRoads3D\Editor\EasyRoads3Dv3Editor.dll" />
     <None Include="Assets\AAAGame\ScriptsBuiltin\Editor\UI\Templates\UIItemScriptFileTemplate.txt" />
     <None Include="Assets\AAAGame\ScriptsBuiltin\Editor\UI\Templates\UIScriptFileTemplate.txt" />
     <None Include="Assets\AAAGame\ScriptsBuiltin\Editor\DataTableGenerator\DataTableCodeTemplate\DataTableCodeTemplate.txt" />
@@ -504,6 +505,10 @@
       <HintPath>D:\UnityEditor\2022.3.62f3\Editor\Data\PlaybackEngines\WindowsStandaloneSupport\UnityEditor.WindowsStandalone.Extensions.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>Assets\EasyRoads3D\lib\DelaunayER.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="System.Text.Json">
       <HintPath>Assets\Plugins\ForEditor\CompressImageLibs\System.Text.Json.dll</HintPath>
       <Private>False</Private>
@@ -526,6 +531,10 @@
     </Reference>
     <Reference Include="nunit.framework">
       <HintPath>Library\PackageCache\com.unity.ext.nunit@2.0.3\net40\unity-custom\nunit.framework.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3Editor">
+      <HintPath>Assets\EasyRoads3D\Editor\EasyRoads3Dv3Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="unityplastic">
@@ -554,6 +563,10 @@
     </Reference>
     <Reference Include="Unity.Plastic.Newtonsoft.Json">
       <HintPath>Library\PackageCache\com.unity.collab-proxy@2.7.1\Lib\Editor\Unity.Plastic.Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>Assets\EasyRoads3D\lib\EasyRoads3Dv3.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="log4netPlastic">
