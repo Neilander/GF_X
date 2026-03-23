@@ -289,6 +289,7 @@
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/CraftingDeviceDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Editor/CreateDirectAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterAtkFactory.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Editor/ProcedureLauncherWindow.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Const.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />

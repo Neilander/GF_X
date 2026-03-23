@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Procedure;
 using UnityGameFramework.Runtime;
 using GameFramework.Fsm;
@@ -9,14 +9,15 @@ using UnityEngine;
 public class ChangeSceneProcedure : ProcedureBase
 {
     /// <summary>
-    /// 编辑器工具可在运行前设置此字段，控制 "Game" 场景加载后切换到哪个 Procedure
-    /// </summary>
-    public static string SelectedProcedureForGame = "CharacterTestProcedure";
-
-    /// <summary>
     /// 要加载的场景资源名,相对于场景目录
     /// </summary>
     internal const string P_SceneName = "SceneName";
+
+    /// <summary>
+    /// 编辑器工具可在运行前设置此变量，控制 "Game" 场景加载完毕后切换到哪个 Procedure
+    /// </summary>
+    public static string SelectedProcedureForGame = "CharacterTestProcedure";
+
     private bool loadSceneOver = false;
     private string nextScene = string.Empty;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
@@ -62,29 +63,41 @@ public class ChangeSceneProcedure : ProcedureBase
             return;
         }
 
-        //场景加载完成,根据不同场景切换对应Procedure
+        // 场景加载完成,根据不同场景切换对应 Procedure
         switch (nextScene)
         {
             case "Game":
-                // 根据 SelectedProcedureForGame 动态切换到对应 Procedure
-                switch (SelectedProcedureForGame)
-                {
-                    case "MenuProcedure":
-                        ChangeState<MenuProcedure>(procedureOwner);
-                        break;
-                    case "GameProcedure":
-                        ChangeState<GameProcedure>(procedureOwner);
-                        break;
-                    case "LevelTestProcedure":
-                        ChangeState<LevelTestProcedure>(procedureOwner);
-                        break;
-                    default:
-                        ChangeState<CharacterTestProcedure>(procedureOwner);
-                        break;
-                }
+                // 根据静态变量 SelectedProcedureForGame 动态切换到对应 Procedure
+                ChangeStateForGame(procedureOwner);
                 break;
             case "LevelTestScene":
                 ChangeState<LevelTestProcedure>(procedureOwner);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 根据 SelectedProcedureForGame 切换到对应的 Procedure
+    /// </summary>
+    private void ChangeStateForGame(IFsm<IProcedureManager> procedureOwner)
+    {
+        switch (SelectedProcedureForGame)
+        {
+            case "CharacterTestProcedure":
+                ChangeState<CharacterTestProcedure>(procedureOwner);
+                break;
+            case "MenuProcedure":
+                ChangeState<MenuProcedure>(procedureOwner);
+                break;
+            case "GameProcedure":
+                ChangeState<GameProcedure>(procedureOwner);
+                break;
+            case "GameOverProcedure":
+                ChangeState<GameOverProcedure>(procedureOwner);
+                break;
+            default:
+                Log.Warning("未知的 Procedure: {0}，回退到 CharacterTestProcedure", SelectedProcedureForGame);
+                ChangeState<CharacterTestProcedure>(procedureOwner);
                 break;
         }
     }
