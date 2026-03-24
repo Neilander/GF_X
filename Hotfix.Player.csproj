@@ -230,6 +230,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringIntPair.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Movement/SoldierAIBrain.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAtkFactory.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Procedures/SampleProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/CylinderTargetSelector.cs" />

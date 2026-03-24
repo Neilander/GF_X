@@ -10,16 +10,8 @@ public class ProcedureLauncherWindow : EditorWindow
         "CharacterTestProcedure",
         "MenuProcedure",
         "GameProcedure",
-        "LevelTestProcedure"
-    };
-
-    // 显示用的中文标签
-    private static readonly string[] ProcedureLabels =
-    {
-        "CharacterTestProcedure (角色测试)",
-        "MenuProcedure (主菜单)",
-        "GameProcedure (正式游戏)",
-        "LevelTestProcedure (关卡测试)"
+        "LevelTestProcedure",
+        "SampleProcedure"
     };
 
     private const string PrefKey_Selected = "Procedure_Selected";
@@ -125,7 +117,7 @@ public class ProcedureLauncherWindow : EditorWindow
         GUILayout.Label("启动 Procedure", EditorStyles.boldLabel);
 
         EditorGUI.BeginChangeCheck();
-        _selectedIndex = EditorGUILayout.Popup("选择 Procedure", _selectedIndex, ProcedureLabels);
+        _selectedIndex = EditorGUILayout.Popup("选择 Procedure", _selectedIndex, ProcedureNames);
         if (EditorGUI.EndChangeCheck())
         {
             string selected = ProcedureNames[_selectedIndex];

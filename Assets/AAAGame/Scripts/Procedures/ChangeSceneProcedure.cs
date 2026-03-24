@@ -34,7 +34,7 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> SceneCompatibleProcedures = new Dictionary<string, HashSet<string>>
     {
-        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" } },
+        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure"} },
         { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure" } },
         { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure" } }
     };
@@ -44,7 +44,7 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
     {
-        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure"
+        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure"
     };
 
     /// <summary>
@@ -123,6 +123,10 @@ public class ChangeSceneProcedure : ProcedureBase
             case "LevelTestProcedure":
                 ChangeState<LevelTestProcedure>(procedureOwner);
                 break;
+            case "SampleProcedure":
+                ChangeState<SampleProcedure>(procedureOwner);
+                break;
+            
             default:
                 ChangeState<CharacterTestProcedure>(procedureOwner);
                 break;
