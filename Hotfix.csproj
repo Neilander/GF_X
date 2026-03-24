@@ -273,7 +273,6 @@
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckHealthNode.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Editor/CharacterTestWindow.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/HealthBarComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelBase.cs" />
@@ -289,6 +288,7 @@
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/CraftingDeviceDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Editor/CreateDirectAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterAtkFactory.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Editor/ProcedureLauncherWindow.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Const.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />
