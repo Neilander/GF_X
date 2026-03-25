@@ -42,10 +42,16 @@ public class DirectAtkComp : IAtkComp
         _index = index;
     }
 
+    private string GetWeaponSOAddress(string index)
+    {
+        //TODO 返回读表后地址
+        return "soldier_default";
+    }
+
     public void Init(IEntityContext ctx)
     {
         //TODO:修改正确读取方式
-        WeaponHelper.LoadWeapon($"Assets/AAAGame/SOs/Weapon/{_index}.asset", this);
+        WeaponHelper.LoadWeapon($"Assets/AAAGame/SOs/Weapon/{GetWeaponSOAddress(_index)}.asset", this);
         _ctx = ctx;
         State = AtkState.Idle;
         _stateTimer = 0f;
