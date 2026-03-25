@@ -137,6 +137,7 @@
     <Compile Include="Assets/AAAGame/Scripts/DamageSystem/DamageHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelStorageBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CameraViewTable.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Tools/ArrangeModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
@@ -298,6 +299,7 @@
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemUnit.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Tools/Editor/PivotToBottomTool.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UITable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketHeader.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/SettingExtension.cs" />
