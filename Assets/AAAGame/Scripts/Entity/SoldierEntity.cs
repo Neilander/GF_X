@@ -42,11 +42,14 @@ public class SoldierEntity : MAEntity
     protected override void SetUpMAComp()
     {
         string moveFacPath = "CharacterMoveFactory";
-        string atkFacPath = "DirectAtkFactory";
         string targetFacPath = "CharacterTargetingFactory";
 
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
-        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
         FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
+
+        // 直接创建 DirectAtkComp，不再走 Factory
+        var atkComp = new DirectAtkComp("soldier_default"); // TODO: index 应从配表或 EntityParams 获取
+        this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
+        atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
     }
 }

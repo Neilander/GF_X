@@ -60,7 +60,6 @@
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/LocalizationTextTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/SkillSystem/ISkillComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/DirectAtkCompFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/PlayerBrain.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/DeviceEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/ConfigExtension.cs" />
@@ -141,6 +140,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MeleeWeaponSO.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Projectile/AbstractProjectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/TextLineUnit.cs" />
@@ -264,6 +264,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractOptionTipsPresenter.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IEntityContext.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveManager.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/BaseWeaponSO.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/NodeView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IMoveExecutor.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/CharacterEntity.cs" />
@@ -287,7 +288,6 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHeaderBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/InputDirTranslator.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/CraftingDeviceDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Editor/CreateDirectAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Editor/ProcedureLauncherWindow.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Const.cs" />
@@ -295,6 +295,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMAFactoryTable.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UITable.cs" />

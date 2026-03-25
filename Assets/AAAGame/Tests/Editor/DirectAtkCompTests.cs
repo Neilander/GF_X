@@ -50,9 +50,11 @@ public class DirectAtkCompTests
         attacker.MoveComp = moveComp;
 
         var weapon = MeleeWeapon();
-        var atkComp = new DirectAtkComp(weapon);
+        var atkComp = new DirectAtkComp("test");
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
+        // 覆盖 Init 内部创建的默认武器数据
+        attacker.WeaponComp = new WeaponComp(weapon);
 
         // 先让 targeting 找到目标
         targeting.UpdateTargeting(1f);
@@ -82,9 +84,10 @@ public class DirectAtkCompTests
         attacker.MoveComp = moveComp;
 
         var weapon = MeleeWeapon(damage: 30f, windUp: 0.2f, windDown: 0.2f);
-        var atkComp = new DirectAtkComp(weapon);
+        var atkComp = new DirectAtkComp("test");
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
+        attacker.WeaponComp = new WeaponComp(weapon);
 
         targeting.UpdateTargeting(1f);
         atkComp.Attack(0.01f); // 进入 WindUp
@@ -115,9 +118,10 @@ public class DirectAtkCompTests
 
         // interval=1s, windUp=0.3, windDown=0.3, cooldown=0.4
         var weapon = MeleeWeapon(damage: 20f, windUp: 0.3f, windDown: 0.3f, interval: 1f);
-        var atkComp = new DirectAtkComp(weapon);
+        var atkComp = new DirectAtkComp("test");
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
+        attacker.WeaponComp = new WeaponComp(weapon);
 
         targeting.UpdateTargeting(1f);
 
@@ -169,9 +173,10 @@ public class DirectAtkCompTests
 
         // 攻击范围 150码 = 1.5m，目标在 10m 外
         var weapon = MeleeWeapon(range: 150f);
-        var atkComp = new DirectAtkComp(weapon);
+        var atkComp = new DirectAtkComp("test");
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
+        attacker.WeaponComp = new WeaponComp(weapon);
 
         targeting.UpdateTargeting(1f);
         Assert.IsNotNull(targeting.CurrentTarget);
@@ -198,9 +203,10 @@ public class DirectAtkCompTests
         attacker.MoveComp = moveComp;
 
         var weapon = MeleeWeapon(damage: 10f, windUp: 0.1f);
-        var atkComp = new DirectAtkComp(weapon);
+        var atkComp = new DirectAtkComp("test");
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
+        attacker.WeaponComp = new WeaponComp(weapon);
 
         targeting.UpdateTargeting(1f);
 
@@ -231,9 +237,10 @@ public class DirectAtkCompTests
 
         // 20伤害，间隔0.5s
         var weapon = MeleeWeapon(damage: 20f, windUp: 0.1f, windDown: 0.1f, interval: 0.5f);
-        var atkComp = new DirectAtkComp(weapon);
+        var atkComp = new DirectAtkComp("test");
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
+        attacker.WeaponComp = new WeaponComp(weapon);
 
         // 模拟 5 秒战斗
         float dt = 1f / 60f;
@@ -274,9 +281,10 @@ public class DirectAtkCompTests
             WindDown = 0.4f,
             AttackInterval = 1f
         };
-        var atkComp = new DirectAtkComp(weapon);
+        var atkComp = new DirectAtkComp("test");
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
+        attacker.WeaponComp = new WeaponComp(weapon);
 
         targeting.UpdateTargeting(1f);
 

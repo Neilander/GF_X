@@ -25,6 +25,10 @@ public class DirectAtkComp : IAtkComp
 
     private IEntityContext _ctx;
     private WeaponData _weapon;
+    private string _index;
+    private BaseWeaponSO _weaponSO;
+
+    public void SetWeaponSO(BaseWeaponSO so) => _weaponSO = so;
 
     public AtkState State { get; private set; } = AtkState.Idle;
     public int AttackCount { get; private set; }
@@ -33,18 +37,55 @@ public class DirectAtkComp : IAtkComp
     private float _stateTimer;
     private IEntityContext _lockedTarget;
 
-    public DirectAtkComp(WeaponData weapon)
+    public DirectAtkComp(string index)
     {
-        _weapon = weapon;
+        _index = index;
     }
 
     public void Init(IEntityContext ctx)
     {
+        //TODO:修改正确读取方式
+        WeaponHelper.LoadWeapon($"Assets/AAAGame/SOs/Weapon/{_index}.asset", this);
         _ctx = ctx;
         State = AtkState.Idle;
         _stateTimer = 0f;
         AttackCount = 0;
         _lockedTarget = null;
+
+        // TODO: 根据 index 读表获取攻击数值
+        // 当前使用硬编码测试数据
+        float damage = 10f;
+        float interval = 1.5f;
+        float range = 150f;
+        float windUp = 0.4f;
+        float windDown = 0.5f;
+        
+
+        // 构建武器数据（供 GetActiveWeapon fallback 使用）
+        _weapon = new WeaponData
+        {
+            Damage = damage,
+            AttackInterval = interval,
+            AttackRange = range,
+            WindUp = windUp,
+            WindDown = windDown,
+            Type =  WeaponType.Melee
+        };
+
+        
+       
+
+        // 创建 WeaponComp 并挂载到 Entity
+        var wc = new WeaponComp(_weapon);
+        var entity = _ctx as MAEntity;
+        if (entity != null)
+        {
+            entity.SetWeaponComp(wc);
+        }
+        else
+        {
+            Debug.LogWarning("DirectAtkComp: ctx 不是 MAEntity，无法挂载 WeaponComp");
+        }
     }
 
     public void Attack(float deltaTime)
@@ -155,15 +196,24 @@ public class DirectAtkComp : IAtkComp
             return;
         }
 
-        var activeWeapon = GetActiveWeapon();
-        float damage = activeWeapon.Damage;
+        var weaponData = GetActiveWeapon();
+        float damage = weaponData.Damage;
 
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx.ReferenceId}] DealDamage: 对 {_lockedTarget.ReferenceId} 造成 {damage} 伤害");
 
-        _lockedTarget.TakeDamage(damage, HealthModifyType.reduce);
+        // 优先委托武器 SO 执行伤害
+        if (_weaponSO != null)
+        {
+            _weaponSO.Execute(_lockedTarget, weaponData);
+        }
+        else
+        {
+            // 降级 fallback：直接调用 TakeDamage
+            _lockedTarget.TakeDamage(damage, HealthModifyType.reduce);
+        }
 
-        if (activeWeapon.SplashRadius > 0f)
+        if (weaponData.SplashRadius > 0f)
         {
             ApplySplashDamage(damage);
         }
