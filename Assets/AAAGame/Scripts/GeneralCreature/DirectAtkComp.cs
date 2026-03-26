@@ -28,16 +28,6 @@ public class DirectAtkComp : IAtkComp
     private string _index;
     private BaseWeaponSO _weaponSO;
 
-    /// <summary>
-    /// 获取攻击组件的上下文（攻击者）
-    /// 新增：为了在RangedWeaponSO中获取攻击者实体
-    /// </summary>
-    public IEntityContext Context => _ctx;
-
-    /// <summary>
-    /// 获取武器SO实例
-    /// 新增：为了在Projectile中获取武器SO
-    /// </summary>
     public BaseWeaponSO WeaponSO => _weaponSO;
 
     public void SetWeaponSO(BaseWeaponSO so) => _weaponSO = so;
@@ -110,8 +100,7 @@ public class DirectAtkComp : IAtkComp
             WindDown = windDown,
             Type = weaponType,
             // Type =  WeaponType.Melee原来的
-            ProjectileSpeed = projectileSpeed,
-            UserData = this // 新增：将DirectAtkComp实例传递给WeaponData，用于在RangedWeaponSO中获取攻击者
+            ProjectileSpeed = projectileSpeed
         };
 
         
@@ -247,7 +236,7 @@ public class DirectAtkComp : IAtkComp
         // 优先委托武器 SO 执行伤害
         if (_weaponSO != null)
         {
-            _weaponSO.Execute(_lockedTarget, weaponData);
+            _weaponSO.Execute(_ctx, _lockedTarget, weaponData);
         }
         else
         {

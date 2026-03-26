@@ -143,6 +143,7 @@
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MeleeWeaponSO.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Projectile/Projectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Projectile/AbstractProjectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/TextLineUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/IrreversibleValueProperty.cs" />
@@ -360,12 +361,14 @@
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/InteractionOptionTriggeredEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMainPropertyTable.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Procedures/RangedWeaponTestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Build/DeviceDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UnlockCondition/UnlockCondition.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/BehaviorTreeGraph.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/StaticUIComponent.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/MaterialModifyBar.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/RangedWeaponSO.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/LevelTestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/SimpleTargeting.cs" />
     <None Include="Assets/AAAGame/Scripts/Hotfix.asmdef" />

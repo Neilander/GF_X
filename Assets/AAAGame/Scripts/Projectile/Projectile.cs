@@ -15,37 +15,17 @@ public class Projectile : EntityBase
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
-
-        if (userData is EntityParams paramsData)
-        {
-            _target = paramsData.Target;
-            _weaponData = paramsData.WeaponData;
-            _weaponSO = paramsData.WeaponSO as RangedWeaponSO;
-
-            // 如果从paramsData获取失败，尝试从WeaponData.UserData中获取
-            if (_weaponSO == null && _weaponData != null && _weaponData.UserData is DirectAtkComp atkComp)
-            {
-                _weaponSO = atkComp.WeaponSO as RangedWeaponSO;
-            }
-        }
     }
 
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
 
-        // 在OnShow中也尝试获取_weaponSO，解决对象池复用导致的空引用问题
         if (userData is EntityParams paramsData)
         {
             _target = paramsData.Target;
             _weaponData = paramsData.WeaponData;
             _weaponSO = paramsData.WeaponSO as RangedWeaponSO;
-
-            // 如果从paramsData获取失败，尝试从WeaponData.UserData中获取
-            if (_weaponSO == null && _weaponData != null && _weaponData.UserData is DirectAtkComp atkComp)
-            {
-                _weaponSO = atkComp.WeaponSO as RangedWeaponSO;
-            }
         }
 
         if (_target != null && _target.Alive)
@@ -124,11 +104,11 @@ public class Projectile : EntityBase
             }
         }
 
-        // 添加空检查，防止_weaponSO为null
-        if (_weaponSO != null && _weaponSO.HitVfxPrefab != null)
+        // 播放命中特效
+        if (_weaponSO != null && !string.IsNullOrEmpty(_weaponSO.HitVfxName))
         {
-            GameObject hitVfx = Object.Instantiate(_weaponSO.HitVfxPrefab, _targetPosition, Quaternion.identity);
-            Object.Destroy(hitVfx, 2f);
+            var vfxParams = EntityParams.Create(_targetPosition);
+            GF.Entity.ShowEffect(_weaponSO.HitVfxName, vfxParams, 2f);
         }
 
         // 使用对象池隐藏弹道

@@ -7,32 +7,18 @@
 public class RangedWeaponSO : BaseWeaponSO
 {
     [Header("弹道设置")]
-    [SerializeField] private GameObject _projectilePrefab;
+    [SerializeField] private string _projectileName = "Projectile";
     [SerializeField] private float _projectileSpeed = 10f;
-    [SerializeField] private GameObject _hitVfxPrefab;
+    [SerializeField] private string _hitVfxName;
 
-    public GameObject ProjectilePrefab => _projectilePrefab;
+    public string ProjectileName => _projectileName;
     public float ProjectileSpeed => _projectileSpeed;
-    public GameObject HitVfxPrefab => _hitVfxPrefab;
+    public string HitVfxName => _hitVfxName;
 
-    public override void Execute(IEntityContext target, WeaponData weaponData)
+    public override void Execute(IEntityContext attacker, IEntityContext target, WeaponData weaponData)
     {
         if (target == null || !target.Alive)
         {
-            return;
-        }
-
-        DirectAtkComp atkComp = weaponData.UserData as DirectAtkComp;
-        if (atkComp == null)
-        {
-            Debug.LogError("RangedWeaponSO: weaponData.UserData is not DirectAtkComp");
-            return;
-        }
-
-        MAEntity attacker = atkComp.Context as MAEntity;
-        if (attacker == null)
-        {
-            Debug.LogError("RangedWeaponSO: attacker is not MAEntity");
             return;
         }
 
@@ -44,13 +30,13 @@ public class RangedWeaponSO : BaseWeaponSO
         projectileParams.WeaponSO = this;
 
         // 使用对象池显示弹道
-        GF.Entity.ShowEntity<Projectile>("TestProjectile", Const.EntityGroup.Default, projectileParams);
+        GF.Entity.ShowEntity<Projectile>(_projectileName, Const.EntityGroup.Default, projectileParams);
 
         // 播放攻击特效
-        if (AttackVfxPrefab != null)
+        if (!string.IsNullOrEmpty(AttackVfxName))
         {
-            GameObject vfx = Object.Instantiate(AttackVfxPrefab, attacker.Position + Vector3.up * 0.5f, Quaternion.identity);
-            Object.Destroy(vfx, 2f);
+            var vfxParams = EntityParams.Create(attacker.Position + Vector3.up * 0.5f);
+            GF.Entity.ShowEffect(AttackVfxName, vfxParams, 2f);
         }
 
         // 播放攻击音效

@@ -6,7 +6,7 @@
 [CreateAssetMenu(fileName = "MeleeWeaponSO", menuName = "Weapon SO/Melee")]
 public class MeleeWeaponSO : BaseWeaponSO
 {
-    public override void Execute(IEntityContext target, WeaponData weaponData)
+    public override void Execute(IEntityContext attacker, IEntityContext target, WeaponData weaponData)
     {
         // 对目标造成伤害
         target.TakeDamage(weaponData.Damage, HealthModifyType.reduce);

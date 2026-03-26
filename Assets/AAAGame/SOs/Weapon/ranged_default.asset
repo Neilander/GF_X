@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 06132575737cf344c9846b4173af9713, type: 3}
   m_Name: ranged_default
   m_EditorClassIdentifier: 
-  Type: 0
-  _attackVfxPrefab: {fileID: 0}
+  Type: 1
+  _attackVfxName: 
   _attackSfx: {fileID: 0}
-  _projectilePrefab: {fileID: 3238136856750427749, guid: 57fef8621345da6498fdfa92a7e6eaaa, type: 3}
+  _projectileName: TestProjectile
   _projectileSpeed: 10
-  _hitVfxPrefab: {fileID: 0}
+  _hitVfxName: 
