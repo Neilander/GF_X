@@ -37,6 +37,11 @@ public class EntityParams : RefParams
     /// </summary>
     public GameFrameworkAction<EntityLogic> OnHideCallback { get; set; } = null;
 
+    // 新加：弹道相关参数（用于远程武器系统）
+    public IEntityContext Target { get; set; } = null;
+    public WeaponData WeaponData { get; set; } = null;
+    public BaseWeaponSO WeaponSO { get; set; } = null;
+
     /// <summary>
     /// 创建一个实例(必须使用该接口创建)
     /// </summary>
@@ -67,7 +72,10 @@ public class EntityParams : RefParams
         OnShowCallback = null;
         OnHideCallback = null;
         
-        
+        // 新加：重置弹道相关参数
+        Target = null;
+        WeaponData = null;
+        WeaponSO = null;
         
         Side = SideType.NoSide;
         BrainType = BrainType.Player;

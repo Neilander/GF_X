@@ -1,4 +1,4 @@
-﻿using UnityEditor;
+using UnityEditor;
 using UnityEngine;
 
 [InitializeOnLoad]
@@ -11,7 +11,8 @@ public class ProcedureLauncherWindow : EditorWindow
         "MenuProcedure",
         "GameProcedure",
         "LevelTestProcedure",
-        "SampleProcedure"
+        "SampleProcedure",
+        "RangedWeaponTestProcedure" // 新增：远程武器测试流程
     };
 
     private const string PrefKey_Selected = "Procedure_Selected";

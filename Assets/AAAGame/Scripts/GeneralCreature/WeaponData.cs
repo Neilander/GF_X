@@ -23,4 +23,10 @@ public class WeaponData
     public float WindDown = 0.5f;
     public float SplashRadius = 0f;
     public float ManaCost = 0f;
+    
+    /// <summary>
+    /// 用户数据：用于传递额外信息，如攻击组件实例
+    /// 新增：用于在RangedWeaponSO中获取攻击者实体
+    /// </summary>
+    public object UserData;
 }

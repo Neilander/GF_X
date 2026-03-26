@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Procedure;
 using UnityGameFramework.Runtime;
 using GameFramework.Fsm;
@@ -34,7 +34,7 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> SceneCompatibleProcedures = new Dictionary<string, HashSet<string>>
     {
-        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure"} },
+        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure"} }, // 新增：远程武器测试流程
         { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure" } },
         { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure" } }
     };
@@ -44,7 +44,7 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
     {
-        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure"
+        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure" // 新增：远程武器测试流程
     };
 
     /// <summary>
@@ -125,6 +125,9 @@ public class ChangeSceneProcedure : ProcedureBase
                 break;
             case "SampleProcedure":
                 ChangeState<SampleProcedure>(procedureOwner);
+                break;
+            case "RangedWeaponTestProcedure": // 新增：远程武器测试流程
+                ChangeState<RangedWeaponTestProcedure>(procedureOwner);
                 break;
             
             default:

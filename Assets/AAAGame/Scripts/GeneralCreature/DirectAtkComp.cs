@@ -7,8 +7,8 @@ using UnityEngine;
 /// 攻击流程：
 /// 1. 检测 Brain.Attack 且有目标在攻击范围内
 /// 2. 进入前摇阶段（WindUp），锁定移动
-/// 3. 前摇结束时对目标造成伤害
-/// 4. 进入后摇阶段（WindDown）
+/// 3. 前摇结束时对目标造成伤害,
+/// 4. 进入后摇阶段（WindDown）,
 /// 5. 后摇结束，解锁移动，进入冷却
 ///
 /// 纯逻辑实现，不依赖 Animator/HitBox/BasicAction。
@@ -28,6 +28,18 @@ public class DirectAtkComp : IAtkComp
     private string _index;
     private BaseWeaponSO _weaponSO;
 
+    /// <summary>
+    /// 获取攻击组件的上下文（攻击者）
+    /// 新增：为了在RangedWeaponSO中获取攻击者实体
+    /// </summary>
+    public IEntityContext Context => _ctx;
+
+    /// <summary>
+    /// 获取武器SO实例
+    /// 新增：为了在Projectile中获取武器SO
+    /// </summary>
+    public BaseWeaponSO WeaponSO => _weaponSO;
+
     public void SetWeaponSO(BaseWeaponSO so) => _weaponSO = so;
 
     public AtkState State { get; private set; } = AtkState.Idle;
@@ -44,8 +56,12 @@ public class DirectAtkComp : IAtkComp
 
     private string GetWeaponSOAddress(string index)
     {
-        //TODO 返回读表后地址
-        return "soldier_default";
+        // 原来的代码：
+        // //TODO 返回读表后地址
+        // return "soldier_default";
+
+        // 新加：根据不同的index返回不同的武器SO地址，支持远程武器测试
+        return index == "ranged_test" ? "ranged_default" : "soldier_default";
     }
 
     public void Init(IEntityContext ctx)
@@ -60,22 +76,42 @@ public class DirectAtkComp : IAtkComp
 
         // TODO: 根据 index 读表获取攻击数值
         // 当前使用硬编码测试数据
-        float damage = 10f;
+        float damage = _index == "ranged_test" ? 2f : 10f; // 降低远程武器伤害，让单位血显得更厚
         float interval = 1.5f;
         float range = 150f;
         float windUp = 0.4f;
         float windDown = 0.5f;
         
 
-        // 构建武器数据（供 GetActiveWeapon fallback 使用）
+        // 原来的代码：
+        // // 构建武器数据（供 GetActiveWeapon fallback 使用）
+        // _weapon = new WeaponData
+        // {
+        //     Damage = damage,
+        //     AttackInterval = interval,
+        //     AttackRange = range,
+        //     WindUp = windUp,
+        //     WindDown = windDown,
+        //     Type =  WeaponType.Melee
+        // };
+
+        // 新加：根据index判断武器类型，为远程武器设置正确的武器数据
+        WeaponType weaponType = _index == "ranged_test" ? WeaponType.Projectile : WeaponType.Melee;
+        float projectileSpeed = weaponType == WeaponType.Projectile ? 10f : 0f;
+        float attackRange = weaponType == WeaponType.Projectile ? 800f : range; // 远程武器射程更远
+
         _weapon = new WeaponData
         {
             Damage = damage,
             AttackInterval = interval,
-            AttackRange = range,
+            AttackRange = attackRange,
+            // AttackRange = range原来的
             WindUp = windUp,
             WindDown = windDown,
-            Type =  WeaponType.Melee
+            Type = weaponType,
+            // Type =  WeaponType.Melee原来的
+            ProjectileSpeed = projectileSpeed,
+            UserData = this // 新增：将DirectAtkComp实例传递给WeaponData，用于在RangedWeaponSO中获取攻击者
         };
 
         
