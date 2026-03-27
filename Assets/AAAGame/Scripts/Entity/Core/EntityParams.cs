@@ -1,4 +1,6 @@
 #pragma warning disable IDE1006 // 命名样式
+using System.Collections.Generic;
+using AAAGame.Scripts.BuffSystem;
 using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -37,10 +39,15 @@ public class EntityParams : RefParams
     /// </summary>
     public GameFrameworkAction<EntityLogic> OnHideCallback { get; set; } = null;
 
-    // 新加：弹道相关参数（用于远程武器系统）
+    // 弹道相关参数（用于远程武器系统）
     public IEntityContext Target { get; set; } = null;
     public WeaponData WeaponData { get; set; } = null;
     public BaseWeaponSO WeaponSO { get; set; } = null;
+
+    /// <summary>
+    /// 出生时自带的 Buff 列表，MAEntity.OnShow 时自动添加
+    /// </summary>
+    public List<BuffData> StartBuffs { get; set; } = null;
 
     /// <summary>
     /// 创建一个实例(必须使用该接口创建)
@@ -72,10 +79,10 @@ public class EntityParams : RefParams
         OnShowCallback = null;
         OnHideCallback = null;
         
-        // 新加：重置弹道相关参数
         Target = null;
         WeaponData = null;
         WeaponSO = null;
+        StartBuffs = null;
         
         Side = SideType.NoSide;
         BrainType = BrainType.Player;

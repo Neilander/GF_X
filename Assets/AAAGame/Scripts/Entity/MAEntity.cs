@@ -11,6 +11,7 @@ public class MAEntity : CompCreature, IEntityContext
     public IAtkComp atkComp { get; protected set; }
 
     public ITargetingComp targetComp { get; protected set; }
+    public IBuffComp buffComp { get; protected set; }
     public WeaponComp weaponComp { get; protected set; }
 
     private CharacterController cController;
@@ -41,6 +42,7 @@ public class MAEntity : CompCreature, IEntityContext
     IMoveComp IEntityContext.MoveComp => moveComp;
     IAtkComp IEntityContext.AtkComp => atkComp;
     ITargetingComp IEntityContext.TargetComp => targetComp;
+    IBuffComp IEntityContext.BuffComp => buffComp;
     WeaponComp IEntityContext.WeaponComp => weaponComp;
 
     public float GetProperty(CreatureMainProperty prop)
@@ -69,6 +71,23 @@ public class MAEntity : CompCreature, IEntityContext
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
+
+        // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态，
+        // 与 moveComp/atkComp 不同——后者通过工厂在 OnInit 中创建并跨 Show/Hide 复用。
+        // 直接 new（通用且无外部引用，不需要工厂）。
+        var newBuffComp = new CharacterBuffComp();
+        newBuffComp.Init(this);
+        buffComp = newBuffComp;
+
+        // 应用出生自带的 Buff
+        if (userData is EntityParams ep && ep.StartBuffs != null)
+        {
+            for (int i = 0; i < ep.StartBuffs.Count; i++)
+            {
+                buffComp.AddBuff(ep.StartBuffs[i], this);
+            }
+        }
+
         // 注意：RegisterAgent 移到子类 OnShow 末尾，确保 Side 等字段已赋值
         EntityRegistry.Register(this);
     }
@@ -84,6 +103,13 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        // 显式清理 BuffComp，防止将来持有外部订阅时泄漏
+        if (buffComp != null)
+        {
+            buffComp.ShutDown();
+            buffComp = null;
+        }
+
         if (GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.UnregisterAgent(this);
         EntityRegistry.Unregister(this);
@@ -115,6 +141,9 @@ public class MAEntity : CompCreature, IEntityContext
         if (CanRun(durationMoveEffectComp))
             durationMoveEffectComp.ApplyEffect(dt);
 
+        if (CanRun(buffComp))
+            buffComp.UpdateBuff(dt);
+
         moveExecutor.Execute();
     }
 
@@ -135,6 +164,7 @@ public class MAEntity : CompCreature, IEntityContext
     public void SetAtkComp(IAtkComp newAtkComp) => atkComp = newAtkComp;
 
     public void SetTargetingComp(ITargetingComp newTargetingComp) => targetComp = newTargetingComp;
+    public void SetBuffComp(IBuffComp newBuffComp) => buffComp = newBuffComp;
     public void SetWeaponComp(WeaponComp newWeaponComp) => weaponComp = newWeaponComp;
 
     #endregion

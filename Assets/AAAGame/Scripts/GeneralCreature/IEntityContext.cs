@@ -20,6 +20,7 @@ public interface IEntityContext
     IMoveComp MoveComp { get; }
     IAtkComp AtkComp { get; }
     ITargetingComp TargetComp { get; }
+    IBuffComp BuffComp { get; }
     WeaponComp WeaponComp { get; }
 
     // 属性查询

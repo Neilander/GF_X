@@ -32,6 +32,7 @@ public class SimEntityContext : IEntityContext
     public IMoveComp MoveComp { get; set; }
     public IAtkComp AtkComp { get; set; }
     public ITargetingComp TargetComp { get; set; }
+    public IBuffComp BuffComp { get; set; }
     public WeaponComp WeaponComp { get; set; }
 
     // 属性系统
