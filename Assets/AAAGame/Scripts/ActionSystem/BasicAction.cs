@@ -101,7 +101,7 @@ public abstract class BasicAction : ScriptableObject
             GF.LogWarning("警告，行为没有启用duration，却在用duration检查是否允许输入");
             return false;
         }
-
+        
         return info.elapsed / duration >= acceptInputFromPercent && !info.bools[ACCEPTED_INPUT];
     }
 

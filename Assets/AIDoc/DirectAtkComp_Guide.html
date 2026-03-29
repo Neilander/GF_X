@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DirectAtkComp 代码讲解</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0a0a0a; color: #b0b0b0; }
+
+  header { padding: 36px 48px 28px; border-bottom: 1px solid #222; }
+  header h1 { font-size: 22px; color: #e0e0e0; font-weight: 500; letter-spacing: .5px; }
+  header p  { font-size: 13px; color: #555; margin-top: 8px; font-family: "JetBrains Mono", "Fira Code", monospace; }
+
+  .version-banner {
+    padding: 10px 48px; border-bottom: 1px solid #1a1a1a;
+    font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 11px;
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+  }
+  .version-banner .vb-label { color: #555; }
+  .version-banner .vb-hash { color: #d4a017; }
+  .version-banner .vb-date { color: #666; }
+
+  .toc { padding: 18px 48px; border-bottom: 1px solid #1a1a1a; }
+  .toc h2 { font-size: 12px; color: #555; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; font-weight: 400; }
+  .toc a {
+    display: inline-block; margin: 3px 8px 3px 0; padding: 3px 0;
+    color: #777; text-decoration: none; font-size: 13px;
+    border-bottom: 1px solid transparent; transition: all .2s;
+  }
+  .toc a::after { content: " ·"; color: #333; }
+  .toc a:last-child::after { content: ""; }
+  .toc a:hover { color: #e94560; border-bottom-color: #e94560; }
+
+  .legend {
+    display: flex; gap: 20px; padding: 14px 48px; border-bottom: 1px solid #1a1a1a;
+    font-size: 12px; color: #555; flex-wrap: wrap;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  .section { display: grid; grid-template-columns: 1fr 1fr; }
+  .section:target .section-label { color: #e94560; }
+
+  .code-side, .note-side { padding: 24px 32px; min-height: 60px; }
+  .code-side { border-right: 1px solid #1a1a1a; overflow-x: auto; }
+  .note-side { line-height: 1.8; font-size: 13.5px; padding-left: 36px; }
+  .note-side h3 { color: #ccc; font-size: 14px; margin-bottom: 8px; font-weight: 500; }
+  .note-side p  { margin-bottom: 10px; }
+  .note-side ul { margin-left: 16px; margin-bottom: 10px; }
+  .note-side li { margin-bottom: 3px; }
+  .note-side code { color: #888; background: #151515; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .note-side strong { color: #d0d0d0; font-weight: 500; }
+
+  pre {
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+    font-size: 12.5px; line-height: 1.65; white-space: pre; color: #999;
+  }
+
+  .hl-green  { border-left: 2px solid #238933; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-red    { border-left: 2px solid #e94560; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-yellow { border-left: 2px solid #d4a017; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-blue   { border-left: 2px solid #666;    padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-purple { border-left: 2px solid #9b59b6; padding-left: 8px; display: inline-block; width: 100%; }
+
+  .kw  { color: #cc7a7a; }
+  .tp  { color: #4ec9b0; }
+  .str { color: #8fad7a; }
+  .cm  { color: #555; font-style: italic; }
+  .fn  { color: #b89dcc; }
+  .prop{ color: #7eb87e; }
+
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 3px;
+    font-size: 10px; font-weight: 500; margin-right: 4px; vertical-align: middle;
+    letter-spacing: .3px;
+  }
+  .badge-key   { background: #e9456030; color: #e94560; border: 1px solid #e9456040; }
+  .badge-info  { background: #ffffff08; color: #888; border: 1px solid #333; }
+  .badge-warn  { background: #d4a01720; color: #d4a017; border: 1px solid #d4a01740; }
+
+  .section-label {
+    grid-column: 1 / -1; padding: 14px 48px 10px; margin-top: 8px;
+    font-size: 13px; font-weight: 500; color: #777;
+    border-top: 1px solid #1a1a1a; letter-spacing: .5px;
+  }
+
+  @media (max-width: 900px) {
+    .section { grid-template-columns: 1fr; }
+    .code-side { border-right: none; border-bottom: 1px solid #1a1a1a; }
+    .note-side { padding-left: 32px; }
+    header, .toc, .legend, .section-label { padding-left: 24px; padding-right: 24px; }
+    .code-side, .note-side { padding-left: 24px; padding-right: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>DirectAtkComp — 代码对照讲解</h1>
+  <p>直接攻击组件：前摇→造伤→后摇→冷却，不走 HitBox/Animator，适合大量小兵</p>
+</header>
+
+<div class="version-banner" data-source-hash="54af977cbe7a9dc41cadbc37f6f578cb">
+  <span><span class="vb-label">源文件:</span> Assets/AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs</span>
+  <span><span class="vb-label">哈希:</span> <span class="vb-hash">54af977c</span></span>
+  <span><span class="vb-label">生成:</span> <span class="vb-date">2026-03-20</span></span>
+</div>
+
+<div class="toc">
+  <h2>目录导航</h2>
+  <a href="#sec-1">① 状态枚举 &amp; 字段</a>
+  <a href="#sec-2">② Init</a>
+  <a href="#sec-3">③ Attack 主循环</a>
+  <a href="#sec-4">④ TryStartAttack</a>
+  <a href="#sec-5">⑤ DealDamage</a>
+  <a href="#sec-6">⑥ ShutDown</a>
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:#238933"></span> 核心逻辑</span>
+  <span><span class="dot" style="background:#e94560"></span> 注意/易错</span>
+  <span><span class="dot" style="background:#d4a017"></span> 可调参数</span>
+  <span><span class="dot" style="background:#666"></span> 架构/模式</span>
+  <span><span class="dot" style="background:#9b59b6"></span> 工厂/注入</span>
+</div>
+
+<!-- ① 状态枚举 & 字段 -->
+<div class="section" id="sec-1">
+  <div class="section-label">① 状态枚举 &amp; 字段</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">public class</span> <span class="tp">DirectAtkComp</span> : <span class="tp">IAtkComp</span>
+{
+    <span class="kw">public enum</span> <span class="tp">AtkState</span>
+    {
+<span class="hl-blue">        Idle,</span>
+<span class="hl-blue">        WindUp,</span>
+<span class="hl-blue">        WindDown,</span>
+<span class="hl-blue">        Cooldown</span>
+    }
+
+    <span class="kw">private</span> <span class="tp">IEntityContext</span> _ctx;
+    <span class="kw">private</span> <span class="tp">WeaponData</span> _weapon;
+
+    <span class="kw">public</span> <span class="tp">AtkState</span> <span class="prop">State</span> { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="tp">AtkState</span>.Idle;
+    <span class="kw">public</span> <span class="kw">int</span> <span class="prop">AttackCount</span> { <span class="kw">get</span>; <span class="kw">private set</span>; }
+    <span class="kw">public</span> <span class="kw">bool</span> <span class="prop">IsAttacking</span> =&gt; <span class="prop">State</span> == <span class="tp">AtkState</span>.WindUp || <span class="prop">State</span> == <span class="tp">AtkState</span>.WindDown;
+
+    <span class="kw">private float</span> _stateTimer;
+    <span class="kw">private</span> <span class="tp">IEntityContext</span> _lockedTarget;
+
+<span class="hl-purple">    <span class="kw">public</span> <span class="fn">DirectAtkComp</span>(<span class="tp">WeaponData</span> weapon)</span>
+    {
+        _weapon = weapon;
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">架构</span> 四状态机 + 武器注入</h3>
+    <p>四个状态：Idle → WindUp → WindDown → Cooldown → Idle 循环。</p>
+    <p><code>_lockedTarget</code> 在前摇开始时锁定，造伤时用，防止目标中途切换。</p>
+    <p>构造函数接收 <code>WeaponData</code>，所有数值（伤害、前摇、后摇、攻速、射程）都从武器配表来。</p>
+  </div>
+</div>
+
+<!-- ② Init -->
+<div class="section" id="sec-2">
+  <div class="section-label">② Init</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">public void</span> <span class="fn">Init</span>(<span class="tp">IEntityContext</span> ctx)
+    {
+        _ctx = ctx;
+        <span class="prop">State</span> = <span class="tp">AtkState</span>.Idle;
+        _stateTimer = <span class="str">0f</span>;
+        <span class="prop">AttackCount</span> = <span class="str">0</span>;
+        _lockedTarget = <span class="kw">null</span>;
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">初始化</span> 重置所有状态</h3>
+    <p>绑定实体上下文，清零计数器和计时器。</p>
+  </div>
+</div>
+
+<!-- ③ Attack 主循环 -->
+<div class="section" id="sec-3">
+  <div class="section-label">③ Attack 主循环</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">public void</span> <span class="fn">Attack</span>(<span class="kw">float</span> deltaTime)
+    {
+        <span class="kw">if</span> (_ctx == <span class="kw">null</span>) <span class="kw">return</span>;
+
+        <span class="kw">switch</span> (<span class="prop">State</span>)
+        {
+            <span class="kw">case</span> <span class="tp">AtkState</span>.Idle:
+                <span class="fn">TryStartAttack</span>();
+                <span class="kw">break</span>;
+
+            <span class="kw">case</span> <span class="tp">AtkState</span>.WindUp:
+                _stateTimer += deltaTime;
+<span class="hl-green">                <span class="kw">if</span> (_stateTimer &gt;= _weapon.<span class="prop">WindUp</span>)</span>
+                {
+<span class="hl-green">                    <span class="fn">DealDamage</span>();</span>
+                    <span class="fn">EnterState</span>(<span class="tp">AtkState</span>.WindDown);
+                }
+                <span class="kw">break</span>;
+
+            <span class="kw">case</span> <span class="tp">AtkState</span>.WindDown:
+                _stateTimer += deltaTime;
+                <span class="kw">if</span> (_stateTimer &gt;= _weapon.<span class="prop">WindDown</span>)
+                {
+<span class="hl-red">                    _ctx.<span class="fn">ResumeComp</span>(_ctx.<span class="prop">MoveComp</span>, <span class="kw">this</span>);</span>
+                    <span class="fn">EnterState</span>(<span class="tp">AtkState</span>.Cooldown);
+                }
+                <span class="kw">break</span>;
+
+            <span class="kw">case</span> <span class="tp">AtkState</span>.Cooldown:
+                _stateTimer += deltaTime;
+<span class="hl-yellow">                <span class="kw">float</span> cooldown = _weapon.<span class="prop">AttackInterval</span> - _weapon.<span class="prop">WindUp</span> - _weapon.<span class="prop">WindDown</span>;</span>
+                <span class="kw">if</span> (cooldown &lt; <span class="str">0f</span>) cooldown = <span class="str">0f</span>;
+                <span class="kw">if</span> (_stateTimer &gt;= cooldown)
+                    <span class="fn">EnterState</span>(<span class="tp">AtkState</span>.Idle);
+                <span class="kw">break</span>;
+        }
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 状态机驱动</h3>
+    <p>每帧由 Entity 调用。Idle 时尝试发起攻击；WindUp 结束时造伤；WindDown 结束时解锁移动。</p>
+    <p>Cooldown 时间 = <code>AttackInterval - WindUp - WindDown</code>，即总攻击间隔扣掉前后摇。如果配表不合理导致负数就 clamp 到 0。</p>
+    <p><strong>注意</strong>：WindDown 结束时 <code>ResumeComp</code> 解锁移动，如果这里没执行到（比如中途 ShutDown），移动会一直被锁。</p>
+  </div>
+</div>
+
+<!-- ④ TryStartAttack -->
+<div class="section" id="sec-4">
+  <div class="section-label">④ TryStartAttack</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">private void</span> <span class="fn">TryStartAttack</span>()
+    {
+        <span class="kw">if</span> (_ctx.<span class="prop">Brain</span> == <span class="kw">null</span>) <span class="kw">return</span>;
+<span class="hl-red">        <span class="kw">if</span> (!_ctx.<span class="prop">Brain</span>.<span class="prop">Attack</span>) <span class="kw">return</span>;</span>
+
+        <span class="kw">var</span> target = _ctx.<span class="prop">TargetComp</span>?.<span class="prop">CurrentTarget</span>;
+<span class="hl-red">        <span class="kw">if</span> (target == <span class="kw">null</span> || !target.<span class="prop">Alive</span>) <span class="kw">return</span>;</span>
+
+        <span class="kw">float</span> dist = <span class="tp">Vector3</span>.<span class="fn">Distance</span>(_ctx.<span class="prop">Position</span>, target.<span class="prop">Position</span>);
+<span class="hl-yellow">        <span class="kw">float</span> range = _weapon.<span class="prop">AttackRange</span> * <span class="str">0.01f</span>;</span>
+
+        <span class="kw">if</span> (dist &gt; range) <span class="kw">return</span>;
+
+        _lockedTarget = target;
+        <span class="prop">AttackCount</span>++;
+<span class="hl-green">        _ctx.<span class="fn">LockComp</span>(_ctx.<span class="prop">MoveComp</span>, <span class="kw">this</span>);</span>
+        <span class="fn">EnterState</span>(<span class="tp">AtkState</span>.WindUp);
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 攻击发起条件</h3>
+    <p>三重守卫：Brain 要求攻击 → 有活着的目标 → 目标在武器射程内。</p>
+    <p><code>AttackRange * 0.01f</code>：配表单位是码（百分位），乘 0.01 转米。</p>
+    <p>发起攻击时 <code>LockComp</code> 锁住移动组件，前摇期间不能动。</p>
+  </div>
+</div>
+
+<!-- ⑤ DealDamage -->
+<div class="section" id="sec-5">
+  <div class="section-label">⑤ DealDamage</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">private void</span> <span class="fn">DealDamage</span>()
+    {
+<span class="hl-red">        <span class="kw">if</span> (_lockedTarget == <span class="kw">null</span> || !_lockedTarget.<span class="prop">Alive</span>) <span class="kw">return</span>;</span>
+
+        <span class="kw">float</span> damage = _weapon.<span class="prop">Damage</span>;
+<span class="hl-green">        _lockedTarget.<span class="fn">TakeDamage</span>(damage, <span class="tp">HealthModifyType</span>.reduce);</span>
+
+        <span class="kw">if</span> (_weapon.<span class="prop">SplashRadius</span> &gt; <span class="str">0f</span>)
+        {
+            <span class="fn">ApplySplashDamage</span>(damage);
+        }
+    }
+
+    <span class="kw">private void</span> <span class="fn">ApplySplashDamage</span>(<span class="kw">float</span> damage)
+    {
+        <span class="cm">// 溅射需要知道周围所有敌方单位，暂留接口</span>
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 造伤</h3>
+    <p>前摇结束瞬间造伤。如果目标在前摇期间死了就跳过。</p>
+    <p>溅射伤害目前是空实现，<code>SplashRadius &gt; 0</code> 时会调但什么也不做。</p>
+  </div>
+</div>
+
+<!-- ⑥ ShutDown -->
+<div class="section" id="sec-6">
+  <div class="section-label">⑥ ShutDown</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">private void</span> <span class="fn">EnterState</span>(<span class="tp">AtkState</span> newState)
+    {
+        <span class="prop">State</span> = newState;
+        _stateTimer = <span class="str">0f</span>;
+    }
+
+    <span class="kw">public void</span> <span class="fn">ShutDown</span>()
+    {
+<span class="hl-red">        <span class="kw">if</span> (<span class="prop">IsAttacking</span> &amp;&amp; _ctx != <span class="kw">null</span>)</span>
+        {
+            _ctx.<span class="fn">ResumeComp</span>(_ctx.<span class="prop">MoveComp</span>, <span class="kw">this</span>);
+        }
+        <span class="prop">State</span> = <span class="tp">AtkState</span>.Idle;
+        _stateTimer = <span class="str">0f</span>;
+        _lockedTarget = <span class="kw">null</span>;
+    }
+
+    <span class="kw">public void</span> <span class="fn">Resume</span>() { }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-warn">注意</span> 清理 &amp; 解锁</h3>
+    <p>ShutDown 时如果正在攻击（前摇或后摇中），必须解锁移动组件，否则移动会永久被锁。</p>
+    <p><code>Resume</code> 空实现——攻击组件不需要被其他组件恢复。</p>
+  </div>
+</div>
+
+<div style="padding:32px 48px; border-top:1px solid #1a1a1a; text-align:center;">
+  <p style="color:#333; font-size:11px; letter-spacing:1px;">DIRECTATKCOMP GUIDE — GF_X</p>
+</div>
+
+</body>
+</html>

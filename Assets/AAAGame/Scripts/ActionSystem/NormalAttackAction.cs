@@ -17,9 +17,7 @@ public class NormalAttackAction : BasicAction
     {
         //if (setAnimationWhenStart)
             //info.selfBody.animator.SetTrigger("Attack");
-
-        
-
+            
         if (info.hitbox != null)
         {
             GF.Entity.HideEntity(info.hitbox.Entity.Id);

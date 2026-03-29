@@ -748,76 +748,21 @@ public static class DataTableExtension
     {
         enumType = null;
         value = 0;
-        if (string.IsNullOrWhiteSpace(enumValue))
+        var enumElements = enumValue.Split('.');
+        if (enumElements.Length != 2)
         {
             return false;
         }
-
-        // 容错：代码生成/配置可能传入 "EnumType.A,EnumType.B" 或 flags "EnumType.A|EnumType.B"
-        // - ',' 代表数组元素分隔，这里仅用于推断类型/解析单值时取第一项
-        // - '|' 代表同一枚举的 flags 组合，这里按位或合并
-        string normalized = enumValue.Trim();
-        int commaIndex = normalized.IndexOf(',');
-        if (commaIndex >= 0)
+        var enumName = enumElements[0];
+        enumType = Utility.Assembly.GetType(enumName);
+        if (enumType == null)
         {
-            normalized = normalized.Substring(0, commaIndex).Trim();
+            enumType = Utility.Assembly.GetTypes().FirstOrDefault(t => t.IsEnum && (t.Name == enumName));
         }
-
-        var flagParts = normalized.Split('|', StringSplitOptions.RemoveEmptyEntries);
-        if (flagParts.Length == 0)
+        if (enumType != null)
         {
-            return false;
+            value = (int)Enum.Parse(enumType, enumElements[1]);
         }
-
-        string enumName = null;
-        bool enumTypeResolved = false;
-
-        foreach (string rawPart in flagParts)
-        {
-            string part = rawPart.Trim();
-            if (string.IsNullOrEmpty(part))
-            {
-                continue;
-            }
-
-            int lastDotIndex = part.LastIndexOf('.');
-            if (lastDotIndex <= 0 || lastDotIndex >= part.Length - 1)
-            {
-                return false;
-            }
-
-            string currentEnumName = part.Substring(0, lastDotIndex);
-            string memberName = part.Substring(lastDotIndex + 1);
-
-            if (!enumTypeResolved)
-            {
-                enumName = currentEnumName;
-                enumType = Utility.Assembly.GetType(enumName);
-                if (enumType == null)
-                {
-                    enumType = Utility.Assembly.GetTypes().FirstOrDefault(t => t.IsEnum && (t.Name == enumName));
-                }
-                if (enumType == null || !enumType.IsEnum)
-                {
-                    enumType = null;
-                    return false;
-                }
-
-                enumTypeResolved = true;
-            }
-            else
-            {
-                // flags 组合时要求同一枚举类型
-                if (!string.Equals(enumName, currentEnumName, StringComparison.Ordinal))
-                {
-                    return false;
-                }
-            }
-
-            int parsed = (int)Enum.Parse(enumType, memberName, true);
-            value |= parsed;
-        }
-
         return enumType != null && enumType.IsEnum;
     }
     public static bool TryParseEnum(string enumValue, out Type enumType)

@@ -24,21 +24,4 @@
 /HybridCLRData
 /Assets/Resources/AotDlls
 /UserSettings/
-
-# IDE / solution & project files (Unity will regenerate)
-*.csproj
-*.csproj.user
-*.sln
-*.suo
-*.user
-*.unityproj
-*.booproj
-*.pidb
-*.pdb
-
-# JetBrains Rider / ReSharper
-.idea/
-*.DotSettings.user
-
-# VS Code (optional; ignore to avoid team conflicts)
-.vscode/
+/Assets/AIDoc/

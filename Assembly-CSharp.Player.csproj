@@ -45,10 +45,8 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
     <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
     <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
-    <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
     </Reference>
@@ -685,6 +683,10 @@
       <Project>{7a4b85bd-047c-b186-d8ed-e6dd68ec32e1}</Project>
       <Name>GameFramework.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="Unity.AI.Navigation.Player.csproj">
+      <Project>{71501475-980c-439e-2ad3-cfbf87cf89fe}</Project>
+      <Name>Unity.AI.Navigation.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="Obfuz.Runtime.Player.csproj">
       <Project>{82878617-8f1d-6a27-8c9d-c75bacd83dbd}</Project>
       <Name>Obfuz.Runtime.Player</Name>
@@ -749,6 +751,10 @@
       <Project>{fc82349c-dfab-dcf3-4365-42b32ef28e3f}</Project>
       <Name>Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="MCPForUnity.Runtime.Player.csproj">
+      <Project>{499f4c0f-99d0-cca2-fee4-24f27ba48f46}</Project>
+      <Name>MCPForUnity.Runtime.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="UniTask.Linq.Player.csproj">
       <Project>{4f8647d8-55c8-4dc9-c1e5-d68f8ddea6f8}</Project>
       <Name>UniTask.Linq.Player</Name>
@@ -769,13 +775,13 @@
       <Project>{e7525cc8-21a2-1f6b-80a6-67cce185a796}</Project>
       <Name>andywiecko.BurstTriangulator.Player</Name>
     </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.Player.csproj">
-      <Project>{55f4a3f6-de25-ca7d-1190-9e127042adec}</Project>
-      <Name>DOTween.Extension.Player</Name>
-    </ProjectReference>
     <ProjectReference Include="UnityEngine.UI.Player.csproj">
       <Project>{3ea37e03-c176-a81c-9347-6b3bacbc6e66}</Project>
       <Name>UnityEngine.UI.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="DOTween.Extension.Player.csproj">
+      <Project>{55f4a3f6-de25-ca7d-1190-9e127042adec}</Project>
+      <Name>DOTween.Extension.Player</Name>
     </ProjectReference>
     <ProjectReference Include="Unity.RenderPipelines.Universal.2D.Internal.Player.csproj">
       <Project>{27157caf-311e-a899-9dca-f654df3d7a66}</Project>

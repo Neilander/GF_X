@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GroupMoveManager 代码讲解</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0a0a0a; color: #b0b0b0; }
+
+  header { padding: 36px 48px 28px; border-bottom: 1px solid #222; }
+  header h1 { font-size: 22px; color: #e0e0e0; font-weight: 500; letter-spacing: .5px; }
+  header p  { font-size: 13px; color: #555; margin-top: 8px; font-family: "JetBrains Mono", "Fira Code", monospace; }
+
+  .version-banner {
+    padding: 10px 48px; border-bottom: 1px solid #1a1a1a;
+    font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 11px;
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+  }
+  .version-banner .vb-label { color: #555; }
+  .version-banner .vb-hash { color: #d4a017; }
+  .version-banner .vb-date { color: #666; }
+
+  .toc { padding: 18px 48px; border-bottom: 1px solid #1a1a1a; }
+  .toc h2 { font-size: 12px; color: #555; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; font-weight: 400; }
+  .toc a {
+    display: inline-block; margin: 3px 8px 3px 0; padding: 3px 0;
+    color: #777; text-decoration: none; font-size: 13px;
+    border-bottom: 1px solid transparent; transition: all .2s;
+  }
+  .toc a::after { content: " ·"; color: #333; }
+  .toc a:last-child::after { content: ""; }
+  .toc a:hover { color: #e94560; border-bottom-color: #e94560; }
+
+  .legend {
+    display: flex; gap: 20px; padding: 14px 48px; border-bottom: 1px solid #1a1a1a;
+    font-size: 12px; color: #555; flex-wrap: wrap;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  .section { display: grid; grid-template-columns: 1fr 1fr; }
+  .section:target .section-label { color: #e94560; }
+
+  .code-side, .note-side { padding: 24px 32px; min-height: 60px; }
+  .code-side { border-right: 1px solid #1a1a1a; overflow-x: auto; }
+  .note-side { line-height: 1.8; font-size: 13.5px; padding-left: 36px; }
+  .note-side h3 { color: #ccc; font-size: 14px; margin-bottom: 8px; font-weight: 500; }
+  .note-side p  { margin-bottom: 10px; }
+  .note-side ul { margin-left: 16px; margin-bottom: 10px; }
+  .note-side li { margin-bottom: 3px; }
+  .note-side code { color: #888; background: #151515; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .note-side strong { color: #d0d0d0; font-weight: 500; }
+
+  pre {
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+    font-size: 12.5px; line-height: 1.65; white-space: pre; color: #999;
+  }
+
+  .hl-green  { border-left: 2px solid #238933; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-red    { border-left: 2px solid #e94560; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-yellow { border-left: 2px solid #d4a017; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-blue   { border-left: 2px solid #666;    padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-purple { border-left: 2px solid #9b59b6; padding-left: 8px; display: inline-block; width: 100%; }
+
+  .kw  { color: #cc7a7a; }
+  .tp  { color: #4ec9b0; }
+  .str { color: #8fad7a; }
+  .cm  { color: #555; font-style: italic; }
+  .fn  { color: #b89dcc; }
+  .prop{ color: #7eb87e; }
+
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 3px;
+    font-size: 10px; font-weight: 500; margin-right: 4px; vertical-align: middle;
+    letter-spacing: .3px;
+  }
+  .badge-key   { background: #e9456030; color: #e94560; border: 1px solid #e9456040; }
+  .badge-info  { background: #ffffff08; color: #888; border: 1px solid #333; }
+  .badge-warn  { background: #d4a01720; color: #d4a017; border: 1px solid #d4a01740; }
+
+  .section-label {
+    grid-column: 1 / -1; padding: 14px 48px 10px; margin-top: 8px;
+    font-size: 13px; font-weight: 500; color: #777;
+    border-top: 1px solid #1a1a1a; letter-spacing: .5px;
+  }
+
+  @media (max-width: 900px) {
+    .section { grid-template-columns: 1fr; }
+    .code-side { border-right: none; border-bottom: 1px solid #1a1a1a; }
+    .note-side { padding-left: 32px; }
+    header, .toc, .legend, .section-label { padding-left: 24px; padding-right: 24px; }
+    .code-side, .note-side { padding-left: 24px; padding-right: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GroupMoveManager — 代码对照讲解</h1>
+  <p>群体移动的 MonoBehaviour 外壳：管理单例、Inspector 调参、参数持久化，真正的力学计算委托给 GroupMoveCoordinator</p>
+</header>
+
+<div class="version-banner" data-source-hash="20e9357b2e9e05cbe6c251f1f5068baa">
+  <span><span class="vb-label">源文件:</span> Assets/AAAGame/Scripts/Movement/GroupMoveManager.cs</span>
+  <span><span class="vb-label">哈希:</span> <span class="vb-hash">20e9357b</span></span>
+  <span><span class="vb-label">生成:</span> <span class="vb-date">2026-03-20</span></span>
+</div>
+
+<div class="toc">
+  <h2>目录导航</h2>
+  <a href="#sec-1">① 单例 &amp; Coordinator</a>
+  <a href="#sec-2">② Inspector LJ 参数</a>
+  <a href="#sec-3">③ 生命周期</a>
+  <a href="#sec-4">④ 参数持久化</a>
+  <a href="#sec-5">⑤ SyncParams</a>
+  <a href="#sec-6">⑥ Agent 注册</a>
+  <a href="#sec-7">⑦ 障碍物注册</a>
+  <a href="#sec-8">⑧ Gizmos 调试</a>
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:#238933"></span> 核心逻辑</span>
+  <span><span class="dot" style="background:#e94560"></span> 注意/易错</span>
+  <span><span class="dot" style="background:#d4a017"></span> 可调参数</span>
+  <span><span class="dot" style="background:#666"></span> 架构/模式</span>
+  <span><span class="dot" style="background:#9b59b6"></span> 工厂/注入</span>
+</div>
+
+<!-- ① 单例 & Coordinator -->
+<div class="section" id="sec-1">
+  <div class="section-label">① 单例 &amp; Coordinator</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">public class</span> <span class="tp">GroupMoveManager</span> : <span class="tp">MonoBehaviour</span>
+{
+<span class="hl-blue">    <span class="kw">public static</span> <span class="tp">GroupMoveManager</span> <span class="prop">Instance</span> { <span class="kw">get</span>; <span class="kw">private set</span>; }</span>
+<span class="hl-blue">    <span class="kw">public static</span> <span class="kw">bool</span> <span class="prop">HasInstance</span> =&gt; <span class="prop">Instance</span> != <span class="kw">null</span>;</span>
+
+<span class="hl-green">    <span class="kw">public</span> <span class="tp">GroupMoveCoordinator</span> <span class="prop">Coordinator</span> { <span class="kw">get</span>; <span class="kw">private set</span>; }</span>
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">架构</span> 单例 + 协调器持有</h3>
+    <p>经典 MonoBehaviour 单例。<code>HasInstance</code> 给外部（如 SoldierAIBrain）做空检查用。</p>
+    <p>真正干活的是 <code>GroupMoveCoordinator</code>（纯 C# 类），Manager 只是它的 Unity 外壳。</p>
+  </div>
+</div>
+
+<!-- ② Inspector LJ 参数 -->
+<div class="section" id="sec-2">
+  <div class="section-label">② Inspector LJ 参数</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="cm">// ── Inspector 调参面板 ──</span>
+
+    [<span class="tp">Header</span>(<span class="str">"单位 LJ 参数"</span>)]
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">UnitRepulsionStrength</span> = <span class="str">50f</span>;</span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">UnitAttractionStrength</span> = <span class="str">2f</span>;</span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">UnitEquilibriumRadius</span> = <span class="str">60f</span> / <span class="tp">GroupMoveCoordinator</span>.<span class="prop">PX_SCALE</span>;</span>
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">UnitMaxInfluenceRange</span> = <span class="str">370f</span> / <span class="tp">GroupMoveCoordinator</span>.<span class="prop">PX_SCALE</span>;</span>
+
+    [<span class="tp">Header</span>(<span class="str">"领袖 LJ 参数"</span>)]
+    <span class="kw">public float</span> <span class="prop">LeaderRepulsionStrength</span> = <span class="str">50f</span>;
+    <span class="kw">public float</span> <span class="prop">LeaderAttractionStrength</span> = <span class="str">2f</span>;
+    <span class="kw">public float</span> <span class="prop">LeaderEquilibriumRadius</span> = <span class="str">105f</span> / <span class="tp">GroupMoveCoordinator</span>.<span class="prop">PX_SCALE</span>;
+    <span class="kw">public float</span> <span class="prop">LeaderMaxInfluenceRange</span> = <span class="str">370f</span> / <span class="tp">GroupMoveCoordinator</span>.<span class="prop">PX_SCALE</span>;
+
+    [<span class="tp">Header</span>(<span class="str">"敌对阵营 LJ 参数"</span>)]
+    <span class="kw">public float</span> <span class="prop">EnemyRepulsionStrength</span> = <span class="str">50f</span>;
+    <span class="kw">public float</span> <span class="prop">EnemyAttractionStrength</span> = <span class="str">10f</span>;
+    <span class="kw">public float</span> <span class="prop">EnemyEquilibriumRadius</span> = <span class="str">1.5f</span>;
+    <span class="kw">public float</span> <span class="prop">EnemyMaxInfluenceRange</span> = <span class="str">15f</span>;
+
+    [<span class="tp">Header</span>(<span class="str">"障碍物"</span>)]
+    <span class="kw">public float</span> <span class="prop">ObstacleWeight</span> = <span class="str">100f</span>;
+
+    [<span class="tp">Header</span>(<span class="str">"移动阈值"</span>)]
+    [<span class="tp">Tooltip</span>(<span class="str">"合力低于此值不移动"</span>)]
+    <span class="kw">public float</span> <span class="prop">MoveThreshold</span> = <span class="str">0.5f</span>;
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-warn">参数</span> LJ 力三组参数</h3>
+    <p>三组 Lennard-Jones 参数分别控制：同阵营普通单位间、领袖与跟随者间、敌对阵营间的斥力/吸引力。</p>
+    <p>默认值除以 <code>PX_SCALE</code>（20），是因为参数最初在 HTML 测试页面里用像素值调好的，除以 20 转成游戏世界单位。</p>
+    <p><code>MoveThreshold</code> 防止合力太小时单位原地抖动。</p>
+  </div>
+</div>
+
+<!-- ③ 生命周期 -->
+<div class="section" id="sec-3">
+  <div class="section-label">③ 生命周期</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">private void</span> <span class="fn">Awake</span>()
+    {
+<span class="hl-green">        <span class="prop">Instance</span> = <span class="kw">this</span>;</span>
+<span class="hl-green">        <span class="prop">Coordinator</span> = <span class="kw">new</span> <span class="tp">GroupMoveCoordinator</span>();</span>
+        <span class="fn">LoadParams</span>();
+        <span class="fn">SyncParams</span>();
+    }
+
+    <span class="kw">private void</span> <span class="fn">OnDestroy</span>()
+    {
+<span class="hl-red">        <span class="kw">if</span> (<span class="prop">Instance</span> == <span class="kw">this</span>) <span class="prop">Instance</span> = <span class="kw">null</span>;</span>
+    }
+
+    <span class="kw">private void</span> <span class="fn">Update</span>()
+    {
+        <span class="fn">SyncParams</span>();
+        <span class="fn">SaveParams</span>(); <span class="cm">// 每帧存，保证退出 Play 前一定存上</span>
+    }
+
+    <span class="kw">private void</span> <span class="fn">LateUpdate</span>()
+    {
+<span class="hl-green">        <span class="prop">Coordinator</span>.<span class="fn">Resolve</span>();</span>
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 帧循环</h3>
+    <p><code>Awake</code> 创建 Coordinator 并从 PlayerPrefs 加载上次调好的参数。</p>
+    <p><code>Update</code> 每帧把 Inspector 值同步给 Coordinator，并存盘——这样 Play 模式下拖滑块调参不会丢。</p>
+    <p><code>LateUpdate</code> 调 <code>Resolve()</code>：所有 Brain 在 Update 阶段提交期望速度，LateUpdate 统一算完再回调。这个时序很关键。</p>
+  </div>
+</div>
+
+<!-- ④ 参数持久化 -->
+<div class="section" id="sec-4">
+  <div class="section-label">④ 参数持久化</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">private const string</span> <span class="prop">PREFS_KEY</span> = <span class="str">"GroupMoveManager_Params"</span>;
+
+    [<span class="tp">ContextMenu</span>(<span class="str">"保存参数"</span>)]
+    <span class="kw">public void</span> <span class="fn">SaveParams</span>()
+    {
+        <span class="kw">var</span> json = <span class="tp">JsonUtility</span>.<span class="fn">ToJson</span>(<span class="kw">new</span> <span class="tp">SaveData</span> { ... });
+        <span class="tp">PlayerPrefs</span>.<span class="fn">SetString</span>(<span class="prop">PREFS_KEY</span>, json);
+        <span class="tp">PlayerPrefs</span>.<span class="fn">Save</span>();
+    }
+
+    [<span class="tp">ContextMenu</span>(<span class="str">"读取参数"</span>)]
+    <span class="kw">public void</span> <span class="fn">LoadParams</span>()
+    {
+        <span class="kw">if</span> (!<span class="tp">PlayerPrefs</span>.<span class="fn">HasKey</span>(<span class="prop">PREFS_KEY</span>)) <span class="kw">return</span>;
+        <span class="kw">var</span> json = <span class="tp">PlayerPrefs</span>.<span class="fn">GetString</span>(<span class="prop">PREFS_KEY</span>);
+        <span class="kw">var</span> d = <span class="tp">JsonUtility</span>.<span class="fn">FromJson</span>&lt;<span class="tp">SaveData</span>&gt;(json);
+        <span class="cm">// ... 逐字段赋值 ...</span>
+    }
+
+    [<span class="tp">System</span>.<span class="tp">Serializable</span>]
+    <span class="kw">private struct</span> <span class="tp">SaveData</span>
+    {
+        <span class="kw">public float</span> unitRepStr, unitAttStr, unitEqR, unitMaxR;
+        <span class="kw">public float</span> leaderRepStr, leaderAttStr, leaderEqR, leaderMaxR;
+        <span class="kw">public float</span> enemyRepStr, enemyAttStr, enemyEqR, enemyMaxR;
+        <span class="kw">public float</span> obsWeight;
+        <span class="kw">public float</span> moveThreshold;
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">工具</span> PlayerPrefs 存参数</h3>
+    <p>用 JSON 序列化所有调参值到 PlayerPrefs，Play 模式退出后下次进来还能恢复。</p>
+    <p>也加了 ContextMenu，可以右键手动存/读。</p>
+  </div>
+</div>
+
+<!-- ⑤ SyncParams -->
+<div class="section" id="sec-5">
+  <div class="section-label">⑤ SyncParams</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">private void</span> <span class="fn">SyncParams</span>()
+    {
+        <span class="kw">if</span> (<span class="prop">Coordinator</span> == <span class="kw">null</span>) <span class="kw">return</span>;
+<span class="hl-green">        <span class="prop">Coordinator</span>.<span class="prop">UnitRepulsionStrength</span> = <span class="prop">UnitRepulsionStrength</span>;</span>
+        <span class="prop">Coordinator</span>.<span class="prop">UnitAttractionStrength</span> = <span class="prop">UnitAttractionStrength</span>;
+        <span class="prop">Coordinator</span>.<span class="prop">DefaultEquilibriumRadius</span> = <span class="prop">UnitEquilibriumRadius</span>;
+        <span class="prop">Coordinator</span>.<span class="prop">DefaultMaxInfluenceRange</span> = <span class="prop">UnitMaxInfluenceRange</span>;
+        <span class="cm">// ... Leader、Enemy、Obstacle、MoveThreshold 同理 ...</span>
+<span class="hl-green">        <span class="prop">Coordinator</span>.<span class="fn">SyncAllAgentParams</span>();</span>
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> Inspector → Coordinator 同步</h3>
+    <p>把 Inspector 上的 public 字段值赋给 Coordinator 对应字段，然后调 <code>SyncAllAgentParams()</code> 把新参数刷到所有已注册 agent 上。</p>
+    <p>这样拖 Inspector 滑块就能实时看到效果。</p>
+  </div>
+</div>
+
+<!-- ⑥ Agent 注册 -->
+<div class="section" id="sec-6">
+  <div class="section-label">⑥ Agent 注册</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">public void</span> <span class="fn">RegisterAgent</span>(<span class="tp">MAEntity</span> entity)
+    {
+        <span class="kw">var</span> cc = entity.<span class="fn">GetComponent</span>&lt;<span class="tp">CharacterController</span>&gt;();
+        <span class="kw">float</span> radius = cc != <span class="kw">null</span> ? cc.<span class="prop">radius</span> : <span class="str">0.5f</span>;
+<span class="hl-purple">        <span class="prop">Coordinator</span>.<span class="fn">RegisterAgent</span>(entity.<span class="fn">GetInstanceID</span>(), entity.<span class="prop">Position</span>, entity.<span class="prop">Side</span>, <span class="kw">false</span>, radius);</span>
+    }
+
+    <span class="kw">public void</span> <span class="fn">UnregisterAgent</span>(<span class="tp">MAEntity</span> entity)
+    {
+        <span class="prop">Coordinator</span>.<span class="fn">UnregisterAgent</span>(entity.<span class="fn">GetInstanceID</span>());
+    }
+
+    <span class="kw">public void</span> <span class="fn">UpdateAgentPosition</span>(<span class="tp">MAEntity</span> entity)
+    {
+        <span class="prop">Coordinator</span>.<span class="fn">UpdateAgentPosition</span>(entity.<span class="fn">GetInstanceID</span>(), entity.<span class="prop">Position</span>);
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">接口</span> Agent 注册/注销/位置更新</h3>
+    <p>Entity Show 时调 <code>RegisterAgent</code>，Hide 时调 <code>UnregisterAgent</code>。用 <code>GetInstanceID()</code> 做 key。</p>
+    <p>碰撞半径从 CharacterController 取，没有就默认 0.5。</p>
+  </div>
+</div>
+
+<!-- ⑦ 障碍物注册 -->
+<div class="section" id="sec-7">
+  <div class="section-label">⑦ 障碍物注册</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">public void</span> <span class="fn">RegisterCircleObstacle</span>(<span class="kw">int</span> id, <span class="tp">Vector3</span> position, <span class="kw">float</span> radius)
+    {
+        <span class="prop">Coordinator</span>.<span class="fn">RegisterObstacle</span>(id, position, radius);
+    }
+
+    <span class="kw">public void</span> <span class="fn">RegisterBoxObstacle</span>(<span class="tp">Collider</span> collider)
+    {
+        <span class="kw">var</span> bounds = collider.<span class="prop">bounds</span>;
+        <span class="prop">Coordinator</span>.<span class="fn">RegisterBoxObstacle</span>(collider.<span class="fn">GetInstanceID</span>(), bounds.<span class="prop">center</span>, bounds.<span class="prop">extents</span>);
+    }
+
+    <span class="kw">public void</span> <span class="fn">UnregisterObstacle</span>(<span class="kw">int</span> id)
+    {
+        <span class="prop">Coordinator</span>.<span class="fn">UnregisterObstacle</span>(id);
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">接口</span> 障碍物注册</h3>
+    <p>支持圆形和 AABB 两种障碍物。Box 直接从 Collider 的 bounds 取 center 和 extents。</p>
+  </div>
+</div>
+
+<!-- ⑧ Gizmos -->
+<div class="section" id="sec-8">
+  <div class="section-label">⑧ Gizmos 调试可视化</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="kw">private void</span> <span class="fn">OnDrawGizmos</span>()
+    {
+        <span class="kw">if</span> (<span class="prop">Coordinator</span> == <span class="kw">null</span>) <span class="kw">return</span>;
+
+        <span class="kw">foreach</span> (<span class="kw">var</span> kvp <span class="kw">in</span> <span class="prop">Coordinator</span>.<span class="prop">AllAgents</span>)
+        {
+            <span class="cm">// 白圈 = 斥力半径，外圈 = 最大影响范围</span>
+            <span class="cm">// 领袖用黄色</span>
+            <span class="fn">DrawCircle</span>(agent.<span class="prop">Position</span>, agent.<span class="prop">EquilibriumRadius</span>, <span class="str">24</span>);
+            <span class="fn">DrawCircle</span>(agent.<span class="prop">Position</span>, agent.<span class="prop">MaxInfluenceRange</span>, <span class="str">32</span>);
+        }
+
+        <span class="kw">foreach</span> (<span class="kw">var</span> kvp <span class="kw">in</span> <span class="prop">Coordinator</span>.<span class="prop">DebugData</span>)
+        {
+            <span class="cm">// 品红线 = LJ 力</span>
+            <span class="cm">// 黄线   = 障碍物推力</span>
+            <span class="cm">// 蓝线   = 期望速度方向</span>
+            <span class="cm">// 绿箭头 = 最终安全速度</span>
+        }
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">调试</span> Scene 视图可视化</h3>
+    <p>在 Scene 视图画出每个 agent 的斥力半径圈和影响范围圈，加上四种力的方向线。</p>
+    <p>绿色箭头是最终合成速度，调参时看它最直观。</p>
+  </div>
+</div>
+
+<div style="padding:32px 48px; border-top:1px solid #1a1a1a; text-align:center;">
+  <p style="color:#333; font-size:11px; letter-spacing:1px;">GROUPMOVEMANAGER GUIDE — GF_X</p>
+</div>
+
+</body>
+</html>

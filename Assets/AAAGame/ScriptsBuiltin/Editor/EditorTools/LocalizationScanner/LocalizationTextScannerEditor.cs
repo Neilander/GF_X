@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using GameFramework.Localization;
 using System;
@@ -23,9 +23,6 @@ namespace UGF.EditorTools
         private const string langScrollViewTitle = "多语言列表:";
 
         List<LocalizationText> localizationTexts = new List<LocalizationText>();
-        private const int DefaultPageSize = 100;
-        private int pageSize = DefaultPageSize;
-        private int currentPage;
 
         private GUIContent lockedContent;
         private GUIContent scanBtContent;
@@ -62,7 +59,6 @@ namespace UGF.EditorTools
             else
                 localizationTexts.Clear();
 
-            ResetPagination();
             InitLanguageTextsFromMain();
         }
 
@@ -118,7 +114,7 @@ namespace UGF.EditorTools
                     EditorGUILayout.BeginHorizontal();
                     {
                         EditorGUILayout.LabelField("APP ID:", titleWidth);
-                        EditorToolSettings.Instance.BaiduTransAppId = EditorGUILayout.PasswordField(EditorToolSettings.Instance.BaiduTransAppId);
+                        EditorToolSettings.Instance.BaiduTransAppId = EditorGUILayout.TextField(EditorToolSettings.Instance.BaiduTransAppId);
                         EditorGUILayout.EndHorizontal();
                     }
                     EditorGUILayout.BeginHorizontal();
@@ -184,7 +180,6 @@ namespace UGF.EditorTools
                 var mainLang = (Language)EditorToolSettings.Instance.LanguagesSupport[0];
                 EditorUtility.DisplayProgressBar("加载中...", $"初始化本地化文本列表:{mainLang}", 0.5f);
                 LocalizationTextScanner.LoadLanguageExcelTexts(mainLang, ref localizationTexts);
-                ResetPagination();
                 EditorUtility.ClearProgressBar();
             }
         }
@@ -195,50 +190,9 @@ namespace UGF.EditorTools
         {
             EditorGUILayout.BeginVertical("box");
             {
-                int totalCount = localizationTexts.Count;
-                int effectivePageSize = Mathf.Max(1, pageSize);
-                int totalPages = Mathf.Max(1, Mathf.CeilToInt(totalCount / (float)effectivePageSize));
-                int clampedPage = Mathf.Clamp(currentPage, 0, totalPages - 1);
-                if (clampedPage != currentPage)
-                {
-                    scrollViewPos = Vector2.zero;
-                }
-                currentPage = clampedPage;
-                int startIndex = currentPage * effectivePageSize;
-                int endIndex = Mathf.Min(startIndex + effectivePageSize, totalCount);
-
-                EditorGUILayout.BeginHorizontal();
-                {
-                    GUI.enabled = currentPage > 0;
-                    if (GUILayout.Button("上一页", GUILayout.Width(80)))
-                    {
-                        currentPage--;
-                        scrollViewPos = Vector2.zero;
-                    }
-
-                    GUI.enabled = currentPage < totalPages - 1;
-                    if (GUILayout.Button("下一页", GUILayout.Width(80)))
-                    {
-                        currentPage++;
-                        scrollViewPos = Vector2.zero;
-                    }
-                    GUI.enabled = true;
-
-                    GUILayout.FlexibleSpace();
-                    if (totalCount > 0)
-                    {
-                        EditorGUILayout.LabelField($"第 {currentPage + 1}/{totalPages} 页   共{totalCount}条", GUILayout.ExpandWidth(false));
-                    }
-                    else
-                    {
-                        EditorGUILayout.LabelField("暂无数据", GUILayout.ExpandWidth(false));
-                    }
-                }
-                EditorGUILayout.EndHorizontal();
-
                 scrollViewPos = EditorGUILayout.BeginScrollView(scrollViewPos);
                 {
-                    for (int i = startIndex; i < endIndex; i++)
+                    for (int i = 0; i < localizationTexts.Count; i++)
                     {
                         var lanText = localizationTexts[i];
                         EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
@@ -252,23 +206,6 @@ namespace UGF.EditorTools
                         }
                     }
                     EditorGUILayout.EndScrollView();
-                }
-
-                if (Event.current.type == EventType.Repaint)
-                {
-                    Rect scrollRect = GUILayoutUtility.GetLastRect();
-                    float itemHeight = EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing + 6f;
-                    if (itemHeight > 0f && scrollRect.height > 0f)
-                    {
-                        int dynamicPageSize = Mathf.Max(1, Mathf.FloorToInt(scrollRect.height / itemHeight));
-                        if (dynamicPageSize != pageSize)
-                        {
-                            pageSize = dynamicPageSize;
-                            int newTotalPages = Mathf.Max(1, Mathf.CeilToInt(totalCount / (float)pageSize));
-                            currentPage = Mathf.Clamp(currentPage, 0, newTotalPages - 1);
-                            scrollViewPos = Vector2.zero;
-                        }
-                    }
                 }
                 EditorGUILayout.EndVertical();
             }
@@ -365,7 +302,6 @@ namespace UGF.EditorTools
                     EditorUtility.DisplayProgressBar($"扫描进度:({dealIdx}/{totalCount})", dealFileName, dealIdx / (float)totalCount);
                 });
                 LocalizationTextScanner.MergeTexts(textList, ref localizationTexts);
-                ResetPagination();
             }
             catch (Exception exp)
             {
@@ -388,13 +324,6 @@ namespace UGF.EditorTools
             {
                 EditorToolSettings.Instance.LanguagesSupport.RemoveAt(idx);
             }
-        }
-
-        private void ResetPagination()
-        {
-            currentPage = 0;
-            scrollViewPos = Vector2.zero;
-            pageSize = DefaultPageSize;
         }
     }
 }

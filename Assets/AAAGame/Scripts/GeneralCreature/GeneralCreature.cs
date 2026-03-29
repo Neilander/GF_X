@@ -24,17 +24,17 @@ public class GeneralCreature : EntityBase, ITargetable
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
-        //Instigator = this;
-       
+
         Gmo = gameObject;
         display = transform.Find("Display");
-        
+
         SetUpHurtBox();
-        
+
         animator = display.GetComponent<Animator>();
         ReferenceId = "Knight";
-        
     }
+
+    public float health => (float)CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
 
     protected override void OnShow(object userData)
     {
@@ -48,11 +48,34 @@ public class GeneralCreature : EntityBase, ITargetable
 
     public virtual void TakeDamage(float damage, HealthModifyType modType)
     {
-        animator.SetTrigger( "GetHit");
-       //GF.Log("生物受伤，目前只实现了直接扣血");
-       //GF.Log("生物当前血量"+CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
-       CreaturePropertyManager.ModifyCurrentProperty(CreatureCurrentProperty.HealthCurrent,PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
-       GF.Log("生物当前血量"+CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
+        if (!Alive) return;
+
+        // 安全触发受击动画（Animator 可能没有此参数）
+        if (animator != null)
+        {
+            foreach (var p in animator.parameters)
+            {
+                if (p.name == "GetHit" && p.type == AnimatorControllerParameterType.Trigger)
+                {
+                    animator.SetTrigger("GetHit");
+                    break;
+                }
+            }
+        }
+        CreaturePropertyManager.ModifyCurrentProperty(
+            CreatureCurrentProperty.HealthCurrent,
+            PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
+
+        float cur = health;
+        float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
+
+        if (cur <= 0)
+        {
+            Alive = false;
+            GF.Entity.HideEntity(Id);
+        }
     }
 
 
@@ -100,4 +123,5 @@ public interface ITargetable:ISelectable
     string ReferenceId { get; }
 
     void TakeDamage(float damage, HealthModifyType modType );
+    float health { get; }
 }

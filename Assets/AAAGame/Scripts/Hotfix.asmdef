@@ -15,7 +15,8 @@
         "Unity.Mathematics",
         "Obfuz.Runtime",
         "Unity.InputSystem",
-        "AstarPathfindingProject"
+        "AstarPathfindingProject",
+        "BehaviourTree"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

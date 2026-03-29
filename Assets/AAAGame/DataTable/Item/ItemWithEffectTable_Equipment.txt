@@ -2,21 +2,8 @@
 #	ID		Identifier	Rarity	MaxStack	PropertyNumerals	EffectNumerals	EffectIntroduction	SpriteName	NameKey	DescriptionKey	Tags
 #	int		string	enum	int	StringFix64Pair[]	Fix64[]	string	string	string	string	enum[]
 #		备注	在代码中的命名标识符	品质	最大堆叠数(-1表示无限)	属性数值	效果数值	效果简介(仅供速查)	Sprite名	物品名(多语言)	物品描述(多语言)	物品类型标签
-	1		Equipment_DullAxe	ItemRarity.Common	1	[PhysicalAtk,3],[SpecialAtk,-2]			UI/IconEquip/equip4_41.png	Item.Equipment.Name.DullAxe	Item.Equipment.Description.DullAxe	ItemTag.Starting,ItemTag.Relic
-	2		Equipment_GreenCrystal	ItemRarity.Common	1	[MaxHP,5]			UI/IconEquip/equip5_18.png	Item.Equipment.Name.GreenCrystal	Item.Equipment.Description.GreenCrystal	ItemTag.Relic
-	3		Equipment_HeavyBlade	ItemRarity.Common	1		0.2	物攻+<percent1>	UI/IconEquip/equip1_6.png	Item.Equipment.Name.HeavyBlade	Item.Equipment.Description.HeavyBlade	ItemTag.Relic
-	4		Equipment_PsychicPearl	ItemRarity.Common	1		1	弹道数量+<num1>	UI/IconEquip/equip4_42.png	Item.Equipment.Name.PsychicPearl	Item.Equipment.Description.PsychicPearl	ItemTag.Starting,ItemTag.Relic
-	5		Equipment_CursedTwinScythes	ItemRarity.Common	1		0.75,0.75,-0.75	物攻+<percent1>，特攻+<percent2>，生命上限+<percent3>	UI/IconEquip/equip4_45.png	Item.Equipment.Name.CursedTwinScythes	Item.Equipment.Description.CursedTwinScythes	ItemTag.Starting,ItemTag.Relic
-	6		Equipment_WisdomStaff	ItemRarity.Common	1		0.1,0.15	特攻+<percent1>，特防+<percent2>	UI/IconEquip/equip5_10.png	Item.Equipment.Name.WisdomStaff	Item.Equipment.Description.WisdomStaff	ItemTag.Relic
-	7		Equipment_TightHelmet	ItemRarity.Common	1		0.3,-0.2	物防+<percent1>，物攻+<percent2>	UI/IconEquip/equip2_0.png	Item.Equipment.Name.TightHelmet	Item.Equipment.Description.TightHelmet	ItemTag.Relic
-	8		Equipment_HarvestGem	ItemRarity.Common	1		0.3	所有资源采集量+<percent1>	UI/IconEquip/equip4-10.png	Item.Equipment.Name.HarvestGem	Item.Equipment.Description.HarvestGem	ItemTag.Starting,ItemTag.Relic
-	9		Equipment_HeavyPickaxe	ItemRarity.Common	1		0.5,-0.25	矿石类采集量+<percent1>，木材类采集量+<percent2>	UI/IconEquip/equip4_33.png	Item.Equipment.Name.HeavyPickaxe	Item.Equipment.Description.HeavyPickaxe	ItemTag.Starting,ItemTag.Relic
-	10		Equipment_FocusAmber	ItemRarity.Common	1		0.25,-0.15	经验获取量+<percent1>，但采集量+<percent2>	UI/IconEquip/equip2_37.png	Item.Equipment.Name.FocusAmber	Item.Equipment.Description.FocusAmber	ItemTag.Starting,ItemTag.Relic
-	11		Equipment_MysteriousJade	ItemRarity.Common	1		1	所有技能初始等级+<num1>	UI/IconEquip/equip2_43.png	Item.Equipment.Name.MysteriousJade	Item.Equipment.Description.MysteriousJade	ItemTag.Starting,ItemTag.Relic
-	12		Equipment_SmartKey	ItemRarity.Common	1		1	可以撬开+<num1>级的锁	UI/IconEquip/equip4_21.png	Item.Equipment.Name.SmartKey	Item.Equipment.Description.SmartKey	ItemTag.Starting,ItemTag.Relic
-	13		Equipment_PatchShoes	ItemRarity.Rare	1	[stamina,40],[MoveSpeed,-60]			UI/IconEquip/equip5_44.png	Item.Equipment.Name.PatchShoes	Item.Equipment.Description.PatchShoes	ItemTag.Relic
-	14		Equipment_SlaughterMask	ItemRarity.Rare	1		0.02	击杀敌人时恢复<percent1>最大生命值	UI/IconEquip/equip2_2.png	Item.Equipment.Name.SlaughterMask	Item.Equipment.Description.SlaughterMask	ItemTag.Relic
-	15		Equipment_RoundShield	ItemRarity.Common	1		0.3	+<percent1>正面减伤	UI/IconEquip/equip5_25.png	Item.Equipment.Name.RoundShield	Item.Equipment.Description.RoundShield	ItemTag.Relic
-	16		Equipment_LevitationClothes	ItemRarity.Common	1		0.25	+<percent1>岩系减伤	UI/IconEquip/equip5_16.png	Item.Equipment.Name.LevitationClothes	Item.Equipment.Description.LevitationClothes	ItemTag.Relic
-	17		Equipment_RippleArmband	ItemRarity.Common	1		0.25	+<percent1>水系伤害	UI/IconEquip/equip1_15.png	Item.Equipment.Name.RippleArmband	Item.Equipment.Description.RippleArmband	ItemTag.Relic
-	18		Equipment_ThunderHeadpiece	ItemRarity.Epic	1		0.01	使用电系伤害击杀敌人时叠加1层过荷效果，每层过荷+<percent1>电系伤害	UI/IconEquip/equip1_47.png	Item.Equipment.Name.ThunderHeadpiece	Item.Equipment.Description.ThunderHeadpiece	ItemTag.Relic
+	1		Equipment_Aaa	ItemRarity.Common	1	[PhysicalAtk,3]	3,5	攻击时有<num1>概率造成<num2>秒击晕	UI/IconMisc/Icon_Star_On.png	Item.Equipment.Name.Aaa	Item.Equipment.Description.Aaa	ItemTag.AAA
+	2		Equipment_Bbb	ItemRarity.Rare	1	[PhysicalAtk,2],[PhysicalDef,2]	2	攻击时回复<num1>生命	UI/IconMisc/Icon_Star_Off.png	Item.Equipment.Name.Bbb	Item.Equipment.Description.Bbb	ItemTag.BBB,ItemTag.AAA
+	3		Equipment_Ccc	ItemRarity.Epic	5	[SpecialAtk,3]	0.6,3	攻击时回复<num1>生命和<num2>魔法	UI/IconMisc/Icon_Setting.png	Item.Equipment.Name.Ccc	Item.Equipment.Description.Ccc	ItemTag.AAA
+	4		Equipment_Ddd	ItemRarity.Legendary	-1	[SpecialAtk,5],[PhysicalAtk,-3]	4,0.5,200	<num1><num2><num3>	UI/IconMisc/Icon_Close02.png	Item.Equipment.Name.Ddd	Item.Equipment.Description.Ddd	ItemTag.AAA
+	5		Equipment_Eee	ItemRarity.Heroic	1	[PhysicalDef,2],[SpecialDef,2]	15.6	<num1>	UI/IconMisc/Icon_Check03_s.png	Item.Equipment.Name.Eee	Item.Equipment.Description.Eee	ItemTag.AAA

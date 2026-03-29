@@ -37,8 +37,6 @@ public enum ItemType
 /// </summary>
 public enum ItemTag
 {
-    Starting,
-    Relic,
     AAA,
     BBB,
     CCC,

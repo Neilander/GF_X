@@ -42,7 +42,7 @@ namespace UGF.EditorTools
                 return;
             }
 
-            var appBuilder = EditorWindow.GetWindow<AppBuildEditor>();
+            var appBuilder = EditorWindow.GetWindow<AppBuildEidtor>();
             appBuilder.Show();
             appBuilder.JenkinsBuildResource(configJson);
         }
@@ -77,7 +77,7 @@ namespace UGF.EditorTools
                 Debug.LogError($"构建失败! 切换平台{configJson.Platform}失败.");
                 return;
             }
-            var appBuilder = EditorWindow.GetWindow<AppBuildEditor>();
+            var appBuilder = EditorWindow.GetWindow<AppBuildEidtor>();
             appBuilder.Show();
             appBuilder.JenkinsBuildApp(configJson);
         }

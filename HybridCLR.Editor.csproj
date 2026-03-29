@@ -151,8 +151,8 @@
     <Compile Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/BuildProcessors/AddLil2cppSourceCodeToXcodeproj2020Or2021.cs" />
     <Compile Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/3rds/UnityHook/MethodHook.cs" />
     <Compile Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/3rds/UnityFS/BundleFileInfo.cs" />
-    <Compile Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/MethodBridge/CalliAnalyzer.cs" />
     <Compile Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/HotUpdate/MissingMetadataChecker.cs" />
+    <Compile Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/MethodBridge/CalliAnalyzer.cs" />
     <Compile Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/3rds/7zip/Compress/LZ/LzInWindow.cs" />
     <None Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/HybridCLR.Editor.asmdef" />
     <None Include="Library/PackageCache/com.code-philosophy.hybridclr@d505624c78/Editor/3rds/UnityHook/Plugins/Utils.cpp" />
@@ -410,6 +410,9 @@
     </Reference>
     <Reference Include="UnityEditor.Graphs">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Managed/UnityEditor.Graphs.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEditor.WebGL.Extensions">
+      <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/PlaybackEngines/WebGLSupport/UnityEditor.WebGL.Extensions.dll</HintPath>
     </Reference>
     <Reference Include="UnityEditor.OSXStandalone.Extensions">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.OSXStandalone.Extensions.dll</HintPath>
