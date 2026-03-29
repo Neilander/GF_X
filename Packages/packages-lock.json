@@ -1,5 +1,15 @@
 {
   "dependencies": {
+    "com.besty.unity-skills": {
+      "version": "https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "3.0.2",
+        "com.unity.timeline": "1.7.7"
+      },
+      "hash": "e1917fb449dc3f320bb9b9a7808b155eb5a2335c"
+    },
     "com.code-philosophy.hybridclr": {
       "version": "https://gitee.com/focus-creative-games/hybridclr_unity.git",
       "depth": 0,
@@ -71,6 +81,15 @@
       "depth": 2,
       "source": "registry",
       "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.ide.rider": {
+      "version": "3.0.39",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.ext.nunit": "1.0.6"
+      },
       "url": "https://packages.unity.com"
     },
     "com.unity.ide.visualstudio": {

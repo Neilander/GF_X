@@ -15,3 +15,4 @@
 	9	语言设置	2	LanguagesDialog	False	2	True
 #	提示(顶层)						
 	10	吐司提示	1	ToastTips	False	3	False
+	11	UI交互	1	CardUIForm	False	1	False

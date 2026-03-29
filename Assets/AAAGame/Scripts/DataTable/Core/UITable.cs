@@ -11,8 +11,9 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 using UnityGameFramework.Runtime;
-
+#if ENABLE_OBFUZ
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName | Obfuz.ObfuzScope.MethodName)]
+#endif
 /// <summary>
 /// UI界面表
 /// </summary>
@@ -110,6 +111,4 @@ public class UITable : DataRowBase
 
             return true;
         }
-
-//__DATA_TABLE_PROPERTY_ARRAY__
 }
