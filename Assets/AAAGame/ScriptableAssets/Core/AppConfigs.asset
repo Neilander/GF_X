@@ -48,4 +48,5 @@ MonoBehaviour:
   - LevelTestProcedure
   - MenuProcedure
   - PreloadProcedure
+  - RangedWeaponTestProcedure
   - SampleProcedure

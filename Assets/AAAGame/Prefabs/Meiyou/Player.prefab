@@ -148,9 +148,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 6433160279345960326}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 99fcc1a1a5f870744a53cebe4f383e9e, type: 3}
+  m_Script: {fileID: 11500000, guid: 3ae95e8745c9ee84b8f046c984ff8c03, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  playerSpeed: 4
+  jumpHeight: 1
+  gravityValue: -9.81
 --- !u!136 &6153099876054300146
 CapsuleCollider:
   m_ObjectHideFlags: 0
