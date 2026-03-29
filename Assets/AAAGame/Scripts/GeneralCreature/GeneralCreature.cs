@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -31,7 +31,8 @@ public class GeneralCreature : EntityBase, ITargetable
         SetUpHurtBox();
 
         animator = display.GetComponent<Animator>();
-        ReferenceId = "Knight";
+        // 使用实体ID作为ReferenceId，确保唯一性
+        ReferenceId = gameObject.GetInstanceID().ToString();
     }
 
     public float health => (float)CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
@@ -40,13 +41,26 @@ public class GeneralCreature : EntityBase, ITargetable
     {
         base.OnShow(userData);
         Alive = true;
-        CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
+        CreaturePropertyManager = new CreaturePropertyManager(GetUnitType());
         display.rotation = Quaternion.Euler(38.7f, 0, 0);
+    }
+    
+    /// <summary>
+    /// 获取单位类型（由子类重写）
+    /// </summary>
+    protected virtual string GetUnitType()
+    {
+        return ReferenceId;
     }
 
 
 
     public virtual void TakeDamage(float damage, HealthModifyType modType)
+    {
+        TakeDamage(damage, modType, null);
+    }
+    
+    public virtual void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
     {
         if (!Alive) return;
 
@@ -71,9 +85,35 @@ public class GeneralCreature : EntityBase, ITargetable
 
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
 
-        if (cur <= 0)
+        if (cur<= 0)
         {
             Alive = false;
+            
+            // 获取被击杀的实体
+            Entity victimEntity = GF.Entity.GetEntity(this.Id);
+            SoldierEntity victim = victimEntity?.gameObject.GetComponent<SoldierEntity>();
+            if (victim != null)
+            {
+                // 触发宿主死亡处理
+                victim.OnDead();
+                
+                // 触发击杀回调
+                if (attacker != null)
+                {
+                    // 获取攻击者实体（通过转换为MAEntity获取Id）
+                    MAEntity attackerEntity = attacker as MAEntity;
+                    if (attackerEntity != null)
+                    {
+                        Entity entity = GF.Entity.GetEntity(attackerEntity.Id);
+                        SoldierEntity soldier = entity?.gameObject.GetComponent<SoldierEntity>();
+                        if (soldier != null)
+                        {
+                            soldier.OnKill(victim);
+                        }
+                    }
+                }
+            }
+            
             GF.Entity.HideEntity(Id);
         }
     }
@@ -94,14 +134,12 @@ public class GeneralCreature : EntityBase, ITargetable
 
     public virtual void InSelection(ISelector selector)
     {
-        GF.Log(gameObject.name+"被选择了");
         //先留好口子，之后可以加一些高亮什么的
     }
 
     public virtual void DeSelection()
     {
         //配套口子
-        GF.Log(gameObject.name+"取消选择了");
     }
 
     #endregion

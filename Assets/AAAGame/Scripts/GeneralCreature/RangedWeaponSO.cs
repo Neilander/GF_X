@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
 /// 远程武器SO：实现弹道攻击逻辑
@@ -25,6 +25,7 @@ public class RangedWeaponSO : BaseWeaponSO
         // 创建弹道参数
         EntityParams projectileParams = EntityParams.Create();
         projectileParams.position = attacker.Position + Vector3.up * 0.5f;
+        projectileParams.Attacker = attacker;
         projectileParams.Target = target;
         projectileParams.WeaponData = weaponData;
         projectileParams.WeaponSO = this;

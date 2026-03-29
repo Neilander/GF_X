@@ -1,4 +1,4 @@
-﻿#	CharacterMainPropertyTable									
+#	CharacterMainPropertyTable									
 #	ID		CharacterKey	PhysicalAtk	SpecialAtk	PhysicalDef	SpecialDef	Health	Speed	Mana
 #	int		string	int	int	int	int	int	int	int
 #		备注	请添加字段, 字段名首字母大写							
@@ -7,3 +7,6 @@
 	3		Scout	105	90	75	75	100	120	115
 	4		Wizard	65	130	60	90	80	100	145
 	5		Knight	130	90	110	70	110	90	80
+	6		coder	50	50	50	50	1000	100	100
+	7		bone_reaper	150	100	120	80	10000	90	90
+

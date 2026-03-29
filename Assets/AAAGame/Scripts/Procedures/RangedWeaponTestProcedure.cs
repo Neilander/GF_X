@@ -15,7 +15,7 @@ public class RangedWeaponTestProcedure : ProcedureBase
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
         base.OnEnter(procedureOwner);
-        GF.Log("远程武器测试流程开始");
+
         
         // 初始化数据模型
         InitDataModels();
@@ -94,7 +94,7 @@ public class RangedWeaponTestProcedure : ProcedureBase
             GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, enemyParams);
         }
         
-        GF.Log("远程武器测试单位创建完成，友方和敌方单位将互相发射子弹攻击");
+
     }
 
     /// <summary>
