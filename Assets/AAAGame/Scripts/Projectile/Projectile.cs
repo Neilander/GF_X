@@ -31,24 +31,14 @@ public class Projectile : EntityBase
             _weaponSO = paramsData.WeaponSO as RangedWeaponSO;
         }
 
-        if (_target != null)
+        if (!_target.IsDestroyed())
         {
-            try
-            {
-                // 尝试获取目标位置，无论目标是否存活
-                _targetPosition = _target.Position + Vector3.up * 0.5f;
-            }
-            catch (MissingReferenceException)
-            {
-                // 目标已被销毁，使用默认位置
-                _targetPosition = transform.position + transform.forward * 10f;
-                _target = null;
-            }
+            _targetPosition = _target.Position + Vector3.up * 0.5f;
         }
         else
         {
-            // 没有目标，使用前方位置
             _targetPosition = transform.position + transform.forward * 10f;
+            _target = null;
         }
 
         _hasHit = false;
@@ -69,26 +59,20 @@ public class Projectile : EntityBase
         }
 
         //实时更新目标位置，让子弹能够追踪移动的目标
-        if (_target != null)
+        if (!_target.IsDestroyed())
         {
-            try
+            if (_target.Alive)
             {
-                if (_target.Alive)
-                {
-                    // 目标还存活，更新位置
-                    _targetPosition = _target.Position + Vector3.up * 0.5f;
-                }
-                else
-                {
-                    // 目标已死亡（被隐藏），停止更新位置
-                    _target = null;
-                }
+                _targetPosition = _target.Position + Vector3.up * 0.5f;
             }
-            catch (MissingReferenceException)
+            else
             {
-                // 目标被销毁，保持最后的位置
                 _target = null;
             }
+        }
+        else
+        {
+            _target = null;
         }
 
         // 计算到目标的距离

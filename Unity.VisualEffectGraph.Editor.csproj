@@ -503,8 +503,8 @@
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Types/VFXTorusGizmos.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/GraphView/Elements/3D/Preview3D.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/ChangeSpace.cs" />
-    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/VFXOperator.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/SampleCurve.cs" />
+    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/VFXOperator.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/VFXSystemNames.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Contexts/Implementations/VFXStaticMeshOutput.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/SampleBuffer.cs" />
