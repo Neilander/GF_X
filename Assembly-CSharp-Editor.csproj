@@ -1324,7 +1324,9 @@
     <ProjectReference Include="AstarPathfindingProjectEditor.csproj" />
     <ProjectReference Include="Builtin.Runtime.csproj" />
     <ProjectReference Include="UniTask.Linq.csproj" />
+    <ProjectReference Include="GiantGrey.TileWorldCreator.csproj" />
     <ProjectReference Include="PackageTools.csproj" />
+    <ProjectReference Include="GiantGrey.TileWorldCreator.Samples.csproj" />
     <ProjectReference Include="andywiecko.BurstTriangulator.csproj" />
     <ProjectReference Include="DOTween.Extension.csproj" />
     <ProjectReference Include="Boxophobic.PolyverseSkies.Editor.csproj" />

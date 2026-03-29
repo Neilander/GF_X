@@ -118,6 +118,7 @@
     <None Include="Assets\AAAGame\DataTable\Tech\TechNodeTable.txt" />
     <None Include="Assets\AAAGame\DataTable\TechNodeTable.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_SDF Overlay.shader" />
+    <None Include="Assets\unity3d.txt" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Shaders\TMP_Bitmap-Mobile.shader" />
     <None Include="Assets\AAAGame\Font\TextMesh Pro\Fonts\LiberationSans - OFL.txt" />
     <None Include="Assets\AAAGame\DataTable\Item\ItemWithEffectTable_Equipment.txt" />
@@ -1246,7 +1247,9 @@
     <ProjectReference Include="AstarPathfindingProjectEditor.csproj" />
     <ProjectReference Include="Builtin.Runtime.csproj" />
     <ProjectReference Include="UniTask.Linq.csproj" />
+    <ProjectReference Include="GiantGrey.TileWorldCreator.csproj" />
     <ProjectReference Include="PackageTools.csproj" />
+    <ProjectReference Include="GiantGrey.TileWorldCreator.Samples.csproj" />
     <ProjectReference Include="andywiecko.BurstTriangulator.csproj" />
     <ProjectReference Include="DOTween.Extension.csproj" />
     <ProjectReference Include="Boxophobic.PolyverseSkies.Editor.csproj" />

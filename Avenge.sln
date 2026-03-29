@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameFramework", "GameFramew
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Builtin.Runtime", "Builtin.Runtime.csproj", "{D2E64166-CDFA-6A1A-7452-32A67AF86CA5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GiantGrey.TileWorldCreator", "GiantGrey.TileWorldCreator.csproj", "{3F80191A-B3BE-B793-1E3B-C93175B809D9}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZString", "ZString.csproj", "{3A69A4AC-639E-B9D3-FBAC-7415A3187571}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DOTween.Extension", "DOTween.Extension.csproj", "{AFB1A04D-87DA-569E-AFAA-DE2123701B10}"
@@ -30,6 +32,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UniTask.Linq", "UniTask.Linq.csproj", "{167C30F5-3BD3-646B-38AC-080A3DDFC50F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Drawing", "Drawing.csproj", "{5CAC8439-5744-1239-DABA-9D781D526013}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GiantGrey.TileWorldCreator.Samples", "GiantGrey.TileWorldCreator.Samples.csproj", "{FAD7A0BC-BFDD-B69C-69F4-46C8C7AA9590}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assembly-CSharp", "Assembly-CSharp.csproj", "{9BBF4B81-0CAD-6580-5E66-03867C13B5D3}"
 EndProject
@@ -79,6 +83,10 @@ Global
 		{D2E64166-CDFA-6A1A-7452-32A67AF86CA5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D2E64166-CDFA-6A1A-7452-32A67AF86CA5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D2E64166-CDFA-6A1A-7452-32A67AF86CA5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3F80191A-B3BE-B793-1E3B-C93175B809D9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F80191A-B3BE-B793-1E3B-C93175B809D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3F80191A-B3BE-B793-1E3B-C93175B809D9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F80191A-B3BE-B793-1E3B-C93175B809D9}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3A69A4AC-639E-B9D3-FBAC-7415A3187571}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3A69A4AC-639E-B9D3-FBAC-7415A3187571}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3A69A4AC-639E-B9D3-FBAC-7415A3187571}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -123,6 +131,10 @@ Global
 		{5CAC8439-5744-1239-DABA-9D781D526013}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5CAC8439-5744-1239-DABA-9D781D526013}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5CAC8439-5744-1239-DABA-9D781D526013}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FAD7A0BC-BFDD-B69C-69F4-46C8C7AA9590}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FAD7A0BC-BFDD-B69C-69F4-46C8C7AA9590}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FAD7A0BC-BFDD-B69C-69F4-46C8C7AA9590}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FAD7A0BC-BFDD-B69C-69F4-46C8C7AA9590}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9BBF4B81-0CAD-6580-5E66-03867C13B5D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9BBF4B81-0CAD-6580-5E66-03867C13B5D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9BBF4B81-0CAD-6580-5E66-03867C13B5D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
