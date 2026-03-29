@@ -25,3 +25,9 @@
 /Assets/Resources/AotDlls
 /UserSettings/
 /Assets/AIDoc/
+AAAGame.Tests.Editor.csproj
+Assembly-CSharp.csproj
+Assembly-CSharp-Editor.csproj
+Avenge.sln
+Builtin.Runtime.csproj
+Hotfix.csproj
