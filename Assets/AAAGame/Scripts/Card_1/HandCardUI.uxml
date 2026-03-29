@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="HandCardUI" style="width: 200px; height: 280px; background-color: rgb(50, 50, 50);">
+        <ui:VisualElement name="CardImage" style="flex-grow: 1; background-color: rgb(100, 100, 100);" />
+        <ui:Label name="PopulationText" text="2" style="position: absolute; left: 10px; top: 10px; font-size: 24px; color: rgb(255, 255, 255);" />
+        <ui:Label name="SoldierCountText" text="5" style="position: absolute; right: 10px; bottom: 10px; font-size: 24px; color: rgb(255, 255, 255);" />
+    </ui:VisualElement>
+</ui:UXML>
