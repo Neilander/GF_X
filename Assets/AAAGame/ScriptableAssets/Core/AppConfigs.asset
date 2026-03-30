@@ -41,6 +41,7 @@ MonoBehaviour:
   - Japanese
   - Korean
   mProcedures:
+  - BuffTestProcedure
   - ChangeSceneProcedure
   - CharacterTestProcedure
   - GameOverProcedure
@@ -48,4 +49,5 @@ MonoBehaviour:
   - LevelTestProcedure
   - MenuProcedure
   - PreloadProcedure
+  - RangedWeaponTestProcedure
   - SampleProcedure

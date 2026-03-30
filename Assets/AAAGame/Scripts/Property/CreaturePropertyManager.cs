@@ -160,7 +160,20 @@ public class CreaturePropertyManager
     private static Fix64 GetConfigValue(CreatureMainProperty prop, string creatureType)
     {
         var table = GF.DataTable.GetDataTable<CharacterMainPropertyTable>();
-        var row = table.GetDataRows(r => r.CharacterKey == creatureType)[0];
+        if (table == null)
+        {
+            GF.LogError($"数据表CharacterMainPropertyTable未加载");
+            return Fix64.Zero;
+        }
+        
+        var rows = table.GetDataRows(r => r.CharacterKey == creatureType);
+        if (rows == null || rows.Length == 0)
+        {
+            GF.LogError($"找不到单位类型: {creatureType}");
+            return Fix64.Zero;
+        }
+        
+        var row = rows[0];
 
         return prop switch
         {

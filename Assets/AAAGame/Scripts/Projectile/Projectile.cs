@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityGameFramework.Runtime;
+using AAAGame.Scripts.GeneralCreature;
 
 /// <summary>
 /// 远程武器弹道脚本：实现匀速飞行、命中逻辑和目标死亡处理
@@ -7,6 +8,7 @@ using UnityGameFramework.Runtime;
 public class Projectile : EntityBase
 {
     private IEntityContext _target;
+    private IEntityContext _attacker;
     private WeaponData _weaponData;
     private RangedWeaponSO _weaponSO;
     private Vector3 _targetPosition;
@@ -24,17 +26,19 @@ public class Projectile : EntityBase
         if (userData is EntityParams paramsData)
         {
             _target = paramsData.Target;
+            _attacker = paramsData.Attacker;
             _weaponData = paramsData.WeaponData;
             _weaponSO = paramsData.WeaponSO as RangedWeaponSO;
         }
 
-        if (_target != null && _target.Alive)
+        if (!_target.IsDestroyed())
         {
             _targetPosition = _target.Position + Vector3.up * 0.5f;
         }
         else
         {
             _targetPosition = transform.position + transform.forward * 10f;
+            _target = null;
         }
 
         _hasHit = false;
@@ -55,9 +59,20 @@ public class Projectile : EntityBase
         }
 
         //实时更新目标位置，让子弹能够追踪移动的目标
-        if (_target != null && _target.Alive)
+        if (!_target.IsDestroyed())
         {
-            _targetPosition = _target.Position + Vector3.up * 0.5f;
+            if (_target.Alive)
+            {
+                _targetPosition = _target.Position + Vector3.up * 0.5f;
+            }
+            else
+            {
+                _target = null;
+            }
+        }
+        else
+        {
+            _target = null;
         }
 
         // 计算到目标的距离
@@ -95,12 +110,17 @@ public class Projectile : EntityBase
             // 添加空检查，防止_weaponData为null
             if (_weaponData != null)
             {
-                // 造成伤害
-                _target.TakeDamage(_weaponData.Damage, HealthModifyType.reduce);
-            }
-            else
-            {
-                Debug.LogError("Projectile: _weaponData is null!");
+                // 尝试将IEntityContext转换为GeneralCreature以支持攻击者参数
+                if (_target is GeneralCreature creature)
+                {
+                    // 造成伤害，传递攻击者参数
+                    creature.TakeDamage(_weaponData.Damage, HealthModifyType.reduce, _attacker);
+                }
+                else
+                {
+                    // 回退到接口定义的方法
+                    _target.TakeDamage(_weaponData.Damage, HealthModifyType.reduce);
+                }
             }
         }
 

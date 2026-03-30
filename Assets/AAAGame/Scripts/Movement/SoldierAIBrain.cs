@@ -69,7 +69,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         Attack = false;
         _desiredMoveDir = Vector3.zero;
 
-        if (!self.Alive) return;
+        if (self.IsDestroyed() || !self.Alive) return;
 
         // 惰性刷新领袖
         if (_leader == null || !_leader.Alive)
@@ -189,8 +189,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     private void TickFollow(IEntityContext self, float dt)
     {
-        if (_leader == null || !_leader.Alive)
+        if (self.IsDestroyed()) return;
+
+        if (_leader.IsDestroyed() || !_leader.Alive)
         {
+            _leader = null;
+            _joinedGroup = false;
+            State = SoldierState.Idle;
             self.MoveComp.StopMove();
             return;
         }
@@ -261,7 +266,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         Vector3 myPos = self.Position;
 
         var enemy = self.TargetComp?.CurrentTarget;
-        if (enemy == null || !enemy.Alive) return;
+        if (enemy.IsDestroyed() || !enemy.Alive)
+        {
+            if (self.TargetComp != null) self.TargetComp.CurrentTarget = null;
+            return;
+        }
 
         float distToEnemy = HorizontalDist(myPos, enemy.Position);
         float speed = self.GetProperty(CreatureMainProperty.Speed);
