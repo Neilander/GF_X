@@ -5,18 +5,19 @@
     <_TargetFrameworkDirectories>non_empty_path_generated_by_unity.rider.package</_TargetFrameworkDirectories>
     <_FullFrameworkReferenceAssemblyPaths>non_empty_path_generated_by_unity.rider.package</_FullFrameworkReferenceAssemblyPaths>
     <DisableHandlePackageFileConflicts>true</DisableHandlePackageFileConflicts>
+    <ResolveNuGetPackages>false</ResolveNuGetPackages>
   </PropertyGroup>
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
-    <RootNamespace></RootNamespace>
-    <ProjectGuid>{a18bae49-5a0b-11b6-8ac5-729f276e6ca6}</ProjectGuid>
+    <RootNamespace>UnitySkills</RootNamespace>
+    <ProjectGuid>{b457f6f4-865a-9ee7-a64c-1f3b0fbba4cd}</ProjectGuid>
     <ProjectTypeGuids>{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <AssemblyName>Hotfix</AssemblyName>
+    <AssemblyName>UnitySkills.Editor</AssemblyName>
     <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <BaseDirectory>.</BaseDirectory>
@@ -25,12 +26,12 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>Temp\Bin\Debug\Hotfix\</OutputPath>
-    <DefineConstants>UNITY_2022_3_62;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_PROFILER;DEBUG;TRACE;UNITY_ASSERTIONS;UNITY_EDITOR;UNITY_EDITOR_64;UNITY_EDITOR_OSX;ENABLE_UNITY_COLLECTIONS_CHECKS;ENABLE_BURST_AOT;UNITY_TEAM_LICENSE;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER</DefineConstants>
+    <OutputPath>Temp\Bin\Debug\UnitySkills.Editor\</OutputPath>
+    <DefineConstants>UNITY_2022_3_62;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;PLATFORM_ARCH_64;UNITY_64;UNITY_INCLUDE_TESTS;ENABLE_AR;ENABLE_AUDIO;ENABLE_CACHING;ENABLE_CLOTH;ENABLE_MICROPHONE;ENABLE_MULTIPLE_DISPLAYS;ENABLE_PHYSICS;ENABLE_TEXTURE_STREAMING;ENABLE_VIRTUALTEXTURING;ENABLE_LZMA;ENABLE_UNITYEVENTS;ENABLE_VR;ENABLE_WEBCAM;ENABLE_UNITYWEBREQUEST;ENABLE_WWW;ENABLE_CLOUD_SERVICES;ENABLE_CLOUD_SERVICES_ADS;ENABLE_CLOUD_SERVICES_USE_WEBREQUEST;ENABLE_CLOUD_SERVICES_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_NATIVE_CRASH_REPORTING;ENABLE_CLOUD_SERVICES_PURCHASING;ENABLE_CLOUD_SERVICES_ANALYTICS;ENABLE_CLOUD_SERVICES_BUILD;ENABLE_EDITOR_GAME_SERVICES;ENABLE_UNITY_GAME_SERVICES_ANALYTICS_SUPPORT;ENABLE_CLOUD_LICENSE;ENABLE_EDITOR_HUB_LICENSE;ENABLE_WEBSOCKET_CLIENT;ENABLE_GENERATE_NATIVE_PLUGINS_FOR_ASSEMBLIES_API;ENABLE_DIRECTOR_AUDIO;ENABLE_DIRECTOR_TEXTURE;ENABLE_MANAGED_JOBS;ENABLE_MANAGED_TRANSFORM_JOBS;ENABLE_MANAGED_ANIMATION_JOBS;ENABLE_MANAGED_AUDIO_JOBS;ENABLE_MANAGED_UNITYTLS;INCLUDE_DYNAMIC_GI;ENABLE_SCRIPTING_GC_WBARRIERS;PLATFORM_SUPPORTS_MONO;RENDER_SOFTWARE_CURSOR;ENABLE_VIDEO;ENABLE_ACCELERATOR_CLIENT_DEBUGGING;ENABLE_NAVIGATION_PACKAGE_DEBUG_VISUALIZATION;ENABLE_NAVIGATION_HEIGHTMESH_RUNTIME_SUPPORT;ENABLE_NAVIGATION_UI_REQUIRES_PACKAGE;PLATFORM_STANDALONE;TEXTCORE_1_0_OR_NEWER;PLATFORM_STANDALONE_OSX;UNITY_STANDALONE_OSX;UNITY_STANDALONE;ENABLE_GAMECENTER;ENABLE_RUNTIME_GI;ENABLE_MOVIES;ENABLE_NETWORK;ENABLE_CRUNCH_TEXTURE_COMPRESSION;ENABLE_CLUSTER_SYNC;ENABLE_CLUSTERINPUT;ENABLE_SPATIALTRACKING;PLATFORM_UPDATES_TIME_OUTSIDE_OF_PLAYER_LOOP;ENABLE_MONO;NET_4_6;NET_UNITY_4_8;ENABLE_PROFILER;DEBUG;TRACE;UNITY_ASSERTIONS;UNITY_EDITOR;UNITY_EDITOR_64;UNITY_EDITOR_OSX;ENABLE_UNITY_COLLECTIONS_CHECKS;ENABLE_BURST_AOT;UNITY_TEAM_LICENSE;ENABLE_CUSTOM_RENDER_TEXTURE;ENABLE_DIRECTOR;ENABLE_LOCALIZATION;ENABLE_SPRITES;ENABLE_TERRAIN;ENABLE_TILEMAP;ENABLE_TIMELINE;ENABLE_INPUT_SYSTEM;ENABLE_LEGACY_INPUT_MANAGER;TEXTCORE_FONT_ENGINE_1_5_OR_NEWER;AMPLIFY_SHADER_EDITOR;ENABLE_LOG;DOTWEEN;CINEMACHINE_2;CSHARP_7_OR_LATER;CSHARP_7_3_OR_NEWER;UNITY_EDITOR_ONLY_COMPILATION</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <NoWarn>0169,0649</NoWarn>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>False</TreatWarningsAsErrors>
   </PropertyGroup>
   <PropertyGroup>
@@ -45,359 +46,62 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/ItemTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeView.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/GFEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/ItemModifyUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/TimedEffect.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/ActionExecuteComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/MessageBehavior.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/NormalAttackAction.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketType.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/InteractionFocusChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/RefParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/Packet/SCHeartBeat.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/LocalizationTextTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/SkillSystem/ISkillComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/PlayerBrain.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/DeviceEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/ConfigExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Vector2IntArrayProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/EntityBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/TextLineUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/ICardDataProvider.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/EntityGroupTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/CompCreature.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/EntityExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarAction.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/PopulationManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/PlayerHandModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MoveExecutor.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/PropertyManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyOverrideModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/MessageSystem.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoAtkFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/SkillSystem/SelectPositionSkill.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/ProfileDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/Packet/CSHeartBeat.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/EntityPresetPoint.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/CraftingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeData.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/ToastTips.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoTargetingComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/NetworkChannelHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/PlayerDataChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/LanguagesDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIViews.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Spawn/ClusterSpawnSystem.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/MenuUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/PreloadProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/HealthContainer.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyClampModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/PlayerHandManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/InputGetKeyText.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/ToastTips.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/ClusterCalculator.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DOTweenExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoMoveFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/WebRequestResult.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/HotfixEntry.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterSkillComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/LanguagesTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveCoordinator.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/ItemDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/SequenceNode.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/CapabilityProgressDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/ChangeSceneProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/InteractOptionUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/GF.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceOpenPanelInteractionOption.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.UIControl.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/IInteractionOption.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/ValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/EntityRegistry.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/ISelector.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceUpgradeInteractionOption.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/LocalizationExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionHost.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/SoldierEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Build/Device.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoAtkComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/CraftingDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/GameOverUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechResearchFailReason.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/CreaturePropertyManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIFormBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/TechNodeDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/SelectorNode.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/FriendlyAIBrain.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemModifyUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DirectionMoveCompo.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DamageSystem/DamageHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelStorageBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CameraViewTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tools/ArrangeModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MeleeWeaponSO.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Projectile/Projectile.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Projectile/AbstractProjectile.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/TextLineUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/IrreversibleValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/ITargetingComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/AbsStatemachine.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/LevelTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/LanguageItem.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/LanguageItem.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/ProjectileSpawnAction.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterAttackComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/TechNodeDetailTips.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/ComputeValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardData.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/InteractOptionTips.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/IControlBrain.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterTargetingComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameOverUIForm.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardGameManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/ColorTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/TargetMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/BrainFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/RatingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/IMoveCompo.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/ItemAmountChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/ItemUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/SampleEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardPlacementController.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Tech/TechNodeTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/DurationMoveEffectComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DamageSystem/HurtBox.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandlerBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/CharacterTestProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/FlowLayoutGroup.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CombatUnitTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/LocalizationTextMesh.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/DOTweenSequence.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/SettingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataTableExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandler/SCHeartBeatHandler.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionDetector.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/CommonDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/ISelectable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/AIBrainDebugger.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/GameUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/HandCardController.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/PropertyFuncRef.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/SettingDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ScriptableObject/AppConfigs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/TypeIdPair.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Buff/BuffCallback.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/RatingDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/BasicEnemyContext.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/ItemWithEffectTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Craft/CraftingFormula.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/SetMessageNode.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoTargetingFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UITopbar.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterSkillFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/MenuUIForm.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/CSPacketHeader.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/Fix64.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UIGroupTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/BillboardMonoBehaviour.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardDataTableAdapter.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/GameProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/GameplayEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/EffectPackage.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/SoundExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterMoveFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardDataAdapter.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/ISkillLocker.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/VariablePool/VariablePoolComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DamageSystem/Damage.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/AbstractNode.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/PunchBagEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/GameOverProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/InputModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/GameDebugSettings.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/UI/HoldProgress.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/CreatureHealthChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Buff/BuffManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DamageSystem.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringIntPair.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Movement/SoldierAIBrain.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAtkFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/SampleProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/CylinderTargetSelector.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/SkillEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/DRCard.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Editor/BehaviorTreeGraphEditor.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAttackComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Build/BuildManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/DownloadResult.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechResearchFailedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/UserDataHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleOverrideModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/InteractionPanel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/UtilityEx.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/CraftingUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Movement/SteeringMovement.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/MAEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/GameUIForm.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/LanguagesDialog.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IDurationMoveEffectComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/MoveAttackAction.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/ICapability.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Tech/TechProgressDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Craft/ItemWithEffect.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractOptionTipsPresenter.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IEntityContext.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/BaseWeaponSO.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/NodeView.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IMoveExecutor.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/CharacterEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/CSPacketBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/FactoryHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeView.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckHealthNode.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/HealthBarComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/DataModelBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterTargetingFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/EntityParams.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/Core/ParticleEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/UI/UIFollowWorldPoint.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/AdSdkHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/SoldierFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/InteractOptionUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/ProfileDataChangedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/PacketHeaderBase.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/InputDirTranslator.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/CraftingDeviceDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterAtkFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Editor/ProcedureLauncherWindow.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/Const.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMAFactoryTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardDataProviderFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemUnit.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tools/Editor/PivotToBottomTool.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UITable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketHeader.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/SettingExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/LevelEntity.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/InteractOptionTips.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Build/DeviceTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/MaterialModifyBar.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/EntityContextExtensions.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechUnlockedEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveFactory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DamageSystem/HitBox.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Animation/AnimationExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeLine.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/Singleton.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyClampModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/BTContext.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveObstacle.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarFloat.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/SimpleJoystick.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterMoveComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/AreaDetectionController.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/SkillSystem/BasicSkill.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleMultiplicativeModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechCategory.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/EnemyAIBrain.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Buff/BuffData.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringFix64Pair.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/NeilUtility/GeneralCounter.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Editor/BehaviorTreeEditorWindow.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/SoundGroupTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/PlayerDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Entity/EntitySideHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/PopulationModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/UIExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/PositionSelectAction.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/RootNode.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Text/LocalizationTextDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTreeTest.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponData.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Projectile/ProjectileConfig.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/BasicAction.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechTreePanZoom.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/IAtkComp.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ADComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/ItemCollectionDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/UITopbar.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardConst.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/TransformExtension.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleAdditiveModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/PropertyHelper.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarVector3Array.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/TargetableSelector.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Property/IProperty.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Common/CameraController.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardSystemController.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Projectile/DirectionProjectile.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/TechTreeDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Buff/OnKillHealBuff.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/ShopUIForm.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Buff/TimedDeathBuff.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Craft/Item.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckPriorityNode.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/CraftingFormulaTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/RequireContextAttribute.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/EventArgs/InteractionOptionTriggeredEventArgs.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMainPropertyTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/BuffTestProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/RangedWeaponTestProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/DataModel/Build/DeviceDataModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/CardSystem/CardModel.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UnlockCondition/UnlockCondition.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/BehaviorTreeGraph.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Extension/StaticUIComponent.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/MaterialModifyBar.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/RangedWeaponSO.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Procedures/LevelTestProcedure.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/PlayerControl/SimpleTargeting.cs" />
-    <None Include="Assets/AAAGame/Scripts/Hotfix.asmdef" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/TerrainSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/EventSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/PhysicsSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ShaderSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/UnitySkillsWindow.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ScriptableObjectSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ProfilerSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/NavMeshSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/SkillInstaller.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ScriptSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/AudioSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/TestSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/SmartSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/UnitySkillAttribute.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/EditorSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/WorkflowManager.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/DebugSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/UIToolkitSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/GameObjectSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ProBuilderSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/UISkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/PackageManagerHelper.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/GameObjectFinder.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/TimelineSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/SkillRouter.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/SceneSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/XRReflectionHelper.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/WorkflowModels.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/WorkflowSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/CinemachineSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/SkillsHttpServer.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/AssetSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/OptimizationSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/SampleSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/CameraSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/PackageSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ModelSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/PerceptionSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ValidationSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/PrefabSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ComponentSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/RegistryService.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/AssetImportSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/SkillsLogger.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ConsoleSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/CleanerSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ServerAvailabilityHelper.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/XRSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/LightSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/BatchExecutor.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/MaterialSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/ProjectSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/Localization.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/TextureSkills.cs" />
+    <Compile Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/Skills/AnimatorSkills.cs" />
+    <None Include="Library/PackageCache/com.besty.unity-skills@e1917fb449/Editor/UnitySkills.Editor.asmdef" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Managed/UnityEngine/UnityEngine.dll</HintPath>
     </Reference>
@@ -475,6 +179,9 @@
     </Reference>
     <Reference Include="UnityEngine.LocalizationModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Managed/UnityEngine/UnityEngine.LocalizationModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.NVIDIAModule">
+      <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Managed/UnityEngine/UnityEngine.NVIDIAModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.ParticleSystemModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Managed/UnityEngine/UnityEngine.ParticleSystemModule.dll</HintPath>
@@ -659,6 +366,9 @@
     <Reference Include="UnityEditor.WindowsStandalone.Extensions">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/PlaybackEngines/WindowsStandaloneSupport/UnityEditor.WindowsStandalone.Extensions.dll</HintPath>
     </Reference>
+    <Reference Include="System.Collections.Immutable">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/System.Collections.Immutable.dll</HintPath>
+    </Reference>
     <Reference Include="System.Text.Json">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/System.Text.Json.dll</HintPath>
     </Reference>
@@ -667,9 +377,6 @@
     </Reference>
     <Reference Include="EPPlus">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/EPPlus.6.2/EPPlus.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Collections.Immutable">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/System.Collections.Immutable.dll</HintPath>
     </Reference>
     <Reference Include="Unity.Collections.LowLevel.ILSupport">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collections@2.5.7/Unity.Collections.LowLevel.ILSupport/Unity.Collections.LowLevel.ILSupport.dll</HintPath>
@@ -1120,61 +827,13 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="Unity.TextMeshPro.csproj">
-      <Project>{fcf639b0-eb2b-f59d-9797-a57daa45dc04}</Project>
-      <Name>Unity.TextMeshPro</Name>
+    <ProjectReference Include="Unity.Timeline.csproj">
+      <Project>{754d3890-eee6-8b73-3a98-6463e3549097}</Project>
+      <Name>Unity.Timeline</Name>
     </ProjectReference>
     <ProjectReference Include="Cinemachine.csproj">
       <Project>{736f37b3-d569-b49e-23b8-cef189813f6a}</Project>
       <Name>Cinemachine</Name>
-    </ProjectReference>
-    <ProjectReference Include="UnityGameFramework.Runtime.csproj">
-      <Project>{76b5a940-e855-a48d-3b0a-aa2d9ea6e9a5}</Project>
-      <Name>UnityGameFramework.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.RenderPipelines.Universal.Runtime.csproj">
-      <Project>{a157378e-3351-62f0-a4ed-b1a65eadd45e}</Project>
-      <Name>Unity.RenderPipelines.Universal.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Builtin.Runtime.csproj">
-      <Project>{09159761-1cd5-ed9d-6a8e-d32e5e7d79a2}</Project>
-      <Name>Builtin.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="UniTask.csproj">
-      <Project>{b49d7349-0051-25e8-207c-31afcc4dbdf5}</Project>
-      <Name>UniTask</Name>
-    </ProjectReference>
-    <ProjectReference Include="GameFramework.csproj">
-      <Project>{101794ce-3295-4fc6-9929-009fdc35ee5d}</Project>
-      <Name>GameFramework</Name>
-    </ProjectReference>
-    <ProjectReference Include="DOTween.Extension.csproj">
-      <Project>{2c9c9c4c-7348-9e44-2bd1-82cc13255841}</Project>
-      <Name>DOTween.Extension</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Jobs.csproj">
-      <Project>{2049e4d4-ee9d-6ce6-4084-9dc2f35d0d13}</Project>
-      <Name>Unity.Jobs</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Collections.csproj">
-      <Project>{8e2c96dd-ea76-4bbe-64ef-fd70367d22d9}</Project>
-      <Name>Unity.Collections</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.Mathematics.csproj">
-      <Project>{a354a925-1aee-0a28-609e-a8f98e09c515}</Project>
-      <Name>Unity.Mathematics</Name>
-    </ProjectReference>
-    <ProjectReference Include="Obfuz.Runtime.csproj">
-      <Project>{fd2c1dbd-37c4-149d-36d7-151349add1bc}</Project>
-      <Name>Obfuz.Runtime</Name>
-    </ProjectReference>
-    <ProjectReference Include="Unity.InputSystem.csproj">
-      <Project>{742a7b64-1e94-e24c-7213-4b132c22e9c2}</Project>
-      <Name>Unity.InputSystem</Name>
-    </ProjectReference>
-    <ProjectReference Include="AstarPathfindingProject.csproj">
-      <Project>{a38f250f-9373-c074-e848-20f36d67f4cc}</Project>
-      <Name>AstarPathfindingProject</Name>
     </ProjectReference>
     <ProjectReference Include="UnityEditor.UI.csproj">
       <Project>{eaaa251a-fbab-6f2c-35b9-48fd5cade8e4}</Project>
@@ -1183,6 +842,14 @@
     <ProjectReference Include="UnityEngine.UI.csproj">
       <Project>{3a9bbb42-f862-2c0f-44c6-fef93f2b2344}</Project>
       <Name>UnityEngine.UI</Name>
+    </ProjectReference>
+    <ProjectReference Include="UnityEditor.TestRunner.csproj">
+      <Project>{d407b701-8773-74df-cbfd-feb33e2f1bde}</Project>
+      <Name>UnityEditor.TestRunner</Name>
+    </ProjectReference>
+    <ProjectReference Include="UnityEngine.TestRunner.csproj">
+      <Project>{730b1d7f-f378-8e49-47b0-a0946ec94d0a}</Project>
+      <Name>UnityEngine.TestRunner</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

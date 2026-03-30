@@ -46,9 +46,31 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/UI/CardAreaMaterialOverlay.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Controller/AreaDetectionController.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Definition/CardConst.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Data/CardDataAdapter.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/UI/CardUISystem.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Data/CardData.cs" />
     <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/UI/CardUIForm.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Model/CardModel.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Data/ICardDataProvider.cs" />
     <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Event/CardEventArgs.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Model/PopulationModel.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Data/CardDataProviderFactory.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Controller/CardSystemController.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/UI/PopulationView.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Model/PlayerHandModel.cs" />
     <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Data/DRCard.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Controller/HandCardController.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/UI/CardHandUI.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/UI/HandCardItem.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Data/CardDataTableAdapter.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Procedures/UIprocedure.cs" />
+    <Compile Include="Assets/CardRelated/AAAGame/Scripts/Card_MVC/Controller/CardPlacementController.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
     </Reference>
