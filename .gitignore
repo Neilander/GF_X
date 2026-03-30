@@ -31,3 +31,5 @@ Assembly-CSharp-Editor.csproj
 Avenge.sln
 Builtin.Runtime.csproj
 Hotfix.csproj
+.csproj
+Assets/AAAGame/Font/Common/AlibabaPuHuiTi-3-85-Bold SDF.asset
