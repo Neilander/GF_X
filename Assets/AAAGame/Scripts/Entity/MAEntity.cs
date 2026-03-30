@@ -19,9 +19,6 @@ public class MAEntity : CompCreature, IEntityContext
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
 
-    private BuffManager _buffManager;
-    public BuffManager BuffManager => _buffManager;
-
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
 
@@ -73,9 +70,6 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected override void OnShow(object userData)
     {
-        // 初始化Buff管理器（必须在 base.OnShow 之前，因为 OnShowCallback 里会用到）
-        InitializeBuffManager();
-
         base.OnShow(userData);
 
         // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态，
@@ -98,22 +92,6 @@ public class MAEntity : CompCreature, IEntityContext
         EntityRegistry.Register(this);
     }
 
-    private void InitializeBuffManager()
-    {
-        _buffManager = gameObject.AddComponent<BuffManager>();
-        _buffManager.Initialize(this);
-    }
-
-    public void OnKill(MAEntity target)
-    {
-        _buffManager?.OnKill(target);
-    }
-
-    public void OnDead()
-    {
-        _buffManager?.OnHostDead();
-    }
-
     /// <summary>
     /// 子类在 OnShow 末尾（Side 等字段赋值完毕后）调用，注册到 GroupMoveManager。
     /// </summary>
@@ -132,7 +110,6 @@ public class MAEntity : CompCreature, IEntityContext
             buffComp = null;
         }
 
-        _buffManager?.ClearAllBuffs();
         if (GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.UnregisterAgent(this);
         EntityRegistry.Unregister(this);
@@ -142,8 +119,6 @@ public class MAEntity : CompCreature, IEntityContext
     protected virtual void Update()
     {
         float dt = Time.deltaTime;
-
-        _buffManager?.UpdateBuffs(dt);
 
         // 更新协调器中的位置（在 Brain.Tick 之前）
         if (GroupMoveManager.HasInstance)

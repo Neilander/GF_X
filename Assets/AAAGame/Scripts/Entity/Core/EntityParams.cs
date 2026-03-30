@@ -19,7 +19,6 @@ public class EntityParams : RefParams
     public SideType Side { get; set; } = SideType.NoSide;
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int FollowEntityId { get; set; } = -1;
-    public string Index { get; set; } = ""; // 单位类型索引
 
     /// <summary>
     /// 绑定到父实体
@@ -42,7 +41,6 @@ public class EntityParams : RefParams
 
     // 弹道相关参数（用于远程武器系统）
     public IEntityContext Target { get; set; } = null;
-    public IEntityContext Attacker { get; set; } = null; // 攻击者
     public WeaponData WeaponData { get; set; } = null;
     public BaseWeaponSO WeaponSO { get; set; } = null;
 
@@ -82,7 +80,6 @@ public class EntityParams : RefParams
         OnHideCallback = null;
         
         Target = null;
-        Attacker = null;
         WeaponData = null;
         WeaponSO = null;
         StartBuffs = null;
@@ -90,7 +87,6 @@ public class EntityParams : RefParams
         Side = SideType.NoSide;
         BrainType = BrainType.Player;
         FollowEntityId = -1;
-        Index = "";
     }
 }
 #pragma warning restore IDE1006 // 命名样式
