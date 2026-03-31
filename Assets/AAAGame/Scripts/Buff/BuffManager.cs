@@ -96,7 +96,7 @@ public class BuffManager : MonoBehaviour
             foreach (BuffCallback module in buffData.modules)
             {
                 module.OnRemove();
-                Destroy(module.gameObject);
+                module.Clear();
             }
             
             // 移除Buff数据

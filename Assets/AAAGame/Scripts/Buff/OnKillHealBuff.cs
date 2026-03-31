@@ -72,17 +72,15 @@ public class OnKillHealBuff : BuffCallback
     /// </summary>
     public static BuffData CreateOnKillHeal(float val1)
     {
-        List<BuffCallback> modules = new List<BuffCallback>();
-        OnKillHealBuff buff = new GameObject("OnKillHealBuff").AddComponent<OnKillHealBuff>();
+        var buff = new OnKillHealBuff();
         buff.SetHealPercent(val1);
-        modules.Add(buff);
         
         return BuffData.Create(
             id: "on_kill_heal",
-            duration: float.MaxValue, // 永久Buff
+            duration: float.MaxValue,
             isForever: true,
-            maxStack: int.MaxValue, // 无限叠加
-            modules: modules
+            maxStack: int.MaxValue,
+            modules: new List<BuffCallback> { buff }
         );
     }
     

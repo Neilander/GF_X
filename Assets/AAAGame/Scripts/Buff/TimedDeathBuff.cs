@@ -52,15 +52,12 @@ public class TimedDeathBuff : BuffCallback{
     /// </summary>
     public static BuffData CreateTimedDeath(float duration)
     {
-        List<BuffCallback> modules = new List<BuffCallback>();
-        modules.Add(new GameObject("TimedDeathBuff").AddComponent<TimedDeathBuff>());
-        
         return BuffData.Create(
             id: "timed_death",
             duration: duration,
             isForever: false,
             maxStack: 1,
-            modules: modules
+            modules: new List<BuffCallback> { new TimedDeathBuff() }
         );
     }
     
