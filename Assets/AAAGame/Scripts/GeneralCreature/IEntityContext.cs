@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using UnityEngine;
+using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
 /// 实体上下文接口：组件和 Brain 通过此接口访问实体，而非直接依赖 MAEntity。
@@ -20,6 +21,7 @@ public interface IEntityContext
     IMoveComp MoveComp { get; }
     IAtkComp AtkComp { get; }
     ITargetingComp TargetComp { get; }
+    IBuffComp BuffComp { get; }
     WeaponComp WeaponComp { get; }
 
     // 属性查询

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
+using AAAGame.Scripts.BuffSystem;
 
 public class MAEntity : CompCreature, IEntityContext
 {
@@ -18,8 +19,8 @@ public class MAEntity : CompCreature, IEntityContext
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
 
-    private BuffManager _buffManager;
-    public BuffManager BuffManager => _buffManager;
+    private IBuffComp _buffComp;
+    public IBuffComp BuffComp => _buffComp;
 
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
@@ -44,6 +45,7 @@ public class MAEntity : CompCreature, IEntityContext
     IMoveComp IEntityContext.MoveComp => moveComp;
     IAtkComp IEntityContext.AtkComp => atkComp;
     ITargetingComp IEntityContext.TargetComp => targetComp;
+    IBuffComp IEntityContext.BuffComp => _buffComp;
     WeaponComp IEntityContext.WeaponComp => weaponComp;
 
     public float GetProperty(CreatureMainProperty prop)
@@ -71,10 +73,22 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected override void OnShow(object userData)
     {
-        // 初始化Buff管理器（必须在 base.OnShow 之前，因为 OnShowCallback 里会用到）
-        InitializeBuffManager();
-
         base.OnShow(userData);
+
+        // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态
+        var newBuffComp = new CharacterBuffComp();
+        newBuffComp.Init(this);
+        _buffComp = newBuffComp;
+
+        // 应用出生自带的 Buff
+        if (userData is EntityParams ep && ep.StartBuffs != null)
+        {
+            for (int i = 0; i < ep.StartBuffs.Count; i++)
+            {
+                _buffComp.AddBuff(ep.StartBuffs[i], this);
+            }
+        }
+
         // 注意：RegisterAgent 移到子类 OnShow 末尾，确保 Side 等字段已赋值
         EntityRegistry.Register(this);
     }
@@ -88,25 +102,35 @@ public class MAEntity : CompCreature, IEntityContext
             GroupMoveManager.Instance.RegisterAgent(this);
     }
 
-    private void InitializeBuffManager()
-    {
-        _buffManager = gameObject.AddComponent<BuffManager>();
-        _buffManager.Initialize(this);
-    }
+
 
     public void OnKill(MAEntity target)
     {
-        _buffManager?.OnKill(target);
+        // 触发击杀回调，供Buff系统使用
+        if (_buffComp != null)
+        {
+            _buffComp.OnKill(target);
+        }
     }
 
     public void OnDead()
     {
-        _buffManager?.OnHostDead();
+        // 触发死亡回调，供Buff系统使用
+        if (_buffComp != null)
+        {
+            _buffComp.OnHostDead();
+        }
     }
 
     protected override void OnHide(bool isShutdown, object userData)
     {
-        _buffManager?.ClearAllBuffs();
+        // 显式清理 BuffComp，防止将来持有外部订阅时泄漏
+        if (_buffComp != null)
+        {
+            _buffComp.ShutDown();
+            _buffComp = null;
+        }
+
         if (GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.UnregisterAgent(this);
         EntityRegistry.Unregister(this);
@@ -117,7 +141,8 @@ public class MAEntity : CompCreature, IEntityContext
     {
         float dt = Time.deltaTime;
 
-        _buffManager?.UpdateBuffs(dt);
+        if (CanRun(_buffComp))
+            _buffComp.UpdateBuff(dt);
 
         // 更新协调器中的位置（在 Brain.Tick 之前）
         if (GroupMoveManager.HasInstance)
@@ -160,6 +185,7 @@ public class MAEntity : CompCreature, IEntityContext
     public void SetAtkComp(IAtkComp newAtkComp) => atkComp = newAtkComp;
 
     public void SetTargetingComp(ITargetingComp newTargetingComp) => targetComp = newTargetingComp;
+    public void SetBuffComp(IBuffComp newBuffComp) => _buffComp = newBuffComp;
     public void SetWeaponComp(WeaponComp newWeaponComp) => weaponComp = newWeaponComp;
 
     #endregion

@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
+using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
 /// 纯数据实体上下文：不依赖 Unity MonoBehaviour，用于测试。
@@ -32,6 +33,7 @@ public class SimEntityContext : IEntityContext
     public IMoveComp MoveComp { get; set; }
     public IAtkComp AtkComp { get; set; }
     public ITargetingComp TargetComp { get; set; }
+    public IBuffComp BuffComp { get; set; }
     public WeaponComp WeaponComp { get; set; }
 
     // 属性系统

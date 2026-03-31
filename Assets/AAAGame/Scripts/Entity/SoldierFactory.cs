@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityGameFramework.Runtime;
+using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
 /// 士兵工厂类
@@ -23,13 +24,9 @@ public static class SoldierFactory
         
         string prefabName = GetSoldierPrefabName(index);
 
-        paramsData.OnShowCallback = logic =>
-        {
-            if (logic is SoldierEntity soldier)
-            {
-                AddInitialBuffs(soldier, soldier.UnitIndex);
-            }
-        };
+        // 添加初始Buff到StartBuffs列表
+        paramsData.StartBuffs = new System.Collections.Generic.List<BuffData>();
+        AddInitialBuffs(paramsData.StartBuffs, index);
 
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, Const.EntityGroup.Level, paramsData);
     }
@@ -51,23 +48,18 @@ public static class SoldierFactory
     }
     
     /// <summary>
-    /// 添加初始Buff
+    /// 添加初始Buff到列表中
     /// </summary>
-    public static void AddInitialBuffs(SoldierEntity entity, string index)
+    private static void AddInitialBuffs(System.Collections.Generic.List<BuffData> buffList, string index)
     {
-        if (entity == null) return;
-
-        BuffManager buffManager = entity.BuffManager;
-        if (buffManager == null) return;
-
         switch (index)
         {
             case "coder":
-                buffManager.AddBuff(TimedDeathBuff.CreateTimedDeath(35f));
+                buffList.Add(TimedDeathBuff.CreateTimedDeath(35f));
                 break;
                 
             case "bone_reaper":
-                buffManager.AddBuff(OnKillHealBuff.CreateOnKillHeal(3f));
+                buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
                 break;
         }
     }
