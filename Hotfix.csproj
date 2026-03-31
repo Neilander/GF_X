@@ -70,7 +70,9 @@
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/CompCreature.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/EntityExtension.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/IBuffComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarAction.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/EntityContextExtensions.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MoveExecutor.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/PropertyManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyOverrideModifier.cs" />
@@ -89,6 +91,7 @@
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/PlayerDataChangedEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/LanguagesDialog.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIViews.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Spawn/ClusterSpawnSystem.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/MenuUIForm.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/PreloadProcedure.cs" />
@@ -196,6 +199,7 @@
     <Compile Include="Assets/AAAGame/Scripts/ScriptableObject/AppConfigs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/AwaitExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/DataModel/TypeIdPair.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Buff/BuffCallback.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/RatingDialog.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/BasicEnemyContext.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerEntity.cs" />
@@ -228,6 +232,7 @@
     <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/UI/HoldProgress.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/CreatureHealthChangedEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIParams.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Buff/BuffManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/DamageSystem.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringIntPair.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Movement/SoldierAIBrain.cs" />
@@ -285,6 +290,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/ParticleEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/UI/UIFollowWorldPoint.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/AdSdkHelper.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/SoldierFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/InteractOptionUnit.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/ProfileDataChangedEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHeaderBase.cs" />
@@ -303,6 +309,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Tools/Editor/PivotToBottomTool.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UITable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketHeader.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/CharacterBuffComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/SettingExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/LevelEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/InteractOptionTips.cs" />
@@ -325,6 +332,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechCategory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/EnemyAIBrain.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Buff/BuffData.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/CustomClass/StringFix64Pair.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/GeneralCounter.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Editor/BehaviorTreeEditorWindow.cs" />
@@ -353,7 +361,9 @@
     <Compile Include="Assets/AAAGame/Scripts/Common/CameraController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Projectile/DirectionProjectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/TechTreeDialog.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Buff/OnKillHealBuff.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/ShopUIForm.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Buff/TimedDeathBuff.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Craft/Item.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckPriorityNode.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/CraftingFormulaTable.cs" />
@@ -361,6 +371,7 @@
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/InteractionOptionTriggeredEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMainPropertyTable.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Procedures/BuffTestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/RangedWeaponTestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Build/DeviceDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UnlockCondition/UnlockCondition.cs" />
