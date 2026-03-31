@@ -247,6 +247,8 @@ public class BuffManager : MonoBehaviour
                     module.OnRemove();
                     Destroy(module.gameObject);
                 }
+                module.OnRemove();
+                module.Clear();
             }
             ReferencePool.Release(buffData);
         }
