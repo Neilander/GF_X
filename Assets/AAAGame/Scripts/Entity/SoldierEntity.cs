@@ -7,11 +7,6 @@ using UnityEngine;
 public class SoldierEntity : MAEntity
 {
     /// <summary>
-    /// Buff管理器
-    /// </summary>
-    private BuffManager _buffManager;
-    
-    /// <summary>
     /// 单位类型索引
     /// </summary>
     private string _unitIndex;
@@ -34,17 +29,11 @@ public class SoldierEntity : MAEntity
         base.OnShow(userData);
 
         RegisterToGroupMove(); // Side 已赋值，安全注册
-        
-        // 初始化Buff管理器
-        InitializeBuffManager();
     }
 
     protected override void Update()
     {
         base.Update();
-
-        // 更新Buff管理器
-            _buffManager?.UpdateBuffs(Time.deltaTime);
 
         // Debug: 绿线=NavMesh方向, 红线=到目标直线
         if (targetComp?.CurrentTarget != null && targetComp.CurrentTarget.Alive)
@@ -79,14 +68,7 @@ public class SoldierEntity : MAEntity
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
     }
     
-    /// <summary>
-    /// 初始化Buff管理器
-    /// </summary>
-    private void InitializeBuffManager()
-    {
-        _buffManager = gameObject.AddComponent<BuffManager>();
-        _buffManager.Initialize(this);
-    }
+
     
     /// <summary>
     /// 根据单位类型获取武器索引
@@ -104,10 +86,7 @@ public class SoldierEntity : MAEntity
         }
     }
     
-    /// <summary>
-    /// 获取Buff管理器
-    /// </summary>
-    public BuffManager BuffManager => _buffManager;
+
     
     /// <summary>
     /// 获取单位类型索引
@@ -122,31 +101,12 @@ public class SoldierEntity : MAEntity
         return _unitIndex;
     }
     
-    /// <summary>
-    /// 处理击杀事件
-    /// </summary>
-    public void OnKill(MAEntity target)
-    {
-        if (_buffManager != null)
-        {
-            _buffManager.OnKill(target);
-        }
-    }
+
     
-    /// <summary>
-    /// 宿主死亡时处理
-    /// </summary>
-    public void OnDead()
-    {
-        // 宿主死亡时处理Buff
-        _buffManager?.OnHostDead();
-    }
+
     
     protected override void OnHide(bool isShutdown, object userData)
     {
-        // 清理Buff
-        _buffManager?.ClearAllBuffs();
-        
         base.OnHide(isShutdown, userData);
     }
 }
