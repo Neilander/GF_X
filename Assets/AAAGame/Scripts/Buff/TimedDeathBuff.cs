@@ -6,7 +6,8 @@ using UnityGameFramework.Runtime;
 /// 定时死亡Buff
 /// 到期后自动调用宿主死亡逻辑
 /// </summary>
-public class TimedDeathBuff : BuffCallback{
+public class TimedDeathBuff : BuffCallback
+{
     /// <summary>
     /// Buff持续时间结束时调用
     /// </summary>
@@ -34,7 +35,7 @@ public class TimedDeathBuff : BuffCallback{
                     
                     // 触发血量变化事件，让血条知道单位已死亡
                     float maxHealth = (float)soldier.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-                    GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(currentHost.Id, 0f, maxHealth, -maxHealth));
+                    GF.Event.Fire(soldier, CreatureHealthChangedEventArgs.Create(currentHost.Id, 0f, maxHealth, -maxHealth));
                 }
             }
             
@@ -61,11 +62,5 @@ public class TimedDeathBuff : BuffCallback{
         );
     }
     
-    /// <summary>
-    /// 清理资源
-    /// </summary>
-    public override void Clear()
-    {
-        base.Clear();
-    }
+
 }
