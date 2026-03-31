@@ -1,4 +1,4 @@
-using GameFramework;
+﻿using GameFramework;
 
 /// <summary>
 /// Buff回调基类（纯C#类，不需要GameObject）

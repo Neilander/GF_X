@@ -12,7 +12,8 @@ public class ProcedureLauncherWindow : EditorWindow
         "GameProcedure",
         "LevelTestProcedure",
         "SampleProcedure",
-        "RangedWeaponTestProcedure" // 新增：远程武器测试流程
+        "RangedWeaponTestProcedure", // 新增：远程武器测试流程,
+        "BuffTestProcedure"
     };
 
     private const string PrefKey_Selected = "Procedure_Selected";

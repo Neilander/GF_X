@@ -15,6 +15,7 @@ public class DebugVersionShieldBuff : BuffCallback
         _shieldAmount = shieldAmount;
     }
 
+    /*
     public override void Apply(BuffRuntimeInfo info, string trigger)
     {
         switch (trigger)
@@ -26,5 +27,5 @@ public class DebugVersionShieldBuff : BuffCallback
                 Debug.Log($"[ShieldBuff] {info.Target?.ReferenceId} 护盾消失");
                 break;
         }
-    }
+    }*/
 }

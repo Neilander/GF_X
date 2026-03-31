@@ -15,6 +15,7 @@ public class DebugVersionSpeedBuff : BuffCallback
         _speedDelta = speedDelta;
     }
 
+    /*
     public override void Apply(BuffRuntimeInfo info, string trigger)
     {
         switch (trigger)
@@ -32,5 +33,5 @@ public class DebugVersionSpeedBuff : BuffCallback
                 Debug.Log($"[SpeedBuff] {info.Target?.ReferenceId} 移速 buff 完全移除");
                 break;
         }
-    }
+    }*/
 }

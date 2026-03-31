@@ -28,7 +28,7 @@ public interface IEntityContext
     float GetProperty(CreatureMainProperty prop);
 
     // 受伤
-    void TakeDamage(float damage, HealthModifyType modType);
+    void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null);
 
     // 组件锁定
     bool CanRun(ICapability cap);

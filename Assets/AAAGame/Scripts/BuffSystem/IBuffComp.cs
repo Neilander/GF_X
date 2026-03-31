@@ -20,10 +20,7 @@
         /// </summary>
         void UpdateBuff(float deltaTime);
         
-        /// <summary>
-        /// 关闭Buff组件
-        /// </summary>
-        void ShutDown();
+        
         
         /// <summary>
         /// 宿主死亡时处理

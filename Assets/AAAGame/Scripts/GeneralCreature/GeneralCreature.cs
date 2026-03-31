@@ -45,7 +45,65 @@ public class GeneralCreature : EntityBase, ITargetable
     }
 
 
+    public virtual void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
+    {
+        if (!Alive) return;
 
+        // 安全触发受击动画（Animator 可能没有此参数）
+        if (animator != null)
+        {
+            foreach (var p in animator.parameters)
+            {
+                if (p.name == "GetHit" && p.type == AnimatorControllerParameterType.Trigger)
+                {
+                    animator.SetTrigger("GetHit");
+                    break;
+                }
+            }
+        }
+        CreaturePropertyManager.ModifyCurrentProperty(
+            CreatureCurrentProperty.HealthCurrent,
+            PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
+
+        float cur = health;
+        float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
+
+        if (cur<= 0)
+        {
+            Alive = false;
+            
+            // 获取被击杀的实体
+            Entity victimEntity = GF.Entity.GetEntity(this.Id);
+            SoldierEntity victim = victimEntity?.gameObject.GetComponent<SoldierEntity>();
+            if (victim != null)
+            {
+                // 触发宿主死亡处理
+                victim.OnDead();
+                
+                // 触发击杀回调
+                if (attacker != null)
+                {
+                    // 获取攻击者实体（通过转换为MAEntity获取Id）
+                    MAEntity attackerEntity = attacker as MAEntity;
+                    if (attackerEntity != null)
+                    {
+                        Entity entity = GF.Entity.GetEntity(attackerEntity.Id);
+                        SoldierEntity soldier = entity?.gameObject.GetComponent<SoldierEntity>();
+                        if (soldier != null)
+                        {
+                            soldier.OnKill(victim);
+                        }
+                    }
+                }
+            }
+            
+            GF.Entity.HideEntity(Id);
+        }
+    }
+
+    /*
     public virtual void TakeDamage(float damage, HealthModifyType modType)
     {
         if (!Alive) return;
@@ -76,7 +134,7 @@ public class GeneralCreature : EntityBase, ITargetable
             Alive = false;
             GF.Entity.HideEntity(Id);
         }
-    }
+    }*/
 
 
     protected virtual void SetUpHurtBox()
@@ -122,6 +180,6 @@ public interface ITargetable:ISelectable
     GameObject Gmo { get; }
     string ReferenceId { get; }
 
-    void TakeDamage(float damage, HealthModifyType modType );
+    void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null );
     float health { get; }
 }

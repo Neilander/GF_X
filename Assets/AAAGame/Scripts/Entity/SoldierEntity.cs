@@ -96,10 +96,11 @@ public class SoldierEntity : MAEntity
     /// <summary>
     /// 获取单位类型（重写基类方法）
     /// </summary>
+    /*
     protected override string GetUnitType()
     {
         return _unitIndex;
-    }
+    }*/
     
 
     
