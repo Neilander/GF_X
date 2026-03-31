@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
+using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
 /// 纯数据实体上下文：不依赖 Unity MonoBehaviour，用于测试。
