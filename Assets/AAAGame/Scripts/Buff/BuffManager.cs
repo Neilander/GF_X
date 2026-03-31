@@ -75,17 +75,12 @@ public class BuffManager : MonoBehaviour
         // 添加新Buff
         _buffDict.Add(buffData.id, buffData);
         
-        // 创建并初始化Buff模块
-        List<BuffCallback> newModules = new List<BuffCallback>();
+        // 初始化Buff模块
         foreach (BuffCallback module in buffData.modules)
         {
-            BuffCallback instance = Instantiate(module, transform);
-            instance.Initialize(buffData, _hostEntity);
-            instance.OnAdd();
-            newModules.Add(instance);
+            module.Initialize(buffData, _hostEntity);
+            module.OnAdd();
         }
-        // 更新modules列表，保存初始化后的实例
-        buffData.modules = newModules;
         
         return true;
     }
@@ -126,7 +121,7 @@ public class BuffManager : MonoBehaviour
             {
                 module.OnDurationEnd();
                 module.OnRemove();
-                Destroy(module.gameObject);
+                module.Clear();
             }
             
             // 移除Buff数据
@@ -241,12 +236,6 @@ public class BuffManager : MonoBehaviour
         {
             foreach (BuffCallback module in buffData.modules)
             {
-                // 添加防御性检查，避免访问已销毁的对象
-                if (module != null && module.gameObject != null)
-                {
-                    module.OnRemove();
-                    Destroy(module.gameObject);
-                }
                 module.OnRemove();
                 module.Clear();
             }
