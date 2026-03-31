@@ -5,7 +5,6 @@ using GameFramework.Fsm;
 using GameFramework.Procedure;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.Entity;
-using System.Collections.Generic;
 
 /// <summary>
 /// Buff测试流程
@@ -54,7 +53,7 @@ public class BuffTestProcedure : ProcedureBase
     private void SpawnTestUnits()
     {
         // 创建玩家控制的码农单位（定时死亡Buff）
-        ShowSoldier("coder", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
+        SoldierFactory.ShowSoldier("coder", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
         
         // 使用簇生成系统创建友方码农单位（定时死亡Buff）
         bool success = ClusterSpawnSystem.SpawnCluster(
@@ -97,52 +96,9 @@ public class BuffTestProcedure : ProcedureBase
         }
     }
     
-    /// <summary>
-    /// 封装显示士兵单位的方法
-    /// </summary>
-    /// <param name="index">单位索引</param>
-    /// <param name="position">生成位置</param>
-    /// <param name="side">阵营</param>
-    /// <param name="brainType">AI类型</param>
-    private void ShowSoldier(string index, Vector3 position, SideType side, BrainType brainType)
-    {
-        // 创建实体参数
-        var paramsData = EntityParams.Create(position: position);
-        paramsData.Side = side;
-        paramsData.BrainType = brainType;
-        paramsData.Index = index;
-        
-        // 根据单位类型选择预制体
-        string prefabName = "TestCreature"; // 暂时使用TestCreature预制体
-        
-        // 显示实体
-        GF.Entity.ShowEntity<SoldierEntity>(prefabName, Const.EntityGroup.Level, paramsData);
-    }
+
     
-    /// <summary>
-    /// 静态方法：批量生成士兵单位
-    /// </summary>
-    /// <param name="index">单位索引</param>
-    /// <param name="positions">生成位置列表</param>
-    /// <param name="side">阵营</param>
-    /// <param name="brainType">AI类型</param>
-    public static void SpawnSoldier(string index, List<Vector3> positions, SideType side, BrainType brainType)
-    {
-        foreach (Vector3 position in positions)
-        {
-            // 创建实体参数
-            var paramsData = EntityParams.Create(position: position);
-            paramsData.Side = side;
-            paramsData.BrainType = brainType;
-            paramsData.Index = index;
-            
-            // 根据单位类型选择预制体
-            string prefabName = "TestCreature"; // 暂时使用TestCreature预制体
-            
-            // 显示实体
-            GF.Entity.ShowEntity<SoldierEntity>(prefabName, Const.EntityGroup.Level, paramsData);
-        }
-    }
+
     
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
@@ -201,27 +157,6 @@ public class BuffTestProcedure : ProcedureBase
                 }
                 
                 HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
-                
-                // 根据单位类型添加Buff
-                if (ma is SoldierEntity soldierEntity)
-                {
-                    BuffManager buffManager = soldierEntity.BuffManager;
-                    if (buffManager != null)
-                    {
-                        switch (soldierEntity.UnitIndex)
-                        {
-                            case "coder": // 码农单位 - 添加定时死亡Buff
-                                BuffData timedDeathBuff = TimedDeathBuff.CreateTimedDeath(35f);
-                                buffManager.AddBuff(timedDeathBuff);
-                                break;
-                                
-                            case "bone_reaper": // 剔骨狂魔单位 - 添加击杀回复Buff
-                                BuffData onKillHealBuff = OnKillHealBuff.CreateOnKillHeal(3f);
-                                buffManager.AddBuff(onKillHealBuff);
-                                break;
-                        }
-                    }
-                }
             }
 
             // SoldierAIBrain 需要重新 Inject（玩家可能在它之后创建）
