@@ -111,10 +111,8 @@ public static class ClusterSpawnSystem
             }
         }
         
-        foreach (Vector3 pos in spawnPositions)
-        {
-            SoldierFactory.ShowSoldier(unitIndex, pos, side, brainType);
-        }
+        // 调用BuffTestProcedure中的ShowSoldier方法生成单位
+        BuffTestProcedure.SpawnSoldier(unitIndex, spawnPositions, side, brainType);
         return true;
     }
     
