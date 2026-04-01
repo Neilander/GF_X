@@ -670,8 +670,8 @@
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Targets/BuiltIn/Editor/AssetPostProcessors/MaterialPostprocessor.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Channel/SplitNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Enumerations/Platform.cs" />
-    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Graphs/MaterialSlot.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Importers/ShaderGraphImporterEditor.cs" />
+    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Graphs/MaterialSlot.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Descriptors/AdditionalCommandDescriptor.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Generation/Targets/BuiltIn/Editor/AssetPostProcessors/ShaderGraphMaterialsUpdater.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/Slots/LabelSlotControlView.cs" />

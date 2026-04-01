@@ -328,6 +328,7 @@
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffConstant.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DamageSystem/HitBox.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Procedures/TestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Animation/AnimationExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeLine.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/Singleton.cs" />
