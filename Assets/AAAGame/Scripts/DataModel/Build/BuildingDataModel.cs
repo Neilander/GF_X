@@ -13,7 +13,7 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public class BuildingDataModel : DataModelBase
 {
-    private Dictionary<string, Building> buildingDataDic;
+    private Dictionary<string, BuildingData> buildingDataDic;
 
     protected override void OnCreate(RefParams userdata)
     {
@@ -21,24 +21,25 @@ public class BuildingDataModel : DataModelBase
         var buildingTb = GF.DataTable.GetDataTable<BuildingTable>();
         foreach (var row in buildingTb.GetAllDataRows())
         {
-            Building building = ImportBuildingDataRow(row);
+            BuildingData building = ImportBuildingDataRow(row);
             buildingDataDic[building.Identifier] = building;
         }
     }
 
     protected override void OnRelease() { }
 
-    public static Building GetBuildingData(string buildingIdentifier)
+    public static BuildingData GetBuildingData(string buildingIdentifier)
     {
         var buildingDataModel = GF.DataModel.GetDataModel<BuildingDataModel>();
         if (buildingDataModel.buildingDataDic.TryGetValue(buildingIdentifier, out var building)) return building;
         return null;
     }
 
-    private Building ImportBuildingDataRow(BuildingTable row)
+    private BuildingData ImportBuildingDataRow(BuildingTable row)
     {
-        Building building = new(row.Identifier,
+        BuildingData building = new(row.Identifier,
                                 row.Type,
+                                row.Archetype,
                                 row.PrefabName,
                                 row.NameKey,
                                 row.DescriptionKey,

@@ -10,15 +10,17 @@ using UnityGameFramework.Runtime;
 
 
 public enum BuilType { Base, Army, Prod, Tech, Def }
+public enum Archetype { Coding, Sightseeing, Butchery, Delivery, Firefighting }
 /// <summary>
 /// 建筑数据格式类
 /// </summary>
-public class Building
+public class BuildingData
 {
     public string Identifier { get; protected set; } //格式为 "Buil_Type_LvX"，如 "Buil_Prod_Lv2"。其中 Type 是 BuilType 枚举，X 是等级数字。
     public int Cost { get; protected set; }
     public Fix64[] UniqueValues { get; protected set; }
     public BuilType Type { get; protected set; }
+    public Archetype Arche { get; protected set; }
     public string PrefabName { get; protected set; }
     public string NameKey { get; protected set; }
     public string DescKey { get; protected set; }
@@ -30,8 +32,9 @@ public class Building
     public int Production { get; protected set; }
     public string[] TechIDs { get; protected set; }
 
-    public Building(string identifier,
+    public BuildingData(string identifier,
         BuilType type,
+        Archetype archetype,
         string prefabName,
         string nameKey,
         string descKey,
@@ -49,6 +52,7 @@ public class Building
         Cost = cost;
         Lv = lv;
         Type = type;
+        Arche = archetype;
         PrefabName = prefabName;
         NameKey = nameKey;
         DescKey = descKey;

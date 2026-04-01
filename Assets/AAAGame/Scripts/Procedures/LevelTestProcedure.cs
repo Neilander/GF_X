@@ -52,7 +52,7 @@ public class LevelTestProcedure : ProcedureBase
                     break;
                 case EntityPresetPointType.Buil_Base:
                     EntityParams buildingParams = EntityParams.Create(point.Position);
-                    Building buildingData = new Building("Buil_Base_Lv0", BuilType.Base, "Buil_Base", "Buil_Base", "Buil_Base", 0, 0, 1, 0, 0, null, null, 0, null);
+                    BuildingData buildingData = new BuildingData("Buil_Base_Lv0", BuilType.Base, Archetype.Coding, "Buil_Base", "Buil_Base", "Buil_Base", 0, 0, 1, 0, 0, null, null, 0, null);
                     buildingParams.Set(BuildingEntity.P_BuildingData, buildingData);
                     GF.Entity.ShowEntity<BuildingEntity>("Building/Buil_Base", Const.EntityGroup.Building, buildingParams);
                     break;

@@ -8,7 +8,7 @@ using UnityGameFramework.Runtime;
 public class BuildingEntity : EntityBase
 {
     public const string P_BuildingData = "BuildingData";
-    public Building buildingData;
+    public BuildingData buildingData;
     public bool HasInteractionPanel => true; // 先占位，后续根据所有者等条件判断
     public bool HasUnlockedUpgrade
     {
@@ -18,7 +18,7 @@ public class BuildingEntity : EntityBase
                 return false;
 
             //return BuildManager.SatisfyBuildCondition(UpgradeID);
-            return Building.GetUpgradeID(buildingData.Identifier) != null; // 先占位，只要有升级ID就认为有升级
+            return BuildingData.GetUpgradeID(buildingData.Identifier) != null; // 先占位，只要有升级ID就认为有升级
         }
     }
 
@@ -30,7 +30,7 @@ public class BuildingEntity : EntityBase
         // 从 EntityParams 注入 buildingData（若为占位点，可能为空）
         buildingData = null;
         if (Params != null && Params.TryGet<VarObject>(P_BuildingData, out var varObj) && varObj != null)
-            buildingData = varObj.Value as Building;
+            buildingData = varObj.Value as BuildingData;
 
         if (HasInteractionPanel || HasUnlockedUpgrade)
         {
@@ -73,7 +73,7 @@ public class BuildingEntity : EntityBase
             string displayName = buildingData.Lv == 0 ? LocalizationTextDataModel.GetText("InteractOption_Build") : LocalizationTextDataModel.GetText("InteractOption_Upgrade");
 
             InteractionParams @params = InteractionParams.Create();
-            @params.Set<VarString>("UpgradeId", Building.GetUpgradeID(buildingData.Identifier));
+            @params.Set<VarString>("UpgradeId", BuildingData.GetUpgradeID(buildingData.Identifier));
 
             host.AddOption<DeviceUpgradeInteractionOption>(InputKey.InteractionSecondary, displayName, @params);
         }
