@@ -33,3 +33,22 @@ Builtin.Runtime.csproj
 Hotfix.csproj
 .csproj
 Assets/AAAGame/Font/Common/AlibabaPuHuiTi-3-85-Bold SDF.asset
+andywiecko.BurstTriangulator.csproj
+AstarPackageToolsEditor.csproj
+AstarPathfindingProject.csproj
+AstarPathfindingProjectEditor.csproj
+DOTween.Extension.csproj
+Drawing.csproj
+DrawingEditor.csproj
+DrawingPackageToolsEditor.csproj
+GameFramework.csproj
+PackageTools.csproj
+UniTask.Addressables.csproj
+UniTask.csproj
+UniTask.DOTween.csproj
+UniTask.Editor.csproj
+UniTask.Linq.csproj
+UniTask.TextMeshPro.csproj
+UnityGameFramework.Editor.csproj
+UnityGameFramework.Runtime.csproj
+ZString.csproj

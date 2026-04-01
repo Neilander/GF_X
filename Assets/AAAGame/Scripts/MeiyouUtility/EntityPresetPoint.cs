@@ -6,4 +6,4 @@ public class EntityPresetPoint : MonoBehaviour
     public string Identifier;
     public EntityPresetPointType PointType;
 }
-public enum EntityPresetPointType { Spawn, Respawn, Patrol, Device }
+public enum EntityPresetPointType { Spawn, Respawn, Patrol, Device, Buil_Base, Buil_Army, Buil_Prod, Buil_Tech, Buil_Def }
