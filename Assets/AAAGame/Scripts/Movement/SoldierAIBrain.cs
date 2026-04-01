@@ -69,7 +69,17 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         Attack = false;
         _desiredMoveDir = Vector3.zero;
 
-        if (self.IsDestroyed() || !self.Alive) return;
+        if (!self.Alive) return;
+        
+        // 检查实体是否已被销毁
+        try
+        {
+            Vector3 test = self.Position;
+        }
+        catch (MissingReferenceException)
+        {
+            return;
+        }
 
         // 惰性刷新领袖
         if (_leader == null || !_leader.Alive)
@@ -189,14 +199,19 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     private void TickFollow(IEntityContext self, float dt)
     {
-        if (self.IsDestroyed()) return;
-
-        if (_leader.IsDestroyed() || !_leader.Alive)
+        if (_leader == null || !_leader.Alive)
         {
-            _leader = null;
-            _joinedGroup = false;
-            State = SoldierState.Idle;
             self.MoveComp.StopMove();
+            return;
+        }
+        
+        // 检查实体是否已被销毁
+        try
+        {
+            Vector3 test = self.Position;
+        }
+        catch (MissingReferenceException)
+        {
             return;
         }
 
@@ -208,39 +223,52 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             ? GroupMoveManager.Instance.Coordinator.LeaderEquilibriumRadius
             : 1.5f;
         float deadZoneOuter = leaderEqR + _deadZoneRange;
-        float distToLeader = HorizontalDist(self.Position, _leader.Position);
-
-        if (distToLeader <= deadZoneOuter)
+        // 检查领袖是否已被销毁
+        try
         {
-            // 在死区内：不主动移动，随波逐流，只接收士兵间的 LJ 力
-            if (!_inDeadZone)
+            float distToLeader = HorizontalDist(self.Position, _leader.Position);
+
+            if (distToLeader <= deadZoneOuter)
             {
-                _inDeadZone = true;
-                _deadZoneTarget = null;
-                self.MoveComp.StopMove();
-                GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.ReferenceId}] 进入死区 dist={distToLeader:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+                // 在死区内：不主动移动，随波逐流，只接收士兵间的 LJ 力
+                if (!_inDeadZone)
+                {
+                    _inDeadZone = true;
+                    _deadZoneTarget = null;
+                    self.MoveComp.StopMove();
+                    GameDebugSettings.Log(DebugCategory.Brain,
+                        $"[{self.ReferenceId}] 进入死区 dist={distToLeader:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+                }
+                SubmitToCoordinator(self, Vector3.zero, speed);
             }
-            SubmitToCoordinator(self, Vector3.zero, speed);
+            else
+            {
+                // 在死区外：NavMesh 导航到 leader 附近死区内的随机点
+                _inDeadZone = false;
+
+                // 没有目标点或目标点离 leader 太远（leader 移动了）→ 重新算
+                if (!_deadZoneTarget.HasValue ||
+                    HorizontalDist(_deadZoneTarget.Value, _leader.Position) > deadZoneOuter)
+                {
+                    _deadZoneTarget = PickRandomDeadZonePoint(_leader.Position, leaderEqR, deadZoneOuter);
+                    GameDebugSettings.Log(DebugCategory.Brain,
+                        $"[{self.ReferenceId}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
+                }
+
+                self.MoveComp.MoveTo(_deadZoneTarget.Value);
+                Vector3 navDir = self.MoveComp.GetNavDirection();
+                Vector3 desiredVel = navDir * speed;
+                SubmitToCoordinator(self, desiredVel, speed);
+            }
         }
-        else
+        catch (MissingReferenceException)
         {
-            // 在死区外：NavMesh 导航到 leader 附近死区内的随机点
-            _inDeadZone = false;
-
-            // 没有目标点或目标点离 leader 太远（leader 移动了）→ 重新算
-            if (!_deadZoneTarget.HasValue ||
-                HorizontalDist(_deadZoneTarget.Value, _leader.Position) > deadZoneOuter)
-            {
-                _deadZoneTarget = PickRandomDeadZonePoint(_leader.Position, leaderEqR, deadZoneOuter);
-                GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.ReferenceId}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
-            }
-
-            self.MoveComp.MoveTo(_deadZoneTarget.Value);
-            Vector3 navDir = self.MoveComp.GetNavDirection();
-            Vector3 desiredVel = navDir * speed;
-            SubmitToCoordinator(self, desiredVel, speed);
+            // 领袖已被销毁，重置目标并返回
+            _leader = null;
+            _joinedGroup = false;
+            State = SoldierState.Idle;
+            self.MoveComp.StopMove();
+            return;
         }
     }
 
@@ -266,33 +294,39 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         Vector3 myPos = self.Position;
 
         var enemy = self.TargetComp?.CurrentTarget;
-        if (enemy.IsDestroyed() || !enemy.Alive)
+        if (enemy == null || !enemy.Alive) return;
+
+        // 检查敌人是否已被销毁
+        try
         {
-            if (self.TargetComp != null) self.TargetComp.CurrentTarget = null;
+            float distToEnemy = HorizontalDist(myPos, enemy.Position);
+            float speed = self.GetProperty(CreatureMainProperty.Speed);
+            float effectiveRange = GetEffectiveAttackRange(self);
+
+            if (distToEnemy <= effectiveRange)
+            {
+                // 在攻击范围内 → 攻击，提交零期望速度，协调器处理重叠推开
+                Attack = true;
+                Move = Vector2.zero;
+                SubmitToCoordinator(self, Vector3.zero, speed);
+            }
+            else
+            {
+                // 先让 NavMesh 算路径
+                self.MoveComp.MoveTo(enemy.Position);
+
+                // 拿 NavMesh 方向作为期望速度提交给协调器
+                Vector3 navDir = self.MoveComp.GetNavDirection();
+                Vector3 desiredVel = navDir * speed;
+                Move = Vector2.zero;
+                SubmitToCoordinator(self, desiredVel, speed);
+            }
+        }
+        catch (MissingReferenceException)
+        {
+            // 敌人已被销毁，重置目标并返回
+            self.TargetComp.CurrentTarget = null;
             return;
-        }
-
-        float distToEnemy = HorizontalDist(myPos, enemy.Position);
-        float speed = self.GetProperty(CreatureMainProperty.Speed);
-        float effectiveRange = GetEffectiveAttackRange(self);
-
-        if (distToEnemy <= effectiveRange)
-        {
-            // 在攻击范围内 → 攻击，提交零期望速度，协调器处理重叠推开
-            Attack = true;
-            Move = Vector2.zero;
-            SubmitToCoordinator(self, Vector3.zero, speed);
-        }
-        else
-        {
-            // 先让 NavMesh 算路径
-            self.MoveComp.MoveTo(enemy.Position);
-
-            // 拿 NavMesh 方向作为期望速度提交给协调器
-            Vector3 navDir = self.MoveComp.GetNavDirection();
-            Vector3 desiredVel = navDir * speed;
-            Move = Vector2.zero;
-            SubmitToCoordinator(self, desiredVel, speed);
         }
     }
 
