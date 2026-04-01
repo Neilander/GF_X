@@ -26,7 +26,8 @@ public class ChangeSceneProcedure : ProcedureBase
     {
         { "Game", "MenuProcedure" },
         { "LevelTestScene", "LevelTestProcedure" },
-        { "CharacterAndSkillTestScene", "CharacterTestProcedure" }
+        { "CharacterAndSkillTestScene", "CharacterTestProcedure" },
+        {"UI_Card","CardGameProcedure"}
     };
 
     /// <summary>
@@ -34,7 +35,7 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> SceneCompatibleProcedures = new Dictionary<string, HashSet<string>>
     {
-        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure"} }, // 新增：远程武器测试流程和Buff测试流程
+        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure","CardGameProcedure"} }, // 新增：远程武器测试流程和Buff测试流程
         { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure", "BuffTestProcedure" } },
         { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure", "BuffTestProcedure" } }
     };
@@ -45,6 +46,7 @@ public class ChangeSceneProcedure : ProcedureBase
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
     {
         "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure" // 新增：远程武器测试流程和Buff测试流程
+        ,"CardGameProcedure"
     };
 
     /// <summary>
@@ -131,6 +133,9 @@ public class ChangeSceneProcedure : ProcedureBase
                 break;
             case "BuffTestProcedure": // 新增：Buff测试流程
                 ChangeState<BuffTestProcedure>(procedureOwner);
+                break;
+            case "CardGameProcedure":
+                ChangeState<CardGameProcedure>(procedureOwner);
                 break;
             
             default:

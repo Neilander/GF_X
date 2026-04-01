@@ -5,6 +5,7 @@ using System.IO;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace UGF.EditorTools
 {
@@ -75,23 +76,26 @@ namespace UGF.EditorTools
 
             if (tableFileChangedList.Count > 0)
             {
-                var changedFiles = GetMainExcelFiles(GameDataType.DataTable, appConfigs.DataTables, tableFileChangedList);
-                GameDataGenerator.RefreshAllDataTable(changedFiles);
-                if (changedFiles.Contains(ConstEditor.UITableExcelFullPath))
-                {
-                    GameDataGenerator.GenerateUIFormNamesScript();
-                }
-                if (changedFiles.Contains(ConstEditor.EntityGroupTableExcelFullPath) ||
-                        changedFiles.Contains(ConstEditor.SoundGroupTableExcelFullPath) ||
-                        changedFiles.Contains(ConstEditor.UIGroupTableExcelFullPath) ||
-                        changedFiles.Contains(ConstEditor.EntityGroupTableExcelFullPath))
-                {
-                    GameDataGenerator.GenerateGroupEnumScript();
-                }
-                foreach (var item in changedFiles)
-                {
-                    GFBuiltin.Log($"-----------------自动刷新DataTable:{item}-----------------");
-                }
+
+
+                 var changedFiles = GetMainExcelFiles(GameDataType.DataTable, appConfigs.DataTables, tableFileChangedList);
+               
+                  GameDataGenerator.RefreshAllDataTable(changedFiles);
+                 if (changedFiles.Contains(ConstEditor.UITableExcelFullPath))
+                 {
+                     GameDataGenerator.GenerateUIFormNamesScript();
+                 }
+                 if (changedFiles.Contains(ConstEditor.EntityGroupTableExcelFullPath) ||
+                         changedFiles.Contains(ConstEditor.SoundGroupTableExcelFullPath) ||
+                         changedFiles.Contains(ConstEditor.UIGroupTableExcelFullPath) ||
+                         changedFiles.Contains(ConstEditor.EntityGroupTableExcelFullPath))
+                 {
+                     GameDataGenerator.GenerateGroupEnumScript();
+                 }
+                 foreach (var item in changedFiles)
+                 {
+                     GFBuiltin.Log($"-----------------自动刷新DataTable:{item}-----------------");
+                 }
                 tableFileChangedList.Clear();
             }
             if (configFileChangedList.Count > 0)
@@ -128,10 +132,13 @@ namespace UGF.EditorTools
             foreach (var changedFile in changedFiles)
             {
                 var relativePathNoExt = GameDataGenerator.GetGameDataExcelRelativePath(tp, changedFile);
+                
                 foreach (var mainName in relativeMainFiles)
                 {
+                   // Debug.Log(mainName+"  "+relativePathNoExt);
                     if (relativePathNoExt.CompareTo(mainName) == 0 || relativePathNoExt.StartsWith(mainName + ConstBuiltin.AB_TEST_TAG))
                     {
+                        
                         var mainExcelFullPath = GameDataGenerator.GameDataExcelRelative2FullPath(tp, mainName);
                         if (!result.Contains(mainExcelFullPath))
                         {
