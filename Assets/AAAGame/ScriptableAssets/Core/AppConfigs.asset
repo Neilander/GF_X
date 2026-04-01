@@ -41,6 +41,7 @@ MonoBehaviour:
   - Japanese
   - Korean
   mProcedures:
+  - BuffTestProcedure
   - ChangeSceneProcedure
   - CharacterTestProcedure
   - GameOverProcedure
