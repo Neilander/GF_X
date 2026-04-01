@@ -81,11 +81,17 @@ public class MAEntity : CompCreature, IEntityContext
         _buffComp = newBuffComp;
 
         // 应用出生自带的 Buff
-        if (userData is EntityParams ep && ep.StartBuffs != null)
+        if (userData is EntityParams ep)
         {
-            for (int i = 0; i < ep.StartBuffs.Count; i++)
+            Debug.Log($"MAEntity.OnShow: 准备应用初始Buff，数量={ep.StartBuffs?.Count ?? 0}");
+            if (ep.StartBuffs != null)
             {
-                _buffComp.AddBuff(ep.StartBuffs[i], this);
+                for (int i = 0; i < ep.StartBuffs.Count; i++)
+                {
+                    BuffData buff = ep.StartBuffs[i];
+                    Debug.Log($"MAEntity.OnShow: 应用Buff[{i}]: {buff.id}");
+                    _buffComp.AddBuff(buff, this);
+                }
             }
         }
 
@@ -107,9 +113,14 @@ public class MAEntity : CompCreature, IEntityContext
     public void OnKill(MAEntity target)
     {
         // 触发击杀回调，供Buff系统使用
+        Debug.Log($"MAEntity.OnKill被调用: 宿主ID={Id}, 目标ID={target?.Id}");
         if (_buffComp != null)
         {
             _buffComp.OnKill(target);
+        }
+        else
+        {
+            Debug.LogError($"MAEntity.OnKill: Buff组件未初始化");
         }
     }
 
@@ -162,10 +173,13 @@ public class MAEntity : CompCreature, IEntityContext
         if (CanRun(atkComp))
             atkComp.Attack(dt);
 
-        if (CanRun(durationMoveEffectComp))
-            durationMoveEffectComp.ApplyEffect(dt);
+        if (Alive)
+        {
+            if (CanRun(durationMoveEffectComp))
+                durationMoveEffectComp.ApplyEffect(dt);
 
-        moveExecutor.Execute();
+            moveExecutor.Execute();
+        }
     }
 
     #region Move and Attack

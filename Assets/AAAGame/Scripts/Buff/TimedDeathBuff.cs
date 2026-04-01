@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -21,6 +21,8 @@ public class TimedDeathBuff : BuffCallback
         // 检查宿主是否还存活
         if (currentHost != null && currentHost.Alive)
         {
+            GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 定时死亡Buff生效，单位即将死亡");
+            
             // 获取实体并调用死亡方法
             Entity entity = GF.Entity.GetEntity(currentHost.Id);
             if (entity != null && entity.gameObject != null)
@@ -28,6 +30,8 @@ public class TimedDeathBuff : BuffCallback
                 SoldierEntity soldier = entity.gameObject.GetComponent<SoldierEntity>();
                 if (soldier != null)
                 {
+                    GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位类型: {soldier.UnitIndex}, 当前生命值: {soldier.health}");
+                    
                     // 通过TakeDamage触发死亡逻辑，这样Alive会被正确设置为false
                     soldier.TakeDamage(soldier.health, HealthModifyType.reduce);
                     
@@ -36,6 +40,8 @@ public class TimedDeathBuff : BuffCallback
                     // 触发血量变化事件，让血条知道单位已死亡
                     float maxHealth = (float)soldier.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                     GF.Event.Fire(soldier, CreatureHealthChangedEventArgs.Create(currentHost.Id, 0f, maxHealth, -maxHealth));
+                    
+                    GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位已死亡并隐藏");
                 }
             }
             

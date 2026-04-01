@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
 
@@ -26,7 +26,16 @@ public static class SoldierFactory
 
         // 添加初始Buff到StartBuffs列表
         paramsData.StartBuffs = new System.Collections.Generic.List<BuffData>();
+        Debug.Log($"SoldierFactory.ShowSoldier: 开始为单位类型[{index}]添加初始Buff");
         AddInitialBuffs(paramsData.StartBuffs, index);
+        Debug.Log($"SoldierFactory.ShowSoldier: Buff添加完成，数量={paramsData.StartBuffs.Count}");
+        foreach (BuffData buff in paramsData.StartBuffs)
+        {
+            Debug.Log($"SoldierFactory.ShowSoldier: Buff[{buff.id}]已添加");
+        }
+
+        // 移除OnShowCallback，因为CreaturePropertyManager在回调执行后才初始化
+        // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
 
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, Const.EntityGroup.Level, paramsData);
     }
@@ -56,10 +65,12 @@ public static class SoldierFactory
         {
             case "coder":
                 buffList.Add(TimedDeathBuff.CreateTimedDeath(35f));
+                Debug.Log($"为码农单位添加TimedDeathBuff");
                 break;
                 
             case "bone_reaper":
                 buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
+                Debug.Log($"为剔骨狂魔单位添加OnKillHealBuff");
                 break;
         }
     }

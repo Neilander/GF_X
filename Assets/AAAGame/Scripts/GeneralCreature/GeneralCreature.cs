@@ -85,17 +85,32 @@ public class GeneralCreature : EntityBase, ITargetable
                 // 触发击杀回调
                 if (attacker != null)
                 {
-                    // 获取攻击者实体（通过转换为MAEntity获取Id）
+                    Debug.Log($"GeneralCreature.TakeDamage: 触发击杀回调，攻击者={attacker.GetType().Name}");
+                    // 尝试从攻击者获取MAEntity实例
                     MAEntity attackerEntity = attacker as MAEntity;
                     if (attackerEntity != null)
                     {
+                        Debug.Log($"GeneralCreature.TakeDamage: 攻击者是MAEntity，ID={attackerEntity.Id}");
                         Entity entity = GF.Entity.GetEntity(attackerEntity.Id);
                         SoldierEntity soldier = entity?.gameObject.GetComponent<SoldierEntity>();
                         if (soldier != null)
                         {
+                            Debug.Log($"GeneralCreature.TakeDamage: 调用soldier.OnKill，攻击者单位={soldier.UnitIndex}, ID={soldier.Id}");
                             soldier.OnKill(victim);
                         }
+                        else
+                        {
+                            Debug.LogError($"GeneralCreature.TakeDamage: 攻击者不是SoldierEntity类型");
+                        }
                     }
+                    else
+                    {
+                        Debug.LogError($"GeneralCreature.TakeDamage: 攻击者不是MAEntity类型，无法触发击杀回调");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"GeneralCreature.TakeDamage: 攻击者为null，无法触发击杀回调");
                 }
             }
             

@@ -112,16 +112,27 @@ public class Projectile : EntityBase
             if (_weaponData != null)
             {
                 // 尝试将IEntityContext转换为GeneralCreature以支持攻击者参数
-                if (_target is GeneralCreature creature)
-                {
-                    // 造成伤害，传递攻击者参数
-                    creature.TakeDamage(_weaponData.Damage, HealthModifyType.reduce, _attacker);
-                }
-                else
-                {
-                    // 回退到接口定义的方法
-                    _target.TakeDamage(_weaponData.Damage, HealthModifyType.reduce);
-                }
+                    if (_target is GeneralCreature creature)
+                    {
+                        // 确保攻击者是MAEntity类型
+                        MAEntity attackerEntity = _attacker as MAEntity;
+                        if (attackerEntity != null)
+                        {
+                            // 造成伤害，传递攻击者参数
+                            creature.TakeDamage(_weaponData.Damage, HealthModifyType.reduce, attackerEntity);
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Projectile: 攻击者不是MAEntity类型，无法传递击杀回调");
+                            // 回退到不传递攻击者的方法
+                            _target.TakeDamage(_weaponData.Damage, HealthModifyType.reduce);
+                        }
+                    }
+                    else
+                    {
+                        // 回退到接口定义的方法
+                        _target.TakeDamage(_weaponData.Damage, HealthModifyType.reduce);
+                    }
             }
         }
 
