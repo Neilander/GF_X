@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using DG.Tweening;
 using Cinemachine;
 using UnityEngine.Rendering.Universal;
@@ -49,13 +49,18 @@ public class CameraController : MonoBehaviour
     {
         //var curRenderMode = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline.GetType().Name;
         var urpCamData = mainCam.GetComponent<UniversalAdditionalCameraData>();
-        var uiCamData = GFBuiltin.UICamera.GetComponent<UniversalAdditionalCameraData>();
-        if (uiCamData.renderType != CameraRenderType.Overlay)
+        if (urpCamData != null && GFBuiltin.UICamera != null)
         {
-            uiCamData.renderType = CameraRenderType.Overlay;
+            var uiCamData = GFBuiltin.UICamera.GetComponent<UniversalAdditionalCameraData>();
+            if (uiCamData != null)
+            {
+                if (uiCamData.renderType != CameraRenderType.Overlay)
+                {
+                    uiCamData.renderType = CameraRenderType.Overlay;
+                }
+                urpCamData.cameraStack.Add(GFBuiltin.UICamera);
+            }
         }
-        urpCamData.cameraStack.Add(GFBuiltin.UICamera);
-
     }
     public void SetViewZoom(float height)
     {

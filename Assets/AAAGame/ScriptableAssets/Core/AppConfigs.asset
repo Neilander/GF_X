@@ -48,6 +48,5 @@ MonoBehaviour:
   - LevelTestProcedure
   - MenuProcedure
   - PreloadProcedure
-  - LaunchProcedure
-  - LoadHotfixDllProcedure
-  - UpdateResourcesProcedure
+  - RangedWeaponTestProcedure
+  - SampleProcedure

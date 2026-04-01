@@ -1256,8 +1256,12 @@ MonoBehaviour:
     - {fileID: 2842594168430646957}
     VarType: UnityEngine.UI.Image
     VarPrefix: 0
+  m_UIAnimationType: 0
   m_OpenAnimation: {fileID: 0}
   m_CloseAnimation: {fileID: 0}
+  m_ReverseOpenAnimAsClose: 1
+  m_OpenAnimationName: 
+  m_CloseAnimationName: 
   varTxtEnergy: {fileID: 644948387922518014}
   varTxtCoin: {fileID: 5459746011768178925}
   varTxtGem: {fileID: 658673048086433185}

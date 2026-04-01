@@ -1005,9 +1005,12 @@ MonoBehaviour:
     - {fileID: 5726562056061527748}
     VarType: UnityEngine.UI.Button
     VarPrefix: 0
-  topBar: {fileID: 0}
+  m_UIAnimationType: 0
   m_OpenAnimation: {fileID: 1559885986772277550}
   m_CloseAnimation: {fileID: 6268470722720262218}
+  m_ReverseOpenAnimAsClose: 1
+  m_OpenAnimationName: 
+  m_CloseAnimationName: 
   varStarToggleArr:
   - {fileID: 3748370467415918890}
   - {fileID: 4444115709431976680}
@@ -1189,12 +1192,13 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls: []
   m_PlayOnAwake: 0
+  m_ResetOnAwake: 0
   m_Delay: 0.1
   m_Ease: 13
   m_Loops: 1
   m_LoopType: 0
   m_UpdateType: 0
-  m_Snapping: 0
+  m_IgnoreTimeScale: 1
   m_OnPlay:
     m_PersistentCalls:
       m_Calls: []
@@ -1250,12 +1254,13 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls: []
   m_PlayOnAwake: 0
+  m_ResetOnAwake: 0
   m_Delay: 0
   m_Ease: 1
   m_Loops: 1
   m_LoopType: 0
   m_UpdateType: 0
-  m_Snapping: 0
+  m_IgnoreTimeScale: 1
   m_OnPlay:
     m_PersistentCalls:
       m_Calls: []

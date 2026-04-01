@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using AAAGame.Scripts.GeneralCreature;
 using UnityEngine;
 using GameFramework.Resource;
 
@@ -8,6 +9,9 @@ public static class FactoryHelper
     static Dictionary<string, AtkCompFactory> _atkFactories = new();
     static Dictionary<string, MoveCompFactory> _moveFactories = new();
     static Dictionary<string, SkillCompFactory> _skillFactories = new();
+    
+    // 新增：TargetingCompFactory 的缓存字典
+    static Dictionary<string, TargetingCompFactory> _targetingFactories = new();
 
     public static void CreateAtkComp(string factoryPath, MAEntity entity)
     {
@@ -55,6 +59,24 @@ public static class FactoryHelper
             factoryPath,
             SkillCompFactory.SkillFactoryCallBack,
             _skillFactories
+        );
+
+        GF.Resource.LoadAsset(factoryPath, wrappedCallback, entity);
+    }
+
+    // 新增：创建 TargetingComp 的方法
+    public static void CreateTargetingComp(string factoryPath, MAEntity entity)
+    {
+        if (_targetingFactories.TryGetValue(factoryPath, out var factory))
+        {
+            factory.CreateTargetingComp(entity);
+            return;
+        }
+
+        var wrappedCallback = WrapWithCache(
+            factoryPath,
+            TargetingCompFactory.TargetingFactoryCallBack,
+            _targetingFactories
         );
 
         GF.Resource.LoadAsset(factoryPath, wrappedCallback, entity);

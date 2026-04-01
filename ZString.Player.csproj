@@ -56,8 +56,8 @@
     <Compile Include="Assets/Plugins/ZString/ExceptionUtil.cs" />
     <Compile Include="Assets/Plugins/ZString/NestedStringBuilderCreationException.cs" />
     <Compile Include="Assets/Plugins/ZString/Number/FormattingHelpers.cs" />
-    <Compile Include="Assets/Plugins/ZString/Number/Number.Parsing.cs" />
     <Compile Include="Assets/Plugins/ZString/Number/Number.Formatting.cs" />
+    <Compile Include="Assets/Plugins/ZString/Number/Number.Parsing.cs" />
     <Compile Include="Assets/Plugins/ZString/Number/BitOperations.cs" />
     <Compile Include="Assets/Plugins/ZString/Number/Number.NumberToFloatingPointBits.cs" />
     <Compile Include="Assets/Plugins/ZString/Number/BufferEx.cs" />

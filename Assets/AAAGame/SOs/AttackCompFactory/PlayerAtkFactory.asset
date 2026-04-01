@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c73b384df15041768d461c041a5125c4, type: 3}
   m_Name: PlayerAtkFactory
   m_EditorClassIdentifier: 
-  atkAction1: {fileID: 11400000, guid: 251b4b871e064417e85b71b64058c97f, type: 2}
+  atkAction1: {fileID: 11400000, guid: da9ed1871f99f48878e737bca01745e4, type: 2}
   atkAction2: {fileID: 11400000, guid: 354e0796075a14a33a4a6ce4e7a13e90, type: 2}
   atkAction3: {fileID: 11400000, guid: 3711102e511044517b590f72e20711c3, type: 2}

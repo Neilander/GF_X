@@ -1,13 +1,52 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Procedure;
 using UnityGameFramework.Runtime;
 using GameFramework.Fsm;
 using GameFramework.Event;
 using UnityEngine;
+using System.Collections.Generic;
 
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public class ChangeSceneProcedure : ProcedureBase
 {
+    /// <summary>
+    /// 编辑器工具可在运行前设置此字段，控制 "Game" 场景加载后切换到哪个 Procedure
+    /// </summary>
+    public static string SelectedProcedureForGame = "CharacterTestProcedure";
+
+    /// <summary>
+    /// 编辑器工具可在运行前设置此字段，控制 Preload 完成后要加载的场景名称
+    /// </summary>
+    public static string SelectedSceneForGame = "Game";
+
+    /// <summary>
+    /// 场景→默认 Procedure 的映射，用于兼容性校验和回退
+    /// </summary>
+    private static readonly Dictionary<string, string> SceneDefaultProcedure = new Dictionary<string, string>
+    {
+        { "Game", "MenuProcedure" },
+        { "LevelTestScene", "LevelTestProcedure" },
+        { "CharacterAndSkillTestScene", "CharacterTestProcedure" }
+    };
+
+    /// <summary>
+    /// 场景→允许的 Procedure 集合，用于兼容性校验
+    /// </summary>
+    private static readonly Dictionary<string, HashSet<string>> SceneCompatibleProcedures = new Dictionary<string, HashSet<string>>
+    {
+        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure"} }, // 新增：远程武器测试流程
+        { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure" } },
+        { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure" } }
+    };
+
+    /// <summary>
+    /// 已知的有效 Procedure 名称集合
+    /// </summary>
+    public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
+    {
+        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure" // 新增：远程武器测试流程
+    };
+
     /// <summary>
     /// 要加载的场景资源名,相对于场景目录
     /// </summary>
@@ -57,16 +96,42 @@ public class ChangeSceneProcedure : ProcedureBase
             return;
         }
 
-        //场景加载完成,根据不同场景切换对应Procedure
-        switch (nextScene)
+        // 场景-Procedure 兼容性校验：不兼容时回退到场景默认 Procedure
+        string targetProcedure = SelectedProcedureForGame;
+        if (SceneCompatibleProcedures.TryGetValue(nextScene, out var compatible))
         {
-            case "Game":
-                ChangeState<CharacterTestProcedure>(procedureOwner);
-                //ChangeState<MenuProcedure>(procedureOwner);
-                //GF.Sound.PlayBGM("BillieEilishMusic.wav");
+            if (!compatible.Contains(targetProcedure))
+            {
+                string fallback = SceneDefaultProcedure.ContainsKey(nextScene)
+                    ? SceneDefaultProcedure[nextScene]
+                    : "CharacterTestProcedure";
+                Log.Warning("Procedure '{0}' 与场景 '{1}' 不兼容，回退到 '{2}'",
+                    targetProcedure, nextScene, fallback);
+                targetProcedure = fallback;
+            }
+        }
+
+        // 根据 targetProcedure 切换到对应 Procedure
+        switch (targetProcedure)
+        {
+            case "MenuProcedure":
+                ChangeState<MenuProcedure>(procedureOwner);
                 break;
-            case "LevelTestScene":
+            case "GameProcedure":
+                ChangeState<GameProcedure>(procedureOwner);
+                break;
+            case "LevelTestProcedure":
                 ChangeState<LevelTestProcedure>(procedureOwner);
+                break;
+            case "SampleProcedure":
+                ChangeState<SampleProcedure>(procedureOwner);
+                break;
+            case "RangedWeaponTestProcedure": // 新增：远程武器测试流程
+                ChangeState<RangedWeaponTestProcedure>(procedureOwner);
+                break;
+            
+            default:
+                ChangeState<CharacterTestProcedure>(procedureOwner);
                 break;
         }
     }

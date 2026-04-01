@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CharacterTargetingComp 代码讲解</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #0a0a0a; color: #b0b0b0; }
+
+  /* ---- header ---- */
+  header {
+    padding: 36px 48px 28px;
+    border-bottom: 1px solid #222;
+  }
+  header h1 { font-size: 22px; color: #e0e0e0; font-weight: 500; letter-spacing: .5px; }
+  header p  { font-size: 13px; color: #555; margin-top: 8px; font-family: "JetBrains Mono", "Fira Code", monospace; }
+
+  .version-banner {
+    padding: 10px 48px; border-bottom: 1px solid #1a1a1a;
+    font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 11px;
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+  }
+  .version-banner .vb-label { color: #555; }
+  .version-banner .vb-hash { color: #d4a017; }
+  .version-banner .vb-date { color: #666; }
+
+  /* ---- toc ---- */
+  .toc { padding: 18px 48px; border-bottom: 1px solid #1a1a1a; }
+  .toc h2 { font-size: 12px; color: #555; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; font-weight: 400; }
+  .toc a {
+    display: inline-block; margin: 3px 8px 3px 0; padding: 3px 0;
+    color: #777; text-decoration: none; font-size: 13px;
+    border-bottom: 1px solid transparent; transition: all .2s;
+  }
+  .toc a::after { content: " ·"; color: #333; }
+  .toc a:last-child::after { content: ""; }
+  .toc a:hover { color: #e94560; border-bottom-color: #e94560; }
+
+  /* ---- legend ---- */
+  .legend {
+    display: flex; gap: 20px; padding: 14px 48px; border-bottom: 1px solid #1a1a1a;
+    font-size: 12px; color: #555; flex-wrap: wrap;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  /* ---- section ---- */
+  .section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .section:target .section-label { color: #e94560; }
+
+  .code-side, .note-side { padding: 24px 32px; min-height: 60px; }
+  .code-side {
+    border-right: 1px solid #1a1a1a;
+    overflow-x: auto;
+  }
+  .note-side { line-height: 1.8; font-size: 13.5px; padding-left: 36px; }
+  .note-side h3 { color: #ccc; font-size: 14px; margin-bottom: 8px; font-weight: 500; }
+  .note-side p  { margin-bottom: 10px; }
+  .note-side ul { margin-left: 16px; margin-bottom: 10px; }
+  .note-side li { margin-bottom: 3px; }
+  .note-side code { color: #888; background: #151515; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  .note-side strong { color: #d0d0d0; font-weight: 500; }
+
+  /* ---- code block ---- */
+  pre {
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+    font-size: 12.5px; line-height: 1.65; white-space: pre; color: #999;
+  }
+
+  /* ---- highlight strips (left border only, no bg) ---- */
+  .hl-green  { border-left: 2px solid #238933; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-red    { border-left: 2px solid #e94560; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-yellow { border-left: 2px solid #d4a017; padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-blue   { border-left: 2px solid #666;    padding-left: 8px; display: inline-block; width: 100%; }
+  .hl-purple { border-left: 2px solid #9b59b6; padding-left: 8px; display: inline-block; width: 100%; }
+
+  /* ---- code syntax colors ---- */
+  .kw  { color: #cc7a7a; }
+  .tp  { color: #4ec9b0; }
+  .str { color: #8fad7a; }
+  .cm  { color: #555; font-style: italic; }
+  .fn  { color: #b89dcc; }
+  .prop{ color: #7eb87e; }
+
+  /* ---- badge (smaller, subtler) ---- */
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 3px;
+    font-size: 10px; font-weight: 500; margin-right: 4px; vertical-align: middle;
+    letter-spacing: .3px;
+  }
+  .badge-key   { background: #e9456030; color: #e94560; border: 1px solid #e9456040; }
+  .badge-info  { background: #ffffff08; color: #888; border: 1px solid #333; }
+  .badge-warn  { background: #d4a01720; color: #d4a017; border: 1px solid #d4a01740; }
+  .badge-ok    { background: #23893320; color: #238933; border: 1px solid #23893340; }
+  .badge-pattern { background: #9b59b620; color: #9b59b6; border: 1px solid #9b59b640; }
+
+  /* ---- section label ---- */
+  .section-label {
+    grid-column: 1 / -1;
+    padding: 14px 48px 10px;
+    margin-top: 8px;
+    font-size: 13px; font-weight: 500; color: #777;
+    border-top: 1px solid #1a1a1a;
+    letter-spacing: .5px;
+  }
+
+  /* ---- responsive ---- */
+  @media (max-width: 900px) {
+    .section { grid-template-columns: 1fr; }
+    .code-side { border-right: none; border-bottom: 1px solid #1a1a1a; }
+    .note-side { padding-left: 32px; }
+    header, .toc, .legend, .section-label { padding-left: 24px; padding-right: 24px; }
+    .code-side, .note-side { padding-left: 24px; padding-right: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== HEADER ==================== -->
+<header>
+  <h1>CharacterTargetingComp — 代码对照讲解</h1>
+  <p>继承链: <code>CharacterTargetingComp → ITargetingComp → ICapability</code> &nbsp;|&nbsp;
+     工厂: <code>CharacterTargetingFactory → TargetingCompFactory → ScriptableObject</code></p>
+</header>
+
+<div class="version-banner" data-source-hash="574ee538866e5c67beb95cec9386c748">
+  <span><span class="vb-label">源文件:</span> Assets/AAAGame/Scripts/PlayerControl/CharacterTargetingComp.cs</span>
+  <span><span class="vb-label">哈希:</span> <span class="vb-hash">574ee538</span></span>
+  <span><span class="vb-label">生成:</span> <span class="vb-date">2026-03-20</span></span>
+</div>
+
+<!-- ==================== TOC ==================== -->
+<div class="toc">
+  <h2>目录导航</h2>
+  <a href="#sec-interface">① 接口定义</a>
+  <a href="#sec-fields">② 字段 &amp; 属性</a>
+  <a href="#sec-init">③ Init 初始化</a>
+  <a href="#sec-tick-guard">④ Tick 入口守卫</a>
+  <a href="#sec-maintain-enemy">⑤ 维护敌人目标</a>
+  <a href="#sec-maintain-follow">⑥ 维护跟随目标</a>
+  <a href="#sec-scan-timer">⑦ 降频扫描计时器</a>
+  <a href="#sec-scan-enemy">⑧ 扫描最近敌人</a>
+  <a href="#sec-scan-follow">⑨ 扫描跟随目标</a>
+  <a href="#sec-shutdown">⑩ ShutDown / Resume</a>
+  <a href="#sec-factory">⑪ 工厂模式</a>
+  <a href="#sec-base-factory">⑫ 工厂基类</a>
+</div>
+
+<!-- ==================== LEGEND ==================== -->
+<div class="legend">
+  <span><span class="dot" style="background:#238933"></span> 核心逻辑 / 关键路径</span>
+  <span><span class="dot" style="background:#e94560"></span> 注意点 / 易错</span>
+  <span><span class="dot" style="background:#d4a017"></span> 可调参数 / 配置</span>
+  <span><span class="dot" style="background:#999"></span> 设计模式 / 架构</span>
+  <span><span class="dot" style="background:#9b59b6"></span> 工厂 / 注入</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Interface -->
+<!-- ============================================================ -->
+<div class="section" id="sec-interface">
+  <div class="section-label">① ITargetingComp 接口定义（ITargetingComp.cs）</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">public interface</span> <span class="tp">ITargetingComp</span> : <span class="tp">ICapability</span>
+{
+    <span class="kw">void</span> <span class="fn">Init</span>(<span class="tp">IEntityContext</span> ctx);
+    <span class="kw">void</span> <span class="fn">UpdateTargeting</span>(<span class="kw">float</span> deltaTime);
+
+    <span class="cm">// 供外部（如 AI Brain 或 UI）读取的当前目标</span>
+<span class="hl-blue">    <span class="tp">IEntityContext</span> <span class="prop">CurrentTarget</span> { <span class="kw">get</span>; <span class="kw">set</span>; }
+    <span class="tp">IEntityContext</span> <span class="prop">FollowTarget</span>  { <span class="kw">get</span>; }</span>
+
+    <span class="cm">// 索敌和遗忘半径</span>
+<span class="hl-yellow">    <span class="kw">float</span> <span class="prop">AggroRange</span>       { <span class="kw">get</span>; <span class="kw">set</span>; }
+    <span class="kw">float</span> <span class="prop">ForgetRange</span>      { <span class="kw">get</span>; <span class="kw">set</span>; }
+    <span class="kw">float</span> <span class="prop">FollowSearchRange</span>{ <span class="kw">get</span>; <span class="kw">set</span>; }</span>
+}
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">架构</span> 接口即契约</h3>
+    <p>这个接口定义了 <strong>所有 Targeting 组件必须实现的能力</strong>，继承自 <code>ICapability</code>，说明它是 Entity 的"可插拔能力"之一。</p>
+    <p><span class="badge badge-info">蓝色</span> <strong>两个目标属性</strong>：</p>
+    <ul>
+      <li><code>CurrentTarget</code> — 当前锁定的敌人（可读可写，Brain 可以强制覆盖）</li>
+      <li><code>FollowTarget</code> — 跟随对象（只读，只由组件自己维护）</li>
+    </ul>
+    <p><span class="badge badge-warn">黄色</span> <strong>三个距离参数</strong>：由工厂的 SO 注入初始值，运行时也可改。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Fields & Properties -->
+<!-- ============================================================ -->
+<div class="section" id="sec-fields">
+  <div class="section-label">② CharacterTargetingComp — 字段 &amp; 属性</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">public class</span> <span class="tp">CharacterTargetingComp</span> : <span class="tp">ITargetingComp</span>
+{
+<span class="hl-blue">    <span class="kw">private</span> <span class="tp">IEntityContext</span> _ctx;</span>
+    <span class="kw">public</span> <span class="tp">IEntityContext</span> <span class="prop">CurrentTarget</span> { <span class="kw">get</span>; <span class="kw">set</span>; }
+    <span class="kw">public</span> <span class="tp">IEntityContext</span> <span class="prop">FollowTarget</span>  { <span class="kw">get</span>; <span class="kw">private set</span>; }
+
+<span class="hl-yellow">    <span class="kw">public float</span> <span class="prop">AggroRange</span>        { <span class="kw">get</span>; <span class="kw">set</span>; } = <span class="str">6f</span>;
+    <span class="kw">public float</span> <span class="prop">ForgetRange</span>       { <span class="kw">get</span>; <span class="kw">set</span>; } = <span class="str">8f</span>;
+    <span class="kw">public float</span> <span class="prop">FollowSearchRange</span> { <span class="kw">get</span>; <span class="kw">set</span>; } = <span class="str">30f</span>;</span>
+
+<span class="hl-red">    <span class="kw">private float</span> _scanTimer = <span class="str">0f</span>;
+    <span class="kw">private const float</span> SCAN_INTERVAL = <span class="str">0.2f</span>;</span>
+}
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 数据结构总览</h3>
+    <p><span class="badge badge-info">蓝色</span> <code>_ctx</code> — 自身 Entity 的上下文引用，通过它读取自身位置、阵营等信息。这是 <strong>所有逻辑的基础</strong>。</p>
+    <p><span class="badge badge-warn">黄色</span> <strong>三个距离参数</strong>（默认值仅是后备，实际由工厂 SO 覆盖）：</p>
+    <ul>
+      <li><code>AggroRange = 6</code> — 索敌半径</li>
+      <li><code>ForgetRange = 8</code> — 遗忘半径（&gt; 索敌，形成滞后区间）</li>
+      <li><code>FollowSearchRange = 30</code> — 跟随搜索范围</li>
+    </ul>
+    <p><span class="badge badge-key">红色</span> <strong>降频计时器</strong>：每 <strong>0.2 秒</strong> 才做一次全量扫描，避免每帧遍历全部实体。这是性能优化的关键。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Init -->
+<!-- ============================================================ -->
+<div class="section" id="sec-init">
+  <div class="section-label">③ Init — 初始化</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">public void</span> <span class="fn">Init</span>(<span class="tp">IEntityContext</span> ctx)
+{
+<span class="hl-green">    _ctx = ctx;
+    CurrentTarget = <span class="kw">null</span>;
+    FollowTarget  = <span class="kw">null</span>;
+    _scanTimer    = <span class="str">0f</span>;</span>
+}
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-ok">绿色</span> 干净的初始化</h3>
+    <p>做三件事：</p>
+    <ol>
+      <li>保存 Entity 上下文引用</li>
+      <li>清空两个目标</li>
+      <li>重置扫描计时器</li>
+    </ol>
+    <p>注意：<strong>Init 后还需要工厂设置 AggroRange / ForgetRange</strong>，这两步在 Factory 里顺序执行（先 Init → 再赋值）。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Tick guard -->
+<!-- ============================================================ -->
+<div class="section" id="sec-tick-guard">
+  <div class="section-label">④ UpdateTargeting — 入口守卫</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="kw">public void</span> <span class="fn">UpdateTargeting</span>(<span class="kw">float</span> deltaTime)
+{
+<span class="hl-red">    <span class="kw">if</span> (_ctx == <span class="kw">null</span>) <span class="kw">return</span>;</span>
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">红色</span> 空指针保护</h3>
+    <p>如果还没 Init 或者被错误调用，直接返回。<strong>防御性编程</strong>的基本操作。</p>
+    <p>这个函数由 Entity 的 <code>Update</code> 每帧调用（通过 Tick 链），传入 <code>deltaTime</code>。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Maintain enemy -->
+<!-- ============================================================ -->
+<div class="section" id="sec-maintain-enemy">
+  <div class="section-label">⑤ 维护当前敌人目标（每帧执行）</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="cm">// 1. 维护当前敌人目标</span>
+    <span class="kw">if</span> (CurrentTarget != <span class="kw">null</span>)
+    {
+        <span class="kw">float</span> dist = <span class="tp">Vector3</span>.<span class="fn">Distance</span>(_ctx.Position, CurrentTarget.Position);
+<span class="hl-red">        <span class="kw">if</span> (dist &gt; ForgetRange || !CurrentTarget.Alive)
+            CurrentTarget = <span class="kw">null</span>;</span>
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> "遗忘"机制</h3>
+    <p>每帧检查已有的敌人目标是否还有效：</p>
+    <ul>
+      <li><span class="badge badge-key">红色</span> 超出 <code>ForgetRange</code> → 丢失目标</li>
+      <li><span class="badge badge-key">红色</span> 目标死了 → 丢失目标</li>
+    </ul>
+    <p>⚠️ <strong>设计要点</strong>：<code>ForgetRange(8) > AggroRange(6)</code>，形成 <strong>滞后区间</strong>——不会出现"刚锁定就丢失"的抖动现象。这是经典的"迟滞比较器"思路。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Maintain follow -->
+<!-- ============================================================ -->
+<div class="section" id="sec-maintain-follow">
+  <div class="section-label">⑥ 维护跟随目标（每帧执行）</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="cm">// 2. 维护跟随目标</span>
+    <span class="kw">if</span> (FollowTarget != <span class="kw">null</span>)
+    {
+        <span class="kw">float</span> dist = <span class="tp">Vector3</span>.<span class="fn">Distance</span>(_ctx.Position, FollowTarget.Position);
+<span class="hl-red">        <span class="kw">if</span> (dist &gt; FollowSearchRange || !FollowTarget.Alive)
+            FollowTarget = <span class="kw">null</span>;</span>
+    }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-ok">逻辑</span> 跟随目标失效判定</h3>
+    <p>和敌人目标的维护完全对称：</p>
+    <ul>
+      <li>距离超出 <code>FollowSearchRange(30)</code> → 放弃跟随</li>
+      <li>跟随对象死亡 → 放弃跟随</li>
+    </ul>
+    <p>注意这部分是 <strong>每帧都执行</strong> 的——维护阶段不受降频影响，保证丢失目标的反应是即时的。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Scan timer -->
+<!-- ============================================================ -->
+<div class="section" id="sec-scan-timer">
+  <div class="section-label">⑦ 降频扫描计时器</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+    <span class="cm">// 3. 降频扫描新目标</span>
+<span class="hl-green">    _scanTimer += deltaTime;
+    <span class="kw">if</span> (_scanTimer &gt;= SCAN_INTERVAL)
+    {
+        _scanTimer = <span class="str">0f</span>;</span>
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-ok">绿色</span> 性能优化：降频</h3>
+    <p><code>SCAN_INTERVAL = 0.2s</code>，即 <strong>每秒最多扫描 5 次</strong>，而不是每帧 60 次。</p>
+    <p><strong>为什么这么做？</strong> 下面的扫描要遍历 <code>EntityRegistry.AllEntities</code>，是 O(n) 操作。如果场上有 200 个实体，每帧每个实体都扫一遍 = 200×200×60 = <strong>240 万次/秒</strong>。降频后变成 200×200×5 = <strong>20 万次/秒</strong>，减少了 12 倍。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Scan enemy -->
+<!-- ============================================================ -->
+<div class="section" id="sec-scan-enemy">
+  <div class="section-label">⑧ 扫描最近敌人</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+        <span class="cm">// 找敌人：遍历 EntityRegistry，按阵营和距离</span>
+        <span class="kw">if</span> (CurrentTarget == <span class="kw">null</span>)
+        {
+            <span class="tp">IEntityContext</span> nearest = <span class="kw">null</span>;
+            <span class="kw">float</span> nearestDist = AggroRange;
+<span class="hl-green">            <span class="kw">var</span> all = <span class="tp">EntityRegistry</span>.AllEntities;
+            <span class="kw">for</span> (<span class="kw">int</span> i = <span class="str">0</span>; i &lt; all.Count; i++)
+            {
+                <span class="kw">var</span> other = all[i];</span>
+<span class="hl-red">                <span class="kw">if</span> (other == _ctx || !other.Alive) <span class="kw">continue</span>;
+                <span class="kw">if</span> (other.Side == _ctx.Side || other.Side == <span class="tp">SideType</span>.NoSide) <span class="kw">continue</span>;</span>
+
+                <span class="kw">float</span> dist = <span class="tp">Vector3</span>.<span class="fn">Distance</span>(_ctx.Position, other.Position);
+<span class="hl-green">                <span class="kw">if</span> (dist &lt; nearestDist)
+                {
+                    nearestDist = dist;
+                    nearest = other;
+                }</span>
+            }
+            CurrentTarget = nearest;
+        }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-key">核心</span> 索敌算法</h3>
+    <p><strong>只在 CurrentTarget == null 时才搜索</strong>（已有目标就不换人，保持"粘性"）。</p>
+    <p><span class="badge badge-ok">绿色</span> <strong>遍历策略</strong>：</p>
+    <ul>
+      <li>用 <code>for</code> 而非 <code>foreach</code> 避免 GC</li>
+      <li>用 <code>nearestDist</code> 初始化为 <code>AggroRange</code>，同时做"最近"和"范围内"两重筛选</li>
+    </ul>
+    <p><span class="badge badge-key">红色</span> <strong>过滤条件</strong>（易错点！）：</p>
+    <ul>
+      <li><code>other == _ctx</code> — 排除自己</li>
+      <li><code>!other.Alive</code> — 排除已死亡实体</li>
+      <li><code>other.Side == _ctx.Side</code> — 排除友军</li>
+      <li><code>other.Side == NoSide</code> — 排除中立实体（如场景物件）</li>
+    </ul>
+    <p>💡 注意：这里没有用 Physics.OverlapSphere，而是直接遍历全局注册表 + 距离判断。适合实体数量可控的场景。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Scan follow -->
+<!-- ============================================================ -->
+<div class="section" id="sec-scan-follow">
+  <div class="section-label">⑨ 扫描跟随目标（玩家）</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+        <span class="cm">// 找跟随目标：同阵营的领袖/玩家</span>
+        <span class="kw">if</span> (FollowTarget == <span class="kw">null</span>)
+        {
+<span class="hl-green">            <span class="kw">var</span> player = <span class="tp">EntityRegistry</span>.Player;</span>
+            <span class="kw">if</span> (player != <span class="kw">null</span> && player.Alive && player.Side == _ctx.Side)
+            {
+                <span class="kw">float</span> dist = <span class="tp">Vector3</span>.<span class="fn">Distance</span>(_ctx.Position, player.Position);
+<span class="hl-green">                <span class="kw">if</span> (dist &lt;= FollowSearchRange)
+                    FollowTarget = player;</span>
+            }
+        }
+    }  <span class="cm">// end scan interval</span>
+}  <span class="cm">// end UpdateTargeting</span>
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-ok">逻辑</span> 跟随目标 = 玩家</h3>
+    <p>当前实现非常简单：跟随目标 <strong>固定为玩家</strong>（<code>EntityRegistry.Player</code>）。</p>
+    <p>条件：</p>
+    <ul>
+      <li>玩家存在且存活</li>
+      <li>同阵营</li>
+      <li>在 <code>FollowSearchRange</code> 范围内</li>
+    </ul>
+    <p>⚠️ 如果将来要支持"跟随指挥官"、"跟随编队中心"等功能，这里需要扩展。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: ShutDown / Resume -->
+<!-- ============================================================ -->
+<div class="section" id="sec-shutdown">
+  <div class="section-label">⑩ ShutDown / Resume — 生命周期</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="hl-yellow"><span class="kw">public void</span> <span class="fn">ShutDown</span>()
+{
+    CurrentTarget = <span class="kw">null</span>;
+    FollowTarget  = <span class="kw">null</span>;
+}</span>
+<span class="kw">public void</span> <span class="fn">Resume</span>() { }
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-warn">黄色</span> 清理 &amp; 恢复</h3>
+    <p><code>ShutDown</code> — Entity 被回收/销毁时调用，清空引用防止内存泄漏。</p>
+    <p><code>Resume</code> — 当前空实现。预留给"暂停→恢复"场景（如 Entity 被冻结后解冻）。</p>
+    <p>注意 ShutDown <strong>没有清空 <code>_ctx</code></strong>，如果需要完全断开引用，可能需要加上。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Factory -->
+<!-- ============================================================ -->
+<div class="section" id="sec-factory">
+  <div class="section-label">⑪ CharacterTargetingFactory — 工厂实现</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="hl-purple"><span class="cm">[CreateAssetMenu(fileName = "CharacterTargetingFactory",
+                menuName = "Targeting Factory/CharacterTargeting")]</span>
+<span class="kw">public class</span> <span class="tp">CharacterTargetingFactory</span> : <span class="tp">TargetingCompFactory</span></span>
+{
+<span class="hl-yellow">    [<span class="tp">Header</span>(<span class="str">"默认索敌配置"</span>)]
+    <span class="kw">public float</span> defaultAggroRange  = <span class="str">6f</span>;
+    <span class="kw">public float</span> defaultForgetRange = <span class="str">8f</span>;</span>
+
+    <span class="kw">public override</span> <span class="tp">ITargetingComp</span> <span class="fn">CreateTargetingComp</span>(<span class="tp">MAEntity</span> gmo)
+    {
+        <span class="kw">var</span> comp = <span class="kw">new</span> <span class="tp">CharacterTargetingComp</span>();
+<span class="hl-green">        comp.<span class="fn">Init</span>(gmo);
+
+        <span class="cm">// 赋予初始面板值</span>
+        comp.AggroRange  = defaultAggroRange;
+        comp.ForgetRange = defaultForgetRange;
+
+        gmo.<span class="fn">SetTargetingComp</span>(comp);</span>
+        <span class="kw">return</span> comp;
+    }
+}
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-pattern">工厂</span> ScriptableObject 注入模式</h3>
+    <p><span class="badge badge-pattern">紫色</span> <code>CreateAssetMenu</code> — 可以在 Unity 编辑器中右键创建这个 SO 资产。</p>
+    <p><span class="badge badge-warn">黄色</span> <strong>面板可配参数</strong>：策划可以在 Inspector 里调整索敌/遗忘半径，不用改代码。</p>
+    <p><span class="badge badge-ok">绿色</span> <strong>创建流程</strong>：</p>
+    <ol>
+      <li><code>new CharacterTargetingComp()</code></li>
+      <li><code>Init(gmo)</code> — 注入上下文</li>
+      <li>覆盖默认参数</li>
+      <li><code>SetTargetingComp</code> — 注册到 Entity 上</li>
+    </ol>
+    <p>⚠️ 注意和 <code>NoTargetingFactory</code> 的区别：它的 Init 和 SetTargetingComp 调用顺序是 <strong>反的</strong>（先 Set 再 Init），可能是个隐患。</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION: Base Factory -->
+<!-- ============================================================ -->
+<div class="section" id="sec-base-factory">
+  <div class="section-label">⑫ TargetingCompFactory — 工厂基类</div>
+</div>
+<div class="section">
+  <div class="code-side"><pre>
+<span class="hl-blue"><span class="kw">public abstract class</span> <span class="tp">TargetingCompFactory</span> : <span class="tp">ScriptableObject</span>
+{
+    <span class="kw">public abstract</span> <span class="tp">ITargetingComp</span> <span class="fn">CreateTargetingComp</span>(<span class="tp">MAEntity</span> gmo);
+</span>
+<span class="hl-purple">    <span class="cm">// 统一的资源加载回调</span>
+    <span class="kw">public static</span> <span class="tp">LoadAssetCallbacks</span> TargetingFactoryCallBack =
+        <span class="kw">new</span> <span class="tp">LoadAssetCallbacks</span>(
+            (assetName, asset, duration, userData) =&gt;
+                (asset <span class="kw">as</span> <span class="tp">TargetingCompFactory</span>)?.<span class="fn">CreateTargetingComp</span>(
+                    userData <span class="kw">as</span> <span class="tp">MAEntity</span>));</span>
+}
+</pre></div>
+  <div class="note-side">
+    <h3><span class="badge badge-info">架构</span> 抽象工厂 + 异步加载</h3>
+    <p><span class="badge badge-info">蓝色</span> 抽象基类只定义一个方法：<code>CreateTargetingComp</code>。所有具体工厂（Character / NoTargeting）都继承它。</p>
+    <p><span class="badge badge-pattern">紫色</span> <strong>TargetingFactoryCallBack</strong> — 这是给 GF 资源管理框架的加载回调。流程：</p>
+    <ol>
+      <li>Entity 初始化时请求加载 SO 资产</li>
+      <li>资源管理器异步加载完成 → 触发此回调</li>
+      <li>回调中将 asset 转型为工厂 → 调用 <code>CreateTargetingComp</code></li>
+      <li><code>userData</code> 携带了目标 Entity 引用</li>
+    </ol>
+    <p>这种模式让 <strong>Entity 不需要知道具体用哪个工厂</strong>，只要配好 SO 资产路径即可。</p>
+  </div>
+</div>
+
+<!-- ==================== FOOTER ==================== -->
+<div style="padding:32px 48px; border-top:1px solid #1a1a1a; text-align:center;">
+  <p style="color:#333; font-size:11px; letter-spacing:1px;">CHARACTERTARGETINGCOMP GUIDE — GF_X</p>
+</div>
+
+</body>
+</html>

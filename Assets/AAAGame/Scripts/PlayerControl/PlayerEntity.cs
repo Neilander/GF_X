@@ -28,6 +28,7 @@ public class PlayerEntity : SkillEntity
         }
 
         Side = SideType.PlayerSide;
+        RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 
     protected override void SetUpSkillComp()

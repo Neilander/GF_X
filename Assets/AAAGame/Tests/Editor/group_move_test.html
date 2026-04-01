@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>群体移动 - LJ + ORCA 测试</title>
+<style>
+body { margin: 0; background: #1a1a2e; display: flex; font-family: monospace; color: #eee; }
+canvas { display: block; cursor: crosshair; }
+#panel { width: 300px; padding: 12px; font-size: 12px; overflow-y: auto; height: 100vh; box-sizing: border-box; }
+#panel h3 { margin: 10px 0 4px; color: #0ff; font-size: 13px; }
+#panel label { display: block; margin: 4px 0; }
+#panel input[type=range] { width: 130px; vertical-align: middle; }
+#panel span { color: #ff0; min-width: 30px; display: inline-block; }
+#panel button { margin: 4px 2px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+.info { color: #aaa; font-size: 11px; margin-top: 10px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="panel">
+  <h3>LJ - 斥力</h3>
+  <label>斥力强度: <input type="range" id="repStr" min="1" max="50" step="1" value="15"> <span id="repStrV">15</span></label>
+  <label>单位斥力半径: <input type="range" id="eqR" min="10" max="80" step="2" value="30"> <span id="eqRV">30</span>px</label>
+  <label>领袖斥力半径: <input type="range" id="leaderEqR" min="20" max="150" step="5" value="60"> <span id="leaderEqRV">60</span>px</label>
+
+  <h3>LJ - 吸引力</h3>
+  <label>吸引力强度: <input type="range" id="attStr" min="0.5" max="20" step="0.5" value="5"> <span id="attStrV">5</span></label>
+  <label>最大影响范围: <input type="range" id="maxR" min="50" max="400" step="10" value="200"> <span id="maxRV">200</span>px</label>
+
+  <h3>障碍物</h3>
+  <label>障碍物权重: <input type="range" id="obsW" min="10" max="500" step="10" value="100"> <span id="obsWV">100</span></label>
+
+  <h3>模拟参数</h3>
+  <label>单位数量: <input type="range" id="agentCount" min="3" max="30" step="1" value="10"> <span id="agentCountV">10</span></label>
+  <label>最大速度: <input type="range" id="maxSpd" min="50" max="500" step="10" value="200"> <span id="maxSpdV">200</span>px/s</label>
+  <label>阻尼: <input type="range" id="damp" min="0.80" max="0.99" step="0.01" value="0.92"> <span id="dampV">0.92</span></label>
+  <label>战斗Seek力: <input type="range" id="seekStr" min="1" max="30" step="1" value="8"> <span id="seekStrV">8</span></label>
+  <br>
+  <button id="btnReset">重置</button>
+  <button id="btnTarget">设置目标</button>
+  <button id="btnCombat">切换战斗</button>
+
+  <div class="info">
+    <p>拖拽 <b style="color:#ff0">黄色</b> = 领袖</p>
+    <p>点 <b>设置目标</b> 再点画布 = 战斗目标(红X)</p>
+    <p><b style="color:#0f0">绿色</b> = 跟随者 (LJ吸引向领袖+互相)</p>
+    <p><b style="color:#888">灰色方块</b> = 障碍物</p>
+    <p><b>切换战斗</b> = 所有单位追红X</p>
+    <p>黄圈 = 领袖斥力半径, 绿圈 = 单位斥力半径</p>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth - 300;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+function P(id) { return parseFloat(document.getElementById(id).value); }
+
+// --- localStorage 存档/读档 ---
+const SAVE_KEY = 'groupMoveParams';
+function saveParams() {
+  const data = {};
+  document.querySelectorAll('#panel input[type=range]').forEach(el => {
+    data[el.id] = el.value;
+  });
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+}
+function loadParams() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    for (const [id, val] of Object.entries(data)) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.value = val;
+        const span = document.getElementById(id + 'V');
+        if (span) span.textContent = val;
+      }
+    }
+  } catch(e) {}
+}
+loadParams();
+
+document.querySelectorAll('#panel input[type=range]').forEach(el => {
+  el.addEventListener('input', () => {
+    document.getElementById(el.id + 'V').textContent = el.value;
+    saveParams();
+  });
+});
+
+// --- State ---
+let agents = [];
+let leader = { x: 0, y: 0, radius: 10 };
+let obstacles = [
+  { x: 300, y: 200, w: 120, h: 30 },
+  { x: 500, y: 400, w: 30, h: 150 },
+  { x: 200, y: 450, w: 80, h: 80 },
+  { x: 600, y: 150, w: 150, h: 25 },
+  { x: 400, y: 300, w: 40, h: 100 },
+];
+let combatTarget = null;
+let inCombat = false;
+let settingTarget = false;
+let draggingLeader = false;
+
+function initLeader() {
+  leader.x = canvas.width / 2;
+  leader.y = canvas.height / 2;
+}
+initLeader();
+
+function createAgents() {
+  const count = P('agentCount');
+  agents = [];
+  for (let i = 0; i < count; i++) {
+    agents.push({
+      x: leader.x + (Math.random() - 0.5) * 300,
+      y: leader.y + (Math.random() - 0.5) * 300,
+      vx: 0, vy: 0,
+      radius: 6,
+    });
+  }
+}
+createAgents();
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  initLeader();
+  combatTarget = null;
+  inCombat = false;
+  createAgents();
+});
+document.getElementById('btnTarget').addEventListener('click', () => { settingTarget = true; });
+document.getElementById('btnCombat').addEventListener('click', () => { inCombat = !inCombat; });
+document.getElementById('agentCount').addEventListener('input', createAgents);
+
+// --- Mouse ---
+canvas.addEventListener('mousedown', e => {
+  const mx = e.offsetX, my = e.offsetY;
+  if (settingTarget) {
+    combatTarget = { x: mx, y: my };
+    settingTarget = false;
+    return;
+  }
+  const dx = mx - leader.x, dy = my - leader.y;
+  if (dx * dx + dy * dy < 600) draggingLeader = true;
+});
+canvas.addEventListener('mousemove', e => {
+  if (draggingLeader) { leader.x = e.offsetX; leader.y = e.offsetY; }
+});
+canvas.addEventListener('mouseup', () => { draggingLeader = false; });
+
+// --- Physics ---
+function closestPointOnAABB(px, py, ox, oy, ow, oh) {
+  return {
+    x: Math.max(ox, Math.min(px, ox + ow)),
+    y: Math.max(oy, Math.min(py, oy + oh)),
+  };
+}
+
+function ljForce(ax, ay, bx, by, eqR, maxRange, repStr, attStr, sameGroup) {
+  let dx = bx - ax, dy = by - ay;
+  let dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < 1) {
+    // 完全重叠，随机推开
+    return {
+      fx: (Math.random() - 0.5) * repStr * 2,
+      fy: (Math.random() - 0.5) * repStr * 2
+    };
+  }
+  if (dist > maxRange) return { fx: 0, fy: 0 };
+
+  let nx = dx / dist, ny = dy / dist;
+
+  if (dist < eqR) {
+    // 斥力：二次方增长，越近越强
+    let t = 1 - dist / eqR; // 0=边界, 1=重叠
+    let f = -repStr * t * t;
+    return { fx: nx * f, fy: ny * f };
+  } else if (sameGroup) {
+    // 吸引力：线性衰减
+    let t = (dist - eqR) / (maxRange - eqR); // 0=平衡距离, 1=最大范围
+    t = Math.min(1, Math.max(0, t));
+    let f = attStr * (1 - t);
+    return { fx: nx * f, fy: ny * f };
+  }
+  return { fx: 0, fy: 0 };
+}
+
+function obstacleForce(ax, ay, aRadius, obs, obsWeight) {
+  let cp = closestPointOnAABB(ax, ay, obs.x, obs.y, obs.w, obs.h);
+  let dx = ax - cp.x, dy = ay - cp.y;
+  let dist = Math.sqrt(dx * dx + dy * dy);
+
+  let inside = ax >= obs.x && ax <= obs.x + obs.w && ay >= obs.y && ay <= obs.y + obs.h;
+  if (inside) {
+    let cx = obs.x + obs.w / 2, cy = obs.y + obs.h / 2;
+    dx = ax - cx; dy = ay - cy;
+    dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 0.1) { dx = 1; dy = 0; dist = 1; }
+    return { fx: (dx / dist) * obsWeight, fy: (dy / dist) * obsWeight };
+  }
+
+  if (dist < 1) return { fx: 0, fy: 0 };
+
+  let effectiveDist = dist - aRadius;
+  if (effectiveDist > 60) return { fx: 0, fy: 0 };
+
+  let nx = dx / dist, ny = dy / dist;
+
+  if (effectiveDist < 0) {
+    let overlap = -effectiveDist;
+    return { fx: nx * overlap * obsWeight * 0.3, fy: ny * overlap * obsWeight * 0.3 };
+  }
+
+  // 接近时柔性推开
+  if (effectiveDist < 40) {
+    let t = 1 - effectiveDist / 40;
+    let f = t * t * obsWeight * 0.05;
+    return { fx: nx * f, fy: ny * f };
+  }
+  return { fx: 0, fy: 0 };
+}
+
+function step(dt) {
+  const repStr = P('repStr');
+  const attStr = P('attStr');
+  const eqR_agent = P('eqR');   // 直接用像素值
+  const maxRange = P('maxR');
+  const leaderEqR = P('leaderEqR');
+  const obsW = P('obsW');
+  const maxSpd = P('maxSpd');
+  const damp = P('damp');
+  const seekStr = P('seekStr');
+
+  for (let i = 0; i < agents.length; i++) {
+    let a = agents[i];
+    let fx = 0, fy = 0;
+
+    // 战斗：朝目标 Seek
+    if (inCombat && combatTarget) {
+      let dx = combatTarget.x - a.x, dy = combatTarget.y - a.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 15) {
+        fx += (dx / dist) * seekStr;
+        fy += (dy / dist) * seekStr;
+      }
+    }
+
+    // LJ: 领袖（同组，用领袖的斥力半径）
+    let lf = ljForce(a.x, a.y, leader.x, leader.y, leaderEqR, maxRange, repStr, attStr, true);
+    fx += lf.fx;
+    fy += lf.fy;
+
+    // LJ: 其他单位（同组，用单位的斥力半径）
+    for (let j = 0; j < agents.length; j++) {
+      if (i === j) continue;
+      let b = agents[j];
+      let af = ljForce(a.x, a.y, b.x, b.y, eqR_agent, maxRange, repStr, attStr, true);
+      fx += af.fx;
+      fy += af.fy;
+    }
+
+    // 障碍物避让
+    for (let obs of obstacles) {
+      let of2 = obstacleForce(a.x, a.y, a.radius, obs, obsW);
+      fx += of2.fx;
+      fy += of2.fy;
+    }
+
+    // 速度积分 + 阻尼
+    a.vx = (a.vx + fx) * damp;
+    a.vy = (a.vy + fy) * damp;
+
+    // 限速
+    let spd = Math.sqrt(a.vx * a.vx + a.vy * a.vy);
+    if (spd > maxSpd) {
+      a.vx = (a.vx / spd) * maxSpd;
+      a.vy = (a.vy / spd) * maxSpd;
+    }
+
+    a.x += a.vx * dt;
+    a.y += a.vy * dt;
+
+    // 边界
+    a.x = Math.max(10, Math.min(canvas.width - 10, a.x));
+    a.y = Math.max(10, Math.min(canvas.height - 10, a.y));
+  }
+}
+
+// --- Render ---
+function draw() {
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 网格
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+
+  // 障碍物
+  ctx.fillStyle = '#444';
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 2;
+  for (let obs of obstacles) {
+    ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+    ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+  }
+
+  // 领袖斥力半径
+  const leaderEqR = P('leaderEqR');
+  ctx.beginPath();
+  ctx.arc(leader.x, leader.y, leaderEqR, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 领袖最大影响范围
+  const maxRange = P('maxR');
+  ctx.beginPath();
+  ctx.arc(leader.x, leader.y, maxRange, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,0,0.1)';
+  ctx.stroke();
+
+  // 战斗目标
+  if (combatTarget) {
+    ctx.strokeStyle = inCombat ? '#f00' : '#600';
+    ctx.lineWidth = 3;
+    const s = 12;
+    ctx.beginPath();
+    ctx.moveTo(combatTarget.x - s, combatTarget.y - s);
+    ctx.lineTo(combatTarget.x + s, combatTarget.y + s);
+    ctx.moveTo(combatTarget.x + s, combatTarget.y - s);
+    ctx.lineTo(combatTarget.x - s, combatTarget.y + s);
+    ctx.stroke();
+  }
+
+  // 单位
+  const eqR = P('eqR');
+  for (let a of agents) {
+    // 斥力半径圈
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, eqR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,255,0,0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 单位本体
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, a.radius, 0, Math.PI * 2);
+    ctx.fillStyle = inCombat ? '#f80' : '#0f0';
+    ctx.fill();
+
+    // 速度线
+    let spd = Math.sqrt(a.vx * a.vx + a.vy * a.vy);
+    if (spd > 1) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(a.x + a.vx * 2, a.y + a.vy * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // 领袖
+  ctx.beginPath();
+  ctx.arc(leader.x, leader.y, leader.radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff0';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 状态文字
+  ctx.fillStyle = '#aaa';
+  ctx.font = '13px monospace';
+  ctx.fillText(`单位: ${agents.length} | 战斗: ${inCombat ? '开' : '关'} | 拖拽黄色=领袖`, 10, 20);
+}
+
+// --- Loop ---
+let lastTime = 0;
+function loop(time) {
+  let dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  step(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

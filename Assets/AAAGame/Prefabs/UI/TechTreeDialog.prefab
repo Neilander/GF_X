@@ -450,6 +450,7 @@ MonoBehaviour:
   minScale: 0.5
   maxScale: 2
   wheelZoomSpeed: 0.1
+  maxWheelDeltaPerFrame: 3
   pinchZoomSpeed: 0.01
 --- !u!1 &5766097055934833231
 GameObject:

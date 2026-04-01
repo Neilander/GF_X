@@ -55,13 +55,23 @@ public class PlayerSkillComp : ISkillComp
         if (curSkillPressed == -1)
             return;
         GF.Log("使用技能："+(curSkillPressed+1));
-        _entity.LockComp(_entity.atkComp,this);
+        LockCompWhenStart();
         SkillSlot curSlot = _skillSlots[curSkillPressed];
        
         
         //触发技能逻辑（恢复其他技能还没做好）
         StartASkill(curSlot);
 
+    }
+
+    void LockCompWhenStart()
+    {
+        _entity.LockComp(_entity.atkComp,this);
+    }
+
+    void UnlockCompWhenEnd()
+    {
+        _entity.ResumeComp(_entity.atkComp,this);
     }
 
     public void ShutDown()
@@ -78,13 +88,14 @@ public class PlayerSkillComp : ISkillComp
         {
             if (slot.isTicking)
             {
-                //TODO: 触发技能的tick
+                //触发技能的tick
                 slot.skill.TickSkill(slot.runInfo,Time.deltaTime);
                 if (slot.runInfo.isFinished)
                 {
                     slot.isTicking = false;
                     slot.runInfo = null;
                     slot.DirectUnlockAll();
+                    UnlockCompWhenEnd();
                     
                 }
             }
