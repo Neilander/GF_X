@@ -18,6 +18,7 @@ MonoBehaviour:
   - CharacterMAFactoryTable
   - CharacterMainPropertyTable
   - LevelTable
+  - Build/BuildingTable
   - Build/DeviceTable
   - Core/EntityGroupTable
   - Core/LanguagesTable

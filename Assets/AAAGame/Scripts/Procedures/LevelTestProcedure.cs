@@ -50,6 +50,12 @@ public class LevelTestProcedure : ProcedureBase
                     deviceParams.Set(DeviceEntity.P_DeviceData, deviceData);
                     GF.Entity.ShowEntity<DeviceEntity>("Device/DeviceBase", Const.EntityGroup.Building, deviceParams);
                     break;
+                case EntityPresetPointType.Buil_Base:
+                    EntityParams buildingParams = EntityParams.Create(point.Position);
+                    BuildingData buildingData = new BuildingData("Buil_Base_Lv0", BuilType.Base, Archetype.Coding, "Buil_Base", "Buil_Base", "Buil_Base", 0, 0, 1, 0, 0, null, null, 0, null);
+                    buildingParams.Set(BuildingEntity.P_BuildingData, buildingData);
+                    GF.Entity.ShowEntity<BuildingEntity>("Building/Buil_Base", Const.EntityGroup.Building, buildingParams);
+                    break;
             }
         }
     }
