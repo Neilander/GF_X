@@ -21,28 +21,28 @@ public class BuildingData
     public Fix64[] UniqueValues { get; protected set; }
     public BuilType Type { get; protected set; }
     public Archetype Arche { get; protected set; }
-    public string PrefabName { get; protected set; }
+    public string PrefabPath { get; protected set; }
     public string NameKey { get; protected set; }
     public string DescKey { get; protected set; }
     public int Lv { get; protected set; }
-    public int HP { get; protected set; }
-    public int Atk { get; protected set; }
-    public int Def { get; protected set; }
+    public Fix64 HP { get; protected set; }
+    public Fix64 Atk { get; protected set; }
+    public Fix64 Def { get; protected set; }
     public string UnitID { get; protected set; }
     public int Production { get; protected set; }
-    public string[] TechIDs { get; protected set; }
+    public string[] TechIDs { get; protected set; } // 升级时的科技选项
 
     public BuildingData(string identifier,
         BuilType type,
         Archetype archetype,
-        string prefabName,
+        string prefabPath,
         string nameKey,
         string descKey,
         int lv,
         int cost,
-        int hp,
-        int atk,
-        int def,
+        Fix64 hp,
+        Fix64 atk,
+        Fix64 def,
         Fix64[] uniqueValues,
         string unitID,
         int production,
@@ -53,7 +53,7 @@ public class BuildingData
         Lv = lv;
         Type = type;
         Arche = archetype;
-        PrefabName = prefabName;
+        PrefabPath = prefabPath;
         NameKey = nameKey;
         DescKey = descKey;
         HP = hp;
@@ -63,9 +63,6 @@ public class BuildingData
         UnitID = unitID;
         Production = production;
         TechIDs = techIDs;
-        PrefabName = prefabName;
-        NameKey = nameKey;
-        DescKey = descKey;
     }
 
     public static string GetUpgradeID(string identifier)
