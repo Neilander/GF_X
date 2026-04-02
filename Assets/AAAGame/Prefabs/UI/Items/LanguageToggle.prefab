@@ -113,7 +113,6 @@ MonoBehaviour:
     VarPrefix: 0
   varIcon: {fileID: 3979948367713389391}
   varName: {fileID: 513227387273316968}
-  varBackground: {fileID: 4282606494463078685}
 --- !u!1 &741282741441293065
 GameObject:
   m_ObjectHideFlags: 0

@@ -535,8 +535,12 @@ MonoBehaviour:
     - {fileID: 1328536726935566467}
     VarType: UnityEngine.UI.ToggleGroup
     VarPrefix: 0
+  m_UIAnimationType: 0
   m_OpenAnimation: {fileID: 0}
   m_CloseAnimation: {fileID: 0}
+  m_ReverseOpenAnimAsClose: 1
+  m_OpenAnimationName: 
+  m_CloseAnimationName: 
   varLanguageToggle: {fileID: 308393694614520984, guid: 18d313816561eb94f883cc5522c2158b, type: 3}
   varToggleGroup: {fileID: 4676176726666012567}
 --- !u!1 &7955539405860338840

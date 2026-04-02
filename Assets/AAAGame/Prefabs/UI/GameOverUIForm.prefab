@@ -428,9 +428,12 @@ MonoBehaviour:
     - {fileID: 3634185868423814361}
     VarType: TMPro.TextMeshProUGUI
     VarPrefix: 0
-  topBar: {fileID: 0}
+  m_UIAnimationType: 0
   m_OpenAnimation: {fileID: 0}
   m_CloseAnimation: {fileID: 0}
+  m_ReverseOpenAnimAsClose: 1
+  m_OpenAnimationName: 
+  m_CloseAnimationName: 
   varBackBtn: {fileID: 482340173486925770}
   varTitleTxt: {fileID: 2479524623992758066}
 --- !u!1 &6825701983886773564

@@ -234,9 +234,12 @@ MonoBehaviour:
     - {fileID: 648416522645630717}
     VarType: TMPro.TextMeshProUGUI
     VarPrefix: 0
-  topBar: {fileID: 1723033201729535971}
+  m_UIAnimationType: 0
   m_OpenAnimation: {fileID: 0}
   m_CloseAnimation: {fileID: 0}
+  m_ReverseOpenAnimAsClose: 1
+  m_OpenAnimationName: 
+  m_CloseAnimationName: 
   coinNumText: {fileID: 1366724547245885076}
 --- !u!1 &1723033201729535970
 GameObject:
