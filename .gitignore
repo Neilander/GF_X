@@ -111,10 +111,8 @@ UnityEngine.TestRunner.csproj
 UnityGameFramework.Editor.csproj
 UnityGameFramework.Runtime.csproj
 ZString.csproj
-Assets/AAAGame/Scripts/Forces.meta
-Assets/AAAGame/Scripts/DataModel/InGameDataModel.cs
-Assets/AAAGame/Scripts/DataModel/InGameDataModel.cs.meta
-Assets/AAAGame/Scripts/DataModel/Old.meta
-Assets/AAAGame/Scripts/Forces/Force.cs
-Assets/AAAGame/Scripts/Forces/Force.cs.meta
 ProjectSettings/EditorBuildSettings.asset
+Assets/AAAGame/ScriptsBuiltin/Editor/Stubs/EditorStubs.cs
+Assets/AAAGame/ScriptsBuiltin/Editor/Stubs/EditorStubs.cs.meta
+Assets/AAAGame/ScriptsBuiltin/Runtime/Obfuz/ObfuzStubs.cs
+Assets/AAAGame/ScriptsBuiltin/Runtime/Obfuz/ObfuzStubs.cs.meta

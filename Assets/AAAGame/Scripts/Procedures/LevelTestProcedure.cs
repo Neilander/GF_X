@@ -1,4 +1,5 @@
-﻿using GameFramework;
+﻿using System.Collections.Generic;
+using GameFramework;
 using GameFramework.Event;
 using GameFramework.Fsm;
 using GameFramework.Procedure;
@@ -44,16 +45,17 @@ public class LevelTestProcedure : ProcedureBase
                     // newParams.position = new Vector3(0, 1, 0);
                     // GF.Entity.ShowEntity<PlayerEntity>(0,UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),"Player",newParams);
                     break;
-                case EntityPresetPointType.Device:
-                    EntityParams deviceParams = EntityParams.Create(point.Position);
-                    Device deviceData = new Device("Device_Base", null, null, Fix64.Zero, null, "Device_Base", "Device_Base", upgradeID: point.Identifier, null);
-                    deviceParams.Set(DeviceEntity.P_DeviceData, deviceData);
-                    GF.Entity.ShowEntity<DeviceEntity>("Device/DeviceBase", Const.EntityGroup.Building, deviceParams);
-                    break;
+                // case EntityPresetPointType.Device:   //以前的实现，只能建造预设的一个特定设备
+                //     EntityParams deviceParams = EntityParams.Create(point.Position);
+                //     Device deviceData = new Device("Device_Base", null, null, Fix64.Zero, null, "Device_Base", "Device_Base", upgradeID: point.Identifier, null);
+                //     deviceParams.Set(DeviceEntity.P_DeviceData, deviceData);
+                //     GF.Entity.ShowEntity<DeviceEntity>("Device/DeviceBase", Const.EntityGroup.Building, deviceParams);
+                //     break;
                 case EntityPresetPointType.Buil_Base:
                     EntityParams buildingParams = EntityParams.Create(point.Position);
-                    BuildingData buildingData = new BuildingData("Buil_Base_Lv0", BuilType.Base, Archetype.Coding, "Buil_Base", "Buil_Base", "Buil_Base", 0, 0, 1, 0, 0, null, null, 0, null);
+                    BuildingData buildingData = new BuildingData("Buil_Base_Lv0", BuilType.Base, Archetype.Coding, "Buil_Base", "Buil_Base", "Buil_Base", 0, 0, Fix64.One, Fix64.Zero, Fix64.Zero, null, null, 0, null);
                     buildingParams.Set(BuildingEntity.P_BuildingData, buildingData);
+                    buildingParams.Set(BuildingEntity.P_InitOwnerFactionID, point.OwnerFactionID);
                     GF.Entity.ShowEntity<BuildingEntity>("Building/Buil_Base", Const.EntityGroup.Building, buildingParams);
                     break;
             }
@@ -61,6 +63,14 @@ public class LevelTestProcedure : ProcedureBase
     }
     private void InitDataModels()
     {
+        RefParams levelParams = new();
+        levelParams.Set(InGameDataModel.P_StartPhase, GamePhase.Build);
+        levelParams.Set(InGameDataModel.P_StartCoins, 100);
+        levelParams.Set(InGameDataModel.P_StartFactions, new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } });   // 通常玩家势力key为0，敌对势力为1、2等。
+        GF.DataModel.CreateDataModel<InGameDataModel>(levelParams);
+
+        GF.DataModel.CreateDataModel<BuildingDataModel>();
+        GF.DataModel.CreateDataModel<TechDataModel>();
         GF.DataModel.CreateDataModel<ItemDataModel>();
         GF.DataModel.CreateDataModel<DeviceDataModel>();
         GF.DataModel.CreateDataModel<LocalizationTextDataModel>();

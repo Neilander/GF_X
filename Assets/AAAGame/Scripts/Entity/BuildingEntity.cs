@@ -8,8 +8,10 @@ using UnityGameFramework.Runtime;
 public class BuildingEntity : EntityBase
 {
     public const string P_BuildingData = "BuildingData";
+    public const string P_InitOwnerFactionID = "InitOwnerFactionID";
     public BuildingData buildingData;
-    public bool HasInteractionPanel => true; // 先占位，后续根据所有者等条件判断
+    public int OwnerFactionID { get; set; }
+    public bool CanInteract => OwnerFactionID == 0; // 目前仅检查所有者是否为玩家，后续可检查关卡阶段
     public bool HasUnlockedUpgrade
     {
         get
@@ -18,7 +20,7 @@ public class BuildingEntity : EntityBase
                 return false;
 
             //return BuildManager.SatisfyBuildCondition(UpgradeID);
-            return BuildingData.GetUpgradeID(buildingData.Identifier) != null; // 先占位，只要有升级ID就认为有升级
+            return BuildingData.GetUpgradeID(buildingData.Identifier) != null; // 先占位，只要有升级ID就认为有升级，后续检查同种族基地最高等级
         }
     }
 
@@ -27,12 +29,10 @@ public class BuildingEntity : EntityBase
     {
         base.OnShow(userData);
 
-        // 从 EntityParams 注入 buildingData（若为占位点，可能为空）
-        buildingData = null;
-        if (Params != null && Params.TryGet<VarObject>(P_BuildingData, out var varObj) && varObj != null)
-            buildingData = varObj.Value as BuildingData;
+        buildingData = Params.Get(P_BuildingData) as BuildingData;
+        OwnerFactionID = Params.Get<VarInt32>(P_InitOwnerFactionID);
 
-        if (HasInteractionPanel || HasUnlockedUpgrade)
+        if (CanInteract || HasUnlockedUpgrade)
         {
             EnsureInteractionHost();
         }
@@ -61,7 +61,7 @@ public class BuildingEntity : EntityBase
 
         // 固定按键：开面板 = Primary，升级/占位建造 = Secondary
         // key 重复时 InteractionHost 会报错。
-        if (HasInteractionPanel)
+        if (CanInteract)
         {
             string displayName = LocalizationTextDataModel.GetText("InteractOption_Craft");
 
