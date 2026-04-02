@@ -249,6 +249,7 @@
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/CylinderTargetSelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/SkillEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/SimplePlayerController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Editor/BehaviorTreeGraphEditor.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAttackComp.cs" />
@@ -340,6 +341,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/SimpleJoystick.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterMoveComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/SkillSystem/BasicSkill.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/SimpleFollowingCamera.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechCategory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/EnemyAIBrain.cs" />
@@ -737,6 +739,15 @@
     </Reference>
     <Reference Include="SixLabors.ImageSharp">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/SixLabors.ImageSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3Editor">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/Editor/EasyRoads3Dv3Editor.dll</HintPath>
+    </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
     </Reference>
     <Reference Include="UnityEditor.iOS.Extensions.Xcode">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.iOS.Extensions.Xcode.dll</HintPath>
