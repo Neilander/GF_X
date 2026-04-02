@@ -154,6 +154,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Projectile/AbstractProjectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/TextLineUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/IrreversibleValueProperty.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterDataDetail.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/ITargetingComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/AbsStatemachine.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/LevelTable.cs" />
