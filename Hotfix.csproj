@@ -183,7 +183,6 @@
     <Compile Include="Assets\AAAGame\Scripts\UI\RatingDialog.cs" />
     <Compile Include="Assets\AAAGame\Scripts\NeilUtility\IMoveCompo.cs" />
     <Compile Include="Assets\AAAGame\Scripts\EventArgs\ItemAmountChangedEventArgs.cs" />
-    <Compile Include="Assets\AAAGame\Scripts\Card\Standalone\MinimalCardSystem.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\UIItemVariables\ItemUnit.Variables.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Entity\Core\SampleEntity.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Extension\AwaitExtension\AwaitParams.cs" />
@@ -259,6 +258,7 @@
     <Compile Include="Assets\AAAGame\Scripts\UI\Core\UIItemObject.cs" />
     <Compile Include="Assets\AAAGame\Scripts\ActionSystem\Selection\CylinderTargetSelector.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Entity\SkillEntity.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\Card\Test\SetCardGameProcedure.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Network\PacketBase.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Card\Manager\CardGameManager.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Property\Modifier\IPropertyAdditiveModifier.cs" />
@@ -296,7 +296,6 @@
     <Compile Include="Assets\AAAGame\Scripts\Entity\CharacterEntity.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Network\CSPacketBase.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\Core\UIItemBase.cs" />
-    <Compile Include="Assets\AAAGame\Scripts\Card\Standalone\StandaloneCardSystem.cs" />
     <Compile Include="Assets\AAAGame\Scripts\GeneralCreature\FactoryHelper.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Tech\TechNodeView.cs" />
     <Compile Include="Assets\AAAGame\Scripts\BehaviorTree\Node\CheckHealthNode.cs" />

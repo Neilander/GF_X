@@ -615,6 +615,7 @@ RectTransform:
   - {fileID: 7738495531804054913}
   - {fileID: 726204976969484073}
   - {fileID: 4718142225825253850}
+  - {fileID: 1982602803987158559}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -726,3 +727,65 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9dffe452c6bc1b64f913a744e24f7ba5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!1 &8709764801804609739
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1982602803987158559}
+  - component: {fileID: 8993146039577436529}
+  m_Layer: 5
+  m_Name: CardUISystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1982602803987158559
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8709764801804609739}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3867099157004315611}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &8993146039577436529
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8709764801804609739}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 340406a88b5526047b0d3fdef2db058b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cardUIPrefab: {fileID: 1478813142199399011, guid: 9513de794a5b55c4494a165132cfdad5, type: 3}
+  handCardContainer: {fileID: 8635117454040563396}
+  handCardArea: {fileID: 4718142225825253850}
+  populationText: {fileID: 9157832323341958526}
+  trashBin: {fileID: 3733187908752676364}
+  trashBinHintText: {fileID: 7981937009569467016}
+  cardUIRoot: {fileID: 8185913281780029683}
+  validArea: {fileID: 0}
+  forbiddenArea: {fileID: 0}
+  areaMaterialOverlay: {fileID: 0}
+  toggleUIKey: 9
+  cardHotkeys: 31000000320000003300000034000000
+  cardDeckTransform: {fileID: 7738495531804054913}
+  cardMoveToHandDuration: 0.5
