@@ -42,7 +42,8 @@ public class TechDataModel : DataModelBase
                                 row.Tech1DescKey,
                                 row.Tech1Cost,
                                 row.Tech1UniqueValues,
-                                row.Tech1SpritePath);
+                                row.Tech1SpritePath,
+                                row.Tech1Stackable);
         techDataDic[tech.Identifier] = tech;
         if (string.IsNullOrEmpty(row.Tech2ID)) return;
         tech = new(row.Tech2ID,
@@ -50,7 +51,8 @@ public class TechDataModel : DataModelBase
                                 row.Tech2DescKey,
                                 row.Tech2Cost,
                                 row.Tech2UniqueValues,
-                                row.Tech2SpritePath);
+                                row.Tech2SpritePath,
+                                row.Tech2Stackable);
         techDataDic[tech.Identifier] = tech;
         if (string.IsNullOrEmpty(row.Tech3ID)) return;
         tech = new(row.Tech3ID,
@@ -58,7 +60,8 @@ public class TechDataModel : DataModelBase
                                 row.Tech3DescKey,
                                 row.Tech3Cost,
                                 row.Tech3UniqueValues,
-                                row.Tech3SpritePath);
+                                row.Tech3SpritePath,
+                                row.Tech3Stackable);
         techDataDic[tech.Identifier] = tech;
         if (string.IsNullOrEmpty(row.Tech4ID)) return;
         tech = new(row.Tech4ID,
@@ -66,7 +69,8 @@ public class TechDataModel : DataModelBase
                                 row.Tech4DescKey,
                                 row.Tech4Cost,
                                 row.Tech4UniqueValues,
-                                row.Tech4SpritePath);
+                                row.Tech4SpritePath,
+                                row.Tech4Stackable);
         techDataDic[tech.Identifier] = tech;
     }
 }

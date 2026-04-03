@@ -19,13 +19,15 @@ public class TechData
     public string SpritePath { get; protected set; }
     public string NameKey { get; protected set; }
     public string DescKey { get; protected set; }
+    public bool IsStackable { get; protected set; }
 
     public TechData(string identifier,
         string nameKey,
         string descKey,
         int cost,
         Fix64[] uniqueValues,
-        string spritePath)
+        string spritePath,
+        bool isStackable)
     {
         Identifier = identifier;
         Cost = cost;
@@ -33,6 +35,7 @@ public class TechData
         DescKey = descKey;
         UniqueValues = uniqueValues;
         SpritePath = spritePath;
+        IsStackable = isStackable;
     }
 
 }

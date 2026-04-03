@@ -1,7 +1,4 @@
 ﻿using GameFramework;
-using GameFramework.Event;
-using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -9,20 +6,11 @@ public class BuildingEntity : EntityBase
 {
     public const string P_BuildingData = "BuildingData";
     public const string P_InitOwnerFactionID = "InitOwnerFactionID";
+    public const string P_BuildingInstanceId = "BuildingInstanceId";
     public BuildingData buildingData;
     public int OwnerFactionID { get; set; }
-    public bool CanInteract => OwnerFactionID == 0; // 目前仅检查所有者是否为玩家，后续可检查关卡阶段
-    public bool HasUnlockedUpgrade
-    {
-        get
-        {
-            if (buildingData == null)
-                return false;
-
-            //return BuildManager.SatisfyBuildCondition(UpgradeID);
-            return BuildingData.GetUpgradeID(buildingData.Identifier) != null; // 先占位，只要有升级ID就认为有升级，后续检查同种族基地最高等级
-        }
-    }
+    public string BuildingInstanceId { get; private set; }
+    public bool HasUpgrade => BuildManager.HasUpgrade(this);
 
 
     protected override void OnShow(object userData)
@@ -31,8 +19,12 @@ public class BuildingEntity : EntityBase
 
         buildingData = Params.Get(P_BuildingData) as BuildingData;
         OwnerFactionID = Params.Get<VarInt32>(P_InitOwnerFactionID);
+        BuildingInstanceId = Params.TryGet<VarString>(P_BuildingInstanceId, out var instanceId) ? instanceId : null;
 
-        if (CanInteract || HasUnlockedUpgrade)
+        if (string.IsNullOrWhiteSpace(BuildingInstanceId))
+            BuildingInstanceId = System.Guid.NewGuid().ToString("N");
+
+        if (HasUpgrade)
         {
             EnsureInteractionHost();
         }
@@ -59,23 +51,6 @@ public class BuildingEntity : EntityBase
         host.ResetOptions();
         host.Init(this);
 
-        // 固定按键：开面板 = Primary，升级/占位建造 = Secondary
-        // key 重复时 InteractionHost 会报错。
-        if (CanInteract)
-        {
-            string displayName = LocalizationTextDataModel.GetText("InteractOption_Craft");
-
-            host.AddOption<DeviceOpenPanelInteractionOption>(InputKey.InteractionPrimary, displayName, null);
-        }
-
-        if (HasUnlockedUpgrade)
-        {
-            string displayName = buildingData.Lv == 0 ? LocalizationTextDataModel.GetText("InteractOption_Build") : LocalizationTextDataModel.GetText("InteractOption_Upgrade");
-
-            InteractionParams @params = InteractionParams.Create();
-            @params.Set<VarString>("UpgradeId", BuildingData.GetUpgradeID(buildingData.Identifier));
-
-            host.AddOption<DeviceUpgradeInteractionOption>(InputKey.InteractionSecondary, displayName, @params);
-        }
+        BuildManager.ConfigureUpgradeInteractionOptions(this, host);
     }
 }
