@@ -10,7 +10,7 @@ using UnityGameFramework.Runtime;
 
 
 public enum BuilType { Base, Army, Prod, Tech, Def }
-public enum Archetype { Coding, Sightseeing, Butchery, Delivery, Firefighting }
+public enum Archetype { None, Coding, Sightseeing, Butchery, Delivery, Firefighting }
 /// <summary>
 /// 建筑数据格式类
 /// </summary>
@@ -65,23 +65,4 @@ public class BuildingData
         TechIDs = techIDs;
     }
 
-    public static string GetUpgradeID(string identifier)
-    {
-        // 升级ID格式约定：在原ID基础上替换等级数字，如 "Buil_Prod_Lv2" 的升级ID为 "Buil_Prod_Lv3"
-        if (string.IsNullOrWhiteSpace(identifier))
-            return null;
-
-        int lastLvIndex = identifier.LastIndexOf("Lv", StringComparison.Ordinal);
-        if (lastLvIndex < 0 || lastLvIndex + 2 >= identifier.Length)
-            return null;
-
-        string prefix = identifier.Substring(0, lastLvIndex + 2); // 包含 "Lv"
-        string lvStr = identifier.Substring(lastLvIndex + 2);
-        if (!int.TryParse(lvStr, out int lv))
-            return null;
-
-        int nextLv = lv + 1;
-        string nextIdentifier = prefix + nextLv;
-        return BuildingDataModel.GetBuildingData(nextIdentifier) != null ? nextIdentifier : null;
-    }
 }

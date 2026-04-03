@@ -1,12 +1,25 @@
 using GameFramework;
+using System.Collections.Generic;
 using UnityGameFramework.Runtime;
 
 public sealed class DeviceUpgradeInteractionOption : IInteractionOption
 {
+    private static readonly KeyValuePair<IngameValueType, int>[] EmptyCost = System.Array.Empty<KeyValuePair<IngameValueType, int>>();
     private DeviceEntity _owner;
     private string _upgradeId;
     public string DisplayName { get; private set; }
-    public StringIntPair[] CostMaterial => DeviceDataModel.GetDeviceData(_upgradeId)?.CostMaterial;
+    public KeyValuePair<IngameValueType, int>[] CostResource => EmptyCost;
+
+    public bool IsVisible()
+    {
+        if (_owner == null || _owner.deviceData == null)
+            return false;
+        if (!_owner.HasUnlockedUpgrade)
+            return false;
+        if (string.IsNullOrWhiteSpace(_upgradeId))
+            return false;
+        return true;
+    }
 
     public bool IsExecutable()
     {
@@ -16,15 +29,7 @@ public sealed class DeviceUpgradeInteractionOption : IInteractionOption
             return false;
         if (string.IsNullOrWhiteSpace(_upgradeId))
             return false;
-        return BuildManager.HasBuildCost(_upgradeId);
-    }
-    public bool IsAvailable()
-    {
-        if (_owner == null || _owner.deviceData == null)
-            return false;
-        if (!_owner.HasUnlockedUpgrade)
-            return false;
-        return true;
+        return DeviceBuildManager.HasBuildCost(_upgradeId);
     }
 
     public void Init(object owner, string displayName, InteractionParams @params)
@@ -39,7 +44,7 @@ public sealed class DeviceUpgradeInteractionOption : IInteractionOption
         if (_owner == null)
             return;
 
-        BuildManager.UpgradeDevice(_owner, _upgradeId);
+        DeviceBuildManager.UpgradeDevice(_owner, _upgradeId);
     }
 
     public void Clear()

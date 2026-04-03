@@ -254,6 +254,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技1全局是否可存在多个
+        /// </summary>
+        public bool Tech1Stackable
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技1名称（多语言）
         /// </summary>
         public string Tech1NameKey
@@ -302,6 +311,15 @@ public class BuildingTable : DataRowBase
         /// 科技2独有数值
         /// </summary>
         public Fix64[] Tech2UniqueValues
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技2全局是否可存在多个
+        /// </summary>
+        public bool Tech2Stackable
         {
             get;
             private set;
@@ -362,6 +380,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技3全局是否可存在多个
+        /// </summary>
+        public bool Tech3Stackable
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技3名称（多语言）
         /// </summary>
         public string Tech3NameKey
@@ -416,6 +443,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技4全局是否可存在多个
+        /// </summary>
+        public bool Tech4Stackable
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技4名称（多语言）
         /// </summary>
         public string Tech4NameKey
@@ -461,7 +497,7 @@ public class BuildingTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = int.Parse(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
             Identifier = columnStrings[index++];
             index++;
             index++;
@@ -473,9 +509,9 @@ public class BuildingTable : DataRowBase
             Lv1PrefabPath = columnStrings[index++];
             Lv2PrefabPath = columnStrings[index++];
             Lv3PrefabPath = columnStrings[index++];
-            Lv1Cost = int.Parse(columnStrings[index++]);
-            Lv2Cost = int.Parse(columnStrings[index++]);
-            Lv3Cost = int.Parse(columnStrings[index++]);
+            Lv1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Lv2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Lv3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
             Lv1HP = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Def = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -486,34 +522,38 @@ public class BuildingTable : DataRowBase
             Lv3Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             UnitID = columnStrings[index++];
-            Production = int.Parse(columnStrings[index++]);
+            Production = DataTableExtension.ParseInt32(columnStrings[index++]);
             Tech1ID = columnStrings[index++];
             index++;
             Tech1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Tech1Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech1NameKey = columnStrings[index++];
             Tech1DescKey = columnStrings[index++];
-            Tech1Cost = int.Parse(columnStrings[index++]);
+            Tech1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
             Tech1SpritePath = columnStrings[index++];
             Tech2ID = columnStrings[index++];
             index++;
             Tech2UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Tech2Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech2NameKey = columnStrings[index++];
             Tech2DescKey = columnStrings[index++];
-            Tech2Cost = int.Parse(columnStrings[index++]);
+            Tech2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
             Tech2SpritePath = columnStrings[index++];
             Tech3ID = columnStrings[index++];
             index++;
             Tech3UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Tech3Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech3NameKey = columnStrings[index++];
             Tech3DescKey = columnStrings[index++];
-            Tech3Cost = int.Parse(columnStrings[index++]);
+            Tech3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
             Tech3SpritePath = columnStrings[index++];
             Tech4ID = columnStrings[index++];
             index++;
             Tech4UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Tech4Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech4NameKey = columnStrings[index++];
             Tech4DescKey = columnStrings[index++];
-            Tech4Cost = int.Parse(columnStrings[index++]);
+            Tech4Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
             Tech4SpritePath = columnStrings[index++];
 
             return true;
@@ -551,24 +591,28 @@ public class BuildingTable : DataRowBase
                     Production = binaryReader.Read7BitEncodedInt32();
                     Tech1ID = binaryReader.ReadString();
                     Tech1UniqueValues = binaryReader.ReadFix64Array();
+                    Tech1Stackable = binaryReader.ReadBoolean();
                     Tech1NameKey = binaryReader.ReadString();
                     Tech1DescKey = binaryReader.ReadString();
                     Tech1Cost = binaryReader.Read7BitEncodedInt32();
                     Tech1SpritePath = binaryReader.ReadString();
                     Tech2ID = binaryReader.ReadString();
                     Tech2UniqueValues = binaryReader.ReadFix64Array();
+                    Tech2Stackable = binaryReader.ReadBoolean();
                     Tech2NameKey = binaryReader.ReadString();
                     Tech2DescKey = binaryReader.ReadString();
                     Tech2Cost = binaryReader.Read7BitEncodedInt32();
                     Tech2SpritePath = binaryReader.ReadString();
                     Tech3ID = binaryReader.ReadString();
                     Tech3UniqueValues = binaryReader.ReadFix64Array();
+                    Tech3Stackable = binaryReader.ReadBoolean();
                     Tech3NameKey = binaryReader.ReadString();
                     Tech3DescKey = binaryReader.ReadString();
                     Tech3Cost = binaryReader.Read7BitEncodedInt32();
                     Tech3SpritePath = binaryReader.ReadString();
                     Tech4ID = binaryReader.ReadString();
                     Tech4UniqueValues = binaryReader.ReadFix64Array();
+                    Tech4Stackable = binaryReader.ReadBoolean();
                     Tech4NameKey = binaryReader.ReadString();
                     Tech4DescKey = binaryReader.ReadString();
                     Tech4Cost = binaryReader.Read7BitEncodedInt32();

@@ -14,7 +14,7 @@ public class LevelTestProcedure : ProcedureBase
         GF.Log("正在进行测试，取消测试去修改LaunchProcedure");
         InitDataModels();
 
-        GF.UI.OpenUIForm(UIViews.MaterialModifyBar);
+        GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
 
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
 
@@ -37,27 +37,23 @@ public class LevelTestProcedure : ProcedureBase
         {
             switch (point.PointType)
             {
-                case EntityPresetPointType.Spawn:
-                case EntityPresetPointType.Respawn:
-                case EntityPresetPointType.Patrol:
+                case EntityPresetPointType.Building:
+                    BuildManager.BuildBuildingForLevelInit(point.Identifier, point.Position, point.OwnerFactionID);
+                    break;
+                    // case EntityPresetPointType.Spawn:
+                    // case EntityPresetPointType.Respawn:
+                    // case EntityPresetPointType.Patrol:
                     //尝试创建物体
                     // EntityParams newParams = new EntityParams();
                     // newParams.position = new Vector3(0, 1, 0);
                     // GF.Entity.ShowEntity<PlayerEntity>(0,UtilityBuiltin.AssetsPath.GetPrefab("Entity/TestCreature"),"Player",newParams);
-                    break;
-                // case EntityPresetPointType.Device:   //以前的实现，只能建造预设的一个特定设备
-                //     EntityParams deviceParams = EntityParams.Create(point.Position);
-                //     Device deviceData = new Device("Device_Base", null, null, Fix64.Zero, null, "Device_Base", "Device_Base", upgradeID: point.Identifier, null);
-                //     deviceParams.Set(DeviceEntity.P_DeviceData, deviceData);
-                //     GF.Entity.ShowEntity<DeviceEntity>("Device/DeviceBase", Const.EntityGroup.Building, deviceParams);
-                //     break;
-                case EntityPresetPointType.Buil_Base:
-                    EntityParams buildingParams = EntityParams.Create(point.Position);
-                    BuildingData buildingData = new BuildingData("Buil_Base_Lv0", BuilType.Base, Archetype.Coding, "Buil_Base", "Buil_Base", "Buil_Base", 0, 0, Fix64.One, Fix64.Zero, Fix64.Zero, null, null, 0, null);
-                    buildingParams.Set(BuildingEntity.P_BuildingData, buildingData);
-                    buildingParams.Set(BuildingEntity.P_InitOwnerFactionID, point.OwnerFactionID);
-                    GF.Entity.ShowEntity<BuildingEntity>("Building/Buil_Base", Const.EntityGroup.Building, buildingParams);
-                    break;
+                    //    break;
+                    // case EntityPresetPointType.Device:   //以前的实现，只能建造预设的一个特定设备
+                    //     EntityParams deviceParams = EntityParams.Create(point.Position);
+                    //     Device deviceData = new Device("Device_Base", null, null, Fix64.Zero, null, "Device_Base", "Device_Base", upgradeID: point.Identifier, null);
+                    //     deviceParams.Set(DeviceEntity.P_DeviceData, deviceData);
+                    //     GF.Entity.ShowEntity<DeviceEntity>("Device/DeviceBase", Const.EntityGroup.Building, deviceParams);
+                    //     break;
             }
         }
     }

@@ -179,7 +179,7 @@ namespace GameFramework.Editor.DataTableTools
                 if (dataTableProcessor.IsIdColumn(i))
                 {
                     // 编号列
-                    stringBuilder.AppendLine("            m_Id = int.Parse(columnStrings[index++]);");
+                    stringBuilder.AppendLine("            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);");
                     continue;
                 }
 
@@ -237,6 +237,58 @@ namespace GameFramework.Editor.DataTableTools
                             {
                                 stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseEnum<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), enumType.FullName.Replace('+', '.')).AppendLine();
                             }
+                        }
+                        else if (languageKeyword == "bool")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseBoolean(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "byte")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseByte(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "sbyte")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseSByte(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "short")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseInt16(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "ushort")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseUInt16(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "int")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseInt32(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "uint")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseUInt32(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "long")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseInt64(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "ulong")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseUInt64(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "float")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseSingle(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "double")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseDouble(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "decimal")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseDecimal(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
+                        }
+                        else if (languageKeyword == "char")
+                        {
+                            stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseChar(columnStrings[index++]);", dataTableProcessor.GetName(i)).AppendLine();
                         }
                         else
                         {
