@@ -477,8 +477,8 @@
     <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Data\Graphs\Matrix3ShaderProperty.cs" />
     <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Generation\Targets\CustomRenderTexture\CustomTextureSize.cs" />
     <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Data\Graphs\GroupData.cs" />
-    <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Drawing\Interfaces\ISGViewModel.cs" />
     <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Data\Implementation\GraphObject.cs" />
+    <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Drawing\Interfaces\ISGViewModel.cs" />
     <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Data\Graphs\CategoryData.cs" />
     <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Data\Nodes\Input\Scene\ObjectNode.cs" />
     <Compile Include="Library\PackageCache\com.unity.shadergraph@14.0.12\Editor\Generation\TargetResources\FieldDependencies.cs" />

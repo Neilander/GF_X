@@ -446,6 +446,7 @@ Transform:
   - {fileID: 781544142}
   - {fileID: 781511622}
   - {fileID: 781490264}
+  - {fileID: 1535063653}
   m_Father: {fileID: 781510654}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &210381322
@@ -2361,7 +2362,7 @@ Canvas:
   m_GameObject: {fileID: 1251008567}
   m_Enabled: 1
   serializedVersion: 3
-  m_RenderMode: 1
+  m_RenderMode: 0
   m_Camera: {fileID: 1535063652}
   m_PlaneDistance: 100
   m_PixelPerfect: 0
@@ -3133,12 +3134,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1535063650}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 140777184}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1535063654
 MonoBehaviour:
@@ -3760,11 +3761,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3a245f736dfe944f99611e401508bb07, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  initialHandSize: 4
-  maxPopulation: 20
-  validAreaObject: {fileID: 0}
-  invalidAreaObject: {fileID: 0}
-  cardPool: []
 --- !u!4 &1971831772
 Transform:
   m_ObjectHideFlags: 0
@@ -4114,7 +4110,6 @@ SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 781510654}
-  - {fileID: 1535063653}
   - {fileID: 107306696}
   - {fileID: 479249892}
   - {fileID: 1971831772}
