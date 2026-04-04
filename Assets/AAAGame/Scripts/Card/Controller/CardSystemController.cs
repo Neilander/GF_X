@@ -233,9 +233,15 @@ namespace AAAGame.Card
             // 从手牌移除
             m_HandCardController.RemoveCard(cardModel);
 
-            // 触发卡牌打出事件
+            // 触发卡牌打出事件（C# 事件）
             OnCardPlayed?.Invoke(cardModel);
+            
+            // 触发卡牌打出事件（GameFramework 事件系统）
+            GameFramework.Event.GameEventArgs e = CardPlayedEventArgs.Create(cardModel);
+            GF.Event.Fire(this, e);
+            GameFramework.ReferencePool.Release(e);
 
+            Debug.Log($"[Card] Card played: {cardModel.GetCardName()}");
             return true;
         }
 

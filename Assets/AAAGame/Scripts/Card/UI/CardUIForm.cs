@@ -387,6 +387,18 @@ namespace AAAGame.Card
             Log.Info("[CardUI] Attempting to place card in scene");
             bool placed = m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel());
             Log.Info($"[CardUI] Card placement result: {placed}");
+            
+            if (placed)
+            {
+                // 卡牌成功打出到场景，播放消失动画并移除
+                Log.Info($"[CardUI] ✅ Card placed successfully: {cardItem.GetCardModel().GetCardName()}");
+                cardItem.OnPlaySuccess();
+                
+                // 注意：ConfirmPlacement 内部会触发 OnCardPlayed 事件
+                // OnCardPlayed 事件会调用 RemoveHandCardItem
+                // 所以这里不需要手动移除
+            }
+            
             return placed;
         }
         
