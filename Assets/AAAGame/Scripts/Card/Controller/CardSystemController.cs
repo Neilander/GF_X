@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using System;
+using GameFramework;
+using UnityGameFramework.Runtime;
 
 namespace AAAGame.Card
 {
@@ -264,9 +266,15 @@ namespace AAAGame.Card
                 return false;
             }
 
-            // 触发丢弃事件
+            // 触发丢弃事件（C# 事件）
             OnCardDiscarded?.Invoke(cardModel);
+            
+            // 触发丢弃事件（GameFramework 事件系统）
+            GameFramework.Event.GameEventArgs e = CardDiscardedEventArgs.Create(cardModel);
+            GF.Event.Fire(this, e);
+            GameFramework.ReferencePool.Release(e);
 
+            Debug.Log($"[Card] Card discarded: {cardModel.GetCardName()}");
             return true;
         }
 

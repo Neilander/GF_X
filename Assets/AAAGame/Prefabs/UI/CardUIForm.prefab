@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &2131921506855871024
+--- !u!1 &115179568601260416
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,9 +8,9 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 7738495531804054913}
-  - component: {fileID: 4089568554609167524}
-  - component: {fileID: 1763624455099573578}
+  - component: {fileID: 9208096841632456266}
+  - component: {fileID: 4516700552331672844}
+  - component: {fileID: 8659257684487932413}
   m_Layer: 5
   m_Name: CardDeck
   m_TagString: Untagged
@@ -18,40 +18,40 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!224 &7738495531804054913
+--- !u!224 &9208096841632456266
 RectTransform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2131921506855871024}
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_GameObject: {fileID: 115179568601260416}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.34634998, y: 0.34634998, z: 0.34634998}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3867099157004315611}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -350, y: -86}
-  m_SizeDelta: {x: -1700, y: -1586}
-  m_Pivot: {x: 0.5, y: 1}
---- !u!222 &4089568554609167524
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: -94, y: 376}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!222 &4516700552331672844
 CanvasRenderer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2131921506855871024}
+  m_GameObject: {fileID: 115179568601260416}
   m_CullTransparentMesh: 1
---- !u!114 &1763624455099573578
+--- !u!114 &8659257684487932413
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2131921506855871024}
+  m_GameObject: {fileID: 115179568601260416}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
@@ -108,10 +108,10 @@ RectTransform:
   - {fileID: 4465045901827899754}
   m_Father: {fileID: 3867099157004315611}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 690, y: -119.25}
-  m_SizeDelta: {x: -915.6115, y: -761.4989}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 698.73315, y: -171}
+  m_SizeDelta: {x: 658.5989, y: 358.6872}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &6037774457207966562
 CanvasRenderer:
@@ -478,8 +478,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0.00012207031, y: 0.000061035156}
+  m_SizeDelta: {x: 121.41, y: 38.5}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1589840946660106274
 CanvasRenderer:
@@ -612,10 +612,13 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 3994406483597212062}
-  - {fileID: 7738495531804054913}
   - {fileID: 726204976969484073}
   - {fileID: 4718142225825253850}
+<<<<<<< Updated upstream
   - {fileID: 1982602803987158559}
+=======
+  - {fileID: 9208096841632456266}
+>>>>>>> Stashed changes
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -708,11 +711,11 @@ MonoBehaviour:
   handCardContainer: {fileID: 8635117454040563396}
   handCardArea: {fileID: 4718142225825253850}
   trashBin: {fileID: 3733187908752676364}
-  trashBinHintText: {fileID: 7981937009569467016}
+  trashBinHintText: {fileID: 0}
   handCardItemPrefab: {fileID: 1478813142199399011, guid: 67692d37767b7c74fa4177131ee36f31, type: 3}
   populationView: {fileID: 493465643948011694}
   areaMaterialOverlay: {fileID: 0}
-  cardDeckTransform: {fileID: 7738495531804054913}
+  cardDeckTransform: {fileID: 9208096841632456266}
   cardMoveToHandDuration: 0.5
   toggleUIKey: 9
 --- !u!114 &-3563082574767264693

@@ -55,6 +55,11 @@ namespace AAAGame.Card
             {
                 m_TrashBinRect = trashBin.GetComponent<RectTransform>();
                 trashBin.SetActive(false);
+                Log.Info("[CardUI] TrashBin initialized successfully.");
+            }
+            else
+            {
+                Log.Warning("[CardUI] TrashBin is not configured in CardUIForm prefab. Discard feature will not work.");
             }
             
             // 订阅事件
@@ -219,10 +224,12 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 移除手牌UI项 - 回收到对象池
+        /// 移除手牌UI项 - 回收到对象池（直接移除，不检查）
         /// </summary>
-        private void RemoveHandCardItem(CardModel cardModel)
+        private void RemoveHandCardItemDirect(CardModel cardModel)
         {
+            Log.Info($"[CardUI] RemoveHandCardItemDirect called for: {cardModel?.GetCardName()}");
+            
             UIItemObject itemToRemove = null;
             foreach (var itemObj in m_HandCardItemObjects)
             {
@@ -230,14 +237,55 @@ namespace AAAGame.Card
                 if (cardItem != null && cardItem.GetCardModel() == cardModel)
                 {
                     itemToRemove = itemObj;
+                    Log.Info($"[CardUI] Found matching card item: {cardItem.GetCardModel().GetCardName()}");
                     break;
                 }
             }
             
             if (itemToRemove != null)
             {
+                Log.Info($"[CardUI] Removing item from list and unspawning...");
                 m_HandCardItemObjects.Remove(itemToRemove);
                 UnspawnItem<UIItemObject>(handCardItemPrefab, itemToRemove);
+                Log.Info($"[CardUI] ✅ Item removed. Remaining count: {m_HandCardItemObjects.Count}");
+            }
+            else
+            {
+                Log.Warning($"[CardUI] Could not find card item to remove for: {cardModel?.GetCardName()}");
+            }
+        }
+
+        /// <summary>
+        /// 移除手牌UI项 - 回收到对象池（通过事件调用，检查是否已移除）
+        /// </summary>
+        private void RemoveHandCardItem(CardModel cardModel)
+        {
+            Log.Info($"[CardUI] RemoveHandCardItem called for: {cardModel?.GetCardName()}");
+            Log.Info($"[CardUI] Current hand card items count: {m_HandCardItemObjects.Count}");
+            
+            UIItemObject itemToRemove = null;
+            foreach (var itemObj in m_HandCardItemObjects)
+            {
+                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
+                if (cardItem != null && cardItem.GetCardModel() == cardModel)
+                {
+                    itemToRemove = itemObj;
+                    Log.Info($"[CardUI] Found matching card item: {cardItem.GetCardModel().GetCardName()}");
+                    break;
+                }
+            }
+            
+            if (itemToRemove != null)
+            {
+                Log.Info($"[CardUI] Removing item from list and unspawning...");
+                m_HandCardItemObjects.Remove(itemToRemove);
+                UnspawnItem<UIItemObject>(handCardItemPrefab, itemToRemove);
+                Log.Info($"[CardUI] Item removed. Remaining count: {m_HandCardItemObjects.Count}");
+            }
+            else
+            {
+                // 不报错，因为可能已经被直接移除了
+                Log.Info($"[CardUI] Card item already removed or not found: {cardModel?.GetCardName()}");
             }
         }
 
@@ -286,6 +334,8 @@ namespace AAAGame.Card
         {
             m_DraggingCard = null;
             
+            Log.Info($"[CardUI] OnCardEndDrag - Screen Position: {screenPosition}");
+            
             // 隐藏垃圾桶
             if (trashBin != null)
             {
@@ -298,22 +348,51 @@ namespace AAAGame.Card
                 areaMaterialOverlay.HideAreaEffect();
             }
             
-            // 检查是否拖回手牌区域
-            if (IsOverHandCardArea(screenPosition))
-            {
-                Log.Info("Card dragged back to hand");
-                return false;
-            }
+            // 检查是否在垃圾桶区域（优先检查）
+            bool isInTrash = IsInTrashBin(screenPosition);
+            Log.Info($"[CardUI] Is in trash bin: {isInTrash}");
             
-            // 检查是否在垃圾桶区域
-            if (IsInTrashBin(screenPosition))
+            if (isInTrash)
             {
-                m_CardSystemController.DiscardCard(cardItem.GetCardModel());
+                Log.Info($"[CardUI] ✅ Discarding card: {cardItem.GetCardModel().GetCardName()}");
+                
+                // 先通知 HandCardItem 停止拖拽状态
+                cardItem.OnDiscardSuccess();
+                
+                // 先移除 UI（避免事件重复移除）
+                RemoveHandCardItemDirect(cardItem.GetCardModel());
+                
+                // 调用 Controller 丢弃卡牌（更新数据模型 + 触发事件）
+                // 注意：这会触发 OnCardDiscarded 事件，但 UI 已经移除了
+                bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel());
+                
+                if (discarded)
+                {
+                    Log.Info("[CardUI] ✅ Card discarded and removed successfully");
+                }
+                else
+                {
+                    Log.Error("[CardUI] ❌ Failed to discard card in controller");
+                }
+                
                 return true;
             }
             
-            // 尝试确认放置
-            return m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel());
+            // 检查是否拖回手牌区域
+            bool isOverHand = IsOverHandCardArea(screenPosition);
+            Log.Info($"[CardUI] Is over hand area: {isOverHand}");
+            
+            if (isOverHand)
+            {
+                Log.Info("[CardUI] Card dragged back to hand");
+                return false;
+            }
+            
+            // 尝试确认放置到场景
+            Log.Info("[CardUI] Attempting to place card in scene");
+            bool placed = m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel());
+            Log.Info($"[CardUI] Card placement result: {placed}");
+            return placed;
         }
         
         /// <summary>
@@ -368,15 +447,20 @@ namespace AAAGame.Card
                     var parentRect = handCardContainer.parent.GetComponent<RectTransform>();
                     if (parentRect != null)
                     {
-                        return RectTransformUtility.RectangleContainsScreenPoint(
+                        bool result = RectTransformUtility.RectangleContainsScreenPoint(
                             parentRect, screenPosition, GFBuiltin.UICamera);
+                        Log.Info($"[CardUI] IsOverHandCardArea (using parent): {result}");
+                        return result;
                     }
                 }
+                Log.Info("[CardUI] IsOverHandCardArea: handCardArea is null, returning false");
                 return false;
             }
             
-            return RectTransformUtility.RectangleContainsScreenPoint(
+            bool isOver = RectTransformUtility.RectangleContainsScreenPoint(
                 handCardArea, screenPosition, GFBuiltin.UICamera);
+            Log.Info($"[CardUI] IsOverHandCardArea: {isOver}");
+            return isOver;
         }
 
         /// <summary>
@@ -384,10 +468,65 @@ namespace AAAGame.Card
         /// </summary>
         private bool IsInTrashBin(Vector2 screenPosition)
         {
-            if (m_TrashBinRect == null) return false;
+            if (m_TrashBinRect == null)
+            {
+                Log.Warning("[CardUI] TrashBin RectTransform is null. Cannot detect trash bin area.");
+                return false;
+            }
             
-            return RectTransformUtility.RectangleContainsScreenPoint(
-                m_TrashBinRect, screenPosition, GFBuiltin.UICamera);
+            // 方法 1：使用 RectTransformUtility.RectangleContainsScreenPoint
+            // 注意：这个方法在某些 Canvas 设置下可能不准确
+            Camera uiCamera = GFBuiltin.UICamera;
+            bool result1 = RectTransformUtility.RectangleContainsScreenPoint(
+                m_TrashBinRect, screenPosition, uiCamera);
+            
+            // 方法 2：手动计算屏幕坐标范围（更可靠）
+            // 获取垃圾桶的 4 个角的世界坐标
+            Vector3[] corners = new Vector3[4];
+            m_TrashBinRect.GetWorldCorners(corners);
+            
+            // 转换为屏幕坐标
+            Vector2[] screenCorners = new Vector2[4];
+            for (int i = 0; i < 4; i++)
+            {
+                // 使用 Camera.WorldToScreenPoint 而不是 RectTransformUtility
+                if (uiCamera != null)
+                {
+                    screenCorners[i] = uiCamera.WorldToScreenPoint(corners[i]);
+                }
+                else
+                {
+                    // 如果没有 Camera，直接使用世界坐标（Overlay 模式）
+                    screenCorners[i] = corners[i];
+                }
+            }
+            
+            // 计算屏幕坐标的边界（不要除以100！）
+            float minX = Mathf.Min(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x)/100;
+            float maxX = Mathf.Max(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x)/100;
+            float minY = Mathf.Min(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y)/100;
+            float maxY = Mathf.Max(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y)/100;
+            
+            Log.Info($"[CardUI] TrashBin bounds - X:[{minX}, {maxX}], Y:[{minY}, {maxY}]");
+            Log.Info($"[CardUI] Mouse position - X:{screenPosition.x}, Y:{screenPosition.y}");
+            
+            // 检查鼠标位置是否在边界内
+            bool result2 = screenPosition.x >= minX && screenPosition.x <= maxX &&
+                          screenPosition.y >= minY && screenPosition.y <= maxY;
+            
+
+            
+            // 使用方法 2 的结果（更可靠）
+            if (result2)
+            {
+                Log.Info("[CardUI] ✅ Card is over trash bin!");
+            }
+            else
+            {
+                Log.Warning("[CardUI] ❌ Card is NOT over trash bin!");
+            }
+            
+            return result2;
         }
 
         #region 事件处理
