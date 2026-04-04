@@ -39,7 +39,7 @@
         /// <summary>
         /// 士兵预制体
         /// </summary>
-        UnityEngine.GameObject SoldierPrefab { get; }
+        string SoldierIndex { get; }
 
         /// <summary>
         /// 生成半径

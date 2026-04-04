@@ -29,8 +29,8 @@ public class CardData : ScriptableObject
     public string soldierName = "步兵";
 
     [Header("士兵生成")]
-    [Tooltip("士兵预制体")]
-    public GameObject soldierPrefab;
+    [Tooltip("士兵index")]
+    public string soldierIndex;
     
     [Tooltip("生成半径（士兵围绕中心点生成的范围）")]
     [Range(0.5f, 5f)]

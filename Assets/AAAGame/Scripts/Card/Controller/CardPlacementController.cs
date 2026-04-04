@@ -182,17 +182,19 @@ namespace AAAGame.Card
         private int SpawnSoldiers(CardModel cardModel, Vector3 centerPosition)
         {
             ICardDataProvider dataProvider = cardModel.DataProvider;
-            if (dataProvider == null || dataProvider.SoldierPrefab == null)
+            if (dataProvider == null || dataProvider.SoldierIndex == "")
             {
-                Debug.LogError("[Card] Cannot spawn soldiers: DataProvider or SoldierPrefab is null.");
+                Debug.LogError("[Card] Cannot spawn soldiers: DataProvider or SoldierIndex is null.");
                 return 0;
             }
 
             int soldierCount = dataProvider.SoldierCount;
             float spawnRadius = dataProvider.SpawnRadius;
-            GameObject soldierPrefab = dataProvider.SoldierPrefab;
+            string soldierIndex = dataProvider.SoldierIndex;
 
+            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f,soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
             // 在圆形区域内随机生成士兵
+            /*
             for (int i = 0; i < soldierCount; i++)
             {
                 Vector2 num=Random.insideUnitCircle * spawnRadius;
@@ -201,11 +203,12 @@ namespace AAAGame.Card
                 Vector3 spawnPosition = centerPosition + new Vector3(randomOffset.x, 0, randomOffset.y);
                 
                 // 直接实例化
-                GameObject soldier = UnityEngine.Object.Instantiate(soldierPrefab, spawnPosition, Quaternion.identity);
-                soldier.name = $"{dataProvider.SoldierName}_{i}";
+                //GameObject soldier = UnityEngine.Object.Instantiate(soldierPrefab, spawnPosition, Quaternion.identity);
+                //soldier.name = $"{dataProvider.SoldierName}_{i}";
                 
-                Debug.Log($"[Card] Spawned soldier: {soldier.name} at {spawnPosition}");
-            }
+                //Debug.Log($"[Card] Spawned soldier: {soldier.name} at {spawnPosition}");
+                Debug.LogError("这里不该用到");
+            }*/
 
             // 触发士兵生成事件
             OnSoldiersSpawned?.Invoke(cardModel, centerPosition, soldierCount);

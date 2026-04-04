@@ -602,11 +602,15 @@ namespace AAAGame.Card.UI
 
         private void SpawnSoldiers(CardData cardData, Vector3 centerPosition)
         {
-            if (cardData == null || cardData.soldierPrefab == null) return;
+            if (cardData == null || cardData.soldierIndex == "") return;
 
             int soldierCount = cardData.soldierCount;
             float spawnRadius = cardData.spawnRadius;
 
+            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f,cardData.soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            //SoldierFactory.ShowSoldier(cardData.soldierIndex,)
+            
+            /*
             if (soldierCount == 1)
             {
                 SpawnSingleSoldier(cardData, centerPosition);
@@ -622,16 +626,18 @@ namespace AAAGame.Card.UI
             else
             {
                 SpawnSoldiersInGrid(cardData, centerPosition, soldierCount, spawnRadius);
-            }
+            }*/
 
             Debug.Log($"[Card] Spawned {soldierCount} soldiers: {cardData.soldierName}");
         }
 
+        /*
         private void SpawnSingleSoldier(CardData cardData, Vector3 position)
         {
             GameObject soldier = Instantiate(cardData.soldierPrefab, position, Quaternion.identity);
             soldier.name = $"{cardData.soldierName}_1";
         }
+
 
         private void SpawnSoldiersInLine(CardData cardData, Vector3 centerPosition, int count, float spacing)
         {
@@ -683,7 +689,7 @@ namespace AAAGame.Card.UI
                     soldierIndex++;
                 }
             }
-        }
+        }*/
 
         #endregion
 

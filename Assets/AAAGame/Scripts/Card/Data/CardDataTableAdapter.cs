@@ -38,18 +38,16 @@ namespace AAAGame.Card
         public int SoldierCount => m_DataRow.SoldierCount;
         public string SoldierName => m_DataRow.SoldierName;
         
-        public GameObject SoldierPrefab
+        public string SoldierIndex
         {
             get
             {
-                if (m_CachedPrefab == null && !string.IsNullOrEmpty(m_DataRow.SoldierPrefabPath))
-                {
-                    // TODO: 通过 ResourceComponent 加载
-                    // m_CachedPrefab = GF.Resource.LoadAsset<GameObject>(m_DataRow.SoldierPrefabPath);
-                }
-                return m_CachedPrefab;
+                Debug.LogError("使用了CardDataTableAdapter，但是这东西没写完");
+                return "";
             }
         }
+        
+
 
         public float SpawnRadius => m_DataRow.SpawnRadius;
         
