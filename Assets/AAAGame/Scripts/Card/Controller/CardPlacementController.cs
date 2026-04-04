@@ -57,6 +57,7 @@ namespace AAAGame.Card
             }
 
             m_IsPlacing = true;
+            Debug.Log("[Card] Card placement started.");
             
             // 触发开始放置事件
             OnPlacementStarted?.Invoke(cardModel);
@@ -96,6 +97,7 @@ namespace AAAGame.Card
         {
             if (!m_IsPlacing || !m_IsValidPlacement)
             {
+                Debug.LogError("[Card] Cannot confirm placement: 触发了神奇的bug.");
                 return false;
             }
 
