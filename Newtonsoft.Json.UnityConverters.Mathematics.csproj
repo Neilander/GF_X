@@ -302,6 +302,9 @@
     <Reference Include="UnityEditor.UnityConnectModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Managed/UnityEngine/UnityEditor.UnityConnectModule.dll</HintPath>
     </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
+    </Reference>
     <Reference Include="System.Text.Json">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/System.Text.Json.dll</HintPath>
     </Reference>
@@ -328,6 +331,9 @@
     </Reference>
     <Reference Include="protobuf-net.Core">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/protobuf-net.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
     </Reference>
     <Reference Include="System.Text.Encodings.Web">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/System.Text.Encodings.Web.dll</HintPath>
@@ -367,12 +373,6 @@
     </Reference>
     <Reference Include="SixLabors.ImageSharp">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/SixLabors.ImageSharp.dll</HintPath>
-    </Reference>
-    <Reference Include="EasyRoads3Dv3">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
-    </Reference>
-    <Reference Include="DelaunayER">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
     </Reference>
     <Reference Include="UnityEditor.iOS.Extensions.Xcode">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.iOS.Extensions.Xcode.dll</HintPath>

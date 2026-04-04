@@ -420,6 +420,9 @@
     <Reference Include="UnityEditor.WindowsStandalone.Extensions">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/PlaybackEngines/WindowsStandaloneSupport/UnityEditor.WindowsStandalone.Extensions.dll</HintPath>
     </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
+    </Reference>
     <Reference Include="System.Text.Json">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/System.Text.Json.dll</HintPath>
     </Reference>
@@ -437,6 +440,9 @@
     </Reference>
     <Reference Include="nunit.framework">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.ext.nunit@2.0.3/net40/unity-custom/nunit.framework.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3Editor">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/Editor/EasyRoads3Dv3Editor.dll</HintPath>
     </Reference>
     <Reference Include="unityplastic">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/unityplastic.dll</HintPath>
@@ -458,6 +464,9 @@
     </Reference>
     <Reference Include="Unity.Plastic.Newtonsoft.Json">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/Unity.Plastic.Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
     </Reference>
     <Reference Include="log4netPlastic">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/log4netPlastic.dll</HintPath>
@@ -500,15 +509,6 @@
     </Reference>
     <Reference Include="SixLabors.ImageSharp">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/SixLabors.ImageSharp.dll</HintPath>
-    </Reference>
-    <Reference Include="EasyRoads3Dv3">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
-    </Reference>
-    <Reference Include="EasyRoads3Dv3Editor">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/Editor/EasyRoads3Dv3Editor.dll</HintPath>
-    </Reference>
-    <Reference Include="DelaunayER">
-      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
     </Reference>
     <Reference Include="UnityEditor.iOS.Extensions.Xcode">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.iOS.Extensions.Xcode.dll</HintPath>
