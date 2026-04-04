@@ -27,7 +27,14 @@ public partial class GeneralSetup : GameFrameworkComponent
     {
         DataModelSetup();
         GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
-        SoldierFactory.ShowSoldier("knight", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
+        
+        var inputManager = GameEntry.GetComponent<InputManager>();
+        if (inputManager != null)
+        {
+            inputManager.ChangeState(InputState.Game);
+        }
+        
+        SoldierFactory.ShowSoldier("coder", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
     }
 
     public void GeneralSystemShutDown()

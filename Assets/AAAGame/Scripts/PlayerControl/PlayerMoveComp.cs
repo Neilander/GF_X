@@ -15,6 +15,7 @@ public class PlayerMoveComp : IMoveComp
             return;
         }
 
+        
         Vector2 translated = InputDirTranslator.Translate(
             new FixVector2(_inputModel.MoveX, _inputModel.MoveY)
         );
