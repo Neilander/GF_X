@@ -203,7 +203,12 @@ namespace AAAGame.Card
                 // 返回原位
                 ReturnToOriginalPosition();
             }
-            // 成功打出的话，由父界面负责销毁
+            else
+            {
+                // 成功打出或丢弃，不需要返回原位
+                // 对象会被父界面回收到对象池
+                Log.Info($"[HandCardItem] Card action successful, will be recycled");
+            }
         }
 
         #endregion
@@ -270,6 +275,35 @@ namespace AAAGame.Card
                 {
                     canvasGroup.blocksRaycasts = true;
                 });
+        }
+
+        /// <summary>
+        /// 丢弃成功回调（在拖拽过程中被丢弃）
+        /// </summary>
+        public void OnDiscardSuccess()
+        {
+            // 立即停止拖拽状态
+            m_IsDragging = false;
+            canvasGroup.blocksRaycasts = false; // 禁用交互，防止再次拖拽
+            
+            // 恢复父级（避免卡在 Canvas 顶层）
+            if (m_OriginalParent != null)
+            {
+                transform.SetParent(m_OriginalParent);
+            }
+            
+            // 播放消失动画（缩放）
+            m_ScaleTween?.Kill();
+            m_ScaleTween = transform.DOScale(Vector3.zero, 0.2f)
+                .SetEase(Ease.InBack);
+            
+            // 淡出效果
+            if (canvasGroup != null)
+            {
+                canvasGroup.DOFade(0f, 0.2f);
+            }
+            
+            Log.Info($"[HandCardItem] ✅ Card discard animation started: {m_CardModel?.GetCardName()}");
         }
 
         private void OnDestroy()

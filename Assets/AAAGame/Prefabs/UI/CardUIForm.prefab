@@ -707,7 +707,7 @@ MonoBehaviour:
   handCardContainer: {fileID: 8635117454040563396}
   handCardArea: {fileID: 4718142225825253850}
   trashBin: {fileID: 3733187908752676364}
-  trashBinHintText: {fileID: 7981937009569467016}
+  trashBinHintText: {fileID: 0}
   handCardItemPrefab: {fileID: 1478813142199399011, guid: 67692d37767b7c74fa4177131ee36f31, type: 3}
   populationView: {fileID: 493465643948011694}
   areaMaterialOverlay: {fileID: 0}
