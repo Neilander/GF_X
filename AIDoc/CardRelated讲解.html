@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardRelated 文件夹解析</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f13; color: #d4d4d8; font-family: 'Segoe UI', sans-serif; line-height: 1.7; padding: 40px 24px; }
+  h1 { color: #a78bfa; font-size: 2rem; margin-bottom: 8px; }
+  h2 { color: #7dd3fc; font-size: 1.35rem; margin: 40px 0 16px; border-left: 4px solid #7dd3fc; padding-left: 12px; }
+  h3 { color: #86efac; font-size: 1.05rem; margin: 28px 0 8px; }
+  h4 { color: #fcd34d; font-size: 0.95rem; margin: 20px 0 6px; }
+  p { margin-bottom: 10px; color: #a1a1aa; }
+  code { background: #1e1e2e; color: #f9a8d4; padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; font-family: 'Cascadia Code', monospace; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  .subtitle { color: #71717a; font-size: 0.95rem; margin-bottom: 40px; }
+
+  /* 概览卡片 */
+  .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0 40px; }
+  .overview-card { background: #18181f; border: 1px solid #27272a; border-radius: 12px; padding: 24px; }
+  .overview-card.v1 { border-top: 3px solid #f97316; }
+  .overview-card.v2 { border-top: 3px solid #8b5cf6; }
+  .overview-card h3 { margin-top: 0; }
+  .overview-card.v1 h3 { color: #f97316; }
+  .overview-card.v2 h3 { color: #a78bfa; }
+  .tag { display: inline-block; background: #27272a; color: #a1a1aa; border-radius: 20px; font-size: 0.75rem; padding: 2px 10px; margin: 2px; }
+  .tag.bad { background: #3f1515; color: #f87171; }
+  .tag.good { background: #1a3a20; color: #86efac; }
+
+  /* 架构图 */
+  .arch-diagram { background: #18181f; border: 1px solid #27272a; border-radius: 12px; padding: 28px; margin: 20px 0; font-family: monospace; font-size: 0.88rem; line-height: 2; overflow-x: auto; }
+  .arch-layer { display: flex; gap: 12px; align-items: center; margin: 4px 0; }
+  .layer-label { color: #71717a; width: 90px; flex-shrink: 0; font-size: 0.8rem; }
+  .layer-boxes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .box { background: #1e1e2e; border: 1px solid; border-radius: 8px; padding: 4px 14px; font-size: 0.82rem; white-space: nowrap; }
+  .box.ui { border-color: #7dd3fc; color: #7dd3fc; }
+  .box.ctrl { border-color: #a78bfa; color: #a78bfa; }
+  .box.model { border-color: #86efac; color: #86efac; }
+  .box.mgr { border-color: #fcd34d; color: #fcd34d; }
+  .box.data { border-color: #f9a8d4; color: #f9a8d4; }
+  .box.event { border-color: #fb923c; color: #fb923c; }
+  .arrow { color: #3f3f46; }
+
+  /* 文件条目 */
+  .section { background: #18181f; border: 1px solid #27272a; border-radius: 12px; padding: 28px; margin: 16px 0; }
+  .section-title { color: #fcd34d; font-size: 1rem; font-weight: 700; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #27272a; letter-spacing: 0.04em; }
+  .file-entry { border-left: 2px solid #27272a; padding: 12px 0 12px 20px; margin: 8px 0; }
+  .file-entry:hover { border-left-color: #6366f1; }
+  .file-name { color: #f9a8d4; font-family: monospace; font-size: 0.92rem; font-weight: 600; }
+  .file-type { display: inline-block; font-size: 0.72rem; border: 1px solid; border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; }
+  .file-type.mono { border-color: #7dd3fc; color: #7dd3fc; }
+  .file-type.plain { border-color: #86efac; color: #86efac; }
+  .file-type.so { border-color: #fcd34d; color: #fcd34d; }
+  .file-type.iface { border-color: #c084fc; color: #c084fc; }
+  .file-type.editor { border-color: #f97316; color: #f97316; }
+  .file-desc { color: #a1a1aa; font-size: 0.88rem; margin-top: 6px; }
+  .note { background: #1a1a2e; border-left: 3px solid #6366f1; padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 10px 0; font-size: 0.85rem; color: #a5b4fc; }
+  .warn { background: #2a1a10; border-left: 3px solid #f97316; padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 10px 0; font-size: 0.85rem; color: #fdba74; }
+  .key-point { background: #0f2020; border-left: 3px solid #34d399; padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 10px 0; font-size: 0.85rem; color: #6ee7b7; }
+  .divider { height: 1px; background: #27272a; margin: 16px 0; }
+  ul { padding-left: 22px; color: #a1a1aa; font-size: 0.88rem; }
+  li { margin: 3px 0; }
+
+  /* 依赖关系 */
+  .dep-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .dep-tag { background: #1e1e2e; border: 1px solid #3f3f46; border-radius: 6px; padding: 3px 10px; font-size: 0.78rem; color: #71717a; font-family: monospace; }
+
+  /* 两栏对比 */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
+  .compare-col h4 { margin-top: 0; }
+  .compare-col.v1 { border: 1px solid #f9731633; border-radius: 8px; padding: 14px; background: #1f1209; }
+  .compare-col.v2 { border: 1px solid #8b5cf633; border-radius: 8px; padding: 14px; background: #130f1f; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>CardRelated 文件夹解析</h1>
+  <p class="subtitle">路径：<code>Assets/CardRelated/AAAGame/Scripts/</code> &nbsp;·&nbsp; 队友贡献的卡牌系统，包含两个版本</p>
+
+  <!-- 整体概览 -->
+  <h2>整体概览</h2>
+  <p>该文件夹包含一个完整的卡牌系统，作者经历了两个版本的迭代：</p>
+  <div class="overview-grid">
+    <div class="overview-card v1">
+      <h3>Card_1 — 原版拖拽</h3>
+      <p>快速原型版本，单一脚本直接驱动。核心逻辑、UI、数据耦合在一起，适合验证功能可行性。</p>
+      <div style="margin-top:10px">
+        <span class="tag bad">无命名空间</span>
+        <span class="tag bad">全局单例</span>
+        <span class="tag bad">逻辑耦合</span>
+        <span class="tag">MonoBehaviour驱动</span>
+        <span class="tag">可直接挂场景</span>
+      </div>
+    </div>
+    <div class="overview-card v2">
+      <h3>Card_MVC — MVC重构版</h3>
+      <p>用 MVC 模式重构，数据/逻辑/显示分层。同时提供两套入口：GF UIForm 版本和独立 MonoBehaviour 版本。</p>
+      <div style="margin-top:10px">
+        <span class="tag good">namespace AAAGame.Card</span>
+        <span class="tag good">MVC分层</span>
+        <span class="tag good">接口抽象</span>
+        <span class="tag">兼容旧版</span>
+        <span class="tag">GF事件驱动</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MVC 架构图 -->
+  <h2>Card_MVC 架构总览</h2>
+  <div class="arch-diagram">
+    <div class="arch-layer">
+      <span class="layer-label">UI 层</span>
+      <div class="layer-boxes">
+        <span class="box ui">CardUIForm</span>
+        <span class="box ui">CardUISystem</span>
+        <span class="box ui">CardHandUI</span>
+        <span class="box ui">HandCardItem</span>
+        <span class="box ui">PopulationView</span>
+        <span class="box ui">CardAreaMaterialOverlay</span>
+      </div>
+    </div>
+    <div style="text-align:center;color:#3f3f46;margin:4px 0 4px 90px;">↕ 事件 / 回调</div>
+    <div class="arch-layer">
+      <span class="layer-label">Manager 层</span>
+      <div class="layer-boxes">
+        <span class="box mgr">CardGameManager</span>
+        <span class="box mgr">PlayerHandManager</span>
+        <span class="box mgr">PopulationManager</span>
+      </div>
+    </div>
+    <div style="text-align:center;color:#3f3f46;margin:4px 0 4px 90px;">↕ 调用</div>
+    <div class="arch-layer">
+      <span class="layer-label">Controller 层</span>
+      <div class="layer-boxes">
+        <span class="box ctrl">CardSystemController</span>
+        <span class="box ctrl">HandCardController</span>
+        <span class="box ctrl">CardPlacementController</span>
+        <span class="box ctrl">AreaDetectionController</span>
+      </div>
+    </div>
+    <div style="text-align:center;color:#3f3f46;margin:4px 0 4px 90px;">↕ 读写</div>
+    <div class="arch-layer">
+      <span class="layer-label">Model 层</span>
+      <div class="layer-boxes">
+        <span class="box model">CardModel</span>
+        <span class="box model">PlayerHandModel</span>
+        <span class="box model">PopulationModel</span>
+      </div>
+    </div>
+    <div style="text-align:center;color:#3f3f46;margin:4px 0 4px 90px;">↕ 实现</div>
+    <div class="arch-layer">
+      <span class="layer-label">Data 层</span>
+      <div class="layer-boxes">
+        <span class="box data">ICardDataProvider</span>
+        <span class="box data">CardData (SO)</span>
+        <span class="box data">CardDataAdapter</span>
+        <span class="box data">CardDataTableAdapter</span>
+        <span class="box data">DRCard</span>
+      </div>
+    </div>
+    <div style="text-align:center;color:#3f3f46;margin:4px 0 4px 90px;">跨层通信</div>
+    <div class="arch-layer">
+      <span class="layer-label">Event 层</span>
+      <div class="layer-boxes">
+        <span class="box event">CardEventArgs (8种)</span>
+        <span class="box event">CardEventManager</span>
+        <span class="box event">CardConst</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="key-point">
+    <strong>核心设计意图：</strong> CardGameManager（MonoBehaviour）作为唯一入口，持有 CardSystemController（纯C#），再由 Controller 驱动 Model。UI 层只读 Model、响应 GF 事件，不直接修改数据。Manager 层的 PopulationManager / PlayerHandManager 是为了兼容旧 Card_1 的 UI 代码而保留的桥接层。
+  </div>
+
+  <!-- ================================================================ -->
+  <h2>Card_1 — 原版文件详解</h2>
+
+  <!-- 数据 -->
+  <div class="section">
+    <div class="section-title">数据</div>
+
+    <div class="file-entry">
+      <span class="file-name">CardData.cs</span>
+      <span class="file-type so">ScriptableObject</span>
+      <div class="file-desc">
+        卡牌配置数据资产。字段包括 <code>cardName</code>、<code>populationCost</code>（人口消耗）、<code>soldierCount</code>（生成数量）、<code>soldierPrefab</code>（生成Prefab）、<code>spawnRadius</code>（生成半径）、<code>dropWeight</code>（抽卡权重）。<br>
+        <br>
+        <code>GetCardData()</code> 方法当前直接返回 <code>this</code>，注释里留有 TODO：将来改为通过 index 查 DataTable。
+      </div>
+      <div class="warn">Card_1 版本中此文件全部注释掉了，改用了 Card_MVC/Data/CardData.cs（内容相同但激活状态）。两个文件同名会引起命名空间冲突，接入时需要注意。</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardEventArgs.cs</span>
+      <span class="file-type plain">C# class</span>
+      <div class="file-desc">
+        Card_1 版的事件参数定义（未使用 GF ReferencePool）。具体内容未读，但可类比 MVC 版的 CardEventArgs。
+      </div>
+    </div>
+  </div>
+
+  <!-- UI / 交互 -->
+  <div class="section">
+    <div class="section-title">UI / 交互</div>
+
+    <div class="file-entry">
+      <span class="file-name">HandCardUI.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        单张手牌的 UI 组件。实现了完整的拖拽接口（<code>IBeginDragHandler / IDragHandler / IEndDragHandler</code>）和悬停放大效果，用 DoTween 做动画。
+        <ul style="margin-top:8px">
+          <li>拖拽开始：脱离手牌容器移到 Canvas 顶层，通知 <code>CardUIManager</code></li>
+          <li>拖拽结束：询问 <code>CardUIManager.OnCardEndDrag</code>，失败则用 <code>DOMove</code> 弹回原位</li>
+          <li><code>MoveToHandFromScreenPosition()</code>：从指定屏幕位置飞入手牌区（抽牌动画）</li>
+          <li>人口不足时 <code>CanvasGroup.alpha = 0.5f</code> 置灰</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardUIManager.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        Card_1 版的总管理器。文件过大（约400行），是整个 Card_1 系统的核心：负责初始化手牌UI、处理拖拽事件、射线检测地面位置、检测禁止区域、调用 <code>SoldierFactory</code> 生成士兵。包含 <code>TestDrawCards()</code> 和 <code>TestAddCards()</code> 供编辑器测试按钮调用。
+      </div>
+      <div class="note">Singleton 模式，其他组件（如 HandCardUI、CardUIDebugger、CardUITestProcedure）均通过 <code>CardUIManager.Instance</code> 访问。</div>
+    </div>
+  </div>
+
+  <!-- 管理器 -->
+  <div class="section">
+    <div class="section-title">管理器</div>
+
+    <div class="file-entry">
+      <span class="file-name">PlayerHandManager.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        管理玩家手中持有的卡牌列表。Start 时从 <code>cardPool</code>（Inspector 配置的 ScriptableObject 列表）按权重随机抽取 <code>maxHandSize</code>（默认4）张初始手牌。
+        <ul style="margin-top:8px">
+          <li><code>DrawRandomCards(count)</code> — 按 <code>dropWeight</code> 加权随机抽卡</li>
+          <li><code>AddCard / RemoveCard / RemoveCardAt</code> — 增删手牌并触发 <code>OnHandChanged</code> 事件</li>
+          <li><code>RedrawHand()</code> — 清空后延迟一帧重新随机抽取（保证UI清空再重建）</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">PopulationManager.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        人口资源管理器。维护 <code>currentPopulation / maxPopulation</code> 两个字段，对外暴露 <code>AvailablePopulation = max - current</code>。
+        <ul style="margin-top:8px">
+          <li><code>HasEnoughPopulation(cost)</code> — 检查是否够用</li>
+          <li><code>OccupyPopulation(cost)</code> — 消耗人口（不足则返回 false）</li>
+          <li><code>ReleasePopulation(cost)</code> — 释放人口（士兵死亡时调用）</li>
+          <li>人口变化时触发 <code>OnPopulationChanged(current, max)</code> 事件</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 视觉反馈 -->
+  <div class="section">
+    <div class="section-title">视觉反馈 / 放置指示</div>
+
+    <div class="file-entry">
+      <span class="file-name">CardPlacementIndicator.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        3D 世界空间里跟随鼠标的放置指示器（扁平圆柱体）。通过 <code>MaterialPropertyBlock</code> 设置颜色（绿色=合法，红色=禁止），不创建新材质实例。拖拽过程中由 <code>CardUIManager</code> 每帧调用 <code>UpdatePosition()</code> 和 <code>SetValid()</code>。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">AreaIndicator.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        区域光效指示器，使用 DoTween 淡入/淡出动画。维护两个子对象（validAreaIndicator / invalidAreaIndicator），通过 <code>MaterialPropertyBlock</code> 的 <code>_BaseColor</code> 和 <code>_EmissionColor</code> 做透明度渐变。
+        <br>拖拽时调用 <code>Show(valid)</code>，拖拽结束调用 <code>Hide()</code>。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">AreaMaterialOverlay.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        材质叠加器。通过在 Renderer 的 <code>materials</code> 数组末尾追加一个叠加材质（绿色/红色半透明），实现地面区域高亮。在 <code>Awake</code> 时缓存所有原始材质，切换区域时先恢复再重新追加。
+        <ul style="margin-top:8px">
+          <li>用 <code>collider.ClosestPoint(worldPos)</code> 判断点是否在区域内（支持不规则形状）</li>
+          <li><code>HideAreaEffect()</code> 恢复所有 Renderer 的原始材质</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 辅助工具 -->
+  <div class="section">
+    <div class="section-title">编辑器辅助 / 调试工具</div>
+
+    <div class="file-entry">
+      <span class="file-name">ForbiddenAreaHelper.cs</span>
+      <span class="file-type mono">MonoBehaviour [ExecuteInEditMode]</span>
+      <div class="file-desc">
+        编辑模式可视化工具，在 Scene 视图用 Gizmos 绘制禁止区域的边界框、8个角点和坐标轴。提供 ContextMenu 快捷操作（应用到 Transform / 从 Transform 读取 / 扩大缩小）。开启 <code>autoApplyToTransform</code> 时，编辑器模式每帧自动把参数写入 Transform。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">AreaDebugger.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        运行时区域系统诊断工具。按 <code>F2</code> 打印 CardUIManager 的 forbiddenArea 配置、AreaMaterialOverlay 配置、材质引用情况。持续按住鼠标左键时打印当前鼠标位置及是否在禁止区域。OnDrawGizmos 绘制区域边界。<br>
+        <span style="color:#71717a">大量使用反射读取私有字段，仅供调试使用。</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardUIDebugger.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        卡牌 UI 配置诊断工具。按 <code>F1</code> 打印 CardUIManager 状态、卡牌预制体结构（反射检查 HandCardUI 的三个 UI 引用）、场景中所有 HandCardUI 实例的卡牌数据、PlayerHandManager 手牌列表。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardUITestProcedure.cs</span>
+      <span class="file-type mono">ProcedureBase</span>
+      <div class="file-desc">
+        GameFramework 测试流程。进入时通过代码创建 ForbiddenArea（红色半透明立方体）和 PlacementIndicator（圆柱体），并检查 PopulationManager / PlayerHandManager 是否已在场景中。<br>
+        快捷键：<code>R</code> 重置人口和手牌，<code>ESC</code> 返回 MenuProcedure。
+      </div>
+      <div class="warn">此 Procedure 未注册到项目流程列表（UIprocedure.cs 全部注释）。接入时需要手动添加。</div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <h2>Card_MVC — MVC重构版文件详解</h2>
+
+  <!-- Data 层 -->
+  <div class="section">
+    <div class="section-title">Data 层 — 数据抽象与来源</div>
+
+    <div class="file-entry">
+      <span class="file-name">ICardDataProvider.cs</span>
+      <span class="file-type iface">Interface</span>
+      <div class="file-desc">
+        <strong>系统的核心抽象接口</strong>。定义所有卡牌数据的只读契约，包含：<code>CardId</code>, <code>CardName</code>, <code>CardSprite</code>, <code>PopulationCost</code>, <code>SoldierCount</code>, <code>SoldierName</code>, <code>SoldierPrefab</code>, <code>SpawnRadius</code>, <code>CardColor</code>, <code>DropWeight</code>, <code>GetDisplayInfo()</code>。
+      </div>
+      <div class="key-point">这个接口是整个系统可扩展的关键。目前数据来自 ScriptableObject，将来只需换一个实现类（如 CardDataTableAdapter），上层 Model/Controller 完全不用改。</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardData.cs</span>
+      <span class="file-type so">ScriptableObject</span>
+      <div class="file-desc">
+        和 Card_1 版内容几乎一致，但这个版本是激活的。<code>[CreateAssetMenu]</code> 可在 Project 右键创建资产。<code>GetCardData()</code> 当前返回 this，留有 DataTable TODO。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardDataAdapter.cs</span>
+      <span class="file-type plain">C# class</span>
+      <div class="file-desc">
+        适配器模式，将 <code>CardData</code>（ScriptableObject）包装为 <code>ICardDataProvider</code>。所有属性转发到内部 <code>m_CardData</code>。由 <code>CardGameManager.ConnectToManagers()</code> 在运行时创建，将 PlayerHandManager 里的旧 CardData 列表批量转换为接口列表传给 Controller。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardDataTableAdapter.cs</span>
+      <span class="file-type plain">C# class</span>
+      <div class="file-desc">
+        DataTable 适配器，实现 <code>ICardDataProvider</code>，从 GF DataTable 读取卡牌数据（对应 DRCard 行）。目前是为将来接入数据表准备的占位实现，暂未实际使用。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">DRCard.cs</span>
+      <span class="file-type plain">C# class</span>
+      <div class="file-desc">
+        DataRow 定义，对应 DataTable 中的卡牌数据行。字段与 CardData ScriptableObject 一一对应，供 CardDataTableAdapter 使用。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardDataProviderFactory.cs</span>
+      <span class="file-type plain">C# class</span>
+      <div class="file-desc">
+        工厂类，根据配置决定创建哪种 ICardDataProvider 实现（ScriptableObject 版或 DataTable 版）。统一提供数据获取入口。
+      </div>
+    </div>
+  </div>
+
+  <!-- Model 层 -->
+  <div class="section">
+    <div class="section-title">Model 层 — 纯数据，无 Unity 依赖</div>
+
+    <div class="file-entry">
+      <span class="file-name">CardModel.cs</span>
+      <span class="file-type plain">C# class（非MonoBehaviour）</span>
+      <div class="file-desc">
+        单张卡牌的运行时模型。持有 <code>ICardDataProvider</code>（只读数据）和 <code>PopulationModel</code>（人口状态引用）两个依赖。
+        <ul style="margin-top:8px">
+          <li><code>CanPlay()</code> — 委托给 <code>PopulationModel.HasEnoughPopulation(dataProvider.PopulationCost)</code></li>
+          <li>提供 <code>GetCardId / GetCardName / GetPopulationCost</code> 等快捷访问</li>
+        </ul>
+      </div>
+      <div class="note">CardModel 不持有位置、不持有 GameObject，只关心"这张牌能不能打"和"这张牌是什么"。</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">PlayerHandModel.cs</span>
+      <span class="file-type plain">C# class（非MonoBehaviour）</span>
+      <div class="file-desc">
+        手牌集合的数据模型，内部是 <code>List&lt;CardModel&gt;</code>，上限 <code>MaxCards</code>（默认来自 <code>CardConst.MaxHandCards = 4</code>）。提供 <code>AddCard / RemoveCard / RemoveCardAt / GetCard / GetAllCards / Clear / Contains / IndexOf</code> 等基础操作，不含任何副作用。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">PopulationModel.cs</span>
+      <span class="file-type plain">C# class（非MonoBehaviour）</span>
+      <div class="file-desc">
+        人口资源的数据模型。<code>m_CurrentPopulation</code> 随消耗增加、随恢复减少（和 Card_1 版逻辑相同）。
+        <ul style="margin-top:8px">
+          <li><code>ConsumePopulation(amount)</code> — 消耗，内部 current += amount</li>
+          <li><code>RestorePopulation(amount)</code> — 恢复，内部 current -= amount</li>
+          <li><code>GetPopulationUsageRatio()</code> — 返回 0~1 使用率，供 PopulationView 决定警告颜色</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controller 层 -->
+  <div class="section">
+    <div class="section-title">Controller 层 — 业务逻辑，纯C#</div>
+
+    <div class="file-entry">
+      <span class="file-name">CardSystemController.cs</span>
+      <span class="file-type plain">C# class（非MonoBehaviour）</span>
+      <div class="file-desc">
+        <strong>主控制器，整个 MVC 系统的调度中心</strong>。持有所有子 Controller 和 Model 的引用，对外暴露统一的操作接口。
+        <ul style="margin-top:8px">
+          <li><code>Initialize()</code> — 创建 PopulationModel、PlayerHandModel、HandCardController、CardPlacementController、AreaDetectionController</li>
+          <li><code>DrawCard() / DrawCards(count)</code> — 按权重随机抽牌，调用 HandCardController.DrawCard()，成功后触发 OnCardDrawn 事件</li>
+          <li><code>PlayCard(cardModel)</code> — 检查是否可打，然后进入放置流程</li>
+          <li><code>StartPlacement / UpdatePlacement / ConfirmPlacement / CancelPlacement</code> — 完整放置生命周期，ConfirmPlacement 成功后消耗人口、移除手牌、触发 OnCardPlayed</li>
+          <li><code>DiscardCard()</code> — 移除手牌并触发 OnCardDiscarded</li>
+        </ul>
+        <div class="dep-list">
+          <span class="dep-tag">HandCardController</span>
+          <span class="dep-tag">CardPlacementController</span>
+          <span class="dep-tag">AreaDetectionController</span>
+          <span class="dep-tag">PlayerHandModel</span>
+          <span class="dep-tag">PopulationModel</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">HandCardController.cs</span>
+      <span class="file-type plain">C# class（非MonoBehaviour）</span>
+      <div class="file-desc">
+        手牌控制器，专注于卡牌的添加和移除。<code>DrawCard(ICardDataProvider)</code> 创建 <code>CardModel</code>（注入 PopulationModel 引用）并加入 PlayerHandModel，成功后触发 <code>OnCardDrawn</code> 事件。<code>RemoveCard / RemoveCardAt</code> 从模型删除后触发 <code>OnCardRemoved</code>。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardPlacementController.cs</span>
+      <span class="file-type plain">C# class（非MonoBehaviour）</span>
+      <div class="file-desc">
+        卡牌放置控制器。维护一个放置状态机（<code>m_IsPlacing</code>）和当前位置 <code>m_CurrentPlacementPosition</code>。
+        <ul style="margin-top:8px">
+          <li>射线检测：<code>TryGetGroundPosition()</code> 向 <code>Ground</code> 层发射射线</li>
+          <li>合法性检测：<code>CheckPlacementValidity()</code> 用 <code>Physics.OverlapSphere</code> 检测 <code>ForbiddenArea</code> 层</li>
+          <li>士兵生成：<code>SpawnSoldiers()</code> 在圆形区域内随机分布 Instantiate</li>
+          <li>每帧调用 <code>UpdatePlacement()</code>，位置或合法性变化时触发 <code>OnPositionUpdated / OnValidityChanged</code></li>
+        </ul>
+      </div>
+      <div class="warn">SpawnSoldiers 直接 Instantiate soldierPrefab，未接入项目的 GF Entity 系统 / SoldierFactory，接入时需要对接。</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">AreaDetectionController.cs</span>
+      <span class="file-type plain">C# class（非MonoBehaviour）</span>
+      <div class="file-desc">
+        区域检测控制器。缓存可放置区域和禁止区域的 Collider 数组（<code>m_AreaColliderCache</code>），用 <code>ClosestPoint</code> 方式判断点是否在区域内（distance &lt; 0.01f 视为内部）。同时提供基于 Layer 的 <code>Physics.OverlapSphere</code> 检测方式。暴露 <code>DetermineAreaType()</code> 返回 <code>AreaType.Valid/Invalid/None</code>。
+      </div>
+    </div>
+  </div>
+
+  <!-- Manager 层 -->
+  <div class="section">
+    <div class="section-title">Manager 层 — 桥接层，兼容旧 UI</div>
+    <p style="color:#71717a;font-size:0.85rem;margin-bottom:12px">Manager 层的核心职责是桥接：让旧版 CardUISystem（直接依赖 Singleton Manager）和新版 MVC 架构可以共存。</p>
+
+    <div class="file-entry">
+      <span class="file-name">CardGameManager.cs</span>
+      <span class="file-type mono">MonoBehaviour（Singleton）</span>
+      <div class="file-desc">
+        <strong>整个 MVC 卡牌系统的场景入口</strong>。Start 时：
+        <ol style="margin-top:8px;padding-left:20px;color:#a1a1aa;font-size:0.88rem">
+          <li>创建并初始化 CardSystemController</li>
+          <li>调用 <code>ConnectToManagers()</code> 将 PopulationManager / PlayerHandManager 与 CardSystemController 双向绑定</li>
+          <li>订阅 Controller 的所有事件，转发给 Manager</li>
+        </ol>
+        Update 每帧调用 <code>cardSystemController.UpdatePlacement()</code>。对外暴露简单的 <code>DrawCards / PlayCard / StartPlacement / ConfirmPlacement / CancelPlacement / DiscardCard</code> 接口。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">PlayerHandManager.cs</span>
+      <span class="file-type mono">MonoBehaviour（Singleton，namespace AAAGame.Card）</span>
+      <div class="file-desc">
+        MVC 版的手牌 Manager，和 Card_1 版接口几乎相同（<code>AddCard / RemoveCard / DrawRandomCards</code> 等），但多了 <code>SetCardSystemController()</code> 方法供 CardGameManager 注入依赖。<code>OnHandChanged</code> 事件被 CardUISystem 订阅以刷新 UI。
+      </div>
+      <div class="warn">和 Card_1 的 PlayerHandManager 同名！两个都在 global 命名空间下（MVC 版有 namespace 但 Card_1 版没有），可能引起歧义。实际使用时应明确是哪个版本。</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">PopulationManager.cs</span>
+      <span class="file-type mono">MonoBehaviour（Singleton，namespace AAAGame.Card）</span>
+      <div class="file-desc">
+        MVC 版人口 Manager。逻辑与 Card_1 版相同，额外增加了 <code>SetCardSystemController()</code> 注入，在 <code>SetMaxPopulation()</code> 时同步到 Controller 的 PopulationModel。
+      </div>
+    </div>
+  </div>
+
+  <!-- UI 层 -->
+  <div class="section">
+    <div class="section-title">UI 层 — 两套入口并存</div>
+    <div class="compare" style="margin-bottom:16px">
+      <div class="compare-col v1">
+        <h4>GF UIForm 版本</h4>
+        <p style="font-size:0.83rem">CardUIForm + HandCardItem<br>集成到 GF UI 系统，通过 GFBuiltin.Event 响应事件</p>
+      </div>
+      <div class="compare-col v2">
+        <h4>独立 MonoBehaviour 版本</h4>
+        <p style="font-size:0.83rem">CardUISystem + CardHandUI<br>不依赖 GF UIForm，直接在 Scene 中挂载</p>
+      </div>
+    </div>
+
+    <div class="file-entry">
+      <span class="file-name">CardUIForm.cs</span>
+      <span class="file-type mono">UIFormBase（GF UIForm）</span>
+      <div class="file-desc">
+        符合 GameFramework UI 规范的卡牌界面。<code>OnInit</code> 时订阅4个 GFBuiltin 事件（CardDrawn / CardPlayed / CardDiscarded / PopulationChanged）；<code>OnOpen</code> 收到 <code>CardSystemController</code> 作为 userData，初始化 PopulationView 和手牌 UI 列表。
+        <ul style="margin-top:8px">
+          <li>手牌区：Instantiate <code>handCardItemPrefab</code> 并调用 <code>HandCardItem.Initialize(cardModel, this)</code></li>
+          <li>拖拽回调：<code>OnCardBeginDrag/Dragging/EndDrag</code>，EndDrag 先判断垃圾桶区域，再调 <code>CardSystemController.ConfirmPlacement</code></li>
+          <li>快捷键：数字1-4打出对应索引的手牌</li>
+        </ul>
+      </div>
+      <div class="warn">使用 <code>GFBuiltin.Event</code> 而非项目的 <code>GF.Event</code>，接入前需确认两者一致或做适配。</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">HandCardItem.cs</span>
+      <span class="file-type mono">MonoBehaviour（配合 CardUIForm）</span>
+      <div class="file-desc">
+        GF 版的单张手牌 UI 项。通过 <code>Initialize(CardModel, CardUIForm)</code> 初始化，数据来自 <code>ICardDataProvider</code>（通过 CardModel.DataProvider 访问）。拖拽结束后将事件委托给 <code>CardUIForm.OnCardEndDrag</code>，由 Form 决定是否成功放置（成功后由 Form 负责销毁）。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardUISystem.cs</span>
+      <span class="file-type mono">MonoBehaviour（Singleton，独立版）</span>
+      <div class="file-desc">
+        独立版 UI 总管理器，不依赖 GF UIForm。Start 时订阅 PlayerHandManager.OnHandChanged 和 PopulationManager.OnPopulationChanged 事件，调用 RefreshHandUI 初始化 UI。
+        <ul style="margin-top:8px">
+          <li>抽牌动画：PlayDrawCardAnimation 协程，等待2帧后调用 <code>CardHandUI.MoveToHandFromScreenPosition()</code></li>
+          <li>拖拽时更新区域材质效果（<code>UpdateAreaMaterialEffect</code>），射线检测地面，判断是否在禁止区域</li>
+          <li>拖拽结束判断：手牌区 → 原路返回；垃圾桶 → 丢弃；地面 → 放置生成士兵</li>
+          <li>快捷键1-4选卡 + 鼠标左键确认使用</li>
+          <li>Tab 键显示/隐藏整个 UI</li>
+        </ul>
+        <div class="warn">SpawnSoldiers 直接 Instantiate cardData.soldierPrefab，未接入项目的 GF Entity / SoldierFactory。</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardHandUI.cs</span>
+      <span class="file-type mono">MonoBehaviour（配合 CardUISystem）</span>
+      <div class="file-desc">
+        独立版单张手牌 UI，逻辑与 Card_1 的 HandCardUI.cs 基本一致，但通知对象是 <code>CardUISystem.Instance</code>。增加了 <code>IsDragging</code> 属性供外部查询。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardAreaMaterialOverlay.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        MVC 版材质叠加器，逻辑和 Card_1 版的 AreaMaterialOverlay 相同，但挂在 Card_MVC 命名空间下，由 CardUISystem 持有引用。拖拽过程中实时调用 <code>ShowAreaEffect(worldPos, isValid)</code>，拖拽结束调用 <code>HideAreaEffect()</code>。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">PopulationView.cs</span>
+      <span class="file-type mono">MonoBehaviour（namespace AAAGame.Card）</span>
+      <div class="file-desc">
+        人口显示 UI 组件，配合 GF 版 CardUIForm 使用。<code>Initialize(PopulationModel)</code> 注入模型引用并订阅 <code>PopulationChangedEventArgs</code> GF 事件。支持三个 TMP 文本字段（合并/当前/最大）和超过 warningThreshold（默认80%）时自动切换警告色。
+      </div>
+    </div>
+  </div>
+
+  <!-- Event 层 -->
+  <div class="section">
+    <div class="section-title">Event 层 — GF 事件定义</div>
+
+    <div class="file-entry">
+      <span class="file-name">CardEventArgs.cs</span>
+      <span class="file-type plain">C# 8个 GameEventArgs 子类</span>
+      <div class="file-desc">
+        全部使用 GF ReferencePool 管理（<code>ReferencePool.Acquire&lt;T&gt;</code> 分配，<code>Clear()</code> 清零字段）。
+        <ul style="margin-top:8px">
+          <li><code>CardDrawnEventArgs</code> — 抽到卡牌（携带 CardModel）</li>
+          <li><code>CardPlayedEventArgs</code> — 打出卡牌（携带 CardModel）</li>
+          <li><code>CardDiscardedEventArgs</code> — 丢弃卡牌（携带 CardModel）</li>
+          <li><code>PopulationChangedEventArgs</code> — 人口变化（current, max, changeAmount）</li>
+          <li><code>CardPlacementStartEventArgs</code> — 开始放置（携带 CardModel）</li>
+          <li><code>CardPlacementPositionUpdateEventArgs</code> — 放置位置更新（Position, IsValid）</li>
+          <li><code>CardPlacementValidityChangeEventArgs</code> — 合法性切换（IsValid）</li>
+          <li><code>CardPlacementConfirmEventArgs</code> — 放置确认（CardModel, Position）</li>
+          <li><code>CardPlacementCancelEventArgs</code> — 放置取消</li>
+          <li><code>CardSoldiersSpawnedEventArgs</code> — 士兵生成（CardModel, SpawnPosition, SoldierCount）</li>
+        </ul>
+      </div>
+      <div class="note">EventId 用 <code>typeof(T).GetHashCode()</code>，而项目其他系统用自增 ID。接入时需要确认是否冲突（概率极低但存在）。</div>
+    </div>
+  </div>
+
+  <!-- Definition / Core -->
+  <div class="section">
+    <div class="section-title">Definition / Core</div>
+
+    <div class="file-entry">
+      <span class="file-name">CardConst.cs</span>
+      <span class="file-type plain">static class</span>
+      <div class="file-desc">
+        系统常量集中定义：<code>MaxHandCards = 4</code>、<code>DefaultMaxPopulation = 10</code>、<code>PlacementDetectionRadius = 0.5f</code>、<code>CardDragScale = 1.2f</code>、<code>CardHoverScale = 1.1f</code>。被 PlayerHandModel / PopulationModel 构造函数默认值引用。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardEventManager.cs</span>
+      <span class="file-type plain">C# class</span>
+      <div class="file-desc">
+        GF 事件的封装工具类，提供 Fire / Subscribe / Unsubscribe 的包装方法，统一卡牌系统内的事件调用方式。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">CardLogger.cs</span>
+      <span class="file-type plain">static class</span>
+      <div class="file-desc">
+        统一日志工具，所有输出都带 <code>[Card]</code> 前缀，便于在 Console 过滤。提供 Log / Warning / Error 三个级别。
+      </div>
+    </div>
+  </div>
+
+  <!-- Standalone -->
+  <div class="section">
+    <div class="section-title">Standalone — 独立运行版本（不依赖 GF）</div>
+
+    <div class="file-entry">
+      <span class="file-name">StandaloneCardSystem.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        完整的独立卡牌系统，使用 Canvas / Text / Image UI 组件，不依赖 GF。目的是在没有完整项目框架的环境中验证卡牌玩法。内部自行管理手牌列表、人口、UI 刷新、拖拽逻辑。
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="file-entry">
+      <span class="file-name">MinimalCardSystem.cs</span>
+      <span class="file-type mono">MonoBehaviour</span>
+      <div class="file-desc">
+        极简版，使用 <code>OnGUI</code> 渲染，无需任何 Prefab 或 UI 资源。纯代码可运行，主要用于原理验证或快速 Demo。
+      </div>
+    </div>
+  </div>
+
+  <!-- Test -->
+  <div class="section">
+    <div class="section-title">Test — 诊断脚本（6个）</div>
+    <p style="color:#71717a;font-size:0.85rem;margin-bottom:12px">这6个脚本全部是调试/诊断用途，不应出现在正式版本中。</p>
+
+    <div class="file-entry">
+      <span class="file-name">CardSystemDiagnostic.cs</span>
+      <div class="file-desc">诊断整个卡牌系统的初始化状态（Manager 是否存在、CardSystemController 是否创建等）。</div>
+    </div>
+    <div class="file-entry">
+      <span class="file-name">CardInteractionDiagnostic.cs</span>
+      <div class="file-desc">诊断拖拽交互流程，打印每个阶段（BeginDrag / Drag / EndDrag）的状态。</div>
+    </div>
+    <div class="file-entry">
+      <span class="file-name">CardSystemTest.cs</span>
+      <div class="file-desc">功能测试脚本，包含抽卡、打牌、人口消耗等基本流程的测试用例。</div>
+    </div>
+    <div class="file-entry">
+      <span class="file-name">GameFrameworkDiagnostic.cs</span>
+      <div class="file-desc">检查 GFBuiltin / GF 等 GameFramework 接口是否可用，验证事件系统是否正常。</div>
+    </div>
+    <div class="file-entry">
+      <span class="file-name">RuntimeCardDiagnostic.cs</span>
+      <div class="file-desc">运行时诊断，实时检查手牌数量、人口状态、当前放置状态等。</div>
+    </div>
+    <div class="file-entry">
+      <span class="file-name">SceneSetupChecker.cs</span>
+      <div class="file-desc">检查场景配置是否完整（Camera、Canvas、所有必要的 Manager GameObject 是否存在）。</div>
+    </div>
+  </div>
+
+  <!-- 接入清单 -->
+  <h2>接入项目的适配清单</h2>
+  <div class="section">
+    <div class="section-title">已知需要处理的问题</div>
+
+    <div class="file-entry">
+      <span class="file-name" style="color:#f87171">1. UIViews ID 冲突</span>
+      <div class="file-desc"><code>CraftingDialog = 11</code> 和 CardUIForm 需要的 ID 冲突。需在 UIViews.cs 加 <code>CardUIForm = 16</code>（或其他空闲ID），同步到 UITable.txt。</div>
+    </div>
+
+    <div class="file-entry">
+      <span class="file-name" style="color:#f87171">2. GFBuiltin.Event vs GF.Event</span>
+      <div class="file-desc">CardUIForm / PopulationView 用 <code>GFBuiltin.Event</code>，项目其他地方用 <code>GF.Event</code>。需确认两者是否为同一实例，或统一改为 <code>GF.Event</code>。</div>
+    </div>
+
+    <div class="file-entry">
+      <span class="file-name" style="color:#f87171">3. 士兵生成未接入 SoldierFactory</span>
+      <div class="file-desc">CardPlacementController 和 CardUISystem 里 SpawnSoldiers 直接 Instantiate prefab。需改为调用 <code>SoldierFactory.ShowSoldier()</code> 走 GF Entity 流程，支持对象池和 Buff 系统。</div>
+    </div>
+
+    <div class="file-entry">
+      <span class="file-name" style="color:#fcd34d">4. CardUITestProcedure 未注册</span>
+      <div class="file-desc">UIprocedure.cs 全注释，需在 ProcedureLaunch 里注册 CardUITestProcedure 才能进入。</div>
+    </div>
+
+    <div class="file-entry">
+      <span class="file-name" style="color:#fcd34d">5. CardData 同名冲突</span>
+      <div class="file-desc">Card_1 版 CardData.cs 已注释，MVC 版是无 namespace 的全局类。两个文件同名，确认 Card_1 版保持注释状态即可。</div>
+    </div>
+
+    <div class="file-entry">
+      <span class="file-name" style="color:#fcd34d">6. Prefab / Scene 引用需重建</span>
+      <div class="file-desc">CardUISystem.cardUIPrefab、handCardContainer 等所有 Inspector 引用在复制文件夹后丢失，需要在 Unity 中重新拖拽配置。</div>
+    </div>
+  </div>
+
+  <p style="color:#3f3f46;font-size:0.8rem;margin-top:40px;text-align:center">生成于 2026-03-29 · GF_X CardRelated 文件夹解析</p>
+</div>
+</body>
+</html>

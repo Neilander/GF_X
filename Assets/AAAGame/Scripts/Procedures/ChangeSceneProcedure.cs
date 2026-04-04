@@ -26,7 +26,8 @@ public class ChangeSceneProcedure : ProcedureBase
     {
         { "Game", "MenuProcedure" },
         { "LevelTestScene", "LevelTestProcedure" },
-        { "CharacterAndSkillTestScene", "CharacterTestProcedure" }
+        { "CharacterAndSkillTestScene", "CharacterTestProcedure" },
+        {"UI_Card","CardGameProcedure"}
     };
 
     /// <summary>
@@ -34,9 +35,9 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> SceneCompatibleProcedures = new Dictionary<string, HashSet<string>>
     {
-        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure","BuffTestProcedure"} }, // 新增：远程武器测试流程
-        { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure" } },
-        { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure" } }
+        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure","CardGameProcedure"} }, // 新增：远程武器测试流程和Buff测试流程
+        { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure", "BuffTestProcedure" } },
+        { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure", "BuffTestProcedure" } }
     };
 
     /// <summary>
@@ -44,7 +45,8 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
     {
-        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure","BuffTestProcedure" // 新增：远程武器测试流程
+        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure" // 新增：远程武器测试流程和Buff测试流程
+        ,"CardGameProcedure"
     };
     
     // 确保BuffTestProcedure被编译到程序集中
@@ -181,6 +183,9 @@ public class ChangeSceneProcedure : ProcedureBase
                 {
                     Debug.LogError("切换到TestProcedure失败: " + ex.Message);
                 }
+                break;
+            case "CardGameProcedure":
+                ChangeState<CardGameProcedure>(procedureOwner);
                 break;
             
             default:

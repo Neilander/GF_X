@@ -43,6 +43,7 @@ MonoBehaviour:
   - Korean
   mProcedures:
   - BuffTestProcedure
+  - CardGameProcedure
   - ChangeSceneProcedure
   - CharacterTestProcedure
   - GameOverProcedure
