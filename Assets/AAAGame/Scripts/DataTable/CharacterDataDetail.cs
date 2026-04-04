@@ -29,6 +29,15 @@ public class CharacterDataDetail : DataRowBase
     }
 
         /// <summary>
+        /// 
+        /// </summary>
+        public string CharacterKey
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 独有数值
         /// </summary>
         public Fix64[] UniqueValues
@@ -48,6 +57,7 @@ public class CharacterDataDetail : DataRowBase
             int index = 0;
             index++;
             m_Id = int.Parse(columnStrings[index++]);
+            CharacterKey = columnStrings[index++];
             index++;
             index++;
             UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
@@ -101,6 +111,7 @@ public class CharacterDataDetail : DataRowBase
                 using (BinaryReader binaryReader = new BinaryReader(memoryStream, Encoding.UTF8))
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
+                    CharacterKey = binaryReader.ReadString();
                     UniqueValues = binaryReader.ReadFix64Array();
                 }
             }
