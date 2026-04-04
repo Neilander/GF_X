@@ -126,6 +126,7 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/InteractOptionUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/GF.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceOpenPanelInteractionOption.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/UTManagers/GeneralSetup.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UTManagers/InputManager.UIControl.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/IInteractionOption.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UTManagers/CardSetup.cs" />
