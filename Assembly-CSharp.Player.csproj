@@ -45,10 +45,8 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets/Scripts/SimpleFollowingCamera.cs" />
     <Compile Include="Assets/HybridCLRData/Generated/AOTGenericReferences.cs" />
     <Compile Include="Assets/MoveToTrailUV/MoveToTrailUV.cs" />
-    <Compile Include="Assets/Scripts/SimplePlayerController.cs" />
     <Reference Include="UnityEngine">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.dll</HintPath>
     </Reference>
@@ -279,6 +277,12 @@
     </Reference>
     <Reference Include="DOTween">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/DOTween/DOTween.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
+    </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
     </Reference>
     <Reference Include="mscorlib">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/UnityReferenceAssemblies/unity-4.8-api/mscorlib.dll</HintPath>
@@ -761,6 +765,10 @@
       <Project>{4f8647d8-55c8-4dc9-c1e5-d68f8ddea6f8}</Project>
       <Name>UniTask.Linq.Player</Name>
     </ProjectReference>
+    <ProjectReference Include="GiantGrey.TileWorldCreator.Player.csproj">
+      <Project>{18d42ba1-c82b-1f85-228a-66a0022b04d1}</Project>
+      <Name>GiantGrey.TileWorldCreator.Player</Name>
+    </ProjectReference>
     <ProjectReference Include="PackageTools.Player.csproj">
       <Project>{b039a8e1-1d00-b6a3-16bc-0156fedb3f72}</Project>
       <Name>PackageTools.Player</Name>
@@ -772,6 +780,10 @@
     <ProjectReference Include="Unity.Burst.Player.csproj">
       <Project>{e04645d5-db2c-7096-63a0-4267b13f8a55}</Project>
       <Name>Unity.Burst.Player</Name>
+    </ProjectReference>
+    <ProjectReference Include="GiantGrey.TileWorldCreator.Samples.Player.csproj">
+      <Project>{9674b4bb-d8f2-597f-3091-8e9c1a61ed17}</Project>
+      <Name>GiantGrey.TileWorldCreator.Samples.Player</Name>
     </ProjectReference>
     <ProjectReference Include="andywiecko.BurstTriangulator.Player.csproj">
       <Project>{e7525cc8-21a2-1f6b-80a6-67cce185a796}</Project>

@@ -21,7 +21,7 @@ public class BehaviorTreeTest : MonoBehaviour
         public bool CanBeSelected() => Alive;
         public void InSelection(ISelector selector) { }
         public void DeSelection() { }
-        public void TakeDamage(float damage, HealthModifyType modType)
+        public void TakeDamage(float damage, HealthModifyType modType,IEntityContext attacker = null)
         {
             health -= damage;
             if (health <= 0)

@@ -48,6 +48,9 @@ public class ChangeSceneProcedure : ProcedureBase
         "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure" // 新增：远程武器测试流程和Buff测试流程
         ,"CardGameProcedure"
     };
+    
+    // 确保BuffTestProcedure被编译到程序集中
+    private static System.Type _buffTestProcedureType = typeof(BuffTestProcedure);
 
     /// <summary>
     /// 要加载的场景资源名,相对于场景目录
@@ -57,6 +60,7 @@ public class ChangeSceneProcedure : ProcedureBase
     private string nextScene = string.Empty;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
+        Debug.Log("ChangeSceneProcedure.OnEnter开始");
         base.OnEnter(procedureOwner);
         loadSceneOver = false;
         GF.BuiltinView.ShowLoadingProgress();
@@ -87,12 +91,14 @@ public class ChangeSceneProcedure : ProcedureBase
         }
         nextScene = procedureOwner.GetData<VarString>(P_SceneName);
         procedureOwner.RemoveData(P_SceneName);
+        Debug.Log("准备加载场景: " + nextScene);
         GF.Scene.LoadScene(UtilityBuiltin.AssetsPath.GetScenePath(nextScene), this);
     }
 
     protected override void OnUpdate(IFsm<IProcedureManager> procedureOwner, float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(procedureOwner, elapseSeconds, realElapseSeconds);
+        Debug.Log("ChangeSceneProcedure.OnUpdate - loadSceneOver: " + loadSceneOver);
         if (!loadSceneOver)
         {
             return;
@@ -114,31 +120,76 @@ public class ChangeSceneProcedure : ProcedureBase
         }
 
         // 根据 targetProcedure 切换到对应 Procedure
+        Debug.Log("准备切换到Procedure: " + targetProcedure);
+        Debug.Log("SelectedProcedureForGame: " + SelectedProcedureForGame);
+        
         switch (targetProcedure)
         {
             case "MenuProcedure":
+                Debug.Log("切换到MenuProcedure");
                 ChangeState<MenuProcedure>(procedureOwner);
                 break;
             case "GameProcedure":
+                Debug.Log("切换到GameProcedure");
                 ChangeState<GameProcedure>(procedureOwner);
                 break;
             case "LevelTestProcedure":
+                Debug.Log("切换到LevelTestProcedure");
                 ChangeState<LevelTestProcedure>(procedureOwner);
                 break;
             case "SampleProcedure":
+                Debug.Log("切换到SampleProcedure");
                 ChangeState<SampleProcedure>(procedureOwner);
                 break;
             case "RangedWeaponTestProcedure": // 新增：远程武器测试流程
+                Debug.Log("切换到RangedWeaponTestProcedure");
                 ChangeState<RangedWeaponTestProcedure>(procedureOwner);
                 break;
-            case "BuffTestProcedure": // 新增：Buff测试流程
-                ChangeState<BuffTestProcedure>(procedureOwner);
+            
+            case "BuffTestProcedure":
+                Debug.Log("切换到BuffTestProcedure");
+                try
+                {
+                    // 检查BuffTestProcedure类型是否存在
+                    System.Type buffTestType = typeof(BuffTestProcedure);
+                    Debug.Log("BuffTestProcedure类型存在: " + (buffTestType != null));
+                    
+                    Debug.Log("准备调用ChangeState...");
+                    ChangeState<BuffTestProcedure>(procedureOwner);
+                    Debug.Log("成功切换到BuffTestProcedure");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError("切换到BuffTestProcedure失败: " + ex.Message);
+                    Debug.LogError("堆栈跟踪: " + ex.StackTrace);
+                    Debug.LogError("异常类型: " + ex.GetType().Name);
+                    
+                    // 检查是否是类型不存在的错误
+                    if (ex.Message.Contains("not exist") || ex.Message.Contains("不存在"))
+                    {
+                        Debug.LogError("BuffTestProcedure类型可能不存在或编译错误");
+                    }
+                }
+                break;
+                
+            case "TestProcedure":
+                Debug.Log("切换到TestProcedure");
+                try
+                {
+                    ChangeState<TestProcedure>(procedureOwner);
+                    Debug.Log("成功切换到TestProcedure");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError("切换到TestProcedure失败: " + ex.Message);
+                }
                 break;
             case "CardGameProcedure":
                 ChangeState<CardGameProcedure>(procedureOwner);
                 break;
             
             default:
+                Debug.Log("切换到默认的CharacterTestProcedure");
                 ChangeState<CharacterTestProcedure>(procedureOwner);
                 break;
         }
@@ -159,7 +210,7 @@ public class ChangeSceneProcedure : ProcedureBase
         {
             return;
         }
-        //Log.Info("场景加载进度:{0}, {1}", arg.Progress, arg.SceneAssetName);
+        Debug.Log("场景加载进度: " + arg.Progress + ", " + arg.SceneAssetName);
         GF.BuiltinView.SetLoadingProgress(arg.Progress);
     }
 
@@ -170,7 +221,7 @@ public class ChangeSceneProcedure : ProcedureBase
         {
             return;
         }
-        //Log.Info("场景加载成功:{0}", arg.SceneAssetName);
+        Debug.Log("场景加载成功: " + arg.SceneAssetName);
         loadSceneOver = true;
     }
     //加载场景资源失败 重启游戏框架

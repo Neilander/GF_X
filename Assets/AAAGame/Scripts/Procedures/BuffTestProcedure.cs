@@ -1,10 +1,12 @@
-using UnityEngine;
+﻿using UnityEngine;
 using GameFramework;
 using GameFramework.Event;
 using GameFramework.Fsm;
 using GameFramework.Procedure;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.Entity;
+using AAAGame.Scripts.BuffSystem;
+using AAAGame.Scripts.GeneralCreature;
 
 /// <summary>
 /// Buff测试流程
@@ -15,9 +17,8 @@ public class BuffTestProcedure : ProcedureBase
 {
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
+        Debug.Log("BuffTestProcedure.OnEnter开始");
         base.OnEnter(procedureOwner);
-        
-
         
         InitDataModels();
         EntityRegistry.Clear();
@@ -29,9 +30,11 @@ public class BuffTestProcedure : ProcedureBase
         SpawnTestUnits();
         
         // 设置输入状态为游戏模式
-        GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
-        
-
+        var inputManager = GameEntry.GetComponent<InputManager>();
+        if (inputManager != null)
+        {
+            inputManager.ChangeState(InputState.Game);
+        }
     }
     
     private void InitDataModels()
@@ -52,47 +55,31 @@ public class BuffTestProcedure : ProcedureBase
     
     private void SpawnTestUnits()
     {
-        // 创建玩家控制的码农单位（定时死亡Buff）
-        SoldierFactory.ShowSoldier("coder", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
-        
-        // 使用簇生成系统创建友方码农单位（定时死亡Buff）
-        bool success = ClusterSpawnSystem.SpawnCluster(
-            center: new Vector3(0, 1, -6),
-            count: 15,
-            radius: 10f,
-            minDistance: 2f,
-            unitIndex: "coder",
-            side: SideType.PlayerSide,
-            brainType: BrainType.SoldierAI
-        );
-        
-        if (success)
+        try
         {
-            // 簇生成成功
+            Debug.Log("BuffTestProcedure.SpawnTestUnits开始执行");
+            
+            // 创建玩家控制的码农单位（定时死亡Buff）
+            Debug.Log("创建玩家控制的码农单位（定时死亡Buff）");
+            int playerEntityId = SoldierFactory.ShowSoldier("coder", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
+            Debug.Log($"玩家单位创建完成，ID={playerEntityId}");
+            
+            // 使用族生成创建友方码农单位（定时死亡Buff）
+            Debug.Log("使用族生成创建友方码农单位（定时死亡Buff）");
+            bool friendSpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, -7), 5, 5f, 2f, "coder", SideType.PlayerSide, BrainType.SoldierAI);
+            Debug.Log($"友方单位族生成结果: {friendSpawnSuccess}");
+            
+            // 使用族生成创建敌方剔骨狂魔单位（击杀回复Buff）
+            Debug.Log("使用族生成创建敌方剔骨狂魔单位（击杀回复Buff）");
+            bool enemySpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, 6), 3, 5f, 2f, "bone_reaper", SideType.EnemySide, BrainType.SoldierAI);
+            Debug.Log($"敌方单位族生成结果: {enemySpawnSuccess}");
+            
+            Debug.Log("BuffTestProcedure.SpawnTestUnits执行完成");
         }
-        else
+        catch (System.Exception ex)
         {
-            // 簇生成失败
-        }
-        
-        // 使用簇生成系统创建敌方剔骨狂魔单位（击杀回复Buff）
-        success = ClusterSpawnSystem.SpawnCluster(
-            center: new Vector3(0, 1, 6),
-            count: 3,
-            radius: 5f,
-            minDistance: 3f,
-            unitIndex: "bone_reaper",
-            side: SideType.EnemySide,
-            brainType: BrainType.SoldierAI
-        );
-        
-        if (success)
-        {
-            // 簇生成成功
-        }
-        else
-        {
-            // 簇生成失败
+            Debug.LogError("SpawnTestUnits出错: " + ex.Message);
+            Debug.LogError("堆栈跟踪: " + ex.StackTrace);
         }
     }
     
@@ -122,37 +109,53 @@ public class BuffTestProcedure : ProcedureBase
             }
 
             // 给所有生物挂血条
-            if (ma is GeneralCreature creature)
+            if (ma is GeneralCreature creature && creature.CreaturePropertyManager != null)
             {
-                float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-                float max = originalMax;
-                
-                // 根据单位类型调整血量
-                if (ma is SoldierEntity soldier && soldier.UnitIndex == "coder")
+                try
                 {
-                    // 码农单位：血量减少10倍
-                    float newMax = originalMax / 10f;
-                    Fix64 subtractValue = (Fix64)(originalMax - newMax);
-                    var modifier = PropertyDirectAdditiveModifier.Create(-subtractValue);
-                    creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
-                    max = newMax;
+                    float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+                    float max = originalMax;
+                    
+                    // 根据单位类型调整血量
+                    if (ma is SoldierEntity soldier)
+                    {
+                        if (soldier.UnitIndex == "coder")
+                        {
+                            // 码农单位：血量减少2倍
+                            float newMax = originalMax / 2f;
+                            Fix64 subtractValue = (Fix64)(originalMax - newMax);
+                            var modifier = PropertyDirectAdditiveModifier.Create(-subtractValue);
+                            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
+                            max = newMax;
+                        }
+                        else if (soldier.UnitIndex == "bone_reaper")
+                        {
+                            // 剔骨狂魔单位：血量减少2倍，和码农一样
+                            float newMax = originalMax / 2f;
+                            Fix64 subtractValue = (Fix64)(originalMax - newMax);
+                            var modifier = PropertyDirectAdditiveModifier.Create(-subtractValue);
+                            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
+                            max = newMax;
+                            Debug.Log($"剔骨狂魔单位[ID={ma.Id}]生命值设置为{newMax}");
+                        }
+                    }
+                    
+                    // 更新当前生命值，确保单位满血
+                    float currentHealth = creature.health;
+                    float healAmount = max - currentHealth;
+                    if (healAmount > 0)
+                    {
+                        creature.CreaturePropertyManager.ModifyCurrentProperty(
+                            CreatureCurrentProperty.HealthCurrent,
+                            PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
+                    }
+                    
+                    HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
                 }
-                else
+                catch (System.Exception ex)
                 {
-                    // 敌方单位：保持原血量不变
+                    Debug.LogError("设置生命值和血条出错: " + ex.Message);
                 }
-                
-                // 更新当前生命值，确保单位满血
-                float currentHealth = creature.health;
-                float healAmount = max - currentHealth;
-                if (healAmount > 0)
-                {
-                    creature.CreaturePropertyManager.ModifyCurrentProperty(
-                        CreatureCurrentProperty.HealthCurrent,
-                        PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
-                }
-                
-                HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
             }
 
             // SoldierAIBrain 需要重新 Inject（玩家可能在它之后创建）

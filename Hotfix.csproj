@@ -45,6 +45,7 @@
     <Analyzer Include="/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffRemoveEnum.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/ItemTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/GFEventArgs.cs" />
@@ -67,13 +68,17 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/Vector2IntArrayProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/Core/EntityBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/TextLineUnit.Variables.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/Examples/DebugBuffExamples.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/EntityGroupTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/CompCreature.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/EntityExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Test/CardInteractionDiagnostic.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/IBuffComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/UI/CardHandUI.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarAction.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/Examples/DebugVersionSpeedBuff.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Entity/EntityContextExtensions.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MoveExecutor.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/PropertyManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Manager/PlayerHandManager.cs" />
@@ -127,6 +132,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Entity/EntityRegistry.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/ISelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/Options/DeviceUpgradeInteractionOption.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/Examples/DebugVersionShieldBuff.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/LocalizationExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Core/CardEventManager.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionHost.cs" />
@@ -161,6 +167,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Projectile/AbstractProjectile.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/TextLineUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/IrreversibleValueProperty.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterDataDetail.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/ITargetingComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/AbsStatemachine.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/LevelTable.cs" />
@@ -193,6 +200,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHandlerBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/CharacterTestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/UI/CardUIForm.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/NoBuffComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/FlowLayoutGroup.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerSkillComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CombatUnitTable.cs" />
@@ -254,12 +262,14 @@
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAtkFactory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/UI/PopulationView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/SampleProcedure.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/Examples/DebugVersionDotBuff.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/BaseValueProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemObject.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/CylinderTargetSelector.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/SkillEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Manager/CardGameManager.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/SimplePlayerController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/IPropertyAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Editor/BehaviorTreeGraphEditor.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerAttackComp.cs" />
@@ -274,6 +284,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/UtilityEx.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectAdditiveModifier.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffData.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/CraftingUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Movement/SteeringMovement.cs" />
@@ -315,6 +326,7 @@
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/ProfileDataChangedEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/PacketHeaderBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/InputDirTranslator.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/Examples/DebugVersionHealOverTimeBuff.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/CraftingDeviceDataModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Test/RuntimeCardDiagnostic.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterAtkFactory.cs" />
@@ -330,18 +342,21 @@
     <Compile Include="Assets/AAAGame/Scripts/UI/Item/ItemUnit.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Data/CardDataAdapter.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tools/Editor/PivotToBottomTool.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffCallback.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/UITable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/SCPacketHeader.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/CharacterBuffComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/SettingExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Entity/LevelEntity.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/InteractOptionTips.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Build/DeviceTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/MaterialModifyBar.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/EntityContextExtensions.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/Tech/TechUnlockedEventArgs.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/PlayerMoveFactory.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffConstant.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DamageSystem/HitBox.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Animation/AnimationExtension.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Procedures/TestProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechEdgeLine.cs" />
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/Singleton.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyClampModifier.cs" />
@@ -354,6 +369,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Card/Data/CardData.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterMoveComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/SkillSystem/BasicSkill.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/SimpleFollowingCamera.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyIrreversibleMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechCategory.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Definition/CardConst.cs" />
@@ -387,6 +403,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Property/PropertyHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/Variable/VarVector3Array.cs" />
     <Compile Include="Assets/AAAGame/Scripts/ActionSystem/Selection/TargetableSelector.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffRuntimeInfo.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/IProperty.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/CameraController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Projectile/DirectionProjectile.cs" />
@@ -399,6 +416,7 @@
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckPriorityNode.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Item/CraftingFormulaTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/RequireContextAttribute.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffUpdateEnum.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Data/DRCard.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/InteractionOptionTriggeredEventArgs.cs" />
@@ -756,6 +774,15 @@
     </Reference>
     <Reference Include="SixLabors.ImageSharp">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/SixLabors.ImageSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3Editor">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/Editor/EasyRoads3Dv3Editor.dll</HintPath>
+    </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
     </Reference>
     <Reference Include="UnityEditor.iOS.Extensions.Xcode">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.iOS.Extensions.Xcode.dll</HintPath>

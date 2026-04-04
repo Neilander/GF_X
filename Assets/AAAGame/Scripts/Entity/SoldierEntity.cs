@@ -68,6 +68,8 @@ public class SoldierEntity : MAEntity
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
     }
     
+
+    
     /// <summary>
     /// 根据单位类型获取武器索引
     /// </summary>
@@ -84,6 +86,8 @@ public class SoldierEntity : MAEntity
         }
     }
     
+
+    
     /// <summary>
     /// 获取单位类型索引
     /// </summary>
@@ -92,9 +96,18 @@ public class SoldierEntity : MAEntity
     /// <summary>
     /// 获取单位类型（重写基类方法）
     /// </summary>
+    /*
     protected override string GetUnitType()
     {
         return _unitIndex;
-    }
+    }*/
     
+
+    
+
+    
+    protected override void OnHide(bool isShutdown, object userData)
+    {
+        base.OnHide(isShutdown, userData);
+    }
 }

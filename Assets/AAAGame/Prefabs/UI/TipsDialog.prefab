@@ -147,7 +147,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _fields: []
-  topBar: {fileID: 0}
+  m_UIAnimationType: 0
+  m_OpenAnimation: {fileID: 0}
+  m_CloseAnimation: {fileID: 0}
+  m_ReverseOpenAnimAsClose: 1
+  m_OpenAnimationName: 
+  m_CloseAnimationName: 
 --- !u!1 &6089785328466530734
 GameObject:
   m_ObjectHideFlags: 0

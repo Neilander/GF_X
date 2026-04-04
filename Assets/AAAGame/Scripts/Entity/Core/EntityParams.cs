@@ -1,7 +1,9 @@
 #pragma warning disable IDE1006 // 命名样式
+using System.Collections.Generic;
 using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
+using AAAGame.Scripts.BuffSystem;
 
 public class EntityParams : RefParams
 {
@@ -18,6 +20,11 @@ public class EntityParams : RefParams
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int FollowEntityId { get; set; } = -1;
     public string Index { get; set; } = ""; // 单位类型索引
+    
+    /// <summary>
+    /// 出生时自带的 Buff 列表
+    /// </summary>
+    public List<BuffData> StartBuffs { get; set; } = null;
 
     /// <summary>
     /// 绑定到父实体
@@ -84,6 +91,7 @@ public class EntityParams : RefParams
         BrainType = BrainType.Player;
         FollowEntityId = -1;
         Index = "";
+        StartBuffs = null;
     }
 }
 #pragma warning restore IDE1006 // 命名样式

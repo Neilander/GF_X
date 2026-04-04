@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using UnityEngine;
+using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
 /// 实体上下文接口：组件和 Brain 通过此接口访问实体，而非直接依赖 MAEntity。
@@ -20,13 +21,14 @@ public interface IEntityContext
     IMoveComp MoveComp { get; }
     IAtkComp AtkComp { get; }
     ITargetingComp TargetComp { get; }
+    IBuffComp BuffComp { get; }
     WeaponComp WeaponComp { get; }
 
     // 属性查询
     float GetProperty(CreatureMainProperty prop);
 
     // 受伤
-    void TakeDamage(float damage, HealthModifyType modType);
+    void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null);
 
     // 组件锁定
     bool CanRun(ICapability cap);
