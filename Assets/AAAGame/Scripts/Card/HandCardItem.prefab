@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 5687176940896710815}
   - component: {fileID: 8162271820786898380}
   - component: {fileID: 3208719167038281611}
-  - component: {fileID: 4479701063254337251}
+  - component: {fileID: 6098047047759100241}
   m_Layer: 0
   m_Name: HandCardItem
   m_TagString: Untagged
@@ -93,7 +93,7 @@ CanvasGroup:
   m_Interactable: 1
   m_BlocksRaycasts: 1
   m_IgnoreParentGroups: 0
---- !u!114 &4479701063254337251
+--- !u!114 &6098047047759100241
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -102,17 +102,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 1478813142199399011}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: df3254127658dfd4ba042600e7a87460, type: 3}
+  m_Script: {fileID: 11500000, guid: 9f9c09a200f033144bd0df895140b72e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _fields: []
   cardImage: {fileID: 8363790270583336069}
-  cardNameText: {fileID: 8149500767624109142}
-  populationCostText: {fileID: 5331039530016821878}
+  populationText: {fileID: 5331039530016821878}
   soldierCountText: {fileID: 7165321987210159141}
   canvasGroup: {fileID: 0}
   dragScale: 1.2
   hoverScale: 1.1
-  normalScale: 1
+  animationDuration: 0.2
 --- !u!1 &2585035791033014581
 GameObject:
   m_ObjectHideFlags: 0

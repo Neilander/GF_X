@@ -47,6 +47,7 @@ namespace AAAGame.Card
             
             m_RectTransform = GetComponent<RectTransform>();
             
+            canvasGroup = GetComponent<CanvasGroup>();
             if (canvasGroup == null)
             {
                 canvasGroup = gameObject.AddComponent<CanvasGroup>();

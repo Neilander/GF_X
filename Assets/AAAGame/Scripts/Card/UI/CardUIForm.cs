@@ -86,6 +86,7 @@ namespace AAAGame.Card
             {
                 PopulationModel populationModel = m_CardSystemController.GetPopulationModel();
                 populationView.Initialize(populationModel);
+                //Debug.Log($"[Card] 初始化成功啦");
             }
             
             // 初始化手牌显示
@@ -98,6 +99,7 @@ namespace AAAGame.Card
             
             // 清理手牌
             ClearHandCards();
+            populationView.Deinitialize();
         }
 
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -177,6 +179,7 @@ namespace AAAGame.Card
             List<CardModel> cards = handModel.GetAllCards();
             foreach (var cardModel in cards)
             {
+                //Debug.Log($"[Card] Card drawn: {cardModel.GetCardName()}");
                 CreateHandCardItem(cardModel, playAnimation: false);
             }
         }
@@ -395,6 +398,7 @@ namespace AAAGame.Card
         private void OnCardDrawn(object sender, GameEventArgs e)
         {
             CardDrawnEventArgs ne = (CardDrawnEventArgs)e;
+            //Debug.Log($"[Card] Card drawn: {ne.CardModel.GetCardName()}");
             CreateHandCardItem(ne.CardModel, playAnimation: true);
         }
 

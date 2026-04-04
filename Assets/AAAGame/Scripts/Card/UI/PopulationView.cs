@@ -85,10 +85,17 @@ namespace AAAGame.Card
         private void OnDestroy()
         {
             // 取消订阅（检查 GFBuiltin.Event 是否存在）
+            /*
             if (GFBuiltin.Event != null)
             {
                 GFBuiltin.Event.Unsubscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
-            }
+            }*/
+        }
+        
+        public void Deinitialize()
+        {
+           
+            GFBuiltin.Event.Unsubscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
         }
     }
 }
