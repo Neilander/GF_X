@@ -58,6 +58,10 @@ public partial class CardSetup : GameFrameworkComponent
         // 设置区域对象（可放置区域和禁止区域）
         SetupAreaObjects();
         m_CardSystemController.DrawCard();
+        m_CardSystemController.DrawCard();
+        m_CardSystemController.DrawCard();
+        m_CardSystemController.DrawCard();
+        m_CardSystemController.DrawCard();
 
         Log.Info("[CardGame] 卡牌系统初始化完成");
     }

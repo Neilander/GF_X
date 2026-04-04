@@ -74,7 +74,7 @@ namespace AAAGame.Card
             if (TryGetGroundPosition(out Vector3 groundPosition))
             {
                 m_CurrentPlacementPosition = groundPosition;
-                
+                Debug.Log($"[Card] Placement position updated: {groundPosition}");
                 // 检测区域合法性
                 bool wasValid = m_IsValidPlacement;
                 m_IsValidPlacement = CheckPlacementValidity(groundPosition);
@@ -97,7 +97,7 @@ namespace AAAGame.Card
         {
             if (!m_IsPlacing || !m_IsValidPlacement)
             {
-                Debug.LogError("[Card] Cannot confirm placement: 触发了神奇的bug.");
+                Debug.Log("[Card] Cannot confirm placement: 放置位置不合法或者没在放置.");
                 return false;
             }
 

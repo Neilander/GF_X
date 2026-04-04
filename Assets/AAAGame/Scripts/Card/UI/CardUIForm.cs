@@ -398,7 +398,12 @@ namespace AAAGame.Card
                 // OnCardPlayed 事件会调用 RemoveHandCardItem
                 // 所以这里不需要手动移除
             }
-            
+            else
+            {
+                Log.Info($"[CardUI] 放置失败");
+                m_CardSystemController.CancelPlacement();
+            }
+
             return placed;
         }
         

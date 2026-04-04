@@ -113,7 +113,7 @@ public static class ClusterSpawnSystem
         
         foreach (Vector3 pos in spawnPositions)
         {
-            SoldierFactory.ShowSoldier(unitIndex, pos, side, brainType);
+            SoldierFactory.ShowSoldier(unitIndex, pos+Vector3.up, side, brainType);
         }
         return true;
     }
