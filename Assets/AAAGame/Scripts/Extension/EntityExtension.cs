@@ -114,15 +114,12 @@ public static class EntityExtension
     /// <param name="textType"></param>
     public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, DamageTextType textType = DamageTextType.Normal, float duration = 3.0f, float fontSize = 4f)
     {
-        Log.Info($"ShowPopText: content={content}, type={textType}, startPos={eParams.position}, endPos={endPos}");
-        
         if (eParams.OnShowCallback != null)
         {
             Log.Error("ShowPopText 不能指定OnShowCallback回调, 将被覆盖无法执行.");
         }
         eParams.OnShowCallback = (EntityLogic entity) =>
         {
-            Log.Info($"ShowPopText callback: entity={entity?.Entity?.Id}, content={content}");
             var textMesh = entity.GetComponent<TextMeshPro>();
             if (textMesh == null)
             {
