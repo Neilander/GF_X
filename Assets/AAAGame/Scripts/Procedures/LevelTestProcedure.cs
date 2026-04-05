@@ -14,7 +14,8 @@ public class LevelTestProcedure : ProcedureBase
         GF.Log("正在进行测试，取消测试去修改LaunchProcedure");
         InitDataModels();
 
-        GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
+        // TODO: 等 UIViews.ResourceModifyBar 注册后取消注释
+        // GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
 
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
 

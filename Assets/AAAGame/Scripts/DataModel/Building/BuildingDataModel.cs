@@ -81,7 +81,7 @@ public class BuildingDataModel : DataModelBase
         }
         else
         {
-            int maxLv = row.Type == BuilType.Tech ? 1 : 3; // 科技建筑只有1级，其他建筑有3级
+            int maxLv = row.Type == BuilType.Tech ? 1 : 3;
             for (int lv = 1; lv <= maxLv; lv++)
             {
                 BuildingData building = new(row.Identifier + "_Lv" + lv,

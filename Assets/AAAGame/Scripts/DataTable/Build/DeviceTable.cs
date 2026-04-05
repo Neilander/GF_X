@@ -119,7 +119,7 @@ public class DeviceTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = int.Parse(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
             CostMaterial = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
