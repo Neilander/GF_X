@@ -15,16 +15,17 @@ public interface IInteractionOption : IReference
     /// </summary>
     string DisplayName { get; }
 
-    StringIntPair[] CostMaterial { get; }
+    KeyValuePair<IngameValueType, int>[] CostResource { get; }
+
+    /// <summary>
+    /// 是否需要展示在交互面板中。
+    /// </summary>
+    bool IsVisible();
 
     /// <summary>
     /// 当前交互是否可执行（用于 UI 置灰判断）
     /// </summary>
     bool IsExecutable();
-    /// <summary>
-    /// 是否展示在选项列表
-    /// </summary>
-    bool IsAvailable();
 
     /// <summary>
     /// 执行交互逻辑
