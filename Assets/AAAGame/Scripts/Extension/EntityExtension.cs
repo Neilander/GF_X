@@ -5,6 +5,23 @@ using GameFramework;
 using UnityGameFramework.Runtime;
 using DG.Tweening;
 using TMPro;
+
+/// <summary>
+/// 伤害文本类型
+/// </summary>
+public enum DamageTextType
+{
+    /// <summary>
+    /// 普通伤害（白色数字）
+    /// </summary>
+    Normal,
+    
+    /// <summary>
+    /// 治疗（绿色 +N）
+    /// </summary>
+    Heal
+}
+
 public static class EntityExtension
 {
     /// <summary>
@@ -93,20 +110,46 @@ public static class EntityExtension
     /// <param name="content"></param>
     /// <param name="duration"></param>
     /// <param name="fontSize"></param>
-    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, float duration = 0.5f, float fontSize = 5f)
+    /// <param name="textType"></param>
+    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, DamageTextType textType = DamageTextType.Normal, float duration = 1.0f, float fontSize = 80f)
     {
+        Log.Info($"ShowPopText: content={content}, type={textType}, startPos={eParams.position}, endPos={endPos}");
+        
         if (eParams.OnShowCallback != null)
         {
             Log.Error("ShowPopText 不能指定OnShowCallback回调, 将被覆盖无法执行.");
         }
         eParams.OnShowCallback = eLogic =>
         {
+            Log.Info($"ShowPopText callback: entity={eLogic.Entity.Id}, content={content}");
+            
             var textMesh = eLogic.GetComponent<TextMeshPro>();
+            if (textMesh == null)
+            {
+                Log.Error("TextMeshPro component not found!");
+                return;
+            }
+            
             textMesh.text = content;
+            
+            // 根据类型设置颜色
             var txtCol = textMesh.color;
             txtCol.a = 1;
+            switch (textType)
+            {
+                case DamageTextType.Normal:
+                    txtCol = Color.red; // 伤害数字改为红色，更容易看到
+                    break;
+                case DamageTextType.Heal:
+                    txtCol = Color.green;
+                    break;
+            }
             textMesh.color = txtCol;
             textMesh.fontSize = fontSize;
+            textMesh.alignment = TextAlignmentOptions.Center;
+            textMesh.overflowMode = TextOverflowModes.Overflow;
+            textMesh.enableWordWrapping = false;
+            Log.Info($"TextMeshPro text set to: {textMesh.text}, font={textMesh.font}, fontSize={textMesh.fontSize}, color={textMesh.color}, alignment={textMesh.alignment}, overflow={textMesh.overflowMode}, wordWrapping={textMesh.enableWordWrapping}");
             eLogic.CachedTransform.localScale = Vector3.zero;
             var seqAct = DOTween.Sequence();
             float jumpPower = Mathf.Abs(endPos.y - eLogic.CachedTransform.position.y);
@@ -123,6 +166,7 @@ public static class EntityExtension
             seqAct.SetUpdate(true);
             seqAct.onComplete = () =>
             {
+                Log.Info($"ShowPopText complete: entity={eId}");
                 eCom.HideEntitySafe(eId);
             };
             seqAct.SetAutoKill();

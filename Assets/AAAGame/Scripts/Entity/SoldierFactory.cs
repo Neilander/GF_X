@@ -17,6 +17,8 @@ public static class SoldierFactory
     /// <param name="brainType">AI类型</param>
     public static int ShowSoldier(string index, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
     {
+
+        
         EntityParams paramsData = EntityParams.Create(position: position);
         paramsData.Side = side;
         paramsData.BrainType = brainType;
@@ -26,18 +28,13 @@ public static class SoldierFactory
 
         // 添加初始Buff到StartBuffs列表
         paramsData.StartBuffs = new System.Collections.Generic.List<BuffData>();
-        Debug.Log($"SoldierFactory.ShowSoldier: 开始为单位类型[{index}]添加初始Buff");
         AddInitialBuffs(paramsData.StartBuffs, index);
-        Debug.Log($"SoldierFactory.ShowSoldier: Buff添加完成，数量={paramsData.StartBuffs.Count}");
-        foreach (BuffData buff in paramsData.StartBuffs)
-        {
-            Debug.Log($"SoldierFactory.ShowSoldier: Buff[{buff.id}]已添加");
-        }
 
         // 移除OnShowCallback，因为CreaturePropertyManager在回调执行后才初始化
         // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
 
-        return GF.Entity.ShowEntity<SoldierEntity>(prefabName, Const.EntityGroup.Level, paramsData);
+        int entityId = GF.Entity.ShowEntity<SoldierEntity>(prefabName, Const.EntityGroup.Level, paramsData);
+        return entityId;
     }
     
     /// <summary>
@@ -45,15 +42,8 @@ public static class SoldierFactory
     /// </summary>
     private static string GetSoldierPrefabName(string index)
     {
-        switch (index)
-        {
-            case "coder":
-                return "TestCreature";
-            case "bone_reaper":
-                return "TestCreature";
-            default:
-                return "TestCreature";
-        }
+        // 使用简单的gujia名称，与CharacterTestProcedure保持一致
+        return "gujia";
     }
     
     /// <summary>
@@ -63,14 +53,12 @@ public static class SoldierFactory
     {
         switch (index)
         {
-            case "coder":
+            case "Unit_Coder":
                 buffList.Add(TimedDeathBuff.CreateTimedDeath(35f));
-                Debug.Log($"为码农单位添加TimedDeathBuff");
                 break;
                 
-            case "bone_reaper":
+            case "Unit_BoneButcher":
                 buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
-                Debug.Log($"为剔骨狂魔单位添加OnKillHealBuff");
                 break;
         }
     }

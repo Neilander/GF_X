@@ -6,6 +6,8 @@ public class PlayerMoveComp : IMoveComp
 {
     private InputModel _inputModel;
     private IEntityContext _ctx;
+    private bool _isMoving = false;
+    private Vector3 _moveDirection = Vector3.zero;
 
     public void Move(float deltaTime)
     {
@@ -20,6 +22,10 @@ public class PlayerMoveComp : IMoveComp
         );
 
         Vector3 move = new Vector3(translated.x, 0f, translated.y);
+        
+        // 更新移动状态
+        _isMoving = move.sqrMagnitude > 0.001f;
+        _moveDirection = _isMoving ? move.normalized : Vector3.zero;
 
         float speed = _ctx.GetProperty(CreatureMainProperty.Speed);
 
@@ -27,28 +33,7 @@ public class PlayerMoveComp : IMoveComp
 
         _ctx.MoveExecutor.SetInput(move * 0.1f);
 
-        // 动画和显示：仅在真实实体上执行
-        if (_ctx is GeneralCreature gc)
-        {
-            if (gc.animator != null)
-                gc.animator.SetFloat("Speed", move.magnitude);
-
-            if (gc.display != null)
-            {
-                if (translated.x < -0.01f)
-                {
-                    Vector3 scale = gc.display.localScale;
-                    scale.x = -Mathf.Abs(scale.x);
-                    gc.display.localScale = scale;
-                }
-                else if (translated.x > 0.01f)
-                {
-                    Vector3 scale = gc.display.localScale;
-                    scale.x = Mathf.Abs(scale.x);
-                    gc.display.localScale = scale;
-                }
-            }
-        }
+        // 动画控制由MAEntity统一处理
     }
 
     public void MoveTo(Vector3 destination)
@@ -66,7 +51,16 @@ public class PlayerMoveComp : IMoveComp
         _ctx = ctx;
     }
 
-    public Vector3 GetNavDirection() => Vector3.zero;
+    public Vector3 GetNavDirection()
+    {
+        return _moveDirection;
+    }
+    
+    /// <summary>
+    /// 是否正在移动
+    /// </summary>
+    public bool IsMoving => _isMoving;
+    
     public void ShutDown() { }
     public void Resume() { }
 }

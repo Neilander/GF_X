@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
 /// 纯逻辑移动组件：直线移动到目标点，不依赖 NavMesh。
@@ -63,6 +63,16 @@ public class SimMoveComp : IMoveComp
         Vector3 offset = _targetPos.Value - _ctx.Position;
         offset.y = 0f;
         return offset.sqrMagnitude > 0.001f ? offset.normalized : Vector3.zero;
+    }
+    
+    public bool IsMoving
+    {
+        get
+        {
+            if (_ctx == null) return false;
+            Vector2 manualMove = _ctx.Brain?.Move ?? Vector2.zero;
+            return _targetPos.HasValue || manualMove.sqrMagnitude > 0.001f;
+        }
     }
 
     public void ShutDown() { StopMove(); }
