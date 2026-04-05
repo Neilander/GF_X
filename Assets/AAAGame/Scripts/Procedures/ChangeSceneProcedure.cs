@@ -27,7 +27,8 @@ public class ChangeSceneProcedure : ProcedureBase
         { "Game", "MenuProcedure" },
         { "LevelTestScene", "LevelTestProcedure" },
         { "CharacterAndSkillTestScene", "CharacterTestProcedure" },
-        {"UI_Card","CardGameProcedure"}
+        {"UI_Card","CardGameProcedure"},
+        {"Arena", "ArenaProcedure"}
     };
 
     /// <summary>
@@ -37,7 +38,8 @@ public class ChangeSceneProcedure : ProcedureBase
     {
         { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure","CardGameProcedure"} }, // 新增：远程武器测试流程和Buff测试流程
         { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure", "BuffTestProcedure" } },
-        { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure", "BuffTestProcedure" } }
+        { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure", "BuffTestProcedure" } },
+        {"Arena", new HashSet<string>{"ArenaProcedure"}}
     };
 
     /// <summary>
@@ -46,7 +48,7 @@ public class ChangeSceneProcedure : ProcedureBase
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
     {
         "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure" // 新增：远程武器测试流程和Buff测试流程
-        ,"CardGameProcedure"
+        ,"CardGameProcedure", "ArenaProcedure"
     };
     
     // 确保BuffTestProcedure被编译到程序集中
@@ -186,6 +188,10 @@ public class ChangeSceneProcedure : ProcedureBase
                 break;
             case "CardGameProcedure":
                 ChangeState<CardGameProcedure>(procedureOwner);
+                break;
+            
+            case "ArenaProcedure":
+                ChangeState<ArenaProcedure>(procedureOwner);
                 break;
             
             default:

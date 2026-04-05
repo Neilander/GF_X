@@ -657,8 +657,8 @@
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Legacy/AbstractMaterialNode0.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Interfaces/IMayRequireVertexColor.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/Slots/ColorSlotControlView.cs" />
-    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/PropertyRow.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Input/Texture/SampleVirtualTextureNode.cs" />
+    <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Drawing/Views/PropertyRow.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/Procedural/Shape/RoundedPolygonNode.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Interfaces/IPropertyDrawer.cs" />
     <Compile Include="Library/PackageCache/com.unity.shadergraph@14.0.12/Editor/Data/Nodes/UV/PolarCoordinatesNode.cs" />
