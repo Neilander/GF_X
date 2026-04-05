@@ -11,6 +11,14 @@ public partial class InteractOptionTips : UIFormBase
     [SerializeField] private Vector2 uiOffset = new Vector2(0, 80);
 
     private InteractionHost _target;
+    private readonly List<OptionUnitBinding> _optionBindings = new();
+
+    private sealed class OptionUnitBinding
+    {
+        public IInteractionOption Option;
+        public InteractOptionUnit Unit;
+        public InputKey? Key;
+    }
 
     public void ApplyTarget(InteractionHost target)
     {
@@ -33,22 +41,33 @@ public partial class InteractOptionTips : UIFormBase
         }
 
         GF.Event.Subscribe(InteractionOptionTriggeredEventArgs.EventId, OnOptionTriggered);
-        GF.Event.Subscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
+        // GF.Event.Subscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
+        GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
+        GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
 
         RefreshList();
     }
     protected override void OnClose(bool isShutdown, object userData)
     {
+        _optionBindings.Clear();
         GF.Event.Unsubscribe(InteractionOptionTriggeredEventArgs.EventId, OnOptionTriggered);
-        GF.Event.Unsubscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
+        // GF.Event.Unsubscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
+        GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
+        GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
         base.OnClose(isShutdown, userData);
+    }
+
+    private void Update()
+    {
+        UpdateKeyHoldProgress();
     }
 
     private void RefreshList()
     {
         // 先回收旧的 item，避免刷新时越刷越多
-        UnspawnAllItem<UIItemObject>(varItemUnit);
+        UnspawnAllItem<UIItemObject>(varResourceUnit);
         UnspawnAllItem<UIItemObject>(varInteractOptionItem);
+        _optionBindings.Clear();
 
         if (_target == null)
             return;
@@ -58,20 +77,62 @@ public partial class InteractOptionTips : UIFormBase
 
         foreach (var kv in options)
         {
-            var interactOptionUnit = SpawnItem<UIItemObject>(varInteractOptionItem, varInteractOptionTipsPanel).itemLogic as InteractOptionUnit;
-
             string keyText = InputGetKeyText.GetKeyText(kv.Key);
-            bool enabled = kv.Value != null && kv.Value.IsExecutable();
-            interactOptionUnit.SetData(kv.Value.DisplayName, keyText, enabled);
+            AddOptionItem(kv.Value, keyText, kv.Key);
+        }
 
-            if (kv.Value.CostMaterial != null)
+        HashSet<IInteractionOption> keyedOptions = new(options.Values);
+        List<IInteractionOption> allOptions = new();
+        _target.GetOptions(allOptions);
+        foreach (var option in allOptions)
+        {
+            if (keyedOptions.Contains(option))
+                continue;
+
+            AddOptionItem(option, string.Empty, null);
+        }
+
+    }
+
+    private void AddOptionItem(IInteractionOption option, string keyText, InputKey? key)
+    {
+        if (option == null)
+            return;
+
+        var interactOptionUnit = SpawnItem<UIItemObject>(varInteractOptionItem, varInteractOptionTipsPanel).itemLogic as InteractOptionUnit;
+        if (interactOptionUnit == null)
+            return;
+
+        bool enabled = option.IsExecutable();
+        interactOptionUnit.SetData(option.DisplayName, keyText, enabled, () =>
+        {
+            if (_target != null)
             {
-                foreach (var quantityItem in kv.Value.CostMaterial)
-                {
-                    var itemUnit = SpawnItem<UIItemObject>(varItemUnit, interactOptionUnit.varOptionCost).itemLogic as ItemUnit;
-                    itemUnit.SetData(quantityItem.str, quantityItem.num, true);
-                }
+                _target.TryExecute(option);
             }
+        });
+
+        _optionBindings.Add(new OptionUnitBinding
+        {
+            Option = option,
+            Unit = interactOptionUnit,
+            Key = key,
+        });
+
+        if (option.CostResource == null)
+            return;
+
+        for (int i = 0; i < option.CostResource.Length; i++)
+        {
+            var cost = option.CostResource[i];
+            if (cost.Value <= 0)
+                continue;
+
+            var resourceUnit = SpawnItem<UIItemObject>(varResourceUnit, interactOptionUnit.OptionCostRoot).itemLogic as ResourceUnit;
+            if (resourceUnit == null)
+                continue;
+
+            resourceUnit.SetData(cost.Key, cost.Value, true);
         }
 
     }
@@ -88,7 +149,7 @@ public partial class InteractOptionTips : UIFormBase
         // 触发交互后刷新列表（每次刷新都会从 target 拉取最新 options）
         RefreshList();
     }
-    private void OnItemAmountChanged(object sender, GameEventArgs e = null)
+    private void OnResourceAmountChanged(object sender, GameEventArgs e = null)
     {
         RefreshList();
     }
@@ -104,5 +165,40 @@ public partial class InteractOptionTips : UIFormBase
             follower = gameObject.AddComponent<UIFollowWorldPoint>();
 
         follower.Init(rect, worldPoint, uiOffset);
+    }
+
+    private void UpdateKeyHoldProgress()
+    {
+        if (_target == null || _optionBindings.Count == 0)
+            return;
+
+        for (int i = 0; i < _optionBindings.Count; i++)
+        {
+            var binding = _optionBindings[i];
+            if (binding == null || binding.Option == null || binding.Unit == null)
+                continue;
+
+            bool allowHold = binding.Option.IsVisible() && binding.Option.IsExecutable();
+            bool keyHolding = allowHold && binding.Key.HasValue && IsInteractionKeyPressed(binding.Key.Value);
+            binding.Unit.SetHoldState(allowHold, keyHolding);
+        }
+    }
+
+    private static bool IsInteractionKeyPressed(InputKey key)
+    {
+        var inputManager = GameEntry.GetComponent<InputManager>();
+        if (inputManager == null || inputManager.playerInput == null || inputManager.playerInput.actions == null)
+            return false;
+
+        string actionName = key switch
+        {
+            InputKey.InteractionPrimary => "Player/Interact",
+            InputKey.InteractionSecondary => "Player/Interact2",
+            InputKey.InteractionTertiary => "Player/Interact3",
+            _ => "Player/Interact"
+        };
+
+        var action = inputManager.playerInput.actions.FindAction(actionName);
+        return action != null && action.IsPressed();
     }
 }

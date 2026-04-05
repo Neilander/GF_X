@@ -65,7 +65,7 @@ public class CharacterMAFactoryTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = int.Parse(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
             index++;
             CharacterKey = columnStrings[index++];
             MoveFactoryPath = columnStrings[index++];
