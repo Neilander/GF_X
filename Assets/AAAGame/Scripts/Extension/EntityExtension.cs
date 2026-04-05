@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.UI;
 using GameFramework;
 using UnityGameFramework.Runtime;
 using DG.Tweening;
@@ -111,7 +112,7 @@ public static class EntityExtension
     /// <param name="duration"></param>
     /// <param name="fontSize"></param>
     /// <param name="textType"></param>
-    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, DamageTextType textType = DamageTextType.Normal, float duration = 1.0f, float fontSize = 80f)
+    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, DamageTextType textType = DamageTextType.Normal, float duration = 3.0f, float fontSize = 4f)
     {
         Log.Info($"ShowPopText: content={content}, type={textType}, startPos={eParams.position}, endPos={endPos}");
         
@@ -119,59 +120,43 @@ public static class EntityExtension
         {
             Log.Error("ShowPopText 不能指定OnShowCallback回调, 将被覆盖无法执行.");
         }
-        eParams.OnShowCallback = eLogic =>
+        eParams.OnShowCallback = (EntityLogic entity) =>
         {
-            Log.Info($"ShowPopText callback: entity={eLogic.Entity.Id}, content={content}");
-            
-            var textMesh = eLogic.GetComponent<TextMeshPro>();
+            Log.Info($"ShowPopText callback: entity={entity?.Entity?.Id}, content={content}");
+            var textMesh = entity.GetComponent<TextMeshPro>();
             if (textMesh == null)
             {
                 Log.Error("TextMeshPro component not found!");
                 return;
             }
-            
+            textMesh.fontSize = fontSize;
             textMesh.text = content;
-            
-            // 根据类型设置颜色
             var txtCol = textMesh.color;
             txtCol.a = 1;
+            // 根据类型设置颜色
             switch (textType)
             {
                 case DamageTextType.Normal:
-                    txtCol = Color.red; // 伤害数字改为红色，更容易看到
+                    txtCol = Color.red;
                     break;
                 case DamageTextType.Heal:
                     txtCol = Color.green;
                     break;
             }
             textMesh.color = txtCol;
-            textMesh.fontSize = fontSize;
-            textMesh.alignment = TextAlignmentOptions.Center;
-            textMesh.overflowMode = TextOverflowModes.Overflow;
-            textMesh.enableWordWrapping = false;
-            Log.Info($"TextMeshPro text set to: {textMesh.text}, font={textMesh.font}, fontSize={textMesh.fontSize}, color={textMesh.color}, alignment={textMesh.alignment}, overflow={textMesh.overflowMode}, wordWrapping={textMesh.enableWordWrapping}");
-            eLogic.CachedTransform.localScale = Vector3.zero;
+            entity.transform.localScale = Vector3.zero;
             var seqAct = DOTween.Sequence();
-            float jumpPower = Mathf.Abs(endPos.y - eLogic.CachedTransform.position.y);
-            var jumpAct = eLogic.CachedTransform.DOJump(endPos, jumpPower, 1, duration);
-            float minY = Mathf.Min(eLogic.CachedTransform.position.y, endPos.y);
-            jumpAct.onUpdate = () =>
-            {
-                txtCol.a = (eLogic.CachedTransform.position.y - minY) / jumpPower;
-                eLogic.CachedTransform.localScale = Vector3.one * txtCol.a;
-                textMesh.color = txtCol;
-            };
-            seqAct.Append(jumpAct);
-            int eId = eLogic.Entity.Id;
+            seqAct.Join(entity.transform.DOScale(1, duration));
+            seqAct.Join(entity.transform.DOMove(endPos, duration));
+            seqAct.Append(textMesh.DOFade(0, 0.25f));
             seqAct.SetUpdate(true);
             seqAct.onComplete = () =>
             {
-                Log.Info($"ShowPopText complete: entity={eId}");
-                eCom.HideEntitySafe(eId);
+                GF.Entity.HideEntitySafe(entity);
             };
             seqAct.SetAutoKill();
         };
-        eCom.ShowEntity<BillboardEntity>("Effect/MoneyText", Const.EntityGroup.Effect, eParams);
+        eCom.ShowEntity<SampleEntity>("Effect/MoneyText", Const.EntityGroup.Effect, eParams);
     }
     /// <summary>
     /// 创建Entity
