@@ -84,7 +84,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return new Color32(255, 255, 255, 255);
         string[] splitValue = value.Split(',');
-        return new Color32(ParseByte(splitValue[0]), ParseByte(splitValue[1]), ParseByte(splitValue[2]), ParseByte(splitValue[3]));
+        return new Color32(byte.Parse(splitValue[0]), byte.Parse(splitValue[1]), byte.Parse(splitValue[2]), byte.Parse(splitValue[3]));
     }
     public static Color32 ReadColor32(this BinaryReader binaryReader)
     {
@@ -94,7 +94,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return Color.white;
         string[] splitValue = value.Split(',');
-        return new Color(ParseSingle(splitValue[0]), ParseSingle(splitValue[1]), ParseSingle(splitValue[2]), ParseSingle(splitValue[3]));
+        return new Color(float.Parse(splitValue[0]), float.Parse(splitValue[1]), float.Parse(splitValue[2]), float.Parse(splitValue[3]));
     }
     public static Color ReadColor(this BinaryReader binaryReader)
     {
@@ -104,7 +104,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return Quaternion.identity;
         string[] splitValue = value.Split(',');
-        return new Quaternion(ParseSingle(splitValue[0]), ParseSingle(splitValue[1]), ParseSingle(splitValue[2]), ParseSingle(splitValue[3]));
+        return new Quaternion(float.Parse(splitValue[0]), float.Parse(splitValue[1]), float.Parse(splitValue[2]), float.Parse(splitValue[3]));
     }
     public static Quaternion ReadQuaternion(this BinaryReader binaryReader)
     {
@@ -115,85 +115,6 @@ public static class DataTableExtension
         if (string.IsNullOrWhiteSpace(value)) return DateTime.MinValue;
         return DateTime.Parse(value);
     }
-
-    public static bool ParseBoolean(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        return bool.Parse(value);
-    }
-
-    public static byte ParseByte(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return byte.Parse(value);
-    }
-
-    public static sbyte ParseSByte(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return sbyte.Parse(value);
-    }
-
-    public static short ParseInt16(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return short.Parse(value);
-    }
-
-    public static ushort ParseUInt16(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return ushort.Parse(value);
-    }
-
-    public static int ParseInt32(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return int.Parse(value);
-    }
-
-    public static uint ParseUInt32(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return uint.Parse(value);
-    }
-
-    public static long ParseInt64(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return long.Parse(value);
-    }
-
-    public static ulong ParseUInt64(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return ulong.Parse(value);
-    }
-
-    public static float ParseSingle(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return float.Parse(value);
-    }
-
-    public static double ParseDouble(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return double.Parse(value);
-    }
-
-    public static decimal ParseDecimal(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return decimal.Parse(value);
-    }
-
-    public static char ParseChar(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return default;
-        return char.Parse(value);
-    }
-
     public static DateTime ReadDateTime(this BinaryReader binaryReader)
     {
         return new DateTime(binaryReader.ReadInt64());
@@ -202,7 +123,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return Rect.zero;
         string[] splitValue = value.Split(',');
-        return new Rect(ParseSingle(splitValue[0]), ParseSingle(splitValue[1]), ParseSingle(splitValue[2]), ParseSingle(splitValue[3]));
+        return new Rect(float.Parse(splitValue[0]), float.Parse(splitValue[1]), float.Parse(splitValue[2]), float.Parse(splitValue[3]));
     }
     public static Rect ReadRect(this BinaryReader binaryReader)
     {
@@ -212,7 +133,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return Vector2.zero;
         string[] splitValue = value.Split(',');
-        return new Vector2(ParseSingle(splitValue[0]), ParseSingle(splitValue[1]));
+        return new Vector2(float.Parse(splitValue[0]), float.Parse(splitValue[1]));
     }
     public static Vector2 ReadVector2(this BinaryReader binaryReader)
     {
@@ -244,7 +165,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return Vector2Int.zero;
         string[] splitValue = value.Split(',');
-        return new Vector2Int(ParseInt32(splitValue[0]), ParseInt32(splitValue[1]));
+        return new Vector2Int(int.Parse(splitValue[0]), int.Parse(splitValue[1]));
     }
     public static Vector2Int ReadVector2Int(this BinaryReader binaryReader)
     {
@@ -276,7 +197,7 @@ public static class DataTableExtension
         if (string.IsNullOrWhiteSpace(value)) return Vector3.zero;
         string[] splitValue = value.Split(',');
 
-        return new Vector3(ParseSingle(splitValue[0]), ParseSingle(splitValue[1]), ParseSingle(splitValue[2]));
+        return new Vector3(float.Parse(splitValue[0]), float.Parse(splitValue[1]), float.Parse(splitValue[2]));
     }
     public static Vector3 ReadVector3(this BinaryReader binaryReader)
     {
@@ -307,7 +228,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return Vector3Int.zero;
         string[] splitValue = value.Split(',');
-        return new Vector3Int(ParseInt32(splitValue[0]), ParseInt32(splitValue[1]), ParseInt32(splitValue[2]));
+        return new Vector3Int(int.Parse(splitValue[0]), int.Parse(splitValue[1]), int.Parse(splitValue[2]));
     }
     public static Vector3Int ReadVector3Int(this BinaryReader binaryReader)
     {
@@ -338,7 +259,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return Vector4.zero;
         string[] splitValue = value.Split(',');
-        return new Vector4(ParseSingle(splitValue[0]), ParseSingle(splitValue[1]), ParseSingle(splitValue[2]), ParseSingle(splitValue[3]));
+        return new Vector4(float.Parse(splitValue[0]), float.Parse(splitValue[1]), float.Parse(splitValue[2]), float.Parse(splitValue[3]));
     }
     public static Vector4 ReadVector4(this BinaryReader binaryReader)
     {
@@ -370,7 +291,7 @@ public static class DataTableExtension
     {
         if (string.IsNullOrWhiteSpace(value)) return int4.zero;
         string[] splitValue = value.Split(',');
-        return new Unity.Mathematics.int4(ParseInt32(splitValue[0]), ParseInt32(splitValue[1]), ParseInt32(splitValue[2]), ParseInt32(splitValue[3]));
+        return new Unity.Mathematics.int4(int.Parse(splitValue[0]), int.Parse(splitValue[1]), int.Parse(splitValue[2]), int.Parse(splitValue[3]));
     }
     public static Unity.Mathematics.int4 Readint4(this BinaryReader binaryReader)
     {

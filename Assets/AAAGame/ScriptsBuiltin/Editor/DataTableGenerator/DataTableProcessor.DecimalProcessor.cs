@@ -42,7 +42,7 @@ namespace GameFramework.Editor.DataTableTools
 
             public override decimal Parse(string value)
             {
-                return DataTableExtension.ParseDecimal(value);
+                return decimal.Parse(value);
             }
 
             public override void WriteToStream(DataTableProcessor dataTableProcessor, BinaryWriter binaryWriter, string value)

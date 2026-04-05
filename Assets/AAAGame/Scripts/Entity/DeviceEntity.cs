@@ -20,7 +20,7 @@ public class DeviceEntity : EntityBase
             if (string.IsNullOrWhiteSpace(deviceData.UpgradeID))
                 return false;
 
-            return DeviceBuildManager.SatisfyBuildCondition(deviceData.UpgradeID);
+            return BuildManager.SatisfyBuildCondition(deviceData.UpgradeID);
         }
     }
 

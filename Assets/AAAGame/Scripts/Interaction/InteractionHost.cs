@@ -12,8 +12,7 @@ using UnityEngine;
 public class InteractionHost : MonoBehaviour
 {
     // 使用 SortedDictionary 保证按 InputKey(enum 值) 的自然顺序枚举
-    private readonly SortedDictionary<InputKey, IInteractionOption> _optionsByKey = new();
-    private readonly List<IInteractionOption> _options = new();
+    private readonly SortedDictionary<InputKey, IInteractionOption> _options = new();
 
     public object Owner { get; private set; }
 
@@ -24,43 +23,19 @@ public class InteractionHost : MonoBehaviour
         Owner = owner;
     }
 
-    public bool IsInteractable() => enabled && gameObject.activeInHierarchy && HasVisibleOptions();
-
-    public bool HasVisibleOptions()
-    {
-        foreach (var option in _optionsByKey.Values)
-        {
-            if (option != null && option.IsVisible())
-                return true;
-        }
-
-        foreach (var option in _options)
-        {
-            if (option != null && option.IsVisible())
-                return true;
-        }
-
-        return false;
-    }
+    public bool IsInteractable() => enabled && gameObject.activeInHierarchy && _options.Count > 0;
 
     public void GetOptions(List<IInteractionOption> results)
     {
-        if (results == null)
+        if (results == null || _options.Count == 0)
             return;
 
-        foreach (var kv in _optionsByKey)
+        foreach (var kv in _options)
         {
             var option = kv.Value;
-            if (option == null || !option.IsVisible())
+            if (option == null || !option.IsAvailable())
                 continue;
             // always add option; UI/manager should query host for the key mapping
-            results.Add(option);
-        }
-
-        foreach (var option in _options)
-        {
-            if (option == null || !option.IsVisible())
-                continue;
             results.Add(option);
         }
     }
@@ -71,14 +46,14 @@ public class InteractionHost : MonoBehaviour
     /// </summary>
     public void GetOptionsWithKeys(SortedDictionary<InputKey, IInteractionOption> results)
     {
-        if (results == null || _optionsByKey.Count == 0)
+        if (results == null || _options.Count == 0)
             return;
 
-        foreach (var kv in _optionsByKey)
+        foreach (var kv in _options)
         {
             var key = kv.Key;
             var option = kv.Value;
-            if (option == null || !option.IsVisible())
+            if (option == null || !option.IsAvailable())
                 continue;
 
             results.Add(key, option);
@@ -87,13 +62,10 @@ public class InteractionHost : MonoBehaviour
 
     public Vector3 GetPromptPosition() => transform.position;
 
-    /// <summary>
-    /// 有按键的选项
-    /// </summary>
     public TInteractionOption AddOption<TInteractionOption>(InputKey key, string displayName, InteractionParams @params)
-            where TInteractionOption : class, IInteractionOption, new()
+        where TInteractionOption : class, IInteractionOption, new()
     {
-        if (_optionsByKey.ContainsKey(key))
+        if (_options.ContainsKey(key))
         {
             Debug.LogError($"[Interaction] Duplicate key {key} on {name}.");
             if (@params != null)
@@ -114,31 +86,13 @@ public class InteractionHost : MonoBehaviour
             ReferencePool.Release(@params);
         }
 
-        _optionsByKey.Add(key, option);
-        return option;
-    }
-    /// <summary>
-    /// 无按键的选项
-    /// </summary>
-    public TInteractionOption AddOption<TInteractionOption>(string displayName, InteractionParams @params)
-        where TInteractionOption : class, IInteractionOption, new()
-    {
-        var option = ReferencePool.Acquire<TInteractionOption>();
-        option.Init(Owner, displayName, @params);
-
-        if (@params != null)
-        {
-            @params.Clear();
-            ReferencePool.Release(@params);
-        }
-
-        _options.Add(option);
+        _options.Add(key, option);
         return option;
     }
 
     public void ResetOptions()
     {
-        foreach (var kv in _optionsByKey)
+        foreach (var kv in _options)
         {
             var option = kv.Value;
             if (option != null)
@@ -146,39 +100,16 @@ public class InteractionHost : MonoBehaviour
                 ReferencePool.Release(option);
             }
         }
-
-        foreach (var option in _options)
-        {
-            if (option != null)
-            {
-                ReferencePool.Release(option);
-            }
-        }
-
-        _optionsByKey.Clear();
         _options.Clear();
         Owner = null;
     }
 
     public bool TryExecute(InputKey key)
     {
-        if (!_optionsByKey.TryGetValue(key, out var option) || option == null)
+        if (!_options.TryGetValue(key, out var option) || option == null)
             return false;
 
-        if (!option.IsVisible() || !option.IsExecutable())
-            return false;
-
-        option.Execute();
-        GF.Event.Fire(this, InteractionOptionTriggeredEventArgs.Create(this, option));
-        return true;
-    }
-
-    public bool TryExecute(IInteractionOption option)
-    {
-        if (option == null)
-            return false;
-
-        if (!option.IsVisible() || !option.IsExecutable())
+        if (!option.IsExecutable())
             return false;
 
         option.Execute();

@@ -195,4 +195,4 @@ MonoBehaviour:
   uiOffset: {x: 0, y: 80}
   varInteractOptionItem: {fileID: 2642739645224587011, guid: 04a38ad1f1b07444b8cfe993358992b2, type: 3}
   varInteractOptionTipsPanel: {fileID: 9073690895807206062}
-  varResourceUnit: {fileID: 8327918653924207109, guid: d06559e97f8929f4d9c24bf6db396d83, type: 3}
+  varItemUnit: {fileID: 2079849967625038108, guid: 17932f01522f3ff4496697f450c90ea7, type: 3}

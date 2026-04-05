@@ -1,21 +1,18 @@
 ﻿using GameFramework;
-using System.Collections.Generic;
 
 public sealed class DeviceOpenPanelInteractionOption : IInteractionOption
 {
-    private static readonly KeyValuePair<IngameValueType, int>[] EmptyCost = System.Array.Empty<KeyValuePair<IngameValueType, int>>();
     private DeviceEntity _owner;
     public string DisplayName { get; private set; }
-    public KeyValuePair<IngameValueType, int>[] CostResource => EmptyCost;
+    public StringIntPair[] CostMaterial => null;
 
-    public bool IsVisible()
+    public bool IsExecutable()
     {
         if (_owner == null || _owner.deviceData == null)
             return false;
         return _owner.HasInteractionPanel;
     }
-
-    public bool IsExecutable()
+    public bool IsAvailable()
     {
         if (_owner == null || _owner.deviceData == null)
             return false;

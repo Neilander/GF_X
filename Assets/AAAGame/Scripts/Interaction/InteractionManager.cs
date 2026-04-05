@@ -71,8 +71,16 @@ public class InteractionManager : MonoBehaviour
 
     private void HandleInput()
     {
-        // 交互执行统一交给 InteractOptionTips（鼠标长按 / 可选按键长按）。
-        // 这里不再做按键瞬发执行，避免绕过长按进度逻辑。
+        if (_currentTarget == null)
+            return;
+
+        InputKey? optKey = _inputModel.InteractionPressed ? InputKey.InteractionPrimary
+            : _inputModel.Interaction2Pressed ? InputKey.InteractionSecondary
+            : _inputModel.Interaction3Pressed ? InputKey.InteractionTertiary
+            : null;
+        if (!optKey.HasValue)
+            return;
+        _currentTarget.TryExecute(optKey.Value);
     }
 
     private bool EnsureInputModel()

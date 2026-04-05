@@ -9,5 +9,5 @@ public partial class InteractOptionTips
 	[Header("UI Variables:")]
 	[SerializeField] private GameObject varInteractOptionItem = null;
 	[SerializeField] private RectTransform varInteractOptionTipsPanel = null;
-	[SerializeField] private GameObject varResourceUnit = null;
+	[SerializeField] private GameObject varItemUnit = null;
 }
