@@ -56,10 +56,10 @@ public class UIGroupTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             index++;
             Name = columnStrings[index++];
-            Depth = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Depth = int.Parse(columnStrings[index++]);
 
             return true;
         }

@@ -46,23 +46,9 @@ public class BuildingTable : DataRowBase
             private set;
         }
 
-        /// <summary>
-        /// 建筑类型
-        /// </summary>
-        public BuilType Type
-        {
-            get;
-            private set;
-        }
 
-        /// <summary>
-        /// 所属种族
-        /// </summary>
-        public Archetype Archetype
-        {
-            get;
-            private set;
-        }
+
+
 
         /// <summary>
         /// 建筑名称（多语言）
@@ -497,21 +483,19 @@ public class BuildingTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             Identifier = columnStrings[index++];
             index++;
             index++;
             UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Type = DataTableExtension.ParseEnum<BuilType>(columnStrings[index++]);
-            Archetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
             NameKey = columnStrings[index++];
             DescKey = columnStrings[index++];
             Lv1PrefabPath = columnStrings[index++];
             Lv2PrefabPath = columnStrings[index++];
             Lv3PrefabPath = columnStrings[index++];
-            Lv1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
-            Lv2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
-            Lv3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Lv1Cost = int.Parse(columnStrings[index++]);
+            Lv2Cost = int.Parse(columnStrings[index++]);
+            Lv3Cost = int.Parse(columnStrings[index++]);
             Lv1HP = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Def = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -522,38 +506,38 @@ public class BuildingTable : DataRowBase
             Lv3Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             UnitID = columnStrings[index++];
-            Production = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Production = int.Parse(columnStrings[index++]);
             Tech1ID = columnStrings[index++];
             index++;
             Tech1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech1Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech1Stackable = bool.Parse(columnStrings[index++]);
             Tech1NameKey = columnStrings[index++];
             Tech1DescKey = columnStrings[index++];
-            Tech1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech1Cost = int.Parse(columnStrings[index++]);
             Tech1SpritePath = columnStrings[index++];
             Tech2ID = columnStrings[index++];
             index++;
             Tech2UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech2Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech2Stackable = bool.Parse(columnStrings[index++]);
             Tech2NameKey = columnStrings[index++];
             Tech2DescKey = columnStrings[index++];
-            Tech2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech2Cost = int.Parse(columnStrings[index++]);
             Tech2SpritePath = columnStrings[index++];
             Tech3ID = columnStrings[index++];
             index++;
             Tech3UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech3Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech3Stackable = bool.Parse(columnStrings[index++]);
             Tech3NameKey = columnStrings[index++];
             Tech3DescKey = columnStrings[index++];
-            Tech3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech3Cost = int.Parse(columnStrings[index++]);
             Tech3SpritePath = columnStrings[index++];
             Tech4ID = columnStrings[index++];
             index++;
             Tech4UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Tech4Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech4Stackable = bool.Parse(columnStrings[index++]);
             Tech4NameKey = columnStrings[index++];
             Tech4DescKey = columnStrings[index++];
-            Tech4Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Tech4Cost = int.Parse(columnStrings[index++]);
             Tech4SpritePath = columnStrings[index++];
 
             return true;
@@ -568,8 +552,6 @@ public class BuildingTable : DataRowBase
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     Identifier = binaryReader.ReadString();
                     UniqueValues = binaryReader.ReadFix64Array();
-                    Type = binaryReader.ReadEnum<BuilType>();
-                    Archetype = binaryReader.ReadEnum<Archetype>();
                     NameKey = binaryReader.ReadString();
                     DescKey = binaryReader.ReadString();
                     Lv1PrefabPath = binaryReader.ReadString();

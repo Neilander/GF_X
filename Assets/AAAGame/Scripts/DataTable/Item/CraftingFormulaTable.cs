@@ -74,7 +74,7 @@ public class CraftingFormulaTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             index++;
             CraftingPlace = columnStrings[index++];
             ProducedItems = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);

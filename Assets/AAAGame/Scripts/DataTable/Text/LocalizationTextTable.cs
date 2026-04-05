@@ -56,7 +56,7 @@ public class LocalizationTextTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
             TextKey = columnStrings[index++];

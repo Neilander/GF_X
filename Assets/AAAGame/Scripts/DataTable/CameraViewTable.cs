@@ -56,7 +56,7 @@ public class CameraViewTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             index++;
             FollowOffset = DataTableExtension.ParseVector3(columnStrings[index++]);
             AimOffset = DataTableExtension.ParseVector3(columnStrings[index++]);

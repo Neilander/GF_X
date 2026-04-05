@@ -74,11 +74,11 @@ public class LevelTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             index++;
             LvPfbName = columnStrings[index++];
-            InitMoney = DataTableExtension.ParseInt32(columnStrings[index++]);
-            MoneyColorId = DataTableExtension.ParseInt32(columnStrings[index++]);
+            InitMoney = int.Parse(columnStrings[index++]);
+            MoneyColorId = int.Parse(columnStrings[index++]);
             LvDisplayName = columnStrings[index++];
 
             return true;

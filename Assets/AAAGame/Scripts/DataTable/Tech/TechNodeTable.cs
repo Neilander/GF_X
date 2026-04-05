@@ -128,11 +128,11 @@ public class TechNodeTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
             PrereqTechIds = DataTableExtension.ParseArray<string>(columnStrings[index++]);
-            Level = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Level = int.Parse(columnStrings[index++]);
             Category = DataTableExtension.ParseEnum<TechCategory>(columnStrings[index++]);
             CostMaterial = DataTableExtension.ParseStringIntPairArray(columnStrings[index++]);
             AllConditions = DataTableExtension.ParseUnlockConditionArray(columnStrings[index++]);

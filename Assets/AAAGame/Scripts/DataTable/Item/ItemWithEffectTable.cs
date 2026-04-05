@@ -128,11 +128,11 @@ public class ItemWithEffectTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
+            m_Id = int.Parse(columnStrings[index++]);
             index++;
             Identifier = columnStrings[index++];
             Rarity = DataTableExtension.ParseEnum<ItemRarity>(columnStrings[index++]);
-            MaxStack = DataTableExtension.ParseInt32(columnStrings[index++]);
+            MaxStack = int.Parse(columnStrings[index++]);
             PropertyNumerals = DataTableExtension.ParseStringFix64PairArray(columnStrings[index++]);
             EffectNumerals = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             EffectIntroduction = columnStrings[index++];
