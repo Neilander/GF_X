@@ -91,8 +91,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/Packet/CSHeartBeat.cs" />
     <Compile Include="Assets/AAAGame/Scripts/MeiyouUtility/EntityPresetPoint.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/CraftingDialog.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/UI/ToastTips.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeData.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/UI/ToastTips.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/NoTargetingComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Network/NetworkChannelHelper.cs" />
@@ -161,8 +161,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Tools/ArrangeModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Card/Controller/CardSystemController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Card/Controller/CardSystemController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MeleeWeaponSO.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Projectile/Projectile.cs" />
@@ -310,9 +310,9 @@
     <Compile Include="Assets/AAAGame/Scripts/Network/CSPacketBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/Core/UIItemBase.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/FactoryHelper.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/Node/CheckHealthNode.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Text/InteractOptionTextTable.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Tech/TechNodeView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Procedures/MenuProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/HealthBarComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Interaction/InteractionManager.cs" />
@@ -339,6 +339,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Definition/UnitType.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMAFactoryTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponHelper.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Render/BaselineSpriteBinder.cs" />

@@ -74,7 +74,7 @@ namespace AAAGame.Card
             if (TryGetGroundPosition(out Vector3 groundPosition))
             {
                 m_CurrentPlacementPosition = groundPosition;
-                Debug.Log($"[Card] Placement position updated: {groundPosition}");
+                //Debug.Log($"[Card] Placement position updated: {groundPosition}");
                 // 检测区域合法性
                 bool wasValid = m_IsValidPlacement;
                 m_IsValidPlacement = CheckPlacementValidity(groundPosition);
