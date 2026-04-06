@@ -29,6 +29,7 @@ public class CharacterTestProcedure : ProcedureBase
     public static bool EnemyBuff_Speed = false;
     public static bool EnemyBuff_Shield = false;
 
+    /*
     private static List<BuffData> BuildBuffList(bool dot, bool regen, bool speed, bool shield)
     {
         if (!StartWithBuff) return null;
@@ -38,7 +39,7 @@ public class CharacterTestProcedure : ProcedureBase
         if (speed) list.Add(DebugBuffExamples.CreateSpeedBuff());
         if (shield) list.Add(DebugBuffExamples.CreateShieldBuff());
         return list.Count > 0 ? list : null;
-    }
+    }*/
 
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
@@ -59,14 +60,14 @@ public class CharacterTestProcedure : ProcedureBase
         Vector3 enemyCenter = EnemySpawnCenter;
         float enemySpacing = EnemySpacing;
 
-        var friendlyBuffs = BuildBuffList(FriendlyBuff_Dot, FriendlyBuff_Regen, FriendlyBuff_Speed, FriendlyBuff_Shield);
-        var enemyBuffs = BuildBuffList(EnemyBuff_Dot, EnemyBuff_Regen, EnemyBuff_Speed, EnemyBuff_Shield);
+        //var friendlyBuffs = BuildBuffList(FriendlyBuff_Dot, FriendlyBuff_Regen, FriendlyBuff_Speed, FriendlyBuff_Shield);
+        //var enemyBuffs = BuildBuffList(EnemyBuff_Dot, EnemyBuff_Regen, EnemyBuff_Speed, EnemyBuff_Shield);
 
         // --- 玩家 ---
         var pPlayer = EntityParams.Create(position: playerSpawn);
         pPlayer.Side = SideType.PlayerSide;
         pPlayer.BrainType = BrainType.Player;
-        pPlayer.StartBuffs = friendlyBuffs;
+        //pPlayer.StartBuffs = friendlyBuffs;
         GF.Entity.ShowEntity<CharacterEntity>("TestCreature", Const.EntityGroup.Player, pPlayer);
 
         // --- 友军小兵 ---
@@ -76,7 +77,7 @@ public class CharacterTestProcedure : ProcedureBase
             var pFriendly = EntityParams.Create(position: spawnPos);
             pFriendly.Side = SideType.PlayerSide;
             pFriendly.BrainType = BrainType.SoldierAI;
-            pFriendly.StartBuffs = friendlyBuffs;
+            //pFriendly.StartBuffs = friendlyBuffs;
             GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, pFriendly);
         }
 
@@ -87,7 +88,7 @@ public class CharacterTestProcedure : ProcedureBase
             var pEnemy = EntityParams.Create(position: spawnPos);
             pEnemy.Side = SideType.EnemySide;
             pEnemy.BrainType = BrainType.SoldierAI;
-            pEnemy.StartBuffs = enemyBuffs;
+            //pEnemy.StartBuffs = enemyBuffs;
             GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, pEnemy);
         }
 

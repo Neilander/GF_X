@@ -22,17 +22,19 @@ public static class BuildManager
             return false;
 
         if (owner.buildingData.Lv == 0)
-            return GetLv0ConstructCandidates(owner).Count > 0;
+            return GetLv0ConstructCandidates(owner, requireUnlockedArche: false).Count > 0;
+
+        if (owner.buildingData.Type == BuilType.Tech)
+            return GetResearchTechCandidates(owner).Count > 0;
 
         string upgradeBuildingId = BuildingDataModel.GetUpgradeID(owner.buildingData.Identifier);
         if (string.IsNullOrWhiteSpace(upgradeBuildingId))
             return false;
 
-        BuildingData upgradeBuildingData = BuildingDataModel.GetBuildingData(upgradeBuildingId);
-        return upgradeBuildingData != null && upgradeBuildingData.TechIDs != null && upgradeBuildingData.TechIDs.Length > 0;
+        return GetUpgradeTechCandidates(owner).Count > 0;
     }
 
-    public static void ConfigureUpgradeInteractionOptions(BuildingEntity owner, InteractionHost host)
+    public static void ConfigureBuildInteractionOptions(BuildingEntity owner, InteractionHost host)
     {
         if (owner == null || owner.buildingData == null || host == null)
             return;
@@ -40,6 +42,12 @@ public static class BuildManager
         if (owner.buildingData.Lv == 0)
         {
             ConfigureLv0ConstructOptions(owner, host);
+            return;
+        }
+
+        if (owner.buildingData.Type == BuilType.Tech)
+        {
+            ConfigureTechResearchOptions(owner, host);
             return;
         }
 
@@ -111,8 +119,50 @@ public static class BuildManager
             return false;
 
         var techData = TechDataModel.GetTechData(techId);
-        if (techData != null && !techData.IsStackable && InGameDataModel.HasUnlockedTech(techId))
+        if (techData == null || string.IsNullOrWhiteSpace(techId))
             return false;
+
+        if (techData.IsStackable)
+        {
+            if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
+                return false;
+        }
+        else if (InGameDataModel.HasUnlockedTech(techId))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    public static bool IsResearchOptionVisible(BuildingEntity owner, string techId)
+    {
+        if (owner == null || owner.buildingData == null)
+            return false;
+
+        if (owner.buildingData.Type != BuilType.Tech)
+            return false;
+
+        if (owner.OwnerFactionID != 0)
+            return false;
+
+        var inGameData = GF.DataModel.GetDataModel<InGameDataModel>();
+        if (inGameData == null || (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) != GamePhase.Build)
+            return false;
+
+        var techData = TechDataModel.GetTechData(techId);
+        if (techData == null || string.IsNullOrWhiteSpace(techId))
+            return false;
+
+        if (techData.IsStackable)
+        {
+            if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
+                return false;
+        }
+        else if (InGameDataModel.HasUnlockedTech(techId))
+        {
+            return false;
+        }
 
         return true;
     }
@@ -126,6 +176,17 @@ public static class BuildManager
             return false;
 
         return HasBuildCost(upgradeBuildingId);
+    }
+
+    public static bool IsResearchOptionExecutable(BuildingEntity owner, string techId)
+    {
+        if (!IsResearchOptionVisible(owner, techId))
+            return false;
+
+        if (!SatisfyTechCondition(techId))
+            return false;
+
+        return HasTechCost(techId);
     }
 
     public static bool HasBuildCost(string buildingId)
@@ -146,6 +207,18 @@ public static class BuildManager
         return new[]
         {
             new KeyValuePair<IngameValueType, int>(IngameValueType.Coin, buildingData.Cost)
+        };
+    }
+
+    public static KeyValuePair<IngameValueType, int>[] GetTechResourceCosts(string techId)
+    {
+        var techData = TechDataModel.GetTechData(techId);
+        if (techData == null || techData.Cost <= 0)
+            return EmptyResourceCosts;
+
+        return new[]
+        {
+            new KeyValuePair<IngameValueType, int>(IngameValueType.Coin, techData.Cost)
         };
     }
 
@@ -185,6 +258,21 @@ public static class BuildManager
             GF.Entity.HideEntity(owner.Entity);
 
         return built;
+    }
+
+    public static bool ResearchTech(BuildingEntity owner, string techId)
+    {
+        if (!IsResearchOptionExecutable(owner, techId))
+            return false;
+
+        var techData = TechDataModel.GetTechData(techId);
+        if (techData == null)
+            return false;
+
+        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -techData.Cost, true))
+            return false;
+
+        return InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId);
     }
 
     public static void OnBuildingDemolished(BuildingEntity owner)
@@ -314,16 +402,16 @@ public static class BuildManager
     private static bool TryResolveBaseMilestoneTechId(Archetype archetype, int level, out string resolvedTechId)
     {
         resolvedTechId = null;
+        if (archetype == Archetype.None || level <= 0)
+            return false;
+
         string archeName = archetype.ToString();
 
         string candidate = string.Format(BaseMilestoneTechIdPatterns, archeName, level);
-        if (TechDataModel.GetTechData(candidate) != null)
-        {
-            resolvedTechId = candidate;
-            return true;
-        }
-
-        return false;
+        // Base 里程碑科技按命名约定生效，不强依赖 TechData 配表。
+        // 这样关卡预设直接放置高等级基地时，也能稳定补齐对应等级的建造/升级权限。
+        resolvedTechId = candidate;
+        return true;
     }
 
     private static bool SatisfyTechCondition(string techId)
@@ -341,6 +429,55 @@ public static class BuildManager
         return true;
     }
 
+    private static bool HasTechCost(string techId)
+    {
+        var techData = TechDataModel.GetTechData(techId);
+        if (techData == null)
+            return false;
+
+        return InGameDataModel.GetValue(IngameValueType.Coin) >= techData.Cost;
+    }
+
+    private static List<string> GetUpgradeTechCandidates(BuildingEntity owner)
+    {
+        var results = new List<string>();
+        if (owner == null || owner.buildingData == null || owner.buildingData.UpgradeTechIDs == null)
+            return results;
+
+        string upgradeBuildingId = BuildingDataModel.GetUpgradeID(owner.buildingData.Identifier);
+        if (string.IsNullOrWhiteSpace(upgradeBuildingId))
+            return results;
+
+        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
+        {
+            string techId = owner.buildingData.UpgradeTechIDs[i];
+            if (!IsUpgradeOptionVisible(owner, upgradeBuildingId, techId))
+                continue;
+
+            results.Add(techId);
+        }
+
+        return results;
+    }
+
+    private static List<string> GetResearchTechCandidates(BuildingEntity owner)
+    {
+        var results = new List<string>();
+        if (owner == null || owner.buildingData == null || owner.buildingData.UpgradeTechIDs == null)
+            return results;
+
+        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
+        {
+            string techId = owner.buildingData.UpgradeTechIDs[i];
+            if (!IsResearchOptionVisible(owner, techId))
+                continue;
+
+            results.Add(techId);
+        }
+
+        return results;
+    }
+
     private static void ConfigureUpgradeOptions(BuildingEntity owner, InteractionHost host)
     {
         string upgradeBuildingId = BuildingDataModel.GetUpgradeID(owner.buildingData.Identifier);
@@ -348,14 +485,14 @@ public static class BuildManager
             return;
 
         BuildingData upgradeBuildingData = BuildingDataModel.GetBuildingData(upgradeBuildingId);
-        if (upgradeBuildingData == null || upgradeBuildingData.TechIDs == null)
+        if (upgradeBuildingData == null || owner.buildingData.UpgradeTechIDs == null)
             return;
 
         int optionIndex = 0;
-        for (int i = 0; i < upgradeBuildingData.TechIDs.Length; i++)
+        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
         {
-            string techId = upgradeBuildingData.TechIDs[i];
-            if (string.IsNullOrWhiteSpace(techId))
+            string techId = owner.buildingData.UpgradeTechIDs[i];
+            if (!IsUpgradeOptionVisible(owner, upgradeBuildingId, techId))
                 continue;
 
             var techData = TechDataModel.GetTechData(techId);
@@ -374,9 +511,39 @@ public static class BuildManager
         }
     }
 
+    private static void ConfigureTechResearchOptions(BuildingEntity owner, InteractionHost host)
+    {
+        if (owner.buildingData.UpgradeTechIDs == null)
+            return;
+
+        int optionIndex = 0;
+        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
+        {
+            string techId = owner.buildingData.UpgradeTechIDs[i];
+            if (!IsResearchOptionVisible(owner, techId))
+                continue;
+
+            var techData = TechDataModel.GetTechData(techId);
+            string displayName = techData != null ? GF.Localization.GetString(techData.NameKey) : techId;
+
+            InteractionParams @params = InteractionParams.Create();
+            @params.Set<VarString>("TechId", techId);
+
+            if (TryGetOptionalOptionKey(optionIndex, out var optionKey))
+                host.AddOption<TechResearchInteractionOption>(optionKey, displayName, @params);
+            else
+                host.AddOption<TechResearchInteractionOption>(displayName, @params);
+
+            optionIndex++;
+        }
+    }
+
     private static void ConfigureLv0ConstructOptions(BuildingEntity owner, InteractionHost host)
     {
-        var candidates = GetLv0ConstructCandidates(owner);
+        // Lv0 在 host 初始化时先挂载同类型的所有 Lv1 备选，
+        // 可见性仍由 IsConstructOptionVisible 动态判断（含科技解锁条件）。
+        // 这样即使关卡预设生成顺序是“先 Lv0 再 Base”，后续解锁后也能立刻出现可交互面板。
+        var candidates = GetLv0ConstructCandidates(owner, requireUnlockedArche: false);
         int optionIndex = 0;
         for (int i = 0; i < candidates.Count; i++)
         {
@@ -397,15 +564,19 @@ public static class BuildManager
         }
     }
 
-    private static List<BuildingData> GetLv0ConstructCandidates(BuildingEntity owner)
+    private static List<BuildingData> GetLv0ConstructCandidates(BuildingEntity owner, bool requireUnlockedArche = true)
     {
         var results = new List<BuildingData>();
         if (owner == null || owner.buildingData == null || owner.buildingData.Lv != 0)
             return results;
 
-        HashSet<Archetype> unlockedArches = GetPlayerUnlockedBaseArches();
-        if (unlockedArches.Count == 0)
-            return results;
+        HashSet<Archetype> unlockedArches = null;
+        if (requireUnlockedArche)
+        {
+            unlockedArches = GetPlayerUnlockedBaseArches();
+            if (unlockedArches.Count == 0)
+                return results;
+        }
 
         foreach (var data in BuildingDataModel.GetAllBuildingData())
         {
@@ -415,7 +586,7 @@ public static class BuildManager
                 continue;
             if (data.Type != owner.buildingData.Type)
                 continue;
-            if (!unlockedArches.Contains(data.Arche))
+            if (requireUnlockedArche && !unlockedArches.Contains(data.Arche))
                 continue;
 
             results.Add(data);

@@ -14,11 +14,13 @@ public class DebugVersionHealOverTimeBuff : BuffCallback
         _baseHeal = baseHeal;
     }
 
+    
+    /*
     public override void Apply(BuffRuntimeInfo info, string trigger)
     {
         if (trigger != BuffConstant.OnTick) return;
 
         float heal = _baseHeal * info.CurrentStack;
         Debug.Log($"[HealBuff] {info.Target?.ReferenceId} 恢复生命 {heal}（基础 {_baseHeal} × {info.CurrentStack} 层）");
-    }
+    }*/
 }

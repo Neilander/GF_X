@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 
+/*
 namespace AAAGame.Scripts.BuffSystem
 {
     /// <summary>
@@ -60,4 +61,4 @@ namespace AAAGame.Scripts.BuffSystem
             Tags = tags ?? new List<string>();
         }
     }
-}
+}*/

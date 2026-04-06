@@ -5,12 +5,19 @@ using UnityEngine;
 public class InteractionDetector : MonoBehaviour
 {
     [SerializeField] private float maxDistance = 10f;
+    [SerializeField] private float triggerPadding = 3f;
     [SerializeField] private LayerMask interactableLayerMask = ~0;
 
     public float MaxDistance
     {
         get => maxDistance;
         set => maxDistance = Mathf.Max(0f, value);
+    }
+
+    public float TriggerPadding
+    {
+        get => triggerPadding;
+        set => triggerPadding = Mathf.Max(0f, value);
     }
 
     private readonly List<InteractionHost> _candidates = new List<InteractionHost>();
@@ -41,12 +48,8 @@ public class InteractionDetector : MonoBehaviour
                 _candidates.Add(target);
         }
     }
-
     private void OnTriggerStay(Collider other)
     {
-        if (!IsInLayerMask(other.gameObject.layer))
-            return;
-
         if (TryGetTarget(other, out var target))
         {
             // 如果此前因为距离等原因被 CleanupInvalid 移除了 overlapCount，这里兜底恢复。
@@ -104,8 +107,19 @@ public class InteractionDetector : MonoBehaviour
     {
         if (target == null)
             return false;
-        return target.IsInteractable() &&
-               Vector3.Distance(transform.position, target.Transform.position) <= maxDistance;
+
+        if (!target.IsInteractable())
+            return false;
+
+        float effectiveMaxDistance = maxDistance * 0.85f;
+
+        var collider = target.GetComponent<Collider>();
+        if (collider == null)
+            return Vector3.Distance(transform.position, target.Transform.position) <= effectiveMaxDistance;
+
+        Vector3 closestPoint = collider.ClosestPoint(transform.position);
+        float distance = Vector3.Distance(transform.position, closestPoint);
+        return distance <= effectiveMaxDistance;
     }
 
     private bool IsInLayerMask(int layer)

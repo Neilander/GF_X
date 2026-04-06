@@ -1,9 +1,9 @@
 #pragma warning disable IDE1006 // 命名样式
 using System.Collections.Generic;
-using AAAGame.Scripts.BuffSystem;
 using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
+using AAAGame.Scripts.BuffSystem;
 
 public class EntityParams : RefParams
 {
@@ -19,6 +19,12 @@ public class EntityParams : RefParams
     public SideType Side { get; set; } = SideType.NoSide;
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int FollowEntityId { get; set; } = -1;
+    public string Index { get; set; } = ""; // 单位类型索引
+    
+    /// <summary>
+    /// 出生时自带的 Buff 列表
+    /// </summary>
+    public List<BuffData> StartBuffs { get; set; } = null;
 
     /// <summary>
     /// 绑定到父实体
@@ -39,15 +45,11 @@ public class EntityParams : RefParams
     /// </summary>
     public GameFrameworkAction<EntityLogic> OnHideCallback { get; set; } = null;
 
-    // 弹道相关参数（用于远程武器系统）
+    // 新加：弹道相关参数（用于远程武器系统）
     public IEntityContext Target { get; set; } = null;
+    public IEntityContext Attacker { get; set; } = null; // 攻击者
     public WeaponData WeaponData { get; set; } = null;
     public BaseWeaponSO WeaponSO { get; set; } = null;
-
-    /// <summary>
-    /// 出生时自带的 Buff 列表，MAEntity.OnShow 时自动添加
-    /// </summary>
-    public List<BuffData> StartBuffs { get; set; } = null;
 
     /// <summary>
     /// 创建一个实例(必须使用该接口创建)
@@ -79,14 +81,17 @@ public class EntityParams : RefParams
         OnShowCallback = null;
         OnHideCallback = null;
         
+        // 新加：重置弹道相关参数
         Target = null;
+        Attacker = null;
         WeaponData = null;
         WeaponSO = null;
-        StartBuffs = null;
         
         Side = SideType.NoSide;
         BrainType = BrainType.Player;
         FollowEntityId = -1;
+        Index = "";
+        StartBuffs = null;
     }
 }
 #pragma warning restore IDE1006 // 命名样式

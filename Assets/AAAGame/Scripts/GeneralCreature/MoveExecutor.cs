@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -53,6 +53,16 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 
     public void Execute(float deltaTime)
     {
+        // 检查CharacterController是否活跃，避免在单位死亡后调用Move方法
+        if (_controller == null || !_controller.enabled)
+        {
+            // 输入每帧重置（非常重要）
+            _inputVelocity = Vector3.zero;
+            _hasOverride = false;
+            _externalVelocity = Vector3.zero;
+            return;
+        }
+        
         Vector3 finalVelocity = _hasOverride
             ? _overrideVelocity
             : _inputVelocity + _externalVelocity;

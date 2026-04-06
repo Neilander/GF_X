@@ -6,6 +6,7 @@ public sealed class DeviceOpenPanelInteractionOption : IInteractionOption
     private static readonly KeyValuePair<IngameValueType, int>[] EmptyCost = System.Array.Empty<KeyValuePair<IngameValueType, int>>();
     private DeviceEntity _owner;
     public string DisplayName { get; private set; }
+    public string DisplayDesc { get; private set; }
     public KeyValuePair<IngameValueType, int>[] CostResource => EmptyCost;
 
     public bool IsVisible()
@@ -26,6 +27,7 @@ public sealed class DeviceOpenPanelInteractionOption : IInteractionOption
     {
         _owner = owner as DeviceEntity;
         DisplayName = displayName;
+        DisplayDesc = string.Empty;
     }
 
     public void Execute()
@@ -44,5 +46,7 @@ public sealed class DeviceOpenPanelInteractionOption : IInteractionOption
     public void Clear()
     {
         _owner = null;
+        DisplayName = null;
+        DisplayDesc = null;
     }
 }

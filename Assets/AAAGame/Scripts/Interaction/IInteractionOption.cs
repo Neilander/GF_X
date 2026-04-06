@@ -15,6 +15,11 @@ public interface IInteractionOption : IReference
     /// </summary>
     string DisplayName { get; }
 
+    /// <summary>
+    /// 描述文本（可为空）
+    /// </summary>
+    string DisplayDesc { get; }
+
     KeyValuePair<IngameValueType, int>[] CostResource { get; }
 
     /// <summary>

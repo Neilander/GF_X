@@ -3,6 +3,10 @@ guid: 112ff647a12f36e4ca1d1e572ecf9fff
 folderAsset: yes
 DefaultImporter:
   externalObjects: {}
+<<<<<<<< HEAD:Assets/AAAGame/Prefabs/Entity/Building.meta
+========
+  mainObjectFileID: 0
+>>>>>>>> origin/MergeMeiyou:Assets/AAAGame/Font/Common/AlibabaPuHuiTi-3-85-Bold SDF.asset.meta
   userData: 
   assetBundleName: 
   assetBundleVariant: 

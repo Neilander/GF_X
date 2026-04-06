@@ -1,4 +1,6 @@
-﻿namespace AAAGame.Scripts.BuffSystem
+﻿
+/*
+namespace AAAGame.Scripts.BuffSystem
 {
     /// <summary>
     /// Buff 回调抽象基类。
@@ -13,4 +15,4 @@
         /// <param name="trigger">触发时机，对应 BuffConstant 中的常量</param>
         public abstract void Apply(BuffRuntimeInfo info, string trigger);
     }
-}
+}*/

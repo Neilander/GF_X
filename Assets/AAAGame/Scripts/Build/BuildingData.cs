@@ -17,7 +17,7 @@ public enum Archetype { None, Coding, Sightseeing, Butchery, Delivery, Firefight
 public class BuildingData
 {
     public string Identifier { get; protected set; } //格式为 "Buil_Type_LvX"，如 "Buil_Prod_Lv2"。其中 Type 是 BuilType 枚举，X 是等级数字。
-    public int Cost { get; protected set; }
+    public int Cost { get; protected set; }//本等级的资源消耗
     public Fix64[] UniqueValues { get; protected set; }
     public BuilType Type { get; protected set; }
     public Archetype Arche { get; protected set; }
@@ -30,7 +30,7 @@ public class BuildingData
     public Fix64 Def { get; protected set; }
     public string UnitID { get; protected set; }
     public int Production { get; protected set; }
-    public string[] TechIDs { get; protected set; } // 升级时的科技选项
+    public string[] UpgradeTechIDs { get; protected set; } // 升级/研发时的科技选项
 
     public BuildingData(string identifier,
         BuilType type,
@@ -46,7 +46,7 @@ public class BuildingData
         Fix64[] uniqueValues,
         string unitID,
         int production,
-        string[] techIDs)
+        string[] upgradeTechIDs)
     {
         Identifier = identifier;
         Cost = cost;
@@ -62,7 +62,7 @@ public class BuildingData
         UniqueValues = uniqueValues;
         UnitID = unitID;
         Production = production;
-        TechIDs = techIDs;
+        UpgradeTechIDs = upgradeTechIDs;
     }
 
 }

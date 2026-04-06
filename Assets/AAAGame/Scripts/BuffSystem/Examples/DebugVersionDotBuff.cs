@@ -14,11 +14,12 @@ public class DebugVersionDotBuff : BuffCallback
         _baseDamage = baseDamage;
     }
 
+    /*
     public override void Apply(BuffRuntimeInfo info, string trigger)
     {
         if (trigger != BuffConstant.OnTick) return;
 
         float damage = _baseDamage * info.CurrentStack;
         Debug.Log($"[DotBuff] {info.Target?.ReferenceId} 受到持续伤害 {damage}（基础 {_baseDamage} × {info.CurrentStack} 层）");
-    }
+    }*/
 }

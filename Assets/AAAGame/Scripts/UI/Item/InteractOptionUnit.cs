@@ -7,9 +7,17 @@ public partial class InteractOptionUnit : UIItemBase
 {
     public RectTransform OptionCostRoot => varOptionCost;
 
-    public void SetData(string displayName, string key = null, bool enabled = true, Action onHoldFull = null)
+    public void SetData(string displayName, string displayDesc, string key = null, bool enabled = true, Action onHoldFull = null)
     {
-        varOptionText.text = displayName;
+        if (varOptionName != null)
+            varOptionName.text = displayName ?? string.Empty;
+
+        if (varOptionDesc != null)
+        {
+            varOptionDesc.text = displayDesc ?? string.Empty;
+            varOptionDesc.gameObject.SetActive(!string.IsNullOrWhiteSpace(displayDesc));
+        }
+
         if (varOptionKey != null)
         {
             varOptionKey.text = key ?? string.Empty;
@@ -18,11 +26,18 @@ public partial class InteractOptionUnit : UIItemBase
 
         // “置灰”：不引入新颜色，仅通过透明度降低实现。
         float alpha = enabled ? 1f : 0.35f;
-        if (varOptionText != null)
+        if (varOptionName != null)
         {
-            var c = varOptionText.color;
+            var c = varOptionName.color;
             c.a = alpha;
-            varOptionText.color = c;
+            varOptionName.color = c;
+        }
+
+        if (varOptionDesc != null)
+        {
+            var c = varOptionDesc.color;
+            c.a = alpha;
+            varOptionDesc.color = c;
         }
 
         if (varOptionKey != null)

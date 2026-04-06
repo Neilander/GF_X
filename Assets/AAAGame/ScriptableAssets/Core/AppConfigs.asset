@@ -15,6 +15,7 @@ MonoBehaviour:
   m_LoadFromBytes: 0
   mDataTables:
   - CameraViewTable
+  - CharacterDataDetail
   - CharacterMAFactoryTable
   - CharacterMainPropertyTable
   - LevelTable
@@ -42,6 +43,8 @@ MonoBehaviour:
   - Japanese
   - Korean
   mProcedures:
+  - BuffTestProcedure
+  - CardGameProcedure
   - ChangeSceneProcedure
   - CharacterTestProcedure
   - GameOverProcedure

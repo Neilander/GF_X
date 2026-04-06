@@ -2,6 +2,8 @@
 using AAAGame.Scripts.BuffSystem;
 using UnityEngine;
 
+
+/*
 /// <summary>
 /// [示例] 演示如何构建 BuffData 并添加到实体上。
 /// 纯 Debug 版本，可在测试 Procedure 中调用验证 buff 系统是否正常工作。
@@ -90,3 +92,4 @@ public static class DebugBuffExamples
         Debug.Log("[DebugBuffExamples] 用法：var data = DebugBuffExamples.CreatePoisonBuff(); entity.BuffComp.AddBuff(data, attacker);");
     }
 }
+*/

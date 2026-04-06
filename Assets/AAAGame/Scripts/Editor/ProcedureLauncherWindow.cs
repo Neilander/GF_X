@@ -12,7 +12,9 @@ public class ProcedureLauncherWindow : EditorWindow
         "GameProcedure",
         "LevelTestProcedure",
         "SampleProcedure",
-        "RangedWeaponTestProcedure" // 新增：远程武器测试流程
+        "RangedWeaponTestProcedure", // 新增：远程武器测试流程
+        "BuffTestProcedure", // 新增：Buff测试流程
+        "CardGameProcedure"
     };
 
     private const string PrefKey_Selected = "Procedure_Selected";
@@ -27,17 +29,6 @@ public class ProcedureLauncherWindow : EditorWindow
     private const string PrefKey_EnemyX = "Test_EnemyX";
     private const string PrefKey_EnemyY = "Test_EnemyY";
     private const string PrefKey_EnemyZ = "Test_EnemyZ";
-
-    // Buff 配置 PrefKeys
-    private const string PrefKey_StartWithBuff = "Test_StartWithBuff";
-    private const string PrefKey_FriendlyBuff_Dot = "Test_FBuff_Dot";
-    private const string PrefKey_FriendlyBuff_Regen = "Test_FBuff_Regen";
-    private const string PrefKey_FriendlyBuff_Speed = "Test_FBuff_Speed";
-    private const string PrefKey_FriendlyBuff_Shield = "Test_FBuff_Shield";
-    private const string PrefKey_EnemyBuff_Dot = "Test_EBuff_Dot";
-    private const string PrefKey_EnemyBuff_Regen = "Test_EBuff_Regen";
-    private const string PrefKey_EnemyBuff_Speed = "Test_EBuff_Speed";
-    private const string PrefKey_EnemyBuff_Shield = "Test_EBuff_Shield";
 
     // 可选场景列表（硬编码项目中的游戏场景）
     private static readonly string[] SceneNames =
@@ -101,17 +92,6 @@ public class ProcedureLauncherWindow : EditorWindow
             EditorPrefs.GetFloat(PrefKey_EnemyX, 20),
             EditorPrefs.GetFloat(PrefKey_EnemyY, 1),
             EditorPrefs.GetFloat(PrefKey_EnemyZ, 0));
-
-        // Buff 配置
-        CharacterTestProcedure.StartWithBuff = EditorPrefs.GetBool(PrefKey_StartWithBuff, false);
-        CharacterTestProcedure.FriendlyBuff_Dot = EditorPrefs.GetBool(PrefKey_FriendlyBuff_Dot, false);
-        CharacterTestProcedure.FriendlyBuff_Regen = EditorPrefs.GetBool(PrefKey_FriendlyBuff_Regen, false);
-        CharacterTestProcedure.FriendlyBuff_Speed = EditorPrefs.GetBool(PrefKey_FriendlyBuff_Speed, false);
-        CharacterTestProcedure.FriendlyBuff_Shield = EditorPrefs.GetBool(PrefKey_FriendlyBuff_Shield, false);
-        CharacterTestProcedure.EnemyBuff_Dot = EditorPrefs.GetBool(PrefKey_EnemyBuff_Dot, false);
-        CharacterTestProcedure.EnemyBuff_Regen = EditorPrefs.GetBool(PrefKey_EnemyBuff_Regen, false);
-        CharacterTestProcedure.EnemyBuff_Speed = EditorPrefs.GetBool(PrefKey_EnemyBuff_Speed, false);
-        CharacterTestProcedure.EnemyBuff_Shield = EditorPrefs.GetBool(PrefKey_EnemyBuff_Shield, false);
     }
 
     [MenuItem("Tools/Procedure 启动配置")]
@@ -214,39 +194,6 @@ public class ProcedureLauncherWindow : EditorWindow
         CharacterTestProcedure.EnemySpacing =
             EditorGUILayout.FloatField("敌方间距", CharacterTestProcedure.EnemySpacing);
 
-        GUILayout.Space(10);
-        GUILayout.Label("出生 Buff", EditorStyles.boldLabel);
-        CharacterTestProcedure.StartWithBuff =
-            EditorGUILayout.Toggle("启用 Start With Buff", CharacterTestProcedure.StartWithBuff);
-
-        if (CharacterTestProcedure.StartWithBuff)
-        {
-            EditorGUI.indentLevel++;
-
-            GUILayout.Label("友方 Buff", EditorStyles.miniBoldLabel);
-            CharacterTestProcedure.FriendlyBuff_Dot =
-                EditorGUILayout.Toggle("Dot (持续伤害)", CharacterTestProcedure.FriendlyBuff_Dot);
-            CharacterTestProcedure.FriendlyBuff_Regen =
-                EditorGUILayout.Toggle("Regen (持续回血)", CharacterTestProcedure.FriendlyBuff_Regen);
-            CharacterTestProcedure.FriendlyBuff_Speed =
-                EditorGUILayout.Toggle("Speed (移速)", CharacterTestProcedure.FriendlyBuff_Speed);
-            CharacterTestProcedure.FriendlyBuff_Shield =
-                EditorGUILayout.Toggle("Shield (护盾)", CharacterTestProcedure.FriendlyBuff_Shield);
-
-            GUILayout.Space(5);
-            GUILayout.Label("敌方 Buff", EditorStyles.miniBoldLabel);
-            CharacterTestProcedure.EnemyBuff_Dot =
-                EditorGUILayout.Toggle("Dot (持续伤害)", CharacterTestProcedure.EnemyBuff_Dot);
-            CharacterTestProcedure.EnemyBuff_Regen =
-                EditorGUILayout.Toggle("Regen (持续回血)", CharacterTestProcedure.EnemyBuff_Regen);
-            CharacterTestProcedure.EnemyBuff_Speed =
-                EditorGUILayout.Toggle("Speed (移速)", CharacterTestProcedure.EnemyBuff_Speed);
-            CharacterTestProcedure.EnemyBuff_Shield =
-                EditorGUILayout.Toggle("Shield (护盾)", CharacterTestProcedure.EnemyBuff_Shield);
-
-            EditorGUI.indentLevel--;
-        }
-
         if (EditorGUI.EndChangeCheck())
         {
             SaveCharacterTestSettings();
@@ -265,17 +212,6 @@ public class ProcedureLauncherWindow : EditorWindow
         EditorPrefs.SetFloat(PrefKey_EnemyX, CharacterTestProcedure.EnemySpawnCenter.x);
         EditorPrefs.SetFloat(PrefKey_EnemyY, CharacterTestProcedure.EnemySpawnCenter.y);
         EditorPrefs.SetFloat(PrefKey_EnemyZ, CharacterTestProcedure.EnemySpawnCenter.z);
-
-        // Buff 配置
-        EditorPrefs.SetBool(PrefKey_StartWithBuff, CharacterTestProcedure.StartWithBuff);
-        EditorPrefs.SetBool(PrefKey_FriendlyBuff_Dot, CharacterTestProcedure.FriendlyBuff_Dot);
-        EditorPrefs.SetBool(PrefKey_FriendlyBuff_Regen, CharacterTestProcedure.FriendlyBuff_Regen);
-        EditorPrefs.SetBool(PrefKey_FriendlyBuff_Speed, CharacterTestProcedure.FriendlyBuff_Speed);
-        EditorPrefs.SetBool(PrefKey_FriendlyBuff_Shield, CharacterTestProcedure.FriendlyBuff_Shield);
-        EditorPrefs.SetBool(PrefKey_EnemyBuff_Dot, CharacterTestProcedure.EnemyBuff_Dot);
-        EditorPrefs.SetBool(PrefKey_EnemyBuff_Regen, CharacterTestProcedure.EnemyBuff_Regen);
-        EditorPrefs.SetBool(PrefKey_EnemyBuff_Speed, CharacterTestProcedure.EnemyBuff_Speed);
-        EditorPrefs.SetBool(PrefKey_EnemyBuff_Shield, CharacterTestProcedure.EnemyBuff_Shield);
     }
 
     #endregion

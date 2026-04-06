@@ -104,7 +104,7 @@ public partial class InteractOptionTips : UIFormBase
             return;
 
         bool enabled = option.IsExecutable();
-        interactOptionUnit.SetData(option.DisplayName, keyText, enabled, () =>
+        interactOptionUnit.SetData(option.DisplayName, option.DisplayDesc, keyText, enabled, () =>
         {
             if (_target != null)
             {

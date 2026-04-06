@@ -21,8 +21,9 @@ namespace GameFramework.Editor.DataTableTools
         private static readonly Regex NameRegex = new Regex(@"^[A-Z][A-Za-z0-9_]*$");
 
         public static DataTableProcessor CreateDataTableProcessor(string dataTableFile)
-        {
-            return new DataTableProcessor(dataTableFile, Encoding.Unicode, 1, 2, null, 3, 4, 1);//Encoding.GetEncoding("GB2312")
+        {//Encoding.Unicode
+            return new DataTableProcessor(dataTableFile, Encoding.GetEncoding("GB2312"), 1, 2, null, 3, 4, 1);//Encoding.GetEncoding("GB2312")
+            //return null;
         }
         public static bool CheckRawData(DataTableProcessor dataTableProcessor, string dataTableFile)
         {
@@ -62,6 +63,7 @@ namespace GameFramework.Editor.DataTableTools
             outputName = outputName.Split('_')[0];
             var outputExt = Path.GetExtension(dataTableFile);
             string tbFileName = UtilityBuiltin.AssetsPath.GetCombinePath(outputDir, outputName + outputExt);
+            GF.print("tbFileName: " + tbFileName);
             var dataTableName = GameDataGenerator.GetGameDataRelativeName(tbFileName, ConstEditor.DataTablePath);
 
             string csharpCodeFileName = Utility.Path.GetRegularPath(Path.Combine(ConstEditor.DataTableCodePath, dataTableName + ".cs"));

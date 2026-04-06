@@ -7,7 +7,7 @@
 	2	游戏界面	1	GameUIForm	True	1	False	False
 	3	游戏结算	1	GameOverUIForm	True	1	False	True
 	4	顶部资源栏	2	Topbar	False	1	False	False
-	13	资源编辑栏	2	ResourceModifyBar	False	1	False	False
+	13	材料编辑栏	2	ResourceModifyBar	False	1	False	False
 #	对话框(中层)							
 	5	设置	1	SettingDialog	True	2	True	True
 	6	评分	2	RatingDialog	True	2	True	True
@@ -20,3 +20,4 @@
 #	提示(顶层)							
 	10	吐司提示	1	ToastTips	False	3	False	False
 	12	交互选项	2	InteractOptionTips	False	3	False	False
+	16	ui	1	CardUIForm	False	1	False	False

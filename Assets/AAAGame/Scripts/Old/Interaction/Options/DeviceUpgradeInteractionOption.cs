@@ -8,6 +8,7 @@ public sealed class DeviceUpgradeInteractionOption : IInteractionOption
     private DeviceEntity _owner;
     private string _upgradeId;
     public string DisplayName { get; private set; }
+    public string DisplayDesc { get; private set; }
     public KeyValuePair<IngameValueType, int>[] CostResource => EmptyCost;
 
     public bool IsVisible()
@@ -37,6 +38,7 @@ public sealed class DeviceUpgradeInteractionOption : IInteractionOption
         _owner = owner as DeviceEntity;
         _upgradeId = @params.Get<VarString>("UpgradeId");
         DisplayName = displayName;
+        DisplayDesc = string.Empty;
     }
 
     public void Execute()
@@ -51,5 +53,7 @@ public sealed class DeviceUpgradeInteractionOption : IInteractionOption
     {
         _owner = null;
         _upgradeId = null;
+        DisplayName = null;
+        DisplayDesc = null;
     }
 }

@@ -498,73 +498,81 @@ namespace UGF.EditorTools
         {
             var appConfig = AppConfigs.GetInstanceEditor();
             IList<string> excelFiles;
-            if (fullPathFiles == null)
-            {
-                excelFiles = GetAllGameDataExcels(GameDataType.DataTable, GameDataExcelFileType.MainFile | GameDataExcelFileType.ABTestFile);
-            }
-            else
-            {
-                excelFiles = GetGameDataExcelWithABFiles(GameDataType.DataTable, fullPathFiles);
-            }
+            
+             if (fullPathFiles == null)
+             {
+                 excelFiles = GetAllGameDataExcels(GameDataType.DataTable, GameDataExcelFileType.MainFile | GameDataExcelFileType.ABTestFile);
+             }
+             else
+             {
+                 excelFiles = GetGameDataExcelWithABFiles(GameDataType.DataTable, fullPathFiles);
+             }
             int totalExcelCount = excelFiles.Count;
-            for (int i = 0; i < totalExcelCount; i++)
-            {
-                var excelFileName = excelFiles[i];
-                string outputPath = GetGameDataExcelOutputFile(GameDataType.DataTable, excelFileName);
-                EditorUtility.DisplayProgressBar($"导出DataTable:({i}/{totalExcelCount})", $"{excelFileName} -> {outputPath}", i / (float)totalExcelCount);
-                try
-                {
-                    if (Excel2TxtFile(excelFileName, outputPath))
-                    {
-                        GF.Log($"导出DataTable成功:{excelFileName} -> {outputPath}");
-                        if (appConfig.LoadFromBytes)
-                        {
-                            DataTableProcessor dataTableProcessor = DataTableGenerator.CreateDataTableProcessor(outputPath);
-                            if (!DataTableGenerator.CheckRawData(dataTableProcessor, outputPath))
-                            {
-                                Debug.LogError(Utility.Text.Format("Check raw data failure. DataTable file='{0}'", outputPath));
-                                EditorUtility.ClearProgressBar();
-                                break;
-                            }
-                            DataTableGenerator.GenerateDataFile(dataTableProcessor, outputPath);
-                        }
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogErrorFormat("Excel -> DataTable:{0}", e.Message);
-                    EditorUtility.ClearProgressBar();
-                    break;
-                }
-            }
-            AssetDatabase.Refresh();
-            EditorUtility.ClearProgressBar();
-            //生成数据表代码
-            int dataTbCount = appConfig.DataTables.Length;
-
+             for (int i = 0; i < totalExcelCount; i++)
+             {
+                 var excelFileName = excelFiles[i];
+                 string outputPath = GetGameDataExcelOutputFile(GameDataType.DataTable, excelFileName);
+                 
+                 EditorUtility.DisplayProgressBar($"导出DataTable:({i}/{totalExcelCount})", $"{excelFileName} -> {outputPath}", i / (float)totalExcelCount);
+                  try
+                  {
+                       if (Excel2TxtFile(excelFileName, outputPath))
+                       {
+                           GF.Log($"导出DataTable成功:{excelFileName} -> {outputPath}");
+                           Debug.Log(1111);
+                           if (appConfig.LoadFromBytes)
+                           {
+                               
+                               
+                               DataTableProcessor dataTableProcessor = DataTableGenerator.CreateDataTableProcessor(outputPath);
+                               if (!DataTableGenerator.CheckRawData(dataTableProcessor, outputPath))
+                               {
+                                   Debug.LogError(Utility.Text.Format("Check raw data failure. DataTable file='{0}'", outputPath));
+                                   EditorUtility.ClearProgressBar();
+                                   break;
+                               }
+                               DataTableGenerator.GenerateDataFile(dataTableProcessor, outputPath);
+                           }
+                       }
+                  }
+                  catch (System.Exception e)
+                  {
+                      Debug.LogErrorFormat("Excel -> DataTable:{0}", e.Message);
+                      EditorUtility.ClearProgressBar();
+                      break;
+                  }
+             }
+             AssetDatabase.Refresh();
+             EditorUtility.ClearProgressBar();
+             //生成数据表代码
+             int dataTbCount = appConfig.DataTables.Length;
+            
             string outputDir = GetGameDataExcelOutputDir(GameDataType.DataTable);
             string outputExtension = GetGameDataExcelOutputFileExtension(GameDataType.DataTable);
-            for (int i = 0; i < dataTbCount; i++)
-            {
-                var dataTableName = appConfig.DataTables[i];
-                string tbTxtFile = UtilityBuiltin.AssetsPath.GetCombinePath(outputDir, dataTableName + outputExtension);
-                EditorUtility.DisplayProgressBar($"进度:({i}/{dataTbCount})", $"生成DataTable代码:{dataTableName}", i / (float)dataTbCount);
+            
+             for (int i = 0; i < dataTbCount; i++)
+             {
+                 var dataTableName = appConfig.DataTables[i];
+                 string tbTxtFile = UtilityBuiltin.AssetsPath.GetCombinePath(outputDir, dataTableName + outputExtension);
+                 
+                //EditorUtility.DisplayProgressBar($"进度:({i}/{dataTbCount})", $"生成DataTable代码:{dataTableName}", i / (float)dataTbCount);
                 if (!File.Exists(tbTxtFile))
                 {
                     Debug.LogWarning($"生成DataTable代码失败! {dataTableName}文件不存在:{tbTxtFile}");
                     continue;
                 }
+                Debug.Log(tbTxtFile);
                 DataTableProcessor dataTableProcessor = DataTableGenerator.CreateDataTableProcessor(tbTxtFile);
                 if (!DataTableGenerator.CheckRawData(dataTableProcessor, tbTxtFile))
                 {
                     Debug.LogError(Utility.Text.Format("Check raw data failure. DataTableName='{0}'", dataTableName));
                     break;
                 }
-
-                DataTableGenerator.GenerateCodeFile(dataTableProcessor, tbTxtFile);
-            }
-            EditorUtility.ClearProgressBar();
-            AssetDatabase.Refresh();
+            
+                 DataTableGenerator.GenerateCodeFile(dataTableProcessor, tbTxtFile);
+             }
+             EditorUtility.ClearProgressBar();
+             AssetDatabase.Refresh();
         }
 
         private static bool ExportConfig2BytesFile(string configFile)
@@ -653,7 +661,9 @@ namespace UGF.EditorTools
         public static string GetGameDataExcelRelativePath(GameDataType tp, string excelFile)
         {
             var excelRelativePath = Path.GetRelativePath(GameDataGenerator.GetGameDataExcelDir(tp), excelFile);
+            
             excelRelativePath = UtilityBuiltin.AssetsPath.GetCombinePath(Path.GetDirectoryName(excelRelativePath), Path.GetFileNameWithoutExtension(excelRelativePath)); // 获取表的相对路径并去掉扩展名
+          
             return excelRelativePath;
         }
         public static string[] GameDataExcelRelative2FullPath(GameDataType tp, string[] relativeExcelPathArr)

@@ -9,6 +9,7 @@ public sealed class BuildingUpgradeInteractionOption : IInteractionOption
     private string _techId;
 
     public string DisplayName { get; private set; }
+    public string DisplayDesc { get; private set; }
     public KeyValuePair<IngameValueType, int>[] CostResource => BuildManager.GetBuildingResourceCosts(_upgradeBuildingId);
 
     public bool IsVisible()
@@ -25,12 +26,17 @@ public sealed class BuildingUpgradeInteractionOption : IInteractionOption
     {
         _owner = owner as BuildingEntity;
         DisplayName = displayName;
+        DisplayDesc = string.Empty;
 
         if (@params == null)
             return;
 
         _upgradeBuildingId = @params.Get<VarString>("UpgradeBuildingId");
         _techId = @params.Get<VarString>("TechId");
+
+        var techData = TechDataModel.GetTechData(_techId);
+        if (techData != null && !string.IsNullOrWhiteSpace(techData.DescKey))
+            DisplayDesc = GF.Localization.GetString(techData.DescKey);
     }
 
     public void Execute()
@@ -44,5 +50,6 @@ public sealed class BuildingUpgradeInteractionOption : IInteractionOption
         _upgradeBuildingId = null;
         _techId = null;
         DisplayName = null;
+        DisplayDesc = null;
     }
 }

@@ -39,6 +39,7 @@ public class InteractionManager : MonoBehaviour
         if (detector != null)
         {
             detector.MaxDistance = interactionRange;
+            detector.TriggerPadding = triggerPadding;
 
             var sphere = detector.GetComponent<SphereCollider>();
             if (sphere != null)
@@ -146,11 +147,16 @@ public class InteractionManager : MonoBehaviour
         if (!target.IsInteractable())
             return false;
 
-        float dist = Vector3.Distance(actorPos, target.Transform.position);
-        if (dist > interactionRange)
+        var collider = target.GetComponent<Collider>();
+        float dist = collider != null
+            ? Vector3.Distance(actorPos, collider.ClosestPoint(actorPos))
+            : Vector3.Distance(actorPos, target.Transform.position);
+
+        float effectiveRange = interactionRange * 0.85f;
+        if (dist > effectiveRange)
             return false;
 
-        float distanceScore = 1f - Mathf.Clamp01(dist / interactionRange);
+        float distanceScore = 1f - Mathf.Clamp01(dist / Mathf.Max(0.001f, effectiveRange));
 
         Vector3 toTarget = target.Transform.position - actorPos;
         Vector3 dir = toTarget.sqrMagnitude <= 1e-8f ? actorForward : toTarget.normalized;

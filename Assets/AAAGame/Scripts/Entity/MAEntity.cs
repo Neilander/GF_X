@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
+using AAAGame.Scripts.BuffSystem;
 
 public class MAEntity : CompCreature, IEntityContext
 {
@@ -11,13 +12,15 @@ public class MAEntity : CompCreature, IEntityContext
     public IAtkComp atkComp { get; protected set; }
 
     public ITargetingComp targetComp { get; protected set; }
-    public IBuffComp buffComp { get; protected set; }
     public WeaponComp weaponComp { get; protected set; }
 
     private CharacterController cController;
     private MoveExecutor _moveExecutor;
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
+
+    private IBuffComp _buffComp;
+    public IBuffComp BuffComp => _buffComp;
 
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
@@ -42,7 +45,7 @@ public class MAEntity : CompCreature, IEntityContext
     IMoveComp IEntityContext.MoveComp => moveComp;
     IAtkComp IEntityContext.AtkComp => atkComp;
     ITargetingComp IEntityContext.TargetComp => targetComp;
-    IBuffComp IEntityContext.BuffComp => buffComp;
+    IBuffComp IEntityContext.BuffComp => _buffComp;
     WeaponComp IEntityContext.WeaponComp => weaponComp;
 
     public float GetProperty(CreatureMainProperty prop)
@@ -72,19 +75,23 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnShow(userData);
 
-        // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态，
-        // 与 moveComp/atkComp 不同——后者通过工厂在 OnInit 中创建并跨 Show/Hide 复用。
-        // 直接 new（通用且无外部引用，不需要工厂）。
+        // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态
         var newBuffComp = new CharacterBuffComp();
         newBuffComp.Init(this);
-        buffComp = newBuffComp;
+        _buffComp = newBuffComp;
 
         // 应用出生自带的 Buff
-        if (userData is EntityParams ep && ep.StartBuffs != null)
+        if (userData is EntityParams ep)
         {
-            for (int i = 0; i < ep.StartBuffs.Count; i++)
+            Debug.Log($"MAEntity.OnShow: 准备应用初始Buff，数量={ep.StartBuffs?.Count ?? 0}");
+            if (ep.StartBuffs != null)
             {
-                buffComp.AddBuff(ep.StartBuffs[i], this);
+                for (int i = 0; i < ep.StartBuffs.Count; i++)
+                {
+                    BuffData buff = ep.StartBuffs[i];
+                    Debug.Log($"MAEntity.OnShow: 应用Buff[{i}]: {buff.id}");
+                    _buffComp.AddBuff(buff, this);
+                }
             }
         }
 
@@ -101,13 +108,38 @@ public class MAEntity : CompCreature, IEntityContext
             GroupMoveManager.Instance.RegisterAgent(this);
     }
 
+
+
+    public void OnKill(MAEntity target)
+    {
+        // 触发击杀回调，供Buff系统使用
+        Debug.Log($"MAEntity.OnKill被调用: 宿主ID={Id}, 目标ID={target?.Id}");
+        if (_buffComp != null)
+        {
+            _buffComp.OnKill(target);
+        }
+        else
+        {
+            Debug.LogError($"MAEntity.OnKill: Buff组件未初始化");
+        }
+    }
+
+    public void OnDead()
+    {
+        // 触发死亡回调，供Buff系统使用
+        if (_buffComp != null)
+        {
+            _buffComp.OnHostDead();
+        }
+    }
+
     protected override void OnHide(bool isShutdown, object userData)
     {
         // 显式清理 BuffComp，防止将来持有外部订阅时泄漏
-        if (buffComp != null)
+        if (_buffComp != null)
         {
-            buffComp.ShutDown();
-            buffComp = null;
+            _buffComp.ShutDown();
+            _buffComp = null;
         }
 
         if (GroupMoveManager.HasInstance)
@@ -119,6 +151,9 @@ public class MAEntity : CompCreature, IEntityContext
     protected virtual void Update()
     {
         float dt = Time.deltaTime;
+
+        if (CanRun(_buffComp))
+            _buffComp.UpdateBuff(dt);
 
         // 更新协调器中的位置（在 Brain.Tick 之前）
         if (GroupMoveManager.HasInstance)
@@ -138,13 +173,13 @@ public class MAEntity : CompCreature, IEntityContext
         if (CanRun(atkComp))
             atkComp.Attack(dt);
 
-        if (CanRun(durationMoveEffectComp))
-            durationMoveEffectComp.ApplyEffect(dt);
+        if (Alive)
+        {
+            if (CanRun(durationMoveEffectComp))
+                durationMoveEffectComp.ApplyEffect(dt);
 
-        if (CanRun(buffComp))
-            buffComp.UpdateBuff(dt);
-
-        moveExecutor.Execute();
+            moveExecutor.Execute();
+        }
     }
 
     #region Move and Attack
@@ -164,7 +199,7 @@ public class MAEntity : CompCreature, IEntityContext
     public void SetAtkComp(IAtkComp newAtkComp) => atkComp = newAtkComp;
 
     public void SetTargetingComp(ITargetingComp newTargetingComp) => targetComp = newTargetingComp;
-    public void SetBuffComp(IBuffComp newBuffComp) => buffComp = newBuffComp;
+    public void SetBuffComp(IBuffComp newBuffComp) => _buffComp = newBuffComp;
     public void SetWeaponComp(WeaponComp newWeaponComp) => weaponComp = newWeaponComp;
 
     #endregion

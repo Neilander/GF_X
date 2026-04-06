@@ -19,6 +19,16 @@ public class InteractionHost : MonoBehaviour
 
     public Transform Transform => transform;
 
+    public float GetInteractionRadius()
+    {
+        var collider = GetComponent<Collider>();
+        if (collider == null)
+            return 0f;
+
+        var bounds = collider.bounds;
+        return bounds.size.magnitude;
+    }
+
     public void Init(object owner)
     {
         Owner = owner;

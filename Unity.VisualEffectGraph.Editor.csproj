@@ -205,8 +205,8 @@
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Compiler/VFXCodeGenerator.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/GraphView/Elements/Controllers/VFXParameterController.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/Length.cs" />
-    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/AgeOverLifetime.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/RectangularToSpherical.cs" />
+    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/AgeOverLifetime.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/GraphView/Views/Controller/VFXSystemController.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Utilities/pCache/BakeTool/PointCacheBakeTool.Mesh.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/TransformPosition.cs" />
@@ -503,8 +503,8 @@
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Types/VFXTorusGizmos.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/GraphView/Elements/3D/Preview3D.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/ChangeSpace.cs" />
-    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/VFXOperator.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/SampleCurve.cs" />
+    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/VFXOperator.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/VFXSystemNames.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Contexts/Implementations/VFXStaticMeshOutput.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/SampleBuffer.cs" />
@@ -889,6 +889,9 @@
     <Reference Include="UnityEditor.WindowsStandalone.Extensions">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/PlaybackEngines/WindowsStandaloneSupport/UnityEditor.WindowsStandalone.Extensions.dll</HintPath>
     </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
+    </Reference>
     <Reference Include="System.Text.Json">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/ForEditor/CompressImageLibs/System.Text.Json.dll</HintPath>
     </Reference>
@@ -906,6 +909,9 @@
     </Reference>
     <Reference Include="nunit.framework">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.ext.nunit@2.0.3/net40/unity-custom/nunit.framework.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3Editor">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/Editor/EasyRoads3Dv3Editor.dll</HintPath>
     </Reference>
     <Reference Include="unityplastic">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/unityplastic.dll</HintPath>
@@ -927,6 +933,9 @@
     </Reference>
     <Reference Include="Unity.Plastic.Newtonsoft.Json">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/Unity.Plastic.Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
     </Reference>
     <Reference Include="log4netPlastic">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collab-proxy@2.7.1/Lib/Editor/log4netPlastic.dll</HintPath>

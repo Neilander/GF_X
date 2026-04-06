@@ -270,6 +270,9 @@
     <Reference Include="UnityEngine.XRModule">
       <HintPath>/Applications/Unity/Hub/Editor/2022.3.62f3/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/Variations/il2cpp/Managed/UnityEngine.XRModule.dll</HintPath>
     </Reference>
+    <Reference Include="DelaunayER">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/DelaunayER.dll</HintPath>
+    </Reference>
     <Reference Include="protobuf-net">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/protobuf-net.dll</HintPath>
     </Reference>
@@ -284,6 +287,9 @@
     </Reference>
     <Reference Include="protobuf-net.Core">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/Plugins/Protobuf/protobuf-net.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="EasyRoads3Dv3">
+      <HintPath>/Users/a23544/Documents/GitHub/GF_X/Assets/EasyRoads3D/lib/EasyRoads3Dv3.dll</HintPath>
     </Reference>
     <Reference Include="System.IO.Hashing">
       <HintPath>/Users/a23544/Documents/GitHub/GF_X/Library/PackageCache/com.unity.collections@2.5.7/Unity.Collections.Tests/System.IO.Hashing/System.IO.Hashing.dll</HintPath>

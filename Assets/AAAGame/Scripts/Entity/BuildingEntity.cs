@@ -51,6 +51,6 @@ public class BuildingEntity : EntityBase
         host.ResetOptions();
         host.Init(this);
 
-        BuildManager.ConfigureUpgradeInteractionOptions(this, host);
+        BuildManager.ConfigureBuildInteractionOptions(this, host);
     }
 }
