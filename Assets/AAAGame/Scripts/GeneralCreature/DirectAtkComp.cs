@@ -25,7 +25,7 @@ public class DirectAtkComp : IAtkComp
 
     private IEntityContext _ctx;
     private WeaponData _weapon;
-    private string _index;
+    private WeaponType _index;
     private BaseWeaponSO _weaponSO;
     private Animator _animator;
 
@@ -40,19 +40,25 @@ public class DirectAtkComp : IAtkComp
     private float _stateTimer;
     private IEntityContext _lockedTarget;
 
-    public DirectAtkComp(string index)
+    public DirectAtkComp(WeaponType index)
     {
         _index = index;
     }
 
-    private string GetWeaponSOAddress(string index)
+    private string GetWeaponSOAddress(WeaponType index)
     {
-        // 原来的代码：
-        // //TODO 返回读表后地址
-        // return "soldier_default";
-
-        // 新加：根据不同的index返回不同的武器SO地址，支持远程武器测试
-        return index == "ranged_test" ? "ranged_default" : "soldier_default";
+        switch (index)
+        {
+            case WeaponType.Melee:
+                return "soldier_default";
+            
+            case WeaponType.Projectile:
+                return "ranged_default";
+            
+            default:
+                return "soldier_default";
+            
+        }
     }
 
     public void Init(IEntityContext ctx)
@@ -74,11 +80,13 @@ public class DirectAtkComp : IAtkComp
 
         // TODO: 根据 index 读表获取攻击数值
         // 当前使用硬编码测试数据
-        float damage = _index == "ranged_test" ? 2f : 10f; // 降低远程武器伤害，让单位血显得更厚
-        float interval = 1.5f;
-        float range = 150f;
-        float windUp = 0.4f;
-        float windDown = 0.5f;
+        string id = ctx.ReferenceId;
+        var row = GeneralCreature.GetData(id);
+        float damage = (float)row.PhysicalAtk; // 降低远程武器伤害，让单位血显得更厚
+        float interval = (float)row.WeaponIntervalOne;
+        float range = (float)row.WeaponRangeOne;
+        float windUp = (float)row.WeaponPreOne;
+        float windDown = (float)row.WeaponPreOne;
         
 
         // 原来的代码：
@@ -94,9 +102,9 @@ public class DirectAtkComp : IAtkComp
         // };
 
         // 新加：根据index判断武器类型，为远程武器设置正确的武器数据
-        WeaponType weaponType = _index == "ranged_test" ? WeaponType.Projectile : WeaponType.Melee;
-        float projectileSpeed = weaponType == WeaponType.Projectile ? 10f : 0f;
-        float attackRange = weaponType == WeaponType.Projectile ? 800f : range; // 远程武器射程更远
+        WeaponType weaponType = _index; //_index == "ranged_test" ? WeaponType.Projectile : WeaponType.Melee;
+        float projectileSpeed = (float)row.WeaponSpeedOne;
+        float attackRange = range; // 远程武器射程更远
 
         _weapon = new WeaponData
         {
@@ -113,6 +121,8 @@ public class DirectAtkComp : IAtkComp
 
         
        
+
+        Debug.Log($"[DirectAtkComp] Init: unit={ctx.ReferenceId} weaponType={weaponType} damage={damage} range={attackRange} interval={interval} windUp={windUp} windDown={windDown} projectileSpeed={projectileSpeed}");
 
         // 创建 WeaponComp 并挂载到 Entity
         var wc = new WeaponComp(_weapon);

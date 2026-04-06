@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -46,7 +46,7 @@ public class GeneralCreature : EntityBase, ITargetable
         {
             animator = display.gameObject.AddComponent<Animator>();
         }
-        ReferenceId = "Knight";
+        //ReferenceId = "Knight";
     }
 
     public float health => (float)CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
@@ -57,6 +57,7 @@ public class GeneralCreature : EntityBase, ITargetable
         Alive = true;
         CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
         display.rotation = Quaternion.Euler(38.7f, 0, 0);
+        //Debug.LogError($"[Creature] {ReferenceId} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
     }
 
 
@@ -216,6 +217,19 @@ public class GeneralCreature : EntityBase, ITargetable
     }
 
     #endregion
+
+    public static CharacterDataDetail GetData(string id)
+    {
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        var rows = table.GetDataRows(r => r.CharacterKey == id);
+        if (rows == null || rows.Length == 0)
+        {
+            GF.LogError("没有匹配的表格"+"CharacterDataDetail" + " id=" + id);
+            return null;
+        }
+        var row = rows[0];
+        return row;
+    }
 }
 
 public enum SideType

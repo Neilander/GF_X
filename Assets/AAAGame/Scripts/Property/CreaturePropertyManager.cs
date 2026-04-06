@@ -159,7 +159,7 @@ public class CreaturePropertyManager
     
     private static Fix64 GetConfigValue(CreatureMainProperty prop, string creatureType)
     {
-        var table = GF.DataTable.GetDataTable<CharacterMainPropertyTable>();
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
         var rows = table.GetDataRows(r => r.CharacterKey == creatureType);
         if (rows == null || rows.Length == 0)
         {
@@ -171,9 +171,9 @@ public class CreaturePropertyManager
         return prop switch
         {
             CreatureMainProperty.PhysicalAtk => (Fix64)row.PhysicalAtk,
-            CreatureMainProperty.SpecialAtk  => (Fix64)row.SpecialAtk,
+            CreatureMainProperty.SpecialAtk  => (Fix64)row.PhysicalAtk,
             CreatureMainProperty.PhysicalDef => (Fix64)row.PhysicalDef,
-            CreatureMainProperty.SpecialDef  => (Fix64)row.SpecialDef,
+            CreatureMainProperty.SpecialDef  => (Fix64)row.PhysicalDef,
             CreatureMainProperty.Health      => (Fix64)row.Health,
             CreatureMainProperty.Speed       => (Fix64)row.Speed,
             CreatureMainProperty.Mana        => (Fix64)row.Mana,

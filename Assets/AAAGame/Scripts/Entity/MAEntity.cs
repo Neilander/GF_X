@@ -64,9 +64,8 @@ public class MAEntity : CompCreature, IEntityContext
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
-        //初始化移动和攻击组件
 
-        SetUpMAComp();
+        SetUpMAComp(userData);
 
         durationMoveEffectComp = new DurationMoveEffectComp();
         durationMoveEffectComp.Init(this);
@@ -284,7 +283,7 @@ public class MAEntity : CompCreature, IEntityContext
 
     #region Move and Attack
 
-    protected virtual void SetUpMAComp()
+    protected virtual void SetUpMAComp(object userData)
     {
         //获取路径
         var row = GF.DataTable.GetDataTable<CharacterMAFactoryTable>().GetDataRows(r => r.CharacterKey == ReferenceId)[0];

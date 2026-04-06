@@ -18,6 +18,7 @@ public class SoldierEntity : MAEntity
 
     protected override void OnShow(object userData)
     {
+        
         if (userData is EntityParams ep)
         {
             Side = ep.Side;
@@ -28,7 +29,7 @@ public class SoldierEntity : MAEntity
         }
 
         base.OnShow(userData);
-
+        //Debug.LogError("什么玩意");
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 
@@ -52,7 +53,7 @@ public class SoldierEntity : MAEntity
         }
     }
 
-    protected override void SetUpMAComp()
+    protected override void SetUpMAComp(object userData)
     {
         string moveFacPath = "CharacterMoveFactory";
         string targetFacPath = "CharacterTargetingFactory";
@@ -61,8 +62,8 @@ public class SoldierEntity : MAEntity
         FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
 
         // 根据单位类型选择武器
-        string weaponIndex = GetWeaponIndexByUnitType(_unitIndex);
-        
+        WeaponType weaponIndex = GetWeaponIndexByUnitType((userData as EntityParams).Index);
+        ReferenceId = (userData as EntityParams).Index;
         // 直接创建 DirectAtkComp，不再走 Factory
         var atkComp = new DirectAtkComp(weaponIndex);
         this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
@@ -74,17 +75,11 @@ public class SoldierEntity : MAEntity
     /// <summary>
     /// 根据单位类型获取武器索引
     /// </summary>
-    private string GetWeaponIndexByUnitType(string unitIndex)
+    private WeaponType GetWeaponIndexByUnitType(string unitIndex)
     {
-        switch (unitIndex)
-        {
-            case "coder": // 码农单位使用远程武器
-                return "ranged_test";
-            case "bone_reaper": // 剔骨狂魔单位使用近战武器
-                return "melee_test";
-            default:
-                return "ranged_test"; // 默认远程武器
-        }
+        var row  = GeneralCreature.GetData(unitIndex);
+
+        return row.WeaponTypeOne;
     }
     
 
