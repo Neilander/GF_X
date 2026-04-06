@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -27,10 +27,25 @@ public class GeneralCreature : EntityBase, ITargetable
 
         Gmo = gameObject;
         display = transform.Find("Display");
+        
+        if (display == null)
+        {
+            // 创建Display子对象
+            GameObject displayObj = new GameObject("Display");
+            displayObj.transform.SetParent(transform);
+            displayObj.transform.localPosition = Vector3.zero;
+            displayObj.transform.localRotation = Quaternion.identity;
+            displayObj.transform.localScale = Vector3.one;
+            display = displayObj.transform;
+        }
 
         SetUpHurtBox();
 
         animator = display.GetComponent<Animator>();
+        if (animator == null)
+        {
+            animator = display.gameObject.AddComponent<Animator>();
+        }
         ReferenceId = "Knight";
     }
 
@@ -69,6 +84,12 @@ public class GeneralCreature : EntityBase, ITargetable
         float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
+        
+        // 显示伤害跳字
+        Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
+        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
+        Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
+        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
 
         if (cur<= 0)
         {
@@ -85,32 +106,17 @@ public class GeneralCreature : EntityBase, ITargetable
                 // 触发击杀回调
                 if (attacker != null)
                 {
-                    Debug.Log($"GeneralCreature.TakeDamage: 触发击杀回调，攻击者={attacker.GetType().Name}");
                     // 尝试从攻击者获取MAEntity实例
                     MAEntity attackerEntity = attacker as MAEntity;
                     if (attackerEntity != null)
                     {
-                        Debug.Log($"GeneralCreature.TakeDamage: 攻击者是MAEntity，ID={attackerEntity.Id}");
                         Entity entity = GF.Entity.GetEntity(attackerEntity.Id);
                         SoldierEntity soldier = entity?.gameObject.GetComponent<SoldierEntity>();
                         if (soldier != null)
                         {
-                            Debug.Log($"GeneralCreature.TakeDamage: 调用soldier.OnKill，攻击者单位={soldier.UnitIndex}, ID={soldier.Id}");
                             soldier.OnKill(victim);
                         }
-                        else
-                        {
-                            Debug.LogError($"GeneralCreature.TakeDamage: 攻击者不是SoldierEntity类型");
-                        }
                     }
-                    else
-                    {
-                        Debug.LogError($"GeneralCreature.TakeDamage: 攻击者不是MAEntity类型，无法触发击杀回调");
-                    }
-                }
-                else
-                {
-                    Debug.LogWarning($"GeneralCreature.TakeDamage: 攻击者为null，无法触发击杀回调");
                 }
             }
             
@@ -143,6 +149,12 @@ public class GeneralCreature : EntityBase, ITargetable
         float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
+        
+        // 显示伤害跳字
+        Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
+        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
+        Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
+        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
 
         if (cur <= 0)
         {
@@ -154,7 +166,33 @@ public class GeneralCreature : EntityBase, ITargetable
 
     protected virtual void SetUpHurtBox()
     {
-        hurtBox = transform.Find("HurtBox").GetComponent<HurtBox>();
+        Transform hurtBoxTransform = transform.Find("HurtBox");
+        if (hurtBoxTransform == null)
+        {
+            // 创建HurtBox
+            GameObject hurtBoxObj = new GameObject("HurtBox");
+            hurtBoxObj.transform.SetParent(transform);
+            hurtBoxObj.transform.localPosition = Vector3.zero;
+            hurtBoxObj.transform.localRotation = Quaternion.identity;
+            hurtBoxObj.transform.localScale = Vector3.one;
+            
+            // 添加BoxCollider作为触发器
+            BoxCollider collider = hurtBoxObj.AddComponent<BoxCollider>();
+            collider.isTrigger = true;
+            collider.size = new Vector3(0.5f, 1.5f, 0.5f);
+            
+            // 添加HurtBox组件
+            hurtBox = hurtBoxObj.AddComponent<HurtBox>();
+        }
+        else
+        {
+            hurtBox = hurtBoxTransform.GetComponent<HurtBox>();
+            if (hurtBox == null)
+            {
+                hurtBox = hurtBoxTransform.gameObject.AddComponent<HurtBox>();
+            }
+        }
+        
         hurtBox.Activate(this);
     }
 

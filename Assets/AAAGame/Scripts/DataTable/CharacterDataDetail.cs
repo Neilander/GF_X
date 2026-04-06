@@ -1,4 +1,4 @@
-﻿//------------------------------------------------------------
+//------------------------------------------------------------
 //------------------------------------------------------------
 // 此文件由工具自动生成，请勿直接修改。
 // 生成时间：__DATA_TABLE_CREATE_TIME__
@@ -29,18 +29,18 @@ public class CharacterDataDetail : DataRowBase
     }
 
         /// <summary>
-        /// 
+        /// 独有数值
         /// </summary>
-        public string CharacterKey
+        public Fix64[] UniqueValues
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 独有数值
+        /// prefab路径
         /// </summary>
-        public Fix64[] UniqueValues
+        public string PrefabPath
         {
             get;
             private set;
@@ -57,11 +57,10 @@ public class CharacterDataDetail : DataRowBase
             int index = 0;
             index++;
             m_Id = int.Parse(columnStrings[index++]);
-            CharacterKey = columnStrings[index++];
             index++;
             index++;
             UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            index++;
+            PrefabPath = columnStrings[index++];
             index++;
             index++;
             index++;
@@ -109,11 +108,11 @@ public class CharacterDataDetail : DataRowBase
             using (MemoryStream memoryStream = new MemoryStream(dataRowBytes, startIndex, length, false))
             {
                 using (BinaryReader binaryReader = new BinaryReader(memoryStream, Encoding.UTF8))
-                {
-                    m_Id = binaryReader.Read7BitEncodedInt32();
-                    CharacterKey = binaryReader.ReadString();
-                    UniqueValues = binaryReader.ReadFix64Array();
-                }
+            {
+                m_Id = binaryReader.Read7BitEncodedInt32();
+                UniqueValues = binaryReader.ReadFix64Array();
+                PrefabPath = binaryReader.ReadString();
+            }
             }
 
             return true;

@@ -13,4 +13,9 @@ public interface IMoveComp : ICapability
     /// 获取当前 NavMesh 路径的下一步归一化方向，无路径时返回 Vector3.zero。
     /// </summary>
     Vector3 GetNavDirection();
+    
+    /// <summary>
+    /// 是否正在移动
+    /// </summary>
+    bool IsMoving { get; }
 }

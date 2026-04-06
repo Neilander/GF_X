@@ -23,6 +23,7 @@ public class SoldierEntity : MAEntity
             Side = ep.Side;
             BrainType = ep.BrainType; // 设置AI类型
             _unitIndex = ep.Index; // 保存单位类型索引
+            ReferenceId = ep.Index; // 设置正确的ReferenceId
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
         }
 

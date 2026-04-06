@@ -27,6 +27,7 @@ public class DirectAtkComp : IAtkComp
     private WeaponData _weapon;
     private string _index;
     private BaseWeaponSO _weaponSO;
+    private Animator _animator;
 
     public BaseWeaponSO WeaponSO => _weaponSO;
 
@@ -63,6 +64,13 @@ public class DirectAtkComp : IAtkComp
         _stateTimer = 0f;
         AttackCount = 0;
         _lockedTarget = null;
+        
+        // 获取Animator组件
+        var entity = _ctx as MAEntity;
+        if (entity != null)
+        {
+            _animator = entity.GetComponent<Animator>();
+        }
 
         // TODO: 根据 index 读表获取攻击数值
         // 当前使用硬编码测试数据
@@ -108,14 +116,13 @@ public class DirectAtkComp : IAtkComp
 
         // 创建 WeaponComp 并挂载到 Entity
         var wc = new WeaponComp(_weapon);
-        var entity = _ctx as MAEntity;
-        if (entity != null)
+        var maEntity = _ctx as MAEntity;
+        if (maEntity != null)
         {
-            entity.SetWeaponComp(wc);
+            maEntity.SetWeaponComp(wc);
         }
         else
         {
-            Debug.LogWarning("DirectAtkComp: ctx 不是 MAEntity，无法挂载 WeaponComp");
         }
     }
 
@@ -262,6 +269,30 @@ public class DirectAtkComp : IAtkComp
             $"[{_ctx.ReferenceId}] 状态 {State} → {newState}");
         State = newState;
         _stateTimer = 0f;
+        
+        // 播放对应动画
+        if (_animator != null)
+        {
+            switch (newState)
+            {
+                case AtkState.WindUp:
+                    // 攻击前摇时播放攻击动画，设置为不循环
+                    _animator.Play("骨架_Attack_Slash", 0, 0f);
+                    break;
+                case AtkState.Idle:
+                    // 空闲状态根据是否在移动决定播放什么动画
+                    var moveComp = _ctx.MoveComp;
+                    if (moveComp != null && moveComp.IsMoving)
+                    {
+                        _animator.Play("骨架_Move", 0);
+                    }
+                    else
+                    {
+                        _animator.Play("骨架_Idle", 0);
+                    }
+                    break;
+            }
+        }
     }
 
     public void ShutDown()
