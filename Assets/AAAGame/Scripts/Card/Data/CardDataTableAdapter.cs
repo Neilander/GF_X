@@ -38,12 +38,12 @@ namespace AAAGame.Card
         public int SoldierCount => m_DataRow.SoldierCount;
         public string SoldierName => m_DataRow.SoldierName;
         
-        public string SoldierIndex
+        public UnitType SoldierIndex
         {
             get
             {
                 Debug.LogError("使用了CardDataTableAdapter，但是这东西没写完");
-                return "";
+                return default;
             }
         }
         

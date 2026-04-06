@@ -58,13 +58,13 @@ public class BuffTestProcedure : ProcedureBase
         try
         {
             // 创建玩家控制的码农单位（定时死亡Buff）
-            int playerEntityId = SoldierFactory.ShowSoldier("Unit_Coder", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
-            
+            int playerEntityId = SoldierFactory.ShowSoldier(UnitType.Unit_Coder, new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
+
             // 使用族生成创建友方码农单位（定时死亡Buff）
-            bool friendSpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, -7), 5, 5f, 2f, "Unit_Coder", SideType.PlayerSide, BrainType.SoldierAI);
-            
+            bool friendSpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, -7), 5, 5f, 2f, UnitType.Unit_Coder, SideType.PlayerSide, BrainType.SoldierAI);
+
             // 使用族生成创建敌方剔骨狂魔单位（击杀回复Buff）
-            bool enemySpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, 6), 3, 5f, 2f, "Unit_BoneButcher", SideType.EnemySide, BrainType.SoldierAI);
+            bool enemySpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, 6), 3, 5f, 2f, UnitType.Unit_BoneButcher, SideType.EnemySide, BrainType.SoldierAI);
         }
         catch (System.Exception ex)
         {

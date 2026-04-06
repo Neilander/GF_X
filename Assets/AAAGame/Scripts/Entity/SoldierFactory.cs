@@ -15,15 +15,15 @@ public static class SoldierFactory
     /// <param name="position">出生位置</param>
     /// <param name="side">阵营</param>
     /// <param name="brainType">AI类型</param>
-    public static int ShowSoldier(string index, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
+    public static int ShowSoldier(UnitType index, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
     {
 
         
         EntityParams paramsData = EntityParams.Create(position: position);
         paramsData.Side = side;
         paramsData.BrainType = brainType;
-        paramsData.Index = index;
-        
+        paramsData.Index = index.ToString();
+
         string prefabName = GetSoldierPrefabName(index);
 
         // 添加初始Buff到StartBuffs列表
@@ -40,24 +40,24 @@ public static class SoldierFactory
     /// <summary>
     /// 根据index获取预制体名称
     /// </summary>
-    private static string GetSoldierPrefabName(string index)
+    private static string GetSoldierPrefabName(UnitType index)
     {
         // 使用简单的gujia名称，与CharacterTestProcedure保持一致
         return "gujia";
     }
-    
+
     /// <summary>
     /// 添加初始Buff到列表中
     /// </summary>
-    private static void AddInitialBuffs(System.Collections.Generic.List<BuffData> buffList, string index)
+    private static void AddInitialBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType index)
     {
         switch (index)
         {
-            case "Unit_Coder":
+            case UnitType.Unit_Coder:
                 buffList.Add(TimedDeathBuff.CreateTimedDeath(35f));
                 break;
-                
-            case "Unit_BoneButcher":
+
+            case UnitType.Unit_BoneButcher:
                 buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
                 break;
         }

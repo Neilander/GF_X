@@ -87,8 +87,8 @@ public static class ClusterSpawnSystem
     /// <param name="side">阵营</param>
     /// <param name="brainType">AI类型</param>
     /// <returns>是否生成成功</returns>
-    public static bool SpawnCluster(Vector3 center, int count, float radius, float minDistance, 
-        string unitIndex, SideType side, BrainType brainType)
+    public static bool SpawnCluster(Vector3 center, int count, float radius, float minDistance,
+        UnitType unitIndex, SideType side, BrainType brainType)
     {
         List<Vector3> spawnPositions = new List<Vector3>();
         

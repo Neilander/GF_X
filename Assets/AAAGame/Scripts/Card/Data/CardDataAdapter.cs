@@ -21,7 +21,7 @@ namespace AAAGame.Card
         public int PopulationCost => m_CardData.populationCost;
         public int SoldierCount => m_CardData.soldierCount;
         public string SoldierName => m_CardData.soldierName;
-        public string SoldierIndex => m_CardData.soldierIndex;
+        public UnitType SoldierIndex => m_CardData.soldierIndex;
         public float SpawnRadius => m_CardData.spawnRadius;
         public Color CardColor => m_CardData.cardColor;
         public int DropWeight => m_CardData.dropWeight;
