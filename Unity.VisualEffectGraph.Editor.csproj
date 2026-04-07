@@ -205,8 +205,8 @@
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Compiler/VFXCodeGenerator.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/GraphView/Elements/Controllers/VFXParameterController.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/Length.cs" />
-    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/RectangularToSpherical.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/AgeOverLifetime.cs" />
+    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/RectangularToSpherical.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/GraphView/Views/Controller/VFXSystemController.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Utilities/pCache/BakeTool/PointCacheBakeTool.Mesh.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/TransformPosition.cs" />

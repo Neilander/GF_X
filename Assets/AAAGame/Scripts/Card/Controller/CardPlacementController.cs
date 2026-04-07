@@ -74,7 +74,7 @@ namespace AAAGame.Card
             if (TryGetGroundPosition(out Vector3 groundPosition))
             {
                 m_CurrentPlacementPosition = groundPosition;
-                Debug.Log($"[Card] Placement position updated: {groundPosition}");
+                //Debug.Log($"[Card] Placement position updated: {groundPosition}");
                 // 检测区域合法性
                 bool wasValid = m_IsValidPlacement;
                 m_IsValidPlacement = CheckPlacementValidity(groundPosition);
@@ -184,17 +184,17 @@ namespace AAAGame.Card
         private int SpawnSoldiers(CardModel cardModel, Vector3 centerPosition)
         {
             ICardDataProvider dataProvider = cardModel.DataProvider;
-            if (dataProvider == null || dataProvider.SoldierIndex == "")
+            if (dataProvider == null)
             {
-                Debug.LogError("[Card] Cannot spawn soldiers: DataProvider or SoldierIndex is null.");
+                Debug.LogError("[Card] Cannot spawn soldiers: DataProvider is null.");
                 return 0;
             }
 
             int soldierCount = dataProvider.SoldierCount;
             float spawnRadius = dataProvider.SpawnRadius;
-            string soldierIndex = dataProvider.SoldierIndex;
+            UnitType soldierIndex = dataProvider.SoldierIndex;
 
-            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f,soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
             // 在圆形区域内随机生成士兵
             /*
             for (int i = 0; i < soldierCount; i++)

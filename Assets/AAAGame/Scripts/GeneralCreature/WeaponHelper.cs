@@ -39,14 +39,9 @@ public static class WeaponHelper
                         comp.SetWeaponSO(weapon);
                     }
                 }
-                else
-                {
-                    Debug.LogError($"WeaponHelper: 加载 {path} 失败，asset 不是 BaseWeaponSO");
-                }
             },
             (assetName, status, errorMessage, userData) =>
             {
-                Debug.LogError($"WeaponHelper: 加载 {path} 失败: {errorMessage}");
             }
         );
     }

@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: CardTest1
   m_EditorClassIdentifier: 
   index: card_001
-  cardName: "\u6D4B\u8BD5\u5361\u724C"
-  cardSprite: {fileID: 0}
+  cardName: "\u7801\u519C"
+  cardSprite: {fileID: 474919756, guid: d2888c5b30d604c48aaa02b5aa3c95ca, type: 3}
   populationCost: 2
-  soldierCount: 5
-  soldierName: "\u6B65\u5175"
-  soldierPrefab: {fileID: 0}
+  soldierCount: 7
+  soldierName: "\u7801\u519C"
+  soldierIndex: 2
   spawnRadius: 1.5
   cardColor: {r: 1, g: 1, b: 1, a: 1}
   dropWeight: 10

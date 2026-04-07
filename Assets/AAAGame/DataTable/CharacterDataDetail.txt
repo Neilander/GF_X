@@ -1,5 +1,5 @@
 ﻿#	CharacterDataDetail						i18n	i18n																																				
-#	ID	CharacterKey			UniqueValues																																							
+#	ID	CharacterKey			UniqueValues									PhysicalDef	Health	Mana	Speed		PhysicalAtk	WeaponIntervalOne	WeaponTypeOne	WeaponRangeOne	WeaponSpeedOne	WeaponPreOne	WeaponEndOne																			
 #	int	string			Fix64[]	string	string	string	enum[]	int	int	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	enum	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	enum	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64
 #			备注1	备注2	独有数值	prefab路径	单位名称（多语言）	单位描述（多语言）	单位标签	产量	人口	模型碰撞	转身速率	护甲	血量	蓝量	移速	视野	武器1攻击力	武器1攻击间隔	武器1攻击类型	武器1攻击距离	武器1弹道速度	武器1前摇	武器1后摇	武器1溅射半径	武器1分裂角度	武器1分裂距离	武器1弹道数量	武器1耗蓝	武器1其他数值	武器2攻击力	武器2攻击间隔	武器2攻击类型	武器2攻击距离	武器2弹道速度	武器2前摇	武器2后摇	武器2溅射半径	武器2分裂角度	武器2分裂距离	武器2弹道数量	武器2耗蓝	武器2其他数值
 	0	Unit_Scapegoat	背锅侠	嘲讽等级+<val1>	1		Unit_Name_Scapegoat	Unit_Desc_Scapegoat	UnitTag.Melee,UnitTag.Creature	4	2	50	0.6	1	85		280	1800	8	1.5	WeaponType.Melee	150		0.4	0.5																			

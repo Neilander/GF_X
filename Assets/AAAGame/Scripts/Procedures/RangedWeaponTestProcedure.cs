@@ -72,7 +72,8 @@ public class RangedWeaponTestProcedure : ProcedureBase
         var playerParams = EntityParams.Create(position: new Vector3(0, 1, -10));
         playerParams.Side = SideType.PlayerSide;
         playerParams.BrainType = BrainType.Player; // 使用Player脑控，让玩家可以控制角色
-        GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, playerParams);
+        playerParams.Index = "Unit_Coder";
+        GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, playerParams);
         
         // 创建多个友方远程单位
         for (int i = 0; i< 3; i++)
@@ -81,7 +82,8 @@ public class RangedWeaponTestProcedure : ProcedureBase
             var friendlyParams = EntityParams.Create(position: spawnPos);
             friendlyParams.Side = SideType.PlayerSide;
             friendlyParams.BrainType = BrainType.SoldierAI;
-            GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, friendlyParams);
+            friendlyParams.Index = "Unit_Coder";
+            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, friendlyParams);
         }
         
         // 创建多个敌方远程单位
@@ -91,7 +93,8 @@ public class RangedWeaponTestProcedure : ProcedureBase
             var enemyParams = EntityParams.Create(position: spawnPos);
             enemyParams.Side = SideType.EnemySide;
             enemyParams.BrainType = BrainType.SoldierAI;
-            GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, enemyParams);
+            enemyParams.Index = "Unit_BoneButcher";
+            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, enemyParams);
         }
         
         GF.Log("远程武器测试单位创建完成，友方和敌方单位将互相发射子弹攻击");

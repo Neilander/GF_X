@@ -5,7 +5,7 @@ using UnityEngine.PlayerLoop;
 
 public class PlayerEntity : SkillEntity
 {
-    protected override void SetUpMAComp()
+    protected override void SetUpMAComp(object userData)
     {
         //不采用基础的setup，而是手动setup
         string moveFacPath = "PlayerMoveFactory";

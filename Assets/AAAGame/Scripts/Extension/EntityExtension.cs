@@ -1,10 +1,28 @@
 ﻿using System;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.UI;
 using GameFramework;
 using UnityGameFramework.Runtime;
 using DG.Tweening;
 using TMPro;
+
+/// <summary>
+/// 伤害文本类型
+/// </summary>
+public enum DamageTextType
+{
+    /// <summary>
+    /// 普通伤害（白色数字）
+    /// </summary>
+    Normal,
+    
+    /// <summary>
+    /// 治疗（绿色 +N）
+    /// </summary>
+    Heal
+}
+
 public static class EntityExtension
 {
     /// <summary>
@@ -93,41 +111,49 @@ public static class EntityExtension
     /// <param name="content"></param>
     /// <param name="duration"></param>
     /// <param name="fontSize"></param>
-    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, float duration = 0.5f, float fontSize = 5f)
+    /// <param name="textType"></param>
+    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, DamageTextType textType = DamageTextType.Normal, float duration = 3.0f, float fontSize = 4f)
     {
         if (eParams.OnShowCallback != null)
         {
             Log.Error("ShowPopText 不能指定OnShowCallback回调, 将被覆盖无法执行.");
         }
-        eParams.OnShowCallback = eLogic =>
+        eParams.OnShowCallback = (EntityLogic entity) =>
         {
-            var textMesh = eLogic.GetComponent<TextMeshPro>();
+            var textMesh = entity.GetComponent<TextMeshPro>();
+            if (textMesh == null)
+            {
+                Log.Error("TextMeshPro component not found!");
+                return;
+            }
+            textMesh.fontSize = fontSize;
             textMesh.text = content;
             var txtCol = textMesh.color;
             txtCol.a = 1;
-            textMesh.color = txtCol;
-            textMesh.fontSize = fontSize;
-            eLogic.CachedTransform.localScale = Vector3.zero;
-            var seqAct = DOTween.Sequence();
-            float jumpPower = Mathf.Abs(endPos.y - eLogic.CachedTransform.position.y);
-            var jumpAct = eLogic.CachedTransform.DOJump(endPos, jumpPower, 1, duration);
-            float minY = Mathf.Min(eLogic.CachedTransform.position.y, endPos.y);
-            jumpAct.onUpdate = () =>
+            // 根据类型设置颜色
+            switch (textType)
             {
-                txtCol.a = (eLogic.CachedTransform.position.y - minY) / jumpPower;
-                eLogic.CachedTransform.localScale = Vector3.one * txtCol.a;
-                textMesh.color = txtCol;
-            };
-            seqAct.Append(jumpAct);
-            int eId = eLogic.Entity.Id;
+                case DamageTextType.Normal:
+                    txtCol = Color.red;
+                    break;
+                case DamageTextType.Heal:
+                    txtCol = Color.green;
+                    break;
+            }
+            textMesh.color = txtCol;
+            entity.transform.localScale = Vector3.zero;
+            var seqAct = DOTween.Sequence();
+            seqAct.Join(entity.transform.DOScale(1, duration));
+            seqAct.Join(entity.transform.DOMove(endPos, duration));
+            seqAct.Append(textMesh.DOFade(0, 0.25f));
             seqAct.SetUpdate(true);
             seqAct.onComplete = () =>
             {
-                eCom.HideEntitySafe(eId);
+                GF.Entity.HideEntitySafe(entity);
             };
             seqAct.SetAutoKill();
         };
-        eCom.ShowEntity<BillboardEntity>("Effect/MoneyText", Const.EntityGroup.Effect, eParams);
+        eCom.ShowEntity<SampleEntity>("Effect/MoneyText", Const.EntityGroup.Effect, eParams);
     }
     /// <summary>
     /// 创建Entity

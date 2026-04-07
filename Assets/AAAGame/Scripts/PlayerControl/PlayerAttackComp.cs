@@ -90,6 +90,8 @@ public class PlayerAttackComp : IAtkComp
         currentIndex = 0;
     }
 
+    public bool IsAttacking => _actionInfo != null;
+    
     public void ShutDown() { }
     public void Resume() { }
 }

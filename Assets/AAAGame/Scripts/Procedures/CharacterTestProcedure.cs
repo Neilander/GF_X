@@ -67,8 +67,9 @@ public class CharacterTestProcedure : ProcedureBase
         var pPlayer = EntityParams.Create(position: playerSpawn);
         pPlayer.Side = SideType.PlayerSide;
         pPlayer.BrainType = BrainType.Player;
+        pPlayer.Index = "Unit_Coder";
         //pPlayer.StartBuffs = friendlyBuffs;
-        GF.Entity.ShowEntity<CharacterEntity>("TestCreature", Const.EntityGroup.Player, pPlayer);
+        GF.Entity.ShowEntity<CharacterEntity>("gujia", Const.EntityGroup.Player, pPlayer);
 
         // --- 友军小兵 ---
         for (int i = 0; i < friendlyCount; i++)
@@ -77,8 +78,9 @@ public class CharacterTestProcedure : ProcedureBase
             var pFriendly = EntityParams.Create(position: spawnPos);
             pFriendly.Side = SideType.PlayerSide;
             pFriendly.BrainType = BrainType.SoldierAI;
+            pFriendly.Index = "Unit_Coder";
             //pFriendly.StartBuffs = friendlyBuffs;
-            GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, pFriendly);
+            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, pFriendly);
         }
 
         // --- 敌方小兵 ---
@@ -88,8 +90,9 @@ public class CharacterTestProcedure : ProcedureBase
             var pEnemy = EntityParams.Create(position: spawnPos);
             pEnemy.Side = SideType.EnemySide;
             pEnemy.BrainType = BrainType.SoldierAI;
+            pEnemy.Index = "Unit_BoneButcher";
             //pEnemy.StartBuffs = enemyBuffs;
-            GF.Entity.ShowEntity<SoldierEntity>("TestCreature", Const.EntityGroup.Level, pEnemy);
+            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, pEnemy);
         }
 
 
@@ -118,7 +121,9 @@ public class CharacterTestProcedure : ProcedureBase
             if (ma is GeneralCreature creature)
             {
                 float max = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-                HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
+                // 根据单位的Side判断阵营
+                bool isFriendly = creature.Side == SideType.PlayerSide;
+                HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, isFriendly);
             }
 
             // SoldierAIBrain 需要重新 Inject（玩家可能在它之后创建）

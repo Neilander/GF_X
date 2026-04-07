@@ -100,7 +100,7 @@ public class HealthBarComp : MonoBehaviour
     /// <summary>
     /// 运行时创建血条的工厂方法。调用方只需一行代码。
     /// </summary>
-    public static HealthBarComp Create(int entityId, Transform followTarget, float curHp, float maxHp)
+    public static HealthBarComp Create(int entityId, Transform followTarget, float curHp, float maxHp, bool isFriendly = true)
     {
         // Canvas (World Space)
         var go = new GameObject($"HealthBar_{entityId}");
@@ -126,7 +126,8 @@ public class HealthBarComp : MonoBehaviour
         var fillGo = new GameObject("Fill");
         fillGo.transform.SetParent(go.transform, false);
         var fillImg = fillGo.AddComponent<Image>();
-        fillImg.color = Color.green;
+        // 根据阵营设置颜色：己方绿色，敌方红色
+        fillImg.color = isFriendly ? Color.green : Color.red;
         var fillRt = fillGo.GetComponent<RectTransform>();
         fillRt.anchorMin = Vector2.zero;
         fillRt.anchorMax = Vector2.one;

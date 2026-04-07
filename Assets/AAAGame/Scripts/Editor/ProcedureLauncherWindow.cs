@@ -14,7 +14,8 @@ public class ProcedureLauncherWindow : EditorWindow
         "SampleProcedure",
         "RangedWeaponTestProcedure", // 新增：远程武器测试流程
         "BuffTestProcedure", // 新增：Buff测试流程
-        "CardGameProcedure"
+        "CardGameProcedure",
+        "ArenaProcedure"
     };
 
     private const string PrefKey_Selected = "Procedure_Selected";
@@ -35,7 +36,8 @@ public class ProcedureLauncherWindow : EditorWindow
     {
         "Game",
         "LevelTestScene",
-        "CharacterAndSkillTestScene"
+        "CharacterAndSkillTestScene",
+        "Arena"
     };
 
     private int _selectedIndex;
