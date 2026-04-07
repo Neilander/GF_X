@@ -117,6 +117,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/WebRequestResult.cs" />
     <Compile Include="Assets/AAAGame/Scripts/HotfixEntry.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterSkillComp.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Test/EnemySpawner.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/LanguagesTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveCoordinator.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataModel/Craft/ItemDataModel.cs" />
