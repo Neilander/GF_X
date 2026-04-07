@@ -15,7 +15,7 @@ MonoBehaviour:
   index: card_002
   cardName: "\u6613\u62C9\u7F50\u751F\u4EA7\u8005"
   cardSprite: {fileID: 21300000, guid: 662f1f0046efa46efbf9eed9cc904d26, type: 3}
-  populationCost: 2
+  populationCost: 3
   soldierCount: 5
   soldierName: "\u6613\u62C9\u7F50\u751F\u4EA7\u8005"
   soldierIndex: 3
