@@ -11,4 +11,5 @@ public enum UnitType
     Unit_ColdCarrier = 8,
     Unit_HydroGunner = 9,
     Unit_Firefighter = 10,
+    Unit_Hero = 11,
 }
