@@ -43,6 +43,8 @@ public class BuildingEntity : EntityBase
 
     private void EnsureInteractionHost()
     {
+        EnsureInteractionCollider();
+
         var host = GetComponent<InteractionHost>();
         if (host == null)
             host = gameObject.AddComponent<InteractionHost>();
@@ -52,5 +54,53 @@ public class BuildingEntity : EntityBase
         host.Init(this);
 
         BuildManager.ConfigureBuildInteractionOptions(this, host);
+    }
+
+    private void EnsureInteractionCollider()
+    {
+        if (GetComponentInChildren<Collider>() != null)
+            return;
+
+        var sphere = gameObject.AddComponent<SphereCollider>();
+        sphere.isTrigger = true;
+
+        if (TryGetVisualBounds(out var bounds))
+        {
+            sphere.center = transform.InverseTransformPoint(bounds.center);
+            sphere.radius = Mathf.Clamp(bounds.extents.magnitude, 0.8f, 3f);
+        }
+        else
+        {
+            sphere.center = Vector3.zero;
+            sphere.radius = 1.2f;
+        }
+    }
+
+    private bool TryGetVisualBounds(out Bounds bounds)
+    {
+        bounds = default;
+        var renderers = GetComponentsInChildren<Renderer>();
+        if (renderers == null || renderers.Length == 0)
+            return false;
+
+        bool initialized = false;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null)
+                continue;
+
+            if (!initialized)
+            {
+                bounds = renderer.bounds;
+                initialized = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return initialized;
     }
 }

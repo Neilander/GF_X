@@ -129,7 +129,7 @@ public class InteractionDetector : MonoBehaviour
 
     private static bool TryGetTarget(Collider collider, out InteractionHost target)
     {
-        target = collider.GetComponent<InteractionHost>();
+        target = collider.GetComponentInParent<InteractionHost>();
         return target != null;
     }
 }

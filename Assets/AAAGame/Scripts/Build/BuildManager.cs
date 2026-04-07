@@ -249,11 +249,21 @@ public static class BuildManager
         if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -upgradeBuildingData.Cost, true))
             return false;
 
+        bool built = BuildBuildingInternal(
+            upgradeBuildingId,
+            owner.CachedTransform.position,
+            owner.OwnerFactionID,
+            owner.BuildingInstanceId,
+            checkCondition: true,
+            consumeCoins: false);
+
+        if (!built)
+            return false;
+
         var techData = TechDataModel.GetTechData(techId);
         string techContextKey = owner.BuildingInstanceId;
         InGameDataModel.UnlockTech(techId, techData != null && techData.IsStackable, techContextKey);
 
-        bool built = BuildBuilding(upgradeBuildingId, owner.CachedTransform.position, owner.OwnerFactionID, owner.BuildingInstanceId);
         if (built)
             GF.Entity.HideEntity(owner.Entity);
 
