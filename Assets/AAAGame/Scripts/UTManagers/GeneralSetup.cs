@@ -34,7 +34,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             inputManager.ChangeState(InputState.Game);
         }
         
-        SoldierFactory.ShowSoldier("coder", new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
+        SoldierFactory.ShowSoldier(UnitType.Unit_Hero, new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
     }
 
     public void GeneralSystemShutDown()

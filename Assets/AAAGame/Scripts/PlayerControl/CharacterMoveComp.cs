@@ -11,6 +11,7 @@ public class CharacterMoveComp : IMoveComp
 
     private Vector3 _lastPos;
     private float _stuckTimer = 0f;
+    private bool _isMoving = false;
 
     // === 核心：定义你的绝对水平面高度 ===
     private const float GROUND_Y = 1f;
@@ -125,20 +126,11 @@ public class CharacterMoveComp : IMoveComp
         if (speed <= 0.01f) speed = 5f;
 
         _ctx.MoveExecutor.SetInput(moveDir * speed * 0.1f);
+        
+        // 更新移动状态
+        _isMoving = moveDir.sqrMagnitude > 0.001f;
 
-        // 动画和显示：仅在真实实体上执行
-        if (_ctx is GeneralCreature gc)
-        {
-            if (gc.animator != null)
-                gc.animator.SetFloat("Speed", moveDir.magnitude);
-
-            if (gc.display != null && moveDir.sqrMagnitude > 0.001f)
-            {
-                Vector3 scale = gc.display.localScale;
-                scale.x = moveDir.x < -0.01f ? -Mathf.Abs(scale.x) : (moveDir.x > 0.01f ? Mathf.Abs(scale.x) : scale.x);
-                gc.display.localScale = scale;
-            }
-        }
+        // 动画控制由MAEntity统一处理
     }
 
     public Vector3 GetNavDirection()
@@ -171,4 +163,6 @@ public class CharacterMoveComp : IMoveComp
 
     public void ShutDown() { StopMove(); }
     public void Resume() { }
+    
+    public bool IsMoving => _isMoving;
 }

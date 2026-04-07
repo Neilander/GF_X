@@ -18,9 +18,14 @@ public class MAEntity : CompCreature, IEntityContext
     private MoveExecutor _moveExecutor;
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
+    private Animator _animator;
+    private bool _wasMoving = false;
 
     private IBuffComp _buffComp;
     public IBuffComp BuffComp => _buffComp;
+    
+    private Quaternion? _targetRotation = null;
+    private Transform _modelTransform = null;
 
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
@@ -59,9 +64,8 @@ public class MAEntity : CompCreature, IEntityContext
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
-        //初始化移动和攻击组件
 
-        SetUpMAComp();
+        SetUpMAComp(userData);
 
         durationMoveEffectComp = new DurationMoveEffectComp();
         durationMoveEffectComp.Init(this);
@@ -69,6 +73,30 @@ public class MAEntity : CompCreature, IEntityContext
         cController = GetComponent<CharacterController>();
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
         _moveExecutor.Init(cController);
+        
+        // 像DirectAtkComp一样，直接获取Animator组件
+        _animator = GetComponent<Animator>();
+        if (_animator == null)
+        {
+            // 如果没有，再尝试从display获取
+            _animator = display.GetComponent<Animator>();
+        }
+        
+        // 找到模型Transform（有Animator的子对象）
+        foreach (Transform child in display)
+        {
+            Animator anim = child.GetComponentInChildren<Animator>();
+            if (anim != null)
+            {
+                _modelTransform = child;
+                break;
+            }
+        }
+        
+        if (_modelTransform == null)
+        {
+            _modelTransform = display;
+        }
     }
 
     protected override void OnShow(object userData)
@@ -83,13 +111,11 @@ public class MAEntity : CompCreature, IEntityContext
         // 应用出生自带的 Buff
         if (userData is EntityParams ep)
         {
-            Debug.Log($"MAEntity.OnShow: 准备应用初始Buff，数量={ep.StartBuffs?.Count ?? 0}");
             if (ep.StartBuffs != null)
             {
                 for (int i = 0; i < ep.StartBuffs.Count; i++)
                 {
                     BuffData buff = ep.StartBuffs[i];
-                    Debug.Log($"MAEntity.OnShow: 应用Buff[{i}]: {buff.id}");
                     _buffComp.AddBuff(buff, this);
                 }
             }
@@ -113,14 +139,9 @@ public class MAEntity : CompCreature, IEntityContext
     public void OnKill(MAEntity target)
     {
         // 触发击杀回调，供Buff系统使用
-        Debug.Log($"MAEntity.OnKill被调用: 宿主ID={Id}, 目标ID={target?.Id}");
         if (_buffComp != null)
         {
             _buffComp.OnKill(target);
-        }
-        else
-        {
-            Debug.LogError($"MAEntity.OnKill: Buff组件未初始化");
         }
     }
 
@@ -174,17 +195,95 @@ public class MAEntity : CompCreature, IEntityContext
             atkComp.Attack(dt);
 
         if (Alive)
-        {
-            if (CanRun(durationMoveEffectComp))
-                durationMoveEffectComp.ApplyEffect(dt);
+            {
+                if (CanRun(durationMoveEffectComp))
+                    durationMoveEffectComp.ApplyEffect(dt);
 
-            moveExecutor.Execute();
+                moveExecutor.Execute();
+                
+                // 处理动画和模型朝向
+                if (_animator != null)
+                {
+                    // 获取移动状态
+                    bool isMoving = false;
+                    Vector2 brainMove = Vector2.zero;
+                    
+                    if (Brain != null)
+                    {
+                        // 如果是玩家控制的单位，检查PlayerBrain的移动输入
+                        if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                        {
+                            brainMove = playerBrain.Move;
+                            isMoving = brainMove.sqrMagnitude > 0.001f;
+                        }
+                        else if (moveComp != null) // AI单位使用moveComp的IsMoving
+                        {
+                            isMoving = moveComp.IsMoving;
+                        }
+                    }
+                    
+                    bool isAttacking = atkComp != null && atkComp.IsAttacking;
+                    
+                    // 使用Play方法直接控制动画，只在状态变化时调用
+                    if (!isAttacking)
+                    {
+                        if (isMoving)
+                        {
+                            if (!_wasMoving)
+                            {
+                                _animator.Play("骨架_Move", 0);
+                            }
+                            _wasMoving = true;
+                        }
+                        else
+                        {
+                            if (_wasMoving)
+                            {
+                                _animator.Play("骨架_Idle", 0);
+                            }
+                            _wasMoving = false;
+                        }
+                    }
+                    
+                    // 设置模型朝向（不管是否在移动，只要有移动方向就转向）
+                    if (moveComp != null && Brain != null) // 对所有单位执行旋转
+                    {
+                        Vector3 moveDirection = moveComp.GetNavDirection();
+                        
+                        // 如果PlayerMoveComp返回的方向为零，尝试从PlayerBrain获取
+                        if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                        {
+                            moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
+                        }
+                        
+                        if (moveDirection.sqrMagnitude > 0.001f)
+                        {
+                            _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+                        }
+                    }
+                }
+            }
         }
-    }
+        
+        protected virtual void LateUpdate()
+        {
+            if (_targetRotation.HasValue && Brain != null && _modelTransform != null) // 对所有单位执行旋转
+            {
+                // 尝试旋转模型的子对象（可能模型的实际旋转对象是子对象）
+                Transform rotateTarget = _modelTransform;
+                if (_modelTransform.childCount > 0)
+                {
+                    rotateTarget = _modelTransform.GetChild(0);
+                }
+                
+                rotateTarget.rotation = _targetRotation.Value;
+                _targetRotation = null;
+            }
+        }
 
     #region Move and Attack
 
-    protected virtual void SetUpMAComp()
+    protected virtual void SetUpMAComp(object userData)
     {
         //获取路径
         var row = GF.DataTable.GetDataTable<CharacterMAFactoryTable>().GetDataRows(r => r.CharacterKey == ReferenceId)[0];

@@ -124,6 +124,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/AwaitExtension/WebRequestResult.cs" />
     <Compile Include="Assets/AAAGame/Scripts/HotfixEntry.cs" />
     <Compile Include="Assets/AAAGame/Scripts/PlayerControl/CharacterSkillComp.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Test/EnemySpawner.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/Core/LanguagesTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveCoordinator.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/SequenceNode.cs" />
@@ -168,8 +169,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Tools/ArrangeModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/Card/Controller/CardSystemController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Card/Controller/CardSystemController.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MeleeWeaponSO.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Projectile/Projectile.cs" />
@@ -298,6 +299,7 @@
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/InteractionPanel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/UtilityEx.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Procedures/ArenaProcedure.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Common/Core/Const.Groups.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyDirectAdditiveModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BuffSystem/BuffData.cs" />
@@ -355,6 +357,7 @@
     <Compile Include="Assets/AAAGame/Scripts/Extension/ResourceExtension.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIVariables/TechNodeDetailTips.Variables.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Extension/AD/ApplovinMaxSdkHelper.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/Definition/UnitType.cs" />
     <Compile Include="Assets/AAAGame/Scripts/DataTable/CharacterMAFactoryTable.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Old/Craft/CraftingFormula.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/WeaponHelper.cs" />

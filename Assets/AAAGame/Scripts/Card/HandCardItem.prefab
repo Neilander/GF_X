@@ -110,6 +110,7 @@ MonoBehaviour:
   populationText: {fileID: 5331039530016821878}
   soldierCountText: {fileID: 7165321987210159141}
   canvasGroup: {fileID: 0}
+  cardNameText: {fileID: 8149500767624109142}
   dragScale: 1.2
   hoverScale: 1.1
   animationDuration: 0.2

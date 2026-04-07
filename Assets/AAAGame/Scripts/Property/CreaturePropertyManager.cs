@@ -1,4 +1,4 @@
-﻿using System.Collections;
+﻿﻿﻿﻿﻿using System.Collections;
 using System.Collections.Generic;
 using System;
 using UnityEngine;
@@ -159,15 +159,21 @@ public class CreaturePropertyManager
     
     private static Fix64 GetConfigValue(CreatureMainProperty prop, string creatureType)
     {
-        var table = GF.DataTable.GetDataTable<CharacterMainPropertyTable>();
-        var row = table.GetDataRows(r => r.CharacterKey == creatureType)[0];
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        var rows = table.GetDataRows(r => r.CharacterKey == creatureType);
+        if (rows == null || rows.Length == 0)
+        {
+
+            return Fix64.Zero;
+        }
+        var row = rows[0];
 
         return prop switch
         {
             CreatureMainProperty.PhysicalAtk => (Fix64)row.PhysicalAtk,
-            CreatureMainProperty.SpecialAtk  => (Fix64)row.SpecialAtk,
+            CreatureMainProperty.SpecialAtk  => (Fix64)row.PhysicalAtk,
             CreatureMainProperty.PhysicalDef => (Fix64)row.PhysicalDef,
-            CreatureMainProperty.SpecialDef  => (Fix64)row.SpecialDef,
+            CreatureMainProperty.SpecialDef  => (Fix64)row.PhysicalDef,
             CreatureMainProperty.Health      => (Fix64)row.Health,
             CreatureMainProperty.Speed       => (Fix64)row.Speed,
             CreatureMainProperty.Mana        => (Fix64)row.Mana,

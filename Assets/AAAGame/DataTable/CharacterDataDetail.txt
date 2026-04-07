@@ -1,5 +1,5 @@
 ﻿#	CharacterDataDetail						i18n	i18n																																				
-#	ID	CharacterKey			UniqueValues																																							
+#	ID	CharacterKey			UniqueValues									PhysicalDef	Health	Mana	Speed		PhysicalAtk	WeaponIntervalOne	WeaponTypeOne	WeaponRangeOne	WeaponSpeedOne	WeaponPreOne	WeaponEndOne																			
 #	int	string			Fix64[]	string	string	string	enum[]	int	int	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	enum	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	enum	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64	Fix64
 #			备注1	备注2	独有数值	prefab路径	单位名称（多语言）	单位描述（多语言）	单位标签	产量	人口	模型碰撞	转身速率	护甲	血量	蓝量	移速	视野	武器1攻击力	武器1攻击间隔	武器1攻击类型	武器1攻击距离	武器1弹道速度	武器1前摇	武器1后摇	武器1溅射半径	武器1分裂角度	武器1分裂距离	武器1弹道数量	武器1耗蓝	武器1其他数值	武器2攻击力	武器2攻击间隔	武器2攻击类型	武器2攻击距离	武器2弹道速度	武器2前摇	武器2后摇	武器2溅射半径	武器2分裂角度	武器2分裂距离	武器2弹道数量	武器2耗蓝	武器2其他数值
 	0	Unit_Scapegoat	背锅侠	嘲讽等级+<val1>	1		Unit_Name_Scapegoat	Unit_Desc_Scapegoat	UnitTag.Melee,UnitTag.Creature	4	2	50	0.6	1	85		280	1800	8	1.5	WeaponType.Melee	150		0.4	0.5																			
@@ -13,3 +13,4 @@
 	8	Unit_ColdCarrier	冷库搬运工	单次受到伤害超过<val1>时，超出部分的伤害降低<val2>%	10,75		Unit_Name_ColdCarrier	Unit_Desc_ColdCarrier	UnitTag.Melee,UnitTag.Creature	1	6	120	0.4	2	275		270	1800	22	2	WeaponType.Melee	250		0.5	0.6																			
 	9	Unit_HydroGunner	高压水枪手	扇形无弹道aoe攻击，略微击退较轻的单位			Unit_Name_HydroGunner	Unit_Desc_HydroGunner	UnitTag.Ranged,UnitTag.Creature	2	3	50	0.6	0	70		270	1800	10	1.7	WeaponType.InstantRanged	500		0.4	0.6		45	600																
 	10	Unit_Firefighter	灭火员	有弹道的溅射攻击			Unit_Name_Firefighter	Unit_Desc_Firefighter	UnitTag.Ranged,UnitTag.Creature	2	3	50	0.6	1	80		270	1800	14	1.8	WeaponType.InstantRanged	600		0.5	0.8	300																		
+	11	Unit_Hero	玩家基础英雄				Unit_Name_Hero	Unit_Desc_Hero	UnitTag.Melee,UnitTag.Creature	1	0	50	0.6	0	500		270	1800	8	1	WeaponType.Melee	200		0.4	0.4																			

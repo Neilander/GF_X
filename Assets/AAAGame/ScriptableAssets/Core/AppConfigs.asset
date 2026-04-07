@@ -43,6 +43,7 @@ MonoBehaviour:
   - Japanese
   - Korean
   mProcedures:
+  - ArenaProcedure
   - BuffTestProcedure
   - CardGameProcedure
   - ChangeSceneProcedure

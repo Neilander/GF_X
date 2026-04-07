@@ -39,7 +39,7 @@
         /// <summary>
         /// 士兵预制体
         /// </summary>
-        string SoldierIndex { get; }
+        UnitType SoldierIndex { get; }
 
         /// <summary>
         /// 生成半径

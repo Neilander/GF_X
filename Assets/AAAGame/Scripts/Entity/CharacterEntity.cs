@@ -41,7 +41,7 @@ public class CharacterEntity : SkillEntity
         FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath(skillFacPath), this);
     }
 
-    protected override void SetUpMAComp()
+    protected override void SetUpMAComp(object userData)
     {
         string moveFacPath = "CharacterMoveFactory";
         string atkFacPath = "CharacterAtkFactory";

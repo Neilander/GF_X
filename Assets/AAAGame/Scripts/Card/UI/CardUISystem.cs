@@ -602,12 +602,12 @@ namespace AAAGame.Card.UI
 
         private void SpawnSoldiers(CardData cardData, Vector3 centerPosition)
         {
-            if (cardData == null || cardData.soldierIndex == "") return;
+            if (cardData == null) return;
 
             int soldierCount = cardData.soldierCount;
             float spawnRadius = cardData.spawnRadius;
 
-            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f,cardData.soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, cardData.soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
             //SoldierFactory.ShowSoldier(cardData.soldierIndex,)
             
             /*

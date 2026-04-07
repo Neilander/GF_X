@@ -11,6 +11,8 @@ public class NoAtkComp : IAtkComp
         //这是空行为，什么都不做
     }
 
+    public bool IsAttacking => false;
+    
     public void ShutDown() { }
     public void Resume() { }
 }
