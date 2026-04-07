@@ -20,6 +20,7 @@ namespace AAAGame.Card
         [SerializeField] private TextMeshProUGUI populationText;
         [SerializeField] private TextMeshProUGUI soldierCountText;
         [SerializeField] private CanvasGroup canvasGroup;
+        [SerializeField] private TextMeshProUGUI cardNameText;
 
         [Header("动画设置")]
         [SerializeField] private float dragScale = 1.2f;
@@ -106,6 +107,11 @@ namespace AAAGame.Card
             if (soldierCountText != null)
             {
                 soldierCountText.text = data.SoldierCount.ToString();
+            }
+
+            if (cardNameText != null)
+            {
+                cardNameText.text = data.CardName;
             }
         }
 
