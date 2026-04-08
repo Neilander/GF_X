@@ -20,32 +20,32 @@ public class Vector2IntArrayProperty : IProperty<Vector2Int[]>
     //分类实现Modifier的作用
     protected void ProcessModifiers(ref Vector2Int[] value, EModifierMergeType type)
     {
-        switch (type)
-        {
-            // case EModifierMergeType.Vector2IntArrayAdditive:
-            //     value += _modifiers.OfType<PropertyDirectAdditiveModifier>()
-            //         .OrderBy(m => m.Priority)
-            //         .Aggregate(Fix64.Zero, (sum, mod) => sum + mod.Value);
-            //     break;
-            // case EModifierMergeType.RangeAdditive:
-            //     value += _modifiers.OfType<PropertyDirectAdditiveModifier>()
-            //         .OrderBy(m => m.Priority)
-            //         .Aggregate(Fix64.Zero, (sum, mod) => sum + mod.Value);
-            //     break;
-            // case EModifierMergeType.Vector2IntArrayPreOverride:
-            //     var overrideMods = _modifiers.OfType<PropertyOverrideModifier>()
-            //         .OrderBy(m => m.Priority).ToList();
-            //     if (overrideMods.Any()) value = overrideMods.Last().Value; // Override类型以最后一个为准
-            //     break;
-            //     break;
-            // case EModifierMergeType.Vector2IntArrayFinalOverride:
-            //     var overrideMods = _modifiers.OfType<PropertyOverrideModifier>()
-            //         .OrderBy(m => m.Priority).ToList();
-            //     if (overrideMods.Any()) value = overrideMods.Last().Value; // Override类型以最后一个为准
-            //     break;
-            // default:
-            //     throw new ArgumentOutOfRangeException(nameof(type), type, null);
-        }
+        // switch (type)
+        // {
+        //     // case EModifierMergeType.Vector2IntArrayAdditive:
+        //     //     value += _modifiers.OfType<PropertyDirectAdditiveModifier>()
+        //     //         .OrderBy(m => m.Priority)
+        //     //         .Aggregate(Fix64.Zero, (sum, mod) => sum + mod.Value);
+        //     //     break;
+        //     // case EModifierMergeType.RangeAdditive:
+        //     //     value += _modifiers.OfType<PropertyDirectAdditiveModifier>()
+        //     //         .OrderBy(m => m.Priority)
+        //     //         .Aggregate(Fix64.Zero, (sum, mod) => sum + mod.Value);
+        //     //     break;
+        //     // case EModifierMergeType.Vector2IntArrayPreOverride:
+        //     //     var overrideMods = _modifiers.OfType<PropertyOverrideModifier>()
+        //     //         .OrderBy(m => m.Priority).ToList();
+        //     //     if (overrideMods.Any()) value = overrideMods.Last().Value; // Override类型以最后一个为准
+        //     //     break;
+        //     //     break;
+        //     // case EModifierMergeType.Vector2IntArrayFinalOverride:
+        //     //     var overrideMods = _modifiers.OfType<PropertyOverrideModifier>()
+        //     //         .OrderBy(m => m.Priority).ToList();
+        //     //     if (overrideMods.Any()) value = overrideMods.Last().Value; // Override类型以最后一个为准
+        //     //     break;
+        //     // default:
+        //     //     throw new ArgumentOutOfRangeException(nameof(type), type, null);
+        // }
     }
 
 

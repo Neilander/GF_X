@@ -1167,15 +1167,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   UnitRepulsionStrength: 50
   UnitAttractionStrength: 2
-  UnitEquilibriumRadius: 3
+  UnitEquilibriumRadius: 0.5
   UnitMaxInfluenceRange: 18.5
   LeaderRepulsionStrength: 50
   LeaderAttractionStrength: 2
-  LeaderEquilibriumRadius: 5.25
+  LeaderEquilibriumRadius: 0.5
   LeaderMaxInfluenceRange: 18.5
   EnemyRepulsionStrength: 50
   EnemyAttractionStrength: 10
-  EnemyEquilibriumRadius: 1.5
+  EnemyEquilibriumRadius: 0.5
   EnemyMaxInfluenceRange: 15
   ObstacleWeight: 100
   MoveThreshold: 3

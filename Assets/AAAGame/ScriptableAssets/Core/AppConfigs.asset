@@ -19,6 +19,7 @@ MonoBehaviour:
   - CharacterMAFactoryTable
   - CharacterMainPropertyTable
   - LevelTable
+  - Build/BuildingTable
   - Build/DeviceTable
   - Core/EntityGroupTable
   - Core/LanguagesTable
@@ -54,3 +55,6 @@ MonoBehaviour:
   - PreloadProcedure
   - RangedWeaponTestProcedure
   - SampleProcedure
+  - LaunchProcedure
+  - LoadHotfixDllProcedure
+  - UpdateResourcesProcedure

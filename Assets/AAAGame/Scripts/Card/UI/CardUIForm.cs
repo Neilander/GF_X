@@ -329,7 +329,8 @@ namespace AAAGame.Card
         {
             m_DraggingCard = null;
             
-            Log.Info($"[CardUI] OnCardEndDrag - Screen Position: {screenPosition}");
+            Log.Info($"[CardUI] ========== OnCardEndDrag START ==========");
+            Log.Info($"[CardUI] Screen Position: {screenPosition}");
             
             // 隐藏垃圾桶
             if (trashBin != null)
@@ -343,13 +344,29 @@ namespace AAAGame.Card
                 areaMaterialOverlay.HideAreaEffect();
             }
             
-            // 检查是否在垃圾桶区域（优先检查）
+            // 优先级 1：检查是否拖回手牌区域（最高优先级，直接取消放置）
+            bool isOverHand = IsOverHandCardArea(screenPosition);
+            Log.Info($"[CardUI] ✅ Is over hand area: {isOverHand}");
+            
+            if (isOverHand)
+            {
+                Log.Info("[CardUI] ✅✅✅ Card dragged back to hand, CANCELING PLACEMENT");
+                // 取消放置（重要！防止生成对象）
+                m_CardSystemController.CancelPlacement();
+                Log.Info("[CardUI] ✅✅✅ Placement canceled, returning false");
+                return false;
+            }
+            
+            // 优先级 2：检查是否在垃圾桶区域
             bool isInTrash = IsInTrashBin(screenPosition);
             Log.Info($"[CardUI] Is in trash bin: {isInTrash}");
             
             if (isInTrash)
             {
                 Log.Info($"[CardUI] ✅ Discarding card: {cardItem.GetCardModel().GetCardName()}");
+                
+                // 取消放置（防止生成对象）
+                m_CardSystemController.CancelPlacement();
                 
                 // 先通知 HandCardItem 停止拖拽状态并播放消失动画
                 cardItem.OnDiscardSuccess();
@@ -373,17 +390,7 @@ namespace AAAGame.Card
                 return true;
             }
             
-            // 检查是否拖回手牌区域
-            bool isOverHand = IsOverHandCardArea(screenPosition);
-            Log.Info($"[CardUI] Is over hand area: {isOverHand}");
-            
-            if (isOverHand)
-            {
-                Log.Info("[CardUI] Card dragged back to hand");
-                return false;
-            }
-            
-            // 尝试确认放置到场景
+            // 优先级 3：尝试确认放置到场景
             Log.Info("[CardUI] Attempting to place card in scene");
             bool placed = m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel());
             Log.Info($"[CardUI] Card placement result: {placed}");
@@ -400,10 +407,11 @@ namespace AAAGame.Card
             }
             else
             {
-                Log.Info($"[CardUI] 放置失败");
+                Log.Info($"[CardUI] ❌ Placement failed, canceling");
                 m_CardSystemController.CancelPlacement();
             }
 
+            Log.Info($"[CardUI] ========== OnCardEndDrag END (returned {placed}) ==========");
             return placed;
         }
         
@@ -452,22 +460,47 @@ namespace AAAGame.Card
         /// </summary>
         private bool IsOverHandCardArea(Vector2 screenPosition)
         {
-            if (handCardArea == null)
+            RectTransform targetRect = null;
+            
+            // 优先使用 handCardArea
+            if (handCardArea != null)
             {
-                if (handCardContainer != null && handCardContainer.parent != null)
-                {
-                    var parentRect = handCardContainer.parent.GetComponent<RectTransform>();
-                    if (parentRect != null)
-                    {
-                        return RectTransformUtility.RectangleContainsScreenPoint(
-                            parentRect, screenPosition, GFBuiltin.UICamera);
-                    }
-                }
+                targetRect = handCardArea;
+            }
+            // 如果没有配置 handCardArea，使用 handCardContainer 的父级
+            else if (handCardContainer != null && handCardContainer.parent != null)
+            {
+                targetRect = handCardContainer.parent.GetComponent<RectTransform>();
+            }
+            // 最后尝试使用 handCardContainer 本身
+            else if (handCardContainer != null)
+            {
+                targetRect = handCardContainer.GetComponent<RectTransform>();
+            }
+            
+            if (targetRect == null)
+            {
+                Log.Warning("[CardUI] No valid hand card area RectTransform found");
                 return false;
             }
             
-            return RectTransformUtility.RectangleContainsScreenPoint(
-                handCardArea, screenPosition, GFBuiltin.UICamera);
+            // 尝试两种方式：使用 UICamera 和使用 null（Overlay 模式）
+            Camera uiCamera = GFBuiltin.UICamera;
+            
+            // 方法 1：使用 UICamera
+            bool result1 = RectTransformUtility.RectangleContainsScreenPoint(
+                targetRect, screenPosition, uiCamera);
+            
+            // 方法 2：使用 null（适用于 Overlay 模式的 Canvas）
+            bool result2 = RectTransformUtility.RectangleContainsScreenPoint(
+                targetRect, screenPosition, null);
+            
+            Log.Info($"[CardUI] IsOverHandCardArea - With Camera: {result1}, Without Camera (null): {result2}");
+            Log.Info($"[CardUI] Target rect: {targetRect.name}, Camera: {(uiCamera != null ? uiCamera.name : "null")}");
+            Log.Info($"[CardUI] Screen Position: {screenPosition}");
+            
+            // 如果任何一个方法返回 true，就认为在手牌区域
+            return result1 || result2;
         }
 
         /// <summary>

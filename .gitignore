@@ -1,17 +1,12 @@
-/HybridCLRData/AssembliesPostIl2CppStrip
-/HybridCLRData/HotUpdateDlls
-/HybridCLRData/LocalIl2CppData
 /Test_BackUpThisFolder_ButDontShipItWithYourGame
 /Library
 /Logs
 /obj
+/.specstory
 /.vs
 /Temp
-/.specstory
-/HybridCLRData/LocalIl2CppData-WindowsEditor
 /Assets/GUI PRO Kit - Casual Game/PSD
 /Assets/GUI PRO Kit - Casual Game/Scenes
-/HybridCLRData/StrippedAOTDllsTempProj
 /BuildApp_BurstDebugInformation_DoNotShip
 /AB/BuildReport
 /AB/Full
@@ -25,11 +20,5 @@
 /Assets/Resources/AotDlls
 /UserSettings/
 /Assets/AIDoc/
-AAAGame.Tests.Editor.csproj
-Assembly-CSharp.csproj
-Assembly-CSharp-Editor.csproj
-Avenge.sln
-Builtin.Runtime.csproj
-Hotfix.csproj
-.csproj
-Assets/AAAGame/Font/Common/AlibabaPuHuiTi-3-85-Bold SDF.asset
+*.sln
+*.csproj

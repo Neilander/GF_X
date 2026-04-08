@@ -73,11 +73,21 @@ namespace AAAGame.Card
         {
             m_PopulationModel.SetMaxPopulation(maxPopulation);
             
-            // 触发人口变化事件
+            // 触发人口变化事件（C# 事件）
             OnPopulationChanged?.Invoke(
                 m_PopulationModel.CurrentPopulation,
                 m_PopulationModel.MaxPopulation,
                 0);
+            
+            // 触发人口变化事件（GameFramework 事件系统）
+            GameFramework.Event.GameEventArgs e = PopulationChangedEventArgs.Create(
+                m_PopulationModel.CurrentPopulation,
+                m_PopulationModel.MaxPopulation,
+                0);
+            GF.Event.Fire(this, e);
+            GameFramework.ReferencePool.Release(e);
+            
+            Debug.Log($"[Card] Max population set to: {maxPopulation}");
         }
 
         /// <summary>
@@ -224,11 +234,19 @@ namespace AAAGame.Card
                 return false;
             }
 
-            // 触发人口变化事件
+            // 触发人口变化事件（C# 事件）
             OnPopulationChanged?.Invoke(
                 m_PopulationModel.CurrentPopulation,
                 m_PopulationModel.MaxPopulation,
                 populationCost);
+            
+            // 触发人口变化事件（GameFramework 事件系统）
+            GameFramework.Event.GameEventArgs populationEvent = PopulationChangedEventArgs.Create(
+                m_PopulationModel.CurrentPopulation,
+                m_PopulationModel.MaxPopulation,
+                -populationCost); // 负数表示消耗
+            GF.Event.Fire(this, populationEvent);
+            GameFramework.ReferencePool.Release(populationEvent);
 
             // 从手牌移除
             m_HandCardController.RemoveCard(cardModel);
@@ -237,11 +255,11 @@ namespace AAAGame.Card
             OnCardPlayed?.Invoke(cardModel);
             
             // 触发卡牌打出事件（GameFramework 事件系统）
-            GameFramework.Event.GameEventArgs e = CardPlayedEventArgs.Create(cardModel);
-            GF.Event.Fire(this, e);
-            GameFramework.ReferencePool.Release(e);
+            GameFramework.Event.GameEventArgs cardEvent = CardPlayedEventArgs.Create(cardModel);
+            GF.Event.Fire(this, cardEvent);
+            GameFramework.ReferencePool.Release(cardEvent);
 
-            Debug.Log($"[Card] Card played: {cardModel.GetCardName()}");
+            Debug.Log($"[Card] Card played: {cardModel.GetCardName()}, Population: {m_PopulationModel.CurrentPopulation}/{m_PopulationModel.MaxPopulation}");
             return true;
         }
 

@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.AI;
 using System.Collections.Generic;
 
@@ -90,6 +90,7 @@ public static class ClusterSpawnSystem
     public static bool SpawnCluster(Vector3 center, int count, float radius, float minDistance,
         UnitType unitIndex, SideType side, BrainType brainType)
     {
+        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
         List<Vector3> spawnPositions = new List<Vector3>();
         
         // 直接生成单位，不做复杂验证
