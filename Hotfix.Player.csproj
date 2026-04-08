@@ -162,8 +162,8 @@
     <Compile Include="Assets/AAAGame/Scripts/Tools/ArrangeModel.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyFinalMultiplicativeModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/UI/UIItemVariables/CraftingUnit.Variables.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Controller/CardSystemController.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/PortView.cs" />
     <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/MeleeWeaponSO.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyOverrideModifier.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Projectile/Projectile.cs" />
