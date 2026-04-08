@@ -353,7 +353,7 @@ namespace UGF.EditorTools
             serializedObject.ApplyModifiedProperties();
         }
 
-        
+
 
         private void SaveConfig(AppConfigs cfg)
         {
@@ -394,15 +394,40 @@ namespace UGF.EditorTools
         {
             procedures ??= new ItemData[0];
             ArrayUtility.Clear(ref procedures);
-            var hotfixDlls = Utility.Assembly.GetAssemblies().Where(dll => HybridCLR.Editor.SettingsUtil.HotUpdateAssemblyNamesIncludePreserved.Contains(dll.GetName().Name)).ToArray();
 
-            foreach (var item in hotfixDlls)
+            // 优先扫描 HybridCLR HotUpdate 程序集；若为空则回退到所有已加载程序集
+            var allAssemblies = Utility.Assembly.GetAssemblies();
+            var hotfixNames = HybridCLR.Editor.SettingsUtil.HotUpdateAssemblyNamesIncludePreserved;
+            var targetAssemblies = allAssemblies.Where(a => hotfixNames.Contains(a.GetName().Name)).ToArray();
+            if (targetAssemblies.Length == 0)
             {
-                var proceClassArr = item.GetTypes().Where(tp => tp.BaseType == typeof(ProcedureBase)).ToArray();
+                targetAssemblies = allAssemblies;
+            }
+
+            foreach (var asm in targetAssemblies)
+            {
+                System.Type[] types;
+                try
+                {
+                    types = asm.GetTypes();
+                }
+                catch (System.Reflection.ReflectionTypeLoadException ex)
+                {
+                    types = ex.Types.Where(t => t != null).ToArray();
+                }
+                catch
+                {
+                    // 任何取类型失败的程序集直接跳过
+                    continue;
+                }
+
+                // 接受所有非抽象、间接或直接继承 ProcedureBase 的类型
+                var proceClassArr = types.Where(tp => tp != null && tp.IsSubclassOf(typeof(ProcedureBase)) && !tp.IsAbstract).ToArray();
                 foreach (var proceClass in proceClassArr)
                 {
                     var proceName = proceClass.FullName;
-                    ArrayUtility.Add(ref procedures, new ItemData(cfg.Procedures.Contains(proceName), proceName));
+                    bool isSelected = (cfg.Procedures != null) && cfg.Procedures.Contains(proceName);
+                    ArrayUtility.Add(ref procedures, new ItemData(isSelected, proceName));
                 }
             }
         }

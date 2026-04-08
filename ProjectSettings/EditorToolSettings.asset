@@ -32,4 +32,3 @@ MonoBehaviour:
   BaiduTransAppId: 
   BaiduTransSecretKey: 
   BaiduTransMaxLength: 2000
-  UIFieldToolUseSerializeMode: 1

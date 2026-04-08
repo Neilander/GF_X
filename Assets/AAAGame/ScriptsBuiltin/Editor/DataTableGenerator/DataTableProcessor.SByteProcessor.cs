@@ -42,7 +42,7 @@ namespace GameFramework.Editor.DataTableTools
 
             public override sbyte Parse(string value)
             {
-                return sbyte.Parse(value);
+                return DataTableExtension.ParseSByte(value);
             }
 
             public override void WriteToStream(DataTableProcessor dataTableProcessor, BinaryWriter binaryWriter, string value)

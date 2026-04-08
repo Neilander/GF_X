@@ -62,10 +62,28 @@ public static class UIExtension
     /// <returns></returns>
     public static Vector3 PositionWorldToUI(this UIComponent uiCom, Vector3 worldPos, RectTransform targetRect)
     {
-        var viewPos = GF.Scene.MainCamera.WorldToViewportPoint(worldPos);
-        var uiPos = GF.UICamera.ViewportToScreenPoint(viewPos);
+        if (targetRect == null)
+            return Vector3.zero;
 
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(targetRect, uiPos, GF.UICamera, out var localPoint);
+        // 关键点：不要混用 MainCamera 的 viewport 与 UICamera 的 viewport。
+        // 直接用 MainCamera 计算真实屏幕像素坐标，再按 Canvas 渲染模式选择正确的 UI 相机做转换。
+        var mainCamera = GF.Scene?.MainCamera;
+        if (mainCamera == null)
+            return Vector3.zero;
+
+        Vector3 screenPos = mainCamera.WorldToScreenPoint(worldPos);
+
+        Camera uiCamera = GF.UICamera;
+        var canvas = targetRect.GetComponentInParent<Canvas>();
+        if (canvas != null)
+        {
+            if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+                uiCamera = null;
+            else if (canvas.worldCamera != null)
+                uiCamera = canvas.worldCamera;
+        }
+
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(targetRect, screenPos, uiCamera, out var localPoint);
         return localPoint;
     }
     /// <summary>

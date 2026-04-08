@@ -17,9 +17,6 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/AAAGame/Scene/LevelTestScene.unity
     guid: 14221fbc414ccd840a506298acf440d7
-  - enabled: 1
-    path: Assets/AAAGame/Scene/Arena.unity
-    guid: 41ab55cd586da4b799affc5541e2d774
   m_configObjects:
     com.unity.input.settings: {fileID: 11400000, guid: f4d8482f34dd84c82bd30dadf32c6b61, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: f51559efafeaf4f21a2302dc163bed19, type: 3}

@@ -43,7 +43,7 @@ namespace GameFramework.Editor.DataTableTools
 
             public override uint Parse(string value)
             {
-                return uint.Parse(value);
+                return DataTableExtension.ParseUInt32(value);
             }
 
             public override void WriteToStream(DataTableProcessor dataTableProcessor, BinaryWriter binaryWriter, string value)
