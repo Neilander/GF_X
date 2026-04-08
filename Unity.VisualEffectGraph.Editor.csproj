@@ -47,8 +47,8 @@
   <ItemGroup>
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Slots/Implementations/VFXSlotEncapsulated.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Blocks/Implementations/Position/PositionMesh.cs" />
-    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Blocks/Implementations/Spawn/VFXSpawnerSetAttribute.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/Floor.cs" />
+    <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Blocks/Implementations/Spawn/VFXSpawnerSetAttribute.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Expressions/VFXExpressionBuffer.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Models/Operators/Implementations/Exp.cs" />
     <Compile Include="Library/PackageCache/com.unity.visualeffectgraph@14.0.12/Editor/Controls/VFXStringFieldPushButton.cs" />

@@ -385,8 +385,8 @@
     <Compile Include="Assets/AAAGame/Scripts/NeilUtility/MessageSystem/Singleton.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Old/Craft/Item.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Property/Modifier/PropertyClampModifier.cs" />
-    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/EventArgs/IngameDataChangedEventArgs.cs" />
+    <Compile Include="Assets/AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs" />
     <Compile Include="Assets/AAAGame/Scripts/BehaviorTree/BTContext.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Movement/GroupMoveObstacle.cs" />
     <Compile Include="Assets/AAAGame/Scripts/Card/Editor/CardUISystemEditor.cs" />
