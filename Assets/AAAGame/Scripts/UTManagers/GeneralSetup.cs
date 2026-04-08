@@ -92,7 +92,7 @@ public partial class GeneralSetup : GameFrameworkComponent
                         PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
                 }
                 
-                HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
+                HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, creature.Side==SideType.PlayerSide);
             }
 
             // SoldierAIBrain 需要重新 Inject（玩家可能在它之后创建）
