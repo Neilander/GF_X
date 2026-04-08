@@ -43,7 +43,7 @@ namespace GameFramework.Editor.DataTableTools
 
             public override ushort Parse(string value)
             {
-                return ushort.Parse(value);
+                return DataTableExtension.ParseUInt16(value);
             }
 
             public override void WriteToStream(DataTableProcessor dataTableProcessor, BinaryWriter binaryWriter, string value)

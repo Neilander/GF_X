@@ -23,27 +23,6 @@
         "com.unity.ugui": "1.0.0"
       }
     },
-    "com.code-philosophy.hybridclr": {
-      "version": "https://gitee.com/focus-creative-games/hybridclr_unity.git",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "d505624c78e6d1d2d53efd716abe7349b611681e"
-    },
-    "com.code-philosophy.obfuz": {
-      "version": "https://gitee.com/focus-creative-games/obfuz.git",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "5557b277243062c51436fff242b753e13fbf0db0"
-    },
-    "com.code-philosophy.obfuz4hybridclr": {
-      "version": "https://gitee.com/focus-creative-games/obfuz4hybridclr.git",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "59804e17a0d1562ca0f847db986ed93b25825b6d"
-    },
     "com.coplaydev.unity-mcp": {
       "version": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main",
       "depth": 0,

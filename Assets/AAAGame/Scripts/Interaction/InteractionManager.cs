@@ -39,6 +39,7 @@ public class InteractionManager : MonoBehaviour
         if (detector != null)
         {
             detector.MaxDistance = interactionRange;
+            detector.TriggerPadding = triggerPadding;
 
             var sphere = detector.GetComponent<SphereCollider>();
             if (sphere != null)
@@ -71,16 +72,8 @@ public class InteractionManager : MonoBehaviour
 
     private void HandleInput()
     {
-        if (_currentTarget == null)
-            return;
-
-        InputKey? optKey = _inputModel.InteractionPressed ? InputKey.InteractionPrimary
-            : _inputModel.Interaction2Pressed ? InputKey.InteractionSecondary
-            : _inputModel.Interaction3Pressed ? InputKey.InteractionTertiary
-            : null;
-        if (!optKey.HasValue)
-            return;
-        _currentTarget.TryExecute(optKey.Value);
+        // 交互执行统一交给 InteractOptionTips（鼠标长按 / 可选按键长按）。
+        // 这里不再做按键瞬发执行，避免绕过长按进度逻辑。
     }
 
     private bool EnsureInputModel()
@@ -154,11 +147,16 @@ public class InteractionManager : MonoBehaviour
         if (!target.IsInteractable())
             return false;
 
-        float dist = Vector3.Distance(actorPos, target.Transform.position);
-        if (dist > interactionRange)
+        var collider = target.GetComponent<Collider>();
+        float dist = collider != null
+            ? Vector3.Distance(actorPos, collider.ClosestPoint(actorPos))
+            : Vector3.Distance(actorPos, target.Transform.position);
+
+        float effectiveRange = interactionRange * 0.85f;
+        if (dist > effectiveRange)
             return false;
 
-        float distanceScore = 1f - Mathf.Clamp01(dist / interactionRange);
+        float distanceScore = 1f - Mathf.Clamp01(dist / Mathf.Max(0.001f, effectiveRange));
 
         Vector3 toTarget = target.Transform.position - actorPos;
         Vector3 dir = toTarget.sqrMagnitude <= 1e-8f ? actorForward : toTarget.normalized;

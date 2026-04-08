@@ -9,6 +9,8 @@ public partial class InteractOptionUnit
 	[Space(10)]
 	[Header("UI Variables:")]
 	[SerializeField] private TextMeshProUGUI varOptionKey = null;
-	[SerializeField] private TextMeshProUGUI varOptionText = null;
-	[SerializeField] public RectTransform varOptionCost = null;
+	[SerializeField] private TextMeshProUGUI varOptionName = null;
+	[SerializeField] private RectTransform varOptionCost = null;
+	[SerializeField] private HoldProgress varFillProgress = null;
+	[SerializeField] private TextMeshProUGUI varOptionDesc = null;
 }
