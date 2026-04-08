@@ -110,16 +110,16 @@ public class CharacterMainPropertyTable : DataRowBase
 
             int index = 0;
             index++;
-            m_Id = int.Parse(columnStrings[index++]);
+            m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
             index++;
             CharacterKey = columnStrings[index++];
-            PhysicalAtk = int.Parse(columnStrings[index++]);
-            SpecialAtk = int.Parse(columnStrings[index++]);
-            PhysicalDef = int.Parse(columnStrings[index++]);
-            SpecialDef = int.Parse(columnStrings[index++]);
-            Health = int.Parse(columnStrings[index++]);
-            Speed = int.Parse(columnStrings[index++]);
-            Mana = int.Parse(columnStrings[index++]);
+            PhysicalAtk = DataTableExtension.ParseInt32(columnStrings[index++]);
+            SpecialAtk = DataTableExtension.ParseInt32(columnStrings[index++]);
+            PhysicalDef = DataTableExtension.ParseInt32(columnStrings[index++]);
+            SpecialDef = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Health = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Speed = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Mana = DataTableExtension.ParseInt32(columnStrings[index++]);
 
             return true;
         }
