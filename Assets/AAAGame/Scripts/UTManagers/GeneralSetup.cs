@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -63,6 +63,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             // 给所有生物挂血条
             if (ma is GeneralCreature creature)
             {
+                Log.Info($"Unit {ma.Id} created: type={ma.GetType().Name}, side={creature.Side}");
                 float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                 float max = originalMax;
                 
@@ -92,7 +93,10 @@ public partial class GeneralSetup : GameFrameworkComponent
                         PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
                 }
                 
-                HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
+                // 根据单位的Side判断阵营，友方显示绿色血条，敌方显示红色血条
+                bool isFriendly = creature.Side == SideType.PlayerSide;
+                Log.Info($"Creating health bar for unit {creature.Id}, side={creature.Side}, isFriendly={isFriendly}");
+                HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, isFriendly);
             }
 
             // SoldierAIBrain 需要重新 Inject（玩家可能在它之后创建）
