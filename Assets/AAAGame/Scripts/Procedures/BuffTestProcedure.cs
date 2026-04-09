@@ -137,8 +137,8 @@ public class BuffTestProcedure : ProcedureBase
                             PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
                         
                         // 显示治疗跳字
-                        Vector3 startPos = creature.transform.position + new Vector3(0, 1.0f, 0);
-                        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
+                        Vector3 startPos = creature.transform.position + new Vector3(0, 2.0f, 0);
+                        Vector3 endPos = startPos + new Vector3(0, 1.5f, 0);
                         Log.Info($"Heal pop text: healAmount={healAmount}, startPos={startPos}, endPos={endPos}");
                         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), $"+{healAmount}", endPos, DamageTextType.Heal);
                     }
