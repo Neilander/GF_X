@@ -5,6 +5,9 @@ using GameFramework.Fsm;
 using GameFramework.Event;
 using UnityEngine;
 using System.Collections.Generic;
+using System;
+using System.Linq;
+using System.Reflection;
 
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public class ChangeSceneProcedure : ProcedureBase
@@ -45,14 +48,70 @@ public class ChangeSceneProcedure : ProcedureBase
     /// <summary>
     /// 已知的有效 Procedure 名称集合
     /// </summary>
-    public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
-    {
-        "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure" // 新增：远程武器测试流程和Buff测试流程
-        ,"CardGameProcedure", "ArenaProcedure"
-    };
+    public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>();
+
+    private static Dictionary<string, Type> s_ProcedureTypes;
     
     // 确保BuffTestProcedure被编译到程序集中
     private static System.Type _buffTestProcedureType = typeof(BuffTestProcedure);
+
+    static ChangeSceneProcedure()
+    {
+        RebuildProcedureTypeCache();
+    }
+
+    private static void RebuildProcedureTypeCache()
+    {
+        s_ProcedureTypes = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(assembly =>
+            {
+                try
+                {
+                    return assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    return ex.Types.Where(t => t != null);
+                }
+            })
+            .Where(type => type != null
+                           && typeof(ProcedureBase).IsAssignableFrom(type)
+                           && type.IsClass
+                           && !type.IsAbstract)
+            .GroupBy(type => type.Name)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        ValidProcedureNames.Clear();
+        foreach (var name in s_ProcedureTypes.Keys)
+        {
+            ValidProcedureNames.Add(name);
+        }
+    }
+
+    private bool TryChangeStateByName(IFsm<IProcedureManager> procedureOwner, string procedureName)
+    {
+        if (s_ProcedureTypes == null || s_ProcedureTypes.Count == 0)
+        {
+            RebuildProcedureTypeCache();
+        }
+
+        if (!s_ProcedureTypes.TryGetValue(procedureName, out var targetType))
+        {
+            return false;
+        }
+
+        var method = typeof(ProcedureBase)
+            .GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .FirstOrDefault(m => m.Name == "ChangeState" && m.IsGenericMethodDefinition && m.GetParameters().Length == 1);
+        if (method == null)
+        {
+            return false;
+        }
+
+        var genericMethod = method.MakeGenericMethod(targetType);
+        genericMethod.Invoke(this, new object[] { procedureOwner });
+        return true;
+    }
 
     /// <summary>
     /// 要加载的场景资源名,相对于场景目录
@@ -120,42 +179,10 @@ public class ChangeSceneProcedure : ProcedureBase
         }
 
         // 根据 targetProcedure 切换到对应 Procedure
-        switch (targetProcedure)
+        if (!TryChangeStateByName(procedureOwner, targetProcedure))
         {
-            case "MenuProcedure":
-                ChangeState<MenuProcedure>(procedureOwner);
-                break;
-            case "GameProcedure":
-                ChangeState<GameProcedure>(procedureOwner);
-                break;
-            case "LevelTestProcedure":
-                ChangeState<LevelTestProcedure>(procedureOwner);
-                break;
-            case "SampleProcedure":
-                ChangeState<SampleProcedure>(procedureOwner);
-                break;
-            case "RangedWeaponTestProcedure": // 新增：远程武器测试流程
-                ChangeState<RangedWeaponTestProcedure>(procedureOwner);
-                break;
-            
-            case "BuffTestProcedure":
-                ChangeState<BuffTestProcedure>(procedureOwner);
-                break;
-                
-            case "TestProcedure":
-                ChangeState<TestProcedure>(procedureOwner);
-                break;
-            case "CardGameProcedure":
-                ChangeState<CardGameProcedure>(procedureOwner);
-                break;
-            
-            case "ArenaProcedure":
-                ChangeState<ArenaProcedure>(procedureOwner);
-                break;
-            
-            default:
-                ChangeState<CharacterTestProcedure>(procedureOwner);
-                break;
+            Log.Warning("Procedure '{0}' 不存在，回退到 CharacterTestProcedure", targetProcedure);
+            ChangeState<CharacterTestProcedure>(procedureOwner);
         }
     }
 

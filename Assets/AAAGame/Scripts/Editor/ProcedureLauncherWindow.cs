@@ -1,22 +1,17 @@
 using UnityEditor;
 using UnityEngine;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using GameFramework.Procedure;
 
 [InitializeOnLoad]
 public class ProcedureLauncherWindow : EditorWindow
 {
-    // 硬编码的 Procedure 选项列表
-    private static readonly string[] ProcedureNames =
-    {
-        "CharacterTestProcedure",
-        "MenuProcedure",
-        "GameProcedure",
-        "LevelTestProcedure",
-        "SampleProcedure",
-        "RangedWeaponTestProcedure", // 新增：远程武器测试流程
-        "BuffTestProcedure", // 新增：Buff测试流程
-        "CardGameProcedure",
-        "ArenaProcedure"
-    };
+    // 运行时动态发现的 Procedure 列表
+    private static string[] s_ProcedureNames = { "CharacterTestProcedure" };
+    private const string SceneRootFolder = "Assets/AAAGame/Scene";
 
     private const string PrefKey_Selected = "Procedure_Selected";
     private const string PrefKey_SceneName = "Procedure_SceneName";
@@ -31,14 +26,8 @@ public class ProcedureLauncherWindow : EditorWindow
     private const string PrefKey_EnemyY = "Test_EnemyY";
     private const string PrefKey_EnemyZ = "Test_EnemyZ";
 
-    // 可选场景列表（硬编码项目中的游戏场景）
-    private static readonly string[] SceneNames =
-    {
-        "Game",
-        "LevelTestScene",
-        "CharacterAndSkillTestScene",
-        "Arena"
-    };
+    // 运行时动态发现的场景列表（仅来自 Assets/AAAGame/Scene）
+    private static string[] s_SceneNames = { "Game" };
 
     private int _selectedIndex;
     private int _sceneIndex;
@@ -48,27 +37,69 @@ public class ProcedureLauncherWindow : EditorWindow
         EditorApplication.delayCall += LoadToStatic;
     }
 
+    private static void RefreshDynamicOptions()
+    {
+        s_ProcedureNames = TypeCache.GetTypesDerivedFrom<ProcedureBase>()
+            .Where(t => t.IsClass && !t.IsAbstract && !t.IsGenericType)
+            .Select(t => t.Name)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToArray();
+
+        var appConfigs = AppConfigs.GetInstanceEditor();
+        if (appConfigs != null && appConfigs.Procedures != null && appConfigs.Procedures.Length > 0)
+        {
+            s_ProcedureNames = s_ProcedureNames
+                .Concat(appConfigs.Procedures.Where(name => !string.IsNullOrEmpty(name)))
+                .Distinct()
+                .OrderBy(n => n)
+                .ToArray();
+        }
+
+        if (s_ProcedureNames.Length == 0)
+        {
+            s_ProcedureNames = new[] { "CharacterTestProcedure" };
+        }
+
+        var projectSceneNames = AssetDatabase.FindAssets("t:Scene", new[] { SceneRootFolder })
+            .Select(AssetDatabase.GUIDToAssetPath)
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(name => !string.IsNullOrEmpty(name));
+
+        s_SceneNames = projectSceneNames
+            .Distinct()
+            .OrderBy(n => n)
+            .ToArray();
+
+        if (s_SceneNames.Length == 0)
+        {
+            s_SceneNames = new[] { "Game" };
+        }
+    }
+
     /// <summary>
     /// 编辑器启动 / 脚本重编译后，从 EditorPrefs 恢复设置到静态字段
     /// </summary>
     static void LoadToStatic()
     {
+        RefreshDynamicOptions();
+
         // 恢复选中的 Procedure，校验有效性
         string saved = EditorPrefs.GetString(PrefKey_Selected, "CharacterTestProcedure");
-        if (!ChangeSceneProcedure.ValidProcedureNames.Contains(saved))
+        if (Array.IndexOf(s_ProcedureNames, saved) < 0)
         {
             Debug.LogWarning($"[ProcedureLauncher] EditorPrefs 中的 Procedure '{saved}' 无效，回退到 CharacterTestProcedure");
-            saved = "CharacterTestProcedure";
+            saved = s_ProcedureNames[0];
             EditorPrefs.SetString(PrefKey_Selected, saved);
         }
         ChangeSceneProcedure.SelectedProcedureForGame = saved;
 
         // 恢复选中的场景，校验有效性
         string savedScene = EditorPrefs.GetString(PrefKey_SceneName, "Game");
-        if (System.Array.IndexOf(SceneNames, savedScene) < 0)
+        if (Array.IndexOf(s_SceneNames, savedScene) < 0)
         {
             Debug.LogWarning($"[ProcedureLauncher] EditorPrefs 中的场景 '{savedScene}' 无效，回退到 Game");
-            savedScene = "Game";
+            savedScene = s_SceneNames[0];
             EditorPrefs.SetString(PrefKey_SceneName, savedScene);
         }
         ChangeSceneProcedure.SelectedSceneForGame = savedScene;
@@ -101,31 +132,82 @@ public class ProcedureLauncherWindow : EditorWindow
 
     private void OnEnable()
     {
+        RefreshDynamicOptions();
+        EditorBuildSettings.sceneListChanged += OnSceneListChanged;
+        EditorApplication.projectChanged += OnProjectChanged;
+
         // 从 EditorPrefs 恢复选中索引
         string saved = EditorPrefs.GetString(PrefKey_Selected, "CharacterTestProcedure");
-        _selectedIndex = System.Array.IndexOf(ProcedureNames, saved);
+        _selectedIndex = Array.IndexOf(s_ProcedureNames, saved);
         if (_selectedIndex < 0) _selectedIndex = 0;
 
         // 恢复场景选择索引
         string savedScene = EditorPrefs.GetString(PrefKey_SceneName, "Game");
-        _sceneIndex = System.Array.IndexOf(SceneNames, savedScene);
+        _sceneIndex = Array.IndexOf(s_SceneNames, savedScene);
         if (_sceneIndex < 0) _sceneIndex = 0;
 
         // 同步加载 CharacterTest 设置
         LoadCharacterTestSettings();
     }
 
+    private void OnDisable()
+    {
+        EditorBuildSettings.sceneListChanged -= OnSceneListChanged;
+        EditorApplication.projectChanged -= OnProjectChanged;
+    }
+
+    private void OnSceneListChanged()
+    {
+        RefreshDynamicOptions();
+        ClampIndexes();
+        Repaint();
+    }
+
+    private void OnProjectChanged()
+    {
+        RefreshDynamicOptions();
+        ClampIndexes();
+        Repaint();
+    }
+
+    private void ClampIndexes()
+    {
+        _selectedIndex = Mathf.Clamp(_selectedIndex, 0, s_ProcedureNames.Length - 1);
+        _sceneIndex = Mathf.Clamp(_sceneIndex, 0, s_SceneNames.Length - 1);
+    }
+
     private void OnGUI()
     {
+        RefreshDynamicOptions();
+        ClampIndexes();
+
         #region Procedure 选择
 
         GUILayout.Label("启动 Procedure", EditorStyles.boldLabel);
 
+        if (GUILayout.Button("刷新 Procedure / Scene 列表"))
+        {
+            RefreshDynamicOptions();
+            ClampIndexes();
+        }
+
+        if (s_ProcedureNames.Length == 0)
+        {
+            EditorGUILayout.HelpBox("未发现可用 Procedure", MessageType.Warning);
+            return;
+        }
+
+        if (s_SceneNames.Length == 0)
+        {
+            EditorGUILayout.HelpBox("未发现可用 Scene，请先把场景加入 Build Settings。", MessageType.Warning);
+            return;
+        }
+
         EditorGUI.BeginChangeCheck();
-        _selectedIndex = EditorGUILayout.Popup("选择 Procedure", _selectedIndex, ProcedureNames);
+        _selectedIndex = EditorGUILayout.Popup("选择 Procedure", _selectedIndex, s_ProcedureNames);
         if (EditorGUI.EndChangeCheck())
         {
-            string selected = ProcedureNames[_selectedIndex];
+            string selected = s_ProcedureNames[_selectedIndex];
             EditorPrefs.SetString(PrefKey_Selected, selected);
             ChangeSceneProcedure.SelectedProcedureForGame = selected;
 
@@ -144,10 +226,10 @@ public class ProcedureLauncherWindow : EditorWindow
         GUILayout.Label("目标场景", EditorStyles.boldLabel);
 
         EditorGUI.BeginChangeCheck();
-        _sceneIndex = EditorGUILayout.Popup("加载场景", _sceneIndex, SceneNames);
+        _sceneIndex = EditorGUILayout.Popup("加载场景", _sceneIndex, s_SceneNames);
         if (EditorGUI.EndChangeCheck())
         {
-            string selectedScene = SceneNames[_sceneIndex];
+            string selectedScene = s_SceneNames[_sceneIndex];
             EditorPrefs.SetString(PrefKey_SceneName, selectedScene);
             ChangeSceneProcedure.SelectedSceneForGame = selectedScene;
         }
@@ -158,7 +240,7 @@ public class ProcedureLauncherWindow : EditorWindow
 
         #region 根据选中 Procedure 显示对应面板
 
-        if (ProcedureNames[_selectedIndex] == "CharacterTestProcedure")
+        if (s_ProcedureNames[_selectedIndex] == "CharacterTestProcedure")
         {
             DrawCharacterTestPanel();
         }

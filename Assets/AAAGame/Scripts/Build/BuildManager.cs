@@ -96,7 +96,7 @@ public static class BuildManager
         if (owner == null || !IsConstructOptionExecutable(owner, buildBuildingId))
             return false;
 
-        bool built = BuildBuilding(buildBuildingId, owner.CachedTransform.position, owner.OwnerFactionID, owner.BuildingInstanceId);
+        bool built = BuildBuilding(buildBuildingId, owner.CachedTransform.position, owner.BuildingInstanceId);
         if (built)
             GF.Entity.HideEntity(owner.Entity);
 
@@ -252,10 +252,9 @@ public static class BuildManager
         bool built = BuildBuildingInternal(
             upgradeBuildingId,
             owner.CachedTransform.position,
-            owner.OwnerFactionID,
             owner.BuildingInstanceId,
-            checkCondition: true,
-            consumeCoins: false);
+            true,
+            false);
 
         if (!built)
             return false;
@@ -294,22 +293,24 @@ public static class BuildManager
             ReduceBaseMilestoneTechs(owner.buildingData, owner.BuildingInstanceId);
     }
 
-    public static bool BuildBuilding(string buildingId, Vector3 position, int ownerFactionId, string buildingInstanceId = null)
+    public static bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
-        return BuildBuildingInternal(buildingId, position, ownerFactionId, buildingInstanceId, checkCondition: true, consumeCoins: true);
+        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: true);
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗。
-    public static bool BuildBuildingForLevelInit(string buildingId, Vector3 position, int ownerFactionId, string buildingInstanceId = null)
+    public static bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
-        return BuildBuildingInternal(buildingId, position, ownerFactionId, buildingInstanceId, checkCondition: false, consumeCoins: false);
+        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: false, consumeCoins: false);
     }
 
-    private static bool BuildBuildingInternal(string buildingId, Vector3 position, int ownerFactionId, string buildingInstanceId, bool checkCondition, bool consumeCoins)
+    private static bool BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
             return false;
+
+        int ownerFactionId = ResolveOwnerFactionId(position);
 
         if (checkCondition && !SatisfyBuildCondition(buildingData, ownerFactionId))
             return false;
@@ -329,7 +330,6 @@ public static class BuildManager
 
         EntityParams buildingParams = EntityParams.Create(position);
         buildingParams.Set(BuildingEntity.P_BuildingData, buildingData);
-        buildingParams.Set<VarInt32>(BuildingEntity.P_InitOwnerFactionID, ownerFactionId);
         buildingParams.Set<VarString>(BuildingEntity.P_BuildingInstanceId, resolvedBuildingInstanceId);
 
         GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, buildingParams);
@@ -632,5 +632,17 @@ public static class BuildManager
 
         key = OptionalOptionKeys[optionIndex];
         return true;
+    }
+
+    private static int ResolveOwnerFactionId(Vector3 position)
+    {
+        var levelEntity = LevelEntity.ActiveLevelEntity;
+        if (levelEntity == null)
+        {
+            return 0;
+        }
+
+        var stronghold = levelEntity.GetStrongholdAtWorldPosition(position);
+        return stronghold != null ? stronghold.OwnerFactionId : 0;
     }
 }

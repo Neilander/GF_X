@@ -18,7 +18,7 @@ public static class SoldierFactory
     public static int ShowSoldier(UnitType index, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
     {
 
-        
+
         EntityParams paramsData = EntityParams.Create(position: position);
         paramsData.Side = side;
         paramsData.BrainType = brainType;
@@ -33,10 +33,10 @@ public static class SoldierFactory
         // 移除OnShowCallback，因为CreaturePropertyManager在回调执行后才初始化
         // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
 
-        int entityId = GF.Entity.ShowEntity<SoldierEntity>(prefabName, Const.EntityGroup.Level, paramsData);
+        int entityId = GF.Entity.ShowEntity<SoldierEntity>(prefabName, index == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature, paramsData);
         return entityId;
     }
-    
+
     /// <summary>
     /// 根据index获取预制体名称
     /// </summary>

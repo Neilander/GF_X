@@ -13,7 +13,8 @@ public static partial class Const
 		Level,
 		Bullet,
 		Unrecycle,
-		Building
+		Building,
+		Creature
 	}
 #if ENABLE_OBFUZ
 	[Obfuz.ObfuzIgnore]

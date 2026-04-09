@@ -8,9 +8,6 @@ using System.Data.Common;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-
-public enum BuilType { Base, Army, Prod, Tech, Def }
-public enum Archetype { None, Coding, Sightseeing, Butchery, Delivery, Firefighting }
 /// <summary>
 /// 建筑数据格式类
 /// </summary>

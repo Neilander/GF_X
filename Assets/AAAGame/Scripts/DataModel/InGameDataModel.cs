@@ -31,12 +31,16 @@ public class InGameDataModel : DataModelBase
     public const string P_StartCoins = "StartCoins";
     public const string P_StartFactions = "StartFactions";
     private Dictionary<IngameValueType, int> m_IngameValue;
+    private readonly List<Stronghold> m_Strongholds = new();
+    private readonly HashSet<BuildingEntity> m_StrongholdBuildings = new();
     // techId -> 已拥有该科技的建筑实例集合。
     // 全局层数 = 集合 Count；单建筑是否拥有 = 集合 Contains(buildingInstanceId)。
     private readonly Dictionary<string, HashSet<string>> m_TechOwnerContextsById = new();
 
     public string[] UnlockedTechIds { get; private set; }
     public Dictionary<int, Faction> Factions { get; private set; }
+    public IReadOnlyList<Stronghold> Strongholds => m_Strongholds;
+    public IReadOnlyCollection<BuildingEntity> StrongholdBuildings => m_StrongholdBuildings;
     protected override void OnCreate(RefParams userdata)
     {
         base.OnCreate(userdata);
@@ -57,6 +61,17 @@ public class InGameDataModel : DataModelBase
         UnlockedTechIds = new string[0];
         Factions = new Dictionary<int, Faction>();
         m_TechOwnerContextsById.Clear();
+        m_StrongholdBuildings.Clear();
+
+        for (int i = 0; i < m_Strongholds.Count; i++)
+        {
+            if (m_Strongholds[i] != null)
+            {
+                m_Strongholds[i].Buildings.Clear();
+            }
+        }
+
+        m_Strongholds.Clear();
     }
 
     private static InGameDataModel GetModel()
@@ -215,7 +230,77 @@ public class InGameDataModel : DataModelBase
                && owners != null
                && owners.Count > 0;
     }
-public static string GetResourceSprite(IngameValueType resourceType)
+
+    public static IReadOnlyList<Stronghold> GetStrongholds()
+    {
+        var dataModel = GetModel();
+        return dataModel != null ? dataModel.Strongholds : Array.Empty<Stronghold>();
+    }
+
+    public static void SetStrongholds(List<Stronghold> strongholds)
+    {
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return;
+
+        dataModel.ClearStrongholdRuntimeDataInternal();
+
+        if (strongholds == null)
+            return;
+
+        for (int i = 0; i < strongholds.Count; i++)
+        {
+            var stronghold = strongholds[i];
+            if (stronghold == null)
+                continue;
+
+            stronghold.Buildings.Clear();
+            dataModel.m_Strongholds.Add(stronghold);
+        }
+    }
+
+    public static void RegisterStrongholdBuilding(BuildingEntity building)
+    {
+        var dataModel = GetModel();
+        if (dataModel == null || building == null)
+            return;
+
+        dataModel.m_StrongholdBuildings.Add(building);
+    }
+
+    public static void UnregisterStrongholdBuilding(BuildingEntity building)
+    {
+        var dataModel = GetModel();
+        if (dataModel == null || building == null)
+            return;
+
+        dataModel.m_StrongholdBuildings.Remove(building);
+    }
+
+    public static void ClearStrongholdRuntimeData()
+    {
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return;
+
+        dataModel.ClearStrongholdRuntimeDataInternal();
+    }
+
+    private void ClearStrongholdRuntimeDataInternal()
+    {
+        m_StrongholdBuildings.Clear();
+
+        for (int i = 0; i < m_Strongholds.Count; i++)
+        {
+            if (m_Strongholds[i] != null)
+            {
+                m_Strongholds[i].Buildings.Clear();
+            }
+        }
+
+        m_Strongholds.Clear();
+    }
+    public static string GetResourceSprite(IngameValueType resourceType)
     {
         return "UI/IconMisc/Icon_Star_On.png"; //先占位
     }

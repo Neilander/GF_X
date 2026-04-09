@@ -10,3 +10,4 @@
 	6		Bullet	60	60	60	0
 	7		Unrecycle	60	0	60	0
 	8		Building	60	60	60	0
+	9		Creature	60	200	60	0

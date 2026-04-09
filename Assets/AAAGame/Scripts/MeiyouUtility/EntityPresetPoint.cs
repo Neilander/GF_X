@@ -15,7 +15,6 @@ public class EntityPresetPoint : MonoBehaviour
     public string Identifier;
 
     public EntityPresetPointType PointType;
-    public int OwnerFactionID;
 
 #if UNITY_EDITOR
     private void OnValidate()

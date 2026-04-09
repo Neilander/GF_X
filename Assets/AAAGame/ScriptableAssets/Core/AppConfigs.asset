@@ -54,4 +54,5 @@ MonoBehaviour:
   - MenuProcedure
   - PreloadProcedure
   - RangedWeaponTestProcedure
+  - RealProcedure
   - SampleProcedure

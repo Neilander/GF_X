@@ -11,7 +11,6 @@ public class LevelTestProcedure : ProcedureBase
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
         base.OnEnter(procedureOwner);
-        GF.Log("正在进行测试，取消测试去修改LaunchProcedure");
         InitDataModels();
 
         GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
@@ -25,10 +24,10 @@ public class LevelTestProcedure : ProcedureBase
     protected override void OnUpdate(IFsm<IProcedureManager> procedureOwner, float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(procedureOwner, elapseSeconds, realElapseSeconds);
-        if (GF.DataModel.GetDataModel<InputModel>().OpenTechTreePressed)
-        {
-            GF.UI.OpenUIForm(UIViews.TechTreeDialog);
-        }
+        // if (GF.DataModel.GetDataModel<InputModel>().OpenTechTreePressed)
+        // {
+        //     GF.UI.OpenUIForm(UIViews.TechTreeDialog);
+        // }
     }
     private void SpawnPresetEntities()
     {
@@ -38,7 +37,7 @@ public class LevelTestProcedure : ProcedureBase
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    BuildManager.BuildBuildingForLevelInit(point.Identifier, point.Position, point.OwnerFactionID);
+                    BuildManager.BuildBuildingForLevelInit(point.Identifier, point.Position);
                     break;
                     // case EntityPresetPointType.Spawn:
                     // case EntityPresetPointType.Respawn:

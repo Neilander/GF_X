@@ -5,11 +5,11 @@ using UnityGameFramework.Runtime;
 public class BuildingEntity : EntityBase
 {
     public const string P_BuildingData = "BuildingData";
-    public const string P_InitOwnerFactionID = "InitOwnerFactionID";
     public const string P_BuildingInstanceId = "BuildingInstanceId";
     public BuildingData buildingData;
     public int OwnerFactionID { get; set; }
     public string BuildingInstanceId { get; private set; }
+    public Stronghold CurrentStronghold { get; private set; }
     public bool HasUpgrade => BuildManager.HasUpgrade(this);
 
 
@@ -18,11 +18,12 @@ public class BuildingEntity : EntityBase
         base.OnShow(userData);
 
         buildingData = Params.Get(P_BuildingData) as BuildingData;
-        OwnerFactionID = Params.Get<VarInt32>(P_InitOwnerFactionID);
         BuildingInstanceId = Params.TryGet<VarString>(P_BuildingInstanceId, out var instanceId) ? instanceId : null;
 
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
             BuildingInstanceId = System.Guid.NewGuid().ToString("N");
+
+        LevelEntity.RegisterBuildingToStronghold(this);
 
         if (HasUpgrade)
         {
@@ -32,13 +33,23 @@ public class BuildingEntity : EntityBase
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        LevelEntity.UnregisterBuildingFromStronghold(this);
+
         // 对象池安全：清理运行时引用，避免下次复用时指向旧数据
         var host = GetComponent<InteractionHost>();
         if (host != null)
             host.ResetOptions();
 
+        CurrentStronghold = null;
+        OwnerFactionID = 0;
         buildingData = null;
         base.OnHide(isShutdown, userData);
+    }
+
+    public void SetStronghold(Stronghold stronghold)
+    {
+        CurrentStronghold = stronghold;
+        OwnerFactionID = stronghold != null ? stronghold.OwnerFactionId : 0;
     }
 
     private void EnsureInteractionHost()

@@ -9,37 +9,35 @@ public partial class GeneralSetup : GameFrameworkComponent
 {
     public void DataModelSetup()
     {
-        // 初始化数据模型（参考CharacterTestProcedure）
-        GF.DataModel.CreateDataModel<ItemDataModel>();
-        GF.DataModel.CreateDataModel<DeviceDataModel>();
-        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
-        GF.DataModel.CreateDataModel<CraftingDeviceDataModel>();
-        GF.DataModel.CreateDataModel<InputModel>(); // 必须初始化输入模型，否则PlayerBrain会出现空引用
-        GF.DataModel.CreateDataModel<TechNodeDataModel>();
+        RefParams levelDataParams = new();
+        levelDataParams.Set(InGameDataModel.P_StartPhase, GamePhase.Build);
+        levelDataParams.Set(InGameDataModel.P_StartCoins, 100);
+        levelDataParams.Set(InGameDataModel.P_StartFactions, new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } });   // 通常玩家势力key为0，敌对势力为1、2等。
+        GF.DataModel.CreateDataModel<InGameDataModel>(levelDataParams);
 
-        GF.DataModel.GetOrCreate<ItemCollectionDataModel>();
-        GF.DataModel.GetOrCreate<CapabilityProgressDataModel>();
-        GF.DataModel.GetOrCreate<ProfileDataModel>();
-        GF.DataModel.GetOrCreate<TechProgressDataModel>();
+        GF.DataModel.CreateDataModel<BuildingDataModel>();
+        GF.DataModel.CreateDataModel<TechDataModel>();
+        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
+        GF.DataModel.CreateDataModel<InputModel>();
     }
 
     public void GeneralSystemSetup()
     {
         DataModelSetup();
         GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
-        
+
         var inputManager = GameEntry.GetComponent<InputManager>();
         if (inputManager != null)
         {
             inputManager.ChangeState(InputState.Game);
         }
-        
+
         SoldierFactory.ShowSoldier(UnitType.Unit_Hero, new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
     }
 
     public void GeneralSystemShutDown()
     {
-        GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId,OnGeneralShowEntitySuccess);
+        GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
     }
 
     private void OnGeneralShowEntitySuccess(object sender, GameEventArgs e)
@@ -51,7 +49,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             if (ma.Brain is PlayerBrain)
             {
                 EntityRegistry.RegisterAsPlayer(ma);
-                
+
                 // 设置摄像机跟随玩家
                 CameraController cameraController = Camera.main.GetComponent<CameraController>();
                 if (cameraController != null)
@@ -65,7 +63,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             {
                 float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                 float max = originalMax;
-                
+
                 // 根据单位类型调整血量
                 /*
                 if (ma is SoldierEntity soldier && soldier.UnitIndex == "coder")
@@ -81,7 +79,7 @@ public partial class GeneralSetup : GameFrameworkComponent
                 {
                     // 敌方单位：保持原血量不变
                 }*/
-                
+
                 // 更新当前生命值，确保单位满血
                 float currentHealth = creature.health;
                 float healAmount = max - currentHealth;
@@ -91,7 +89,7 @@ public partial class GeneralSetup : GameFrameworkComponent
                         CreatureCurrentProperty.HealthCurrent,
                         PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
                 }
-                
+
                 HealthBarComp.Create(creature.Id, creature.transform, creature.health, max);
             }
 
