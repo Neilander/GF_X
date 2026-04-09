@@ -104,28 +104,12 @@ public class BuffTestProcedure : ProcedureBase
                     float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                     float max = originalMax;
                     
-                    // 根据单位类型调整血量
-                    if (ma is SoldierEntity soldier)
-                    {
-                        if (soldier.UnitIndex == "Unit_Coder")
-                        {
-                            // 码农单位：血量增加到10倍
-                            float newMax = originalMax * 10f;
-                            Fix64 addValue = (Fix64)(newMax - originalMax);
-                            var modifier = PropertyDirectAdditiveModifier.Create(addValue);
-                            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
-                            max = newMax;
-                        }
-                        else if (soldier.UnitIndex == "Unit_BoneButcher")
-                        {
-                            // 剔骨狂魔单位：血量增加到10倍
-                            float newMax = originalMax * 10f;
-                            Fix64 addValue = (Fix64)(newMax - originalMax);
-                            var modifier = PropertyDirectAdditiveModifier.Create(addValue);
-                            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
-                            max = newMax;
-                        }
-                    }
+                    // 所有单位血量增加到10倍
+                    float newMax = originalMax * 10f;
+                    Fix64 addValue = (Fix64)(newMax - originalMax);
+                    var modifier = PropertyDirectAdditiveModifier.Create(addValue);
+                    creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
+                    max = newMax;
                     
                     // 更新当前生命值，确保单位满血
                     float currentHealth = creature.health;

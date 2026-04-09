@@ -67,21 +67,12 @@ public partial class GeneralSetup : GameFrameworkComponent
                 float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                 float max = originalMax;
                 
-                // 根据单位类型调整血量
-                /*
-                if (ma is SoldierEntity soldier && soldier.UnitIndex == "coder")
-                {
-                    // 码农单位：血量减少10倍
-                    float newMax = originalMax / 10f;
-                    Fix64 subtractValue = (Fix64)(originalMax - newMax);
-                    var modifier = PropertyDirectAdditiveModifier.Create(-subtractValue);
-                    creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
-                    max = newMax;
-                }
-                else
-                {
-                    // 敌方单位：保持原血量不变
-                }*/
+                // 所有单位血量增加到10倍
+                float newMax = originalMax * 10f;
+                Fix64 addValue = (Fix64)(newMax - originalMax);
+                var modifier = PropertyDirectAdditiveModifier.Create(addValue);
+                creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
+                max = newMax;
                 
                 // 更新当前生命值，确保单位满血
                 float currentHealth = creature.health;
