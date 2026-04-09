@@ -69,8 +69,10 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 
         // 调试用：整体速度缩放
         finalVelocity *= 0.3f;
-
-        _controller.Move(finalVelocity * deltaTime);
+        //if(finalVelocity.magnitude > 0.01f)
+            //Debug.Log(finalVelocity.magnitude);
+        if ((finalVelocity * deltaTime).magnitude > 0.1f)
+            _controller.Move(finalVelocity * deltaTime);
 
         // 输入每帧重置（非常重要）
         _inputVelocity = Vector3.zero;

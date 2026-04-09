@@ -222,28 +222,8 @@ public class MAEntity : CompCreature, IEntityContext
                         }
                     }
                     
-                    bool isAttacking = atkComp != null && atkComp.IsAttacking;
-                    
-                    // 使用Play方法直接控制动画，只在状态变化时调用
-                    if (!isAttacking)
-                    {
-                        if (isMoving)
-                        {
-                            if (!_wasMoving)
-                            {
-                                _animator.Play("骨架_Move", 0);
-                            }
-                            _wasMoving = true;
-                        }
-                        else
-                        {
-                            if (_wasMoving)
-                            {
-                                _animator.Play("骨架_Idle", 0);
-                            }
-                            _wasMoving = false;
-                        }
-                    }
+                    // 设置 Moving 参数，让 Animator Controller 处理过渡
+                    _animator.SetBool("Moving", isMoving);
                     
                     // 设置模型朝向（不管是否在移动，只要有移动方向就转向）
                     if (moveComp != null && Brain != null) // 对所有单位执行旋转
@@ -265,19 +245,26 @@ public class MAEntity : CompCreature, IEntityContext
             }
         }
         
+        private const float RotationSpeed = 720f; // 度/秒
+
         protected virtual void LateUpdate()
         {
-            if (_targetRotation.HasValue && Brain != null && _modelTransform != null) // 对所有单位执行旋转
+            if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
             {
-                // 尝试旋转模型的子对象（可能模型的实际旋转对象是子对象）
                 Transform rotateTarget = _modelTransform;
                 if (_modelTransform.childCount > 0)
                 {
                     rotateTarget = _modelTransform.GetChild(0);
                 }
-                
-                rotateTarget.rotation = _targetRotation.Value;
-                _targetRotation = null;
+
+                rotateTarget.rotation = Quaternion.RotateTowards(
+                    rotateTarget.rotation, _targetRotation.Value, RotationSpeed * Time.deltaTime);
+
+                // 到达目标后清除
+                if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
+                {
+                    _targetRotation = null;
+                }
             }
         }
 

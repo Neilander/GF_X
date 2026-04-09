@@ -132,7 +132,7 @@ public class CharacterMoveComp : IMoveComp
         _ctx.MoveExecutor.SetInput(moveDir * speed );
         
         // 更新移动状态
-        Debug.Log( $"Move: moveDir={moveDir}, magnitude={moveDir.magnitude}");
+        //Debug.Log( $"Move: moveDir={moveDir}, magnitude={moveDir.magnitude}");
         _isMoving = moveDir.sqrMagnitude > 0.9f;
 
         // 动画控制由MAEntity统一处理

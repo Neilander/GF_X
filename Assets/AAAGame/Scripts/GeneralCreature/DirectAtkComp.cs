@@ -280,28 +280,10 @@ public class DirectAtkComp : IAtkComp
         State = newState;
         _stateTimer = 0f;
         
-        // 播放对应动画
-        if (_animator != null)
+        // 通过参数驱动 Animator Controller
+        if (_animator != null && newState == AtkState.WindUp)
         {
-            switch (newState)
-            {
-                case AtkState.WindUp:
-                    // 攻击前摇时播放攻击动画，设置为不循环
-                    _animator.Play("骨架_Attack_Slash", 0, 0f);
-                    break;
-                case AtkState.Idle:
-                    // 空闲状态根据是否在移动决定播放什么动画
-                    var moveComp = _ctx.MoveComp;
-                    if (moveComp != null && moveComp.IsMoving)
-                    {
-                        _animator.Play("骨架_Move", 0);
-                    }
-                    else
-                    {
-                        _animator.Play("骨架_Idle", 0);
-                    }
-                    break;
-            }
+            _animator.SetTrigger("Attack");
         }
     }
 

@@ -427,9 +427,13 @@ public class GroupMoveCoordinator
         // 合成：期望速度 + LJ 力 + 障碍物修正
         Vector3 safeVelocity = desiredVelocity + ljForce + obstacleAdjustment;
 
-        // 力太小直接返回零
-        if (safeVelocity.magnitude < MoveThreshold)
-            return Vector3.zero;
+        // 力太小时平滑衰减，不硬切断
+        float mag = safeVelocity.magnitude;
+        if (mag < MoveThreshold)
+        {
+            float t = mag / MoveThreshold;
+            safeVelocity *= t * t;
+        }
 
         // 限速：不超过期望速度 + LJ 力的合理范围
         float maxSpeed = Mathf.Max(desiredVelocity.magnitude, ljForce.magnitude);
