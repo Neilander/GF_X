@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PunchBagEntity : GeneralCreature
+public class PunchBagEntity : BattleEntity
 {
     protected override void OnShow(object userData)
     {
