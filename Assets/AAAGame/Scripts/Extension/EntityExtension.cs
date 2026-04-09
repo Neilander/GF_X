@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
@@ -112,47 +112,63 @@ public static class EntityExtension
     /// <param name="duration"></param>
     /// <param name="fontSize"></param>
     /// <param name="textType"></param>
-    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, DamageTextType textType = DamageTextType.Normal, float duration = 3.0f, float fontSize = 4f)
+    public static void ShowPopText(this EntityComponent eCom, EntityParams eParams, string content, Vector3 endPos, DamageTextType textType = DamageTextType.Normal, float duration = 3.0f, float fontSize = 17f)
     {
         if (eParams.OnShowCallback != null)
         {
             Log.Error("ShowPopText 不能指定OnShowCallback回调, 将被覆盖无法执行.");
         }
         eParams.OnShowCallback = (EntityLogic entity) =>
-        {
-            var textMesh = entity.GetComponent<TextMeshPro>();
-            if (textMesh == null)
             {
-                Log.Error("TextMeshPro component not found!");
-                return;
-            }
-            textMesh.fontSize = fontSize;
-            textMesh.text = content;
-            var txtCol = textMesh.color;
-            txtCol.a = 1;
-            // 根据类型设置颜色
-            switch (textType)
-            {
-                case DamageTextType.Normal:
-                    txtCol = Color.red;
-                    break;
-                case DamageTextType.Heal:
-                    txtCol = Color.green;
-                    break;
-            }
-            textMesh.color = txtCol;
-            entity.transform.localScale = Vector3.zero;
-            var seqAct = DOTween.Sequence();
-            seqAct.Join(entity.transform.DOScale(1, duration));
-            seqAct.Join(entity.transform.DOMove(endPos, duration));
-            seqAct.Append(textMesh.DOFade(0, 0.25f));
-            seqAct.SetUpdate(true);
-            seqAct.onComplete = () =>
-            {
-                GF.Entity.HideEntitySafe(entity);
+                Log.Info($"ShowPopText callback: entity={entity?.Entity?.Id}, content={content}, fontSize={fontSize}");
+                
+                TextMeshPro textMesh = entity.GetComponent<TextMeshPro>();
+                if (textMesh == null)
+                {
+                    textMesh = entity.gameObject.AddComponent<TextMeshPro>();
+                }
+                
+                // 设置TextMeshPro属性
+                textMesh.text = content;
+                textMesh.fontSize = fontSize;
+                textMesh.alignment = TextAlignmentOptions.Center;
+                textMesh.color = textType == DamageTextType.Normal ? new Color(139f/255f, 0f, 0f) : Color.green;
+                textMesh.enableWordWrapping = false;
+                textMesh.overflowMode = TextOverflowModes.Overflow;
+                textMesh.fontStyle = FontStyles.Bold; // 设置粗体，更明显
+                textMesh.autoSizeTextContainer = true; // 自动调整文本容器大小
+                
+                // 设置渲染顺序，确保文字显示在最前面
+                MeshRenderer renderer = textMesh.GetComponent<MeshRenderer>();
+                if (renderer != null)
+                {
+                    renderer.sortingOrder = 100;
+                    renderer.renderingLayerMask = 1; // 确保渲染层正确
+                    // 设置材质属性，确保文字能正确显示
+                    if (renderer.material != null)
+                    {
+                        renderer.material.renderQueue = 3000; // 设置渲染队列，确保文字在前面
+                    }
+                    Log.Info($"MeshRenderer found: material={renderer.material?.name}, sortingOrder={renderer.sortingOrder}, renderQueue={renderer.material?.renderQueue}");
+                }
+                
+                // 调试TextMeshPro属性
+                Log.Info($"TextMeshPro settings: text={textMesh.text}, fontSize={textMesh.fontSize}, color={textMesh.color}, font={textMesh.font?.name}, material={textMesh.fontMaterial?.name}");
+                
+                entity.transform.localScale = Vector3.zero;
+                var seqAct = DOTween.Sequence();
+                seqAct.Join(entity.transform.DOScale(1, duration));
+                seqAct.Join(entity.transform.DOMove(endPos, duration));
+                seqAct.Append(textMesh.DOFade(0, 0.25f));
+                seqAct.SetUpdate(true);
+                seqAct.onComplete = () =>
+                {
+                    GF.Entity.HideEntitySafe(entity);
+                };
+                seqAct.SetAutoKill();
+                
+                Log.Info($"ShowPopText setup complete: textMesh={textMesh != null}, text={textMesh?.text}, color={textMesh?.color}");
             };
-            seqAct.SetAutoKill();
-        };
         eCom.ShowEntity<SampleEntity>("Effect/MoneyText", Const.EntityGroup.Effect, eParams);
     }
     /// <summary>

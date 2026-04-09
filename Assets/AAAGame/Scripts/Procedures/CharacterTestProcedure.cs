@@ -120,7 +120,26 @@ public class CharacterTestProcedure : ProcedureBase
             // 给所有生物挂血条
             if (ma is GeneralCreature creature)
             {
-                float max = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+                float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+                float max = originalMax;
+                
+                // 所有单位血量增加到10倍
+                float newMax = originalMax * 10f;
+                Fix64 addValue = (Fix64)(newMax - originalMax);
+                var modifier = PropertyDirectAdditiveModifier.Create(addValue);
+                creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
+                max = newMax;
+                
+                // 更新当前生命值，确保单位满血
+                float currentHealth = creature.health;
+                float healAmount = max - currentHealth;
+                if (healAmount > 0)
+                {
+                    creature.CreaturePropertyManager.ModifyCurrentProperty(
+                        CreatureCurrentProperty.HealthCurrent,
+                        PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
+                }
+                
                 // 根据单位的Side判断阵营
                 bool isFriendly = creature.Side == SideType.PlayerSide;
                 HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, isFriendly);

@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -87,8 +87,8 @@ public class GeneralCreature : EntityBase, ITargetable
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
         
         // 显示伤害跳字
-        Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
-        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
+        Vector3 startPos = transform.position + new Vector3(0, 2.0f, 0);
+        Vector3 endPos = startPos + new Vector3(0, 1.5f, 0);
         Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
 
@@ -152,8 +152,8 @@ public class GeneralCreature : EntityBase, ITargetable
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
         
         // 显示伤害跳字
-        Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
-        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
+        Vector3 startPos = transform.position + new Vector3(0, 2.0f, 0);
+        Vector3 endPos = startPos + new Vector3(0, 1.5f, 0);
         Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
 
