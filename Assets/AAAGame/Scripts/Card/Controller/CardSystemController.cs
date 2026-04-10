@@ -217,6 +217,23 @@ namespace AAAGame.Card
         }
 
         /// <summary>
+        /// 使用指定屏幕坐标立即更新放置点。
+        /// </summary>
+        public void UpdatePlacementFromScreenPosition(Vector2 screenPosition)
+        {
+            m_PlacementController.SetPointerScreenPosition(screenPosition);
+            m_PlacementController.UpdatePlacement();
+        }
+
+        /// <summary>
+        /// 清除拖拽屏幕坐标覆盖。
+        /// </summary>
+        public void ClearPlacementScreenPosition()
+        {
+            m_PlacementController.ClearPointerScreenPosition();
+        }
+
+        /// <summary>
         /// 确认放置
         /// </summary>
         public bool ConfirmPlacement(CardModel cardModel)

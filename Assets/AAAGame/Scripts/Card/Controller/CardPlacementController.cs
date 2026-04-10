@@ -13,12 +13,15 @@ namespace AAAGame.Card
     {
         private Camera m_MainCamera;
         private LayerMask m_GroundLayer;
+        private LayerMask m_PlacementFallbackLayer;
         private LayerMask m_ForbiddenLayer;
-        
+
         private Vector3 m_CurrentPlacementPosition;
         private bool m_IsValidPlacement;
         private bool m_IsPlacing;
-        
+        private bool m_HasPointerScreenPosition;
+        private Vector2 m_PointerScreenPosition;
+
         // 区域检测配置
         private float m_DetectionRadius = 0.5f;
 
@@ -29,11 +32,12 @@ namespace AAAGame.Card
         public event Action<CardModel, Vector3> OnPlacementConfirmed;
         public event Action OnPlacementCancelled;
         public event Action<CardModel, Vector3, int> OnSoldiersSpawned;
-        
+
         public CardPlacementController()
         {
             m_MainCamera = Camera.main;
             m_GroundLayer = LayerMask.GetMask("Ground");
+            m_PlacementFallbackLayer = LayerMask.GetMask("Ground", "Default", "Stronghold");
             m_ForbiddenLayer = LayerMask.GetMask("ForbiddenArea");
         }
 
@@ -43,6 +47,23 @@ namespace AAAGame.Card
         public void SetDetectionRadius(float radius)
         {
             m_DetectionRadius = radius;
+        }
+
+        /// <summary>
+        /// 设置当前拖拽指针屏幕坐标（优先于 Input.mousePosition）。
+        /// </summary>
+        public void SetPointerScreenPosition(Vector2 screenPosition)
+        {
+            m_HasPointerScreenPosition = true;
+            m_PointerScreenPosition = screenPosition;
+        }
+
+        /// <summary>
+        /// 清除指针屏幕坐标覆盖。
+        /// </summary>
+        public void ClearPointerScreenPosition()
+        {
+            m_HasPointerScreenPosition = false;
         }
 
         /// <summary>
@@ -58,7 +79,7 @@ namespace AAAGame.Card
 
             m_IsPlacing = true;
             Debug.Log("[Card] Card placement started.");
-            
+
             // 触发开始放置事件
             OnPlacementStarted?.Invoke(cardModel);
         }
@@ -78,14 +99,24 @@ namespace AAAGame.Card
                 // 检测区域合法性
                 bool wasValid = m_IsValidPlacement;
                 m_IsValidPlacement = CheckPlacementValidity(groundPosition);
-                
+
                 // 触发位置更新事件
                 OnPositionUpdated?.Invoke(groundPosition, m_IsValidPlacement);
-                
+
                 // 如果合法性改变，触发事件
                 if (wasValid != m_IsValidPlacement)
                 {
                     OnValidityChanged?.Invoke(m_IsValidPlacement);
+                }
+            }
+            else
+            {
+                // Avoid using stale coordinates when the cursor is not on any valid ground.
+                bool wasValid = m_IsValidPlacement;
+                m_IsValidPlacement = false;
+                if (wasValid)
+                {
+                    OnValidityChanged?.Invoke(false);
                 }
             }
         }
@@ -95,18 +126,27 @@ namespace AAAGame.Card
         /// </summary>
         public bool ConfirmPlacement(CardModel cardModel)
         {
+            // Re-sample once at confirm time to avoid one-frame stale position issues.
+            if (m_IsPlacing && TryGetGroundPosition(out Vector3 latestPosition))
+            {
+                m_CurrentPlacementPosition = latestPosition;
+                m_IsValidPlacement = CheckPlacementValidity(latestPosition);
+            }
+
             if (!m_IsPlacing || !m_IsValidPlacement)
             {
                 Debug.Log("[Card] Cannot confirm placement: 放置位置不合法或者没在放置.");
                 return false;
             }
 
+            Debug.Log($"[CardPlacement] Confirm position={m_CurrentPlacementPosition}");
+
             // 生成士兵
             int soldierCount = SpawnSoldiers(cardModel, m_CurrentPlacementPosition);
-            
+
             // 触发放置成功事件
             OnPlacementConfirmed?.Invoke(cardModel, m_CurrentPlacementPosition);
-            
+
             EndPlacement();
             return true;
         }
@@ -120,7 +160,7 @@ namespace AAAGame.Card
 
             // 触发取消事件
             OnPlacementCancelled?.Invoke();
-            
+
             EndPlacement();
         }
 
@@ -131,6 +171,7 @@ namespace AAAGame.Card
         {
             m_IsPlacing = false;
             m_IsValidPlacement = false;
+            ClearPointerScreenPosition();
         }
 
         /// <summary>
@@ -139,18 +180,70 @@ namespace AAAGame.Card
         private bool TryGetGroundPosition(out Vector3 groundPosition)
         {
             groundPosition = Vector3.zero;
-            
+
             if (m_MainCamera == null)
             {
                 m_MainCamera = Camera.main;
                 if (m_MainCamera == null) return false;
             }
 
-            Ray ray = m_MainCamera.ScreenPointToRay(Input.mousePosition);
-            
-            if (Physics.Raycast(ray, out RaycastHit hit, 1000f, m_GroundLayer))
+            Vector2 pointerPos = m_HasPointerScreenPosition ? m_PointerScreenPosition : (Vector2)Input.mousePosition;
+            Ray ray = m_MainCamera.ScreenPointToRay(pointerPos);
+
+            // Multi-level terrain: choose the highest valid Ground hit under the cursor ray.
+            RaycastHit[] hits = Physics.RaycastAll(ray, 1000f, ~0, QueryTriggerInteraction.Ignore);
+            if (hits == null || hits.Length == 0)
             {
-                groundPosition = hit.point;
+                return false;
+            }
+
+            bool found = false;
+            float bestY = float.MinValue;
+            float bestDistance = float.MaxValue;
+
+            bool foundFallback = false;
+            float fallbackBestY = float.MinValue;
+            float fallbackBestDistance = float.MaxValue;
+            Vector3 fallbackPoint = Vector3.zero;
+
+            foreach (RaycastHit hit in hits)
+            {
+                int hitLayerMask = 1 << hit.collider.gameObject.layer;
+
+                if ((m_GroundLayer.value & hitLayerMask) != 0)
+                {
+                    // Pick higher surface first; tie-break with closer hit.
+                    if (!found || hit.point.y > bestY + 0.01f ||
+                        (Mathf.Abs(hit.point.y - bestY) <= 0.01f && hit.distance < bestDistance))
+                    {
+                        found = true;
+                        bestY = hit.point.y;
+                        bestDistance = hit.distance;
+                        groundPosition = hit.point;
+                    }
+                }
+
+                if ((m_PlacementFallbackLayer.value & hitLayerMask) != 0)
+                {
+                    if (!foundFallback || hit.point.y > fallbackBestY + 0.01f ||
+                        (Mathf.Abs(hit.point.y - fallbackBestY) <= 0.01f && hit.distance < fallbackBestDistance))
+                    {
+                        foundFallback = true;
+                        fallbackBestY = hit.point.y;
+                        fallbackBestDistance = hit.distance;
+                        fallbackPoint = hit.point;
+                    }
+                }
+            }
+
+            if (found)
+            {
+                return true;
+            }
+
+            if (foundFallback)
+            {
+                groundPosition = fallbackPoint;
                 return true;
             }
 
@@ -165,7 +258,7 @@ namespace AAAGame.Card
             // 检测是否在禁止区域
             Collider[] forbiddenColliders = Physics.OverlapSphere(
                 position, m_DetectionRadius, m_ForbiddenLayer);
-            
+
             if (forbiddenColliders.Length > 0)
             {
                 return false;
@@ -174,8 +267,17 @@ namespace AAAGame.Card
             // 检测是否在地面上
             Collider[] groundColliders = Physics.OverlapSphere(
                 position, m_DetectionRadius, m_GroundLayer);
-            
-            return groundColliders.Length > 0;
+
+            if (groundColliders.Length > 0)
+            {
+                return true;
+            }
+
+            // Fallback for scenes where some walkable meshes were not put on Ground layer.
+            Collider[] fallbackColliders = Physics.OverlapSphere(
+                position, m_DetectionRadius, m_PlacementFallbackLayer, QueryTriggerInteraction.Ignore);
+
+            return fallbackColliders.Length > 0;
         }
 
         /// <summary>

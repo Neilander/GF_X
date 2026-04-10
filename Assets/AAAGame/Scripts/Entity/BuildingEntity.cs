@@ -38,10 +38,10 @@ public partial class BuildingEntity : MAEntity
 
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
             BuildingInstanceId = System.Guid.NewGuid().ToString("N");
-        }
+    }
 
-        protected override void OnShow(object userData)
-        {
+    protected override void OnShow(object userData)
+    {
         SetupBuildingData(userData);
         base.OnShow(userData);
 

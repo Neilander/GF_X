@@ -308,6 +308,7 @@ namespace AAAGame.Card
             }
             
             m_CardSystemController.StartPlacement(cardItem.GetCardModel());
+            m_CardSystemController.UpdatePlacementFromScreenPosition(Input.mousePosition);
         }
 
         /// <summary>
@@ -315,6 +316,8 @@ namespace AAAGame.Card
         /// </summary>
         public void OnCardDragging(HandCardItem cardItem, Vector2 screenPosition)
         {
+            m_CardSystemController.UpdatePlacementFromScreenPosition(screenPosition);
+
             // 更新垃圾桶提示
             UpdateTrashBinHint(screenPosition);
             
@@ -328,6 +331,7 @@ namespace AAAGame.Card
         public bool OnCardEndDrag(HandCardItem cardItem, Vector2 screenPosition)
         {
             m_DraggingCard = null;
+            m_CardSystemController.UpdatePlacementFromScreenPosition(screenPosition);
             
             Log.Info($"[CardUI] ========== OnCardEndDrag START ==========");
             Log.Info($"[CardUI] Screen Position: {screenPosition}");
@@ -353,6 +357,7 @@ namespace AAAGame.Card
                 Log.Info("[CardUI] ✅✅✅ Card dragged back to hand, CANCELING PLACEMENT");
                 // 取消放置（重要！防止生成对象）
                 m_CardSystemController.CancelPlacement();
+                m_CardSystemController.ClearPlacementScreenPosition();
                 Log.Info("[CardUI] ✅✅✅ Placement canceled, returning false");
                 return false;
             }
@@ -367,6 +372,7 @@ namespace AAAGame.Card
                 
                 // 取消放置（防止生成对象）
                 m_CardSystemController.CancelPlacement();
+                m_CardSystemController.ClearPlacementScreenPosition();
                 
                 // 先通知 HandCardItem 停止拖拽状态并播放消失动画
                 cardItem.OnDiscardSuccess();
@@ -400,6 +406,7 @@ namespace AAAGame.Card
                 // 卡牌成功打出到场景，播放消失动画并移除
                 Log.Info($"[CardUI] ✅ Card placed successfully: {cardItem.GetCardModel().GetCardName()}");
                 cardItem.OnPlaySuccess();
+                m_CardSystemController.ClearPlacementScreenPosition();
                 
                 // 注意：ConfirmPlacement 内部会触发 OnCardPlayed 事件
                 // OnCardPlayed 事件会调用 RemoveHandCardItem
@@ -409,6 +416,7 @@ namespace AAAGame.Card
             {
                 Log.Info($"[CardUI] ❌ Placement failed, canceling");
                 m_CardSystemController.CancelPlacement();
+                m_CardSystemController.ClearPlacementScreenPosition();
             }
 
             Log.Info($"[CardUI] ========== OnCardEndDrag END (returned {placed}) ==========");

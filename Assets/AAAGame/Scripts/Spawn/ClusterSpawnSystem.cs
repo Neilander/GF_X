@@ -8,6 +8,13 @@ using System.Collections.Generic;
 /// </summary>
 public static class ClusterSpawnSystem
 {
+    private const float PreferredNavSampleRadius = 2f;
+    private const float FallbackNavSampleRadius = 5f;
+    private const float MaxVerticalSnap = 1.5f;
+    private const float GroundProbeHeight = 200f;
+    private static readonly int PreferredGroundLayerMask = LayerMask.GetMask("Ground");
+    private static readonly int FallbackGroundLayerMask = LayerMask.GetMask("Ground", "Default", "Stronghold");
+
     /// <summary>
     /// 校验生成条件
     /// </summary>
@@ -35,11 +42,14 @@ public static class ClusterSpawnSystem
         {
             Vector3 candidate = GenerateRandomPointInCircle(center, radius);
 
-            // 投影到NavMesh（增加搜索半径到3米）
-            if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, 3f, NavMesh.AllAreas))
+            if (TryProjectToHighestGround(candidate, out Vector3 projectedCandidate))
             {
-                Vector3 spawnPos = hit.position;
+                candidate = projectedCandidate;
+            }
 
+            // 投影到NavMesh（增加搜索半径到3米）
+            if (TrySampleSpawnPosition(candidate, out Vector3 spawnPos))
+            {
                 // 检查是否与已有生成位置重叠
                 bool isOverlap = false;
                 foreach (Vector3 existingPos in spawnPositions)
@@ -99,18 +109,39 @@ public static class ClusterSpawnSystem
             // 在圆形区域内生成随机点
             Vector3 candidate = GenerateRandomPointInCircle(center, radius);
 
-            // 投影到NavMesh
-            if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, 5f, NavMesh.AllAreas))
+            if (TryProjectToHighestGround(candidate, out Vector3 projectedCandidate))
             {
-                Vector3 spawnPos = hit.position;
+                candidate = projectedCandidate;
+            }
+
+            // 投影到NavMesh
+            if (TrySampleSpawnPosition(candidate, out Vector3 spawnPos))
+            {
+                if (spawnPos.y < center.y - MaxVerticalSnap)
+                {
+                    spawnPos = new Vector3(spawnPos.x, center.y, spawnPos.z);
+                }
                 spawnPositions.Add(spawnPos);
             }
             else
             {
                 // 如果投影失败，直接使用候选点
+                if (candidate.y < center.y - MaxVerticalSnap)
+                {
+                    candidate = new Vector3(candidate.x, center.y, candidate.z);
+                }
                 spawnPositions.Add(candidate);
             }
         }
+
+        float minSpawnY = float.MaxValue;
+        float maxSpawnY = float.MinValue;
+        foreach (Vector3 p in spawnPositions)
+        {
+            if (p.y < minSpawnY) minSpawnY = p.y;
+            if (p.y > maxSpawnY) maxSpawnY = p.y;
+        }
+        Debug.Log($"[CardSpawn] centerY={center.y:F2}, spawnYRange=[{minSpawnY:F2}, {maxSpawnY:F2}], count={spawnPositions.Count}");
 
         foreach (Vector3 pos in spawnPositions)
         {
@@ -131,5 +162,75 @@ public static class ClusterSpawnSystem
         float z = center.z + Mathf.Sin(angle) * distance;
 
         return new Vector3(x, center.y, z);
+    }
+
+    private static bool TrySampleSpawnPosition(Vector3 candidate, out Vector3 spawnPos)
+    {
+        // Prefer local navmesh around the same floor.
+        if (NavMesh.SamplePosition(candidate, out NavMeshHit nearHit, PreferredNavSampleRadius, NavMesh.AllAreas))
+        {
+            if (Mathf.Abs(nearHit.position.y - candidate.y) <= MaxVerticalSnap)
+            {
+                spawnPos = nearHit.position;
+                return true;
+            }
+        }
+
+        // Fallback to wider search but still avoid snapping to very different height layers.
+        if (NavMesh.SamplePosition(candidate, out NavMeshHit farHit, FallbackNavSampleRadius, NavMesh.AllAreas))
+        {
+            if (Mathf.Abs(farHit.position.y - candidate.y) <= MaxVerticalSnap)
+            {
+                spawnPos = farHit.position;
+                return true;
+            }
+        }
+
+        spawnPos = Vector3.zero;
+        return false;
+    }
+
+    private static bool TryProjectToHighestGround(Vector3 candidate, out Vector3 groundPosition)
+    {
+        groundPosition = Vector3.zero;
+
+        int layerMask = PreferredGroundLayerMask != 0 ? PreferredGroundLayerMask : FallbackGroundLayerMask;
+        if (layerMask == 0)
+        {
+            return false;
+        }
+
+        Ray ray = new Ray(new Vector3(candidate.x, candidate.y + GroundProbeHeight, candidate.z), Vector3.down);
+        RaycastHit[] hits = Physics.RaycastAll(ray, GroundProbeHeight * 2f, layerMask, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
+        {
+            if (layerMask != FallbackGroundLayerMask && FallbackGroundLayerMask != 0)
+            {
+                hits = Physics.RaycastAll(ray, GroundProbeHeight * 2f, FallbackGroundLayerMask, QueryTriggerInteraction.Ignore);
+            }
+
+            if (hits == null || hits.Length == 0)
+            {
+                return false;
+            }
+        }
+
+        bool found = false;
+        float bestY = float.MinValue;
+        float bestDistance = float.MaxValue;
+
+        foreach (RaycastHit hit in hits)
+        {
+            if (!found || hit.point.y > bestY + 0.01f ||
+                (Mathf.Abs(hit.point.y - bestY) <= 0.01f && hit.distance < bestDistance))
+            {
+                found = true;
+                bestY = hit.point.y;
+                bestDistance = hit.distance;
+                groundPosition = hit.point;
+            }
+        }
+
+        return found;
     }
 }
