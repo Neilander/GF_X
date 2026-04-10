@@ -14,7 +14,7 @@ public class PunchBagEntity : GeneralCreature
     private void Update()
     {
         //if(Input.GetKeyDown(KeyCode.T))
-            //animator.SetTrigger( "GetHit");
+        //animator.SetTrigger( "GetHit");
     }
-    
+
 }

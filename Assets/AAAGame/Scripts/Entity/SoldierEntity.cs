@@ -10,7 +10,7 @@ public class SoldierEntity : MAEntity
     /// 单位类型索引
     /// </summary>
     private string _unitIndex;
-    
+
     /// <summary>
     /// AI类型
     /// </summary>
@@ -18,7 +18,7 @@ public class SoldierEntity : MAEntity
 
     protected override void OnShow(object userData)
     {
-        
+
         if (userData is EntityParams ep)
         {
             Side = ep.Side;
@@ -69,26 +69,26 @@ public class SoldierEntity : MAEntity
         this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
     }
-    
 
-    
+
+
     /// <summary>
     /// 根据单位类型获取武器索引
     /// </summary>
     private WeaponType GetWeaponIndexByUnitType(string unitIndex)
     {
-        var row  = GeneralCreature.GetData(unitIndex);
+        var row = GeneralCreature.GetData(unitIndex);
 
         return row.WeaponTypeOne;
     }
-    
 
-    
+
+
     /// <summary>
     /// 获取单位类型索引
     /// </summary>
     public string UnitIndex => _unitIndex;
-    
+
     /// <summary>
     /// 获取单位类型（重写基类方法）
     /// </summary>
@@ -97,11 +97,11 @@ public class SoldierEntity : MAEntity
     {
         return _unitIndex;
     }*/
-    
 
-    
 
-    
+
+
+
     protected override void OnHide(bool isShutdown, object userData)
     {
         base.OnHide(isShutdown, userData);

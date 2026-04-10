@@ -49,7 +49,7 @@ public class SimEntityContext : IEntityContext
         _properties[prop] = val;
     }
 
-    public void TakeDamage(float damage, HealthModifyType modType,IEntityContext attacker = null)
+    public void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
     {
         Health.ModifyHealth(modType, damage, false);
         if (Health.currentHealth <= 0f)

@@ -1,13 +1,9 @@
-﻿using System.Linq;
-using UnityEngine;
+﻿using UnityEngine;
 
 public static class SimpleTargeting
 {
     public static CompCreature FindNearestEnemy(MAEntity self, float range)
     {
-        var hitSides = EntitySideHelper.GetHitSide(self.Side);
-        if (hitSides == null || hitSides.Length == 0) return null;
-
         Collider[] cols = Physics.OverlapSphere(self.transform.position, range);
 
         float best = float.MaxValue;
@@ -21,8 +17,8 @@ public static class SimpleTargeting
             var creature = c.GetComponentInParent<CompCreature>();
             if (creature == null) continue;
             if (creature == self) continue;
-
-            if (!hitSides.Contains(creature.Side)) continue;
+            if (!(creature is IEntityContext creatureCtx)) continue;
+            if (!EntityCombatTeamHelper.IsEnemy(self, creatureCtx)) continue;
 
             float d = (creature.transform.position - self.transform.position).sqrMagnitude;
             if (d < best)
@@ -34,7 +30,7 @@ public static class SimpleTargeting
 
         return bestTarget;
     }
-    
+
     // SimpleTargeting.cs 追加这个方法
     public static Vector3 GetSeparationForce(MAEntity self, float separationRadius)
     {
@@ -51,7 +47,7 @@ public static class SimpleTargeting
             if (other == null || other == self) continue;
 
             // 只和相同阵营的实体产生排斥力（你也可以把条件去掉，让它排斥所有人）
-            if (other.Side == self.Side)
+            if (EntityCombatTeamHelper.IsAlly(self, other))
             {
                 Vector3 diff = self.transform.position - other.transform.position;
                 diff.y = 0; // 忽略Y轴，只在平面上散开
@@ -69,8 +65,8 @@ public static class SimpleTargeting
         // 求平均排斥力
         return count > 0 ? force / count : Vector3.zero;
     }
-    
-    
+
+
     public static CompCreature FindNearestPlayer(MAEntity self, float range)
     {
         Collider[] cols = Physics.OverlapSphere(self.transform.position, range);

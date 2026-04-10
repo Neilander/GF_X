@@ -11,9 +11,9 @@ public class PlayerEntity : SkillEntity
         string moveFacPath = "PlayerMoveFactory";
         string atkFacPath = "PlayerAtkFactory";
         //设置组件
-        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),this);
+        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
         //PlayerAttackComp.CreateAtkComp(this);
-        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),this);
+        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),MoveCompFactory.MoveFactoryCallBack,this );
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),AtkCompFactory.AtkFactoryCallBack,this );
     }
@@ -24,7 +24,7 @@ public class PlayerEntity : SkillEntity
         CameraController.Instance.SetFollowTarget(gameObject.transform);
         if (userData is EntityParams)
         {
-            transform.position = (userData as EntityParams).position?? Vector3.zero;
+            transform.position = (userData as EntityParams).position ?? Vector3.zero;
         }
 
         Side = SideType.PlayerSide;
@@ -34,7 +34,7 @@ public class PlayerEntity : SkillEntity
     protected override void SetUpSkillComp()
     {
         string skillFacPath = "PlayerSkillFactory";
-        FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath(skillFacPath),this);
+        FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath(skillFacPath), this);
     }
 
     protected override void Update()
@@ -47,7 +47,7 @@ public class PlayerEntity : SkillEntity
             //SpawnTestSelector();
             //SpawnTestHitBoxAt003();
         }
-       
+
 #endif
     }
 
@@ -71,7 +71,7 @@ public class PlayerEntity : SkillEntity
         HitBox hitBox = go.AddComponent<HitBox>();
 
         // 5. 激活 HitBox
-        hitBox.Activate(this,new Damage(this,1) );
+        hitBox.Activate(this, new Damage(this, 1));
 
         go.AddComponent(typeof(Rigidbody));
         go.GetComponent<Rigidbody>().isKinematic = true;
@@ -85,21 +85,21 @@ public class PlayerEntity : SkillEntity
         {
             CylinderTargetSelector selector = (CylinderTargetSelector)logic;
             selector.Activate(new List<ISelectable>(), SideType.PlayerSide);
-            selector.ChangeRange(new Vector3(3,4,0));
+            selector.ChangeRange(new Vector3(3, 4, 0));
         };
-        
+
         GF.Entity.ShowEntity<CylinderTargetSelector>("CylinderSelector", Const.EntityGroup.Default, hitboxParams);
     }
 
     private void SpawnTestProjectile()
     {
         var projectileParams = EntityParams.Create();
-        
+
         projectileParams.OnShowCallback = logic =>
         {
             DirectionProjectile dirPro = (DirectionProjectile)logic;
-            logic.transform.position = transform.position+Vector3.up*0.5f;
-            dirPro.StartMoveWithDirection(new Vector3(1,0,0), this, new Damage(this, 1));
+            logic.transform.position = transform.position + Vector3.up * 0.5f;
+            dirPro.StartMoveWithDirection(new Vector3(1, 0, 0), this, new Damage(this, 1));
         };
         GF.Entity.ShowEntity<DirectionProjectile>("TestProjectile", Const.EntityGroup.Default, projectileParams);
     }

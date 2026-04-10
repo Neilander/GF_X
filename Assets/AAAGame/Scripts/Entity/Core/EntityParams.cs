@@ -7,6 +7,9 @@ using AAAGame.Scripts.BuffSystem;
 
 public class EntityParams : RefParams
 {
+    private SideType _side = SideType.NoSide;
+    private int _factionId = -1;
+
     public Vector3? position { get; set; } = null;
     public Vector3? localPosition { get; set; } = null;
     public Vector3? localEulerAngles { get; set; } = null;
@@ -14,13 +17,32 @@ public class EntityParams : RefParams
 
     public Vector3? localScale { get; set; } = null;
     public int gameObjectLayer { get; set; } = -1;
-    
-    
-    public SideType Side { get; set; } = SideType.NoSide;
+
+
+    public SideType Side
+    {
+        get => _side;
+        set
+        {
+            _side = value;
+            _factionId = EntitySideHelper.ToFactionId(value);
+        }
+    }
+
+    public int FactionId
+    {
+        get => _factionId;
+        set
+        {
+            _factionId = value;
+            _side = EntitySideHelper.ToSide(value);
+        }
+    }
+
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int FollowEntityId { get; set; } = -1;
     public string Index { get; set; } = ""; // 单位类型索引
-    
+
     /// <summary>
     /// 出生时自带的 Buff 列表
     /// </summary>
@@ -80,14 +102,15 @@ public class EntityParams : RefParams
         this.ParentTransform = null;
         OnShowCallback = null;
         OnHideCallback = null;
-        
+
         // 新加：重置弹道相关参数
         Target = null;
         Attacker = null;
         WeaponData = null;
         WeaponSO = null;
-        
-        Side = SideType.NoSide;
+
+        _side = SideType.NoSide;
+        _factionId = -1;
         BrainType = BrainType.Player;
         FollowEntityId = -1;
         Index = "";
