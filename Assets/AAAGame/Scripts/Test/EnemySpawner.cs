@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using UnityEngine;
+using System.Collections;
 
 /// <summary>
 /// 敌人生成器：测试用，挂在场景物体上 Start 时生成一簇敌人
@@ -25,6 +26,13 @@ public class EnemySpawner : MonoBehaviour
 
     private void Start()
     {
+        StartCoroutine(SpawnEnemiesAfterDelay());
+    }
+
+    private IEnumerator SpawnEnemiesAfterDelay()
+    {
+        yield return null; // 等待一帧，确保事件已订阅
+        Debug.Log($"EnemySpawner: Spawning {count} enemies at {transform.position}, unitType={unitType}, side={side}");
         ClusterSpawnSystem.SpawnCluster(transform.position, count, radius, minDistance, unitType, side, brainType);
     }
 

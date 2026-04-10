@@ -56,3 +56,6 @@ MonoBehaviour:
   - RangedWeaponTestProcedure
   - RealProcedure
   - SampleProcedure
+  - LaunchProcedure
+  - LoadHotfixDllProcedure
+  - UpdateResourcesProcedure
