@@ -21,13 +21,48 @@ public class InteractionManager : MonoBehaviour
     private InputModel _inputModel;
     private InteractionHost _currentTarget;
 
+    private void EnsureDetectorReference()
+    {
+        if (detector != null)
+            return;
+
+        detector = GetComponent<InteractionDetector>();
+        if (detector == null)
+            detector = GetComponentInChildren<InteractionDetector>();
+    }
+
+    public void ConfigureRuntime(
+        InteractionDetector detectorComponent,
+        float range,
+        float padding,
+        float distanceScoreWeight = 0.65f,
+        float facingScoreWeight = 0.35f,
+        float switchGate = 0.08f,
+        float holdGate = 0.1f)
+    {
+        detector = detectorComponent;
+        interactionRange = Mathf.Max(0f, range);
+        triggerPadding = Mathf.Max(0f, padding);
+
+        float weightSum = Mathf.Max(0.001f, distanceScoreWeight + facingScoreWeight);
+        distanceWeight = Mathf.Clamp01(distanceScoreWeight / weightSum);
+        angleWeight = 1f - distanceWeight;
+
+        switchThreshold = Mathf.Max(0f, switchGate);
+        minHoldTime = Mathf.Max(0f, holdGate);
+
+        SyncRangeToComponents();
+    }
+
     private void Awake()
     {
+        EnsureDetectorReference();
         SyncRangeToComponents();
     }
 
     private void OnValidate()
     {
+        EnsureDetectorReference();
         SyncRangeToComponents();
     }
 
@@ -52,6 +87,10 @@ public class InteractionManager : MonoBehaviour
 
     private void Update()
     {
+        EnsureDetectorReference();
+        if (detector == null)
+            return;
+
         if (!EnsureInputModel())
             return;
 
@@ -152,7 +191,7 @@ public class InteractionManager : MonoBehaviour
             ? Vector3.Distance(actorPos, collider.ClosestPoint(actorPos))
             : Vector3.Distance(actorPos, target.Transform.position);
 
-        float effectiveRange = interactionRange * 0.85f;
+        float effectiveRange = interactionRange * 0.8f;
         if (dist > effectiveRange)
             return false;
 

@@ -9,16 +9,16 @@ public class GeneralCreature : EntityBase, ITargetable
     public bool Alive { get; protected set; }
     //public ITargetable Instigator { get; set; }
     public GameObject Gmo { get; private set; }
-    
+
     public string ReferenceId { get; protected set; }
-    
-    public Transform display{ get; protected set; }
+
+    public Transform display { get; protected set; }
     public Animator animator { get; protected set; }
 
-    
+
     public CreaturePropertyManager CreaturePropertyManager { get; private set; }
-    
-    
+
+
     private HurtBox hurtBox;
 
     protected override void OnInit(object userData)
@@ -27,7 +27,7 @@ public class GeneralCreature : EntityBase, ITargetable
 
         Gmo = gameObject;
         display = transform.Find("Display");
-        
+
         if (display == null)
         {
             // 创建Display子对象
@@ -56,7 +56,6 @@ public class GeneralCreature : EntityBase, ITargetable
         base.OnShow(userData);
         Alive = true;
         CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
-        display.rotation = Quaternion.Euler(38.7f, 0, 0);
         //Debug.LogError($"[Creature] {ReferenceId} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
     }
 
@@ -85,17 +84,17 @@ public class GeneralCreature : EntityBase, ITargetable
         float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
-        
+
         // 显示伤害跳字
         Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
         Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
         Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
 
-        if (cur<= 0)
+        if (cur <= 0)
         {
             Alive = false;
-            
+
             // 获取被击杀的实体
             Entity victimEntity = GF.Entity.GetEntity(this.Id);
             SoldierEntity victim = victimEntity?.gameObject.GetComponent<SoldierEntity>();
@@ -103,7 +102,7 @@ public class GeneralCreature : EntityBase, ITargetable
             {
                 // 触发宿主死亡处理
                 victim.OnDead();
-                
+
                 // 触发击杀回调
                 if (attacker != null)
                 {
@@ -120,7 +119,7 @@ public class GeneralCreature : EntityBase, ITargetable
                     }
                 }
             }
-            
+
             GF.Entity.HideEntity(Id);
         }
     }
@@ -167,6 +166,8 @@ public class GeneralCreature : EntityBase, ITargetable
 
     protected virtual void SetUpHurtBox()
     {
+        BoxCollider hurtBoxCollider = null;
+
         Transform hurtBoxTransform = transform.Find("HurtBox");
         if (hurtBoxTransform == null)
         {
@@ -176,12 +177,12 @@ public class GeneralCreature : EntityBase, ITargetable
             hurtBoxObj.transform.localPosition = Vector3.zero;
             hurtBoxObj.transform.localRotation = Quaternion.identity;
             hurtBoxObj.transform.localScale = Vector3.one;
-            
+
             // 添加BoxCollider作为触发器
-            BoxCollider collider = hurtBoxObj.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
-            collider.size = new Vector3(0.5f, 1.5f, 0.5f);
-            
+            hurtBoxCollider = hurtBoxObj.AddComponent<BoxCollider>();
+            hurtBoxCollider.isTrigger = true;
+            hurtBoxCollider.size = new Vector3(0.5f, 1.5f, 0.5f);
+
             // 添加HurtBox组件
             hurtBox = hurtBoxObj.AddComponent<HurtBox>();
         }
@@ -192,8 +193,25 @@ public class GeneralCreature : EntityBase, ITargetable
             {
                 hurtBox = hurtBoxTransform.gameObject.AddComponent<HurtBox>();
             }
+
+            hurtBoxCollider = hurtBoxTransform.GetComponent<BoxCollider>();
+            if (hurtBoxCollider == null)
+            {
+                hurtBoxCollider = hurtBoxTransform.gameObject.AddComponent<BoxCollider>();
+                hurtBoxCollider.isTrigger = true;
+                hurtBoxCollider.size = new Vector3(0.5f, 1.5f, 0.5f);
+            }
         }
-        
+
+        if (hurtBoxCollider != null)
+        {
+            CharacterController characterController = GetComponent<CharacterController>();
+            if (characterController != null)
+            {
+                hurtBoxCollider.center = characterController.center;
+            }
+        }
+
         hurtBox.Activate(this);
     }
 
@@ -206,14 +224,14 @@ public class GeneralCreature : EntityBase, ITargetable
 
     public virtual void InSelection(ISelector selector)
     {
-        GF.Log(gameObject.name+"被选择了");
+        GF.Log(gameObject.name + "被选择了");
         //先留好口子，之后可以加一些高亮什么的
     }
 
     public virtual void DeSelection()
     {
         //配套口子
-        GF.Log(gameObject.name+"取消选择了");
+        GF.Log(gameObject.name + "取消选择了");
     }
 
     #endregion
@@ -224,7 +242,7 @@ public class GeneralCreature : EntityBase, ITargetable
         var rows = table.GetDataRows(r => r.CharacterKey == id);
         if (rows == null || rows.Length == 0)
         {
-            GF.LogError("没有匹配的表格"+"CharacterDataDetail" + " id=" + id);
+            GF.LogError("没有匹配的表格" + "CharacterDataDetail" + " id=" + id);
             return null;
         }
         var row = rows[0];
@@ -239,7 +257,7 @@ public enum SideType
     EnemySide
 }
 
-public interface ITargetable:ISelectable
+public interface ITargetable : ISelectable
 {
     SideType Side { get; }
     bool Alive { get; }
@@ -247,6 +265,6 @@ public interface ITargetable:ISelectable
     GameObject Gmo { get; }
     string ReferenceId { get; }
 
-    void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null );
+    void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null);
     float health { get; }
 }

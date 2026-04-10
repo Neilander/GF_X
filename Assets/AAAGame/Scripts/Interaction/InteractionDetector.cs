@@ -111,7 +111,7 @@ public class InteractionDetector : MonoBehaviour
         if (!target.IsInteractable())
             return false;
 
-        float effectiveMaxDistance = maxDistance * 0.85f;
+        float effectiveMaxDistance = maxDistance * 0.8f;
 
         var collider = target.GetComponent<Collider>();
         if (collider == null)

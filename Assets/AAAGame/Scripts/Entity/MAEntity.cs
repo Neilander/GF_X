@@ -8,6 +8,10 @@ using AAAGame.Scripts.BuffSystem;
 
 public class MAEntity : CompCreature, IEntityContext
 {
+    private const string PlayerInteractionNodeName = "InteractCollider";
+    private const float PlayerInteractionRange = 2.7f;
+    private const float PlayerInteractionPadding = 0.7f;
+
     public IMoveComp moveComp { get; protected set; }
     public IAtkComp atkComp { get; protected set; }
 
@@ -23,7 +27,7 @@ public class MAEntity : CompCreature, IEntityContext
 
     private IBuffComp _buffComp;
     public IBuffComp BuffComp => _buffComp;
-    
+
     private Quaternion? _targetRotation = null;
     private Transform _modelTransform = null;
 
@@ -73,7 +77,7 @@ public class MAEntity : CompCreature, IEntityContext
         cController = GetComponent<CharacterController>();
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
         _moveExecutor.Init(cController);
-        
+
         // 像DirectAtkComp一样，直接获取Animator组件
         _animator = GetComponent<Animator>();
         if (_animator == null)
@@ -81,7 +85,7 @@ public class MAEntity : CompCreature, IEntityContext
             // 如果没有，再尝试从display获取
             _animator = display.GetComponent<Animator>();
         }
-        
+
         // 找到模型Transform（有Animator的子对象）
         foreach (Transform child in display)
         {
@@ -92,7 +96,7 @@ public class MAEntity : CompCreature, IEntityContext
                 break;
             }
         }
-        
+
         if (_modelTransform == null)
         {
             _modelTransform = display;
@@ -121,8 +125,64 @@ public class MAEntity : CompCreature, IEntityContext
             }
         }
 
+        if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
+        {
+            EnsurePlayerInteractionRuntime();
+        }
+
         // 注意：RegisterAgent 移到子类 OnShow 末尾，确保 Side 等字段已赋值
         EntityRegistry.Register(this);
+    }
+
+    private void EnsurePlayerInteractionRuntime()
+    {
+        Transform interactionNode = transform.Find(PlayerInteractionNodeName);
+        GameObject interactionObject;
+
+        if (interactionNode == null)
+        {
+            interactionObject = new GameObject(PlayerInteractionNodeName);
+            interactionObject.transform.SetParent(transform);
+            interactionObject.transform.localPosition = Vector3.zero;
+            interactionObject.transform.localRotation = Quaternion.identity;
+            interactionObject.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            interactionObject = interactionNode.gameObject;
+        }
+
+        SphereCollider triggerSphere = interactionObject.GetComponent<SphereCollider>();
+        if (triggerSphere == null)
+            triggerSphere = interactionObject.AddComponent<SphereCollider>();
+        triggerSphere.isTrigger = true;
+
+        Rigidbody triggerBody = interactionObject.GetComponent<Rigidbody>();
+        if (triggerBody == null)
+            triggerBody = interactionObject.AddComponent<Rigidbody>();
+        triggerBody.isKinematic = true;
+        triggerBody.useGravity = false;
+        triggerBody.constraints = RigidbodyConstraints.FreezeAll;
+
+        InteractionDetector detector = interactionObject.GetComponent<InteractionDetector>();
+        if (detector == null)
+            detector = interactionObject.AddComponent<InteractionDetector>();
+
+        InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
+        if (manager == null)
+            manager = interactionObject.AddComponent<InteractionManager>();
+
+        if (interactionObject.GetComponent<InteractOptionTipsPresenter>() == null)
+            interactionObject.AddComponent<InteractOptionTipsPresenter>();
+
+        manager.ConfigureRuntime(
+            detector,
+            PlayerInteractionRange,
+            PlayerInteractionPadding,
+            0.65f,
+            0.35f,
+            0.08f,
+            0.1f);
     }
 
     /// <summary>
@@ -195,91 +255,91 @@ public class MAEntity : CompCreature, IEntityContext
             atkComp.Attack(dt);
 
         if (Alive)
-            {
-                if (CanRun(durationMoveEffectComp))
-                    durationMoveEffectComp.ApplyEffect(dt);
-
-                moveExecutor.Execute();
-                
-                // 处理动画和模型朝向
-                if (_animator != null)
-                {
-                    // 获取移动状态
-                    bool isMoving = false;
-                    Vector2 brainMove = Vector2.zero;
-                    
-                    if (Brain != null)
-                    {
-                        // 如果是玩家控制的单位，检查PlayerBrain的移动输入
-                        if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
-                        {
-                            brainMove = playerBrain.Move;
-                            isMoving = brainMove.sqrMagnitude > 0.001f;
-                        }
-                        else if (moveComp != null) // AI单位使用moveComp的IsMoving
-                        {
-                            isMoving = moveComp.IsMoving;
-                        }
-                    }
-                    
-                    bool isAttacking = atkComp != null && atkComp.IsAttacking;
-                    
-                    // 使用Play方法直接控制动画，只在状态变化时调用
-                    if (!isAttacking)
-                    {
-                        if (isMoving)
-                        {
-                            if (!_wasMoving)
-                            {
-                                _animator.Play("骨架_Move", 0);
-                            }
-                            _wasMoving = true;
-                        }
-                        else
-                        {
-                            if (_wasMoving)
-                            {
-                                _animator.Play("骨架_Idle", 0);
-                            }
-                            _wasMoving = false;
-                        }
-                    }
-                    
-                    // 设置模型朝向（不管是否在移动，只要有移动方向就转向）
-                    if (moveComp != null && Brain != null) // 对所有单位执行旋转
-                    {
-                        Vector3 moveDirection = moveComp.GetNavDirection();
-                        
-                        // 如果PlayerMoveComp返回的方向为零，尝试从PlayerBrain获取
-                        if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
-                        {
-                            moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
-                        }
-                        
-                        if (moveDirection.sqrMagnitude > 0.001f)
-                        {
-                            _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
-                        }
-                    }
-                }
-            }
-        }
-        
-        protected virtual void LateUpdate()
         {
-            if (_targetRotation.HasValue && Brain != null && _modelTransform != null) // 对所有单位执行旋转
+            if (CanRun(durationMoveEffectComp))
+                durationMoveEffectComp.ApplyEffect(dt);
+
+            moveExecutor.Execute();
+
+            // 处理动画和模型朝向
+            if (_animator != null)
             {
-                // 尝试旋转模型的子对象（可能模型的实际旋转对象是子对象）
-                Transform rotateTarget = _modelTransform;
-                if (_modelTransform.childCount > 0)
+                // 获取移动状态
+                bool isMoving = false;
+                Vector2 brainMove = Vector2.zero;
+
+                if (Brain != null)
                 {
-                    rotateTarget = _modelTransform.GetChild(0);
+                    // 如果是玩家控制的单位，检查PlayerBrain的移动输入
+                    if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                    {
+                        brainMove = playerBrain.Move;
+                        isMoving = brainMove.sqrMagnitude > 0.001f;
+                    }
+                    else if (moveComp != null) // AI单位使用moveComp的IsMoving
+                    {
+                        isMoving = moveComp.IsMoving;
+                    }
                 }
-                
-                rotateTarget.rotation = _targetRotation.Value;
-                _targetRotation = null;
+
+                bool isAttacking = atkComp != null && atkComp.IsAttacking;
+
+                // 使用Play方法直接控制动画，只在状态变化时调用
+                if (!isAttacking)
+                {
+                    if (isMoving)
+                    {
+                        if (!_wasMoving)
+                        {
+                            _animator.Play("骨架_Move", 0);
+                        }
+                        _wasMoving = true;
+                    }
+                    else
+                    {
+                        if (_wasMoving)
+                        {
+                            _animator.Play("骨架_Idle", 0);
+                        }
+                        _wasMoving = false;
+                    }
+                }
+
+                // 设置模型朝向（不管是否在移动，只要有移动方向就转向）
+                if (moveComp != null && Brain != null) // 对所有单位执行旋转
+                {
+                    Vector3 moveDirection = moveComp.GetNavDirection();
+
+                    // 如果PlayerMoveComp返回的方向为零，尝试从PlayerBrain获取
+                    if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                    {
+                        moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
+                    }
+
+                    if (moveDirection.sqrMagnitude > 0.001f)
+                    {
+                        _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+                    }
+                }
             }
         }
+    }
+
+    protected virtual void LateUpdate()
+    {
+        if (_targetRotation.HasValue && Brain != null && _modelTransform != null) // 对所有单位执行旋转
+        {
+            // 尝试旋转模型的子对象（可能模型的实际旋转对象是子对象）
+            Transform rotateTarget = _modelTransform;
+            if (_modelTransform.childCount > 0)
+            {
+                rotateTarget = _modelTransform.GetChild(0);
+            }
+
+            rotateTarget.rotation = _targetRotation.Value;
+            _targetRotation = null;
+        }
+    }
 
     #region Move and Attack
 
