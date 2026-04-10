@@ -23,7 +23,7 @@ public class MAEntity : CompCreature, IEntityContext
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
     private Animator _animator;
-    private bool _wasMoving = false;
+    private const float RotationSpeed = 720f; // 度/秒
 
     private IBuffComp _buffComp;
     public IBuffComp BuffComp => _buffComp;
@@ -261,56 +261,29 @@ public class MAEntity : CompCreature, IEntityContext
 
             moveExecutor.Execute();
 
-            // 处理动画和模型朝向
             if (_animator != null)
             {
-                // 获取移动状态
                 bool isMoving = false;
                 Vector2 brainMove = Vector2.zero;
 
                 if (Brain != null)
                 {
-                    // 如果是玩家控制的单位，检查PlayerBrain的移动输入
                     if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
                     {
                         brainMove = playerBrain.Move;
                         isMoving = brainMove.sqrMagnitude > 0.001f;
                     }
-                    else if (moveComp != null) // AI单位使用moveComp的IsMoving
+                    else if (moveComp != null)
                     {
                         isMoving = moveComp.IsMoving;
                     }
                 }
 
-                bool isAttacking = atkComp != null && atkComp.IsAttacking;
+                _animator.SetBool("Moving", isMoving);
 
-                // 使用Play方法直接控制动画，只在状态变化时调用
-                if (!isAttacking)
-                {
-                    if (isMoving)
-                    {
-                        if (!_wasMoving)
-                        {
-                            _animator.Play("骨架_Move", 0);
-                        }
-                        _wasMoving = true;
-                    }
-                    else
-                    {
-                        if (_wasMoving)
-                        {
-                            _animator.Play("骨架_Idle", 0);
-                        }
-                        _wasMoving = false;
-                    }
-                }
-
-                // 设置模型朝向（不管是否在移动，只要有移动方向就转向）
-                if (moveComp != null && Brain != null) // 对所有单位执行旋转
+                if (moveComp != null && Brain != null)
                 {
                     Vector3 moveDirection = moveComp.GetNavDirection();
-
-                    // 如果PlayerMoveComp返回的方向为零，尝试从PlayerBrain获取
                     if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
                     {
                         moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
@@ -327,17 +300,23 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected virtual void LateUpdate()
     {
-        if (_targetRotation.HasValue && Brain != null && _modelTransform != null) // 对所有单位执行旋转
+        if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
         {
-            // 尝试旋转模型的子对象（可能模型的实际旋转对象是子对象）
             Transform rotateTarget = _modelTransform;
             if (_modelTransform.childCount > 0)
             {
                 rotateTarget = _modelTransform.GetChild(0);
             }
 
-            rotateTarget.rotation = _targetRotation.Value;
-            _targetRotation = null;
+            rotateTarget.rotation = Quaternion.RotateTowards(
+                rotateTarget.rotation,
+                _targetRotation.Value,
+                RotationSpeed * Time.deltaTime);
+
+            if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
+            {
+                _targetRotation = null;
+            }
         }
     }
 

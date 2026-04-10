@@ -76,6 +76,7 @@ public class CharacterMoveComp : IMoveComp
 
         Vector2 manualMove = _ctx.Brain?.Move ?? Vector2.zero;
         Vector3 moveDir = Vector3.zero;
+        float speed = _ctx.GetProperty(CreatureMainProperty.Speed)*0.05f;
 
         if (manualMove.sqrMagnitude > 0.001f)
         {
@@ -101,8 +102,11 @@ public class CharacterMoveComp : IMoveComp
 
             Vector3 targetCorner = _corners[_currentPathIndex];
             Vector3 offset = new Vector3(targetCorner.x - _ctx.Position.x, 0f, targetCorner.z - _ctx.Position.z);
+            float dist = offset.magnitude;
+            
 
-            moveDir = offset.normalized;
+            // 距离不足一帧移动量时按比例减速，防止冲过头
+            moveDir = dist < speed*deltaTime ? offset/speed : offset.normalized;;
 
             _stuckTimer += deltaTime;
             if (_stuckTimer >= 0.25f)
@@ -122,13 +126,14 @@ public class CharacterMoveComp : IMoveComp
             StopMove();
         }
 
-        float speed = _ctx.GetProperty(CreatureMainProperty.Speed);
-        if (speed <= 0.01f) speed = 5f;
+        //float speed = _ctx.GetProperty(CreatureMainProperty.Speed);
+        //if (speed <= 0.01f) speed = 5f;
 
-        _ctx.MoveExecutor.SetInput(moveDir * speed * 0.1f);
+        _ctx.MoveExecutor.SetInput(moveDir * speed );
         
         // 更新移动状态
-        _isMoving = moveDir.sqrMagnitude > 0.001f;
+        //Debug.Log( $"Move: moveDir={moveDir}, magnitude={moveDir.magnitude}");
+        _isMoving = moveDir.sqrMagnitude > 0.9f;
 
         // 动画控制由MAEntity统一处理
     }

@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -80,7 +80,6 @@ public partial class GeneralSetup : GameFrameworkComponent
                 {
                     // 敌方单位：保持原血量不变
                 }*/
-
                 // 更新当前生命值，确保单位满血
                 float currentHealth = creature.health;
                 float healAmount = max - currentHealth;

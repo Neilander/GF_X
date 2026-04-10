@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 4871106885075792713}
   - component: {fileID: 3003162454319747506}
   - component: {fileID: 3585839594239939683}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: gujia
   m_TagString: Untagged
   m_Icon: {fileID: 0}

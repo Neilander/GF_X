@@ -104,28 +104,12 @@ public class BuffTestProcedure : ProcedureBase
                     float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                     float max = originalMax;
                     
-                    // 根据单位类型调整血量
-                    if (ma is SoldierEntity soldier)
-                    {
-                        if (soldier.UnitIndex == "Unit_Coder")
-                        {
-                            // 码农单位：血量增加到10倍
-                            float newMax = originalMax * 10f;
-                            Fix64 addValue = (Fix64)(newMax - originalMax);
-                            var modifier = PropertyDirectAdditiveModifier.Create(addValue);
-                            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
-                            max = newMax;
-                        }
-                        else if (soldier.UnitIndex == "Unit_BoneButcher")
-                        {
-                            // 剔骨狂魔单位：血量增加到10倍
-                            float newMax = originalMax * 10f;
-                            Fix64 addValue = (Fix64)(newMax - originalMax);
-                            var modifier = PropertyDirectAdditiveModifier.Create(addValue);
-                            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
-                            max = newMax;
-                        }
-                    }
+                    // 所有单位血量增加到10倍
+                    float newMax = originalMax * 10f;
+                    Fix64 addValue = (Fix64)(newMax - originalMax);
+                    var modifier = PropertyDirectAdditiveModifier.Create(addValue);
+                    creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
+                    max = newMax;
                     
                     // 更新当前生命值，确保单位满血
                     float currentHealth = creature.health;
@@ -137,8 +121,8 @@ public class BuffTestProcedure : ProcedureBase
                             PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
                         
                         // 显示治疗跳字
-                        Vector3 startPos = creature.transform.position + new Vector3(0, 1.0f, 0);
-                        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
+                        Vector3 startPos = creature.transform.position + new Vector3(0, 2.0f, 0);
+                        Vector3 endPos = startPos + new Vector3(0, 1.5f, 0);
                         Log.Info($"Heal pop text: healAmount={healAmount}, startPos={startPos}, endPos={endPos}");
                         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), $"+{healAmount}", endPos, DamageTextType.Heal);
                     }

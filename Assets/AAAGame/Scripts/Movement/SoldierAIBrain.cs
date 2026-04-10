@@ -53,7 +53,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     private bool _joinedGroup;
     private SoldierState _lastSyncedState = SoldierState.Idle;
     private bool _inDeadZone;                // 是否已进入 leader 附近的死区
-    private float _deadZoneRange = 3f;       // 死区宽度：从斥力半径到斥力半径+此值
+    private float _deadZoneRange = 12f;      // 死区宽度：从斥力半径到斥力半径+此值
+    private float _innerDeadZoneRange = 2f;  // 近死区：斥力半径+此值以内完全停下
     private Vector3? _deadZoneTarget;        // 死区内的随机导航目标点
 
     /// <summary>
@@ -205,22 +206,30 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         float deadZoneOuter = leaderEqR + _deadZoneRange;
         float distToLeader = HorizontalDist(self.Position, _leader.Position);
 
+        float innerDeadZone = leaderEqR + _innerDeadZoneRange;
+
         if (distToLeader <= deadZoneOuter)
         {
-            // 在死区内：不主动移动，随波逐流，只接收士兵间的 LJ 力
+            // 近死区内（<= innerDeadZone）：完全停下，只靠 LJ 力
+            // 近死区到远死区之间：线性衰减，越近意愿越弱
+            // t=1 在死区边缘（全速追），t=0 在近死区边缘（完全停）
+            float t = distToLeader <= innerDeadZone ? 0f : Mathf.InverseLerp(innerDeadZone, deadZoneOuter, distToLeader);
+            Vector3 toLeader = _leader.Position - self.Position;
+            toLeader.y = 0f;
+            Vector3 desiredVel = toLeader.normalized * speed * t;
+            SubmitToCoordinator(self, desiredVel, speed);
+
             if (!_inDeadZone)
             {
                 _inDeadZone = true;
                 _deadZoneTarget = null;
-                self.MoveComp.StopMove();
                 GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.ReferenceId}] 进入死区 dist={distToLeader:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+                    $"[{self.ReferenceId}] 进入死区 dist={distToLeader:F2} t={t:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
             }
-            SubmitToCoordinator(self, Vector3.zero, speed);
         }
         else
         {
-            // 在死区外：NavMesh 导航到 leader 附近死区内的随机点
+            // 在死区外：NavMesh 导航到 leader 附近
             _inDeadZone = false;
 
             // 没有目标点或目标点离 leader 太远（leader 移动了）→ 重新算
@@ -236,6 +245,28 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             Vector3 navDir = self.MoveComp.GetNavDirection();
             Vector3 desiredVel = navDir * speed;
             SubmitToCoordinator(self, desiredVel, speed);
+        }
+
+        // Debug 画死区范围（只在第一个小兵上画，避免刷屏）
+        if (_leader != null && _leader.Alive)
+        {
+            Vector3 lp = _leader.Position + Vector3.up * 0.1f;
+            DrawCircle(lp, leaderEqR, Color.red);       // 斥力半径
+            DrawCircle(lp, innerDeadZone, Color.yellow); // 近死区边缘
+            DrawCircle(lp, deadZoneOuter, Color.green);  // 远死区边缘
+        }
+    }
+
+    private static void DrawCircle(Vector3 center, float radius, Color color, int segments = 32)
+    {
+        float step = 2f * Mathf.PI / segments;
+        Vector3 prev = center + new Vector3(radius, 0f, 0f);
+        for (int i = 1; i <= segments; i++)
+        {
+            float angle = step * i;
+            Vector3 next = center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+            Debug.DrawLine(prev, next, color);
+            prev = next;
         }
     }
 
