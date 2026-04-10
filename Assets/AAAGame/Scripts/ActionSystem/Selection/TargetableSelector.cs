@@ -4,14 +4,14 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-public abstract class TargetableSelector :EntityBase, ISelector<ISelectable>
+public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
 {
     private List<ITargetable> _excludedCreatures;
     private SideType _selfSide;
-    
+
     public Dictionary<ISelectable, float> SelectRecords { get; private set; }
     public bool IsActive { get; private set; }
-    
+
     protected override void OnShow(object userData)
     {
         IsActive = false;
@@ -49,39 +49,42 @@ public abstract class TargetableSelector :EntityBase, ISelector<ISelectable>
 
     public void SetPosition(Vector3 pos)
     {
-        transform.position = pos+ Vector3.up*0.2f;
+        transform.position = pos + Vector3.up * 0.2f;
     }
 
     public bool Validate(GameObject obj)
     {
         if (!obj.TryGetComponent(out HurtBox target))
             return false;
-        
+
         //未开启的hurtbox不选择
         //这里不是单位未开启
         if (!target.IsActive)
             return false;
-        
+
         var targetOwner = target.Owner;
-        
+
         //选过的就不要选了
-        if(SelectRecords.ContainsKey(targetOwner))
+        if (SelectRecords.ContainsKey(targetOwner))
             return false;
-        
-        
+
+
 
         if (_excludedCreatures.Contains(targetOwner))
             return false;
-        
+
         //目标是死亡的也不选择,这里包含了目标死亡
         if (!targetOwner.CanBeSelected())
             return false;
-        
+
+        if (targetOwner is BuildingEntity building && (building.IsAlwaysInvincible || building.IsDisabled))
+            return false;
+
         if (!EntitySideHelper.GetHitSide(_selfSide).Contains(targetOwner.Side))
             return false;
-        
+
         //选择到了一个开着的hurtbox，并且目标也是该选择的，也是活着的
-        
+
         return true;
     }
 
@@ -124,12 +127,12 @@ public abstract class TargetableSelector :EntityBase, ISelector<ISelectable>
         var owner = hurtBox.Owner;
         if (owner == null)
             return;
-        
+
         if (!Validate(other.gameObject))
             return;
 
         SelectRecords.Add(owner, Time.time);
-        owner.InSelection( this);
+        owner.InSelection(this);
     }
 
     private void OnTriggerExit(Collider other)

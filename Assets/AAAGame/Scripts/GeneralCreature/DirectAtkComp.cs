@@ -39,6 +39,7 @@ public class DirectAtkComp : IAtkComp
 
     private float _stateTimer;
     private IEntityContext _lockedTarget;
+    private bool _movementLockedByThisAttack;
 
     public DirectAtkComp(WeaponType index)
     {
@@ -51,13 +52,13 @@ public class DirectAtkComp : IAtkComp
         {
             case WeaponType.Melee:
                 return "soldier_default";
-            
+
             case WeaponType.Projectile:
                 return "ranged_default";
-            
+
             default:
                 return "soldier_default";
-            
+
         }
     }
 
@@ -70,7 +71,8 @@ public class DirectAtkComp : IAtkComp
         _stateTimer = 0f;
         AttackCount = 0;
         _lockedTarget = null;
-        
+        _movementLockedByThisAttack = false;
+
         // 获取Animator组件
         var entity = _ctx as MAEntity;
         if (entity != null)
@@ -87,7 +89,7 @@ public class DirectAtkComp : IAtkComp
         float range = (float)row.WeaponRangeOne;
         float windUp = (float)row.WeaponPreOne;
         float windDown = (float)row.WeaponPreOne;
-        
+
 
         // 原来的代码：
         // // 构建武器数据（供 GetActiveWeapon fallback 使用）
@@ -119,8 +121,8 @@ public class DirectAtkComp : IAtkComp
             ProjectileSpeed = projectileSpeed
         };
 
-        
-       
+
+
 
         Debug.Log($"[DirectAtkComp] Init: unit={ctx.ReferenceId} weaponType={weaponType} damage={damage} range={attackRange} interval={interval} windUp={windUp} windDown={windDown} projectileSpeed={projectileSpeed}");
 
@@ -159,7 +161,11 @@ public class DirectAtkComp : IAtkComp
                 _stateTimer += deltaTime;
                 if (_stateTimer >= GetActiveWeapon().WindDown)
                 {
-                    _ctx.ResumeComp(_ctx.MoveComp, this);
+                    if (_movementLockedByThisAttack)
+                    {
+                        _ctx.ResumeComp(_ctx.MoveComp, this);
+                        _movementLockedByThisAttack = false;
+                    }
                     EnterState(AtkState.Cooldown);
                 }
                 break;
@@ -192,14 +198,17 @@ public class DirectAtkComp : IAtkComp
             GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.ReferenceId}] TryStart: Brain=null");
             return;
         }
-        if (!_ctx.Brain.Attack)
+
+        bool manualAttack = _ctx.Brain.Attack;
+        bool playerAutoAttack = _ctx.Brain is AAAGame.Scripts.Entity.PlayerBrain && _ctx.TargetComp?.CurrentTarget != null;
+        if (!manualAttack && !playerAutoAttack)
         {
             GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.ReferenceId}] TryStart: Brain.Attack=false");
             return;
         }
 
         var target = _ctx.TargetComp?.CurrentTarget;
-        if (target == null || !target.Alive)
+        if (!target.IsAttackTargetable())
         {
             GameDebugSettings.Log(DebugCategory.Attack,
                 $"[{_ctx.ReferenceId}] TryStart: 无目标 targetComp={(_ctx.TargetComp != null ? "有" : "null")} target={target} alive={target?.Alive}");
@@ -207,7 +216,7 @@ public class DirectAtkComp : IAtkComp
         }
 
         var activeWeapon = GetActiveWeapon();
-        float dist = Vector3.Distance(_ctx.Position, target.Position);
+        float dist = _ctx.DistanceToTargetSurface(target);
         float wpnRange = activeWeapon.AttackRange * 0.01f;
 
         // 攻击范围 = 自己的斥力半径 + 武器射程
@@ -228,7 +237,10 @@ public class DirectAtkComp : IAtkComp
 
         _lockedTarget = target;
         AttackCount++;
-        _ctx.LockComp(_ctx.MoveComp, this);
+        _movementLockedByThisAttack = ShouldLockMoveDuringAttack();
+        if (_movementLockedByThisAttack)
+            _ctx.LockComp(_ctx.MoveComp, this);
+
         EnterState(AtkState.WindUp);
 
         GameDebugSettings.Log(DebugCategory.Attack,
@@ -237,7 +249,7 @@ public class DirectAtkComp : IAtkComp
 
     private void DealDamage()
     {
-        if (_lockedTarget == null || !_lockedTarget.Alive)
+        if (!_lockedTarget.IsAttackTargetable())
         {
             GameDebugSettings.Log(DebugCategory.Attack,
                 $"[{_ctx.ReferenceId}] DealDamage: 目标丢失或已死 target={_lockedTarget} alive={_lockedTarget?.Alive}");
@@ -279,7 +291,7 @@ public class DirectAtkComp : IAtkComp
             $"[{_ctx.ReferenceId}] 状态 {State} → {newState}");
         State = newState;
         _stateTimer = 0f;
-        
+
         // 播放对应动画
         if (_animator != null)
         {
@@ -307,13 +319,20 @@ public class DirectAtkComp : IAtkComp
 
     public void ShutDown()
     {
-        if (IsAttacking && _ctx != null)
+        if (IsAttacking && _ctx != null && _movementLockedByThisAttack)
         {
             _ctx.ResumeComp(_ctx.MoveComp, this);
         }
+        _movementLockedByThisAttack = false;
         State = AtkState.Idle;
         _stateTimer = 0f;
         _lockedTarget = null;
+    }
+
+    private bool ShouldLockMoveDuringAttack()
+    {
+        // 玩家脑控下允许边移动边攻击。
+        return !(_ctx?.Brain is AAAGame.Scripts.Entity.PlayerBrain);
     }
 
     public void Resume() { }

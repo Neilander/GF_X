@@ -18,9 +18,19 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
         if (self == null || !self.Alive)
             return;
 
-        var target = self.TargetComp?.CurrentTarget;
-        if (target == null || !target.Alive)
+        if (self is BuildingEntity building && building.HasPermanentNoAttackCapability)
             return;
+
+        if (self.GetProperty(CreatureMainProperty.PhysicalAtk) <= 0f)
+            return;
+
+        var target = self.TargetComp?.CurrentTarget;
+        if (!target.IsAttackTargetable())
+        {
+            if (self.TargetComp != null)
+                self.TargetComp.CurrentTarget = null;
+            return;
+        }
 
         if (!EntityCombatTeamHelper.IsEnemy(self, target))
         {

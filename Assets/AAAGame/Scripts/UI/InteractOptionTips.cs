@@ -44,6 +44,7 @@ public partial class InteractOptionTips : UIFormBase
         // GF.Event.Subscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
+        GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
 
         RefreshList();
     }
@@ -54,6 +55,7 @@ public partial class InteractOptionTips : UIFormBase
         // GF.Event.Unsubscribe(ItemAmountChangedEventArgs.EventId, OnItemAmountChanged);
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
+        GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
         base.OnClose(isShutdown, userData);
     }
 
@@ -152,6 +154,18 @@ public partial class InteractOptionTips : UIFormBase
     private void OnResourceAmountChanged(object sender, GameEventArgs e = null)
     {
         RefreshList();
+    }
+
+    private void OnEntityFactionChanged(object sender, GameEventArgs e)
+    {
+        var args = e as EntityFactionChangedEventArgs;
+        if (args == null || _target == null)
+            return;
+
+        if (_target.Transform != null && _target.Transform.TryGetComponent<GeneralCreature>(out var creature) && creature.Id == args.EntityId)
+        {
+            RefreshList();
+        }
     }
 
     private void AttachFollower(Vector3 worldPoint)

@@ -245,6 +245,14 @@ public class LevelEntity : EntityBase
         activeLevelEntity.UnregisterBuildingFromStrongholdInternal(building);
     }
 
+    public static void NotifyBuildingDisabled(BuildingEntity building, IEntityContext attacker)
+    {
+        if (activeLevelEntity == null)
+            return;
+
+        activeLevelEntity.TryCaptureStrongholdAfterBuildingDisabled(building, attacker);
+    }
+
     private void RegisterBuildingToStrongholdInternal(BuildingEntity building)
     {
         if (building == null || tileWorldCreatorManager == null)
@@ -312,5 +320,73 @@ public class LevelEntity : EntityBase
         }
 
         return true;
+    }
+
+    private void TryCaptureStrongholdAfterBuildingDisabled(BuildingEntity disabledBuilding, IEntityContext attacker)
+    {
+        if (disabledBuilding == null)
+            return;
+
+        var stronghold = disabledBuilding.CurrentStronghold;
+        if (stronghold == null)
+            return;
+
+        int captureFactionId = ResolveCaptureFactionId(attacker);
+        if (captureFactionId < 0)
+            captureFactionId = EntitySideHelper.PlayerFactionId;
+
+        if (stronghold.OwnerFactionId == captureFactionId)
+            return;
+
+        bool hasCapturableBuildings = false;
+        for (int i = 0; i < stronghold.Buildings.Count; i++)
+        {
+            var building = stronghold.Buildings[i];
+            if (building == null || building.IsAlwaysInvincible)
+                continue;
+
+            hasCapturableBuildings = true;
+            if (!building.IsDisabled)
+                return;
+        }
+
+        if (!hasCapturableBuildings)
+            return;
+
+        CaptureStronghold(stronghold, captureFactionId);
+    }
+
+    private void CaptureStronghold(Stronghold stronghold, int newOwnerFactionId)
+    {
+        if (stronghold == null)
+            return;
+
+        stronghold.OwnerFactionId = newOwnerFactionId;
+
+        for (int i = 0; i < stronghold.Buildings.Count; i++)
+        {
+            var building = stronghold.Buildings[i];
+            if (building == null)
+                continue;
+
+            building.SetStronghold(stronghold);
+            building.RestoreToFullHealthAndEnable();
+        }
+
+        Log.Info("Stronghold captured. id={0}, newOwnerFaction={1}",
+            stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "<unknown>",
+            newOwnerFactionId);
+    }
+
+    private static int ResolveCaptureFactionId(IEntityContext attacker)
+    {
+        if (attacker == null)
+            return EntitySideHelper.PlayerFactionId;
+
+        if (attacker is BuildingEntity attackerBuilding)
+            return attackerBuilding.OwnerFactionID;
+
+        int factionId = EntitySideHelper.ToFactionId(attacker.Side);
+        return factionId >= 0 ? factionId : EntitySideHelper.PlayerFactionId;
     }
 }

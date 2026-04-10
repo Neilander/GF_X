@@ -20,6 +20,7 @@ public partial class BuildingEntity : MAEntity
     public bool HasUpgrade => BuildManager.HasUpgrade(this);
     public bool IsDisabled => _isDisabled;
     public bool IsAlwaysInvincible => buildingData != null && buildingData.Lv == 0;
+    public bool HasPermanentNoAttackCapability { get; private set; }
 
     private BuildingAtkComp _buildingAtkComp;
     private bool _isDisabled;
@@ -41,9 +42,11 @@ public partial class BuildingEntity : MAEntity
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
             BuildingInstanceId = System.Guid.NewGuid().ToString("N");
 
+        InitializeAttackCapabilityFlags();
         ResetCombatRuntimeState();
         ApplyBuildingPropertyOverrides();
         ConfigureCombatByBuildingData();
+        SyncHurtBoxToBuildingBounds();
 
         LevelEntity.RegisterBuildingToStronghold(this);
         SyncSideFromFaction();
@@ -67,6 +70,7 @@ public partial class BuildingEntity : MAEntity
 
         CurrentStronghold = null;
         OwnerFactionID = 0;
+        HasPermanentNoAttackCapability = false;
         buildingData = null;
         BuildingInstanceId = null;
         base.OnHide(isShutdown, userData);
@@ -74,9 +78,16 @@ public partial class BuildingEntity : MAEntity
 
     public void SetStronghold(Stronghold stronghold)
     {
+        int oldFactionId = OwnerFactionID;
         CurrentStronghold = stronghold;
         OwnerFactionID = stronghold != null ? stronghold.OwnerFactionId : 0;
         SyncSideFromFaction();
+
+        if (oldFactionId != OwnerFactionID)
+        {
+            RefreshInteractionHostForCurrentOwnership();
+            GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID));
+        }
     }
 
     protected override void SetUpMAComp(object userData)
@@ -97,6 +108,12 @@ public partial class BuildingEntity : MAEntity
         _buildingAtkComp = new BuildingAtkComp(CreatePlaceholderWeaponData());
         SetAtkComp(_buildingAtkComp);
         _buildingAtkComp.Init(this);
+    }
+
+    protected override void SetUpHurtBox()
+    {
+        base.SetUpHurtBox();
+        SyncHurtBoxToBuildingBounds();
     }
 
     public override void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
@@ -122,7 +139,7 @@ public partial class BuildingEntity : MAEntity
 
         if (cur <= 0f)
         {
-            EnterDisabledState();
+            EnterDisabledState(attacker);
         }
     }
 
@@ -134,11 +151,32 @@ public partial class BuildingEntity : MAEntity
         if (host == null)
             host = gameObject.AddComponent<InteractionHost>();
 
+        host.enabled = true;
+
         // 防御：即使 OnHide 没被调用，也不让旧交互泄漏到下一次复用。
         host.ResetOptions();
         host.Init(this);
 
         BuildManager.ConfigureBuildInteractionOptions(this, host);
+    }
+
+    private void RefreshInteractionHostForCurrentOwnership()
+    {
+        var host = GetComponent<InteractionHost>();
+        bool canInteractAsOwner = OwnerFactionID == EntitySideHelper.PlayerFactionId && HasUpgrade;
+
+        if (!canInteractAsOwner)
+        {
+            if (host != null)
+            {
+                host.ResetOptions();
+                host.Init(this);
+                host.enabled = false;
+            }
+            return;
+        }
+
+        EnsureInteractionHost();
     }
 
     private void EnsureInteractionCollider()
@@ -189,17 +227,65 @@ public partial class BuildingEntity : MAEntity
         return initialized;
     }
 
+    private void SyncHurtBoxToBuildingBounds()
+    {
+        var hurtBoxTransform = transform.Find("HurtBox");
+        if (hurtBoxTransform == null)
+            return;
+
+        var hurtBoxCollider = hurtBoxTransform.GetComponent<BoxCollider>();
+        if (hurtBoxCollider == null)
+            return;
+
+        if (!TryGetCombatBounds(out var bounds))
+            return;
+
+        hurtBoxCollider.center = hurtBoxTransform.InverseTransformPoint(bounds.center);
+
+        Vector3 size = bounds.size;
+        size.x = Mathf.Max(0.6f, size.x);
+        size.y = Mathf.Max(1.2f, size.y);
+        size.z = Mathf.Max(0.6f, size.z);
+        hurtBoxCollider.size = size;
+    }
+
+    private bool TryGetCombatBounds(out Bounds bounds)
+    {
+        bounds = default;
+        bool initialized = false;
+
+        var colliders = GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            var collider = colliders[i];
+            if (collider == null || !collider.enabled || collider.isTrigger)
+                continue;
+
+            if (!initialized)
+            {
+                bounds = collider.bounds;
+                initialized = true;
+            }
+            else
+            {
+                bounds.Encapsulate(collider.bounds);
+            }
+        }
+
+        if (initialized)
+            return true;
+
+        return TryGetVisualBounds(out bounds);
+    }
+
     private void ConfigureCombatByBuildingData()
     {
         if (_buildingAtkComp == null)
             return;
 
-        float damage = 10f;
-        if (buildingData != null)
+        float damage = 0f;
+        if (!HasPermanentNoAttackCapability && buildingData != null)
             damage = Mathf.Max(0f, (float)buildingData.Atk);
-
-        if (damage <= 0f)
-            damage = 10f;
 
         var weaponData = new WeaponData
         {
@@ -228,8 +314,16 @@ public partial class BuildingEntity : MAEntity
             return;
 
         Fix64 hp = buildingData != null && buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
-        Fix64 atk = buildingData != null && buildingData.Atk > Fix64.Zero ? buildingData.Atk : (Fix64)10;
-        Fix64 def = buildingData != null && buildingData.Def > Fix64.Zero ? buildingData.Def : (Fix64)10;
+        Fix64 atk = buildingData != null ? buildingData.Atk : (Fix64)10;
+        Fix64 def = buildingData != null ? buildingData.Def : (Fix64)10;
+
+        if (HasPermanentNoAttackCapability)
+            atk = Fix64.Zero;
+
+        if (atk < Fix64.Zero)
+            atk = Fix64.Zero;
+        if (def < Fix64.Zero)
+            def = Fix64.Zero;
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.Health,
@@ -272,13 +366,18 @@ public partial class BuildingEntity : MAEntity
     {
         return new WeaponData
         {
-            Damage = 10f,
+            Damage = 0f,
             AttackInterval = PlaceholderAttackInterval,
             AttackRange = PlaceholderAttackRange,
             WindUp = PlaceholderWindUp,
             WindDown = PlaceholderWindDown,
             Type = WeaponType.Melee
         };
+    }
+
+    private void InitializeAttackCapabilityFlags()
+    {
+        HasPermanentNoAttackCapability = buildingData != null && buildingData.Atk <= Fix64.Zero;
     }
 
     private string ResolvePropertyTemplateId(BuildingData data)
@@ -302,7 +401,7 @@ public partial class BuildingEntity : MAEntity
         return rows != null && rows.Length > 0;
     }
 
-    private void EnterDisabledState()
+    private void EnterDisabledState(IEntityContext attacker)
     {
         if (_isDisabled)
             return;
@@ -325,6 +424,30 @@ public partial class BuildingEntity : MAEntity
         LockCombatCapabilities();
         OnDead();
         SetDisabledVisual(true);
+
+        LevelEntity.NotifyBuildingDisabled(this, attacker);
+    }
+
+    public void RestoreToFullHealthAndEnable()
+    {
+        ResetCombatRuntimeState();
+        Alive = true;
+
+        if (CreaturePropertyManager == null)
+            return;
+
+        float maxHealth = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        float currentHealth = health;
+        float delta = maxHealth - currentHealth;
+        if (Mathf.Abs(delta) > 0.001f)
+        {
+            CreaturePropertyManager.ModifyCurrentProperty(
+                CreatureCurrentProperty.HealthCurrent,
+                PropertyIrreversibleAdditiveModifier.Create((Fix64)delta),
+                true);
+        }
+
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, health, maxHealth, delta));
     }
 
     private void ResetCombatRuntimeState()
