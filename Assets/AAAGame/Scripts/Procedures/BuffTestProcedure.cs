@@ -58,13 +58,13 @@ public class BuffTestProcedure : ProcedureBase
         try
         {
             // 创建玩家控制的码农单位（定时死亡Buff）
-            int playerEntityId = SoldierFactory.ShowSoldier(UnitType.Unit_Coder, new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
+            int playerEntityId = SoldierFactory.ShowSoldier(UnitType.Unit_Coder, new Vector3(0, 1, -8), 0, BrainType.Player, 0);
 
             // 使用族生成创建友方码农单位（定时死亡Buff）
-            bool friendSpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, -7), 5, 5f, 2f, UnitType.Unit_Coder, SideType.PlayerSide, BrainType.SoldierAI);
+            bool friendSpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, -7), 5, 5f, 2f, UnitType.Unit_Coder, 0, BrainType.SoldierAI, 0);
 
             // 使用族生成创建敌方剔骨狂魔单位（击杀回复Buff）
-            bool enemySpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, 6), 3, 5f, 2f, UnitType.Unit_BoneButcher, SideType.EnemySide, BrainType.SoldierAI);
+            bool enemySpawnSuccess = ClusterSpawnSystem.SpawnCluster(new Vector3(0, 1, 6), 3, 5f, 2f, UnitType.Unit_BoneButcher, 1, BrainType.SoldierAI, 1);
         }
         catch (System.Exception ex)
         {
@@ -143,8 +143,8 @@ public class BuffTestProcedure : ProcedureBase
                         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), $"+{healAmount}", endPos, DamageTextType.Heal);
                     }
                     
-                    // 根据单位的Side判断阵营
-                    bool isFriendly = creature.Side == SideType.PlayerSide;
+                    // 根据单位队伍判断阵营
+                    bool isFriendly = creature.TeamId == 0;
                     HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, isFriendly);
                 }
                 catch (System.Exception ex)

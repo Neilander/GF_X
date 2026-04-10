@@ -13,14 +13,19 @@ public static class SoldierFactory
     /// </summary>
     /// <param name="index">单位类型索引</param>
     /// <param name="position">出生位置</param>
-    /// <param name="side">阵营</param>
+    /// <param name="teamId">队伍ID</param>
     /// <param name="brainType">AI类型</param>
-    public static int ShowSoldier(UnitType index, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
+    public static int ShowSoldier(UnitType index, Vector3 position, int teamId = 0, BrainType brainType = BrainType.SoldierAI, int factionId = -1)
     {
 
 
         EntityParams paramsData = EntityParams.Create(position: position);
-        paramsData.Side = side;
+        paramsData.FactionId = factionId;
+        paramsData.TeamId = teamId;
+
+        if (paramsData.FactionId >= 0)
+            paramsData.TeamId = EntityCombatTeamHelper.ResolveTeamIdByFaction(paramsData.FactionId);
+
         paramsData.BrainType = brainType;
         paramsData.Index = index.ToString();
 

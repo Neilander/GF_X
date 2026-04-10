@@ -32,7 +32,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             inputManager.ChangeState(InputState.Game);
         }
 
-        SoldierFactory.ShowSoldier(UnitType.Unit_Hero, new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
+        SoldierFactory.ShowSoldier(UnitType.Unit_Hero, new Vector3(0, 1, -8), 0, BrainType.Player, 0);
     }
 
     public void GeneralSystemShutDown()
@@ -61,7 +61,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             // 给所有生物挂血条
             if (ma is GeneralCreature creature)
             {
-                Log.Info($"Unit {ma.Id} created: type={ma.GetType().Name}, side={creature.Side}");
+                Log.Info($"Unit {ma.Id} created: type={ma.GetType().Name}, team={creature.TeamId}");
                 float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                 float max = originalMax;
 
@@ -91,9 +91,9 @@ public partial class GeneralSetup : GameFrameworkComponent
                         PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
                 }
 
-                // 根据单位的Side判断阵营，友方显示绿色血条，敌方显示红色血条
-                bool isFriendly = creature.Side == SideType.PlayerSide;
-                Log.Info($"Creating health bar for unit {creature.Id}, side={creature.Side}, isFriendly={isFriendly}");
+                // 根据单位队伍判断阵营，友方显示绿色血条，敌方显示红色血条
+                bool isFriendly = creature.TeamId == 0;
+                Log.Info($"Creating health bar for unit {creature.Id}, team={creature.TeamId}, isFriendly={isFriendly}");
                 HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, isFriendly);
             }
 

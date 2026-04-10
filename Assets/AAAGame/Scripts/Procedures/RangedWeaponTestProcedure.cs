@@ -70,7 +70,8 @@ public class RangedWeaponTestProcedure : ProcedureBase
     {
         // 创建玩家侧的远程单位（使用ranged_test来加载远程武器）
         var playerParams = EntityParams.Create(position: new Vector3(0, 1, -10));
-        playerParams.Side = SideType.PlayerSide;
+        playerParams.TeamId = 0;
+        playerParams.FactionId = 0;
         playerParams.BrainType = BrainType.Player; // 使用Player脑控，让玩家可以控制角色
         playerParams.Index = "Unit_Coder";
         GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, playerParams);
@@ -80,7 +81,8 @@ public class RangedWeaponTestProcedure : ProcedureBase
         {
             Vector3 spawnPos = new Vector3(-4f + (i * 3f), 1f, -8f);
             var friendlyParams = EntityParams.Create(position: spawnPos);
-            friendlyParams.Side = SideType.PlayerSide;
+            friendlyParams.TeamId = 0;
+            friendlyParams.FactionId = 0;
             friendlyParams.BrainType = BrainType.SoldierAI;
             friendlyParams.Index = "Unit_Coder";
             GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, friendlyParams);
@@ -91,7 +93,8 @@ public class RangedWeaponTestProcedure : ProcedureBase
         {
             Vector3 spawnPos = new Vector3(-4f + (i * 3f), 1f, 8f);
             var enemyParams = EntityParams.Create(position: spawnPos);
-            enemyParams.Side = SideType.EnemySide;
+            enemyParams.TeamId = 1;
+            enemyParams.FactionId = 1;
             enemyParams.BrainType = BrainType.SoldierAI;
             enemyParams.Index = "Unit_BoneButcher";
             GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, enemyParams);

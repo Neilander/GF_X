@@ -12,7 +12,7 @@ public class BehaviorTreeTest : MonoBehaviour
 
     private class DummyTarget : ITargetable
     {
-        public SideType Side { get; set; }
+        public int TeamId { get; set; }
         public bool Alive { get; set; }
         public GameObject Gmo { get; set; }
         public string ReferenceId { get; set; }
@@ -35,9 +35,9 @@ public class BehaviorTreeTest : MonoBehaviour
 
     private void Start()
     {
-        selfTarget = new DummyTarget { Side = SideType.EnemySide, Alive = true, Gmo = gameObject, ReferenceId = "Self" };
-        var target1 = new DummyTarget { Side = SideType.PlayerSide, Alive = true, Gmo = gameObject, ReferenceId = "Target1" };
-        var target2 = new DummyTarget { Side = SideType.PlayerSide, Alive = true, Gmo = gameObject, ReferenceId = "Target2" };
+        selfTarget = new DummyTarget { TeamId = 1, Alive = true, Gmo = gameObject, ReferenceId = "Self" };
+        var target1 = new DummyTarget { TeamId = 0, Alive = true, Gmo = gameObject, ReferenceId = "Target1" };
+        var target2 = new DummyTarget { TeamId = 0, Alive = true, Gmo = gameObject, ReferenceId = "Target2" };
 
         context = new BasicEnemyContext
         {

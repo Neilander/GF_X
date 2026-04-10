@@ -54,7 +54,7 @@ public class HitBox : EntityBase
         if (!target.Owner.Alive)
             return;
 
-        if (!EntitySideHelper.GetHitSide(Owner.Side).Contains(target.Owner.Side))
+        if (!EntityCombatTeamHelper.IsEnemyTeam(Owner.TeamId, target.Owner.TeamId))
             return;
 
         var targetOwner = target.Owner;

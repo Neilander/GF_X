@@ -5,7 +5,8 @@ using UnityGameFramework.Runtime;
 
 public class GeneralCreature : EntityBase, ITargetable
 {
-    public SideType Side { get; protected set; }
+    public int FactionId { get; protected set; } = -1;
+    public int TeamId { get; protected set; } = -1;
     public bool Alive { get; protected set; }
     //public ITargetable Instigator { get; set; }
     public GameObject Gmo { get; private set; }
@@ -54,6 +55,16 @@ public class GeneralCreature : EntityBase, ITargetable
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
+
+        if (userData is EntityParams ep)
+        {
+            FactionId = ep.FactionId;
+            TeamId = ep.TeamId;
+
+            if (FactionId >= 0)
+                TeamId = EntityCombatTeamHelper.ResolveTeamIdByFaction(FactionId);
+        }
+
         Alive = true;
         CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
         //Debug.LogError($"[Creature] {ReferenceId} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
@@ -250,16 +261,9 @@ public class GeneralCreature : EntityBase, ITargetable
     }
 }
 
-public enum SideType
-{
-    NoSide,
-    PlayerSide,
-    EnemySide
-}
-
 public interface ITargetable : ISelectable
 {
-    SideType Side { get; }
+    int TeamId { get; }
     bool Alive { get; }
     //ITargetable Instigator { get; set; }
     GameObject Gmo { get; }

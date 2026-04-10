@@ -116,7 +116,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                     State = SoldierState.Combat;
                 }
                 // 同阵营领袖在附近 → Follow（敌方单位不跟随玩家）
-                else if (_leader != null && _leader.Alive && self.Side == _leader.Side)
+                else if (_leader != null && _leader.Alive && EntityCombatTeamHelper.IsAlly(self, _leader))
                 {
                     if (HorizontalDist(self.Position, _leader.Position) <= RecruitRadius)
                         State = SoldierState.Follow;

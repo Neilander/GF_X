@@ -7,12 +7,15 @@ using UnityEngine;
 /// </summary>
 public class SimEntityIntegrationTests
 {
-    private SimEntityContext CreateUnit(Vector3 pos, SideType side)
+    private const int PlayerTeamId = 0;
+    private const int EnemyTeamId = 1;
+
+    private SimEntityContext CreateUnit(Vector3 pos, int teamId)
     {
         var ctx = new SimEntityContext
         {
             Position = pos,
-            Side = side
+            TeamId = teamId
         };
         var executor = new SimMoveExecutor { Position = pos };
         ctx.MoveExecutor = executor;
@@ -42,7 +45,7 @@ public class SimEntityIntegrationTests
     [Test]
     public void 单位用ScriptedBrain向前移动()
     {
-        var ctx = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var ctx = CreateUnit(Vector3.zero, PlayerTeamId);
 
         var brain = new ScriptedBrain { Move = new Vector2(0, 1) }; // 向前
         ctx.Brain = brain;
@@ -61,7 +64,7 @@ public class SimEntityIntegrationTests
     [Test]
     public void 单位MoveTo走向目标点()
     {
-        var ctx = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var ctx = CreateUnit(Vector3.zero, PlayerTeamId);
 
         var moveComp = new SimMoveComp();
         moveComp.Init(ctx);
@@ -79,8 +82,8 @@ public class SimEntityIntegrationTests
     [Test]
     public void 敌人发现玩家后追击()
     {
-        var player = CreateUnit(new Vector3(0, 0, 0), SideType.PlayerSide);
-        var enemy = CreateUnit(new Vector3(3, 0, 0), SideType.EnemySide);
+        var player = CreateUnit(new Vector3(0, 0, 0), PlayerTeamId);
+        var enemy = CreateUnit(new Vector3(3, 0, 0), EnemyTeamId);
 
         var allEntities = new List<IEntityContext> { player, enemy };
 
@@ -119,7 +122,7 @@ public class SimEntityIntegrationTests
     [Test]
     public void 攻击时移动被锁定()
     {
-        var ctx = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var ctx = CreateUnit(Vector3.zero, PlayerTeamId);
 
         var brain = new ScriptedBrain();
         ctx.Brain = brain;

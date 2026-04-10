@@ -9,7 +9,8 @@ public class SimEntityContext : IEntityContext
 {
     public Vector3 Position { get; set; }
     public Quaternion Rotation { get; set; } = Quaternion.identity;
-    public SideType Side { get; set; }
+    public int FactionId { get; set; } = -1;
+    public int TeamId { get; set; } = EntityCombatTeamHelper.UnknownTeamId;
     public bool Alive { get; set; } = true;
     public string ReferenceId { get; set; } = "TestUnit";
 

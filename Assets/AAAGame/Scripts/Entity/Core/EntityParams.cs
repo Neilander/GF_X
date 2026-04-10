@@ -16,7 +16,8 @@ public class EntityParams : RefParams
     public int gameObjectLayer { get; set; } = -1;
     
     
-    public SideType Side { get; set; } = SideType.NoSide;
+    public int TeamId { get; set; } = -1;
+    public int FactionId { get; set; } = -1;
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int FollowEntityId { get; set; } = -1;
     public string Index { get; set; } = ""; // 单位类型索引
@@ -87,7 +88,8 @@ public class EntityParams : RefParams
         WeaponData = null;
         WeaponSO = null;
         
-        Side = SideType.NoSide;
+        TeamId = -1;
+        FactionId = -1;
         BrainType = BrainType.Player;
         FollowEntityId = -1;
         Index = "";

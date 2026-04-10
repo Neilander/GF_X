@@ -65,7 +65,8 @@ public class CharacterTestProcedure : ProcedureBase
 
         // --- 玩家 ---
         var pPlayer = EntityParams.Create(position: playerSpawn);
-        pPlayer.Side = SideType.PlayerSide;
+        pPlayer.TeamId = 0;
+        pPlayer.FactionId = 0;
         pPlayer.BrainType = BrainType.Player;
         pPlayer.Index = "Unit_Coder";
         //pPlayer.StartBuffs = friendlyBuffs;
@@ -76,7 +77,8 @@ public class CharacterTestProcedure : ProcedureBase
         {
             Vector3 spawnPos = new Vector3(1f + (i * friendlySpacing), 1f, 0f);
             var pFriendly = EntityParams.Create(position: spawnPos);
-            pFriendly.Side = SideType.PlayerSide;
+            pFriendly.TeamId = 0;
+            pFriendly.FactionId = 0;
             pFriendly.BrainType = BrainType.SoldierAI;
             pFriendly.Index = "Unit_Coder";
             //pFriendly.StartBuffs = friendlyBuffs;
@@ -88,7 +90,8 @@ public class CharacterTestProcedure : ProcedureBase
         {
             Vector3 spawnPos = enemyCenter + new Vector3(i * enemySpacing, 0, 0);
             var pEnemy = EntityParams.Create(position: spawnPos);
-            pEnemy.Side = SideType.EnemySide;
+            pEnemy.TeamId = 1;
+            pEnemy.FactionId = 1;
             pEnemy.BrainType = BrainType.SoldierAI;
             pEnemy.Index = "Unit_BoneButcher";
             //pEnemy.StartBuffs = enemyBuffs;
@@ -121,8 +124,8 @@ public class CharacterTestProcedure : ProcedureBase
             if (ma is GeneralCreature creature)
             {
                 float max = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-                // 根据单位的Side判断阵营
-                bool isFriendly = creature.Side == SideType.PlayerSide;
+                // 根据单位队伍判断阵营
+                bool isFriendly = creature.TeamId == 0;
                 HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, isFriendly);
             }
 

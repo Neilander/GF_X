@@ -146,7 +146,8 @@ public class GroupMoveManager : MonoBehaviour
     {
         var cc = entity.GetComponent<CharacterController>();
         float radius = cc != null ? cc.radius : 0.5f;
-        Coordinator.RegisterAgent(entity.GetInstanceID(), entity.Position, entity.Side, false, radius);
+        int teamId = EntityCombatTeamHelper.ResolveTeamId(entity);
+        Coordinator.RegisterAgent(entity.GetInstanceID(), entity.Position, teamId, false, radius);
     }
 
     public void UnregisterAgent(MAEntity entity)
@@ -156,7 +157,9 @@ public class GroupMoveManager : MonoBehaviour
 
     public void UpdateAgentPosition(MAEntity entity)
     {
-        Coordinator.UpdateAgentPosition(entity.GetInstanceID(), entity.Position);
+        int id = entity.GetInstanceID();
+        Coordinator.UpdateAgentPosition(id, entity.Position);
+        Coordinator.UpdateAgentTeam(id, EntityCombatTeamHelper.ResolveTeamId(entity));
     }
 
     // ── 障碍物注册 ──

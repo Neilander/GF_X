@@ -12,7 +12,11 @@ public class CharacterEntity : SkillEntity
         if (userData is EntityParams ep)
         {
             // 2. 直接读取属性，彻底抛弃 TryGet<VarInt32> 字典读取法
-            Side = ep.Side;
+            FactionId = ep.FactionId;
+            TeamId = ep.TeamId;
+            if (FactionId >= 0)
+                TeamId = EntityCombatTeamHelper.ResolveTeamIdByFaction(FactionId);
+
             brainType = ep.BrainType;
 
             // 3. 只有真正的大脑是玩家时，才绑定相机
@@ -31,7 +35,7 @@ public class CharacterEntity : SkillEntity
         // 4. 注入对应的 Brain
         SetBrain(BrainFactory.Create(brainType, this, userData as EntityParams));
 
-        RegisterToGroupMove(); // Side 已赋值，安全注册
+        RegisterToGroupMove();
     }
 
     protected override void SetUpSkillComp()

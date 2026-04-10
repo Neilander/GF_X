@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -9,6 +9,8 @@ using System.Collections.Generic;
 [TestFixture]
 public class GroupMoveCoordinatorTests
 {
+    private const int PlayerTeamId = 0;
+
     private GroupMoveCoordinator _coord;
 
     [SetUp]
@@ -22,7 +24,7 @@ public class GroupMoveCoordinatorTests
     [Test]
     public void 注册Agent后可查询()
     {
-        _coord.RegisterAgent(1, Vector3.zero, SideType.PlayerSide);
+        _coord.RegisterAgent(1, Vector3.zero, PlayerTeamId);
         Assert.IsTrue(_coord.HasAgent(1));
         Assert.AreEqual(1, _coord.AgentCount);
     }
@@ -30,7 +32,7 @@ public class GroupMoveCoordinatorTests
     [Test]
     public void 注销Agent后不可查询()
     {
-        _coord.RegisterAgent(1, Vector3.zero, SideType.PlayerSide);
+        _coord.RegisterAgent(1, Vector3.zero, PlayerTeamId);
         _coord.UnregisterAgent(1);
         Assert.IsFalse(_coord.HasAgent(1));
         Assert.AreEqual(0, _coord.AgentCount);
@@ -59,7 +61,7 @@ public class GroupMoveCoordinatorTests
     [Test]
     public void 单个Agent无邻居_安全速度等于期望速度()
     {
-        _coord.RegisterAgent(1, Vector3.zero, SideType.PlayerSide);
+        _coord.RegisterAgent(1, Vector3.zero, PlayerTeamId);
 
         Vector3 result = Vector3.zero;
         _coord.SubmitDesiredVelocity(1, new Vector3(1, 0, 0), v => result = v);
@@ -72,7 +74,7 @@ public class GroupMoveCoordinatorTests
     [Test]
     public void Resolve后请求被清空()
     {
-        _coord.RegisterAgent(1, Vector3.zero, SideType.PlayerSide);
+        _coord.RegisterAgent(1, Vector3.zero, PlayerTeamId);
         _coord.SubmitDesiredVelocity(1, Vector3.right, v => { });
         Assert.AreEqual(1, _coord.PendingRequestCount);
 
@@ -98,8 +100,8 @@ public class GroupMoveCoordinatorTests
     public void 两个Agent面对面_安全速度偏离碰撞方向()
     {
         // Agent1 在左边，朝右走；Agent2 在右边，朝左走
-        _coord.RegisterAgent(1, new Vector3(0, 0, 0), SideType.PlayerSide, false, 0.5f);
-        _coord.RegisterAgent(2, new Vector3(2, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0, 0, 0), PlayerTeamId, false, 0.5f);
+        _coord.RegisterAgent(2, new Vector3(2, 0, 0), PlayerTeamId, false, 0.5f);
 
         Vector3 safe1 = Vector3.zero;
         Vector3 safe2 = Vector3.zero;
@@ -122,11 +124,11 @@ public class GroupMoveCoordinatorTests
     public void 多Agent同目标_不会完全重叠()
     {
         // 5 个 agent 从不同位置朝同一点移动
-        _coord.RegisterAgent(1, new Vector3(-2, 0, -1), SideType.PlayerSide, false, 0.5f);
-        _coord.RegisterAgent(2, new Vector3(-2, 0, 0), SideType.PlayerSide, false, 0.5f);
-        _coord.RegisterAgent(3, new Vector3(-2, 0, 1), SideType.PlayerSide, false, 0.5f);
-        _coord.RegisterAgent(4, new Vector3(-1, 0, -0.5f), SideType.PlayerSide, false, 0.5f);
-        _coord.RegisterAgent(5, new Vector3(-1, 0, 0.5f), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(-2, 0, -1), PlayerTeamId, false, 0.5f);
+        _coord.RegisterAgent(2, new Vector3(-2, 0, 0), PlayerTeamId, false, 0.5f);
+        _coord.RegisterAgent(3, new Vector3(-2, 0, 1), PlayerTeamId, false, 0.5f);
+        _coord.RegisterAgent(4, new Vector3(-1, 0, -0.5f), PlayerTeamId, false, 0.5f);
+        _coord.RegisterAgent(5, new Vector3(-1, 0, 0.5f), PlayerTeamId, false, 0.5f);
 
         Vector3 target = new Vector3(5, 0, 0);
         var safeVelocities = new Dictionary<int, Vector3>();
@@ -177,7 +179,7 @@ public class GroupMoveCoordinatorTests
     public void Agent朝障碍物走_安全速度偏离障碍物()
     {
         // Agent 在左边朝右走，障碍物在右边
-        _coord.RegisterAgent(1, new Vector3(0, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterObstacle(100, new Vector3(3, 0, 0), 1f);
 
         Vector3 safeVel = Vector3.zero;
@@ -194,7 +196,7 @@ public class GroupMoveCoordinatorTests
     public void Agent已在障碍物内_被强力推出()
     {
         // Agent 和障碍物重叠
-        _coord.RegisterAgent(1, new Vector3(0.5f, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0.5f, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterObstacle(100, new Vector3(0, 0, 0), 1f);
 
         Vector3 safeVel = Vector3.zero;
@@ -210,7 +212,7 @@ public class GroupMoveCoordinatorTests
     public void Agent平行于障碍物走_不受影响()
     {
         // Agent 在障碍物旁边，但朝平行方向走（不朝障碍物）
-        _coord.RegisterAgent(1, new Vector3(0, 0, 2), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0, 0, 2), PlayerTeamId, false, 0.5f);
         _coord.RegisterObstacle(100, new Vector3(0, 0, 0), 1f);
 
         Vector3 safeVel = Vector3.zero;
@@ -225,7 +227,7 @@ public class GroupMoveCoordinatorTests
     [Test]
     public void 障碍物不影响远处Agent()
     {
-        _coord.RegisterAgent(1, new Vector3(0, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterObstacle(100, new Vector3(20, 0, 0), 1f);
 
         Vector3 safeVel = Vector3.zero;
@@ -245,7 +247,7 @@ public class GroupMoveCoordinatorTests
     {
         // 方形障碍物在原点，2x2（halfExtents = 1,0,1）
         // Agent 从左边朝右走
-        _coord.RegisterAgent(1, new Vector3(-3, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(-3, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterBoxObstacle(100, Vector3.zero, new Vector3(1, 0, 1));
 
         Vector3 safeVel = Vector3.zero;
@@ -262,7 +264,7 @@ public class GroupMoveCoordinatorTests
     public void 方形障碍物_Agent在内部被强力推出()
     {
         // Agent 在方形障碍物内部
-        _coord.RegisterAgent(1, new Vector3(0.3f, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0.3f, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterBoxObstacle(100, Vector3.zero, new Vector3(1, 0, 1));
 
         Vector3 safeVel = Vector3.zero;
@@ -278,7 +280,7 @@ public class GroupMoveCoordinatorTests
     {
         // 长墙：X 方向很长（halfExtents.x = 5），Z 方向薄（halfExtents.z = 0.5）
         // Agent 在墙的上方，沿 X 方向走
-        _coord.RegisterAgent(1, new Vector3(0, 0, 3), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0, 0, 3), PlayerTeamId, false, 0.5f);
         _coord.RegisterBoxObstacle(100, Vector3.zero, new Vector3(5, 0, 0.5f));
 
         Vector3 safeVel = Vector3.zero;
@@ -293,7 +295,7 @@ public class GroupMoveCoordinatorTests
     public void 方形障碍物_Agent从角落接近被偏转()
     {
         // 方形障碍物 2x2，Agent 从对角线方向接近
-        _coord.RegisterAgent(1, new Vector3(-3, 0, -3), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(-3, 0, -3), PlayerTeamId, false, 0.5f);
         _coord.RegisterBoxObstacle(100, Vector3.zero, new Vector3(1, 0, 1));
 
         Vector3 desiredDir = new Vector3(1, 0, 1).normalized;
@@ -311,7 +313,7 @@ public class GroupMoveCoordinatorTests
     public void 模拟多帧_Agent不会穿过方形障碍物()
     {
         // Agent 从左边朝右直冲，中间有一面墙
-        _coord.RegisterAgent(1, new Vector3(-5, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(-5, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterBoxObstacle(100, Vector3.zero, new Vector3(0.5f, 0, 2)); // 薄墙，Z 方向长
 
         Vector3 agentPos = new Vector3(-5, 0, 0);
@@ -344,7 +346,7 @@ public class GroupMoveCoordinatorTests
     [Test]
     public void 方形障碍物_远处不影响()
     {
-        _coord.RegisterAgent(1, new Vector3(0, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(0, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterBoxObstacle(100, new Vector3(20, 0, 0), new Vector3(1, 0, 1));
 
         Vector3 safeVel = Vector3.zero;
@@ -363,7 +365,7 @@ public class GroupMoveCoordinatorTests
     public void 模拟多帧_Agent不会穿过障碍物()
     {
         // Agent 朝障碍物直冲，模拟 100 帧，不应穿过
-        _coord.RegisterAgent(1, new Vector3(-5, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(-5, 0, 0), PlayerTeamId, false, 0.5f);
         _coord.RegisterObstacle(100, new Vector3(0, 0, 0), 1f);
 
         Vector3 agentPos = new Vector3(-5, 0, 0);
@@ -391,8 +393,8 @@ public class GroupMoveCoordinatorTests
     [Test]
     public void 模拟多帧_两Agent不会重叠()
     {
-        _coord.RegisterAgent(1, new Vector3(-3, 0, 0), SideType.PlayerSide, false, 0.5f);
-        _coord.RegisterAgent(2, new Vector3(3, 0, 0), SideType.PlayerSide, false, 0.5f);
+        _coord.RegisterAgent(1, new Vector3(-3, 0, 0), PlayerTeamId, false, 0.5f);
+        _coord.RegisterAgent(2, new Vector3(3, 0, 0), PlayerTeamId, false, 0.5f);
 
         Vector3 pos1 = new Vector3(-3, 0, 0);
         Vector3 pos2 = new Vector3(3, 0, 0);
@@ -479,7 +481,7 @@ public class GroupMoveCoordinatorTests
                     0f,
                     Random.Range(-4f, 4f)
                 );
-                coord.RegisterAgent(i, positions[i], SideType.PlayerSide, false, 0.5f);
+                coord.RegisterAgent(i, positions[i], PlayerTeamId, false, 0.5f);
             }
 
             // 模拟 600 帧（10 秒）

@@ -71,7 +71,7 @@ public class SimTargetingComp : ITargetingComp
             if (CurrentTarget == null)
             {
                 CurrentTarget = _allEntities
-                    .Where(e => e != _self && e.Side != _self.Side && e.Side != SideType.NoSide && e.Alive)
+                    .Where(e => e != _self && e.Alive && EntityCombatTeamHelper.IsEnemy(_self, e))
                     .Where(e => Vector3.Distance(_self.Position, e.Position) <= AggroRange)
                     .OrderBy(e => Vector3.Distance(_self.Position, e.Position))
                     .FirstOrDefault();
@@ -80,7 +80,7 @@ public class SimTargetingComp : ITargetingComp
             if (FollowTarget == null)
             {
                 FollowTarget = _allEntities
-                    .Where(e => e != _self && e.Side == _self.Side && e.Alive)
+                    .Where(e => e != _self && e.Alive && EntityCombatTeamHelper.IsAlly(_self, e))
                     .Where(e => Vector3.Distance(_self.Position, e.Position) <= FollowSearchRange)
                     .OrderBy(e => Vector3.Distance(_self.Position, e.Position))
                     .FirstOrDefault();

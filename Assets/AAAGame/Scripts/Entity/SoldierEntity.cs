@@ -21,7 +21,12 @@ public class SoldierEntity : MAEntity
         
         if (userData is EntityParams ep)
         {
-            Side = ep.Side;
+            FactionId = ep.FactionId;
+            TeamId = ep.TeamId;
+
+            if (FactionId >= 0)
+                TeamId = EntityCombatTeamHelper.ResolveTeamIdByFaction(FactionId);
+
             BrainType = ep.BrainType; // 设置AI类型
             _unitIndex = ep.Index; // 保存单位类型索引
             ReferenceId = ep.Index; // 设置正确的ReferenceId
@@ -30,7 +35,7 @@ public class SoldierEntity : MAEntity
 
         base.OnShow(userData);
         //Debug.LogError("什么玩意");
-        RegisterToGroupMove(); // Side 已赋值，安全注册
+        RegisterToGroupMove();
     }
 
     protected override void Update()

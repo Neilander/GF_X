@@ -153,7 +153,7 @@ public static class SteeringMovement
         {
             var other = allEntities[i];
             if (other == self || !other.Alive) continue;
-            if (other.Side != self.Side) continue;
+            if (!EntityCombatTeamHelper.IsAlly(self, other)) continue;
 
             float dist = Vector3.Distance(myPos, other.Position);
             if (dist <= radius)

@@ -84,13 +84,13 @@ public static class ClusterSpawnSystem
     /// <param name="radius">生成半径</param>
     /// <param name="minDistance">最小间距</param>
     /// <param name="unitIndex">单位索引</param>
-    /// <param name="side">阵营</param>
+    /// <param name="teamId">队伍ID</param>
     /// <param name="brainType">AI类型</param>
     /// <returns>是否生成成功</returns>
     public static bool SpawnCluster(Vector3 center, int count, float radius, float minDistance,
-        UnitType unitIndex, SideType side, BrainType brainType)
+        UnitType unitIndex, int teamId, BrainType brainType, int factionId = -1)
     {
-        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
+        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, teamId={teamId}");
         List<Vector3> spawnPositions = new List<Vector3>();
         
         // 直接生成单位，不做复杂验证
@@ -114,7 +114,7 @@ public static class ClusterSpawnSystem
         
         foreach (Vector3 pos in spawnPositions)
         {
-            SoldierFactory.ShowSoldier(unitIndex, pos+Vector3.up, side, brainType);
+            SoldierFactory.ShowSoldier(unitIndex, pos+Vector3.up, teamId, brainType, factionId);
         }
         return true;
     }

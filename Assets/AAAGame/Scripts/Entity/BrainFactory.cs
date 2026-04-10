@@ -31,7 +31,7 @@ public static class BrainFactory
     
     public static class EntityControlKeys
     {
-        public const string Side = "Side";                 // VarInt32
+        public const string TeamId = "TeamId";             // VarInt32
         public const string BrainType = "BrainType";       // VarInt32
     }
     

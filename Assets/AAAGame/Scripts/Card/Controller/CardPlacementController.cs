@@ -194,7 +194,7 @@ namespace AAAGame.Card
             float spawnRadius = dataProvider.SpawnRadius;
             UnitType soldierIndex = dataProvider.SoldierIndex;
 
-            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, 0, BrainType.SoldierAI, 0);
             // 在圆形区域内随机生成士兵
             /*
             for (int i = 0; i < soldierCount; i++)

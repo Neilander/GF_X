@@ -8,7 +8,8 @@ public class PunchBagEntity : GeneralCreature
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
-        Side = SideType.EnemySide;
+        FactionId = 1;
+        TeamId = EntityCombatTeamHelper.ResolveTeamIdByFaction(FactionId);
     }
 
     private void Update()

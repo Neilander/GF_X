@@ -27,8 +27,9 @@ public class PlayerEntity : SkillEntity
             transform.position = (userData as EntityParams).position?? Vector3.zero;
         }
 
-        Side = SideType.PlayerSide;
-        RegisterToGroupMove(); // Side 已赋值，安全注册
+        FactionId = 0;
+        TeamId = EntityCombatTeamHelper.ResolveTeamIdByFaction(FactionId);
+        RegisterToGroupMove();
     }
 
     protected override void SetUpSkillComp()
@@ -84,7 +85,7 @@ public class PlayerEntity : SkillEntity
         hitboxParams.OnShowCallback = logic =>
         {
             CylinderTargetSelector selector = (CylinderTargetSelector)logic;
-            selector.Activate(new List<ISelectable>(), SideType.PlayerSide);
+            selector.Activate(new List<ISelectable>(), TeamId);
             selector.ChangeRange(new Vector3(3,4,0));
         };
         

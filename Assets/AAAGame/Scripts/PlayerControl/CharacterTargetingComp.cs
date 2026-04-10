@@ -29,7 +29,7 @@ public class CharacterTargetingComp : ITargetingComp
         if (CurrentTarget != null)
         {
             float dist = Vector3.Distance(_ctx.Position, CurrentTarget.Position);
-            if (dist > ForgetRange || !CurrentTarget.Alive)
+            if (dist > ForgetRange || !CurrentTarget.Alive || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
             {
                 GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} forgetRange={ForgetRange} alive={CurrentTarget.Alive}");
                 CurrentTarget = null;
@@ -63,7 +63,7 @@ public class CharacterTargetingComp : ITargetingComp
                 {
                     var other = all[i];
                     if (other == _ctx || !other.Alive) continue;
-                    if (other.Side == _ctx.Side || other.Side == SideType.NoSide) continue;
+                    if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
 
                     float dist = Vector3.Distance(_ctx.Position, other.Position);
                     if (dist < nearestDist)
@@ -81,7 +81,7 @@ public class CharacterTargetingComp : ITargetingComp
             if (FollowTarget == null)
             {
                 var player = EntityRegistry.Player;
-                if (player != null && player.Alive && player.Side == _ctx.Side)
+                if (player != null && player.Alive && EntityCombatTeamHelper.IsAlly(_ctx, player))
                 {
                     float dist = Vector3.Distance(_ctx.Position, player.Position);
                     if (dist <= FollowSearchRange)

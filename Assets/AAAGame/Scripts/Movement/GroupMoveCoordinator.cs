@@ -39,11 +39,13 @@ public class GroupMoveCoordinator
         public float MaxInfluenceRange;    // LJ 最大影响范围
         public float RepulsionStrength;    // 斥力强度
         public float AttractionStrength;   // 吸引力强度
-        public SideType Side;             // 阵营
+        public int TeamId;                // 队伍（faction.teamid）
         public bool IsLeader;             // 是否领袖（玩家等）
         public int GroupId;               // 组 ID（= 领袖 entityId，-1 表示无组）
         public AgentState State;          // 当前状态
     }
+
+    private const int UnknownTeamId = int.MinValue;
 
     public struct ObstacleData
     {
@@ -152,14 +154,14 @@ public class GroupMoveCoordinator
     /// equilibriumRadius = LJ 平衡距离（斥力半径），玩家用更大的值。
     /// maxInfluenceRange = LJ 最大影响范围，超过此距离无力。
     /// </summary>
-    public void RegisterAgent(int id, Vector3 position, SideType side, bool isLeader = false, float radius = 0.5f)
+    public void RegisterAgent(int id, Vector3 position, int teamId, bool isLeader = false, float radius = 0.5f)
     {
         _agents[id] = new AgentData
         {
             Id = id,
             Position = position,
             Radius = radius,
-            Side = side,
+            TeamId = teamId,
             IsLeader = isLeader,
             EquilibriumRadius = isLeader ? LeaderEquilibriumRadius : DefaultEquilibriumRadius,
             MaxInfluenceRange = isLeader ? LeaderMaxInfluenceRange : DefaultMaxInfluenceRange,
@@ -200,7 +202,7 @@ public class GroupMoveCoordinator
         if (_agents.TryGetValue(id, out var data))
         {
             GameDebugSettings.Log(DebugCategory.GroupMove,
-                $"[Coordinator] SetAgentState id={id} side={data.Side} group={data.GroupId} {data.State}→{state}");
+                $"[Coordinator] SetAgentState id={id} team={data.TeamId} group={data.GroupId} {data.State}→{state}");
             data.State = state;
             _agents[id] = data;
         }
@@ -211,6 +213,15 @@ public class GroupMoveCoordinator
         if (_agents.TryGetValue(id, out var data))
         {
             data.Position = position;
+            _agents[id] = data;
+        }
+    }
+
+    public void UpdateAgentTeam(int id, int teamId)
+    {
+        if (_agents.TryGetValue(id, out var data))
+        {
+            data.TeamId = teamId;
             _agents[id] = data;
         }
     }
@@ -296,13 +307,15 @@ public class GroupMoveCoordinator
             }
 
             // 根据阵营关系 + 组关系选力参数
-            bool sameSide = self.Side == other.Side;
-            bool isEnemy = self.Side != SideType.NoSide && other.Side != SideType.NoSide && !sameSide;
-            bool sameGroup = sameSide && self.GroupId != 0 && self.GroupId == other.GroupId;
+            bool hasSelfTeam = self.TeamId != UnknownTeamId;
+            bool hasOtherTeam = other.TeamId != UnknownTeamId;
+            bool sameTeam = hasSelfTeam && hasOtherTeam && self.TeamId == other.TeamId;
+            bool isEnemy = hasSelfTeam && hasOtherTeam && !sameTeam;
+            bool sameGroup = sameTeam && self.GroupId != 0 && self.GroupId == other.GroupId;
 
             GameDebugSettings.Log(DebugCategory.GroupMove,
-                $"[Force] self={self.Id}(side={self.Side},grp={self.GroupId},st={self.State}) " +
-                $"other={kvp.Key}(side={other.Side},grp={other.GroupId},leader={other.IsLeader}) " +
+                $"[Force] self={self.Id}(team={self.TeamId},grp={self.GroupId},st={self.State}) " +
+                $"other={kvp.Key}(team={other.TeamId},grp={other.GroupId},leader={other.IsLeader}) " +
                 $"isEnemy={isEnemy} sameGroup={sameGroup} dist={dist:F2}");
 
             float eq, maxRange, repStr, attStr;

@@ -607,7 +607,7 @@ namespace AAAGame.Card.UI
             int soldierCount = cardData.soldierCount;
             float spawnRadius = cardData.spawnRadius;
 
-            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, cardData.soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, cardData.soldierIndex, 0, BrainType.SoldierAI, 0);
             //SoldierFactory.ShowSoldier(cardData.soldierIndex,)
             
             /*

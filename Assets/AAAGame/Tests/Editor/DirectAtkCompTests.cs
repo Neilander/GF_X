@@ -4,12 +4,15 @@ using UnityEngine;
 
 public class DirectAtkCompTests
 {
-    private SimEntityContext CreateUnit(Vector3 pos, SideType side, float hp = 100f)
+    private const int PlayerTeamId = 0;
+    private const int EnemyTeamId = 1;
+
+    private SimEntityContext CreateUnit(Vector3 pos, int teamId, float hp = 100f)
     {
         var ctx = new SimEntityContext
         {
             Position = pos,
-            Side = side
+            TeamId = teamId
         };
         ctx.Health.Init(hp);
         var executor = new SimMoveExecutor { Position = pos };
@@ -34,8 +37,8 @@ public class DirectAtkCompTests
     [Test]
     public void 目标在范围内时发起攻击()
     {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var attacker = CreateUnit(Vector3.zero, PlayerTeamId);
+        var target = CreateUnit(new Vector3(1, 0, 0), EnemyTeamId);
 
         var allEntities = new List<IEntityContext> { attacker, target };
         var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
@@ -69,8 +72,8 @@ public class DirectAtkCompTests
     [Test]
     public void 前摇结束后造成伤害()
     {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var attacker = CreateUnit(Vector3.zero, PlayerTeamId);
+        var target = CreateUnit(new Vector3(1, 0, 0), EnemyTeamId);
 
         var allEntities = new List<IEntityContext> { attacker, target };
         var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
@@ -102,8 +105,8 @@ public class DirectAtkCompTests
     [Test]
     public void 攻击全流程_前摇_伤害_后摇_冷却()
     {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var attacker = CreateUnit(Vector3.zero, PlayerTeamId);
+        var target = CreateUnit(new Vector3(1, 0, 0), EnemyTeamId);
 
         var allEntities = new List<IEntityContext> { attacker, target };
         var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
@@ -157,8 +160,8 @@ public class DirectAtkCompTests
     [Test]
     public void 目标超出范围时不攻击()
     {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(10, 0, 0), SideType.EnemySide); // 10m 远
+        var attacker = CreateUnit(Vector3.zero, PlayerTeamId);
+        var target = CreateUnit(new Vector3(10, 0, 0), EnemyTeamId); // 10m 远
 
         var allEntities = new List<IEntityContext> { attacker, target };
         var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 20f };
@@ -188,8 +191,8 @@ public class DirectAtkCompTests
     [Test]
     public void 目标死亡后不造成伤害()
     {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide, hp: 5f);
+        var attacker = CreateUnit(Vector3.zero, PlayerTeamId);
+        var target = CreateUnit(new Vector3(1, 0, 0), EnemyTeamId, hp: 5f);
 
         var allEntities = new List<IEntityContext> { attacker, target };
         var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
@@ -221,8 +224,8 @@ public class DirectAtkCompTests
     [Test]
     public void 连续攻击多次击杀目标()
     {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide, hp: 50f);
+        var attacker = CreateUnit(Vector3.zero, PlayerTeamId);
+        var target = CreateUnit(new Vector3(1, 0, 0), EnemyTeamId, hp: 50f);
 
         var allEntities = new List<IEntityContext> { attacker, target };
         var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
@@ -257,8 +260,8 @@ public class DirectAtkCompTests
     [Test]
     public void 远程武器范围内可以攻击()
     {
-        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
-        var target = CreateUnit(new Vector3(5, 0, 0), SideType.EnemySide); // 5m 远
+        var attacker = CreateUnit(Vector3.zero, PlayerTeamId);
+        var target = CreateUnit(new Vector3(5, 0, 0), EnemyTeamId); // 5m 远
 
         var allEntities = new List<IEntityContext> { attacker, target };
         var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };

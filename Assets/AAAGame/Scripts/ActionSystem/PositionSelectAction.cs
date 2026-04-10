@@ -57,7 +57,7 @@ public class PositionSelectAction : BasicAction
             selectorParams.OnShowCallback = logic =>
             {
                 CylinderTargetSelector selector = (CylinderTargetSelector)logic;
-                selector.Activate(new List<ISelectable>(), info.selfBody.Side);
+                selector.Activate(new List<ISelectable>(), info.selfBody.TeamId);
                 selector.ChangeRange(posInfo.selectScale);
                 selector.SetPosition(selectWorldPos);
                 posInfo.curSelector = selector;

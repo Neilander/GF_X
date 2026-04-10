@@ -10,7 +10,8 @@ public interface IEntityContext
 {
     Vector3 Position { get; set; }
     Quaternion Rotation { get; set; }
-    SideType Side { get; }
+    int FactionId { get; }
+    int TeamId { get; }
     bool Alive { get; }
     string ReferenceId { get; }
 

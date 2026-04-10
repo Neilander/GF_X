@@ -9,6 +9,9 @@ using System.Collections.Generic;
 [TestFixture]
 public class SteeringMovementTests
 {
+    private const int PlayerTeamId = 0;
+    private const int EnemyTeamId = 1;
+
     [SetUp]
     public void SetUp()
     {
@@ -110,12 +113,12 @@ public class SteeringMovementTests
 
     #region SoldierAIBrain 状态机
 
-    private SimEntityContext MakeSoldier(Vector3 pos, SideType side = SideType.PlayerSide)
+    private SimEntityContext MakeSoldier(Vector3 pos, int teamId = PlayerTeamId)
     {
         var ctx = new SimEntityContext
         {
             Position = pos,
-            Side = side,
+            TeamId = teamId,
             Alive = true
         };
         ctx.SetProperty(CreatureMainProperty.Speed, 5f);
@@ -180,7 +183,7 @@ public class SteeringMovementTests
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(2, 0, 0));
-        var enemy = MakeSoldier(new Vector3(5, 0, 0), SideType.EnemySide);
+        var enemy = MakeSoldier(new Vector3(5, 0, 0), EnemyTeamId);
 
         EntityRegistry.RegisterAsPlayer(player);
         EntityRegistry.Register(soldier);
@@ -206,7 +209,7 @@ public class SteeringMovementTests
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(2, 0, 0));
-        var enemy = MakeSoldier(new Vector3(4, 0, 0), SideType.EnemySide);
+        var enemy = MakeSoldier(new Vector3(4, 0, 0), EnemyTeamId);
 
         EntityRegistry.RegisterAsPlayer(player);
         EntityRegistry.Register(soldier);
@@ -340,7 +343,7 @@ public class SteeringMovementTests
         player.Brain = new ScriptedBrain();
         EntityRegistry.RegisterAsPlayer(player);
 
-        var enemy = MakeSoldier(new Vector3(5, 0, 0), SideType.EnemySide);
+        var enemy = MakeSoldier(new Vector3(5, 0, 0), EnemyTeamId);
         enemy.Brain = new ScriptedBrain();
         EntityRegistry.Register(enemy);
 

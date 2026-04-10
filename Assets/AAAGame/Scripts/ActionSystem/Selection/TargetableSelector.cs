@@ -7,7 +7,7 @@ using UnityEngine;
 public abstract class TargetableSelector :EntityBase, ISelector<ISelectable>
 {
     private List<ITargetable> _excludedCreatures;
-    private SideType _selfSide;
+    private int _selfTeamId;
     
     public Dictionary<ISelectable, float> SelectRecords { get; private set; }
     public bool IsActive { get; private set; }
@@ -41,9 +41,9 @@ public abstract class TargetableSelector :EntityBase, ISelector<ISelectable>
         Activate();
     }
 
-    public void Activate(List<ISelectable> excludedCreatures, SideType side)
+    public void Activate(List<ISelectable> excludedCreatures, int teamId)
     {
-        _selfSide = side;
+        _selfTeamId = teamId;
         Activate(excludedCreatures);
     }
 
@@ -77,7 +77,7 @@ public abstract class TargetableSelector :EntityBase, ISelector<ISelectable>
         if (!targetOwner.CanBeSelected())
             return false;
         
-        if (!EntitySideHelper.GetHitSide(_selfSide).Contains(targetOwner.Side))
+        if (!EntityCombatTeamHelper.IsEnemyTeam(_selfTeamId, targetOwner.TeamId))
             return false;
         
         //选择到了一个开着的hurtbox，并且目标也是该选择的，也是活着的

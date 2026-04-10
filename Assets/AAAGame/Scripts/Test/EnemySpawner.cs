@@ -21,7 +21,7 @@ public class EnemySpawner : MonoBehaviour
     public float minDistance = 2f;
 
     [Header("阵营")]
-    public SideType side = SideType.EnemySide;
+    public int teamId = 1;
     public BrainType brainType = BrainType.SoldierAI;
 
     private void Start()
@@ -32,13 +32,13 @@ public class EnemySpawner : MonoBehaviour
     private IEnumerator SpawnEnemiesAfterDelay()
     {
         yield return null; // 等待一帧，确保事件已订阅
-        Debug.Log($"EnemySpawner: Spawning {count} enemies at {transform.position}, unitType={unitType}, side={side}");
-        ClusterSpawnSystem.SpawnCluster(transform.position, count, radius, minDistance, unitType, side, brainType);
+        Debug.Log($"EnemySpawner: Spawning {count} enemies at {transform.position}, unitType={unitType}, teamId={teamId}");
+        ClusterSpawnSystem.SpawnCluster(transform.position, count, radius, minDistance, unitType, teamId, brainType);
     }
 
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = side == SideType.EnemySide ? Color.red : Color.green;
+        Gizmos.color = teamId == 0 ? Color.green : Color.red;
         Gizmos.DrawWireSphere(transform.position, radius);
     }
 }
