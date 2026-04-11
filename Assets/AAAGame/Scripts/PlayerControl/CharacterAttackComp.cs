@@ -30,7 +30,7 @@ public class CharacterAttackComp : IAtkComp
             {
                 actions[_currentIndex].StartAction(body, out _actionInfo);
                 if (_actionInfo != null)
-                    _actionInfo.damageInfo = new Damage(body, 1);
+                    _actionInfo.damageInfo = new Damage(body, Fix64.One);
             }
 
             _ctx.LockComp(_ctx.MoveComp, this);
@@ -60,7 +60,7 @@ public class CharacterAttackComp : IAtkComp
                     {
                         actions[_currentIndex].StartAction(body, out _actionInfo);
                         if (_actionInfo != null)
-                            _actionInfo.damageInfo = new Damage(body, 1);
+                            _actionInfo.damageInfo = new Damage(body, Fix64.One);
                     }
 
                     _ifContinueAction = false;
@@ -84,7 +84,7 @@ public class CharacterAttackComp : IAtkComp
     }
 
     public bool IsAttacking => _actionInfo != null;
-    
+
     public void ShutDown() { }
     public void Resume() { }
 }

@@ -101,24 +101,24 @@ public class BuffTestProcedure : ProcedureBase
             {
                 try
                 {
-                    float originalMax = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-                    float max = originalMax;
+                    Fix64 originalMax = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+                    Fix64 max = originalMax;
                     
                     // 所有单位血量增加到10倍
-                    float newMax = originalMax * 10f;
-                    Fix64 addValue = (Fix64)(newMax - originalMax);
+                    Fix64 newMax = originalMax * (Fix64)10;
+                    Fix64 addValue = newMax - originalMax;
                     var modifier = PropertyDirectAdditiveModifier.Create(addValue);
                     creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
                     max = newMax;
                     
                     // 更新当前生命值，确保单位满血
-                    float currentHealth = creature.health;
-                    float healAmount = max - currentHealth;
-                    if (healAmount > 0)
+                    Fix64 currentHealth = creature.HealthValue;
+                    Fix64 healAmount = max - currentHealth;
+                    if (healAmount > Fix64.Zero)
                     {
                         creature.CreaturePropertyManager.ModifyCurrentProperty(
                             CreatureCurrentProperty.HealthCurrent,
-                            PropertyIrreversibleAdditiveModifier.Create((Fix64)healAmount), true);
+                            PropertyIrreversibleAdditiveModifier.Create(healAmount), true);
                         
                         // 显示治疗跳字
                         Vector3 startPos = creature.transform.position + new Vector3(0, 2.0f, 0);
@@ -129,7 +129,7 @@ public class BuffTestProcedure : ProcedureBase
                     
                     // 根据单位的Side判断阵营
                     bool isFriendly = creature.Side == SideType.PlayerSide;
-                    HealthBarComp.Create(creature.Id, creature.transform, creature.health, max, isFriendly);
+                    HealthBarComp.Create(creature.Id, creature.transform, (float)creature.HealthValue, (float)max, isFriendly);
                 }
                 catch (System.Exception ex)
                 {

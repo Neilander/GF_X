@@ -21,7 +21,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
         if (self is BuildingEntity building && building.HasPermanentNoAttackCapability)
             return;
 
-        if (self.GetProperty(CreatureMainProperty.PhysicalAtk) <= 0f)
+        if (self.GetProperty(CreatureMainProperty.PhysicalAtk) <= Fix64.Zero)
             return;
 
         var target = self.TargetComp?.CurrentTarget;
@@ -53,7 +53,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
             equilibriumRadius = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
         }
 
-        float weaponRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : 1.5f;
+        float weaponRange = self.WeaponComp != null ? (float)self.WeaponComp.AttackRange : 1.5f;
         return equilibriumRadius + weaponRange;
     }
 }

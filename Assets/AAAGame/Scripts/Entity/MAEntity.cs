@@ -22,7 +22,6 @@ public class MAEntity : CompCreature, IEntityContext
     private MoveExecutor _moveExecutor;
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
-    private Animator _animator;
     private const float RotationSpeed = 720f; // 度/秒
 
     private IBuffComp _buffComp;
@@ -57,10 +56,10 @@ public class MAEntity : CompCreature, IEntityContext
     IBuffComp IEntityContext.BuffComp => _buffComp;
     WeaponComp IEntityContext.WeaponComp => weaponComp;
 
-    public float GetProperty(CreatureMainProperty prop)
+    public Fix64 GetProperty(CreatureMainProperty prop)
     {
-        if (CreaturePropertyManager == null) return 5f;
-        return (float)CreaturePropertyManager.GetProperty(prop);
+        if (CreaturePropertyManager == null) return (Fix64)5;
+        return CreaturePropertyManager.GetProperty(prop);
     }
 
     #endregion
@@ -78,29 +77,7 @@ public class MAEntity : CompCreature, IEntityContext
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
         _moveExecutor.Init(cController);
 
-        // 像DirectAtkComp一样，直接获取Animator组件
-        _animator = GetComponent<Animator>();
-        if (_animator == null)
-        {
-            // 如果没有，再尝试从display获取
-            _animator = display.GetComponent<Animator>();
-        }
-
-        // 找到模型Transform（有Animator的子对象）
-        foreach (Transform child in display)
-        {
-            Animator anim = child.GetComponentInChildren<Animator>();
-            if (anim != null)
-            {
-                _modelTransform = child;
-                break;
-            }
-        }
-
-        if (_modelTransform == null)
-        {
-            _modelTransform = display;
-        }
+        _modelTransform = animator != null ? animator.transform : display;
     }
 
     protected override void OnShow(object userData)
@@ -261,7 +238,7 @@ public class MAEntity : CompCreature, IEntityContext
 
             moveExecutor.Execute();
 
-            if (_animator != null)
+            if (animator != null)
             {
                 bool isMoving = false;
                 Vector2 brainMove = Vector2.zero;
@@ -279,7 +256,7 @@ public class MAEntity : CompCreature, IEntityContext
                     }
                 }
 
-                _animator.SetBool("Moving", isMoving);
+                animator.SetBool("Moving", isMoving);
 
                 if (moveComp != null && Brain != null)
                 {

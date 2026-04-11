@@ -277,6 +277,30 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8978211761068102146}
     m_Modifications:
+    - target: {fileID: 1478268230580509816, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1478268230580509816, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_VoxelSize
+      value: 0.16666667
+      objectReference: {fileID: 0}
+    - target: {fileID: 1478268230580509816, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_NavMeshData
+      value: 
+      objectReference: {fileID: 23800000, guid: bbbc3b7765b21a740a817d3070e3af7b, type: 2}
+    - target: {fileID: 1478268230580509816, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_MinRegionArea
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 1478268230580509816, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_LayerMask.m_Bits
+      value: 4096
+      objectReference: {fileID: 0}
+    - target: {fileID: 3196620905497212736, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 6038623276583930824, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
       propertyPath: m_LocalScale.x
       value: 1
@@ -328,6 +352,18 @@ PrefabInstance:
     - target: {fileID: 6038623276583930824, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6434259149437849384, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6978418947405686195, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_Convex
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6978418947405686195, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
+      propertyPath: m_Enabled
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7849028102806450505, guid: c95f09bb3911a4b4db0c38bef3c73a4d, type: 3}
       propertyPath: m_Name

@@ -14,13 +14,13 @@ public enum WeaponType
 /// </summary>
 public class WeaponData
 {
-    public float Damage = 10f;
-    public float AttackInterval = 1.5f;
+    public Fix64 Damage = (Fix64)10;
+    public Fix64 AttackInterval = (Fix64)1.5f;
     public WeaponType Type = WeaponType.Melee;
-    public float AttackRange = 600f;
-    public float ProjectileSpeed = 0f;
-    public float WindUp = 0.4f;
-    public float WindDown = 0.5f;
-    public float SplashRadius = 0f;
-    public float ManaCost = 0f;
+    public Fix64 AttackRange = (Fix64)600;
+    public Fix64 ProjectileSpeed = Fix64.Zero;
+    public Fix64 WindUp = (Fix64)0.4f;
+    public Fix64 WindDown = (Fix64)0.5f;
+    public Fix64 SplashRadius = Fix64.Zero;
+    public Fix64 ManaCost = Fix64.Zero;
 }

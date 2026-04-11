@@ -8,12 +8,10 @@ using System.Collections.Generic;
 /// </summary>
 public static class ClusterSpawnSystem
 {
-    private const float PreferredNavSampleRadius = 2f;
-    private const float FallbackNavSampleRadius = 5f;
-    private const float MaxVerticalSnap = 1.5f;
-    private const float GroundProbeHeight = 200f;
-    private static readonly int PreferredGroundLayerMask = LayerMask.GetMask("Ground");
-    private static readonly int FallbackGroundLayerMask = LayerMask.GetMask("Ground", "Default", "Stronghold");
+    private const float NavMeshSampleRadius = 12f;
+    private const float MaxHorizontalSnapDistance = 1.2f;
+    private const float FixedSpawnDistance = 0.7f;
+    private const float FixedEdgeClearance = 0.2f;
 
     /// <summary>
     /// 校验生成条件
@@ -40,16 +38,13 @@ public static class ClusterSpawnSystem
 
         for (int i = 0; i < maxAttempts; i++)
         {
-            Vector3 candidate = GenerateRandomPointInCircle(center, radius);
-
-            if (TryProjectToHighestGround(candidate, out Vector3 projectedCandidate))
-            {
-                candidate = projectedCandidate;
-            }
+            Vector3 candidate = GenerateDeterministicPointInCircle(center, radius, i, maxAttempts);
 
             // 投影到NavMesh（增加搜索半径到3米）
-            if (TrySampleSpawnPosition(candidate, out Vector3 spawnPos))
+            if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, 3f, NavMesh.AllAreas))
             {
+                Vector3 spawnPos = hit.position;
+
                 // 检查是否与已有生成位置重叠
                 bool isOverlap = false;
                 foreach (Vector3 existingPos in spawnPositions)
@@ -100,137 +95,103 @@ public static class ClusterSpawnSystem
     public static bool SpawnCluster(Vector3 center, int count, float radius, float minDistance,
         UnitType unitIndex, SideType side, BrainType brainType)
     {
-        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
-        List<Vector3> spawnPositions = new List<Vector3>();
-
-        // 直接生成单位，不做复杂验证
-        for (int i = 0; i < count; i++)
-        {
-            // 在圆形区域内生成随机点
-            Vector3 candidate = GenerateRandomPointInCircle(center, radius);
-
-            if (TryProjectToHighestGround(candidate, out Vector3 projectedCandidate))
-            {
-                candidate = projectedCandidate;
-            }
-
-            // 投影到NavMesh
-            if (TrySampleSpawnPosition(candidate, out Vector3 spawnPos))
-            {
-                if (spawnPos.y < center.y - MaxVerticalSnap)
-                {
-                    spawnPos = new Vector3(spawnPos.x, center.y, spawnPos.z);
-                }
-                spawnPositions.Add(spawnPos);
-            }
-            else
-            {
-                // 如果投影失败，直接使用候选点
-                if (candidate.y < center.y - MaxVerticalSnap)
-                {
-                    candidate = new Vector3(candidate.x, center.y, candidate.z);
-                }
-                spawnPositions.Add(candidate);
-            }
-        }
-
-        float minSpawnY = float.MaxValue;
-        float maxSpawnY = float.MinValue;
-        foreach (Vector3 p in spawnPositions)
-        {
-            if (p.y < minSpawnY) minSpawnY = p.y;
-            if (p.y > maxSpawnY) maxSpawnY = p.y;
-        }
-        Debug.Log($"[CardSpawn] centerY={center.y:F2}, spawnYRange=[{minSpawnY:F2}, {maxSpawnY:F2}], count={spawnPositions.Count}");
-
-        foreach (Vector3 pos in spawnPositions)
-        {
-            SoldierFactory.ShowSoldier(unitIndex, pos + Vector3.up, side, brainType);
-        }
-        return true;
-    }
-
-    /// <summary>
-    /// 在圆形区域内生成随机点
-    /// </summary>
-    private static Vector3 GenerateRandomPointInCircle(Vector3 center, float radius)
-    {
-        float angle = Random.Range(0f, Mathf.PI * 2f);
-        float distance = Random.Range(0f, radius);
-
-        float x = center.x + Mathf.Cos(angle) * distance;
-        float z = center.z + Mathf.Sin(angle) * distance;
-
-        return new Vector3(x, center.y, z);
-    }
-
-    private static bool TrySampleSpawnPosition(Vector3 candidate, out Vector3 spawnPos)
-    {
-        // Prefer local navmesh around the same floor.
-        if (NavMesh.SamplePosition(candidate, out NavMeshHit nearHit, PreferredNavSampleRadius, NavMesh.AllAreas))
-        {
-            if (Mathf.Abs(nearHit.position.y - candidate.y) <= MaxVerticalSnap)
-            {
-                spawnPos = nearHit.position;
-                return true;
-            }
-        }
-
-        // Fallback to wider search but still avoid snapping to very different height layers.
-        if (NavMesh.SamplePosition(candidate, out NavMeshHit farHit, FallbackNavSampleRadius, NavMesh.AllAreas))
-        {
-            if (Mathf.Abs(farHit.position.y - candidate.y) <= MaxVerticalSnap)
-            {
-                spawnPos = farHit.position;
-                return true;
-            }
-        }
-
-        spawnPos = Vector3.zero;
-        return false;
-    }
-
-    private static bool TryProjectToHighestGround(Vector3 candidate, out Vector3 groundPosition)
-    {
-        groundPosition = Vector3.zero;
-
-        int layerMask = PreferredGroundLayerMask != 0 ? PreferredGroundLayerMask : FallbackGroundLayerMask;
-        if (layerMask == 0)
+        if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
             return false;
         }
 
-        Ray ray = new Ray(new Vector3(candidate.x, candidate.y + GroundProbeHeight, candidate.z), Vector3.down);
-        RaycastHit[] hits = Physics.RaycastAll(ray, GroundProbeHeight * 2f, layerMask, QueryTriggerInteraction.Ignore);
-        if (hits == null || hits.Length == 0)
+        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
+        if (!TryFindLegalNavMeshPoint(center, FixedEdgeClearance, out Vector3 legalCenter))
         {
-            if (layerMask != FallbackGroundLayerMask && FallbackGroundLayerMask != 0)
+            Debug.LogWarning($"ClusterSpawnSystem: spawn failed, center not legal on NavMesh. center={center}");
+            return false;
+        }
+
+        List<Vector3> spawnPositions = new List<Vector3>(count);
+        int maxAttempts = Mathf.Max(count * 120, 240);
+        for (int i = 0; i < maxAttempts && spawnPositions.Count < count; i++)
+        {
+            Vector3 candidate = GenerateDeterministicPointInCircle(legalCenter, radius, i, maxAttempts);
+            if (!TryFindLegalNavMeshPoint(candidate, FixedEdgeClearance, out Vector3 spawnPos))
             {
-                hits = Physics.RaycastAll(ray, GroundProbeHeight * 2f, FallbackGroundLayerMask, QueryTriggerInteraction.Ignore);
+                continue;
             }
 
-            if (hits == null || hits.Length == 0)
+            bool isOverlap = false;
+            for (int j = 0; j < spawnPositions.Count; j++)
+            {
+                if (Vector3.Distance(spawnPos, spawnPositions[j]) < FixedSpawnDistance)
+                {
+                    isOverlap = true;
+                    break;
+                }
+            }
+
+            if (!isOverlap)
+            {
+                spawnPositions.Add(spawnPos);
+            }
+        }
+
+        if (spawnPositions.Count < count)
+        {
+            Debug.LogWarning($"ClusterSpawnSystem: spawn failed, legal points不足. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
+            return false;
+        }
+
+        foreach (Vector3 pos in spawnPositions)
+        {
+            SoldierFactory.ShowSoldier(unitIndex, pos + Vector3.up * 0.05f, side, brainType);
+        }
+        return true;
+    }
+
+    private static bool TryFindLegalNavMeshPoint(Vector3 candidate, float edgeClearance, out Vector3 legalPoint)
+    {
+        legalPoint = Vector3.zero;
+
+        if (!NavMesh.SamplePosition(candidate, out NavMeshHit navHit, NavMeshSampleRadius, NavMesh.AllAreas))
+        {
+            return false;
+        }
+
+        Vector2 navXZ = new Vector2(navHit.position.x, navHit.position.z);
+        Vector2 candidateXZ = new Vector2(candidate.x, candidate.z);
+        if (Vector2.Distance(navXZ, candidateXZ) > MaxHorizontalSnapDistance)
+        {
+            return false;
+        }
+
+        if (NavMesh.FindClosestEdge(navHit.position, out NavMeshHit edgeHit, NavMesh.AllAreas))
+        {
+            if (edgeHit.distance < edgeClearance)
             {
                 return false;
             }
         }
 
-        bool found = false;
-        float bestY = float.MinValue;
-        float bestDistance = float.MaxValue;
+        legalPoint = navHit.position;
+        return true;
+    }
 
-        foreach (RaycastHit hit in hits)
+    /// <summary>
+    /// 在圆形区域内生成确定性采样点（无随机）。
+    /// </summary>
+    private static Vector3 GenerateDeterministicPointInCircle(Vector3 center, float radius, int index, int total)
+    {
+        if (total <= 1 || index <= 0)
         {
-            if (!found || hit.point.y > bestY + 0.01f ||
-                (Mathf.Abs(hit.point.y - bestY) <= 0.01f && hit.distance < bestDistance))
-            {
-                found = true;
-                bestY = hit.point.y;
-                bestDistance = hit.distance;
-                groundPosition = hit.point;
-            }
+            return center;
         }
 
-        return found;
+        const float goldenAngle = 2.39996323f;
+        float t = (index + 0.5f) / total;
+        float distance = radius * Mathf.Sqrt(Mathf.Clamp01(t));
+        float angle = index * goldenAngle;
+
+        float x = center.x + Mathf.Cos(angle) * distance;
+        float z = center.z + Mathf.Sin(angle) * distance;
+
+        return new Vector3(x, center.y, z);
     }
 }

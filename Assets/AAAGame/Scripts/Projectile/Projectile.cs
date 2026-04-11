@@ -78,7 +78,10 @@ public class Projectile : EntityBase
 
         // 计算到目标的距离
         float distance = Vector3.Distance(transform.position, _targetPosition);
-        float moveDistance = _weaponSO.ProjectileSpeed * Time.deltaTime;
+        Fix64 projectileSpeed = (_weaponData != null && _weaponData.ProjectileSpeed > Fix64.Zero)
+            ? _weaponData.ProjectileSpeed
+            : (Fix64)_weaponSO.ProjectileSpeed;
+        float moveDistance = (float)projectileSpeed * Time.deltaTime;
 
         if (distance <= moveDistance)
         {

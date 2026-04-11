@@ -21,6 +21,33 @@ public class GeneralCreature : EntityBase, ITargetable
 
     private HurtBox hurtBox;
 
+    private static Animator ResolveAnimator(Transform root, Transform display)
+    {
+        // 优先根节点（实体壳）上有控制器的 Animator
+        var rootAnimator = root != null ? root.GetComponent<Animator>() : null;
+        if (rootAnimator != null && rootAnimator.runtimeAnimatorController != null)
+            return rootAnimator;
+
+        // 其次 Display 子树中有控制器的 Animator（通常是模型本体）
+        if (display != null)
+        {
+            var displayAnimators = display.GetComponentsInChildren<Animator>(true);
+            for (int i = 0; i < displayAnimators.Length; i++)
+            {
+                var a = displayAnimators[i];
+                if (a != null && a.runtimeAnimatorController != null)
+                    return a;
+            }
+        }
+
+        // 最后兜底任意 Animator（但不再自动 AddComponent，避免制造空 Animator）
+        var any = root != null ? root.GetComponentsInChildren<Animator>(true) : null;
+        if (any != null && any.Length > 0)
+            return any[0];
+
+        return null;
+    }
+
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
@@ -41,15 +68,11 @@ public class GeneralCreature : EntityBase, ITargetable
 
         SetUpHurtBox();
 
-        animator = display.GetComponent<Animator>();
-        if (animator == null)
-        {
-            animator = display.gameObject.AddComponent<Animator>();
-        }
+        animator = ResolveAnimator(transform, display);
         //ReferenceId = "Knight";
     }
 
-    public float health => (float)CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
+    public Fix64 HealthValue => CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
 
     protected override void OnShow(object userData)
     {
@@ -60,7 +83,7 @@ public class GeneralCreature : EntityBase, ITargetable
     }
 
 
-    public virtual void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
+    public virtual void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
         if (!Alive) return;
 
@@ -78,20 +101,20 @@ public class GeneralCreature : EntityBase, ITargetable
         }
         CreaturePropertyManager.ModifyCurrentProperty(
             CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
+            PropertyIrreversibleAdditiveModifier.Create(-damage), true);
 
-        float cur = health;
-        float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 cur = HealthValue;
+        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-damage)));
 
         // 显示伤害跳字
         Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
         Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
         Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
-        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
+        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
 
-        if (cur <= 0)
+        if (cur <= Fix64.Zero)
         {
             Alive = false;
 
@@ -123,46 +146,6 @@ public class GeneralCreature : EntityBase, ITargetable
             GF.Entity.HideEntity(Id);
         }
     }
-
-    /*
-    public virtual void TakeDamage(float damage, HealthModifyType modType)
-    {
-        if (!Alive) return;
-
-        // 安全触发受击动画（Animator 可能没有此参数）
-        if (animator != null)
-        {
-            foreach (var p in animator.parameters)
-            {
-                if (p.name == "GetHit" && p.type == AnimatorControllerParameterType.Trigger)
-                {
-                    animator.SetTrigger("GetHit");
-                    break;
-                }
-            }
-        }
-        CreaturePropertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
-
-        float cur = health;
-        float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
-        
-        // 显示伤害跳字
-        Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
-        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
-        Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
-        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
-
-        if (cur <= 0)
-        {
-            Alive = false;
-            GF.Entity.HideEntity(Id);
-        }
-    }*/
-
 
     protected virtual void SetUpHurtBox()
     {
@@ -265,6 +248,6 @@ public interface ITargetable : ISelectable
     GameObject Gmo { get; }
     string ReferenceId { get; }
 
-    void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null);
-    float health { get; }
+    void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null);
+    Fix64 HealthValue { get; }
 }

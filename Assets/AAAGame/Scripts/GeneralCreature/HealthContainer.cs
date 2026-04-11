@@ -4,31 +4,31 @@ using UnityEngine;
 
 public class HealthContainer
 {
-    public float maxHealth { get; private set; }
-    public float currentHealth { get; private set; }
+    public Fix64 maxHealth { get; private set; }
+    public Fix64 currentHealth { get; private set; }
 
-    public void Init(float startHealth)
+    public void Init(Fix64 startHealth)
     {
         maxHealth = startHealth;
         currentHealth = startHealth;
     }
 
-    public float ModifyHealth(HealthModifyType tp,float changeAmount, bool ifTry)
+    public Fix64 ModifyHealth(HealthModifyType tp, Fix64 changeAmount, bool ifTry)
     {
-        float returnHealth = 0;
+        Fix64 returnHealth = Fix64.Zero;
 
         switch (tp)
         {
             case HealthModifyType.reduce:
-                returnHealth = Mathf.Clamp( currentHealth - changeAmount,0, maxHealth);
+                returnHealth = Fix64.Clamp(currentHealth - changeAmount, Fix64.Zero, maxHealth);
                 break;
 
             case HealthModifyType.mult:
-                returnHealth = Mathf.Clamp( currentHealth*changeAmount,0, maxHealth);
+                returnHealth = Fix64.Clamp(currentHealth * changeAmount, Fix64.Zero, maxHealth);
                 break;
 
             case HealthModifyType.set:
-                returnHealth = Mathf.Clamp(changeAmount,0, maxHealth);
+                returnHealth = Fix64.Clamp(changeAmount, Fix64.Zero, maxHealth);
                 break;
 
         }

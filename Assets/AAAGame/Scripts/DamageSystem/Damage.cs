@@ -5,11 +5,11 @@ using UnityEngine;
 public class Damage
 {
     public ITargetable instigator; // 责任源头
-    public float amount;
+    public Fix64 amount;
     public HealthModifyType modType;
     
     // 不带 modType，默认 Additive
-    public Damage(ITargetable instigator, float amount)
+    public Damage(ITargetable instigator, Fix64 amount)
     {
         this.instigator = instigator;
         this.amount = amount;
@@ -17,7 +17,7 @@ public class Damage
     }
 
     // 带 modType
-    public Damage(ITargetable instigator, float amount, HealthModifyType modType)
+    public Damage(ITargetable instigator, Fix64 amount, HealthModifyType modType)
     {
         this.instigator = instigator;
         this.amount = amount;

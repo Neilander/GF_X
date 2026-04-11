@@ -10,6 +10,8 @@ public interface IMoveExecutor
     void SetOverride(Vector3 velocity);
     void ClearOverride();
     void SetExternal(Vector3 velocity);
+    void SetNavMeshConstrained(bool constrained);
+    void SetConstraintBypassForNextFrame(bool bypass = true);
     void Execute();
     void Execute(float deltaTime);
 }

@@ -55,7 +55,7 @@ public class BattleEntity : EntityBase, ITargetable
         }
     }
 
-    public float health => (float)CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
+    public Fix64 HealthValue => CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
 
     protected override void OnShow(object userData)
     {
@@ -74,7 +74,7 @@ public class BattleEntity : EntityBase, ITargetable
     {
     }
 
-    public virtual void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
+    public virtual void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
         if (!Alive) return;
 
@@ -92,20 +92,20 @@ public class BattleEntity : EntityBase, ITargetable
         }
         CreaturePropertyManager.ModifyCurrentProperty(
             CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
+            PropertyIrreversibleAdditiveModifier.Create(-damage), true);
 
-        float cur = health;
-        float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 cur = HealthValue;
+        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-damage)));
 
         // 显示伤害跳字
         Vector3 startPos = transform.position + new Vector3(0, 2.0f, 0);
         Vector3 endPos = startPos + new Vector3(0, 1.5f, 0);
         Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
-        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
+        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
 
-        if (cur<= 0)
+        if (cur <= Fix64.Zero)
         {
             Alive = false;
 

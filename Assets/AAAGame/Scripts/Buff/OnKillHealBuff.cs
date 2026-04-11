@@ -126,15 +126,15 @@ public class OnKillHealBuff : BuffCallback
         
         // 获取更新后的生命值
         Fix64 newMaxHealth = propertyManager.GetProperty(CreatureMainProperty.Health);
-        float currentHealth = hostEntity.GetComponent<GeneralCreature>().health;
+        Fix64 currentHealth = hostEntity.GetComponent<GeneralCreature>().HealthValue;
         
         // 确保当前生命值不超过最大生命值
-        if (currentHealth > (float)newMaxHealth)
+        if (currentHealth > newMaxHealth)
         {
             // 使用属性管理器设置当前生命值
-            var currentHealthClampModifier = PropertyDirectAdditiveModifier.Create(newMaxHealth - (Fix64)currentHealth);
+            var currentHealthClampModifier = PropertyDirectAdditiveModifier.Create(newMaxHealth - currentHealth);
             propertyManager.ModifyCurrentProperty(CreatureCurrentProperty.HealthCurrent, currentHealthClampModifier, true);
-            currentHealth = (float)newMaxHealth;
+            currentHealth = newMaxHealth;
         }
         
         GF.Log($"OnKillHealBuff[宿主ID={hostEntity?.Id}]: 击杀回复完成，新最大生命值: {newMaxHealth}, 当前生命值: {currentHealth}");

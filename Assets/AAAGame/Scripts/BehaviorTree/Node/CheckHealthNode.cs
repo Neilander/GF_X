@@ -17,9 +17,10 @@ public class CheckHealthNode : AbstractNode
 
         if (ctx.self == null) return NodeState.Failure;
 
-        float health = ctx.self.health;
+        Fix64 health = ctx.self.HealthValue;
+        Fix64 thresholdFix = (Fix64)threshold;
 
-        bool condition = isBelow ? health < threshold : health >= threshold;
+        bool condition = isBelow ? health < thresholdFix : health >= thresholdFix;
         return condition ? NodeState.Success : NodeState.Failure;
     }
 }

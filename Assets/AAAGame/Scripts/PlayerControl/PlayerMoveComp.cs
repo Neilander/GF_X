@@ -28,7 +28,7 @@ public class PlayerMoveComp : IMoveComp
         _isMoving = move.sqrMagnitude > 0.001f;
         _moveDirection = _isMoving ? move.normalized : Vector3.zero;
 
-        float speed = _ctx.GetProperty(CreatureMainProperty.Speed);
+        float speed = (float)_ctx.GetProperty(CreatureMainProperty.Speed);
 
         move = move.normalized * speed;
 

@@ -25,14 +25,18 @@ public class CharacterTargetingComp : ITargetingComp
     {
         if (_ctx == null) return;
 
+        float currentTargetDist = float.PositiveInfinity;
+
         // 1. 维护当前敌人目标
         if (CurrentTarget != null)
         {
             float dist = _ctx.DistanceToTargetSurface(CurrentTarget);
+            currentTargetDist = dist;
             if (dist > ForgetRange || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
             {
                 GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} forgetRange={ForgetRange} alive={CurrentTarget.Alive}");
                 CurrentTarget = null;
+                currentTargetDist = float.PositiveInfinity;
             }
         }
 
@@ -54,28 +58,41 @@ public class CharacterTargetingComp : ITargetingComp
             _scanTimer = 0f;
 
             // 找敌人：遍历 EntityRegistry，按阵营和距离
+            IEntityContext nearest = null;
+            float scanRange = Mathf.Max(AggroRange, GetEffectiveAttackRange());
+            float nearestDist = scanRange;
+            var all = EntityRegistry.AllEntities;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var other = all[i];
+                if (other == _ctx) continue;
+                if (!other.IsAttackTargetable()) continue;
+                if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
+
+                float dist = _ctx.DistanceToTargetSurface(other);
+                if (dist < nearestDist)
+                {
+                    nearestDist = dist;
+                    nearest = other;
+                }
+            }
+
             if (CurrentTarget == null)
             {
-                IEntityContext nearest = null;
-                float nearestDist = AggroRange;
-                var all = EntityRegistry.AllEntities;
-                for (int i = 0; i < all.Count; i++)
-                {
-                    var other = all[i];
-                    if (other == _ctx) continue;
-                    if (!other.IsAttackTargetable()) continue;
-                    if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
-
-                    float dist = _ctx.DistanceToTargetSurface(other);
-                    if (dist < nearestDist)
-                    {
-                        nearestDist = dist;
-                        nearest = other;
-                    }
-                }
                 if (nearest != null)
-                    GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定敌人 {nearest} | dist={nearestDist:F1} aggroRange={AggroRange}");
+                    GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定敌人 {nearest} | dist={nearestDist:F1} scanRange={scanRange:F1}");
                 CurrentTarget = nearest;
+            }
+            else if (nearest != null && nearest != CurrentTarget)
+            {
+                bool currentOutOfAttackRange = currentTargetDist > GetEffectiveAttackRange();
+                bool nearestObviouslyBetter = nearestDist + 0.1f < currentTargetDist;
+                if (currentOutOfAttackRange || nearestObviouslyBetter)
+                {
+                    GameDebugSettings.Log(DebugCategory.Targeting,
+                        $"{_ctx} 切换敌人 {CurrentTarget} -> {nearest} | currentDist={currentTargetDist:F1} nearestDist={nearestDist:F1}");
+                    CurrentTarget = nearest;
+                }
             }
 
             // 找跟随目标：同阵营的领袖/玩家
@@ -101,4 +118,18 @@ public class CharacterTargetingComp : ITargetingComp
         FollowTarget = null;
     }
     public void Resume() { }
+
+    private float GetEffectiveAttackRange()
+    {
+        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
+        float equilibriumRadius = 0f;
+
+        if (GroupMoveManager.HasInstance)
+        {
+            int selfId = (_ctx as MAEntity)?.GetInstanceID() ?? _ctx.GetHashCode();
+            equilibriumRadius = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
+        }
+
+        return (float)weaponRange + equilibriumRadius;
+    }
 }

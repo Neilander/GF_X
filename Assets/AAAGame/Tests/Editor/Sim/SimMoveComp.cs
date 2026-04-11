@@ -51,10 +51,10 @@ public class SimMoveComp : IMoveComp
             moveDir = offset.normalized;
         }
 
-        float speed = _ctx.GetProperty(CreatureMainProperty.Speed);
-        if (speed <= 0.01f) speed = 5f;
+        Fix64 speed = _ctx.GetProperty(CreatureMainProperty.Speed);
+        if (speed <= (Fix64)0.01f) speed = (Fix64)5f;
 
-        _ctx.MoveExecutor.SetInput(moveDir * speed * 0.1f);
+        _ctx.MoveExecutor.SetInput(moveDir * (float)speed * 0.1f);
     }
 
     public Vector3 GetNavDirection()
@@ -64,7 +64,7 @@ public class SimMoveComp : IMoveComp
         offset.y = 0f;
         return offset.sqrMagnitude > 0.001f ? offset.normalized : Vector3.zero;
     }
-    
+
     public bool IsMoving
     {
         get

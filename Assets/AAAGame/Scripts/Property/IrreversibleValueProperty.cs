@@ -20,12 +20,22 @@ public class IrreversibleValueProperty : ValueProperty
     }
     public override Fix64 GetValue()
     {
-        if (!_isDirty) return _cacheValue;
-        if (_cacheReferValue != _referValueFunc())
+        // 根因修复：当前值属性要始终跟随引用值（如最大生命）变化，
+        // 不能依赖 _isDirty，否则会出现 current 长时间大于 max 的异常状态。
+        Fix64 referValue = _referValueFunc();
+        if (_cacheReferValue != referValue)
         {
-            _cacheValue *= _referValueFunc() / _cacheReferValue;
-            _cacheReferValue = _referValueFunc();
+            if (_cacheReferValue == Fix64.Zero)
+                _cacheValue = referValue;
+            else
+                _cacheValue *= referValue / _cacheReferValue;
+
+            _cacheReferValue = referValue;
+            _isDirty = true;
         }
+
+        if (!_isDirty) return _cacheValue;
+
         var ret = _cacheValue;
         ApplyModify(ref ret);
         _cacheValue = ret;

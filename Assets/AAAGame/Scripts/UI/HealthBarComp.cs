@@ -81,9 +81,16 @@ public class HealthBarComp : MonoBehaviour
     private void UpdateBar(float current, float max)
     {
         if (fillRect == null) return;
-        float ratio = max > 0 ? Mathf.Clamp01(current / max) : 0f;
+
+        float ratio = ComputeRatio(current, max);
         // 通过 anchorMax.x 控制填充宽度，不依赖 sprite
         fillRect.anchorMax = new Vector2(ratio, 1f);
+    }
+
+    private static float ComputeRatio(float current, float max)
+    {
+        float effectiveMax = max > 0f ? max : 1f;
+        return Mathf.Clamp01(current / effectiveMax);
     }
 
     private void LateUpdate()

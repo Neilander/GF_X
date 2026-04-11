@@ -13,14 +13,11 @@ namespace AAAGame.Card
     {
         private Camera m_MainCamera;
         private LayerMask m_GroundLayer;
-        private LayerMask m_PlacementFallbackLayer;
         private LayerMask m_ForbiddenLayer;
 
         private Vector3 m_CurrentPlacementPosition;
         private bool m_IsValidPlacement;
         private bool m_IsPlacing;
-        private bool m_HasPointerScreenPosition;
-        private Vector2 m_PointerScreenPosition;
 
         // 区域检测配置
         private float m_DetectionRadius = 0.5f;
@@ -37,7 +34,6 @@ namespace AAAGame.Card
         {
             m_MainCamera = Camera.main;
             m_GroundLayer = LayerMask.GetMask("Ground");
-            m_PlacementFallbackLayer = LayerMask.GetMask("Ground", "Default", "Stronghold");
             m_ForbiddenLayer = LayerMask.GetMask("ForbiddenArea");
         }
 
@@ -47,23 +43,6 @@ namespace AAAGame.Card
         public void SetDetectionRadius(float radius)
         {
             m_DetectionRadius = radius;
-        }
-
-        /// <summary>
-        /// 设置当前拖拽指针屏幕坐标（优先于 Input.mousePosition）。
-        /// </summary>
-        public void SetPointerScreenPosition(Vector2 screenPosition)
-        {
-            m_HasPointerScreenPosition = true;
-            m_PointerScreenPosition = screenPosition;
-        }
-
-        /// <summary>
-        /// 清除指针屏幕坐标覆盖。
-        /// </summary>
-        public void ClearPointerScreenPosition()
-        {
-            m_HasPointerScreenPosition = false;
         }
 
         /// <summary>
@@ -111,7 +90,6 @@ namespace AAAGame.Card
             }
             else
             {
-                // Avoid using stale coordinates when the cursor is not on any valid ground.
                 bool wasValid = m_IsValidPlacement;
                 m_IsValidPlacement = false;
                 if (wasValid)
@@ -124,25 +102,37 @@ namespace AAAGame.Card
         /// <summary>
         /// 确认放置卡牌
         /// </summary>
-        public bool ConfirmPlacement(CardModel cardModel)
+        public bool ConfirmPlacement(CardModel cardModel, Vector2? releaseScreenPosition = null)
         {
-            // Re-sample once at confirm time to avoid one-frame stale position issues.
-            if (m_IsPlacing && TryGetGroundPosition(out Vector3 latestPosition))
+            if (!m_IsPlacing)
             {
-                m_CurrentPlacementPosition = latestPosition;
-                m_IsValidPlacement = CheckPlacementValidity(latestPosition);
-            }
-
-            if (!m_IsPlacing || !m_IsValidPlacement)
-            {
-                Debug.Log("[Card] Cannot confirm placement: 放置位置不合法或者没在放置.");
+                Debug.Log("[Card] Cannot confirm placement: 放置流程未开启.");
                 return false;
             }
 
-            Debug.Log($"[CardPlacement] Confirm position={m_CurrentPlacementPosition}");
+            Vector2 screenPos = releaseScreenPosition ?? (Vector2)Input.mousePosition;
+            if (!TryGetGroundPositionAtScreenPoint(screenPos, out Vector3 releaseGroundPosition))
+            {
+                Debug.Log("[Card] Cannot confirm placement: 松手时未命中 Ground.");
+                return false;
+            }
+
+            if (!CheckPlacementValidity(releaseGroundPosition))
+            {
+                Debug.Log("[Card] Cannot confirm placement: 松手位置不合法.");
+                return false;
+            }
+
+            m_CurrentPlacementPosition = releaseGroundPosition;
+            m_IsValidPlacement = true;
 
             // 生成士兵
             int soldierCount = SpawnSoldiers(cardModel, m_CurrentPlacementPosition);
+            if (soldierCount <= 0)
+            {
+                Debug.Log("[Card] Cannot confirm placement: 生成点不合法或无法生成单位.");
+                return false;
+            }
 
             // 触发放置成功事件
             OnPlacementConfirmed?.Invoke(cardModel, m_CurrentPlacementPosition);
@@ -171,7 +161,6 @@ namespace AAAGame.Card
         {
             m_IsPlacing = false;
             m_IsValidPlacement = false;
-            ClearPointerScreenPosition();
         }
 
         /// <summary>
@@ -179,71 +168,28 @@ namespace AAAGame.Card
         /// </summary>
         private bool TryGetGroundPosition(out Vector3 groundPosition)
         {
+            return TryGetGroundPositionAtScreenPoint(Input.mousePosition, out groundPosition);
+        }
+
+        private bool TryGetGroundPositionAtScreenPoint(Vector2 screenPosition, out Vector3 groundPosition)
+        {
             groundPosition = Vector3.zero;
 
-            if (m_MainCamera == null)
+            if (Camera.main != null)
             {
                 m_MainCamera = Camera.main;
-                if (m_MainCamera == null) return false;
             }
 
-            Vector2 pointerPos = m_HasPointerScreenPosition ? m_PointerScreenPosition : (Vector2)Input.mousePosition;
-            Ray ray = m_MainCamera.ScreenPointToRay(pointerPos);
-
-            // Multi-level terrain: choose the highest valid Ground hit under the cursor ray.
-            RaycastHit[] hits = Physics.RaycastAll(ray, 1000f, ~0, QueryTriggerInteraction.Ignore);
-            if (hits == null || hits.Length == 0)
+            if (m_MainCamera == null)
             {
                 return false;
             }
 
-            bool found = false;
-            float bestY = float.MinValue;
-            float bestDistance = float.MaxValue;
+            Ray ray = m_MainCamera.ScreenPointToRay(screenPosition);
 
-            bool foundFallback = false;
-            float fallbackBestY = float.MinValue;
-            float fallbackBestDistance = float.MaxValue;
-            Vector3 fallbackPoint = Vector3.zero;
-
-            foreach (RaycastHit hit in hits)
+            if (Physics.Raycast(ray, out RaycastHit hit, 1000f, m_GroundLayer))
             {
-                int hitLayerMask = 1 << hit.collider.gameObject.layer;
-
-                if ((m_GroundLayer.value & hitLayerMask) != 0)
-                {
-                    // Pick higher surface first; tie-break with closer hit.
-                    if (!found || hit.point.y > bestY + 0.01f ||
-                        (Mathf.Abs(hit.point.y - bestY) <= 0.01f && hit.distance < bestDistance))
-                    {
-                        found = true;
-                        bestY = hit.point.y;
-                        bestDistance = hit.distance;
-                        groundPosition = hit.point;
-                    }
-                }
-
-                if ((m_PlacementFallbackLayer.value & hitLayerMask) != 0)
-                {
-                    if (!foundFallback || hit.point.y > fallbackBestY + 0.01f ||
-                        (Mathf.Abs(hit.point.y - fallbackBestY) <= 0.01f && hit.distance < fallbackBestDistance))
-                    {
-                        foundFallback = true;
-                        fallbackBestY = hit.point.y;
-                        fallbackBestDistance = hit.distance;
-                        fallbackPoint = hit.point;
-                    }
-                }
-            }
-
-            if (found)
-            {
-                return true;
-            }
-
-            if (foundFallback)
-            {
-                groundPosition = fallbackPoint;
+                groundPosition = hit.point;
                 return true;
             }
 
@@ -268,16 +214,7 @@ namespace AAAGame.Card
             Collider[] groundColliders = Physics.OverlapSphere(
                 position, m_DetectionRadius, m_GroundLayer);
 
-            if (groundColliders.Length > 0)
-            {
-                return true;
-            }
-
-            // Fallback for scenes where some walkable meshes were not put on Ground layer.
-            Collider[] fallbackColliders = Physics.OverlapSphere(
-                position, m_DetectionRadius, m_PlacementFallbackLayer, QueryTriggerInteraction.Ignore);
-
-            return fallbackColliders.Length > 0;
+            return groundColliders.Length > 0;
         }
 
         /// <summary>
@@ -296,7 +233,12 @@ namespace AAAGame.Card
             float spawnRadius = dataProvider.SpawnRadius;
             UnitType soldierIndex = dataProvider.SoldierIndex;
 
-            ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            bool spawnSuccess = ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            if (!spawnSuccess)
+            {
+                Debug.LogWarning($"[Card] SpawnCluster failed. center={centerPosition}, count={soldierCount}, radius={spawnRadius:F2}, minDistance=2.00, unit={soldierIndex}");
+                return 0;
+            }
             // 在圆形区域内随机生成士兵
             /*
             for (int i = 0; i < soldierCount; i++)

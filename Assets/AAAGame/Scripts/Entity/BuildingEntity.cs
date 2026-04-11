@@ -8,10 +8,10 @@ public partial class BuildingEntity : MAEntity
     public const string P_BuildingInstanceId = "BuildingInstanceId";
 
     private const string DefaultPropertyTemplateId = "Unit_Coder";
-    private const float PlaceholderAttackInterval = 1.6f;
-    private const float PlaceholderAttackRange = 650f;
-    private const float PlaceholderWindUp = 0.35f;
-    private const float PlaceholderWindDown = 0.35f;
+    private static readonly Fix64 PlaceholderAttackInterval = (Fix64)1.6f;
+    private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
+    private static readonly Fix64 PlaceholderWindUp = (Fix64)0.35f;
+    private static readonly Fix64 PlaceholderWindDown = (Fix64)0.35f;
 
     public BuildingData buildingData;
     public int OwnerFactionID { get; set; }
@@ -119,9 +119,9 @@ public partial class BuildingEntity : MAEntity
         SyncHurtBoxToBuildingBounds();
     }
 
-    public override void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
+    public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
-        if (damage <= 0f)
+        if (damage <= Fix64.Zero)
             return;
 
         if (IsAlwaysInvincible || _isDisabled || !Alive)
@@ -131,16 +131,16 @@ public partial class BuildingEntity : MAEntity
 
         CreaturePropertyManager.ModifyCurrentProperty(
             CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create((Fix64)(-damage)), true);
+            PropertyIrreversibleAdditiveModifier.Create(-damage), true);
 
-        float cur = health;
-        float max = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 cur = HealthValue;
+        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, cur, max, -damage));
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-damage)));
 
         ShowDamagePopText(damage);
 
-        if (cur <= 0f)
+        if (cur <= Fix64.Zero)
         {
             EnterDisabledState(attacker);
         }
@@ -286,9 +286,9 @@ public partial class BuildingEntity : MAEntity
         if (_buildingAtkComp == null)
             return;
 
-        float damage = 0f;
+        Fix64 damage = Fix64.Zero;
         if (!HasPermanentNoAttackCapability && buildingData != null)
-            damage = Mathf.Max(0f, (float)buildingData.Atk);
+            damage = Fix64.Max(Fix64.Zero, buildingData.Atk);
 
         var weaponData = new WeaponData
         {
@@ -304,7 +304,7 @@ public partial class BuildingEntity : MAEntity
 
         if (targetComp is CharacterTargetingComp targetingComp)
         {
-            float aggroRange = Mathf.Max(weaponData.AttackRange * 0.01f + 1.5f, 4f);
+            float aggroRange = Mathf.Max((float)(weaponData.AttackRange * (Fix64)0.01f + (Fix64)1.5f), 4f);
             targetingComp.AggroRange = aggroRange;
             targetingComp.ForgetRange = aggroRange + 2f;
             targetingComp.FollowSearchRange = 0f;
@@ -328,39 +328,52 @@ public partial class BuildingEntity : MAEntity
         if (def < Fix64.Zero)
             def = Fix64.Zero;
 
+        // 建筑表数值应作为“目标值”而非“叠加值”，否则会把模板属性再加一遍导致血量过高。
+        Fix64 currentHpMax = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 currentPhyAtk = CreaturePropertyManager.GetProperty(CreatureMainProperty.PhysicalAtk);
+        Fix64 currentSpecAtk = CreaturePropertyManager.GetProperty(CreatureMainProperty.SpecialAtk);
+        Fix64 currentPhyDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.PhysicalDef);
+        Fix64 currentSpecDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.SpecialDef);
+
+        Fix64 hpDelta = hp - currentHpMax;
+        Fix64 atkDeltaPhy = atk - currentPhyAtk;
+        Fix64 atkDeltaSpec = atk - currentSpecAtk;
+        Fix64 defDeltaPhy = def - currentPhyDef;
+        Fix64 defDeltaSpec = def - currentSpecDef;
+
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.Health,
-            PropertyAdditiveModifier.Create(hp),
+            PropertyAdditiveModifier.Create(hpDelta),
             true);
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.PhysicalAtk,
-            PropertyAdditiveModifier.Create(atk),
+            PropertyAdditiveModifier.Create(atkDeltaPhy),
             true);
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.SpecialAtk,
-            PropertyAdditiveModifier.Create(atk),
+            PropertyAdditiveModifier.Create(atkDeltaSpec),
             true);
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.PhysicalDef,
-            PropertyAdditiveModifier.Create(def),
+            PropertyAdditiveModifier.Create(defDeltaPhy),
             true);
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.SpecialDef,
-            PropertyAdditiveModifier.Create(def),
+            PropertyAdditiveModifier.Create(defDeltaSpec),
             true);
 
-        float maxHealth = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        float currentHealth = health;
-        float delta = maxHealth - currentHealth;
-        if (Mathf.Abs(delta) > 0.001f)
+        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 currentHealth = HealthValue;
+        Fix64 delta = maxHealth - currentHealth;
+        if (Fix64.Abs(delta) > (Fix64)0.001f)
         {
             CreaturePropertyManager.ModifyCurrentProperty(
                 CreatureCurrentProperty.HealthCurrent,
-                PropertyIrreversibleAdditiveModifier.Create((Fix64)delta),
+            PropertyIrreversibleAdditiveModifier.Create(delta),
                 true);
         }
     }
@@ -369,7 +382,7 @@ public partial class BuildingEntity : MAEntity
     {
         return new WeaponData
         {
-            Damage = 0f,
+            Damage = Fix64.Zero,
             AttackInterval = PlaceholderAttackInterval,
             AttackRange = PlaceholderAttackRange,
             WindUp = PlaceholderWindUp,
@@ -412,12 +425,12 @@ public partial class BuildingEntity : MAEntity
         _isDisabled = true;
         Alive = false;
 
-        float curHealth = health;
-        if (curHealth < 0f)
+        Fix64 curHealth = HealthValue;
+        if (curHealth < Fix64.Zero)
         {
             CreaturePropertyManager.ModifyCurrentProperty(
                 CreatureCurrentProperty.HealthCurrent,
-                PropertyIrreversibleAdditiveModifier.Create((Fix64)(-curHealth)),
+            PropertyIrreversibleAdditiveModifier.Create(-curHealth),
                 true);
         }
 
@@ -439,18 +452,18 @@ public partial class BuildingEntity : MAEntity
         if (CreaturePropertyManager == null)
             return;
 
-        float maxHealth = (float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        float currentHealth = health;
-        float delta = maxHealth - currentHealth;
-        if (Mathf.Abs(delta) > 0.001f)
+        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 currentHealth = HealthValue;
+        Fix64 delta = maxHealth - currentHealth;
+        if (Fix64.Abs(delta) > (Fix64)0.001f)
         {
             CreaturePropertyManager.ModifyCurrentProperty(
                 CreatureCurrentProperty.HealthCurrent,
-                PropertyIrreversibleAdditiveModifier.Create((Fix64)delta),
+            PropertyIrreversibleAdditiveModifier.Create(delta),
                 true);
         }
 
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, health, maxHealth, delta));
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)HealthValue, (float)maxHealth, (float)delta));
     }
 
     private void ResetCombatRuntimeState()
@@ -513,11 +526,11 @@ public partial class BuildingEntity : MAEntity
         }
     }
 
-    private void ShowDamagePopText(float damage)
+    private void ShowDamagePopText(Fix64 damage)
     {
         Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
         Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
-        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), damage.ToString(), endPos, DamageTextType.Normal);
+        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
     }
 
     private sealed class DisabledCapabilityLocker : ICapability

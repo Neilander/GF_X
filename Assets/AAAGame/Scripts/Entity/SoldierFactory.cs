@@ -17,8 +17,6 @@ public static class SoldierFactory
     /// <param name="brainType">AI类型</param>
     public static int ShowSoldier(UnitType index, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
     {
-
-
         EntityParams paramsData = EntityParams.Create(position: position);
         paramsData.Side = side;
         paramsData.BrainType = brainType;

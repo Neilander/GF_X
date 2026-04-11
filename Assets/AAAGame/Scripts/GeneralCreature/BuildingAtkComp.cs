@@ -65,7 +65,7 @@ public class BuildingAtkComp : IAtkComp
 
             case AtkState.WindUp:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= _weaponData.WindUp)
+                if (_stateTimer >= (float)_weaponData.WindUp)
                 {
                     DealDamage();
                     EnterState(AtkState.WindDown);
@@ -74,13 +74,13 @@ public class BuildingAtkComp : IAtkComp
 
             case AtkState.WindDown:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= _weaponData.WindDown)
+                if (_stateTimer >= (float)_weaponData.WindDown)
                     EnterState(AtkState.Cooldown);
                 break;
 
             case AtkState.Cooldown:
                 _stateTimer += deltaTime;
-                float cooldown = _weaponData.AttackInterval - _weaponData.WindUp - _weaponData.WindDown;
+                float cooldown = (float)(_weaponData.AttackInterval - _weaponData.WindUp - _weaponData.WindDown);
                 if (cooldown < 0f)
                     cooldown = 0f;
 
@@ -129,9 +129,9 @@ public class BuildingAtkComp : IAtkComp
         if (!_lockedTarget.IsAttackTargetable())
             return;
 
-        float damageFromProperty = _ctx.GetProperty(CreatureMainProperty.PhysicalAtk);
-        float finalDamage = damageFromProperty > 0f ? damageFromProperty : _weaponData.Damage;
-        if (finalDamage <= 0f)
+        Fix64 damageFromProperty = _ctx.GetProperty(CreatureMainProperty.PhysicalAtk);
+        Fix64 finalDamage = damageFromProperty > Fix64.Zero ? damageFromProperty : _weaponData.Damage;
+        if (finalDamage <= Fix64.Zero)
             return;
 
         _lockedTarget.TakeDamage(finalDamage, HealthModifyType.reduce, _ctx);
@@ -142,14 +142,14 @@ public class BuildingAtkComp : IAtkComp
         if (_ctx is BuildingEntity building && building.HasPermanentNoAttackCapability)
             return false;
 
-        float damageFromProperty = _ctx.GetProperty(CreatureMainProperty.PhysicalAtk);
-        float finalDamage = damageFromProperty > 0f ? damageFromProperty : _weaponData.Damage;
-        return finalDamage > 0f;
+        Fix64 damageFromProperty = _ctx.GetProperty(CreatureMainProperty.PhysicalAtk);
+        Fix64 finalDamage = damageFromProperty > Fix64.Zero ? damageFromProperty : _weaponData.Damage;
+        return finalDamage > Fix64.Zero;
     }
 
     private float GetEffectiveAttackRange()
     {
-        float baseRange = _weaponData.AttackRange * 0.01f;
+        float baseRange = (float)(_weaponData.AttackRange * (Fix64)0.01f);
         float equilibriumRadius = 0f;
 
         if (GroupMoveManager.HasInstance)

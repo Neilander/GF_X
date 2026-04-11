@@ -8,17 +8,17 @@ public class BasicSkill : ScriptableObject
 {
     [Header("基础信息")]
     public List<BasicAction> actions;
-    
+
     public CoolDownType coolDownType;
 
     public float coolDownInterval;
 
-    [Header("属性")] 
+    [Header("属性")]
     [Tooltip("不可在其他技能释放时释放，默认开启")]
     public bool banWhenOtherSkill = true;
     [Tooltip("其他技能不可插入，默认关闭")]
     public bool banOtherSkillWhenCast = false;
-    
+
     //这些数值之后都会读表，根据名字获取到一组float，然后赋值
     [Header("临时数值，之后淘汰")]
     public float radius = 10f;
@@ -51,7 +51,7 @@ public class BasicSkill : ScriptableObject
         actions[info.currentIndex].Tick(info.currentInfo, deltaTime);
         if (info.currentInfo.isFinished)
         {
-            if (info.currentIndex < actions.Count-1)
+            if (info.currentIndex < actions.Count - 1)
             {
                 //说明技能还没执行完，继续执行
                 SwitchToNextAction(info);
@@ -88,7 +88,7 @@ public class BasicSkill : ScriptableObject
                 case PositionSelectActionInfo posInfo:
                     info.tempInfoRecords.Add(posInfo, typeof(PositionSelectActionInfo));
                     break;
-                
+
                 case ProjectileSpawnActionInfo projInfo:
                     info.tempInfoRecords.Add(projInfo, typeof(ProjectileSpawnActionInfo));
                     break;
@@ -100,7 +100,7 @@ public class BasicSkill : ScriptableObject
         var action = actions[actionIndex];
         action.StartAction(info.entity, out info.currentInfo);
         info.currentInfo.executeIndex = actionIndex;
-        info.currentInfo.damageInfo = new Damage(info.entity, 1);
+        info.currentInfo.damageInfo = new Damage(info.entity, Fix64.One);
         info.entity.animator.SetTrigger(action.relatedTriggerString);
         info.currentInfo.fatherInfo = info;
 
@@ -119,8 +119,8 @@ public class BasicSkill : ScriptableObject
                 break;
         }
     }
-    
-    
+
+
 
     public void InterruptSkill()
     {

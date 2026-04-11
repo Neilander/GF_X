@@ -13,9 +13,6 @@ public class CharacterMoveComp : IMoveComp
     private float _stuckTimer = 0f;
     private bool _isMoving = false;
 
-    // === 核心：定义你的绝对水平面高度 ===
-    private const float GROUND_Y = 1f;
-
     public void Init(IEntityContext ctx) => _ctx = ctx;
 
     private float Distance2D(Vector3 p1, Vector3 p2)
@@ -25,12 +22,15 @@ public class CharacterMoveComp : IMoveComp
 
     public void MoveTo(Vector3 destination)
     {
-        // 1. 强行把目标点的 Y 锁死在 1f
-        Vector3 flatDest = new Vector3(destination.x, GROUND_Y, destination.z);
+        Vector3 navDest = destination;
+        if (NavMesh.SamplePosition(destination, out var destHit, 10f, NavMesh.AllAreas))
+        {
+            navDest = destHit.position;
+        }
 
-        if (_targetPos.HasValue && _corners.Length > 0 && Distance2D(_targetPos.Value, flatDest) < 0.5f) return;
+        if (_targetPos.HasValue && _corners.Length > 0 && Distance2D(_targetPos.Value, navDest) < 0.5f) return;
 
-        _targetPos = flatDest;
+        _targetPos = navDest;
         _stuckTimer = 0f;
         _lastPos = _ctx.Position;
 
@@ -38,17 +38,11 @@ public class CharacterMoveComp : IMoveComp
         bool hasNavPath = false;
 
         if (NavMesh.SamplePosition(_ctx.Position, out var startHit, 10f, NavMesh.AllAreas) &&
-            NavMesh.SamplePosition(flatDest, out var endHit, 10f, NavMesh.AllAreas))
+            NavMesh.SamplePosition(navDest, out var endHit, 10f, NavMesh.AllAreas))
         {
             if (NavMesh.CalculatePath(startHit.position, endHit.position, NavMesh.AllAreas, path) && path.corners.Length > 0)
             {
                 _corners = path.corners;
-
-                for (int i = 0; i < _corners.Length; i++)
-                {
-                    _corners[i].y = GROUND_Y;
-                }
-
                 hasNavPath = true;
             }
         }
@@ -56,8 +50,8 @@ public class CharacterMoveComp : IMoveComp
         if (!hasNavPath)
         {
             _corners = new Vector3[] {
-                new Vector3(_ctx.Position.x, GROUND_Y, _ctx.Position.z),
-                flatDest
+                _ctx.Position,
+                navDest
             };
         }
 
@@ -76,7 +70,7 @@ public class CharacterMoveComp : IMoveComp
 
         Vector2 manualMove = _ctx.Brain?.Move ?? Vector2.zero;
         Vector3 moveDir = Vector3.zero;
-        float speed = _ctx.GetProperty(CreatureMainProperty.Speed)*0.05f;
+        float speed = (float)_ctx.GetProperty(CreatureMainProperty.Speed) * 0.05f;
 
         if (manualMove.sqrMagnitude > 0.001f)
         {

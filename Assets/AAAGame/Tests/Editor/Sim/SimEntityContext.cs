@@ -37,22 +37,22 @@ public class SimEntityContext : IEntityContext
     public WeaponComp WeaponComp { get; set; }
 
     // 属性系统
-    private Dictionary<CreatureMainProperty, float> _properties = new Dictionary<CreatureMainProperty, float>();
+    private Dictionary<CreatureMainProperty, Fix64> _properties = new Dictionary<CreatureMainProperty, Fix64>();
 
-    public float GetProperty(CreatureMainProperty prop)
+    public Fix64 GetProperty(CreatureMainProperty prop)
     {
-        return _properties.TryGetValue(prop, out float val) ? val : 5f;
+        return _properties.TryGetValue(prop, out Fix64 val) ? val : (Fix64)5f;
     }
 
-    public void SetProperty(CreatureMainProperty prop, float val)
+    public void SetProperty(CreatureMainProperty prop, Fix64 val)
     {
         _properties[prop] = val;
     }
 
-    public void TakeDamage(float damage, HealthModifyType modType, IEntityContext attacker = null)
+    public void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
         Health.ModifyHealth(modType, damage, false);
-        if (Health.currentHealth <= 0f)
+        if (Health.currentHealth <= Fix64.Zero)
             Alive = false;
     }
 

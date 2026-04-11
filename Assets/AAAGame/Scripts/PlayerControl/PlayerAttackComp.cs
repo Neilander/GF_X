@@ -35,7 +35,7 @@ public class PlayerAttackComp : IAtkComp
                 if (_ctx is GeneralCreature body)
                 {
                     actions[currentIndex].StartAction(body, out _actionInfo);
-                    _actionInfo.damageInfo = new Damage(body, 1);
+                    _actionInfo.damageInfo = new Damage(body, Fix64.One);
                 }
 
                 _ctx.LockComp(_ctx.MoveComp, this);
@@ -67,7 +67,7 @@ public class PlayerAttackComp : IAtkComp
                     if (_ctx is GeneralCreature body)
                     {
                         actions[currentIndex].StartAction(body, out _actionInfo);
-                        _actionInfo.damageInfo = new Damage(body, 1);
+                        _actionInfo.damageInfo = new Damage(body, Fix64.One);
                     }
 
                     ifContinueAction = false;
@@ -91,7 +91,7 @@ public class PlayerAttackComp : IAtkComp
     }
 
     public bool IsAttacking => _actionInfo != null;
-    
+
     public void ShutDown() { }
     public void Resume() { }
 }

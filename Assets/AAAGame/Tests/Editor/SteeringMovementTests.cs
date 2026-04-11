@@ -118,7 +118,7 @@ public class SteeringMovementTests
             Side = side,
             Alive = true
         };
-        ctx.SetProperty(CreatureMainProperty.Speed, 5f);
+        ctx.SetProperty(CreatureMainProperty.Speed, (Fix64)5f);
 
         var exec = new SimMoveExecutor();
         exec.Position = pos;

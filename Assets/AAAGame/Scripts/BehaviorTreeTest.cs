@@ -16,20 +16,20 @@ public class BehaviorTreeTest : MonoBehaviour
         public bool Alive { get; set; }
         public GameObject Gmo { get; set; }
         public string ReferenceId { get; set; }
-        public float health { get; private set; } = 10f;
+        public Fix64 HealthValue { get; private set; } = (Fix64)10;
 
         public bool CanBeSelected() => Alive;
         public void InSelection(ISelector selector) { }
         public void DeSelection() { }
-        public void TakeDamage(float damage, HealthModifyType modType,IEntityContext attacker = null)
+        public void TakeDamage(Fix64 damage, HealthModifyType modType,IEntityContext attacker = null)
         {
-            health -= damage;
-            if (health <= 0)
+            HealthValue -= damage;
+            if (HealthValue <= Fix64.Zero)
             {
-                health = 0;
+                HealthValue = Fix64.Zero;
                 Alive = false;
             }
-            Debug.Log($"{ReferenceId} health: {health}");
+            Debug.Log($"{ReferenceId} health: {(float)HealthValue}");
         }
     }
 
@@ -53,7 +53,7 @@ public class BehaviorTreeTest : MonoBehaviour
         if (graph == null || graph.root == null) return;
 
         if (Input.GetKeyDown(KeyCode.T))
-            selfTarget.TakeDamage(1f, HealthModifyType.reduce);
+            selfTarget.TakeDamage((Fix64)1, HealthModifyType.reduce);
 
         context.position = transform.position;
 

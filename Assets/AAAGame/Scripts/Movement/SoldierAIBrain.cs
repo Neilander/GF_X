@@ -196,7 +196,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             return;
         }
 
-        float speed = self.GetProperty(CreatureMainProperty.Speed);
+        float speed = (float)self.GetProperty(CreatureMainProperty.Speed);
         Move = Vector2.zero;
 
         // 计算死区范围：[leaderEqR, leaderEqR + _deadZoneRange]
@@ -283,7 +283,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
             myEqR = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
         }
-        float wpnRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : WeaponRange;
+        float wpnRange = self.WeaponComp != null ? (float)self.WeaponComp.AttackRange : WeaponRange;
         return myEqR + wpnRange;
     }
 
@@ -295,7 +295,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         if (enemy == null || !enemy.Alive) return;
 
         float distToEnemy = HorizontalDist(myPos, enemy.Position);
-        float speed = self.GetProperty(CreatureMainProperty.Speed);
+        float speed = (float)self.GetProperty(CreatureMainProperty.Speed);
         float effectiveRange = GetEffectiveAttackRange(self);
 
         if (distToEnemy <= effectiveRange)

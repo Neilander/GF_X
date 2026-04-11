@@ -77,18 +77,18 @@ public class DirectAtkComp : IAtkComp
         var entity = _ctx as MAEntity;
         if (entity != null)
         {
-            _animator = entity.GetComponent<Animator>();
+            _animator = entity.animator;
         }
 
         // TODO: 根据 index 读表获取攻击数值
         // 当前使用硬编码测试数据
         string id = ctx.ReferenceId;
         var row = GeneralCreature.GetData(id);
-        float damage = (float)row.PhysicalAtk; // 降低远程武器伤害，让单位血显得更厚
-        float interval = (float)row.WeaponIntervalOne;
-        float range = (float)row.WeaponRangeOne;
-        float windUp = (float)row.WeaponPreOne;
-        float windDown = (float)row.WeaponPreOne;
+        Fix64 damage = row.PhysicalAtk;
+        Fix64 interval = row.WeaponIntervalOne;
+        Fix64 range = row.WeaponRangeOne;
+        Fix64 windUp = row.WeaponPreOne;
+        Fix64 windDown = row.WeaponPreOne;
 
 
         // 原来的代码：
@@ -105,8 +105,8 @@ public class DirectAtkComp : IAtkComp
 
         // 新加：根据index判断武器类型，为远程武器设置正确的武器数据
         WeaponType weaponType = _index; //_index == "ranged_test" ? WeaponType.Projectile : WeaponType.Melee;
-        float projectileSpeed = (float)row.WeaponSpeedOne;
-        float attackRange = range; // 远程武器射程更远
+        Fix64 projectileSpeed = row.WeaponSpeedOne;
+        Fix64 attackRange = range; // 远程武器射程更远
 
         _weapon = new WeaponData
         {
@@ -150,7 +150,7 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.WindUp:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= GetActiveWeapon().WindUp)
+                if (_stateTimer >= (float)GetActiveWeapon().WindUp)
                 {
                     DealDamage();
                     EnterState(AtkState.WindDown);
@@ -159,7 +159,7 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.WindDown:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= GetActiveWeapon().WindDown)
+                if (_stateTimer >= (float)GetActiveWeapon().WindDown)
                 {
                     if (_movementLockedByThisAttack)
                     {
@@ -173,7 +173,7 @@ public class DirectAtkComp : IAtkComp
             case AtkState.Cooldown:
                 _stateTimer += deltaTime;
                 var w = GetActiveWeapon();
-                float cooldown = w.AttackInterval - w.WindUp - w.WindDown;
+                float cooldown = (float)(w.AttackInterval - w.WindUp - w.WindDown);
                 if (cooldown < 0f) cooldown = 0f;
                 if (_stateTimer >= cooldown)
                 {
@@ -217,7 +217,7 @@ public class DirectAtkComp : IAtkComp
 
         var activeWeapon = GetActiveWeapon();
         float dist = _ctx.DistanceToTargetSurface(target);
-        float wpnRange = activeWeapon.AttackRange * 0.01f;
+        float wpnRange = (float)(activeWeapon.AttackRange * (Fix64)0.01f);
 
         // 攻击范围 = 自己的斥力半径 + 武器射程
         float myEqR = 0f;
@@ -257,7 +257,7 @@ public class DirectAtkComp : IAtkComp
         }
 
         var weaponData = GetActiveWeapon();
-        float damage = weaponData.Damage;
+        Fix64 damage = weaponData.Damage;
 
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx.ReferenceId}] DealDamage: 对 {_lockedTarget.ReferenceId} 造成 {damage} 伤害");
@@ -273,13 +273,13 @@ public class DirectAtkComp : IAtkComp
             _lockedTarget.TakeDamage(damage, HealthModifyType.reduce);
         }
 
-        if (weaponData.SplashRadius > 0f)
+        if (weaponData.SplashRadius > Fix64.Zero)
         {
             ApplySplashDamage(damage);
         }
     }
 
-    private void ApplySplashDamage(float damage)
+    private void ApplySplashDamage(Fix64 damage)
     {
         // 溅射需要知道周围所有敌方单位，暂留接口
         // 后续可通过 IEntityContext 暴露 "查询附近单位" 的方法

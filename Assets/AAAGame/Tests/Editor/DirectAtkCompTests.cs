@@ -11,7 +11,7 @@ public class DirectAtkCompTests
             Position = pos,
             Side = side
         };
-        ctx.Health.Init(hp);
+        ctx.Health.Init((Fix64)hp);
         var executor = new SimMoveExecutor { Position = pos };
         ctx.MoveExecutor = executor;
         return ctx;
@@ -22,12 +22,12 @@ public class DirectAtkCompTests
     {
         return new WeaponData
         {
-            Damage = damage,
-            AttackRange = range,
+            Damage = (Fix64)damage,
+            AttackRange = (Fix64)range,
             Type = WeaponType.Melee,
-            WindUp = windUp,
-            WindDown = windDown,
-            AttackInterval = interval
+            WindUp = (Fix64)windUp,
+            WindDown = (Fix64)windDown,
+            AttackInterval = (Fix64)interval
         };
     }
 
@@ -96,7 +96,7 @@ public class DirectAtkCompTests
         atkComp.Attack(0.2f);
 
         Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State, "前摇结束应进入后摇");
-        Assert.AreEqual(70f, target.Health.currentHealth, 0.01f, "目标应受到30点伤害");
+        Assert.AreEqual(70f, (float)target.Health.currentHealth, 0.01f, "目标应受到30点伤害");
     }
 
     [Test]
@@ -133,7 +133,7 @@ public class DirectAtkCompTests
         // 前摇结束
         atkComp.Attack(0.3f);
         Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State);
-        Assert.AreEqual(80f, target.Health.currentHealth, 0.01f);
+        Assert.AreEqual(80f, (float)target.Health.currentHealth, 0.01f);
 
         // 后摇结束
         atkComp.Attack(0.3f);
@@ -214,7 +214,7 @@ public class DirectAtkCompTests
         atkComp.Attack(0.01f); // WindUp
         atkComp.Attack(0.1f);  // 造成伤害 → hp: 5 - 10 = 0 → 死亡
 
-        Assert.AreEqual(0f, target.Health.currentHealth, 0.01f);
+        Assert.AreEqual(0f, (float)target.Health.currentHealth, 0.01f);
         Assert.IsFalse(target.Alive, "目标应该死亡");
     }
 
@@ -274,12 +274,12 @@ public class DirectAtkCompTests
         // 700码 = 7m 射程
         var weapon = new WeaponData
         {
-            Damage = 11f,
-            AttackRange = 700f,
+            Damage = (Fix64)11f,
+            AttackRange = (Fix64)700f,
             Type = WeaponType.Projectile,
-            WindUp = 0.25f,
-            WindDown = 0.4f,
-            AttackInterval = 1f
+            WindUp = (Fix64)0.25f,
+            WindDown = (Fix64)0.4f,
+            AttackInterval = (Fix64)1f
         };
         var atkComp = new DirectAtkComp(WeaponType.Melee);
         atkComp.Init(attacker);
@@ -292,7 +292,7 @@ public class DirectAtkCompTests
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "远程单位应能在射程内攻击");
 
         atkComp.Attack(0.25f);
-        Assert.AreEqual(89f, target.Health.currentHealth, 0.01f, "应造成11点伤害");
+        Assert.AreEqual(89f, (float)target.Health.currentHealth, 0.01f, "应造成11点伤害");
     }
 
     // 转向功能已移除（不需要小兵在攻击时旋转），此测试已废弃

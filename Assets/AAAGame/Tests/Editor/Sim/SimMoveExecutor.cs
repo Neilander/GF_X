@@ -12,6 +12,8 @@ public class SimMoveExecutor : IMoveExecutor
     private Vector3 _externalVelocity;
     private Vector3 _overrideVelocity;
     private bool _hasOverride;
+    private bool _navMeshConstrained = true;
+    private bool _constraintBypassForNextFrame;
 
     public void SetInput(Vector3 velocity)
     {
@@ -39,6 +41,16 @@ public class SimMoveExecutor : IMoveExecutor
         _externalVelocity = velocity;
     }
 
+    public void SetNavMeshConstrained(bool constrained)
+    {
+        _navMeshConstrained = constrained;
+    }
+
+    public void SetConstraintBypassForNextFrame(bool bypass = true)
+    {
+        _constraintBypassForNextFrame = bypass;
+    }
+
     public void Execute()
     {
         Execute(0.02f); // 默认 50fps
@@ -46,6 +58,9 @@ public class SimMoveExecutor : IMoveExecutor
 
     public void Execute(float deltaTime)
     {
+        // 纯模拟执行器不做 NavMesh 约束，仅保留接口语义以兼容真实实现。
+        _ = _navMeshConstrained;
+
         LastFrameVelocity = _hasOverride
             ? _overrideVelocity
             : _inputVelocity + _externalVelocity;
@@ -56,5 +71,6 @@ public class SimMoveExecutor : IMoveExecutor
         _inputVelocity = Vector3.zero;
         _hasOverride = false;
         _externalVelocity = Vector3.zero;
+        _constraintBypassForNextFrame = false;
     }
 }

@@ -71,7 +71,7 @@ public class PlayerEntity : SkillEntity
         HitBox hitBox = go.AddComponent<HitBox>();
 
         // 5. 激活 HitBox
-        hitBox.Activate(this, new Damage(this, 1));
+        hitBox.Activate(this, new Damage(this, Fix64.One));
 
         go.AddComponent(typeof(Rigidbody));
         go.GetComponent<Rigidbody>().isKinematic = true;
@@ -99,7 +99,7 @@ public class PlayerEntity : SkillEntity
         {
             DirectionProjectile dirPro = (DirectionProjectile)logic;
             logic.transform.position = transform.position + Vector3.up * 0.5f;
-            dirPro.StartMoveWithDirection(new Vector3(1, 0, 0), this, new Damage(this, 1));
+            dirPro.StartMoveWithDirection(new Vector3(1, 0, 0), this, new Damage(this, Fix64.One));
         };
         GF.Entity.ShowEntity<DirectionProjectile>("TestProjectile", Const.EntityGroup.Default, projectileParams);
     }
