@@ -1,3 +1,4 @@
+using AAAGame.MiniMap;
 using UnityEngine;
 
 /// <summary>
@@ -15,6 +16,15 @@ public class SoldierEntity : MAEntity
     /// AI类型
     /// </summary>
     public BrainType BrainType { get; private set; }
+    
+    private MinimapReportComponent minimapReport;
+
+    protected override void OnInit(object userData)
+    {
+        base.OnInit(userData);
+        // 添加小地图报告组件（但不初始化，等 Side 设置后再初始化）
+        minimapReport = gameObject.AddComponent<MinimapReportComponent>();
+    }
 
     protected override void OnShow(object userData)
     {
@@ -27,16 +37,26 @@ public class SoldierEntity : MAEntity
             ReferenceId = ep.Index; // 设置正确的ReferenceId
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
         }
-
+        
         base.OnShow(userData);
-        //Debug.LogError("什么玩意");
+        
+        // 在 Side 设置后初始化小地图组件
+        if (minimapReport != null)
+        {
+            minimapReport.Initialize(Side);
+            Debug.Log($"[SoldierEntity] MinimapReport initialized with Side={Side}");
+        }
+        
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 
     protected override void Update()
     {
         base.Update();
-
+        if (minimapReport != null)
+        {
+            minimapReport.Tick();
+        }
         // Debug: 绿线=NavMesh方向, 红线=到目标直线
         if (targetComp?.CurrentTarget != null && targetComp.CurrentTarget.Alive)
         {
@@ -51,6 +71,7 @@ public class SoldierEntity : MAEntity
                 Debug.DrawRay(pos, navDir * 3f, Color.green);
             }
         }
+
     }
 
     protected override void SetUpMAComp(object userData)

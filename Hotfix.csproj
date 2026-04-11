@@ -55,6 +55,7 @@
     <Compile Include="Assets\AAAGame\Scripts\NeilUtility\MessageSystem\MessageBehavior.cs" />
     <Compile Include="Assets\AAAGame\Scripts\ActionSystem\NormalAttackAction.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Network\PacketType.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\MiniMap\MinimapEvents.cs" />
     <Compile Include="Assets\AAAGame\Scripts\EventArgs\InteractionFocusChangedEventArgs.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Card\UI\CardAreaMaterialOverlay.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Common\RefParams.cs" />
@@ -67,6 +68,7 @@
     <Compile Include="Assets\AAAGame\Scripts\Extension\ConfigExtension.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Property\Vector2IntArrayProperty.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Entity\Core\EntityBase.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\MiniMap\MinimapData.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\UIItemVariables\TextLineUnit.Variables.cs" />
     <Compile Include="Assets\AAAGame\Scripts\BuffSystem\Examples\DebugBuffExamples.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataTable\Core\EntityGroupTable.cs" />
@@ -81,6 +83,7 @@
     <Compile Include="Assets\AAAGame\Scripts\Entity\EntityContextExtensions.cs" />
     <Compile Include="Assets\AAAGame\Scripts\GeneralCreature\MoveExecutor.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Property\PropertyManager.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\MiniMap\MinimapManager.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Card\Manager\PlayerHandManager.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Card\Test\CardSystemDiagnostic.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Property\Modifier\IPropertyOverrideModifier.cs" />
@@ -120,6 +123,7 @@
     <Compile Include="Assets\AAAGame\Scripts\Test\EnemySpawner.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataTable\Core\LanguagesTable.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Movement\GroupMoveCoordinator.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\MiniMap\MinimapCameraFrame.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataModel\Craft\ItemDataModel.cs" />
     <Compile Include="Assets\AAAGame\Scripts\BehaviorTree\SequenceNode.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataModel\Tech\CapabilityProgressDataModel.cs" />
@@ -315,6 +319,7 @@
     <Compile Include="Assets\AAAGame\Scripts\Tech\TechNodeView.cs" />
     <Compile Include="Assets\AAAGame\Scripts\BehaviorTree\Node\CheckHealthNode.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataTable\Text\InteractOptionTextTable.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\MiniMap\MinimapCameraFrameFixer.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Procedures\MenuProcedure.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\HealthBarComp.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Interaction\InteractionManager.cs" />
@@ -400,6 +405,7 @@
     <Compile Include="Assets\AAAGame\Scripts\GeneralCreature\IAtkComp.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Card\Event\CardEventArgs.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Extension\AD\ADComponent.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\MiniMap\MinimapUI.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Card\UI\CardUISystem.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataModel\Craft\ItemCollectionDataModel.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UI\UIVariables\UITopbar.Variables.cs" />
@@ -431,6 +437,7 @@
     <Compile Include="Assets\AAAGame\Scripts\Procedures\RangedWeaponTestProcedure.cs" />
     <Compile Include="Assets\AAAGame\Scripts\DataModel\Build\DeviceDataModel.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UnlockCondition\UnlockCondition.cs" />
+    <Compile Include="Assets\AAAGame\Scripts\MiniMap\MinimapReportComponent.cs" />
     <Compile Include="Assets\AAAGame\Scripts\UTManagers\InputManager.cs" />
     <Compile Include="Assets\AAAGame\Scripts\BehaviorTree\BehaviorTreeGraph.cs" />
     <Compile Include="Assets\AAAGame\Scripts\Extension\StaticUIComponent.cs" />
