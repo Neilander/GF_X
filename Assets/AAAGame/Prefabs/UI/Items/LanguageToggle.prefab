@@ -498,8 +498,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: English
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 230b0c809e3e6a647af26c803aa90467, type: 2}
-  m_sharedMaterial: {fileID: 2100000, guid: 9deca69555354744b9e1fbdffb007bd8, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: d81faaaa9c39b4a3bb23905cf66f6114, type: 2}
+  m_sharedMaterial: {fileID: 5256446155164827431, guid: d81faaaa9c39b4a3bb23905cf66f6114, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []

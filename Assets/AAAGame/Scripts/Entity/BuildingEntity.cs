@@ -1,4 +1,5 @@
 ﻿using GameFramework;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -12,6 +13,8 @@ public partial class BuildingEntity : MAEntity
     private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
     private static readonly Fix64 PlaceholderWindUp = (Fix64)0.35f;
     private static readonly Fix64 PlaceholderWindDown = (Fix64)0.35f;
+    private const string Lv0InvincibleBuffId = "building_lv0_invincible";
+    private const string PhaseGuardBuffId = "building_phase_guard";
 
     public BuildingData buildingData;
     public int OwnerFactionID { get; set; }
@@ -19,11 +22,14 @@ public partial class BuildingEntity : MAEntity
     public Stronghold CurrentStronghold { get; private set; }
     public bool HasUpgrade => BuildManager.HasUpgrade(this);
     public bool IsDisabled => _isDisabled;
-    public bool IsAlwaysInvincible => buildingData != null && buildingData.Lv == 0;
+    public bool IsLv0Invincible => _lv0InvincibleByBuff;
+    public bool IsPhaseProtected => _phaseProtectionByBuff;
     public bool HasPermanentNoAttackCapability { get; private set; }
 
     private BuildingAtkComp _buildingAtkComp;
     private bool _isDisabled;
+    private bool _lv0InvincibleByBuff;
+    private bool _phaseProtectionByBuff;
     private bool _combatLocked;
     private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
 
@@ -53,6 +59,8 @@ public partial class BuildingEntity : MAEntity
 
         LevelEntity.RegisterBuildingToStronghold(this);
         SyncSideFromFaction();
+        EnsureLv0InvincibleBuff();
+        EnsurePhaseProtectionBuff();
 
         if (HasUpgrade)
         {
@@ -74,6 +82,8 @@ public partial class BuildingEntity : MAEntity
         CurrentStronghold = null;
         OwnerFactionID = 0;
         HasPermanentNoAttackCapability = false;
+        _lv0InvincibleByBuff = false;
+        _phaseProtectionByBuff = false;
         buildingData = null;
         BuildingInstanceId = null;
         base.OnHide(isShutdown, userData);
@@ -124,7 +134,7 @@ public partial class BuildingEntity : MAEntity
         if (damage <= Fix64.Zero)
             return;
 
-        if (IsAlwaysInvincible || _isDisabled || !Alive)
+        if (IsLv0Invincible || IsPhaseProtected || _isDisabled || !Alive)
             return;
 
         TriggerHitAnimation();
@@ -161,6 +171,56 @@ public partial class BuildingEntity : MAEntity
         host.Init(this);
 
         BuildManager.ConfigureBuildInteractionOptions(this, host);
+    }
+
+    private void EnsureLv0InvincibleBuff()
+    {
+        if (BuffComp == null)
+            return;
+
+        var buffData = BuffData.Create(
+            id: Lv0InvincibleBuffId,
+            duration: float.MaxValue,
+            isForever: true,
+            maxStack: 1,
+            modules: new List<BuffCallback> { new BuildingLv0InvincibleBuff() });
+
+        BuffComp.AddBuff(buffData, this);
+    }
+
+    private void EnsurePhaseProtectionBuff()
+    {
+        if (BuffComp == null)
+            return;
+
+        var buffData = BuffData.Create(
+            id: PhaseGuardBuffId,
+            duration: float.MaxValue,
+            isForever: true,
+            maxStack: 1,
+            modules: new List<BuffCallback> { new BuildingPhaseGuardBuff() });
+
+        BuffComp.AddBuff(buffData, this);
+    }
+
+    public void SetPhaseProtectionByBuff(bool enabled)
+    {
+        if (_phaseProtectionByBuff == enabled)
+            return;
+
+        _phaseProtectionByBuff = enabled;
+        if (_phaseProtectionByBuff && targetComp != null)
+            targetComp.CurrentTarget = null;
+    }
+
+    public void SetLv0InvincibleByBuff(bool enabled)
+    {
+        if (_lv0InvincibleByBuff == enabled)
+            return;
+
+        _lv0InvincibleByBuff = enabled;
+        if (_lv0InvincibleByBuff && targetComp != null)
+            targetComp.CurrentTarget = null;
     }
 
     private void RefreshInteractionHostForCurrentOwnership()

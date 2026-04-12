@@ -6,6 +6,7 @@ using UnityEngine.AI;
 public class MoveExecutor : MonoBehaviour, IMoveExecutor
 {
     private CharacterController _controller;
+    private MAEntity _ownerEntity;
 
     private Vector3 _inputVelocity;
     private Vector3 _externalVelocity;
@@ -24,6 +25,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     public void Init(CharacterController controller)
     {
         _controller = controller;
+        _ownerEntity = GetComponent<MAEntity>();
         if (_controller != null)
         {
             _edgeBuffer = Mathf.Max(0.2f, _controller.radius + 0.05f);
@@ -55,7 +57,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _hasOverride = false;
     }
 
-    
+
     public void SetExternal(Vector3 velocity)
     {
         _externalVelocity = velocity;
@@ -87,7 +89,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             _externalVelocity = Vector3.zero;
             return;
         }
-        
+
         Vector3 finalVelocity = _hasOverride
             ? _overrideVelocity
             : _inputVelocity + _externalVelocity;
@@ -160,7 +162,45 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             return Vector3.zero;
         }
 
+        if (IsEnemyStrongholdBlocked(sampledPos))
+        {
+            return Vector3.zero;
+        }
+
         Vector3 constrainedPos = new Vector3(sampledPos.x, currentPos.y, sampledPos.z);
         return constrainedPos - currentPos;
+    }
+
+    private bool IsEnemyStrongholdBlocked(Vector3 worldPosition)
+    {
+        if (_ownerEntity == null)
+        {
+            _ownerEntity = GetComponent<MAEntity>();
+        }
+
+        if (_ownerEntity == null || _ownerEntity.Side != SideType.PlayerSide)
+        {
+            return false;
+        }
+
+        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        if (phase == GamePhase.Invade)
+        {
+            return false;
+        }
+
+        LevelEntity level = LevelEntity.ActiveLevelEntity;
+        if (level == null)
+        {
+            return false;
+        }
+
+        Stronghold stronghold = level.GetStrongholdAtWorldPosition(worldPosition);
+        if (stronghold == null)
+        {
+            return false;
+        }
+
+        return stronghold.OwnerFactionId != EntitySideHelper.PlayerFactionId;
     }
 }

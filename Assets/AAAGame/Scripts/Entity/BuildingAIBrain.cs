@@ -18,7 +18,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
         if (self == null || !self.Alive)
             return;
 
-        if (self is BuildingEntity building && building.HasPermanentNoAttackCapability)
+        if (self is BuildingEntity building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
             return;
 
         if (self.GetProperty(CreatureMainProperty.PhysicalAtk) <= Fix64.Zero)

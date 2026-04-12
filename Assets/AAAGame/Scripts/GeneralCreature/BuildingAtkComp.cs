@@ -106,7 +106,7 @@ public class BuildingAtkComp : IAtkComp
         if (_ctx.Brain == null || !_ctx.Brain.Attack)
             return;
 
-        if (_ctx is BuildingEntity building && building.HasPermanentNoAttackCapability)
+        if (_ctx is BuildingEntity building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
             return;
 
         if (!HasDamagePotential())
@@ -139,7 +139,7 @@ public class BuildingAtkComp : IAtkComp
 
     private bool HasDamagePotential()
     {
-        if (_ctx is BuildingEntity building && building.HasPermanentNoAttackCapability)
+        if (_ctx is BuildingEntity building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
             return false;
 
         Fix64 damageFromProperty = _ctx.GetProperty(CreatureMainProperty.PhysicalAtk);

@@ -242,7 +242,7 @@ public class HealthBarComp : MonoBehaviour
             return true;
 
         var building = followTarget.GetComponent<BuildingEntity>();
-        if (building != null && building.IsAlwaysInvincible)
+        if (building != null && (building.IsLv0Invincible || building.IsPhaseProtected))
             return true;
 
         return false;

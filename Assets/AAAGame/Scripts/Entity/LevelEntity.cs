@@ -342,7 +342,7 @@ public class LevelEntity : EntityBase
         for (int i = 0; i < stronghold.Buildings.Count; i++)
         {
             var building = stronghold.Buildings[i];
-            if (building == null || building.IsAlwaysInvincible)
+            if (building == null || building.IsLv0Invincible)
                 continue;
 
             hasCapturableBuildings = true;

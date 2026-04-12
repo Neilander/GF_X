@@ -97,10 +97,10 @@ public class CharacterMoveComp : IMoveComp
             Vector3 targetCorner = _corners[_currentPathIndex];
             Vector3 offset = new Vector3(targetCorner.x - _ctx.Position.x, 0f, targetCorner.z - _ctx.Position.z);
             float dist = offset.magnitude;
-            
+
 
             // 距离不足一帧移动量时按比例减速，防止冲过头
-            moveDir = dist < speed*deltaTime ? offset/speed : offset.normalized;;
+            moveDir = dist < speed * deltaTime ? offset / speed : offset.normalized;
 
             _stuckTimer += deltaTime;
             if (_stuckTimer >= 0.25f)
@@ -123,8 +123,8 @@ public class CharacterMoveComp : IMoveComp
         //float speed = _ctx.GetProperty(CreatureMainProperty.Speed);
         //if (speed <= 0.01f) speed = 5f;
 
-        _ctx.MoveExecutor.SetInput(moveDir * speed );
-        
+        _ctx.MoveExecutor.SetInput(moveDir * speed);
+
         // 更新移动状态
         //Debug.Log( $"Move: moveDir={moveDir}, magnitude={moveDir.magnitude}");
         _isMoving = moveDir.sqrMagnitude > 0.9f;
@@ -162,6 +162,6 @@ public class CharacterMoveComp : IMoveComp
 
     public void ShutDown() { StopMove(); }
     public void Resume() { }
-    
+
     public bool IsMoving => _isMoving;
 }

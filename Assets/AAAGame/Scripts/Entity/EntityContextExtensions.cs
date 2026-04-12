@@ -19,7 +19,7 @@ public static class EntityContextExtensions
         if (ctx.IsDestroyed() || !ctx.Alive)
             return false;
 
-        if (ctx is BuildingEntity building && (building.IsAlwaysInvincible || building.IsDisabled))
+        if (ctx is BuildingEntity building && (building.IsLv0Invincible || building.IsPhaseProtected || building.IsDisabled))
             return false;
 
         return true;
