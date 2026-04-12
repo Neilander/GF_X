@@ -70,7 +70,7 @@ public class CharacterMoveComp : IMoveComp
 
         Vector2 manualMove = _ctx.Brain?.Move ?? Vector2.zero;
         Vector3 moveDir = Vector3.zero;
-        float speed = (float)_ctx.GetProperty(CreatureMainProperty.Speed) * 0.05f;
+        float speed = DistanceUnitConverter.ConvertToWorldFloat(_ctx.GetProperty(CreatureMainProperty.Speed));
 
         if (manualMove.sqrMagnitude > 0.001f)
         {

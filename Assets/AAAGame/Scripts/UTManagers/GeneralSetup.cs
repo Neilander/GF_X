@@ -9,8 +9,8 @@ public partial class GeneralSetup : GameFrameworkComponent
 {
     public void DataModelSetup()
     {
-        RefParams levelDataParams = new();
-        levelDataParams.Set(InGameDataModel.P_StartPhase, GamePhase.Build);
+        var levelDataParams = RefParams.Create();
+        levelDataParams.Set(InGameDataModel.P_StartPhase, GamePhase.Invade);
         levelDataParams.Set(InGameDataModel.P_StartCoins, 100);
         levelDataParams.Set(InGameDataModel.P_StartFactions, new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } });   // 通常玩家势力key为0，敌对势力为1、2等。
         GF.DataModel.CreateDataModel<InGameDataModel>(levelDataParams);

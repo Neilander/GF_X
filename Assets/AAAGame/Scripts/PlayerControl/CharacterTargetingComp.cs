@@ -122,14 +122,6 @@ public class CharacterTargetingComp : ITargetingComp
     private float GetEffectiveAttackRange()
     {
         Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
-        float equilibriumRadius = 0f;
-
-        if (GroupMoveManager.HasInstance)
-        {
-            int selfId = (_ctx as MAEntity)?.GetInstanceID() ?? _ctx.GetHashCode();
-            equilibriumRadius = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
-        }
-
-        return (float)weaponRange + equilibriumRadius;
+        return (float)weaponRange;
     }
 }

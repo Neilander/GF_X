@@ -45,9 +45,44 @@ public class InGameDataModel : DataModelBase
     {
         base.OnCreate(userdata);
         ResetData();
-        SetPhase((GamePhase)(userdata.Get(P_StartPhase) ?? GamePhase.Build));
-        SetValue(IngameValueType.Coin, (int)(userdata.Get(P_StartCoins) ?? 0), true);
-        Factions = (userdata.Get(P_StartFactions) as Dictionary<int, Faction>) ?? new Dictionary<int, Faction>();
+
+        // OnCreate 执行时 DataModel 还未注册到 DataModelComponent，
+        // 不能通过静态 SetPhase/SetValue（内部会先 GetModel）写入初始值。
+        GamePhase startPhase = GamePhase.Build;
+        int startCoins = 0;
+        Dictionary<int, Faction> startFactions = null;
+
+        if (userdata != null)
+        {
+            if (userdata.TryGet<VarObject>(P_StartPhase, out var phaseVar) && phaseVar?.Value != null)
+            {
+                if (phaseVar.Value is GamePhase phase)
+                {
+                    startPhase = phase;
+                }
+                else if (phaseVar.Value is int phaseInt)
+                {
+                    startPhase = (GamePhase)phaseInt;
+                }
+            }
+
+            if (userdata.TryGet<VarObject>(P_StartCoins, out var coinsVar) && coinsVar?.Value != null)
+            {
+                if (coinsVar.Value is int coins)
+                {
+                    startCoins = coins;
+                }
+            }
+
+            if (userdata.TryGet<VarObject>(P_StartFactions, out var factionsVar) && factionsVar?.Value is Dictionary<int, Faction> factions)
+            {
+                startFactions = factions;
+            }
+        }
+
+        m_IngameValue[IngameValueType.Phase] = (int)startPhase;
+        m_IngameValue[IngameValueType.Coin] = startCoins;
+        Factions = startFactions ?? new Dictionary<int, Faction>();
     }
     public void ResetData()
     {

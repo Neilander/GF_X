@@ -58,7 +58,7 @@ public class LevelTestProcedure : ProcedureBase
     }
     private void InitDataModels()
     {
-        RefParams levelParams = new();
+        RefParams levelParams = RefParams.Create();
         levelParams.Set(InGameDataModel.P_StartPhase, GamePhase.Build);
         levelParams.Set(InGameDataModel.P_StartCoins, 100);
         levelParams.Set(InGameDataModel.P_StartFactions, new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } });   // 通常玩家势力key为0，敌对势力为1、2等。

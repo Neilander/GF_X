@@ -196,7 +196,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             return;
         }
 
-        float speed = (float)self.GetProperty(CreatureMainProperty.Speed);
+        float speed = DistanceUnitConverter.ConvertToWorldFloat(self.GetProperty(CreatureMainProperty.Speed));
         Move = Vector2.zero;
 
         // 计算死区范围：[leaderEqR, leaderEqR + _deadZoneRange]
@@ -271,31 +271,22 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     }
 
     /// <summary>
-    /// 实际攻击判定距离 = 自己的斥力半径 + 武器攻击距离。
-    /// 单位被友方推到自己的 EquilibriumRadius 距离，武器射程要能从该距离打到敌人。
+    /// 实际攻击判定距离 = 武器攻击距离。
     /// 优先从 WeaponComp 读攻击距离，没有则用 WeaponRange 回退。
     /// </summary>
     private float GetEffectiveAttackRange(IEntityContext self)
     {
-        float myEqR = 0f;
-        if (GroupMoveManager.HasInstance)
-        {
-            int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
-            myEqR = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
-        }
         float wpnRange = self.WeaponComp != null ? (float)self.WeaponComp.AttackRange : WeaponRange;
-        return myEqR + wpnRange;
+        return wpnRange;
     }
 
     private void TickCombat(IEntityContext self, float dt)
     {
-        Vector3 myPos = self.Position;
-
         var enemy = self.TargetComp?.CurrentTarget;
         if (enemy == null || !enemy.Alive) return;
 
-        float distToEnemy = HorizontalDist(myPos, enemy.Position);
-        float speed = (float)self.GetProperty(CreatureMainProperty.Speed);
+        float distToEnemy = self.DistanceToTargetSurface(enemy);
+        float speed = DistanceUnitConverter.ConvertToWorldFloat(self.GetProperty(CreatureMainProperty.Speed));
         float effectiveRange = GetEffectiveAttackRange(self);
 
         if (distToEnemy <= effectiveRange)
@@ -344,7 +335,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         }
 
         Vector3 myPos = self.Position;
-        Vector3 target = myPos + velocity.normalized * speed * 0.3f;
+        Vector3 target = myPos + velocity.normalized * speed;
         GameDebugSettings.Log(DebugCategory.Brain,
             $"[{self.ReferenceId}] ApplyVel state={State} vel={velocity} → target={target}" +
             $" leaderPos={(_leader != null ? _leader.Position.ToString() : "null")}");

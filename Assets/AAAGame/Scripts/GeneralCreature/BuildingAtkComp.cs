@@ -116,7 +116,7 @@ public class BuildingAtkComp : IAtkComp
         if (!target.IsAttackTargetable())
             return;
 
-        float dist = Vector3.Distance(_ctx.Position, target.Position);
+        float dist = _ctx.DistanceToTargetSurface(target);
         if (dist > GetEffectiveAttackRange())
             return;
 
@@ -149,16 +149,8 @@ public class BuildingAtkComp : IAtkComp
 
     private float GetEffectiveAttackRange()
     {
-        float baseRange = (float)(_weaponData.AttackRange * (Fix64)0.01f);
-        float equilibriumRadius = 0f;
-
-        if (GroupMoveManager.HasInstance)
-        {
-            int selfId = (_ctx as MAEntity)?.GetInstanceID() ?? _ctx.GetHashCode();
-            equilibriumRadius = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
-        }
-
-        return baseRange + equilibriumRadius;
+        float baseRange = DistanceUnitConverter.ConvertToWorldFloat(_weaponData.AttackRange);
+        return baseRange;
     }
 
     private void EnterState(AtkState state)

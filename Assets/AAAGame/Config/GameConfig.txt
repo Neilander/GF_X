@@ -1,6 +1,7 @@
 ﻿#	默认游戏配置		
 #	Key	备注	Value
-	DefaultCoins	玩家初始金币数	100
-	DefaultDiamonds	玩家初始金币数	100
-	APPSTORE	苹果商店评分跳转连接	https://apps.apple.com/
-	DisplayRotation		38.7
+	MinAtkSpeed	攻速下限	10
+	MaxAtkSpeed	攻速上限	700
+	MinMoveSpeed	移速下限	100
+	MaxMoveSpeed	移速上限	1000
+	DistanceConversionRate	距离码数转换为unity距离的比例	0.02

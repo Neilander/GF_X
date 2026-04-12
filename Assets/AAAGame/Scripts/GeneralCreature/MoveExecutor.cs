@@ -94,9 +94,6 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             ? _overrideVelocity
             : _inputVelocity + _externalVelocity;
 
-        // 调试用：整体速度缩放
-        finalVelocity *= 0.3f;
-
         Vector3 horizontalVelocity = new Vector3(finalVelocity.x, 0f, finalVelocity.z);
         Vector3 horizontalDisplacement = horizontalVelocity * deltaTime;
 

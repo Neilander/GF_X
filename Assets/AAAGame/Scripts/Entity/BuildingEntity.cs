@@ -364,7 +364,7 @@ public partial class BuildingEntity : MAEntity
 
         if (targetComp is CharacterTargetingComp targetingComp)
         {
-            float aggroRange = Mathf.Max((float)(weaponData.AttackRange * (Fix64)0.01f + (Fix64)1.5f), 4f);
+            float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.AttackRange) + 1.5f, 4f);
             targetingComp.AggroRange = aggroRange;
             targetingComp.ForgetRange = aggroRange + 2f;
             targetingComp.FollowSearchRange = 0f;

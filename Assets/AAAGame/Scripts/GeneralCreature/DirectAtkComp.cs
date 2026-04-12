@@ -217,21 +217,15 @@ public class DirectAtkComp : IAtkComp
 
         var activeWeapon = GetActiveWeapon();
         float dist = _ctx.DistanceToTargetSurface(target);
-        float wpnRange = (float)(activeWeapon.AttackRange * (Fix64)0.01f);
+        float wpnRange = DistanceUnitConverter.ConvertToWorldFloat(activeWeapon.AttackRange);
 
-        // 攻击范围 = 自己的斥力半径 + 武器射程
-        float myEqR = 0f;
-        if (GroupMoveManager.HasInstance)
-        {
-            int selfId = (_ctx as MAEntity)?.GetInstanceID() ?? _ctx.GetHashCode();
-            myEqR = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
-        }
-        float range = myEqR + wpnRange;
+        // 统一判定：攻击者中心到目标碰撞体边缘的 XZ 距离，和武器射程直接比较。
+        float range = wpnRange;
 
         if (dist > range)
         {
             GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.ReferenceId}] TryStart: 超距 dist={dist:F2} range={range:F2} (eqR={myEqR:F2} wpn={wpnRange:F2})");
+                $"[{_ctx.ReferenceId}] TryStart: 超距 dist={dist:F2} range={range:F2} (wpn={wpnRange:F2})");
             return;
         }
 

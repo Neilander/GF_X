@@ -97,8 +97,8 @@ public static class PropertyFuncRef
             // 1. 种族值
             Fix64 race = funcArray[1]();
 
-            // 2. 公式：移速 = 200 + 种族
-            return (Fix64)200 + race;
+            // 2. 公式：移速 = 种族值（不再额外加常量）
+            return race;
         };
     
     public static Func<Func<Fix64>[], Func<Fix64>> GetManaWithConfigAndLevel =

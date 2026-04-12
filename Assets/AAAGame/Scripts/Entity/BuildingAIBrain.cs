@@ -39,21 +39,14 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
             return;
         }
 
-        float distance = Vector3.Distance(self.Position, target.Position);
+        float distance = self.DistanceToTargetSurface(target);
         float attackRange = GetEffectiveAttackRange(self);
         Attack = distance <= attackRange;
     }
 
     private float GetEffectiveAttackRange(IEntityContext self)
     {
-        float equilibriumRadius = 0f;
-        if (GroupMoveManager.HasInstance)
-        {
-            int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
-            equilibriumRadius = GroupMoveManager.Instance.Coordinator.GetAgentEquilibriumRadius(selfId);
-        }
-
         float weaponRange = self.WeaponComp != null ? (float)self.WeaponComp.AttackRange : 1.5f;
-        return equilibriumRadius + weaponRange;
+        return weaponRange;
     }
 }

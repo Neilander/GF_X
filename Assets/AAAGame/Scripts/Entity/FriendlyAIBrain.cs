@@ -27,10 +27,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain
         // 1. 优先处理战斗
         if (target != null)
         {
-            float distToEnemy = Vector2.Distance(
-                new Vector2(self.Position.x, self.Position.z),
-                new Vector2(target.Position.x, target.Position.z)
-            );
+            float distToEnemy = self.DistanceToTargetSurface(target);
 
             if (distToEnemy > AttackRange)
             {
