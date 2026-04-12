@@ -350,21 +350,26 @@ public partial class BuildingEntity : MAEntity
         if (!HasPermanentNoAttackCapability && buildingData != null)
             damage = Fix64.Max(Fix64.Zero, buildingData.Atk);
 
-        var weaponData = new WeaponData
-        {
-            Damage = damage,
-            AttackInterval = PlaceholderAttackInterval,
-            AttackRange = PlaceholderAttackRange,
-            WindUp = PlaceholderWindUp,
-            WindDown = PlaceholderWindDown,
-            Type = WeaponType.Melee
-        };
+        var weaponData = new WeaponData(
+            WeaponType.Melee,
+            damage,
+            PlaceholderAttackInterval,
+            PlaceholderAttackRange,
+            Fix64.Zero,
+            PlaceholderWindUp,
+            PlaceholderWindDown,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            new Fix64[0]);
 
         _buildingAtkComp.UpdateWeaponData(weaponData);
 
         if (targetComp is CharacterTargetingComp targetingComp)
         {
-            float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.AttackRange) + 1.5f, 4f);
+            float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range) + 1.5f, 4f);
             targetingComp.AggroRange = aggroRange;
             targetingComp.ForgetRange = aggroRange + 2f;
             targetingComp.FollowSearchRange = 0f;
@@ -377,29 +382,16 @@ public partial class BuildingEntity : MAEntity
             return;
 
         Fix64 hp = buildingData != null && buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
-        Fix64 atk = buildingData != null ? buildingData.Atk : (Fix64)10;
         Fix64 def = buildingData != null ? buildingData.Def : (Fix64)10;
-
-        if (HasPermanentNoAttackCapability)
-            atk = Fix64.Zero;
-
-        if (atk < Fix64.Zero)
-            atk = Fix64.Zero;
         if (def < Fix64.Zero)
             def = Fix64.Zero;
 
         // 建筑表数值应作为“目标值”而非“叠加值”，否则会把模板属性再加一遍导致血量过高。
         Fix64 currentHpMax = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 currentPhyAtk = CreaturePropertyManager.GetProperty(CreatureMainProperty.PhysicalAtk);
-        Fix64 currentSpecAtk = CreaturePropertyManager.GetProperty(CreatureMainProperty.SpecialAtk);
-        Fix64 currentPhyDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.PhysicalDef);
-        Fix64 currentSpecDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.SpecialDef);
+        Fix64 currentDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.Def);
 
         Fix64 hpDelta = hp - currentHpMax;
-        Fix64 atkDeltaPhy = atk - currentPhyAtk;
-        Fix64 atkDeltaSpec = atk - currentSpecAtk;
-        Fix64 defDeltaPhy = def - currentPhyDef;
-        Fix64 defDeltaSpec = def - currentSpecDef;
+        Fix64 defDelta = def - currentDef;
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.Health,
@@ -407,23 +399,8 @@ public partial class BuildingEntity : MAEntity
             true);
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.PhysicalAtk,
-            PropertyAdditiveModifier.Create(atkDeltaPhy),
-            true);
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.SpecialAtk,
-            PropertyAdditiveModifier.Create(atkDeltaSpec),
-            true);
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.PhysicalDef,
-            PropertyAdditiveModifier.Create(defDeltaPhy),
-            true);
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.SpecialDef,
-            PropertyAdditiveModifier.Create(defDeltaSpec),
+            CreatureMainProperty.Def,
+            PropertyAdditiveModifier.Create(defDelta),
             true);
 
         Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
@@ -440,15 +417,20 @@ public partial class BuildingEntity : MAEntity
 
     private WeaponData CreatePlaceholderWeaponData()
     {
-        return new WeaponData
-        {
-            Damage = Fix64.Zero,
-            AttackInterval = PlaceholderAttackInterval,
-            AttackRange = PlaceholderAttackRange,
-            WindUp = PlaceholderWindUp,
-            WindDown = PlaceholderWindDown,
-            Type = WeaponType.Melee
-        };
+        return new WeaponData(
+            WeaponType.Melee,
+            Fix64.Zero,
+            PlaceholderAttackInterval,
+            PlaceholderAttackRange,
+            Fix64.Zero,
+            PlaceholderWindUp,
+            PlaceholderWindDown,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            new Fix64[0]);
     }
 
     private void InitializeAttackCapabilityFlags()

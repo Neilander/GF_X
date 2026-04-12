@@ -1,17 +1,17 @@
-﻿﻿﻿﻿﻿using System.Collections;
+﻿﻿using System.Collections;
 using System.Collections.Generic;
 using System;
 using UnityEngine;
 
 public enum CreatureMainProperty
 {
-    PhysicalAtk,
-    SpecialAtk,
-    PhysicalDef,
-    SpecialDef,
+    Def,
     Health,
     Speed,
-    Mana
+    Mana,
+    CollisionRadius,
+    TurnRate,
+    Sight
 }
 
 public enum CreatureMinorProperty
@@ -28,49 +28,73 @@ public enum CreatureCurrentProperty
 
 public class CreaturePropertyManager
 {
+    private static readonly CreatureMainProperty[] CanonicalMainProperties =
+    {
+        CreatureMainProperty.Def,
+        CreatureMainProperty.Health,
+        CreatureMainProperty.Speed,
+        CreatureMainProperty.Mana,
+        CreatureMainProperty.CollisionRadius,
+        CreatureMainProperty.TurnRate,
+        CreatureMainProperty.Sight
+    };
+
+    private static readonly Func<Func<Fix64>[], Func<Fix64>> ConfigOnlyRefFunc =
+        funcArray => () =>
+        {
+            if (funcArray == null || funcArray.Length <= (int)RawComponent.Config)
+            {
+                return Fix64.Zero;
+            }
+
+            return funcArray[(int)RawComponent.Config]();
+        };
+
+    private CharacterDataDetail _characterData;
+
     public PropertyManager propertyManager { get; private set; }
-    
+
     public const string LevelPropertyName = nameof(RawComponent.Level);
 
     public CreaturePropertyManager(string creatureType)
     {
         propertyManager = new PropertyManager();
-        
+
+        LoadCharacterData(creatureType);
+
         //创建所有属性的基准属性，等级
         CreateLevelProperty();
-        
-        //创建7个基准属性
-        CreateMainProperty(creatureType);
-        
+
+        //创建主属性
+        CreateMainProperty();
+
         //创建次要属性，如回血回蓝
         CreateMinorProperty();
-        
+
         //创建临时属性，如血量蓝量
         CreateIrreversibleProperty();
     }
 
     public Fix64 GetProperty(CreatureMainProperty property)
     {
-        //propertyManager.GetValueProperty(property.ToString());
-            //Debug.LogError("暂停");
         return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
-    
+
     public Fix64 GetProperty(CreatureMinorProperty property)
     {
         return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
-    
+
     public Fix64 GetProperty(CreatureCurrentProperty property)
     {
         return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
-    
+
     /// <summary>
     /// 这个方法修改所有主要属性的白值Buff
     /// </summary>
     public void ModifyMainPropertyValueBuff(CreatureMainProperty name,
-        IPropertyModifier modifier,bool ifAdd = true)
+        IPropertyModifier modifier, bool ifAdd = true)
     {
         string refName = PropertyHelper.ModName(name.ToString(), nameof(NormalComputeTp.Value), nameof(NormalBaseValueTp.Buff));
         ModifyProperty(refName, modifier, ifAdd);
@@ -89,7 +113,7 @@ public class CreaturePropertyManager
     /// <summary>
     /// 这个方法修改所有过程属性的数值
     /// </summary>
-    public void ModifyCurrentProperty(CreatureCurrentProperty name, 
+    public void ModifyCurrentProperty(CreatureCurrentProperty name,
         IPropertyModifier modifier, bool ifAdd = true)
     {
         ModifyProperty(name.ToString(), modifier, ifAdd);
@@ -110,7 +134,7 @@ public class CreaturePropertyManager
     protected void ModifyProperty(string name, IPropertyModifier modifier, bool ifAdd)
     {
         ValueProperty vp = propertyManager.GetValueProperty(name);
-        if(ifAdd)
+        if (ifAdd)
             vp.AddModifier(modifier);
         else
             vp.RemoveModifier(modifier);
@@ -128,17 +152,31 @@ public class CreaturePropertyManager
         PropertyHelper.CreateBaseProperty(LevelPropertyName, propertyManager).SetBaseValue((Fix64)1);
     }
 
+    private void LoadCharacterData(string creatureType)
+    {
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        var rows = table.GetDataRows(r => r.CharacterKey == creatureType);
+        if (rows == null || rows.Length == 0)
+        {
+            GF.LogError($"缺少 CharacterDataDetail，CharacterKey={creatureType}");
+            _characterData = null;
+            return;
+        }
+
+        _characterData = rows[0];
+    }
+
     #region CreateMainProperty
 
-    
 
-    
-    void CreateMainProperty(string creatureType)
+
+
+    void CreateMainProperty()
     {
-        Array enumValues = Enum.GetValues(typeof(CreatureMainProperty));
-        foreach (var eValue in enumValues)
+        for (int i = 0; i < CanonicalMainProperties.Length; i++)
         {
-            InitNomalValue((CreatureMainProperty)eValue,creatureType, RefFuncFactory((CreatureMainProperty)eValue));
+            CreatureMainProperty prop = CanonicalMainProperties[i];
+            InitNomalValue(prop, RefFuncFactory(prop));
         }
     }
 
@@ -146,39 +184,22 @@ public class CreaturePropertyManager
     {
         return mainProperty switch
         {
-            CreatureMainProperty.PhysicalAtk => PropertyFuncRef.GetAbilityWithConfigAndLevel,
-            CreatureMainProperty.SpecialAtk => PropertyFuncRef.GetAbilityWithConfigAndLevel,
-            CreatureMainProperty.PhysicalDef => PropertyFuncRef.GetAbilityWithConfigAndLevel,
-            CreatureMainProperty.SpecialDef => PropertyFuncRef.GetAbilityWithConfigAndLevel,
+            CreatureMainProperty.Def => PropertyFuncRef.GetAbilityWithConfigAndLevel,
             CreatureMainProperty.Health => PropertyFuncRef.GetHealthWithConfigAndLevel,
             CreatureMainProperty.Speed => PropertyFuncRef.GetSpeedWithConfigAndLevel,
             CreatureMainProperty.Mana => PropertyFuncRef.GetManaWithConfigAndLevel,
-            _ => PropertyFuncRef.GetAbilityWithConfigAndLevel
+            _ => ConfigOnlyRefFunc
         };
     }
-    
-    private static Fix64 GetConfigValue(CreatureMainProperty prop, string creatureType)
-    {
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        var rows = table.GetDataRows(r => r.CharacterKey == creatureType);
-        if (rows == null || rows.Length == 0)
-        {
 
+    private Fix64 GetConfigValue(CreatureMainProperty prop)
+    {
+        if (_characterData == null)
+        {
             return Fix64.Zero;
         }
-        var row = rows[0];
 
-        return prop switch
-        {
-            CreatureMainProperty.PhysicalAtk => (Fix64)row.PhysicalAtk,
-            CreatureMainProperty.SpecialAtk  => (Fix64)row.PhysicalAtk,
-            CreatureMainProperty.PhysicalDef => (Fix64)row.PhysicalDef,
-            CreatureMainProperty.SpecialDef  => (Fix64)row.PhysicalDef,
-            CreatureMainProperty.Health      => (Fix64)row.Health,
-            CreatureMainProperty.Speed       => (Fix64)row.Speed,
-            CreatureMainProperty.Mana        => (Fix64)row.Mana,
-            _ => Fix64.Zero
-        };
+        return CharacterDataDetailAccessor.GetMainValue(_characterData, prop);
     }
 
     /// <summary>
@@ -188,12 +209,12 @@ public class CreaturePropertyManager
     /// 最后第三层Value*mul
     /// </summary>
     /// <param name="name"></param>
-    void InitNomalValue(CreatureMainProperty eName, string creatureType, Func<Func<Fix64>[], Func<Fix64>> baseFunc)
+    void InitNomalValue(CreatureMainProperty eName, Func<Func<Fix64>[], Func<Fix64>> baseFunc)
     {
         string name = eName.ToString();
-        if(propertyManager.GetValueProperty(LevelPropertyName)==null)
+        if (propertyManager.GetValueProperty(LevelPropertyName) == null)
             GF.LogError("在创建基础属性时，缺失等级");
-        
+
         /*
          * 计算 Name-Value-Base
          * Father: Name-Value
@@ -219,7 +240,7 @@ public class CreaturePropertyManager
         BaseValueProperty configProperty = tree.baseDictionary[RawComponent.Config] as BaseValueProperty;
         if (configProperty != null)
         {
-            configProperty.SetBaseValue(GetConfigValue(eName, creatureType));
+            configProperty.SetBaseValue(GetConfigValue(eName));
         }
 
         /*
@@ -236,11 +257,11 @@ public class CreaturePropertyManager
         };
         PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(
             name,
-            nameof(NormalComputeTp.Value), 
+            nameof(NormalComputeTp.Value),
             propertyManager,
             PropertyFuncRef.SumAll,
             NameValueReferenceList);
-        
+
         /*
          * 计算 Name-Mul
          * Father: Name
@@ -249,10 +270,10 @@ public class CreaturePropertyManager
          *      Name-Mul-Base
          *      Name-Mul-Buff
          */
-        
+
         ComputePropertyTree<NormalBaseValueTp> mulTree = PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(name, nameof(NormalComputeTp.Mul), propertyManager,
             PropertyFuncRef.SumAll);
-        
+
         //设置Name-Mul-Base的基础值
         BaseValueProperty baseMul = mulTree.baseDictionary[NormalBaseValueTp.Base] as BaseValueProperty;
         if (baseMul != null)
@@ -270,49 +291,49 @@ public class CreaturePropertyManager
          */
         PropertyHelper.BindComputePropertyToOne<NormalComputeTp>("", name, propertyManager, PropertyFuncRef.MultAll);
     }
-    
-    
+
+
     #endregion
 
     #region CreateMinorProperty
-    
-    
+
+
     void CreateMinorProperty()
     {
         CreateSingleMinorProperty(nameof(CreatureMainProperty.Health), nameof(CreatureMinorProperty.HealthRecover));
         CreateSingleMinorProperty(nameof(CreatureMainProperty.Mana), nameof(CreatureMinorProperty.ManaRecover));
-        
+
     }
 
     void CreateSingleMinorProperty(string nameOfDeriver, string minorPropName)
     {
         PropertyHelper.FormConnectedComputeProperty(
-            PropertyHelper.ModName(nameOfDeriver,nameof(NormalComputeTp.Value),nameof(NormalBaseValueTp.Base)),
-            PropertyHelper.ModName(minorPropName, nameof(NormalComputeTp.Value),nameof(NormalBaseValueTp.Base)),
+            PropertyHelper.ModName(nameOfDeriver, nameof(NormalComputeTp.Value), nameof(NormalBaseValueTp.Base)),
+            PropertyHelper.ModName(minorPropName, nameof(NormalComputeTp.Value), nameof(NormalBaseValueTp.Base)),
             propertyManager,
             PropertyFuncRef.GetPercentOfMaxValue);
-        
+
         var NameValueReferenceList = new Dictionary<NormalBaseValueTp, string>
         {
             [NormalBaseValueTp.Base] = PropertyHelper.ModName(minorPropName, nameof(NormalComputeTp.Value), nameof(NormalBaseValueTp.Base))
         };
         PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(
             minorPropName,
-            nameof(NormalComputeTp.Value), 
+            nameof(NormalComputeTp.Value),
             propertyManager,
             PropertyFuncRef.SumAll,
             NameValueReferenceList);
-        
+
         ComputePropertyTree<NormalBaseValueTp> mulTree = PropertyHelper.FormComputeBasePropertyTree<NormalBaseValueTp>(minorPropName, nameof(NormalComputeTp.Mul), propertyManager,
             PropertyFuncRef.SumAll);
-        
+
         //设置Name-Mul-Base的基础值
         BaseValueProperty baseMul = mulTree.baseDictionary[NormalBaseValueTp.Base] as BaseValueProperty;
         if (baseMul != null)
         {
             baseMul.SetBaseValue(Fix64.One);
         }
-        
+
         PropertyHelper.BindComputePropertyToOne<NormalComputeTp>("", minorPropName, propertyManager, PropertyFuncRef.MultAll);
     }
 
@@ -327,7 +348,7 @@ public class CreaturePropertyManager
             () => GetProperty(CreatureMainProperty.Health)
         };
         IrreversibleValueProperty.Create(PropertyFuncRef.GetDirectValue(arr), nameof(CreatureCurrentProperty.HealthCurrent)).Register(propertyManager);
-        
+
         Func<Fix64>[] arrM =
         {
             () => GetProperty(CreatureMainProperty.Mana)
@@ -341,9 +362,9 @@ public enum RawComponent
 {
     Level,
     Config
-        
+
 }
-    
+
 public enum NormalBaseValueTp
 {
     Base,

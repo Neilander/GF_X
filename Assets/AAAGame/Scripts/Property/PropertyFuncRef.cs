@@ -4,7 +4,7 @@ using UnityEngine;
 using System;
 using System.Linq;
 
-public static class PropertyFuncRef 
+public static class PropertyFuncRef
 {
     // 累加所有 func[i]()
     public static Func<Func<Fix64>[], Func<Fix64>> SumAll =
@@ -15,10 +15,10 @@ public static class PropertyFuncRef
             //return total;
             foreach (var f in funcArray)
             {
-                
-                total += f();   
+
+                total += f();
             }
-                
+
             return total;
         };
 
@@ -32,11 +32,11 @@ public static class PropertyFuncRef
                 total *= f();
             return total;
         };
-    
+
     public static Func<Func<Fix64>[], Func<Fix64>> GetAbilityWithConfigAndLevel =
         funcArray => () =>
         {
-            
+
             // 1. 获取等级
             Fix64 level = funcArray[0]();
 
@@ -58,11 +58,11 @@ public static class PropertyFuncRef
 
             return ability;
         };
-    
+
     public static Func<Func<Fix64>[], Func<Fix64>> GetHealthWithConfigAndLevel =
         funcArray => () =>
         {
-            
+
             // 1. 获取等级
             Fix64 level = funcArray[0]();
 
@@ -87,7 +87,7 @@ public static class PropertyFuncRef
 
             return ability;
         };
-    
+
     public static Func<Func<Fix64>[], Func<Fix64>> GetSpeedWithConfigAndLevel =
         funcArray => () =>
         {
@@ -100,7 +100,7 @@ public static class PropertyFuncRef
             // 2. 公式：移速 = 种族值（不再额外加常量）
             return race;
         };
-    
+
     public static Func<Func<Fix64>[], Func<Fix64>> GetManaWithConfigAndLevel =
         funcArray => () =>
         {
@@ -127,7 +127,7 @@ public static class PropertyFuncRef
 
             return mana;
         };
-    
+
     public static Func<Func<Fix64>[], Func<Fix64>> GetPercentOfMaxValue =
         funcArray => () =>
         {
@@ -137,7 +137,7 @@ public static class PropertyFuncRef
             // 返回 maxValue 的 1%
             return maxValue * (Fix64)0.01m;
         };
-    
+
     public static Func<Func<Fix64>[], Func<Fix64>> GetDirectValue =
         funcArray => () =>
         {

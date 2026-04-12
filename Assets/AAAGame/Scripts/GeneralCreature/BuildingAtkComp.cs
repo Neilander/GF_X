@@ -14,7 +14,8 @@ public class BuildingAtkComp : IAtkComp
     }
 
     private IEntityContext _ctx;
-    private WeaponData _weaponData;
+    private readonly WeaponData _defaultWeaponData;
+    private Weapon _weapon;
     private AtkState _state;
     private float _stateTimer;
     private IEntityContext _lockedTarget;
@@ -23,12 +24,14 @@ public class BuildingAtkComp : IAtkComp
 
     public BuildingAtkComp(WeaponData defaultWeaponData)
     {
-        _weaponData = defaultWeaponData ?? new WeaponData();
+        _defaultWeaponData = defaultWeaponData;
     }
 
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
+        PropertyManager ownerManager = (ctx as MAEntity)?.CreaturePropertyManager?.propertyManager;
+        _weapon = Weapon.Create("BuildingWeapon", _defaultWeaponData, ownerManager);
         _state = AtkState.Idle;
         _stateTimer = 0f;
         _lockedTarget = null;
@@ -36,9 +39,9 @@ public class BuildingAtkComp : IAtkComp
         if (_ctx is MAEntity maEntity)
         {
             if (maEntity.weaponComp == null)
-                maEntity.SetWeaponComp(new WeaponComp(_weaponData));
+                maEntity.SetWeaponComp(new WeaponComp(_weapon));
             else
-                maEntity.weaponComp.SwapWeapon(_weaponData);
+                maEntity.weaponComp.SwapWeapon(_weapon);
         }
     }
 
@@ -47,14 +50,15 @@ public class BuildingAtkComp : IAtkComp
         if (weaponData == null)
             return;
 
-        _weaponData = weaponData;
+        PropertyManager ownerManager = (_ctx as MAEntity)?.CreaturePropertyManager?.propertyManager;
+        _weapon = Weapon.Create("BuildingWeapon", weaponData, ownerManager);
         if (_ctx?.WeaponComp != null)
-            _ctx.WeaponComp.SwapWeapon(_weaponData);
+            _ctx.WeaponComp.SwapWeapon(_weapon);
     }
 
     public void Attack(float deltaTime)
     {
-        if (_ctx == null || _weaponData == null)
+        if (_ctx == null || _weapon == null)
             return;
 
         switch (_state)
@@ -65,7 +69,7 @@ public class BuildingAtkComp : IAtkComp
 
             case AtkState.WindUp:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= (float)_weaponData.WindUp)
+                if (_stateTimer >= (float)_weapon.WindUp)
                 {
                     DealDamage();
                     EnterState(AtkState.WindDown);
@@ -74,13 +78,13 @@ public class BuildingAtkComp : IAtkComp
 
             case AtkState.WindDown:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= (float)_weaponData.WindDown)
+                if (_stateTimer >= (float)_weapon.WindDown)
                     EnterState(AtkState.Cooldown);
                 break;
 
             case AtkState.Cooldown:
                 _stateTimer += deltaTime;
-                float cooldown = (float)(_weaponData.AttackInterval - _weaponData.WindUp - _weaponData.WindDown);
+                float cooldown = (float)(_weapon.Interval - _weapon.WindUp - _weapon.WindDown);
                 if (cooldown < 0f)
                     cooldown = 0f;
 
@@ -129,12 +133,11 @@ public class BuildingAtkComp : IAtkComp
         if (!_lockedTarget.IsAttackTargetable())
             return;
 
-        Fix64 damageFromProperty = _ctx.GetProperty(CreatureMainProperty.PhysicalAtk);
-        Fix64 finalDamage = damageFromProperty > Fix64.Zero ? damageFromProperty : _weaponData.Damage;
-        if (finalDamage <= Fix64.Zero)
+        Fix64 damage = _weapon.Atk;
+        if (damage <= Fix64.Zero)
             return;
 
-        _lockedTarget.TakeDamage(finalDamage, HealthModifyType.reduce, _ctx);
+        _lockedTarget.TakeDamage(damage, HealthModifyType.reduce, _ctx);
     }
 
     private bool HasDamagePotential()
@@ -142,14 +145,12 @@ public class BuildingAtkComp : IAtkComp
         if (_ctx is BuildingEntity building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
             return false;
 
-        Fix64 damageFromProperty = _ctx.GetProperty(CreatureMainProperty.PhysicalAtk);
-        Fix64 finalDamage = damageFromProperty > Fix64.Zero ? damageFromProperty : _weaponData.Damage;
-        return finalDamage > Fix64.Zero;
+        return _weapon.Atk > Fix64.Zero;
     }
 
     private float GetEffectiveAttackRange()
     {
-        float baseRange = DistanceUnitConverter.ConvertToWorldFloat(_weaponData.AttackRange);
+        float baseRange = DistanceUnitConverter.ConvertToWorldFloat(_weapon.Range);
         return baseRange;
     }
 

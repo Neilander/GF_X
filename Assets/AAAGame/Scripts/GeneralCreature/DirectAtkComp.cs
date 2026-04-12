@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 
 /// <summary>
 /// 直接攻击组件：选定目标后直接造成伤害，不使用攻击盒。
@@ -24,8 +25,9 @@ public class DirectAtkComp : IAtkComp
     }
 
     private IEntityContext _ctx;
-    private WeaponData _weapon;
-    private WeaponType _index;
+    private Weapon _weapon;
+    private Weapon[] _weapons;
+    private int _activeWeaponIndex;
     private BaseWeaponSO _weaponSO;
     private Animator _animator;
 
@@ -40,11 +42,6 @@ public class DirectAtkComp : IAtkComp
     private float _stateTimer;
     private IEntityContext _lockedTarget;
     private bool _movementLockedByThisAttack;
-
-    public DirectAtkComp(WeaponType index)
-    {
-        _index = index;
-    }
 
     private string GetWeaponSOAddress(WeaponType index)
     {
@@ -64,8 +61,6 @@ public class DirectAtkComp : IAtkComp
 
     public void Init(IEntityContext ctx)
     {
-        //TODO:修改正确读取方式
-        WeaponHelper.LoadWeapon($"Assets/AAAGame/SOs/Weapon/{GetWeaponSOAddress(_index)}.asset", this);
         _ctx = ctx;
         State = AtkState.Idle;
         _stateTimer = 0f;
@@ -80,51 +75,34 @@ public class DirectAtkComp : IAtkComp
             _animator = entity.animator;
         }
 
-        // TODO: 根据 index 读表获取攻击数值
-        // 当前使用硬编码测试数据
-        string id = ctx.ReferenceId;
-        var row = GeneralCreature.GetData(id);
-        Fix64 damage = row.PhysicalAtk;
-        Fix64 interval = row.WeaponIntervalOne;
-        Fix64 range = row.WeaponRangeOne;
-        Fix64 windUp = row.WeaponPreOne;
-        Fix64 windDown = row.WeaponPreOne;
-
-
-        // 原来的代码：
-        // // 构建武器数据（供 GetActiveWeapon fallback 使用）
-        // _weapon = new WeaponData
-        // {
-        //     Damage = damage,
-        //     AttackInterval = interval,
-        //     AttackRange = range,
-        //     WindUp = windUp,
-        //     WindDown = windDown,
-        //     Type =  WeaponType.Melee
-        // };
-
-        // 新加：根据index判断武器类型，为远程武器设置正确的武器数据
-        WeaponType weaponType = _index; //_index == "ranged_test" ? WeaponType.Projectile : WeaponType.Melee;
-        Fix64 projectileSpeed = row.WeaponSpeedOne;
-        Fix64 attackRange = range; // 远程武器射程更远
-
-        _weapon = new WeaponData
+        if (ctx.WeaponComp?.Data != null)
         {
-            Damage = damage,
-            AttackInterval = interval,
-            AttackRange = attackRange,
-            // AttackRange = range原来的
-            WindUp = windUp,
-            WindDown = windDown,
-            Type = weaponType,
-            // Type =  WeaponType.Melee原来的
-            ProjectileSpeed = projectileSpeed
-        };
+            _weapons = new[] { ctx.WeaponComp.Data };
+        }
+        else
+        {
+            string id = ctx.ReferenceId;
+            var row = GeneralCreature.GetData(id);
+            WeaponData[] weaponDatas = CharacterDataDetailAccessor.GetWeaponDatas(row);
+            if (weaponDatas == null || weaponDatas.Length == 0)
+            {
+                throw new InvalidOperationException($"角色 {id} 缺少武器数据");
+            }
 
+            PropertyManager ownerManager = (ctx as MAEntity)?.CreaturePropertyManager?.propertyManager;
+            _weapons = new Weapon[weaponDatas.Length];
+            for (int i = 0; i < weaponDatas.Length; i++)
+            {
+                _weapons[i] = weaponDatas[i].ToWeapon($"{ctx.ReferenceId}_Weapon{i + 1}", ownerManager);
+            }
+        }
 
+        _activeWeaponIndex = 0;
+        _weapon = _weapons[_activeWeaponIndex];
 
+        WeaponHelper.LoadWeapon($"Assets/AAAGame/SOs/Weapon/{GetWeaponSOAddress(_weapon.Type)}.asset", this);
 
-        Debug.Log($"[DirectAtkComp] Init: unit={ctx.ReferenceId} weaponType={weaponType} damage={damage} range={attackRange} interval={interval} windUp={windUp} windDown={windDown} projectileSpeed={projectileSpeed}");
+        Debug.Log($"[DirectAtkComp] Init: unit={ctx.ReferenceId} weaponType={_weapon.Type} damage={_weapon.Atk} range={_weapon.Range} interval={_weapon.Interval} windUp={_weapon.WindUp} windDown={_weapon.WindDown} projectileSpeed={_weapon.ProjectileSpeed}");
 
         // 创建 WeaponComp 并挂载到 Entity
         var wc = new WeaponComp(_weapon);
@@ -136,6 +114,17 @@ public class DirectAtkComp : IAtkComp
         else
         {
         }
+    }
+
+    public void SelectWeapon(int weaponIndex)
+    {
+        if (_weapons == null || _weapons.Length == 0 || weaponIndex < 0 || weaponIndex >= _weapons.Length)
+        {
+            GF.LogError($"请求的武器索引 {weaponIndex} 超出范围，返回默认武器");
+            weaponIndex = 0;
+        }
+        _weapon = _weapons[weaponIndex];
+        _ctx.WeaponComp.SwapWeapon(_weapon);
     }
 
     public void Attack(float deltaTime)
@@ -150,7 +139,7 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.WindUp:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= (float)GetActiveWeapon().WindUp)
+                if (_stateTimer >= (float)GetCurrentWindUp())
                 {
                     DealDamage();
                     EnterState(AtkState.WindDown);
@@ -159,7 +148,7 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.WindDown:
                 _stateTimer += deltaTime;
-                if (_stateTimer >= (float)GetActiveWeapon().WindDown)
+                if (_stateTimer >= (float)GetCurrentWindDown())
                 {
                     if (_movementLockedByThisAttack)
                     {
@@ -172,8 +161,10 @@ public class DirectAtkComp : IAtkComp
 
             case AtkState.Cooldown:
                 _stateTimer += deltaTime;
-                var w = GetActiveWeapon();
-                float cooldown = (float)(w.AttackInterval - w.WindUp - w.WindDown);
+                Fix64 windUp = GetCurrentWindUp();
+                Fix64 windDown = GetCurrentWindDown();
+                Fix64 interval = GetCurrentAttackInterval();
+                float cooldown = (float)(interval - windUp - windDown);
                 if (cooldown < 0f) cooldown = 0f;
                 if (_stateTimer >= cooldown)
                 {
@@ -186,9 +177,49 @@ public class DirectAtkComp : IAtkComp
     /// <summary>
     /// 获取当前生效的武器数据：优先从 WeaponComp 拿最新的，没有则用初始化时的 _weapon。
     /// </summary>
-    private WeaponData GetActiveWeapon()
+    private Weapon GetActiveWeapon()
     {
         return _ctx.WeaponComp?.Data ?? _weapon;
+    }
+
+    private Fix64 GetCurrentDamage()
+    {
+        return GetActiveWeapon().Atk;
+    }
+
+    private Fix64 GetCurrentAttackInterval()
+    {
+        return GetActiveWeapon().Interval;
+    }
+
+    private Fix64 GetCurrentAttackRange()
+    {
+        return GetActiveWeapon().Range;
+    }
+
+    private Fix64 GetCurrentWindUp()
+    {
+        return GetActiveWeapon().WindUp;
+    }
+
+    private Fix64 GetCurrentWindDown()
+    {
+        return GetActiveWeapon().WindDown;
+    }
+
+    private Fix64 GetCurrentProjectileSpeed()
+    {
+        return GetActiveWeapon().ProjectileSpeed;
+    }
+
+    private Fix64 GetCurrentSplashRadius()
+    {
+        return GetActiveWeapon().SplashRadius;
+    }
+
+    private Fix64 GetCurrentManaCost()
+    {
+        return GetActiveWeapon().ManaCost;
     }
 
     private void TryStartAttack()
@@ -215,9 +246,9 @@ public class DirectAtkComp : IAtkComp
             return;
         }
 
-        var activeWeapon = GetActiveWeapon();
+        Fix64 attackRange = GetCurrentAttackRange();
         float dist = _ctx.DistanceToTargetSurface(target);
-        float wpnRange = DistanceUnitConverter.ConvertToWorldFloat(activeWeapon.AttackRange);
+        float wpnRange = DistanceUnitConverter.ConvertToWorldFloat(attackRange);
 
         // 统一判定：攻击者中心到目标碰撞体边缘的 XZ 距离，和武器射程直接比较。
         float range = wpnRange;
@@ -250,8 +281,8 @@ public class DirectAtkComp : IAtkComp
             return;
         }
 
-        var weaponData = GetActiveWeapon();
-        Fix64 damage = weaponData.Damage;
+        Fix64 damage = GetCurrentDamage();
+        Fix64 splashRadius = GetCurrentSplashRadius();
 
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx.ReferenceId}] DealDamage: 对 {_lockedTarget.ReferenceId} 造成 {damage} 伤害");
@@ -259,7 +290,22 @@ public class DirectAtkComp : IAtkComp
         // 优先委托武器 SO 执行伤害
         if (_weaponSO != null)
         {
-            _weaponSO.Execute(_ctx, _lockedTarget, weaponData);
+            Weapon activeWeapon = GetActiveWeapon();
+            WeaponData snapshot = new WeaponData(
+                activeWeapon.Type,
+                activeWeapon.Atk,
+                activeWeapon.Interval,
+                activeWeapon.Range,
+                activeWeapon.ProjectileSpeed,
+                activeWeapon.WindUp,
+                activeWeapon.WindDown,
+                activeWeapon.SplashRadius,
+                activeWeapon.SplitAngle,
+                activeWeapon.SplitDist,
+                activeWeapon.ProjectileCount,
+                activeWeapon.ManaCost,
+                Array.Empty<Fix64>());
+            _weaponSO.Execute(_ctx, _lockedTarget, snapshot);
         }
         else
         {
@@ -267,7 +313,7 @@ public class DirectAtkComp : IAtkComp
             _lockedTarget.TakeDamage(damage, HealthModifyType.reduce);
         }
 
-        if (weaponData.SplashRadius > Fix64.Zero)
+        if (splashRadius > Fix64.Zero)
         {
             ApplySplashDamage(damage);
         }

@@ -30,6 +30,12 @@ public class MAEntity : CompCreature, IEntityContext
     private Quaternion? _targetRotation = null;
     private Transform _modelTransform = null;
 
+    private Vector3 _collisionScaleBase = Vector3.one;
+    private float _collisionRadiusBaseWorld;
+    private bool _collisionScaleBaseReady;
+    private bool _hasAppliedCollisionScale;
+    private Fix64 _lastAppliedCollisionRadius;
+
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
 
@@ -58,7 +64,6 @@ public class MAEntity : CompCreature, IEntityContext
 
     public Fix64 GetProperty(CreatureMainProperty prop)
     {
-        if (CreaturePropertyManager == null) return (Fix64)5;
         return CreaturePropertyManager.GetProperty(prop);
     }
 
@@ -84,6 +89,8 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnShow(userData);
 
+        InitializeCollisionScaleBase();
+
         // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态
         var newBuffComp = new CharacterBuffComp();
         newBuffComp.Init(this);
@@ -101,6 +108,8 @@ public class MAEntity : CompCreature, IEntityContext
                 }
             }
         }
+
+        SyncScaleFromCollisionRadius(true);
 
         if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
         {
@@ -203,6 +212,12 @@ public class MAEntity : CompCreature, IEntityContext
         if (GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.UnregisterAgent(this);
         EntityRegistry.Unregister(this);
+
+        _collisionScaleBaseReady = false;
+        _hasAppliedCollisionScale = false;
+        _collisionRadiusBaseWorld = 0f;
+        _collisionScaleBase = Vector3.one;
+
         base.OnHide(isShutdown, userData);
     }
 
@@ -212,6 +227,9 @@ public class MAEntity : CompCreature, IEntityContext
 
         if (CanRun(_buffComp))
             _buffComp.UpdateBuff(dt);
+
+        if (Alive)
+            SyncScaleFromCollisionRadius();
 
         // 更新协调器中的位置（在 Brain.Tick 之前）
         if (GroupMoveManager.HasInstance)
@@ -295,6 +313,53 @@ public class MAEntity : CompCreature, IEntityContext
                 _targetRotation = null;
             }
         }
+    }
+
+    private void InitializeCollisionScaleBase()
+    {
+        _collisionScaleBase = transform.localScale;
+        _collisionRadiusBaseWorld = ResolveCurrentCollisionRadiusWorld();
+        _collisionScaleBaseReady = _collisionRadiusBaseWorld > 0.0001f;
+    }
+
+    private float ResolveCurrentCollisionRadiusWorld()
+    {
+        if (cController == null)
+            return 0f;
+
+        float scaleXZ = Mathf.Max(Mathf.Abs(transform.lossyScale.x), Mathf.Abs(transform.lossyScale.z));
+        return cController.radius * scaleXZ;
+    }
+
+    private void SyncScaleFromCollisionRadius(bool force = false)
+    {
+        if (CreaturePropertyManager == null)
+            return;
+
+        Fix64 collisionRadius = CreaturePropertyManager.GetProperty(CreatureMainProperty.CollisionRadius);
+        if (collisionRadius <= Fix64.Zero)
+            return;
+
+        if (!force && _hasAppliedCollisionScale && collisionRadius == _lastAppliedCollisionRadius)
+            return;
+
+        if (!_collisionScaleBaseReady)
+            InitializeCollisionScaleBase();
+
+        if (!_collisionScaleBaseReady)
+            return;
+
+        float targetWorldRadius = DistanceUnitConverter.ConvertToWorldFloat(collisionRadius);
+        if (targetWorldRadius <= 0.0001f)
+            return;
+
+        float scaleRatio = targetWorldRadius / _collisionRadiusBaseWorld;
+        if (scaleRatio <= 0.0001f)
+            return;
+
+        transform.localScale = _collisionScaleBase * scaleRatio;
+        _hasAppliedCollisionScale = true;
+        _lastAppliedCollisionRadius = collisionRadius;
     }
 
     #region Move and Attack

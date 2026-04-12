@@ -29,6 +29,7 @@ public class SoldierEntity : MAEntity
         }
 
         base.OnShow(userData);
+
         //Debug.LogError("什么玩意");
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
@@ -61,25 +62,11 @@ public class SoldierEntity : MAEntity
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
         FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
 
-        // 根据单位类型选择武器
-        WeaponType weaponIndex = GetWeaponIndexByUnitType((userData as EntityParams).Index);
         ReferenceId = (userData as EntityParams).Index;
         // 直接创建 DirectAtkComp，不再走 Factory
-        var atkComp = new DirectAtkComp(weaponIndex);
+        var atkComp = new DirectAtkComp();
         this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
-    }
-
-
-
-    /// <summary>
-    /// 根据单位类型获取武器索引
-    /// </summary>
-    private WeaponType GetWeaponIndexByUnitType(string unitIndex)
-    {
-        var row = GeneralCreature.GetData(unitIndex);
-
-        return row.WeaponTypeOne;
     }
 
 

@@ -5,17 +5,17 @@
 /// </summary>
 public class WeaponComp : ICapability
 {
-    public WeaponData Data { get; private set; }
+    public Weapon Data { get; private set; }
 
     /// <summary>武器攻击距离（已转换为游戏单位）</summary>
-    public Fix64 AttackRange => Data != null ? DistanceUnitConverter.ConvertToWorld(Data.AttackRange) : Fix64.Zero;
+    public Fix64 AttackRange => Data != null ? DistanceUnitConverter.ConvertToWorld(Data.Range) : Fix64.Zero;
 
-    public WeaponComp(WeaponData data)
+    public WeaponComp(Weapon data)
     {
         Data = data;
     }
 
-    public void SwapWeapon(WeaponData newData)
+    public void SwapWeapon(Weapon newData)
     {
         Data = newData;
     }

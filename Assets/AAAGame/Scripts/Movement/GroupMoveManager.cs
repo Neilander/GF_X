@@ -144,8 +144,7 @@ public class GroupMoveManager : MonoBehaviour
 
     public void RegisterAgent(MAEntity entity)
     {
-        var cc = entity.GetComponent<CharacterController>();
-        float radius = cc != null ? cc.radius : 0.5f;
+        float radius = ResolveAgentRadius(entity);
         Coordinator.RegisterAgent(entity.GetInstanceID(), entity.Position, entity.Side, false, radius);
     }
 
@@ -156,7 +155,34 @@ public class GroupMoveManager : MonoBehaviour
 
     public void UpdateAgentPosition(MAEntity entity)
     {
-        Coordinator.UpdateAgentPosition(entity.GetInstanceID(), entity.Position);
+        int id = entity.GetInstanceID();
+        Coordinator.UpdateAgentPosition(id, entity.Position);
+        Coordinator.SetAgentRadius(id, ResolveAgentRadius(entity));
+    }
+
+    private static float ResolveAgentRadius(MAEntity entity)
+    {
+        if (entity == null)
+            return 0.5f;
+
+        if (entity.CreaturePropertyManager != null)
+        {
+            float configuredRadius = DistanceUnitConverter.ConvertToWorldFloat(
+                entity.GetProperty(CreatureMainProperty.CollisionRadius));
+            if (configuredRadius > 0.0001f)
+                return configuredRadius;
+        }
+
+        var cc = entity.GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            float scaleXZ = Mathf.Max(Mathf.Abs(entity.transform.lossyScale.x), Mathf.Abs(entity.transform.lossyScale.z));
+            float worldRadius = cc.radius * scaleXZ;
+            if (worldRadius > 0.0001f)
+                return worldRadius;
+        }
+
+        return 0.5f;
     }
 
     // ── 障碍物注册 ──
