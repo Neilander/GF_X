@@ -22,6 +22,12 @@ public class MAEntity : CompCreature, IEntityContext
     private MoveExecutor _moveExecutor;
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
+
+    /// <summary>
+    /// NavMesh Agent Type ID，用于导航和移动约束。默认 0 = Humanoid。
+    /// 子类可在 OnShow/SetUpMAComp 之前设置。
+    /// </summary>
+    public int navAgentTypeID = -1372625422;
     private const float RotationSpeed = 720f; // 度/秒
 
     private IBuffComp _buffComp;
@@ -80,7 +86,7 @@ public class MAEntity : CompCreature, IEntityContext
 
         cController = GetComponent<CharacterController>();
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
-        _moveExecutor.Init(cController);
+        _moveExecutor.Init(cController, navAgentTypeID);
 
         _modelTransform = animator != null ? animator.transform : display;
     }

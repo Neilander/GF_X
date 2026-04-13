@@ -13,17 +13,34 @@ public class CharacterMoveComp : IMoveComp
     private float _stuckTimer = 0f;
     private bool _isMoving = false;
 
-    public void Init(IEntityContext ctx) => _ctx = ctx;
+    private NavMeshQueryFilter _navFilter;
+
+    public void Init(IEntityContext ctx) => Init(ctx, 0);
+
+    public void Init(IEntityContext ctx, int agentTypeID)
+    {
+        _ctx = ctx;
+        _navFilter = new NavMeshQueryFilter
+        {
+            agentTypeID = agentTypeID,
+            areaMask = NavMesh.AllAreas
+        };
+    }
 
     private float Distance2D(Vector3 p1, Vector3 p2)
     {
         return Vector2.Distance(new Vector2(p1.x, p1.z), new Vector2(p2.x, p2.z));
     }
 
+    private bool SamplePosition(Vector3 sourcePosition, out NavMeshHit hit, float maxDistance)
+    {
+        return NavMesh.SamplePosition(sourcePosition, out hit, maxDistance, _navFilter);
+    }
+
     public void MoveTo(Vector3 destination)
     {
         Vector3 navDest = destination;
-        if (NavMesh.SamplePosition(destination, out var destHit, 10f, NavMesh.AllAreas))
+        if (SamplePosition(destination, out var destHit, 10f))
         {
             navDest = destHit.position;
         }
@@ -37,10 +54,10 @@ public class CharacterMoveComp : IMoveComp
         NavMeshPath path = new NavMeshPath();
         bool hasNavPath = false;
 
-        if (NavMesh.SamplePosition(_ctx.Position, out var startHit, 10f, NavMesh.AllAreas) &&
-            NavMesh.SamplePosition(navDest, out var endHit, 10f, NavMesh.AllAreas))
+        if (SamplePosition(_ctx.Position, out var startHit, 10f) &&
+            SamplePosition(navDest, out var endHit, 10f))
         {
-            if (NavMesh.CalculatePath(startHit.position, endHit.position, NavMesh.AllAreas, path) && path.corners.Length > 0)
+            if (NavMesh.CalculatePath(startHit.position, endHit.position, _navFilter, path) && path.corners.Length > 0)
             {
                 _corners = path.corners;
                 hasNavPath = true;
@@ -79,12 +96,14 @@ public class CharacterMoveComp : IMoveComp
         }
         else if (_targetPos.HasValue && _corners.Length > 0 && _currentPathIndex < _corners.Length)
         {
-            // 跳过已经很近的 corner，直接瞄准下一个
+            // 跳过已经很近的 corner，直接瞄准下一个（大单位缩小距离，更精确走拐点）
+            float scale = _ctx is MAEntity ma ? ma.transform.lossyScale.x : 1f;
+            float cornerSkipDist = 0.5f / Mathf.Max(scale, 1f);
             while (_currentPathIndex < _corners.Length)
             {
                 Vector3 c = _corners[_currentPathIndex];
                 float d = new Vector3(c.x - _ctx.Position.x, 0f, c.z - _ctx.Position.z).magnitude;
-                if (d >= 0.5f) break;
+                if (d >= cornerSkipDist) break;
                 _currentPathIndex++;
             }
 
@@ -139,9 +158,9 @@ public class CharacterMoveComp : IMoveComp
 
         var path = new NavMeshPath();
         Vector3 dir;
-        if (NavMesh.SamplePosition(_ctx.Position, out var startHit, 10f, NavMesh.AllAreas) &&
-            NavMesh.SamplePosition(_targetPos.Value, out var endHit, 10f, NavMesh.AllAreas) &&
-            NavMesh.CalculatePath(startHit.position, endHit.position, NavMesh.AllAreas, path) &&
+        if (SamplePosition(_ctx.Position, out var startHit, 10f) &&
+            SamplePosition(_targetPos.Value, out var endHit, 10f) &&
+            NavMesh.CalculatePath(startHit.position, endHit.position, _navFilter, path) &&
             path.corners.Length > 1)
         {
             Vector3 nextCorner = path.corners[1];
