@@ -52,6 +52,8 @@ public class PlayerMoveComp : IMoveComp
         _ctx = ctx;
     }
 
+    public void SetNavTarget(Vector3 destination) { }
+
     public Vector3 GetNavDirection()
     {
         return _moveDirection;

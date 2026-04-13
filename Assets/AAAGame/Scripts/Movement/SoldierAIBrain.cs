@@ -298,8 +298,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         }
         else
         {
-            // 先让 NavMesh 算路径
-            self.MoveComp.MoveTo(enemy.Position);
+            // 只设导航目标（不设路径），让协调器回调控制实际移动
+            self.MoveComp.SetNavTarget(enemy.Position);
 
             // 拿 NavMesh 方向作为期望速度提交给协调器
             Vector3 navDir = self.MoveComp.GetNavDirection();
