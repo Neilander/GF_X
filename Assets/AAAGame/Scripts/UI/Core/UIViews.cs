@@ -19,5 +19,6 @@ public enum UIViews : int
 	TechNodeDetailTips = 15,
 	ToastTips = 10,
 	InteractOptionTips = 12,
-	CardUIForm = 16
+	CardUIForm = 16,
+	PhaseSwitchUIForm = 17
 }

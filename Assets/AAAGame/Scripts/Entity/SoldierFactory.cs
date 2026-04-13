@@ -40,8 +40,8 @@ public static class SoldierFactory
     /// </summary>
     private static string GetSoldierPrefabName(UnitType index)
     {
-        // 使用简单的gujia名称，与CharacterTestProcedure保持一致
-        return "gujia";
+        // 使用易拉罐预制体
+        return "易拉罐";
     }
 
     /// <summary>

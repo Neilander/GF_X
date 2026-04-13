@@ -1,4 +1,4 @@
-﻿using GameFramework.Event;
+using GameFramework.Event;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -65,5 +65,12 @@ public partial class UITopbar : UIFormBase
         {
             GF.UI.ShowToast("加能量");
         }
+        // 暂时注释掉阶段切换按钮，需要在Unity编辑器中创建UI按钮并绑定
+        /*
+        else if (btSelf == varBtnPhase)
+        {
+            PhaseManager.SwitchToNextPhase();
+        }
+        */
     }
 }

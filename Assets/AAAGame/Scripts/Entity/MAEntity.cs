@@ -78,6 +78,16 @@ public class MAEntity : CompCreature, IEntityContext
         _moveExecutor.Init(cController);
 
         _modelTransform = animator != null ? animator.transform : display;
+        
+        // 调试Animator参数
+        if (animator != null)
+        {
+            Log.Info($"Animator parameters:");
+            foreach (AnimatorControllerParameter param in animator.parameters)
+            {
+                Log.Info($"  {param.name}: {param.type}");
+            }
+        }
     }
 
     protected override void OnShow(object userData)
@@ -240,22 +250,27 @@ public class MAEntity : CompCreature, IEntityContext
 
             if (animator != null)
             {
+                Log.Info($"Animator found: {animator.gameObject.name}");
                 bool isMoving = false;
                 Vector2 brainMove = Vector2.zero;
 
                 if (Brain != null)
                 {
+                    Log.Info($"Brain type: {Brain.GetType().Name}");
                     if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
                     {
                         brainMove = playerBrain.Move;
                         isMoving = brainMove.sqrMagnitude > 0.001f;
+                        Log.Info($"PlayerBrain move: {brainMove}, isMoving: {isMoving}");
                     }
                     else if (moveComp != null)
                     {
                         isMoving = moveComp.IsMoving;
+                        Log.Info($"MoveComp IsMoving: {isMoving}");
                     }
                 }
 
+                Log.Info($"Setting Moving parameter to: {isMoving}");
                 animator.SetBool("Moving", isMoving);
 
                 if (moveComp != null && Brain != null)

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Event;
 using GameFramework.Fsm;
@@ -20,6 +20,8 @@ public class RealProcedure : ProcedureBase
         GameEntry.GetComponent<CardSetup>().OpenCardUI();
 
         GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
+        // 加载阶段切换按钮
+        GF.UI.OpenUIForm(UIViews.PhaseSwitchUIForm);
 
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
 

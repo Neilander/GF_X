@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using GameFramework;
@@ -619,10 +619,18 @@ namespace AAAGame.Card
             // 取消订阅事件（检查 GFBuiltin.Event 是否存在）
             if (GFBuiltin.Event != null)
             {
-                GFBuiltin.Event.Unsubscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
-                GFBuiltin.Event.Unsubscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
-                GFBuiltin.Event.Unsubscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
-                GFBuiltin.Event.Unsubscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
+                try
+                {
+                    GFBuiltin.Event.Unsubscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
+                    GFBuiltin.Event.Unsubscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
+                    GFBuiltin.Event.Unsubscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
+                    GFBuiltin.Event.Unsubscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
+                }
+                catch (System.Exception ex)
+                {
+                    // 捕获可能的异常，避免因重复取消订阅而导致错误
+                    Log.Info("CardUIForm: Error unsubscribing events: " + ex.Message);
+                }
             }
         }
     }
