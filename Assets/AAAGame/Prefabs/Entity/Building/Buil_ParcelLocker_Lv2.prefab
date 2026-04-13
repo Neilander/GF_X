@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1033069891177993419}
   - component: {fileID: 298698123803619235}
-  m_Layer: 0
+  m_Layer: 12
   m_Name: Buil_ParcelLocker_Lv2
   m_TagString: Untagged
   m_Icon: {fileID: 0}

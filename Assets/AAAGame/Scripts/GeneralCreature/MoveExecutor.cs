@@ -19,13 +19,21 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private float _gravityVelocity;
     private float _edgeBuffer = 0.45f;
     private float _sampleRadius = 0.8f;
+    private NavMeshQueryFilter _navFilter;
     private const float GravityAcceleration = -28f;
     private const float GroundStickVelocity = -2f;
 
-    public void Init(CharacterController controller)
+    public void Init(CharacterController controller) => Init(controller, 0);
+
+    public void Init(CharacterController controller, int agentTypeID)
     {
         _controller = controller;
         _ownerEntity = GetComponent<MAEntity>();
+        _navFilter = new NavMeshQueryFilter
+        {
+            agentTypeID = agentTypeID,
+            areaMask = NavMesh.AllAreas
+        };
         if (_controller != null)
         {
             _edgeBuffer = Mathf.Max(0.2f, _controller.radius + 0.05f);
@@ -130,6 +138,8 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _gravityVelocity += GravityAcceleration * deltaTime;
     }
 
+    private const float MaxOutOfBoundsDistance = 1.5f; // 允许超出 NavMesh 边缘的最大距离
+
     private Vector3 ConstrainHorizontalDisplacement(Vector3 desiredHorizontalDisplacement)
     {
         if (desiredHorizontalDisplacement.sqrMagnitude <= 0.000001f)
@@ -141,30 +151,33 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         Vector3 desiredPos = currentPos + desiredHorizontalDisplacement;
         Vector3 desiredNavProbePos = new Vector3(desiredPos.x, currentPos.y, desiredPos.z);
 
-        if (!NavMesh.SamplePosition(desiredNavProbePos, out NavMeshHit navHit, _sampleRadius, NavMesh.AllAreas))
+        // 检查目标位置是否在 NavMesh 上或附近
+        if (!NavMesh.SamplePosition(desiredNavProbePos, out NavMeshHit navHit, _sampleRadius, _navFilter))
         {
             return Vector3.zero;
         }
 
-        Vector3 sampledPos = navHit.position;
-        Vector2 sampledXZ = new Vector2(sampledPos.x, sampledPos.z);
+        // 目标点离最近的 NavMesh 点太远，说明完全跑出去了
+        Vector2 sampledXZ = new Vector2(navHit.position.x, navHit.position.z);
         Vector2 desiredXZ = new Vector2(desiredPos.x, desiredPos.z);
-        if (Vector2.Distance(sampledXZ, desiredXZ) > _sampleRadius + 0.05f)
+        float distFromNavMesh = Vector2.Distance(sampledXZ, desiredXZ);
+        if (distFromNavMesh > MaxOutOfBoundsDistance)
         {
             return Vector3.zero;
         }
 
-        if (NavMesh.FindClosestEdge(sampledPos, out NavMeshHit edgeHit, NavMesh.AllAreas) && edgeHit.distance < _edgeBuffer)
+        // 原边缘缓冲检查已移除：NavMesh 烘焙时已按 Agent Radius 内缩，surface 内部都是安全区域
+        // if (NavMesh.FindClosestEdge(sampledPos, out NavMeshHit edgeHit, _navFilter) && edgeHit.distance < _edgeBuffer)
+        // {
+        //     return Vector3.zero;
+        // }
+
+        if (IsEnemyStrongholdBlocked(navHit.position))
         {
             return Vector3.zero;
         }
 
-        if (IsEnemyStrongholdBlocked(sampledPos))
-        {
-            return Vector3.zero;
-        }
-
-        Vector3 constrainedPos = new Vector3(sampledPos.x, currentPos.y, sampledPos.z);
+        Vector3 constrainedPos = new Vector3(navHit.position.x, currentPos.y, navHit.position.z);
         return constrainedPos - currentPos;
     }
 

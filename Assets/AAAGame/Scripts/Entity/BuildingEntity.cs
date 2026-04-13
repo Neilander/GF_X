@@ -66,6 +66,9 @@ public partial class BuildingEntity : MAEntity
         {
             EnsureInteractionHost();
         }
+
+        // 建筑出现后请求重新烘焙 NavMesh（延迟合并，批量建造只烘焙一次）
+        LevelEntity.RequestRebakeNavMesh();
     }
 
     protected override void OnHide(bool isShutdown, object userData)

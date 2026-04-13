@@ -17,7 +17,8 @@
         "Unity.InputSystem",
         "AstarPathfindingProject",
         "BehaviourTree",
-        "GiantGrey.TileWorldCreator"
+        "GiantGrey.TileWorldCreator",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
