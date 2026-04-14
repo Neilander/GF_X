@@ -57,10 +57,11 @@ public class CharacterTargetingComp : ITargetingComp
         {
             _scanTimer = 0f;
 
-            // 找敌人：遍历 EntityRegistry，按阵营和距离
+            // 找敌人：遍历 EntityRegistry，嘲讽等级优先，同等级选最近
             IEntityContext nearest = null;
             float scanRange = Mathf.Max(AggroRange, GetEffectiveAttackRange());
             float nearestDist = scanRange;
+            int highestTaunt = -1;
             var all = EntityRegistry.AllEntities;
             for (int i = 0; i < all.Count; i++)
             {
@@ -70,8 +71,18 @@ public class CharacterTargetingComp : ITargetingComp
                 if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
 
                 float dist = _ctx.DistanceToTargetSurface(other);
-                if (dist < nearestDist)
+                if (dist >= scanRange) continue;
+
+                // 读嘲讽等级
+                int taunt = 0;
+                if (other is GeneralCreature be)
+                    taunt = be.TauntLevel;
+
+                // 嘲讽等级更高 → 无条件替换
+                // 嘲讽等级相同 → 选更近的
+                if (taunt > highestTaunt || (taunt == highestTaunt && dist < nearestDist))
                 {
+                    highestTaunt = taunt;
                     nearestDist = dist;
                     nearest = other;
                 }

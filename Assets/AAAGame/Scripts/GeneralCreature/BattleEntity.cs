@@ -19,6 +19,7 @@ public class BattleEntity : EntityBase, ITargetable
     public Animator animator { get; protected set; }
 
 
+
     public CreaturePropertyManager CreaturePropertyManager { get; private set; }
 
 

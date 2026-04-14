@@ -61,6 +61,7 @@ public partial class BuildingEntity : MAEntity
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
+        TauntLevel = 0; // 建筑默认嘲讽等级 0
 
         InitializeAttackCapabilityFlags();
         ResetCombatRuntimeState();
