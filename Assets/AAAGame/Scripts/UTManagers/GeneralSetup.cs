@@ -26,7 +26,9 @@ public partial class GeneralSetup : GameFrameworkComponent
         GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
 
         var lvRow = GetLvRow(lvIdentifier);
-        DataModelSetup(LevelData.FromRow(lvRow));
+        var lvData = LevelData.FromRow(lvRow);
+        DataModelSetup(lvData);
+        GameEntry.GetComponent<GameEndManager>().Init(lvData);
         LevelEntityFactory.ShowLevel(lvRow.PrefabPath);
 
         var inputManager = GameEntry.GetComponent<InputManager>();

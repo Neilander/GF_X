@@ -117,48 +117,65 @@ public class BuildManager : GameFrameworkComponent
 
     public bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
-        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: true);
+        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: true) > 0;
     }
 
     public bool BuildBuildingForTechUpgrade(string buildingId, Vector3 position, string buildingInstanceId)
     {
-        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: false);
+        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: false) > 0;
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗。
     public bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
-        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: false, consumeCoins: false);
+        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId);
     }
 
-    private bool BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins)
+    // 关卡初始化专用：忽略建造条件与金币消耗，并返回稳定 BuildingInstanceId。
+    public bool TryBuildBuildingForLevelInit(string buildingId, Vector3 position, out string resolvedBuildingInstanceId, string buildingInstanceId = null)
+    {
+        resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
+            ? Guid.NewGuid().ToString("N")
+            : buildingInstanceId;
+
+        int entityId = BuildBuildingInternal(buildingId, position, resolvedBuildingInstanceId, checkCondition: false, consumeCoins: false);
+        if (entityId <= 0)
+        {
+            resolvedBuildingInstanceId = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    private int BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
-            return false;
+            return 0;
 
         int ownerFactionId = ResolveOwnerFactionId(position);
 
         if (checkCondition && !SatisfyBuildCondition(buildingData, ownerFactionId))
-            return false;
+            return 0;
 
         if (consumeCoins)
         {
             if (!HasBuildCost(buildingId))
-                return false;
+                return 0;
 
             if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -buildingData.Cost, true))
-                return false;
+                return 0;
         }
 
         string resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
             ? Guid.NewGuid().ToString("N")
             : buildingInstanceId;
 
-        MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId);
+        int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId);
 
         m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId);
-        return true;
+        return entityId;
     }
 
     public bool SatisfyBuildCondition(BuildingData buildingData, int ownerFactionId)

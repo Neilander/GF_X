@@ -113,7 +113,7 @@ public partial class BuildingEntity : MAEntity
         if (oldFactionId != OwnerFactionID)
         {
             RefreshInteractionHostForCurrentOwnership();
-            GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID));
+            GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID, BuildingInstanceId));
         }
     }
 
@@ -482,6 +482,7 @@ public partial class BuildingEntity : MAEntity
             return;
 
         _isDisabled = true;
+        GF.Event.Fire(this, BuildingDisabledStateChangedEventArgs.Create(Id, BuildingInstanceId, true));
         Alive = false;
 
         Fix64 curHealth = HealthValue;
@@ -527,7 +528,13 @@ public partial class BuildingEntity : MAEntity
 
     private void ResetCombatRuntimeState()
     {
+        bool wasDisabled = _isDisabled;
         _isDisabled = false;
+        if (wasDisabled)
+        {
+            GF.Event.Fire(this, BuildingDisabledStateChangedEventArgs.Create(Id, BuildingInstanceId, false));
+        }
+
         UnlockCombatCapabilities();
 
         if (targetComp != null)

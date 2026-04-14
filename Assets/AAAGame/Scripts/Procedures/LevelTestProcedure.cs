@@ -31,13 +31,35 @@ public class LevelTestProcedure : ProcedureBase
     }
     private void SpawnPresetEntities()
     {
+        var buildManager = GameEntry.GetComponent<BuildManager>();
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
         foreach (var point in presetPoints)
         {
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    GameEntry.GetComponent<BuildManager>().BuildBuildingForLevelInit(point.Identifier, point.Position);
+                    if (!buildManager.TryBuildBuildingForLevelInit(point.Identifier, point.Position, out var buildingInstanceId))
+                    {
+                        Log.Error("LevelTestProcedure.SpawnPresetEntities failed: cannot build preset building '{0}'.", point.Identifier);
+                        break;
+                    }
+
+                    if (point.IsGameEndConditionBuilding)
+                    {
+                        var levelEntity = LevelEntity.ActiveLevelEntity;
+                        int initialOwnerFactionId = EntitySideHelper.PlayerFactionId;
+                        if (levelEntity != null)
+                        {
+                            var stronghold = levelEntity.GetStrongholdAtWorldPosition(point.Position);
+                            if (stronghold != null)
+                            {
+                                initialOwnerFactionId = stronghold.OwnerFactionId;
+                            }
+                        }
+
+                        gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
+                    }
                     break;
                     // case EntityPresetPointType.Spawn:
                     // case EntityPresetPointType.Respawn:

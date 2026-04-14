@@ -204,19 +204,37 @@ public class LevelEntity : EntityBase
 
     private void SpawnPresetEntities()
     {
+        var buildManager = GameEntry.GetComponent<BuildManager>();
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
         foreach (var point in presetPoints)
         {
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    GameEntry.GetComponent<BuildManager>().BuildBuildingForLevelInit(point.Identifier, point.Position);
+                    if (!buildManager.TryBuildBuildingForLevelInit(point.Identifier, point.Position, out var buildingInstanceId))
+                    {
+                        Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", point.Identifier);
+                        break;
+                    }
+
+                    if (point.IsGameEndConditionBuilding)
+                    {
+                        int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
+                        gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
+                    }
                     break;
             }
         }
 
         // 所有初始建筑建完后请求烘焙（延迟 0.5 秒）
         RequestRebakeNavMesh();
+    }
+
+    private int ResolveOwnerFactionIdByPosition(Vector3 position)
+    {
+        var stronghold = GetStrongholdAtWorldPosition(position);
+        return stronghold != null ? stronghold.OwnerFactionId : EntitySideHelper.PlayerFactionId;
     }
 
     private void CollectStrongholds()

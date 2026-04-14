@@ -11,7 +11,7 @@ public class RealProcedure : ProcedureBase
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
         base.OnEnter(procedureOwner);
-        GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup("Lv_2");
+        GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup("Lv_1");
         // 初始化卡牌系统
         GameEntry.GetComponent<CardSetup>().CardSystemSetup();
         GameEntry.GetComponent<CardSetup>().OpenCardUI();
