@@ -147,7 +147,7 @@ public class MAEntity : CompCreature, IEntityContext
         if (CharacterData == null)
             throw new InvalidOperationException($"MAEntity 初始化失败: 未找到 CharacterDataDetail，CharacterKey={CharacterKey}。");
 
-        navAgentTypeID = AgentTypeHelper.GetNavAgentTypeID(CharacterData.Size);
+        navAgentTypeID = GameEntry.GetComponent<AgentTypeHelper>().GetNavAgentTypeID(CharacterData.Size);
     }
     private void EnsurePlayerInteractionRuntime()
     {

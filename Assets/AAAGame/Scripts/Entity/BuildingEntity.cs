@@ -20,7 +20,7 @@ public partial class BuildingEntity : MAEntity
     public int OwnerFactionID { get; set; }
     public string BuildingInstanceId { get; private set; }
     public Stronghold CurrentStronghold { get; private set; }
-    public bool HasUpgrade => BuildManager.HasUpgrade(this);
+    public bool HasUpgrade => GameEntry.GetComponent<BuildManager>().HasUpgrade(this);
     public bool IsDisabled => _isDisabled;
     public bool IsLv0Invincible => _lv0InvincibleByBuff;
     public bool IsPhaseProtected => _phaseProtectionByBuff;
@@ -172,7 +172,7 @@ public partial class BuildingEntity : MAEntity
         host.ResetOptions();
         host.Init(this);
 
-        BuildManager.ConfigureBuildInteractionOptions(this, host);
+        GameEntry.GetComponent<BuildManager>().ConfigureBuildInteractionOptions(this, host);
     }
 
     private void EnsureLv0InvincibleBuff()

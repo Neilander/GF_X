@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine.AI;
-public static class AgentTypeHelper
+using UnityGameFramework.Runtime;
+public class AgentTypeHelper : GameFrameworkComponent
 {
-    private static bool s_navAgentTypeLoaded;
-    private static readonly Dictionary<UnitSize, int> s_navAgentTypeIds = new Dictionary<UnitSize, int>(3);
+    private bool s_navAgentTypeLoaded;
+    private readonly Dictionary<UnitSize, int> s_navAgentTypeIds = new Dictionary<UnitSize, int>(3);
 
-    public static int GetNavAgentTypeID(UnitSize unitSize)
+    public int GetNavAgentTypeID(UnitSize unitSize)
     {
         EnsureNavAgentTypeLoaded();
 
@@ -15,7 +16,7 @@ public static class AgentTypeHelper
             : throw new InvalidOperationException($"未配置 UnitSize={unitSize} 对应的 NavMesh AgentType。");
     }
 
-    private static bool TryMapUnitSize(string settingName, out UnitSize unitSize)
+    private bool TryMapUnitSize(string settingName, out UnitSize unitSize)
     {
         if (settingName.Equals("Small", StringComparison.OrdinalIgnoreCase))
         {
@@ -39,7 +40,7 @@ public static class AgentTypeHelper
         return false;
     }
 
-    private static void EnsureNavAgentTypeLoaded()
+    private void EnsureNavAgentTypeLoaded()
     {
         if (s_navAgentTypeLoaded)
         {

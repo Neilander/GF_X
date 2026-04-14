@@ -37,7 +37,7 @@ public class LevelTestProcedure : ProcedureBase
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    BuildManager.BuildBuildingForLevelInit(point.Identifier, point.Position);
+                    GameEntry.GetComponent<BuildManager>().BuildBuildingForLevelInit(point.Identifier, point.Position);
                     break;
                     // case EntityPresetPointType.Spawn:
                     // case EntityPresetPointType.Respawn:

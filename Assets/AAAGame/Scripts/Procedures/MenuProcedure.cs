@@ -56,7 +56,7 @@ public class MenuProcedure : ProcedureBase
         // lvParams.Set(LevelEntity.P_LevelDataRow, lvRow);
         // lvParams.Set(LevelEntity.P_LevelEnemyData, lvEmy);
         // lvParams.Set(LevelEntity.P_LevelRouteData, lvRoute);
-        lvEntity = await GF.Entity.ShowEntityAwait<LevelEntity>(lvRow.LvPfbName, Const.EntityGroup.Level, lvParams) as LevelEntity;
+        lvEntity = await GF.Entity.ShowEntityAwait<LevelEntity>(lvRow.PrefabPath, Const.EntityGroup.Level, lvParams) as LevelEntity;
         GF.BuiltinView.HideLoadingProgress();
     }
 }

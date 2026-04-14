@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 using GameFramework.Event;
 using AAAGame.Scripts.Entity;
+using SixLabors.ImageSharp.ColorSpaces.Companding;
 
 public partial class GeneralSetup : GameFrameworkComponent
 {
@@ -38,6 +39,14 @@ public partial class GeneralSetup : GameFrameworkComponent
     public void GeneralSystemShutDown()
     {
         GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
+    }
+
+    public int InitLevel(string identifier)
+    {
+        var levelTable = GF.DataTable.GetDataTable<LevelTable>();
+        var levelRow = levelTable.GetDataRow(row => row.Identifier == identifier);
+        var levelData = LevelData.FromRow(levelRow);
+        return LevelEntityFactory.ShowLevel(levelRow.PrefabPath, levelData);
     }
 
     private void OnGeneralShowEntitySuccess(object sender, GameEventArgs e)

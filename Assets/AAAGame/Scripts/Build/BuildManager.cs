@@ -4,19 +4,18 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public static class BuildManager
+public class BuildManager : GameFrameworkComponent
 {
-    private static readonly string BaseMilestoneTechIdPatterns = "Tech_BaseBuilt_{0}_Lv{1}";
-    private static readonly KeyValuePair<IngameValueType, int>[] EmptyResourceCosts = Array.Empty<KeyValuePair<IngameValueType, int>>();
+    private readonly string BaseMilestoneTechIdPatterns = "Tech_BaseBuilt_{0}_Lv{1}";
     // 默认给前 3 个选项分配交互按键；更多选项仍走鼠标长按触发。
-    private static readonly InputKey[] OptionalOptionKeys =
+    private readonly InputKey[] OptionalOptionKeys =
     {
         InputKey.InteractionPrimary,
         InputKey.InteractionSecondary,
         InputKey.InteractionTertiary,
     };
 
-    public static bool HasUpgrade(BuildingEntity owner)
+    public bool HasUpgrade(BuildingEntity owner)
     {
         if (owner == null || owner.buildingData == null)
             return false;
@@ -34,7 +33,7 @@ public static class BuildManager
         return GetUpgradeTechCandidates(owner).Count > 0;
     }
 
-    public static void ConfigureBuildInteractionOptions(BuildingEntity owner, InteractionHost host)
+    public void ConfigureBuildInteractionOptions(BuildingEntity owner, InteractionHost host)
     {
         if (owner == null || owner.buildingData == null || host == null)
             return;
@@ -54,7 +53,7 @@ public static class BuildManager
         ConfigureUpgradeOptions(owner, host);
     }
 
-    public static bool IsConstructOptionVisible(BuildingEntity owner, string buildBuildingId)
+    public bool IsConstructOptionVisible(BuildingEntity owner, string buildBuildingId)
     {
         if (owner == null || owner.buildingData == null)
             return false;
@@ -82,7 +81,7 @@ public static class BuildManager
         return false;
     }
 
-    public static bool IsConstructOptionExecutable(BuildingEntity owner, string buildBuildingId)
+    public bool IsConstructOptionExecutable(BuildingEntity owner, string buildBuildingId)
     {
         if (!IsConstructOptionVisible(owner, buildBuildingId))
             return false;
@@ -91,7 +90,7 @@ public static class BuildManager
         return target != null && SatisfyBuildCondition(target, owner.OwnerFactionID) && HasBuildCost(buildBuildingId);
     }
 
-    public static bool ConstructBuilding(BuildingEntity owner, string buildBuildingId)
+    public bool ConstructBuilding(BuildingEntity owner, string buildBuildingId)
     {
         if (owner == null || !IsConstructOptionExecutable(owner, buildBuildingId))
             return false;
@@ -103,7 +102,7 @@ public static class BuildManager
         return built;
     }
 
-    public static bool IsUpgradeOptionVisible(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool IsUpgradeOptionVisible(BuildingEntity owner, string upgradeBuildingId, string techId)
     {
         if (owner == null || owner.buildingData == null)
             return false;
@@ -135,7 +134,7 @@ public static class BuildManager
         return true;
     }
 
-    public static bool IsResearchOptionVisible(BuildingEntity owner, string techId)
+    public bool IsResearchOptionVisible(BuildingEntity owner, string techId)
     {
         if (owner == null || owner.buildingData == null)
             return false;
@@ -167,7 +166,7 @@ public static class BuildManager
         return true;
     }
 
-    public static bool IsUpgradeOptionExecutable(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool IsUpgradeOptionExecutable(BuildingEntity owner, string upgradeBuildingId, string techId)
     {
         if (!IsUpgradeOptionVisible(owner, upgradeBuildingId, techId))
             return false;
@@ -178,7 +177,7 @@ public static class BuildManager
         return HasBuildCost(upgradeBuildingId);
     }
 
-    public static bool IsResearchOptionExecutable(BuildingEntity owner, string techId)
+    public bool IsResearchOptionExecutable(BuildingEntity owner, string techId)
     {
         if (!IsResearchOptionVisible(owner, techId))
             return false;
@@ -189,7 +188,7 @@ public static class BuildManager
         return HasTechCost(techId);
     }
 
-    public static bool HasBuildCost(string buildingId)
+    public bool HasBuildCost(string buildingId)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
@@ -198,11 +197,11 @@ public static class BuildManager
         return InGameDataModel.GetValue(IngameValueType.Coin) >= buildingData.Cost;
     }
 
-    public static KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId)
+    public KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null || buildingData.Cost <= 0)
-            return EmptyResourceCosts;
+            return null;
 
         return new[]
         {
@@ -210,11 +209,11 @@ public static class BuildManager
         };
     }
 
-    public static KeyValuePair<IngameValueType, int>[] GetTechResourceCosts(string techId)
+    public KeyValuePair<IngameValueType, int>[] GetTechResourceCosts(string techId)
     {
         var techData = TechDataModel.GetTechData(techId);
         if (techData == null || techData.Cost <= 0)
-            return EmptyResourceCosts;
+            return null;
 
         return new[]
         {
@@ -222,7 +221,7 @@ public static class BuildManager
         };
     }
 
-    public static bool SatisfyUpgradeCondition(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool SatisfyUpgradeCondition(BuildingEntity owner, string upgradeBuildingId, string techId)
     {
         if (owner == null)
             return false;
@@ -237,7 +236,7 @@ public static class BuildManager
         return SatisfyBuildCondition(upgradeBuildingData, owner.OwnerFactionID);
     }
 
-    public static bool UpgradeBuilding(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool UpgradeBuilding(BuildingEntity owner, string upgradeBuildingId, string techId)
     {
         if (!IsUpgradeOptionExecutable(owner, upgradeBuildingId, techId))
             return false;
@@ -269,7 +268,7 @@ public static class BuildManager
         return built;
     }
 
-    public static bool ResearchTech(BuildingEntity owner, string techId)
+    public bool ResearchTech(BuildingEntity owner, string techId)
     {
         if (!IsResearchOptionExecutable(owner, techId))
             return false;
@@ -284,7 +283,7 @@ public static class BuildManager
         return InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId);
     }
 
-    public static void OnBuildingDemolished(BuildingEntity owner)
+    public void OnBuildingDemolished(BuildingEntity owner)
     {
         if (owner == null || owner.buildingData == null)
             return;
@@ -293,18 +292,18 @@ public static class BuildManager
             ReduceBaseMilestoneTechs(owner.buildingData, owner.BuildingInstanceId);
     }
 
-    public static bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
+    public bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
         return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: true);
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗。
-    public static bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null)
+    public bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
         return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: false, consumeCoins: false);
     }
 
-    private static bool BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins)
+    private bool BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
@@ -334,7 +333,7 @@ public static class BuildManager
         return true;
     }
 
-    public static bool SatisfyBuildCondition(BuildingData buildingData, int ownerFactionId)
+    public bool SatisfyBuildCondition(BuildingData buildingData, int ownerFactionId)
     {
         if (buildingData == null)
             return false;
@@ -349,7 +348,7 @@ public static class BuildManager
         return HasArchetypeBaseLevelTech(buildingData.Arche, requiredBaseLevel);
     }
 
-    private static int GetRequiredBaseLevel(BuildingData buildingData)
+    private int GetRequiredBaseLevel(BuildingData buildingData)
     {
         if (buildingData == null || buildingData.Type == BuilType.Base)
             return 0;
@@ -357,7 +356,7 @@ public static class BuildManager
         return Mathf.Clamp(buildingData.Lv, 1, 3);
     }
 
-    private static bool HasArchetypeBaseLevelTech(Archetype archetype, int requiredBaseLevel)
+    private bool HasArchetypeBaseLevelTech(Archetype archetype, int requiredBaseLevel)
     {
         for (int lv = requiredBaseLevel; lv <= 3; lv++)
         {
@@ -368,7 +367,7 @@ public static class BuildManager
         return false;
     }
 
-    private static void GrantBaseMilestoneTechs(BuildingData buildingData, string buildingInstanceId)
+    private void GrantBaseMilestoneTechs(BuildingData buildingData, string buildingInstanceId)
     {
         if (buildingData == null || buildingData.Type != BuilType.Base || string.IsNullOrWhiteSpace(buildingInstanceId))
             return;
@@ -387,7 +386,7 @@ public static class BuildManager
         }
     }
 
-    private static void ReduceBaseMilestoneTechs(BuildingData buildingData, string buildingInstanceId)
+    private void ReduceBaseMilestoneTechs(BuildingData buildingData, string buildingInstanceId)
     {
         if (buildingData == null || buildingData.Type != BuilType.Base || string.IsNullOrWhiteSpace(buildingInstanceId))
             return;
@@ -405,7 +404,7 @@ public static class BuildManager
         }
     }
 
-    private static bool TryResolveBaseMilestoneTechId(Archetype archetype, int level, out string resolvedTechId)
+    private bool TryResolveBaseMilestoneTechId(Archetype archetype, int level, out string resolvedTechId)
     {
         resolvedTechId = null;
         if (archetype == Archetype.None || level <= 0)
@@ -420,7 +419,7 @@ public static class BuildManager
         return true;
     }
 
-    private static bool SatisfyTechCondition(string techId)
+    private bool SatisfyTechCondition(string techId)
     {
         if (string.IsNullOrWhiteSpace(techId))
             return false;
@@ -435,7 +434,7 @@ public static class BuildManager
         return true;
     }
 
-    private static bool HasTechCost(string techId)
+    private bool HasTechCost(string techId)
     {
         var techData = TechDataModel.GetTechData(techId);
         if (techData == null)
@@ -444,7 +443,7 @@ public static class BuildManager
         return InGameDataModel.GetValue(IngameValueType.Coin) >= techData.Cost;
     }
 
-    private static List<string> GetUpgradeTechCandidates(BuildingEntity owner)
+    private List<string> GetUpgradeTechCandidates(BuildingEntity owner)
     {
         var results = new List<string>();
         if (owner == null || owner.buildingData == null || owner.buildingData.UpgradeTechIDs == null)
@@ -466,7 +465,7 @@ public static class BuildManager
         return results;
     }
 
-    private static List<string> GetResearchTechCandidates(BuildingEntity owner)
+    private List<string> GetResearchTechCandidates(BuildingEntity owner)
     {
         var results = new List<string>();
         if (owner == null || owner.buildingData == null || owner.buildingData.UpgradeTechIDs == null)
@@ -484,7 +483,7 @@ public static class BuildManager
         return results;
     }
 
-    private static void ConfigureUpgradeOptions(BuildingEntity owner, InteractionHost host)
+    private void ConfigureUpgradeOptions(BuildingEntity owner, InteractionHost host)
     {
         string upgradeBuildingId = BuildingDataModel.GetUpgradeID(owner.buildingData.Identifier);
         if (string.IsNullOrWhiteSpace(upgradeBuildingId))
@@ -517,7 +516,7 @@ public static class BuildManager
         }
     }
 
-    private static void ConfigureTechResearchOptions(BuildingEntity owner, InteractionHost host)
+    private void ConfigureTechResearchOptions(BuildingEntity owner, InteractionHost host)
     {
         if (owner.buildingData.UpgradeTechIDs == null)
             return;
@@ -544,7 +543,7 @@ public static class BuildManager
         }
     }
 
-    private static void ConfigureLv0ConstructOptions(BuildingEntity owner, InteractionHost host)
+    private void ConfigureLv0ConstructOptions(BuildingEntity owner, InteractionHost host)
     {
         // Lv0 在 host 初始化时先挂载同类型的所有 Lv1 备选，
         // 可见性仍由 IsConstructOptionVisible 动态判断（含科技解锁条件）。
@@ -570,7 +569,7 @@ public static class BuildManager
         }
     }
 
-    private static List<BuildingData> GetLv0ConstructCandidates(BuildingEntity owner, bool requireUnlockedArche = true)
+    private List<BuildingData> GetLv0ConstructCandidates(BuildingEntity owner, bool requireUnlockedArche = true)
     {
         var results = new List<BuildingData>();
         if (owner == null || owner.buildingData == null || owner.buildingData.Lv != 0)
@@ -602,7 +601,7 @@ public static class BuildManager
         return results;
     }
 
-    private static HashSet<Archetype> GetPlayerUnlockedBaseArches()
+    private HashSet<Archetype> GetPlayerUnlockedBaseArches()
     {
         var arches = new HashSet<Archetype>();
         foreach (Archetype arche in Enum.GetValues(typeof(Archetype)))
@@ -617,7 +616,7 @@ public static class BuildManager
         return arches;
     }
 
-    private static bool TryGetOptionalOptionKey(int optionIndex, out InputKey key)
+    private bool TryGetOptionalOptionKey(int optionIndex, out InputKey key)
     {
         key = default;
         if (optionIndex < 0)
@@ -630,7 +629,7 @@ public static class BuildManager
         return true;
     }
 
-    private static int ResolveOwnerFactionId(Vector3 position)
+    private int ResolveOwnerFactionId(Vector3 position)
     {
         var levelEntity = LevelEntity.ActiveLevelEntity;
         if (levelEntity == null)

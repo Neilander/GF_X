@@ -16,8 +16,6 @@ MonoBehaviour:
   mDataTables:
   - CameraViewTable
   - CharacterDataDetail
-  - CharacterMAFactoryTable
-  - CharacterMainPropertyTable
   - LevelTable
   - Build/BuildingTable
   - Build/DeviceTable

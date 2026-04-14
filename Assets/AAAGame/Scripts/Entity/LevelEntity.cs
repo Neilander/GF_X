@@ -9,9 +9,13 @@ using GiantGrey.TileWorldCreator;
 
 public class LevelEntity : EntityBase
 {
+    public const string P_LevelData = "LevelData";
+
     private const string StrongholdLayerPrefix = "SH";
     private TileWorldCreatorManager tileWorldCreatorManager;
     private NavMeshSurface[] _navMeshSurfaces;
+
+    public LevelData LevelData { get; private set; }
 
     private static LevelEntity activeLevelEntity;
 
@@ -59,6 +63,7 @@ public class LevelEntity : EntityBase
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
+        LevelData = Params.Get(P_LevelData) as LevelData;
         activeLevelEntity = this;
 
         _navMeshSurfaces = GetComponentsInChildren<NavMeshSurface>();
@@ -79,6 +84,7 @@ public class LevelEntity : EntityBase
         }
 
         InGameDataModel.ClearStrongholdRuntimeData();
+        LevelData = null;
         tileWorldCreatorManager = null;
         _navMeshSurfaces = null;
 
@@ -209,7 +215,7 @@ public class LevelEntity : EntityBase
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    BuildManager.BuildBuildingForLevelInit(point.Identifier, point.Position);
+                    GameEntry.GetComponent<BuildManager>().BuildBuildingForLevelInit(point.Identifier, point.Position);
                     break;
             }
         }

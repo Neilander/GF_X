@@ -12,9 +12,9 @@ public class RealProcedure : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         // 初始化数据模型
-        GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup();
-
-        InitLevel();
+        var generalSetup = GameEntry.GetComponent<GeneralSetup>();
+        generalSetup.GeneralSystemSetup();
+        generalSetup.InitLevel("Lv_1");
         // 初始化卡牌系统
         GameEntry.GetComponent<CardSetup>().CardSystemSetup();
         GameEntry.GetComponent<CardSetup>().OpenCardUI();
@@ -37,12 +37,6 @@ public class RealProcedure : ProcedureBase
 
         GameEntry.GetComponent<CardSetup>().CardSystemShutdown();
         GameEntry.GetComponent<GeneralSetup>().GeneralSystemShutDown();
-    }
-    private void InitLevel()
-    {
-        EntityParams levelParams = EntityParams.Create();
-        // levelParams.Set(LevelEntity.P_DeviceData, deviceData);
-        GF.Entity.ShowEntity<LevelEntity>("Level/Level_Test", Const.EntityGroup.Level, levelParams);
     }
     // private void InitDataModels()
     // {
