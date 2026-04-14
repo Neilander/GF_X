@@ -82,6 +82,17 @@ public class MAEntity : CompCreature, IEntityContext
         durationMoveEffectComp.Init(this);
 
         cController = GetComponent<CharacterController>();
+        
+        // 调试：检查CharacterController是否存在
+        if (cController == null)
+        {
+            Log.Error($"[MAEntity] ⚠️ 预制体 {gameObject.name} 缺少 CharacterController 组件！角色将无法移动！");
+        }
+        else
+        {
+            Log.Info($"[MAEntity] ✓ CharacterController 组件存在，radius={cController.radius}, height={cController.height}");
+        }
+        
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
 
         _modelTransform = animator != null ? animator.transform : display;
@@ -94,6 +105,10 @@ public class MAEntity : CompCreature, IEntityContext
             {
                 Log.Info($"  {param.name}: {param.type}");
             }
+        }
+        else
+        {
+            Log.Error($"[MAEntity] ⚠️ 预制体 {gameObject.name} 缺少 Animator 组件！");
         }
     }
 
@@ -142,13 +157,23 @@ public class MAEntity : CompCreature, IEntityContext
     protected virtual void RefreshCharacterData(object userData)
     {
         CharacterKey = (userData as EntityParams).GetString(EntityParams.P_CharacterKey);
+        Log.Info($"[MAEntity] 正在加载角色，CharacterKey={CharacterKey}");
 
         var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
         CharacterData = table.GetDataRow(r => r.CharacterKey == CharacterKey);
         if (CharacterData == null)
             throw new InvalidOperationException($"MAEntity 初始化失败: 未找到 CharacterDataDetail，CharacterKey={CharacterKey}。");
+        
+        Log.Info($"[MAEntity] ======================================");
+        Log.Info($"[MAEntity] 成功加载角色！");
+        Log.Info($"[MAEntity] CharacterKey: {CharacterKey}");
+        Log.Info($"[MAEntity] 角色名称: {CharacterData.NameKey}");
+        Log.Info($"[MAEntity] 血量: {CharacterData.Health}");
+        Log.Info($"[MAEntity] 攻击力: {CharacterData.Weapon1Atk}");
+        Log.Info($"[MAEntity] 移速: {CharacterData.Speed}");
+        Log.Info($"[MAEntity] ======================================");
 
-        navAgentTypeID = GameEntry.GetComponent<AgentTypeHelper>().GetNavAgentTypeID(CharacterData.Size);
+        navAgentTypeID = GameEntry.GetComponent<AgentTypeHelper>().GetNavAgentTypeID(UnitSize.Medium);
     }
     /// <summary>
     /// 子类在 OnShow 末尾（Side 等字段赋值完毕后）调用，注册到 GroupMoveManager。
@@ -233,6 +258,12 @@ public class MAEntity : CompCreature, IEntityContext
             if (CanRun(durationMoveEffectComp))
                 durationMoveEffectComp.ApplyEffect(dt);
 
+            // 调试：检查moveExecutor是否存在
+            if (moveExecutor == null)
+            {
+                Debug.LogError($"[MAEntity] ⚠️ moveExecutor is NULL! 无法执行移动！gameObject={gameObject.name}");
+            }
+            
             moveExecutor.Execute();
 
             if (animator != null)

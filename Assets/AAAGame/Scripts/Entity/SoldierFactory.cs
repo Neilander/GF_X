@@ -19,7 +19,7 @@ public static class SoldierFactory
     {
         string prefabName = GetSoldierPrefabName(unitType);
         string characterKey = unitType.ToString();
-        Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
+        Const.EntityGroup entityGroup = (unitType == UnitType.Unit_Hero || unitType == UnitType.Unit_Scapegoat || unitType == UnitType.Unit_Courier) ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
 
         // 添加初始Buff到StartBuffs列表
         var startBuffs = new System.Collections.Generic.List<BuffData>();
@@ -36,8 +36,8 @@ public static class SoldierFactory
     /// </summary>
     private static string GetSoldierPrefabName(UnitType index)
     {
-        // 使用易拉罐预制体
-        return "易拉罐";
+        // 使用背锅侠预制体
+        return "背锅侠";
     }
 
     /// <summary>

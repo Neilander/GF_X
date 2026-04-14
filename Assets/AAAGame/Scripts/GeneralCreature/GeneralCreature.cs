@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -6,7 +6,7 @@ using UnityGameFramework.Runtime;
 public class GeneralCreature : EntityBase, ITargetable
 {
     public SideType Side { get; protected set; }
-    public bool Alive { get; protected set; }
+    public bool Alive { get; set; }
     //public ITargetable Instigator { get; set; }
     public GameObject Gmo { get; private set; }
 
@@ -143,7 +143,11 @@ public class GeneralCreature : EntityBase, ITargetable
                 }
             }
 
-            GF.Entity.HideEntity(Id);
+            // 检查实体是否存在再隐藏
+            if (GF.Entity.GetEntity(Id) != null)
+            {
+                GF.Entity.HideEntity(Id);
+            }
         }
     }
 

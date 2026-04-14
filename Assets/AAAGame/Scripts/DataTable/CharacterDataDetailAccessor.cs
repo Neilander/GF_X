@@ -71,7 +71,7 @@ public static class CharacterDataDetailAccessor
             CreatureMainProperty.Health => row.Health,
             CreatureMainProperty.Speed => row.Speed,
             CreatureMainProperty.Mana => row.Mana,
-            CreatureMainProperty.CollisionRadius => GetCollisionRadiusBySize(row.Size),
+            CreatureMainProperty.CollisionRadius => GetCollisionRadiusBySize(UnitSize.Medium),
             CreatureMainProperty.TurnRate => row.TurnRate,
             CreatureMainProperty.Sight => row.Sight,
             _ => Fix64.Zero

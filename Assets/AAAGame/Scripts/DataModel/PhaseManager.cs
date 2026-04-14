@@ -1,4 +1,4 @@
-﻿using GameFramework.Event;
+using GameFramework.Event;
 using System;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -161,6 +161,12 @@ public class PhaseManager : GameFrameworkComponent
                         // 假设玩家操控的角色是玩家方的单位
                         if (soldierEntity.Side == SideType.EnemySide)
                         {
+                            // 设置为死亡状态，防止后续的伤害处理
+                            var generalCreature = entity.Logic as GeneralCreature;
+                            if (generalCreature != null)
+                            {
+                                generalCreature.Alive = false;
+                            }
                             // 先隐藏血条
                             HideHealthBar(entity.Id);
                             // 再隐藏实体
