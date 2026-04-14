@@ -33,13 +33,13 @@ public partial class BuildingEntity : MAEntity
     private bool _combatLocked;
     private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
 
-    private void SetupBuildingData(object userData)
+    protected override void RefreshCharacterData(object userData)
     {
         var entityParams = userData as EntityParams;
         buildingData = entityParams?.Get(P_BuildingData) as BuildingData;
         BuildingInstanceId = entityParams != null && entityParams.TryGet<VarString>(P_BuildingInstanceId, out var instanceId) ? instanceId : null;
 
-        ReferenceId = ResolvePropertyTemplateId(buildingData);
+        CharacterKey = ResolvePropertyTemplateId(buildingData);
         SetBrain(new BuildingAIBrain());
 
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
@@ -48,7 +48,6 @@ public partial class BuildingEntity : MAEntity
 
     protected override void OnShow(object userData)
     {
-        SetupBuildingData(userData);
         base.OnShow(userData);
 
         InitializeAttackCapabilityFlags();

@@ -10,7 +10,7 @@ public class GeneralCreature : EntityBase, ITargetable
     //public ITargetable Instigator { get; set; }
     public GameObject Gmo { get; private set; }
 
-    public string ReferenceId { get; protected set; }
+    public string CharacterKey { get; protected set; }
 
     public Transform display { get; protected set; }
     public Animator animator { get; protected set; }
@@ -69,7 +69,7 @@ public class GeneralCreature : EntityBase, ITargetable
         SetUpHurtBox();
 
         animator = ResolveAnimator(transform, display);
-        //ReferenceId = "Knight";
+        //CharacterKey = "Knight";
     }
 
     public Fix64 HealthValue => CreaturePropertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent);
@@ -78,8 +78,8 @@ public class GeneralCreature : EntityBase, ITargetable
     {
         base.OnShow(userData);
         Alive = true;
-        CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
-        //Debug.LogError($"[Creature] {ReferenceId} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
+        CreaturePropertyManager = new CreaturePropertyManager(CharacterKey);
+        //Debug.LogError($"[Creature] {CharacterKey} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
     }
 
 
@@ -219,18 +219,6 @@ public class GeneralCreature : EntityBase, ITargetable
 
     #endregion
 
-    public static CharacterDataDetail GetData(string id)
-    {
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        var rows = table.GetDataRows(r => r.CharacterKey == id);
-        if (rows == null || rows.Length == 0)
-        {
-            GF.LogError("没有匹配的表格" + "CharacterDataDetail" + " id=" + id);
-            return null;
-        }
-        var row = rows[0];
-        return row;
-    }
 }
 
 public enum SideType
@@ -246,7 +234,7 @@ public interface ITargetable : ISelectable
     bool Alive { get; }
     //ITargetable Instigator { get; set; }
     GameObject Gmo { get; }
-    string ReferenceId { get; }
+    string CharacterKey { get; }
 
     void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null);
     Fix64 HealthValue { get; }

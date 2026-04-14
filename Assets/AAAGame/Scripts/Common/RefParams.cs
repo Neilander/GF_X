@@ -32,6 +32,29 @@ public class RefParams : IReference
         varObj.Value = value;
         Set<VarObject>(key, varObj);
     }
+
+    public void SetString(string key, string value)
+    {
+        Set<VarString>(key, value);
+    }
+
+    public bool TryGetString(string key, out string value)
+    {
+        if (TryGet<VarString>(key, out var varString))
+        {
+            value = varString;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    public string GetString(string key, string defaultValue = null)
+    {
+        return TryGetString(key, out var value) ? value : defaultValue;
+    }
+
     public object Get(string key)
     {
         return Get<VarObject>(key).Value;

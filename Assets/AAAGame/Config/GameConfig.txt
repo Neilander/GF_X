@@ -5,3 +5,6 @@
 	MinMoveSpeed	移速下限	100
 	MaxMoveSpeed	移速上限	1000
 	DistanceConversionRate	距离码数转换为unity距离的比例	0.02
+	SmallUnitCollisionRadius	小型单位碰撞半径	20
+	MediumUnitCollisionRadius	中型单位碰撞半径	30
+	LargeUnitCollisionRadius	大型单位碰撞半径	40

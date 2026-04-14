@@ -30,7 +30,7 @@ public class TimedDeathBuff : BuffCallback
                 SoldierEntity soldier = entity.gameObject.GetComponent<SoldierEntity>();
                 if (soldier != null)
                 {
-                    GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位类型: {soldier.UnitIndex}, 当前生命值: {(float)soldier.HealthValue}");
+                    GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位类型: {soldier.CharacterKey}, 当前生命值: {(float)soldier.HealthValue}");
                     
                     // 通过TakeDamage触发死亡逻辑，这样Alive会被正确设置为false
                     soldier.TakeDamage(soldier.HealthValue, HealthModifyType.reduce);

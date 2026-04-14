@@ -64,35 +64,38 @@ public class CharacterTestProcedure : ProcedureBase
         //var enemyBuffs = BuildBuffList(EnemyBuff_Dot, EnemyBuff_Regen, EnemyBuff_Speed, EnemyBuff_Shield);
 
         // --- 玩家 ---
-        var pPlayer = EntityParams.Create(position: playerSpawn);
-        pPlayer.Side = SideType.PlayerSide;
-        pPlayer.BrainType = BrainType.Player;
-        pPlayer.Index = "Unit_Coder";
-        //pPlayer.StartBuffs = friendlyBuffs;
-        GF.Entity.ShowEntity<CharacterEntity>("gujia", Const.EntityGroup.Player, pPlayer);
+        MAEntityFactory.ShowCharacter(
+            prefabName: "gujia",
+            characterKey: "Unit_Coder",
+            position: playerSpawn,
+            side: SideType.PlayerSide,
+            brainType: BrainType.Player,
+            entityGroup: Const.EntityGroup.Player);
 
         // --- 友军小兵 ---
         for (int i = 0; i < friendlyCount; i++)
         {
             Vector3 spawnPos = new Vector3(1f + (i * friendlySpacing), 1f, 0f);
-            var pFriendly = EntityParams.Create(position: spawnPos);
-            pFriendly.Side = SideType.PlayerSide;
-            pFriendly.BrainType = BrainType.SoldierAI;
-            pFriendly.Index = "Unit_Coder";
-            //pFriendly.StartBuffs = friendlyBuffs;
-            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, pFriendly);
+            MAEntityFactory.ShowSoldier(
+                prefabName: "gujia",
+                characterKey: "Unit_Coder",
+                position: spawnPos,
+                side: SideType.PlayerSide,
+                brainType: BrainType.SoldierAI,
+                entityGroup: Const.EntityGroup.Level);
         }
 
         // --- 敌方小兵 ---
         for (int i = 0; i < enemyCount; i++)
         {
             Vector3 spawnPos = enemyCenter + new Vector3(i * enemySpacing, 0, 0);
-            var pEnemy = EntityParams.Create(position: spawnPos);
-            pEnemy.Side = SideType.EnemySide;
-            pEnemy.BrainType = BrainType.SoldierAI;
-            pEnemy.Index = "Unit_BoneButcher";
-            //pEnemy.StartBuffs = enemyBuffs;
-            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, pEnemy);
+            MAEntityFactory.ShowSoldier(
+                prefabName: "gujia",
+                characterKey: "Unit_BoneButcher",
+                position: spawnPos,
+                side: SideType.EnemySide,
+                brainType: BrainType.SoldierAI,
+                entityGroup: Const.EntityGroup.Level);
         }
 
 
@@ -122,14 +125,14 @@ public class CharacterTestProcedure : ProcedureBase
             {
                 Fix64 originalMax = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
                 Fix64 max = originalMax;
-                
+
                 // 所有单位血量增加到10倍
                 Fix64 newMax = originalMax * (Fix64)10;
                 Fix64 addValue = newMax - originalMax;
                 var modifier = PropertyDirectAdditiveModifier.Create(addValue);
                 creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
                 max = newMax;
-                
+
                 // 更新当前生命值，确保单位满血
                 Fix64 currentHealth = creature.HealthValue;
                 Fix64 healAmount = max - currentHealth;
@@ -139,7 +142,7 @@ public class CharacterTestProcedure : ProcedureBase
                         CreatureCurrentProperty.HealthCurrent,
                     PropertyIrreversibleAdditiveModifier.Create(healAmount), true);
                 }
-                
+
                 // 根据单位的Side判断阵营
                 bool isFriendly = creature.Side == SideType.PlayerSide;
                 HealthBarComp.Create(creature.Id, creature.transform, (float)creature.HealthValue, (float)max, isFriendly);

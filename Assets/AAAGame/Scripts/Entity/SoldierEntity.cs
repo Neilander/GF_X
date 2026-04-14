@@ -7,11 +7,6 @@ using UnityEngine;
 public class SoldierEntity : MAEntity
 {
     /// <summary>
-    /// 单位类型索引
-    /// </summary>
-    private string _unitIndex;
-
-    /// <summary>
     /// AI类型
     /// </summary>
     public BrainType BrainType { get; private set; }
@@ -19,16 +14,14 @@ public class SoldierEntity : MAEntity
     protected override void OnShow(object userData)
     {
 
+        base.OnShow(userData);
         if (userData is EntityParams ep)
         {
             Side = ep.Side;
-            BrainType = ep.BrainType; // 设置AI类型
-            _unitIndex = ep.Index; // 保存单位类型索引
-            ReferenceId = ep.Index; // 设置正确的ReferenceId
+            BrainType = ep.BrainType; // 设置AI类型      
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
         }
 
-        base.OnShow(userData);
 
         //Debug.LogError("什么玩意");
         RegisterToGroupMove(); // Side 已赋值，安全注册
@@ -62,19 +55,12 @@ public class SoldierEntity : MAEntity
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
         FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
 
-        ReferenceId = (userData as EntityParams).Index;
         // 直接创建 DirectAtkComp，不再走 Factory
         var atkComp = new DirectAtkComp();
         this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
     }
 
-
-
-    /// <summary>
-    /// 获取单位类型索引
-    /// </summary>
-    public string UnitIndex => _unitIndex;
 
     /// <summary>
     /// 获取单位类型（重写基类方法）

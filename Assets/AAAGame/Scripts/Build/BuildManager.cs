@@ -328,11 +328,7 @@ public static class BuildManager
             ? Guid.NewGuid().ToString("N")
             : buildingInstanceId;
 
-        EntityParams buildingParams = EntityParams.Create(position);
-        buildingParams.Set(BuildingEntity.P_BuildingData, buildingData);
-        buildingParams.Set<VarString>(BuildingEntity.P_BuildingInstanceId, resolvedBuildingInstanceId);
-
-        GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, buildingParams);
+        MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId);
 
         GrantBaseMilestoneTechs(buildingData, resolvedBuildingInstanceId);
         return true;

@@ -2,6 +2,7 @@
 
 public static class CharacterDataDetailAccessor
 {
+
     public static WeaponData[] GetWeaponDatas(CharacterDataDetail row)
     {
         if (row == null)
@@ -70,10 +71,26 @@ public static class CharacterDataDetailAccessor
             CreatureMainProperty.Health => row.Health,
             CreatureMainProperty.Speed => row.Speed,
             CreatureMainProperty.Mana => row.Mana,
-            CreatureMainProperty.CollisionRadius => row.CollisionRadius,
+            CreatureMainProperty.CollisionRadius => GetCollisionRadiusBySize(row.Size),
             CreatureMainProperty.TurnRate => row.TurnRate,
             CreatureMainProperty.Sight => row.Sight,
             _ => Fix64.Zero
         };
+    }
+
+    private const string SmallUnitCollisionRadiusKey = "SmallUnitCollisionRadius";
+    private const string MediumUnitCollisionRadiusKey = "MediumUnitCollisionRadius";
+    private const string LargeUnitCollisionRadiusKey = "LargeUnitCollisionRadius";
+    private static Fix64 GetCollisionRadiusBySize(UnitSize size)
+    {
+        float radius = size switch
+        {
+            UnitSize.Small => GF.Config.GetFloat(SmallUnitCollisionRadiusKey, 0f),
+            UnitSize.Medium => GF.Config.GetFloat(MediumUnitCollisionRadiusKey, 0f),
+            UnitSize.Large => GF.Config.GetFloat(LargeUnitCollisionRadiusKey, 0f),
+            _ => 0f
+        };
+
+        return (Fix64)radius;
     }
 }

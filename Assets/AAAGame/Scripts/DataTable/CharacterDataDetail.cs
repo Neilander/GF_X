@@ -92,9 +92,9 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 模型碰撞半径
+        /// 体型
         /// </summary>
-        public Fix64 CollisionRadius
+        public UnitSize Size
         {
             get;
             private set;
@@ -408,7 +408,7 @@ public class CharacterDataDetail : DataRowBase
             DescKey = columnStrings[index++];
             UnitTags = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Supply = DataTableExtension.ParseInt32(columnStrings[index++]);
-            CollisionRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Size = DataTableExtension.ParseEnum<UnitSize>(columnStrings[index++]);
             TurnRate = DataTableExtension.ParseFix64(columnStrings[index++]);
             Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Health = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -459,7 +459,7 @@ public class CharacterDataDetail : DataRowBase
                     DescKey = binaryReader.ReadString();
                     UnitTags = binaryReader.ReadArray<UnitTag>();
                     Supply = binaryReader.Read7BitEncodedInt32();
-                    CollisionRadius = binaryReader.ReadFix64();
+                    Size = binaryReader.ReadEnum<UnitSize>();
                     TurnRate = binaryReader.ReadFix64();
                     Def = binaryReader.ReadFix64();
                     Health = binaryReader.ReadFix64();

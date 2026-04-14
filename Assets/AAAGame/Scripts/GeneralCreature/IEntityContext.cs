@@ -12,7 +12,8 @@ public interface IEntityContext
     Quaternion Rotation { get; set; }
     SideType Side { get; }
     bool Alive { get; }
-    string ReferenceId { get; }
+    string CharacterKey { get; }
+    CharacterDataDetail CharacterData { get; }
 
     IControlBrain Brain { get; }
     IMoveExecutor MoveExecutor { get; }

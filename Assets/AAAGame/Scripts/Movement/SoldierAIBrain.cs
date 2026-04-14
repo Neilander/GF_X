@@ -86,7 +86,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             coordinator.SetAgentGroup(selfId, leaderId);   // 自己加入领袖的组
             _joinedGroup = true;
             GameDebugSettings.Log(DebugCategory.Brain,
-                $"[{self.ReferenceId}] 加入组 groupId={leaderId}, leader={_leader.ReferenceId}");
+                $"[{self.CharacterKey}] 加入组 groupId={leaderId}, leader={_leader.CharacterKey}");
         }
 
         UpdateState(self);
@@ -139,7 +139,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                         int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
                         GroupMoveManager.Instance.Coordinator.SetAgentGroup(selfId, -1);
                         GameDebugSettings.Log(DebugCategory.Brain,
-                            $"[{self.ReferenceId}] 离开组, leader丢失或超距");
+                            $"[{self.CharacterKey}] 离开组, leader丢失或超距");
                     }
                     _leader = null;
                     _joinedGroup = false;
@@ -155,8 +155,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                     // 立即清掉旧 NavMesh 目标，防止继续走向已死敌人
                     self.MoveComp.StopMove();
                     GameDebugSettings.Log(DebugCategory.Brain,
-                        $"[{self.ReferenceId}] Combat→Follow: enemy={(enemy == null ? "null" : "dead")}" +
-                        $", leader={(_leader != null ? _leader.ReferenceId : "null")}" +
+                        $"[{self.CharacterKey}] Combat→Follow: enemy={(enemy == null ? "null" : "dead")}" +
+                        $", leader={(_leader != null ? _leader.CharacterKey : "null")}" +
                         $", joinedGroup={_joinedGroup}");
                     State = SoldierState.Follow;
                 }
@@ -168,7 +168,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     {
         if (!GroupMoveManager.HasInstance || State == _lastSyncedState) return;
         GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.ReferenceId}] 状态切换 {_lastSyncedState} → {State}");
+            $"[{self.CharacterKey}] 状态切换 {_lastSyncedState} → {State}");
         _lastSyncedState = State;
 
         int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
@@ -224,7 +224,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 _inDeadZone = true;
                 _deadZoneTarget = null;
                 GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.ReferenceId}] 进入死区 dist={distToLeader:F2} t={t:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+                    $"[{self.CharacterKey}] 进入死区 dist={distToLeader:F2} t={t:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
             }
         }
         else
@@ -238,7 +238,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             {
                 _deadZoneTarget = PickRandomDeadZonePoint(_leader.Position, leaderEqR, deadZoneOuter);
                 GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.ReferenceId}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
+                    $"[{self.CharacterKey}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
             }
 
             self.MoveComp.MoveTo(_deadZoneTarget.Value);
@@ -337,7 +337,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         Vector3 myPos = self.Position;
         Vector3 target = myPos + velocity.normalized * speed;
         GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.ReferenceId}] ApplyVel state={State} vel={velocity} → target={target}" +
+            $"[{self.CharacterKey}] ApplyVel state={State} vel={velocity} → target={target}" +
             $" leaderPos={(_leader != null ? _leader.Position.ToString() : "null")}");
         Move = Vector2.zero;
         self.MoveComp.MoveTo(target);

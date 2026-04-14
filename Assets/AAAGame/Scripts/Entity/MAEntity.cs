@@ -5,9 +5,11 @@ using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
+using UnityEngine.AI;
 
 public class MAEntity : CompCreature, IEntityContext
 {
+    public CharacterDataDetail CharacterData { get; protected set; }
     private const string PlayerInteractionNodeName = "InteractCollider";
     private const float PlayerInteractionRange = 2.7f;
     private const float PlayerInteractionPadding = 0.7f;
@@ -24,7 +26,7 @@ public class MAEntity : CompCreature, IEntityContext
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
 
     /// <summary>
-    /// NavMesh Agent Type ID，用于导航和移动约束。默认 0 = Humanoid。
+    /// NavMesh Agent Type ID，用于导航和移动约束。
     /// 子类可在 OnShow/SetUpMAComp 之前设置。
     /// </summary>
     public int navAgentTypeID = -1372625422;
@@ -35,6 +37,7 @@ public class MAEntity : CompCreature, IEntityContext
 
     private Quaternion? _targetRotation = null;
     private Transform _modelTransform = null;
+    private bool _maCompInitialized;
 
     private Vector3 _collisionScaleBase = Vector3.one;
     private float _collisionRadiusBaseWorld;
@@ -59,7 +62,7 @@ public class MAEntity : CompCreature, IEntityContext
         set => transform.rotation = value;
     }
 
-    // Side, Alive, ReferenceId 已在 GeneralCreature 中定义
+    // Side, Alive, CharacterKey 已在 GeneralCreature 中定义
 
     IMoveExecutor IEntityContext.MoveExecutor => moveExecutor;
     IMoveComp IEntityContext.MoveComp => moveComp;
@@ -79,21 +82,30 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnInit(userData);
 
-        SetUpMAComp(userData);
-
         durationMoveEffectComp = new DurationMoveEffectComp();
         durationMoveEffectComp.Init(this);
 
         cController = GetComponent<CharacterController>();
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
-        _moveExecutor.Init(cController, navAgentTypeID);
 
         _modelTransform = animator != null ? animator.transform : display;
     }
 
     protected override void OnShow(object userData)
     {
+        RefreshCharacterData(userData);
+
         base.OnShow(userData);
+
+        if (!_maCompInitialized)
+        {
+            SetUpMAComp(userData);
+            _maCompInitialized = true;
+        }
+
+        _moveExecutor.Init(cController, navAgentTypeID);
+        if (moveComp is CharacterMoveComp characterMoveComp)
+            characterMoveComp.Init(this, navAgentTypeID);
 
         InitializeCollisionScaleBase();
 
@@ -126,6 +138,17 @@ public class MAEntity : CompCreature, IEntityContext
         EntityRegistry.Register(this);
     }
 
+    protected virtual void RefreshCharacterData(object userData)
+    {
+        CharacterKey = (userData as EntityParams).GetString(EntityParams.P_CharacterKey);
+
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        CharacterData = table.GetDataRow(r => r.CharacterKey == CharacterKey);
+        if (CharacterData == null)
+            throw new InvalidOperationException($"MAEntity 初始化失败: 未找到 CharacterDataDetail，CharacterKey={CharacterKey}。");
+
+        navAgentTypeID = AgentTypeHelper.GetNavAgentTypeID(CharacterData.Size);
+    }
     private void EnsurePlayerInteractionRuntime()
     {
         Transform interactionNode = transform.Find(PlayerInteractionNodeName);
@@ -372,11 +395,9 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected virtual void SetUpMAComp(object userData)
     {
-        //获取路径
-        var row = GF.DataTable.GetDataTable<CharacterMAFactoryTable>().GetDataRows(r => r.CharacterKey == ReferenceId)[0];
-        string moveFacPath = row.MoveFactoryPath;
-        string atkFacPath = row.AttackFactoryPath;
-        //设置组件
+        string moveFacPath = "CharacterMoveFactory";
+        string atkFacPath = "CharacterAtkFactory";
+
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
         FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
     }

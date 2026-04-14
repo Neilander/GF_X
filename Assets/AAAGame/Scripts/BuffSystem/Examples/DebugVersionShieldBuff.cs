@@ -21,10 +21,10 @@ public class DebugVersionShieldBuff : BuffCallback
         switch (trigger)
         {
             case BuffConstant.OnCreate:
-                Debug.Log($"[ShieldBuff] {info.Target?.ReferenceId} 获得护盾 {_shieldAmount}");
+                Debug.Log($"[ShieldBuff] {info.Target?.CharacterKey} 获得护盾 {_shieldAmount}");
                 break;
             case BuffConstant.OnRemove:
-                Debug.Log($"[ShieldBuff] {info.Target?.ReferenceId} 护盾消失");
+                Debug.Log($"[ShieldBuff] {info.Target?.CharacterKey} 护盾消失");
                 break;
         }
     }*/

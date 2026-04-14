@@ -81,8 +81,8 @@ public class DirectAtkComp : IAtkComp
         }
         else
         {
-            string id = ctx.ReferenceId;
-            var row = GeneralCreature.GetData(id);
+            string id = ctx.CharacterKey;
+            var row = ctx.CharacterData;
             WeaponData[] weaponDatas = CharacterDataDetailAccessor.GetWeaponDatas(row);
             if (weaponDatas == null || weaponDatas.Length == 0)
             {
@@ -93,7 +93,7 @@ public class DirectAtkComp : IAtkComp
             _weapons = new Weapon[weaponDatas.Length];
             for (int i = 0; i < weaponDatas.Length; i++)
             {
-                _weapons[i] = weaponDatas[i].ToWeapon($"{ctx.ReferenceId}_Weapon{i + 1}", ownerManager);
+                _weapons[i] = weaponDatas[i].ToWeapon($"{ctx.CharacterKey}_Weapon{i + 1}", ownerManager);
             }
         }
 
@@ -102,7 +102,7 @@ public class DirectAtkComp : IAtkComp
 
         WeaponHelper.LoadWeapon($"Assets/AAAGame/SOs/Weapon/{GetWeaponSOAddress(_weapon.Type)}.asset", this);
 
-        Debug.Log($"[DirectAtkComp] Init: unit={ctx.ReferenceId} weaponType={_weapon.Type} damage={_weapon.Atk} range={_weapon.Range} interval={_weapon.Interval} windUp={_weapon.WindUp} windDown={_weapon.WindDown} projectileSpeed={_weapon.ProjectileSpeed}");
+        Debug.Log($"[DirectAtkComp] Init: unit={ctx.CharacterKey} weaponType={_weapon.Type} damage={_weapon.Atk} range={_weapon.Range} interval={_weapon.Interval} windUp={_weapon.WindUp} windDown={_weapon.WindDown} projectileSpeed={_weapon.ProjectileSpeed}");
 
         // 创建 WeaponComp 并挂载到 Entity
         var wc = new WeaponComp(_weapon);
@@ -226,7 +226,7 @@ public class DirectAtkComp : IAtkComp
     {
         if (_ctx.Brain == null)
         {
-            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.ReferenceId}] TryStart: Brain=null");
+            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.CharacterKey}] TryStart: Brain=null");
             return;
         }
 
@@ -234,7 +234,7 @@ public class DirectAtkComp : IAtkComp
         bool playerAutoAttack = _ctx.Brain is AAAGame.Scripts.Entity.PlayerBrain && _ctx.TargetComp?.CurrentTarget != null;
         if (!manualAttack && !playerAutoAttack)
         {
-            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.ReferenceId}] TryStart: Brain.Attack=false");
+            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.CharacterKey}] TryStart: Brain.Attack=false");
             return;
         }
 
@@ -242,7 +242,7 @@ public class DirectAtkComp : IAtkComp
         if (!target.IsAttackTargetable())
         {
             GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.ReferenceId}] TryStart: 无目标 targetComp={(_ctx.TargetComp != null ? "有" : "null")} target={target} alive={target?.Alive}");
+                $"[{_ctx.CharacterKey}] TryStart: 无目标 targetComp={(_ctx.TargetComp != null ? "有" : "null")} target={target} alive={target?.Alive}");
             return;
         }
 
@@ -256,7 +256,7 @@ public class DirectAtkComp : IAtkComp
         if (dist > range)
         {
             GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.ReferenceId}] TryStart: 超距 dist={dist:F2} range={range:F2} (wpn={wpnRange:F2})");
+                $"[{_ctx.CharacterKey}] TryStart: 超距 dist={dist:F2} range={range:F2} (wpn={wpnRange:F2})");
             return;
         }
 
@@ -269,7 +269,7 @@ public class DirectAtkComp : IAtkComp
         EnterState(AtkState.WindUp);
 
         GameDebugSettings.Log(DebugCategory.Attack,
-            $"[{_ctx.ReferenceId}] → WindUp 第{AttackCount}次攻击 目标={target.ReferenceId} dist={dist:F2} range={range:F2}");
+            $"[{_ctx.CharacterKey}] → WindUp 第{AttackCount}次攻击 目标={target.CharacterKey} dist={dist:F2} range={range:F2}");
     }
 
     private void DealDamage()
@@ -277,7 +277,7 @@ public class DirectAtkComp : IAtkComp
         if (!_lockedTarget.IsAttackTargetable())
         {
             GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.ReferenceId}] DealDamage: 目标丢失或已死 target={_lockedTarget} alive={_lockedTarget?.Alive}");
+                $"[{_ctx.CharacterKey}] DealDamage: 目标丢失或已死 target={_lockedTarget} alive={_lockedTarget?.Alive}");
             return;
         }
 
@@ -285,7 +285,7 @@ public class DirectAtkComp : IAtkComp
         Fix64 splashRadius = GetCurrentSplashRadius();
 
         GameDebugSettings.Log(DebugCategory.Attack,
-            $"[{_ctx.ReferenceId}] DealDamage: 对 {_lockedTarget.ReferenceId} 造成 {damage} 伤害");
+            $"[{_ctx.CharacterKey}] DealDamage: 对 {_lockedTarget.CharacterKey} 造成 {damage} 伤害");
 
         // 优先委托武器 SO 执行伤害
         if (_weaponSO != null)
@@ -328,7 +328,7 @@ public class DirectAtkComp : IAtkComp
     private void EnterState(AtkState newState)
     {
         GameDebugSettings.Log(DebugCategory.Attack,
-            $"[{_ctx.ReferenceId}] 状态 {State} → {newState}");
+            $"[{_ctx.CharacterKey}] 状态 {State} → {newState}");
         State = newState;
         _stateTimer = 0f;
 

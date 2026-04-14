@@ -16,7 +16,7 @@ public enum DamageTextType
     /// 普通伤害（白色数字）
     /// </summary>
     Normal,
-    
+
     /// <summary>
     /// 治疗（绿色 +N）
     /// </summary>
@@ -121,23 +121,23 @@ public static class EntityExtension
         eParams.OnShowCallback = (EntityLogic entity) =>
             {
                 Log.Info($"ShowPopText callback: entity={entity?.Entity?.Id}, content={content}, fontSize={fontSize}");
-                
+
                 TextMeshPro textMesh = entity.GetComponent<TextMeshPro>();
                 if (textMesh == null)
                 {
                     textMesh = entity.gameObject.AddComponent<TextMeshPro>();
                 }
-                
+
                 // 设置TextMeshPro属性
                 textMesh.text = content;
                 textMesh.fontSize = fontSize;
                 textMesh.alignment = TextAlignmentOptions.Center;
-                textMesh.color = textType == DamageTextType.Normal ? new Color(139f/255f, 0f, 0f) : Color.green;
+                textMesh.color = textType == DamageTextType.Normal ? new Color(139f / 255f, 0f, 0f) : Color.green;
                 textMesh.enableWordWrapping = false;
                 textMesh.overflowMode = TextOverflowModes.Overflow;
                 textMesh.fontStyle = FontStyles.Bold; // 设置粗体，更明显
                 textMesh.autoSizeTextContainer = true; // 自动调整文本容器大小
-                
+
                 // 设置渲染顺序，确保文字显示在最前面
                 MeshRenderer renderer = textMesh.GetComponent<MeshRenderer>();
                 if (renderer != null)
@@ -151,10 +151,10 @@ public static class EntityExtension
                     }
                     Log.Info($"MeshRenderer found: material={renderer.material?.name}, sortingOrder={renderer.sortingOrder}, renderQueue={renderer.material?.renderQueue}");
                 }
-                
+
                 // 调试TextMeshPro属性
                 Log.Info($"TextMeshPro settings: text={textMesh.text}, fontSize={textMesh.fontSize}, color={textMesh.color}, font={textMesh.font?.name}, material={textMesh.fontMaterial?.name}");
-                
+
                 entity.transform.localScale = Vector3.zero;
                 var seqAct = DOTween.Sequence();
                 seqAct.Join(entity.transform.DOScale(1, duration));
@@ -166,7 +166,7 @@ public static class EntityExtension
                     GF.Entity.HideEntitySafe(entity);
                 };
                 seqAct.SetAutoKill();
-                
+
                 Log.Info($"ShowPopText setup complete: textMesh={textMesh != null}, text={textMesh?.text}, color={textMesh?.color}");
             };
         eCom.ShowEntity<SampleEntity>("Effect/MoneyText", Const.EntityGroup.Effect, eParams);
