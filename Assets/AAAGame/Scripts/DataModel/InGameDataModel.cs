@@ -27,9 +27,8 @@ public enum IngameValueType
 /// </summary>
 public class InGameDataModel : DataModelBase
 {
-    public const string P_StartPhase = "StartPhase";
-    public const string P_StartCoins = "StartCoins";
-    public const string P_StartFactions = "StartFactions";
+    public const string P_LevelData = "LevelData";
+    public LevelData lvData;
     private Dictionary<IngameValueType, int> m_IngameValue;
     private readonly List<Stronghold> m_Strongholds = new();
     private readonly HashSet<BuildingEntity> m_StrongholdBuildings = new();
@@ -45,47 +44,14 @@ public class InGameDataModel : DataModelBase
     {
         base.OnCreate(userdata);
         ResetData();
-
-        // OnCreate 执行时 DataModel 还未注册到 DataModelComponent，
-        // 不能通过静态 SetPhase/SetValue（内部会先 GetModel）写入初始值。
-        GamePhase startPhase = GamePhase.Build;
-        int startCoins = 0;
-        Dictionary<int, Faction> startFactions = null;
-
-        if (userdata != null)
-        {
-            if (userdata.TryGet<VarObject>(P_StartPhase, out var phaseVar) && phaseVar?.Value != null)
-            {
-                if (phaseVar.Value is GamePhase phase)
-                {
-                    startPhase = phase;
-                }
-                else if (phaseVar.Value is int phaseInt)
-                {
-                    startPhase = (GamePhase)phaseInt;
-                }
-            }
-
-            if (userdata.TryGet<VarObject>(P_StartCoins, out var coinsVar) && coinsVar?.Value != null)
-            {
-                if (coinsVar.Value is int coins)
-                {
-                    startCoins = coins;
-                }
-            }
-
-            if (userdata.TryGet<VarObject>(P_StartFactions, out var factionsVar) && factionsVar?.Value is Dictionary<int, Faction> factions)
-            {
-                startFactions = factions;
-            }
-        }
-
-        m_IngameValue[IngameValueType.Phase] = (int)startPhase;
-        m_IngameValue[IngameValueType.Coin] = startCoins;
-        Factions = startFactions ?? new Dictionary<int, Faction>();
+        lvData = userdata.Get(P_LevelData) as LevelData;
+        m_IngameValue[IngameValueType.Phase] = (int)lvData.StartPhase;
+        m_IngameValue[IngameValueType.Coin] = lvData.InitResource;
+        Factions = new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } };   // 通常玩家势力key为0，敌对势力为1、2等。TODO：后续可根据 lvData.StartFactions 来初始化。
     }
     public void ResetData()
     {
+        lvData = null;
         m_IngameValue = new Dictionary<IngameValueType, int>
         {
             [IngameValueType.Phase] = (int)GamePhase.Build,

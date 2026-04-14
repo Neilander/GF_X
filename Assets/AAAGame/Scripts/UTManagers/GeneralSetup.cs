@@ -5,15 +5,14 @@ using UnityGameFramework.Runtime;
 using GameFramework.Event;
 using AAAGame.Scripts.Entity;
 using SixLabors.ImageSharp.ColorSpaces.Companding;
+using log4net.Core;
 
 public partial class GeneralSetup : GameFrameworkComponent
 {
-    public void DataModelSetup()
+    public void DataModelSetup(LevelData levelData)
     {
         var levelDataParams = RefParams.Create();
-        levelDataParams.Set(InGameDataModel.P_StartPhase, GamePhase.Invade);
-        levelDataParams.Set(InGameDataModel.P_StartCoins, 100);
-        levelDataParams.Set(InGameDataModel.P_StartFactions, new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } });   // 通常玩家势力key为0，敌对势力为1、2等。
+        levelDataParams.Set(InGameDataModel.P_LevelData, levelData);
         GF.DataModel.CreateDataModel<InGameDataModel>(levelDataParams);
 
         GF.DataModel.CreateDataModel<BuildingDataModel>();
@@ -22,10 +21,13 @@ public partial class GeneralSetup : GameFrameworkComponent
         GF.DataModel.CreateDataModel<InputModel>();
     }
 
-    public void GeneralSystemSetup()
+    public void GeneralSystemSetup(string lvIdentifier = "Lv_1")
     {
-        DataModelSetup();
         GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
+
+        var lvRow = GetLvRow(lvIdentifier);
+        DataModelSetup(LevelData.FromRow(lvRow));
+        LevelEntityFactory.ShowLevel(lvRow.PrefabPath);
 
         var inputManager = GameEntry.GetComponent<InputManager>();
         if (inputManager != null)
@@ -41,12 +43,11 @@ public partial class GeneralSetup : GameFrameworkComponent
         GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
     }
 
-    public int InitLevel(string identifier)
+    public LevelTable GetLvRow(string lvIdentifier)
     {
         var levelTable = GF.DataTable.GetDataTable<LevelTable>();
-        var levelRow = levelTable.GetDataRow(row => row.Identifier == identifier);
-        var levelData = LevelData.FromRow(levelRow);
-        return LevelEntityFactory.ShowLevel(levelRow.PrefabPath, levelData);
+        var levelRow = levelTable.GetDataRow(row => row.Identifier == lvIdentifier);
+        return levelRow;
     }
 
     private void OnGeneralShowEntitySuccess(object sender, GameEventArgs e)

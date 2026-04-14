@@ -1,15 +1,8 @@
 ﻿public static class LevelEntityFactory
 {
-    public static EntityParams CreateLevelParams(LevelData levelData)
+    public static void ShowLevel(string prefabPath)
     {
-        EntityParams levelParams = EntityParams.Create();
-        levelParams.Set(LevelEntity.P_LevelData, levelData);
-        return levelParams;
-    }
-
-    public static int ShowLevel(string prefabPath, LevelData levelData)
-    {
-        EntityParams levelParams = CreateLevelParams(levelData);
-        return GF.Entity.ShowEntity<LevelEntity>(prefabPath, Const.EntityGroup.Level, levelParams);
+        EntityParams levelParams = new();
+        GF.Entity.ShowEntity<LevelEntity>(prefabPath, Const.EntityGroup.Level, levelParams);
     }
 }

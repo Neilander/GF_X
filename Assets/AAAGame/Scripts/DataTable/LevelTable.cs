@@ -47,15 +47,6 @@ public class LevelTable : DataRowBase
         }
 
         /// <summary>
-        /// 初始资源
-        /// </summary>
-        public int InitResource
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
         /// 关卡名(多语言)
         /// </summary>
         public string NameKey
@@ -68,6 +59,24 @@ public class LevelTable : DataRowBase
         /// 关卡简介(多语言)
         /// </summary>
         public string DescKey
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 初始资源
+        /// </summary>
+        public int InitResource
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 初始阶段
+        /// </summary>
+        public GamePhase StartPhase
         {
             get;
             private set;
@@ -123,9 +132,10 @@ public class LevelTable : DataRowBase
             index++;
             Identifier = columnStrings[index++];
             PrefabPath = columnStrings[index++];
-            InitResource = DataTableExtension.ParseInt32(columnStrings[index++]);
             NameKey = columnStrings[index++];
             DescKey = columnStrings[index++];
+            InitResource = DataTableExtension.ParseInt32(columnStrings[index++]);
+            StartPhase = DataTableExtension.ParseEnum<GamePhase>(columnStrings[index++]);
             VictoryConditions = DataTableExtension.ParseArray<VictoryConditionType>(columnStrings[index++]);
             VictoryValue = DataTableExtension.ParseInt32(columnStrings[index++]);
             LoseConditions = DataTableExtension.ParseArray<FailConditionType>(columnStrings[index++]);
@@ -149,9 +159,10 @@ public class LevelTable : DataRowBase
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     Identifier = binaryReader.ReadString();
                     PrefabPath = binaryReader.ReadString();
-                    InitResource = binaryReader.Read7BitEncodedInt32();
                     NameKey = binaryReader.ReadString();
                     DescKey = binaryReader.ReadString();
+                    InitResource = binaryReader.Read7BitEncodedInt32();
+                    StartPhase = binaryReader.ReadEnum<GamePhase>();
                     VictoryConditions = binaryReader.ReadArray<VictoryConditionType>();
                     VictoryValue = binaryReader.Read7BitEncodedInt32();
                     LoseConditions = binaryReader.ReadArray<FailConditionType>();

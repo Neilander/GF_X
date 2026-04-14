@@ -10,10 +10,6 @@ using UnityEngine.AI;
 public class MAEntity : CompCreature, IEntityContext
 {
     public CharacterDataDetail CharacterData { get; protected set; }
-    private const string PlayerInteractionNodeName = "InteractCollider";
-    private const float PlayerInteractionRange = 2.7f;
-    private const float PlayerInteractionPadding = 0.7f;
-
     public IMoveComp moveComp { get; protected set; }
     public IAtkComp atkComp { get; protected set; }
 
@@ -129,11 +125,6 @@ public class MAEntity : CompCreature, IEntityContext
 
         SyncScaleFromCollisionRadius(true);
 
-        if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
-        {
-            EnsurePlayerInteractionRuntime();
-        }
-
         // 注意：RegisterAgent 移到子类 OnShow 末尾，确保 Side 等字段已赋值
         EntityRegistry.Register(this);
     }
@@ -149,57 +140,6 @@ public class MAEntity : CompCreature, IEntityContext
 
         navAgentTypeID = GameEntry.GetComponent<AgentTypeHelper>().GetNavAgentTypeID(CharacterData.Size);
     }
-    private void EnsurePlayerInteractionRuntime()
-    {
-        Transform interactionNode = transform.Find(PlayerInteractionNodeName);
-        GameObject interactionObject;
-
-        if (interactionNode == null)
-        {
-            interactionObject = new GameObject(PlayerInteractionNodeName);
-            interactionObject.transform.SetParent(transform);
-            interactionObject.transform.localPosition = Vector3.zero;
-            interactionObject.transform.localRotation = Quaternion.identity;
-            interactionObject.transform.localScale = Vector3.one;
-        }
-        else
-        {
-            interactionObject = interactionNode.gameObject;
-        }
-
-        SphereCollider triggerSphere = interactionObject.GetComponent<SphereCollider>();
-        if (triggerSphere == null)
-            triggerSphere = interactionObject.AddComponent<SphereCollider>();
-        triggerSphere.isTrigger = true;
-
-        Rigidbody triggerBody = interactionObject.GetComponent<Rigidbody>();
-        if (triggerBody == null)
-            triggerBody = interactionObject.AddComponent<Rigidbody>();
-        triggerBody.isKinematic = true;
-        triggerBody.useGravity = false;
-        triggerBody.constraints = RigidbodyConstraints.FreezeAll;
-
-        InteractionDetector detector = interactionObject.GetComponent<InteractionDetector>();
-        if (detector == null)
-            detector = interactionObject.AddComponent<InteractionDetector>();
-
-        InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
-        if (manager == null)
-            manager = interactionObject.AddComponent<InteractionManager>();
-
-        if (interactionObject.GetComponent<InteractOptionTipsPresenter>() == null)
-            interactionObject.AddComponent<InteractOptionTipsPresenter>();
-
-        manager.ConfigureRuntime(
-            detector,
-            PlayerInteractionRange,
-            PlayerInteractionPadding,
-            0.65f,
-            0.35f,
-            0.08f,
-            0.1f);
-    }
-
     /// <summary>
     /// 子类在 OnShow 末尾（Side 等字段赋值完毕后）调用，注册到 GroupMoveManager。
     /// </summary>

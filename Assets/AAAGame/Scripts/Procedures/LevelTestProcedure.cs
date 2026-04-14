@@ -58,19 +58,11 @@ public class LevelTestProcedure : ProcedureBase
     }
     private void InitDataModels()
     {
-        RefParams levelParams = RefParams.Create();
-        levelParams.Set(InGameDataModel.P_StartPhase, GamePhase.Build);
-        levelParams.Set(InGameDataModel.P_StartCoins, 100);
-        levelParams.Set(InGameDataModel.P_StartFactions, new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } });   // 通常玩家势力key为0，敌对势力为1、2等。
-        GF.DataModel.CreateDataModel<InGameDataModel>(levelParams);
-
-        GF.DataModel.CreateDataModel<BuildingDataModel>();
-        GF.DataModel.CreateDataModel<TechDataModel>();
+        var lvRow = GameEntry.GetComponent<GeneralSetup>().GetLvRow("Lv_1");
+        GameEntry.GetComponent<GeneralSetup>().DataModelSetup(LevelData.FromRow(lvRow));
         GF.DataModel.CreateDataModel<ItemDataModel>();
         GF.DataModel.CreateDataModel<DeviceDataModel>();
-        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
         GF.DataModel.CreateDataModel<CraftingDeviceDataModel>();
-        GF.DataModel.CreateDataModel<InputModel>();
         GF.DataModel.CreateDataModel<TechNodeDataModel>();
 
 

@@ -23,6 +23,11 @@ public class SoldierEntity : MAEntity
         }
 
 
+        if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
+        {
+            EnsurePlayerInteractionRuntime();
+        }
+
         //Debug.LogError("什么玩意");
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
@@ -79,4 +84,60 @@ public class SoldierEntity : MAEntity
     {
         base.OnHide(isShutdown, userData);
     }
+
+    private const string PlayerInteractionNodeName = "InteractCollider";
+    private const float PlayerInteractionRange = 2.7f;
+    private const float PlayerInteractionPadding = 0.7f;
+
+    private void EnsurePlayerInteractionRuntime()
+    {
+        Transform interactionNode = transform.Find(PlayerInteractionNodeName);
+        GameObject interactionObject;
+
+        if (interactionNode == null)
+        {
+            interactionObject = new GameObject(PlayerInteractionNodeName);
+            interactionObject.transform.SetParent(transform);
+            interactionObject.transform.localPosition = Vector3.zero;
+            interactionObject.transform.localRotation = Quaternion.identity;
+            interactionObject.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            interactionObject = interactionNode.gameObject;
+        }
+
+        SphereCollider triggerSphere = interactionObject.GetComponent<SphereCollider>();
+        if (triggerSphere == null)
+            triggerSphere = interactionObject.AddComponent<SphereCollider>();
+        triggerSphere.isTrigger = true;
+
+        Rigidbody triggerBody = interactionObject.GetComponent<Rigidbody>();
+        if (triggerBody == null)
+            triggerBody = interactionObject.AddComponent<Rigidbody>();
+        triggerBody.isKinematic = true;
+        triggerBody.useGravity = false;
+        triggerBody.constraints = RigidbodyConstraints.FreezeAll;
+
+        InteractionDetector detector = interactionObject.GetComponent<InteractionDetector>();
+        if (detector == null)
+            detector = interactionObject.AddComponent<InteractionDetector>();
+
+        InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
+        if (manager == null)
+            manager = interactionObject.AddComponent<InteractionManager>();
+
+        if (interactionObject.GetComponent<InteractOptionTipsPresenter>() == null)
+            interactionObject.AddComponent<InteractOptionTipsPresenter>();
+
+        manager.ConfigureRuntime(
+            detector,
+            PlayerInteractionRange,
+            PlayerInteractionPadding,
+            0.65f,
+            0.35f,
+            0.08f,
+            0.1f);
+    }
+
 }
