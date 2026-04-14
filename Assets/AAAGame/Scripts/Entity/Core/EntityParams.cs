@@ -41,7 +41,7 @@ public class EntityParams : RefParams
 
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int FollowEntityId { get; set; } = -1;
-    public string Index { get; set; } = ""; // 单位类型索引
+    public const string P_CharacterKey = "CharacterKey";
 
     /// <summary>
     /// 出生时自带的 Buff 列表
@@ -113,7 +113,6 @@ public class EntityParams : RefParams
         _factionId = -1;
         BrainType = BrainType.Player;
         FollowEntityId = -1;
-        Index = "";
         StartBuffs = null;
     }
 }

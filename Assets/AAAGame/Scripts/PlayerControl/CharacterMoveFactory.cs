@@ -1,6 +1,7 @@
 ﻿namespace AAAGame.Scripts.PlayerControl
 {
     using UnityEngine;
+    using UnityEngine.AI;
 
     [CreateAssetMenu(fileName = "CharacterMoveFactory", menuName = "Move Factory/CharacterMove")]
     public class CharacterMoveFactory : MoveCompFactory
@@ -9,7 +10,7 @@
         {
             var comp = new CharacterMoveComp();
             gmo.SetMoveComp(comp);
-            comp.Init(gmo);
+            comp.Init(gmo, gmo.navAgentTypeID);
             return comp;
         }
     }

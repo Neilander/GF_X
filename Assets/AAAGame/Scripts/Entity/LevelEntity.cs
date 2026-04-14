@@ -3,6 +3,7 @@ using GameFramework.Event;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.AI.Navigation;
 using UnityGameFramework.Runtime;
 using GiantGrey.TileWorldCreator;
 
@@ -10,6 +11,8 @@ public class LevelEntity : EntityBase
 {
     private const string StrongholdLayerPrefix = "SH";
     private TileWorldCreatorManager tileWorldCreatorManager;
+    private NavMeshSurface[] _navMeshSurfaces;
+
 
     private static LevelEntity activeLevelEntity;
 
@@ -59,6 +62,8 @@ public class LevelEntity : EntityBase
         base.OnShow(userData);
         activeLevelEntity = this;
 
+        _navMeshSurfaces = GetComponentsInChildren<NavMeshSurface>();
+
         CollectStrongholds();
         SubscribeRuntimeLayerRules();
         ApplyStrongholdRuntimeLayerRules();
@@ -76,8 +81,49 @@ public class LevelEntity : EntityBase
 
         InGameDataModel.ClearStrongholdRuntimeData();
         tileWorldCreatorManager = null;
+        _navMeshSurfaces = null;
 
         base.OnHide(isShutdown, userData);
+    }
+
+    private float _rebakeTimer = -1f;
+    private const float RebakeDelay = 0.5f;
+
+    private void Update()
+    {
+        // 延迟烘焙：最后一次请求后 0.5 秒执行
+        if (_rebakeTimer >= 0f)
+        {
+            _rebakeTimer -= Time.deltaTime;
+            if (_rebakeTimer < 0f)
+            {
+                Debug.Log("[LevelEntity] 延迟烘焙 NavMesh 执行");
+                DoRebakeNavMesh();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 请求烘焙 NavMesh。不会立即执行，而是等最后一次请求后 0.5 秒再烘焙。
+    /// 多次调用会重置计时器，确保批量建造只烘焙一次。
+    /// </summary>
+    public static void RequestRebakeNavMesh()
+    {
+        if (activeLevelEntity == null)
+            return;
+
+        activeLevelEntity._rebakeTimer = RebakeDelay;
+    }
+
+    private void DoRebakeNavMesh()
+    {
+        if (_navMeshSurfaces == null)
+            return;
+
+        for (int i = 0; i < _navMeshSurfaces.Length; i++)
+        {
+            _navMeshSurfaces[i].BuildNavMesh();
+        }
     }
 
     private void SubscribeRuntimeLayerRules()
@@ -158,16 +204,37 @@ public class LevelEntity : EntityBase
 
     private void SpawnPresetEntities()
     {
+        var buildManager = GameEntry.GetComponent<BuildManager>();
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
         foreach (var point in presetPoints)
         {
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    BuildManager.BuildBuildingForLevelInit(point.Identifier, point.Position);
+                    if (!buildManager.TryBuildBuildingForLevelInit(point.Identifier, point.Position, out var buildingInstanceId))
+                    {
+                        Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", point.Identifier);
+                        break;
+                    }
+
+                    if (point.IsGameEndConditionBuilding)
+                    {
+                        int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
+                        gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
+                    }
                     break;
             }
         }
+
+        // 所有初始建筑建完后请求烘焙（延迟 0.5 秒）
+        RequestRebakeNavMesh();
+    }
+
+    private int ResolveOwnerFactionIdByPosition(Vector3 position)
+    {
+        var stronghold = GetStrongholdAtWorldPosition(position);
+        return stronghold != null ? stronghold.OwnerFactionId : EntitySideHelper.PlayerFactionId;
     }
 
     private void CollectStrongholds()

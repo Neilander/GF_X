@@ -5,7 +5,7 @@ using UnityGameFramework.Runtime;
 
 /// <summary>
 /// 战斗实体基类：承载通用战斗逻辑（受伤、死亡、HurtBox、属性系统等）
-/// 子类通过覆写 InitBattleData 来设置数据（ReferenceId 等）
+/// 子类通过覆写 InitBattleData 来设置数据（CharacterKey 等）
 /// </summary>
 public class BattleEntity : EntityBase, ITargetable
 {
@@ -13,9 +13,9 @@ public class BattleEntity : EntityBase, ITargetable
     public bool Alive { get; protected set; }
     public GameObject Gmo { get; private set; }
 
-    public string ReferenceId { get; protected set; }
+    public string CharacterKey { get; protected set; }
 
-    public Transform display{ get; protected set; }
+    public Transform display { get; protected set; }
     public Animator animator { get; protected set; }
 
 
@@ -62,12 +62,12 @@ public class BattleEntity : EntityBase, ITargetable
         base.OnShow(userData);
         Alive = true;
         InitBattleData(userData);
-        CreaturePropertyManager = new CreaturePropertyManager(ReferenceId);
+        CreaturePropertyManager = new CreaturePropertyManager(CharacterKey);
         display.rotation = Quaternion.Euler(38.7f, 0, 0);
     }
 
     /// <summary>
-    /// 子类覆写此方法来设置 ReferenceId 等数据
+    /// 子类覆写此方法来设置 CharacterKey 等数据
     /// 在 OnShow 中、CreaturePropertyManager 初始化之前调用
     /// </summary>
     protected virtual void InitBattleData(object userData)
@@ -180,12 +180,12 @@ public class BattleEntity : EntityBase, ITargetable
 
     public virtual void InSelection(ISelector selector)
     {
-        GF.Log(gameObject.name+"被选择了");
+        GF.Log(gameObject.name + "被选择了");
     }
 
     public virtual void DeSelection()
     {
-        GF.Log(gameObject.name+"取消选择了");
+        GF.Log(gameObject.name + "取消选择了");
     }
 
     #endregion
@@ -196,7 +196,7 @@ public class BattleEntity : EntityBase, ITargetable
         var rows = table.GetDataRows(r => r.CharacterKey == id);
         if (rows == null || rows.Length == 0)
         {
-            GF.LogError("没有匹配的表格"+"CharacterDataDetail" + " id=" + id);
+            GF.LogError("没有匹配的表格" + "CharacterDataDetail" + " id=" + id);
             return null;
         }
         var row = rows[0];

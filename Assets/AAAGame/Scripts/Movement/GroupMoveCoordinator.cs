@@ -215,6 +215,15 @@ public class GroupMoveCoordinator
         }
     }
 
+    public void SetAgentRadius(int id, float radius)
+    {
+        if (_agents.TryGetValue(id, out var data))
+        {
+            data.Radius = Mathf.Max(0.01f, radius);
+            _agents[id] = data;
+        }
+    }
+
     public void RegisterObstacle(int id, Vector3 position, float radius = 1f)
     {
         _obstacles[id] = new ObstacleData { Id = id, Position = position, Radius = radius };

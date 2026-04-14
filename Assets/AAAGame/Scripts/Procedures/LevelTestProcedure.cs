@@ -31,13 +31,35 @@ public class LevelTestProcedure : ProcedureBase
     }
     private void SpawnPresetEntities()
     {
+        var buildManager = GameEntry.GetComponent<BuildManager>();
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
         foreach (var point in presetPoints)
         {
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    BuildManager.BuildBuildingForLevelInit(point.Identifier, point.Position);
+                    if (!buildManager.TryBuildBuildingForLevelInit(point.Identifier, point.Position, out var buildingInstanceId))
+                    {
+                        Log.Error("LevelTestProcedure.SpawnPresetEntities failed: cannot build preset building '{0}'.", point.Identifier);
+                        break;
+                    }
+
+                    if (point.IsGameEndConditionBuilding)
+                    {
+                        var levelEntity = LevelEntity.ActiveLevelEntity;
+                        int initialOwnerFactionId = EntitySideHelper.PlayerFactionId;
+                        if (levelEntity != null)
+                        {
+                            var stronghold = levelEntity.GetStrongholdAtWorldPosition(point.Position);
+                            if (stronghold != null)
+                            {
+                                initialOwnerFactionId = stronghold.OwnerFactionId;
+                            }
+                        }
+
+                        gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
+                    }
                     break;
                     // case EntityPresetPointType.Spawn:
                     // case EntityPresetPointType.Respawn:
@@ -58,19 +80,11 @@ public class LevelTestProcedure : ProcedureBase
     }
     private void InitDataModels()
     {
-        RefParams levelParams = RefParams.Create();
-        levelParams.Set(InGameDataModel.P_StartPhase, GamePhase.Build);
-        levelParams.Set(InGameDataModel.P_StartCoins, 100);
-        levelParams.Set(InGameDataModel.P_StartFactions, new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } });   // 通常玩家势力key为0，敌对势力为1、2等。
-        GF.DataModel.CreateDataModel<InGameDataModel>(levelParams);
-
-        GF.DataModel.CreateDataModel<BuildingDataModel>();
-        GF.DataModel.CreateDataModel<TechDataModel>();
+        var lvRow = GameEntry.GetComponent<GeneralSetup>().GetLvRow("Lv_1");
+        GameEntry.GetComponent<GeneralSetup>().DataModelSetup(LevelData.FromRow(lvRow));
         GF.DataModel.CreateDataModel<ItemDataModel>();
         GF.DataModel.CreateDataModel<DeviceDataModel>();
-        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
         GF.DataModel.CreateDataModel<CraftingDeviceDataModel>();
-        GF.DataModel.CreateDataModel<InputModel>();
         GF.DataModel.CreateDataModel<TechNodeDataModel>();
 
 

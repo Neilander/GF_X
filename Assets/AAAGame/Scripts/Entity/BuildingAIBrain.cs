@@ -21,7 +21,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
         if (self is BuildingEntity building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
             return;
 
-        if (self.GetProperty(CreatureMainProperty.PhysicalAtk) <= Fix64.Zero)
+        if (self.WeaponComp == null || self.WeaponComp.Data == null || self.WeaponComp.Data.Atk <= Fix64.Zero)
             return;
 
         var target = self.TargetComp?.CurrentTarget;

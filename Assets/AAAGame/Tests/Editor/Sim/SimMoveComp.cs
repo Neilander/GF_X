@@ -57,6 +57,8 @@ public class SimMoveComp : IMoveComp
         _ctx.MoveExecutor.SetInput(moveDir * (float)speed * 0.1f);
     }
 
+    public void SetNavTarget(Vector3 destination) { _targetPos = destination; }
+
     public Vector3 GetNavDirection()
     {
         if (!_targetPos.HasValue || _ctx == null) return Vector3.zero;

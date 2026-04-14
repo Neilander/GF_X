@@ -29,36 +29,90 @@ public class LevelTable : DataRowBase
     }
 
         /// <summary>
-        /// 关卡prefab名
+        /// 代码内标识符
         /// </summary>
-        public string LvPfbName
+        public string Identifier
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 玩家初始钱数
+        /// 关卡prefab路径
         /// </summary>
-        public int InitMoney
+        public string PrefabPath
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 取值1-6
+        /// 关卡名(多语言)
         /// </summary>
-        public int MoneyColorId
+        public string NameKey
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 关卡显示名(多语言)
+        /// 关卡简介(多语言)
         /// </summary>
-        public string LvDisplayName
+        public string DescKey
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 初始资源
+        /// </summary>
+        public int InitResource
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 初始阶段
+        /// </summary>
+        public GamePhase StartPhase
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 胜利条件
+        /// </summary>
+        public VictoryConditionType[] VictoryConditions
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 胜利条件设定数值
+        /// </summary>
+        public int VictoryValue
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 失败条件
+        /// </summary>
+        public FailConditionType[] LoseConditions
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 失败条件设定数值
+        /// </summary>
+        public int LoseValue
         {
             get;
             private set;
@@ -76,10 +130,22 @@ public class LevelTable : DataRowBase
             index++;
             m_Id = DataTableExtension.ParseInt32(columnStrings[index++]);
             index++;
-            LvPfbName = columnStrings[index++];
-            InitMoney = DataTableExtension.ParseInt32(columnStrings[index++]);
-            MoneyColorId = DataTableExtension.ParseInt32(columnStrings[index++]);
-            LvDisplayName = columnStrings[index++];
+            Identifier = columnStrings[index++];
+            PrefabPath = columnStrings[index++];
+            NameKey = columnStrings[index++];
+            DescKey = columnStrings[index++];
+            InitResource = DataTableExtension.ParseInt32(columnStrings[index++]);
+            StartPhase = DataTableExtension.ParseEnum<GamePhase>(columnStrings[index++]);
+            VictoryConditions = DataTableExtension.ParseArray<VictoryConditionType>(columnStrings[index++]);
+            VictoryValue = DataTableExtension.ParseInt32(columnStrings[index++]);
+            LoseConditions = DataTableExtension.ParseArray<FailConditionType>(columnStrings[index++]);
+            LoseValue = DataTableExtension.ParseInt32(columnStrings[index++]);
+            index++;
+            index++;
+            index++;
+            index++;
+            index++;
+            index++;
 
             return true;
         }
@@ -91,10 +157,16 @@ public class LevelTable : DataRowBase
                 using (BinaryReader binaryReader = new BinaryReader(memoryStream, Encoding.UTF8))
                 {
                     m_Id = binaryReader.Read7BitEncodedInt32();
-                    LvPfbName = binaryReader.ReadString();
-                    InitMoney = binaryReader.Read7BitEncodedInt32();
-                    MoneyColorId = binaryReader.Read7BitEncodedInt32();
-                    LvDisplayName = binaryReader.ReadString();
+                    Identifier = binaryReader.ReadString();
+                    PrefabPath = binaryReader.ReadString();
+                    NameKey = binaryReader.ReadString();
+                    DescKey = binaryReader.ReadString();
+                    InitResource = binaryReader.Read7BitEncodedInt32();
+                    StartPhase = binaryReader.ReadEnum<GamePhase>();
+                    VictoryConditions = binaryReader.ReadArray<VictoryConditionType>();
+                    VictoryValue = binaryReader.Read7BitEncodedInt32();
+                    LoseConditions = binaryReader.ReadArray<FailConditionType>();
+                    LoseValue = binaryReader.Read7BitEncodedInt32();
                 }
             }
 

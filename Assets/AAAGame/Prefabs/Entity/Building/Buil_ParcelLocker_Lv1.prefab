@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6901675226791827389}
   - component: {fileID: 4107437528957085249}
-  m_Layer: 0
+  m_Layer: 12
   m_Name: Buil_ParcelLocker_Lv1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -52,7 +52,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 2.6, y: 1.92, z: 2}
+  m_Size: {x: 2.6, y: 4, z: 2}
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!1001 &3775880069218932066
 PrefabInstance:
@@ -120,7 +120,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 8f0b5c816a30f46b7ab8da1027e33e1e, type: 3}
       propertyPath: m_Name
-      value: "\u7269\u6D418"
+      value: "\u5FEB\u9012\u67DC1"
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 8f0b5c816a30f46b7ab8da1027e33e1e, type: 3}
       propertyPath: m_StaticEditorFlags

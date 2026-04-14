@@ -5,13 +5,11 @@ using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
+using UnityEngine.AI;
 
 public class MAEntity : CompCreature, IEntityContext
 {
-    private const string PlayerInteractionNodeName = "InteractCollider";
-    private const float PlayerInteractionRange = 2.7f;
-    private const float PlayerInteractionPadding = 0.7f;
-
+    public CharacterDataDetail CharacterData { get; protected set; }
     public IMoveComp moveComp { get; protected set; }
     public IAtkComp atkComp { get; protected set; }
 
@@ -22,6 +20,12 @@ public class MAEntity : CompCreature, IEntityContext
     private MoveExecutor _moveExecutor;
     public IMoveExecutor moveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
+
+    /// <summary>
+    /// NavMesh Agent Type ID，用于导航和移动约束。
+    /// 子类可在 OnShow/SetUpMAComp 之前设置。
+    /// </summary>
+    public int navAgentTypeID = -1372625422;
     private const float RotationSpeed = 720f; // 度/秒
 
     private IBuffComp _buffComp;
@@ -29,6 +33,13 @@ public class MAEntity : CompCreature, IEntityContext
 
     private Quaternion? _targetRotation = null;
     private Transform _modelTransform = null;
+    private bool _maCompInitialized;
+
+    private Vector3 _collisionScaleBase = Vector3.one;
+    private float _collisionRadiusBaseWorld;
+    private bool _collisionScaleBaseReady;
+    private bool _hasAppliedCollisionScale;
+    private Fix64 _lastAppliedCollisionRadius;
 
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
@@ -47,7 +58,7 @@ public class MAEntity : CompCreature, IEntityContext
         set => transform.rotation = value;
     }
 
-    // Side, Alive, ReferenceId 已在 GeneralCreature 中定义
+    // Side, Alive, CharacterKey 已在 GeneralCreature 中定义
 
     IMoveExecutor IEntityContext.MoveExecutor => moveExecutor;
     IMoveComp IEntityContext.MoveComp => moveComp;
@@ -58,7 +69,6 @@ public class MAEntity : CompCreature, IEntityContext
 
     public Fix64 GetProperty(CreatureMainProperty prop)
     {
-        if (CreaturePropertyManager == null) return (Fix64)5;
         return CreaturePropertyManager.GetProperty(prop);
     }
 
@@ -68,14 +78,11 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnInit(userData);
 
-        SetUpMAComp(userData);
-
         durationMoveEffectComp = new DurationMoveEffectComp();
         durationMoveEffectComp.Init(this);
 
         cController = GetComponent<CharacterController>();
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
-        _moveExecutor.Init(cController);
 
         _modelTransform = animator != null ? animator.transform : display;
         
@@ -92,7 +99,21 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected override void OnShow(object userData)
     {
+        RefreshCharacterData(userData);
+
         base.OnShow(userData);
+
+        if (!_maCompInitialized)
+        {
+            SetUpMAComp(userData);
+            _maCompInitialized = true;
+        }
+
+        _moveExecutor.Init(cController, navAgentTypeID);
+        if (moveComp is CharacterMoveComp characterMoveComp)
+            characterMoveComp.Init(this, navAgentTypeID);
+
+        InitializeCollisionScaleBase();
 
         // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态
         var newBuffComp = new CharacterBuffComp();
@@ -112,66 +133,23 @@ public class MAEntity : CompCreature, IEntityContext
             }
         }
 
-        if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
-        {
-            EnsurePlayerInteractionRuntime();
-        }
+        SyncScaleFromCollisionRadius(true);
 
         // 注意：RegisterAgent 移到子类 OnShow 末尾，确保 Side 等字段已赋值
         EntityRegistry.Register(this);
     }
 
-    private void EnsurePlayerInteractionRuntime()
+    protected virtual void RefreshCharacterData(object userData)
     {
-        Transform interactionNode = transform.Find(PlayerInteractionNodeName);
-        GameObject interactionObject;
+        CharacterKey = (userData as EntityParams).GetString(EntityParams.P_CharacterKey);
 
-        if (interactionNode == null)
-        {
-            interactionObject = new GameObject(PlayerInteractionNodeName);
-            interactionObject.transform.SetParent(transform);
-            interactionObject.transform.localPosition = Vector3.zero;
-            interactionObject.transform.localRotation = Quaternion.identity;
-            interactionObject.transform.localScale = Vector3.one;
-        }
-        else
-        {
-            interactionObject = interactionNode.gameObject;
-        }
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        CharacterData = table.GetDataRow(r => r.CharacterKey == CharacterKey);
+        if (CharacterData == null)
+            throw new InvalidOperationException($"MAEntity 初始化失败: 未找到 CharacterDataDetail，CharacterKey={CharacterKey}。");
 
-        SphereCollider triggerSphere = interactionObject.GetComponent<SphereCollider>();
-        if (triggerSphere == null)
-            triggerSphere = interactionObject.AddComponent<SphereCollider>();
-        triggerSphere.isTrigger = true;
-
-        Rigidbody triggerBody = interactionObject.GetComponent<Rigidbody>();
-        if (triggerBody == null)
-            triggerBody = interactionObject.AddComponent<Rigidbody>();
-        triggerBody.isKinematic = true;
-        triggerBody.useGravity = false;
-        triggerBody.constraints = RigidbodyConstraints.FreezeAll;
-
-        InteractionDetector detector = interactionObject.GetComponent<InteractionDetector>();
-        if (detector == null)
-            detector = interactionObject.AddComponent<InteractionDetector>();
-
-        InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
-        if (manager == null)
-            manager = interactionObject.AddComponent<InteractionManager>();
-
-        if (interactionObject.GetComponent<InteractOptionTipsPresenter>() == null)
-            interactionObject.AddComponent<InteractOptionTipsPresenter>();
-
-        manager.ConfigureRuntime(
-            detector,
-            PlayerInteractionRange,
-            PlayerInteractionPadding,
-            0.65f,
-            0.35f,
-            0.08f,
-            0.1f);
+        navAgentTypeID = GameEntry.GetComponent<AgentTypeHelper>().GetNavAgentTypeID(CharacterData.Size);
     }
-
     /// <summary>
     /// 子类在 OnShow 末尾（Side 等字段赋值完毕后）调用，注册到 GroupMoveManager。
     /// </summary>
@@ -213,6 +191,12 @@ public class MAEntity : CompCreature, IEntityContext
         if (GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.UnregisterAgent(this);
         EntityRegistry.Unregister(this);
+
+        _collisionScaleBaseReady = false;
+        _hasAppliedCollisionScale = false;
+        _collisionRadiusBaseWorld = 0f;
+        _collisionScaleBase = Vector3.one;
+
         base.OnHide(isShutdown, userData);
     }
 
@@ -222,6 +206,9 @@ public class MAEntity : CompCreature, IEntityContext
 
         if (CanRun(_buffComp))
             _buffComp.UpdateBuff(dt);
+
+        if (Alive)
+            SyncScaleFromCollisionRadius();
 
         // 更新协调器中的位置（在 Brain.Tick 之前）
         if (GroupMoveManager.HasInstance)
@@ -312,15 +299,60 @@ public class MAEntity : CompCreature, IEntityContext
         }
     }
 
+    private void InitializeCollisionScaleBase()
+    {
+        _collisionScaleBase = transform.localScale;
+        _collisionRadiusBaseWorld = ResolveCurrentCollisionRadiusWorld();
+        _collisionScaleBaseReady = _collisionRadiusBaseWorld > 0.0001f;
+    }
+
+    private float ResolveCurrentCollisionRadiusWorld()
+    {
+        if (cController == null)
+            return 0f;
+
+        float scaleXZ = Mathf.Max(Mathf.Abs(transform.lossyScale.x), Mathf.Abs(transform.lossyScale.z));
+        return cController.radius * scaleXZ;
+    }
+
+    private void SyncScaleFromCollisionRadius(bool force = false)
+    {
+        if (CreaturePropertyManager == null)
+            return;
+
+        Fix64 collisionRadius = CreaturePropertyManager.GetProperty(CreatureMainProperty.CollisionRadius);
+        if (collisionRadius <= Fix64.Zero)
+            return;
+
+        if (!force && _hasAppliedCollisionScale && collisionRadius == _lastAppliedCollisionRadius)
+            return;
+
+        if (!_collisionScaleBaseReady)
+            InitializeCollisionScaleBase();
+
+        if (!_collisionScaleBaseReady)
+            return;
+
+        float targetWorldRadius = DistanceUnitConverter.ConvertToWorldFloat(collisionRadius);
+        if (targetWorldRadius <= 0.0001f)
+            return;
+
+        float scaleRatio = targetWorldRadius / _collisionRadiusBaseWorld;
+        if (scaleRatio <= 0.0001f)
+            return;
+
+        transform.localScale = _collisionScaleBase * scaleRatio;
+        _hasAppliedCollisionScale = true;
+        _lastAppliedCollisionRadius = collisionRadius;
+    }
+
     #region Move and Attack
 
     protected virtual void SetUpMAComp(object userData)
     {
-        //获取路径
-        var row = GF.DataTable.GetDataTable<CharacterMAFactoryTable>().GetDataRows(r => r.CharacterKey == ReferenceId)[0];
-        string moveFacPath = row.MoveFactoryPath;
-        string atkFacPath = row.AttackFactoryPath;
-        //设置组件
+        string moveFacPath = "CharacterMoveFactory";
+        string atkFacPath = "CharacterAtkFactory";
+
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
         FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
     }

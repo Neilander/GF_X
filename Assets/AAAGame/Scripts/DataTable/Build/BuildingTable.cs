@@ -227,7 +227,7 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 资源日产出
+        /// 资源日产出/初始兵力
         /// </summary>
         public int Production
         {

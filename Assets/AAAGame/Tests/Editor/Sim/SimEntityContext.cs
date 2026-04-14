@@ -11,7 +11,8 @@ public class SimEntityContext : IEntityContext
     public Quaternion Rotation { get; set; } = Quaternion.identity;
     public SideType Side { get; set; }
     public bool Alive { get; set; } = true;
-    public string ReferenceId { get; set; } = "TestUnit";
+    public string CharacterKey { get; protected set; } = "TestUnit";
+    public CharacterDataDetail CharacterData { get; protected set; }
 
     public HealthContainer Health { get; private set; } = new HealthContainer();
 

@@ -15,6 +15,7 @@ public class EntityPresetPoint : MonoBehaviour
     public string Identifier;
 
     public EntityPresetPointType PointType;
+    public bool IsGameEndConditionBuilding;
 
 #if UNITY_EDITOR
     private void OnValidate()

@@ -9,16 +9,16 @@ public sealed class BuildingConstructInteractionOption : IInteractionOption
 
     public string DisplayName { get; private set; }
     public string DisplayDesc { get; private set; }
-    public KeyValuePair<IngameValueType, int>[] CostResource => BuildManager.GetBuildingResourceCosts(_buildBuildingId);
+    public KeyValuePair<IngameValueType, int>[] CostResource => GameEntry.GetComponent<BuildManager>().GetBuildingResourceCosts(_buildBuildingId);
 
     public bool IsVisible()
     {
-        return BuildManager.IsConstructOptionVisible(_owner, _buildBuildingId);
+        return GameEntry.GetComponent<BuildManager>().IsConstructOptionVisible(_owner, _buildBuildingId);
     }
 
     public bool IsExecutable()
     {
-        return BuildManager.IsConstructOptionExecutable(_owner, _buildBuildingId);
+        return GameEntry.GetComponent<BuildManager>().IsConstructOptionExecutable(_owner, _buildBuildingId);
     }
 
     public void Init(object owner, string displayName, InteractionParams @params)
@@ -39,7 +39,7 @@ public sealed class BuildingConstructInteractionOption : IInteractionOption
 
     public void Execute()
     {
-        BuildManager.ConstructBuilding(_owner, _buildBuildingId);
+        GameEntry.GetComponent<BuildManager>().ConstructBuilding(_owner, _buildBuildingId);
     }
 
     public void Clear()

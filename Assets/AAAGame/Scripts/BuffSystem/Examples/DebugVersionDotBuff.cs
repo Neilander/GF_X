@@ -20,6 +20,6 @@ public class DebugVersionDotBuff : BuffCallback
         if (trigger != BuffConstant.OnTick) return;
 
         float damage = _baseDamage * info.CurrentStack;
-        Debug.Log($"[DotBuff] {info.Target?.ReferenceId} 受到持续伤害 {damage}（基础 {_baseDamage} × {info.CurrentStack} 层）");
+        Debug.Log($"[DotBuff] {info.Target?.CharacterKey} 受到持续伤害 {damage}（基础 {_baseDamage} × {info.CurrentStack} 层）");
     }*/
 }

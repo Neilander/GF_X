@@ -16,16 +16,16 @@ public class RangedWeaponTestProcedure : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         GF.Log("远程武器测试流程开始");
-        
+
         // 初始化数据模型
         InitDataModels();
-        
+
         // 订阅实体显示成功事件，设置摄像机跟随玩家
         GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccess);
-        
+
         // 设置输入模式为游戏模式
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
-        
+
         // 创建远程单位进行测试
         SpawnRangedUnits();
     }
@@ -40,7 +40,7 @@ public class RangedWeaponTestProcedure : ProcedureBase
         GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccess);
         base.OnLeave(procedureOwner, isShutdown);
     }
-    
+
     /// <summary>
     /// 实体显示成功回调：设置摄像机跟随玩家
     /// </summary>
@@ -53,7 +53,7 @@ public class RangedWeaponTestProcedure : ProcedureBase
             if (ma.Brain is PlayerBrain)
             {
                 EntityRegistry.RegisterAsPlayer(ma);
-                
+
                 // 设置摄像机跟随玩家
                 if (CameraController.Instance != null)
                 {
@@ -69,34 +69,40 @@ public class RangedWeaponTestProcedure : ProcedureBase
     private void SpawnRangedUnits()
     {
         // 创建玩家侧的远程单位（使用ranged_test来加载远程武器）
-        var playerParams = EntityParams.Create(position: new Vector3(0, 1, -10));
-        playerParams.Side = SideType.PlayerSide;
-        playerParams.BrainType = BrainType.Player; // 使用Player脑控，让玩家可以控制角色
-        playerParams.Index = "Unit_Coder";
-        GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, playerParams);
-        
+        MAEntityFactory.ShowSoldier(
+            prefabName: "gujia",
+            characterKey: "Unit_Coder",
+            position: new Vector3(0, 1, -10),
+            side: SideType.PlayerSide,
+            brainType: BrainType.Player,
+            entityGroup: Const.EntityGroup.Level);
+
         // 创建多个友方远程单位
-        for (int i = 0; i< 3; i++)
+        for (int i = 0; i < 3; i++)
         {
             Vector3 spawnPos = new Vector3(-4f + (i * 3f), 1f, -8f);
-            var friendlyParams = EntityParams.Create(position: spawnPos);
-            friendlyParams.Side = SideType.PlayerSide;
-            friendlyParams.BrainType = BrainType.SoldierAI;
-            friendlyParams.Index = "Unit_Coder";
-            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, friendlyParams);
+            MAEntityFactory.ShowSoldier(
+                prefabName: "gujia",
+                characterKey: "Unit_Coder",
+                position: spawnPos,
+                side: SideType.PlayerSide,
+                brainType: BrainType.SoldierAI,
+                entityGroup: Const.EntityGroup.Level);
         }
-        
+
         // 创建多个敌方远程单位
         for (int i = 0; i < 3; i++)
         {
             Vector3 spawnPos = new Vector3(-4f + (i * 3f), 1f, 8f);
-            var enemyParams = EntityParams.Create(position: spawnPos);
-            enemyParams.Side = SideType.EnemySide;
-            enemyParams.BrainType = BrainType.SoldierAI;
-            enemyParams.Index = "Unit_BoneButcher";
-            GF.Entity.ShowEntity<SoldierEntity>("gujia", Const.EntityGroup.Level, enemyParams);
+            MAEntityFactory.ShowSoldier(
+                prefabName: "gujia",
+                characterKey: "Unit_BoneButcher",
+                position: spawnPos,
+                side: SideType.EnemySide,
+                brainType: BrainType.SoldierAI,
+                entityGroup: Const.EntityGroup.Level);
         }
-        
+
         GF.Log("远程武器测试单位创建完成，友方和敌方单位将互相发射子弹攻击");
     }
 

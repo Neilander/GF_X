@@ -7,11 +7,6 @@ using UnityEngine;
 public class SoldierEntity : MAEntity
 {
     /// <summary>
-    /// 单位类型索引
-    /// </summary>
-    private string _unitIndex;
-
-    /// <summary>
     /// AI类型
     /// </summary>
     public BrainType BrainType { get; private set; }
@@ -19,16 +14,20 @@ public class SoldierEntity : MAEntity
     protected override void OnShow(object userData)
     {
 
+        base.OnShow(userData);
         if (userData is EntityParams ep)
         {
             Side = ep.Side;
-            BrainType = ep.BrainType; // 设置AI类型
-            _unitIndex = ep.Index; // 保存单位类型索引
-            ReferenceId = ep.Index; // 设置正确的ReferenceId
+            BrainType = ep.BrainType; // 设置AI类型      
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
         }
 
-        base.OnShow(userData);
+
+        if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
+        {
+            EnsurePlayerInteractionRuntime();
+        }
+
         //Debug.LogError("什么玩意");
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
@@ -61,33 +60,12 @@ public class SoldierEntity : MAEntity
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
         FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
 
-        // 根据单位类型选择武器
-        WeaponType weaponIndex = GetWeaponIndexByUnitType((userData as EntityParams).Index);
-        ReferenceId = (userData as EntityParams).Index;
         // 直接创建 DirectAtkComp，不再走 Factory
-        var atkComp = new DirectAtkComp(weaponIndex);
+        var atkComp = new DirectAtkComp();
         this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
     }
 
-
-
-    /// <summary>
-    /// 根据单位类型获取武器索引
-    /// </summary>
-    private WeaponType GetWeaponIndexByUnitType(string unitIndex)
-    {
-        var row = GeneralCreature.GetData(unitIndex);
-
-        return row.WeaponTypeOne;
-    }
-
-
-
-    /// <summary>
-    /// 获取单位类型索引
-    /// </summary>
-    public string UnitIndex => _unitIndex;
 
     /// <summary>
     /// 获取单位类型（重写基类方法）
@@ -106,4 +84,60 @@ public class SoldierEntity : MAEntity
     {
         base.OnHide(isShutdown, userData);
     }
+
+    private const string PlayerInteractionNodeName = "InteractCollider";
+    private const float PlayerInteractionRange = 2.7f;
+    private const float PlayerInteractionPadding = 0.7f;
+
+    private void EnsurePlayerInteractionRuntime()
+    {
+        Transform interactionNode = transform.Find(PlayerInteractionNodeName);
+        GameObject interactionObject;
+
+        if (interactionNode == null)
+        {
+            interactionObject = new GameObject(PlayerInteractionNodeName);
+            interactionObject.transform.SetParent(transform);
+            interactionObject.transform.localPosition = Vector3.zero;
+            interactionObject.transform.localRotation = Quaternion.identity;
+            interactionObject.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            interactionObject = interactionNode.gameObject;
+        }
+
+        SphereCollider triggerSphere = interactionObject.GetComponent<SphereCollider>();
+        if (triggerSphere == null)
+            triggerSphere = interactionObject.AddComponent<SphereCollider>();
+        triggerSphere.isTrigger = true;
+
+        Rigidbody triggerBody = interactionObject.GetComponent<Rigidbody>();
+        if (triggerBody == null)
+            triggerBody = interactionObject.AddComponent<Rigidbody>();
+        triggerBody.isKinematic = true;
+        triggerBody.useGravity = false;
+        triggerBody.constraints = RigidbodyConstraints.FreezeAll;
+
+        InteractionDetector detector = interactionObject.GetComponent<InteractionDetector>();
+        if (detector == null)
+            detector = interactionObject.AddComponent<InteractionDetector>();
+
+        InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
+        if (manager == null)
+            manager = interactionObject.AddComponent<InteractionManager>();
+
+        if (interactionObject.GetComponent<InteractOptionTipsPresenter>() == null)
+            interactionObject.AddComponent<InteractOptionTipsPresenter>();
+
+        manager.ConfigureRuntime(
+            detector,
+            PlayerInteractionRange,
+            PlayerInteractionPadding,
+            0.65f,
+            0.35f,
+            0.08f,
+            0.1f);
+    }
+
 }

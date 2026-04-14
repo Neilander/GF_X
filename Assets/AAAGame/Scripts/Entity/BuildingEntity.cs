@@ -20,7 +20,19 @@ public partial class BuildingEntity : MAEntity
     public int OwnerFactionID { get; set; }
     public string BuildingInstanceId { get; private set; }
     public Stronghold CurrentStronghold { get; private set; }
-    public bool HasUpgrade => BuildManager.HasUpgrade(this);
+    public bool HasUpgrade
+    {
+        get
+        {
+            if (buildingData == null)
+                return false;
+
+            if (buildingData.Lv == 0)
+                return GameEntry.GetComponent<BuildManager>().HasConstructOption(this);
+
+            return GameEntry.GetComponent<TechManager>().HasTechInteraction(this);
+        }
+    }
     public bool IsDisabled => _isDisabled;
     public bool IsLv0Invincible => _lv0InvincibleByBuff;
     public bool IsPhaseProtected => _phaseProtectionByBuff;
@@ -33,13 +45,13 @@ public partial class BuildingEntity : MAEntity
     private bool _combatLocked;
     private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
 
-    private void SetupBuildingData(object userData)
+    protected override void RefreshCharacterData(object userData)
     {
         var entityParams = userData as EntityParams;
         buildingData = entityParams?.Get(P_BuildingData) as BuildingData;
         BuildingInstanceId = entityParams != null && entityParams.TryGet<VarString>(P_BuildingInstanceId, out var instanceId) ? instanceId : null;
 
-        ReferenceId = ResolvePropertyTemplateId(buildingData);
+        CharacterKey = ResolvePropertyTemplateId(buildingData);
         SetBrain(new BuildingAIBrain());
 
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
@@ -48,7 +60,6 @@ public partial class BuildingEntity : MAEntity
 
     protected override void OnShow(object userData)
     {
-        SetupBuildingData(userData);
         base.OnShow(userData);
 
         InitializeAttackCapabilityFlags();
@@ -66,6 +77,9 @@ public partial class BuildingEntity : MAEntity
         {
             EnsureInteractionHost();
         }
+
+        // 建筑出现后请求重新烘焙 NavMesh（延迟合并，批量建造只烘焙一次）
+        LevelEntity.RequestRebakeNavMesh();
     }
 
     protected override void OnHide(bool isShutdown, object userData)
@@ -99,7 +113,7 @@ public partial class BuildingEntity : MAEntity
         if (oldFactionId != OwnerFactionID)
         {
             RefreshInteractionHostForCurrentOwnership();
-            GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID));
+            GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID, BuildingInstanceId));
         }
     }
 
@@ -170,7 +184,10 @@ public partial class BuildingEntity : MAEntity
         host.ResetOptions();
         host.Init(this);
 
-        BuildManager.ConfigureBuildInteractionOptions(this, host);
+        if (buildingData != null && buildingData.Lv == 0)
+            GameEntry.GetComponent<BuildManager>().ConfigureConstructInteractionOptions(this, host);
+        else
+            GameEntry.GetComponent<TechManager>().ConfigureTechInteractionOptions(this, host);
     }
 
     private void EnsureLv0InvincibleBuff()
@@ -350,21 +367,26 @@ public partial class BuildingEntity : MAEntity
         if (!HasPermanentNoAttackCapability && buildingData != null)
             damage = Fix64.Max(Fix64.Zero, buildingData.Atk);
 
-        var weaponData = new WeaponData
-        {
-            Damage = damage,
-            AttackInterval = PlaceholderAttackInterval,
-            AttackRange = PlaceholderAttackRange,
-            WindUp = PlaceholderWindUp,
-            WindDown = PlaceholderWindDown,
-            Type = WeaponType.Melee
-        };
+        var weaponData = new WeaponData(
+            WeaponType.Melee,
+            damage,
+            PlaceholderAttackInterval,
+            PlaceholderAttackRange,
+            Fix64.Zero,
+            PlaceholderWindUp,
+            PlaceholderWindDown,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            new Fix64[0]);
 
         _buildingAtkComp.UpdateWeaponData(weaponData);
 
         if (targetComp is CharacterTargetingComp targetingComp)
         {
-            float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.AttackRange) + 1.5f, 4f);
+            float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range) + 1.5f, 4f);
             targetingComp.AggroRange = aggroRange;
             targetingComp.ForgetRange = aggroRange + 2f;
             targetingComp.FollowSearchRange = 0f;
@@ -377,29 +399,16 @@ public partial class BuildingEntity : MAEntity
             return;
 
         Fix64 hp = buildingData != null && buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
-        Fix64 atk = buildingData != null ? buildingData.Atk : (Fix64)10;
         Fix64 def = buildingData != null ? buildingData.Def : (Fix64)10;
-
-        if (HasPermanentNoAttackCapability)
-            atk = Fix64.Zero;
-
-        if (atk < Fix64.Zero)
-            atk = Fix64.Zero;
         if (def < Fix64.Zero)
             def = Fix64.Zero;
 
         // 建筑表数值应作为“目标值”而非“叠加值”，否则会把模板属性再加一遍导致血量过高。
         Fix64 currentHpMax = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 currentPhyAtk = CreaturePropertyManager.GetProperty(CreatureMainProperty.PhysicalAtk);
-        Fix64 currentSpecAtk = CreaturePropertyManager.GetProperty(CreatureMainProperty.SpecialAtk);
-        Fix64 currentPhyDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.PhysicalDef);
-        Fix64 currentSpecDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.SpecialDef);
+        Fix64 currentDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.Def);
 
         Fix64 hpDelta = hp - currentHpMax;
-        Fix64 atkDeltaPhy = atk - currentPhyAtk;
-        Fix64 atkDeltaSpec = atk - currentSpecAtk;
-        Fix64 defDeltaPhy = def - currentPhyDef;
-        Fix64 defDeltaSpec = def - currentSpecDef;
+        Fix64 defDelta = def - currentDef;
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.Health,
@@ -407,23 +416,8 @@ public partial class BuildingEntity : MAEntity
             true);
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.PhysicalAtk,
-            PropertyAdditiveModifier.Create(atkDeltaPhy),
-            true);
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.SpecialAtk,
-            PropertyAdditiveModifier.Create(atkDeltaSpec),
-            true);
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.PhysicalDef,
-            PropertyAdditiveModifier.Create(defDeltaPhy),
-            true);
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.SpecialDef,
-            PropertyAdditiveModifier.Create(defDeltaSpec),
+            CreatureMainProperty.Def,
+            PropertyAdditiveModifier.Create(defDelta),
             true);
 
         Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
@@ -440,15 +434,20 @@ public partial class BuildingEntity : MAEntity
 
     private WeaponData CreatePlaceholderWeaponData()
     {
-        return new WeaponData
-        {
-            Damage = Fix64.Zero,
-            AttackInterval = PlaceholderAttackInterval,
-            AttackRange = PlaceholderAttackRange,
-            WindUp = PlaceholderWindUp,
-            WindDown = PlaceholderWindDown,
-            Type = WeaponType.Melee
-        };
+        return new WeaponData(
+            WeaponType.Melee,
+            Fix64.Zero,
+            PlaceholderAttackInterval,
+            PlaceholderAttackRange,
+            Fix64.Zero,
+            PlaceholderWindUp,
+            PlaceholderWindDown,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            new Fix64[0]);
     }
 
     private void InitializeAttackCapabilityFlags()
@@ -483,6 +482,7 @@ public partial class BuildingEntity : MAEntity
             return;
 
         _isDisabled = true;
+        GF.Event.Fire(this, BuildingDisabledStateChangedEventArgs.Create(Id, BuildingInstanceId, true));
         Alive = false;
 
         Fix64 curHealth = HealthValue;
@@ -528,7 +528,13 @@ public partial class BuildingEntity : MAEntity
 
     private void ResetCombatRuntimeState()
     {
+        bool wasDisabled = _isDisabled;
         _isDisabled = false;
+        if (wasDisabled)
+        {
+            GF.Event.Fire(this, BuildingDisabledStateChangedEventArgs.Create(Id, BuildingInstanceId, false));
+        }
+
         UnlockCombatCapabilities();
 
         if (targetComp != null)

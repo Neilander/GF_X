@@ -10,16 +10,16 @@ public sealed class BuildingUpgradeInteractionOption : IInteractionOption
 
     public string DisplayName { get; private set; }
     public string DisplayDesc { get; private set; }
-    public KeyValuePair<IngameValueType, int>[] CostResource => BuildManager.GetBuildingResourceCosts(_upgradeBuildingId);
+    public KeyValuePair<IngameValueType, int>[] CostResource => GameEntry.GetComponent<BuildManager>().GetBuildingResourceCosts(_upgradeBuildingId);
 
     public bool IsVisible()
     {
-        return BuildManager.IsUpgradeOptionVisible(_owner, _upgradeBuildingId, _techId);
+        return GameEntry.GetComponent<TechManager>().IsUpgradeOptionVisible(_owner, _upgradeBuildingId, _techId);
     }
 
     public bool IsExecutable()
     {
-        return BuildManager.IsUpgradeOptionExecutable(_owner, _upgradeBuildingId, _techId);
+        return GameEntry.GetComponent<TechManager>().IsUpgradeOptionExecutable(_owner, _upgradeBuildingId, _techId);
     }
 
     public void Init(object owner, string displayName, InteractionParams @params)
@@ -41,7 +41,7 @@ public sealed class BuildingUpgradeInteractionOption : IInteractionOption
 
     public void Execute()
     {
-        BuildManager.UpgradeBuilding(_owner, _upgradeBuildingId, _techId);
+        GameEntry.GetComponent<TechManager>().UpgradeBuilding(_owner, _upgradeBuildingId, _techId);
     }
 
     public void Clear()

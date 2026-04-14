@@ -21,16 +21,16 @@ public class DebugVersionSpeedBuff : BuffCallback
         switch (trigger)
         {
             case BuffConstant.OnCreate:
-                Debug.Log($"[SpeedBuff] {info.Target?.ReferenceId} 移速 +{_speedDelta}，创建时层数 {info.CurrentStack}");
+                Debug.Log($"[SpeedBuff] {info.Target?.CharacterKey} 移速 +{_speedDelta}，创建时层数 {info.CurrentStack}");
                 break;
             case BuffConstant.OnAddStack:
-                Debug.Log($"[SpeedBuff] {info.Target?.ReferenceId} 移速 +{_speedDelta}，叠层后 {info.CurrentStack} 层");
+                Debug.Log($"[SpeedBuff] {info.Target?.CharacterKey} 移速 +{_speedDelta}，叠层后 {info.CurrentStack} 层");
                 break;
             case BuffConstant.OnReduceStack:
-                Debug.Log($"[SpeedBuff] {info.Target?.ReferenceId} 移速 -{_speedDelta}，减层后 {info.CurrentStack} 层");
+                Debug.Log($"[SpeedBuff] {info.Target?.CharacterKey} 移速 -{_speedDelta}，减层后 {info.CurrentStack} 层");
                 break;
             case BuffConstant.OnRemove:
-                Debug.Log($"[SpeedBuff] {info.Target?.ReferenceId} 移速 buff 完全移除");
+                Debug.Log($"[SpeedBuff] {info.Target?.CharacterKey} 移速 buff 完全移除");
                 break;
         }
     }*/

@@ -15,24 +15,20 @@ public static class SoldierFactory
     /// <param name="position">出生位置</param>
     /// <param name="side">阵营</param>
     /// <param name="brainType">AI类型</param>
-    public static int ShowSoldier(UnitType index, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
+    public static int ShowSoldier(UnitType unitType, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
     {
-        EntityParams paramsData = EntityParams.Create(position: position);
-        paramsData.Side = side;
-        paramsData.BrainType = brainType;
-        paramsData.Index = index.ToString();
-
-        string prefabName = GetSoldierPrefabName(index);
+        string prefabName = GetSoldierPrefabName(unitType);
+        string characterKey = unitType.ToString();
+        Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
 
         // 添加初始Buff到StartBuffs列表
-        paramsData.StartBuffs = new System.Collections.Generic.List<BuffData>();
-        AddInitialBuffs(paramsData.StartBuffs, index);
+        var startBuffs = new System.Collections.Generic.List<BuffData>();
+        AddInitialBuffs(startBuffs, unitType);
 
         // 移除OnShowCallback，因为CreaturePropertyManager在回调执行后才初始化
         // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
 
-        int entityId = GF.Entity.ShowEntity<SoldierEntity>(prefabName, index == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature, paramsData);
-        return entityId;
+        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs);
     }
 
     /// <summary>

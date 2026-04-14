@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8225288803665757514}
   - component: {fileID: 8751486354506403611}
-  m_Layer: 0
+  m_Layer: 12
   m_Name: Buil_SortingCenter_Lv2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -76,7 +76,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: e154427d40ee87348b0ecace31dbf17e, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -0.14
+      value: -0.15
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: e154427d40ee87348b0ecace31dbf17e, type: 3}
       propertyPath: m_LocalPosition.y
@@ -84,7 +84,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: e154427d40ee87348b0ecace31dbf17e, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 0.1
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: e154427d40ee87348b0ecace31dbf17e, type: 3}
       propertyPath: m_LocalRotation.w
@@ -120,7 +120,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: e154427d40ee87348b0ecace31dbf17e, type: 3}
       propertyPath: m_Name
-      value: "\u8865\u51452"
+      value: "\u5206\u62E3\u4E2D\u5FC32"
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: e154427d40ee87348b0ecace31dbf17e, type: 3}
+      propertyPath: m_StaticEditorFlags
+      value: 2147483647
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

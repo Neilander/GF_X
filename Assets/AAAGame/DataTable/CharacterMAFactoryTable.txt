@@ -1,9 +1,0 @@
-﻿#	CharacterMAFactoryTable				
-#	ID		CharacterKey	MoveFactoryPath	AttackFactoryPath
-#	int		string	string	string
-#		备注	请添加字段, 字段名首字母大写		
-	1		Archer	NoMoveFactory	NoAtkFactory
-	2		Shield	NoMoveFactory	NoAtkFactory
-	3		Scout	NoMoveFactory	NoAtkFactory
-	4		Wizard	NoMoveFactory	NoAtkFactory
-	5		Knight	NoMoveFactory	NoAtkFactory

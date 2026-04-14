@@ -412,7 +412,9 @@ public static class DataTableExtension
             string[] splitValue = value.Split('|', StringSplitOptions.RemoveEmptyEntries);
             if (splitValue.Length == 1)
             {
-                var valueStr = splitValue[0].Split('.')[1];
+                var token = splitValue[0].Trim();
+                var dotIndex = token.IndexOf('.');
+                var valueStr = dotIndex >= 0 ? token[(dotIndex + 1)..].Trim() : token;
                 if (Enum.TryParse<TEnum>(valueStr, out TEnum result))
                 {
                     return result;
@@ -423,7 +425,9 @@ public static class DataTableExtension
                 int resultEnum = 0;
                 foreach (string s in splitValue)
                 {
-                    var strTrim = s.Split('.')[1].Trim();
+                    var token = s.Trim();
+                    var dotIndex = token.IndexOf('.');
+                    var strTrim = dotIndex >= 0 ? token[(dotIndex + 1)..].Trim() : token;
                     if (Enum.TryParse<TEnum>(strTrim, true, out TEnum result))
                     {
                         resultEnum |= Convert.ToInt32(result);
@@ -743,7 +747,7 @@ public static class DataTableExtension
                 int value = binaryReader.Read7BitEncodedInt32();
                 if (Enum.IsDefined(type, value))
                 {
-                    arr[i] = (T)(object)value;
+                    arr[i] = (T)Enum.ToObject(type, value);
                 }
                 else
                 {
@@ -827,12 +831,40 @@ public static class DataTableExtension
     {
         enumType = null;
         value = 0;
-        var enumElements = enumValue.Split('.');
+        if (string.IsNullOrWhiteSpace(enumValue))
+        {
+            return false;
+        }
+
+        string token = enumValue.Trim();
+        int commaIdx = token.IndexOf(',');
+        int pipeIdx = token.IndexOf('|');
+        int splitIdx = -1;
+        if (commaIdx >= 0 && pipeIdx >= 0)
+        {
+            splitIdx = Math.Min(commaIdx, pipeIdx);
+        }
+        else if (commaIdx >= 0)
+        {
+            splitIdx = commaIdx;
+        }
+        else if (pipeIdx >= 0)
+        {
+            splitIdx = pipeIdx;
+        }
+
+        if (splitIdx >= 0)
+        {
+            token = token.Substring(0, splitIdx).Trim();
+        }
+
+        var enumElements = token.Split('.');
         if (enumElements.Length != 2)
         {
             return false;
         }
-        var enumName = enumElements[0];
+        var enumName = enumElements[0].Trim();
+        var enumMember = enumElements[1].Trim();
         enumType = Utility.Assembly.GetType(enumName);
         if (enumType == null)
         {
@@ -840,7 +872,15 @@ public static class DataTableExtension
         }
         if (enumType != null)
         {
-            value = (int)Enum.Parse(enumType, enumElements[1]);
+            try
+            {
+                value = (int)Enum.Parse(enumType, enumMember, true);
+            }
+            catch
+            {
+                enumType = null;
+                value = 0;
+            }
         }
         return enumType != null && enumType.IsEnum;
     }
