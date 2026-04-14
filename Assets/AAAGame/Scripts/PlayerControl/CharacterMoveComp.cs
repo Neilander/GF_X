@@ -37,6 +37,16 @@ public class CharacterMoveComp : IMoveComp
         return NavMesh.SamplePosition(sourcePosition, out hit, maxDistance, _navFilter);
     }
 
+    public void SetNavTarget(Vector3 destination)
+    {
+        Vector3 navDest = destination;
+        if (SamplePosition(destination, out var destHit, 10f))
+        {
+            navDest = destHit.position;
+        }
+        _targetPos = navDest;
+    }
+
     public void MoveTo(Vector3 destination)
     {
         Vector3 navDest = destination;
