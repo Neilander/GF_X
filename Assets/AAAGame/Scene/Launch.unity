@@ -449,6 +449,62 @@ Transform:
   - {fileID: 1535063653}
   m_Father: {fileID: 781510654}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &144036986
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 144036988}
+  - component: {fileID: 144036987}
+  m_Layer: 0
+  m_Name: 'MinimapManager '
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &144036987
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 144036986}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 43151e03c4af47344937704b03636f56, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  config:
+    WorldMinX: -50
+    WorldMaxX: 50
+    WorldMinZ: -50
+    WorldMaxZ: 50
+    PlayerSoldierColor: {r: 0.2, g: 0.5, b: 1, a: 1}
+    EnemySoldierColor: {r: 1, g: 0, b: 0, a: 1}
+    SoldierDotSize: 5
+    BuildingIconSize: 15
+    EnableFogOfWar: 0
+    FogGridSize: 50
+    VisionRadius: 5
+--- !u!4 &144036988
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 144036986}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &210381322
 GameObject:
   m_ObjectHideFlags: 0
@@ -842,6 +898,67 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 527702594}
   m_CullTransparentMesh: 0
+--- !u!1 &562983825
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 562983827}
+  - component: {fileID: 562983826}
+  m_Layer: 0
+  m_Name: FogOfWarManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &562983826
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 562983825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2324742dc97c0724bbf5e2a26d77afe8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  config:
+    WorldMinX: -50
+    WorldMaxX: 50
+    WorldMinZ: -50
+    WorldMaxZ: 50
+    GridWidth: 100
+    GridHeight: 100
+    UpdateInterval: 0.1
+    EnableBlur: 1
+    BlurIterations: 2
+    HiddenColor: {r: 0, g: 0, b: 0, a: 1}
+    ExploredColor: {r: 0.3, g: 0.3, b: 0.3, a: 0.8}
+    VisibleColor: {r: 1, g: 1, b: 1, a: 0}
+    EnableEasing: 1
+    EasingSpeed: 5
+    EnableTerrainBlocking: 1
+    HeightBlockThreshold: 2
+--- !u!4 &562983827
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 562983825}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &613283499
 GameObject:
   m_ObjectHideFlags: 0
@@ -4137,3 +4254,5 @@ SceneRoots:
   - {fileID: 1510408148}
   - {fileID: 273870237}
   - {fileID: 1975991655}
+  - {fileID: 144036988}
+  - {fileID: 562983827}
