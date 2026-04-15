@@ -8,16 +8,23 @@
     {
         private ICardDataProvider m_DataProvider;
         private PopulationModel m_PopulationModel;
+        private BuildingEntity m_SourceBuilding;
 
         /// <summary>
         /// 数据提供者
         /// </summary>
         public ICardDataProvider DataProvider => m_DataProvider;
 
-        public CardModel(ICardDataProvider dataProvider, PopulationModel populationModel)
+        /// <summary>
+        /// 卡牌来源建筑
+        /// </summary>
+        public BuildingEntity SourceBuilding => m_SourceBuilding;
+
+        public CardModel(ICardDataProvider dataProvider, PopulationModel populationModel, BuildingEntity sourceBuilding = null)
         {
             m_DataProvider = dataProvider;
             m_PopulationModel = populationModel;
+            m_SourceBuilding = sourceBuilding;
         }
 
         /// <summary>
@@ -68,6 +75,14 @@
         public int GetPopulationCost()
         {
             return m_DataProvider?.PopulationCost ?? 0;
+        }
+
+        /// <summary>
+        /// 获取来源建筑实例ID
+        /// </summary>
+        public string GetSourceBuildingInstanceId()
+        {
+            return m_SourceBuilding != null ? m_SourceBuilding.BuildingInstanceId : string.Empty;
         }
     }
 }

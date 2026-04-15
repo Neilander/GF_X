@@ -25,7 +25,7 @@ namespace AAAGame.Card
         /// <summary>
         /// 抽取卡牌
         /// </summary>
-        public bool DrawCard(ICardDataProvider cardData)
+        public bool DrawCard(ICardDataProvider cardData, BuildingEntity sourceBuilding = null)
         {
             if (cardData == null)
             {
@@ -40,7 +40,7 @@ namespace AAAGame.Card
             }
 
             // 创建卡牌模型
-            CardModel cardModel = new CardModel(cardData, m_PopulationModel);
+            CardModel cardModel = new CardModel(cardData, m_PopulationModel, sourceBuilding);
 
             // 添加到手牌
             if (!m_HandModel.AddCard(cardModel))
@@ -85,7 +85,7 @@ namespace AAAGame.Card
         public CardModel RemoveCardAt(int index)
         {
             CardModel cardModel = m_HandModel.RemoveCardAt(index);
-            
+
             if (cardModel != null)
             {
                 OnCardRemoved?.Invoke(cardModel);

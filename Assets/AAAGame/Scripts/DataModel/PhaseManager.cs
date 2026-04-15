@@ -25,6 +25,28 @@ public class PhaseManager : GameFrameworkComponent
     }
 
     /// <summary>
+    /// 游戏开始时，按当前阶段执行一次进入逻辑。
+    /// </summary>
+    public static void EnterCurrentPhaseOnGameStart()
+    {
+        GamePhase currentPhase = CurrentPhase;
+        switch (currentPhase)
+        {
+            case GamePhase.Build:
+                HandleEnterBuildPhase(true);
+                break;
+            case GamePhase.Invade:
+                HandleEnterInvadePhase();
+                break;
+            case GamePhase.Defend:
+                HandleEnterDefendPhase();
+                break;
+        }
+
+        Debug.Log($"Initial phase entered: {currentPhase}");
+    }
+
+    /// <summary>
     /// 切换到下一个阶段
     /// </summary>
     public static void SwitchToNextPhase()
@@ -96,7 +118,7 @@ public class PhaseManager : GameFrameworkComponent
     /// <summary>
     /// 进入建造阶段
     /// </summary>
-    private static void HandleEnterBuildPhase()
+    private static void HandleEnterBuildPhase(bool isFirstPhase = false)
     {
         // 关闭卡牌界面
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
@@ -109,7 +131,7 @@ public class PhaseManager : GameFrameworkComponent
         RemoveAllSoldiers();
 
         // 资源建筑提供收入
-        ProvideResourceIncome();
+        if (!isFirstPhase) ProvideResourceIncome();
     }
 
     /// <summary>
@@ -157,7 +179,7 @@ public class PhaseManager : GameFrameworkComponent
         var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
         foreach (var building in ingameData.Buildings)
         {
-            if (building.buildingData.Type == BuilType.Prod)
+            if (building.buildingData.Type == BuilType.Prod && building.OwnerFactionID == EntitySideHelper.PlayerFactionId)
             {
                 // 调用建筑的harvest函数获取资源
                 building.Harvest();
@@ -177,17 +199,9 @@ public class PhaseManager : GameFrameworkComponent
         {
             foreach (var building in ingameData.Buildings)
             {
-                if (building.buildingData.Type == BuilType.Army)
+                if (building.buildingData.Type == BuilType.Army && building.OwnerFactionID == EntitySideHelper.PlayerFactionId)
                 {
-                    // 每个部队建筑生成对应的卡牌
-                    // 这里根据建筑等级生成对应数量的卡牌
-                    int cardCount = building.buildingData.Lv >= 1 ? building.buildingData.Lv : 1;
-                    for (int i = 0; i < cardCount; i++)
-                    {
-                        // 调用CardSetup的方法来生成卡牌
-                        cardSetup.GenerateCard();
-                        Debug.Log($"Army building {building.buildingData.Identifier} generated card {i + 1}");
-                    }
+                    cardSetup.GenerateCardToDeck(building);
                 }
             }
         }
@@ -214,7 +228,7 @@ public class PhaseManager : GameFrameworkComponent
                 continue;
             }
 
-            if (!SoldierFactory.TryParseUnitType(point.Identifier, out var unitType))
+            if (!UnitTypeHelper.TryParseUnitType(point.Identifier, out var unitType))
             {
                 Debug.LogWarning($"Skip unit preset point '{point.name}': invalid identifier '{point.Identifier}'.");
                 continue;

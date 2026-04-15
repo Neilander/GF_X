@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using System;
+using UnityGameFramework.Runtime;
 
 namespace AAAGame.Card
 {
@@ -10,6 +11,18 @@ namespace AAAGame.Card
     /// </summary>
     public class CardSystemController
     {
+        private sealed class Card
+        {
+            public ICardDataProvider CardData { get; }
+            public BuildingEntity SourceBuilding { get; }
+
+            public Card(ICardDataProvider cardData, BuildingEntity sourceBuilding)
+            {
+                CardData = cardData;
+                SourceBuilding = sourceBuilding;
+            }
+        }
+
         private PopulationModel m_PopulationModel;
         private PlayerHandModel m_HandModel;
         private HandCardController m_HandCardController;
@@ -17,7 +30,7 @@ namespace AAAGame.Card
         private AreaDetectionController m_AreaDetectionController;
 
         private List<ICardDataProvider> m_CardPool;
-        private System.Random m_Random;
+        private readonly List<Card> m_DeckCards = new List<Card>();
 
         // 事件回调
         public event Action<int, int, int> OnPopulationChanged; // (current, max, cost)
@@ -46,7 +59,7 @@ namespace AAAGame.Card
 
             // 初始化卡牌池
             m_CardPool = new List<ICardDataProvider>();
-            m_Random = new System.Random();
+            m_DeckCards.Clear();
 
             Debug.Log("[Card] CardSystemController initialized.");
         }
@@ -67,18 +80,69 @@ namespace AAAGame.Card
         }
 
         /// <summary>
+        /// 重置为空卡组和空手牌。
+        /// </summary>
+        public void ResetDeckAndHand()
+        {
+            m_DeckCards.Clear();
+            m_HandModel?.Clear();
+            OnHandChanged?.Invoke(m_HandModel != null ? m_HandModel.CardCount : 0, m_HandModel != null ? m_HandModel.MaxCards : CardConst.MaxHandCards);
+        }
+
+        /// <summary>
+        /// 按单位类型向卡组加入一张卡，并记录来源建筑。
+        /// </summary>
+        public bool AddCardToDeck(BuildingEntity sourceBuilding)
+        {
+            // 每个部队建筑生成对应的卡牌
+            if (!UnitTypeHelper.TryParseUnitType(sourceBuilding.buildingData.UnitID, out var unitType))
+            {
+                Debug.LogWarning($"Skip army building '{sourceBuilding.buildingData.Identifier}': invalid UnitID '{sourceBuilding.buildingData.UnitID}'.");
+            }
+
+            ICardDataProvider cardData = FindCardDataByUnitType(unitType);
+            if (cardData == null)
+            {
+                Debug.LogWarning($"[Card] No card configured for unit type '{unitType}'.");
+                return false;
+            }
+
+            m_DeckCards.Add(new Card(cardData, sourceBuilding));
+            Log.Info($"[CardGame] 卡牌入组: unitType={unitType}, source={sourceBuilding?.BuildingInstanceId ?? "None"}");
+            return true;
+        }
+
+        /// <summary>
+        /// 若手牌未满且卡组非空，自动抽一张。
+        /// </summary>
+        public bool TryAutoDrawOneCardFromDeck()
+        {
+            if (m_HandModel == null || m_HandModel.IsFull)
+            {
+                return false;
+            }
+
+            if (m_DeckCards.Count <= 0)
+            {
+                return false;
+            }
+
+            return DrawCard();
+        }
+
+        /// <summary>
         /// 设置最大人口
         /// </summary>
         public void SetMaxPopulation(int maxPopulation)
         {
             m_PopulationModel.SetMaxPopulation(maxPopulation);
-            
+
             // 触发人口变化事件（C# 事件）
             OnPopulationChanged?.Invoke(
                 m_PopulationModel.CurrentPopulation,
                 m_PopulationModel.MaxPopulation,
                 0);
-            
+
             // 触发人口变化事件（GameFramework 事件系统）
             GameFramework.Event.GameEventArgs e = PopulationChangedEventArgs.Create(
                 m_PopulationModel.CurrentPopulation,
@@ -86,7 +150,7 @@ namespace AAAGame.Card
                 0);
             GF.Event.Fire(this, e);
             GameFramework.ReferencePool.Release(e);
-            
+
             Debug.Log($"[Card] Max population set to: {maxPopulation}");
         }
 
@@ -120,62 +184,105 @@ namespace AAAGame.Card
                 return false;
             }
 
-            if (m_CardPool == null || m_CardPool.Count == 0)
-            {
-                Debug.LogError("[Card] Card pool is empty.");
-                return false;
-            }
-
-            // 根据权重随机抽取卡牌
-            ICardDataProvider cardData = DrawRandomCardByWeight();
-            if (cardData == null)
+            if (m_DeckCards.Count <= 0)
             {
                 return false;
             }
 
-            bool success = m_HandCardController.DrawCard(cardData);
+            Card entry = SelectNearestDeckCard();
+            if (entry == null || entry.CardData == null)
+            {
+                return false;
+            }
+
+            m_DeckCards.Remove(entry);
+
+            bool success = m_HandCardController.DrawCard(entry.CardData, entry.SourceBuilding);
             if (success)
             {
                 OnHandChanged?.Invoke(m_HandModel.CardCount, m_HandModel.MaxCards);
+            }
+            else
+            {
+                m_DeckCards.Insert(0, entry);
             }
 
             return success;
         }
 
         /// <summary>
-        /// 根据权重随机抽取卡牌
+        /// 根据单位类型查找卡牌模板。
         /// </summary>
-        private ICardDataProvider DrawRandomCardByWeight()
+        private ICardDataProvider FindCardDataByUnitType(UnitType unitType)
         {
-            if (m_CardPool.Count == 0) return null;
-
-            // 计算总权重
-            int totalWeight = 0;
-            foreach (var card in m_CardPool)
+            if (m_CardPool == null)
             {
-                totalWeight += card.DropWeight;
+                return null;
             }
-
-            if (totalWeight <= 0)
-            {
-                // 如果没有权重，随机选择
-                return m_CardPool[m_Random.Next(m_CardPool.Count)];
-            }
-
-            // 根据权重随机
-            int randomValue = m_Random.Next(totalWeight);
-            int currentWeight = 0;
 
             foreach (var card in m_CardPool)
             {
-                currentWeight += card.DropWeight;
-                if (randomValue < currentWeight)
+                if (card != null && card.SoldierIndex == unitType)
                 {
                     return card;
                 }
             }
 
-            return m_CardPool[0];
+            return null;
+        }
+
+        /// <summary>
+        /// 从卡组中选择与当前英雄距离最近的卡。
+        /// </summary>
+        private Card SelectNearestDeckCard()
+        {
+            if (m_DeckCards.Count <= 0)
+            {
+                return null;
+            }
+
+            if (!TryGetHeroPosition(out var heroPosition))
+            {
+                return m_DeckCards[0];
+            }
+
+            Card bestEntry = null;
+            float bestDistanceSqr = float.MaxValue;
+
+            for (int i = 0; i < m_DeckCards.Count; i++)
+            {
+                Card entry = m_DeckCards[i];
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                float distanceSqr = float.MaxValue;
+                if (entry.SourceBuilding != null)
+                {
+                    distanceSqr = (entry.SourceBuilding.transform.position - heroPosition).sqrMagnitude;
+                }
+
+                if (distanceSqr < bestDistanceSqr)
+                {
+                    bestDistanceSqr = distanceSqr;
+                    bestEntry = entry;
+                }
+            }
+
+            return bestEntry ?? m_DeckCards[0];
+        }
+
+        private static bool TryGetHeroPosition(out Vector3 heroPosition)
+        {
+            if (EntityRegistry.Player != null)
+            {
+                heroPosition = EntityRegistry.Player.Position;
+                return true;
+            }
+
+            heroPosition = Vector3.zero;
+            return false;
         }
 
         /// <summary>
@@ -239,7 +346,7 @@ namespace AAAGame.Card
                 m_PopulationModel.CurrentPopulation,
                 m_PopulationModel.MaxPopulation,
                 populationCost);
-            
+
             // 触发人口变化事件（GameFramework 事件系统）
             GameFramework.Event.GameEventArgs populationEvent = PopulationChangedEventArgs.Create(
                 m_PopulationModel.CurrentPopulation,
@@ -253,7 +360,7 @@ namespace AAAGame.Card
 
             // 触发卡牌打出事件（C# 事件）
             OnCardPlayed?.Invoke(cardModel);
-            
+
             // 触发卡牌打出事件（GameFramework 事件系统）
             GameFramework.Event.GameEventArgs cardEvent = CardPlayedEventArgs.Create(cardModel);
             GF.Event.Fire(this, cardEvent);
@@ -325,7 +432,7 @@ namespace AAAGame.Card
         {
             return m_AreaDetectionController;
         }
-        
+
         /// <summary>
         /// 检查位置是否在禁止区域
         /// </summary>
@@ -343,6 +450,7 @@ namespace AAAGame.Card
             m_AreaDetectionController?.Shutdown();
             m_HandModel?.Clear();
             m_CardPool?.Clear();
+            m_DeckCards.Clear();
 
             Debug.Log("[Card] CardSystemController shutdown.");
         }

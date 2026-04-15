@@ -202,10 +202,27 @@ public class LevelEntity : EntityBase
         var buildManager = GameEntry.GetComponent<BuildManager>();
         var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
+        bool heroSpawned = false;
         foreach (var point in presetPoints)
         {
             switch (point.PointType)
             {
+                case EntityPresetPointType.Hero:
+                    if (heroSpawned)
+                    {
+                        break;
+                    }
+
+                    if (!UnitTypeHelper.TryParseUnitType(point.Identifier, out var heroUnitType))
+                    {
+                        Log.Error("LevelEntity.SpawnPresetEntities failed: invalid hero identifier '{0}'.", point.Identifier);
+                        break;
+                    }
+
+                    SoldierFactory.ShowSoldier(heroUnitType, point.Position, SideType.PlayerSide, BrainType.Player);
+                    heroSpawned = true;
+                    break;
+
                 case EntityPresetPointType.Building:
                     if (!buildManager.TryBuildBuildingForLevelInit(point.Identifier, point.Position, out var buildingInstanceId))
                     {

@@ -16,9 +16,10 @@ public partial class CardSetup : GameFrameworkComponent
 
     public void CardSystemUpdate()
     {
-        // 更新卡牌放置逻辑
+        // 自动补牌，再更新卡牌放置逻辑
         if (m_CardSystemController != null)
         {
+            m_CardSystemController.TryAutoDrawOneCardFromDeck();
             m_CardSystemController.UpdatePlacement();
         }
     }
@@ -55,17 +56,15 @@ public partial class CardSetup : GameFrameworkComponent
         List<ICardDataProvider> cardPool = LoadCardPool();
         m_CardSystemController.SetCardPool(cardPool);
 
+        // 每次进入战斗阶段先创建空卡组和空手牌
+        m_CardSystemController.ResetDeckAndHand();
+
         // 设置区域对象（可放置区域和禁止区域）
         SetupAreaObjects();
-        m_CardSystemController.DrawCard();
-        m_CardSystemController.DrawCard();
-        m_CardSystemController.DrawCard();
-        m_CardSystemController.DrawCard();
-        m_CardSystemController.DrawCard();
 
         Log.Info("[CardGame] 卡牌系统初始化完成");
     }
-    
+
     /// <summary>
     /// 加载卡牌池
     /// </summary>
@@ -89,7 +88,7 @@ public partial class CardSetup : GameFrameworkComponent
 
         return cardPool;
     }
-    
+
     /// <summary>
     /// 设置区域对象
     /// </summary>
@@ -108,7 +107,7 @@ public partial class CardSetup : GameFrameworkComponent
             Log.Warning("[CardGame] 未找到区域对象，卡牌放置功能可能无法正常工作");
         }
     }
-    
+
     /// <summary>
     /// 打开卡牌 UI
     /// </summary>
@@ -117,7 +116,7 @@ public partial class CardSetup : GameFrameworkComponent
         // 使用 GF.UI 打开 CardUIForm
         UIParams uiParams = UIParams.Create();
         uiParams.Set("CardSystemController", m_CardSystemController);
-        
+
         m_CardUIFormId = GF.UI.OpenUIForm(UIViews.CardUIForm, uiParams);
         GF.UI.OpenUIForm(UIViews.MinimapUI);
         if (m_CardUIFormId == -1)
@@ -131,14 +130,10 @@ public partial class CardSetup : GameFrameworkComponent
     }
 
     /// <summary>
-    /// 生成卡牌
+    /// 在卡组中生成卡牌
     /// </summary>
-    public void GenerateCard()
+    public void GenerateCardToDeck(BuildingEntity sourceBuilding)
     {
-        if (m_CardSystemController != null)
-        {
-            m_CardSystemController.DrawCard();
-            Log.Info("[CardGame] 生成卡牌");
-        }
+        m_CardSystemController.AddCardToDeck(sourceBuilding);
     }
-} 
+}

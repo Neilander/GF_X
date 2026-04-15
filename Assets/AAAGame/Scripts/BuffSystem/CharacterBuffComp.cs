@@ -48,6 +48,11 @@ namespace AAAGame.Scripts.BuffSystem
                 return false;
             }
 
+            if (buffData.modules == null)
+            {
+                buffData.modules = new List<BuffCallback>();
+            }
+
             // 检查是否已存在该Buff
             if (_buffDict.TryGetValue(buffData.id, out BuffData existingBuff))
             {
@@ -63,9 +68,17 @@ namespace AAAGame.Scripts.BuffSystem
                 existingBuff.currentStack++;
 
                 // 调用叠加回调
-                foreach (BuffCallback module in existingBuff.modules)
+                if (existingBuff.modules != null)
                 {
-                    module.OnAddStack(oldStack, existingBuff.currentStack);
+                    foreach (BuffCallback module in existingBuff.modules)
+                    {
+                        if (module == null)
+                        {
+                            continue;
+                        }
+
+                        module.OnAddStack(oldStack, existingBuff.currentStack);
+                    }
                 }
 
                 ReferencePool.Release(buffData);
@@ -78,6 +91,11 @@ namespace AAAGame.Scripts.BuffSystem
             // 初始化Buff模块
             foreach (BuffCallback module in buffData.modules)
             {
+                if (module == null)
+                {
+                    continue;
+                }
+
                 module.Initialize(buffData, hostEntity);
                 module.OnAdd();
             }
@@ -95,6 +113,11 @@ namespace AAAGame.Scripts.BuffSystem
             foreach (KeyValuePair<string, BuffData> kvp in _buffDict)
             {
                 BuffData buffData = kvp.Value;
+                if (buffData == null)
+                {
+                    expiredBuffs.Add(kvp.Key);
+                    continue;
+                }
 
                 // 永久Buff不更新时间
                 if (!buffData.isForever)
@@ -110,8 +133,18 @@ namespace AAAGame.Scripts.BuffSystem
                 }
 
                 // 更新每个Buff模块
+                if (buffData.modules == null)
+                {
+                    continue;
+                }
+
                 foreach (BuffCallback module in buffData.modules)
                 {
+                    if (module == null)
+                    {
+                        continue;
+                    }
+
                     module.OnUpdate(deltaTime);
                 }
             }
@@ -130,13 +163,27 @@ namespace AAAGame.Scripts.BuffSystem
         {
             if (_buffDict.TryGetValue(buffId, out BuffData buffData))
             {
-                foreach (BuffCallback module in buffData.modules)
+                // 先从字典摘除，避免回调中重入导致重复释放。
+                _buffDict.Remove(buffId);
+
+                List<BuffCallback> modulesCopy = buffData != null && buffData.modules != null
+                    ? new List<BuffCallback>(buffData.modules)
+                    : null;
+
+                if (modulesCopy != null)
                 {
-                    module.OnRemove();
-                    module.Clear();
+                    foreach (BuffCallback module in modulesCopy)
+                    {
+                        if (module == null)
+                        {
+                            continue;
+                        }
+
+                        module.OnRemove();
+                        module.Clear();
+                    }
                 }
 
-                _buffDict.Remove(buffId);
                 ReferencePool.Release(buffData);
                 return true;
             }
@@ -159,17 +206,30 @@ namespace AAAGame.Scripts.BuffSystem
         {
             if (_buffDict.TryGetValue(buffId, out BuffData buffData))
             {
+                // 先从字典摘除，避免 OnDurationEnd 触发 Hide/Shutdown 时重复处理同一 Buff。
+                _buffDict.Remove(buffId);
+
                 // 调用持续时间结束回调（创建副本避免遍历修改错误）
-                List<BuffCallback> modulesCopy = new List<BuffCallback>(buffData.modules);
-                foreach (BuffCallback module in modulesCopy)
+                List<BuffCallback> modulesCopy = buffData != null && buffData.modules != null
+                    ? new List<BuffCallback>(buffData.modules)
+                    : null;
+
+                if (modulesCopy != null)
                 {
-                    module.OnDurationEnd();
-                    module.OnRemove();
-                    module.Clear();
+                    foreach (BuffCallback module in modulesCopy)
+                    {
+                        if (module == null)
+                        {
+                            continue;
+                        }
+
+                        module.OnDurationEnd();
+                        module.OnRemove();
+                        module.Clear();
+                    }
                 }
 
                 // 移除Buff数据
-                _buffDict.Remove(buffId);
                 ReferencePool.Release(buffData);
                 return true;
             }
@@ -200,14 +260,22 @@ namespace AAAGame.Scripts.BuffSystem
         /// </summary>
         public void OnHostDead()
         {
-            List<string> buffIds = new List<string>(_buffDict.Keys);
+            List<BuffData> buffSnapshot = new List<BuffData>(_buffDict.Values);
 
-            foreach (string buffId in buffIds)
+            foreach (BuffData buffData in buffSnapshot)
             {
-                BuffData buffData = _buffDict[buffId];
+                if (buffData == null || buffData.modules == null)
+                {
+                    continue;
+                }
 
                 foreach (BuffCallback module in buffData.modules)
                 {
+                    if (module == null)
+                    {
+                        continue;
+                    }
+
                     module.OnHostDead();
                 }
             }
@@ -221,10 +289,22 @@ namespace AAAGame.Scripts.BuffSystem
         /// </summary>
         public void OnKill(MAEntity target)
         {
-            foreach (BuffData buffData in _buffDict.Values)
+            List<BuffData> buffSnapshot = new List<BuffData>(_buffDict.Values);
+
+            foreach (BuffData buffData in buffSnapshot)
             {
+                if (buffData == null || buffData.modules == null)
+                {
+                    continue;
+                }
+
                 foreach (BuffCallback module in buffData.modules)
                 {
+                    if (module == null)
+                    {
+                        continue;
+                    }
+
                     module.OnKill(target);
                 }
             }
@@ -235,17 +315,39 @@ namespace AAAGame.Scripts.BuffSystem
         /// </summary>
         private void ClearAllBuffs()
         {
-            foreach (BuffData buffData in _buffDict.Values)
+            if (_buffDict.Count == 0)
             {
-                foreach (BuffCallback module in buffData.modules)
-                {
-                    module.OnRemove();
-                    module.Clear();
-                }
-                ReferencePool.Release(buffData);
+                return;
             }
 
+            // 先快照并清空字典，避免回调内重入导致遍历失效或重复释放。
+            List<BuffData> buffSnapshot = new List<BuffData>(_buffDict.Values);
             _buffDict.Clear();
+
+            foreach (BuffData buffData in buffSnapshot)
+            {
+                if (buffData == null)
+                {
+                    continue;
+                }
+
+                if (buffData.modules != null)
+                {
+                    List<BuffCallback> modulesCopy = new List<BuffCallback>(buffData.modules);
+                    foreach (BuffCallback module in modulesCopy)
+                    {
+                        if (module == null)
+                        {
+                            continue;
+                        }
+
+                        module.OnRemove();
+                        module.Clear();
+                    }
+                }
+
+                ReferencePool.Release(buffData);
+            }
         }
 
         /// <summary>
