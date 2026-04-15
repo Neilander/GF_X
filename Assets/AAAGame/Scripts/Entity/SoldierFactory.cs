@@ -54,6 +54,10 @@ public static class SoldierFactory
             case UnitType.Unit_BoneButcher:
                 buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
                 break;
+            
+            case UnitType.Unit_Scapegoat:
+                buffList.Add(TauntBuffCallback.CreateTaunt(1));
+                break;
         }
     }
 }

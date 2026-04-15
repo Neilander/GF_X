@@ -15,6 +15,10 @@ public class GeneralCreature : EntityBase, ITargetable
     public Transform display { get; protected set; }
     public Animator animator { get; protected set; }
 
+    /// <summary>
+    /// 嘲讽等级：目标选择时优先攻击等级高的。可被 Buff 加减。
+    /// </summary>
+    public int TauntLevel;
 
     public CreaturePropertyManager CreaturePropertyManager { get; private set; }
 
@@ -78,6 +82,7 @@ public class GeneralCreature : EntityBase, ITargetable
     {
         base.OnShow(userData);
         Alive = true;
+        TauntLevel = 1; // 生物默认嘲讽等级 1
         CreaturePropertyManager = new CreaturePropertyManager(CharacterKey);
         //Debug.LogError($"[Creature] {CharacterKey} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
     }
