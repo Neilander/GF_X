@@ -263,6 +263,42 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技1生效范围类型
+        /// </summary>
+        public TechScopeType Tech1ScopeType
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技1生效单位范围
+        /// </summary>
+        public string[] Tech1UnitScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技1生效标签范围
+        /// </summary>
+        public UnitTag[] Tech1TagScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技1生效种族类型
+        /// </summary>
+        public Archetype[] Tech1ArchScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技1名称（多语言）
         /// </summary>
         public string Tech1NameKey
@@ -320,6 +356,42 @@ public class BuildingTable : DataRowBase
         /// 科技2全局是否可存在多个
         /// </summary>
         public bool Tech2Stackable
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技2生效范围类型
+        /// </summary>
+        public TechScopeType Tech2ScopeType
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技2生效单位范围
+        /// </summary>
+        public string[] Tech2UnitScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技2生效标签范围
+        /// </summary>
+        public UnitTag[] Tech2TagScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技2生效种族类型
+        /// </summary>
+        public Archetype[] Tech2ArchScope
         {
             get;
             private set;
@@ -389,6 +461,42 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技3生效范围类型
+        /// </summary>
+        public TechScopeType Tech3ScopeType
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技3生效单位范围
+        /// </summary>
+        public string[] Tech3UnitScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技3生效标签范围
+        /// </summary>
+        public UnitTag[] Tech3TagScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技3生效种族类型
+        /// </summary>
+        public Archetype[] Tech3ArchScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技3名称（多语言）
         /// </summary>
         public string Tech3NameKey
@@ -446,6 +554,42 @@ public class BuildingTable : DataRowBase
         /// 科技4全局是否可存在多个
         /// </summary>
         public bool Tech4Stackable
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技4生效范围类型
+        /// </summary>
+        public TechScopeType Tech4ScopeType
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技4生效单位范围
+        /// </summary>
+        public string[] Tech4UnitScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技4生效标签范围
+        /// </summary>
+        public UnitTag[] Tech4TagScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技4生效种族类型
+        /// </summary>
+        public Archetype[] Tech4ArchScope
         {
             get;
             private set;
@@ -527,6 +671,10 @@ public class BuildingTable : DataRowBase
             index++;
             Tech1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             Tech1Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech1ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
+            Tech1UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech1TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
+            Tech1ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech1NameKey = columnStrings[index++];
             Tech1DescKey = columnStrings[index++];
             Tech1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -535,6 +683,10 @@ public class BuildingTable : DataRowBase
             index++;
             Tech2UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             Tech2Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech2ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
+            Tech2UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech2TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
+            Tech2ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech2NameKey = columnStrings[index++];
             Tech2DescKey = columnStrings[index++];
             Tech2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -543,6 +695,10 @@ public class BuildingTable : DataRowBase
             index++;
             Tech3UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             Tech3Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech3ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
+            Tech3UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech3TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
+            Tech3ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech3NameKey = columnStrings[index++];
             Tech3DescKey = columnStrings[index++];
             Tech3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -551,6 +707,10 @@ public class BuildingTable : DataRowBase
             index++;
             Tech4UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             Tech4Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
+            Tech4ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
+            Tech4UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech4TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
+            Tech4ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech4NameKey = columnStrings[index++];
             Tech4DescKey = columnStrings[index++];
             Tech4Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -592,6 +752,10 @@ public class BuildingTable : DataRowBase
                     Tech1ID = binaryReader.ReadString();
                     Tech1UniqueValues = binaryReader.ReadFix64Array();
                     Tech1Stackable = binaryReader.ReadBoolean();
+                    Tech1ScopeType = binaryReader.ReadEnum<TechScopeType>();
+                    Tech1UnitScope = binaryReader.ReadArray<string>();
+                    Tech1TagScope = binaryReader.ReadArray<UnitTag>();
+                    Tech1ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech1NameKey = binaryReader.ReadString();
                     Tech1DescKey = binaryReader.ReadString();
                     Tech1Cost = binaryReader.Read7BitEncodedInt32();
@@ -599,6 +763,10 @@ public class BuildingTable : DataRowBase
                     Tech2ID = binaryReader.ReadString();
                     Tech2UniqueValues = binaryReader.ReadFix64Array();
                     Tech2Stackable = binaryReader.ReadBoolean();
+                    Tech2ScopeType = binaryReader.ReadEnum<TechScopeType>();
+                    Tech2UnitScope = binaryReader.ReadArray<string>();
+                    Tech2TagScope = binaryReader.ReadArray<UnitTag>();
+                    Tech2ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech2NameKey = binaryReader.ReadString();
                     Tech2DescKey = binaryReader.ReadString();
                     Tech2Cost = binaryReader.Read7BitEncodedInt32();
@@ -606,6 +774,10 @@ public class BuildingTable : DataRowBase
                     Tech3ID = binaryReader.ReadString();
                     Tech3UniqueValues = binaryReader.ReadFix64Array();
                     Tech3Stackable = binaryReader.ReadBoolean();
+                    Tech3ScopeType = binaryReader.ReadEnum<TechScopeType>();
+                    Tech3UnitScope = binaryReader.ReadArray<string>();
+                    Tech3TagScope = binaryReader.ReadArray<UnitTag>();
+                    Tech3ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech3NameKey = binaryReader.ReadString();
                     Tech3DescKey = binaryReader.ReadString();
                     Tech3Cost = binaryReader.Read7BitEncodedInt32();
@@ -613,6 +785,10 @@ public class BuildingTable : DataRowBase
                     Tech4ID = binaryReader.ReadString();
                     Tech4UniqueValues = binaryReader.ReadFix64Array();
                     Tech4Stackable = binaryReader.ReadBoolean();
+                    Tech4ScopeType = binaryReader.ReadEnum<TechScopeType>();
+                    Tech4UnitScope = binaryReader.ReadArray<string>();
+                    Tech4TagScope = binaryReader.ReadArray<UnitTag>();
+                    Tech4ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech4NameKey = binaryReader.ReadString();
                     Tech4DescKey = binaryReader.ReadString();
                     Tech4Cost = binaryReader.Read7BitEncodedInt32();
