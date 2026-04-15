@@ -118,8 +118,17 @@ namespace AAAGame.MiniMap.FOG3.Editor
                 EditorGUI.indentLevel++;
                 EditorGUILayout.PropertyField(createWorldOverlay);
                 EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("OverlayHeight"));
-                EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("AutoHeightAboveScene"));
-                EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("AutoHeightPadding"));
+                SerializedProperty drawOverSceneGeometry = viewSettings.FindPropertyRelative("DrawOverSceneGeometry");
+                EditorGUILayout.PropertyField(drawOverSceneGeometry);
+                if (drawOverSceneGeometry.boolValue)
+                {
+                    EditorGUILayout.HelpBox("Recommended for movable perspective or orthographic cameras. The overlay stays aligned to terrain coordinates and draws over scene geometry by depth test.", MessageType.None);
+                }
+                else
+                {
+                    EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("AutoHeightAboveScene"));
+                    EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("AutoHeightPadding"));
+                }
                 EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("OutsideMaskPadding"));
                 DrawLayerIndexButtons(viewSettings.FindPropertyRelative("OverlayLayer"), "Overlay Layer");
                 EditorGUILayout.PropertyField(viewSettings.FindPropertyRelative("HiddenColor"));

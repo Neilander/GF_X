@@ -40,7 +40,8 @@ namespace AAAGame.MiniMap.FOG3
     public sealed class Fog3ViewSettings
     {
         public float OverlayHeight = 0.15f;
-        public bool AutoHeightAboveScene = true;
+        public bool DrawOverSceneGeometry = true;
+        public bool AutoHeightAboveScene;
         public float AutoHeightPadding = 2f;
         public float OutsideMaskPadding = 1000f;
         public int OverlayLayer = -1;

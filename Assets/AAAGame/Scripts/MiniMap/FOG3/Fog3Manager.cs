@@ -338,7 +338,7 @@ namespace AAAGame.MiniMap.FOG3
         private float ResolveOverlayHeight(Fog3TerrainInfo terrainInfo)
         {
             float minimumLocalHeight = Mathf.Max(0.01f, viewSettings.OverlayHeight);
-            if (!viewSettings.AutoHeightAboveScene)
+            if (viewSettings.DrawOverSceneGeometry || !viewSettings.AutoHeightAboveScene)
                 return minimumLocalHeight;
 
             float terrainMinX = terrainInfo.Origin.x;
@@ -389,6 +389,9 @@ namespace AAAGame.MiniMap.FOG3
         private void RefreshOverlayHeightIfNeeded()
         {
             if (!createWorldOverlay || currentTerrainInfo == null || overlayView == null || controller?.MapData == null)
+                return;
+
+            if (viewSettings.DrawOverSceneGeometry)
                 return;
 
             float nextOverlayHeight = ResolveOverlayHeight(currentTerrainInfo);

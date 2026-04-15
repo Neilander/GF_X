@@ -94,7 +94,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2b005bbb2e2097d408ffa6658a2ba863, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  visionRadius: 0.1
+  visionRadius: 10
   autoRegister: 1
   useLineOfSight: 0
 --- !u!1 &4779818598053146821

@@ -5,6 +5,8 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3WorldOverlayView : MonoBehaviour
     {
+        private const string OverlayShaderName = "AAAGame/FOG3/OverlayAlwaysOnTop";
+
         private Texture2D fogTexture;
         private Color32[] pixels;
         private Material fogMaterial;
@@ -157,7 +159,9 @@ namespace AAAGame.MiniMap.FOG3
 
         private Material CreateTransparentMaterial(string materialName, Color color)
         {
-            Shader shader = Shader.Find("Sprites/Default");
+            Shader shader = settings.DrawOverSceneGeometry ? Shader.Find(OverlayShaderName) : null;
+            if (shader == null)
+                shader = Shader.Find("Sprites/Default");
             if (shader == null)
                 shader = Shader.Find("Unlit/Transparent");
             if (shader == null)
@@ -171,11 +175,11 @@ namespace AAAGame.MiniMap.FOG3
             };
 
             SetMaterialColor(material, color);
-            ConfigureTransparent(material);
+            ConfigureTransparent(material, settings.DrawOverSceneGeometry);
             return material;
         }
 
-        private static void ConfigureTransparent(Material material)
+        private static void ConfigureTransparent(Material material, bool drawOverSceneGeometry)
         {
             if (material == null)
                 return;
@@ -183,6 +187,7 @@ namespace AAAGame.MiniMap.FOG3
             material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
             material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
             material.SetInt("_ZWrite", 0);
+            material.SetInt("_ZTest", drawOverSceneGeometry ? (int)CompareFunction.Always : (int)CompareFunction.LessEqual);
             material.DisableKeyword("_ALPHATEST_ON");
             material.EnableKeyword("_ALPHABLEND_ON");
             material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
