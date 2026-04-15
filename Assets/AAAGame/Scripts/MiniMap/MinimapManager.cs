@@ -36,7 +36,7 @@ namespace AAAGame.MiniMap
                 if (OnUnitsUpdated != null)
                 {
                     List<MinimapUnitData> unitsList = new List<MinimapUnitData>(units.Values);
-                    Log.Info($"[MinimapManager] Broadcasting {unitsList.Count} units to {OnUnitsUpdated.GetInvocationList().Length} subscribers");
+                    //Log.Info($"[MinimapManager] Broadcasting {unitsList.Count} units to {OnUnitsUpdated.GetInvocationList().Length} subscribers");
                     OnUnitsUpdated.Invoke(unitsList);
                 }
                 else

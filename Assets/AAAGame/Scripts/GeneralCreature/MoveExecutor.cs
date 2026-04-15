@@ -165,7 +165,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         // 调试：打印移动信息
         if (finalDisplacement.sqrMagnitude > 0.000001f)
         {
-            Debug.Log($"[MoveExecutor] Execute: finalDisplacement={finalDisplacement}, gameObject={gameObject.name}");
+            //Debug.Log($"[MoveExecutor] Execute: finalDisplacement={finalDisplacement}, gameObject={gameObject.name}");
             _controller.Move(finalDisplacement);
         }
 
