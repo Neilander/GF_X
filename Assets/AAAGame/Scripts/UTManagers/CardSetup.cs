@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -129,4 +129,16 @@ public partial class CardSetup : GameFrameworkComponent
             Log.Info("[CardGame] 卡牌 UI 已打开");
         }
     }
-}
+
+    /// <summary>
+    /// 生成卡牌
+    /// </summary>
+    public void GenerateCard()
+    {
+        if (m_CardSystemController != null)
+        {
+            m_CardSystemController.DrawCard();
+            Log.Info("[CardGame] 生成卡牌");
+        }
+    }
+} 

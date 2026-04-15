@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
@@ -8,6 +10,52 @@ using AAAGame.Scripts.BuffSystem;
 /// </summary>
 public static class SoldierFactory
 {
+    /// <summary>
+    /// 统一移除士兵入口：使用 HideEntity。
+    /// 血条由 HideEntityComplete 事件监听链路自动清理。
+    /// </summary>
+    public static bool RemoveSoldier(SoldierEntity soldier)
+    {
+        GF.Entity.HideEntity(soldier.Entity);
+        return true;
+    }
+
+    /// <summary>
+    /// 移除 Creature 组中所有 SoldierEntity（不区分阵营）。
+    /// </summary>
+    public static void RemoveAllSoldiersInCreatureGroup()
+    {
+        var creatureGroup = GF.Entity.GetEntityGroup(Const.EntityGroup.Creature.ToString());
+        var entities = creatureGroup.GetAllEntities();
+        for (int i = 0; i < entities.Length; i++)
+        {
+            if (entities[i] is Entity entity && entity.Logic is SoldierEntity soldier)
+            {
+                RemoveSoldier(soldier);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 将预设点 Identifier 解析为 UnitType。
+    /// </summary>
+    public static bool TryParseUnitType(string identifier, out UnitType unitType)
+    {
+        identifier = string.IsNullOrWhiteSpace(identifier) ? string.Empty : identifier.Trim();
+        if (Enum.TryParse(identifier, true, out unitType))
+        {
+            return true;
+        }
+
+        if (Enum.TryParse($"Unit_{identifier}", true, out unitType))
+        {
+            return true;
+        }
+
+        unitType = default;
+        return false;
+    }
+
     /// <summary>
     /// 创建士兵单位（异步，通过 OnShowCallback 在实体创建完成后自动添加 Buff）
     /// </summary>
@@ -36,8 +84,28 @@ public static class SoldierFactory
     /// </summary>
     private static string GetSoldierPrefabName(UnitType index)
     {
-        // 使用简单的gujia名称，与CharacterTestProcedure保持一致
-        return "gujia";
+        // 根据不同的UnitType返回对应的预制体名称
+        switch (index)
+        {
+            case UnitType.Unit_Scapegoat:
+                return "背锅侠";
+            case UnitType.Unit_Courier:
+                return "快递员";
+            case UnitType.Unit_CanMaker:
+                return "易拉罐";
+            case UnitType.Unit_Coder:
+                return "gujia"; // 码农使用gujia预制体
+            case UnitType.Unit_BoneButcher:
+                return "gujia"; // 剔骨狂魔使用gujia预制体
+            case UnitType.Unit_Brat:
+                return "gujia"; // 熊孩子使用gujia预制体
+            case UnitType.Unit_LateRider:
+                return "gujia"; // 超时骑手使用gujia预制体
+            case UnitType.Unit_ColdCarrier:
+                return "gujia"; // 冷库搬运工使用gujia预制体
+            default:
+                return "gujia"; // 默认使用gujia预制体
+        }
     }
 
     /// <summary>
@@ -54,7 +122,7 @@ public static class SoldierFactory
             case UnitType.Unit_BoneButcher:
                 buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
                 break;
-            
+
             case UnitType.Unit_Scapegoat:
                 buffList.Add(TauntBuffCallback.CreateTaunt(1));
                 break;

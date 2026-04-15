@@ -20,5 +20,6 @@ public enum UIViews : int
 	ToastTips = 10,
 	InteractOptionTips = 12,
 	CardUIForm = 16,
-	MinimapUI = 17
+	MinimapUI = 17,
+	PhaseSwitchUIForm = 18
 }

@@ -47,17 +47,12 @@ public class LevelTestProcedure : ProcedureBase
 
                     if (point.IsGameEndConditionBuilding)
                     {
-                        var levelEntity = LevelEntity.ActiveLevelEntity;
                         int initialOwnerFactionId = EntitySideHelper.PlayerFactionId;
-                        if (levelEntity != null)
+                        var stronghold = LevelEntity.GetStrongholdAtWorldPosition(point.Position);
+                        if (stronghold != null)
                         {
-                            var stronghold = levelEntity.GetStrongholdAtWorldPosition(point.Position);
-                            if (stronghold != null)
-                            {
-                                initialOwnerFactionId = stronghold.OwnerFactionId;
-                            }
+                            initialOwnerFactionId = stronghold.OwnerFactionId;
                         }
-
                         gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
                     }
                     break;

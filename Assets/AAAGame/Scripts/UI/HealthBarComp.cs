@@ -48,6 +48,7 @@ public class HealthBarComp : MonoBehaviour
         {
             GF.Event.Subscribe(CreatureHealthChangedEventArgs.EventId, OnHealthChanged);
             GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnFactionChanged);
+            GF.Event.Subscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityComplete);
             _subscribed = true;
         }
     }
@@ -97,13 +98,7 @@ public class HealthBarComp : MonoBehaviour
     {
         if (_pendingDestroy)
         {
-            // 先取消订阅再销毁，避免 OnDestroy 时 GF.Event 已清理
-            if (_subscribed)
-            {
-                GF.Event.Unsubscribe(CreatureHealthChangedEventArgs.EventId, OnHealthChanged);
-                _subscribed = false;
-            }
-            Destroy(gameObject);
+            Remove();
             return;
         }
 
@@ -129,10 +124,20 @@ public class HealthBarComp : MonoBehaviour
             {
                 GF.Event.Unsubscribe(CreatureHealthChangedEventArgs.EventId, OnHealthChanged);
                 GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnFactionChanged);
+                GF.Event.Unsubscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityComplete);
             }
             catch (System.Exception) { /* GF 可能已销毁（退出 Play Mode 等） */ }
             _subscribed = false;
         }
+    }
+
+    private void OnHideEntityComplete(object sender, GameEventArgs e)
+    {
+        var args = e as HideEntityCompleteEventArgs;
+        if (args == null || args.EntityId != _entityId)
+            return;
+
+        Remove();
     }
 
     private void OnFactionChanged(object sender, GameEventArgs e)
@@ -210,6 +215,46 @@ public class HealthBarComp : MonoBehaviour
         comp.Init(entityId, followTarget, curHp, maxHp, offset);
 
         return comp;
+    }
+
+    private void Remove()
+    {
+        _pendingDestroy = false;
+
+        // 先取消订阅再销毁，避免 OnDestroy 时 GF.Event 已清理。
+        if (_subscribed)
+        {
+            try
+            {
+                GF.Event.Unsubscribe(CreatureHealthChangedEventArgs.EventId, OnHealthChanged);
+                GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnFactionChanged);
+                GF.Event.Unsubscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityComplete);
+            }
+            catch (System.Exception) { }
+            _subscribed = false;
+        }
+
+        if (gameObject != null)
+        {
+            Object.Destroy(gameObject);
+        }
+    }
+
+    public static void Remove(int entityId)
+    {
+        var healthBar = GameObject.Find($"HealthBar_{entityId}");
+        if (healthBar != null)
+        {
+            var comp = healthBar.GetComponent<HealthBarComp>();
+            if (comp != null)
+            {
+                comp.Remove();
+            }
+            else
+            {
+                Object.Destroy(healthBar);
+            }
+        }
     }
 
     private void UpdateFillColor()

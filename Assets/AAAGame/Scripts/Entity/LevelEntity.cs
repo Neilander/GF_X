@@ -26,15 +26,10 @@ public class LevelEntity : EntityBase
         get { return InGameDataModel.GetStrongholds(); }
     }
 
-    public Stronghold GetStrongholdAtWorldPosition(Vector3 worldPosition)
+    public static Stronghold GetStrongholdAtWorldPosition(Vector3 worldPosition)
     {
-        if (tileWorldCreatorManager == null)
-        {
-            return null;
-        }
-
-        Vector2 gridPosition = tileWorldCreatorManager.GetRelativeGridPosition(worldPosition);
-        return GetStrongholdAtGridPosition(gridPosition);
+        Vector2 gridPosition = ActiveLevelEntity.tileWorldCreatorManager.GetRelativeGridPosition(worldPosition);
+        return ActiveLevelEntity.GetStrongholdAtGridPosition(gridPosition);
     }
 
     public Stronghold GetStrongholdAtGridPosition(Vector2 gridPosition)
@@ -284,32 +279,12 @@ public class LevelEntity : EntityBase
         var existingBuildings = GameObject.FindObjectsOfType<BuildingEntity>();
         for (int i = 0; i < existingBuildings.Length; i++)
         {
-            RegisterBuildingToStrongholdInternal(existingBuildings[i]);
+            InGameDataModel.RegisterBuilding(existingBuildings[i]);
         }
 
         Log.Info(
             "LevelEntity.CollectStrongholds done. Strongholds={0}",
             strongholds.Count);
-    }
-
-    public static void RegisterBuildingToStronghold(BuildingEntity building)
-    {
-        if (activeLevelEntity == null)
-        {
-            return;
-        }
-
-        activeLevelEntity.RegisterBuildingToStrongholdInternal(building);
-    }
-
-    public static void UnregisterBuildingFromStronghold(BuildingEntity building)
-    {
-        if (activeLevelEntity == null)
-        {
-            return;
-        }
-
-        activeLevelEntity.UnregisterBuildingFromStrongholdInternal(building);
     }
 
     public static void NotifyBuildingDisabled(BuildingEntity building, IEntityContext attacker)
@@ -318,42 +293,6 @@ public class LevelEntity : EntityBase
             return;
 
         activeLevelEntity.TryCaptureStrongholdAfterBuildingDisabled(building, attacker);
-    }
-
-    private void RegisterBuildingToStrongholdInternal(BuildingEntity building)
-    {
-        if (building == null || tileWorldCreatorManager == null)
-        {
-            return;
-        }
-
-        UnregisterBuildingFromStrongholdInternal(building);
-
-        var stronghold = GetStrongholdAtWorldPosition(building.transform.position);
-        building.SetStronghold(stronghold);
-        if (stronghold != null)
-        {
-            stronghold.Buildings.Add(building);
-        }
-
-        InGameDataModel.RegisterStrongholdBuilding(building);
-    }
-
-    private void UnregisterBuildingFromStrongholdInternal(BuildingEntity building)
-    {
-        if (building == null)
-        {
-            return;
-        }
-
-        var stronghold = building.CurrentStronghold;
-        if (stronghold != null)
-        {
-            stronghold.Buildings.Remove(building);
-        }
-
-        building.SetStronghold(null);
-        InGameDataModel.UnregisterStrongholdBuilding(building);
     }
 
     private bool TryParseStrongholdLayerName(string layerName, out int factionId)

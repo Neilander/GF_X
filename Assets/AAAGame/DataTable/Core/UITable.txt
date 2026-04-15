@@ -20,5 +20,6 @@
 #	提示(顶层)							
 	10	吐司提示	1	ToastTips	False	3	False	False
 	12	交互选项	2	InteractOptionTips	False	3	False	False
-	16	ui	1	CardUIForm	False	1	False	False
-	17	MinMap	1	MinimapUI	False	1	False	False
+	16	卡牌面板	1	CardUIForm	False	1	False	False
+	17	小地图	1	MinimapUI	False	1	False	False
+	18	阶段切换按钮	3	PhaseSwitchUIForm	False	1	False	False
