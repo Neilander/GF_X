@@ -16,7 +16,8 @@
         "Obfuz.Runtime",
         "Unity.InputSystem",
         "AstarPathfindingProject",
-        "BehaviourTree"
+        "BehaviourTree",
+        "GiantGrey.TileWorldCreator"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

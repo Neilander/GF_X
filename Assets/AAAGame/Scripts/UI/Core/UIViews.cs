@@ -21,5 +21,5 @@ public enum UIViews : int
 	InteractOptionTips = 12,
 	CardUIForm = 16,
 	MinimapUI = 17,
-	FogOfWarUIForm = 18
+	FogUI = 18
 }

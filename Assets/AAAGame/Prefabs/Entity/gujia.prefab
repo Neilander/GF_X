@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 4871106885075792713}
   - component: {fileID: 3003162454319747506}
   - component: {fileID: 3585839594239939683}
-  - component: {fileID: 5763001215977584049}
+  - component: {fileID: 438659645089375595}
   m_Layer: 14
   m_Name: gujia
   m_TagString: Untagged
@@ -82,7 +82,7 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &5763001215977584049
+--- !u!114 &438659645089375595
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -91,14 +91,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 3908604912598156533}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 96446fa4764353d42af528676519c89c, type: 3}
+  m_Script: {fileID: 11500000, guid: 2b005bbb2e2097d408ffa6658a2ba863, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  playerMask: 1
-  visionRange: 10
+  visionRadius: 0.1
   autoRegister: 1
-  useTerrainHeight: 1
-  heightOffset: 0
+  useLineOfSight: 0
 --- !u!1 &4779818598053146821
 GameObject:
   m_ObjectHideFlags: 0

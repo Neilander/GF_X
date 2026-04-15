@@ -1,4 +1,4 @@
-﻿using System.Collections;
+﻿﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -120,8 +120,8 @@ public partial class CardSetup : GameFrameworkComponent
         
         
         m_CardUIFormId = GF.UI.OpenUIForm(UIViews.CardUIForm, uiParams);
-        GF.UI.OpenUIForm(UIViews.MinimapUI); 
-        GF.UI.OpenUIForm(UIViews.FogOfWarUIForm);
+        GF.UI.OpenUIForm(UIViews.MinimapUI);
+        //GF.UI.OpenUIForm(UIViews.FogUI);
         if (m_CardUIFormId == -1)
         {
             Log.Error("[CardGame] 打开卡牌 UI 失败");

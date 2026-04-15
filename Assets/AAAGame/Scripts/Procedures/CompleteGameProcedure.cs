@@ -28,9 +28,7 @@ public class CompleteGameProcedure : ProcedureBase
         GameEntry.GetComponent<MinimapSetup>().MinimapSystemSetup();
         GameEntry.GetComponent<MinimapSetup>().OpenMinimapUI();
 
-        // 4. 初始化战争迷雾系统
-        GameEntry.GetComponent<FogOfWarSetup>().FogOfWarSystemSetup();
-        GameEntry.GetComponent<FogOfWarSetup>().OpenFogOfWarUI();
+
 
         Log.Info("[CompleteGame] 所有系统初始化完成");
     }
@@ -42,7 +40,7 @@ public class CompleteGameProcedure : ProcedureBase
         // 更新所有系统
         GameEntry.GetComponent<CardSetup>().CardSystemUpdate();
         GameEntry.GetComponent<MinimapSetup>().MinimapSystemUpdate();
-        GameEntry.GetComponent<FogOfWarSetup>().FogOfWarSystemUpdate();
+    
     }
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
@@ -52,7 +50,7 @@ public class CompleteGameProcedure : ProcedureBase
         Log.Info("[CompleteGame] 离开完整游戏流程");
 
         // 按相反顺序关闭系统
-        GameEntry.GetComponent<FogOfWarSetup>().FogOfWarSystemShutdown();
+        
         GameEntry.GetComponent<MinimapSetup>().MinimapSystemShutdown();
         GameEntry.GetComponent<CardSetup>().CardSystemShutdown();
         GameEntry.GetComponent<GeneralSetup>().GeneralSystemShutDown();

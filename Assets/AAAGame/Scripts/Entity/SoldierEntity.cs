@@ -1,4 +1,6 @@
 using AAAGame.MiniMap;
+
+using AAAGame.MiniMap;
 using UnityEngine;
 
 /// <summary>
@@ -16,12 +18,14 @@ public class SoldierEntity : MAEntity
     /// AI类型
     /// </summary>
     public BrainType BrainType { get; private set; }
-    private  MinimapReportComponent  m_MinimapReportComponent;
+    private MinimapReportComponent m_MinimapReportComponent;
 
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
         m_MinimapReportComponent = gameObject.AddComponent<MinimapReportComponent>();
+    
+
     }
 
     protected override void OnShow(object userData)
@@ -43,7 +47,9 @@ public class SoldierEntity : MAEntity
         {
             m_MinimapReportComponent.Initialize(Side);
         }
+
         
+
         
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
@@ -56,6 +62,9 @@ public class SoldierEntity : MAEntity
         {
             m_MinimapReportComponent.Tick();
         }
+        
+        // 战争迷雾视野组件会在 LateUpdate 中自动更新位置
+        // 不需要在这里手动调用 Tick()
 
         // Debug: 绿线=NavMesh方向, 红线=到目标直线
         if (targetComp?.CurrentTarget != null && targetComp.CurrentTarget.Alive)

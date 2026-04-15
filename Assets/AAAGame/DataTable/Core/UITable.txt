@@ -22,4 +22,4 @@
 	12	交互选项	2	InteractOptionTips	False	3	False	False
 	16	ui	1	CardUIForm	False	1	False	False
 	17	MinMap	1	MinimapUI	False	1	False	False
-	18	FogOfWarUIForm	1	FogOfWarUIForm	False	1	False	False
+	18	FogUI	1	FogUI	False	1	False	False

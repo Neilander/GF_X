@@ -1,0 +1,45 @@
+﻿using UnityEngine;
+
+namespace AAAGame.MiniMap.FOG3
+{
+    public sealed class Fog3RevealerData
+    {
+        public Fog3RevealerData(int id, Transform target, Vector3 fallbackPosition, float visionRadius, int entityId, bool useLineOfSight)
+        {
+            Id = id;
+            Target = target;
+            FallbackPosition = fallbackPosition;
+            VisionRadius = Mathf.Max(0.01f, visionRadius);
+            EntityId = entityId;
+            UseLineOfSight = useLineOfSight;
+            IsActive = true;
+        }
+
+        public int Id { get; }
+        public Transform Target { get; private set; }
+        public Vector3 FallbackPosition { get; private set; }
+        public float VisionRadius { get; private set; }
+        public int EntityId { get; }
+        public bool UseLineOfSight { get; set; }
+        public bool IsActive { get; set; }
+        public bool HasTarget => Target != null;
+        public Vector3 Position => Target != null ? Target.position : FallbackPosition;
+
+        public void SetTarget(Transform target)
+        {
+            Target = target;
+            if (target != null)
+                FallbackPosition = target.position;
+        }
+
+        public void SetFallbackPosition(Vector3 position)
+        {
+            FallbackPosition = position;
+        }
+
+        public void SetVisionRadius(float visionRadius)
+        {
+            VisionRadius = Mathf.Max(0.01f, visionRadius);
+        }
+    }
+}
