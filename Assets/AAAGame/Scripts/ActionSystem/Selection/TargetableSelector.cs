@@ -77,7 +77,10 @@ public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
         if (!targetOwner.CanBeSelected())
             return false;
 
-        if (targetOwner is BuildingEntity building && (building.IsLv0Invincible || building.IsPhaseProtected || building.IsDisabled))
+        if (targetOwner is BuildingEntity building && building.IsDisabled)
+            return false;
+
+        if (targetOwner is IEntityContext context && context.HasInvincibleBuff())
             return false;
 
         if (!EntitySideHelper.GetHitSide(_selfSide).Contains(targetOwner.Side))

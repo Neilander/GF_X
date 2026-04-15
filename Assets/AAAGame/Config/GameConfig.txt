@@ -8,3 +8,4 @@
 	SmallUnitCollisionRadius	小型单位碰撞半径	20
 	MediumUnitCollisionRadius	中型单位碰撞半径	30
 	LargeUnitCollisionRadius	大型单位碰撞半径	40
+	DiscardResourceConversionRate	弃牌时转化资源量与人口之比	4

@@ -102,7 +102,16 @@ public class InGameDataModel : DataModelBase
         dataModel.m_IngameValue[type] = value;
 
         if (triggerEvent && oldValue != value)
+        {
+            if (type == IngameValueType.Phase)
+            {
+                GF.Event.Fire(
+                    dataModel,
+                    IngamePhaseChangedEventArgs.Create((GamePhase)oldValue, (GamePhase)value));
+            }
+
             GF.Event.Fire(dataModel, IngameValueChangedEventArgs.Create(type, oldValue, value));
+        }
     }
 
     public static bool TryModifyValue(IngameValueType type, int delta, bool triggerEvent = true)

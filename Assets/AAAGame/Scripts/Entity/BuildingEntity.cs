@@ -149,7 +149,7 @@ public partial class BuildingEntity : MAEntity
         if (damage <= Fix64.Zero)
             return;
 
-        if (IsLv0Invincible || IsPhaseProtected || _isDisabled || !Alive)
+        if (this.HasInvincibleBuff() || _isDisabled || !Alive)
             return;
 
         TriggerHitAnimation();

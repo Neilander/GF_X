@@ -92,6 +92,9 @@ public class GeneralCreature : EntityBase, ITargetable
     {
         if (!Alive) return;
 
+        if (this is IEntityContext context && context.HasInvincibleBuff())
+            return;
+
         // 安全触发受击动画（Animator 可能没有此参数）
         if (animator != null)
         {
@@ -113,14 +116,17 @@ public class GeneralCreature : EntityBase, ITargetable
 
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-damage)));
 
-        // 显示伤害跳字
-        Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
-        Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
-        Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
-        GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
+        // // 显示伤害跳字
+        // Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
+        // Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
+        // Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
+        // GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
 
         if (cur <= Fix64.Zero)
         {
+            if (TryHandleZeroHealth(attacker))
+                return;
+
             Alive = false;
 
             // 获取被击杀的实体
@@ -150,6 +156,15 @@ public class GeneralCreature : EntityBase, ITargetable
 
             GF.Entity.HideEntity(Id);
         }
+    }
+
+    /// <summary>
+    /// 子类可在血量归零时拦截默认死亡逻辑。
+    /// 返回 true 表示已处理，基类不再执行隐藏与死亡回调。
+    /// </summary>
+    protected virtual bool TryHandleZeroHealth(IEntityContext attacker)
+    {
+        return false;
     }
 
     protected virtual void SetUpHurtBox()
