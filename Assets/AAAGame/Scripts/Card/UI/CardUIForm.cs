@@ -344,26 +344,13 @@ namespace AAAGame.Card
                 areaMaterialOverlay.HideAreaEffect();
             }
             
-            // 优先级 1：检查是否拖回手牌区域（最高优先级，直接取消放置）
-            bool isOverHand = IsOverHandCardArea(screenPosition);
-            Log.Info($"[CardUI] ✅ Is over hand area: {isOverHand}");
-            
-            if (isOverHand)
-            {
-                Log.Info("[CardUI] ✅✅✅ Card dragged back to hand, CANCELING PLACEMENT");
-                // 取消放置（重要！防止生成对象）
-                m_CardSystemController.CancelPlacement();
-                Log.Info("[CardUI] ✅✅✅ Placement canceled, returning false");
-                return false;
-            }
-            
-            // 优先级 2：检查是否在垃圾桶区域
+            // 优先级 1：检查是否在垃圾桶区域（最高优先级！）
             bool isInTrash = IsInTrashBin(screenPosition);
-            Log.Info($"[CardUI] Is in trash bin: {isInTrash}");
+            Log.Info($"[CardUI] ✅ Is in trash bin: {isInTrash}");
             
             if (isInTrash)
             {
-                Log.Info($"[CardUI] ✅ Discarding card: {cardItem.GetCardModel().GetCardName()}");
+                Log.Info($"[CardUI] ✅✅✅ Card in trash bin, DISCARDING");
                 
                 // 取消放置（防止生成对象）
                 m_CardSystemController.CancelPlacement();
@@ -375,7 +362,6 @@ namespace AAAGame.Card
                 RemoveHandCardItemDirect(cardItem.GetCardModel());
                 
                 // 调用 Controller 丢弃卡牌（更新数据模型 + 触发事件）
-                // 注意：这会触发 OnCardDiscarded 事件，但 UI 已经移除了
                 bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel());
                 
                 if (discarded)
@@ -390,6 +376,17 @@ namespace AAAGame.Card
                 return true;
             }
             
+            // 优先级 2：检查是否拖回手牌区域
+            bool isOverHand = IsOverHandCardArea(screenPosition);
+            Log.Info($"[CardUI] Is over hand area: {isOverHand}");
+            
+            if (isOverHand)
+            {
+                Log.Info("[CardUI] Card dragged back to hand, CANCELING PLACEMENT");
+                m_CardSystemController.CancelPlacement();
+                return false;
+            }
+            
             // 优先级 3：尝试确认放置到场景
             Log.Info("[CardUI] Attempting to place card in scene");
             bool placed = m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel(), screenPosition);
@@ -397,13 +394,8 @@ namespace AAAGame.Card
             
             if (placed)
             {
-                // 卡牌成功打出到场景，播放消失动画并移除
                 Log.Info($"[CardUI] ✅ Card placed successfully: {cardItem.GetCardModel().GetCardName()}");
                 cardItem.OnPlaySuccess();
-                
-                // 注意：ConfirmPlacement 内部会触发 OnCardPlayed 事件
-                // OnCardPlayed 事件会调用 RemoveHandCardItem
-                // 所以这里不需要手动移除
             }
             else
             {
@@ -514,43 +506,34 @@ namespace AAAGame.Card
                 return false;
             }
             
-            // 方法 1：使用 RectTransformUtility（在某些 Canvas 设置下可能不准确）
-            Camera uiCamera = GFBuiltin.UICamera;
-            bool result1 = RectTransformUtility.RectangleContainsScreenPoint(
-                m_TrashBinRect, screenPosition, uiCamera);
-            
-            // 方法 2：手动计算屏幕坐标范围（更可靠）
-            // 获取垃圾桶的 4 个角的世界坐标
-            Vector3[] corners = new Vector3[4];
-            m_TrashBinRect.GetWorldCorners(corners);
-            
-            // 转换为屏幕坐标
-            Vector2[] screenCorners = new Vector2[4];
-            for (int i = 0; i < 4; i++)
+            // 获取 Canvas 信息
+            Canvas canvas = m_TrashBinRect.GetComponentInParent<Canvas>();
+            if (canvas == null)
             {
-                if (uiCamera != null)
-                {
-                    screenCorners[i] = uiCamera.WorldToScreenPoint(corners[i]);
-                }
-                else
-                {
-                    // 如果没有 Camera，直接使用世界坐标（Overlay 模式）
-                    screenCorners[i] = corners[i];
-                }
+                Log.Warning("[CardUI] Cannot find Canvas for trash bin.");
+                return false;
             }
             
-            // 计算屏幕坐标的边界
-            float minX = Mathf.Min(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x)/100;
-            float maxX = Mathf.Max(screenCorners[0].x, screenCorners[1].x, screenCorners[2].x, screenCorners[3].x)/100;
-            float minY = Mathf.Min(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y)/100;
-            float maxY = Mathf.Max(screenCorners[0].y, screenCorners[1].y, screenCorners[2].y, screenCorners[3].y)/100;
+            Camera uiCamera = null;
+            if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
+            {
+                // Overlay 模式不需要相机
+                uiCamera = null;
+            }
+            else
+            {
+                // Camera 模式使用 Canvas 的相机或 UICamera
+                uiCamera = canvas.worldCamera ?? GFBuiltin.UICamera;
+            }
             
-            // 检查鼠标位置是否在边界内
-            bool result2 = screenPosition.x >= minX && screenPosition.x <= maxX &&
-                          screenPosition.y >= minY && screenPosition.y <= maxY;
+            // 使用 RectTransformUtility.RectangleContainsScreenPoint（最可靠的方法）
+            bool result = RectTransformUtility.RectangleContainsScreenPoint(
+                m_TrashBinRect, screenPosition, uiCamera);
             
-            // 使用方法 2 的结果（更可靠）
-            return result2;
+            Log.Info($"[CardUI] IsInTrashBin check: result={result}, Canvas mode={canvas.renderMode}");
+            Log.Info($"[CardUI] Screen pos: {screenPosition}, TrashBin: {m_TrashBinRect.name}");
+            
+            return result;
         }
 
         #region 事件处理
