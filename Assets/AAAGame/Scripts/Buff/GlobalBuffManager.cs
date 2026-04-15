@@ -11,6 +11,7 @@ using UnityGameFramework.Runtime;
 public class GlobalBuffManager : GameFrameworkComponent
 {
     [SerializeField] private bool enableDebugLogs = true;
+    [SerializeField] private List<TechEffectBinding> techEffectBindings = new();
 
     private sealed class GlobalUnitBuffEntry
     {
@@ -23,10 +24,13 @@ public class GlobalBuffManager : GameFrameworkComponent
     private TechScopeResolver m_TechScopeResolver;
     private bool m_IsSubscribed;
     private readonly Dictionary<int, Dictionary<UnitType, List<GlobalUnitBuffEntry>>> m_UnitBuffsByFaction = new();
+    private readonly Dictionary<string, TechEffectSO> m_TechEffectLookup = new(StringComparer.Ordinal);
+    private bool m_IsTechEffectLookupDirty = true;
 
     [SerializeField] private TechEffectSO defaultTechEffect;
 
     public TechScopeResolver ScopeResolver => m_TechScopeResolver;
+    public List<TechEffectBinding> TechEffectBindings => techEffectBindings;
 
     protected void Start()
     {
@@ -51,6 +55,11 @@ public class GlobalBuffManager : GameFrameworkComponent
         m_IsSubscribed = false;
     }
 
+    private void OnValidate()
+    {
+        m_IsTechEffectLookupDirty = true;
+    }
+
     private void OnTechUnlocked(object sender, GameEventArgs e)
     {
         if (!TryInitializeScopeResolver())
@@ -61,7 +70,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (techData == null)
         {
             Debug.LogWarning($"[GlobalBuffManager] 找不到 TechData, techId={args.TechId}");
-            //return;
+            return;
         }
 
         var resolvedScope = m_TechScopeResolver.Resolve(techData);
@@ -69,7 +78,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (effect == null)
         {
             Debug.LogWarning($"[GlobalBuffManager] 找不到可用的 TechEffect, techId={args.TechId}");
-            //return;
+            return;
         }
 
         effect.Activate(new TechEffectContext
@@ -186,7 +195,43 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     private TechEffectSO ResolveEffect(TechData techData)
     {
+        RebuildTechEffectLookupIfNeeded();
+
+        if (techData != null
+            && !string.IsNullOrWhiteSpace(techData.Identifier)
+            && m_TechEffectLookup.TryGetValue(techData.Identifier, out var mappedEffect)
+            && mappedEffect != null)
+        {
+            return mappedEffect;
+        }
+
         return defaultTechEffect;
+    }
+
+    private void RebuildTechEffectLookupIfNeeded()
+    {
+        if (!m_IsTechEffectLookupDirty)
+            return;
+
+        m_TechEffectLookup.Clear();
+        if (techEffectBindings != null)
+        {
+            for (int i = 0; i < techEffectBindings.Count; i++)
+            {
+                var binding = techEffectBindings[i];
+                if (binding == null || string.IsNullOrWhiteSpace(binding.TechId))
+                    continue;
+
+                m_TechEffectLookup[binding.TechId] = binding.Effect;
+            }
+        }
+
+        m_IsTechEffectLookupDirty = false;
+    }
+
+    public void MarkTechEffectBindingsDirty()
+    {
+        m_IsTechEffectLookupDirty = true;
     }
 
     private void DebugLog(string message)
