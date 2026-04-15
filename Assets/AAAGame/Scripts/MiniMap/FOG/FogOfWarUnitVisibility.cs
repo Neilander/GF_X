@@ -34,10 +34,11 @@ namespace AAAGame.MiniMap.FOG
 
         private void Start()
         {
-            fogManager = GameEntry.GetComponent<FogOfWarManager>();
+            // 从场景中查找 FogOfWarManager
+            fogManager = FindObjectOfType<FogOfWarManager>();
             if (fogManager == null)
             {
-                Log.Error("[FogVisibility] FogOfWarManager not found!");
+                Log.Error("[FogVisibility] FogOfWarManager not found in scene! Please add a GameObject named 'FogOfWarManager' with FogOfWarManager component.");
                 enabled = false;
                 return;
             }

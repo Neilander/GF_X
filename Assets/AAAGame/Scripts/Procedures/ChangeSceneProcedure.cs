@@ -28,6 +28,7 @@ public class ChangeSceneProcedure : ProcedureBase
         { "LevelTestScene", "LevelTestProcedure" },
         { "CharacterAndSkillTestScene", "CharacterTestProcedure" },
         {"UI_Card","CardGameProcedure"},
+        {"FOG","FogOfWarGameProcedure"},
         {"Arena", "ArenaProcedure"}
     };
 
@@ -36,7 +37,7 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> SceneCompatibleProcedures = new Dictionary<string, HashSet<string>>
     {
-        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure","CardGameProcedure"} }, // 新增：远程武器测试流程和Buff测试流程
+        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure","CardGameProcedure","FogOfWarGameProcedure"} }, // 新增：远程武器测试流程和Buff测试流程
         { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure", "BuffTestProcedure" } },
         { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure", "BuffTestProcedure" } },
         {"Arena", new HashSet<string>{"ArenaProcedure"}}
@@ -48,7 +49,7 @@ public class ChangeSceneProcedure : ProcedureBase
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>
     {
         "CharacterTestProcedure", "MenuProcedure", "GameProcedure", "LevelTestProcedure", "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure" // 新增：远程武器测试流程和Buff测试流程
-        ,"CardGameProcedure", "ArenaProcedure"
+        ,"CardGameProcedure", "ArenaProcedure","FogOfWarGameProcedure"
     };
     
     // 确保BuffTestProcedure被编译到程序集中
@@ -151,6 +152,9 @@ public class ChangeSceneProcedure : ProcedureBase
             
             case "ArenaProcedure":
                 ChangeState<ArenaProcedure>(procedureOwner);
+                break;
+            case"FogOfWarGameProcedure":
+                ChangeState<FogOfWarGameProcedure>(procedureOwner);
                 break;
             
             default:
