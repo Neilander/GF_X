@@ -118,6 +118,61 @@ public class MAEntity : CompCreature, IEntityContext
 
         base.OnShow(userData);
 
+        // 重新初始化显示相关的组件
+        display = transform.Find("Display");
+        if (display == null)
+        {
+            // 创建Display子对象
+            GameObject displayObj = new GameObject("Display");
+            displayObj.transform.SetParent(transform);
+            displayObj.transform.localPosition = Vector3.zero;
+            displayObj.transform.localRotation = Quaternion.identity;
+            displayObj.transform.localScale = Vector3.one;
+            display = displayObj.transform;
+        }
+
+        // 重新解析Animator
+        // 优先根节点（实体壳）上有控制器的 Animator
+        var rootAnimator = transform.GetComponent<Animator>();
+        if (rootAnimator != null && rootAnimator.runtimeAnimatorController != null)
+        {
+            animator = rootAnimator;
+        }
+        // 其次 Display 子树中有控制器的 Animator（通常是模型本体）
+        else if (display != null)
+        {
+            var displayAnimators = display.GetComponentsInChildren<Animator>(true);
+            for (int i = 0; i < displayAnimators.Length; i++)
+            {
+                var a = displayAnimators[i];
+                if (a != null && a.runtimeAnimatorController != null)
+                {
+                    animator = a;
+                    break;
+                }
+            }
+        }
+        // 最后兜底任意 Animator
+        if (animator == null)
+        {
+            var any = transform.GetComponentsInChildren<Animator>(true);
+            if (any != null && any.Length > 0)
+            {
+                animator = any[0];
+            }
+        }
+        if (animator != null)
+        {
+            Log.Info("[MAEntity] ✓ Animator 组件存在");
+        }
+        else
+        {
+            Log.Error($"[MAEntity] ⚠️ 预制体 {gameObject.name} 缺少 Animator 组件！");
+        }
+
+        // 重新设置模型变换
+        _modelTransform = animator != null ? animator.transform : display;
+
         if (!_maCompInitialized)
         {
             SetUpMAComp(userData);

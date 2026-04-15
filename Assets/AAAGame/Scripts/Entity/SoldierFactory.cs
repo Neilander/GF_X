@@ -36,8 +36,28 @@ public static class SoldierFactory
     /// </summary>
     private static string GetSoldierPrefabName(UnitType index)
     {
-        // 使用背锅侠预制体
-        return "背锅侠";
+        // 根据不同的UnitType返回对应的预制体名称
+        switch (index)
+        {
+            case UnitType.Unit_Scapegoat:
+                return "背锅侠";
+            case UnitType.Unit_Courier:
+                return "快递员";
+            case UnitType.Unit_CanMaker:
+                return "易拉罐";
+            case UnitType.Unit_Coder:
+                return "gujia"; // 码农使用gujia预制体
+            case UnitType.Unit_BoneButcher:
+                return "gujia"; // 剔骨狂魔使用gujia预制体
+            case UnitType.Unit_Brat:
+                return "gujia"; // 熊孩子使用gujia预制体
+            case UnitType.Unit_LateRider:
+                return "gujia"; // 超时骑手使用gujia预制体
+            case UnitType.Unit_ColdCarrier:
+                return "gujia"; // 冷库搬运工使用gujia预制体
+            default:
+                return "gujia"; // 默认使用gujia预制体
+        }
     }
 
     /// <summary>

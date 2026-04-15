@@ -22,6 +22,11 @@ public static class EntityContextExtensions
         if (ctx is BuildingEntity building && (building.IsLv0Invincible || building.IsPhaseProtected || building.IsDisabled))
             return false;
 
+        // 检查是否处于战斗阶段（进攻阶段）
+        int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);
+        if (currentPhase != (int)GamePhase.Invade)
+            return false;
+
         return true;
     }
 

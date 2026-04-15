@@ -1,5 +1,6 @@
 using GameFramework.Event;
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -10,6 +11,9 @@ using UnityGameFramework.Runtime;
 public class PhaseManager : GameFrameworkComponent
 {
     public static event Action<GamePhase, GamePhase> OnPhaseChanged;
+
+    // 跟踪被隐藏的敌人实体
+    private static List<int> _hiddenEnemyEntities = new List<int>();
     
     /// <summary>
     /// 获取当前游戏阶段
@@ -161,16 +165,15 @@ public class PhaseManager : GameFrameworkComponent
                         // 假设玩家操控的角色是玩家方的单位
                         if (soldierEntity.Side == SideType.EnemySide)
                         {
-                            // 设置为死亡状态，防止后续的伤害处理
-                            var generalCreature = entity.Logic as GeneralCreature;
-                            if (generalCreature != null)
+                            // 记录被隐藏的敌人实体ID
+                            if (!_hiddenEnemyEntities.Contains(entity.Id))
                             {
-                                generalCreature.Alive = false;
+                                _hiddenEnemyEntities.Add(entity.Id);
                             }
-                            // 先隐藏血条
+                            // 隐藏血条
                             HideHealthBar(entity.Id);
-                            // 再隐藏实体
-                            entityManager.HideEntity(entity.Id);
+                            // 禁用实体GameObject（而不是隐藏实体）
+                            entity.gameObject.SetActive(false);
                         }
                     }
                 }
@@ -192,6 +195,36 @@ public class PhaseManager : GameFrameworkComponent
             Debug.Log($"Hidden health bar for entity {entityId}");
         }
     }
+
+    /// <summary>
+    /// 显示指定实体的血条
+    /// </summary>
+    private static void ShowHealthBar(int entityId)
+    {
+        string healthBarName = $"HealthBar_{entityId}";
+        GameObject healthBarObj = GameObject.Find(healthBarName);
+        
+        if (healthBarObj != null)
+        {
+            // 血条存在，直接激活
+            healthBarObj.SetActive(true);
+            Debug.Log($"Shown existing health bar for entity {entityId}");
+        }
+        else
+        {
+            // 血条不存在，需要重新创建
+            var entity = GF.Entity.GetEntity(entityId);
+            if (entity != null && entity.Logic is GeneralCreature creature)
+            {
+                float currentHealth = (float)creature.HealthValue;
+                float maxHealth = (float)creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+                bool isFriendly = creature.Side == SideType.PlayerSide;
+                
+                HealthBarComp.Create(entityId, creature.transform, currentHealth, maxHealth, isFriendly);
+                Debug.Log($"Created new health bar for entity {entityId}");
+            }
+        }
+    }
     
     /// <summary>
     /// 资源建筑提供收入
@@ -204,11 +237,8 @@ public class PhaseManager : GameFrameworkComponent
         {
             if (building.buildingData.Type == BuilType.Prod)
             {
-                // 每个资源建筑根据production属性提供收入
-                int income = building.buildingData.Production;
-                InGameDataModel.SetValue(IngameValueType.Coin, 
-                    InGameDataModel.GetValue(IngameValueType.Coin) + income, true);
-                Debug.Log($"Production building {building.buildingData.Identifier} provided {income} coins");
+                // 调用建筑的harvest函数获取资源
+                building.Harvest();
             }
         }
     }
@@ -228,8 +258,14 @@ public class PhaseManager : GameFrameworkComponent
                 if (building.buildingData.Type == BuilType.Army)
                 {
                     // 每个部队建筑生成对应的卡牌
-                    // 这里简化实现，实际应该根据建筑类型生成对应卡牌
-                    Debug.Log($"Army building {building.buildingData.Identifier} generated cards");
+                    // 这里根据建筑等级生成对应数量的卡牌
+                    int cardCount = building.buildingData.Lv >= 1 ? building.buildingData.Lv : 1;
+                    for (int i = 0; i < cardCount; i++)
+                    {
+                        // 调用CardSetup的方法来生成卡牌
+                        cardSetup.GenerateCard();
+                        Debug.Log($"Army building {building.buildingData.Identifier} generated card {i+1}");
+                    }
                 }
             }
         }
@@ -240,17 +276,78 @@ public class PhaseManager : GameFrameworkComponent
     /// </summary>
     private static void SpawnEnemySoldiers()
     {
-        // 生成敌方小兵
-        // 这里简化实现，实际应该根据游戏平衡生成合适数量的敌方小兵
-        for (int i = 0; i < 5; i++)
+        // 先尝试重新显示之前隐藏的敌人
+        if (_hiddenEnemyEntities.Count > 0)
         {
-            // 在随机位置生成敌方小兵
-            Vector3 spawnPos = new Vector3(
-                UnityEngine.Random.Range(-10, 10),
-                0,
-                UnityEngine.Random.Range(-10, 10)
-            );
-            SoldierFactory.ShowSoldier(UnitType.Unit_BoneButcher, spawnPos, SideType.EnemySide, BrainType.EnemyAI);
+            var entityManager = GF.Entity;
+            if (entityManager != null)
+            {
+                // 重新显示所有被隐藏的敌人
+                foreach (int entityId in _hiddenEnemyEntities)
+                {
+                    // 获取实体
+                    var entity = entityManager.GetEntity(entityId);
+                    if (entity != null)
+                    {
+                        // 启用实体GameObject
+                        entity.gameObject.SetActive(true);
+                        // 显示血条
+                        ShowHealthBar(entityId);
+                    }
+                }
+                Debug.Log($"Re-showing {_hiddenEnemyEntities.Count} hidden enemy soldiers");
+                // 清空隐藏列表
+                _hiddenEnemyEntities.Clear();
+                return;
+            }
+        }
+
+        // 如果没有隐藏的敌人，则创建新的敌人
+        // 获取所有建筑
+        var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
+        var buildings = ingameData.StrongholdBuildings;
+        
+        // 筛选出敌方建筑（OwnerFactionID != 0，假设0是玩家方）
+        var enemyBuildings = new List<BuildingEntity>();
+        foreach (var building in buildings)
+        {
+            if (building.OwnerFactionID != 0)
+            {
+                enemyBuildings.Add(building);
+            }
+        }
+        
+        // 如果有敌方建筑，基于敌方建筑位置生成敌人
+        if (enemyBuildings.Count > 0)
+        {
+            // 生成敌方小兵
+            for (int i = 0; i < 5; i++)
+            {
+                // 随机选择一个敌方建筑作为生成位置
+                BuildingEntity targetBuilding = enemyBuildings[UnityEngine.Random.Range(0, enemyBuildings.Count)];
+                
+                // 在建筑中心位置生成敌人（小范围随机）
+                Vector3 spawnPos = targetBuilding.transform.position + new Vector3(
+                    UnityEngine.Random.Range(-1, 1),
+                    0,
+                    UnityEngine.Random.Range(-1, 1)
+                );
+                
+                SoldierFactory.ShowSoldier(UnitType.Unit_BoneButcher, spawnPos, SideType.EnemySide, BrainType.EnemyAI);
+            }
+        }
+        else
+        {
+            // 如果没有敌方建筑，使用默认位置生成敌人
+            for (int i = 0; i < 5; i++)
+            {
+                Vector3 spawnPos = new Vector3(
+                    UnityEngine.Random.Range(-10, 10),
+                    0,
+                    UnityEngine.Random.Range(-10, 10)
+                );
+                SoldierFactory.ShowSoldier(UnitType.Unit_BoneButcher, spawnPos, SideType.EnemySide, BrainType.EnemyAI);
+            }
         }
         Debug.Log("Spawning enemy soldiers");
     }

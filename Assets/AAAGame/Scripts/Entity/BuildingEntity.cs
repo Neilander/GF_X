@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -597,6 +597,27 @@ public partial class BuildingEntity : MAEntity
         Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
         Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
+    }
+
+    /// <summary>
+    /// 收获资源
+    /// </summary>
+    public void Harvest()
+    {
+        if (buildingData == null || !Alive || IsDisabled)
+            return;
+
+        // 只处理资源建筑
+        if (buildingData.Type == BuilType.Prod)
+        {
+            int production = buildingData.Production;
+            if (production > 0)
+            {
+                // 增加资源
+                InGameDataModel.TryModifyValue(IngameValueType.Coin, production, true);
+                Debug.Log($"Building {buildingData.Identifier} harvested {production} coins");
+            }
+        }
     }
 
     private sealed class DisabledCapabilityLocker : ICapability

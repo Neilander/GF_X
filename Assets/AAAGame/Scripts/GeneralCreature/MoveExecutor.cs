@@ -35,21 +35,18 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             areaMask = NavMesh.AllAreas
         };
         
-        Debug.Log($"[MoveExecutor] Init: controller={controller != null}, agentTypeID={agentTypeID}, gameObject={gameObject.name}");
-        
         if (_controller != null)
         {
+            // 只有控制器存在时才输出debug日志
+            Debug.Log($"[MoveExecutor] Init: controller={controller != null}, agentTypeID={agentTypeID}, gameObject={gameObject.name}");
             _edgeBuffer = Mathf.Max(0.2f, _controller.radius + 0.05f);
             _sampleRadius = Mathf.Max(0.5f, _controller.radius + 0.2f);
             Debug.Log($"[MoveExecutor] Controller settings: radius={_controller.radius}, height={_controller.height}, center={_controller.center}");
+            
+            // 只有控制器存在时才检查NavMesh状态
+            CheckNavMeshStatus();
         }
-        else
-        {
-            Debug.LogError($"[MoveExecutor] ⚠️ Controller is NULL! 无法初始化移动系统！gameObject={gameObject.name}");
-        }
-        
-        // 检查NavMesh状态
-        CheckNavMeshStatus();
+        // 控制器为null时（如建筑）不输出debug日志
     }
     
     private void CheckNavMeshStatus()
