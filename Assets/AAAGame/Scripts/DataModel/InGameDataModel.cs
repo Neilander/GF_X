@@ -155,7 +155,7 @@ public class InGameDataModel : DataModelBase
     }
 
 
-    public static bool UnlockTech(string techId, bool isStackable, string buildingContextKey)
+    public static bool UnlockTech(string techId, bool isStackable, string buildingContextKey, int ownerFactionId = EntitySideHelper.PlayerFactionId)
     {
         if (string.IsNullOrWhiteSpace(techId) || string.IsNullOrWhiteSpace(buildingContextKey))
             return false;
@@ -178,7 +178,7 @@ public class InGameDataModel : DataModelBase
 
         dataModel.EnsureUnlockedTechIdCached(techId);
 
-        GF.Event.Fire(dataModel, TechUnlockedEventArgs.Create(techId));
+        GF.Event.Fire(dataModel, TechUnlockedEventArgs.Create(techId, ownerFactionId));
         return true;
     }
 

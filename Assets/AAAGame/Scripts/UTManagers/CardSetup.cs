@@ -136,4 +136,14 @@ public partial class CardSetup : GameFrameworkComponent
     {
         m_CardSystemController.AddCardToDeck(sourceBuilding);
     }
+
+    public bool AddCardToDeck(CardData cardData)
+    {
+        return m_CardSystemController != null && m_CardSystemController.AddCardToDeck(cardData);
+    }
+
+    public bool DrawCard()
+    {
+        return m_CardSystemController != null && m_CardSystemController.DrawCard();
+    }
 }

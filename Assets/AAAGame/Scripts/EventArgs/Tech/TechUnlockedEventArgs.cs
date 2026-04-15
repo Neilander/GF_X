@@ -10,16 +10,19 @@ public class TechUnlockedEventArgs : GameEventArgs
     public override int Id => EventId;
 
     public string TechId { get; private set; }
+    public int OwnerFactionId { get; private set; }
 
-    public static TechUnlockedEventArgs Create(string techId)
+    public static TechUnlockedEventArgs Create(string techId, int ownerFactionId = EntitySideHelper.PlayerFactionId)
     {
         var instance = ReferencePool.Acquire<TechUnlockedEventArgs>();
         instance.TechId = techId;
+        instance.OwnerFactionId = ownerFactionId;
         return instance;
     }
 
     public override void Clear()
     {
         TechId = null;
+        OwnerFactionId = EntitySideHelper.PlayerFactionId;
     }
 }

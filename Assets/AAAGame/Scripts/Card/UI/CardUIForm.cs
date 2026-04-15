@@ -56,17 +56,16 @@ namespace AAAGame.Card
                 m_TrashBinRect = trashBin.GetComponent<RectTransform>();
                 trashBin.SetActive(false);
             }
-            
-            // 订阅事件
-            GFBuiltin.Event.Subscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
-            GFBuiltin.Event.Subscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
-            GFBuiltin.Event.Subscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
-            GFBuiltin.Event.Subscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
         }
 
         protected override void OnOpen(object userData)
         {
             base.OnOpen(userData);
+
+            GF.Event.Subscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
+            GF.Event.Subscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
+            GF.Event.Subscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
+            GF.Event.Subscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
           
             // 从 UIParams 获取 CardSystemController
             UIParams uiParams = userData as UIParams;
@@ -95,6 +94,21 @@ namespace AAAGame.Card
 
         protected override void OnClose(bool isShutdown, object userData)
         {
+            if (GF.Event != null)
+            {
+                try
+                {
+                    GF.Event.Unsubscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
+                    GF.Event.Unsubscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
+                    GF.Event.Unsubscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
+                    GF.Event.Unsubscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
+                }
+                catch (System.Exception ex)
+                {
+                    Log.Info("CardUIForm: Error unsubscribing events: " + ex.Message);
+                }
+            }
+
             base.OnClose(isShutdown, userData);
             
             // 清理手牌
@@ -598,23 +612,6 @@ namespace AAAGame.Card
         protected override void OnRecycle()
         {
             base.OnRecycle();
-            
-            // 取消订阅事件（检查 GFBuiltin.Event 是否存在）
-            if (GFBuiltin.Event != null)
-            {
-                try
-                {
-                    GFBuiltin.Event.Unsubscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
-                    GFBuiltin.Event.Unsubscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
-                    GFBuiltin.Event.Unsubscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
-                    GFBuiltin.Event.Unsubscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
-                }
-                catch (System.Exception ex)
-                {
-                    // 捕获可能的异常，避免因重复取消订阅而导致错误
-                    Log.Info("CardUIForm: Error unsubscribing events: " + ex.Message);
-                }
-            }
         }
     }
 }

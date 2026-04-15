@@ -133,7 +133,7 @@ public class TechManager : GameFrameworkComponent
         if (!built)
             return false;
 
-        InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId);
+        InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
         GF.Entity.HideEntity(owner.Entity);
         return true;
     }
@@ -150,7 +150,7 @@ public class TechManager : GameFrameworkComponent
         if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -techData.Cost, true))
             return false;
 
-        return InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId);
+        return InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
     }
 
     private bool HasUpgradeTechCandidates(BuildingEntity owner)

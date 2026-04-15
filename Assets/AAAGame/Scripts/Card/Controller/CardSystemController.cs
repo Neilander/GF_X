@@ -54,7 +54,16 @@ namespace AAAGame.Card
             m_AreaDetectionController = new AreaDetectionController();
 
             // 订阅子控制器事件
-            m_HandCardController.OnCardDrawn += (card) => OnCardDrawn?.Invoke(card);
+            m_HandCardController.OnCardDrawn += (card) =>
+            {
+                OnCardDrawn?.Invoke(card);
+
+                if (card != null)
+                {
+                    GameFramework.Event.GameEventArgs cardEvent = CardDrawnEventArgs.Create(card);
+                    GF.Event.Fire(this, cardEvent);
+                }
+            };
             m_HandCardController.OnCardRemoved += (card) => OnHandChanged?.Invoke(m_HandModel.CardCount, m_HandModel.MaxCards);
 
             // 初始化卡牌池
@@ -109,6 +118,23 @@ namespace AAAGame.Card
 
             m_DeckCards.Add(new Card(cardData, sourceBuilding));
             Log.Info($"[CardGame] 卡牌入组: unitType={unitType}, source={sourceBuilding?.BuildingInstanceId ?? "None"}");
+            return true;
+        }
+
+        /// <summary>
+        /// 直接按 CardData 向卡组加入一张卡，主要供调试和 Inspector 测试使用。
+        /// </summary>
+        public bool AddCardToDeck(CardData cardData)
+        {
+            if (cardData == null)
+            {
+                Debug.LogWarning("[Card] CardData is null, cannot add to deck.");
+                return false;
+            }
+
+            var provider = new CardDataAdapter(cardData);
+            m_DeckCards.Add(new Card(provider, null));
+            Log.Info($"[CardGame] 调试卡牌入组: cardId={provider.CardId}, soldierIndex={provider.SoldierIndex}");
             return true;
         }
 
@@ -186,12 +212,14 @@ namespace AAAGame.Card
 
             if (m_DeckCards.Count <= 0)
             {
+                Debug.LogWarning("[Card] Deck is empty, cannot draw a card.");
                 return false;
             }
 
             Card entry = SelectNearestDeckCard();
             if (entry == null || entry.CardData == null)
             {
+                Debug.LogWarning("[Card] Failed to select a card from deck.");
                 return false;
             }
 

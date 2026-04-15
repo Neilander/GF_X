@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -9,9 +10,21 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public class GlobalBuffManager : GameFrameworkComponent
 {
+    [SerializeField] private bool enableDebugLogs = true;
+
+    private sealed class GlobalUnitBuffEntry
+    {
+        public string TechId;
+        public TechEffectSO Effect;
+        public TechData TechData;
+    }
+
     private TechScopeIndex m_TechScopeIndex;
     private TechScopeResolver m_TechScopeResolver;
     private bool m_IsSubscribed;
+    private readonly Dictionary<int, Dictionary<UnitType, List<GlobalUnitBuffEntry>>> m_UnitBuffsByFaction = new();
+
+    [SerializeField] private TechEffectSO defaultTechEffect;
 
     public TechScopeResolver ScopeResolver => m_TechScopeResolver;
 
@@ -48,17 +61,32 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (techData == null)
         {
             Debug.LogWarning($"[GlobalBuffManager] 找不到 TechData, techId={args.TechId}");
-            return;
+            //return;
         }
 
         var resolvedScope = m_TechScopeResolver.Resolve(techData);
-        Debug.Log(
+        var effect = ResolveEffect(techData);
+        if (effect == null)
+        {
+            Debug.LogWarning($"[GlobalBuffManager] 找不到可用的 TechEffect, techId={args.TechId}");
+            //return;
+        }
+
+        effect.Activate(new TechEffectContext
+        {
+            TechId = args.TechId,
+            OwnerFactionId = args.OwnerFactionId,
+            TechData = techData,
+            ResolvedScope = resolvedScope,
+            GlobalBuffManager = this,
+        });
+
+        DebugLog(
             $"[GlobalBuffManager] 科技解锁: techId={args.TechId}, " +
+            $"ownerFactionId={args.OwnerFactionId}, " +
             $"scopeType={techData.ScopeType}, " +
             $"characterKeys=[{string.Join(",", resolvedScope.CharacterKeys)}], " +
             $"unitTypes=[{string.Join(",", resolvedScope.UnitTypes)}]");
-
-        // TODO: 根据 techId 查 TechData，读 UniqueValues，给所有/特定单位施加对应的全局 Buff
     }
 
     private bool TryInitializeScopeResolver()
@@ -90,5 +118,82 @@ public class GlobalBuffManager : GameFrameworkComponent
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
         m_IsSubscribed = true;
         return true;
+    }
+
+    public void RegisterUnitBuff(UnitType unitType, int ownerFactionId, string techId, TechEffectSO effect, TechData techData)
+    {
+        if (string.IsNullOrWhiteSpace(techId) || effect == null || techData == null)
+            return;
+
+        if (!m_UnitBuffsByFaction.TryGetValue(ownerFactionId, out var unitBuffsByType))
+        {
+            unitBuffsByType = new Dictionary<UnitType, List<GlobalUnitBuffEntry>>();
+            m_UnitBuffsByFaction[ownerFactionId] = unitBuffsByType;
+        }
+
+        if (!unitBuffsByType.TryGetValue(unitType, out var entries))
+        {
+            entries = new List<GlobalUnitBuffEntry>();
+            unitBuffsByType[unitType] = entries;
+        }
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (string.Equals(entries[i].TechId, techId, StringComparison.Ordinal))
+                return;
+        }
+
+        entries.Add(new GlobalUnitBuffEntry
+        {
+            TechId = techId,
+            Effect = effect,
+            TechData = techData,
+        });
+
+        DebugLog($"RegisterUnitBuff: techId={techId}, ownerFactionId={ownerFactionId}, unitType={unitType}, totalEntriesForUnit={entries.Count}");
+    }
+
+    public List<BuffData> GetBuffs(UnitType unitType, int ownerFactionId)
+    {
+        if (!m_UnitBuffsByFaction.TryGetValue(ownerFactionId, out var unitBuffsByType)
+            || !unitBuffsByType.TryGetValue(unitType, out var entries)
+            || entries == null
+            || entries.Count == 0)
+        {
+            DebugLog($"GetBuffs: ownerFactionId={ownerFactionId}, unitType={unitType}, entries=0");
+            return null;
+        }
+
+        var result = new List<BuffData>(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            var buffData = entry.Effect?.CreateUnitInitialBuff(entry.TechData, unitType, entry.TechId);
+            if (buffData != null)
+            {
+                result.Add(buffData);
+                DebugLog($"GetBuffs: created buff id={buffData.id}, techId={entry.TechId}, ownerFactionId={ownerFactionId}, unitType={unitType}");
+            }
+            else
+            {
+                DebugLog($"GetBuffs: effect returned null buff, techId={entry.TechId}, ownerFactionId={ownerFactionId}, unitType={unitType}");
+            }
+        }
+
+        DebugLog($"GetBuffs: ownerFactionId={ownerFactionId}, unitType={unitType}, createdCount={result.Count}");
+        return result.Count > 0 ? result : null;
+    }
+
+    private TechEffectSO ResolveEffect(TechData techData)
+    {
+        return defaultTechEffect;
+    }
+
+    private void DebugLog(string message)
+    {
+        if (!enableDebugLogs)
+            return;
+
+        Debug.Log($"[GlobalBuffManager] {message}");
     }
 }

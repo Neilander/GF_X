@@ -174,7 +174,7 @@ public class BuildManager : GameFrameworkComponent
 
         int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId);
 
-        m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId);
+        m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId, ownerFactionId);
         return entityId;
     }
 

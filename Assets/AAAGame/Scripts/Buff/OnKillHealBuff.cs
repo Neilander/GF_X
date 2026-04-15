@@ -10,7 +10,7 @@ public class OnKillHealBuff : BuffCallback
     /// <summary>
     /// 回复百分比（例如3表示3%）
     /// </summary>
-    private float _healPercent;
+    private float _healPercent = 3f;
     
     /// <summary>
     /// 初始化
@@ -18,10 +18,6 @@ public class OnKillHealBuff : BuffCallback
     public override void Initialize(BuffData data, MAEntity entity)
     {
         base.Initialize(data, entity);
-        
-        // 从Buff数据中获取回复百分比
-        // 这里简化处理，实际应该从配置中读取
-        _healPercent = 3f; // 默认3%
     }
     
     /// <summary>

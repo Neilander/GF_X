@@ -29,7 +29,7 @@ public sealed class BaseMilestoneTechService
         return false;
     }
 
-    public void GrantForBuiltBase(BuildingData buildingData, string buildingInstanceId)
+    public void GrantForBuiltBase(BuildingData buildingData, string buildingInstanceId, int ownerFactionId)
     {
         if (!IsValidBaseInstance(buildingData, buildingInstanceId))
             return;
@@ -37,7 +37,7 @@ public sealed class BaseMilestoneTechService
         int maxLevel = Mathf.Clamp(buildingData.Lv, 1, 3);
         for (int level = 1; level <= maxLevel; level++)
         {
-            InGameDataModel.UnlockTech(ResolveTechId(buildingData.Arche, level), true, buildingInstanceId);
+            InGameDataModel.UnlockTech(ResolveTechId(buildingData.Arche, level), true, buildingInstanceId, ownerFactionId);
         }
     }
 

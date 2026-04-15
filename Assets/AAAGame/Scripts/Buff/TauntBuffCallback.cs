@@ -5,12 +5,11 @@
 /// </summary>
 public class TauntBuffCallback : BuffCallback
 {
-    private int _tauntValue;
+    private int _tauntValue = 1;
 
     public override void Initialize(BuffData data, MAEntity entity)
     {
         base.Initialize(data, entity);
-        _tauntValue = 1; // 默认增加 1 级嘲讽
     }
 
     public void SetTauntValue(int value)

@@ -52,6 +52,7 @@ public static class SoldierFactory
         // 添加初始Buff到StartBuffs列表
         var startBuffs = new System.Collections.Generic.List<BuffData>();
         AddInitialBuffs(startBuffs, unitType);
+        AddGlobalBuffs(startBuffs, unitType, side);
 
         // 移除OnShowCallback，因为CreaturePropertyManager在回调执行后才初始化
         // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
@@ -79,5 +80,19 @@ public static class SoldierFactory
                 buffList.Add(TauntBuffCallback.CreateTaunt(1));
                 break;
         }
+    }
+
+    private static void AddGlobalBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType unitType, SideType side)
+    {
+        var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
+        if (globalBuffManager == null)
+            return;
+
+        int factionId = EntitySideHelper.ToFactionId(side);
+        var globalBuffs = globalBuffManager.GetBuffs(unitType, factionId);
+        if (globalBuffs == null || globalBuffs.Count == 0)
+            return;
+
+        buffList.AddRange(globalBuffs);
     }
 }
