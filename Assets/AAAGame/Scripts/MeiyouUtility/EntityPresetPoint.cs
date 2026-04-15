@@ -16,6 +16,7 @@ public class EntityPresetPoint : MonoBehaviour
 
     public EntityPresetPointType PointType;
     public bool IsGameEndConditionBuilding;
+    public int UnitSpawnCount; // 仅对 Unit 类型有效，表示在战斗阶段开始时以此预设点为中心生成多少个单位
 
 #if UNITY_EDITOR
     private void OnValidate()

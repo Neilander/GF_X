@@ -327,6 +327,7 @@ public class GameEndManager : GameFrameworkComponent
 
         IsGameEnded = true;
         IsWin = true;
+        HandleGameEndPresentation(isWin: true);
         GF.Event.Fire(this, GameEndResultEventArgs.CreateWin(condition));
         Log.Info("[GameEndManager] GameEnd WIN by {0}.", condition);
     }
@@ -340,7 +341,51 @@ public class GameEndManager : GameFrameworkComponent
 
         IsGameEnded = true;
         IsWin = false;
+        HandleGameEndPresentation(isWin: false);
         GF.Event.Fire(this, GameEndResultEventArgs.CreateFail(condition));
         Log.Info("[GameEndManager] GameEnd FAIL by {0}.", condition);
+    }
+
+    private void HandleGameEndPresentation(bool isWin)
+    {
+        CloseAllOpenedUIForms();
+        OpenGameOverUI(isWin);
+        DisablePlayerMoveInputOnGameEnd();
+    }
+
+    private void CloseAllOpenedUIForms()
+    {
+        var loadedForms = GF.UI.GetAllLoadedUIForms();
+        for (int i = 0; i < loadedForms.Length; i++)
+        {
+            var form = loadedForms[i];
+            if (form == null)
+            {
+                continue;
+            }
+
+            GF.UI.CloseUIForm(form.SerialId);
+        }
+    }
+
+    private void OpenGameOverUI(bool isWin)
+    {
+        var uiParams = UIParams.Create();
+        uiParams.Set<VarBoolean>(GameOverUIForm.P_IsWin, isWin);
+        GF.UI.OpenUIForm(UIViews.GameOverUIForm, uiParams);
+    }
+
+    private static void DisablePlayerMoveInputOnGameEnd()
+    {
+        var inputManager = GameEntry.GetComponent<InputManager>();
+        if (inputManager == null)
+        {
+            return;
+        }
+
+        if (inputManager.CurState != InputState.UIForm)
+        {
+            inputManager.ChangeState(InputState.UIForm);
+        }
     }
 }

@@ -30,6 +30,7 @@ public class MAEntity : CompCreature, IEntityContext
 
     private IBuffComp _buffComp;
     public IBuffComp BuffComp => _buffComp;
+    private readonly HashSet<string> _invincibleSourceRegistry = new HashSet<string>();
 
     private Quaternion? _targetRotation = null;
     private Transform _modelTransform = null;
@@ -110,6 +111,9 @@ public class MAEntity : CompCreature, IEntityContext
         newBuffComp.Init(this);
         _buffComp = newBuffComp;
 
+        if (_invincibleSourceRegistry.Count > 0)
+            EnsureSharedInvincibleBuff();
+
         // 应用出生自带的 Buff
         if (userData is EntityParams ep)
         {
@@ -162,6 +166,8 @@ public class MAEntity : CompCreature, IEntityContext
 
     public void OnDead()
     {
+        _invincibleSourceRegistry.Clear();
+
         // 触发死亡回调，供Buff系统使用
         if (_buffComp != null)
         {
@@ -171,6 +177,8 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        _invincibleSourceRegistry.Clear();
+
         // 显式清理 BuffComp，防止将来持有外部订阅时泄漏
         if (_buffComp != null)
         {
@@ -260,6 +268,47 @@ public class MAEntity : CompCreature, IEntityContext
                 }
             }
         }
+    }
+
+    public bool RegisterInvincibleSource(string sourceId)
+    {
+        if (string.IsNullOrEmpty(sourceId))
+            return false;
+
+        if (!_invincibleSourceRegistry.Add(sourceId))
+            return false;
+
+        EnsureSharedInvincibleBuff();
+        return true;
+    }
+
+    public bool UnregisterInvincibleSource(string sourceId)
+    {
+        if (string.IsNullOrEmpty(sourceId))
+            return false;
+
+        if (!_invincibleSourceRegistry.Remove(sourceId))
+            return false;
+
+        if (_invincibleSourceRegistry.Count == 0)
+            _buffComp?.RemoveBuff(InvincibleStateBuff.BuffId);
+
+        return true;
+    }
+
+    private void EnsureSharedInvincibleBuff()
+    {
+        if (_buffComp == null || _buffComp.HasBuff(InvincibleStateBuff.BuffId))
+            return;
+
+        var buffData = BuffData.Create(
+            id: InvincibleStateBuff.BuffId,
+            duration: float.MaxValue,
+            isForever: true,
+            maxStack: 1,
+            modules: new List<BuffCallback> { new InvincibleStateBuff() });
+
+        _buffComp.AddBuff(buffData, this);
     }
 
     protected virtual void LateUpdate()

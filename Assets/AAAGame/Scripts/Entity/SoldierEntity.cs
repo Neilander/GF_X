@@ -5,13 +5,13 @@ using UnityEngine;
 /// 小兵实体：使用 DirectAtkComp（直接选定目标造成伤害，不走攻击盒）。
 /// 适合大量小兵的战斗场景。
 /// </summary>
-public class SoldierEntity : MAEntity
+public partial class SoldierEntity : MAEntity
 {
     /// <summary>
     /// AI类型
     /// </summary>
     public BrainType BrainType { get; private set; }
-    private  MinimapReportComponent  m_MinimapReportComponent;
+    private MinimapReportComponent m_MinimapReportComponent;
 
     protected override void OnInit(object userData)
     {
@@ -42,8 +42,8 @@ public class SoldierEntity : MAEntity
         {
             m_MinimapReportComponent.Initialize(Side);
         }
-        
-        
+
+
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 
@@ -102,6 +102,7 @@ public class SoldierEntity : MAEntity
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        ClearGhostRuntimeState();
         base.OnHide(isShutdown, userData);
     }
 

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+<<<<<<<< HEAD:Assets/AAAGame/Models/小人/快递员.controller.meta
+guid: 0b8189336a3565c4a864ac2d0f2f86f7
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 9100000
+========
+guid: 1f89b0b1d9bfab342b68e71bbd271622
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 23800000
+>>>>>>>> meiyou:Assets/AAAGame/Prefabs/Entity/Level/NavMesh-Terrain_Test 2.asset.meta
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

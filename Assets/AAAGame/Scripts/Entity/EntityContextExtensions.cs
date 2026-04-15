@@ -12,17 +12,27 @@ public static class EntityContextExtensions
     }
 
     /// <summary>
-    /// 统一攻击目标判定：死亡、销毁、以及无敌建筑都不可作为攻击目标。
+    /// 统一攻击目标判定：死亡、销毁和无敌状态都不可作为攻击目标。
     /// </summary>
     public static bool IsAttackTargetable(this IEntityContext ctx)
     {
         if (ctx.IsDestroyed() || !ctx.Alive)
             return false;
 
-        if (ctx is BuildingEntity building && (building.IsLv0Invincible || building.IsPhaseProtected || building.IsDisabled))
+        if (ctx.HasInvincibleBuff())
+            return false;
+
+        // 检查是否处于战斗阶段（进攻阶段）
+        int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);
+        if (currentPhase != (int)GamePhase.Invade)
             return false;
 
         return true;
+    }
+
+    public static bool HasInvincibleBuff(this IEntityContext ctx)
+    {
+        return ctx?.BuffComp != null && ctx.BuffComp.HasBuff(InvincibleStateBuff.BuffId);
     }
 
     /// <summary>

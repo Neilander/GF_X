@@ -31,7 +31,7 @@ public class InGameDataModel : DataModelBase
     public LevelData lvData;
     private Dictionary<IngameValueType, int> m_IngameValue;
     private readonly List<Stronghold> m_Strongholds = new();
-    private readonly HashSet<BuildingEntity> m_StrongholdBuildings = new();
+    private readonly HashSet<BuildingEntity> m_Buildings = new();
     // techId -> 已拥有该科技的建筑实例集合。
     // 全局层数 = 集合 Count；单建筑是否拥有 = 集合 Contains(buildingInstanceId)。
     private readonly Dictionary<string, HashSet<string>> m_TechOwnerContextsById = new();
@@ -39,7 +39,7 @@ public class InGameDataModel : DataModelBase
     public string[] UnlockedTechIds { get; private set; }
     public Dictionary<int, Faction> Factions { get; private set; }
     public IReadOnlyList<Stronghold> Strongholds => m_Strongholds;
-    public IReadOnlyCollection<BuildingEntity> StrongholdBuildings => m_StrongholdBuildings;
+    public IReadOnlyCollection<BuildingEntity> Buildings => m_Buildings;
     protected override void OnCreate(RefParams userdata)
     {
         base.OnCreate(userdata);
@@ -62,7 +62,7 @@ public class InGameDataModel : DataModelBase
         UnlockedTechIds = new string[0];
         Factions = new Dictionary<int, Faction>();
         m_TechOwnerContextsById.Clear();
-        m_StrongholdBuildings.Clear();
+        m_Buildings.Clear();
 
         for (int i = 0; i < m_Strongholds.Count; i++)
         {
@@ -102,7 +102,16 @@ public class InGameDataModel : DataModelBase
         dataModel.m_IngameValue[type] = value;
 
         if (triggerEvent && oldValue != value)
+        {
+            if (type == IngameValueType.Phase)
+            {
+                GF.Event.Fire(
+                    dataModel,
+                    IngamePhaseChangedEventArgs.Create((GamePhase)oldValue, (GamePhase)value));
+            }
+
             GF.Event.Fire(dataModel, IngameValueChangedEventArgs.Create(type, oldValue, value));
+        }
     }
 
     public static bool TryModifyValue(IngameValueType type, int delta, bool triggerEvent = true)
@@ -260,22 +269,37 @@ public class InGameDataModel : DataModelBase
         }
     }
 
-    public static void RegisterStrongholdBuilding(BuildingEntity building)
+    public static void RegisterBuilding(BuildingEntity building)
     {
         var dataModel = GetModel();
-        if (dataModel == null || building == null)
+        if (dataModel == null)
             return;
 
-        dataModel.m_StrongholdBuildings.Add(building);
+        UnregisterBuilding(building);
+
+        var stronghold = LevelEntity.GetStrongholdAtWorldPosition(building.transform.position);
+        building.SetStronghold(stronghold);
+        if (stronghold != null)
+        {
+            stronghold.Buildings.Add(building);
+        }
+        dataModel.m_Buildings.Add(building);
     }
 
-    public static void UnregisterStrongholdBuilding(BuildingEntity building)
+    public static void UnregisterBuilding(BuildingEntity building)
     {
         var dataModel = GetModel();
-        if (dataModel == null || building == null)
+        if (dataModel == null)
             return;
 
-        dataModel.m_StrongholdBuildings.Remove(building);
+        var stronghold = building.CurrentStronghold;
+        if (stronghold != null)
+        {
+            stronghold.Buildings.Remove(building);
+        }
+
+        building.SetStronghold(null);
+        dataModel.m_Buildings.Remove(building);
     }
 
     public static void ClearStrongholdRuntimeData()
@@ -289,7 +313,7 @@ public class InGameDataModel : DataModelBase
 
     private void ClearStrongholdRuntimeDataInternal()
     {
-        m_StrongholdBuildings.Clear();
+        m_Buildings.Clear();
 
         for (int i = 0; i < m_Strongholds.Count; i++)
         {

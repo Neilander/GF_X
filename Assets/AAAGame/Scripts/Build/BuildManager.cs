@@ -289,13 +289,7 @@ public class BuildManager : GameFrameworkComponent
 
     private int ResolveOwnerFactionId(Vector3 position)
     {
-        var levelEntity = LevelEntity.ActiveLevelEntity;
-        if (levelEntity == null)
-        {
-            return 0;
-        }
-
-        var stronghold = levelEntity.GetStrongholdAtWorldPosition(position);
+        var stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
         return stronghold != null ? stronghold.OwnerFactionId : 0;
     }
 }

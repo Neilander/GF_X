@@ -34,10 +34,51 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             agentTypeID = agentTypeID,
             areaMask = NavMesh.AllAreas
         };
+
         if (_controller != null)
         {
+            // 只有控制器存在时才输出debug日志
+            Debug.Log($"[MoveExecutor] Init: controller={controller != null}, agentTypeID={agentTypeID}, gameObject={gameObject.name}");
             _edgeBuffer = Mathf.Max(0.2f, _controller.radius + 0.05f);
             _sampleRadius = Mathf.Max(0.5f, _controller.radius + 0.2f);
+            Debug.Log($"[MoveExecutor] Controller settings: radius={_controller.radius}, height={_controller.height}, center={_controller.center}");
+
+            // 只有控制器存在时才检查NavMesh状态
+            CheckNavMeshStatus();
+        }
+        // 控制器为null时（如建筑）不输出debug日志
+    }
+
+    private void CheckNavMeshStatus()
+    {
+        Vector3 currentPos = transform.position;
+
+        // 检查当前位置是否在NavMesh上
+        bool isOnNavMesh = NavMesh.SamplePosition(currentPos, out NavMeshHit hit, 10f, _navFilter);
+
+        Debug.Log($"[MoveExecutor] NavMesh检查:");
+        Debug.Log($"  - 当前位置: {currentPos}");
+        Debug.Log($"  - 是否在NavMesh上: {isOnNavMesh}");
+        Debug.Log($"  - AgentTypeID: {_navFilter.agentTypeID}");
+        Debug.Log($"  - AreaMask: {_navFilter.areaMask}");
+
+        if (isOnNavMesh)
+        {
+            Debug.Log($"  - NavMesh位置: {hit.position}");
+            Debug.Log($"  - NavMesh距离: {hit.distance}");
+        }
+        else
+        {
+            Debug.LogError($"[MoveExecutor] ⚠️ 当前位置不在NavMesh上！角色将无法移动！位置={currentPos}, gameObject={gameObject.name}");
+        }
+
+        // 检查NavMesh是否已烘焙
+        NavMeshTriangulation triangulation = NavMesh.CalculateTriangulation();
+        Debug.Log($"  - NavMesh三角形数量: {triangulation.indices.Length / 3}");
+
+        if (triangulation.indices.Length == 0)
+        {
+            Debug.LogError($"[MoveExecutor] ⚠️ 场景中没有NavMesh数据！请先烘焙NavMesh！");
         }
     }
 
@@ -45,6 +86,10 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     public void SetInput(Vector3 velocity)
     {
         _inputVelocity = velocity;
+        if (velocity.sqrMagnitude > 0.001f)
+        {
+            Debug.Log($"[MoveExecutor] SetInput: velocity={velocity}, gameObject={gameObject.name}");
+        }
     }
 
     // 外力可叠加
@@ -116,8 +161,11 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         Vector3 verticalDisplacement = Vector3.up * (_gravityVelocity + explicitVerticalSpeed) * deltaTime;
 
         Vector3 finalDisplacement = horizontalDisplacement + verticalDisplacement;
+
+        // 调试：打印移动信息
         if (finalDisplacement.sqrMagnitude > 0.000001f)
         {
+            Debug.Log($"[MoveExecutor] Execute: finalDisplacement={finalDisplacement}, gameObject={gameObject.name}");
             _controller.Move(finalDisplacement);
         }
 
@@ -154,6 +202,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         // 检查目标位置是否在 NavMesh 上或附近
         if (!NavMesh.SamplePosition(desiredNavProbePos, out NavMeshHit navHit, _sampleRadius, _navFilter))
         {
+            Debug.LogWarning($"[MoveExecutor] NavMesh.SamplePosition 失败！desiredPos={desiredNavProbePos}, gameObject={gameObject.name}");
             return Vector3.zero;
         }
 
@@ -163,17 +212,13 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         float distFromNavMesh = Vector2.Distance(sampledXZ, desiredXZ);
         if (distFromNavMesh > MaxOutOfBoundsDistance)
         {
+            Debug.LogWarning($"[MoveExecutor] 超出NavMesh边界！distFromNavMesh={distFromNavMesh}, gameObject={gameObject.name}");
             return Vector3.zero;
         }
 
-        // 原边缘缓冲检查已移除：NavMesh 烘焙时已按 Agent Radius 内缩，surface 内部都是安全区域
-        // if (NavMesh.FindClosestEdge(sampledPos, out NavMeshHit edgeHit, _navFilter) && edgeHit.distance < _edgeBuffer)
-        // {
-        //     return Vector3.zero;
-        // }
-
         if (IsEnemyStrongholdBlocked(navHit.position))
         {
+            Debug.LogWarning($"[MoveExecutor] 敌方据点被阻挡！pos={navHit.position}, gameObject={gameObject.name}");
             return Vector3.zero;
         }
 
@@ -199,13 +244,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             return false;
         }
 
-        LevelEntity level = LevelEntity.ActiveLevelEntity;
-        if (level == null)
-        {
-            return false;
-        }
-
-        Stronghold stronghold = level.GetStrongholdAtWorldPosition(worldPosition);
+        Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(worldPosition);
         if (stronghold == null)
         {
             return false;

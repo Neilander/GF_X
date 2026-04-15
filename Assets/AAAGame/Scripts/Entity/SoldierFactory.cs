@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
@@ -9,6 +11,32 @@ using AAAGame.Scripts.BuffSystem;
 public static class SoldierFactory
 {
     /// <summary>
+    /// 统一移除士兵入口：使用 HideEntity。
+    /// 血条由 HideEntityComplete 事件监听链路自动清理。
+    /// </summary>
+    public static bool RemoveSoldier(SoldierEntity soldier)
+    {
+        GF.Entity.HideEntity(soldier.Entity);
+        return true;
+    }
+
+    /// <summary>
+    /// 移除 Creature 组中所有 SoldierEntity（不区分阵营）。
+    /// </summary>
+    public static void RemoveAllSoldiersInCreatureGroup()
+    {
+        var creatureGroup = GF.Entity.GetEntityGroup(Const.EntityGroup.Creature.ToString());
+        var entities = creatureGroup.GetAllEntities();
+        for (int i = 0; i < entities.Length; i++)
+        {
+            if (entities[i] is Entity entity && entity.Logic is SoldierEntity soldier)
+            {
+                RemoveSoldier(soldier);
+            }
+        }
+    }
+
+    /// <summary>
     /// 创建士兵单位（异步，通过 OnShowCallback 在实体创建完成后自动添加 Buff）
     /// </summary>
     /// <param name="index">单位类型索引</param>
@@ -17,7 +45,7 @@ public static class SoldierFactory
     /// <param name="brainType">AI类型</param>
     public static int ShowSoldier(UnitType unitType, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
     {
-        string prefabName = GetSoldierPrefabName(unitType);
+        string prefabName = UnitTypeHelper.GetSoldierPrefabName(unitType);
         string characterKey = unitType.ToString();
         Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
 
@@ -31,14 +59,6 @@ public static class SoldierFactory
         return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs);
     }
 
-    /// <summary>
-    /// 根据index获取预制体名称
-    /// </summary>
-    private static string GetSoldierPrefabName(UnitType index)
-    {
-        // 使用简单的gujia名称，与CharacterTestProcedure保持一致
-        return "gujia";
-    }
 
     /// <summary>
     /// 添加初始Buff到列表中
@@ -54,7 +74,7 @@ public static class SoldierFactory
             case UnitType.Unit_BoneButcher:
                 buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
                 break;
-            
+
             case UnitType.Unit_Scapegoat:
                 buffList.Add(TauntBuffCallback.CreateTaunt(1));
                 break;

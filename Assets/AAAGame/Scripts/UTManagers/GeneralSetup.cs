@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -9,6 +9,10 @@ using log4net.Core;
 
 public partial class GeneralSetup : GameFrameworkComponent
 {
+    private bool m_InitialPhaseEntered;
+    private bool m_LevelReady;
+    private bool m_PlayerReady;
+
     public void DataModelSetup(LevelData levelData)
     {
         var levelDataParams = RefParams.Create();
@@ -23,6 +27,10 @@ public partial class GeneralSetup : GameFrameworkComponent
 
     public void GeneralSystemSetup(string lvIdentifier = "Lv_1")
     {
+        m_InitialPhaseEntered = false;
+        m_LevelReady = false;
+        m_PlayerReady = false;
+
         GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
 
         var lvRow = GetLvRow(lvIdentifier);
@@ -36,13 +44,14 @@ public partial class GeneralSetup : GameFrameworkComponent
         {
             inputManager.ChangeState(InputState.Game);
         }
-
-        SoldierFactory.ShowSoldier(UnitType.Unit_Hero, new Vector3(0, 1, -8), SideType.PlayerSide, BrainType.Player);
     }
 
     public void GeneralSystemShutDown()
     {
         GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
+        m_InitialPhaseEntered = false;
+        m_LevelReady = false;
+        m_PlayerReady = false;
     }
 
     public LevelTable GetLvRow(string lvIdentifier)
@@ -55,12 +64,20 @@ public partial class GeneralSetup : GameFrameworkComponent
     private void OnGeneralShowEntitySuccess(object sender, GameEventArgs e)
     {
         var args = (ShowEntitySuccessEventArgs)e;
+
+        if (args.Entity.Logic is LevelEntity)
+        {
+            m_LevelReady = true;
+            TryEnterInitialPhaseIfReady();
+        }
+
         if (args.Entity.Logic is MAEntity ma)
         {
             // 玩家注册为 Player
             if (ma.Brain is PlayerBrain)
             {
                 EntityRegistry.RegisterAsPlayer(ma);
+                m_PlayerReady = true;
 
                 // 设置摄像机跟随玩家
                 CameraController cameraController = Camera.main.GetComponent<CameraController>();
@@ -68,6 +85,8 @@ public partial class GeneralSetup : GameFrameworkComponent
                 {
                     cameraController.SetFollowTarget(ma.transform);
                 }
+
+                TryEnterInitialPhaseIfReady();
             }
 
             // 给所有生物挂血条
@@ -104,5 +123,21 @@ public partial class GeneralSetup : GameFrameworkComponent
                 soldierBrain.Inject();
             }
         }
+    }
+
+    private void TryEnterInitialPhaseIfReady()
+    {
+        if (m_InitialPhaseEntered)
+        {
+            return;
+        }
+
+        if (!m_LevelReady || !m_PlayerReady)
+        {
+            return;
+        }
+
+        PhaseManager.EnterCurrentPhaseOnGameStart();
+        m_InitialPhaseEntered = true;
     }
 }

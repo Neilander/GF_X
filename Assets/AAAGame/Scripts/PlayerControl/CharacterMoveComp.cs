@@ -152,6 +152,12 @@ public class CharacterMoveComp : IMoveComp
         //float speed = _ctx.GetProperty(CreatureMainProperty.Speed);
         //if (speed <= 0.01f) speed = 5f;
 
+        // 调试：打印移动信息
+        if (moveDir.sqrMagnitude > 0.001f)
+        {
+            Debug.Log($"[CharacterMoveComp] Move: moveDir={moveDir}, speed={speed}, finalVelocity={moveDir * speed}, gameObject={(_ctx as MAEntity)?.gameObject.name}");
+        }
+
         _ctx.MoveExecutor.SetInput(moveDir * speed);
 
         // 更新移动状态

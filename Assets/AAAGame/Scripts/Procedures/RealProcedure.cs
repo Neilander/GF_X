@@ -12,11 +12,10 @@ public class RealProcedure : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup("Lv_1");
-        // 初始化卡牌系统
-        GameEntry.GetComponent<CardSetup>().CardSystemSetup();
-        GameEntry.GetComponent<CardSetup>().OpenCardUI();
 
         GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
+        // 加载阶段切换按钮
+        GF.UI.OpenUIForm(UIViews.PhaseSwitchUIForm);
 
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
 
