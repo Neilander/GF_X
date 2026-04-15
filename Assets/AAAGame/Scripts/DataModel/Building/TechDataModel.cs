@@ -42,6 +42,10 @@ public class TechDataModel : DataModelBase
                                 row.Tech1DescKey,
                                 row.Tech1Cost,
                                 row.Tech1UniqueValues,
+                                row.Tech1ScopeType,
+                                row.Tech1UnitScope,
+                                row.Tech1TagScope,
+                                row.Tech1ArchScope,
                                 row.Tech1SpritePath,
                                 row.Tech1Stackable);
         techDataDic[tech.Identifier] = tech;
@@ -51,6 +55,10 @@ public class TechDataModel : DataModelBase
                                 row.Tech2DescKey,
                                 row.Tech2Cost,
                                 row.Tech2UniqueValues,
+                                row.Tech2ScopeType,
+                                row.Tech2UnitScope,
+                                row.Tech2TagScope,
+                                row.Tech2ArchScope,
                                 row.Tech2SpritePath,
                                 row.Tech2Stackable);
         techDataDic[tech.Identifier] = tech;
@@ -60,6 +68,10 @@ public class TechDataModel : DataModelBase
                                 row.Tech3DescKey,
                                 row.Tech3Cost,
                                 row.Tech3UniqueValues,
+                                row.Tech3ScopeType,
+                                row.Tech3UnitScope,
+                                row.Tech3TagScope,
+                                row.Tech3ArchScope,
                                 row.Tech3SpritePath,
                                 row.Tech3Stackable);
         techDataDic[tech.Identifier] = tech;
@@ -69,6 +81,10 @@ public class TechDataModel : DataModelBase
                                 row.Tech4DescKey,
                                 row.Tech4Cost,
                                 row.Tech4UniqueValues,
+                                row.Tech4ScopeType,
+                                row.Tech4UnitScope,
+                                row.Tech4TagScope,
+                                row.Tech4ArchScope,
                                 row.Tech4SpritePath,
                                 row.Tech4Stackable);
         techDataDic[tech.Identifier] = tech;

@@ -16,6 +16,10 @@ public class TechData
     public string Identifier { get; protected set; }
     public int Cost { get; protected set; }
     public Fix64[] UniqueValues { get; protected set; }
+    public TechScopeType ScopeType { get; protected set; }
+    public string[] UnitScope { get; protected set; }
+    public UnitTag[] TagScope { get; protected set; }
+    public Archetype[] ArchScope { get; protected set; }
     public string SpritePath { get; protected set; }
     public string NameKey { get; protected set; }
     public string DescKey { get; protected set; }
@@ -26,6 +30,10 @@ public class TechData
         string descKey,
         int cost,
         Fix64[] uniqueValues,
+        TechScopeType scopeType,
+        string[] unitScope,
+        UnitTag[] tagScope,
+        Archetype[] archScope,
         string spritePath,
         bool isStackable)
     {
@@ -34,6 +42,10 @@ public class TechData
         NameKey = nameKey;
         DescKey = descKey;
         UniqueValues = uniqueValues;
+        ScopeType = scopeType;
+        UnitScope = unitScope;
+        TagScope = tagScope;
+        ArchScope = archScope;
         SpritePath = spritePath;
         IsStackable = isStackable;
     }
