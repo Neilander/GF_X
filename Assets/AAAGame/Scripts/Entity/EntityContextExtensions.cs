@@ -106,6 +106,7 @@ public static class EntityContextExtensions
         if (colliders == null || colliders.Length == 0)
             return false;
 
+        // 攻击射程按 XZ 平面比较，这里也按 XZ 选最近点，避免高低面导致“看似贴脸却超距”。
         float bestDistanceSqr = float.PositiveInfinity;
         bool hasResult = false;
         for (int i = 0; i < colliders.Length; i++)
@@ -115,7 +116,9 @@ public static class EntityContextExtensions
                 continue;
 
             Vector3 point = collider.ClosestPoint(origin);
-            float d2 = (point - origin).sqrMagnitude;
+            float dx = point.x - origin.x;
+            float dz = point.z - origin.z;
+            float d2 = dx * dx + dz * dz;
             if (d2 < bestDistanceSqr)
             {
                 bestDistanceSqr = d2;

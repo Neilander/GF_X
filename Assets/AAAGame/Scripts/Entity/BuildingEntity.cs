@@ -146,8 +146,33 @@ public partial class BuildingEntity : MAEntity
 
     protected override void SetUpHurtBox()
     {
-        base.SetUpHurtBox();
-        SyncHurtBoxToBuildingBounds();
+        AttachHurtBoxToExistingColliders();
+        //lv0建筑不创建碰撞体，避免影响卡牌禁区
+        // // 兜底：如果建筑上没有可用碰撞体，沿用旧逻辑创建独立 HurtBox。
+        // base.SetUpHurtBox();
+        // SyncHurtBoxToBuildingBounds();
+    }
+
+    private bool AttachHurtBoxToExistingColliders()
+    {
+        var colliders = GetComponentsInChildren<Collider>(true);
+        bool attached = false;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            var collider = colliders[i];
+            if (collider == null || !collider.enabled || collider.isTrigger)
+                continue;
+
+            var hurtBox = collider.GetComponent<HurtBox>();
+            if (hurtBox == null)
+                hurtBox = collider.gameObject.AddComponent<HurtBox>();
+
+            hurtBox.Activate(this);
+            attached = true;
+        }
+
+        return attached;
     }
 
     public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)

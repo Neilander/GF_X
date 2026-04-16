@@ -25,6 +25,9 @@ public class CharacterTargetingComp : ITargetingComp
     {
         if (_ctx == null) return;
 
+        bool useAttackRangeOnlyForThisUnit = ShouldUseAttackRangeOnly(_ctx);
+        float effectiveAttackRange = GetEffectiveAttackRange();
+
         float currentTargetDist = float.PositiveInfinity;
 
         // 1. 维护当前敌人目标
@@ -32,9 +35,11 @@ public class CharacterTargetingComp : ITargetingComp
         {
             float dist = _ctx.DistanceToTargetSurface(CurrentTarget);
             currentTargetDist = dist;
-            if (dist > ForgetRange || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
+            float targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : ForgetRange;
+            if (dist > targetRetentionRange || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
             {
-                GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} forgetRange={ForgetRange} alive={CurrentTarget.Alive}");
+                GameDebugSettings.Log(DebugCategory.Targeting,
+                    $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} retentionRange={targetRetentionRange:F1} alive={CurrentTarget.Alive}");
                 CurrentTarget = null;
                 currentTargetDist = float.PositiveInfinity;
             }
@@ -59,7 +64,9 @@ public class CharacterTargetingComp : ITargetingComp
 
             // 找敌人：遍历 EntityRegistry，嘲讽等级优先，同等级选最近
             IEntityContext nearest = null;
-            float scanRange = Mathf.Max(AggroRange, GetEffectiveAttackRange());
+            float scanRange = useAttackRangeOnlyForThisUnit
+                ? effectiveAttackRange
+                : Mathf.Max(AggroRange, effectiveAttackRange);
             float nearestDist = scanRange;
             int highestTaunt = -1;
             var all = EntityRegistry.AllEntities;
@@ -134,5 +141,25 @@ public class CharacterTargetingComp : ITargetingComp
     {
         Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
         return (float)weaponRange;
+    }
+
+    private static bool ShouldUseAttackRangeOnly(IEntityContext entity)
+    {
+        return entity is BuildingEntity || IsHeroUnit(entity);
+    }
+
+    private static bool IsHeroUnit(IEntityContext entity)
+    {
+        if (entity?.CharacterData?.UnitTags != null)
+        {
+            var tags = entity.CharacterData.UnitTags;
+            for (int i = 0; i < tags.Length; i++)
+            {
+                if (tags[i] == UnitTag.Hero)
+                    return true;
+            }
+        }
+
+        return entity != null && entity.CharacterKey == UnitType.Unit_Hero.ToString();
     }
 }

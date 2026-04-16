@@ -3,6 +3,12 @@ description: AI rules derived by SpecStory from the project AI interaction histo
 globs: *
 ---
 
+## 必读硬规则
+- 先找根因并加日志验证，不做表层补偿。
+- 核心战斗数值使用 Fix64，float 仅用于 Unity API/UI 边界。
+- 自动生成代码（尤其 DataTable 生成的 cs）不手改，优先在非生成层做适配。
+- 实现保持极简，避免大段防御性兜底逻辑。
+
 ## Headers
 
 ## TECH STACK

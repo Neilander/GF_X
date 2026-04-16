@@ -11,7 +11,7 @@ public class HitBox : EntityBase
 
     // 记录：碰撞到的生物 + 碰撞时间
     public Dictionary<ITargetable, float> HitRecords { get; private set; }
-    
+
     public Damage DamageInfo { get; private set; }
 
 
@@ -22,7 +22,7 @@ public class HitBox : EntityBase
         HitRecords = new Dictionary<ITargetable, float>();
         DamageInfo = null;
         base.OnShow(userData);
-       
+
     }
 
     /// <summary>
@@ -47,8 +47,8 @@ public class HitBox : EntityBase
 
         if (!target.IsActive)
             return;
-        
-        if(target.Owner == Owner)
+
+        if (target.Owner == Owner)
             return;
 
         if (!target.Owner.Alive)
@@ -58,7 +58,7 @@ public class HitBox : EntityBase
             return;
 
         var targetOwner = target.Owner;
-        
+
         // 如果是第一次碰到，记录时间
         if (!HitRecords.ContainsKey(targetOwner))
         {
@@ -67,6 +67,6 @@ public class HitBox : EntityBase
             DamageHelper.DoDamage(targetOwner, DamageInfo);
         }
     }
-    
-    
+
+
 }

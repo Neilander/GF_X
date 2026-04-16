@@ -21,6 +21,7 @@ namespace AAAGame.Card
 
         // 区域检测配置
         private float m_DetectionRadius = 0.5f;
+        private Func<Vector3, float, bool> m_AdditionalForbiddenChecker;
 
         // 事件回调
         public event Action<CardModel> OnPlacementStarted;
@@ -43,6 +44,14 @@ namespace AAAGame.Card
         public void SetDetectionRadius(float radius)
         {
             m_DetectionRadius = radius;
+        }
+
+        /// <summary>
+        /// 设置附加禁止区域检测（用于动态禁区）。
+        /// </summary>
+        public void SetAdditionalForbiddenChecker(Func<Vector3, float, bool> checker)
+        {
+            m_AdditionalForbiddenChecker = checker;
         }
 
         /// <summary>
@@ -206,6 +215,12 @@ namespace AAAGame.Card
                 position, m_DetectionRadius, m_ForbiddenLayer);
 
             if (forbiddenColliders.Length > 0)
+            {
+                return false;
+            }
+
+            if (m_AdditionalForbiddenChecker != null
+                && m_AdditionalForbiddenChecker(position, m_DetectionRadius))
             {
                 return false;
             }

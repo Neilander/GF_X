@@ -27,6 +27,7 @@ namespace AAAGame.Card
         private HandCardController m_HandCardController;
         private CardPlacementController m_PlacementController;
         private AreaDetectionController m_AreaDetectionController;
+        private EnemyBuildingForbiddenZoneController m_EnemyBuildingForbiddenZoneController;
         private bool m_IsIngameValueSubscribed;
 
         private List<ICardDataProvider> m_CardPool;
@@ -50,6 +51,10 @@ namespace AAAGame.Card
             m_HandCardController = new HandCardController(m_HandModel);
             m_PlacementController = new CardPlacementController();
             m_AreaDetectionController = new AreaDetectionController();
+            m_EnemyBuildingForbiddenZoneController = new EnemyBuildingForbiddenZoneController();
+            m_PlacementController.SetAdditionalForbiddenChecker((position, radius) =>
+                m_EnemyBuildingForbiddenZoneController != null
+                && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(position, radius));
 
             // 订阅子控制器事件
             m_HandCardController.OnCardDrawn += (card) =>
@@ -317,7 +322,14 @@ namespace AAAGame.Card
         /// </summary>
         public void StartPlacement(CardModel cardModel)
         {
+            if (cardModel == null)
+            {
+                Debug.LogError("[Card] CardModel is null.");
+                return;
+            }
+
             m_PlacementController.StartPlacement(cardModel);
+            m_EnemyBuildingForbiddenZoneController?.BeginPlacement();
         }
 
         /// <summary>
@@ -325,6 +337,7 @@ namespace AAAGame.Card
         /// </summary>
         public void UpdatePlacement()
         {
+            m_EnemyBuildingForbiddenZoneController?.RefreshZones();
             m_PlacementController.UpdatePlacement();
         }
 
@@ -344,6 +357,8 @@ namespace AAAGame.Card
             {
                 return false;
             }
+
+            m_EnemyBuildingForbiddenZoneController?.EndPlacement();
 
             InGameDataModel.RefreshCurrentSupplyFromFriendlyUnits(true);
 
@@ -368,6 +383,7 @@ namespace AAAGame.Card
         public void CancelPlacement()
         {
             m_PlacementController.CancelPlacement();
+            m_EnemyBuildingForbiddenZoneController?.EndPlacement();
         }
 
         /// <summary>
@@ -423,7 +439,10 @@ namespace AAAGame.Card
         /// </summary>
         public bool IsInForbiddenArea(Vector3 worldPosition)
         {
-            return m_AreaDetectionController.IsPositionInInvalidArea(worldPosition);
+            bool inStaticForbiddenArea = m_AreaDetectionController.IsPositionInInvalidArea(worldPosition);
+            bool inEnemyBuildingForbiddenArea = m_EnemyBuildingForbiddenZoneController != null
+                && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(worldPosition, 0f);
+            return inStaticForbiddenArea || inEnemyBuildingForbiddenArea;
         }
 
         /// <summary>
@@ -432,6 +451,7 @@ namespace AAAGame.Card
         public void Shutdown()
         {
             m_PlacementController?.Shutdown();
+            m_EnemyBuildingForbiddenZoneController?.Shutdown();
             m_AreaDetectionController?.Shutdown();
             m_HandModel?.Clear();
             m_CardPool?.Clear();

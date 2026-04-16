@@ -21,32 +21,32 @@ namespace AAAGame.Card
         [SerializeField] private RectTransform handCardArea;
         [SerializeField] private GameObject trashBin;
         [SerializeField] private TMPro.TextMeshProUGUI trashBinHintText;
-        
+
         [Header("预制体")]
         [SerializeField] private GameObject handCardItemPrefab;
-        
+
         [Header("区域材质效果")]
         [SerializeField] private UI.CardAreaMaterialOverlay areaMaterialOverlay;
-        
+
         [Header("抽卡动画")]
         [SerializeField] private RectTransform cardDeckTransform;
         [SerializeField] private float cardMoveToHandDuration = 0.5f;
-        
+
         [Header("快捷键")]
         [SerializeField] private KeyCode toggleUIKey = KeyCode.Tab;
-        
+
         private CardSystemController m_CardSystemController;
         private List<UIItemObject> m_HandCardItemObjects = new List<UIItemObject>();
         private HandCardItem m_DraggingCard;
         private RectTransform m_TrashBinRect;
         private bool m_IsUIVisible = true;
-        
 
-        
+
+
         protected override void OnInit(object userData)
         {
             base.OnInit(userData);
-            
+
             // 初始化垃圾桶
             if (trashBin != null)
             {
@@ -64,20 +64,20 @@ namespace AAAGame.Card
             GF.Event.Subscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
             GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
             GF.Event.Subscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyBuildingCardPropertyChanged);
-          
+
             // 从 UIParams 获取 CardSystemController
             UIParams uiParams = userData as UIParams;
             if (uiParams != null)
             {
                 m_CardSystemController = uiParams.Get("CardSystemController") as CardSystemController;
             }
-            
+
             if (m_CardSystemController == null)
             {
                 Log.Error("CardSystemController is null.");
                 return;
             }
-            
+
             // 初始化手牌显示
             RefreshHandCards();
         }
@@ -101,7 +101,7 @@ namespace AAAGame.Card
             }
 
             base.OnClose(isShutdown, userData);
-            
+
             // 清理手牌
             ClearHandCards();
         }
@@ -109,17 +109,17 @@ namespace AAAGame.Card
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
         {
             base.OnUpdate(elapseSeconds, realElapseSeconds);
-            
+
             // Tab键切换UI显示/隐藏
             if (Input.GetKeyDown(toggleUIKey))
             {
                 ToggleUIVisibility();
             }
-            
+
             // 处理快捷键
             HandleHotkeys();
         }
-        
+
         /// <summary>
         /// 切换UI显示/隐藏
         /// </summary>
@@ -159,10 +159,10 @@ namespace AAAGame.Card
         private void PlayCardByIndex(int index)
         {
             if (index < 0 || index >= m_HandCardItemObjects.Count) return;
-            
+
             var itemObj = m_HandCardItemObjects[index];
             HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
-            
+
             if (cardItem != null && cardItem.CanPlay())
             {
                 cardItem.SetSelected(true);
@@ -176,10 +176,10 @@ namespace AAAGame.Card
         private void RefreshHandCards()
         {
             ClearHandCards();
-            
+
             PlayerHandModel handModel = m_CardSystemController.GetHandModel();
             if (handModel == null) return;
-            
+
             List<CardModel> cards = handModel.GetAllCards();
             foreach (var cardModel in cards)
             {
@@ -198,7 +198,7 @@ namespace AAAGame.Card
                 Log.Error("HandCardItemPrefab or HandCardContainer is null.");
                 return;
             }
-            
+
             // 使用 GF_X 对象池创建 HandCardItem
             var itemObject = SpawnItem<UIItemObject>(handCardItemPrefab, handCardContainer);
             if (itemObject == null)
@@ -206,7 +206,7 @@ namespace AAAGame.Card
                 Log.Error("Failed to spawn HandCardItem from object pool.");
                 return;
             }
-            
+
             // 使用 gameObject 属性获取 GameObject
             HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
             if (cardItem == null)
@@ -214,10 +214,10 @@ namespace AAAGame.Card
                 Log.Error("HandCardItem component not found on spawned object.");
                 return;
             }
-            
+
             cardItem.Initialize(cardModel, this);
             m_HandCardItemObjects.Add(itemObject);
-            
+
             // 播放抽卡动画
             if (playAnimation && cardDeckTransform != null)
             {
@@ -231,7 +231,7 @@ namespace AAAGame.Card
         private void RemoveHandCardItemDirect(CardModel cardModel)
         {
             Log.Info($"[CardUI] RemoveHandCardItemDirect called for: {cardModel?.GetCardName()}");
-            
+
             UIItemObject itemToRemove = null;
             foreach (var itemObj in m_HandCardItemObjects)
             {
@@ -243,7 +243,7 @@ namespace AAAGame.Card
                     break;
                 }
             }
-            
+
             if (itemToRemove != null)
             {
                 Log.Info($"[CardUI] Removing item from list and unspawning...");
@@ -263,7 +263,7 @@ namespace AAAGame.Card
         private void RemoveHandCardItem(CardModel cardModel)
         {
             Log.Info($"[CardUI] RemoveHandCardItem called for: {cardModel?.GetCardName()}");
-            
+
             UIItemObject itemToRemove = null;
             foreach (var itemObj in m_HandCardItemObjects)
             {
@@ -274,7 +274,7 @@ namespace AAAGame.Card
                     break;
                 }
             }
-            
+
             if (itemToRemove != null)
             {
                 m_HandCardItemObjects.Remove(itemToRemove);
@@ -304,13 +304,13 @@ namespace AAAGame.Card
         public void OnCardBeginDrag(HandCardItem cardItem)
         {
             m_DraggingCard = cardItem;
-            
+
             // 显示垃圾桶
             if (trashBin != null)
             {
                 trashBin.SetActive(true);
             }
-            
+
             m_CardSystemController.StartPlacement(cardItem.GetCardModel());
         }
 
@@ -321,7 +321,7 @@ namespace AAAGame.Card
         {
             // 更新垃圾桶提示
             UpdateTrashBinHint(screenPosition);
-            
+
             // 更新区域材质效果
             UpdateAreaMaterialEffect(screenPosition);
         }
@@ -332,42 +332,42 @@ namespace AAAGame.Card
         public bool OnCardEndDrag(HandCardItem cardItem, Vector2 screenPosition)
         {
             m_DraggingCard = null;
-            
+
             Log.Info($"[CardUI] ========== OnCardEndDrag START ==========");
             Log.Info($"[CardUI] Screen Position: {screenPosition}");
-            
+
             // 隐藏垃圾桶
             if (trashBin != null)
             {
                 trashBin.SetActive(false);
             }
-            
+
             // 隐藏区域材质效果
             if (areaMaterialOverlay != null)
             {
                 areaMaterialOverlay.HideAreaEffect();
             }
-            
+
             // 优先级 1：检查是否在垃圾桶区域（最高优先级！）
             bool isInTrash = IsInTrashBin(screenPosition);
             Log.Info($"[CardUI] ✅ Is in trash bin: {isInTrash}");
-            
+
             if (isInTrash)
             {
                 Log.Info($"[CardUI] ✅✅✅ Card in trash bin, DISCARDING");
-                
+
                 // 取消放置（防止生成对象）
                 m_CardSystemController.CancelPlacement();
-                
+
                 // 先通知 HandCardItem 停止拖拽状态并播放消失动画
                 cardItem.OnDiscardSuccess();
-                
+
                 // 先移除 UI（避免事件重复移除）
                 RemoveHandCardItemDirect(cardItem.GetCardModel());
-                
+
                 // 调用 Controller 丢弃卡牌（更新数据模型 + 触发事件）
                 bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel());
-                
+
                 if (discarded)
                 {
                     Log.Info("[CardUI] ✅ Card discarded and removed successfully");
@@ -376,26 +376,26 @@ namespace AAAGame.Card
                 {
                     Log.Error("[CardUI] ❌ Failed to discard card in controller");
                 }
-                
+
                 return true;
             }
-            
+
             // 优先级 2：检查是否拖回手牌区域
             bool isOverHand = IsOverHandCardArea(screenPosition);
             Log.Info($"[CardUI] Is over hand area: {isOverHand}");
-            
+
             if (isOverHand)
             {
                 Log.Info("[CardUI] Card dragged back to hand, CANCELING PLACEMENT");
                 m_CardSystemController.CancelPlacement();
                 return false;
             }
-            
+
             // 优先级 3：尝试确认放置到场景
             Log.Info("[CardUI] Attempting to place card in scene");
             bool placed = m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel(), screenPosition);
             Log.Info($"[CardUI] Card placement result: {placed}");
-            
+
             if (placed)
             {
                 Log.Info($"[CardUI] ✅ Card placed successfully: {cardItem.GetCardModel().GetCardName()}");
@@ -410,30 +410,30 @@ namespace AAAGame.Card
             Log.Info($"[CardUI] ========== OnCardEndDrag END (returned {placed}) ==========");
             return placed;
         }
-        
+
         /// <summary>
         /// 更新垃圾桶提示
         /// </summary>
         private void UpdateTrashBinHint(Vector2 screenPosition)
         {
             if (m_TrashBinRect == null) return;
-            
+
             bool isOver = RectTransformUtility.RectangleContainsScreenPoint(
                 m_TrashBinRect, screenPosition, GFBuiltin.UICamera);
-            
+
             if (trashBinHintText != null)
             {
                 trashBinHintText.gameObject.SetActive(isOver);
             }
         }
-        
+
         /// <summary>
         /// 更新区域材质效果
         /// </summary>
         private void UpdateAreaMaterialEffect(Vector2 screenPosition)
         {
             if (areaMaterialOverlay == null || Camera.main == null) return;
-            
+
             // 发射射线
             Ray ray = Camera.main.ScreenPointToRay(screenPosition);
             if (!Physics.Raycast(ray, out RaycastHit hit, 1000f))
@@ -441,23 +441,23 @@ namespace AAAGame.Card
                 areaMaterialOverlay.HideAreaEffect();
                 return;
             }
-            
+
             Vector3 worldPos = hit.point;
-            
+
             // 检查是否在禁止区域
             bool isForbidden = m_CardSystemController.IsInForbiddenArea(worldPos);
-            
+
             // 显示区域效果 (isValid = !isForbidden)
             areaMaterialOverlay.ShowAreaEffect(worldPos, !isForbidden);
         }
-        
+
         /// <summary>
         /// 检查是否在手牌区域
         /// </summary>
         private bool IsOverHandCardArea(Vector2 screenPosition)
         {
             RectTransform targetRect = null;
-            
+
             // 优先使用 handCardArea
             if (handCardArea != null)
             {
@@ -473,28 +473,28 @@ namespace AAAGame.Card
             {
                 targetRect = handCardContainer.GetComponent<RectTransform>();
             }
-            
+
             if (targetRect == null)
             {
                 Log.Warning("[CardUI] No valid hand card area RectTransform found");
                 return false;
             }
-            
+
             // 尝试两种方式：使用 UICamera 和使用 null（Overlay 模式）
             Camera uiCamera = GFBuiltin.UICamera;
-            
+
             // 方法 1：使用 UICamera
             bool result1 = RectTransformUtility.RectangleContainsScreenPoint(
                 targetRect, screenPosition, uiCamera);
-            
+
             // 方法 2：使用 null（适用于 Overlay 模式的 Canvas）
             bool result2 = RectTransformUtility.RectangleContainsScreenPoint(
                 targetRect, screenPosition, null);
-            
+
             Log.Info($"[CardUI] IsOverHandCardArea - With Camera: {result1}, Without Camera (null): {result2}");
             Log.Info($"[CardUI] Target rect: {targetRect.name}, Camera: {(uiCamera != null ? uiCamera.name : "null")}");
             Log.Info($"[CardUI] Screen Position: {screenPosition}");
-            
+
             // 如果任何一个方法返回 true，就认为在手牌区域
             return result1 || result2;
         }
@@ -509,7 +509,7 @@ namespace AAAGame.Card
                 Log.Warning("[CardUI] TrashBin RectTransform is null. Cannot detect trash bin area.");
                 return false;
             }
-            
+
             // 获取 Canvas 信息
             Canvas canvas = m_TrashBinRect.GetComponentInParent<Canvas>();
             if (canvas == null)
@@ -517,7 +517,7 @@ namespace AAAGame.Card
                 Log.Warning("[CardUI] Cannot find Canvas for trash bin.");
                 return false;
             }
-            
+
             Camera uiCamera = null;
             if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
             {
@@ -529,14 +529,14 @@ namespace AAAGame.Card
                 // Camera 模式使用 Canvas 的相机或 UICamera
                 uiCamera = canvas.worldCamera ?? GFBuiltin.UICamera;
             }
-            
+
             // 使用 RectTransformUtility.RectangleContainsScreenPoint（最可靠的方法）
             bool result = RectTransformUtility.RectangleContainsScreenPoint(
                 m_TrashBinRect, screenPosition, uiCamera);
-            
+
             Log.Info($"[CardUI] IsInTrashBin check: result={result}, Canvas mode={canvas.renderMode}");
             Log.Info($"[CardUI] Screen pos: {screenPosition}, TrashBin: {m_TrashBinRect.name}");
-            
+
             return result;
         }
 
@@ -639,28 +639,28 @@ namespace AAAGame.Card
         }
 
         #endregion
-        
+
         #region 公共接口
-        
+
         /// <summary>
         /// 重新抽卡 - 清空手牌并重新抽取
         /// </summary>
         public void RedrawCards()
         {
             if (m_CardSystemController == null) return;
-            
+
             // 清空当前手牌
             PlayerHandModel handModel = m_CardSystemController.GetHandModel();
             if (handModel != null)
             {
                 int cardCount = handModel.CardCount;
                 handModel.Clear();
-                
+
                 // 重新抽卡
                 m_CardSystemController.DrawCards(cardCount);
             }
         }
-        
+
         #endregion
 
         protected override void OnRecycle()
