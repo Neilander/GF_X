@@ -544,19 +544,34 @@ namespace AAAGame.Card
 
         private void OnCardDrawn(object sender, GameEventArgs e)
         {
+            if (!ReferenceEquals(sender, m_CardSystemController))
+                return;
+
             CardDrawnEventArgs ne = (CardDrawnEventArgs)e;
+            if (ContainsCardItem(ne.CardModel))
+            {
+                Log.Info($"[CardUI] Skip duplicated draw event for card: {ne.CardModel?.GetCardName()}");
+                return;
+            }
+
             //Debug.Log($"[Card] Card drawn: {ne.CardModel.GetCardName()}");
             CreateHandCardItem(ne.CardModel, playAnimation: true);
         }
 
         private void OnCardPlayed(object sender, GameEventArgs e)
         {
+            if (!ReferenceEquals(sender, m_CardSystemController))
+                return;
+
             CardPlayedEventArgs ne = (CardPlayedEventArgs)e;
             RemoveHandCardItem(ne.CardModel);
         }
 
         private void OnCardDiscarded(object sender, GameEventArgs e)
         {
+            if (!ReferenceEquals(sender, m_CardSystemController))
+                return;
+
             CardDiscardedEventArgs ne = (CardDiscardedEventArgs)e;
             RemoveHandCardItem(ne.CardModel);
         }
@@ -599,6 +614,28 @@ namespace AAAGame.Card
 
                 cardItem.RefreshView();
             }
+        }
+
+        private bool ContainsCardItem(CardModel cardModel)
+        {
+            if (cardModel == null)
+                return false;
+
+            for (int i = 0; i < m_HandCardItemObjects.Count; i++)
+            {
+                var itemObj = m_HandCardItemObjects[i];
+                if (itemObj == null || itemObj.gameObject == null)
+                    continue;
+
+                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
+                if (cardItem == null)
+                    continue;
+
+                if (ReferenceEquals(cardItem.GetCardModel(), cardModel))
+                    return true;
+            }
+
+            return false;
         }
 
         #endregion
