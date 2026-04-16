@@ -7,7 +7,6 @@
     public class CardModel
     {
         private ICardDataProvider m_DataProvider;
-        private PopulationModel m_PopulationModel;
         private BuildingEntity m_SourceBuilding;
 
         /// <summary>
@@ -20,10 +19,9 @@
         /// </summary>
         public BuildingEntity SourceBuilding => m_SourceBuilding;
 
-        public CardModel(ICardDataProvider dataProvider, PopulationModel populationModel, BuildingEntity sourceBuilding = null)
+        public CardModel(ICardDataProvider dataProvider, BuildingEntity sourceBuilding = null)
         {
             m_DataProvider = dataProvider;
-            m_PopulationModel = populationModel;
             m_SourceBuilding = sourceBuilding;
         }
 
@@ -32,12 +30,12 @@
         /// </summary>
         public bool CanPlay()
         {
-            if (m_DataProvider == null || m_PopulationModel == null)
+            if (m_DataProvider == null)
             {
                 return false;
             }
 
-            return m_PopulationModel.HasEnoughPopulation(m_DataProvider.PopulationCost);
+            return InGameDataModel.HasEnoughSupplyFor(GetOccupiedSupply());
         }
 
         /// <summary>
@@ -74,6 +72,26 @@
         /// </summary>
         public int GetPopulationCost()
         {
+            return GetOccupiedSupply();
+        }
+
+        public int GetTroopCount()
+        {
+            if (m_SourceBuilding != null)
+            {
+                return m_SourceBuilding.GetArmyForce();
+            }
+
+            return m_DataProvider?.SoldierCount ?? 0;
+        }
+
+        public int GetOccupiedSupply()
+        {
+            if (m_SourceBuilding != null)
+            {
+                return m_SourceBuilding.GetArmyOccupiedSupply();
+            }
+
             return m_DataProvider?.PopulationCost ?? 0;
         }
 

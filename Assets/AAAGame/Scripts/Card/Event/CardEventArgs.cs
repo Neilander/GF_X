@@ -76,36 +76,6 @@ namespace AAAGame.Card
     }
 
     /// <summary>
-    /// 人口变化事件
-    /// </summary>
-    public sealed class PopulationChangedEventArgs : GameEventArgs
-    {
-        public static readonly int EventId = typeof(PopulationChangedEventArgs).GetHashCode();
-
-        public override int Id => EventId;
-
-        public int CurrentPopulation { get; private set; }
-        public int MaxPopulation { get; private set; }
-        public int ChangeAmount { get; private set; }
-
-        public static PopulationChangedEventArgs Create(int current, int max, int change)
-        {
-            PopulationChangedEventArgs e = ReferencePool.Acquire<PopulationChangedEventArgs>();
-            e.CurrentPopulation = current;
-            e.MaxPopulation = max;
-            e.ChangeAmount = change;
-            return e;
-        }
-
-        public override void Clear()
-        {
-            CurrentPopulation = 0;
-            MaxPopulation = 0;
-            ChangeAmount = 0;
-        }
-    }
-
-    /// <summary>
     /// 卡牌放置开始事件
     /// </summary>
     public sealed class CardPlacementStartEventArgs : GameEventArgs

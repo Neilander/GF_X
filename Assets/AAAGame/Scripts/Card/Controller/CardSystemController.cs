@@ -23,17 +23,16 @@ namespace AAAGame.Card
             }
         }
 
-        private PopulationModel m_PopulationModel;
         private PlayerHandModel m_HandModel;
         private HandCardController m_HandCardController;
         private CardPlacementController m_PlacementController;
         private AreaDetectionController m_AreaDetectionController;
+        private bool m_IsIngameValueSubscribed;
 
         private List<ICardDataProvider> m_CardPool;
         private readonly List<Card> m_DeckCards = new List<Card>();
 
         // 事件回调
-        public event Action<int, int, int> OnPopulationChanged; // (current, max, cost)
         public event Action<int, int> OnHandChanged; // (cardCount, maxCards)
         public event Action<CardModel> OnCardDrawn;
         public event Action<CardModel> OnCardPlayed;
@@ -45,11 +44,10 @@ namespace AAAGame.Card
         public void Initialize()
         {
             // 初始化模型
-            m_PopulationModel = new PopulationModel();
             m_HandModel = new PlayerHandModel();
 
             // 初始化控制器
-            m_HandCardController = new HandCardController(m_HandModel, m_PopulationModel);
+            m_HandCardController = new HandCardController(m_HandModel);
             m_PlacementController = new CardPlacementController();
             m_AreaDetectionController = new AreaDetectionController();
 
@@ -69,6 +67,7 @@ namespace AAAGame.Card
             // 初始化卡牌池
             m_CardPool = new List<ICardDataProvider>();
             m_DeckCards.Clear();
+
 
             Debug.Log("[Card] CardSystemController initialized.");
         }
@@ -107,6 +106,7 @@ namespace AAAGame.Card
             if (!UnitTypeHelper.TryParseUnitType(sourceBuilding.buildingData.UnitID, out var unitType))
             {
                 Debug.LogWarning($"Skip army building '{sourceBuilding.buildingData.Identifier}': invalid UnitID '{sourceBuilding.buildingData.UnitID}'.");
+                return false;
             }
 
             ICardDataProvider cardData = FindCardDataByUnitType(unitType);
@@ -154,30 +154,6 @@ namespace AAAGame.Card
             }
 
             return DrawCard();
-        }
-
-        /// <summary>
-        /// 设置最大人口
-        /// </summary>
-        public void SetMaxPopulation(int maxPopulation)
-        {
-            m_PopulationModel.SetMaxPopulation(maxPopulation);
-
-            // 触发人口变化事件（C# 事件）
-            OnPopulationChanged?.Invoke(
-                m_PopulationModel.CurrentPopulation,
-                m_PopulationModel.MaxPopulation,
-                0);
-
-            // 触发人口变化事件（GameFramework 事件系统）
-            GameFramework.Event.GameEventArgs e = PopulationChangedEventArgs.Create(
-                m_PopulationModel.CurrentPopulation,
-                m_PopulationModel.MaxPopulation,
-                0);
-            GF.Event.Fire(this, e);
-            GameFramework.ReferencePool.Release(e);
-
-            Debug.Log($"[Card] Max population set to: {maxPopulation}");
         }
 
         /// <summary>
@@ -324,7 +300,8 @@ namespace AAAGame.Card
                 return false;
             }
 
-            if (!cardModel.CanPlay())
+            int occupiedSupply = cardModel.GetOccupiedSupply();
+            if (!HasEnoughPopulation(occupiedSupply))
             {
                 Debug.LogWarning($"[Card] Cannot play card {cardModel.GetCardName()}: not enough population.");
                 return false;
@@ -356,32 +333,19 @@ namespace AAAGame.Card
         /// </summary>
         public bool ConfirmPlacement(CardModel cardModel, Vector2? releaseScreenPosition = null)
         {
+            int occupiedSupply = cardModel != null ? cardModel.GetOccupiedSupply() : 0;
+            if (!HasEnoughPopulation(occupiedSupply))
+            {
+                Debug.LogWarning("[Card] Cannot confirm placement: not enough population.");
+                return false;
+            }
+
             if (!m_PlacementController.ConfirmPlacement(cardModel, releaseScreenPosition))
             {
                 return false;
             }
 
-            // 消耗人口
-            int populationCost = cardModel.GetPopulationCost();
-            if (!m_PopulationModel.ConsumePopulation(populationCost))
-            {
-                Debug.LogError("[Card] Failed to consume population.");
-                return false;
-            }
-
-            // 触发人口变化事件（C# 事件）
-            OnPopulationChanged?.Invoke(
-                m_PopulationModel.CurrentPopulation,
-                m_PopulationModel.MaxPopulation,
-                populationCost);
-
-            // 触发人口变化事件（GameFramework 事件系统）
-            GameFramework.Event.GameEventArgs populationEvent = PopulationChangedEventArgs.Create(
-                m_PopulationModel.CurrentPopulation,
-                m_PopulationModel.MaxPopulation,
-                -populationCost); // 负数表示消耗
-            GF.Event.Fire(this, populationEvent);
-            GameFramework.ReferencePool.Release(populationEvent);
+            InGameDataModel.RefreshCurrentSupplyFromFriendlyUnits(true);
 
             // 从手牌移除
             m_HandCardController.RemoveCard(cardModel);
@@ -394,7 +358,7 @@ namespace AAAGame.Card
             GF.Event.Fire(this, cardEvent);
             GameFramework.ReferencePool.Release(cardEvent);
 
-            Debug.Log($"[Card] Card played: {cardModel.GetCardName()}, Population: {m_PopulationModel.CurrentPopulation}/{m_PopulationModel.MaxPopulation}");
+            Debug.Log($"[Card] Card played: {cardModel.GetCardName()}, Population: {InGameDataModel.GetCurrentSupply()}/{InGameDataModel.GetMaxSupply()}");
             return true;
         }
 
@@ -429,13 +393,6 @@ namespace AAAGame.Card
             return true;
         }
 
-        /// <summary>
-        /// 获取人口模型
-        /// </summary>
-        public PopulationModel GetPopulationModel()
-        {
-            return m_PopulationModel;
-        }
 
         /// <summary>
         /// 获取手牌模型
@@ -481,6 +438,15 @@ namespace AAAGame.Card
             m_DeckCards.Clear();
 
             Debug.Log("[Card] CardSystemController shutdown.");
+        }
+
+
+        private bool HasEnoughPopulation(int requiredPopulation)
+        {
+            if (requiredPopulation <= 0)
+                return true;
+
+            return InGameDataModel.HasEnoughSupplyFor(requiredPopulation);
         }
     }
 }

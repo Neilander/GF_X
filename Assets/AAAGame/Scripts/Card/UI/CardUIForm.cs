@@ -25,9 +25,6 @@ namespace AAAGame.Card
         [Header("预制体")]
         [SerializeField] private GameObject handCardItemPrefab;
         
-        [Header("人口显示")]
-        [SerializeField] private PopulationView populationView;
-        
         [Header("区域材质效果")]
         [SerializeField] private UI.CardAreaMaterialOverlay areaMaterialOverlay;
         
@@ -65,7 +62,8 @@ namespace AAAGame.Card
             GF.Event.Subscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
             GF.Event.Subscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
             GF.Event.Subscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
-            GF.Event.Subscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
+            GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+            GF.Event.Subscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyBuildingCardPropertyChanged);
           
             // 从 UIParams 获取 CardSystemController
             UIParams uiParams = userData as UIParams;
@@ -78,14 +76,6 @@ namespace AAAGame.Card
             {
                 Log.Error("CardSystemController is null.");
                 return;
-            }
-            
-            // 初始化人口显示
-            if (populationView != null)
-            {
-                PopulationModel populationModel = m_CardSystemController.GetPopulationModel();
-                populationView.Initialize(populationModel);
-                //Debug.Log($"[Card] 初始化成功啦");
             }
             
             // 初始化手牌显示
@@ -101,7 +91,8 @@ namespace AAAGame.Card
                     GF.Event.Unsubscribe(CardDrawnEventArgs.EventId, OnCardDrawn);
                     GF.Event.Unsubscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
                     GF.Event.Unsubscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
-                    GF.Event.Unsubscribe(PopulationChangedEventArgs.EventId, OnPopulationChanged);
+                    GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+                    GF.Event.Unsubscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyBuildingCardPropertyChanged);
                 }
                 catch (System.Exception ex)
                 {
@@ -113,7 +104,6 @@ namespace AAAGame.Card
             
             // 清理手牌
             ClearHandCards();
-            populationView.Deinitialize();
         }
 
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -571,16 +561,43 @@ namespace AAAGame.Card
             RemoveHandCardItem(ne.CardModel);
         }
 
-        private void OnPopulationChanged(object sender, GameEventArgs e)
+        private void OnIngameValueChanged(object sender, GameEventArgs e)
         {
+            var ne = (IngameValueChangedEventArgs)e;
+            if (ne.DataType != IngameValueType.CurrentSupply && ne.DataType != IngameValueType.MaxSupply)
+                return;
+
             // 更新所有手牌的可用状态
             foreach (var itemObj in m_HandCardItemObjects)
             {
                 HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
                 if (cardItem != null)
                 {
-                    cardItem.UpdatePlayability();
+                    cardItem.RefreshView();
                 }
+            }
+        }
+
+        private void OnArmyBuildingCardPropertyChanged(object sender, GameEventArgs e)
+        {
+            var ne = (ArmyBuildingCardPropertyChangedEventArgs)e;
+            if (string.IsNullOrWhiteSpace(ne.BuildingInstanceId))
+                return;
+
+            foreach (var itemObj in m_HandCardItemObjects)
+            {
+                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
+                if (cardItem == null)
+                    continue;
+
+                CardModel cardModel = cardItem.GetCardModel();
+                if (cardModel == null)
+                    continue;
+
+                if (!string.Equals(cardModel.GetSourceBuildingInstanceId(), ne.BuildingInstanceId, StringComparison.Ordinal))
+                    continue;
+
+                cardItem.RefreshView();
             }
         }
 

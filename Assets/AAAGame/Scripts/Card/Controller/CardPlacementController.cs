@@ -229,7 +229,13 @@ namespace AAAGame.Card
                 return 0;
             }
 
-            int soldierCount = dataProvider.SoldierCount;
+            int soldierCount = cardModel.GetTroopCount();
+            if (soldierCount <= 0)
+            {
+                Debug.LogWarning("[Card] Cannot spawn soldiers: soldier count is not positive.");
+                return 0;
+            }
+
             float spawnRadius = dataProvider.SpawnRadius;
             UnitType soldierIndex = dataProvider.SoldierIndex;
 

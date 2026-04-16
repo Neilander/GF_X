@@ -65,8 +65,7 @@ namespace AAAGame.Card
             m_CardModel = cardModel;
             m_ParentForm = parentForm;
             
-            UpdateDisplay();
-            UpdatePlayability();
+            RefreshView();
         }
 
         /// <summary>
@@ -100,13 +99,13 @@ namespace AAAGame.Card
             // 设置人口消耗
             if (populationText != null)
             {
-                populationText.text = data.PopulationCost.ToString();
+                populationText.text = m_CardModel.GetOccupiedSupply().ToString();
             }
 
             // 设置士兵数量
             if (soldierCountText != null)
             {
-                soldierCountText.text = data.SoldierCount.ToString();
+                soldierCountText.text = m_CardModel.GetTroopCount().ToString();
             }
 
             if (cardNameText != null)
@@ -129,6 +128,12 @@ namespace AAAGame.Card
             {
                 canvasGroup.alpha = m_CanPlay ? 1f : 0.5f;
             }
+        }
+
+        public void RefreshView()
+        {
+            UpdateDisplay();
+            UpdatePlayability();
         }
 
         /// <summary>

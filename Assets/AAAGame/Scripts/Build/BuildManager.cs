@@ -172,7 +172,12 @@ public class BuildManager : GameFrameworkComponent
             ? Guid.NewGuid().ToString("N")
             : buildingInstanceId;
 
+        int previousBaseLevel = ResolveExistingBaseLevel(buildingData, ownerFactionId, resolvedBuildingInstanceId);
+
         int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId);
+
+        if (entityId > 0)
+            TryGrantBaseSupplyCapacity(buildingData, ownerFactionId, previousBaseLevel);
 
         m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId, ownerFactionId);
         return entityId;
@@ -291,5 +296,61 @@ public class BuildManager : GameFrameworkComponent
     {
         var stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
         return stronghold != null ? stronghold.OwnerFactionId : 0;
+    }
+
+    private static int ResolveExistingBaseLevel(BuildingData targetBuildingData, int ownerFactionId, string buildingInstanceId)
+    {
+        if (targetBuildingData == null
+            || targetBuildingData.Type != BuilType.Base
+            || ownerFactionId != EntitySideHelper.PlayerFactionId
+            || string.IsNullOrWhiteSpace(buildingInstanceId))
+        {
+            return 0;
+        }
+
+        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        if (dataModel == null)
+            return 0;
+
+        foreach (var building in dataModel.Buildings)
+        {
+            if (building == null || building.buildingData == null)
+                continue;
+
+            if (building.buildingData.Type != BuilType.Base)
+                continue;
+
+            if (!string.Equals(building.BuildingInstanceId, buildingInstanceId, StringComparison.Ordinal))
+                continue;
+
+            return Mathf.Max(0, building.buildingData.Lv);
+        }
+
+        return 0;
+    }
+
+    private static void TryGrantBaseSupplyCapacity(BuildingData targetBuildingData, int ownerFactionId, int previousBaseLevel)
+    {
+        if (targetBuildingData == null
+            || targetBuildingData.Type != BuilType.Base
+            || ownerFactionId != EntitySideHelper.PlayerFactionId)
+        {
+            return;
+        }
+
+        int newBaseLevel = Mathf.Max(0, targetBuildingData.Lv);
+        int deltaLevel = Mathf.Max(0, newBaseLevel - Mathf.Max(0, previousBaseLevel));
+        if (deltaLevel <= 0)
+            return;
+
+        int providePerLevel = InGameDataModel.GetBaseProvideSupplyPerLevel();
+        if (providePerLevel <= 0)
+            return;
+
+        long deltaSupply = (long)deltaLevel * providePerLevel;
+        if (deltaSupply > int.MaxValue)
+            deltaSupply = int.MaxValue;
+
+        InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, (int)deltaSupply, true);
     }
 }

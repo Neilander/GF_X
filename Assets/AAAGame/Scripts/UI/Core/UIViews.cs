@@ -9,6 +9,7 @@ public enum UIViews : int
 	GameOverUIForm = 3,
 	Topbar = 4,
 	ResourceModifyBar = 13,
+	SupplyUIForm = 19,
 	SettingDialog = 5,
 	RatingDialog = 6,
 	TermsOfServiceDialog = 7,

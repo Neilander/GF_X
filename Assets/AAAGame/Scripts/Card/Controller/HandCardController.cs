@@ -10,16 +10,14 @@ namespace AAAGame.Card
     public class HandCardController
     {
         private PlayerHandModel m_HandModel;
-        private PopulationModel m_PopulationModel;
 
         // 事件回调
         public event Action<CardModel> OnCardDrawn;
         public event Action<CardModel> OnCardRemoved;
 
-        public HandCardController(PlayerHandModel handModel, PopulationModel populationModel)
+        public HandCardController(PlayerHandModel handModel)
         {
             m_HandModel = handModel;
-            m_PopulationModel = populationModel;
         }
 
         /// <summary>
@@ -40,7 +38,7 @@ namespace AAAGame.Card
             }
 
             // 创建卡牌模型
-            CardModel cardModel = new CardModel(cardData, m_PopulationModel, sourceBuilding);
+            CardModel cardModel = new CardModel(cardData, sourceBuilding);
 
             // 添加到手牌
             if (!m_HandModel.AddCard(cardModel))

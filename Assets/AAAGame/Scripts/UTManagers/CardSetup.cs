@@ -49,8 +49,6 @@ public partial class CardSetup : GameFrameworkComponent
         m_CardSystemController = new CardSystemController();
         m_CardSystemController.Initialize();
 
-        // 设置最大人口
-        m_CardSystemController.SetMaxPopulation(10);
 
         // 设置卡牌池（从 DataTable 或 ScriptableObject 加载）
         List<ICardDataProvider> cardPool = LoadCardPool();

@@ -26,7 +26,6 @@ namespace AAAGame.Card
 
         [Header("卡牌系统配置")]
         [SerializeField] private int initialHandSize = 4;
-        [SerializeField] private int maxPopulation = 20;
 
         [Header("区域配置")]
         [SerializeField] private GameObject validAreaObject;
@@ -68,7 +67,6 @@ namespace AAAGame.Card
             cardSystemController.Initialize();
 
             // 设置人口上限
-            cardSystemController.SetMaxPopulation(maxPopulation);
 
             // 设置区域对象
             if (validAreaObject != null && invalidAreaObject != null)
@@ -106,7 +104,7 @@ namespace AAAGame.Card
             if (PlayerHandManager.Instance != null)
             {
                 PlayerHandManager.Instance.SetCardSystemController(cardSystemController);
-                
+
                 // 设置卡牌池
                 var cardPool = PlayerHandManager.Instance.HandCards;
                 if (cardPool != null && cardPool.Count > 0)
@@ -123,7 +121,7 @@ namespace AAAGame.Card
                     cardSystemController.SetCardPool(providers);
                     Debug.Log($"[Card] Set card pool with {providers.Count} cards");
                 }
-                
+
                 Debug.Log("[Card] Connected to PlayerHandManager");
             }
             else
@@ -137,7 +135,6 @@ namespace AAAGame.Card
         /// </summary>
         private void SubscribeToControllerEvents()
         {
-            cardSystemController.OnPopulationChanged += OnPopulationChanged;
             cardSystemController.OnHandChanged += OnHandChanged;
             cardSystemController.OnCardDrawn += OnCardDrawn;
             cardSystemController.OnCardPlayed += OnCardPlayed;
@@ -157,21 +154,10 @@ namespace AAAGame.Card
 
         #region Controller 事件回调
 
-        private void OnPopulationChanged(int current, int max, int cost)
-        {
-            Debug.Log($"[Card] Population changed: {current}/{max} (cost: {cost})");
-            
-            // 同步到 PopulationManager
-            if (PopulationManager.Instance != null)
-            {
-                // PopulationManager 会通过自己的事件更新 UI
-            }
-        }
-
         private void OnHandChanged(int cardCount, int maxCards)
         {
             Debug.Log($"[Card] Hand changed: {cardCount}/{maxCards}");
-            
+
             // 同步到 PlayerHandManager
             if (PlayerHandManager.Instance != null)
             {
@@ -274,7 +260,6 @@ namespace AAAGame.Card
             if (cardSystemController != null)
             {
                 // 取消订阅事件
-                cardSystemController.OnPopulationChanged -= OnPopulationChanged;
                 cardSystemController.OnHandChanged -= OnHandChanged;
                 cardSystemController.OnCardDrawn -= OnCardDrawn;
                 cardSystemController.OnCardPlayed -= OnCardPlayed;

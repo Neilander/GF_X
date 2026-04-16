@@ -19,7 +19,9 @@ public enum IngameValueType
 {
     Phase,
     Day,
-    Coin
+    Coin,
+    CurrentSupply,
+    MaxSupply
 }
 
 /// <summary>
@@ -27,11 +29,15 @@ public enum IngameValueType
 /// </summary>
 public class InGameDataModel : DataModelBase
 {
+    private const string InitMaxSupplyConfigKey = "InitMaxSupply";
+    private const string BaseProvideSupplyConfigKey = "BaseProvideSupply";
+
     public const string P_LevelData = "LevelData";
     public LevelData lvData;
     private Dictionary<IngameValueType, int> m_IngameValue;
     private readonly List<Stronghold> m_Strongholds = new();
     private readonly HashSet<BuildingEntity> m_Buildings = new();
+    private bool m_SupplyEventsSubscribed;
     // techId -> 已拥有该科技的建筑实例集合。
     // 全局层数 = 集合 Count；单建筑是否拥有 = 集合 Contains(buildingInstanceId)。
     private readonly Dictionary<string, HashSet<string>> m_TechOwnerContextsById = new();
@@ -44,19 +50,34 @@ public class InGameDataModel : DataModelBase
     {
         base.OnCreate(userdata);
         ResetData();
+        SubscribeSupplyTrackingEvents();
+
         lvData = userdata.Get(P_LevelData) as LevelData;
         m_IngameValue[IngameValueType.Phase] = (int)lvData.StartPhase;
         m_IngameValue[IngameValueType.Coin] = lvData.InitResource;
         Factions = new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } };   // 通常玩家势力key为0，敌对势力为1、2等。TODO：后续可根据 lvData.StartFactions 来初始化。
+
+        RefreshCurrentSupplyFromFriendlyUnitsInternal(false);
     }
+
+    protected override void OnRelease()
+    {
+        UnsubscribeSupplyTrackingEvents();
+        ResetData();
+        base.OnRelease();
+    }
+
     public void ResetData()
     {
         lvData = null;
+        int initMaxSupply = GF.Config.GetInt(InitMaxSupplyConfigKey, 0);
         m_IngameValue = new Dictionary<IngameValueType, int>
         {
             [IngameValueType.Phase] = (int)GamePhase.Build,
             [IngameValueType.Day] = 1,
             [IngameValueType.Coin] = 0,
+            [IngameValueType.CurrentSupply] = 0,
+            [IngameValueType.MaxSupply] = Mathf.Max(0, initMaxSupply),
         };
 
         UnlockedTechIds = new string[0];
@@ -134,6 +155,33 @@ public class InGameDataModel : DataModelBase
     public static void SetPhase(GamePhase phase, bool triggerEvent = true)
     {
         SetValue(IngameValueType.Phase, (int)phase, triggerEvent);
+    }
+
+    public static int GetCurrentSupply()
+    {
+        return GetValue(IngameValueType.CurrentSupply);
+    }
+
+    public static int GetMaxSupply()
+    {
+        return GetValue(IngameValueType.MaxSupply);
+    }
+
+    public static bool HasEnoughSupplyFor(int requiredSupply)
+    {
+        if (requiredSupply <= 0)
+            return true;
+
+        return GetCurrentSupply() + requiredSupply <= GetMaxSupply();
+    }
+
+    public static void RefreshCurrentSupplyFromFriendlyUnits(bool triggerEvent = true)
+    {
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return;
+
+        dataModel.RefreshCurrentSupplyFromFriendlyUnitsInternal(triggerEvent);
     }
 
     public static bool HasUnlockedTech(string techId)
@@ -325,6 +373,90 @@ public class InGameDataModel : DataModelBase
 
         m_Strongholds.Clear();
     }
+
+    private void SubscribeSupplyTrackingEvents()
+    {
+        if (m_SupplyEventsSubscribed || GF.Event == null)
+            return;
+
+        GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccessForSupply);
+        GF.Event.Subscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityCompleteForSupply);
+        m_SupplyEventsSubscribed = true;
+    }
+
+    private void UnsubscribeSupplyTrackingEvents()
+    {
+        if (!m_SupplyEventsSubscribed || GF.Event == null)
+            return;
+
+        GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccessForSupply);
+        GF.Event.Unsubscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityCompleteForSupply);
+        m_SupplyEventsSubscribed = false;
+    }
+
+    private void OnShowEntitySuccessForSupply(object sender, GameEventArgs e)
+    {
+        var args = e as ShowEntitySuccessEventArgs;
+        if (args?.Entity?.Logic is not MAEntity)
+            return;
+
+        RefreshCurrentSupplyFromFriendlyUnitsInternal(true);
+    }
+
+    private void OnHideEntityCompleteForSupply(object sender, GameEventArgs e)
+    {
+        RefreshCurrentSupplyFromFriendlyUnitsInternal(true);
+    }
+
+    private void RefreshCurrentSupplyFromFriendlyUnitsInternal(bool triggerEvent)
+    {
+        int totalSupply = CalculateFriendlyUnitSupply();
+        SetValue(IngameValueType.CurrentSupply, totalSupply, triggerEvent);
+    }
+
+    private static int CalculateFriendlyUnitSupply()
+    {
+        if (EntityRegistry.AllEntities == null || EntityRegistry.AllEntities.Count == 0)
+            return 0;
+
+        long total = 0;
+        for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
+        {
+            if (EntityRegistry.AllEntities[i] is not MAEntity entity)
+                continue;
+
+            if (entity is BuildingEntity)
+                continue;
+
+            if (!entity.Alive || entity.Side != SideType.PlayerSide)
+                continue;
+
+            if (!TryGetEntitySupply(entity, out int supply))
+                continue;
+
+            total += supply;
+            if (total >= int.MaxValue)
+                return int.MaxValue;
+        }
+
+        return (int)total;
+    }
+
+    private static bool TryGetEntitySupply(MAEntity entity, out int supply)
+    {
+        supply = 0;
+        if (entity == null || entity.CharacterData == null)
+            return false;
+
+        supply = Mathf.Max(0, entity.CharacterData.Supply);
+        return supply > 0;
+    }
+
+    public static int GetBaseProvideSupplyPerLevel()
+    {
+        return Mathf.Max(0, GF.Config.GetInt(BaseProvideSupplyConfigKey, 0));
+    }
+
     public static string GetResourceSprite(IngameValueType resourceType)
     {
         return "UI/IconMisc/Icon_Star_On.png"; //先占位

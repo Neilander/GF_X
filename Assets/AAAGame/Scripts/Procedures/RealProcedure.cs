@@ -16,6 +16,8 @@ public class RealProcedure : ProcedureBase
         GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
         // 加载阶段切换按钮
         GF.UI.OpenUIForm(UIViews.PhaseSwitchUIForm);
+        GF.UI.OpenUIForm(UIViews.SupplyUIForm);
+
 
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
 

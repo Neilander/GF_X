@@ -15,6 +15,8 @@ public partial class BuildingEntity : MAEntity
     private static readonly Fix64 PlaceholderWindDown = (Fix64)0.35f;
     private const string Lv0InvincibleBuffId = "building_lv0_invincible";
     private const string PhaseGuardBuffId = "building_phase_guard";
+    private const string ArmyForcePropertyId = "Building_ArmyForce";
+    private const string ArmySupplyPerUnitPropertyId = "Building_ArmySupplyPerUnit";
 
     public BuildingData buildingData;
     public int OwnerFactionID { get; set; }
@@ -44,6 +46,8 @@ public partial class BuildingEntity : MAEntity
     private bool _phaseProtectionByBuff;
     private bool _combatLocked;
     private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
+    private BaseValueProperty _armyForceProperty;
+    private BaseValueProperty _armySupplyPerUnitProperty;
 
     protected override void RefreshCharacterData(object userData)
     {
@@ -66,6 +70,7 @@ public partial class BuildingEntity : MAEntity
         InitializeAttackCapabilityFlags();
         ResetCombatRuntimeState();
         ApplyBuildingPropertyOverrides();
+        InitializeArmyCardProperties();
         ConfigureCombatByBuildingData();
         SyncHurtBoxToBuildingBounds();
 
@@ -99,6 +104,7 @@ public partial class BuildingEntity : MAEntity
         HasPermanentNoAttackCapability = false;
         _lv0InvincibleByBuff = false;
         _phaseProtectionByBuff = false;
+        ClearArmyCardProperties();
         buildingData = null;
         BuildingInstanceId = null;
         base.OnHide(isShutdown, userData);
@@ -619,6 +625,126 @@ public partial class BuildingEntity : MAEntity
                 Debug.Log($"Building {buildingData.Identifier} harvested {production} coins");
             }
         }
+    }
+
+    public int GetArmyForce()
+    {
+        if (_armyForceProperty == null)
+            return 0;
+
+        int value = (int)_armyForceProperty.GetValue();
+        return Mathf.Max(0, value);
+    }
+
+    public int GetArmySupplyPerUnit()
+    {
+        if (_armySupplyPerUnitProperty == null)
+            return 0;
+
+        int value = (int)_armySupplyPerUnitProperty.GetValue();
+        return Mathf.Max(0, value);
+    }
+
+    public int GetArmyOccupiedSupply()
+    {
+        long occupied = (long)GetArmyForce() * GetArmySupplyPerUnit();
+        if (occupied <= 0)
+            return 0;
+
+        return occupied >= int.MaxValue ? int.MaxValue : (int)occupied;
+    }
+
+    public void SetArmyForceBase(int value)
+    {
+        if (_armyForceProperty == null)
+            return;
+
+        _armyForceProperty.SetBaseValue((Fix64)Mathf.Max(0, value));
+    }
+
+    public void SetArmySupplyPerUnitBase(int value)
+    {
+        if (_armySupplyPerUnitProperty == null)
+            return;
+
+        _armySupplyPerUnitProperty.SetBaseValue((Fix64)Mathf.Max(0, value));
+    }
+
+    public void ModifyArmyForce(IPropertyModifier modifier, bool ifAdd = true)
+    {
+        if (_armyForceProperty == null || modifier == null)
+            return;
+
+        if (ifAdd)
+            _armyForceProperty.AddModifier(modifier);
+        else
+            _armyForceProperty.RemoveModifier(modifier);
+    }
+
+    public void ModifyArmySupplyPerUnit(IPropertyModifier modifier, bool ifAdd = true)
+    {
+        if (_armySupplyPerUnitProperty == null || modifier == null)
+            return;
+
+        if (ifAdd)
+            _armySupplyPerUnitProperty.AddModifier(modifier);
+        else
+            _armySupplyPerUnitProperty.RemoveModifier(modifier);
+    }
+
+    private void InitializeArmyCardProperties()
+    {
+        ClearArmyCardProperties();
+
+        if (buildingData == null || buildingData.Type != BuilType.Army)
+            return;
+
+        PropertyManager propertyManager = CreaturePropertyManager.propertyManager;
+        _armyForceProperty = PropertyHelper.CreateBaseProperty(ArmyForcePropertyId, propertyManager);
+        _armySupplyPerUnitProperty = PropertyHelper.CreateBaseProperty(ArmySupplyPerUnitPropertyId, propertyManager);
+
+        int initArmyForce = Mathf.Max(0, buildingData.Production);
+        int initSupplyPerUnit = ResolveUnitSupplyByCharacterKey(buildingData.UnitID);
+        _armyForceProperty.SetBaseValue((Fix64)initArmyForce);
+        _armySupplyPerUnitProperty.SetBaseValue((Fix64)Mathf.Max(0, initSupplyPerUnit));
+
+        _armyForceProperty.OnDirty(RaiseArmyCardPropertyChangedEvent);
+        _armySupplyPerUnitProperty.OnDirty(RaiseArmyCardPropertyChangedEvent);
+    }
+
+    private void ClearArmyCardProperties()
+    {
+        _armyForceProperty = null;
+        _armySupplyPerUnitProperty = null;
+    }
+
+    private void RaiseArmyCardPropertyChangedEvent()
+    {
+        int armyForce = GetArmyForce();
+        int supplyPerUnit = GetArmySupplyPerUnit();
+        int occupiedSupply = GetArmyOccupiedSupply();
+
+        GF.Event.Fire(
+            this,
+            ArmyBuildingCardPropertyChangedEventArgs.Create(
+                Id,
+                BuildingInstanceId,
+                armyForce,
+                supplyPerUnit,
+                occupiedSupply));
+    }
+
+    private static int ResolveUnitSupplyByCharacterKey(string characterKey)
+    {
+        if (string.IsNullOrWhiteSpace(characterKey) || GF.DataTable == null)
+            return 0;
+
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        if (table == null)
+            return 0;
+
+        var row = table.GetDataRow(r => r.CharacterKey == characterKey);
+        return row != null ? Mathf.Max(0, row.Supply) : 0;
     }
 
     private sealed class DisabledCapabilityLocker : ICapability
