@@ -36,18 +36,13 @@ namespace AAAGame.MiniMap
             side = unitSide;
             this.unitType = unitType;
             this.iconPrefabName = iconPrefabName;
-            
-            minimapManager = GameEntry.GetComponent<MinimapManager>();
-            
-            if (minimapManager != null)
-            {
-                unitId = minimapManager.RegisterUnit(transform.position, side, unitType, iconPrefabName);
-                UnityGameFramework.Runtime.Log.Info($"[MinimapReport] Unit registered: ID={unitId}, Side={side}, Type={unitType}, Pos={transform.position}");
-            }
-            else
-            {
-                UnityGameFramework.Runtime.Log.Error("[MinimapReport] MinimapManager not found! Cannot register unit.");
-            }
+
+            RegisterIfNeeded();
+        }
+
+        public void SetSide(SideType unitSide)
+        {
+            side = unitSide;
         }
 
         /// <summary>
@@ -55,26 +50,53 @@ namespace AAAGame.MiniMap
         /// </summary>
         public void Tick()
         {
+            if (unitId < 0 || minimapManager == null)
+            {
+                RegisterIfNeeded();
+            }
+
             if (minimapManager != null && unitId >= 0)
             {
                 minimapManager.UpdateUnit(unitId, transform.position, side);
             }
-            else if (minimapManager == null)
-            {
-                UnityGameFramework.Runtime.Log.Warning($"[MinimapReport] MinimapManager is null in Tick()");
-            }
-            else if (unitId < 0)
-            {
-                UnityGameFramework.Runtime.Log.Warning($"[MinimapReport] Invalid unitId={unitId} in Tick()");
-            }
+        }
+
+        private void OnDisable()
+        {
+            UnregisterIfNeeded();
         }
 
         private void OnDestroy()
         {
-            if (minimapManager != null && unitId >= 0)
+            UnregisterIfNeeded();
+        }
+
+        private void RegisterIfNeeded()
+        {
+            if (unitId >= 0)
             {
-                minimapManager.UnregisterUnit(unitId);
+                return;
             }
+
+            minimapManager = GameEntry.GetComponent<MinimapManager>();
+            if (minimapManager == null)
+            {
+                return;
+            }
+
+            unitId = minimapManager.RegisterUnit(transform.position, side, unitType, iconPrefabName);
+            UnityGameFramework.Runtime.Log.Info($"[MinimapReport] Unit registered: ID={unitId}, Side={side}, Type={unitType}, Pos={transform.position}");
+        }
+
+        private void UnregisterIfNeeded()
+        {
+            if (minimapManager == null || unitId < 0)
+            {
+                return;
+            }
+
+            minimapManager.UnregisterUnit(unitId);
+            unitId = -1;
         }
     }
 }

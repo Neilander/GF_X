@@ -1,6 +1,5 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
-using UnityGameFramework.Runtime;
 
 namespace AAAGame.MiniMap
 {
@@ -15,7 +14,7 @@ namespace AAAGame.MiniMap
         [Header("视野框样式")]
         [SerializeField] private Color borderColor = Color.white; // 边框颜色
         [SerializeField] private float borderAlpha = 1f; // 边框透明度
-        [SerializeField] private float borderWidth = 2f; // 边框宽度
+        [SerializeField] private float borderWidth = 1f; // 边框宽度
         [SerializeField] private bool hollowCenter = true; // 中间镂空（推荐）
         
         [Header("边界限制")]
@@ -24,7 +23,10 @@ namespace AAAGame.MiniMap
         
         private RectTransform rectTransform;
         private Image image;
-        private Outline outline;
+        private Image topEdgeImage;
+        private Image bottomEdgeImage;
+        private Image leftEdgeImage;
+        private Image rightEdgeImage;
         
         private void Awake()
         {
@@ -33,11 +35,9 @@ namespace AAAGame.MiniMap
             
             // 确保 Image 组件正确配置
             InitializeImage();
-            
-            // 添加 Outline 组件（白色边框）
-            InitializeOutline();
-            
-            Log.Info($"[MinimapCameraFrame] Initialized at {gameObject.name}");
+
+            // 使用四条边线绘制空心框，避免 Outline 把整块区域染色
+            InitializeBorderEdges();
         }
         
         private void InitializeImage()
@@ -52,7 +52,6 @@ namespace AAAGame.MiniMap
                 // 镂空效果：中间完全透明
                 Color color = Color.clear; // 完全透明
                 image.color = color;
-                Log.Info($"[MinimapCameraFrame] Image configured: HOLLOW (transparent center)");
             }
             else
             {
@@ -60,29 +59,142 @@ namespace AAAGame.MiniMap
                 Color color = borderColor;
                 color.a = 0.2f; // 半透明填充
                 image.color = color;
-                Log.Info($"[MinimapCameraFrame] Image configured: color={image.color}");
             }
             
             // 禁用 Raycast（不阻挡鼠标事件）
             image.raycastTarget = false;
         }
-        
-        private void InitializeOutline()
+
+        private void InitializeBorderEdges()
         {
-            // 移除旧的 Outline
-            outline = GetComponent<Outline>();
-            if (outline != null)
+            RemoveLegacyOutlines();
+
+            topEdgeImage = EnsureEdgeImage("Top");
+            bottomEdgeImage = EnsureEdgeImage("Bottom");
+            leftEdgeImage = EnsureEdgeImage("Left");
+            rightEdgeImage = EnsureEdgeImage("Right");
+
+            ApplyBorderStyle();
+        }
+
+        private void RemoveLegacyOutlines()
+        {
+            var outlines = GetComponents<Outline>();
+            for (int i = 0; i < outlines.Length; i++)
             {
-                Destroy(outline);
+                if (Application.isPlaying)
+                {
+                    Destroy(outlines[i]);
+                }
+                else
+                {
+                    DestroyImmediate(outlines[i]);
+                }
             }
-            
-            // 添加新的 Outline（边框）
-            outline = gameObject.AddComponent<Outline>();
-            outline.effectColor = new Color(borderColor.r, borderColor.g, borderColor.b, borderAlpha);
-            outline.effectDistance = new Vector2(borderWidth, borderWidth);
-            outline.useGraphicAlpha = false; // 不使用 Image 的 Alpha，独立控制
-            
-            Log.Info($"[MinimapCameraFrame] Outline configured: color={outline.effectColor}, width={borderWidth}");
+        }
+
+        private Image EnsureEdgeImage(string edgeName)
+        {
+            Transform edgeTransform = transform.Find(edgeName);
+            GameObject edgeObject;
+            if (edgeTransform == null)
+            {
+                edgeObject = new GameObject(edgeName, typeof(RectTransform), typeof(Image));
+                edgeObject.transform.SetParent(transform, false);
+            }
+            else
+            {
+                edgeObject = edgeTransform.gameObject;
+            }
+
+            Image edgeImage = edgeObject.GetComponent<Image>();
+            if (edgeImage == null)
+            {
+                edgeImage = edgeObject.AddComponent<Image>();
+            }
+
+            edgeImage.raycastTarget = false;
+            return edgeImage;
+        }
+
+        private void ApplyBorderStyle()
+        {
+            if (!TryCacheBorderEdgeImages())
+            {
+                return;
+            }
+
+            float thickness = Mathf.Max(0f, borderWidth);
+            Color edgeColor = new Color(borderColor.r, borderColor.g, borderColor.b, borderAlpha);
+
+            LayoutHorizontalEdge(topEdgeImage.rectTransform, true, thickness);
+            LayoutHorizontalEdge(bottomEdgeImage.rectTransform, false, thickness);
+            LayoutVerticalEdge(leftEdgeImage.rectTransform, true, thickness);
+            LayoutVerticalEdge(rightEdgeImage.rectTransform, false, thickness);
+
+            topEdgeImage.color = edgeColor;
+            bottomEdgeImage.color = edgeColor;
+            leftEdgeImage.color = edgeColor;
+            rightEdgeImage.color = edgeColor;
+
+            bool active = thickness > 0f;
+            topEdgeImage.enabled = active;
+            bottomEdgeImage.enabled = active;
+            leftEdgeImage.enabled = active;
+            rightEdgeImage.enabled = active;
+        }
+
+        private bool TryCacheBorderEdgeImages()
+        {
+            if (topEdgeImage == null)
+            {
+                topEdgeImage = FindEdgeImage("Top");
+            }
+
+            if (bottomEdgeImage == null)
+            {
+                bottomEdgeImage = FindEdgeImage("Bottom");
+            }
+
+            if (leftEdgeImage == null)
+            {
+                leftEdgeImage = FindEdgeImage("Left");
+            }
+
+            if (rightEdgeImage == null)
+            {
+                rightEdgeImage = FindEdgeImage("Right");
+            }
+
+            return topEdgeImage != null && bottomEdgeImage != null && leftEdgeImage != null && rightEdgeImage != null;
+        }
+
+        private Image FindEdgeImage(string edgeName)
+        {
+            Transform edgeTransform = transform.Find(edgeName);
+            return edgeTransform != null ? edgeTransform.GetComponent<Image>() : null;
+        }
+
+        private void LayoutHorizontalEdge(RectTransform edgeRect, bool top, float thickness)
+        {
+            float anchorY = top ? 1f : 0f;
+            float pivotY = top ? 1f : 0f;
+            edgeRect.anchorMin = new Vector2(0f, anchorY);
+            edgeRect.anchorMax = new Vector2(1f, anchorY);
+            edgeRect.pivot = new Vector2(0.5f, pivotY);
+            edgeRect.anchoredPosition = Vector2.zero;
+            edgeRect.sizeDelta = new Vector2(0f, thickness);
+        }
+
+        private void LayoutVerticalEdge(RectTransform edgeRect, bool left, float thickness)
+        {
+            float anchorX = left ? 0f : 1f;
+            float pivotX = left ? 0f : 1f;
+            edgeRect.anchorMin = new Vector2(anchorX, 0f);
+            edgeRect.anchorMax = new Vector2(anchorX, 1f);
+            edgeRect.pivot = new Vector2(pivotX, 0.5f);
+            edgeRect.anchoredPosition = Vector2.zero;
+            edgeRect.sizeDelta = new Vector2(thickness, 0f);
         }
         
         private void Start()
@@ -95,8 +207,6 @@ namespace AAAGame.MiniMap
             {
                 minimapBounds = transform.parent.GetComponent<RectTransform>();
             }
-            
-            Log.Info($"[MinimapCameraFrame] Started, bounds={(minimapBounds != null ? minimapBounds.name : "none")}");
         }
         
         /// <summary>
@@ -134,11 +244,7 @@ namespace AAAGame.MiniMap
         public void SetBorderColor(Color color)
         {
             borderColor = color;
-            
-            if (outline != null)
-            {
-                outline.effectColor = new Color(color.r, color.g, color.b, borderAlpha);
-            }
+            ApplyBorderStyle();
             
             // 如果不是镂空模式，也更新 Image 颜色
             if (!hollowCenter && image != null)
@@ -155,13 +261,7 @@ namespace AAAGame.MiniMap
         public void SetBorderAlpha(float alpha)
         {
             borderAlpha = alpha;
-            
-            if (outline != null)
-            {
-                Color color = outline.effectColor;
-                color.a = alpha;
-                outline.effectColor = color;
-            }
+            ApplyBorderStyle();
         }
         
         /// <summary>
@@ -170,11 +270,7 @@ namespace AAAGame.MiniMap
         public void SetBorderWidth(float width)
         {
             borderWidth = width;
-            
-            if (outline != null)
-            {
-                outline.effectDistance = new Vector2(width, width);
-            }
+            ApplyBorderStyle();
         }
         
         /// <summary>
@@ -199,6 +295,8 @@ namespace AAAGame.MiniMap
                     image.color = color;
                 }
             }
+
+            ApplyBorderStyle();
         }
         
         /// <summary>
@@ -211,19 +309,34 @@ namespace AAAGame.MiniMap
                 image.enabled = false;
                 image.enabled = true;
             }
-            
-            if (outline != null)
+
+            if (topEdgeImage != null)
             {
-                outline.enabled = false;
-                outline.enabled = true;
+                topEdgeImage.enabled = false;
+                topEdgeImage.enabled = borderWidth > 0f;
             }
-            
-            Log.Info($"[MinimapCameraFrame] Force refreshed, hollow={hollowCenter}, active={gameObject.activeSelf}");
+
+            if (bottomEdgeImage != null)
+            {
+                bottomEdgeImage.enabled = false;
+                bottomEdgeImage.enabled = borderWidth > 0f;
+            }
+
+            if (leftEdgeImage != null)
+            {
+                leftEdgeImage.enabled = false;
+                leftEdgeImage.enabled = borderWidth > 0f;
+            }
+
+            if (rightEdgeImage != null)
+            {
+                rightEdgeImage.enabled = false;
+                rightEdgeImage.enabled = borderWidth > 0f;
+            }
         }
         
         private void OnEnable()
         {
-            Log.Info($"[MinimapCameraFrame] OnEnable called");
             ForceRefresh();
         }
         
@@ -232,6 +345,11 @@ namespace AAAGame.MiniMap
             // 在 Editor 中修改参数时自动更新
             if (Application.isPlaying)
             {
+                if (image == null)
+                {
+                    image = GetComponent<Image>();
+                }
+
                 if (image != null)
                 {
                     if (hollowCenter)
@@ -245,12 +363,8 @@ namespace AAAGame.MiniMap
                         image.color = color;
                     }
                 }
-                
-                if (outline != null)
-                {
-                    outline.effectColor = new Color(borderColor.r, borderColor.g, borderColor.b, borderAlpha);
-                    outline.effectDistance = new Vector2(borderWidth, borderWidth);
-                }
+
+                ApplyBorderStyle();
             }
         }
     }

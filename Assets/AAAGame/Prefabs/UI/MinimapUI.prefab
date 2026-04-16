@@ -67,8 +67,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 5
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 230b0c809e3e6a647af26c803aa90467, type: 2}
-  m_sharedMaterial: {fileID: -4611269563385809883, guid: 230b0c809e3e6a647af26c803aa90467, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -249,7 +249,7 @@ MonoBehaviour:
   minimapContainer: {fileID: 2577926628287192717}
   soldierDotPrefab: {fileID: 8187104178178060373, guid: 0c8fa73ad3460df4fa62a98a56450aea, type: 3}
   cameraViewFrame: {fileID: 9017073463023858836}
-  cameraFrame: {fileID: 0}
+  cameraFrame: {fileID: 6348288155620313505}
   scaleTextHorizontal: {fileID: 7472725637633438277}
   scaleTextVertical: {fileID: 6278483013297664866}
   minimapSize: 200
@@ -269,7 +269,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 90c3c5a40de35ba489730bf5c6b5b76a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  autoFixOnStart: 1
+  autoFixOnStart: 0
   minimapContainer: {fileID: 2577926628287192717}
   cameraViewFrame: {fileID: 9017073463023858836}
 --- !u!1 &4883041561957446103
@@ -339,8 +339,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 5
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 230b0c809e3e6a647af26c803aa90467, type: 2}
-  m_sharedMaterial: {fileID: -4611269563385809883, guid: 230b0c809e3e6a647af26c803aa90467, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -444,7 +444,7 @@ RectTransform:
   m_AnchorMin: {x: 1, y: 0}
   m_AnchorMax: {x: 1, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 453.11377, y: 297.3932}
+  m_SizeDelta: {x: 450, y: 300}
   m_Pivot: {x: 1, y: 0}
 --- !u!222 &7222150665507416207
 CanvasRenderer:
@@ -467,7 +467,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0, g: 0, b: 0, a: 0.36078432}
+  m_Color: {r: 0, g: 0, b: 0, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -538,7 +538,7 @@ PrefabInstance:
       objectReference: {fileID: 2577926628287192717}
     - target: {fileID: 5264384066948308388, guid: 00bd43ab7047f6f40b547bffbdaa528c, type: 3}
       propertyPath: m_Color.a
-      value: 1
+      value: 0.14117648
       objectReference: {fileID: 0}
     - target: {fileID: 5264384066948308388, guid: 00bd43ab7047f6f40b547bffbdaa528c, type: 3}
       propertyPath: m_Color.b
@@ -643,9 +643,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 7342621426684889852, guid: 00bd43ab7047f6f40b547bffbdaa528c, type: 3}
       insertIndex: -1
       addedObject: {fileID: 6348288155620313505}
-    - targetCorrespondingSourceObject: {fileID: 7342621426684889852, guid: 00bd43ab7047f6f40b547bffbdaa528c, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 9080051686790645761}
   m_SourcePrefab: {fileID: 100100000, guid: 00bd43ab7047f6f40b547bffbdaa528c, type: 3}
 --- !u!1 &7480186037072174208 stripped
 GameObject:
@@ -666,25 +663,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   borderColor: {r: 1, g: 1, b: 1, a: 1}
   borderAlpha: 1
-  borderWidth: 3
+  borderWidth: 1
   hollowCenter: 1
   clampToBounds: 1
   minimapBounds: {fileID: 2577926628287192717}
---- !u!114 &9080051686790645761
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7480186037072174208}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_EffectColor: {r: 1, g: 0, b: 0, a: 0.5}
-  m_EffectDistance: {x: 3, y: 3}
-  m_UseGraphicAlpha: 1
 --- !u!224 &9017073463023858836 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 9154650717797802728, guid: 00bd43ab7047f6f40b547bffbdaa528c, type: 3}

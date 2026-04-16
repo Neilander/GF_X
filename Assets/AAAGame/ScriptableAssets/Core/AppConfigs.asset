@@ -46,10 +46,12 @@ MonoBehaviour:
   - CardGameProcedure
   - ChangeSceneProcedure
   - CharacterTestProcedure
+  - FogOfWarGameProcedure
   - GameOverProcedure
   - GameProcedure
   - LevelTestProcedure
   - MenuProcedure
+  - MinimapGameProcedure
   - PreloadProcedure
   - RangedWeaponTestProcedure
   - RealProcedure

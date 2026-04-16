@@ -22,27 +22,27 @@ namespace AAAGame.MiniMap
         /// 单位唯一ID
         /// </summary>
         public int UnitId;
-        
+
         /// <summary>
         /// 世界坐标位置
         /// </summary>
         public Vector3 WorldPosition;
-        
+
         /// <summary>
         /// 势力类型
         /// </summary>
         public SideType Side;
-        
+
         /// <summary>
         /// 单位类型（士兵/建筑）
         /// </summary>
         public MinimapUnitType UnitType;
-        
+
         /// <summary>
         /// 建筑图标预制体名称（仅建筑使用）
         /// </summary>
         public string IconPrefabName;
-        
+
         /// <summary>
         /// 是否可见（用于战争迷雾）
         /// </summary>
@@ -68,23 +68,23 @@ namespace AAAGame.MiniMap
         [Header("地图范围")]
         [Tooltip("世界坐标 X 轴最小值")]
         public float WorldMinX = -50f;
-        
+
         [Tooltip("世界坐标 X 轴最大值")]
         public float WorldMaxX = 50f;
-        
+
         [Tooltip("世界坐标 Z 轴最小值")]
         public float WorldMinZ = -50f;
-        
+
         [Tooltip("世界坐标 Z 轴最大值")]
         public float WorldMaxZ = 50f;
 
         [Header("士兵显示（正方形小点）")]
         [Tooltip("玩家士兵颜色")]
-        public Color PlayerSoldierColor = new Color(0.2f, 0.5f, 1f); // 蓝色
-        
+        public Color PlayerSoldierColor = new Color(0.15f, 0.9f, 0.15f); // 绿色
+
         [Tooltip("敌方士兵颜色")]
         public Color EnemySoldierColor = Color.red;
-        
+
         [Tooltip("士兵点大小")]
         public float SoldierDotSize = 5f;
 
@@ -95,13 +95,13 @@ namespace AAAGame.MiniMap
         [Header("战争迷雾（进阶功能）")]
         [Tooltip("是否启用战争迷雾")]
         public bool EnableFogOfWar = false;
-        
+
         [Tooltip("迷雾格子大小（N×N）")]
         public int FogGridSize = 50;
-        
+
         [Tooltip("每个友方单位的视野半径（格子数）")]
         public float VisionRadius = 5f;
-        
+
         /// <summary>
         /// 获取士兵颜色
         /// </summary>

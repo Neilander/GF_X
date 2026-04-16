@@ -44,11 +44,17 @@ public partial class GeneralSetup : GameFrameworkComponent
         {
             inputManager.ChangeState(InputState.Game);
         }
+
+        if (!GF.UI.IsLoadingUIForm(UIViews.MinimapUI) && !GF.UI.HasUIForm(UIViews.MinimapUI))
+        {
+            GF.UI.OpenUIForm(UIViews.MinimapUI);
+        }
     }
 
     public void GeneralSystemShutDown()
     {
         GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
+        GF.UI.CloseUIForms(UIViews.MinimapUI);
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
         m_PlayerReady = false;

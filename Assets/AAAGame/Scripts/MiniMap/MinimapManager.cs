@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using GiantGrey.TileWorldCreator;
 using UnityGameFramework.Runtime;
 
 namespace AAAGame.MiniMap
@@ -16,6 +17,7 @@ namespace AAAGame.MiniMap
 
         private Dictionary<int, MinimapUnitData> units = new Dictionary<int, MinimapUnitData>();
         private int nextUnitId = 1;
+        private int syncedLevelEntityId;
 
         public MinimapConfig Config => config;
 
@@ -30,6 +32,8 @@ namespace AAAGame.MiniMap
 
         private void LateUpdate()
         {
+            TrySyncBoundsFromLevelEntity();
+
             // 每帧结束时广播单位数据
             if (units.Count > 0)
             {
@@ -89,6 +93,41 @@ namespace AAAGame.MiniMap
         public int GetUnitCount()
         {
             return units.Count;
+        }
+
+        private void TrySyncBoundsFromLevelEntity()
+        {
+            LevelEntity levelEntity = LevelEntity.ActiveLevelEntity;
+            if (levelEntity == null)
+            {
+                return;
+            }
+
+            int levelId = levelEntity.GetInstanceID();
+            if (syncedLevelEntityId == levelId)
+            {
+                return;
+            }
+
+            TileWorldCreatorManager tileWorldCreatorManager = levelEntity.GetComponentInChildren<TileWorldCreatorManager>();
+            if (tileWorldCreatorManager == null || tileWorldCreatorManager.configuration == null)
+            {
+                return;
+            }
+
+            var twcConfig = tileWorldCreatorManager.configuration;
+            float cellSize = Mathf.Max(0.01f, twcConfig.cellSize);
+            float worldWidth = Mathf.Max(1f, twcConfig.width * cellSize);
+            float worldHeight = Mathf.Max(1f, twcConfig.height * cellSize);
+            Vector3 origin = tileWorldCreatorManager.transform.position;
+
+            config.WorldMinX = origin.x;
+            config.WorldMaxX = origin.x + worldWidth;
+            config.WorldMinZ = origin.z;
+            config.WorldMaxZ = origin.z + worldHeight;
+
+            syncedLevelEntityId = levelId;
+            Log.Info($"[MinimapManager] Synced bounds from TileWorldCreator: width={worldWidth:F2}, height={worldHeight:F2}, origin={origin}");
         }
     }
 }

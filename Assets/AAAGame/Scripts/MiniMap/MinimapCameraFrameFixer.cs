@@ -104,6 +104,13 @@ namespace AAAGame.MiniMap
         
         private void FixImageComponent()
         {
+            MinimapCameraFrame newCameraFrame = cameraViewFrame.GetComponent<MinimapCameraFrame>();
+            if (newCameraFrame != null)
+            {
+                Log.Info("[MinimapFixer] Detected MinimapCameraFrame, skipping legacy alpha/outline fixes.");
+                return;
+            }
+
             Image image = cameraViewFrame.GetComponent<Image>();
             if (image == null)
             {

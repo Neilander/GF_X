@@ -1,5 +1,6 @@
 using GameFramework;
 using System.Collections.Generic;
+using AAAGame.MiniMap;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -48,6 +49,7 @@ public partial class BuildingEntity : MAEntity
     private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
     private BaseValueProperty _armyForceProperty;
     private BaseValueProperty _armySupplyPerUnitProperty;
+    private MinimapReportComponent _minimapReportComponent;
 
     protected override void RefreshCharacterData(object userData)
     {
@@ -76,6 +78,7 @@ public partial class BuildingEntity : MAEntity
 
         InGameDataModel.RegisterBuilding(this);
         SyncSideFromFaction();
+        EnsureMinimapReportComponent();
         EnsureLv0InvincibleBuff();
         EnsurePhaseProtectionBuff();
 
@@ -116,6 +119,7 @@ public partial class BuildingEntity : MAEntity
         CurrentStronghold = stronghold;
         OwnerFactionID = stronghold != null ? stronghold.OwnerFactionId : 0;
         SyncSideFromFaction();
+        _minimapReportComponent?.SetSide(Side);
 
         if (oldFactionId != OwnerFactionID)
         {
@@ -142,6 +146,26 @@ public partial class BuildingEntity : MAEntity
         _buildingAtkComp = new BuildingAtkComp(CreatePlaceholderWeaponData());
         SetAtkComp(_buildingAtkComp);
         _buildingAtkComp.Init(this);
+    }
+
+    protected override void Update()
+    {
+        base.Update();
+        _minimapReportComponent?.Tick();
+    }
+
+    private void EnsureMinimapReportComponent()
+    {
+        if (_minimapReportComponent == null)
+        {
+            _minimapReportComponent = gameObject.GetComponent<MinimapReportComponent>();
+            if (_minimapReportComponent == null)
+            {
+                _minimapReportComponent = gameObject.AddComponent<MinimapReportComponent>();
+            }
+        }
+
+        _minimapReportComponent.Initialize(Side, MinimapUnitType.Building);
     }
 
     protected override void SetUpHurtBox()

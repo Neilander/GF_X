@@ -116,7 +116,6 @@ public partial class CardSetup : GameFrameworkComponent
         uiParams.Set("CardSystemController", m_CardSystemController);
 
         m_CardUIFormId = GF.UI.OpenUIForm(UIViews.CardUIForm, uiParams);
-        GF.UI.OpenUIForm(UIViews.MinimapUI);
         if (m_CardUIFormId == -1)
         {
             Log.Error("[CardGame] 打开卡牌 UI 失败");

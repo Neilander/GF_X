@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityGameFramework.Runtime;
 using TMPro;
+using GiantGrey.TileWorldCreator;
 
 namespace AAAGame.MiniMap
 {
@@ -23,15 +24,29 @@ namespace AAAGame.MiniMap
 
         [Header("摄像机")]
         [SerializeField] private Camera mainCamera;
+        [SerializeField] private float cameraFrameBorderWidth = 1.5f;
 
         [Header("建筑图标预制体字典")]
         [SerializeField] private List<BuildingIconMapping> buildingIconMappings = new List<BuildingIconMapping>();
+
+        [Header("地形显示")]
+        [SerializeField] private bool showTerrainMap = true;
+        [SerializeField, Range(64, 512)] private int terrainTextureMaxSize = 256;
+        [SerializeField] private string groundLayerKeyword = "Plane";
+        [SerializeField] private string waterLayerKeyword = "Water";
+        [SerializeField] private Color groundLayerColor = new Color(0.28f, 0.28f, 0.28f, 1f);
+        [SerializeField] private Color waterLayerColor = new Color(0.08f, 0.2f, 0.35f, 1f);
 
         private MinimapManager minimapManager;
         private Dictionary<int, RectTransform> unitVisuals = new Dictionary<int, RectTransform>();
         private Dictionary<string, GameObject> buildingIconPrefabs = new Dictionary<string, GameObject>();
         private HashSet<int> currentUnitIds = new HashSet<int>();
-        private bool useNewCameraFrame; // 是否使用新组件
+        private RawImage terrainMapImage;
+        private Texture2D terrainMapTexture;
+        private int terrainMapLevelEntityId;
+        private bool cameraFrameStyleApplied;
+        private TileWorldCreatorManager terrainMapTileWorldCreatorManager;
+        private bool terrainMapBuildEventSubscribed;
 
         protected override void OnInit(object userData)
         {
@@ -45,21 +60,13 @@ namespace AAAGame.MiniMap
                 return;
             }
 
-            // 检测使用哪种摄像机视野框方式
-            useNewCameraFrame = (cameraFrame != null);
-
-            if (useNewCameraFrame)
+            if (!EnsureCameraFrame())
             {
-                Log.Info("[MinimapUI] Using new MinimapCameraFrame component");
-                cameraFrame.ForceRefresh();
-            }
-            else if (cameraViewFrame != null)
-            {
-                Log.Info("[MinimapUI] Using legacy RectTransform camera frame");
+                Log.Warning("[MinimapUI] No camera frame configured!");
             }
             else
             {
-                Log.Warning("[MinimapUI] No camera frame configured!");
+                ApplyCameraFrameStyle();
             }
 
             foreach (var mapping in buildingIconMappings)
@@ -70,6 +77,7 @@ namespace AAAGame.MiniMap
                 }
             }
 
+            TryBuildTerrainMap(true);
             UpdateScaleText();
             Log.Info("[MinimapUI] MinimapUI initialized");
         }
@@ -99,6 +107,16 @@ namespace AAAGame.MiniMap
                 if (visual != null) Destroy(visual.gameObject);
             }
             unitVisuals.Clear();
+
+            if (terrainMapTexture != null)
+            {
+                Destroy(terrainMapTexture);
+                terrainMapTexture = null;
+            }
+
+            UnsubscribeTerrainBuildEvent();
+            terrainMapLevelEntityId = 0;
+            cameraFrameStyleApplied = false;
         }
 
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -112,6 +130,12 @@ namespace AAAGame.MiniMap
             }
 
             UpdateCameraViewFrame();
+
+            if (Time.frameCount % 30 == 0)
+            {
+                TryBuildTerrainMap(false);
+                UpdateScaleText();
+            }
         }
 
         private void HandleUnitsUpdated(List<MinimapUnitData> units)
@@ -147,8 +171,6 @@ namespace AAAGame.MiniMap
 
         private void CreateUnitVisual(MinimapUnitData unit)
         {
-            Log.Info($"[MinimapUI] Creating visual for unit {unit.UnitId}, Side={unit.Side}, Type={unit.UnitType}");
-
             GameObject visualObj = null;
 
             if (unit.UnitType == MinimapUnitType.Soldier)
@@ -160,12 +182,12 @@ namespace AAAGame.MiniMap
                 if (soldierDotPrefab == null)
                     visualObj.transform.SetParent(minimapContainer, false);
 
-                Image img = visualObj.GetComponent<Image>();
-                if (img == null) img = visualObj.AddComponent<Image>();
+                Graphic markerGraphic = visualObj.GetComponent<Graphic>();
+                if (markerGraphic == null) markerGraphic = visualObj.AddComponent<RawImage>();
 
                 Color soldierColor = minimapManager.Config.GetSoldierColor(unit.Side);
-                img.color = soldierColor;
-                Log.Info($"[MinimapUI] Soldier dot created with color: {soldierColor} for Side={unit.Side}");
+                markerGraphic.color = soldierColor;
+                markerGraphic.raycastTarget = false;
 
                 RectTransform rt = visualObj.GetComponent<RectTransform>();
                 if (rt == null) rt = visualObj.AddComponent<RectTransform>();
@@ -173,14 +195,12 @@ namespace AAAGame.MiniMap
             }
             else
             {
-                if (!string.IsNullOrEmpty(unit.IconPrefabName) && buildingIconPrefabs.ContainsKey(unit.IconPrefabName))
-                    visualObj = Instantiate(buildingIconPrefabs[unit.IconPrefabName], minimapContainer);
-                else
-                {
-                    visualObj = new GameObject($"Building_{unit.UnitId}");
-                    visualObj.transform.SetParent(minimapContainer, false);
-                    visualObj.AddComponent<Image>().color = minimapManager.Config.GetSoldierColor(unit.Side);
-                }
+                visualObj = new GameObject($"Building_{unit.UnitId}");
+                visualObj.transform.SetParent(minimapContainer, false);
+
+                RawImage img = visualObj.AddComponent<RawImage>();
+                img.color = minimapManager.Config.GetSoldierColor(unit.Side);
+                img.raycastTarget = false;
 
                 RectTransform rt = visualObj.GetComponent<RectTransform>();
                 if (rt != null) rt.sizeDelta = new Vector2(minimapManager.Config.BuildingIconSize, minimapManager.Config.BuildingIconSize);
@@ -204,11 +224,8 @@ namespace AAAGame.MiniMap
 
             rt.anchoredPosition = WorldToMinimapPosition(unit.WorldPosition);
 
-            if (unit.UnitType == MinimapUnitType.Soldier)
-            {
-                Image img = rt.GetComponent<Image>();
-                if (img != null) img.color = minimapManager.Config.GetSoldierColor(unit.Side);
-            }
+            Graphic markerGraphic = rt.GetComponent<Graphic>();
+            if (markerGraphic != null) markerGraphic.color = minimapManager.Config.GetSoldierColor(unit.Side);
         }
 
         private void RemoveUnitVisual(int unitId)
@@ -229,19 +246,18 @@ namespace AAAGame.MiniMap
 
         private void UpdateCameraViewFrame()
         {
-            // 每秒打印一次调试信息（避免日志过多）
-            bool shouldLog = Time.frameCount % 60 == 0;
-
-            // 检查是否有任何视野框配置
-            if (!useNewCameraFrame && cameraViewFrame == null)
+            if (cameraFrame == null && !EnsureCameraFrame())
             {
-                if (shouldLog) Log.Warning("[MinimapUI] No camera frame configured!");
                 return;
+            }
+
+            if (!cameraFrameStyleApplied && cameraFrame != null)
+            {
+                ApplyCameraFrameStyle();
             }
 
             if (minimapManager == null)
             {
-                if (shouldLog) Log.Warning("[MinimapUI] minimapManager is null!");
                 return;
             }
 
@@ -249,15 +265,10 @@ namespace AAAGame.MiniMap
             if (mainCamera == null || !mainCamera.gameObject.activeInHierarchy)
             {
                 mainCamera = Camera.main;
-                if (mainCamera != null && shouldLog)
-                {
-                    Log.Info($"[MinimapUI] Found main camera: {mainCamera.name}");
-                }
             }
 
             if (mainCamera == null)
             {
-                if (shouldLog) Log.Warning("[MinimapUI] mainCamera not found!");
                 return;
             }
 
@@ -279,33 +290,31 @@ namespace AAAGame.MiniMap
             Vector2 position = WorldToMinimapPosition(center);
             Vector2 size = new Vector2(mw, mh);
 
-            // 使用新组件或旧方式
-            if (useNewCameraFrame)
+            cameraFrame.UpdateFrame(position, size);
+        }
+
+        private bool EnsureCameraFrame()
+        {
+            if (cameraFrame != null)
             {
-                cameraFrame.UpdateFrame(position, size);
-
-                if (shouldLog)
-                {
-                    Log.Info($"[MinimapUI] Camera frame (new) updated: pos={position}, size={size}");
-                }
+                ApplyCameraFrameStyle();
+                return true;
             }
-            else
+
+            if (cameraViewFrame != null)
             {
-                cameraViewFrame.anchoredPosition = position;
-                cameraViewFrame.sizeDelta = size;
-
-                // 确保视野框可见
-                if (!cameraViewFrame.gameObject.activeSelf)
+                cameraFrame = cameraViewFrame.GetComponent<MinimapCameraFrame>();
+                if (cameraFrame == null)
                 {
-                    cameraViewFrame.gameObject.SetActive(true);
-                    Log.Info($"[MinimapUI] Camera view frame activated at pos={position}, size={size}");
+                    cameraFrame = cameraViewFrame.gameObject.AddComponent<MinimapCameraFrame>();
                 }
 
-                if (shouldLog)
-                {
-                    //Log.Info($"[MinimapUI] Camera view frame (legacy) updated: pos={position}, size={size}, active={cameraViewFrame.gameObject.activeSelf}");
-                }
+                ApplyCameraFrameStyle();
+                Log.Info("[MinimapUI] Migrated legacy cameraViewFrame to MinimapCameraFrame");
+                return true;
             }
+
+            return false;
         }
 
         private Vector3 GetGroundIntersection(Ray ray, Plane plane)
@@ -321,6 +330,340 @@ namespace AAAGame.MiniMap
             if (scaleTextHorizontal != null) scaleTextHorizontal.text = $"{cfg.WorldMaxX - cfg.WorldMinX:F0}m";
             if (scaleTextVertical != null) scaleTextVertical.text = $"{cfg.WorldMaxZ - cfg.WorldMinZ:F0}m";
         }
+
+        private void ApplyCameraFrameStyle()
+        {
+            if (cameraFrame == null)
+            {
+                return;
+            }
+
+            cameraFrame.SetBorderColor(Color.white);
+            cameraFrame.SetBorderAlpha(1f);
+            cameraFrame.SetBorderWidth(cameraFrameBorderWidth);
+            cameraFrame.SetHollow(true);
+            cameraFrame.ForceRefresh();
+            cameraFrameStyleApplied = true;
+        }
+
+        private void TryBuildTerrainMap(bool force)
+        {
+            if (!showTerrainMap || minimapContainer == null || minimapManager == null)
+            {
+                return;
+            }
+
+            LevelEntity levelEntity = LevelEntity.ActiveLevelEntity;
+            if (levelEntity == null)
+            {
+                return;
+            }
+
+            int levelEntityId = levelEntity.GetInstanceID();
+            if (!force && terrainMapLevelEntityId == levelEntityId)
+            {
+                return;
+            }
+
+            TileWorldCreatorManager tileWorldCreatorManager = levelEntity.GetComponentInChildren<TileWorldCreatorManager>();
+            if (tileWorldCreatorManager == null || tileWorldCreatorManager.configuration == null)
+            {
+                UnsubscribeTerrainBuildEvent();
+                return;
+            }
+
+            EnsureTerrainBuildEventSubscription(tileWorldCreatorManager);
+
+            int gridWidth = Mathf.Max(1, tileWorldCreatorManager.configuration.width);
+            int gridHeight = Mathf.Max(1, tileWorldCreatorManager.configuration.height);
+            int texWidth = gridWidth;
+            int texHeight = gridHeight;
+
+            int maxDimension = Mathf.Max(texWidth, texHeight);
+            if (maxDimension > terrainTextureMaxSize)
+            {
+                float scale = terrainTextureMaxSize / (float)maxDimension;
+                texWidth = Mathf.Max(1, Mathf.RoundToInt(texWidth * scale));
+                texHeight = Mathf.Max(1, Mathf.RoundToInt(texHeight * scale));
+            }
+
+            EnsureTerrainMapImage();
+
+            if (terrainMapTexture != null)
+            {
+                Destroy(terrainMapTexture);
+                terrainMapTexture = null;
+            }
+
+            terrainMapTexture = new Texture2D(texWidth, texHeight, TextureFormat.RGBA32, false);
+            terrainMapTexture.filterMode = FilterMode.Point;
+            terrainMapTexture.wrapMode = TextureWrapMode.Clamp;
+
+            Color32[] pixels = new Color32[texWidth * texHeight];
+            Color32 backgroundColor = new Color32(0, 0, 0, 255);
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                pixels[i] = backgroundColor;
+            }
+
+            HashSet<Vector2> groundPositions = CollectBlueprintLayerCells(tileWorldCreatorManager.configuration, groundLayerKeyword);
+            HashSet<Vector2> waterPositions = CollectBlueprintLayerCells(tileWorldCreatorManager.configuration, waterLayerKeyword);
+
+            int paintedCount = 0;
+            int waterPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, waterPositions, waterLayerColor);
+            int groundPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, groundPositions, groundLayerColor);
+            paintedCount += waterPaintedCount + groundPaintedCount;
+
+            if (paintedCount == 0)
+            {
+                HashSet<Vector2> fallbackPositions = CollectAllBlueprintCells(tileWorldCreatorManager.configuration);
+                paintedCount += PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, fallbackPositions, groundLayerColor);
+            }
+
+            terrainMapTexture.SetPixels32(pixels);
+            terrainMapTexture.Apply(false, false);
+
+            terrainMapImage.texture = terrainMapTexture;
+            terrainMapImage.color = Color.white;
+            terrainMapImage.raycastTarget = false;
+            terrainMapImage.rectTransform.SetAsFirstSibling();
+
+            bool expectsGroundLayer = HasBlueprintLayerMatch(tileWorldCreatorManager.configuration, groundLayerKeyword);
+            bool expectsWaterLayer = HasBlueprintLayerMatch(tileWorldCreatorManager.configuration, waterLayerKeyword);
+            bool groundReady = !expectsGroundLayer || groundPaintedCount > 0;
+            bool waterReady = !expectsWaterLayer || waterPaintedCount > 0;
+            bool terrainReady = paintedCount > 0 && groundReady && waterReady;
+
+            terrainMapLevelEntityId = terrainReady ? levelEntityId : 0;
+        }
+
+        private void EnsureTerrainMapImage()
+        {
+            if (terrainMapImage == null)
+            {
+                Transform terrainMapTransform = minimapContainer.Find("TerrainMap");
+                if (terrainMapTransform != null)
+                {
+                    terrainMapImage = terrainMapTransform.GetComponent<RawImage>();
+                }
+
+                if (terrainMapImage == null)
+                {
+                    GameObject terrainMapObject = new GameObject("TerrainMap", typeof(RectTransform), typeof(RawImage));
+                    terrainMapObject.transform.SetParent(minimapContainer, false);
+                    terrainMapImage = terrainMapObject.GetComponent<RawImage>();
+                }
+            }
+
+            RectTransform rt = terrainMapImage.rectTransform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = Vector2.zero;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+        }
+
+        private HashSet<Vector2> CollectBlueprintLayerCells(Configuration configuration, string layerKeyword)
+        {
+            HashSet<Vector2> positions = new HashSet<Vector2>();
+            if (configuration == null || string.IsNullOrWhiteSpace(layerKeyword))
+            {
+                return positions;
+            }
+
+            string keyword = layerKeyword.Trim();
+            for (int i = 0; i < configuration.blueprintLayerFolders.Count; i++)
+            {
+                var folder = configuration.blueprintLayerFolders[i];
+                if (folder == null || folder.blueprintLayers == null)
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < folder.blueprintLayers.Count; j++)
+                {
+                    var layer = folder.blueprintLayers[j];
+                    if (layer == null || string.IsNullOrEmpty(layer.layerName))
+                    {
+                        continue;
+                    }
+
+                    if (layer.layerName.IndexOf(keyword, System.StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+
+                    layer.GetAllCellPositions(positions);
+                }
+            }
+
+            return positions;
+        }
+
+        private HashSet<Vector2> CollectAllBlueprintCells(Configuration configuration)
+        {
+            HashSet<Vector2> positions = new HashSet<Vector2>();
+            if (configuration == null)
+            {
+                return positions;
+            }
+
+            for (int i = 0; i < configuration.blueprintLayerFolders.Count; i++)
+            {
+                var folder = configuration.blueprintLayerFolders[i];
+                if (folder == null || folder.blueprintLayers == null)
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < folder.blueprintLayers.Count; j++)
+                {
+                    var layer = folder.blueprintLayers[j];
+                    if (layer == null)
+                    {
+                        continue;
+                    }
+
+                    layer.GetAllCellPositions(positions);
+                }
+            }
+
+            return positions;
+        }
+
+        private int PaintLayerCells(Color32[] pixels, int texWidth, int texHeight, int gridWidth, int gridHeight, HashSet<Vector2> positions, Color color)
+        {
+            if (positions == null || positions.Count == 0)
+            {
+                return 0;
+            }
+
+            Color32 pixelColor = color;
+            int painted = 0;
+
+            foreach (Vector2 cellPos in positions)
+            {
+                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, false, out int texX, out int texY))
+                {
+                    int idx = texX + texY * texWidth;
+                    pixels[idx] = pixelColor;
+                    painted++;
+                }
+            }
+
+            if (painted > 0)
+            {
+                return painted;
+            }
+
+            foreach (Vector2 cellPos in positions)
+            {
+                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, true, out int texX, out int texY))
+                {
+                    int idx = texX + texY * texWidth;
+                    pixels[idx] = pixelColor;
+                    painted++;
+                }
+            }
+
+            return painted;
+        }
+
+        private bool TryConvertCellToTexture(Vector2 cellPos, int gridWidth, int gridHeight, int texWidth, int texHeight, bool centeredGrid, out int texX, out int texY)
+        {
+            float rawX = cellPos.x;
+            float rawY = cellPos.y;
+
+            if (centeredGrid)
+            {
+                rawX += gridWidth * 0.5f;
+                rawY += gridHeight * 0.5f;
+            }
+
+            int cellX = Mathf.RoundToInt(rawX);
+            int cellY = Mathf.RoundToInt(rawY);
+            if (cellX < 0 || cellX >= gridWidth || cellY < 0 || cellY >= gridHeight)
+            {
+                texX = 0;
+                texY = 0;
+                return false;
+            }
+
+            texX = Mathf.Clamp(Mathf.FloorToInt((cellX / (float)gridWidth) * texWidth), 0, texWidth - 1);
+            texY = Mathf.Clamp(Mathf.FloorToInt((cellY / (float)gridHeight) * texHeight), 0, texHeight - 1);
+            return true;
+        }
+
+        private bool HasBlueprintLayerMatch(Configuration configuration, string layerKeyword)
+        {
+            if (configuration == null || string.IsNullOrWhiteSpace(layerKeyword))
+            {
+                return false;
+            }
+
+            string keyword = layerKeyword.Trim();
+            for (int i = 0; i < configuration.blueprintLayerFolders.Count; i++)
+            {
+                var folder = configuration.blueprintLayerFolders[i];
+                if (folder == null || folder.blueprintLayers == null)
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < folder.blueprintLayers.Count; j++)
+                {
+                    var layer = folder.blueprintLayers[j];
+                    if (layer == null || string.IsNullOrEmpty(layer.layerName))
+                    {
+                        continue;
+                    }
+
+                    if (layer.layerName.IndexOf(keyword, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private void EnsureTerrainBuildEventSubscription(TileWorldCreatorManager manager)
+        {
+            if (manager == null)
+            {
+                UnsubscribeTerrainBuildEvent();
+                return;
+            }
+
+            if (terrainMapBuildEventSubscribed && terrainMapTileWorldCreatorManager == manager)
+            {
+                return;
+            }
+
+            UnsubscribeTerrainBuildEvent();
+            terrainMapTileWorldCreatorManager = manager;
+            terrainMapTileWorldCreatorManager.OnBuildLayersReady += HandleTerrainBuildLayersReady;
+            terrainMapBuildEventSubscribed = true;
+        }
+
+        private void UnsubscribeTerrainBuildEvent()
+        {
+            if (terrainMapTileWorldCreatorManager != null && terrainMapBuildEventSubscribed)
+            {
+                terrainMapTileWorldCreatorManager.OnBuildLayersReady -= HandleTerrainBuildLayersReady;
+            }
+
+            terrainMapTileWorldCreatorManager = null;
+            terrainMapBuildEventSubscribed = false;
+        }
+
+        private void HandleTerrainBuildLayersReady()
+        {
+            terrainMapLevelEntityId = 0;
+            TryBuildTerrainMap(true);
+        }
+
     }
 
     [System.Serializable]
