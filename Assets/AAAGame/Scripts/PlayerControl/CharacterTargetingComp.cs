@@ -29,12 +29,14 @@ public class CharacterTargetingComp : ITargetingComp
         float effectiveAttackRange = GetEffectiveAttackRange();
 
         float currentTargetDist = float.PositiveInfinity;
+        int currentTargetTaunt = -1;
 
         // 1. 维护当前敌人目标
         if (CurrentTarget != null)
         {
             float dist = _ctx.DistanceToTargetSurface(CurrentTarget);
             currentTargetDist = dist;
+            currentTargetTaunt = GetTauntLevel(CurrentTarget);
             float targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : ForgetRange;
             if (dist > targetRetentionRange || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
             {
@@ -42,6 +44,7 @@ public class CharacterTargetingComp : ITargetingComp
                     $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} retentionRange={targetRetentionRange:F1} alive={CurrentTarget.Alive}");
                 CurrentTarget = null;
                 currentTargetDist = float.PositiveInfinity;
+                currentTargetTaunt = -1;
             }
         }
 
@@ -68,7 +71,13 @@ public class CharacterTargetingComp : ITargetingComp
                 ? effectiveAttackRange
                 : Mathf.Max(AggroRange, effectiveAttackRange);
             float nearestDist = scanRange;
-            int highestTaunt = -1;
+            int nearestTaunt = -1;
+
+            // 攻击中抢目标：额外记录攻击范围内“嘲讽最高、同嘲讽最近”的候选
+            IEntityContext inAttackRangeCandidate = null;
+            float inAttackRangeDist = effectiveAttackRange;
+            int inAttackRangeTaunt = -1;
+
             var all = EntityRegistry.AllEntities;
             for (int i = 0; i < all.Count; i++)
             {
@@ -81,17 +90,23 @@ public class CharacterTargetingComp : ITargetingComp
                 if (dist >= scanRange) continue;
 
                 // 读嘲讽等级
-                int taunt = 0;
-                if (other is GeneralCreature be)
-                    taunt = be.TauntLevel;
+                int taunt = GetTauntLevel(other);
 
                 // 嘲讽等级更高 → 无条件替换
                 // 嘲讽等级相同 → 选更近的
-                if (taunt > highestTaunt || (taunt == highestTaunt && dist < nearestDist))
+                if (taunt > nearestTaunt || (taunt == nearestTaunt && dist < nearestDist))
                 {
-                    highestTaunt = taunt;
+                    nearestTaunt = taunt;
                     nearestDist = dist;
                     nearest = other;
+                }
+
+                if (dist <= effectiveAttackRange
+                    && (taunt > inAttackRangeTaunt || (taunt == inAttackRangeTaunt && dist < inAttackRangeDist)))
+                {
+                    inAttackRangeTaunt = taunt;
+                    inAttackRangeDist = dist;
+                    inAttackRangeCandidate = other;
                 }
             }
 
@@ -103,13 +118,47 @@ public class CharacterTargetingComp : ITargetingComp
             }
             else if (nearest != null && nearest != CurrentTarget)
             {
-                bool currentOutOfAttackRange = currentTargetDist > GetEffectiveAttackRange();
-                bool nearestObviouslyBetter = nearestDist + 0.1f < currentTargetDist;
-                if (currentOutOfAttackRange || nearestObviouslyBetter)
+                bool isAttacking = _ctx.AtkComp != null && _ctx.AtkComp.IsAttacking;
+                bool sameTaunt = nearestTaunt == currentTargetTaunt;
+                bool higherTaunt = nearestTaunt > currentTargetTaunt;
+
+                // 规则：
+                // 1) 攻击前：同嘲讽仅切更近；不同嘲讽可在大范围内切更高嘲讽。
+                // 2) 攻击中：只允许在攻击范围内切到更高嘲讽目标。
+                bool switchByCloserBeforeAttack = !isAttacking && sameTaunt && (nearestDist + 0.1f < currentTargetDist);
+                bool switchByHigherTauntBeforeAttack = !isAttacking && higherTaunt;
+                bool switchByHigherTauntInAttackRange = isAttacking
+                                                       && inAttackRangeCandidate != null
+                                                       && inAttackRangeCandidate != CurrentTarget
+                                                       && inAttackRangeTaunt > currentTargetTaunt;
+
+                IEntityContext switchTarget = null;
+                float switchDist = 0f;
+                int switchTaunt = 0;
+                string switchReason = null;
+
+                if (switchByHigherTauntInAttackRange)
+                {
+                    switchTarget = inAttackRangeCandidate;
+                    switchDist = inAttackRangeDist;
+                    switchTaunt = inAttackRangeTaunt;
+                    switchReason = "attacking_higher_taunt_in_attack_range";
+                }
+                else if (switchByHigherTauntBeforeAttack || switchByCloserBeforeAttack)
+                {
+                    switchTarget = nearest;
+                    switchDist = nearestDist;
+                    switchTaunt = nearestTaunt;
+                    switchReason = switchByHigherTauntBeforeAttack
+                        ? "pre_attack_higher_taunt_in_scan_range"
+                        : "pre_attack_same_taunt_closer_target";
+                }
+
+                if (switchTarget != null)
                 {
                     GameDebugSettings.Log(DebugCategory.Targeting,
-                        $"{_ctx} 切换敌人 {CurrentTarget} -> {nearest} | currentDist={currentTargetDist:F1} nearestDist={nearestDist:F1}");
-                    CurrentTarget = nearest;
+                        $"{_ctx} 切换敌人 {CurrentTarget} -> {switchTarget} | currentDist={currentTargetDist:F1} newDist={switchDist:F1} currentTaunt={currentTargetTaunt} newTaunt={switchTaunt} attacking={isAttacking} reason={switchReason}");
+                    CurrentTarget = switchTarget;
                 }
             }
 
@@ -141,6 +190,14 @@ public class CharacterTargetingComp : ITargetingComp
     {
         Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
         return (float)weaponRange;
+    }
+
+    private static int GetTauntLevel(IEntityContext entity)
+    {
+        if (entity is GeneralCreature creature)
+            return creature.TauntLevel;
+
+        return 0;
     }
 
     private static bool ShouldUseAttackRangeOnly(IEntityContext entity)
