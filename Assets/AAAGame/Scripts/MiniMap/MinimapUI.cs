@@ -25,6 +25,9 @@ namespace AAAGame.MiniMap
         [Header("摄像机")]
         [SerializeField] private Camera mainCamera;
         [SerializeField] private float cameraFrameBorderWidth = 1.5f;
+        [SerializeField, Range(0.1f, 1f)] private float cameraFrameSizeScale = 0.5f;
+        [SerializeField] private bool useHeroYForFrameGround = true;
+        [SerializeField] private float cameraFrameGroundYOffset = 0f;
 
         [Header("建筑图标预制体字典")]
         [SerializeField] private List<BuildingIconMapping> buildingIconMappings = new List<BuildingIconMapping>();
@@ -47,6 +50,10 @@ namespace AAAGame.MiniMap
         private bool cameraFrameStyleApplied;
         private TileWorldCreatorManager terrainMapTileWorldCreatorManager;
         private bool terrainMapBuildEventSubscribed;
+        private bool terrainMapUseCenteredGrid;
+        private int terrainGridWidth;
+        private int terrainGridHeight;
+        private float terrainCellSize = 1f;
 
         protected override void OnInit(object userData)
         {
@@ -117,6 +124,10 @@ namespace AAAGame.MiniMap
             UnsubscribeTerrainBuildEvent();
             terrainMapLevelEntityId = 0;
             cameraFrameStyleApplied = false;
+            terrainMapUseCenteredGrid = false;
+            terrainGridWidth = 0;
+            terrainGridHeight = 0;
+            terrainCellSize = 1f;
         }
 
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -237,11 +248,73 @@ namespace AAAGame.MiniMap
 
         private Vector2 WorldToMinimapPosition(Vector3 worldPos)
         {
+            if (TryWorldToMinimapByTileGrid(worldPos, out Vector2 minimapPosByGrid))
+            {
+                return minimapPosByGrid;
+            }
+
             if (minimapManager == null) return Vector2.zero;
             MinimapConfig cfg = minimapManager.Config;
+            Vector2 mapSize = GetMinimapRenderSize();
             float nx = Mathf.InverseLerp(cfg.WorldMinX, cfg.WorldMaxX, worldPos.x);
             float nz = Mathf.InverseLerp(cfg.WorldMinZ, cfg.WorldMaxZ, worldPos.z);
-            return new Vector2((nx - 0.5f) * minimapSize, (nz - 0.5f) * minimapSize);
+            return new Vector2((nx - 0.5f) * mapSize.x, (nz - 0.5f) * mapSize.y);
+        }
+
+        private bool TryWorldToMinimapByTileGrid(Vector3 worldPos, out Vector2 minimapPos)
+        {
+            minimapPos = Vector2.zero;
+
+            TileWorldCreatorManager twcManager = terrainMapTileWorldCreatorManager;
+            if (twcManager == null)
+            {
+                LevelEntity levelEntity = LevelEntity.ActiveLevelEntity;
+                if (levelEntity != null)
+                {
+                    twcManager = levelEntity.GetComponentInChildren<TileWorldCreatorManager>();
+                }
+            }
+
+            if (twcManager == null || twcManager.configuration == null)
+            {
+                return false;
+            }
+
+            int width = terrainGridWidth > 0 ? terrainGridWidth : Mathf.Max(1, twcManager.configuration.width);
+            int height = terrainGridHeight > 0 ? terrainGridHeight : Mathf.Max(1, twcManager.configuration.height);
+            float cellSize = terrainCellSize > 0f ? terrainCellSize : Mathf.Max(0.01f, twcManager.configuration.cellSize);
+
+            Vector3 localPos = twcManager.transform.InverseTransformPoint(worldPos);
+            float gridX = localPos.x / cellSize;
+            float gridY = localPos.z / cellSize;
+
+            if (terrainMapUseCenteredGrid)
+            {
+                gridX += width * 0.5f;
+                gridY += height * 0.5f;
+            }
+
+            float nx = gridX / Mathf.Max(1f, width);
+            float ny = gridY / Mathf.Max(1f, height);
+            Vector2 mapSize = GetMinimapRenderSize();
+            minimapPos = new Vector2((nx - 0.5f) * mapSize.x, (ny - 0.5f) * mapSize.y);
+            return true;
+        }
+
+        private Vector2 GetMinimapRenderSize()
+        {
+            if (minimapContainer != null)
+            {
+                Rect rect = minimapContainer.rect;
+                float width = Mathf.Abs(rect.width);
+                float height = Mathf.Abs(rect.height);
+                if (width > 0.01f && height > 0.01f)
+                {
+                    return new Vector2(width, height);
+                }
+            }
+
+            return new Vector2(minimapSize, minimapSize);
         }
 
         private void UpdateCameraViewFrame()
@@ -273,22 +346,81 @@ namespace AAAGame.MiniMap
             }
 
             // 计算摄像机视野在地面的投影
-            MinimapConfig cfg = minimapManager.Config;
-            Plane ground = new Plane(Vector3.up, Vector3.zero);
+            float groundY = ResolveCameraFrameGroundY();
+
+            Plane ground = new Plane(Vector3.up, new Vector3(0f, groundY, 0f));
+
+            if (mainCamera.orthographic)
+            {
+                Vector3 centerWorld;
+                if (!TryGetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)), ground, out centerWorld))
+                {
+                    centerWorld = mainCamera.transform.position;
+                    centerWorld.y = groundY;
+                }
+
+                float halfWidth = mainCamera.orthographicSize * mainCamera.aspect;
+                float halfHeight = mainCamera.orthographicSize;
+
+                Vector3 rightXZ = Vector3.ProjectOnPlane(mainCamera.transform.right, Vector3.up);
+                if (rightXZ.sqrMagnitude <= 0.0001f)
+                {
+                    rightXZ = Vector3.right;
+                }
+                else
+                {
+                    rightXZ.Normalize();
+                }
+
+                Vector3 forwardXZ = Vector3.ProjectOnPlane(mainCamera.transform.forward, Vector3.up);
+                if (forwardXZ.sqrMagnitude <= 0.0001f)
+                {
+                    forwardXZ = Vector3.forward;
+                }
+                else
+                {
+                    forwardXZ.Normalize();
+                }
+
+                Vector3 orthoBL = centerWorld - rightXZ * halfWidth - forwardXZ * halfHeight;
+                Vector3 orthoBR = centerWorld + rightXZ * halfWidth - forwardXZ * halfHeight;
+                Vector3 orthoTL = centerWorld - rightXZ * halfWidth + forwardXZ * halfHeight;
+                Vector3 orthoTR = centerWorld + rightXZ * halfWidth + forwardXZ * halfHeight;
+
+                Vector2 orthoMbl = WorldToMinimapPosition(orthoBL);
+                Vector2 orthoMbr = WorldToMinimapPosition(orthoBR);
+                Vector2 orthoMtl = WorldToMinimapPosition(orthoTL);
+                Vector2 orthoMtr = WorldToMinimapPosition(orthoTR);
+
+                Vector2 orthoPosition = (orthoMbl + orthoMbr + orthoMtl + orthoMtr) * 0.25f;
+                float orthoMinX = Mathf.Min(orthoMbl.x, orthoMbr.x, orthoMtl.x, orthoMtr.x);
+                float orthoMaxX = Mathf.Max(orthoMbl.x, orthoMbr.x, orthoMtl.x, orthoMtr.x);
+                float orthoMinY = Mathf.Min(orthoMbl.y, orthoMbr.y, orthoMtl.y, orthoMtr.y);
+                float orthoMaxY = Mathf.Max(orthoMbl.y, orthoMbr.y, orthoMtl.y, orthoMtr.y);
+                Vector2 orthoSize = new Vector2(Mathf.Abs(orthoMaxX - orthoMinX), Mathf.Abs(orthoMaxY - orthoMinY));
+                orthoSize *= cameraFrameSizeScale;
+
+                cameraFrame.UpdateFrame(orthoPosition, orthoSize);
+                return;
+            }
+
             Vector3 bl = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(0, 0, 0)), ground);
             Vector3 br = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(1, 0, 0)), ground);
             Vector3 tl = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(0, 1, 0)), ground);
             Vector3 tr = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(1, 1, 0)), ground);
 
-            Vector3 center = (bl + br + tl + tr) / 4f;
-            float w = Mathf.Max(Vector3.Distance(bl, br), Vector3.Distance(tl, tr));
-            float h = Mathf.Max(Vector3.Distance(bl, tl), Vector3.Distance(br, tr));
+            Vector2 mbl = WorldToMinimapPosition(bl);
+            Vector2 mbr = WorldToMinimapPosition(br);
+            Vector2 mtl = WorldToMinimapPosition(tl);
+            Vector2 mtr = WorldToMinimapPosition(tr);
 
-            float mw = (w / (cfg.WorldMaxX - cfg.WorldMinX)) * minimapSize;
-            float mh = (h / (cfg.WorldMaxZ - cfg.WorldMinZ)) * minimapSize;
-
-            Vector2 position = WorldToMinimapPosition(center);
-            Vector2 size = new Vector2(mw, mh);
+            Vector2 position = (mbl + mbr + mtl + mtr) * 0.25f;
+            float minX = Mathf.Min(mbl.x, mbr.x, mtl.x, mtr.x);
+            float maxX = Mathf.Max(mbl.x, mbr.x, mtl.x, mtr.x);
+            float minY = Mathf.Min(mbl.y, mbr.y, mtl.y, mtr.y);
+            float maxY = Mathf.Max(mbl.y, mbr.y, mtl.y, mtr.y);
+            Vector2 size = new Vector2(Mathf.Abs(maxX - minX), Mathf.Abs(maxY - minY));
+            size *= cameraFrameSizeScale;
 
             cameraFrame.UpdateFrame(position, size);
         }
@@ -321,6 +453,35 @@ namespace AAAGame.MiniMap
         {
             float enter;
             return plane.Raycast(ray, out enter) ? ray.GetPoint(enter) : Vector3.zero;
+        }
+
+        private bool TryGetGroundIntersection(Ray ray, Plane plane, out Vector3 point)
+        {
+            float enter;
+            if (plane.Raycast(ray, out enter))
+            {
+                point = ray.GetPoint(enter);
+                return true;
+            }
+
+            point = Vector3.zero;
+            return false;
+        }
+
+        private float ResolveCameraFrameGroundY()
+        {
+            if (useHeroYForFrameGround && EntityRegistry.Player != null)
+            {
+                return EntityRegistry.Player.Position.y + cameraFrameGroundYOffset;
+            }
+
+            float groundY = 0f;
+            if (terrainMapTileWorldCreatorManager != null)
+            {
+                groundY = terrainMapTileWorldCreatorManager.transform.position.y;
+            }
+
+            return groundY + cameraFrameGroundYOffset;
         }
 
         private void UpdateScaleText()
@@ -376,6 +537,10 @@ namespace AAAGame.MiniMap
 
             int gridWidth = Mathf.Max(1, tileWorldCreatorManager.configuration.width);
             int gridHeight = Mathf.Max(1, tileWorldCreatorManager.configuration.height);
+            float cellSize = Mathf.Max(0.01f, tileWorldCreatorManager.configuration.cellSize);
+            terrainGridWidth = gridWidth;
+            terrainGridHeight = gridHeight;
+            terrainCellSize = cellSize;
             int texWidth = gridWidth;
             int texHeight = gridHeight;
 
@@ -409,15 +574,24 @@ namespace AAAGame.MiniMap
             HashSet<Vector2> groundPositions = CollectBlueprintLayerCells(tileWorldCreatorManager.configuration, groundLayerKeyword);
             HashSet<Vector2> waterPositions = CollectBlueprintLayerCells(tileWorldCreatorManager.configuration, waterLayerKeyword);
 
+            HashSet<Vector2> coordinateSamplePositions = new HashSet<Vector2>();
+            coordinateSamplePositions.UnionWith(groundPositions);
+            coordinateSamplePositions.UnionWith(waterPositions);
+            if (coordinateSamplePositions.Count == 0)
+            {
+                coordinateSamplePositions = CollectAllBlueprintCells(tileWorldCreatorManager.configuration);
+            }
+            terrainMapUseCenteredGrid = DetermineGridCoordinateMode(coordinateSamplePositions, gridWidth, gridHeight, texWidth, texHeight);
+
             int paintedCount = 0;
-            int waterPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, waterPositions, waterLayerColor);
-            int groundPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, groundPositions, groundLayerColor);
+            int waterPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, waterPositions, waterLayerColor, terrainMapUseCenteredGrid);
+            int groundPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, groundPositions, groundLayerColor, terrainMapUseCenteredGrid);
             paintedCount += waterPaintedCount + groundPaintedCount;
 
             if (paintedCount == 0)
             {
                 HashSet<Vector2> fallbackPositions = CollectAllBlueprintCells(tileWorldCreatorManager.configuration);
-                paintedCount += PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, fallbackPositions, groundLayerColor);
+                paintedCount += PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, fallbackPositions, groundLayerColor, terrainMapUseCenteredGrid);
             }
 
             terrainMapTexture.SetPixels32(pixels);
@@ -531,7 +705,7 @@ namespace AAAGame.MiniMap
             return positions;
         }
 
-        private int PaintLayerCells(Color32[] pixels, int texWidth, int texHeight, int gridWidth, int gridHeight, HashSet<Vector2> positions, Color color)
+        private int PaintLayerCells(Color32[] pixels, int texWidth, int texHeight, int gridWidth, int gridHeight, HashSet<Vector2> positions, Color color, bool centeredGrid)
         {
             if (positions == null || positions.Count == 0)
             {
@@ -543,22 +717,7 @@ namespace AAAGame.MiniMap
 
             foreach (Vector2 cellPos in positions)
             {
-                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, false, out int texX, out int texY))
-                {
-                    int idx = texX + texY * texWidth;
-                    pixels[idx] = pixelColor;
-                    painted++;
-                }
-            }
-
-            if (painted > 0)
-            {
-                return painted;
-            }
-
-            foreach (Vector2 cellPos in positions)
-            {
-                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, true, out int texX, out int texY))
+                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, centeredGrid, out int texX, out int texY))
                 {
                     int idx = texX + texY * texWidth;
                     pixels[idx] = pixelColor;
@@ -567,6 +726,32 @@ namespace AAAGame.MiniMap
             }
 
             return painted;
+        }
+
+        private bool DetermineGridCoordinateMode(HashSet<Vector2> samplePositions, int gridWidth, int gridHeight, int texWidth, int texHeight)
+        {
+            if (samplePositions == null || samplePositions.Count == 0)
+            {
+                return terrainMapUseCenteredGrid;
+            }
+
+            int normalPaintable = CountPaintableCells(samplePositions, gridWidth, gridHeight, texWidth, texHeight, false);
+            int centeredPaintable = CountPaintableCells(samplePositions, gridWidth, gridHeight, texWidth, texHeight, true);
+            return centeredPaintable > normalPaintable;
+        }
+
+        private int CountPaintableCells(HashSet<Vector2> positions, int gridWidth, int gridHeight, int texWidth, int texHeight, bool centeredGrid)
+        {
+            int count = 0;
+            foreach (Vector2 cellPos in positions)
+            {
+                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, centeredGrid, out _, out _))
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private bool TryConvertCellToTexture(Vector2 cellPos, int gridWidth, int gridHeight, int texWidth, int texHeight, bool centeredGrid, out int texX, out int texY)

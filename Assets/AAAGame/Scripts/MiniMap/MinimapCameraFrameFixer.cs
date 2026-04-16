@@ -12,11 +12,11 @@ namespace AAAGame.MiniMap
     {
         [Header("自动修复")]
         [SerializeField] private bool autoFixOnStart = true;
-        
+
         [Header("引用")]
         [SerializeField] private RectTransform minimapContainer;
         [SerializeField] private RectTransform cameraViewFrame;
-        
+
         private void Start()
         {
             if (autoFixOnStart)
@@ -24,7 +24,7 @@ namespace AAAGame.MiniMap
                 FixCameraFrame();
             }
         }
-        
+
         [ContextMenu("修复摄像机视野框")]
         public void FixCameraFrame()
         {
@@ -33,17 +33,17 @@ namespace AAAGame.MiniMap
                 Log.Error("[MinimapFixer] CameraViewFrame is null! Please assign it in Inspector.");
                 return;
             }
-            
+
             if (minimapContainer == null)
             {
                 Log.Error("[MinimapFixer] MinimapContainer is null! Please assign it in Inspector.");
                 return;
             }
-            
+
             Log.Info($"[MinimapFixer] Starting fix...");
             Log.Info($"[MinimapFixer] CameraViewFrame current parent: {(cameraViewFrame.parent != null ? cameraViewFrame.parent.name : "null")}");
             Log.Info($"[MinimapFixer] MinimapContainer: {minimapContainer.name}");
-            
+
             // 检查 1: 父对象是否正确
             if (cameraViewFrame.parent != minimapContainer)
             {
@@ -55,23 +55,23 @@ namespace AAAGame.MiniMap
             {
                 Log.Info($"[MinimapFixer] ✅ Parent is correct");
             }
-            
+
             // 检查 2: RectTransform 配置
             FixRectTransform();
-            
+
             // 检查 3: Image 组件
             FixImageComponent();
-            
+
             // 检查 4: 层级顺序
             FixSiblingIndex();
-            
+
             Log.Info($"[MinimapFixer] Fix completed!");
         }
-        
+
         private void FixRectTransform()
         {
             // 设置正确的锚点和轴点
-            if (cameraViewFrame.anchorMin != new Vector2(0.5f, 0.5f) || 
+            if (cameraViewFrame.anchorMin != new Vector2(0.5f, 0.5f) ||
                 cameraViewFrame.anchorMax != new Vector2(0.5f, 0.5f))
             {
                 Log.Warning($"[MinimapFixer] ❌ Wrong anchors! Fixing...");
@@ -79,21 +79,21 @@ namespace AAAGame.MiniMap
                 cameraViewFrame.anchorMax = new Vector2(0.5f, 0.5f);
                 Log.Info($"[MinimapFixer] ✅ Anchors fixed to center");
             }
-            
+
             if (cameraViewFrame.pivot != new Vector2(0.5f, 0.5f))
             {
                 Log.Warning($"[MinimapFixer] ❌ Wrong pivot! Fixing...");
                 cameraViewFrame.pivot = new Vector2(0.5f, 0.5f);
                 Log.Info($"[MinimapFixer] ✅ Pivot fixed to center");
             }
-            
+
             if (cameraViewFrame.localScale != Vector3.one)
             {
                 Log.Warning($"[MinimapFixer] ❌ Wrong scale! Fixing...");
                 cameraViewFrame.localScale = Vector3.one;
                 Log.Info($"[MinimapFixer] ✅ Scale fixed to (1,1,1)");
             }
-            
+
             if (cameraViewFrame.localRotation != Quaternion.identity)
             {
                 Log.Warning($"[MinimapFixer] ❌ Wrong rotation! Fixing...");
@@ -101,7 +101,7 @@ namespace AAAGame.MiniMap
                 Log.Info($"[MinimapFixer] ✅ Rotation fixed to (0,0,0)");
             }
         }
-        
+
         private void FixImageComponent()
         {
             MinimapCameraFrame newCameraFrame = cameraViewFrame.GetComponent<MinimapCameraFrame>();
@@ -118,7 +118,7 @@ namespace AAAGame.MiniMap
                 image = cameraViewFrame.gameObject.AddComponent<Image>();
                 Log.Info($"[MinimapFixer] ✅ Image component added");
             }
-            
+
             // 检查颜色
             if (image.color.a < 0.1f)
             {
@@ -128,7 +128,7 @@ namespace AAAGame.MiniMap
                 image.color = color;
                 Log.Info($"[MinimapFixer] ✅ Image color fixed to white with alpha=0.3");
             }
-            
+
             // 添加 Outline
             Outline outline = cameraViewFrame.GetComponent<Outline>();
             if (outline == null)
@@ -140,13 +140,13 @@ namespace AAAGame.MiniMap
                 Log.Info($"[MinimapFixer] ✅ Outline component added");
             }
         }
-        
+
         private void FixSiblingIndex()
         {
             // 确保在最后（最上层）
             int currentIndex = cameraViewFrame.GetSiblingIndex();
             int lastIndex = minimapContainer.childCount - 1;
-            
+
             if (currentIndex != lastIndex)
             {
                 Log.Warning($"[MinimapFixer] ❌ Wrong sibling index ({currentIndex}/{lastIndex})! Moving to last...");
@@ -158,7 +158,7 @@ namespace AAAGame.MiniMap
                 Log.Info($"[MinimapFixer] ✅ Sibling index is correct (last)");
             }
         }
-        
+
         [ContextMenu("打印调试信息")]
         public void PrintDebugInfo()
         {
@@ -167,7 +167,7 @@ namespace AAAGame.MiniMap
                 Log.Error("[MinimapFixer] CameraViewFrame is null!");
                 return;
             }
-            
+
             Log.Info($"========== CameraViewFrame Debug Info ==========");
             Log.Info($"Name: {cameraViewFrame.name}");
             Log.Info($"Parent: {(cameraViewFrame.parent != null ? cameraViewFrame.parent.name : "null")}");
@@ -179,7 +179,7 @@ namespace AAAGame.MiniMap
             Log.Info($"Scale: {cameraViewFrame.localScale}");
             Log.Info($"Rotation: {cameraViewFrame.localRotation.eulerAngles}");
             Log.Info($"Sibling Index: {cameraViewFrame.GetSiblingIndex()}/{(cameraViewFrame.parent != null ? cameraViewFrame.parent.childCount - 1 : 0)}");
-            
+
             Image image = cameraViewFrame.GetComponent<Image>();
             if (image != null)
             {
@@ -190,7 +190,7 @@ namespace AAAGame.MiniMap
             {
                 Log.Warning($"No Image component!");
             }
-            
+
             Outline outline = cameraViewFrame.GetComponent<Outline>();
             if (outline != null)
             {
@@ -201,7 +201,7 @@ namespace AAAGame.MiniMap
             {
                 Log.Warning($"No Outline component!");
             }
-            
+
             Log.Info($"================================================");
         }
     }

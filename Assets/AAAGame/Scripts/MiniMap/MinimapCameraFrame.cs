@@ -16,37 +16,37 @@ namespace AAAGame.MiniMap
         [SerializeField] private float borderAlpha = 1f; // 边框透明度
         [SerializeField] private float borderWidth = 1f; // 边框宽度
         [SerializeField] private bool hollowCenter = true; // 中间镂空（推荐）
-        
+
         [Header("边界限制")]
         [SerializeField] private bool clampToBounds = true;
         [SerializeField] private RectTransform minimapBounds; // 小地图边界
-        
+
         private RectTransform rectTransform;
         private Image image;
         private Image topEdgeImage;
         private Image bottomEdgeImage;
         private Image leftEdgeImage;
         private Image rightEdgeImage;
-        
+
         private void Awake()
         {
             rectTransform = GetComponent<RectTransform>();
             image = GetComponent<Image>();
-            
+
             // 确保 Image 组件正确配置
             InitializeImage();
 
             // 使用四条边线绘制空心框，避免 Outline 把整块区域染色
             InitializeBorderEdges();
         }
-        
+
         private void InitializeImage()
         {
             if (image == null)
             {
                 image = gameObject.AddComponent<Image>();
             }
-            
+
             if (hollowCenter)
             {
                 // 镂空效果：中间完全透明
@@ -60,7 +60,7 @@ namespace AAAGame.MiniMap
                 color.a = 0.2f; // 半透明填充
                 image.color = color;
             }
-            
+
             // 禁用 Raycast（不阻挡鼠标事件）
             image.raycastTarget = false;
         }
@@ -196,26 +196,26 @@ namespace AAAGame.MiniMap
             edgeRect.anchoredPosition = Vector2.zero;
             edgeRect.sizeDelta = new Vector2(thickness, 0f);
         }
-        
+
         private void Start()
         {
             // 确保在最上层
             transform.SetAsLastSibling();
-            
+
             // 如果没有指定边界，尝试自动查找
             if (minimapBounds == null && transform.parent != null)
             {
                 minimapBounds = transform.parent.GetComponent<RectTransform>();
             }
         }
-        
+
         /// <summary>
         /// 更新视野框位置和大小（由 MinimapUI 调用）
         /// </summary>
         public void UpdateFrame(Vector2 position, Vector2 size)
         {
             if (rectTransform == null) return;
-            
+
             // 限制大小（不超过小地图边界）
             if (clampToBounds && minimapBounds != null)
             {
@@ -223,21 +223,21 @@ namespace AAAGame.MiniMap
                 size.x = Mathf.Min(size.x, maxSize.x);
                 size.y = Mathf.Min(size.y, maxSize.y);
             }
-            
+
             // 限制位置（不超出小地图边界）
             if (clampToBounds && minimapBounds != null)
             {
                 Vector2 halfSize = size * 0.5f;
                 Vector2 boundsHalfSize = minimapBounds.rect.size * 0.5f;
-                
+
                 position.x = Mathf.Clamp(position.x, -boundsHalfSize.x + halfSize.x, boundsHalfSize.x - halfSize.x);
                 position.y = Mathf.Clamp(position.y, -boundsHalfSize.y + halfSize.y, boundsHalfSize.y - halfSize.y);
             }
-            
+
             rectTransform.anchoredPosition = position;
             rectTransform.sizeDelta = size;
         }
-        
+
         /// <summary>
         /// 设置边框颜色（不影响中间填充）
         /// </summary>
@@ -245,7 +245,7 @@ namespace AAAGame.MiniMap
         {
             borderColor = color;
             ApplyBorderStyle();
-            
+
             // 如果不是镂空模式，也更新 Image 颜色
             if (!hollowCenter && image != null)
             {
@@ -254,7 +254,7 @@ namespace AAAGame.MiniMap
                 image.color = fillColor;
             }
         }
-        
+
         /// <summary>
         /// 设置边框透明度
         /// </summary>
@@ -263,7 +263,7 @@ namespace AAAGame.MiniMap
             borderAlpha = alpha;
             ApplyBorderStyle();
         }
-        
+
         /// <summary>
         /// 设置边框宽度
         /// </summary>
@@ -272,14 +272,14 @@ namespace AAAGame.MiniMap
             borderWidth = width;
             ApplyBorderStyle();
         }
-        
+
         /// <summary>
         /// 设置是否镂空
         /// </summary>
         public void SetHollow(bool hollow)
         {
             hollowCenter = hollow;
-            
+
             if (image != null)
             {
                 if (hollow)
@@ -298,7 +298,7 @@ namespace AAAGame.MiniMap
 
             ApplyBorderStyle();
         }
-        
+
         /// <summary>
         /// 强制刷新显示
         /// </summary>
@@ -334,12 +334,12 @@ namespace AAAGame.MiniMap
                 rightEdgeImage.enabled = borderWidth > 0f;
             }
         }
-        
+
         private void OnEnable()
         {
             ForceRefresh();
         }
-        
+
         private void OnValidate()
         {
             // 在 Editor 中修改参数时自动更新
