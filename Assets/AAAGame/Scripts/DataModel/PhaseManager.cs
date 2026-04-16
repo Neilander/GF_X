@@ -199,7 +199,11 @@ public class PhaseManager : GameFrameworkComponent
         {
             foreach (var building in ingameData.Buildings)
             {
-                if (building.buildingData.Type == BuilType.Army && building.OwnerFactionID == EntitySideHelper.PlayerFactionId)
+                if (building.CurrentStronghold == null)
+                    continue;
+
+                if (building.buildingData.Type == BuilType.Army
+                    && building.CurrentStronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
                 {
                     cardSetup.GenerateCardToDeck(building);
                 }

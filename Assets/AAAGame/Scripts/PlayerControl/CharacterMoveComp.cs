@@ -155,7 +155,7 @@ public class CharacterMoveComp : IMoveComp
         // 调试：打印移动信息
         if (moveDir.sqrMagnitude > 0.001f)
         {
-            Debug.Log($"[CharacterMoveComp] Move: moveDir={moveDir}, speed={speed}, finalVelocity={moveDir * speed}, gameObject={(_ctx as MAEntity)?.gameObject.name}");
+            //Debug.Log($"[CharacterMoveComp] Move: moveDir={moveDir}, speed={speed}, finalVelocity={moveDir * speed}, gameObject={(_ctx as MAEntity)?.gameObject.name}");
         }
 
         _ctx.MoveExecutor.SetInput(moveDir * speed);

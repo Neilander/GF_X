@@ -88,7 +88,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _inputVelocity = velocity;
         if (velocity.sqrMagnitude > 0.001f)
         {
-            Debug.Log($"[MoveExecutor] SetInput: velocity={velocity}, gameObject={gameObject.name}");
+            //Debug.Log($"[MoveExecutor] SetInput: velocity={velocity}, gameObject={gameObject.name}");
         }
     }
 

@@ -13,14 +13,14 @@ namespace AAAGame.MiniMap
         [SerializeField] private GameObject soldierDotPrefab;
         [SerializeField] private RectTransform cameraViewFrame; // 旧的方式（向后兼容）
         [SerializeField] private MinimapCameraFrame cameraFrame; // 新的组件（推荐）
-        
+
         [Header("比例尺")]
         [SerializeField] private TextMeshProUGUI scaleTextHorizontal;
         [SerializeField] private TextMeshProUGUI scaleTextVertical;
 
         [Header("小地图尺寸")]
         [SerializeField] private float minimapSize = 200f;
-        
+
         [Header("摄像机")]
         [SerializeField] private Camera mainCamera;
 
@@ -36,9 +36,9 @@ namespace AAAGame.MiniMap
         protected override void OnInit(object userData)
         {
             base.OnInit(userData);
-            
+
             minimapManager = GameEntry.GetComponent<MinimapManager>();
-            
+
             if (minimapManager == null)
             {
                 Log.Error("[MinimapUI] MinimapManager not found!");
@@ -47,7 +47,7 @@ namespace AAAGame.MiniMap
 
             // 检测使用哪种摄像机视野框方式
             useNewCameraFrame = (cameraFrame != null);
-            
+
             if (useNewCameraFrame)
             {
                 Log.Info("[MinimapUI] Using new MinimapCameraFrame component");
@@ -69,7 +69,7 @@ namespace AAAGame.MiniMap
                     buildingIconPrefabs[mapping.iconName] = mapping.prefab;
                 }
             }
-            
+
             UpdateScaleText();
             Log.Info("[MinimapUI] MinimapUI initialized");
         }
@@ -77,7 +77,7 @@ namespace AAAGame.MiniMap
         protected override void OnOpen(object userData)
         {
             base.OnOpen(userData);
-            
+
             if (minimapManager != null)
             {
                 minimapManager.OnUnitsUpdated += HandleUnitsUpdated;
@@ -88,12 +88,12 @@ namespace AAAGame.MiniMap
         protected override void OnClose(bool isShutdown, object userData)
         {
             base.OnClose(isShutdown, userData);
-            
+
             if (minimapManager != null)
             {
                 minimapManager.OnUnitsUpdated -= HandleUnitsUpdated;
             }
-            
+
             foreach (var visual in unitVisuals.Values)
             {
                 if (visual != null) Destroy(visual.gameObject);
@@ -104,20 +104,20 @@ namespace AAAGame.MiniMap
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
         {
             base.OnUpdate(elapseSeconds, realElapseSeconds);
-            
+
             // 每秒打印一次调试信息（避免日志过多）
             if (Time.frameCount % 60 == 0)
             {
-                Log.Info($"[MinimapUI] OnUpdate called, cameraViewFrame={(cameraViewFrame != null ? "exists" : "NULL")}");
+                //Log.Info($"[MinimapUI] OnUpdate called, cameraViewFrame={(cameraViewFrame != null ? "exists" : "NULL")}");
             }
-            
+
             UpdateCameraViewFrame();
         }
 
         private void HandleUnitsUpdated(List<MinimapUnitData> units)
         {
-            Log.Info($"[MinimapUI] HandleUnitsUpdated called with {units?.Count ?? 0} units");
-            
+            //Log.Info($"[MinimapUI] HandleUnitsUpdated called with {units?.Count ?? 0} units");
+
             if (units == null || minimapContainer == null)
             {
                 Log.Warning($"[MinimapUI] HandleUnitsUpdated early return: units={units != null}, container={minimapContainer != null}");
@@ -148,25 +148,25 @@ namespace AAAGame.MiniMap
         private void CreateUnitVisual(MinimapUnitData unit)
         {
             Log.Info($"[MinimapUI] Creating visual for unit {unit.UnitId}, Side={unit.Side}, Type={unit.UnitType}");
-            
+
             GameObject visualObj = null;
-            
+
             if (unit.UnitType == MinimapUnitType.Soldier)
             {
-                visualObj = soldierDotPrefab != null ? 
-                    Instantiate(soldierDotPrefab, minimapContainer) : 
+                visualObj = soldierDotPrefab != null ?
+                    Instantiate(soldierDotPrefab, minimapContainer) :
                     new GameObject($"Soldier_{unit.UnitId}");
-                
+
                 if (soldierDotPrefab == null)
                     visualObj.transform.SetParent(minimapContainer, false);
-                
+
                 Image img = visualObj.GetComponent<Image>();
                 if (img == null) img = visualObj.AddComponent<Image>();
-                
+
                 Color soldierColor = minimapManager.Config.GetSoldierColor(unit.Side);
                 img.color = soldierColor;
                 Log.Info($"[MinimapUI] Soldier dot created with color: {soldierColor} for Side={unit.Side}");
-                
+
                 RectTransform rt = visualObj.GetComponent<RectTransform>();
                 if (rt == null) rt = visualObj.AddComponent<RectTransform>();
                 rt.sizeDelta = new Vector2(minimapManager.Config.SoldierDotSize, minimapManager.Config.SoldierDotSize);
@@ -181,7 +181,7 @@ namespace AAAGame.MiniMap
                     visualObj.transform.SetParent(minimapContainer, false);
                     visualObj.AddComponent<Image>().color = minimapManager.Config.GetSoldierColor(unit.Side);
                 }
-                
+
                 RectTransform rt = visualObj.GetComponent<RectTransform>();
                 if (rt != null) rt.sizeDelta = new Vector2(minimapManager.Config.BuildingIconSize, minimapManager.Config.BuildingIconSize);
             }
@@ -203,7 +203,7 @@ namespace AAAGame.MiniMap
             if (rt == null) return;
 
             rt.anchoredPosition = WorldToMinimapPosition(unit.WorldPosition);
-            
+
             if (unit.UnitType == MinimapUnitType.Soldier)
             {
                 Image img = rt.GetComponent<Image>();
@@ -231,20 +231,20 @@ namespace AAAGame.MiniMap
         {
             // 每秒打印一次调试信息（避免日志过多）
             bool shouldLog = Time.frameCount % 60 == 0;
-            
+
             // 检查是否有任何视野框配置
             if (!useNewCameraFrame && cameraViewFrame == null)
             {
                 if (shouldLog) Log.Warning("[MinimapUI] No camera frame configured!");
                 return;
             }
-            
+
             if (minimapManager == null)
             {
                 if (shouldLog) Log.Warning("[MinimapUI] minimapManager is null!");
                 return;
             }
-            
+
             // 每帧动态查找主摄像机（解决场景切换问题）
             if (mainCamera == null || !mainCamera.gameObject.activeInHierarchy)
             {
@@ -264,10 +264,10 @@ namespace AAAGame.MiniMap
             // 计算摄像机视野在地面的投影
             MinimapConfig cfg = minimapManager.Config;
             Plane ground = new Plane(Vector3.up, Vector3.zero);
-            Vector3 bl = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(0,0,0)), ground);
-            Vector3 br = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(1,0,0)), ground);
-            Vector3 tl = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(0,1,0)), ground);
-            Vector3 tr = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(1,1,0)), ground);
+            Vector3 bl = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(0, 0, 0)), ground);
+            Vector3 br = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(1, 0, 0)), ground);
+            Vector3 tl = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(0, 1, 0)), ground);
+            Vector3 tr = GetGroundIntersection(mainCamera.ViewportPointToRay(new Vector3(1, 1, 0)), ground);
 
             Vector3 center = (bl + br + tl + tr) / 4f;
             float w = Mathf.Max(Vector3.Distance(bl, br), Vector3.Distance(tl, tr));
@@ -283,7 +283,7 @@ namespace AAAGame.MiniMap
             if (useNewCameraFrame)
             {
                 cameraFrame.UpdateFrame(position, size);
-                
+
                 if (shouldLog)
                 {
                     Log.Info($"[MinimapUI] Camera frame (new) updated: pos={position}, size={size}");
@@ -293,17 +293,17 @@ namespace AAAGame.MiniMap
             {
                 cameraViewFrame.anchoredPosition = position;
                 cameraViewFrame.sizeDelta = size;
-                
+
                 // 确保视野框可见
                 if (!cameraViewFrame.gameObject.activeSelf)
                 {
                     cameraViewFrame.gameObject.SetActive(true);
                     Log.Info($"[MinimapUI] Camera view frame activated at pos={position}, size={size}");
                 }
-                
+
                 if (shouldLog)
                 {
-                    Log.Info($"[MinimapUI] Camera view frame (legacy) updated: pos={position}, size={size}, active={cameraViewFrame.gameObject.activeSelf}");
+                    //Log.Info($"[MinimapUI] Camera view frame (legacy) updated: pos={position}, size={size}, active={cameraViewFrame.gameObject.activeSelf}");
                 }
             }
         }

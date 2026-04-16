@@ -186,10 +186,9 @@ public class InteractionManager : MonoBehaviour
         if (!target.IsInteractable())
             return false;
 
-        var collider = target.GetComponent<Collider>();
-        float dist = collider != null
-            ? Vector3.Distance(actorPos, collider.ClosestPoint(actorPos))
-            : Vector3.Distance(actorPos, target.Transform.position);
+        float dist;
+        if (!target.TryGetClosestDistanceTo(actorPos, out dist))
+            dist = Vector3.Distance(actorPos, target.Transform.position);
 
         float effectiveRange = interactionRange * 0.8f;
         if (dist > effectiveRange)

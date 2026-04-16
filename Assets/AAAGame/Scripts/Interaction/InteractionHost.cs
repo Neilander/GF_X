@@ -21,12 +21,62 @@ public class InteractionHost : MonoBehaviour
 
     public float GetInteractionRadius()
     {
-        var collider = GetComponent<Collider>();
-        if (collider == null)
+        var colliders = GetComponentsInChildren<Collider>(true);
+        if (colliders == null || colliders.Length == 0)
             return 0f;
 
-        var bounds = collider.bounds;
-        return bounds.size.magnitude;
+        bool initialized = false;
+        Bounds bounds = default;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            var collider = colliders[i];
+            if (collider == null || !collider.enabled || collider.isTrigger)
+                continue;
+
+            if (!initialized)
+            {
+                bounds = collider.bounds;
+                initialized = true;
+            }
+            else
+            {
+                bounds.Encapsulate(collider.bounds);
+            }
+        }
+
+        return initialized ? bounds.extents.magnitude : 0f;
+    }
+
+    public bool TryGetClosestDistanceTo(Vector3 worldPosition, out float distance)
+    {
+        distance = float.PositiveInfinity;
+
+        var colliders = GetComponentsInChildren<Collider>(true);
+        if (colliders == null || colliders.Length == 0)
+        {
+            distance = 0f;
+            return false;
+        }
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            var collider = colliders[i];
+            if (collider == null || !collider.enabled || collider.isTrigger)
+                continue;
+
+            float current = Vector3.Distance(worldPosition, collider.ClosestPoint(worldPosition));
+            if (current < distance)
+                distance = current;
+        }
+
+        if (float.IsPositiveInfinity(distance))
+        {
+            distance = 0f;
+            return false;
+        }
+
+        return true;
     }
 
     public void Init(object owner)

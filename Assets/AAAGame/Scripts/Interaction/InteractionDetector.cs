@@ -113,12 +113,11 @@ public class InteractionDetector : MonoBehaviour
 
         float effectiveMaxDistance = maxDistance * 0.8f;
 
-        var collider = target.GetComponent<Collider>();
-        if (collider == null)
-            return Vector3.Distance(transform.position, target.Transform.position) <= effectiveMaxDistance;
+        float distance;
+        if (target.TryGetClosestDistanceTo(transform.position, out distance))
+            return distance <= effectiveMaxDistance;
 
-        Vector3 closestPoint = collider.ClosestPoint(transform.position);
-        float distance = Vector3.Distance(transform.position, closestPoint);
+        distance = Vector3.Distance(transform.position, target.Transform.position);
         return distance <= effectiveMaxDistance;
     }
 

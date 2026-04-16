@@ -162,9 +162,16 @@ public class TechManager : GameFrameworkComponent
         if (string.IsNullOrWhiteSpace(upgradeBuildingId))
             return false;
 
+        if (BuildingDataModel.GetBuildingData(upgradeBuildingId) == null)
+            return false;
+
         for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
         {
-            if (IsUpgradeOptionVisible(owner, upgradeBuildingId, owner.buildingData.UpgradeTechIDs[i]))
+            string techId = owner.buildingData.UpgradeTechIDs[i];
+            if (string.IsNullOrWhiteSpace(techId))
+                continue;
+
+            if (TechDataModel.GetTechData(techId) != null)
                 return true;
         }
 
@@ -178,7 +185,11 @@ public class TechManager : GameFrameworkComponent
 
         for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
         {
-            if (IsResearchOptionVisible(owner, owner.buildingData.UpgradeTechIDs[i]))
+            string techId = owner.buildingData.UpgradeTechIDs[i];
+            if (string.IsNullOrWhiteSpace(techId))
+                continue;
+
+            if (TechDataModel.GetTechData(techId) != null)
                 return true;
         }
 
@@ -197,10 +208,8 @@ public class TechManager : GameFrameworkComponent
         int optionIndex = 0;
         for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
         {
+            // 先挂载所有合法升级选项，是否显示/可执行交给 option 的动态判定。
             string techId = owner.buildingData.UpgradeTechIDs[i];
-            if (!IsUpgradeOptionVisible(owner, upgradeBuildingId, techId))
-                continue;
-
             var techData = TechDataModel.GetTechData(techId);
             if (techData == null)
                 continue;
@@ -227,10 +236,8 @@ public class TechManager : GameFrameworkComponent
         int optionIndex = 0;
         for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
         {
+            // 先挂载所有合法研究选项，避免生成时机导致后续阶段无可见项。
             string techId = owner.buildingData.UpgradeTechIDs[i];
-            if (!IsResearchOptionVisible(owner, techId))
-                continue;
-
             var techData = TechDataModel.GetTechData(techId);
             if (techData == null)
                 continue;
