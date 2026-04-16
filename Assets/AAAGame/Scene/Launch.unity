@@ -922,7 +922,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 562983827}
-  - component: {fileID: 562983826}
+  - component: {fileID: 562983828}
   m_Layer: 0
   m_Name: FogOfWarManager
   m_TagString: Untagged
@@ -930,35 +930,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &562983826
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 562983825}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2324742dc97c0724bbf5e2a26d77afe8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  config:
-    WorldMinX: -50
-    WorldMaxX: 50
-    WorldMinZ: -50
-    WorldMaxZ: 50
-    GridWidth: 100
-    GridHeight: 100
-    UpdateInterval: 0.1
-    EnableBlur: 1
-    BlurIterations: 2
-    HiddenColor: {r: 0, g: 0, b: 0, a: 1}
-    ExploredColor: {r: 0.3, g: 0.3, b: 0.3, a: 0.8}
-    VisibleColor: {r: 1, g: 1, b: 1, a: 0}
-    EnableEasing: 1
-    EasingSpeed: 5
-    EnableTerrainBlocking: 1
-    HeightBlockThreshold: 2
 --- !u!4 &562983827
 Transform:
   m_ObjectHideFlags: 0
@@ -974,6 +945,83 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &562983828
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 562983825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f96a5cd0e8cdd04fa669aca566f7f5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  terrainSettings:
+    SourceMode: 2
+    RequireTileWorldCreatorManager: 1
+    ManualWidth: 100
+    ManualHeight: 100
+    ManualCellSize: 1
+    ManualOrigin: {x: 0, y: 0, z: 0}
+    UseTileWorldBlueprintLayerAsWalkable: 0
+    TileWorldWalkableLayerName: 
+    SampleWalkableWithPhysics: 0
+    GroundMask:
+      serializedVersion: 2
+      m_Bits: 0
+    PhysicsSampleHeight: 80
+    PhysicsSampleDistance: 160
+  currentPlayerVisionRadius: 14
+  playerSideUnitVisionRadius: 10
+  buildingVisionRadius: 12
+  autoRegisterPlayerSideEntities: 1
+  updateInterval: 0.08
+  softEdgeWidth: 2
+  useLineOfSight: 0
+  lineOfSightOccluderMask:
+    serializedVersion: 2
+    m_Bits: 0
+  lineOfSightEyeHeight: 1
+  createWorldOverlay: 1
+  viewSettings:
+    SurfaceMode: 0
+    OverlayHeight: 0.15
+    CloudLayerMinimumHeight: 20
+    ProjectCloudLayerToCameraView: 1
+    ClampCloudLayerBelowCamera: 1
+    CloudCameraClearance: 8
+    CloudHeightRefreshInterval: 0.25
+    CloudLayerWorldOffset: {x: 0, y: 0, z: 0}
+    UseCameraAngleOffset: 1
+    CameraProjectionTargetWorldY: 1
+    CameraAngleOffsetScale: 1
+    ConformOverlayToTerrain: 1
+    HeightSampleMask:
+      serializedVersion: 2
+      m_Bits: 0
+    HeightSampleStartHeight: 120
+    HeightSampleMaxDistance: 260
+    SurfaceOffset: 0.08
+    DrawOverSceneGeometry: 1
+    AutoHeightAboveScene: 0
+    AutoHeightPadding: 2
+    OutsideMaskPadding: 1000
+    OutsideMaskInnerOverlap: 2
+    OverlayLayer: -1
+    HiddenColor: {r: 0, g: 0, b: 0, a: 0.98}
+    ExploredColor: {r: 0, g: 0, b: 0, a: 0.55}
+    VisibleColor: {r: 0, g: 0, b: 0, a: 0}
+    OutsideColor: {r: 0, g: 0, b: 0, a: 1}
+    TextureFilterMode: 1
+  persistAcrossSceneLoads: 0
+  waitForGameplayScene: 1
+  gameplaySceneName: Game
+  rebuildOnSceneLoaded: 1
+  fastRebuildOnGameplaySceneAvailable: 1
+  terrainRetryInterval: 0.05
+  sceneRebuildFrameDelay: 2
+  sceneRebuildDelay: 0.25
 --- !u!1 &613283499
 GameObject:
   m_ObjectHideFlags: 0
