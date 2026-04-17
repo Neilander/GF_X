@@ -973,7 +973,7 @@ MonoBehaviour:
     PhysicsSampleHeight: 80
     PhysicsSampleDistance: 160
   currentPlayerVisionRadius: 21
-  playerSideUnitVisionRadius: 10
+  playerSideUnitVisionRadius: 18
   buildingVisionRadius: 18
   autoRegisterPlayerSideEntities: 1
   updateInterval: 0.08
@@ -1011,7 +1011,7 @@ MonoBehaviour:
     OutsideMaskInnerOverlap: 2
     OverlayLayer: -1
     HiddenColor: {r: 0, g: 0, b: 0, a: 0.98}
-    ExploredColor: {r: 0, g: 0, b: 0, a: 0.55}
+    ExploredColor: {r: 0, g: 0, b: 0, a: 0.54901963}
     VisibleColor: {r: 0, g: 0, b: 0, a: 0}
     OutsideColor: {r: 0, g: 0, b: 0, a: 1}
     TextureFilterMode: 1
@@ -3915,6 +3915,50 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1763194721}
   m_CullTransparentMesh: 0
+--- !u!1 &1857117720
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1857117722}
+  - component: {fileID: 1857117721}
+  m_Layer: 0
+  m_Name: SideTipsManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1857117721
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1857117720}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4997160fcda625842b3f5ff296cdbe2f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!4 &1857117722
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1857117720}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1869321835
 GameObject:
   m_ObjectHideFlags: 0
@@ -4773,3 +4817,4 @@ SceneRoots:
   - {fileID: 1221507868}
   - {fileID: 1925905247}
   - {fileID: 1490215288}
+  - {fileID: 1857117722}

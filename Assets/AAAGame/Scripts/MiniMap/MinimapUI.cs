@@ -45,7 +45,7 @@ namespace AAAGame.MiniMap
         [SerializeField] private bool showMinimapFogSync = true;
         [SerializeField] private float fogOverlayRefreshInterval = 0.08f;
         [SerializeField] private Color minimapHiddenFogColor = new Color(0f, 0f, 0f, 0.98f);
-        [SerializeField] private Color minimapExploredFogColor = new Color(0f, 0f, 0f, 0.25f);
+        [SerializeField] private Color minimapExploredFogColor = new Color(0f, 0f, 0f, 0.3f);
         [SerializeField] private Color minimapOutsideFogColor = new Color(0f, 0f, 0f, 1f);
 
         private MinimapManager minimapManager;

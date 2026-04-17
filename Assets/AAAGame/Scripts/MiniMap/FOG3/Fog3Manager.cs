@@ -1032,6 +1032,13 @@ namespace AAAGame.MiniMap.FOG3
                 updatedEnemyVisibilityIds.Add(entityId);
 
                 Fog3CellState cellState = ResolveEntityFogCellState(mapData, entity.transform.position);
+                Fog3CellState previousCellState = visibilityState.LastCellState;
+                if (previousCellState != cellState)
+                {
+                    visibilityState.LastCellState = cellState;
+                    FireEnemyVisibilityChanged(visibilityState, previousCellState, cellState);
+                }
+
                 ApplyEntityVisibilityState(visibilityState, cellState);
             }
 
@@ -1050,6 +1057,12 @@ namespace AAAGame.MiniMap.FOG3
                 int staleEntityId = staleEnemyVisibilityIds[i];
                 if (!enemyVisibilityStates.TryGetValue(staleEntityId, out Fog3EntityVisibilityState staleState))
                     continue;
+
+                if (staleState.LastCellState != Fog3CellState.Outside)
+                {
+                    FireEnemyVisibilityChanged(staleState, staleState.LastCellState, Fog3CellState.Outside);
+                    staleState.LastCellState = Fog3CellState.Outside;
+                }
 
                 RestoreEntityVisibilityState(staleState);
                 enemyVisibilityStates.Remove(staleEntityId);
@@ -1117,6 +1130,20 @@ namespace AAAGame.MiniMap.FOG3
             HealthBarComp.SetFogVisible(state.EntityId, shouldShowHealthBar);
         }
 
+        private void FireEnemyVisibilityChanged(Fog3EntityVisibilityState state, Fog3CellState oldCellState, Fog3CellState newCellState)
+        {
+            if (oldCellState == newCellState || state?.Entity == null || GF.Event == null)
+                return;
+
+            if (newCellState == Fog3CellState.Visible)
+            {
+                Log.Info("[FOG3] Enemy became visible. entityId={0}, old={1}, new={2}, characterKey={3}.",
+                    state.EntityId, oldCellState, newCellState, state.Entity.CharacterKey);
+            }
+
+            GF.Event.Fire(this, EnemyUnitVisibilityChangedEventArgs.Create(state.Entity, oldCellState, newCellState));
+        }
+
         private static void RestoreEntityVisibilityState(Fog3EntityVisibilityState state)
         {
             if (state == null)
@@ -1132,7 +1159,15 @@ namespace AAAGame.MiniMap.FOG3
         private void ResetEnemyVisibilityStates()
         {
             foreach (KeyValuePair<int, Fog3EntityVisibilityState> pair in enemyVisibilityStates)
+            {
+                if (pair.Value != null && pair.Value.LastCellState != Fog3CellState.Outside)
+                {
+                    FireEnemyVisibilityChanged(pair.Value, pair.Value.LastCellState, Fog3CellState.Outside);
+                    pair.Value.LastCellState = Fog3CellState.Outside;
+                }
+
                 RestoreEntityVisibilityState(pair.Value);
+            }
 
             enemyVisibilityStates.Clear();
             updatedEnemyVisibilityIds.Clear();
@@ -1176,6 +1211,7 @@ namespace AAAGame.MiniMap.FOG3
                 Renderers = entity != null ? entity.GetComponentsInChildren<Renderer>(true) : Array.Empty<Renderer>();
                 Animators = entity != null ? entity.GetComponentsInChildren<Animator>(true) : Array.Empty<Animator>();
                 HasBeenVisible = false;
+                LastCellState = Fog3CellState.Outside;
             }
 
             public MAEntity Entity { get; }
@@ -1184,6 +1220,7 @@ namespace AAAGame.MiniMap.FOG3
             public Animator[] Animators { get; }
             public bool IsBuilding { get; }
             public bool HasBeenVisible { get; set; }
+            public Fog3CellState LastCellState { get; set; }
         }
 
         private void RemoveRevealerReferences(int revealerId)

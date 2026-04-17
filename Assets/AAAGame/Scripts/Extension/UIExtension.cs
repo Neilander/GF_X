@@ -182,6 +182,47 @@ public static class UIExtension
     }
 
     /// <summary>
+    /// 显示侧边提示
+    /// </summary>
+    /// <param name="ui"></param>
+    /// <param name="content"></param>
+    /// <param name="duration"></param>
+    public static void ShowSideTips(this UIComponent ui, string content, float duration = 2)
+    {
+        ShowSideTips(ui, string.Empty, content, duration);
+    }
+
+    /// <summary>
+    /// 显示侧边提示
+    /// </summary>
+    /// <param name="ui"></param>
+    /// <param name="title"></param>
+    /// <param name="content"></param>
+    /// <param name="duration"></param>
+    public static void ShowSideTips(this UIComponent ui, string title, string content, float duration = 2)
+    {
+        if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
+        {
+            return;
+        }
+
+        if (SideTipsUIForm.Instance != null)
+        {
+            SideTipsUIForm.Instance.ShowTips(title, content, duration);
+            return;
+        }
+
+        SideTipsUIForm.EnqueuePendingTips(title, content, duration);
+
+        if (ui.IsLoadingUIForm(UIViews.SideTipsUIForm) || ui.HasUIForm(UIViews.SideTipsUIForm))
+        {
+            return;
+        }
+
+        ui.OpenUIForm(UIViews.SideTipsUIForm);
+    }
+
+    /// <summary>
     /// 打开UI界面
     /// </summary>
     /// <param name="uiCom"></param>

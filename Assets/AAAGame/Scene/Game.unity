@@ -509,6 +509,12 @@ MonoBehaviour:
   legacyPivotEuler: {x: 30, y: 45, z: 0}
   legacyInnerCameraLocalPosition: {x: 0, y: 0, z: -250}
   legacyOrthographicSize: 30
+  enableScreenEdgePan: 1
+  edgeThresholdRatio: 0.1
+  edgeHoldDuration: 1
+  panDistanceRatio: 0.3
+  panSmoothTime: 0.2
+  logScreenEdgePan: 0
   followerVCamera: {fileID: 930603404}
 --- !u!114 &184670684
 MonoBehaviour:

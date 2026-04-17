@@ -10,6 +10,7 @@ public enum UIViews : int
 	Topbar = 4,
 	ResourceModifyBar = 13,
 	SupplyUIForm = 19,
+	SideTipsUIForm = 21,
 	SettingDialog = 5,
 	RatingDialog = 6,
 	TermsOfServiceDialog = 7,
@@ -22,5 +23,6 @@ public enum UIViews : int
 	InteractOptionTips = 12,
 	CardUIForm = 16,
 	MinimapUI = 17,
-	PhaseSwitchUIForm = 18
+	PhaseSwitchUIForm = 18,
+	FogUI = 20
 }

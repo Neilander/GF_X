@@ -13,18 +13,6 @@ public partial class GeneralSetup : GameFrameworkComponent
     private bool m_LevelReady;
     private bool m_PlayerReady;
 
-    public void DataModelSetup(LevelData levelData)
-    {
-        var levelDataParams = RefParams.Create();
-        levelDataParams.Set(InGameDataModel.P_LevelData, levelData);
-        GF.DataModel.CreateDataModel<InGameDataModel>(levelDataParams);
-
-        GF.DataModel.CreateDataModel<BuildingDataModel>();
-        GF.DataModel.CreateDataModel<TechDataModel>();
-        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
-        GF.DataModel.CreateDataModel<InputModel>();
-    }
-
     public void GeneralSystemSetup(string lvIdentifier = "Lv_1")
     {
         m_InitialPhaseEntered = false;
@@ -45,10 +33,8 @@ public partial class GeneralSetup : GameFrameworkComponent
             inputManager.ChangeState(InputState.Game);
         }
 
-        if (!GF.UI.IsLoadingUIForm(UIViews.MinimapUI) && !GF.UI.HasUIForm(UIViews.MinimapUI))
-        {
-            GF.UI.OpenUIForm(UIViews.MinimapUI);
-        }
+        GF.UI.OpenUIForm(UIViews.MinimapUI);
+        GF.UI.OpenUIForm(UIViews.SideTipsUIForm);
     }
 
     public void GeneralSystemShutDown()
@@ -58,6 +44,18 @@ public partial class GeneralSetup : GameFrameworkComponent
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
         m_PlayerReady = false;
+    }
+
+    public void DataModelSetup(LevelData levelData)
+    {
+        var levelDataParams = RefParams.Create();
+        levelDataParams.Set(InGameDataModel.P_LevelData, levelData);
+        GF.DataModel.CreateDataModel<InGameDataModel>(levelDataParams);
+
+        GF.DataModel.CreateDataModel<BuildingDataModel>();
+        GF.DataModel.CreateDataModel<TechDataModel>();
+        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
+        GF.DataModel.CreateDataModel<InputModel>();
     }
 
     public LevelTable GetLvRow(string lvIdentifier)

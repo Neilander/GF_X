@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3651379913
+    state: 1392261507
   guid: 77b4a1fa-4014-4c15-802e-a52aa19898c6
   layerName: Plane
   icon: {fileID: 0}
@@ -1814,6 +1814,21 @@ MonoBehaviour:
   - {x: 57, y: 59}
   - {x: 57, y: 60}
   - {x: 58, y: 59}
+  - {x: 47, y: 15}
+  - {x: 48, y: 15}
+  - {x: 46, y: 16}
+  - {x: 47, y: 14}
+  - {x: 45, y: 17}
+  - {x: 43, y: 18}
+  - {x: 44, y: 18}
+  - {x: 45, y: 18}
+  - {x: 44, y: 17}
+  - {x: 48, y: 14}
+  - {x: 47, y: 16}
+  - {x: 48, y: 16}
+  - {x: 46, y: 15}
+  - {x: 43, y: 17}
+  - {x: 46, y: 14}
   serializedWorldPositions:
   - {x: 6, y: 6}
   - {x: 6, y: 5}
@@ -3599,6 +3614,21 @@ MonoBehaviour:
   - {x: 57, y: 59}
   - {x: 57, y: 60}
   - {x: 58, y: 59}
+  - {x: 47, y: 15}
+  - {x: 48, y: 15}
+  - {x: 46, y: 16}
+  - {x: 47, y: 14}
+  - {x: 45, y: 17}
+  - {x: 43, y: 18}
+  - {x: 44, y: 18}
+  - {x: 45, y: 18}
+  - {x: 44, y: 17}
+  - {x: 48, y: 14}
+  - {x: 47, y: 16}
+  - {x: 48, y: 16}
+  - {x: 46, y: 15}
+  - {x: 43, y: 17}
+  - {x: 46, y: 14}
 --- !u!114 &-8097663193631360743
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -3612,13 +3642,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 2528133945
+    state: 2180409594
   isEnabled: 1
   layerName: Build Plane
   guid: 1c43cd3c-7ad2-460b-8d60-d2bccaafb00a
   assignedBlueprintLayerGuid: 77b4a1fa-4014-4c15-802e-a52aa19898c6
   currentBlueprintLayer: {fileID: -9048560326444747118}
-  foldoutState: 1
+  foldoutState: 0
   useMultiLayers: 1
   masks: []
   hierarchyLayerID: 1c43cd3c-7ad2-460b-8d60-d2bccaafb00a
@@ -3636,7 +3666,7 @@ MonoBehaviour:
   tileColliderExtrusionHeight: 0
   invertCollisionWalls: 0
   tilePresetsTop:
-  - preset: {fileID: 11400000, guid: 54472b666a0681445a0d3c8074b96faa, type: 2}
+  - preset: {fileID: 11400000, guid: fd63f2b10e947b942a33201c2df69fdf, type: 2}
     tileHeight: 0
     weight: 1
   tilePresetsMiddle: []
@@ -4045,6 +4075,14 @@ MonoBehaviour:
   - {x: 70, y: 51}
   - {x: 70, y: 50}
   - {x: 46, y: 19}
+  - {x: 47, y: 15}
+  - {x: 48, y: 15}
+  - {x: 46, y: 16}
+  - {x: 45, y: 17}
+  - {x: 45, y: 18}
+  - {x: 47, y: 16}
+  - {x: 48, y: 16}
+  - {x: 46, y: 15}
   - {x: 45, y: 19}
   - {x: 15, y: 45}
   - {x: 19, y: 49}
@@ -4476,6 +4514,10 @@ MonoBehaviour:
   - {x: 40, y: 19}
   - {x: 43, y: 19}
   - {x: 44, y: 19}
+  - {x: 43, y: 18}
+  - {x: 44, y: 18}
+  - {x: 44, y: 17}
+  - {x: 43, y: 17}
   - {x: 41, y: 19}
   - {x: 30, y: 30}
   - {x: 31, y: 30}
@@ -5479,6 +5521,9 @@ MonoBehaviour:
   - {x: 64, y: 62}
   - {x: 64, y: 63}
   - {x: 60, y: 60}
+  - {x: 48, y: 14}
+  - {x: 46, y: 14}
+  - {x: 47, y: 14}
   serializedTiles:
   - isAssigned: 1
     tilePosition: {x: 5.5, y: 5.5}
@@ -13549,8 +13594,8 @@ MonoBehaviour:
     worldMapPosition: {x: 45, y: 19}
     yRotation: 0
     yRotationOffset: 0
-    configuration: 3
-    tileType: 4
+    configuration: 15
+    tileType: 5
     location:
       north: 0
       west: 0
@@ -13565,8 +13610,8 @@ MonoBehaviour:
     worldMapPosition: {x: 45, y: 19}
     yRotation: 0
     yRotationOffset: 0
-    configuration: 3
-    tileType: 4
+    configuration: 7
+    tileType: 2
     location:
       north: 0
       west: 0
@@ -13583,6 +13628,246 @@ MonoBehaviour:
     yRotationOffset: 0
     configuration: 1
     tileType: 1
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 46.5, y: 14.5}
+    worldMapPosition: {x: 47, y: 15}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 46.5, y: 15.5}
+    worldMapPosition: {x: 47, y: 15}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 47.5, y: 14.5}
+    worldMapPosition: {x: 47, y: 15}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 47.5, y: 15.5}
+    worldMapPosition: {x: 47, y: 15}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 48.5, y: 14.5}
+    worldMapPosition: {x: 48, y: 15}
+    yRotation: 270
+    yRotationOffset: 0
+    configuration: 5
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 48.5, y: 15.5}
+    worldMapPosition: {x: 48, y: 15}
+    yRotation: 270
+    yRotationOffset: 0
+    configuration: 5
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 45.5, y: 15.5}
+    worldMapPosition: {x: 46, y: 16}
+    yRotation: 90
+    yRotationOffset: 0
+    configuration: 10
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 45.5, y: 16.5}
+    worldMapPosition: {x: 46, y: 16}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 9
+    tileType: 3
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 46.5, y: 16.5}
+    worldMapPosition: {x: 46, y: 16}
+    yRotation: 180
+    yRotationOffset: 0
+    configuration: 12
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 44.5, y: 16.5}
+    worldMapPosition: {x: 45, y: 17}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 3
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 44.5, y: 17.5}
+    worldMapPosition: {x: 45, y: 17}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 45.5, y: 17.5}
+    worldMapPosition: {x: 45, y: 17}
+    yRotation: 270
+    yRotationOffset: 0
+    configuration: 5
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 47.5, y: 16.5}
+    worldMapPosition: {x: 47, y: 16}
+    yRotation: 180
+    yRotationOffset: 0
+    configuration: 12
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 48.5, y: 16.5}
+    worldMapPosition: {x: 48, y: 16}
+    yRotation: 270
+    yRotationOffset: 0
+    configuration: 4
+    tileType: 1
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 45.5, y: 14.5}
+    worldMapPosition: {x: 46, y: 15}
+    yRotation: 90
+    yRotationOffset: 0
+    configuration: 10
+    tileType: 4
     location:
       north: 0
       west: 0
@@ -20475,10 +20760,10 @@ MonoBehaviour:
   - isAssigned: 1
     tilePosition: {x: 42.5, y: 18.5}
     worldMapPosition: {x: 42, y: 19}
-    yRotation: 0
+    yRotation: 90
     yRotationOffset: 0
-    configuration: 3
-    tileType: 4
+    configuration: 11
+    tileType: 2
     location:
       north: 0
       west: 0
@@ -20493,8 +20778,72 @@ MonoBehaviour:
     worldMapPosition: {x: 43, y: 19}
     yRotation: 0
     yRotationOffset: 0
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 42.5, y: 17.5}
+    worldMapPosition: {x: 43, y: 18}
+    yRotation: 90
+    yRotationOffset: 0
+    configuration: 10
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 43.5, y: 17.5}
+    worldMapPosition: {x: 43, y: 18}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 43.5, y: 16.5}
+    worldMapPosition: {x: 44, y: 17}
+    yRotation: 0
+    yRotationOffset: 0
     configuration: 3
     tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 42.5, y: 16.5}
+    worldMapPosition: {x: 43, y: 17}
+    yRotation: 90
+    yRotationOffset: 0
+    configuration: 2
+    tileType: 1
     location:
       north: 0
       west: 0
@@ -38600,6 +38949,70 @@ MonoBehaviour:
       northEast: 0
       southWest: 0
       southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 46.5, y: 13.5}
+    worldMapPosition: {x: 47, y: 14}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 3
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 47.5, y: 13.5}
+    worldMapPosition: {x: 47, y: 14}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 3
+    tileType: 4
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 48.5, y: 13.5}
+    worldMapPosition: {x: 48, y: 14}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 1
+    tileType: 1
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 45.5, y: 13.5}
+    worldMapPosition: {x: 46, y: 14}
+    yRotation: 90
+    yRotationOffset: 0
+    configuration: 2
+    tileType: 1
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
   allPositions: []
 --- !u!114 &-7612601455924507717
 MonoBehaviour:
@@ -38741,13 +39154,13 @@ MonoBehaviour:
   m_Name: (Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 2528133945
+    state: 2180409594
   isEnabled: 1
   layerName: Build SH_1_0
   guid: 04a8f0ef-b52a-4497-b9e2-10c51ee0d4ef
   assignedBlueprintLayerGuid: b2d6a5d8-9d0f-4508-8727-8597970c8277
   currentBlueprintLayer: {fileID: 6392022126524296286}
-  foldoutState: 1
+  foldoutState: 0
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: 04a8f0ef-b52a-4497-b9e2-10c51ee0d4ef
@@ -43118,13 +43531,13 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 2528133945
+    state: 2180409594
   isEnabled: 1
   layerName: Build SH_1_1
   guid: 714332d4-ddfc-452b-91c2-504bc13c26b5
   assignedBlueprintLayerGuid: 0624ce46-11cc-473b-989e-7bd1484a97b5
   currentBlueprintLayer: {fileID: 2329112791734016304}
-  foldoutState: 1
+  foldoutState: 0
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: 714332d4-ddfc-452b-91c2-504bc13c26b5
@@ -47433,7 +47846,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3651379913
+    state: 1392261507
   guid: 78e4b8d3-db01-4917-a852-3f67b334116f
   layerName: Water
   icon: {fileID: 0}
@@ -60673,14 +61086,14 @@ MonoBehaviour:
   clusterCellSize: 5
   useGlobalRandomSeed: 0
   globalRandomSeed: 1
-  currentRandomSeed: 3080761541
+  currentRandomSeed: 1881590552
   layerChanged: 1
   showGizmos: 0
   showPaintGrid: 0
   gizmoLayer: {fileID: -8097663193631360743}
-  paintLayer: {fileID: 6392022126524296286}
+  paintLayer: {fileID: -9048560326444747118}
   brushSize: 3
-  selectedPaintLayerGuid: b2d6a5d8-9d0f-4508-8727-8597970c8277
+  selectedPaintLayerGuid: 
   tileMapLayers: []
   blueprintLayerFolders:
   - folderName: Root
@@ -60732,7 +61145,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3651379913
+    state: 1392261507
   guid: 0624ce46-11cc-473b-989e-7bd1484a97b5
   layerName: SH_1_1
   icon: {fileID: 0}
@@ -60985,7 +61398,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3651379913
+    state: 1392261507
   guid: 5936ec16-4988-429c-9f83-8d98ac31fe93
   layerName: SH_0_0
   icon: {fileID: 0}
@@ -61676,7 +62089,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3651379913
+    state: 1392261507
   guid: e3e78a1c-5832-4330-a224-2a7d755fc3be
   layerName: SH_1_2
   icon: {fileID: 0}
@@ -62154,7 +62567,7 @@ MonoBehaviour:
   m_Name: (Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3651379913
+    state: 1392261507
   guid: b2d6a5d8-9d0f-4508-8727-8597970c8277
   layerName: SH_1_0
   icon: {fileID: 0}
@@ -62407,13 +62820,13 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 2528133945
+    state: 2180409594
   isEnabled: 1
   layerName: Build SH_1_2
   guid: 2ad2fca9-9349-407a-b20f-8d79ecfdf7d3
   assignedBlueprintLayerGuid: e3e78a1c-5832-4330-a224-2a7d755fc3be
   currentBlueprintLayer: {fileID: 5144891850618815891}
-  foldoutState: 1
+  foldoutState: 0
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: 2ad2fca9-9349-407a-b20f-8d79ecfdf7d3
@@ -70403,13 +70816,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 2528133945
+    state: 2180409594
   isEnabled: 1
   layerName: Build SH_0_0
   guid: dbdd11d5-35f3-4251-9389-455b0bdd33af
   assignedBlueprintLayerGuid: 5936ec16-4988-429c-9f83-8d98ac31fe93
   currentBlueprintLayer: {fileID: 4647114350144498822}
-  foldoutState: 1
+  foldoutState: 0
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: dbdd11d5-35f3-4251-9389-455b0bdd33af
@@ -76683,7 +77096,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 2528133945
+    state: 2180409594
   isEnabled: 1
   layerName: Build Water
   guid: f8f48311-d058-47b7-bffa-f8ef335c4e6c
