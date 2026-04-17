@@ -5,6 +5,7 @@
 
 ### 项目注意事项
 
+- 始终由launch场景进入，通过procedure加载需要的场景，加载的场景与launch场景同时存在。
 - 自动生成代码（文件开头有注释说明，尤其 DataTable 生成的 cs和UI生成的Variables）不手改，优先在非生成层做适配。
 - 核心战斗数值使用 Fix64，float 仅用于 Unity API/UI 边界。
 - 事件使用GF.EventArgs。

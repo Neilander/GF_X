@@ -20,11 +20,18 @@ public enum DamageTextType
     /// <summary>
     /// 治疗（绿色 +N）
     /// </summary>
-    Heal
+    Heal,
+
+    /// <summary>
+    /// 金钱收益（金色 +N）
+    /// </summary>
+    Coin
 }
 
 public static class EntityExtension
 {
+    private const float PopTextSpeedMultiplier = 0.5f;
+
     /// <summary>
     /// 创建粒子特效
     /// </summary>
@@ -80,6 +87,8 @@ public static class EntityExtension
         var effectParms = EntityParams.Create(startWorldPos, Vector3.zero, Vector3.one);
         effectParms.OnShowCallback = (EntityLogic entity) =>
         {
+            TryAlignPopTextToCamera(entity.transform);
+
             var textMesh = entity.GetComponent<TextMeshPro>();
             textMesh.fontSize = fontSize;
             textMesh.text = text;
@@ -87,10 +96,12 @@ public static class EntityExtension
             txtCol.a = 1;
             textMesh.color = txtCol;
             //entity.transform.localScale = Vector3.zero;
+            float scaledDuration = Mathf.Max(0.05f, duration * PopTextSpeedMultiplier);
+            float fadeDuration = Mathf.Max(0.05f, 0.25f * PopTextSpeedMultiplier);
             var seqAct = DOTween.Sequence();
-            seqAct.Join(entity.transform.DOScale(1, duration));
-            seqAct.Join(entity.transform.DOMove(ePos, duration));
-            seqAct.Append(textMesh.DOFade(0, 0.25f));
+            seqAct.Join(entity.transform.DOScale(1, scaledDuration));
+            seqAct.Join(entity.transform.DOMove(ePos, scaledDuration));
+            seqAct.Append(textMesh.DOFade(0, fadeDuration));
             //seqAct.AppendInterval(0.2f);
 
             seqAct.SetUpdate(true);
@@ -122,6 +133,8 @@ public static class EntityExtension
             {
                 Log.Info($"ShowPopText callback: entity={entity?.Entity?.Id}, content={content}, fontSize={fontSize}");
 
+                TryAlignPopTextToCamera(entity.transform);
+
                 TextMeshPro textMesh = entity.GetComponent<TextMeshPro>();
                 if (textMesh == null)
                 {
@@ -132,7 +145,7 @@ public static class EntityExtension
                 textMesh.text = content;
                 textMesh.fontSize = fontSize;
                 textMesh.alignment = TextAlignmentOptions.Center;
-                textMesh.color = textType == DamageTextType.Normal ? new Color(139f / 255f, 0f, 0f) : Color.green;
+                textMesh.color = ResolveDamageTextColor(textType);
                 textMesh.enableWordWrapping = false;
                 textMesh.overflowMode = TextOverflowModes.Overflow;
                 textMesh.fontStyle = FontStyles.Bold; // 设置粗体，更明显
@@ -156,10 +169,12 @@ public static class EntityExtension
                 Log.Info($"TextMeshPro settings: text={textMesh.text}, fontSize={textMesh.fontSize}, color={textMesh.color}, font={textMesh.font?.name}, material={textMesh.fontMaterial?.name}");
 
                 entity.transform.localScale = Vector3.zero;
+                float scaledDuration = Mathf.Max(0.05f, duration * PopTextSpeedMultiplier);
+                float fadeDuration = Mathf.Max(0.05f, 0.25f * PopTextSpeedMultiplier);
                 var seqAct = DOTween.Sequence();
-                seqAct.Join(entity.transform.DOScale(1, duration));
-                seqAct.Join(entity.transform.DOMove(endPos, duration));
-                seqAct.Append(textMesh.DOFade(0, 0.25f));
+                seqAct.Join(entity.transform.DOScale(1, scaledDuration));
+                seqAct.Join(entity.transform.DOMove(endPos, scaledDuration));
+                seqAct.Append(textMesh.DOFade(0, fadeDuration));
                 seqAct.SetUpdate(true);
                 seqAct.onComplete = () =>
                 {
@@ -170,6 +185,31 @@ public static class EntityExtension
                 Log.Info($"ShowPopText setup complete: textMesh={textMesh != null}, text={textMesh?.text}, color={textMesh?.color}");
             };
         eCom.ShowEntity<SampleEntity>("Effect/MoneyText", Const.EntityGroup.Effect, eParams);
+    }
+
+    private static void TryAlignPopTextToCamera(Transform textTransform)
+    {
+        if (textTransform == null)
+            return;
+
+        Camera cam = Camera.main;
+        if (cam == null)
+            return;
+
+        textTransform.rotation = Quaternion.LookRotation(cam.transform.forward, cam.transform.up);
+    }
+
+    private static Color ResolveDamageTextColor(DamageTextType textType)
+    {
+        switch (textType)
+        {
+            case DamageTextType.Heal:
+                return Color.green;
+            case DamageTextType.Coin:
+                return new Color(1f, 0.84f, 0f);
+            default:
+                return new Color(139f / 255f, 0f, 0f);
+        }
     }
     /// <summary>
     /// 创建Entity
