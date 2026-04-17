@@ -1,4 +1,5 @@
 using GameFramework.Event;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityGameFramework.Runtime;
@@ -15,9 +16,11 @@ public class HealthBarComp : MonoBehaviour
     private const float BuildingMinBarWidth = 170f;
     private const float BuildingMaxBarWidth = 320f;
     private const float CameraBiasDistance = 0.35f;
+    private static readonly Dictionary<int, HealthBarComp> ActiveBars = new Dictionary<int, HealthBarComp>();
 
     [SerializeField] private RectTransform fillRect;
     [SerializeField] private Image fillImage;
+    [SerializeField] private Canvas ownerCanvas;
 
     private int _entityId;
     private Transform _followTarget;
@@ -25,6 +28,7 @@ public class HealthBarComp : MonoBehaviour
     private bool _subscribed;
     private bool _pendingDestroy;
     private bool _isFriendly;
+    private bool _visibleByFog = true;
 
     /// <summary>
     /// 由外部调用初始化。
@@ -39,6 +43,13 @@ public class HealthBarComp : MonoBehaviour
         _entityId = entityId;
         _followTarget = followTarget;
         if (offset.HasValue) _offset = offset.Value;
+        if (ownerCanvas == null)
+            ownerCanvas = GetComponent<Canvas>();
+
+        _visibleByFog = true;
+        if (ownerCanvas != null)
+            ownerCanvas.enabled = true;
+
         _isFriendly = ResolveIsFriendlyFromTarget(followTarget, _isFriendly);
         UpdateFillColor();
 
@@ -102,6 +113,17 @@ public class HealthBarComp : MonoBehaviour
             return;
         }
 
+        if (!_visibleByFog)
+        {
+            if (ownerCanvas != null && ownerCanvas.enabled)
+                ownerCanvas.enabled = false;
+
+            return;
+        }
+
+        if (ownerCanvas != null && !ownerCanvas.enabled)
+            ownerCanvas.enabled = true;
+
         if (_followTarget == null) return;
         Vector3 worldPos = _followTarget.position + _offset;
 
@@ -118,6 +140,9 @@ public class HealthBarComp : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (ActiveBars.TryGetValue(_entityId, out HealthBarComp value) && value == this)
+            ActiveBars.Remove(_entityId);
+
         if (_subscribed)
         {
             try
@@ -211,8 +236,10 @@ public class HealthBarComp : MonoBehaviour
         var comp = go.AddComponent<HealthBarComp>();
         comp.fillRect = fillRt;
         comp.fillImage = fillImg;
+        comp.ownerCanvas = canvas;
         comp._isFriendly = isFriendly;
         comp.Init(entityId, followTarget, curHp, maxHp, offset);
+        ActiveBars[entityId] = comp;
 
         return comp;
     }
@@ -220,6 +247,9 @@ public class HealthBarComp : MonoBehaviour
     private void Remove()
     {
         _pendingDestroy = false;
+
+        if (ActiveBars.TryGetValue(_entityId, out HealthBarComp value) && value == this)
+            ActiveBars.Remove(_entityId);
 
         // 先取消订阅再销毁，避免 OnDestroy 时 GF.Event 已清理。
         if (_subscribed)
@@ -242,6 +272,12 @@ public class HealthBarComp : MonoBehaviour
 
     public static void Remove(int entityId)
     {
+        if (ActiveBars.TryGetValue(entityId, out HealthBarComp cached) && cached != null)
+        {
+            cached.Remove();
+            return;
+        }
+
         var healthBar = GameObject.Find($"HealthBar_{entityId}");
         if (healthBar != null)
         {
@@ -255,6 +291,37 @@ public class HealthBarComp : MonoBehaviour
                 Object.Destroy(healthBar);
             }
         }
+    }
+
+    public static void SetFogVisible(int entityId, bool visible)
+    {
+        if (ActiveBars.TryGetValue(entityId, out HealthBarComp cached) && cached != null)
+        {
+            cached.SetFogVisibleInternal(visible);
+            return;
+        }
+
+        GameObject healthBar = GameObject.Find($"HealthBar_{entityId}");
+        if (healthBar == null)
+            return;
+
+        HealthBarComp comp = healthBar.GetComponent<HealthBarComp>();
+        if (comp == null)
+            return;
+
+        ActiveBars[entityId] = comp;
+        comp.SetFogVisibleInternal(visible);
+    }
+
+    private void SetFogVisibleInternal(bool visible)
+    {
+        _visibleByFog = visible;
+
+        if (ownerCanvas == null)
+            ownerCanvas = GetComponent<Canvas>();
+
+        if (ownerCanvas != null)
+            ownerCanvas.enabled = visible;
     }
 
     private void UpdateFillColor()

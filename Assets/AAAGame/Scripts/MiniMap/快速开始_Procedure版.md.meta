@@ -1,6 +1,12 @@
 fileFormatVersion: 2
+<<<<<<<< HEAD:Assets/AAAGame/Scripts/MiniMap/快速开始_Procedure版.md.meta
 guid: f7890123456789012345f012345678901
 TextScriptImporter:
+========
+guid: 058f5ad0bf36b8640b7c2efaa81245ec
+folderAsset: yes
+DefaultImporter:
+>>>>>>>> origin/FOG_System:Assets/AAAGame/Scripts/MiniMap/FOG3.meta
   externalObjects: {}
   userData: 
   assetBundleName: 

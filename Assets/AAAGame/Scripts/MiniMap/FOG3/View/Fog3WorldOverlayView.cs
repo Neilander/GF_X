@@ -12,19 +12,73 @@ namespace AAAGame.MiniMap.FOG3
         private Material fogMaterial;
         private Material outsideMaterial;
         private Fog3ViewSettings settings;
+        private LayerMask heightSampleMask;
         private float overlayHeight;
+        private Fog3TerrainInfo terrainInfo;
+        private MeshFilter fogMeshFilter;
+        private Bounds fogMeshBounds;
+        private bool fogMeshUsesCameraProjectionGrid;
+        private readonly System.Collections.Generic.List<OutsideMaskQuad> outsideMaskQuads = new System.Collections.Generic.List<OutsideMaskQuad>();
 
-        public void Build(Fog3TerrainInfo terrainInfo, Fog3ViewSettings viewSettings, float resolvedOverlayHeight)
+        private struct OutsideMaskQuad
         {
+            public MeshFilter MeshFilter;
+            public Bounds Bounds;
+            public float Y;
+        }
+
+        public void Build(Fog3TerrainInfo terrainInfo, Fog3ViewSettings viewSettings, float resolvedOverlayHeight, LayerMask resolvedHeightSampleMask, Vector3 worldOffset)
+        {
+            this.terrainInfo = terrainInfo;
             settings = viewSettings ?? new Fog3ViewSettings();
+            heightSampleMask = resolvedHeightSampleMask;
             overlayHeight = Mathf.Max(0f, resolvedOverlayHeight);
-            transform.SetPositionAndRotation(terrainInfo.Origin, Quaternion.identity);
+            SetWorldOffset(terrainInfo, worldOffset);
+            transform.rotation = Quaternion.identity;
             transform.localScale = Vector3.one;
 
             ClearChildren();
+            ReleaseRuntimeResources();
             CreateTexture(terrainInfo.Width, terrainInfo.Height);
             CreateFogPlane(terrainInfo);
             CreateOutsideMask(terrainInfo);
+        }
+
+        public void SetWorldOffset(Fog3TerrainInfo terrainInfo, Vector3 worldOffset)
+        {
+            if (terrainInfo == null)
+                return;
+
+            transform.position = terrainInfo.Origin + worldOffset;
+        }
+
+        public bool RefreshCameraProjection()
+        {
+            if (!ShouldProjectCloudLayerToCamera() || terrainInfo == null)
+                return false;
+
+            bool refreshed = false;
+            if (fogMeshFilter != null && fogMeshFilter.sharedMesh != null)
+            {
+                if (fogMeshUsesCameraProjectionGrid)
+                    UpdateCameraProjectedCloudMesh(fogMeshFilter.sharedMesh, terrainInfo);
+                else
+                    UpdateQuadMesh(fogMeshFilter.sharedMesh, fogMeshBounds, overlayHeight);
+
+                refreshed = true;
+            }
+
+            for (int i = 0; i < outsideMaskQuads.Count; i++)
+            {
+                OutsideMaskQuad quad = outsideMaskQuads[i];
+                if (quad.MeshFilter == null || quad.MeshFilter.sharedMesh == null)
+                    continue;
+
+                UpdateQuadMesh(quad.MeshFilter.sharedMesh, quad.Bounds, quad.Y);
+                refreshed = true;
+            }
+
+            return refreshed;
         }
 
         public void Render(Fog3MapData mapData)
@@ -79,10 +133,17 @@ namespace AAAGame.MiniMap.FOG3
 
             MeshFilter meshFilter = plane.AddComponent<MeshFilter>();
             MeshRenderer meshRenderer = plane.AddComponent<MeshRenderer>();
-            Bounds localBounds = CreateLocalTerrainBounds(terrainInfo);
-            meshFilter.sharedMesh = CreateQuadMesh(localBounds, overlayHeight, "FOG3_WorldOverlayMesh");
+            fogMeshFilter = meshFilter;
+            fogMeshBounds = CreateLocalTerrainBounds(terrainInfo);
+            fogMeshUsesCameraProjectionGrid = false;
+            if (settings.SurfaceMode == Fog3OverlaySurfaceMode.TerrainConforming)
+                meshFilter.sharedMesh = CreateConformingTerrainMesh(terrainInfo, "FOG3_WorldOverlayMesh");
+            else if (fogMeshUsesCameraProjectionGrid)
+                meshFilter.sharedMesh = CreateCameraProjectedCloudMesh(terrainInfo, "FOG3_WorldOverlayMesh");
+            else
+                meshFilter.sharedMesh = CreateQuadMesh(fogMeshBounds, overlayHeight, "FOG3_WorldOverlayMesh");
 
-            fogMaterial = CreateTransparentMaterial("FOG3_WorldOverlayMaterial", Color.white);
+            fogMaterial = CreateTransparentMaterial("FOG3_WorldOverlayMaterial", Color.white, 100);
             SetMainTexture(fogMaterial, fogTexture);
             meshRenderer.sharedMaterial = fogMaterial;
             meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
@@ -101,18 +162,178 @@ namespace AAAGame.MiniMap.FOG3
             float minZ = bounds.min.z;
             float maxZ = bounds.max.z;
             float y = overlayHeight + 0.01f;
+            float innerOverlap = Mathf.Max(0f, settings.OutsideMaskInnerOverlap);
 
-            outsideMaterial = CreateTransparentMaterial("FOG3_OutsideMaskMaterial", settings.OutsideColor);
-            CreateOutsideQuad("FOG3_Outside_North", new Vector3(minX - padding, 0f, maxZ), new Vector3(maxX + padding, 0f, maxZ + padding), y);
-            CreateOutsideQuad("FOG3_Outside_South", new Vector3(minX - padding, 0f, minZ - padding), new Vector3(maxX + padding, 0f, minZ), y);
-            CreateOutsideQuad("FOG3_Outside_West", new Vector3(minX - padding, 0f, minZ), new Vector3(minX, 0f, maxZ), y);
-            CreateOutsideQuad("FOG3_Outside_East", new Vector3(maxX, 0f, minZ), new Vector3(maxX + padding, 0f, maxZ), y);
+            outsideMaterial = CreateTransparentMaterial("FOG3_OutsideMaskMaterial", settings.OutsideColor, 150);
+            CreateOutsideQuad("FOG3_Outside_North", new Vector3(minX - padding, 0f, maxZ - innerOverlap), new Vector3(maxX + padding, 0f, maxZ + padding), y);
+            CreateOutsideQuad("FOG3_Outside_South", new Vector3(minX - padding, 0f, minZ - padding), new Vector3(maxX + padding, 0f, minZ + innerOverlap), y);
+            CreateOutsideQuad("FOG3_Outside_West", new Vector3(minX - padding, 0f, minZ - padding), new Vector3(minX + innerOverlap, 0f, maxZ + padding), y);
+            CreateOutsideQuad("FOG3_Outside_East", new Vector3(maxX - innerOverlap, 0f, minZ - padding), new Vector3(maxX + padding, 0f, maxZ + padding), y);
         }
 
         private static Bounds CreateLocalTerrainBounds(Fog3TerrainInfo terrainInfo)
         {
             Vector3 size = new Vector3(terrainInfo.Width * terrainInfo.CellSize, 0f, terrainInfo.Height * terrainInfo.CellSize);
             return new Bounds(size * 0.5f, size);
+        }
+
+        private Mesh CreateConformingTerrainMesh(Fog3TerrainInfo terrainInfo, string meshName)
+        {
+            int vertexWidth = terrainInfo.Width + 1;
+            int vertexHeight = terrainInfo.Height + 1;
+            int vertexCount = vertexWidth * vertexHeight;
+            Vector3[] vertices = new Vector3[vertexCount];
+            Vector2[] uvs = new Vector2[vertexCount];
+
+            for (int z = 0; z < vertexHeight; z++)
+            {
+                for (int x = 0; x < vertexWidth; x++)
+                {
+                    int index = x + z * vertexWidth;
+                    float localX = x * terrainInfo.CellSize;
+                    float localZ = z * terrainInfo.CellSize;
+                    float worldX = terrainInfo.Origin.x + localX;
+                    float worldZ = terrainInfo.Origin.z + localZ;
+                    float worldY = SampleTerrainHeight(terrainInfo, worldX, worldZ);
+                    vertices[index] = new Vector3(localX, worldY - terrainInfo.Origin.y, localZ);
+                    uvs[index] = new Vector2((float)x / terrainInfo.Width, (float)z / terrainInfo.Height);
+                }
+            }
+
+            int[] triangles = new int[terrainInfo.Width * terrainInfo.Height * 6];
+            int triangleIndex = 0;
+            for (int z = 0; z < terrainInfo.Height; z++)
+            {
+                for (int x = 0; x < terrainInfo.Width; x++)
+                {
+                    int bottomLeft = x + z * vertexWidth;
+                    int bottomRight = bottomLeft + 1;
+                    int topLeft = bottomLeft + vertexWidth;
+                    int topRight = topLeft + 1;
+
+                    triangles[triangleIndex++] = bottomLeft;
+                    triangles[triangleIndex++] = topLeft;
+                    triangles[triangleIndex++] = bottomRight;
+                    triangles[triangleIndex++] = topLeft;
+                    triangles[triangleIndex++] = topRight;
+                    triangles[triangleIndex++] = bottomRight;
+                }
+            }
+
+            Mesh mesh = new Mesh { name = meshName };
+            if (vertexCount > 65000)
+                mesh.indexFormat = IndexFormat.UInt32;
+
+            mesh.vertices = vertices;
+            mesh.uv = uvs;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private Mesh CreateCameraProjectedCloudMesh(Fog3TerrainInfo terrainInfo, string meshName)
+        {
+            int vertexWidth = terrainInfo.Width + 1;
+            int vertexHeight = terrainInfo.Height + 1;
+            int vertexCount = vertexWidth * vertexHeight;
+            Vector3[] vertices = new Vector3[vertexCount];
+            Vector2[] uvs = new Vector2[vertexCount];
+
+            FillCameraProjectedCloudVertices(terrainInfo, vertices, uvs);
+
+            int[] triangles = new int[terrainInfo.Width * terrainInfo.Height * 6];
+            int triangleIndex = 0;
+            for (int z = 0; z < terrainInfo.Height; z++)
+            {
+                for (int x = 0; x < terrainInfo.Width; x++)
+                {
+                    int bottomLeft = x + z * vertexWidth;
+                    int bottomRight = bottomLeft + 1;
+                    int topLeft = bottomLeft + vertexWidth;
+                    int topRight = topLeft + 1;
+
+                    triangles[triangleIndex++] = bottomLeft;
+                    triangles[triangleIndex++] = topLeft;
+                    triangles[triangleIndex++] = bottomRight;
+                    triangles[triangleIndex++] = topLeft;
+                    triangles[triangleIndex++] = topRight;
+                    triangles[triangleIndex++] = bottomRight;
+                }
+            }
+
+            Mesh mesh = new Mesh { name = meshName };
+            if (vertexCount > 65000)
+                mesh.indexFormat = IndexFormat.UInt32;
+
+            mesh.vertices = vertices;
+            mesh.uv = uvs;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private void UpdateCameraProjectedCloudMesh(Mesh mesh, Fog3TerrainInfo terrainInfo)
+        {
+            int vertexCount = (terrainInfo.Width + 1) * (terrainInfo.Height + 1);
+            Vector3[] vertices = mesh.vertices;
+            Vector2[] uvs = mesh.uv;
+            if (vertices == null || vertices.Length != vertexCount)
+                vertices = new Vector3[vertexCount];
+            if (uvs == null || uvs.Length != vertexCount)
+                uvs = new Vector2[vertexCount];
+
+            FillCameraProjectedCloudVertices(terrainInfo, vertices, uvs);
+            mesh.vertices = vertices;
+            mesh.uv = uvs;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+        }
+
+        private void FillCameraProjectedCloudVertices(Fog3TerrainInfo terrainInfo, Vector3[] vertices, Vector2[] uvs)
+        {
+            int vertexWidth = terrainInfo.Width + 1;
+            int vertexHeight = terrainInfo.Height + 1;
+            for (int z = 0; z < vertexHeight; z++)
+            {
+                for (int x = 0; x < vertexWidth; x++)
+                {
+                    int index = x + z * vertexWidth;
+                    float localX = x * terrainInfo.CellSize;
+                    float localZ = z * terrainInfo.CellSize;
+                    float worldX = terrainInfo.Origin.x + localX;
+                    float worldZ = terrainInfo.Origin.z + localZ;
+                    float sourceLocalY = SampleProjectionSourceHeight(terrainInfo, worldX, worldZ) - terrainInfo.Origin.y;
+                    vertices[index] = ProjectLocalPointToCloud(localX, sourceLocalY, overlayHeight, localZ);
+                    uvs[index] = new Vector2((float)x / terrainInfo.Width, (float)z / terrainInfo.Height);
+                }
+            }
+        }
+
+        private float SampleTerrainHeight(Fog3TerrainInfo terrainInfo, float worldX, float worldZ)
+        {
+            float fallbackY = terrainInfo.Origin.y + overlayHeight;
+            float startHeight = Mathf.Max(1f, settings.HeightSampleStartHeight);
+            float maxDistance = Mathf.Max(startHeight + 1f, settings.HeightSampleMaxDistance);
+            Vector3 rayOrigin = new Vector3(worldX, terrainInfo.Origin.y + startHeight, worldZ);
+
+            if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, maxDistance, heightSampleMask, QueryTriggerInteraction.Ignore))
+                return hit.point.y + Mathf.Max(0f, settings.SurfaceOffset);
+
+            return fallbackY;
+        }
+
+        private float SampleProjectionSourceHeight(Fog3TerrainInfo terrainInfo, float worldX, float worldZ)
+        {
+            float startHeight = Mathf.Max(1f, settings.HeightSampleStartHeight);
+            float maxDistance = Mathf.Max(startHeight + 1f, settings.HeightSampleMaxDistance);
+            Vector3 rayOrigin = new Vector3(worldX, terrainInfo.Origin.y + startHeight, worldZ);
+
+            if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, maxDistance, heightSampleMask, QueryTriggerInteraction.Ignore))
+                return hit.point.y;
+
+            return terrainInfo.Origin.y;
         }
 
         private void CreateOutsideQuad(string objectName, Vector3 min, Vector3 max, float y)
@@ -130,20 +351,18 @@ namespace AAAGame.MiniMap.FOG3
             meshRenderer.sharedMaterial = outsideMaterial;
             meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;
+            outsideMaskQuads.Add(new OutsideMaskQuad
+            {
+                MeshFilter = meshFilter,
+                Bounds = bounds,
+                Y = y
+            });
         }
 
         private Mesh CreateQuadMesh(Bounds bounds, float y, string meshName)
         {
-            Vector3 min = bounds.min;
-            Vector3 max = bounds.max;
             Mesh mesh = new Mesh { name = meshName };
-            mesh.vertices = new[]
-            {
-                new Vector3(min.x, y, min.z),
-                new Vector3(max.x, y, min.z),
-                new Vector3(min.x, y, max.z),
-                new Vector3(max.x, y, max.z)
-            };
+            mesh.vertices = CreateQuadVertices(bounds, y);
             mesh.uv = new[]
             {
                 new Vector2(0f, 0f),
@@ -157,7 +376,79 @@ namespace AAAGame.MiniMap.FOG3
             return mesh;
         }
 
-        private Material CreateTransparentMaterial(string materialName, Color color)
+        private void UpdateQuadMesh(Mesh mesh, Bounds bounds, float y)
+        {
+            mesh.vertices = CreateQuadVertices(bounds, y);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+        }
+
+        private Vector3[] CreateQuadVertices(Bounds bounds, float y)
+        {
+            Vector3 min = bounds.min;
+            Vector3 max = bounds.max;
+            return new[]
+            {
+                CreateOverlayVertex(min.x, y, min.z),
+                CreateOverlayVertex(max.x, y, min.z),
+                CreateOverlayVertex(min.x, y, max.z),
+                CreateOverlayVertex(max.x, y, max.z)
+            };
+        }
+
+        private Vector3 CreateOverlayVertex(float localX, float localY, float localZ)
+        {
+            if (!ShouldProjectCloudLayerToCamera())
+                return new Vector3(localX, localY, localZ);
+
+            return ProjectLocalPointToCloud(localX, 0f, localY, localZ);
+        }
+
+        private Vector3 ProjectLocalPointToCloud(float localX, float sourceLocalY, float localCloudY, float localZ)
+        {
+            Vector3 fallback = new Vector3(localX, localCloudY, localZ);
+            Camera referenceCamera = ResolveReferenceCamera();
+            if (referenceCamera == null)
+                return fallback;
+
+            Vector3 sourceWorld = transform.TransformPoint(new Vector3(localX, sourceLocalY, localZ));
+            float targetWorldY = transform.position.y + localCloudY;
+            Vector3 projectedWorld;
+
+            if (referenceCamera.orthographic)
+            {
+                Vector3 direction = referenceCamera.transform.forward;
+                if (Mathf.Abs(direction.y) <= 0.0001f)
+                    return fallback;
+
+                float distance = (targetWorldY - sourceWorld.y) / direction.y;
+                projectedWorld = sourceWorld + direction * distance;
+            }
+            else
+            {
+                Vector3 cameraPosition = referenceCamera.transform.position;
+                Vector3 ray = sourceWorld - cameraPosition;
+                if (Mathf.Abs(ray.y) <= 0.0001f)
+                    return fallback;
+
+                float t = (targetWorldY - cameraPosition.y) / ray.y;
+                if (t <= 0f || float.IsNaN(t) || float.IsInfinity(t))
+                    return fallback;
+
+                projectedWorld = cameraPosition + ray * t;
+            }
+
+            Vector3 projectedLocal = transform.InverseTransformPoint(projectedWorld);
+            if (float.IsNaN(projectedLocal.x) || float.IsNaN(projectedLocal.y) || float.IsNaN(projectedLocal.z))
+                return fallback;
+
+            if (float.IsInfinity(projectedLocal.x) || float.IsInfinity(projectedLocal.y) || float.IsInfinity(projectedLocal.z))
+                return fallback;
+
+            return projectedLocal;
+        }
+
+        private Material CreateTransparentMaterial(string materialName, Color color, int transparentQueueOffset)
         {
             Shader shader = settings.DrawOverSceneGeometry ? Shader.Find(OverlayShaderName) : null;
             if (shader == null)
@@ -171,7 +462,7 @@ namespace AAAGame.MiniMap.FOG3
             {
                 name = materialName,
                 hideFlags = HideFlags.DontSave,
-                renderQueue = (int)RenderQueue.Transparent + 100
+                renderQueue = (int)RenderQueue.Transparent + transparentQueueOffset
             };
 
             SetMaterialColor(material, color);
@@ -226,9 +517,18 @@ namespace AAAGame.MiniMap.FOG3
 
         private void ClearChildren()
         {
+            fogMeshFilter = null;
+            fogMeshBounds = default;
+            fogMeshUsesCameraProjectionGrid = false;
+            outsideMaskQuads.Clear();
+
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 Transform child = transform.GetChild(i);
+                MeshFilter meshFilter = child.GetComponent<MeshFilter>();
+                if (meshFilter != null && meshFilter.sharedMesh != null)
+                    DestroyUnityObjectSafe(meshFilter.sharedMesh);
+
                 if (Application.isPlaying)
                     Destroy(child.gameObject);
                 else
@@ -238,12 +538,71 @@ namespace AAAGame.MiniMap.FOG3
 
         private void OnDestroy()
         {
+            ReleaseRuntimeResources();
+        }
+
+        private void ReleaseRuntimeResources()
+        {
             if (fogTexture != null)
-                Destroy(fogTexture);
+            {
+                DestroyUnityObjectSafe(fogTexture);
+                fogTexture = null;
+            }
+
             if (fogMaterial != null)
-                Destroy(fogMaterial);
+            {
+                DestroyUnityObjectSafe(fogMaterial);
+                fogMaterial = null;
+            }
+
             if (outsideMaterial != null)
-                Destroy(outsideMaterial);
+            {
+                DestroyUnityObjectSafe(outsideMaterial);
+                outsideMaterial = null;
+            }
+        }
+
+        private static void DestroyUnityObjectSafe(Object target)
+        {
+            if (target == null)
+                return;
+
+            if (Application.isPlaying)
+                Destroy(target);
+            else
+                DestroyImmediate(target);
+        }
+
+        private bool ShouldProjectCloudLayerToCamera()
+        {
+            return false;
+        }
+
+        private static Camera ResolveReferenceCamera()
+        {
+            Camera camera = Camera.main;
+            if (IsUsableCamera(camera))
+                return camera;
+
+            Camera[] cameras = Camera.allCameras;
+            Camera bestCamera = null;
+            float bestDepth = float.NegativeInfinity;
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                camera = cameras[i];
+                if (!IsUsableCamera(camera) || camera.depth < bestDepth)
+                    continue;
+
+                bestDepth = camera.depth;
+                bestCamera = camera;
+            }
+
+            return bestCamera;
+        }
+
+        private static bool IsUsableCamera(Camera camera)
+        {
+            return camera != null && camera.isActiveAndEnabled && camera.gameObject.activeInHierarchy;
         }
     }
 }

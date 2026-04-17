@@ -5,8 +5,12 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3RevealerComponent : MonoBehaviour
     {
+        [Header("迷雾可视源")]
+        [Tooltip("该对象在世界场景中的可视半径。运行时修改会立即同步到迷雾系统。")]
         [SerializeField] private float visionRadius = 10f;
+        [Tooltip("开启后，对象启用时自动注册为迷雾可视源。")]
         [SerializeField] private bool autoRegister = true;
+        [Tooltip("是否让该对象的视野受到射线遮挡影响。")]
         [SerializeField] private bool useLineOfSight;
 
         private Fog3Manager manager;

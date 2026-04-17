@@ -1,5 +1,9 @@
 fileFormatVersion: 2
+<<<<<<<< HEAD:Assets/AAAGame/Scripts/MiniMap/Procedure集成完成报告.md.meta
 guid: 890123456789012345890123456789012
+========
+guid: 69c9256b22ea35a4da79e93183e66833
+>>>>>>>> origin/FOG_System:Assets/AAAGame/Scripts/MiniMap/FOG3/FOG3_GF_X_配置说明.md.meta
 TextScriptImporter:
   externalObjects: {}
   userData: 

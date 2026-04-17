@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using UnityGameFramework.Runtime;
 using TMPro;
 using GiantGrey.TileWorldCreator;
+using AAAGame.MiniMap.FOG3;
 
 namespace AAAGame.MiniMap
 {
@@ -37,15 +38,31 @@ namespace AAAGame.MiniMap
         [SerializeField, Range(64, 512)] private int terrainTextureMaxSize = 256;
         [SerializeField] private string groundLayerKeyword = "Plane";
         [SerializeField] private string waterLayerKeyword = "Water";
-        [SerializeField] private Color groundLayerColor = new Color(0.28f, 0.28f, 0.28f, 1f);
-        [SerializeField] private Color waterLayerColor = new Color(0.08f, 0.2f, 0.35f, 1f);
+        [SerializeField] private Color groundLayerColor = new Color(0.42f, 0.45f, 0.33f, 1f);
+        [SerializeField] private Color waterLayerColor = new Color(0.14f, 0.36f, 0.52f, 1f);
+
+        [Header("小地图迷雾同步")]
+        [SerializeField] private bool showMinimapFogSync = true;
+        [SerializeField] private float fogOverlayRefreshInterval = 0.08f;
+        [SerializeField] private Color minimapHiddenFogColor = new Color(0f, 0f, 0f, 0.98f);
+        [SerializeField] private Color minimapExploredFogColor = new Color(0f, 0f, 0f, 0.25f);
+        [SerializeField] private Color minimapOutsideFogColor = new Color(0f, 0f, 0f, 1f);
 
         private MinimapManager minimapManager;
         private Dictionary<int, RectTransform> unitVisuals = new Dictionary<int, RectTransform>();
         private Dictionary<string, GameObject> buildingIconPrefabs = new Dictionary<string, GameObject>();
         private HashSet<int> currentUnitIds = new HashSet<int>();
+        private HashSet<int> snapshotUnitIds = new HashSet<int>();
+        private HashSet<int> knownBuildingUnitIds = new HashSet<int>();
         private RawImage terrainMapImage;
         private Texture2D terrainMapTexture;
+        private RawImage fogMapImage;
+        private Texture2D fogMapTexture;
+        private Color32[] fogMapPixels;
+        private Fog3Manager fog3Manager;
+        private float fogOverlayRefreshTimer;
+        private bool fogSyncReadyLogged;
+        private bool fogSyncMissingLogged;
         private int terrainMapLevelEntityId;
         private bool cameraFrameStyleApplied;
         private TileWorldCreatorManager terrainMapTileWorldCreatorManager;
@@ -85,6 +102,7 @@ namespace AAAGame.MiniMap
             }
 
             TryBuildTerrainMap(true);
+            RefreshMinimapFogOverlay(true, 0f);
             UpdateScaleText();
             Log.Info("[MinimapUI] MinimapUI initialized");
         }
@@ -114,12 +132,25 @@ namespace AAAGame.MiniMap
                 if (visual != null) Destroy(visual.gameObject);
             }
             unitVisuals.Clear();
+            knownBuildingUnitIds.Clear();
+            currentUnitIds.Clear();
+            snapshotUnitIds.Clear();
 
             if (terrainMapTexture != null)
             {
                 Destroy(terrainMapTexture);
                 terrainMapTexture = null;
             }
+
+            if (fogMapTexture != null)
+            {
+                Destroy(fogMapTexture);
+                fogMapTexture = null;
+            }
+            fogMapPixels = null;
+            fogOverlayRefreshTimer = 0f;
+            fogSyncReadyLogged = false;
+            fogSyncMissingLogged = false;
 
             UnsubscribeTerrainBuildEvent();
             terrainMapLevelEntityId = 0;
@@ -147,6 +178,8 @@ namespace AAAGame.MiniMap
                 TryBuildTerrainMap(false);
                 UpdateScaleText();
             }
+
+            RefreshMinimapFogOverlay(false, realElapseSeconds);
         }
 
         private void HandleUnitsUpdated(List<MinimapUnitData> units)
@@ -160,16 +193,50 @@ namespace AAAGame.MiniMap
             }
 
             currentUnitIds.Clear();
+            snapshotUnitIds.Clear();
+
+            Fog3MapData fogMapData = GetFogMapData();
+            bool hasFogMap = showMinimapFogSync && fogMapData != null;
 
             foreach (var unit in units)
             {
-                if (!unit.IsVisible) continue;
-                currentUnitIds.Add(unit.UnitId);
+                snapshotUnitIds.Add(unit.UnitId);
 
-                if (unitVisuals.ContainsKey(unit.UnitId))
-                    UpdateUnitVisual(unit);
-                else
-                    CreateUnitVisual(unit);
+                if (!unit.IsVisible)
+                {
+                    RemoveUnitVisual(unit.UnitId);
+                    continue;
+                }
+
+                Fog3CellState fogCellState = hasFogMap
+                    ? ResolveFogCellState(fogMapData, unit.WorldPosition)
+                    : Fog3CellState.Visible;
+
+                if (fogCellState == Fog3CellState.Visible)
+                {
+                    currentUnitIds.Add(unit.UnitId);
+                    if (unit.UnitType == MinimapUnitType.Building)
+                        knownBuildingUnitIds.Add(unit.UnitId);
+
+                    if (unitVisuals.ContainsKey(unit.UnitId))
+                        UpdateUnitVisual(unit);
+                    else
+                        CreateUnitVisual(unit);
+
+                    continue;
+                }
+
+                // 已探索区域：建筑保留最后一次可见信息，不更新；单位不显示。
+                if (fogCellState == Fog3CellState.Explored
+                    && unit.UnitType == MinimapUnitType.Building
+                    && knownBuildingUnitIds.Contains(unit.UnitId)
+                    && unitVisuals.ContainsKey(unit.UnitId))
+                {
+                    currentUnitIds.Add(unit.UnitId);
+                    continue;
+                }
+
+                RemoveUnitVisual(unit.UnitId);
             }
 
             List<int> toRemove = new List<int>();
@@ -178,6 +245,27 @@ namespace AAAGame.MiniMap
                 if (!currentUnitIds.Contains(id)) toRemove.Add(id);
             }
             foreach (var id in toRemove) RemoveUnitVisual(id);
+
+            if (knownBuildingUnitIds.Count > 0)
+            {
+                List<int> staleBuildingIds = null;
+                foreach (int buildingId in knownBuildingUnitIds)
+                {
+                    if (snapshotUnitIds.Contains(buildingId))
+                        continue;
+
+                    staleBuildingIds ??= new List<int>();
+                    staleBuildingIds.Add(buildingId);
+                }
+
+                if (staleBuildingIds != null)
+                {
+                    for (int i = 0; i < staleBuildingIds.Count; i++)
+                        knownBuildingUnitIds.Remove(staleBuildingIds[i]);
+                }
+            }
+
+            RefreshMinimapFogOverlay(false, 0f);
         }
 
         private void CreateUnitVisual(MinimapUnitData unit)
@@ -244,6 +332,172 @@ namespace AAAGame.MiniMap
             if (!unitVisuals.ContainsKey(unitId)) return;
             if (unitVisuals[unitId] != null) Destroy(unitVisuals[unitId].gameObject);
             unitVisuals.Remove(unitId);
+        }
+
+        private Fog3MapData GetFogMapData()
+        {
+            if (!showMinimapFogSync)
+                return null;
+
+            if (fog3Manager == null)
+                fog3Manager = Fog3Manager.Instance != null ? Fog3Manager.Instance : GameEntry.GetComponent<Fog3Manager>();
+
+            Fog3MapData fogMapData = fog3Manager != null ? fog3Manager.MapData : null;
+            if (fogMapData != null)
+            {
+                if (!fogSyncReadyLogged)
+                {
+                    fogSyncReadyLogged = true;
+                    fogSyncMissingLogged = false;
+                    Log.Info("[MinimapUI] FOG3 minimap sync enabled.");
+                }
+            }
+            else if (!fogSyncMissingLogged)
+            {
+                fogSyncMissingLogged = true;
+                fogSyncReadyLogged = false;
+                Log.Warning("[MinimapUI] FOG3 map data not ready, minimap fog sync is waiting.");
+            }
+
+            return fogMapData;
+        }
+
+        private static Fog3CellState ResolveFogCellState(Fog3MapData fogMapData, Vector3 worldPosition)
+        {
+            if (fogMapData == null)
+                return Fog3CellState.Visible;
+
+            if (!fogMapData.WorldToGrid(worldPosition, out int gridX, out int gridY))
+                return Fog3CellState.Outside;
+
+            return fogMapData.GetCellState(gridX, gridY);
+        }
+
+        private void RefreshMinimapFogOverlay(bool force, float deltaTime)
+        {
+            if (!showMinimapFogSync || minimapContainer == null)
+            {
+                DisableFogOverlay();
+                return;
+            }
+
+            if (!force)
+            {
+                fogOverlayRefreshTimer += Mathf.Max(0f, deltaTime);
+                if (fogOverlayRefreshTimer < Mathf.Max(0.02f, fogOverlayRefreshInterval))
+                    return;
+            }
+
+            fogOverlayRefreshTimer = 0f;
+
+            Fog3MapData fogMapData = GetFogMapData();
+            if (fogMapData == null)
+            {
+                DisableFogOverlay();
+                return;
+            }
+
+            EnsureFogMapImage();
+            EnsureFogMapTexture(fogMapData.Width, fogMapData.Height);
+
+            Color32 hiddenColor = minimapHiddenFogColor;
+            Color32 exploredColor = minimapExploredFogColor;
+            Color32 outsideColor = minimapOutsideFogColor;
+            Color32 visibleColor = new Color32(0, 0, 0, 0);
+
+            int width = fogMapData.Width;
+            int height = fogMapData.Height;
+            for (int y = 0; y < height; y++)
+            {
+                int rowIndex = y * width;
+                for (int x = 0; x < width; x++)
+                {
+                    Fog3CellState cellState = fogMapData.GetCellState(x, y);
+                    switch (cellState)
+                    {
+                        case Fog3CellState.Visible:
+                            fogMapPixels[rowIndex + x] = visibleColor;
+                            break;
+                        case Fog3CellState.Explored:
+                            fogMapPixels[rowIndex + x] = exploredColor;
+                            break;
+                        case Fog3CellState.Outside:
+                            fogMapPixels[rowIndex + x] = outsideColor;
+                            break;
+                        default:
+                            fogMapPixels[rowIndex + x] = hiddenColor;
+                            break;
+                    }
+                }
+            }
+
+            fogMapTexture.SetPixels32(fogMapPixels);
+            fogMapTexture.Apply(false, false);
+            fogMapImage.texture = fogMapTexture;
+            fogMapImage.color = Color.white;
+            fogMapImage.enabled = true;
+            UpdateOverlaySiblingOrder();
+        }
+
+        private void EnsureFogMapImage()
+        {
+            if (fogMapImage == null)
+            {
+                Transform fogMapTransform = minimapContainer.Find("FogMap");
+                if (fogMapTransform != null)
+                    fogMapImage = fogMapTransform.GetComponent<RawImage>();
+
+                if (fogMapImage == null)
+                {
+                    GameObject fogMapObject = new GameObject("FogMap", typeof(RectTransform), typeof(RawImage));
+                    fogMapObject.transform.SetParent(minimapContainer, false);
+                    fogMapImage = fogMapObject.GetComponent<RawImage>();
+                }
+            }
+
+            RectTransform rt = fogMapImage.rectTransform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = Vector2.zero;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            fogMapImage.raycastTarget = false;
+            UpdateOverlaySiblingOrder();
+        }
+
+        private void EnsureFogMapTexture(int width, int height)
+        {
+            if (fogMapTexture != null && fogMapTexture.width == width && fogMapTexture.height == height && fogMapPixels != null)
+                return;
+
+            if (fogMapTexture != null)
+                Destroy(fogMapTexture);
+
+            fogMapTexture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            fogMapTexture.filterMode = FilterMode.Point;
+            fogMapTexture.wrapMode = TextureWrapMode.Clamp;
+            fogMapPixels = new Color32[width * height];
+        }
+
+        private void DisableFogOverlay()
+        {
+            if (fogMapImage != null)
+                fogMapImage.enabled = false;
+        }
+
+        private void UpdateOverlaySiblingOrder()
+        {
+            if (minimapContainer == null)
+                return;
+
+            if (terrainMapImage != null)
+                terrainMapImage.rectTransform.SetSiblingIndex(0);
+
+            if (fogMapImage != null)
+            {
+                int fogSiblingIndex = minimapContainer.childCount > 1 ? 1 : 0;
+                fogMapImage.rectTransform.SetSiblingIndex(fogSiblingIndex);
+            }
         }
 
         private Vector2 WorldToMinimapPosition(Vector3 worldPos)
@@ -600,7 +854,7 @@ namespace AAAGame.MiniMap
             terrainMapImage.texture = terrainMapTexture;
             terrainMapImage.color = Color.white;
             terrainMapImage.raycastTarget = false;
-            terrainMapImage.rectTransform.SetAsFirstSibling();
+            UpdateOverlaySiblingOrder();
 
             bool expectsGroundLayer = HasBlueprintLayerMatch(tileWorldCreatorManager.configuration, groundLayerKeyword);
             bool expectsWaterLayer = HasBlueprintLayerMatch(tileWorldCreatorManager.configuration, waterLayerKeyword);
@@ -635,6 +889,7 @@ namespace AAAGame.MiniMap
             rt.anchoredPosition = Vector2.zero;
             rt.sizeDelta = Vector2.zero;
             rt.pivot = new Vector2(0.5f, 0.5f);
+            UpdateOverlaySiblingOrder();
         }
 
         private HashSet<Vector2> CollectBlueprintLayerCells(Configuration configuration, string layerKeyword)

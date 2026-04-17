@@ -1,6 +1,12 @@
 fileFormatVersion: 2
+<<<<<<<< HEAD:Assets/AAAGame/Scripts/系统集成总览_Procedure版.md.meta
 guid: 901234567890123456901234567890123
 TextScriptImporter:
+========
+guid: c8a0393519fce2b41b416f6e97d31b7c
+folderAsset: yes
+DefaultImporter:
+>>>>>>>> origin/FOG_System:Assets/AAAGame/Scripts/MiniMap/FOG3/Component.meta
   externalObjects: {}
   userData: 
   assetBundleName: 
