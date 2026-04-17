@@ -62,15 +62,26 @@ public partial class SoldierEntity
 
         Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
         Fix64 delta = maxHealth - HealthValue;
-        if (delta <= Fix64.Zero)
+        if (delta > Fix64.Zero)
+        {
+            CreaturePropertyManager.ModifyCurrentProperty(
+                CreatureCurrentProperty.HealthCurrent,
+                PropertyIrreversibleAdditiveModifier.Create(delta),
+                true);
+
+            GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
+        }
+
+        EnsureHealthBarVisible(maxHealth);
+    }
+
+    private void EnsureHealthBarVisible(Fix64 maxHealth)
+    {
+        if (GameObject.Find($"HealthBar_{Id}") != null)
             return;
 
-        CreaturePropertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(delta),
-            true);
-
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
+        bool isFriendly = Side == SideType.PlayerSide;
+        HealthBarComp.Create(Id, transform, (float)HealthValue, (float)maxHealth, isFriendly);
     }
 
     private void EnterGhostState()

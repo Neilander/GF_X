@@ -10,34 +10,63 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3Manager : GameFrameworkComponent
     {
-        [Header("Terrain")]
+        private const string HeroVisionRadiusConfigKey = "HeroVisionRadius";
+        private const string UnitVisionRadiusConfigKey = "UnitVisionRadius";
+        private const string BuildingVisionRadiusConfigKey = "BuildingVisionRadius";
+
+        [Header("地形检测")]
+        [Tooltip("地形检测和可行走区域配置。")]
         [SerializeField] private Fog3TerrainSettings terrainSettings = new Fog3TerrainSettings();
 
-        [Header("Vision")]
-        [SerializeField] private float currentPlayerVisionRadius = 14f;
-        [SerializeField] private float playerSideUnitVisionRadius = 10f;
-        [SerializeField] private float buildingVisionRadius = 12f;
+        [Header("视野参数")]
+        [Tooltip("当前玩家默认可视半径。")]
+        [SerializeField] private float currentPlayerVisionRadius = 28f;
+        [Tooltip("我方普通单位默认可视半径（仅配置缺失时使用，正常读取 GameConfig.UnitVisionRadius）。")]
+        [SerializeField] private float playerSideUnitVisionRadius = 21f;
+        [Tooltip("我方建筑默认可视半径（仅配置缺失时使用，正常读取 GameConfig.BuildingVisionRadius）。")]
+        [SerializeField] private float buildingVisionRadius = 21f;
+        [Tooltip("自动把 GF_X 里的我方实体注册为迷雾可视源。")]
         [SerializeField] private bool autoRegisterPlayerSideEntities = true;
+        [Tooltip("迷雾可视区域刷新间隔，单位秒。")]
         [SerializeField] private float updateInterval = 0.08f;
+        [Tooltip("可视区域边缘柔化宽度。")]
         [SerializeField] private float softEdgeWidth = 2f;
+        [Tooltip("是否启用射线遮挡视野。")]
         [SerializeField] private bool useLineOfSight;
+        [Tooltip("视野射线遮挡检测使用的 Layer。")]
         [SerializeField] private LayerMask lineOfSightOccluderMask;
+        [Tooltip("视野射线起点高度。")]
         [SerializeField] private float lineOfSightEyeHeight = 1f;
 
-        [Header("View")]
+        [Header("显示效果")]
+        [Tooltip("是否创建场景中的世界空间迷雾遮罩。")]
         [SerializeField] private bool createWorldOverlay = true;
+        [Tooltip("迷雾显示、云层、摄像机角度补偿、外侧遮罩等配置。")]
         [SerializeField] private Fog3ViewSettings viewSettings = new Fog3ViewSettings();
 
-        [Header("GF_X Scene Flow")]
+        [Header("GF_X 场景流程")]
+        [Tooltip("从 Launch 切换到玩法场景时保留 FOG3System。")]
         [SerializeField] private bool persistAcrossSceneLoads = true;
+        [Tooltip("是否等待指定玩法场景加载后再检测 TileWorld/GridBased 地形。")]
         [SerializeField] private bool waitForGameplayScene = true;
+        [Tooltip("包含 TileWorld/GridBased 关卡的玩法场景名。")]
         [SerializeField] private string gameplaySceneName = "Game";
+        [Tooltip("玩法场景或关卡实体加载后是否重建迷雾。")]
         [SerializeField] private bool rebuildOnSceneLoaded = true;
-        [SerializeField] private int sceneRebuildFrameDelay = 2;
-        [SerializeField] private float sceneRebuildDelay = 0.25f;
+        [Tooltip("玩法场景可用时立即尝试初始化迷雾，减少先看到完整场景的空窗。")]
+        [SerializeField] private bool fastRebuildOnGameplaySceneAvailable = true;
+        [Tooltip("玩法场景已进入但 TileWorld/GridBased 地形还没生成出来时，重新检测地形的间隔。数值越小，迷雾越快跟上关卡生成。")]
+        [SerializeField] private float terrainRetryInterval = 0.05f;
+        [Tooltip("兜底重建前等待的帧数。立即初始化失败时才主要依赖它。")]
+        [SerializeField] private int sceneRebuildFrameDelay;
+        [Tooltip("兜底重建前等待的真实时间。立即初始化失败时才主要依赖它。")]
+        [SerializeField] private float sceneRebuildDelay;
 
         private readonly Dictionary<int, int> entityRevealers = new Dictionary<int, int>();
         private readonly Dictionary<Transform, int> transformRevealers = new Dictionary<Transform, int>();
+        private readonly Dictionary<int, Fog3EntityVisibilityState> enemyVisibilityStates = new Dictionary<int, Fog3EntityVisibilityState>();
+        private readonly HashSet<int> updatedEnemyVisibilityIds = new HashSet<int>();
+        private readonly List<int> staleEnemyVisibilityIds = new List<int>();
         private Fog3Controller controller;
         private Fog3TerrainInfo currentTerrainInfo;
         private Fog3WorldOverlayView overlayView;
@@ -46,7 +75,13 @@ namespace AAAGame.MiniMap.FOG3
         private bool unitySceneEventsSubscribed;
         private bool isInitialized;
         private float currentOverlayHeight;
+        private float nextInitializeRetryTime;
+        private bool missingTerrainLogged;
         private float updateTimer;
+        private float cloudHeightRefreshTimer;
+        private bool cloudReferenceHeightResolved;
+        private float cloudReferenceWorldY;
+        private Vector3 currentOverlayWorldOffset;
 
         public static Fog3Manager Instance { get; private set; }
         public Fog3Controller Controller => controller;
@@ -74,7 +109,7 @@ namespace AAAGame.MiniMap.FOG3
         {
             TrySubscribeEvents();
             if (CanInitializeForCurrentScene())
-                ScheduleSceneRebuild("FOG3 manager started");
+                TryRebuildOrSchedule("FOG3 manager started");
             else
                 Log.Info($"[FOG3] Waiting for gameplay scene '{gameplaySceneName}' before terrain detection.");
         }
@@ -97,6 +132,7 @@ namespace AAAGame.MiniMap.FOG3
                 sceneRebuildCoroutine = null;
             }
 
+            ResetEnemyVisibilityStates();
             UnsubscribeEvents();
             if (overlayView != null)
                 Destroy(overlayView.gameObject);
@@ -120,10 +156,15 @@ namespace AAAGame.MiniMap.FOG3
 
             if (!isInitialized)
             {
+                if (Time.unscaledTime < nextInitializeRetryTime)
+                    return;
+
                 Initialize();
                 RegisterExistingRevealers();
                 if (!isInitialized || controller == null || controller.MapData == null)
                     return;
+
+                UpdateVisibilityImmediately();
             }
 
             updateTimer += Time.deltaTime;
@@ -132,6 +173,8 @@ namespace AAAGame.MiniMap.FOG3
                 updateTimer = 0f;
                 controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight);
             }
+
+            RefreshCloudOverlayForCameraIfNeeded();
         }
 
         public void Initialize()
@@ -141,6 +184,22 @@ namespace AAAGame.MiniMap.FOG3
                 return;
 
             Fog3TerrainInfo terrainInfo = Fog3TerrainDetector.Detect(terrainSettings);
+            if (terrainInfo == null)
+            {
+                ClearRuntimeState(true);
+                nextInitializeRetryTime = Time.unscaledTime + Mathf.Max(0.02f, terrainRetryInterval);
+
+                if (!missingTerrainLogged)
+                {
+                    missingTerrainLogged = true;
+                    Log.Info("[FOG3] No TileWorldCreatorManager/GridBased terrain found. Fog overlay is disabled for this scene.");
+                }
+
+                return;
+            }
+
+            missingTerrainLogged = false;
+            nextInitializeRetryTime = 0f;
             currentTerrainInfo = terrainInfo;
             controller.VisibilityUpdated -= OnVisibilityUpdated;
             controller.Initialize(terrainInfo);
@@ -162,8 +221,15 @@ namespace AAAGame.MiniMap.FOG3
                 controller.VisibilityUpdated -= OnVisibilityUpdated;
             currentTerrainInfo = null;
             currentOverlayHeight = 0f;
+            cloudHeightRefreshTimer = 0f;
+            cloudReferenceHeightResolved = false;
+            currentOverlayWorldOffset = Vector3.zero;
             Initialize();
+            if (!isInitialized)
+                return;
+
             RegisterExistingRevealers();
+            UpdateVisibilityImmediately();
         }
 
         public int RegisterRevealer(Transform target, float visionRadius, int entityId = 0, bool revealerUsesLineOfSight = false)
@@ -280,6 +346,21 @@ namespace AAAGame.MiniMap.FOG3
             sceneRebuildCoroutine = StartCoroutine(RebuildWhenSceneReady(reason));
         }
 
+        private void TryRebuildOrSchedule(string reason)
+        {
+            if (fastRebuildOnGameplaySceneAvailable && CanInitializeForCurrentScene())
+            {
+                RebuildTerrain();
+                if (isInitialized)
+                {
+                    Log.Info($"[FOG3] Fast rebuilt after scene became ready: {reason}.");
+                    return;
+                }
+            }
+
+            ScheduleSceneRebuild(reason);
+        }
+
         private IEnumerator RebuildWhenSceneReady(string reason)
         {
             int frameDelay = Mathf.Max(0, sceneRebuildFrameDelay);
@@ -294,7 +375,10 @@ namespace AAAGame.MiniMap.FOG3
                 yield break;
 
             RebuildTerrain();
-            Log.Info($"[FOG3] Rebuilt after scene became ready: {reason}.");
+            if (isInitialized)
+                Log.Info($"[FOG3] Rebuilt after scene became ready: {reason}.");
+            else
+                Log.Info($"[FOG3] Scene became ready but no TileWorldCreatorManager/GridBased terrain was found: {reason}.");
         }
 
         private void ClearRuntimeState(bool destroyOverlay)
@@ -302,6 +386,7 @@ namespace AAAGame.MiniMap.FOG3
             isInitialized = false;
             entityRevealers.Clear();
             transformRevealers.Clear();
+            ResetEnemyVisibilityStates();
 
             if (controller != null)
                 controller.VisibilityUpdated -= OnVisibilityUpdated;
@@ -309,6 +394,9 @@ namespace AAAGame.MiniMap.FOG3
             controller = new Fog3Controller();
             currentTerrainInfo = null;
             currentOverlayHeight = 0f;
+            cloudHeightRefreshTimer = 0f;
+            cloudReferenceHeightResolved = false;
+            currentOverlayWorldOffset = Vector3.zero;
 
             if (destroyOverlay && overlayView != null)
             {
@@ -331,21 +419,162 @@ namespace AAAGame.MiniMap.FOG3
             }
 
             currentOverlayHeight = ResolveOverlayHeight(terrainInfo);
-            overlayView.Build(terrainInfo, viewSettings, currentOverlayHeight);
+            currentOverlayWorldOffset = ResolveOverlayWorldOffset(terrainInfo, currentOverlayHeight);
+            overlayView.Build(terrainInfo, viewSettings, currentOverlayHeight, ResolveHeightSampleMask(), currentOverlayWorldOffset);
             overlayView.Render(controller.MapData);
+        }
+
+        private LayerMask ResolveHeightSampleMask()
+        {
+            if (viewSettings.HeightSampleMask.value != 0)
+                return viewSettings.HeightSampleMask;
+
+            if (terrainSettings.GroundMask.value != 0)
+                return terrainSettings.GroundMask;
+
+            return Physics.DefaultRaycastLayers;
+        }
+
+        private Vector3 ResolveOverlayWorldOffset(Fog3TerrainInfo terrainInfo, float overlayLocalHeight)
+        {
+            Vector3 offset = viewSettings.CloudLayerWorldOffset;
+            if (viewSettings.SurfaceMode != Fog3OverlaySurfaceMode.CloudLayer || !viewSettings.UseCameraAngleOffset)
+                return offset;
+
+            if (!TryGetReferenceCamera(out Camera referenceCamera))
+                return offset;
+
+            Vector3 cameraForward = referenceCamera.transform.forward;
+            float verticalDown = -cameraForward.y;
+            if (verticalDown <= 0.0001f)
+                return offset;
+
+            float overlayWorldY = terrainInfo.Origin.y + overlayLocalHeight;
+            float heightDelta = viewSettings.CameraProjectionTargetWorldY - overlayWorldY;
+            if (Mathf.Abs(heightDelta) <= 0.0001f)
+                return offset;
+
+            Vector3 cameraProjectedDirection = new Vector3(cameraForward.x, 0f, cameraForward.z);
+            Vector3 cameraOffset = cameraProjectedDirection * (heightDelta / verticalDown) * viewSettings.CameraAngleOffsetScale;
+            cameraOffset.y = 0f;
+            return offset + cameraOffset;
         }
 
         private float ResolveOverlayHeight(Fog3TerrainInfo terrainInfo)
         {
             float minimumLocalHeight = Mathf.Max(0.01f, viewSettings.OverlayHeight);
+            if (viewSettings.SurfaceMode == Fog3OverlaySurfaceMode.CloudLayer)
+                return ResolveCloudLayerHeight(terrainInfo, minimumLocalHeight);
+
+            if (viewSettings.SurfaceMode == Fog3OverlaySurfaceMode.TerrainConforming)
+                return minimumLocalHeight;
+
             if (viewSettings.DrawOverSceneGeometry || !viewSettings.AutoHeightAboveScene)
                 return minimumLocalHeight;
 
+            return ResolveAutoHeightAboveScene(terrainInfo, minimumLocalHeight);
+        }
+
+        private float ResolveCloudLayerHeight(Fog3TerrainInfo terrainInfo, float minimumLocalHeight)
+        {
+            float terrainWorldY = terrainInfo.Origin.y;
+            float minimumWorldY = terrainWorldY + minimumLocalHeight;
+            float fixedCloudWorldY = ResolveCloudReferenceWorldY(terrainInfo) + minimumLocalHeight;
+            float resolvedWorldY = Mathf.Max(minimumWorldY, fixedCloudWorldY);
+
+            if (!viewSettings.DrawOverSceneGeometry || viewSettings.AutoHeightAboveScene)
+            {
+                float cloudMinimumWorldY = terrainWorldY + Mathf.Max(minimumLocalHeight, viewSettings.CloudLayerMinimumHeight);
+                float sceneMaxWorldY = ResolveSceneMaxWorldY(terrainInfo, cloudMinimumWorldY);
+                resolvedWorldY = Mathf.Max(resolvedWorldY, sceneMaxWorldY + Mathf.Max(0.01f, viewSettings.AutoHeightPadding));
+            }
+
+            if (viewSettings.ClampCloudLayerBelowCamera && TryGetReferenceCamera(out Camera referenceCamera))
+                resolvedWorldY = ClampCloudLayerBelowCamera(resolvedWorldY, minimumWorldY, referenceCamera);
+
+            return resolvedWorldY - terrainInfo.Origin.y;
+        }
+
+        private float ResolveCloudReferenceWorldY(Fog3TerrainInfo terrainInfo)
+        {
+            if (cloudReferenceHeightResolved)
+                return cloudReferenceWorldY;
+
+            cloudReferenceWorldY = SampleCloudReferenceWorldY(terrainInfo);
+            cloudReferenceHeightResolved = true;
+            return cloudReferenceWorldY;
+        }
+
+        private float SampleCloudReferenceWorldY(Fog3TerrainInfo terrainInfo)
+        {
+            const int maxSamplesPerAxis = 16;
+            List<float> samples = new List<float>(maxSamplesPerAxis * maxSamplesPerAxis);
+            int stepX = Mathf.Max(1, Mathf.CeilToInt((float)terrainInfo.Width / maxSamplesPerAxis));
+            int stepY = Mathf.Max(1, Mathf.CeilToInt((float)terrainInfo.Height / maxSamplesPerAxis));
+            LayerMask sampleMask = ResolveHeightSampleMask();
+            float startHeight = Mathf.Max(1f, viewSettings.HeightSampleStartHeight);
+            float maxDistance = Mathf.Max(startHeight + 1f, viewSettings.HeightSampleMaxDistance);
+
+            for (int y = 0; y < terrainInfo.Height; y += stepY)
+            {
+                for (int x = 0; x < terrainInfo.Width; x += stepX)
+                {
+                    if (!terrainInfo.IsWalkable(x, y))
+                        continue;
+
+                    float worldX = terrainInfo.Origin.x + (x + 0.5f) * terrainInfo.CellSize;
+                    float worldZ = terrainInfo.Origin.z + (y + 0.5f) * terrainInfo.CellSize;
+                    if (TrySampleLowestHeight(worldX, worldZ, terrainInfo.Origin.y, startHeight, maxDistance, sampleMask, out float sampledY))
+                        samples.Add(sampledY);
+                }
+            }
+
+            if (samples.Count == 0)
+                return terrainInfo.Origin.y;
+
+            samples.Sort();
+            int medianIndex = Mathf.Clamp(samples.Count / 2, 0, samples.Count - 1);
+            return samples[medianIndex];
+        }
+
+        private static bool TrySampleLowestHeight(float worldX, float worldZ, float originY, float startHeight, float maxDistance, LayerMask sampleMask, out float height)
+        {
+            Vector3 rayOrigin = new Vector3(worldX, originY + startHeight, worldZ);
+            RaycastHit[] hits = Physics.RaycastAll(rayOrigin, Vector3.down, maxDistance, sampleMask, QueryTriggerInteraction.Ignore);
+            height = 0f;
+            if (hits == null || hits.Length == 0)
+                return false;
+
+            height = hits[0].point.y;
+            for (int i = 1; i < hits.Length; i++)
+                height = Mathf.Min(height, hits[i].point.y);
+
+            return true;
+        }
+
+        private float ClampCloudLayerBelowCamera(float desiredWorldY, float minimumWorldY, Camera referenceCamera)
+        {
+            float cameraCeiling = referenceCamera.transform.position.y - Mathf.Max(0.1f, viewSettings.CloudCameraClearance);
+            if (cameraCeiling <= minimumWorldY)
+                return minimumWorldY;
+
+            return Mathf.Min(desiredWorldY, cameraCeiling);
+        }
+
+        private float ResolveAutoHeightAboveScene(Fog3TerrainInfo terrainInfo, float minimumLocalHeight)
+        {
+            float sceneMaxWorldY = ResolveSceneMaxWorldY(terrainInfo, terrainInfo.Origin.y + minimumLocalHeight);
+            float resolvedWorldY = sceneMaxWorldY + Mathf.Max(0.01f, viewSettings.AutoHeightPadding);
+            return Mathf.Max(minimumLocalHeight, resolvedWorldY - terrainInfo.Origin.y);
+        }
+
+        private float ResolveSceneMaxWorldY(Fog3TerrainInfo terrainInfo, float fallbackWorldY)
+        {
             float terrainMinX = terrainInfo.Origin.x;
             float terrainMaxX = terrainInfo.Origin.x + terrainInfo.Width * terrainInfo.CellSize;
             float terrainMinZ = terrainInfo.Origin.z;
             float terrainMaxZ = terrainInfo.Origin.z + terrainInfo.Height * terrainInfo.CellSize;
-            float maxWorldY = terrainInfo.Origin.y + minimumLocalHeight;
+            float maxWorldY = fallbackWorldY;
 
             Renderer[] renderers = UnityEngine.Object.FindObjectsOfType<Renderer>();
             for (int i = 0; i < renderers.Length; i++)
@@ -357,8 +586,17 @@ namespace AAAGame.MiniMap.FOG3
                 maxWorldY = Mathf.Max(maxWorldY, renderer.bounds.max.y);
             }
 
-            float resolvedWorldY = maxWorldY + Mathf.Max(0.01f, viewSettings.AutoHeightPadding);
-            return Mathf.Max(minimumLocalHeight, resolvedWorldY - terrainInfo.Origin.y);
+            Collider[] colliders = UnityEngine.Object.FindObjectsOfType<Collider>();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider collider = colliders[i];
+                if (!CanUseColliderForOverlayHeight(collider, terrainMinX, terrainMaxX, terrainMinZ, terrainMaxZ))
+                    continue;
+
+                maxWorldY = Mathf.Max(maxWorldY, collider.bounds.max.y);
+            }
+
+            return maxWorldY;
         }
 
         private bool CanUseRendererForOverlayHeight(Renderer renderer, float terrainMinX, float terrainMaxX, float terrainMinZ, float terrainMaxZ)
@@ -386,28 +624,131 @@ namespace AAAGame.MiniMap.FOG3
                    && bounds.min.z <= terrainMaxZ;
         }
 
+        private bool CanUseColliderForOverlayHeight(Collider collider, float terrainMinX, float terrainMaxX, float terrainMinZ, float terrainMaxZ)
+        {
+            if (collider == null || collider.isTrigger || !collider.enabled || !collider.gameObject.activeInHierarchy)
+                return false;
+
+            if (overlayView != null && collider.transform.IsChildOf(overlayView.transform))
+                return false;
+
+            Scene scene = collider.gameObject.scene;
+            if (!scene.IsValid() || !scene.isLoaded)
+                return false;
+
+            if (waitForGameplayScene && !IsGameplaySceneName(scene.name))
+                return false;
+
+            Bounds bounds = collider.bounds;
+            return bounds.max.x >= terrainMinX
+                   && bounds.min.x <= terrainMaxX
+                   && bounds.max.z >= terrainMinZ
+                   && bounds.min.z <= terrainMaxZ;
+        }
+
         private void RefreshOverlayHeightIfNeeded()
         {
             if (!createWorldOverlay || currentTerrainInfo == null || overlayView == null || controller?.MapData == null)
                 return;
 
-            if (viewSettings.DrawOverSceneGeometry)
+            if (viewSettings.SurfaceMode != Fog3OverlaySurfaceMode.CloudLayer && viewSettings.DrawOverSceneGeometry)
                 return;
 
             float nextOverlayHeight = ResolveOverlayHeight(currentTerrainInfo);
-            if (nextOverlayHeight <= currentOverlayHeight + 0.05f)
+            Vector3 nextOverlayWorldOffset = ResolveOverlayWorldOffset(currentTerrainInfo, nextOverlayHeight);
+            bool isCloudLayer = viewSettings.SurfaceMode == Fog3OverlaySurfaceMode.CloudLayer;
+            if (isCloudLayer)
+            {
+                bool heightChanged = Mathf.Abs(nextOverlayHeight - currentOverlayHeight) > 0.05f;
+                bool offsetChanged = (nextOverlayWorldOffset - currentOverlayWorldOffset).sqrMagnitude > 0.0001f;
+                if (!heightChanged && !offsetChanged)
+                {
+                    overlayView.RefreshCameraProjection();
+                    return;
+                }
+
+                if (!heightChanged)
+                {
+                    currentOverlayWorldOffset = nextOverlayWorldOffset;
+                    overlayView.SetWorldOffset(currentTerrainInfo, currentOverlayWorldOffset);
+                    return;
+                }
+            }
+            else if (nextOverlayHeight <= currentOverlayHeight + 0.05f)
+            {
                 return;
+            }
 
             currentOverlayHeight = nextOverlayHeight;
-            overlayView.Build(currentTerrainInfo, viewSettings, currentOverlayHeight);
+            currentOverlayWorldOffset = nextOverlayWorldOffset;
+            overlayView.Build(currentTerrainInfo, viewSettings, currentOverlayHeight, ResolveHeightSampleMask(), currentOverlayWorldOffset);
             overlayView.Render(controller.MapData);
-            Log.Info($"[FOG3] Raised overlay height to {currentOverlayHeight:F2} to stay above scene renderers.");
+
+            if (isCloudLayer)
+                Log.Info($"[FOG3] Adjusted cloud overlay height to {currentOverlayHeight:F2} for the active camera.");
+            else
+                Log.Info($"[FOG3] Raised overlay height to {currentOverlayHeight:F2} to stay above scene renderers.");
+        }
+
+        private void RefreshCloudOverlayForCameraIfNeeded()
+        {
+            if (!isInitialized || viewSettings.SurfaceMode != Fog3OverlaySurfaceMode.CloudLayer)
+                return;
+
+            if (!viewSettings.ClampCloudLayerBelowCamera && !viewSettings.UseCameraAngleOffset)
+                return;
+
+            cloudHeightRefreshTimer += Time.deltaTime;
+            float refreshInterval = Mathf.Max(0.02f, viewSettings.CloudHeightRefreshInterval);
+            if (cloudHeightRefreshTimer < refreshInterval)
+                return;
+
+            cloudHeightRefreshTimer = 0f;
+            RefreshOverlayHeightIfNeeded();
+        }
+
+        private static bool TryGetReferenceCamera(out Camera referenceCamera)
+        {
+            referenceCamera = Camera.main;
+            if (IsUsableCamera(referenceCamera))
+                return true;
+
+            Camera[] cameras = Camera.allCameras;
+            float bestDepth = float.NegativeInfinity;
+            referenceCamera = null;
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                Camera camera = cameras[i];
+                if (!IsUsableCamera(camera) || camera.depth < bestDepth)
+                    continue;
+
+                bestDepth = camera.depth;
+                referenceCamera = camera;
+            }
+
+            return referenceCamera != null;
+        }
+
+        private static bool IsUsableCamera(Camera camera)
+        {
+            return camera != null && camera.isActiveAndEnabled && camera.gameObject.activeInHierarchy;
         }
 
         private void OnVisibilityUpdated(Fog3MapData mapData)
         {
             if (overlayView != null)
                 overlayView.Render(mapData);
+
+            UpdateEnemyVisibilityByFog(mapData);
+        }
+
+        private void UpdateVisibilityImmediately()
+        {
+            if (!isInitialized || controller == null || controller.MapData == null)
+                return;
+
+            updateTimer = 0f;
+            controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight);
         }
 
         private void TrySubscribeEvents()
@@ -481,20 +822,32 @@ namespace AAAGame.MiniMap.FOG3
             if (isInitialized && !rebuildOnSceneLoaded)
                 return;
 
-            ScheduleSceneRebuild($"{reason}: {sceneName}");
+            TryRebuildOrSchedule($"{reason}: {sceneName}");
         }
 
         private void OnShowEntitySuccess(object sender, GameEventArgs e)
         {
-            if (!autoRegisterPlayerSideEntities || !isInitialized)
-                return;
-
             ShowEntitySuccessEventArgs args = (ShowEntitySuccessEventArgs)e;
             if (args.Entity == null || args.Entity.Logic == null)
                 return;
 
+            if (IsLevelEntityLogic(args.Entity.Logic))
+            {
+                TryRebuildOrSchedule("GF_X level entity loaded");
+                return;
+            }
+
+            if (!autoRegisterPlayerSideEntities || !isInitialized)
+                return;
+
             TryRegisterEntity(args.Entity.Id, args.Entity.Logic);
             RefreshOverlayHeightIfNeeded();
+            UpdateVisibilityImmediately();
+        }
+
+        private static bool IsLevelEntityLogic(EntityLogic logic)
+        {
+            return logic != null && string.Equals(logic.GetType().Name, "LevelEntity", StringComparison.Ordinal);
         }
 
         private void OnHideEntityComplete(object sender, GameEventArgs e)
@@ -502,6 +855,14 @@ namespace AAAGame.MiniMap.FOG3
             HideEntityCompleteEventArgs args = (HideEntityCompleteEventArgs)e;
             if (entityRevealers.TryGetValue(args.EntityId, out int revealerId))
                 UnregisterRevealer(revealerId);
+
+            HealthBarComp.Remove(args.EntityId);
+
+            if (enemyVisibilityStates.TryGetValue(args.EntityId, out Fog3EntityVisibilityState hiddenState))
+            {
+                RestoreEntityVisibilityState(hiddenState);
+                enemyVisibilityStates.Remove(args.EntityId);
+            }
         }
 
         private void RegisterExistingRevealers()
@@ -512,8 +873,14 @@ namespace AAAGame.MiniMap.FOG3
             Fog3RevealerComponent[] manualRevealers = UnityEngine.Object.FindObjectsOfType<Fog3RevealerComponent>();
             for (int i = 0; i < manualRevealers.Length; i++)
             {
-                if (manualRevealers[i] != null && manualRevealers[i].AutoRegister && manualRevealers[i].isActiveAndEnabled)
-                    manualRevealers[i].RegisterRevealer();
+                Fog3RevealerComponent manualRevealer = manualRevealers[i];
+                if (manualRevealer == null || !manualRevealer.AutoRegister || !manualRevealer.isActiveAndEnabled)
+                    continue;
+
+                if (manualRevealer.GetComponentInParent<EntityLogic>() != null)
+                    continue;
+
+                manualRevealer.RegisterRevealer();
             }
 
             if (!autoRegisterPlayerSideEntities)
@@ -538,27 +905,7 @@ namespace AAAGame.MiniMap.FOG3
             if (!TryReadEntityVision(logic, out float radius))
                 return;
 
-            if (TryRegisterEntityComponentRevealer(entityId, logic))
-                return;
-
             RegisterRevealer(logic.transform, radius, entityId, false);
-        }
-
-        private bool TryRegisterEntityComponentRevealer(int entityId, EntityLogic logic)
-        {
-            Fog3RevealerComponent revealer = logic.GetComponent<Fog3RevealerComponent>();
-            if (revealer == null)
-                revealer = logic.GetComponentInChildren<Fog3RevealerComponent>();
-
-            if (revealer == null || !revealer.isActiveAndEnabled)
-                return false;
-
-            int revealerId = revealer.RegisterRevealer(entityId);
-            if (revealerId <= 0)
-                return false;
-
-            entityRevealers[entityId] = revealerId;
-            return true;
         }
 
         private bool TryReadEntityVision(EntityLogic logic, out float radius)
@@ -593,13 +940,212 @@ namespace AAAGame.MiniMap.FOG3
                 return false;
 
             if (logic is BuildingEntity)
-                radius = buildingVisionRadius;
+                return TryReadVisionRadiusFromConfig(BuildingVisionRadiusConfigKey, buildingVisionRadius, out radius);
+
             else if (brainType == BrainType.Player || logic is PlayerEntity)
-                radius = currentPlayerVisionRadius;
+                return TryReadVisionRadiusFromConfig(HeroVisionRadiusConfigKey, currentPlayerVisionRadius, out radius);
+
+            return TryReadVisionRadiusFromConfig(UnitVisionRadiusConfigKey, playerSideUnitVisionRadius, out radius);
+        }
+
+        private static Fog3CellState ResolveEntityFogCellState(Fog3MapData mapData, Vector3 worldPosition)
+        {
+            if (mapData == null)
+                return Fog3CellState.Visible;
+
+            if (!mapData.WorldToGrid(worldPosition, out int gridX, out int gridY))
+                return Fog3CellState.Outside;
+
+            return mapData.GetCellState(gridX, gridY);
+        }
+
+        private void UpdateEnemyVisibilityByFog(Fog3MapData mapData)
+        {
+            if (mapData == null)
+            {
+                ResetEnemyVisibilityStates();
+                return;
+            }
+
+            IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
+            if (allEntities == null || allEntities.Count == 0)
+            {
+                ResetEnemyVisibilityStates();
+                return;
+            }
+
+            updatedEnemyVisibilityIds.Clear();
+
+            for (int i = 0; i < allEntities.Count; i++)
+            {
+                if (allEntities[i] is not MAEntity entity)
+                    continue;
+
+                if (!entity.Alive || entity.Side == SideType.PlayerSide)
+                    continue;
+
+                int entityId = entity.Id;
+                if (!enemyVisibilityStates.TryGetValue(entityId, out Fog3EntityVisibilityState visibilityState) || visibilityState.Entity != entity)
+                {
+                    visibilityState = new Fog3EntityVisibilityState(entity, entity is BuildingEntity);
+                    enemyVisibilityStates[entityId] = visibilityState;
+                }
+
+                updatedEnemyVisibilityIds.Add(entityId);
+
+                Fog3CellState cellState = ResolveEntityFogCellState(mapData, entity.transform.position);
+                ApplyEntityVisibilityState(visibilityState, cellState);
+            }
+
+            if (enemyVisibilityStates.Count == updatedEnemyVisibilityIds.Count)
+                return;
+
+            staleEnemyVisibilityIds.Clear();
+            foreach (KeyValuePair<int, Fog3EntityVisibilityState> pair in enemyVisibilityStates)
+            {
+                if (!updatedEnemyVisibilityIds.Contains(pair.Key))
+                    staleEnemyVisibilityIds.Add(pair.Key);
+            }
+
+            for (int i = 0; i < staleEnemyVisibilityIds.Count; i++)
+            {
+                int staleEntityId = staleEnemyVisibilityIds[i];
+                if (!enemyVisibilityStates.TryGetValue(staleEntityId, out Fog3EntityVisibilityState staleState))
+                    continue;
+
+                RestoreEntityVisibilityState(staleState);
+                enemyVisibilityStates.Remove(staleEntityId);
+            }
+        }
+
+        private static void SetRenderersEnabled(Renderer[] renderers, bool enabled)
+        {
+            if (renderers == null)
+                return;
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer != null && renderer.enabled != enabled)
+                    renderer.enabled = enabled;
+            }
+        }
+
+        private static void SetAnimatorsEnabled(Animator[] animators, bool enabled)
+        {
+            if (animators == null)
+                return;
+
+            for (int i = 0; i < animators.Length; i++)
+            {
+                Animator animator = animators[i];
+                if (animator != null && animator.enabled != enabled)
+                    animator.enabled = enabled;
+            }
+        }
+
+        private void ApplyEntityVisibilityState(Fog3EntityVisibilityState state, Fog3CellState cellState)
+        {
+            bool shouldRender;
+            bool freezeAnimator = false;
+            bool shouldShowHealthBar = cellState == Fog3CellState.Visible;
+
+            if (state.IsBuilding)
+            {
+                if (cellState == Fog3CellState.Visible)
+                {
+                    state.HasBeenVisible = true;
+                    shouldRender = true;
+                }
+                else if (cellState == Fog3CellState.Explored && state.HasBeenVisible)
+                {
+                    shouldRender = true;
+                    freezeAnimator = true;
+                }
+                else
+                {
+                    shouldRender = false;
+                }
+            }
             else
-                radius = playerSideUnitVisionRadius;
+            {
+                shouldRender = cellState == Fog3CellState.Visible;
+            }
+
+            SetRenderersEnabled(state.Renderers, shouldRender);
+            if (state.IsBuilding)
+                SetAnimatorsEnabled(state.Animators, shouldRender && !freezeAnimator);
+
+            HealthBarComp.SetFogVisible(state.EntityId, shouldShowHealthBar);
+        }
+
+        private static void RestoreEntityVisibilityState(Fog3EntityVisibilityState state)
+        {
+            if (state == null)
+                return;
+
+            SetRenderersEnabled(state.Renderers, true);
+            if (state.IsBuilding)
+                SetAnimatorsEnabled(state.Animators, true);
+
+            HealthBarComp.SetFogVisible(state.EntityId, true);
+        }
+
+        private void ResetEnemyVisibilityStates()
+        {
+            foreach (KeyValuePair<int, Fog3EntityVisibilityState> pair in enemyVisibilityStates)
+                RestoreEntityVisibilityState(pair.Value);
+
+            enemyVisibilityStates.Clear();
+            updatedEnemyVisibilityIds.Clear();
+            staleEnemyVisibilityIds.Clear();
+        }
+
+        private bool TryReadVisionRadiusFromConfig(string configKey, float fallbackRadius, out float radius)
+        {
+            radius = fallbackRadius;
+
+            if (GF.Config == null)
+            {
+                Log.Error($"[FOG3] Config component not ready, cannot read '{configKey}'.");
+                return false;
+            }
+
+            float configDistance = GF.Config.GetFloat(configKey, -1f);
+            if (configDistance <= 0f)
+            {
+                Log.Error($"[FOG3] Config '{configKey}' is invalid: {configDistance}.");
+                return false;
+            }
+
+            radius = configDistance * DistanceUnitConverter.DistanceConversionRate;
+            if (radius <= 0f)
+            {
+                Log.Error($"[FOG3] Config '{configKey}' converted radius is invalid: {radius}.");
+                return false;
+            }
 
             return radius > 0f;
+        }
+
+        private sealed class Fog3EntityVisibilityState
+        {
+            public Fog3EntityVisibilityState(MAEntity entity, bool isBuilding)
+            {
+                Entity = entity;
+                EntityId = entity != null ? entity.Id : 0;
+                IsBuilding = isBuilding;
+                Renderers = entity != null ? entity.GetComponentsInChildren<Renderer>(true) : Array.Empty<Renderer>();
+                Animators = entity != null ? entity.GetComponentsInChildren<Animator>(true) : Array.Empty<Animator>();
+                HasBeenVisible = false;
+            }
+
+            public MAEntity Entity { get; }
+            public int EntityId { get; }
+            public Renderer[] Renderers { get; }
+            public Animator[] Animators { get; }
+            public bool IsBuilding { get; }
+            public bool HasBeenVisible { get; set; }
         }
 
         private void RemoveRevealerReferences(int revealerId)

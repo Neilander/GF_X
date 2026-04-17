@@ -12,11 +12,22 @@ namespace AAAGame.MiniMap.FOG3
         {
             settings ??= new Fog3TerrainSettings();
 
+            if (settings.RequireTileWorldCreatorManager)
+            {
+                if (TryDetectTileWorld(settings, out Fog3TerrainInfo tileWorldTerrainInfo))
+                    return tileWorldTerrainInfo;
+
+                return null;
+            }
+
             if (settings.SourceMode == Fog3TerrainSourceMode.TileWorldCreator || settings.SourceMode == Fog3TerrainSourceMode.Auto)
             {
                 if (TryDetectTileWorld(settings, out Fog3TerrainInfo terrainInfo))
                     return terrainInfo;
             }
+
+            if (settings.SourceMode == Fog3TerrainSourceMode.TileWorldCreator)
+                return null;
 
             if (settings.SourceMode == Fog3TerrainSourceMode.AstarGridGraph || settings.SourceMode == Fog3TerrainSourceMode.Auto)
             {
@@ -30,7 +41,7 @@ namespace AAAGame.MiniMap.FOG3
                     return terrainInfo;
             }
 
-            return CreateManual(settings);
+            return settings.SourceMode == Fog3TerrainSourceMode.Manual ? CreateManual(settings) : null;
         }
 
         private static Fog3TerrainInfo CreateManual(Fog3TerrainSettings settings)
