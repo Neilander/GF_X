@@ -16,6 +16,7 @@ namespace AAAGame.MiniMap.FOG3.Editor
         private SerializedProperty useLineOfSight;
         private SerializedProperty lineOfSightOccluderMask;
         private SerializedProperty lineOfSightEyeHeight;
+        private SerializedProperty enableEnemyStrongholdHiddenVisionBlock;
         private SerializedProperty createWorldOverlay;
         private SerializedProperty viewSettings;
         private SerializedProperty persistAcrossSceneLoads;
@@ -67,6 +68,7 @@ namespace AAAGame.MiniMap.FOG3.Editor
             useLineOfSight = serializedObject.FindProperty("useLineOfSight");
             lineOfSightOccluderMask = serializedObject.FindProperty("lineOfSightOccluderMask");
             lineOfSightEyeHeight = serializedObject.FindProperty("lineOfSightEyeHeight");
+            enableEnemyStrongholdHiddenVisionBlock = serializedObject.FindProperty("enableEnemyStrongholdHiddenVisionBlock");
             createWorldOverlay = serializedObject.FindProperty("createWorldOverlay");
             viewSettings = serializedObject.FindProperty("viewSettings");
             persistAcrossSceneLoads = serializedObject.FindProperty("persistAcrossSceneLoads");
@@ -136,6 +138,7 @@ namespace AAAGame.MiniMap.FOG3.Editor
                 EditorGUILayout.PropertyField(useLineOfSight, new GUIContent("启用视线遮挡"));
                 DrawLayerMaskDropdown(lineOfSightOccluderMask, "视线遮挡层级");
                 EditorGUILayout.PropertyField(lineOfSightEyeHeight, new GUIContent("视线起点高度"));
+                EditorGUILayout.PropertyField(enableEnemyStrongholdHiddenVisionBlock, new GUIContent("启用敌方据点遮挡 hidden 扩散"));
                 EditorGUI.indentLevel--;
             }
             EditorGUILayout.EndFoldoutHeaderGroup();

@@ -21,6 +21,7 @@ public partial class SoldierEntity : MAEntity
 
     protected override void OnShow(object userData)
     {
+        _isHidingOrShuttingDown = false;
 
         base.OnShow(userData);
         if (userData is EntityParams ep)
@@ -102,6 +103,7 @@ public partial class SoldierEntity : MAEntity
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        _isHidingOrShuttingDown = true;
         ClearGhostRuntimeState();
         base.OnHide(isShutdown, userData);
     }

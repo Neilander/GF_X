@@ -4,7 +4,7 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3RevealerData
     {
-        public Fog3RevealerData(int id, Transform target, Vector3 fallbackPosition, float visionRadius, int entityId, bool useLineOfSight)
+        public Fog3RevealerData(int id, Transform target, Vector3 fallbackPosition, float visionRadius, int entityId, bool useLineOfSight, bool allowRevealHidden = true)
         {
             Id = id;
             Target = target;
@@ -12,6 +12,7 @@ namespace AAAGame.MiniMap.FOG3
             VisionRadius = Mathf.Max(0.01f, visionRadius);
             EntityId = entityId;
             UseLineOfSight = useLineOfSight;
+            AllowRevealHidden = allowRevealHidden;
             IsActive = true;
         }
 
@@ -21,6 +22,7 @@ namespace AAAGame.MiniMap.FOG3
         public float VisionRadius { get; private set; }
         public int EntityId { get; }
         public bool UseLineOfSight { get; set; }
+        public bool AllowRevealHidden { get; private set; }
         public bool IsActive { get; set; }
         public bool HasTarget => Target != null;
         public Vector3 Position => Target != null ? Target.position : FallbackPosition;
@@ -40,6 +42,11 @@ namespace AAAGame.MiniMap.FOG3
         public void SetVisionRadius(float visionRadius)
         {
             VisionRadius = Mathf.Max(0.01f, visionRadius);
+        }
+
+        public void SetAllowRevealHidden(bool allowRevealHidden)
+        {
+            AllowRevealHidden = allowRevealHidden;
         }
     }
 }

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -7,6 +8,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 {
     private CharacterController _controller;
     private MAEntity _ownerEntity;
+    private Fog3Manager _fog3Manager;
 
     private Vector3 _inputVelocity;
     private Vector3 _externalVelocity;
@@ -222,8 +224,32 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             return Vector3.zero;
         }
 
+        if (IsNonVisibleBlocked(navHit.position))
+        {
+            Debug.LogWarning($"[MoveExecutor] 非可见区域被阻挡！pos={navHit.position}, gameObject={gameObject.name}");
+            return Vector3.zero;
+        }
+
         Vector3 constrainedPos = new Vector3(navHit.position.x, currentPos.y, navHit.position.z);
         return constrainedPos - currentPos;
+    }
+
+    private bool IsNonVisibleBlocked(Vector3 worldPosition)
+    {
+        if (_ownerEntity == null)
+            _ownerEntity = GetComponent<MAEntity>();
+
+        if (_ownerEntity == null || _ownerEntity.Side != SideType.PlayerSide)
+            return false;
+
+        _fog3Manager ??= Fog3Manager.Instance;
+        if (_fog3Manager == null || !_fog3Manager.IsInitialized || _fog3Manager.MapData == null)
+            return false;
+
+        if (!_fog3Manager.MapData.WorldToGrid(worldPosition, out int gridX, out int gridY))
+            return true;
+
+        return _fog3Manager.MapData.GetCellState(gridX, gridY) != Fog3CellState.Visible;
     }
 
     private bool IsEnemyStrongholdBlocked(Vector3 worldPosition)

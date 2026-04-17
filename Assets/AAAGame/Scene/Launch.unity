@@ -983,6 +983,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 0
   lineOfSightEyeHeight: 1
+  enableEnemyStrongholdHiddenVisionBlock: 0
   createWorldOverlay: 1
   viewSettings:
     SurfaceMode: 0

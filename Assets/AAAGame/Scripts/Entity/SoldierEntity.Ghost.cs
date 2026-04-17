@@ -10,6 +10,7 @@ public partial class SoldierEntity
     private static readonly ICapability GhostCapabilityLocker = new GhostStateCapabilityLocker();
 
     private readonly Dictionary<Renderer, Color> _ghostBaseColors = new Dictionary<Renderer, Color>();
+    private bool _isHidingOrShuttingDown;
 
     public bool IsGhostState { get; private set; }
 
@@ -53,6 +54,7 @@ public partial class SoldierEntity
         }
 
         SetGhostVisual(enabled);
+        AAAGame.MiniMap.FOG3.Fog3Manager.Instance?.SetEntityRevealerAllowRevealHidden(Id, !enabled);
     }
 
     public void RestoreFromGhostState()
@@ -72,16 +74,46 @@ public partial class SoldierEntity
             GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
         }
 
-        EnsureHealthBarVisible(maxHealth);
+        TryEnsureHealthBarVisible(maxHealth);
     }
 
-    private void EnsureHealthBarVisible(Fix64 maxHealth)
+    private void TryEnsureHealthBarVisible(Fix64 maxHealth)
     {
+        if (!CanRecreateHealthBarOnGhostRestore())
+        {
+            Debug.Log($"[SoldierEntity.Ghost] Skip health bar recreate on ghost restore. entityId={Id}, isHiding={_isHidingOrShuttingDown}, available={Available}, active={isActiveAndEnabled}, sceneLoaded={gameObject.scene.isLoaded}");
+            return;
+        }
+
         if (GameObject.Find($"HealthBar_{Id}") != null)
             return;
 
         bool isFriendly = Side == SideType.PlayerSide;
+        Debug.Log($"[SoldierEntity.Ghost] Recreate health bar on ghost restore. entityId={Id}");
         HealthBarComp.Create(Id, transform, (float)HealthValue, (float)maxHealth, isFriendly);
+    }
+
+    private bool CanRecreateHealthBarOnGhostRestore()
+    {
+        if (!Application.isPlaying)
+            return false;
+
+        if (_isHidingOrShuttingDown)
+            return false;
+
+        if (!Available)
+            return false;
+
+        if (!isActiveAndEnabled || !gameObject.activeInHierarchy)
+            return false;
+
+        if (!gameObject.scene.IsValid() || !gameObject.scene.isLoaded)
+            return false;
+
+        if (GF.Entity == null || !GF.Entity.HasEntity(Id))
+            return false;
+
+        return true;
     }
 
     private void EnterGhostState()

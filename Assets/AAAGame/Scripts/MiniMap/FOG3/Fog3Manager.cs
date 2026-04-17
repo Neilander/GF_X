@@ -37,6 +37,8 @@ namespace AAAGame.MiniMap.FOG3
         [SerializeField] private LayerMask lineOfSightOccluderMask;
         [Tooltip("视野射线起点高度。")]
         [SerializeField] private float lineOfSightEyeHeight = 1f;
+        [Tooltip("是否启用敌方据点遮挡 hidden 区视野扩散。")]
+        [SerializeField] private bool enableEnemyStrongholdHiddenVisionBlock = true;
 
         [Header("显示效果")]
         [Tooltip("是否创建场景中的世界空间迷雾遮罩。")]
@@ -171,7 +173,7 @@ namespace AAAGame.MiniMap.FOG3
             if (updateInterval <= 0f || updateTimer >= updateInterval)
             {
                 updateTimer = 0f;
-                controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight);
+                controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
             }
 
             RefreshCloudOverlayForCameraIfNeeded();
@@ -232,7 +234,7 @@ namespace AAAGame.MiniMap.FOG3
             UpdateVisibilityImmediately();
         }
 
-        public int RegisterRevealer(Transform target, float visionRadius, int entityId = 0, bool revealerUsesLineOfSight = false)
+        public int RegisterRevealer(Transform target, float visionRadius, int entityId = 0, bool revealerUsesLineOfSight = false, bool allowRevealHidden = true)
         {
             if (!isInitialized || controller == null || target == null)
                 return -1;
@@ -240,12 +242,13 @@ namespace AAAGame.MiniMap.FOG3
             if (transformRevealers.TryGetValue(target, out int existingId))
             {
                 SetRevealerVisionRadius(existingId, visionRadius);
+                SetRevealerAllowRevealHidden(existingId, allowRevealHidden);
                 if (entityId != 0)
                     entityRevealers[entityId] = existingId;
                 return existingId;
             }
 
-            int id = controller.RegisterRevealer(target, visionRadius, entityId, revealerUsesLineOfSight);
+            int id = controller.RegisterRevealer(target, visionRadius, entityId, revealerUsesLineOfSight, allowRevealHidden);
             if (id > 0)
             {
                 transformRevealers[target] = id;
@@ -256,12 +259,12 @@ namespace AAAGame.MiniMap.FOG3
             return id;
         }
 
-        public int RegisterStaticRevealer(Vector3 position, float visionRadius, bool revealerUsesLineOfSight = false)
+        public int RegisterStaticRevealer(Vector3 position, float visionRadius, bool revealerUsesLineOfSight = false, bool allowRevealHidden = true)
         {
             if (!isInitialized || controller == null)
                 return -1;
 
-            return controller.RegisterRevealer(position, visionRadius, revealerUsesLineOfSight);
+            return controller.RegisterRevealer(position, visionRadius, revealerUsesLineOfSight, allowRevealHidden);
         }
 
         public void UnregisterRevealer(int revealerId)
@@ -277,6 +280,32 @@ namespace AAAGame.MiniMap.FOG3
         {
             if (controller != null && controller.TryGetRevealer(revealerId, out Fog3RevealerData revealer))
                 revealer.SetVisionRadius(visionRadius);
+        }
+
+        public void SetRevealerAllowRevealHidden(int revealerId, bool allowRevealHidden)
+        {
+            if (controller == null || revealerId <= 0)
+                return;
+
+            if (!controller.TryGetRevealer(revealerId, out Fog3RevealerData revealer))
+                return;
+
+            if (revealer.AllowRevealHidden == allowRevealHidden)
+                return;
+
+            revealer.SetAllowRevealHidden(allowRevealHidden);
+            Log.Info("[FOG3] Revealer hidden-visibility updated. revealerId={0}, allowHidden={1}", revealerId, allowRevealHidden);
+        }
+
+        public void SetEntityRevealerAllowRevealHidden(int entityId, bool allowRevealHidden)
+        {
+            if (entityId == 0)
+                return;
+
+            if (!entityRevealers.TryGetValue(entityId, out int revealerId))
+                return;
+
+            SetRevealerAllowRevealHidden(revealerId, allowRevealHidden);
         }
 
         public bool IsPositionVisible(Vector3 worldPos)
@@ -748,7 +777,7 @@ namespace AAAGame.MiniMap.FOG3
                 return;
 
             updateTimer = 0f;
-            controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight);
+            controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
         }
 
         private void TrySubscribeEvents()
@@ -905,7 +934,16 @@ namespace AAAGame.MiniMap.FOG3
             if (!TryReadEntityVision(logic, out float radius))
                 return;
 
-            RegisterRevealer(logic.transform, radius, entityId, false);
+            int revealerId = RegisterRevealer(logic.transform, radius, entityId, false);
+            if (revealerId <= 0)
+                return;
+
+            SetEntityRevealerAllowRevealHidden(entityId, !IsGhostSoldier(logic));
+        }
+
+        private static bool IsGhostSoldier(EntityLogic logic)
+        {
+            return logic is SoldierEntity soldier && soldier.IsGhostState;
         }
 
         private bool TryReadEntityVision(EntityLogic logic, out float radius)
