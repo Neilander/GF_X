@@ -17,7 +17,7 @@ public class TechScopeResolver
         m_ArchetypeMapper = archetypeMapper ?? new ArchetypeUnitTypeMapper();
     }
 
-    public ResolvedTechUnitScope Resolve(TechData techData)
+    public ResolvedTechUnitScope Resolve(TechData techData, string sourceBuildingInstanceId = null)
     {
         if (techData == null)
             throw new ArgumentNullException(nameof(techData));
@@ -38,12 +38,26 @@ public class TechScopeResolver
             case TechScopeType.AllUnit:
                 ResolveAllUnitScope(resolved);
                 break;
+            case TechScopeType.SelfBuil:
+                ResolveSelfBuildingScope(techData, sourceBuildingInstanceId, resolved);
+                break;
             default:
                 Debug.LogWarning($"[TechScopeResolver] ScopeType={techData.ScopeType} 暂未实现, techId={techData.Identifier}");
                 break;
         }
 
         return resolved;
+    }
+
+    private void ResolveSelfBuildingScope(TechData techData, string sourceBuildingInstanceId, ResolvedTechUnitScope resolved)
+    {
+        if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
+        {
+            Debug.LogWarning($"[TechScopeResolver] SelfBuil 需要 sourceBuildingInstanceId, techId={techData.Identifier}");
+            return;
+        }
+
+        resolved.BuildingInstanceIds.Add(sourceBuildingInstanceId);
     }
 
     private void ResolveUnitScope(TechData techData, ResolvedTechUnitScope resolved)

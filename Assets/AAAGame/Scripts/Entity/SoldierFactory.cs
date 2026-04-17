@@ -43,7 +43,7 @@ public static class SoldierFactory
     /// <param name="position">出生位置</param>
     /// <param name="side">阵营</param>
     /// <param name="brainType">AI类型</param>
-    public static int ShowSoldier(UnitType unitType, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI)
+    public static int ShowSoldier(UnitType unitType, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI, string sourceBuildingInstanceId = null)
     {
         string prefabName = UnitTypeHelper.GetSoldierPrefabName(unitType);
         string characterKey = unitType.ToString();
@@ -53,6 +53,7 @@ public static class SoldierFactory
         var startBuffs = new System.Collections.Generic.List<BuffData>();
         AddInitialBuffs(startBuffs, unitType);
         AddGlobalBuffs(startBuffs, unitType, side);
+        AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
 
         // 移除OnShowCallback，因为CreaturePropertyManager在回调执行后才初始化
         // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
@@ -94,5 +95,22 @@ public static class SoldierFactory
             return;
 
         buffList.AddRange(globalBuffs);
+    }
+
+    private static void AddBuildingBuffs(System.Collections.Generic.List<BuffData> buffList, string sourceBuildingInstanceId, SideType side)
+    {
+        if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
+            return;
+
+        var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
+        if (globalBuffManager == null)
+            return;
+
+        int factionId = EntitySideHelper.ToFactionId(side);
+        var buildingBuffs = globalBuffManager.GetBuffsForBuilding(sourceBuildingInstanceId, factionId);
+        if (buildingBuffs == null || buildingBuffs.Count == 0)
+            return;
+
+        buffList.AddRange(buildingBuffs);
     }
 }

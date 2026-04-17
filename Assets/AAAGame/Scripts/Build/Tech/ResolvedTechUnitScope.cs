@@ -9,11 +9,12 @@ public sealed class ResolvedTechUnitScope
     public TechScopeType ScopeType { get; }
     public HashSet<string> CharacterKeys { get; } = new();
     public HashSet<UnitType> UnitTypes { get; } = new();
+    public HashSet<string> BuildingInstanceIds { get; } = new();
 
     public ResolvedTechUnitScope(TechScopeType scopeType)
     {
         ScopeType = scopeType;
     }
 
-    public bool IsEmpty => CharacterKeys.Count == 0 && UnitTypes.Count == 0;
+    public bool IsEmpty => CharacterKeys.Count == 0 && UnitTypes.Count == 0 && BuildingInstanceIds.Count == 0;
 }

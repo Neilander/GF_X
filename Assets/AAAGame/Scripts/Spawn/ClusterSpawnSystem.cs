@@ -93,7 +93,7 @@ public static class ClusterSpawnSystem
     /// <param name="brainType">AI类型</param>
     /// <returns>是否生成成功</returns>
     public static bool SpawnCluster(Vector3 center, int count, float radius, float minDistance,
-        UnitType unitIndex, SideType side, BrainType brainType)
+        UnitType unitIndex, SideType side, BrainType brainType, string sourceBuildingInstanceId = null)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -141,7 +141,7 @@ public static class ClusterSpawnSystem
 
         foreach (Vector3 pos in spawnPositions)
         {
-            SoldierFactory.ShowSoldier(unitIndex, pos + Vector3.up * 0.05f, side, brainType);
+            SoldierFactory.ShowSoldier(unitIndex, pos + Vector3.up * 0.05f, side, brainType, sourceBuildingInstanceId);
         }
         return true;
     }

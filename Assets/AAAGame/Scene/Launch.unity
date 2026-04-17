@@ -4075,13 +4075,13 @@ MonoBehaviour:
   - TechId: Tech_Buil_ParcelLocker_Lv2
     Effect: {fileID: 11400000, guid: 611f62ff1338f4f30b2ac222c41d8311, type: 2}
   - TechId: Tech_Buil_ParcelLocker_Lv3
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
   - TechId: Tech_Buil_PickupPoint_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
   - TechId: Tech_Buil_PickupPoint_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
   - TechId: Tech_Buil_PickupPoint_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
   - TechId: Tech_Buil_PickupPoint_Lv3_Opt2
     Effect: {fileID: 0}
   - TechId: Tech_Buil_DeliveryHub_Lv2_Opt1

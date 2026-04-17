@@ -226,7 +226,7 @@ public class InGameDataModel : DataModelBase
 
         dataModel.EnsureUnlockedTechIdCached(techId);
 
-        GF.Event.Fire(dataModel, TechUnlockedEventArgs.Create(techId, ownerFactionId));
+        GF.Event.Fire(dataModel, TechUnlockedEventArgs.Create(techId, ownerFactionId, buildingContextKey));
         return true;
     }
 

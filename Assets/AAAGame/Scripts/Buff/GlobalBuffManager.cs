@@ -24,6 +24,7 @@ public class GlobalBuffManager : GameFrameworkComponent
     private TechScopeResolver m_TechScopeResolver;
     private bool m_IsSubscribed;
     private readonly Dictionary<int, Dictionary<UnitType, List<GlobalUnitBuffEntry>>> m_UnitBuffsByFaction = new();
+    private readonly Dictionary<int, Dictionary<string, List<GlobalUnitBuffEntry>>> m_BuildingScopedBuffs = new();
     private readonly Dictionary<string, TechEffectSO> m_TechEffectLookup = new(StringComparer.Ordinal);
     private bool m_IsTechEffectLookupDirty = true;
 
@@ -73,7 +74,7 @@ public class GlobalBuffManager : GameFrameworkComponent
             return;
         }
 
-        var resolvedScope = m_TechScopeResolver.Resolve(techData);
+        var resolvedScope = m_TechScopeResolver.Resolve(techData, args.SourceBuildingInstanceId);
         var effect = ResolveEffect(techData);
         if (effect == null)
         {
@@ -85,6 +86,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         {
             TechId = args.TechId,
             OwnerFactionId = args.OwnerFactionId,
+            SourceBuildingInstanceId = args.SourceBuildingInstanceId,
             TechData = techData,
             ResolvedScope = resolvedScope,
             GlobalBuffManager = this,
@@ -160,6 +162,83 @@ public class GlobalBuffManager : GameFrameworkComponent
         });
 
         DebugLog($"RegisterUnitBuff: techId={techId}, ownerFactionId={ownerFactionId}, unitType={unitType}, totalEntriesForUnit={entries.Count}");
+    }
+
+    public void RegisterBuildingBuff(string buildingInstanceId, int ownerFactionId, string techId, TechEffectSO effect, TechData techData)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId) || string.IsNullOrWhiteSpace(techId) || effect == null || techData == null)
+            return;
+
+        if (!m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding))
+        {
+            buffsByBuilding = new Dictionary<string, List<GlobalUnitBuffEntry>>(StringComparer.Ordinal);
+            m_BuildingScopedBuffs[ownerFactionId] = buffsByBuilding;
+        }
+
+        if (!buffsByBuilding.TryGetValue(buildingInstanceId, out var entries))
+        {
+            entries = new List<GlobalUnitBuffEntry>();
+            buffsByBuilding[buildingInstanceId] = entries;
+        }
+
+        // stackable 暂不处理；允许同 techId 重复注册。
+        entries.Add(new GlobalUnitBuffEntry
+        {
+            TechId = techId,
+            Effect = effect,
+            TechData = techData,
+        });
+
+        DebugLog($"RegisterBuildingBuff: techId={techId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, totalEntriesForBuilding={entries.Count}");
+    }
+
+    public List<BuffData> GetBuffsForBuilding(string buildingInstanceId, int ownerFactionId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return null;
+
+        if (!m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding)
+            || !buffsByBuilding.TryGetValue(buildingInstanceId, out var entries)
+            || entries == null
+            || entries.Count == 0)
+        {
+            DebugLog($"GetBuffsForBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, entries=0");
+            return null;
+        }
+
+        var result = new List<BuffData>(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            var buffData = entry.Effect?.CreateBuildingScopedBuff(entry.TechData, entry.TechId);
+            if (buffData != null)
+            {
+                result.Add(buffData);
+                DebugLog($"GetBuffsForBuilding: created buff id={buffData.id}, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
+            }
+            else
+            {
+                DebugLog($"GetBuffsForBuilding: effect returned null buff, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
+            }
+        }
+
+        DebugLog($"GetBuffsForBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, createdCount={result.Count}");
+        return result.Count > 0 ? result : null;
+    }
+
+    /// <summary>
+    /// 预留清理接口。当前实现不会自动调用（建筑拆除/升级不清，允许条目保留）。
+    /// </summary>
+    public void UnregisterBuilding(string buildingInstanceId, int ownerFactionId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return;
+
+        if (m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding))
+        {
+            if (buffsByBuilding.Remove(buildingInstanceId))
+                DebugLog($"UnregisterBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
+        }
     }
 
     public List<BuffData> GetBuffs(UnitType unitType, int ownerFactionId)

@@ -13,4 +13,14 @@ public abstract class TechEffectSO : ScriptableObject
     {
         return null;
     }
+
+    /// <summary>
+    /// Per-building scope 用的初始 Buff 工厂。
+    /// 由 GlobalBuffManager.GetBuffsForBuilding 在单位出生时调用。
+    /// 不需要 UnitType，作用域已经靠 BuildingInstanceId 限定。
+    /// </summary>
+    public virtual BuffData CreateBuildingScopedBuff(TechData techData, string techId)
+    {
+        return null;
+    }
 }

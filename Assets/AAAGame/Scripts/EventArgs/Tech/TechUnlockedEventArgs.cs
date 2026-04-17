@@ -11,12 +11,14 @@ public class TechUnlockedEventArgs : GameEventArgs
 
     public string TechId { get; private set; }
     public int OwnerFactionId { get; private set; }
+    public string SourceBuildingInstanceId { get; private set; }
 
-    public static TechUnlockedEventArgs Create(string techId, int ownerFactionId = EntitySideHelper.PlayerFactionId)
+    public static TechUnlockedEventArgs Create(string techId, int ownerFactionId = EntitySideHelper.PlayerFactionId, string sourceBuildingInstanceId = null)
     {
         var instance = ReferencePool.Acquire<TechUnlockedEventArgs>();
         instance.TechId = techId;
         instance.OwnerFactionId = ownerFactionId;
+        instance.SourceBuildingInstanceId = sourceBuildingInstanceId;
         return instance;
     }
 
@@ -24,5 +26,6 @@ public class TechUnlockedEventArgs : GameEventArgs
     {
         TechId = null;
         OwnerFactionId = EntitySideHelper.PlayerFactionId;
+        SourceBuildingInstanceId = null;
     }
 }

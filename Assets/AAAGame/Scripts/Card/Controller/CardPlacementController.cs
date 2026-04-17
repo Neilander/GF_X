@@ -254,7 +254,11 @@ namespace AAAGame.Card
             float spawnRadius = dataProvider.SpawnRadius;
             UnitType soldierIndex = dataProvider.SoldierIndex;
 
-            bool spawnSuccess = ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, SideType.PlayerSide, BrainType.SoldierAI);
+            string sourceBuildingInstanceId = cardModel.GetSourceBuildingInstanceId();
+            if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
+                sourceBuildingInstanceId = null;
+
+            bool spawnSuccess = ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, SideType.PlayerSide, BrainType.SoldierAI, sourceBuildingInstanceId);
             if (!spawnSuccess)
             {
                 Debug.LogWarning($"[Card] SpawnCluster failed. center={centerPosition}, count={soldierCount}, radius={spawnRadius:F2}, minDistance=2.00, unit={soldierIndex}");
