@@ -55,7 +55,7 @@ public partial class GeneralSetup : GameFrameworkComponent
         if (inputManager != null)
         {
             inputManager.FindModel();
-            inputManager.ChangeState(InputState.Game);
+            inputManager.ChangeState(InputState.UIForm);
         }
 
         BootstrapSideTipsManager();

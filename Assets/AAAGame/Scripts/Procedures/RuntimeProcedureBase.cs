@@ -291,6 +291,34 @@ internal sealed class RuntimeInitPipeline
         GF.BuiltinView.HideLoadingProgress();
         Log.Info("{0} Runtime startup completed.", m_LogTag);
         m_OnCompleted?.Invoke();
+        ShowLevelObjectiveTips();
+        EnablePlayerInput();
+    }
+
+    private static void ShowLevelObjectiveTips()
+    {
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
+        if (gameEndManager == null)
+        {
+            return;
+        }
+
+        gameEndManager.ShowLevelVictoryConditionTips();
+    }
+
+    private static void EnablePlayerInput()
+    {
+        var inputManager = GameEntry.GetComponent<InputManager>();
+        if (inputManager == null)
+        {
+            return;
+        }
+
+        inputManager.FindModel();
+        if (inputManager.CurState != InputState.Game)
+        {
+            inputManager.ChangeState(InputState.Game);
+        }
     }
 
     private bool HasFlag(RuntimeInitSystemFlags flag)

@@ -134,6 +134,14 @@ public class SideTipsManager : GameFrameworkComponent
         return GF.Localization.GetString(key);
     }
 
+    public void ShowRuntimeTip(string title, string content, float duration)
+    {
+        if (GF.UI == null)
+            return;
+
+        GF.UI.ShowSideTips(title, content, duration);
+    }
+
     public void ResetShownUnitTypes()
     {
         shownEnemyUnitTypes.Clear();
