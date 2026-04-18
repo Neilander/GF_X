@@ -7,6 +7,7 @@ public partial class SideTipsUIForm : UIFormBase
 {
     private struct PendingTipData
     {
+        public string Key;
         public string Title;
         public string Content;
         public float Duration;
@@ -15,12 +16,25 @@ public partial class SideTipsUIForm : UIFormBase
     private const float TipSpacing = 10f;
     private const float TipMoveDuration = 0.2f;
     private static readonly Queue<PendingTipData> s_PendingTips = new Queue<PendingTipData>(4);
+    private static readonly HashSet<string> s_PendingTipKeys = new HashSet<string>();
+
+    private sealed class ActiveTipData
+    {
+        public TipsItem Item;
+        public string Key;
+    }
 
     public static SideTipsUIForm Instance { get; private set; }
 
-    private readonly List<TipsItem> m_ActiveItems = new List<TipsItem>(4);
+    private readonly List<ActiveTipData> m_ActiveItems = new List<ActiveTipData>(4);
+    private readonly HashSet<string> m_ActiveTipKeys = new HashSet<string>();
     private bool m_HasBaseTipPos;
     private Vector2 m_BaseTipPos;
+
+    private static string BuildTipKey(string title, string content)
+    {
+        return (title ?? string.Empty) + "\n" + (content ?? string.Empty);
+    }
 
     public static void EnqueuePendingTips(string title, string content, float duration)
     {
@@ -29,8 +43,22 @@ public partial class SideTipsUIForm : UIFormBase
             return;
         }
 
+        string key = BuildTipKey(title, content);
+        if (s_PendingTipKeys.Contains(key))
+        {
+            return;
+        }
+
+        if (Instance != null && Instance.m_ActiveTipKeys.Contains(key))
+        {
+            return;
+        }
+
+        s_PendingTipKeys.Add(key);
+
         s_PendingTips.Enqueue(new PendingTipData
         {
+            Key = key,
             Title = title,
             Content = content,
             Duration = duration,
@@ -52,6 +80,7 @@ public partial class SideTipsUIForm : UIFormBase
             Instance = null;
         }
         m_ActiveItems.Clear();
+        m_ActiveTipKeys.Clear();
         m_HasBaseTipPos = false;
         base.OnClose(isShutdown, userData);
     }
@@ -59,6 +88,12 @@ public partial class SideTipsUIForm : UIFormBase
     public void ShowTips(string title, string content, float duration = 2f)
     {
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
+        {
+            return;
+        }
+
+        string key = BuildTipKey(title, content);
+        if (m_ActiveTipKeys.Contains(key))
         {
             return;
         }
@@ -87,7 +122,12 @@ public partial class SideTipsUIForm : UIFormBase
         }
 
         int newIndex = m_ActiveItems.Count;
-        m_ActiveItems.Add(tipsItem);
+        m_ActiveItems.Add(new ActiveTipData
+        {
+            Item = tipsItem,
+            Key = key,
+        });
+        m_ActiveTipKeys.Add(key);
         tipsItem.SetData(title, content);
         tipsItem.MoveTo(GetTipPos(newIndex), 0f);
 
@@ -101,11 +141,20 @@ public partial class SideTipsUIForm : UIFormBase
             return;
         }
 
-        int removedIndex = m_ActiveItems.IndexOf(tipsItem);
-        if (removedIndex >= 0)
+        int removedIndex = -1;
+        for (int i = 0; i < m_ActiveItems.Count; i++)
         {
-            m_ActiveItems.RemoveAt(removedIndex);
+            if (m_ActiveItems[i].Item != tipsItem)
+            {
+                continue;
+            }
+
+            removedIndex = i;
+            m_ActiveTipKeys.Remove(m_ActiveItems[i].Key);
+            m_ActiveItems.RemoveAt(i);
+            break;
         }
+
         if (tipsItem.gameObject != null)
         {
             UnspawnItem<UIItemObject>(varTipsItem, tipsItem.gameObject);
@@ -118,7 +167,11 @@ public partial class SideTipsUIForm : UIFormBase
         }
         for (int i = removedIndex; i < m_ActiveItems.Count; i++)
         {
-            m_ActiveItems[i].MoveTo(GetTipPos(i), TipMoveDuration);
+            TipsItem item = m_ActiveItems[i].Item;
+            if (item != null)
+            {
+                item.MoveTo(GetTipPos(i), TipMoveDuration);
+            }
         }
     }
 
@@ -127,6 +180,11 @@ public partial class SideTipsUIForm : UIFormBase
         while (s_PendingTips.Count > 0)
         {
             var tip = s_PendingTips.Dequeue();
+            if (!string.IsNullOrEmpty(tip.Key))
+            {
+                s_PendingTipKeys.Remove(tip.Key);
+            }
+
             ShowTips(tip.Title, tip.Content, tip.Duration);
         }
     }
@@ -135,8 +193,14 @@ public partial class SideTipsUIForm : UIFormBase
     {
         for (int i = m_ActiveItems.Count - 1; i >= 0; i--)
         {
-            if (m_ActiveItems[i] == null)
+            ActiveTipData data = m_ActiveItems[i];
+            if (data == null || data.Item == null)
             {
+                if (data != null)
+                {
+                    m_ActiveTipKeys.Remove(data.Key);
+                }
+
                 m_ActiveItems.RemoveAt(i);
             }
         }
@@ -169,7 +233,7 @@ public partial class SideTipsUIForm : UIFormBase
         if (index < 0 || index >= m_ActiveItems.Count)
             return TipsItem.DefaultHeight;
 
-        TipsItem item = m_ActiveItems[index];
+        TipsItem item = m_ActiveItems[index].Item;
         if (item == null)
             return TipsItem.DefaultHeight;
 

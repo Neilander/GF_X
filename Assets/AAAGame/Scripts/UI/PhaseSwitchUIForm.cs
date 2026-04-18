@@ -4,6 +4,10 @@ using UnityGameFramework.Runtime;
 
 public partial class PhaseSwitchUIForm : UIFormBase
 {
+    private const string BlockedSwitchTipTitle = "无法切换阶段";
+    private const string BlockedSwitchTipContent = "请先离开敌方据点。";
+    private const float BlockedSwitchTipDuration = 2f;
+
     protected override void OnOpen(object userData)
     {
         base.OnOpen(userData);
@@ -22,7 +26,28 @@ public partial class PhaseSwitchUIForm : UIFormBase
 
     private void SwitchPhase()
     {
+        if (TryGetCurrentEnemyStronghold(out Stronghold stronghold))
+        {
+            if (GF.UI != null)
+                GF.UI.ShowSideTips(BlockedSwitchTipTitle, BlockedSwitchTipContent, BlockedSwitchTipDuration);
+
+            string strongholdId = stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "unknown";
+            Log.Info("[PhaseSwitch] Blocked switch: player is in enemy stronghold. id={0}, ownerFaction={1}.", strongholdId, stronghold.OwnerFactionId);
+            return;
+        }
+
         PhaseManager.SwitchToNextPhase();
+    }
+
+    private static bool TryGetCurrentEnemyStronghold(out Stronghold stronghold)
+    {
+        stronghold = null;
+
+        if (EntityRegistry.Player == null || LevelEntity.ActiveLevelEntity == null)
+            return false;
+
+        stronghold = LevelEntity.GetStrongholdAtWorldPosition(EntityRegistry.Player.Position);
+        return stronghold != null && stronghold.OwnerFactionId != EntitySideHelper.PlayerFactionId;
     }
 
     private void OnIngamePhaseChanged(object sender, GameEventArgs e)
