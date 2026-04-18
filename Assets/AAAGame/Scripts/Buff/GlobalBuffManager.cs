@@ -25,6 +25,8 @@ public class GlobalBuffManager : GameFrameworkComponent
     private bool m_IsSubscribed;
     private readonly Dictionary<int, Dictionary<UnitType, List<GlobalUnitBuffEntry>>> m_UnitBuffsByFaction = new();
     private readonly Dictionary<int, Dictionary<string, List<GlobalUnitBuffEntry>>> m_BuildingScopedBuffs = new();
+    // 第三个桶：按 BuildingInstanceId 存建筑额外属性（独立于 BuildingEntity 生命周期，升级时同 id 共享同对象）
+    private readonly Dictionary<string, BuildingExtraProps> m_BuildingExtraProps = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TechEffectSO> m_TechEffectLookup = new(StringComparer.Ordinal);
     private bool m_IsTechEffectLookupDirty = true;
 
@@ -239,6 +241,36 @@ public class GlobalBuffManager : GameFrameworkComponent
             if (buffsByBuilding.Remove(buildingInstanceId))
                 DebugLog($"UnregisterBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
         }
+    }
+
+    /// <summary>
+    /// 取或新建建筑的 ExtraProps。BuildingInstanceId 跨 Entity 重建保持不变，
+    /// 因此升级场景同 id 直接拿到同一份数据，extra 属性自然延续。
+    /// </summary>
+    public BuildingExtraProps GetOrCreateExtraProps(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return null;
+
+        if (!m_BuildingExtraProps.TryGetValue(buildingInstanceId, out var props))
+        {
+            props = new BuildingExtraProps();
+            m_BuildingExtraProps[buildingInstanceId] = props;
+            DebugLog($"GetOrCreateExtraProps: new entry, buildingInstanceId={buildingInstanceId}");
+        }
+        return props;
+    }
+
+    /// <summary>
+    /// 仅查询，不会创建新对象。用于展示型查询（如 UI 实时读数）。
+    /// </summary>
+    public BuildingExtraProps GetExtraProps(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return null;
+
+        m_BuildingExtraProps.TryGetValue(buildingInstanceId, out var props);
+        return props;
     }
 
     public List<BuffData> GetBuffs(UnitType unitType, int ownerFactionId)

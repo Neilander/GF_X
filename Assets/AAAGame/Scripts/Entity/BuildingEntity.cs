@@ -52,6 +52,7 @@ public partial class BuildingEntity : MAEntity
     private BaseValueProperty _armyForceProperty;
     private BaseValueProperty _armySupplyPerUnitProperty;
     private MinimapReportComponent _minimapReportComponent;
+    private BuildingExtraProps _extraProps; // 引用自 GlobalBuffManager 的中央字典，升级场景同 id 共享同对象
 
     protected override void RefreshCharacterData(object userData)
     {
@@ -84,6 +85,9 @@ public partial class BuildingEntity : MAEntity
         EnsureLv0InvincibleBuff();
         EnsurePhaseProtectionBuff();
 
+        // 拿到 extra 属性引用（升级场景同 BuildingInstanceId 共享同一对象，extra 数据自然延续）
+        _extraProps = GameEntry.GetComponent<GlobalBuffManager>()?.GetOrCreateExtraProps(BuildingInstanceId);
+
         if (HasUpgrade)
         {
             EnsureInteractionHost();
@@ -111,6 +115,7 @@ public partial class BuildingEntity : MAEntity
         _phaseProtectionByBuff = false;
         _healthBarSuppressedByBuff = false;
         ClearArmyCardProperties();
+        _extraProps = null; // 仅清字段引用，中央字典里的对象保留给同 id 的下次 Show
         buildingData = null;
         BuildingInstanceId = null;
         base.OnHide(isShutdown, userData);
@@ -677,7 +682,7 @@ public partial class BuildingEntity : MAEntity
         // 只处理资源建筑
         if (buildingData.Type == BuilType.Prod)
         {
-            int production = buildingData.Production;
+            int production = GetProduction();
             if (production > 0)
             {
                 // 增加资源
@@ -687,13 +692,28 @@ public partial class BuildingEntity : MAEntity
         }
     }
 
+    /// <summary>
+    /// 当前建筑的日产出值（仅对 Prod 类型建筑有意义）。
+    /// = BuildingData.Production (base) + BuildingExtraProps.Production (tech extra)
+    /// </summary>
+    public int GetProduction()
+    {
+        if (buildingData == null)
+            return 0;
+
+        Fix64 baseValue = (Fix64)buildingData.Production;
+        Fix64 extra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
+        return Mathf.Max(0, (int)(baseValue + extra));
+    }
+
     public int GetArmyForce()
     {
         if (_armyForceProperty == null)
             return 0;
 
-        int value = (int)_armyForceProperty.GetValue();
-        return Mathf.Max(0, value);
+        Fix64 baseValue = _armyForceProperty.GetValue();
+        Fix64 extra = _extraProps != null ? _extraProps.ArmyForce : Fix64.Zero;
+        return Mathf.Max(0, (int)(baseValue + extra));
     }
 
     public int GetArmySupplyPerUnit()

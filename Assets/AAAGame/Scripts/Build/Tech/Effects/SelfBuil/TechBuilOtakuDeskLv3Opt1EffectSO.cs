@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -7,22 +6,15 @@ using UnityEngine;
 /// 策划描述: 兵力+<val1>，移动速度+<val2>
 /// UniqueValues: 3,60
 /// </summary>
-public class TechBuilOtakuDeskLv3Opt1EffectSO : TechEffectSO
+public class TechBuilOtakuDeskLv3Opt1EffectSO : HybridBuildingTechEffectSO
 {
-    public override void Activate(TechEffectContext context)
+    protected override bool HasUnitBuff => true;
+
+    protected override void ApplyExtraProps(BuildingExtraProps extra, TechData td)
     {
-        if (context?.GlobalBuffManager == null || context.TechData == null)
-            return;
-
-        if (context.ResolvedScope == null || context.ResolvedScope.BuildingInstanceIds.Count == 0)
+        if (td?.UniqueValues != null && td.UniqueValues.Length > 0)
         {
-            Debug.LogWarning($"[{nameof(TechBuilOtakuDeskLv3Opt1EffectSO)}] ResolvedScope 无 BuildingInstanceIds, techId={context.TechId}");
-            return;
-        }
-
-        foreach (var buildingInstanceId in context.ResolvedScope.BuildingInstanceIds)
-        {
-            context.GlobalBuffManager.RegisterBuildingBuff(buildingInstanceId, context.OwnerFactionId, context.TechId, this, context.TechData);
+            extra.ArmyForce += td.UniqueValues[0];
         }
     }
 
@@ -30,10 +22,9 @@ public class TechBuilOtakuDeskLv3Opt1EffectSO : TechEffectSO
     {
         Fix64 v1 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 1) ? techData.UniqueValues[1] : Fix64.Zero;
 
-        // TODO: 未实现字段 -> 兵力+<val1>（建筑属性）
-        Debug.LogWarning($"[{nameof(TechBuilOtakuDeskLv3Opt1EffectSO)}] 未实现字段: 兵力+<val1>（建筑属性） (techId={techId})");
+        // 所有单位 Buff 字段均已实现
 
-        var modules = new List<BuffCallback>
+        var modules = new System.Collections.Generic.List<BuffCallback>
         {
             new MoveSpeedBonusBuff(v1),
         };
