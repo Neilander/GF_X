@@ -11,7 +11,7 @@ public class RealProcedure : ProcedureBase
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
         base.OnEnter(procedureOwner);
-        GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup("Lv_1");
+        GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup("Lv_2");
 
         GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
         // 加载阶段切换按钮

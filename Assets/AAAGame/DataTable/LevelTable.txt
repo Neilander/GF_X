@@ -2,8 +2,8 @@
 #	ID		Identifier	PrefabPath	NameKey	DescKey	InitResource	StartPhase	VictoryConditions	VictoryValue	LoseConditions	LoseValue						
 #	int		string	string	string	string	int	enum	enum[]	int	enum[]	int						
 #		备注	代码内标识符	关卡prefab路径	关卡名(多语言)	关卡简介(多语言)	初始资源	初始阶段	胜利条件	胜利条件设定数值	失败条件	失败条件设定数值						
-	1	教程关	Lv_1	Level/Level_Test	Lv_Name_1	Lv_Desc_1	0	GamePhase.Invade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings							
-	2		Lv_2	Level/Level_Test	Lv_Name_2	Lv_Desc_2	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	10						
-	3		Lv_3	Level/Level_Test	Lv_Name_3	Lv_Desc_3	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	10						
-	4		Lv_4	Level/Level_Test	Lv_Name_4	Lv_Desc_4	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	10						
-	5		Lv_5	Level/Level_Test	Lv_Name_5	Lv_Desc_5	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	10						
+	1	教程关	Lv_1	Level/Level_1	Lv_Name_1	Lv_Desc_1	0	GamePhase.Invade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings							
+	2		Lv_2	Level/Level_2	Lv_Name_2	Lv_Desc_2	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	5						
+	3		Lv_3	Level/Level_2	Lv_Name_3	Lv_Desc_3	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	8						
+	4		Lv_4	Level/Level_2	Lv_Name_4	Lv_Desc_4	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	10						
+	5		Lv_5	Level/Level_2	Lv_Name_5	Lv_Desc_5	6	GamePhase.Build	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings,FailConditionType.ArriveAmountDays	10						
