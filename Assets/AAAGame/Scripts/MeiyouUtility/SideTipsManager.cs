@@ -24,12 +24,6 @@ public class SideTipsManager : GameFrameworkComponent
         TrySubscribeEvents();
     }
 
-    private void Update()
-    {
-        if (!isSubscribed)
-            TrySubscribeEvents();
-    }
-
     private void OnDisable()
     {
         UnsubscribeEvents();
@@ -60,6 +54,11 @@ public class SideTipsManager : GameFrameworkComponent
         GF.Event.Subscribe(EnemyUnitVisibilityChangedEventArgs.EventId, OnEnemyUnitVisibilityChanged);
         isSubscribed = true;
         Log.Info("[SideTips] Subscribed EnemyUnitVisibilityChangedEventArgs.");
+    }
+
+    public void BootstrapIfNeeded()
+    {
+        TrySubscribeEvents();
     }
 
     private void UnsubscribeEvents()

@@ -51,7 +51,7 @@ public class ChangeSceneProcedure : ProcedureBase
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>();
 
     private static Dictionary<string, Type> s_ProcedureTypes;
-    
+
     // 确保BuffTestProcedure被编译到程序集中
     private static System.Type _buffTestProcedureType = typeof(BuffTestProcedure);
 
@@ -113,17 +113,39 @@ public class ChangeSceneProcedure : ProcedureBase
         return true;
     }
 
+    private bool IsRuntimeProcedure(string procedureName)
+    {
+        if (string.IsNullOrEmpty(procedureName))
+        {
+            return false;
+        }
+
+        if (s_ProcedureTypes == null || s_ProcedureTypes.Count == 0)
+        {
+            RebuildProcedureTypeCache();
+        }
+
+        if (!s_ProcedureTypes.TryGetValue(procedureName, out var targetType))
+        {
+            return false;
+        }
+
+        return typeof(RuntimeProcedureBase).IsAssignableFrom(targetType);
+    }
+
     /// <summary>
     /// 要加载的场景资源名,相对于场景目录
     /// </summary>
     internal const string P_SceneName = "SceneName";
     private bool loadSceneOver = false;
     private string nextScene = string.Empty;
+    private bool keepLoadingForRuntimeInit;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
 
         base.OnEnter(procedureOwner);
         loadSceneOver = false;
+        keepLoadingForRuntimeInit = false;
         GF.BuiltinView.ShowLoadingProgress();
         GF.Event.Subscribe(LoadSceneSuccessEventArgs.EventId, OnLoadSceneSuccess);
         GF.Event.Subscribe(LoadSceneFailureEventArgs.EventId, OnLoadSceneFailure);
@@ -179,16 +201,21 @@ public class ChangeSceneProcedure : ProcedureBase
         }
 
         // 根据 targetProcedure 切换到对应 Procedure
+        keepLoadingForRuntimeInit = IsRuntimeProcedure(targetProcedure);
         if (!TryChangeStateByName(procedureOwner, targetProcedure))
         {
             Log.Warning("Procedure '{0}' 不存在，回退到 CharacterTestProcedure", targetProcedure);
+            keepLoadingForRuntimeInit = IsRuntimeProcedure("CharacterTestProcedure");
             ChangeState<CharacterTestProcedure>(procedureOwner);
         }
     }
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
-        GF.BuiltinView.HideLoadingProgress();
+        if (!keepLoadingForRuntimeInit)
+        {
+            GF.BuiltinView.HideLoadingProgress();
+        }
         GF.Event.Unsubscribe(LoadSceneSuccessEventArgs.EventId, OnLoadSceneSuccess);
         GF.Event.Unsubscribe(LoadSceneFailureEventArgs.EventId, OnLoadSceneFailure);
         GF.Event.Unsubscribe(LoadSceneUpdateEventArgs.EventId, OnLoadSceneUpdate);

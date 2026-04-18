@@ -49,7 +49,7 @@ public partial class InputManager : GameFrameworkComponent
         _skill1Action = actions.FindAction("Player/Skill1");
         _skill2Action = actions.FindAction("Player/Skill2");
         _skill3Action = actions.FindAction("Player/Skill3");
-        
+
         _selectPositionAction = actions.FindAction("Player/SelectPosition");
         _skillConfirmAction = actions.FindAction("Player/SkillConfirm");
     }
@@ -66,6 +66,11 @@ public partial class InputManager : GameFrameworkComponent
 
     public void ChangeState(InputState newState)
     {
+        if (newState == InputState.Game && _model == null)
+        {
+            FindModel();
+        }
+
         selfStateMachine.StartState(newState);
     }
 
@@ -111,8 +116,7 @@ public partial class InputManager : GameFrameworkComponent
                 case InputState.Game:
                     if (father._model == null)
                     {
-                        father.FindModel();
-                        break;
+                        return;
                     }
 
                     Vector2 move = father._moveAction.ReadValue<Vector2>();
@@ -120,7 +124,7 @@ public partial class InputManager : GameFrameworkComponent
                     // 写入你的 Model
                     father._model.MoveX = (Fix64)move.x;
                     father._model.MoveY = (Fix64)move.y;
-                    
+
                     // Interact 按下
                     father._model.InteractionPressed = father._interactAction != null && father._interactAction.WasPressedThisFrame();
                     father._model.Interaction2Pressed = father._interact2Action != null && father._interact2Action.WasPressedThisFrame();

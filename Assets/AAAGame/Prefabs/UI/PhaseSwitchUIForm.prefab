@@ -133,7 +133,7 @@ GameObject:
   - component: {fileID: 5369601958409188876}
   - component: {fileID: 2033959406851107400}
   m_Layer: 0
-  m_Name: Text (TMP)
+  m_Name: CurrentDayText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -156,7 +156,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_SizeDelta: {x: -10, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &5369601958409188876
 CanvasRenderer:
@@ -186,7 +186,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "\u5207\u6362\u9636\u6BB5"
+  m_text: "Day1 \u8FD0\u8425"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: d81faaaa9c39b4a3bb23905cf66f6114, type: 2}
   m_sharedMaterial: {fileID: 5256446155164827431, guid: d81faaaa9c39b4a3bb23905cf66f6114, type: 2}
@@ -213,7 +213,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 21.4
+  m_fontSize: 19.1
   m_fontSizeBase: 24
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -334,6 +334,11 @@ MonoBehaviour:
     - {fileID: 563689938460954169}
     VarType: UnityEngine.UI.Button
     VarPrefix: 0
+  - VarName: varCurrentDayText
+    Targets:
+    - {fileID: 2064087085768920337}
+    VarType: TMPro.TextMeshProUGUI
+    VarPrefix: 0
   m_UIAnimationType: 0
   m_OpenAnimation: {fileID: 0}
   m_CloseAnimation: {fileID: 0}
@@ -341,3 +346,4 @@ MonoBehaviour:
   m_OpenAnimationName: 
   m_CloseAnimationName: 
   varPhaseSwitchButton: {fileID: 7566408052800654636}
+  varCurrentDayText: {fileID: 2033959406851107400}
