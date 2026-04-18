@@ -84,6 +84,8 @@ public class PhaseManager : GameFrameworkComponent
             return;
         }
 
+        TryAdvanceDayOnBuildTransition(oldPhase, phase);
+
         // 设置新阶段
         InGameDataModel.SetPhase(phase);
 
@@ -94,6 +96,18 @@ public class PhaseManager : GameFrameworkComponent
         OnPhaseChanged?.Invoke(oldPhase, phase);
 
         Debug.Log($"Phase switched from {oldPhase} to {phase}");
+    }
+
+    private static void TryAdvanceDayOnBuildTransition(GamePhase oldPhase, GamePhase newPhase)
+    {
+        if (newPhase != GamePhase.Build)
+        {
+            return;
+        }
+
+        InGameDataModel.TryModifyValue(IngameValueType.Day, 1);
+        int currentDay = InGameDataModel.GetValue(IngameValueType.Day);
+        Debug.Log($"Day advanced to {currentDay} when entering {newPhase} from {oldPhase}");
     }
 
     /// <summary>

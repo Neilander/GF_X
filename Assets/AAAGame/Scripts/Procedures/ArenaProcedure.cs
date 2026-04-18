@@ -1,34 +1,23 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-using GameFramework.Fsm;
-using GameFramework.Procedure;
-using UnityGameFramework.Runtime;
+﻿using UnityGameFramework.Runtime;
 
-public class ArenaProcedure : ProcedureBase
+public class ArenaProcedure : RuntimeProcedureBase
 {
-    protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
+    protected override string RuntimeInitLogTag => "[Arena]";
+    protected override RuntimeInitSystemFlags RequiredRuntimeSystems =>
+        RuntimeInitSystemFlags.MinimapSystem | RuntimeInitSystemFlags.MinimapUI;
+
+    protected override void OnRuntimeInitialized()
     {
-        base.OnEnter(procedureOwner);
-
-        Log.Info("[CardGame] 进入竞技场游戏流程");
-
-        // 初始化数据模型
-        GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup();
+        Log.Info("[Arena] 初始化完成，进入竞技场游戏流程。");
     }
 
-    protected override void OnUpdate(IFsm<IProcedureManager> procedureOwner, float elapseSeconds, float realElapseSeconds)
+    protected override void OnRuntimeUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.OnUpdate(procedureOwner, elapseSeconds, realElapseSeconds);
-
         GameEntry.GetComponent<CardSetup>().CardSystemUpdate();
     }
 
-    protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
+    protected override void OnRuntimeShutdown()
     {
-        base.OnLeave(procedureOwner, isShutdown);
-
         GameEntry.GetComponent<CardSetup>().CardSystemShutdown();
-        GameEntry.GetComponent<GeneralSetup>().GeneralSystemShutDown();
     }
 }

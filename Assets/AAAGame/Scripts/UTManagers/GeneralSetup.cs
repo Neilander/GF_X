@@ -1,4 +1,4 @@
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -9,19 +9,42 @@ using log4net.Core;
 
 public partial class GeneralSetup : GameFrameworkComponent
 {
+    public event Action OnGeneralSetupCompleted;
+    public bool IsGeneralSetupCompleted => m_InitialPhaseEntered;
+
     private bool m_InitialPhaseEntered;
     private bool m_LevelReady;
     private bool m_PlayerReady;
+    private bool m_SetupInProgress;
+    private bool m_ShowEntitySubscribed;
 
     public void GeneralSystemSetup(string lvIdentifier = "Lv_1")
     {
+        if (m_SetupInProgress)
+        {
+            Log.Warning("[GeneralSetup] GeneralSystemSetup is already running, skip duplicate request.");
+            return;
+        }
+
+        m_SetupInProgress = true;
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
         m_PlayerReady = false;
 
-        GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
-
         var lvRow = GetLvRow(lvIdentifier);
+        if (lvRow == null)
+        {
+            Log.Error("[GeneralSetup] Level row not found. levelIdentifier={0}", lvIdentifier);
+            m_SetupInProgress = false;
+            return;
+        }
+
+        if (!m_ShowEntitySubscribed)
+        {
+            GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
+            m_ShowEntitySubscribed = true;
+        }
+
         var lvData = LevelData.FromRow(lvRow);
         DataModelSetup(lvData);
         GameEntry.GetComponent<GameEndManager>().Init(lvData);
@@ -30,20 +53,27 @@ public partial class GeneralSetup : GameFrameworkComponent
         var inputManager = GameEntry.GetComponent<InputManager>();
         if (inputManager != null)
         {
-            inputManager.ChangeState(InputState.Game);
+            inputManager.FindModel();
+            inputManager.ChangeState(InputState.UIForm);
         }
 
-        GF.UI.OpenUIForm(UIViews.MinimapUI);
+        BootstrapSideTipsManager();
         GF.UI.OpenUIForm(UIViews.SideTipsUIForm);
     }
 
     public void GeneralSystemShutDown()
     {
-        GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
-        GF.UI.CloseUIForms(UIViews.MinimapUI);
+        if (m_ShowEntitySubscribed)
+        {
+            GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
+            m_ShowEntitySubscribed = false;
+        }
+
+        GF.UI.CloseUIForms(UIViews.SideTipsUIForm);
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
         m_PlayerReady = false;
+        m_SetupInProgress = false;
     }
 
     public void DataModelSetup(LevelData levelData)
@@ -143,5 +173,18 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         PhaseManager.EnterCurrentPhaseOnGameStart();
         m_InitialPhaseEntered = true;
+        m_SetupInProgress = false;
+        BootstrapSideTipsManager();
+        Log.Info("[GeneralSetup] Core runtime systems are ready.");
+        OnGeneralSetupCompleted?.Invoke();
+    }
+
+    private void BootstrapSideTipsManager()
+    {
+        var sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
+        if (sideTipsManager != null)
+        {
+            sideTipsManager.BootstrapIfNeeded();
+        }
     }
 }

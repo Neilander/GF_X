@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 using System;
 using UnityGameFramework.Runtime;
@@ -476,7 +477,19 @@ namespace AAAGame.Card
             bool inStaticForbiddenArea = m_AreaDetectionController.IsPositionInInvalidArea(worldPosition);
             bool inEnemyBuildingForbiddenArea = m_EnemyBuildingForbiddenZoneController != null
                 && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(worldPosition, 0f);
-            return inStaticForbiddenArea || inEnemyBuildingForbiddenArea;
+            bool inInvisibleFogArea = !IsPositionInVisibleArea(worldPosition);
+            return inStaticForbiddenArea || inEnemyBuildingForbiddenArea || inInvisibleFogArea;
+        }
+
+        private static bool IsPositionInVisibleArea(Vector3 worldPosition)
+        {
+            Fog3Manager fogManager = Fog3Manager.Instance;
+            if (fogManager == null || !fogManager.IsInitialized || fogManager.MapData == null)
+            {
+                return false;
+            }
+
+            return fogManager.IsPositionVisible(worldPosition);
         }
 
         /// <summary>

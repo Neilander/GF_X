@@ -1,4 +1,5 @@
 ﻿using System;
+using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -128,7 +129,7 @@ namespace AAAGame.Card
 
             if (!CheckPlacementValidity(releaseGroundPosition))
             {
-                Debug.Log("[Card] Cannot confirm placement: 松手位置不合法.");
+                LogInvalidPlacementReason(releaseGroundPosition);
                 return false;
             }
 
@@ -210,6 +211,11 @@ namespace AAAGame.Card
         /// </summary>
         private bool CheckPlacementValidity(Vector3 position)
         {
+            if (!IsPositionInVisibleArea(position))
+            {
+                return false;
+            }
+
             // 检测是否在禁止区域
             Collider[] forbiddenColliders = Physics.OverlapSphere(
                 position, m_DetectionRadius, m_ForbiddenLayer);
@@ -230,6 +236,66 @@ namespace AAAGame.Card
                 position, m_DetectionRadius, m_GroundLayer);
 
             return groundColliders.Length > 0;
+        }
+
+        private bool IsPositionInVisibleArea(Vector3 position)
+        {
+            Fog3Manager fogManager = Fog3Manager.Instance;
+            if (fogManager == null || !fogManager.IsInitialized || fogManager.MapData == null)
+            {
+                return false;
+            }
+
+            return fogManager.IsPositionVisible(position);
+        }
+
+        private void LogInvalidPlacementReason(Vector3 position)
+        {
+            if (!IsPositionInVisibleArea(position))
+            {
+                Fog3CellState fogState = ResolveFogCellState(position);
+                Debug.Log($"[Card] Cannot confirm placement: 松手位置不在 Visible 区域. pos={position}, fogState={fogState}");
+                return;
+            }
+
+            Collider[] forbiddenColliders = Physics.OverlapSphere(
+                position, m_DetectionRadius, m_ForbiddenLayer);
+            if (forbiddenColliders.Length > 0)
+            {
+                Debug.Log($"[Card] Cannot confirm placement: 命中静态禁区. pos={position}, forbiddenHits={forbiddenColliders.Length}");
+                return;
+            }
+
+            if (m_AdditionalForbiddenChecker != null
+                && m_AdditionalForbiddenChecker(position, m_DetectionRadius))
+            {
+                Debug.Log($"[Card] Cannot confirm placement: 命中动态禁区. pos={position}, radius={m_DetectionRadius:F2}");
+                return;
+            }
+
+            Collider[] groundColliders = Physics.OverlapSphere(
+                position, m_DetectionRadius, m_GroundLayer);
+            if (groundColliders.Length == 0)
+            {
+                Debug.Log($"[Card] Cannot confirm placement: Ground 检测失败. pos={position}, radius={m_DetectionRadius:F2}");
+            }
+        }
+
+        private Fog3CellState ResolveFogCellState(Vector3 position)
+        {
+            Fog3Manager fogManager = Fog3Manager.Instance;
+            Fog3MapData mapData = fogManager != null ? fogManager.MapData : null;
+            if (mapData == null)
+            {
+                return Fog3CellState.Outside;
+            }
+
+            if (!mapData.WorldToGrid(position, out int gridX, out int gridY))
+            {
+                return Fog3CellState.Outside;
+            }
+
+            return mapData.GetCellState(gridX, gridY);
         }
 
         /// <summary>

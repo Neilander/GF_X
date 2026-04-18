@@ -9,12 +9,19 @@ public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, Consume
 
 public class GameEndManager : GameFrameworkComponent
 {
+    private const string LevelObjectiveTipsTitle = "关键目标";
+    private const float LevelObjectiveTipsDurationSeconds = 5f;
+
     public bool IsGameEnded { get; private set; }
     public bool IsWin { get; private set; }
 
     private bool m_ConditionInitialized;
     private bool m_EnableOccupySpecificBuildings;
+    private bool m_EnableSurviveAmountDays;
     private bool m_EnableLoseSpecificBuildings;
+    private bool m_EnableArriveAmountDays;
+    private int m_SurviveAmountDaysValue;
+    private int m_ArriveAmountDaysValue;
     private string m_CurrentLevelIdentifier;
     private bool m_EventsSubscribed;
 
@@ -58,15 +65,77 @@ public class GameEndManager : GameFrameworkComponent
         }
 
         m_EnableOccupySpecificBuildings = ContainsVictoryCondition(levelData.VictoryConditions, VictoryConditionType.OccupySpecificBuildings);
+        m_EnableSurviveAmountDays = ContainsVictoryCondition(levelData.VictoryConditions, VictoryConditionType.SurviveAmountDays);
         m_EnableLoseSpecificBuildings = ContainsFailCondition(levelData.LoseConditions, FailConditionType.LoseSpecificBuildings);
+        m_EnableArriveAmountDays = ContainsFailCondition(levelData.LoseConditions, FailConditionType.ArriveAmountDays);
+        m_SurviveAmountDaysValue = levelData.VictoryValue;
+        m_ArriveAmountDaysValue = levelData.LoseValue;
         m_ConditionInitialized = true;
         m_CurrentLevelIdentifier = levelIdentifier;
 
-        Log.Info("[GameEndManager] Initialized. OccupySpecificBuildings={0}, LoseSpecificBuildings={1}",
+        Log.Info("[GameEndManager] Initialized. OccupySpecificBuildings={0}, SurviveAmountDays={1}(>{2}), LoseSpecificBuildings={3}, ArriveAmountDays={4}(>{5})",
             m_EnableOccupySpecificBuildings,
-            m_EnableLoseSpecificBuildings);
+            m_EnableSurviveAmountDays,
+            m_SurviveAmountDaysValue,
+            m_EnableLoseSpecificBuildings,
+            m_EnableArriveAmountDays,
+            m_ArriveAmountDaysValue);
 
         EvaluateConditions();
+    }
+
+    public void ShowLevelVictoryConditionTips()
+    {
+        if (!m_ConditionInitialized)
+        {
+            Log.Warning("[GameEndManager] ShowLevelVictoryConditionTips skipped: conditions are not initialized.");
+            return;
+        }
+
+        string content = BuildLevelObjectiveTipsContent();
+        if (string.IsNullOrEmpty(content))
+        {
+            Log.Warning("[GameEndManager] ShowLevelVictoryConditionTips skipped: no displayable objectives.");
+            return;
+        }
+
+        var sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
+        if (sideTipsManager == null)
+        {
+            Log.Error("[GameEndManager] ShowLevelVictoryConditionTips failed: SideTipsManager is missing.");
+            return;
+        }
+
+        sideTipsManager.ShowRuntimeTip(LevelObjectiveTipsTitle, content, LevelObjectiveTipsDurationSeconds);
+    }
+
+    private string BuildLevelObjectiveTipsContent()
+    {
+        var lines = new List<string>(4);
+
+        if (m_EnableOccupySpecificBuildings)
+        {
+            if (m_EnableArriveAmountDays)
+            {
+                lines.Add(string.Format("·在第{0}天结束前占领敌方重要建筑", m_ArriveAmountDaysValue));
+            }
+            else
+            {
+                lines.Add("·占领敌方重要建筑");
+            }
+        }
+
+        if (m_EnableSurviveAmountDays)
+        {
+            lines.Add(string.Format("·存活到第{0}天结束", m_SurviveAmountDaysValue));
+        }
+
+        if (m_EnableLoseSpecificBuildings)
+        {
+            lines.Add("·己方基地不能失守");
+        }
+
+        return string.Join("\n", lines);
     }
 
     public void RegisterInitialConditionBuilding(string buildingInstanceId, int initialOwnerFactionId)
@@ -107,6 +176,7 @@ public class GameEndManager : GameFrameworkComponent
 
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
         GF.Event.Subscribe(BuildingDisabledStateChangedEventArgs.EventId, OnBuildingDisabledStateChanged);
+        GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
         m_EventsSubscribed = true;
     }
 
@@ -121,6 +191,7 @@ public class GameEndManager : GameFrameworkComponent
         {
             GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
             GF.Event.Unsubscribe(BuildingDisabledStateChangedEventArgs.EventId, OnBuildingDisabledStateChanged);
+            GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
         }
         catch (GameFrameworkException)
         {
@@ -136,7 +207,11 @@ public class GameEndManager : GameFrameworkComponent
     {
         m_ConditionInitialized = false;
         m_EnableOccupySpecificBuildings = false;
+        m_EnableSurviveAmountDays = false;
         m_EnableLoseSpecificBuildings = false;
+        m_EnableArriveAmountDays = false;
+        m_SurviveAmountDaysValue = 0;
+        m_ArriveAmountDaysValue = 0;
         m_CurrentLevelIdentifier = null;
         IsGameEnded = false;
         IsWin = false;
@@ -145,6 +220,28 @@ public class GameEndManager : GameFrameworkComponent
         m_PlayerTargetBuildingInstanceIds.Clear();
         m_PlayerDisabledBuildingInstanceIds.Clear();
         m_TargetOwnerFactionByBuildingInstanceId.Clear();
+    }
+
+    private void OnIngameValueChanged(object sender, GameEventArgs e)
+    {
+        if (IsGameEnded)
+        {
+            return;
+        }
+
+        var args = e as IngameValueChangedEventArgs;
+        if (args == null || args.DataType != IngameValueType.Day)
+        {
+            return;
+        }
+
+        if (!m_EnableSurviveAmountDays && !m_EnableArriveAmountDays)
+        {
+            return;
+        }
+
+        Log.Info("[GameEndManager] Day changed from {0} to {1}.", args.OldValue, args.Value);
+        EvaluateConditions();
     }
 
     private void ResetTargetsForNewLevel()
@@ -271,9 +368,21 @@ public class GameEndManager : GameFrameworkComponent
             return;
         }
 
+        if (m_EnableArriveAmountDays && EvaluateArriveAmountDays())
+        {
+            TriggerFail(FailConditionType.ArriveAmountDays);
+            return;
+        }
+
         if (m_EnableOccupySpecificBuildings && EvaluateOccupySpecificBuildings())
         {
             TriggerWin(VictoryConditionType.OccupySpecificBuildings);
+            return;
+        }
+
+        if (m_EnableSurviveAmountDays && EvaluateSurviveAmountDays())
+        {
+            TriggerWin(VictoryConditionType.SurviveAmountDays);
         }
     }
 
@@ -298,6 +407,18 @@ public class GameEndManager : GameFrameworkComponent
         }
 
         return true;
+    }
+
+    private bool EvaluateSurviveAmountDays()
+    {
+        int currentDay = InGameDataModel.GetValue(IngameValueType.Day);
+        return currentDay > m_SurviveAmountDaysValue;
+    }
+
+    private bool EvaluateArriveAmountDays()
+    {
+        int currentDay = InGameDataModel.GetValue(IngameValueType.Day);
+        return currentDay > m_ArriveAmountDaysValue;
     }
 
     private bool EvaluateLoseSpecificBuildings()

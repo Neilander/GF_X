@@ -93,7 +93,7 @@ static class EntityPresetPointEditorPreview
             var points = UnityEngine.Object.FindObjectsOfType<EntityPresetPoint>();
             foreach (var point in points)
             {
-                if (point == null || EditorUtility.IsPersistent(point.gameObject))
+                if (point == null)
                 {
                     continue;
                 }
@@ -301,13 +301,7 @@ static class EntityPresetPointEditorPreview
 
     private static void SyncPoint(EntityPresetPoint point)
     {
-        if (point.PointType != EntityPresetPointType.Building)
-        {
-            RemovePreview(point.transform);
-            return;
-        }
-
-        if (!TryGetBuildingPrefabAssetPath(point.Identifier, out var prefabAssetPath))
+        if (!TryGetPointPrefabAssetPath(point, out var prefabAssetPath))
         {
             RemovePreview(point.transform);
             return;
@@ -350,6 +344,28 @@ static class EntityPresetPointEditorPreview
         DisableMonoBehaviours(instance);
     }
 
+    private static bool TryGetPointPrefabAssetPath(EntityPresetPoint point, out string prefabAssetPath)
+    {
+        prefabAssetPath = null;
+        if (point == null)
+        {
+            return false;
+        }
+
+        switch (point.PointType)
+        {
+            case EntityPresetPointType.Building:
+                return TryGetBuildingPrefabAssetPath(point.Identifier, out prefabAssetPath);
+
+            case EntityPresetPointType.Unit:
+            case EntityPresetPointType.Hero:
+                return TryGetUnitPrefabAssetPath(point.Identifier, out prefabAssetPath);
+
+            default:
+                return false;
+        }
+    }
+
     private static bool TryGetBuildingPrefabAssetPath(string identifier, out string prefabAssetPath)
     {
         EnsureBuildingCache();
@@ -361,6 +377,25 @@ static class EntityPresetPointEditorPreview
         }
 
         prefabAssetPath = UtilityBuiltin.AssetsPath.GetEntityPath(prefabPath);
+        return true;
+    }
+
+    private static bool TryGetUnitPrefabAssetPath(string identifier, out string prefabAssetPath)
+    {
+        prefabAssetPath = null;
+
+        if (!UnitTypeHelper.TryParseUnitType(identifier, out var unitType))
+        {
+            return false;
+        }
+
+        var prefabName = UnitTypeHelper.GetSoldierPrefabName(unitType);
+        if (string.IsNullOrWhiteSpace(prefabName))
+        {
+            return false;
+        }
+
+        prefabAssetPath = UtilityBuiltin.AssetsPath.GetEntityPath(prefabName);
         return true;
     }
 

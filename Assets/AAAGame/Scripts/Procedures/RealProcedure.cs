@@ -1,39 +1,27 @@
-﻿using System.Collections.Generic;
-using GameFramework;
-using GameFramework.Event;
-using GameFramework.Fsm;
-using GameFramework.Procedure;
-using UnityEngine;
-using UnityGameFramework.Runtime;
+﻿using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
-public class RealProcedure : ProcedureBase
+public class RealProcedure : RuntimeProcedureBase
 {
-    protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
+    protected override string RuntimeInitLogTag => "[RealProcedure]";
+    protected override RuntimeInitSystemFlags RequiredRuntimeSystems =>
+        RuntimeInitSystemFlags.MinimapSystem
+        | RuntimeInitSystemFlags.MinimapUI
+        | RuntimeInitSystemFlags.ResourceModifyBarUI
+        | RuntimeInitSystemFlags.PhaseSwitchUI
+        | RuntimeInitSystemFlags.SupplyUI;
+
+    protected override void OnRuntimeInitialized()
     {
-        base.OnEnter(procedureOwner);
-        GameEntry.GetComponent<GeneralSetup>().GeneralSystemSetup("Lv_1");
-
-        GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
-        // 加载阶段切换按钮
-        GF.UI.OpenUIForm(UIViews.PhaseSwitchUIForm);
-        GF.UI.OpenUIForm(UIViews.SupplyUIForm);
-
-
-        GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
-
+        Log.Info("[RealProcedure] 初始化完成，进入实战流程。");
     }
 
-    protected override void OnUpdate(IFsm<IProcedureManager> procedureOwner, float elapseSeconds, float realElapseSeconds)
+    protected override void OnRuntimeUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.OnUpdate(procedureOwner, elapseSeconds, realElapseSeconds);
         GameEntry.GetComponent<CardSetup>().CardSystemUpdate();
     }
 
-    protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
+    protected override void OnRuntimeShutdown()
     {
-        base.OnLeave(procedureOwner, isShutdown);
-
         GameEntry.GetComponent<CardSetup>().CardSystemShutdown();
-        GameEntry.GetComponent<GeneralSetup>().GeneralSystemShutDown();
     }
 }
