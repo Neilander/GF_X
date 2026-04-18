@@ -39,12 +39,14 @@ public partial class BuildingEntity : MAEntity
     public bool IsDisabled => _isDisabled;
     public bool IsLv0Invincible => _lv0InvincibleByBuff;
     public bool IsPhaseProtected => _phaseProtectionByBuff;
+    public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff;
     public bool HasPermanentNoAttackCapability { get; private set; }
 
     private BuildingAtkComp _buildingAtkComp;
     private bool _isDisabled;
     private bool _lv0InvincibleByBuff;
     private bool _phaseProtectionByBuff;
+    private bool _healthBarSuppressedByBuff;
     private bool _combatLocked;
     private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
     private BaseValueProperty _armyForceProperty;
@@ -107,6 +109,7 @@ public partial class BuildingEntity : MAEntity
         HasPermanentNoAttackCapability = false;
         _lv0InvincibleByBuff = false;
         _phaseProtectionByBuff = false;
+        _healthBarSuppressedByBuff = false;
         ClearArmyCardProperties();
         buildingData = null;
         BuildingInstanceId = null;
@@ -294,6 +297,14 @@ public partial class BuildingEntity : MAEntity
         _lv0InvincibleByBuff = enabled;
         if (_lv0InvincibleByBuff && targetComp != null)
             targetComp.CurrentTarget = null;
+    }
+
+    public void SetHealthBarSuppressedByBuff(bool enabled)
+    {
+        if (_healthBarSuppressedByBuff == enabled)
+            return;
+
+        _healthBarSuppressedByBuff = enabled;
     }
 
     private void RefreshInteractionHostForCurrentOwnership()

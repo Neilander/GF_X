@@ -1,9 +1,12 @@
 ﻿using GameFramework;
 using GameFramework.Event;
+using UnityEngine;
+using UnityGameFramework.Runtime;
 
 /// <summary>
-/// 非 Invade 阶段给敌方建筑提供“无敌/不可被索敌/不攻击”保护。
-/// 通过监听阶段与归属变化事件同步状态，避免每帧轮询。
+/// 建筑阶段保护 Buff：
+/// - 战斗保护：非 Invade 阶段给敌方建筑提供“无敌/不可被索敌/不攻击”保护。
+/// - 血条效果：进入 Build 阶段后为双方建筑施加“禁用血条”效果，离开 Build 后恢复。
 /// </summary>
 public class BuildingPhaseGuardBuff : BuffCallback
 {
@@ -26,6 +29,7 @@ public class BuildingPhaseGuardBuff : BuffCallback
 
         if (hostEntity is BuildingEntity building)
         {
+            building.SetHealthBarSuppressedByBuff(false);
             building.SetPhaseProtectionByBuff(false);
             building.UnregisterInvincibleSource(_invincibleSourceId);
         }
@@ -88,8 +92,10 @@ public class BuildingPhaseGuardBuff : BuffCallback
         if (!(hostEntity is BuildingEntity building))
             return;
 
-        bool isEnemyBuilding = building.OwnerFactionID == EntitySideHelper.EnemyFactionId;
         GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        int day = InGameDataModel.GetValue(IngameValueType.Day);
+
+        bool isEnemyBuilding = building.OwnerFactionID == EntitySideHelper.EnemyFactionId;
         bool shouldProtect = isEnemyBuilding && phase != GamePhase.Invade;
 
         building.SetPhaseProtectionByBuff(shouldProtect);
@@ -97,5 +103,35 @@ public class BuildingPhaseGuardBuff : BuffCallback
             building.RegisterInvincibleSource(_invincibleSourceId);
         else
             building.UnregisterInvincibleSource(_invincibleSourceId);
+
+        bool shouldSuppressHealthBar = phase == GamePhase.Build;
+        if (building.IsHealthBarSuppressedByBuff == shouldSuppressHealthBar)
+            return;
+
+        building.SetHealthBarSuppressedByBuff(shouldSuppressHealthBar);
+        if (shouldSuppressHealthBar)
+        {
+            HealthBarComp.Remove(building.Id);
+            return;
+        }
+
+        if (GameObject.Find($"HealthBar_{building.Id}") != null)
+            return;
+
+        Fix64 max = building.CreaturePropertyManager != null
+            ? building.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)
+            : building.HealthValue;
+        bool isFriendly = building.OwnerFactionID == EntitySideHelper.PlayerFactionId;
+        var created = HealthBarComp.Create(building.Id, building.transform, (float)building.HealthValue, (float)max, isFriendly);
+        if (created == null)
+        {
+            Log.Warning(
+                "[BuildingPhaseGuardBuff] Failed to restore building health bar. id={0}, phase={1}, day={2}, ownerFaction={3}, lv0Invincible={4}",
+                building.Id,
+                phase,
+                day,
+                building.OwnerFactionID,
+                building.IsLv0Invincible);
+        }
     }
 }

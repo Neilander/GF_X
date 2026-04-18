@@ -195,7 +195,7 @@ public class BuildManager : GameFrameworkComponent
         if (requiredBaseLevel <= 0)
             return true;
 
-        return m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(buildingData.Arche, requiredBaseLevel);
+        return m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(buildingData.Arche, requiredBaseLevel, ownerFactionId);
     }
 
     private int GetRequiredBaseLevel(BuildingData buildingData)
@@ -272,7 +272,7 @@ public class BuildManager : GameFrameworkComponent
             if (arche == Archetype.None)
                 continue;
 
-            if (m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(arche, 1))
+            if (m_BaseMilestoneTechService.HasArchetypeBaseLevelTech(arche, 1, EntitySideHelper.PlayerFactionId))
                 arches.Add(arche);
         }
 

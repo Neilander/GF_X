@@ -181,7 +181,21 @@ public class HealthBarComp : MonoBehaviour
     public static HealthBarComp Create(int entityId, Transform followTarget, float curHp, float maxHp, bool isFriendly = true)
     {
         if (ShouldSuppressHealthBar(followTarget))
+        {
+            var building = followTarget != null ? followTarget.GetComponent<BuildingEntity>() : null;
+            if (building != null)
+            {
+                Log.Info(
+                    "[HealthBar] Suppressed create for building. id={0}, ownerFaction={1}, lv0Invincible={2}, healthBarSuppressedByBuff={3}, phaseProtected={4}",
+                    entityId,
+                    building.OwnerFactionID,
+                    building.IsLv0Invincible,
+                    building.IsHealthBarSuppressedByBuff,
+                    building.IsPhaseProtected);
+            }
+
             return null;
+        }
 
         bool isBuilding = followTarget != null && followTarget.GetComponent<BuildingEntity>() != null;
         ResolveVisualBounds(followTarget, out bool hasBounds, out Bounds bounds);
@@ -354,7 +368,7 @@ public class HealthBarComp : MonoBehaviour
             return true;
 
         var building = followTarget.GetComponent<BuildingEntity>();
-        if (building != null && (building.IsLv0Invincible || building.IsPhaseProtected))
+        if (building != null && (building.IsLv0Invincible || building.IsHealthBarSuppressedByBuff))
             return true;
 
         return false;

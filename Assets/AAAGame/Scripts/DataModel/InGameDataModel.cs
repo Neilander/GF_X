@@ -202,6 +202,15 @@ public class InGameDataModel : DataModelBase
         return dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) && owners.Contains(buildingContextKey);
     }
 
+    public static bool HasUnlockedTech(string techId, int ownerFactionId)
+    {
+        if (string.IsNullOrWhiteSpace(techId) || ownerFactionId < 0)
+            return false;
+
+        var dataModel = GetModel();
+        return dataModel != null && dataModel.HasUnlockedTechInFaction(techId, ownerFactionId);
+    }
+
 
     public static bool UnlockTech(string techId, bool isStackable, string buildingContextKey, int ownerFactionId = EntitySideHelper.PlayerFactionId)
     {
@@ -287,6 +296,30 @@ public class InGameDataModel : DataModelBase
                && m_TechOwnerContextsById.TryGetValue(techId, out var owners)
                && owners != null
                && owners.Count > 0;
+    }
+
+    private bool HasUnlockedTechInFaction(string techId, int ownerFactionId)
+    {
+        if (!m_TechOwnerContextsById.TryGetValue(techId, out var owners)
+            || owners == null
+            || owners.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var building in m_Buildings)
+        {
+            if (building == null || building.OwnerFactionID != ownerFactionId)
+                continue;
+
+            if (string.IsNullOrWhiteSpace(building.BuildingInstanceId))
+                continue;
+
+            if (owners.Contains(building.BuildingInstanceId))
+                return true;
+        }
+
+        return false;
     }
 
     public static IReadOnlyList<Stronghold> GetStrongholds()
