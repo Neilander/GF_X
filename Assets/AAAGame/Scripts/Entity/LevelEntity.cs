@@ -202,9 +202,39 @@ public class LevelEntity : EntityBase
         var buildManager = GameEntry.GetComponent<BuildManager>();
         var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
+        var testSlotConfig = TechTestSlotConfig.LoadOrNull();
+        if (testSlotConfig == null)
+        {
+            Debug.LogWarning("[TestSlot] TechTestSlotConfig 未加载 (Resources.Load 返回 null)");
+        }
+        else
+        {
+            Debug.Log($"[TestSlot] TechTestSlotConfig 加载成功，槽位: [{string.Join(", ", testSlotConfig.SlotBuildingIds ?? new string[0])}]");
+        }
         bool heroSpawned = false;
         foreach (var point in presetPoints)
         {
+            string effectiveIdentifier = point.Identifier;
+            if (point.IsTestSlot)
+            {
+                string slotId = null;
+                if (testSlotConfig != null
+                    && testSlotConfig.SlotBuildingIds != null
+                    && point.TestSlotIndex >= 0
+                    && point.TestSlotIndex < testSlotConfig.SlotBuildingIds.Length)
+                {
+                    slotId = testSlotConfig.SlotBuildingIds[point.TestSlotIndex];
+                }
+
+                if (string.IsNullOrWhiteSpace(slotId))
+                {
+                    Debug.LogWarning($"[TestSlot] 槽位 {point.TestSlotIndex} 未配建筑，跳过 {point.name}");
+                    continue;
+                }
+
+                effectiveIdentifier = slotId;
+            }
+
             switch (point.PointType)
             {
                 case EntityPresetPointType.Hero:
@@ -213,9 +243,9 @@ public class LevelEntity : EntityBase
                         break;
                     }
 
-                    if (!UnitTypeHelper.TryParseUnitType(point.Identifier, out var heroUnitType))
+                    if (!UnitTypeHelper.TryParseUnitType(effectiveIdentifier, out var heroUnitType))
                     {
-                        Log.Error("LevelEntity.SpawnPresetEntities failed: invalid hero identifier '{0}'.", point.Identifier);
+                        Log.Error("LevelEntity.SpawnPresetEntities failed: invalid hero identifier '{0}'.", effectiveIdentifier);
                         break;
                     }
 
@@ -224,9 +254,9 @@ public class LevelEntity : EntityBase
                     break;
 
                 case EntityPresetPointType.Building:
-                    if (!buildManager.TryBuildBuildingForLevelInit(point.Identifier, point.Position, out var buildingInstanceId))
+                    if (!buildManager.TryBuildBuildingForLevelInit(effectiveIdentifier, point.Position, out var buildingInstanceId))
                     {
-                        Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", point.Identifier);
+                        Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         break;
                     }
 

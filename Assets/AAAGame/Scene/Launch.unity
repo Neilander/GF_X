@@ -3944,6 +3944,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4997160fcda625842b3f5ff296cdbe2f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  tipDuration: 2
 --- !u!4 &1857117722
 Transform:
   m_ObjectHideFlags: 0
@@ -4192,184 +4193,274 @@ MonoBehaviour:
   techEffectBindings:
   - TechId: Tech_Buil_ResearchCenter_Lv2_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_ResearchCenter_Lv2_Opt2
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_ResearchCenter_Lv3_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_ResearchCenter_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 4c42823da301643768e5cee521df5f36, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ServerRoom_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_ServerRoom_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 4aa8efd6fba6d44818b01735f88be160, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ServerRoom_Opt3
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_ServerRoom_Opt4
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_MiningRig_Lv2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 8728f3ecef0c94bad85e49ba903ecef0, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_MiningRig_Lv3
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: ed60de59230ec44368cca644a010061c, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_OtakuDesk_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 31da95826cd914628bcb3db9c77fb70c, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_OtakuDesk_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: b0c8133ae18b4419ca53509888785dcd, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_OtakuDesk_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 1cabe0ae06899475a938aafbb40f125e, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_OtakuDesk_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: fba93fc183f814da3b7a04651f39e94c, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_InterviewRoom_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: a8cb36f7fef7b402ba9b07c07146f1e3, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_InterviewRoom_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 96262708ad1194fceb114fac2576fb2b, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_InterviewRoom_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 8ed952d3481a2452695fcb8bbc7a4eba, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_InterviewRoom_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: ffb8186df2ce349d69c0e3e7c3682d5a, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DreamPark_Lv2_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_DreamPark_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 50424fd4804c54da095fa5c099b859d1, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DreamPark_Lv3_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_DreamPark_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: e0dd4b200470a42f4959bea767651eb9, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DrinkStand_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: ad00078e63cd9404baa2a1b81297bd57, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DrinkStand_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: cb456f00d7c17459fa75aff422a692b6, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DrinkStand_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: dd2932e8e5342476dbed31c4705583e4, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DrinkStand_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 391474d541a2941e88151fab71a07cf7, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_BallPit_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: aa3f32e33f5de4a42b93b440c82ca742, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_BallPit_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: af07f94cd68e9492a8abc35e4e48ac9c, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_BallPit_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 36b02c3d2fc6e4cb7a2b11006ac901e2, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_BallPit_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: da88bad5b7fda429eaf3ce1e57500ca0, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_SouvenirStand_Lv2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 2c4fdec80919944899a04e3b1854f23d, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_SouvenirStand_Lv3
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: f86b23761c0ad496489b140ffa86e1a6, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_GiantMascot_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 39c1aae0cafad46818cb12ce845acaa1, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_GiantMascot_Opt2
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_GiantMascot_Opt3
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 179063317d7b0471481fef936acffdcf, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_GiantMascot_Opt4
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_SortingCenter_Lv2_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_SortingCenter_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 51ac10553018445fb93be3d87eb8f9bf, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_SortingCenter_Lv3_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_SortingCenter_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: e8e564a4248bf41759c17dd3861ee696, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ParcelLocker_Lv2
-    Effect: {fileID: 11400000, guid: 611f62ff1338f4f30b2ac222c41d8311, type: 2}
+    Effect: {fileID: 11400000, guid: 8258530574d044d3d917293cf1443726, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ParcelLocker_Lv3
-    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
+    Effect: {fileID: 11400000, guid: 4cef3ecb1f2674848a877aee580fd562, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PickupPoint_Lv2_Opt1
-    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
+    Effect: {fileID: 11400000, guid: 31ec7767cd35444caac72a59a75769e2, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PickupPoint_Lv2_Opt2
-    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
+    Effect: {fileID: 11400000, guid: dcf156c735fdc44d29dc8012840bbfac, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PickupPoint_Lv3_Opt1
-    Effect: {fileID: 11400000, guid: 3c1801c8cf24a4d5bb68715aca5c6a39, type: 2}
+    Effect: {fileID: 11400000, guid: cd7447603615a45309df53531f041bb5, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PickupPoint_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: b5177192261254ebf880c0bdd76e1f5c, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DeliveryHub_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 0e5d7b3a2cd6e4d1eb91a6592470748d, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DeliveryHub_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: e4816603de2d147f9bb5629d6f8a9f0c, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DeliveryHub_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 8f9144afc8972463494a9e15282cb8af, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_DeliveryHub_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: fafc34bbfa95440f9a899d6cbe8a5126, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_NavStation_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: cd1253a65730a48948abccc37d9322cb, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_NavStation_Opt2
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_NavStation_Opt3
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_NavStation_Opt4
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_FarmBase_Lv2_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_FarmBase_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 4955e53d400474d7f9590169a204cfd0, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FarmBase_Lv3_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_FarmBase_Lv3_Opt2
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_Slaughterhouse_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: c26c5643b8e7241dcac39eaa43e9b0f5, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_Slaughterhouse_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 879c1f6f5bd43446983508e1d4f5fc73, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_Slaughterhouse_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: c741366eb82b64f689562f398d7be8d8, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_Slaughterhouse_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: b766af1d0b8ad42d4ae93e3d25865475, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ColdMeatStorage_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 0c461eca1e1d74035b36451ffe56f619, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ColdMeatStorage_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: f30169087b4a4452db0e08c7dc4c2559, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ColdMeatStorage_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: b8d98914c136d4413bc7f7453918506d, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_ColdMeatStorage_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: af5d7c796a50f4e65924f2f3f65cebaa, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_MeatStall_Lv2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 210fb9a1336ae4c53853b2bc713518ed, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_MeatStall_Lv3
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: bf74947a6e36546308d17058db1b80f3, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_QualityCheck_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_QualityCheck_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 87534a14d588a4fc1bf6b286f1ab4f62, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_QualityCheck_Opt3
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 62accfac78a36457bb87451ef98d6d48, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_QualityCheck_Opt4
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 4deb5fcaf8911421e8ddf1aafe8dd373, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireHQ_Lv2_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_FireHQ_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: ead0fd33ec7c8471685e517395caa958, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireHQ_Lv3_Opt1
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_FireHQ_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: edb3081587e50436ab22ffd9847c0938, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PumpStation_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 880f65493b8104e36ab2e4a6fb19c4ee, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PumpStation_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: dc0205480c75349deb039ddac50ce5f5, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PumpStation_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 8fb76efefb1a64201a7659007edcffd1, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_PumpStation_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 063aad7f986d5465aabb8f47f79fe0ba, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireDrillSite_Lv2_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 4bedeacba3af5464ba41ad74c6c6f9be, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireDrillSite_Lv2_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: f2daf23e8bfd44ebf90cd8daa9358041, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireDrillSite_Lv3_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: b9fb85a480a6d4322ad145b75ae0e3bc, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireDrillSite_Lv3_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 75cbed58e710e4e7eb098ae09b0d1fe2, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireAcademy_Opt1
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 6e9a700e30c374937a5671f126181fc3, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireAcademy_Opt2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: a6eae4a7e85f24dac8ab046eba5ee6e4, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_FireAcademy_Opt3
     Effect: {fileID: 0}
+    Tested: 0
   - TechId: Tech_Buil_FireAcademy_Opt4
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 46bd04c6af68f40a9ba0e32a2ac5ca40, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_InsuranceOffice_Lv2
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 904ea2c3f6ea84750b761402acb008a2, type: 2}
+    Tested: 0
   - TechId: Tech_Buil_InsuranceOffice_Lv3
-    Effect: {fileID: 0}
+    Effect: {fileID: 11400000, guid: 32c3fb02db7b1435986eaa0e49618f99, type: 2}
+    Tested: 0
   defaultTechEffect: {fileID: 11400000, guid: 611f62ff1338f4f30b2ac222c41d8311, type: 2}
 --- !u!4 &1925905247
 Transform:
