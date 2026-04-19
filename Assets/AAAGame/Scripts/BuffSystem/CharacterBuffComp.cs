@@ -200,6 +200,29 @@ namespace AAAGame.Scripts.BuffSystem
         }
 
         /// <summary>
+        /// 获取指定 id 的 Buff 上第一个类型为 T 的模块。
+        /// 常用于外部对"已经挂上的某个 buff 模块"做参数修改（如寿命加减）。
+        /// </summary>
+        public T GetBuffModule<T>(string buffId) where T : BuffCallback
+        {
+            if (string.IsNullOrEmpty(buffId)) return null;
+            if (!_buffDict.TryGetValue(buffId, out BuffData data) || data.modules == null) return null;
+            for (int i = 0; i < data.modules.Count; i++)
+            {
+                if (data.modules[i] is T t) return t;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 便捷访问宿主身上的 TimedDeathBuff 实例（没有则返回 null）。
+        /// </summary>
+        public TimedDeathBuff GetTimedDeathBuff()
+        {
+            return GetBuffModule<TimedDeathBuff>("timed_death");
+        }
+
+        /// <summary>
         /// 移除过期Buff（调用OnDurationEnd）
         /// </summary>
         private bool RemoveExpiredBuff(string buffId)

@@ -29,17 +29,15 @@ public class TechBuilGiantMascotOpt1EffectSO : TechEffectSO
 
     public override BuffData CreateUnitInitialBuff(TechData techData, UnitType unitType, string techId)
     {
-        // 无需读取 UniqueValues
-
-        Debug.LogWarning($"[{nameof(TechBuilGiantMascotOpt1EffectSO)}] 未实现字段: 远程攻击距离+<val1>%（百分比机制未实现） (techId={techId})");
+        Fix64 v0 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 0) ? techData.UniqueValues[0] : Fix64.Zero;
 
         var modules = new List<BuffCallback>
         {
-            // 无可挂载的单位 Buff（字段全部属于未实现类别）
+            new PercentRangeBonusBuff(v0 / (Fix64)100),  // +15% Range
         };
 
         return BuffData.Create(
-            id: $"unit_tech_{techId}_{unitType}",
+            id: $"pct_range_{techId}_{unitType}",
             duration: float.MaxValue,
             isForever: true,
             maxStack: 1,

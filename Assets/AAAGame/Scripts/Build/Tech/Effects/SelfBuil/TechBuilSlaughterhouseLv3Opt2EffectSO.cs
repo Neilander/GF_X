@@ -29,17 +29,21 @@ public class TechBuilSlaughterhouseLv3Opt2EffectSO : TechEffectSO
     public override BuffData CreateBuildingScopedBuff(TechData techData, string techId)
     {
         Fix64 v0 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 0) ? techData.UniqueValues[0] : Fix64.Zero;
+        Fix64 v1 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 1) ? techData.UniqueValues[1] : Fix64.Zero;
 
-        // TODO: 未实现字段 -> 杀敌回复比例+<val2>（特殊机制）
-        Debug.LogWarning($"[{nameof(TechBuilSlaughterhouseLv3Opt2EffectSO)}] 未实现字段: 杀敌回复比例+<val2>（特殊机制） (techId={techId})");
+        // 杀敌回复: 新建一个独立 id 的 OnKillHealBuff 挂上，和单位默认的 "on_kill_heal"
+        // 用不同 id 独立共存；每次 OnKill 各自触发各自的百分比回血。
+        var killHealBuff = new OnKillHealBuff();
+        killHealBuff.SetHealPercent((float)v1);
 
         var modules = new List<BuffCallback>
         {
-            new FlatHealthBonusBuff(v0),
+            new FlatHealthBonusBuff(v0),   // HP +100
+            killHealBuff,                  // 杀敌回复 +2%
         };
 
         return BuffData.Create(
-            id: $"building_tech_{techId}",
+            id: $"building_tech_{techId}",  // id 独立，不会和默认 "on_kill_heal" 冲突
             duration: float.MaxValue,
             isForever: true,
             maxStack: 1,

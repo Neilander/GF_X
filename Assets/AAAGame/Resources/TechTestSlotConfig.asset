@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: TechTestSlotConfig
   m_EditorClassIdentifier: 
   SlotBuildingIds:
-  - Buil_PickupPoint_Lv1
+  - Buil_InterviewRoom_Lv1
   - 
   - 

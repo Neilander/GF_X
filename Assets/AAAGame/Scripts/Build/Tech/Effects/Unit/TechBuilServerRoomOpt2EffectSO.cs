@@ -29,13 +29,14 @@ public class TechBuilServerRoomOpt2EffectSO : TechEffectSO
 
     public override BuffData CreateUnitInitialBuff(TechData techData, UnitType unitType, string techId)
     {
-        // 无需读取 UniqueValues
+        Fix64 v0 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 0) ? techData.UniqueValues[0] : Fix64.Zero;
 
-        Debug.LogWarning($"[{nameof(TechBuilServerRoomOpt2EffectSO)}] 未实现字段: 实习生和码农寿命+<val1>%（寿命机制未实现） (techId={techId})");
+        // val1=100 表示 100%，换算成 1.0
+        Fix64 percent = v0 / (Fix64)100;
 
         var modules = new List<BuffCallback>
         {
-            // 无可挂载的单位 Buff（字段全部属于未实现类别）
+            new LifetimePercentBuff(percent),
         };
 
         return BuffData.Create(

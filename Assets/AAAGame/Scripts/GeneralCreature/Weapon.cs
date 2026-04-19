@@ -69,6 +69,16 @@ public class Weapon
         m_Stats[(int)stat].Multiplier *= factor;
     }
 
+    /// <summary>
+    /// 对指定 stat 追加百分比加法栈（0.25 = +25%）。
+    /// 多个 buff 并列累加到 PercentSum，最终 (Base+Additive)*(1+Sum)*Multiplier。
+    /// OnAdd 传 +delta，OnRemove 传 -delta 撤销。
+    /// </summary>
+    public void ApplyPercentAdd(WeaponStatId stat, Fix64 delta)
+    {
+        m_Stats[(int)stat].PercentSum += delta;
+    }
+
     public static Weapon Create(string idPrefix, WeaponData data, PropertyManager propertyManager = null)
     {
         if (data == null)

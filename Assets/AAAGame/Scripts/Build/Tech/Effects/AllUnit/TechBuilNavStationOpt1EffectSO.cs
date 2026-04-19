@@ -28,18 +28,19 @@ public class TechBuilNavStationOpt1EffectSO : TechEffectSO
 
     public override BuffData CreateUnitInitialBuff(TechData techData, UnitType unitType, string techId)
     {
+        Fix64 v0 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 0) ? techData.UniqueValues[0] : Fix64.Zero;
         Fix64 v2 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 2) ? techData.UniqueValues[2] : Fix64.Zero;
 
-        Debug.LogWarning($"[{nameof(TechBuilNavStationOpt1EffectSO)}] 未实现字段: 移动速度+<val1>%（百分比机制未实现） (techId={techId})");
         Debug.LogWarning($"[{nameof(TechBuilNavStationOpt1EffectSO)}] 未实现字段: 减速抗性+<val2>%（减速抗性机制未实现） (techId={techId})");
 
         var modules = new List<BuffCallback>
         {
-            new FlatDefBonusBuff(-v2),
+            new PercentMoveSpeedBonusBuff(v0 / (Fix64)100),  // +20%
+            new FlatDefBonusBuff(-v2),                         // 护甲-1
         };
 
         return BuffData.Create(
-            id: $"unit_tech_{techId}_{unitType}",
+            id: $"pct_movespeed_{techId}_{unitType}",
             duration: float.MaxValue,
             isForever: true,
             maxStack: 1,

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -8,6 +9,8 @@ using UnityEngine;
 /// </summary>
 public class TechBuilInterviewRoomLv3Opt2EffectSO : HybridBuildingTechEffectSO
 {
+    protected override bool HasUnitBuff => true;
+
     protected override void ApplyExtraProps(BuildingExtraProps extra, TechData td)
     {
         if (td?.UniqueValues != null && td.UniqueValues.Length > 0)
@@ -18,7 +21,18 @@ public class TechBuilInterviewRoomLv3Opt2EffectSO : HybridBuildingTechEffectSO
 
     public override BuffData CreateBuildingScopedBuff(TechData techData, string techId)
     {
-        Debug.LogWarning($"[{nameof(TechBuilInterviewRoomLv3Opt2EffectSO)}] 未实现字段: 寿命+<val2>秒 (techId={techId})");
-        return null;
+        Fix64 v1 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 1) ? techData.UniqueValues[1] : Fix64.Zero;
+
+        var modules = new List<BuffCallback>
+        {
+            new LifetimeDeltaBuff(v1),  // 寿命+20s
+        };
+
+        return BuffData.Create(
+            id: $"building_tech_{techId}",
+            duration: float.MaxValue,
+            isForever: true,
+            maxStack: 1,
+            modules: modules);
     }
 }
