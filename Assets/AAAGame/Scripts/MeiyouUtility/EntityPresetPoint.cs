@@ -38,7 +38,9 @@ static class EntityPresetPointEditorPreview
     private const string PreviewRootName = "__EntityPresetPreview__";
 
     private static readonly Dictionary<string, string> BuildingPrefabPathByIdentifier = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, string> UnitPrefabPathByCharacterKey = new(StringComparer.Ordinal);
     private static bool buildingTableLoaded;
+    private static bool characterTableLoaded;
     private static bool syncQueued;
     private static bool isSyncing;
 
@@ -64,6 +66,7 @@ static class EntityPresetPointEditorPreview
     private static void OnProjectChanged()
     {
         buildingTableLoaded = false;
+        characterTableLoaded = false;
         RequestSync();
     }
 
@@ -72,6 +75,7 @@ static class EntityPresetPointEditorPreview
         if (state == PlayModeStateChange.EnteredEditMode || state == PlayModeStateChange.ExitingPlayMode)
         {
             buildingTableLoaded = false;
+            characterTableLoaded = false;
             RequestSync();
         }
     }
@@ -89,6 +93,7 @@ static class EntityPresetPointEditorPreview
         try
         {
             EnsureBuildingCache();
+            EnsureCharacterCache();
 
             var points = UnityEngine.Object.FindObjectsOfType<EntityPresetPoint>();
             foreach (var point in points)
@@ -130,6 +135,29 @@ static class EntityPresetPointEditorPreview
         Debug.LogWarning($"[EntityPresetPointEditorPreview] 未找到 BuildingTable 数据表资源: {UtilityBuiltin.AssetsPath.GetDataTablePath("BuildingTable", false)} / {UtilityBuiltin.AssetsPath.GetDataTablePath("BuildingTable", true)}");
     }
 
+    private static void EnsureCharacterCache()
+    {
+        if (characterTableLoaded)
+        {
+            return;
+        }
+
+        characterTableLoaded = true;
+        UnitPrefabPathByCharacterKey.Clear();
+
+        if (TryLoadCharacterTable(GetCharacterTableAssetPath(false)))
+        {
+            return;
+        }
+
+        if (TryLoadCharacterTable(GetCharacterTableAssetPath(true)))
+        {
+            return;
+        }
+
+        Debug.LogWarning($"[EntityPresetPointEditorPreview] 未找到 CharacterDataDetail 数据表资源: {UtilityBuiltin.AssetsPath.GetDataTablePath("CharacterDataDetail", false)} / {UtilityBuiltin.AssetsPath.GetDataTablePath("CharacterDataDetail", true)}");
+    }
+
     private static string GetBuildingTableAssetPath(bool useBytes)
     {
         var defaultPath = UtilityBuiltin.AssetsPath.GetDataTablePath("BuildingTable", useBytes);
@@ -140,6 +168,40 @@ static class EntityPresetPointEditorPreview
 
         string[] candidateFolders = { "Assets/AAAGame/DataTable" };
         string[] guids = AssetDatabase.FindAssets("BuildingTable t:TextAsset", candidateFolders);
+        foreach (var guid in guids)
+        {
+            string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                continue;
+            }
+
+            if (useBytes)
+            {
+                if (assetPath.EndsWith(".bytes", StringComparison.OrdinalIgnoreCase))
+                {
+                    return assetPath;
+                }
+            }
+            else if (assetPath.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+            {
+                return assetPath;
+            }
+        }
+
+        return defaultPath;
+    }
+
+    private static string GetCharacterTableAssetPath(bool useBytes)
+    {
+        var defaultPath = UtilityBuiltin.AssetsPath.GetDataTablePath("CharacterDataDetail", useBytes);
+        if (AssetDatabase.LoadAssetAtPath<TextAsset>(defaultPath) != null)
+        {
+            return defaultPath;
+        }
+
+        string[] candidateFolders = { "Assets/AAAGame/DataTable" };
+        string[] guids = AssetDatabase.FindAssets("CharacterDataDetail t:TextAsset", candidateFolders);
         foreach (var guid in guids)
         {
             string assetPath = AssetDatabase.GUIDToAssetPath(guid);
@@ -189,6 +251,31 @@ static class EntityPresetPointEditorPreview
         return true;
     }
 
+    private static bool TryLoadCharacterTable(string assetPath)
+    {
+        if (string.IsNullOrWhiteSpace(assetPath))
+        {
+            return false;
+        }
+
+        var textAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
+        if (textAsset == null)
+        {
+            return false;
+        }
+
+        if (assetPath.EndsWith(".bytes", StringComparison.OrdinalIgnoreCase))
+        {
+            LoadCharacterRowsFromBytes(textAsset.bytes);
+        }
+        else
+        {
+            LoadCharacterRowsFromText(textAsset.text);
+        }
+
+        return true;
+    }
+
     private static void LoadBuildingRowsFromText(string tableText)
     {
         using (var reader = new StringReader(tableText))
@@ -232,6 +319,54 @@ static class EntityPresetPointEditorPreview
                 }
 
                 RegisterBuildingRow(row);
+                reader.BaseStream.Position += rowLength;
+            }
+        }
+    }
+
+    private static void LoadCharacterRowsFromText(string tableText)
+    {
+        using (var reader = new StringReader(tableText))
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line) || line[0] == '#')
+                {
+                    continue;
+                }
+
+                var row = new CharacterDataDetail();
+                if (!row.ParseDataRow(line, null))
+                {
+                    Debug.LogWarning($"[EntityPresetPointEditorPreview] 无法解析 CharacterDataDetail 行: {line}");
+                    continue;
+                }
+
+                RegisterCharacterRow(row);
+            }
+        }
+    }
+
+    private static void LoadCharacterRowsFromBytes(byte[] tableBytes)
+    {
+        using (var stream = new MemoryStream(tableBytes, false))
+        using (var reader = new BinaryReader(stream))
+        {
+            while (reader.BaseStream.Position < reader.BaseStream.Length)
+            {
+                int rowLength = Read7BitEncodedInt32(reader);
+                int rowStart = (int)reader.BaseStream.Position;
+
+                var row = new CharacterDataDetail();
+                if (!row.ParseDataRow(tableBytes, rowStart, rowLength, null))
+                {
+                    Debug.LogWarning("[EntityPresetPointEditorPreview] 无法解析 CharacterDataDetail 二进制行。");
+                    reader.BaseStream.Position += rowLength;
+                    continue;
+                }
+
+                RegisterCharacterRow(row);
                 reader.BaseStream.Position += rowLength;
             }
         }
@@ -289,6 +424,16 @@ static class EntityPresetPointEditorPreview
         }
     }
 
+    private static void RegisterCharacterRow(CharacterDataDetail row)
+    {
+        if (row == null)
+        {
+            return;
+        }
+
+        AddCharacterPreviewPath(row.CharacterKey, row.PrefabPath);
+    }
+
     private static void AddBuildingPreviewPath(string identifier, string prefabPath)
     {
         if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(prefabPath))
@@ -297,6 +442,16 @@ static class EntityPresetPointEditorPreview
         }
 
         BuildingPrefabPathByIdentifier[identifier] = prefabPath;
+    }
+
+    private static void AddCharacterPreviewPath(string characterKey, string prefabPath)
+    {
+        if (string.IsNullOrWhiteSpace(characterKey) || string.IsNullOrWhiteSpace(prefabPath))
+        {
+            return;
+        }
+
+        UnitPrefabPathByCharacterKey[characterKey] = prefabPath;
     }
 
     private static void SyncPoint(EntityPresetPoint point)
@@ -383,19 +538,20 @@ static class EntityPresetPointEditorPreview
     private static bool TryGetUnitPrefabAssetPath(string identifier, out string prefabAssetPath)
     {
         prefabAssetPath = null;
+        EnsureCharacterCache();
 
-        if (!UnitTypeHelper.TryParseUnitType(identifier, out var unitType))
+        string characterKey = string.IsNullOrWhiteSpace(identifier) ? string.Empty : identifier.Trim();
+        if (UnitTypeHelper.TryParseUnitType(identifier, out var unitType))
+        {
+            characterKey = unitType.ToString();
+        }
+
+        if (string.IsNullOrWhiteSpace(characterKey) || !UnitPrefabPathByCharacterKey.TryGetValue(characterKey, out var prefabPath))
         {
             return false;
         }
 
-        var prefabName = UnitTypeHelper.GetSoldierPrefabName(unitType);
-        if (string.IsNullOrWhiteSpace(prefabName))
-        {
-            return false;
-        }
-
-        prefabAssetPath = UtilityBuiltin.AssetsPath.GetEntityPath(prefabName);
+        prefabAssetPath = UtilityBuiltin.AssetsPath.GetEntityPath(prefabPath);
         return true;
     }
 

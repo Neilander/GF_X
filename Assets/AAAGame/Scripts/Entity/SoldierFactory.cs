@@ -10,6 +10,8 @@ using AAAGame.Scripts.BuffSystem;
 /// </summary>
 public static class SoldierFactory
 {
+    private static readonly HashSet<string> LoggedPrefabSourceCharacterKeys = new(StringComparer.Ordinal);
+
     /// <summary>
     /// 统一移除士兵入口：使用 HideEntity。
     /// 血条由 HideEntityComplete 事件监听链路自动清理。
@@ -45,8 +47,8 @@ public static class SoldierFactory
     /// <param name="brainType">AI类型</param>
     public static int ShowSoldier(UnitType unitType, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI, string sourceBuildingInstanceId = null)
     {
-        string prefabName = UnitTypeHelper.GetSoldierPrefabName(unitType);
         string characterKey = unitType.ToString();
+        string prefabName = GetPrefabPathFromCharacterData(characterKey);
         Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
 
         // 添加初始Buff到StartBuffs列表
@@ -59,6 +61,25 @@ public static class SoldierFactory
         // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
 
         return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs);
+    }
+
+    private static string GetPrefabPathFromCharacterData(string characterKey)
+    {
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        if (table == null)
+            throw new InvalidOperationException("SoldierFactory.ShowSoldier failed: CharacterDataDetail data table is null.");
+
+        var row = table.GetDataRow(r => r.CharacterKey == characterKey);
+        if (row == null)
+            throw new InvalidOperationException($"SoldierFactory.ShowSoldier failed: CharacterDataDetail row not found. CharacterKey={characterKey}.");
+
+        if (string.IsNullOrWhiteSpace(row.PrefabPath))
+            throw new InvalidOperationException($"SoldierFactory.ShowSoldier failed: CharacterDataDetail.PrefabPath is empty. CharacterKey={characterKey}.");
+
+        if (LoggedPrefabSourceCharacterKeys.Add(characterKey))
+            Log.Info("[SoldierFactory] Unit prefab source: CharacterDataDetail.PrefabPath. CharacterKey={0}, PrefabPath={1}.", characterKey, row.PrefabPath);
+
+        return row.PrefabPath;
     }
 
 
