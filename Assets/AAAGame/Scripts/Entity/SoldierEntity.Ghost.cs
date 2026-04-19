@@ -8,9 +8,12 @@ public partial class SoldierEntity
     private static readonly int ColorId = Shader.PropertyToID("_Color");
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly ICapability GhostCapabilityLocker = new GhostStateCapabilityLocker();
+    private const int GhostCollisionSyncIntervalFrames = 6;
 
     private readonly Dictionary<Renderer, Color> _ghostBaseColors = new Dictionary<Renderer, Color>();
+    private readonly Dictionary<int, CharacterController> _ghostIgnoredUnitControllers = new Dictionary<int, CharacterController>();
     private bool _isHidingOrShuttingDown;
+    private int _nextGhostCollisionSyncFrame;
 
     public bool IsGhostState { get; private set; }
 
@@ -54,6 +57,8 @@ public partial class SoldierEntity
         }
 
         SetGhostVisual(enabled);
+        SetGhostGroupMoveCollisionIgnore(enabled);
+        SyncGhostUnitCollisionIgnores(force: true);
         AAAGame.MiniMap.FOG3.Fog3Manager.Instance?.SetEntityRevealerAllowRevealHidden(Id, !enabled);
     }
 
@@ -218,11 +223,121 @@ public partial class SoldierEntity
             Mathf.Clamp01(source.a * GhostAlphaMultiplier));
     }
 
+    private void SetGhostGroupMoveCollisionIgnore(bool ignore)
+    {
+        if (!GroupMoveManager.HasInstance)
+            return;
+
+        GroupMoveManager.Instance.Coordinator.SetAgentIgnoreCollision(GetInstanceID(), ignore);
+    }
+
+    private void TickGhostCollisionRuntime()
+    {
+        if (IsGhostState)
+        {
+            if (Time.frameCount < _nextGhostCollisionSyncFrame)
+                return;
+
+            _nextGhostCollisionSyncFrame = Time.frameCount + GhostCollisionSyncIntervalFrames;
+            SyncGhostUnitCollisionIgnores(force: false);
+            return;
+        }
+
+        if (_ghostIgnoredUnitControllers.Count == 0)
+            return;
+
+        if (Time.frameCount < _nextGhostCollisionSyncFrame)
+            return;
+
+        _nextGhostCollisionSyncFrame = Time.frameCount + GhostCollisionSyncIntervalFrames;
+        SyncGhostUnitCollisionIgnores(force: false);
+    }
+
+    private void SyncGhostUnitCollisionIgnores(bool force)
+    {
+        CharacterController selfController = GetComponent<CharacterController>();
+        if (selfController == null)
+            return;
+
+        if (_ghostIgnoredUnitControllers.Count > 0)
+        {
+            var staleIds = new List<int>();
+            foreach (var pair in _ghostIgnoredUnitControllers)
+            {
+                if (pair.Value == null)
+                    staleIds.Add(pair.Key);
+            }
+
+            for (int i = 0; i < staleIds.Count; i++)
+                _ghostIgnoredUnitControllers.Remove(staleIds[i]);
+        }
+
+        int added = 0;
+        int restored = 0;
+
+        if (IsGhostState)
+        {
+            IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
+            for (int i = 0; i < allEntities.Count; i++)
+            {
+                if (allEntities[i] is not MAEntity other || other == this || other is BuildingEntity)
+                    continue;
+
+                CharacterController otherController = other.GetComponent<CharacterController>();
+                if (otherController == null)
+                    continue;
+
+                int otherId = other.GetInstanceID();
+                if (_ghostIgnoredUnitControllers.ContainsKey(otherId))
+                    continue;
+
+                Physics.IgnoreCollision(selfController, otherController, true);
+                _ghostIgnoredUnitControllers[otherId] = otherController;
+                added++;
+            }
+        }
+        else
+        {
+            if (_ghostIgnoredUnitControllers.Count == 0)
+                return;
+
+            var removeIds = new List<int>();
+            foreach (var pair in _ghostIgnoredUnitControllers)
+            {
+                CharacterController otherController = pair.Value;
+                if (otherController == null)
+                {
+                    removeIds.Add(pair.Key);
+                    continue;
+                }
+
+                bool keepIgnored = otherController.TryGetComponent<SoldierEntity>(out SoldierEntity otherSoldier)
+                    && otherSoldier.IsGhostState;
+                if (keepIgnored)
+                    continue;
+
+                Physics.IgnoreCollision(selfController, otherController, false);
+                removeIds.Add(pair.Key);
+                restored++;
+            }
+
+            for (int i = 0; i < removeIds.Count; i++)
+                _ghostIgnoredUnitControllers.Remove(removeIds[i]);
+        }
+
+        if (added > 0 || restored > 0 || force)
+        {
+            Debug.Log($"[SoldierEntity.Ghost] Sync unit collision ignores. entityId={Id}, ghost={IsGhostState}, added={added}, restored={restored}, tracked={_ghostIgnoredUnitControllers.Count}");
+        }
+    }
+
     private void ClearGhostRuntimeState()
     {
         SetGhostStateByBuff(false);
         IsGhostState = false;
         _ghostBaseColors.Clear();
+        _ghostIgnoredUnitControllers.Clear();
+        _nextGhostCollisionSyncFrame = 0;
     }
 
     private sealed class GhostStateCapabilityLocker : ICapability

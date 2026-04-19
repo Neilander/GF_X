@@ -235,28 +235,21 @@ public class MAEntity : CompCreature, IEntityContext
 
             if (animator != null)
             {
-                bool isMoving = false;
                 Vector2 brainMove = Vector2.zero;
+                if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                    brainMove = playerBrain.Move;
 
-                if (Brain != null)
-                {
-                    if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
-                    {
-                        brainMove = playerBrain.Move;
-                        isMoving = brainMove.sqrMagnitude > 0.001f;
-                    }
-                    else if (moveComp != null)
-                    {
-                        isMoving = moveComp.IsMoving;
-                    }
-                }
+                // 动画由“主动移动意图”驱动，不受击退等被动位移影响。
+                bool isMoving = moveComp != null
+                    ? moveComp.IsMoving
+                    : brainMove.sqrMagnitude > 0.001f;
 
                 animator.SetBool("Moving", isMoving);
 
                 if (moveComp != null && Brain != null)
                 {
                     Vector3 moveDirection = moveComp.GetNavDirection();
-                    if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                    if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrainForDirection)
                     {
                         moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
                     }

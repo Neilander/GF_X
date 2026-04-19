@@ -1,0 +1,13 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!221 &22100000
+AnimatorOverrideController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Smash
+  m_Controller: {fileID: 9100000, guid: 83711b8c1c88a2d47bb3c34c6dce0677, type: 2}
+  m_Clips:
+  - m_OriginalClip: {fileID: 7400000, guid: 2376ff3c35c54564681998f68ad97648, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 6266acb8f660a354cbaca3f41d9d081c, type: 2}
