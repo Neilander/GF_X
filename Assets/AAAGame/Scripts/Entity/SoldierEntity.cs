@@ -51,6 +51,7 @@ public partial class SoldierEntity : MAEntity
     protected override void Update()
     {
         base.Update();
+        TickGhostCollisionRuntime();
 
         if (m_MinimapReportComponent != null)
         {

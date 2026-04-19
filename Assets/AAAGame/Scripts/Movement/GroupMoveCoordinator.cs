@@ -35,6 +35,7 @@ public class GroupMoveCoordinator
         public int Id;
         public Vector3 Position;
         public float Radius;              // 碰撞半径
+        public bool IgnoreAgentCollision; // 是否忽略与其他单位的 LJ 斥力/吸引
         public float EquilibriumRadius;    // LJ 平衡距离（斥力半径）
         public float MaxInfluenceRange;    // LJ 最大影响范围
         public float RepulsionStrength;    // 斥力强度
@@ -224,6 +225,15 @@ public class GroupMoveCoordinator
         }
     }
 
+    public void SetAgentIgnoreCollision(int id, bool ignore)
+    {
+        if (_agents.TryGetValue(id, out var data))
+        {
+            data.IgnoreAgentCollision = ignore;
+            _agents[id] = data;
+        }
+    }
+
     public void RegisterObstacle(int id, Vector3 position, float radius = 1f)
     {
         _obstacles[id] = new ObstacleData { Id = id, Position = position, Radius = radius };
@@ -290,6 +300,9 @@ public class GroupMoveCoordinator
         {
             if (kvp.Key == self.Id) continue;
             var other = kvp.Value;
+
+            if (self.IgnoreAgentCollision || other.IgnoreAgentCollision)
+                continue;
 
             Vector3 toOther = other.Position - self.Position;
             toOther.y = 0;
