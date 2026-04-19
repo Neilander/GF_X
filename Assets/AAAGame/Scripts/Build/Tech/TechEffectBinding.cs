@@ -6,4 +6,5 @@ public sealed class TechEffectBinding
 {
     public string TechId;
     public TechEffectSO Effect;
+    public bool Tested;
 }

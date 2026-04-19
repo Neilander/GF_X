@@ -10,35 +10,64 @@ public enum WeaponType
 }
 
 /// <summary>
-/// 运行时武器：武器相关属性都以 BaseValueProperty 挂载，
-/// 基础值来自配表 WeaponData。
+/// 武器属性枚举：用于 Buff 等外部调用方指定目标 stat。
+/// 顺序与 Weapon 内部的 m_Stats 数组索引一致。
+/// </summary>
+public enum WeaponStatId
+{
+    Atk,
+    Interval,
+    Range,
+    ProjectileSpeed,
+    WindUp,
+    WindDown,
+    SplashRadius,
+    SplitAngle,
+    SplitDist,
+    ProjectileCount,
+    ManaCost,
+}
+
+/// <summary>
+/// 运行时武器：每项数值用 SimpleStat 包装 (Base + Additive + Multiplier)。
+/// Buff 通过 ApplyAdditive / ApplyMultiplier 修改；基础值由 WeaponData 初始化后不再改变。
+/// Create 的 propertyManager 参数保留用于兼容旧调用，忽略不用。
 /// </summary>
 public class Weapon
 {
     public WeaponType Type { get; private set; }
-    private BaseValueProperty AtkProperty;
-    private BaseValueProperty IntervalProperty;
-    private BaseValueProperty RangeProperty;
-    private BaseValueProperty ProjectileSpeedProperty;
-    private BaseValueProperty WindUpProperty;
-    private BaseValueProperty WindDownProperty;
-    private BaseValueProperty SplashRadiusProperty;
-    private BaseValueProperty SplitAngleProperty;
-    private BaseValueProperty SplitDistProperty;
-    private BaseValueProperty ProjectileCountProperty;
-    private BaseValueProperty ManaCostProperty;
 
-    public Fix64 Atk => AtkProperty.GetValue();
-    public Fix64 Interval => IntervalProperty.GetValue();
-    public Fix64 Range => RangeProperty.GetValue();
-    public Fix64 ProjectileSpeed => ProjectileSpeedProperty.GetValue();
-    public Fix64 WindUp => WindUpProperty.GetValue();
-    public Fix64 WindDown => WindDownProperty.GetValue();
-    public Fix64 SplashRadius => SplashRadiusProperty.GetValue();
-    public Fix64 SplitAngle => SplitAngleProperty.GetValue();
-    public Fix64 SplitDist => SplitDistProperty.GetValue();
-    public Fix64 ProjectileCount => ProjectileCountProperty.GetValue();
-    public Fix64 ManaCost => ManaCostProperty.GetValue();
+    private SimpleStat[] m_Stats;
+
+    public Fix64 Atk => m_Stats[(int)WeaponStatId.Atk].Value;
+    public Fix64 Interval => m_Stats[(int)WeaponStatId.Interval].Value;
+    public Fix64 Range => m_Stats[(int)WeaponStatId.Range].Value;
+    public Fix64 ProjectileSpeed => m_Stats[(int)WeaponStatId.ProjectileSpeed].Value;
+    public Fix64 WindUp => m_Stats[(int)WeaponStatId.WindUp].Value;
+    public Fix64 WindDown => m_Stats[(int)WeaponStatId.WindDown].Value;
+    public Fix64 SplashRadius => m_Stats[(int)WeaponStatId.SplashRadius].Value;
+    public Fix64 SplitAngle => m_Stats[(int)WeaponStatId.SplitAngle].Value;
+    public Fix64 SplitDist => m_Stats[(int)WeaponStatId.SplitDist].Value;
+    public Fix64 ProjectileCount => m_Stats[(int)WeaponStatId.ProjectileCount].Value;
+    public Fix64 ManaCost => m_Stats[(int)WeaponStatId.ManaCost].Value;
+
+    public Fix64 GetStat(WeaponStatId stat) => m_Stats[(int)stat].Value;
+
+    /// <summary>
+    /// 对指定 stat 追加加法叠加值。Buff OnAdd 传 +delta，OnRemove 传 -delta 撤销。
+    /// </summary>
+    public void ApplyAdditive(WeaponStatId stat, Fix64 delta)
+    {
+        m_Stats[(int)stat].Additive += delta;
+    }
+
+    /// <summary>
+    /// 对指定 stat 追加乘法叠加系数。Buff OnAdd 传 factor，OnRemove 传 1/factor 撤销。
+    /// </summary>
+    public void ApplyMultiplier(WeaponStatId stat, Fix64 factor)
+    {
+        m_Stats[(int)stat].Multiplier *= factor;
+    }
 
     public static Weapon Create(string idPrefix, WeaponData data, PropertyManager propertyManager = null)
     {
@@ -47,24 +76,27 @@ public class Weapon
             throw new ArgumentNullException(nameof(data));
         }
 
-        WeaponData source = data;
-        PropertyManager manager = propertyManager ?? new PropertyManager();
-        string prefix = string.IsNullOrWhiteSpace(idPrefix) ? "Weapon" : idPrefix;
+        // propertyManager 参数保留用于调用点兼容，但此版本实现不再使用它。
+        _ = idPrefix;
+        _ = propertyManager;
+
+        var stats = new SimpleStat[11];
+        stats[(int)WeaponStatId.Atk] = SimpleStat.From(data.Atk);
+        stats[(int)WeaponStatId.Interval] = SimpleStat.From(data.Interval);
+        stats[(int)WeaponStatId.Range] = SimpleStat.From(data.Range);
+        stats[(int)WeaponStatId.ProjectileSpeed] = SimpleStat.From(data.ProjectileSpeed);
+        stats[(int)WeaponStatId.WindUp] = SimpleStat.From(data.WindUp);
+        stats[(int)WeaponStatId.WindDown] = SimpleStat.From(data.WindDown);
+        stats[(int)WeaponStatId.SplashRadius] = SimpleStat.From(data.SplashRadius);
+        stats[(int)WeaponStatId.SplitAngle] = SimpleStat.From(data.SplitAngle);
+        stats[(int)WeaponStatId.SplitDist] = SimpleStat.From(data.SplitDist);
+        stats[(int)WeaponStatId.ProjectileCount] = SimpleStat.From(data.ProjectileCount);
+        stats[(int)WeaponStatId.ManaCost] = SimpleStat.From(data.ManaCost);
 
         return new Weapon
         {
-            Type = source.Type,
-            AtkProperty = (BaseValueProperty)BaseValueProperty.Create(source.Atk, $"{prefix}_Atk").Register(manager),
-            IntervalProperty = (BaseValueProperty)BaseValueProperty.Create(source.Interval, $"{prefix}_Interval").Register(manager),
-            RangeProperty = (BaseValueProperty)BaseValueProperty.Create(source.Range, $"{prefix}_Range").Register(manager),
-            ProjectileSpeedProperty = (BaseValueProperty)BaseValueProperty.Create(source.ProjectileSpeed, $"{prefix}_ProjectileSpeed").Register(manager),
-            WindUpProperty = (BaseValueProperty)BaseValueProperty.Create(source.WindUp, $"{prefix}_WindUp").Register(manager),
-            WindDownProperty = (BaseValueProperty)BaseValueProperty.Create(source.WindDown, $"{prefix}_WindDown").Register(manager),
-            SplashRadiusProperty = (BaseValueProperty)BaseValueProperty.Create(source.SplashRadius, $"{prefix}_SplashRadius").Register(manager),
-            SplitAngleProperty = (BaseValueProperty)BaseValueProperty.Create(source.SplitAngle, $"{prefix}_SplitAngle").Register(manager),
-            SplitDistProperty = (BaseValueProperty)BaseValueProperty.Create(source.SplitDist, $"{prefix}_SplitDist").Register(manager),
-            ProjectileCountProperty = (BaseValueProperty)BaseValueProperty.Create(source.ProjectileCount, $"{prefix}_ProjectileCount").Register(manager),
-            ManaCostProperty = (BaseValueProperty)BaseValueProperty.Create(source.ManaCost, $"{prefix}_ManaCost").Register(manager)
+            Type = data.Type,
+            m_Stats = stats,
         };
     }
 }

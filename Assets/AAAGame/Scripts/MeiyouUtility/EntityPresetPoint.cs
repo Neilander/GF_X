@@ -18,6 +18,10 @@ public class EntityPresetPoint : MonoBehaviour
     public bool IsGameEndConditionBuilding;
     public int UnitSpawnCount; // 仅对 Unit 类型有效，表示在战斗阶段开始时以此预设点为中心生成多少个单位
 
+    [Header("测试槽位（仅测试用；勾上后运行期 Identifier 从 TechTestSlotConfig 读）")]
+    public bool IsTestSlot;
+    public int TestSlotIndex; // 0 / 1 / 2
+
 #if UNITY_EDITOR
     private void OnValidate()
     {

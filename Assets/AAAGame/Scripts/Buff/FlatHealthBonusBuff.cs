@@ -22,17 +22,12 @@ public sealed class FlatHealthBonusBuff : BuffCallback
         if (propertyManager == null || m_BonusHealth <= Fix64.Zero)
             return;
 
+        Fix64 before = propertyManager.GetProperty(CreatureMainProperty.Health);
         propertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.Health,
             PropertyDirectAdditiveModifier.Create(m_BonusHealth),
             true);
-        
-        /*
-        propertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(m_BonusHealth),
-            true);*/
-        
-        Debug.Log("[生命提升]"+m_BonusHealth+" z这么多 "+propertyManager.GetProperty(CreatureMainProperty.Health)+ propertyManager.GetProperty(CreatureCurrentProperty.HealthCurrent));
+        Fix64 after = propertyManager.GetProperty(CreatureMainProperty.Health);
+        Debug.Log($"[FlatHealthBonusBuff] host={creature.CharacterKey} Health: {(float)before} -> {(float)after} (delta={(float)m_BonusHealth})");
     }
 }
