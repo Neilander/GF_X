@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 using UnityEngine.InputSystem;
 
+[DefaultExecutionOrder(-1000)]
 public partial class InputManager : GameFrameworkComponent
 {
     public InputState CurState => selfStateMachine.curState;
