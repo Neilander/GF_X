@@ -34,6 +34,8 @@ namespace AAAGame.Card
             }
         }
 
+        public Sprite CardBackSprite => null;
+
         public int PopulationCost => m_DataRow.PopulationCost;
         public int SoldierCount => m_DataRow.SoldierCount;
         public string SoldierName => m_DataRow.SoldierName;

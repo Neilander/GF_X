@@ -14,6 +14,7 @@ namespace AAAGame.Card.UI
     public class CardHandUI : UIItemBase, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler, IPointerExitHandler
     {
         [Header("UI 组件")]
+        [SerializeField] private Image cardBackImage;
         [SerializeField] private Image cardImage;
         [SerializeField] private TextMeshProUGUI cardNameText;
         [SerializeField] private TextMeshProUGUI populationCostText;
@@ -37,6 +38,10 @@ namespace AAAGame.Card.UI
         private bool isMovingToHand = false;
         private bool isSelected = false;
 
+        private Sprite defaultCardBackSprite;
+        private Color defaultCardBackColor;
+        private bool defaultCardBackCached;
+
         private Tween scaleTween;
         private Tween moveTween;
 
@@ -47,6 +52,7 @@ namespace AAAGame.Card.UI
         void Awake()
         {
             rectTransform = GetComponent<RectTransform>();
+            ResolveCardBackImage();
             
             // 先尝试获取 CanvasGroup，如果没有再添加
             canvasGroup = GetComponent<CanvasGroup>();
@@ -90,6 +96,8 @@ namespace AAAGame.Card.UI
                 cardNameText.text = cardData.cardName;
             }
 
+            ApplyCardBackDisplay();
+
             // 设置卡面图片或颜色
             if (cardImage != null)
             {
@@ -118,6 +126,59 @@ namespace AAAGame.Card.UI
             }
 
             Debug.Log($"[Card] CardHandUI updated: {cardData.cardName}");
+        }
+
+        private void ResolveCardBackImage()
+        {
+            if (cardBackImage == null || cardBackImage == cardImage)
+            {
+                Image rootImage = GetComponent<Image>();
+                if (rootImage != null && rootImage != cardImage)
+                {
+                    cardBackImage = rootImage;
+                }
+            }
+
+            CacheDefaultCardBackState();
+        }
+
+        private void CacheDefaultCardBackState()
+        {
+            if (defaultCardBackCached || cardBackImage == null)
+            {
+                return;
+            }
+
+            defaultCardBackSprite = cardBackImage.sprite;
+            defaultCardBackColor = cardBackImage.color;
+            defaultCardBackCached = true;
+        }
+
+        private void ApplyCardBackDisplay()
+        {
+            if (cardData == null || cardBackImage == null)
+            {
+                return;
+            }
+
+            CacheDefaultCardBackState();
+
+            if (cardData.cardBackSprite != null)
+            {
+                cardBackImage.sprite = cardData.cardBackSprite;
+                cardBackImage.color = Color.white;
+                return;
+            }
+
+            cardBackImage.sprite = defaultCardBackSprite;
+            if (defaultCardBackSprite != null)
+            {
+                cardBackImage.color = defaultCardBackColor;
+            }
+            else
+            {
+                cardBackImage.color = cardData.cardColor;
+            }
         }
 
         /// <summary>

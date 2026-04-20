@@ -14,6 +14,9 @@ public class CardData : ScriptableObject
     [Tooltip("卡牌名称")]
     public string cardName = "测试卡牌";
 
+    [Tooltip("卡牌背景图")]
+    public Sprite cardBackSprite;
+
     [Tooltip("卡面立绘（占位图）")]
     public Sprite cardSprite;
 

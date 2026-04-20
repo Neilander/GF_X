@@ -18,6 +18,7 @@ namespace AAAGame.Card
         public string CardId => m_CardData.index;
         public string CardName => m_CardData.cardName;
         public Sprite CardSprite => m_CardData.cardSprite;
+        public Sprite CardBackSprite => m_CardData.cardBackSprite;
         public int PopulationCost => m_CardData.populationCost;
         public int SoldierCount => m_CardData.soldierCount;
         public string SoldierName => m_CardData.soldierName;

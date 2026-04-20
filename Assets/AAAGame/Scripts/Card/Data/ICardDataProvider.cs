@@ -22,6 +22,11 @@
         UnityEngine.Sprite CardSprite { get; }
 
         /// <summary>
+        /// 卡牌背景图
+        /// </summary>
+        UnityEngine.Sprite CardBackSprite { get; }
+
+        /// <summary>
         /// 人口消耗
         /// </summary>
         int PopulationCost { get; }
