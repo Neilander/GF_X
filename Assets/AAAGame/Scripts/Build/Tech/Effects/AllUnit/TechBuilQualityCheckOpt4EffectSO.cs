@@ -6,6 +6,9 @@ using UnityEngine;
 /// ScopeType: AllUnit
 /// 策划描述: 我方单位对生命值低于<val1>%的生物单位造成的攻击伤害提升<val2>点。
 /// UniqueValues: 40,2
+/// 行为:
+///   - 给我方单位挂 ConditionalLowHpDamageBonusBuff
+///   - 伤害时由 DamageHelper 的 ModifyOutgoingDamage 钩子触发条件判断
 /// </summary>
 public class TechBuilQualityCheckOpt4EffectSO : TechEffectSO
 {
@@ -28,17 +31,16 @@ public class TechBuilQualityCheckOpt4EffectSO : TechEffectSO
 
     public override BuffData CreateUnitInitialBuff(TechData techData, UnitType unitType, string techId)
     {
-        // 无需读取 UniqueValues
-
-        Debug.LogWarning($"[{nameof(TechBuilQualityCheckOpt4EffectSO)}] 未实现字段: 对低血量单位伤害+<val2>（条件伤害机制未实现） (techId={techId})");
+        Fix64 v0 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 0) ? techData.UniqueValues[0] : Fix64.Zero;
+        Fix64 v1 = (techData?.UniqueValues != null && techData.UniqueValues.Length > 1) ? techData.UniqueValues[1] : Fix64.Zero;
 
         var modules = new List<BuffCallback>
         {
-            // 无可挂载的单位 Buff（字段全部属于未实现类别）
+            new ConditionalLowHpDamageBonusBuff(v0, v1),
         };
 
         return BuffData.Create(
-            id: $"unit_tech_{techId}_{unitType}",
+            id: $"unit_{techId}_{unitType}",
             duration: float.MaxValue,
             isForever: true,
             maxStack: 1,

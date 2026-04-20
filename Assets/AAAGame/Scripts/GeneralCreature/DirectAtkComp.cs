@@ -309,8 +309,9 @@ public class DirectAtkComp : IAtkComp
         }
         else
         {
-            // 降级 fallback：直接调用 TakeDamage
-            _lockedTarget.TakeDamage(damage, HealthModifyType.reduce);
+            // 降级 fallback：走 DamageHelper 统一走 buff 钩子链路
+            var dmg = new Damage(_ctx as ITargetable, damage, HealthModifyType.reduce);
+            DamageHelper.DoDamage(_lockedTarget as ITargetable, dmg, _ctx);
         }
 
         if (splashRadius > Fix64.Zero)

@@ -166,6 +166,45 @@ public class GlobalBuffManager : GameFrameworkComponent
         DebugLog($"RegisterUnitBuff: techId={techId}, ownerFactionId={ownerFactionId}, unitType={unitType}, totalEntriesForUnit={entries.Count}");
     }
 
+    /// <summary>
+    /// 按 (unitType, faction, techId) 精确移除 per-unit 桶里的一条 entry。用于条件型开关 buff（如资金条件）。
+    /// </summary>
+    public bool UnregisterUnitBuff(UnitType unitType, int ownerFactionId, string techId)
+    {
+        if (string.IsNullOrWhiteSpace(techId)) return false;
+        if (!m_UnitBuffsByFaction.TryGetValue(ownerFactionId, out var buffsByType)) return false;
+        if (!buffsByType.TryGetValue(unitType, out var entries) || entries == null) return false;
+
+        int removed = entries.RemoveAll(e => e != null && string.Equals(e.TechId, techId, StringComparison.Ordinal));
+        if (removed > 0)
+        {
+            DebugLog($"UnregisterUnitBuff: faction={ownerFactionId}, unitType={unitType}, techId={techId}, removed={removed}");
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 在 ownerFactionId 桶下，按 techId 前缀批量移除所有 unitType 下的匹配 entry。
+    /// 用于丢卡累加型 buff 等需要"每次挂新 id，阶段结束批量清"的场景。
+    /// </summary>
+    public int UnregisterUnitBuffByTechPrefix(int ownerFactionId, string techIdPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(techIdPrefix)) return 0;
+        if (!m_UnitBuffsByFaction.TryGetValue(ownerFactionId, out var buffsByType)) return 0;
+
+        int totalRemoved = 0;
+        foreach (var kv in buffsByType)
+        {
+            var entries = kv.Value;
+            if (entries == null) continue;
+            totalRemoved += entries.RemoveAll(e => e != null && !string.IsNullOrEmpty(e.TechId) && e.TechId.StartsWith(techIdPrefix, StringComparison.Ordinal));
+        }
+        if (totalRemoved > 0)
+            DebugLog($"UnregisterUnitBuffByTechPrefix: faction={ownerFactionId}, prefix={techIdPrefix}, removed={totalRemoved}");
+        return totalRemoved;
+    }
+
     public void RegisterBuildingBuff(string buildingInstanceId, int ownerFactionId, string techId, TechEffectSO effect, TechData techData)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId) || string.IsNullOrWhiteSpace(techId) || effect == null || techData == null)
