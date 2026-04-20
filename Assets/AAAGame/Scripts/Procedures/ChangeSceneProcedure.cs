@@ -23,6 +23,11 @@ public class ChangeSceneProcedure : ProcedureBase
     public static string SelectedSceneForGame = "Game";
 
     /// <summary>
+    /// 编辑器工具可在运行前设置此字段，控制 RuntimeProcedure 初始化时使用的关卡标识
+    /// </summary>
+    public static string SelectedLevelIdentifier = "Lv_2";
+
+    /// <summary>
     /// 场景→默认 Procedure 的映射，用于兼容性校验和回退
     /// </summary>
     private static readonly Dictionary<string, string> SceneDefaultProcedure = new Dictionary<string, string>

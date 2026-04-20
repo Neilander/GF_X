@@ -21,7 +21,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 {
     private RuntimeInitPipeline m_RuntimeInitPipeline;
 
-    protected virtual string RuntimeLevelIdentifier => "Lv_2";
+    protected virtual string RuntimeLevelIdentifier =>
+        string.IsNullOrWhiteSpace(ChangeSceneProcedure.SelectedLevelIdentifier)
+            ? "Lv_2"
+            : ChangeSceneProcedure.SelectedLevelIdentifier;
     protected virtual string RuntimeInitLogTag => "[RuntimeInit]";
     protected virtual RuntimeInitSystemFlags RequiredRuntimeSystems => RuntimeInitSystemFlags.None;
 

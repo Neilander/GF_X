@@ -14,6 +14,7 @@ public partial class TipsItem : UIItemBase
     private Tween m_CloseTween;
     private Tween m_DelayTween;
     private Action<TipsItem> m_OnComplete;
+    private bool m_IsClosing;
 
     protected override void OnInit()
     {
@@ -37,6 +38,7 @@ public partial class TipsItem : UIItemBase
         SetData(title, content);
         KillTweens();
         m_OnComplete = onComplete;
+        m_IsClosing = false;
 
         m_OpenTween = m_OpenAnimation?.DOPlay();
         if (m_OpenTween != null)
@@ -63,8 +65,29 @@ public partial class TipsItem : UIItemBase
         m_MoveTween = m_RectTransform.DOAnchorPosY(targetPos.y, duration).SetEase(Ease.OutQuad);
     }
 
+    public void RequestClose()
+    {
+        if (m_IsClosing)
+        {
+            return;
+        }
+
+        m_OpenTween?.Kill();
+        m_OpenTween = null;
+
+        m_DelayTween?.Kill();
+        m_DelayTween = null;
+
+        PlayCloseAnimation();
+    }
+
     private void StartCloseDelay(float duration)
     {
+        if (duration < 0f)
+        {
+            return;
+        }
+
         if (duration <= 0f)
         {
             PlayCloseAnimation();
@@ -76,6 +99,13 @@ public partial class TipsItem : UIItemBase
 
     private void PlayCloseAnimation()
     {
+        if (m_IsClosing)
+        {
+            return;
+        }
+
+        m_IsClosing = true;
+
         m_CloseTween = m_OpenAnimation?.DORewind();
         if (m_CloseTween != null)
         {
@@ -88,7 +118,9 @@ public partial class TipsItem : UIItemBase
 
     private void NotifyComplete()
     {
-        m_OnComplete?.Invoke(this);
+        var onComplete = m_OnComplete;
+        m_OnComplete = null;
+        onComplete?.Invoke(this);
     }
 
     private void KillTweens()
@@ -108,5 +140,6 @@ public partial class TipsItem : UIItemBase
         m_OpenAnimation?.DOKill();
 
         m_OnComplete = null;
+        m_IsClosing = false;
     }
 }

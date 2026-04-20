@@ -15,6 +15,7 @@ public class ProcedureLauncherWindow : EditorWindow
 
     private const string PrefKey_Selected = "Procedure_Selected";
     private const string PrefKey_SceneName = "Procedure_SceneName";
+    private const string PrefKey_LevelIdentifier = "Procedure_LevelIdentifier";
     private const string PrefKey_FriendlyCount = "Test_FriendlyCount";
     private const string PrefKey_EnemyCount = "Test_EnemyCount";
     private const string PrefKey_FriendlySpacing = "Test_FriendlySpacing";
@@ -29,8 +30,12 @@ public class ProcedureLauncherWindow : EditorWindow
     // 运行时动态发现的场景列表（仅来自 Assets/AAAGame/Scene）
     private static string[] s_SceneNames = { "Game" };
 
+    // 运行时动态发现的关卡标识（来自 LevelTable）
+    private static string[] s_LevelIdentifiers = { "Lv_2" };
+
     private int _selectedIndex;
     private int _sceneIndex;
+    private int _levelIndex;
 
     static ProcedureLauncherWindow()
     {
@@ -75,6 +80,63 @@ public class ProcedureLauncherWindow : EditorWindow
         {
             s_SceneNames = new[] { "Game" };
         }
+
+        s_LevelIdentifiers = LoadLevelIdentifiers();
+        if (s_LevelIdentifiers.Length == 0)
+        {
+            s_LevelIdentifiers = new[] { "Lv_2" };
+        }
+    }
+
+    private static string[] LoadLevelIdentifiers()
+    {
+        string levelTablePath = UtilityBuiltin.AssetsPath.GetDataTablePath("LevelTable", false);
+        if (AssetDatabase.LoadAssetAtPath<TextAsset>(levelTablePath) == null)
+        {
+            string[] guids = AssetDatabase.FindAssets("LevelTable t:TextAsset", new[] { "Assets/AAAGame/DataTable" });
+            levelTablePath = guids
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .FirstOrDefault(path => !string.IsNullOrEmpty(path) && path.EndsWith(".txt", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.IsNullOrEmpty(levelTablePath))
+        {
+            return Array.Empty<string>();
+        }
+
+        var levelTableAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(levelTablePath);
+        if (levelTableAsset == null || string.IsNullOrWhiteSpace(levelTableAsset.text))
+        {
+            return Array.Empty<string>();
+        }
+
+        var levelIds = new List<string>();
+        var dedup = new HashSet<string>(StringComparer.Ordinal);
+
+        using (var reader = new StringReader(levelTableAsset.text))
+        {
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line) || line[0] == '#')
+                {
+                    continue;
+                }
+
+                var row = new LevelTable();
+                if (!row.ParseDataRow(line, null))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.Identifier) && dedup.Add(row.Identifier))
+                {
+                    levelIds.Add(row.Identifier);
+                }
+            }
+        }
+
+        return levelIds.ToArray();
     }
 
     /// <summary>
@@ -103,6 +165,16 @@ public class ProcedureLauncherWindow : EditorWindow
             EditorPrefs.SetString(PrefKey_SceneName, savedScene);
         }
         ChangeSceneProcedure.SelectedSceneForGame = savedScene;
+
+        // 恢复选中的关卡标识，校验有效性
+        string savedLevel = EditorPrefs.GetString(PrefKey_LevelIdentifier, "Lv_2");
+        if (Array.IndexOf(s_LevelIdentifiers, savedLevel) < 0)
+        {
+            Debug.LogWarning($"[ProcedureLauncher] EditorPrefs 中的关卡标识 '{savedLevel}' 无效，回退到 {s_LevelIdentifiers[0]}");
+            savedLevel = s_LevelIdentifiers[0];
+            EditorPrefs.SetString(PrefKey_LevelIdentifier, savedLevel);
+        }
+        ChangeSceneProcedure.SelectedLevelIdentifier = savedLevel;
 
         // 如果选中的是 CharacterTestProcedure，加载其专属设置
         if (saved == "CharacterTestProcedure")
@@ -146,6 +218,11 @@ public class ProcedureLauncherWindow : EditorWindow
         _sceneIndex = Array.IndexOf(s_SceneNames, savedScene);
         if (_sceneIndex < 0) _sceneIndex = 0;
 
+        // 恢复关卡标识索引
+        string savedLevel = EditorPrefs.GetString(PrefKey_LevelIdentifier, "Lv_2");
+        _levelIndex = Array.IndexOf(s_LevelIdentifiers, savedLevel);
+        if (_levelIndex < 0) _levelIndex = 0;
+
         // 同步加载 CharacterTest 设置
         LoadCharacterTestSettings();
     }
@@ -174,6 +251,7 @@ public class ProcedureLauncherWindow : EditorWindow
     {
         _selectedIndex = Mathf.Clamp(_selectedIndex, 0, s_ProcedureNames.Length - 1);
         _sceneIndex = Mathf.Clamp(_sceneIndex, 0, s_SceneNames.Length - 1);
+        _levelIndex = Mathf.Clamp(_levelIndex, 0, s_LevelIdentifiers.Length - 1);
     }
 
     private void OnGUI()
@@ -232,6 +310,23 @@ public class ProcedureLauncherWindow : EditorWindow
             string selectedScene = s_SceneNames[_sceneIndex];
             EditorPrefs.SetString(PrefKey_SceneName, selectedScene);
             ChangeSceneProcedure.SelectedSceneForGame = selectedScene;
+        }
+
+        #endregion
+
+        GUILayout.Space(10);
+
+        #region 关卡选择
+
+        GUILayout.Label("初始关卡（RuntimeProcedure）", EditorStyles.boldLabel);
+
+        EditorGUI.BeginChangeCheck();
+        _levelIndex = EditorGUILayout.Popup("关卡标识", _levelIndex, s_LevelIdentifiers);
+        if (EditorGUI.EndChangeCheck())
+        {
+            string selectedLevel = s_LevelIdentifiers[_levelIndex];
+            EditorPrefs.SetString(PrefKey_LevelIdentifier, selectedLevel);
+            ChangeSceneProcedure.SelectedLevelIdentifier = selectedLevel;
         }
 
         #endregion

@@ -8,6 +8,7 @@ public partial class SideTipsUIForm : UIFormBase
     private struct PendingTipData
     {
         public string Key;
+        public string TipId;
         public string Title;
         public string Content;
         public float Duration;
@@ -31,19 +32,24 @@ public partial class SideTipsUIForm : UIFormBase
     private bool m_HasBaseTipPos;
     private Vector2 m_BaseTipPos;
 
-    private static string BuildTipKey(string title, string content)
+    private static string BuildTipKey(string tipId, string title, string content)
     {
+        if (!string.IsNullOrEmpty(tipId))
+        {
+            return "tip-id:" + tipId;
+        }
+
         return (title ?? string.Empty) + "\n" + (content ?? string.Empty);
     }
 
-    public static void EnqueuePendingTips(string title, string content, float duration)
+    public static void EnqueuePendingTips(string title, string content, float duration, string tipId = null)
     {
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
         {
             return;
         }
 
-        string key = BuildTipKey(title, content);
+        string key = BuildTipKey(tipId, title, content);
         if (s_PendingTipKeys.Contains(key))
         {
             return;
@@ -59,10 +65,41 @@ public partial class SideTipsUIForm : UIFormBase
         s_PendingTips.Enqueue(new PendingTipData
         {
             Key = key,
+            TipId = tipId,
             Title = title,
             Content = content,
             Duration = duration,
         });
+    }
+
+    public static bool RemovePendingTipById(string tipId)
+    {
+        if (string.IsNullOrEmpty(tipId) || s_PendingTips.Count <= 0)
+        {
+            return false;
+        }
+
+        string key = BuildTipKey(tipId, null, null);
+        if (!s_PendingTipKeys.Remove(key))
+        {
+            return false;
+        }
+
+        bool removed = false;
+        int count = s_PendingTips.Count;
+        for (int i = 0; i < count; i++)
+        {
+            var tip = s_PendingTips.Dequeue();
+            if (!removed && tip.Key == key)
+            {
+                removed = true;
+                continue;
+            }
+
+            s_PendingTips.Enqueue(tip);
+        }
+
+        return removed;
     }
 
     protected override void OnOpen(object userData)
@@ -85,14 +122,14 @@ public partial class SideTipsUIForm : UIFormBase
         base.OnClose(isShutdown, userData);
     }
 
-    public void ShowTips(string title, string content, float duration = 2f)
+    public void ShowTips(string title, string content, float duration = 2f, string tipId = null)
     {
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
         {
             return;
         }
 
-        string key = BuildTipKey(title, content);
+        string key = BuildTipKey(tipId, title, content);
         if (m_ActiveTipKeys.Contains(key))
         {
             return;
@@ -132,6 +169,29 @@ public partial class SideTipsUIForm : UIFormBase
         tipsItem.MoveTo(GetTipPos(newIndex), 0f);
 
         tipsItem.Play(title, content, duration, OnTipsItemComplete);
+    }
+
+    public bool CloseTipById(string tipId)
+    {
+        if (string.IsNullOrEmpty(tipId))
+        {
+            return false;
+        }
+
+        string key = BuildTipKey(tipId, null, null);
+        for (int i = 0; i < m_ActiveItems.Count; i++)
+        {
+            ActiveTipData data = m_ActiveItems[i];
+            if (data == null || data.Item == null || data.Key != key)
+            {
+                continue;
+            }
+
+            data.Item.RequestClose();
+            return true;
+        }
+
+        return false;
     }
 
     private void OnTipsItemComplete(TipsItem tipsItem)
@@ -185,7 +245,7 @@ public partial class SideTipsUIForm : UIFormBase
                 s_PendingTipKeys.Remove(tip.Key);
             }
 
-            ShowTips(tip.Title, tip.Content, tip.Duration);
+            ShowTips(tip.Title, tip.Content, tip.Duration, tip.TipId);
         }
     }
 

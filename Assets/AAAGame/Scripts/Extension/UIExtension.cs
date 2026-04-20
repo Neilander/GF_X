@@ -9,6 +9,8 @@ using UnityEngine.UI;
 
 public static class UIExtension
 {
+    private const float PersistentSideTipDuration = -1f;
+
     /// <summary>
     /// 异步加载并设置Sprite
     /// </summary>
@@ -220,6 +222,74 @@ public static class UIExtension
         }
 
         ui.OpenUIForm(UIViews.SideTipsUIForm);
+    }
+
+    /// <summary>
+    /// 显示一个需要外部条件驱动关闭的侧边提示。
+    /// </summary>
+    /// <param name="ui"></param>
+    /// <param name="tipId">业务侧唯一ID，用于后续关闭该提示。</param>
+    /// <param name="title"></param>
+    /// <param name="content"></param>
+    public static void ShowConditionalSideTip(this UIComponent ui, string tipId, string title, string content)
+    {
+        ShowConditionalSideTip(ui, tipId, title, content, PersistentSideTipDuration);
+    }
+
+    /// <summary>
+    /// 显示一个带业务ID的侧边提示。
+    /// </summary>
+    /// <param name="ui"></param>
+    /// <param name="tipId">业务侧唯一ID，用于后续关闭该提示。</param>
+    /// <param name="title"></param>
+    /// <param name="content"></param>
+    /// <param name="duration">小于0表示不自动关闭。</param>
+    public static void ShowConditionalSideTip(this UIComponent ui, string tipId, string title, string content, float duration)
+    {
+        if (string.IsNullOrEmpty(tipId))
+        {
+            Log.Warning("UIExtension.ShowConditionalSideTip失败, tipId为空。");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
+        {
+            return;
+        }
+
+        if (SideTipsUIForm.Instance != null)
+        {
+            SideTipsUIForm.Instance.ShowTips(title, content, duration, tipId);
+            return;
+        }
+
+        SideTipsUIForm.EnqueuePendingTips(title, content, duration, tipId);
+
+        if (ui.IsLoadingUIForm(UIViews.SideTipsUIForm) || ui.HasUIForm(UIViews.SideTipsUIForm))
+        {
+            return;
+        }
+
+        ui.OpenUIForm(UIViews.SideTipsUIForm);
+    }
+
+    /// <summary>
+    /// 关闭一个带业务ID的侧边提示。
+    /// </summary>
+    /// <param name="ui"></param>
+    /// <param name="tipId">业务侧唯一ID。</param>
+    public static void CloseConditionalSideTip(this UIComponent ui, string tipId)
+    {
+        if (string.IsNullOrEmpty(tipId))
+        {
+            return;
+        }
+
+        SideTipsUIForm.RemovePendingTipById(tipId);
+        if (SideTipsUIForm.Instance != null)
+        {
+            SideTipsUIForm.Instance.CloseTipById(tipId);
+        }
     }
 
     /// <summary>

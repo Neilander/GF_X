@@ -52,8 +52,9 @@ public class SideTipsManager : GameFrameworkComponent
         hasLoggedWaitingForEventComponent = false;
 
         GF.Event.Subscribe(EnemyUnitVisibilityChangedEventArgs.EventId, OnEnemyUnitVisibilityChanged);
+        GF.Event.Subscribe(CloseSideTipEventArgs.EventId, OnCloseSideTipRequested);
         isSubscribed = true;
-        Log.Info("[SideTips] Subscribed EnemyUnitVisibilityChangedEventArgs.");
+        Log.Info("[SideTips] Subscribed side tip related events.");
     }
 
     public void BootstrapIfNeeded()
@@ -67,9 +68,18 @@ public class SideTipsManager : GameFrameworkComponent
             return;
 
         if (GF.Event != null)
+        {
             GF.Event.Unsubscribe(EnemyUnitVisibilityChangedEventArgs.EventId, OnEnemyUnitVisibilityChanged);
+            GF.Event.Unsubscribe(CloseSideTipEventArgs.EventId, OnCloseSideTipRequested);
+        }
 
         isSubscribed = false;
+    }
+
+    private void OnCloseSideTipRequested(object sender, GameEventArgs e)
+    {
+        CloseSideTipEventArgs args = (CloseSideTipEventArgs)e;
+        CloseConditionalTip(args.TipId);
     }
 
     private void OnEnemyUnitVisibilityChanged(object sender, GameEventArgs e)
@@ -140,6 +150,22 @@ public class SideTipsManager : GameFrameworkComponent
             return;
 
         GF.UI.ShowSideTips(title, content, duration);
+    }
+
+    public void ShowConditionalTip(string tipId, string title, string content)
+    {
+        if (GF.UI == null)
+            return;
+
+        GF.UI.ShowConditionalSideTip(tipId, title, content);
+    }
+
+    public void CloseConditionalTip(string tipId)
+    {
+        if (GF.UI == null)
+            return;
+
+        GF.UI.CloseConditionalSideTip(tipId);
     }
 
     public void ResetShownUnitTypes()
