@@ -1,26 +1,47 @@
-﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using AAAGame.Scripts.BuffSystem;
 
+/// <summary>
+/// 伤害统一入口。所有攻击出口应走这里，而不是直接调 target.TakeDamage。
+/// 好处：在这里可以集中插入 buff 钩子、护盾、反伤、吸血、日志等。
+/// </summary>
 public static class DamageHelper
 {
-   public static void DoDamage(ITargetable target, Damage damage)
-   {
-      // 1. 基础合法性检查
-      if (target == null)
-         return;
+    /// <summary>
+    /// 对 target 造成伤害。attacker 为可空（比如环境伤害），若有则允许其身上的 Buff 修改最终伤害。
+    /// </summary>
+    public static void DoDamage(ITargetable target, Damage damage, IEntityContext attacker = null)
+    {
+        if (target == null || !target.Alive)
+            return;
 
-      if (!target.Alive)
-         return;
+        Fix64 finalAmount = damage != null ? damage.amount : Fix64.Zero;
+        HealthModifyType modType = damage != null ? damage.modType : HealthModifyType.reduce;
 
-      // 2. 造成伤害
-       
-      target.TakeDamage(damage.amount, damage.modType);
+        // Buff 钩子：允许 attacker 身上的 buff 修改最终伤害
+        if (attacker != null)
+        {
+            var buffComp = attacker.BuffComp as CharacterBuffComp;
+            if (buffComp != null)
+            {
+                foreach (var module in buffComp.EnumerateAllModules())
+                {
+                    finalAmount = module.ModifyOutgoingDamage(target, finalAmount);
+                }
+            }
+        }
 
-      // 3. 后续扩展点（现在不做）
-      // - 护盾扣减
-      // - Buff 触发
-      // - OnDamaged 事件
-      // - 反伤 / 吸血（如果你以后放在这里）
-   }
+        if (finalAmount < Fix64.Zero)
+            finalAmount = Fix64.Zero;
+
+        // 适配 target 的 TakeDamage 签名。ITargetable 未暴露 TakeDamage，需要转成 IEntityContext / GeneralCreature。
+        if (target is IEntityContext ctx)
+        {
+            ctx.TakeDamage(finalAmount, modType, attacker);
+        }
+        else if (target is GeneralCreature gc)
+        {
+            gc.TakeDamage(finalAmount, modType, attacker);
+        }
+    }
 }

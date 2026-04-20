@@ -32,6 +32,13 @@ public abstract class BuffCallback
     public virtual void OnHostDead() { }
     public virtual void OnKill(MAEntity target) { }
 
+    /// <summary>
+    /// 宿主对 target 造成伤害前的钩子，允许调整最终伤害值。
+    /// 由 DamageHelper.DoDamage 遍历 attacker 身上所有 BuffCallback 时调用。
+    /// 默认透传，子类可按条件修改。
+    /// </summary>
+    public virtual Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage) => baseDamage;
+
     public virtual void Clear()
     {
         buffData = null;

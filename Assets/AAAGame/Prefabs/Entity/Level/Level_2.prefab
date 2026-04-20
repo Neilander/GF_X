@@ -246,7 +246,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4102048931930153609, guid: 089f42051485eec478f1d247241c7d1e, type: 3}
       propertyPath: Identifier
-      value: Buil_ResearchCenter_Lv1
+      value: Buil_SortingCenter_Lv1
       objectReference: {fileID: 0}
     - target: {fileID: 4102048931930153609, guid: 089f42051485eec478f1d247241c7d1e, type: 3}
       propertyPath: IsGameEndConditionBuilding
@@ -324,7 +324,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4102048931930153609, guid: 089f42051485eec478f1d247241c7d1e, type: 3}
       propertyPath: IsTestSlot
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7334764470814479935, guid: 089f42051485eec478f1d247241c7d1e, type: 3}
       propertyPath: m_Name

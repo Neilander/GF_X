@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
@@ -18,17 +18,38 @@ public sealed class LifetimeDeltaBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var comp = hostEntity?.BuffComp as CharacterBuffComp;
-        var timedDeath = comp?.GetTimedDeathBuff();
+        Debug.Log($"[LifetimeDeltaBuff.OnAdd] 开始 host={hostEntity?.CharacterKey} id={hostEntity?.Id} delta={(float)m_Seconds}s");
+
+        if (hostEntity == null)
+        {
+            Debug.LogWarning($"[LifetimeDeltaBuff] hostEntity 为 null");
+            return;
+        }
+
+        var rawComp = hostEntity.BuffComp;
+        Debug.Log($"[LifetimeDeltaBuff] hostEntity.BuffComp 类型: {rawComp?.GetType().Name ?? "null"}");
+
+        var comp = rawComp as CharacterBuffComp;
+        if (comp == null)
+        {
+            Debug.LogWarning($"[LifetimeDeltaBuff] BuffComp 不是 CharacterBuffComp, 类型={rawComp?.GetType().FullName}");
+            return;
+        }
+
+        var timedDeath = comp.GetTimedDeathBuff();
         if (timedDeath == null)
         {
-            Debug.LogWarning($"[LifetimeDeltaBuff] 宿主 {hostEntity?.CharacterKey} 没有 TimedDeathBuff，寿命变化无效");
+            Debug.LogWarning($"[LifetimeDeltaBuff] 宿主 {hostEntity.CharacterKey} 没有 TimedDeathBuff（找不到 id='timed_death'），寿命变化无效");
             return;
         }
 
         Fix64 before = timedDeath.EffectiveDuration;
+        Fix64 baseDur = timedDeath.BaseDuration;
+        Debug.Log($"[LifetimeDeltaBuff] 调 ApplyAdditive 前 Base={(float)baseDur} Effective={(float)before}");
+
         timedDeath.ApplyAdditive(m_Seconds);
+
         Fix64 after = timedDeath.EffectiveDuration;
-        Debug.Log($"[LifetimeDeltaBuff] host={hostEntity?.CharacterKey} Duration: {(float)before} -> {(float)after} (delta={(float)m_Seconds}s)");
+        Debug.Log($"[LifetimeDeltaBuff] host={hostEntity.CharacterKey} Duration: {(float)before} -> {(float)after} (delta={(float)m_Seconds}s)");
     }
 }

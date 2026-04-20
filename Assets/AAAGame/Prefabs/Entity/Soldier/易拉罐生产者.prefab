@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 8402543488714931773}
   - component: {fileID: 8244340462779983979}
   m_Layer: 0
-  m_Name: "\u6613\u62C9\u7F50"
+  m_Name: "\u6613\u62C9\u7F50\u751F\u4EA7\u8005"
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -74,13 +74,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 1.5
-  m_Radius: 0.4
+  m_Height: 1
+  m_Radius: 0.16
   m_SlopeLimit: 45
   m_StepOffset: 0.3
-  m_SkinWidth: 0.08
+  m_SkinWidth: 0.0001
   m_MinMoveDistance: 0.001
-  m_Center: {x: -0.05, y: 0.61, z: 0}
+  m_Center: {x: 0, y: 0.51, z: 0}
 --- !u!1 &1100055493994134869
 GameObject:
   m_ObjectHideFlags: 0

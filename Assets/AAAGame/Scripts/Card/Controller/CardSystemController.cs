@@ -408,8 +408,12 @@ namespace AAAGame.Card
 
             ApplyDiscardResourceReward(cardModel);
 
-            // 触发丢弃事件
+            // 触发丢弃事件（C# 委托 + GF.Event）
             OnCardDiscarded?.Invoke(cardModel);
+
+            var cardEvent = CardDiscardedEventArgs.Create(cardModel);
+            GF.Event.Fire(this, cardEvent);
+            Debug.Log($"[DISCARD-BUFF] CardSystemController.DiscardCard 已 Fire CardDiscardedEventArgs");
 
             return true;
         }

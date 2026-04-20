@@ -25,7 +25,14 @@ public class TimedDeathBuff : BuffCallback
     {
         base.OnAdd();
         if (buffData != null)
+        {
             m_BaseDuration = (Fix64)buffData.duration;
+            Debug.Log($"[TimedDeathBuff.OnAdd] host={hostEntity?.CharacterKey} id={hostEntity?.Id} BaseDuration 锁定为 {(float)m_BaseDuration}s, remainingTime={buffData.remainingTime}s");
+        }
+        else
+        {
+            Debug.LogWarning("[TimedDeathBuff.OnAdd] buffData 为 null");
+        }
     }
 
     /// <summary>固定秒数累加（正负均可）</summary>
@@ -42,14 +49,28 @@ public class TimedDeathBuff : BuffCallback
 
     private void ApplyDelta(System.Action modify)
     {
-        if (buffData == null) return;
+        if (buffData == null)
+        {
+            Debug.LogWarning($"[TimedDeathBuff.ApplyDelta] buffData 为 null，无法修改");
+            return;
+        }
+
         Fix64 oldFinal = EffectiveDuration;
+        float oldDuration = buffData.duration;
+        float oldRemaining = buffData.remainingTime;
+
         modify();
+
         Fix64 newFinal = EffectiveDuration;
         Fix64 delta = newFinal - oldFinal;
 
         buffData.duration = (float)newFinal;
-        buffData.remainingTime = Mathf.Max(0f, buffData.remainingTime + (float)delta);
+        buffData.remainingTime = Mathf.Max(0f, oldRemaining + (float)delta);
+
+        Debug.Log($"[TimedDeathBuff.ApplyDelta] Base={(float)m_BaseDuration} Additive={(float)m_AdditiveDuration} Pct={(float)m_PercentSum} " +
+                  $"| EffectiveDuration {(float)oldFinal} -> {(float)newFinal} (delta={(float)delta}) " +
+                  $"| buffData.duration {oldDuration} -> {buffData.duration} " +
+                  $"| buffData.remainingTime {oldRemaining} -> {buffData.remainingTime}");
     }
 
     public override void OnDurationEnd()

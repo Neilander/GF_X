@@ -59,8 +59,8 @@ Transform:
   m_GameObject: {fileID: 8295926571250896707}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.022491, y: 0.84772, z: 0.040635}
-  m_LocalScale: {x: 0.84723, y: 0.68005145, z: 0.77567}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1364757851595237837}
@@ -106,13 +106,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2
-  m_Radius: 0.5
+  m_Height: 1.79
+  m_Radius: 0.3
   m_SlopeLimit: 45
   m_StepOffset: 0.3
-  m_SkinWidth: 0.08
+  m_SkinWidth: 0.0001
   m_MinMoveDistance: 0.001
-  m_Center: {x: -0.05, y: 0.61, z: 0}
+  m_Center: {x: 0, y: 0.91, z: 0}
 --- !u!1001 &6476052338719641067
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -139,7 +139,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: d71e80f0747a8e8479fefa50b10f4b62, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.467
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: d71e80f0747a8e8479fefa50b10f4b62, type: 3}
       propertyPath: m_LocalPosition.z

@@ -223,6 +223,44 @@ namespace AAAGame.Scripts.BuffSystem
         }
 
         /// <summary>
+        /// 按 buff id 前缀批量移除身上的 buff。
+        /// 典型用途：DreamPark 丢卡 buff 阶段结束清理。
+        /// </summary>
+        public int RemoveBuffsByPrefix(string prefix)
+        {
+            if (string.IsNullOrEmpty(prefix)) return 0;
+            List<string> toRemove = null;
+            foreach (var kv in _buffDict)
+            {
+                if (!string.IsNullOrEmpty(kv.Key) && kv.Key.StartsWith(prefix, System.StringComparison.Ordinal))
+                {
+                    toRemove ??= new List<string>();
+                    toRemove.Add(kv.Key);
+                }
+            }
+            if (toRemove == null) return 0;
+            foreach (var id in toRemove) RemoveBuff(id);
+            return toRemove.Count;
+        }
+
+        /// <summary>
+        /// 枚举当前挂在身上的所有 Buff 模块（用于伤害钩子等全局遍历场景）。
+        /// </summary>
+        public IEnumerable<BuffCallback> EnumerateAllModules()
+        {
+            foreach (var kv in _buffDict)
+            {
+                var data = kv.Value;
+                if (data == null || data.modules == null) continue;
+                for (int i = 0; i < data.modules.Count; i++)
+                {
+                    var m = data.modules[i];
+                    if (m != null) yield return m;
+                }
+            }
+        }
+
+        /// <summary>
         /// 移除过期Buff（调用OnDurationEnd）
         /// </summary>
         private bool RemoveExpiredBuff(string buffId)
