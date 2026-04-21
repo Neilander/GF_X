@@ -14,6 +14,7 @@ using UnityGameFramework.Runtime;
 public class TechData
 {
     public string Identifier { get; protected set; }
+    public string SkillID { get; protected set; }
     public int Cost { get; protected set; }
     public Fix64[] UniqueValues { get; protected set; }
     public TechScopeType ScopeType { get; protected set; }
@@ -26,6 +27,7 @@ public class TechData
     public bool IsStackable { get; protected set; }
 
     public TechData(string identifier,
+        string skillID,
         string nameKey,
         string descKey,
         int cost,
@@ -38,6 +40,7 @@ public class TechData
         bool isStackable)
     {
         Identifier = identifier;
+        SkillID = skillID;
         Cost = cost;
         NameKey = nameKey;
         DescKey = descKey;

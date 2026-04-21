@@ -29,6 +29,7 @@ MonoBehaviour:
   - Item/ItemWithEffectTable_Consumable
   - Item/ItemWithEffectTable_Equipment
   - Item/ItemWithEffectTable_Tool
+  - Skill/SkillTable
   - Tech/TechNodeTable
   - Text/LocalizationTextTable_InteractionOption
   - Text/LocalizationTextTable_Misc

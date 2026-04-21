@@ -1,0 +1,15 @@
+﻿#	建筑表									i18n	i18n	
+#	ID	Identifier			Lv1UniqueValues	Lv1UsageCount	Lv2UniqueValues	Lv2UsageCount	Type	NameKey	DescKey	SpritePath
+#	int	string			Fix64[]	int	Fix64[]	int	enum	string	string	string
+#		代码内标识符	备注	备注2	1级数值	1级使用次数	2级数值	2级使用次数	技能类型	技能名称（多语言）	技能描述（多语言）	Sprite路径
+	1	Skill_UrgentRequest	临时需求	在目标地点召唤<val1>个码农加入战斗，码农有寿命限制，会在<val2>秒后自动死亡。	6,35	2	8,35	3	SkillType.Active	Skill_Name_UrgentRequest	Skill_Desc_UrgentRequest	
+	2	Skill_JustPassingBy	到此一游	在目标点留下一个“打卡点”标记，标记附近<val1>码范围内的我方单位攻击速度提升<val2>，标记持续<val3>秒。	400,30,8	2	450,50,10	2	SkillType.Active	Skill_Name_JustPassingBy	Skill_Desc_JustPassingBy	
+	3	Skill_SpecialDelivery	您的外卖	消耗<val1>资源，为英雄及附近<val2>码内的我方单位回复<val3>点生命。	2,300,40	3	2,350,60	4	SkillType.Active	Skill_Name_SpecialDelivery	Skill_Desc_SpecialDelivery	
+	4	Skill_BladeDance	刀舞	<val1>秒内，英雄的攻击速度提升<val2>。	6,80	3	8120	4	SkillType.Active	Skill_Name_BladeDance	Skill_Desc_BladeDance	
+	5	Skill_FireDrill	消防演习	在目标地点产生<val1>码范围的浓烟，其中的敌人受到致盲效果，攻击有<val2>%的概率落空。	250,50	2	300,70	2	SkillType.Active	Skill_Name_FireDrill	Skill_Desc_FireDrill	
+	6	Skill_CacheClear	缓存清理	丢弃单位牌时，英雄回复<val1>%生命。	20				SkillType.Passive	Skill_Name_CacheClear	Skill_Desc_CacheClear	
+	7	Skill_SedentaryCurse	久坐病	英雄停止主动移动超过<val1>秒后，攻击力增加<val2>%，攻击距离增加<val3>%。	2,20,20				SkillType.Passive	Skill_Name_SedentaryCurse	Skill_Desc_SedentaryCurse	
+	8	Skill_JoinTheFun	凑热闹	附近<val1>码内有不少于<val2>个其他我方单位时，英雄攻击速度提升<val3>。	300,4,40				SkillType.Passive	Skill_Name_JoinTheFun	Skill_Desc_JoinTheFun	
+	9	Skill_LightLoad	轻装上阵	英雄的移动速度+<val1>%。	15				SkillType.Passive	Skill_Name_LightLoad	Skill_Desc_LightLoad	
+	10	Skill_Mighty	强壮	英雄的生命上限+<val1>%。	30				SkillType.Passive	Skill_Name_Mighty	Skill_Desc_Mighty	
+	11	Skill_EmergencyEvac	紧急疏散	英雄血量低于<val1>%时，在<val2>秒内移动速度提升<val3>%。冷却时间<val4>秒。	30,5,80,25				SkillType.Passive	Skill_Name_EmergencyEvac	Skill_Desc_EmergencyEvac	

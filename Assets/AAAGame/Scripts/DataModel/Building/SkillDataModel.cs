@@ -1,0 +1,51 @@
+﻿using GameFramework;
+using GameFramework.Event;
+using Newtonsoft.Json;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Data.Common;
+using UnityEngine;
+using UnityGameFramework.Runtime;
+
+/// <summary>
+/// 技能数据模型类, 预读各技能数据
+/// </summary>
+public class SkillDataModel : DataModelBase
+{
+    private Dictionary<string, SkillData> skillDataDic;
+
+    protected override void OnCreate(RefParams userdata)
+    {
+        skillDataDic = new();
+        var skillTb = GF.DataTable.GetDataTable<SkillTable>();
+        foreach (var row in skillTb.GetAllDataRows())
+        {
+            ImportSkillDataRow(row);
+        }
+    }
+
+    protected override void OnRelease() { }
+
+    public static SkillData GetSkillData(string skillIdentifier)
+    {
+        var skillDataModel = GF.DataModel.GetDataModel<SkillDataModel>();
+        if (skillDataModel.skillDataDic.TryGetValue(skillIdentifier, out var skill)) return skill;
+        return null;
+    }
+
+    private void ImportSkillDataRow(SkillTable row)
+    {
+        if (string.IsNullOrEmpty(row.Identifier)) return;
+        SkillData skill = new(row.Identifier,
+                              row.Lv1UniqueValues,
+                              row.Lv1UsageCount,
+                              row.Lv2UniqueValues,
+                              row.Lv2UsageCount,
+                              row.Type,
+                              row.NameKey,
+                              row.DescKey,
+                              row.SpritePath);
+        skillDataDic[skill.Identifier] = skill;
+    }
+}

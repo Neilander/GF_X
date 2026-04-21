@@ -38,6 +38,7 @@ public class TechDataModel : DataModelBase
     {
         if (string.IsNullOrEmpty(row.Tech1ID)) return;
         TechData tech = new(row.Tech1ID,
+                                row.Tech1SkillID,
                                 row.Tech1NameKey,
                                 row.Tech1DescKey,
                                 row.Tech1Cost,
@@ -51,6 +52,7 @@ public class TechDataModel : DataModelBase
         techDataDic[tech.Identifier] = tech;
         if (string.IsNullOrEmpty(row.Tech2ID)) return;
         tech = new(row.Tech2ID,
+                                row.Tech2SkillID,
                                 row.Tech2NameKey,
                                 row.Tech2DescKey,
                                 row.Tech2Cost,
@@ -64,6 +66,7 @@ public class TechDataModel : DataModelBase
         techDataDic[tech.Identifier] = tech;
         if (string.IsNullOrEmpty(row.Tech3ID)) return;
         tech = new(row.Tech3ID,
+                                row.Tech3SkillID,
                                 row.Tech3NameKey,
                                 row.Tech3DescKey,
                                 row.Tech3Cost,
@@ -77,6 +80,7 @@ public class TechDataModel : DataModelBase
         techDataDic[tech.Identifier] = tech;
         if (string.IsNullOrEmpty(row.Tech4ID)) return;
         tech = new(row.Tech4ID,
+                                row.Tech4SkillID,
                                 row.Tech4NameKey,
                                 row.Tech4DescKey,
                                 row.Tech4Cost,

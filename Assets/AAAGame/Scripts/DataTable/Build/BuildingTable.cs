@@ -299,6 +299,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技1对应技能ID
+        /// </summary>
+        public string Tech1SkillID
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技1名称（多语言）
         /// </summary>
         public string Tech1NameKey
@@ -392,6 +401,15 @@ public class BuildingTable : DataRowBase
         /// 科技2生效种族类型
         /// </summary>
         public Archetype[] Tech2ArchScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技2对应技能ID
+        /// </summary>
+        public string Tech2SkillID
         {
             get;
             private set;
@@ -497,6 +515,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技3对应技能ID
+        /// </summary>
+        public string Tech3SkillID
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技3名称（多语言）
         /// </summary>
         public string Tech3NameKey
@@ -596,6 +623,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技4对应技能ID
+        /// </summary>
+        public string Tech4SkillID
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技4名称（多语言）
         /// </summary>
         public string Tech4NameKey
@@ -675,6 +711,7 @@ public class BuildingTable : DataRowBase
             Tech1UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech1TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech1ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
+            Tech1SkillID = columnStrings[index++];
             Tech1NameKey = columnStrings[index++];
             Tech1DescKey = columnStrings[index++];
             Tech1Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -687,6 +724,7 @@ public class BuildingTable : DataRowBase
             Tech2UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech2TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech2ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
+            Tech2SkillID = columnStrings[index++];
             Tech2NameKey = columnStrings[index++];
             Tech2DescKey = columnStrings[index++];
             Tech2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -699,6 +737,7 @@ public class BuildingTable : DataRowBase
             Tech3UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech3TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech3ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
+            Tech3SkillID = columnStrings[index++];
             Tech3NameKey = columnStrings[index++];
             Tech3DescKey = columnStrings[index++];
             Tech3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -711,6 +750,7 @@ public class BuildingTable : DataRowBase
             Tech4UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
             Tech4TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech4ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
+            Tech4SkillID = columnStrings[index++];
             Tech4NameKey = columnStrings[index++];
             Tech4DescKey = columnStrings[index++];
             Tech4Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
@@ -756,6 +796,7 @@ public class BuildingTable : DataRowBase
                     Tech1UnitScope = binaryReader.ReadArray<string>();
                     Tech1TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech1ArchScope = binaryReader.ReadArray<Archetype>();
+                    Tech1SkillID = binaryReader.ReadString();
                     Tech1NameKey = binaryReader.ReadString();
                     Tech1DescKey = binaryReader.ReadString();
                     Tech1Cost = binaryReader.Read7BitEncodedInt32();
@@ -767,6 +808,7 @@ public class BuildingTable : DataRowBase
                     Tech2UnitScope = binaryReader.ReadArray<string>();
                     Tech2TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech2ArchScope = binaryReader.ReadArray<Archetype>();
+                    Tech2SkillID = binaryReader.ReadString();
                     Tech2NameKey = binaryReader.ReadString();
                     Tech2DescKey = binaryReader.ReadString();
                     Tech2Cost = binaryReader.Read7BitEncodedInt32();
@@ -778,6 +820,7 @@ public class BuildingTable : DataRowBase
                     Tech3UnitScope = binaryReader.ReadArray<string>();
                     Tech3TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech3ArchScope = binaryReader.ReadArray<Archetype>();
+                    Tech3SkillID = binaryReader.ReadString();
                     Tech3NameKey = binaryReader.ReadString();
                     Tech3DescKey = binaryReader.ReadString();
                     Tech3Cost = binaryReader.Read7BitEncodedInt32();
@@ -789,6 +832,7 @@ public class BuildingTable : DataRowBase
                     Tech4UnitScope = binaryReader.ReadArray<string>();
                     Tech4TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech4ArchScope = binaryReader.ReadArray<Archetype>();
+                    Tech4SkillID = binaryReader.ReadString();
                     Tech4NameKey = binaryReader.ReadString();
                     Tech4DescKey = binaryReader.ReadString();
                     Tech4Cost = binaryReader.Read7BitEncodedInt32();

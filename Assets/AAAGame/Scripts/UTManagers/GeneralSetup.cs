@@ -84,6 +84,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         GF.DataModel.CreateDataModel<BuildingDataModel>();
         GF.DataModel.CreateDataModel<TechDataModel>();
+        GF.DataModel.CreateDataModel<SkillDataModel>();
         GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
         GF.DataModel.CreateDataModel<InputModel>();
     }
