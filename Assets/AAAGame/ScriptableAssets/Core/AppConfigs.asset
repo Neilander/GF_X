@@ -33,6 +33,9 @@ MonoBehaviour:
   - Tech/TechNodeTable
   - Text/LocalizationTextTable_InteractionOption
   - Text/LocalizationTextTable_Misc
+  - Text/LocalizationTextTable_Old
+  - Text/LocalizationTextTable_Tips
+  - Text/LocalizationTextTable_Tutorial
   mConfigs:
   - GameConfig
   mLanguages:
