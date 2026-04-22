@@ -33,8 +33,8 @@ public sealed class BuildingConstructInteractionOption : IInteractionOption
         _buildBuildingId = @params.Get<VarString>("BuildBuildingId");
 
         var buildingData = BuildingDataModel.GetBuildingData(_buildBuildingId);
-        if (buildingData != null && !string.IsNullOrWhiteSpace(buildingData.DescKey))
-            DisplayDesc = GF.Localization.GetString(buildingData.DescKey);
+        if (buildingData != null)
+            DisplayDesc = buildingData.GetFormattedDesc();
     }
 
     public void Execute()

@@ -29,6 +29,6 @@ public partial class SupplyUIForm : UIFormBase
     {
         int currentSupply = InGameDataModel.GetCurrentSupply();
         int maxSupply = InGameDataModel.GetMaxSupply();
-        varSupplyText.text = string.Format(LocalizationTextDataModel.GetText("Supply_CurrentMax"), currentSupply, maxSupply);
+        varSupplyText.text = $"{currentSupply} / {maxSupply}";
     }
 }

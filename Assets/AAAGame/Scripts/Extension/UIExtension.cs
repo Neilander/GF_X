@@ -521,13 +521,13 @@ public static class UIExtension
         {
             GF.Sound.PlayEffect("add_money.wav");
         });
-        //var richText = "<sprite name=USD_0>";
+        var richText = "<sprite name=USD_0>";
         for (int i = 0; i < num; i++)
         {
             var animPrams = EntityParams.Create(centerPos, Vector3.zero, Vector3.one);
             animPrams.OnShowCallback = moneyEntity =>
             {
-                //moneyEntity.GetComponent<TMPro.TextMeshPro>().text = richText;
+                moneyEntity.GetComponent<TMPro.TextMeshPro>().text = richText;
                 var spawnPos = UnityEngine.Random.insideUnitCircle * 3;
                 var expPos = centerPos;
                 expPos.x += spawnPos.x;
@@ -552,6 +552,62 @@ public static class UIExtension
                     GF.Sound.PlayVibrate();
                 };
             };
+            GF.Entity.ShowEntity<SampleEntity>("Effect/EffectMoney", Const.EntityGroup.Effect, animPrams);
+        }
+    }
+
+    public static void ShowCoinFlyEffectToDynamicTarget(this UIComponent uiCom, Vector3 centerPos, Func<Vector3> targetPositionProvider, float flyDelay = 0.5f, GameFrameworkAction onAnimComplete = null, int num = 30)
+    {
+        int coinNum = Mathf.Max(0, num);
+        if (coinNum <= 0)
+        {
+            onAnimComplete?.Invoke();
+            return;
+        }
+
+        DOVirtual.DelayedCall(flyDelay, () =>
+        {
+            GF.Sound.PlayEffect("add_money.wav");
+        });
+
+        Vector3 fallbackTargetPos = targetPositionProvider != null ? targetPositionProvider() : centerPos;
+        for (int i = 0; i < coinNum; i++)
+        {
+            var animPrams = EntityParams.Create(centerPos, Vector3.zero, Vector3.one);
+            animPrams.OnShowCallback = moneyEntity =>
+            {
+                var spawnPos = UnityEngine.Random.insideUnitCircle * 3;
+                var expPos = centerPos;
+                expPos.x += spawnPos.x;
+                expPos.y += spawnPos.y;
+
+                int moneyEntityId = moneyEntity.Entity.Id;
+                float expDuration = Vector2.Distance(moneyEntity.transform.position, expPos) * 0.05f;
+                Vector3 firstTarget = targetPositionProvider != null ? targetPositionProvider() : fallbackTargetPos;
+                float moveDuration = Mathf.Max(0.1f, Vector2.Distance(expPos, firstTarget) * 0.05f);
+
+                var animSeq = DOTween.Sequence();
+                animSeq.Append(moneyEntity.transform.DOMove(expPos, expDuration));
+                animSeq.AppendInterval(0.2f);
+                animSeq.Append(DOVirtual.Float(0f, 1f, moveDuration, t =>
+                {
+                    Vector3 dynamicTarget = targetPositionProvider != null ? targetPositionProvider() : fallbackTargetPos;
+                    moneyEntity.transform.position = Vector3.LerpUnclamped(expPos, dynamicTarget, t);
+                }).SetEase(Ease.Linear));
+                animSeq.onComplete = () =>
+                {
+                    GF.Entity.HideEntitySafe(moneyEntityId);
+                    coinNum--;
+                    if (coinNum <= 0)
+                    {
+                        onAnimComplete?.Invoke();
+                    }
+
+                    GF.Sound.PlayEffect("Collect_Gem_2.wav");
+                    GF.Sound.PlayVibrate();
+                };
+            };
+
             GF.Entity.ShowEntity<SampleEntity>("Effect/EffectMoney", Const.EntityGroup.Effect, animPrams);
         }
     }

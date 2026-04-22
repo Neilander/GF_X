@@ -34,6 +34,12 @@ public class SkillDataModel : DataModelBase
         return null;
     }
 
+    public static string GetSkillDesc(string skillIdentifier, int level = 1)
+    {
+        var skillData = GetSkillData(skillIdentifier);
+        return skillData != null ? skillData.GetFormattedDesc(level) : string.Empty;
+    }
+
     private void ImportSkillDataRow(SkillTable row)
     {
         if (string.IsNullOrEmpty(row.Identifier)) return;

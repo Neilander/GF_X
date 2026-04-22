@@ -2,10 +2,10 @@
 #	ID		Identifier	TextKey
 #	int		string	string
 #		备注	在代码中的命名标识符	选项文本(多语言)
-	1	行动目标_占领倒计天数	GameEnd_Objective_OccupyBeforeDay	MiscText.GameEnd.Objective.OccupyBeforeDay
-	2	行动目标_占领建筑	GameEnd_Objective_Occupy	MiscText.GameEnd.Objective.Occupy
-	3	行动目标_生存天数	GameEnd_Objective_SurviveToDay	MiscText.GameEnd.Objective.SurviveToDay
-	4	行动目标_保护基地	GameEnd_Objective_DefendBase	MiscText.GameEnd.Objective.DefendBase
-	5	阶段名_运营	PhaseSwitch_Phase_Build	MiscText.PhaseSwitch.Phase.Build
-	6	阶段名_进攻	PhaseSwitch_Phase_Invade	MiscText.PhaseSwitch.Phase.Invade
-	7	阶段名_防御	PhaseSwitch_Phase_Defend	MiscText.PhaseSwitch.Phase.Defend
+	1	行动目标_占领倒计天数	GameEnd_Cond_OccupyBeforeDay	GameEnd.Cond.OccupyBeforeDay
+	2	行动目标_占领建筑	GameEnd_Cond_Occupy	GameEnd.Cond.Occupy
+	3	行动目标_生存天数	GameEnd_Cond_SurviveToDay	GameEnd.Cond.SurviveToDay
+	4	行动目标_保护基地	GameEnd_Cond_DefendBase	GameEnd.Cond.DefendBase
+	5	阶段名_运营	Phase_Build	Phase.Build
+	6	阶段名_进攻	Phase_Invade	Phase.Invade
+	7	阶段名_防御	Phase_Defend	Phase.Defend

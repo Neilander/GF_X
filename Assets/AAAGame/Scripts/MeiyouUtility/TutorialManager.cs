@@ -1,29 +1,84 @@
 ﻿using GameFramework;
+using GameFramework.Event;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public enum TutorialTriggerType
+public enum TutorialType
 {
     None = 0,
     MoveHeroByWASD = 1,
+    InvadeSH = 2,
+    SwitchPhase = 3,
+    Build = 4,
+    SwitchPhase2 = 5,
+    PlayCard = 6,
 }
 
 public class TutorialManager : GameFrameworkComponent
 {
+    private const string Lv1Identifier = "Lv_1";
     private const string MoveHeroTipId = "tutorial.move.hero.wasd";
-    private const string MoveHeroTipTitleTextId = "Tutorial_MoveHero_Title";
-    private const string MoveHeroTipContentTextId = "Tutorial_MoveHero_Content";
+    private const string InvadeSHTipId = "tutorial.invade.sh";
+    private const string SwitchPhaseTipId = "tutorial.switch.phase";
+    private const string BuildTipId = "tutorial.build";
+    private const string SwitchPhase2TipId = "tutorial.switch.phase2";
+    private const string PlayCardTipId = "tutorial.play.card";
+
+    private const string MoveHeroTextId = "Tutorial_MoveHero";
+    private const string InvadeSHTextId = "Tutorial_InvadeSH";
+    private const string SwitchPhaseTextId = "Tutorial_SwitchPhase";
+    private const string BuildTextId = "Tutorial_Build";
+    private const string SwitchPhase2TextId = "Tutorial_SwitchPhase2";
+    private const string PlayCardTextId = "Tutorial_PlayCard";
+
     private const float MoveInputThreshold = 0.1f;
 
+    private static TutorialManager s_CachedManager;
+
     private InputModel inputModel;
-    private readonly HashSet<TutorialTriggerType> activeTutorials = new HashSet<TutorialTriggerType>();
-    private readonly List<TutorialTriggerType> activeTutorialsBuffer = new List<TutorialTriggerType>(4);
-    private readonly HashSet<TutorialTriggerType> completedTutorials = new HashSet<TutorialTriggerType>();
+    private readonly HashSet<TutorialType> activeTutorials = new HashSet<TutorialType>();
+    private readonly List<TutorialType> activeTutorialsBuffer = new List<TutorialType>(8);
+    private readonly HashSet<TutorialType> completedTutorials = new HashSet<TutorialType>();
     private bool hasLoggedWaitingForInputModel;
+    private bool m_EventSubscribed;
+    private bool m_WaitingEventReadyLogged;
+    private int m_BuildTutorialStartBuiltCount;
+
+    protected override void Awake()
+    {
+        base.Awake();
+        s_CachedManager = this;
+    }
+
+    private void Start()
+    {
+        TrySubscribeEvents();
+    }
+
+    private void OnEnable()
+    {
+        TrySubscribeEvents();
+    }
+
+    private void OnDisable()
+    {
+        TryUnsubscribeEvents();
+    }
+
+    private void OnDestroy()
+    {
+        TryUnsubscribeEvents();
+        if (s_CachedManager == this)
+            s_CachedManager = null;
+    }
 
     private void Update()
     {
+        if (!m_EventSubscribed)
+            TrySubscribeEvents();
+
         if (activeTutorials.Count <= 0)
             return;
 
@@ -36,36 +91,62 @@ public class TutorialManager : GameFrameworkComponent
         }
     }
 
-    public bool NotifyTriggerEntered(TutorialTriggerType triggerType, Component triggerSource = null)
+    public bool NotifyTriggerEntered(TutorialType triggerType, Component triggerSource = null)
     {
         switch (triggerType)
         {
-            case TutorialTriggerType.MoveHeroByWASD:
-                return TryStartMoveHeroTutorial(triggerSource);
+            case TutorialType.MoveHeroByWASD:
+            case TutorialType.InvadeSH:
+                return TryStartTutorial(triggerType, triggerSource, startedByChain: false);
             default:
                 Log.Warning("[Tutorial] Unsupported trigger type: {0}.", triggerType);
                 return false;
         }
     }
 
-    public void ResetMoveTutorialForDebug()
+    public static bool TryGetPhaseSwitchButtonGuide(out bool interactable, out bool shouldBlink)
     {
-        if (activeTutorials.Remove(TutorialTriggerType.MoveHeroByWASD))
-        {
-            RequestCloseSideTip(MoveHeroTipId);
-        }
+        interactable = true;
+        shouldBlink = false;
 
-        completedTutorials.Remove(TutorialTriggerType.MoveHeroByWASD);
-        inputModel = null;
-        hasLoggedWaitingForInputModel = false;
+        return GameEntry.GetComponent<TutorialManager>().TryGetPhaseSwitchButtonGuideInternal(out interactable, out shouldBlink);
     }
 
-    private void TickTutorial(TutorialTriggerType triggerType)
+    public void ResetMoveTutorialForDebug()
+    {
+        ResetAllTutorialsForDebug();
+    }
+
+    public void ResetAllTutorialsForDebug()
+    {
+        activeTutorialsBuffer.Clear();
+        foreach (var triggerType in activeTutorials)
+        {
+            if (TryGetTutorialTipConfig(triggerType, out string tipId, out _))
+                RequestCloseSideTip(tipId);
+        }
+
+        activeTutorials.Clear();
+        completedTutorials.Clear();
+        inputModel = null;
+        hasLoggedWaitingForInputModel = false;
+        m_BuildTutorialStartBuiltCount = 0;
+    }
+
+    private void TickTutorial(TutorialType triggerType)
     {
         switch (triggerType)
         {
-            case TutorialTriggerType.MoveHeroByWASD:
+            case TutorialType.MoveHeroByWASD:
                 TickMoveHeroTutorial();
+                break;
+            case TutorialType.Build:
+                TickBuildTutorial();
+                break;
+            case TutorialType.InvadeSH:
+            case TutorialType.SwitchPhase:
+            case TutorialType.SwitchPhase2:
+            case TutorialType.PlayCard:
                 break;
             default:
                 Log.Warning("[Tutorial] Unknown active tutorial trigger: {0}.", triggerType);
@@ -74,34 +155,42 @@ public class TutorialManager : GameFrameworkComponent
         }
     }
 
-    private bool TryStartMoveHeroTutorial(Component triggerSource)
+    private bool TryStartTutorial(TutorialType triggerType, Component triggerSource, bool startedByChain)
     {
-        if (completedTutorials.Contains(TutorialTriggerType.MoveHeroByWASD))
+        if (completedTutorials.Contains(triggerType))
             return false;
 
-        if (activeTutorials.Contains(TutorialTriggerType.MoveHeroByWASD))
+        if (activeTutorials.Contains(triggerType))
+            return false;
+
+        if (IsLv1FlowTutorial(triggerType) && !IsCurrentLevelLv1())
             return false;
 
         SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
         if (sideTipsManager == null)
         {
-            Log.Warning("[Tutorial] Start move tutorial failed: SideTipsManager is missing.");
+            Log.Warning("[Tutorial] Start tutorial failed: SideTipsManager is missing. type={0}.", triggerType);
             return false;
         }
 
-        string tipTitle = LocalizationTextDataModel.GetText(MoveHeroTipTitleTextId);
-        string tipContent = LocalizationTextDataModel.GetText(MoveHeroTipContentTextId);
-        if (string.IsNullOrEmpty(tipTitle) && string.IsNullOrEmpty(tipContent))
+        if (!TryGetTutorialTipConfig(triggerType, out string tipId, out string textId))
         {
-            Log.Warning("[Tutorial] Move tutorial tip content is empty.");
+            Log.Warning("[Tutorial] Start tutorial failed: unsupported type={0}.", triggerType);
             return false;
         }
 
-        sideTipsManager.ShowConditionalTip(MoveHeroTipId, tipTitle, tipContent);
-        activeTutorials.Add(TutorialTriggerType.MoveHeroByWASD);
+        string tipContent = LocalizationTextDataModel.GetText(textId);
+        if (string.Equals(tipContent, textId, StringComparison.Ordinal))
+            tipContent = string.Empty;
 
-        string sourceName = triggerSource != null ? triggerSource.name : "Unknown";
-        Log.Info("[Tutorial] Move tutorial started. trigger={0}.", sourceName);
+        sideTipsManager.ShowConditionalTip(tipId, string.Empty, tipContent);
+        activeTutorials.Add(triggerType);
+
+        if (triggerType == TutorialType.Build)
+            m_BuildTutorialStartBuiltCount = CountPlayerBuiltBuildings();
+
+        string sourceName = triggerSource != null ? triggerSource.name : "Auto";
+        Log.Info("[Tutorial] Tutorial started. type={0}, trigger={1}, chain={2}.", triggerType, sourceName, startedByChain);
         return true;
     }
 
@@ -115,20 +204,231 @@ public class TutorialManager : GameFrameworkComponent
         if (!hasMovementInput)
             return;
 
-        CompleteMoveHeroTutorial();
+        CompleteTutorial(TutorialType.MoveHeroByWASD, autoChain: false);
     }
 
-    private void CompleteMoveHeroTutorial()
+    private void TickBuildTutorial()
     {
-        if (!activeTutorials.Remove(TutorialTriggerType.MoveHeroByWASD))
+        int currentBuiltCount = CountPlayerBuiltBuildings();
+        if (currentBuiltCount < m_BuildTutorialStartBuiltCount + 2)
             return;
 
-        completedTutorials.Add(TutorialTriggerType.MoveHeroByWASD);
+        CompleteTutorial(TutorialType.Build, autoChain: true);
+    }
+
+    private void CompleteTutorial(TutorialType triggerType, bool autoChain)
+    {
+        if (!activeTutorials.Remove(triggerType))
+            return;
+
+        completedTutorials.Add(triggerType);
         hasLoggedWaitingForInputModel = false;
 
-        RequestCloseSideTip(MoveHeroTipId);
+        if (TryGetTutorialTipConfig(triggerType, out string tipId, out _))
+            RequestCloseSideTip(tipId);
 
-        Log.Info("[Tutorial] Move tutorial completed.");
+        Log.Info("[Tutorial] Tutorial completed. type={0}.", triggerType);
+
+        if (autoChain)
+            TryStartNextTutorial(triggerType);
+    }
+
+    private void TryStartNextTutorial(TutorialType completedType)
+    {
+        switch (completedType)
+        {
+            case TutorialType.InvadeSH:
+                TryStartTutorial(TutorialType.SwitchPhase, null, startedByChain: true);
+                break;
+            case TutorialType.SwitchPhase:
+                TryStartTutorial(TutorialType.Build, null, startedByChain: true);
+                break;
+            case TutorialType.Build:
+                TryStartTutorial(TutorialType.SwitchPhase2, null, startedByChain: true);
+                break;
+            case TutorialType.SwitchPhase2:
+                TryStartTutorial(TutorialType.PlayCard, null, startedByChain: true);
+                break;
+        }
+    }
+
+    private void OnEntityFactionChanged(object sender, GameEventArgs e)
+    {
+        if (!activeTutorials.Contains(TutorialType.InvadeSH))
+            return;
+
+        var args = e as EntityFactionChangedEventArgs;
+        if (args == null)
+            return;
+
+        if (args.NewFactionId != EntitySideHelper.PlayerFactionId)
+            return;
+
+        if (args.OldFactionId == EntitySideHelper.PlayerFactionId)
+            return;
+
+        CompleteTutorial(TutorialType.InvadeSH, autoChain: true);
+    }
+
+    private void OnIngamePhaseChanged(object sender, GameEventArgs e)
+    {
+        if (activeTutorials.Contains(TutorialType.SwitchPhase))
+        {
+            CompleteTutorial(TutorialType.SwitchPhase, autoChain: true);
+            return;
+        }
+
+        if (activeTutorials.Contains(TutorialType.SwitchPhase2))
+        {
+            CompleteTutorial(TutorialType.SwitchPhase2, autoChain: true);
+        }
+    }
+
+    private void OnGameEndResult(object sender, GameEventArgs e)
+    {
+        if (!activeTutorials.Contains(TutorialType.PlayCard))
+            return;
+
+        CompleteTutorial(TutorialType.PlayCard, autoChain: false);
+    }
+
+    private void TrySubscribeEvents()
+    {
+        if (m_EventSubscribed)
+            return;
+
+        if (GF.Event == null)
+        {
+            if (!m_WaitingEventReadyLogged)
+            {
+                m_WaitingEventReadyLogged = true;
+                Log.Warning("[Tutorial] Waiting for GF.Event to become ready...");
+            }
+
+            return;
+        }
+
+        GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        GF.Event.Subscribe(GameEndResultEventArgs.EventId, OnGameEndResult);
+        m_EventSubscribed = true;
+        m_WaitingEventReadyLogged = false;
+    }
+
+    private void TryUnsubscribeEvents()
+    {
+        if (!m_EventSubscribed)
+            return;
+
+        if (GF.Event != null)
+        {
+            try
+            {
+                GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+                GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+                GF.Event.Unsubscribe(GameEndResultEventArgs.EventId, OnGameEndResult);
+            }
+            catch (GameFrameworkException)
+            {
+                // PlayMode 退出时 EventPool 可能已释放，忽略退订异常。
+            }
+        }
+
+        m_EventSubscribed = false;
+    }
+
+    private bool TryGetPhaseSwitchButtonGuideInternal(out bool interactable, out bool shouldBlink)
+    {
+        interactable = true;
+        shouldBlink = false;
+
+        if (!IsCurrentLevelLv1())
+            return false;
+
+        bool isSwitchPhaseTutorialActive = activeTutorials.Contains(TutorialType.SwitchPhase)
+            || activeTutorials.Contains(TutorialType.SwitchPhase2);
+
+        interactable = isSwitchPhaseTutorialActive;
+        shouldBlink = isSwitchPhaseTutorialActive;
+        return true;
+    }
+
+    private static bool TryGetTutorialTipConfig(TutorialType triggerType, out string tipId, out string textId)
+    {
+        tipId = null;
+        textId = null;
+
+        switch (triggerType)
+        {
+            case TutorialType.MoveHeroByWASD:
+                tipId = MoveHeroTipId;
+                textId = MoveHeroTextId;
+                return true;
+            case TutorialType.InvadeSH:
+                tipId = InvadeSHTipId;
+                textId = InvadeSHTextId;
+                return true;
+            case TutorialType.SwitchPhase:
+                tipId = SwitchPhaseTipId;
+                textId = SwitchPhaseTextId;
+                return true;
+            case TutorialType.Build:
+                tipId = BuildTipId;
+                textId = BuildTextId;
+                return true;
+            case TutorialType.SwitchPhase2:
+                tipId = SwitchPhase2TipId;
+                textId = SwitchPhase2TextId;
+                return true;
+            case TutorialType.PlayCard:
+                tipId = PlayCardTipId;
+                textId = PlayCardTextId;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsLv1FlowTutorial(TutorialType triggerType)
+    {
+        return triggerType == TutorialType.InvadeSH
+            || triggerType == TutorialType.SwitchPhase
+            || triggerType == TutorialType.Build
+            || triggerType == TutorialType.SwitchPhase2
+            || triggerType == TutorialType.PlayCard;
+    }
+
+    private static bool IsCurrentLevelLv1()
+    {
+        var inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+        if (inGameData == null || inGameData.lvData == null)
+            return false;
+
+        return string.Equals(inGameData.lvData.Identifier, Lv1Identifier, StringComparison.Ordinal);
+    }
+
+    private static int CountPlayerBuiltBuildings()
+    {
+        var inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+        if (inGameData == null)
+            return 0;
+
+        int count = 0;
+        foreach (var building in inGameData.Buildings)
+        {
+            if (building == null || building.buildingData == null)
+                continue;
+
+            if (building.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+                continue;
+
+            if (building.buildingData.Lv <= 0)
+                continue;
+
+            count++;
+        }
+
+        return count;
     }
 
     private void RequestCloseSideTip(string tipId)

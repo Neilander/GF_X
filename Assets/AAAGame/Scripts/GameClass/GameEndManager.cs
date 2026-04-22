@@ -9,11 +9,10 @@ public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, Consume
 
 public class GameEndManager : GameFrameworkComponent
 {
-    private const string LevelObjectiveTipsTitleId = "GameEnd_LevelObjective_Title";
-    private const string ObjectiveOccupyBeforeDayTextId = "GameEnd_Objective_OccupyBeforeDay";
-    private const string ObjectiveOccupyTextId = "GameEnd_Objective_Occupy";
-    private const string ObjectiveSurviveToDayTextId = "GameEnd_Objective_SurviveToDay";
-    private const string ObjectiveDefendBaseTextId = "GameEnd_Objective_DefendBase";
+    private const string ObjectiveOccupyBeforeDayTextId = "GameEnd_Cond_OccupyBeforeDay";
+    private const string ObjectiveOccupyTextId = "GameEnd_Cond_Occupy";
+    private const string ObjectiveSurviveToDayTextId = "GameEnd_Cond_SurviveToDay";
+    private const string ObjectiveDefendBaseTextId = "GameEnd_Cond_DefendBase";
     private const float LevelObjectiveTipsDurationSeconds = 5f;
 
     public bool IsGameEnded { get; private set; }
@@ -110,7 +109,7 @@ public class GameEndManager : GameFrameworkComponent
             return;
         }
 
-        sideTipsManager.ShowRuntimeTip(LocalizationTextDataModel.GetText(LevelObjectiveTipsTitleId), content, LevelObjectiveTipsDurationSeconds);
+        sideTipsManager.ShowRuntimeTip(string.Empty, content, LevelObjectiveTipsDurationSeconds);
     }
 
     private string BuildLevelObjectiveTipsContent()

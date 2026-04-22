@@ -5,7 +5,7 @@ using UnityGameFramework.Runtime;
 [RequireComponent(typeof(Collider))]
 public class TutorialTriggerCollider : MonoBehaviour
 {
-    [SerializeField] private TutorialTriggerType triggerType = TutorialTriggerType.MoveHeroByWASD;
+    [SerializeField] private TutorialType triggerType = TutorialType.MoveHeroByWASD;
     [SerializeField] private bool triggerOnce = true;
 
     private TutorialManager tutorialManager;

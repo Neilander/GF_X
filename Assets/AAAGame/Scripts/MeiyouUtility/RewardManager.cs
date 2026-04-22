@@ -20,8 +20,9 @@ public class RewardManager : GameFrameworkComponent
 	private int m_EnemyDeadSupplyRemainder;
 	private bool m_KillRewardConfigInvalidLogged;
 
-	private void Awake()
+	protected override void Awake()
 	{
+		base.Awake();
 		s_CachedManager = this;
 	}
 
@@ -220,9 +221,9 @@ public class RewardManager : GameFrameworkComponent
 		Vector3 targetPos = playerPos + CoinTargetOffset;
 		int visualCoinCount = Mathf.Clamp(coinAmount, 1, MaxFlyCoinVisualCount);
 
-		GF.UI.ShowRewardEffect(
+		GF.UI.ShowCoinFlyEffectToDynamicTarget(
 			spawnPos,
-			targetPos,
+			() => TryGetPlayerPosition(out Vector3 dynamicPlayerPos) ? dynamicPlayerPos + CoinTargetOffset : targetPos,
 			0f,
 			() => ApplyCoinDirectly(coinAmount, reason),
 			visualCoinCount);

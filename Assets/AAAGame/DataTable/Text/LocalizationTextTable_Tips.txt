@@ -2,5 +2,5 @@
 #	ID		Identifier	TextKey
 #	int		string	string
 #		备注	在代码中的命名标识符	选项文本(多语言)
-	1	切换阶段失败提示_标题	PhaseSwitch_Blocked_Title	Tips.PhaseSwitch.Blocked.Title
-	2	切换阶段失败提示_内容	PhaseSwitch_Blocked_Content	Tips.PhaseSwitch.Blocked.Content
+	1	切换阶段失败提示_标题	Tips_PhaseSwitchBlocked_Title	Tips.PhaseSwitchBlocked.Title
+	2	切换阶段失败提示_内容	Tips_PhaseSwitchBlocked_Content	Tips.PhaseSwitchBlocked.Content

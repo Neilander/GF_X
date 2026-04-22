@@ -2,5 +2,9 @@
 #	ID		Identifier	TextKey
 #	int		string	string
 #		备注	在代码中的命名标识符	选项文本(多语言)
-	1	教程_移动_标题	Tutorial_MoveHero_Title	Tutorial.MoveHero.Title
-	2	教程_移动_内容	Tutorial_MoveHero_Content	Tutorial.MoveHero.Content
+	1	教程_移动英雄	Tutorial_MoveHero	Tutorial.MoveHero
+	2	教程_进攻据点	Tutorial_InvadeSH	Tutorial.InvadeSH
+	3	教程_切换阶段	Tutorial_SwitchPhase	Tutorial.SwitchPhase
+	4	教程_建造	Tutorial_Build	Tutorial.Build
+	5	教程_切换阶段2	Tutorial_SwitchPhase2	Tutorial.SwitchPhase2
+	6	教程_使用卡牌	Tutorial_PlayCard	Tutorial.PlayCard

@@ -35,8 +35,8 @@ public sealed class BuildingUpgradeInteractionOption : IInteractionOption
         _techId = @params.Get<VarString>("TechId");
 
         var techData = TechDataModel.GetTechData(_techId);
-        if (techData != null && !string.IsNullOrWhiteSpace(techData.DescKey))
-            DisplayDesc = GF.Localization.GetString(techData.DescKey);
+        if (techData != null)
+            DisplayDesc = techData.GetFormattedDesc();
     }
 
     public void Execute()

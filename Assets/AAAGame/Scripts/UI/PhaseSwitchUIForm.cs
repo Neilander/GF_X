@@ -1,16 +1,21 @@
 ﻿using GameFramework.Event;
+using DG.Tweening;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityGameFramework.Runtime;
 
 public partial class PhaseSwitchUIForm : UIFormBase
 {
-    private const string BlockedSwitchTipTitleId = "PhaseSwitch_Blocked_Title";
-    private const string BlockedSwitchTipContentId = "PhaseSwitch_Blocked_Content";
-    private const string DayPhaseFormatTextId = "PhaseSwitch_DayPhase_Format";
-    private const string BuildPhaseTextId = "PhaseSwitch_Phase_Build";
-    private const string InvadePhaseTextId = "PhaseSwitch_Phase_Invade";
-    private const string DefendPhaseTextId = "PhaseSwitch_Phase_Defend";
+    private const string BlockedSwitchTipTitleId = "Tips_PhaseSwitchBlocked_Title";
+    private const string BlockedSwitchTipContentId = "Tips_PhaseSwitchBlocked_Content";
+    private const string BuildPhaseTextId = "Phase_Build";
+    private const string InvadePhaseTextId = "Phase_Invade";
+    private const string DefendPhaseTextId = "Phase_Defend";
     private const float BlockedSwitchTipDuration = 2f;
+    private const float PhaseSwitchBlinkMinAlpha = 0.35f;
+    private const float PhaseSwitchBlinkDuration = 0.45f;
+
+    private Tween m_PhaseSwitchBlinkTween;
 
     protected override void OnOpen(object userData)
     {
@@ -18,6 +23,7 @@ public partial class PhaseSwitchUIForm : UIFormBase
         varPhaseSwitchButton.onClick.RemoveAllListeners();
         varPhaseSwitchButton.onClick.AddListener(SwitchPhase);
         GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        RefreshTutorialPhaseSwitchState();
         RefreshCurrentDayText();
     }
 
@@ -25,7 +31,13 @@ public partial class PhaseSwitchUIForm : UIFormBase
     {
         GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
         varPhaseSwitchButton.onClick.RemoveAllListeners();
+        StopPhaseSwitchBlink();
         base.OnClose(isShutdown, userData);
+    }
+
+    private void Update()
+    {
+        RefreshTutorialPhaseSwitchState();
     }
 
     private void SwitchPhase()
@@ -59,6 +71,7 @@ public partial class PhaseSwitchUIForm : UIFormBase
 
     private void OnIngamePhaseChanged(object sender, GameEventArgs e)
     {
+        RefreshTutorialPhaseSwitchState();
         RefreshCurrentDayText();
     }
 
@@ -66,10 +79,70 @@ public partial class PhaseSwitchUIForm : UIFormBase
     {
         int day = InGameDataModel.GetValue(IngameValueType.Day);
         GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
-        varCurrentDayText.text = string.Format(
-            LocalizationTextDataModel.GetText(DayPhaseFormatTextId),
-            day,
-            GetPhaseDisplayName(phase));
+        varCurrentDayText.text = $"Day{day} {GetPhaseDisplayName(phase)}";
+    }
+
+    private void RefreshTutorialPhaseSwitchState()
+    {
+        bool interactable = true;
+        bool shouldBlink = false;
+
+        if (TutorialManager.TryGetPhaseSwitchButtonGuide(out bool guidedInteractable, out bool guidedBlink))
+        {
+            interactable = guidedInteractable;
+            shouldBlink = guidedBlink;
+        }
+
+        varPhaseSwitchButton.interactable = interactable;
+
+        if (shouldBlink)
+            StartPhaseSwitchBlink();
+        else
+            StopPhaseSwitchBlink();
+    }
+
+    private void StartPhaseSwitchBlink()
+    {
+        if (m_PhaseSwitchBlinkTween != null && m_PhaseSwitchBlinkTween.IsActive())
+            return;
+
+        Graphic graphic = varPhaseSwitchButton != null ? varPhaseSwitchButton.targetGraphic : null;
+        if (graphic == null)
+            return;
+
+        Color color = graphic.color;
+        color.a = 1f;
+        graphic.color = color;
+
+        m_PhaseSwitchBlinkTween = DOTween.To(
+                () => graphic.color.a,
+                alpha =>
+                {
+                    Color c = graphic.color;
+                    c.a = alpha;
+                    graphic.color = c;
+                },
+                PhaseSwitchBlinkMinAlpha,
+                PhaseSwitchBlinkDuration)
+            .SetLoops(-1, LoopType.Yoyo)
+            .SetUpdate(true);
+    }
+
+    private void StopPhaseSwitchBlink()
+    {
+        if (m_PhaseSwitchBlinkTween != null)
+        {
+            m_PhaseSwitchBlinkTween.Kill();
+            m_PhaseSwitchBlinkTween = null;
+        }
+
+        Graphic graphic = varPhaseSwitchButton != null ? varPhaseSwitchButton.targetGraphic : null;
+        if (graphic == null)
+            return;
+
+        Color color = graphic.color;
+        color.a = 1f;
+        graphic.color = color;
     }
 
     private static string GetPhaseDisplayName(GamePhase phase)

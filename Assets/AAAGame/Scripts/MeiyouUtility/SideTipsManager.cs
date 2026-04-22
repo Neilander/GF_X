@@ -95,7 +95,7 @@ public class SideTipsManager : GameFrameworkComponent
         Log.Info("[SideTips] Enemy visibility visible event received. entityId={0}, old={1}, new={2}, characterKey={3}.",
             args.EntityId, args.OldCellState, args.NewCellState, entity.CharacterKey);
 
-        if (!TryResolveTipKeys(entity, out UnitType unitType, out string nameKey, out string descKey))
+        if (!TryResolveTipKeys(entity, out UnitType unitType, out string nameKey))
         {
             Log.Warning("[SideTips] Failed to resolve unit type or tip keys. entityId={0}, characterKey={1}.", args.EntityId, entity.CharacterKey);
             return;
@@ -105,7 +105,7 @@ public class SideTipsManager : GameFrameworkComponent
             return;
 
         string title = Localize(nameKey);
-        string content = Localize(descKey);
+        string content = entity.CharacterData.GetFormattedDesc();
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
             return;
 
@@ -119,11 +119,10 @@ public class SideTipsManager : GameFrameworkComponent
         Log.Info("[SideTips] First visible enemy unit type shown. unitType={0}, entityId={1}.", unitType, args.EntityId);
     }
 
-    private static bool TryResolveTipKeys(MAEntity entity, out UnitType unitType, out string nameKey, out string descKey)
+    private static bool TryResolveTipKeys(MAEntity entity, out UnitType unitType, out string nameKey)
     {
         unitType = default;
         nameKey = string.Empty;
-        descKey = string.Empty;
 
         if (entity == null || entity.CharacterData == null)
             return false;
@@ -132,7 +131,6 @@ public class SideTipsManager : GameFrameworkComponent
             return false;
 
         nameKey = entity.CharacterData.NameKey;
-        descKey = entity.CharacterData.DescKey;
         return true;
     }
 
