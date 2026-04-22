@@ -18,9 +18,14 @@ public class LocalizationTextDataModel : DataModelBase
     private void ImportAllTextTables()
     {
         _localizationKeyDic = new();
-        List<IDataTable<LocalizationTextTable>> tables = new();
-        tables.Add(GF.DataTable.GetDataTable<LocalizationTextTable>("InteractionOption"));
-        tables.Add(GF.DataTable.GetDataTable<LocalizationTextTable>("Misc"));
+        List<IDataTable<LocalizationTextTable>> tables = new()
+        {
+            GF.DataTable.GetDataTable<LocalizationTextTable>("InteractionOption"),
+            GF.DataTable.GetDataTable<LocalizationTextTable>("Misc"),
+            GF.DataTable.GetDataTable<LocalizationTextTable>("Tips"),
+            GF.DataTable.GetDataTable<LocalizationTextTable>("Tutorial"),
+            GF.DataTable.GetDataTable<LocalizationTextTable>("Old")
+        };
         foreach (var table in tables)
         {
             foreach (var row in table.GetAllDataRows())

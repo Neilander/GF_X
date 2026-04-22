@@ -1,0 +1,6 @@
+﻿#	杂项文本多语言表			i18n
+#	ID		Identifier	TextKey
+#	int		string	string
+#		备注	在代码中的命名标识符	选项文本(多语言)
+	1	教程_移动_标题	Tutorial_MoveHero_Title	Tutorial.MoveHero.Title
+	2	教程_移动_内容	Tutorial_MoveHero_Content	Tutorial.MoveHero.Content
