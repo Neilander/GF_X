@@ -18,6 +18,12 @@ public partial class TechNodeDetailTips : UIFormBase
 	private static readonly Color OkColor = Color.white;
 	private static readonly Color FailColor = Color.red;
 	private static readonly Color DisabledColor = Color.gray;
+	private const string ConditionBaseLevelTextId = "TechDetail_Condition_BaseLevel";
+	private const string ConditionPrereqTechTextId = "TechDetail_Condition_PrereqTech";
+	private const string ConditionAnyOfTextId = "TechDetail_Condition_AnyOf";
+	private const string UnlockTechTextId = "TechDetail_Unlock_Tech";
+	private const string UnlockCapabilityTextId = "TechDetail_Unlock_Capability";
+	private const string UnlockBaseLevelTextId = "TechDetail_Unlock_BaseLevel";
 
 	protected override void OnOpen(object userData)
 	{
@@ -73,7 +79,7 @@ public partial class TechNodeDetailTips : UIFormBase
 		// 必备：基地等级
 		int curLevel = ProfileDataModel.GetData(ProfileDataType.BaseLevel);
 		bool okLevel = unlocked || curLevel >= data.Level;
-		SpawnTextLine($"基地等级 >= {data.Level} (当前 {curLevel})", okLevel, forceGray: unlocked);
+		SpawnTextLine(string.Format(LocalizationTextDataModel.GetText(ConditionBaseLevelTextId), data.Level, curLevel), okLevel, forceGray: unlocked);
 
 		// 前置科技
 		if (data.PrereqTechIds != null)
@@ -85,7 +91,7 @@ public partial class TechNodeDetailTips : UIFormBase
 
 				var prereqData = TechNodeDataModel.GetNodeData(prereq);
 
-				SpawnTextLine($"前置科技: {GF.Localization.GetString(prereqData.NameKey)}", ok, forceGray: unlocked);
+				SpawnTextLine(string.Format(LocalizationTextDataModel.GetText(ConditionPrereqTechTextId), GF.Localization.GetString(prereqData.NameKey)), ok, forceGray: unlocked);
 			}
 		}
 
@@ -112,7 +118,7 @@ public partial class TechNodeDetailTips : UIFormBase
 				}
 			}
 
-			SpawnTextLine("满足其一:", anyOk, forceGray: unlocked);
+			SpawnTextLine(LocalizationTextDataModel.GetText(ConditionAnyOfTextId), anyOk, forceGray: unlocked);
 
 			for (int i = 0; i < data.AnyConditions.Length; i++)
 			{
@@ -246,13 +252,13 @@ public partial class TechNodeDetailTips : UIFormBase
 				{
 					var data = TechNodeDataModel.GetNodeData(c.Identifier);
 					if (data != null && !string.IsNullOrWhiteSpace(data.NameKey))
-						return $"解锁科技: {GF.Localization.GetString(data.NameKey)}";
-					return $"解锁科技: {c.Identifier}";
+						return string.Format(LocalizationTextDataModel.GetText(UnlockTechTextId), GF.Localization.GetString(data.NameKey));
+					return string.Format(LocalizationTextDataModel.GetText(UnlockTechTextId), c.Identifier);
 				}
 			case UnlockConditionType.Capability:
-				return $"持有能力: {c.Identifier}";
+				return string.Format(LocalizationTextDataModel.GetText(UnlockCapabilityTextId), c.Identifier);
 			case UnlockConditionType.BaseLevel:
-				return $"基地等级 >= {c.Identifier}";
+				return string.Format(LocalizationTextDataModel.GetText(UnlockBaseLevelTextId), c.Identifier);
 			default:
 				return c.Type + ":" + c.Identifier;
 		}

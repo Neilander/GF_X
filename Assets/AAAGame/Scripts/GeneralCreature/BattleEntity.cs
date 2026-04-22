@@ -115,6 +115,11 @@ public class BattleEntity : EntityBase, ITargetable
             SoldierEntity victim = victimEntity?.gameObject.GetComponent<SoldierEntity>();
             if (victim != null)
             {
+                if (GF.Event != null)
+                {
+                    GF.Event.Fire(victim, SoldierDeadEventArgs.Create(victim));
+                }
+
                 // 触发宿主死亡处理
                 victim.OnDead();
 

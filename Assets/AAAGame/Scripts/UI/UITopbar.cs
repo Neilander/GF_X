@@ -55,15 +55,15 @@ public partial class UITopbar : UIFormBase
         }
         else if (btSelf == varBtnCoin)
         {
-            GF.UI.ShowToast("加金币");
+            GF.UI.ShowToast(LocalizationTextDataModel.GetText("UITopbar_AddCoinToast"));
         }
         else if (btSelf == varBtnGem)
         {
-            GF.UI.ShowToast("加钻石");
+            GF.UI.ShowToast(LocalizationTextDataModel.GetText("UITopbar_AddGemToast"));
         }
         else if (btSelf == varBtnEnergy)
         {
-            GF.UI.ShowToast("加能量");
+            GF.UI.ShowToast(LocalizationTextDataModel.GetText("UITopbar_AddEnergyToast"));
         }
         // 暂时注释掉阶段切换按钮，需要在Unity编辑器中创建UI按钮并绑定
         /*

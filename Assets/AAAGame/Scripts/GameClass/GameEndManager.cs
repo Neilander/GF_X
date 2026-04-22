@@ -9,7 +9,11 @@ public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, Consume
 
 public class GameEndManager : GameFrameworkComponent
 {
-    private const string LevelObjectiveTipsTitle = "关键目标";
+    private const string LevelObjectiveTipsTitleId = "GameEnd_LevelObjective_Title";
+    private const string ObjectiveOccupyBeforeDayTextId = "GameEnd_Objective_OccupyBeforeDay";
+    private const string ObjectiveOccupyTextId = "GameEnd_Objective_Occupy";
+    private const string ObjectiveSurviveToDayTextId = "GameEnd_Objective_SurviveToDay";
+    private const string ObjectiveDefendBaseTextId = "GameEnd_Objective_DefendBase";
     private const float LevelObjectiveTipsDurationSeconds = 5f;
 
     public bool IsGameEnded { get; private set; }
@@ -106,7 +110,7 @@ public class GameEndManager : GameFrameworkComponent
             return;
         }
 
-        sideTipsManager.ShowRuntimeTip(LevelObjectiveTipsTitle, content, LevelObjectiveTipsDurationSeconds);
+        sideTipsManager.ShowRuntimeTip(LocalizationTextDataModel.GetText(LevelObjectiveTipsTitleId), content, LevelObjectiveTipsDurationSeconds);
     }
 
     private string BuildLevelObjectiveTipsContent()
@@ -117,22 +121,22 @@ public class GameEndManager : GameFrameworkComponent
         {
             if (m_EnableArriveAmountDays)
             {
-                lines.Add(string.Format("·在第{0}天结束前占领敌方重要建筑", m_ArriveAmountDaysValue));
+                lines.Add(string.Format(LocalizationTextDataModel.GetText(ObjectiveOccupyBeforeDayTextId), m_ArriveAmountDaysValue));
             }
             else
             {
-                lines.Add("·占领敌方重要建筑");
+                lines.Add(LocalizationTextDataModel.GetText(ObjectiveOccupyTextId));
             }
         }
 
         if (m_EnableSurviveAmountDays)
         {
-            lines.Add(string.Format("·存活到第{0}天结束", m_SurviveAmountDaysValue));
+            lines.Add(string.Format(LocalizationTextDataModel.GetText(ObjectiveSurviveToDayTextId), m_SurviveAmountDaysValue));
         }
 
         if (m_EnableLoseSpecificBuildings)
         {
-            lines.Add("·己方基地不能失守");
+            lines.Add(LocalizationTextDataModel.GetText(ObjectiveDefendBaseTextId));
         }
 
         return string.Join("\n", lines);

@@ -82,6 +82,14 @@ public partial class GeneralSetup : GameFrameworkComponent
         levelDataParams.Set(InGameDataModel.P_LevelData, levelData);
         GF.DataModel.CreateDataModel<InGameDataModel>(levelDataParams);
 
+        RewardManager rewardManager = GameEntry.GetComponent<RewardManager>();
+        if (rewardManager == null)
+        {
+            rewardManager = gameObject.AddComponent<RewardManager>();
+        }
+
+        rewardManager.ResetLevelCounters();
+
         GF.DataModel.CreateDataModel<BuildingDataModel>();
         GF.DataModel.CreateDataModel<TechDataModel>();
         GF.DataModel.CreateDataModel<SkillDataModel>();

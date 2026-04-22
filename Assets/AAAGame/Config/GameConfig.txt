@@ -5,12 +5,13 @@
 	MinMoveSpeed	移速下限	100
 	MaxMoveSpeed	移速上限	1000
 	DistanceConversionRate	距离码数转换为unity距离的比例	0.02
-	SmallUnitCollisionRadius	小型单位碰撞半径	20
-	MediumUnitCollisionRadius	中型单位碰撞半径	30
-	LargeUnitCollisionRadius	大型单位碰撞半径	40
+	SmallUnitCollisionRadius	小型单位碰撞半径	10
+	MediumUnitCollisionRadius	中型单位碰撞半径	15
+	LargeUnitCollisionRadius	大型单位碰撞半径	20
 	DiscardResourceConversionRate	弃牌时转化资源量与人口之比	4
 	InitMaxSupply	初始人口上限	10
 	BaseProvideSupply	每个基地每级提供的人口上限	10
 	HeroVisionRadius	英雄视野	1200
 	UnitVisionRadius	单位视野	900
 	BuildingVisionRadius	建筑视野	900
+	KillRewardSupplyRatio	击杀人口与奖励资源之比	10

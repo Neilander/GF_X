@@ -4,3 +4,30 @@
 #		备注	在代码中的命名标识符	选项文本(多语言)
 	1	科技节点研究按钮	Tech_Research	MiscText.Tech.Research
 	2	科技节点已研究按钮	Tech_Researched	MiscText.Tech.Researched
+	3	顶部条增加金币提示	UITopbar_AddCoinToast	MiscText.UITopbar.AddCoinToast
+	4	顶部条增加钻石提示	UITopbar_AddGemToast	MiscText.UITopbar.AddGemToast
+	5	顶部条增加能量提示	UITopbar_AddEnergyToast	MiscText.UITopbar.AddEnergyToast
+	6	关卡目标标题	GameEnd_LevelObjective_Title	MiscText.GameEnd.LevelObjective.Title
+	7	关卡目标占领倒计天数	GameEnd_Objective_OccupyBeforeDay	MiscText.GameEnd.Objective.OccupyBeforeDay
+	8	关卡目标占领建筑	GameEnd_Objective_Occupy	MiscText.GameEnd.Objective.Occupy
+	9	关卡目标生存到天数	GameEnd_Objective_SurviveToDay	MiscText.GameEnd.Objective.SurviveToDay
+	10	关卡目标保护基地	GameEnd_Objective_DefendBase	MiscText.GameEnd.Objective.DefendBase
+	11	阶段切换阻止标题	PhaseSwitch_Blocked_Title	MiscText.PhaseSwitch.Blocked.Title
+	12	阶段切换阻止内容	PhaseSwitch_Blocked_Content	MiscText.PhaseSwitch.Blocked.Content
+	13	阶段信息格式	PhaseSwitch_DayPhase_Format	MiscText.PhaseSwitch.DayPhase.Format
+	14	阶段名运营	PhaseSwitch_Phase_Build	MiscText.PhaseSwitch.Phase.Build
+	15	阶段名战斗	PhaseSwitch_Phase_Invade	MiscText.PhaseSwitch.Phase.Invade
+	16	阶段名防御	PhaseSwitch_Phase_Defend	MiscText.PhaseSwitch.Phase.Defend
+	17	引导移动标题	Tutorial_MoveHero_Title	MiscText.Tutorial.MoveHero.Title
+	18	引导移动内容	Tutorial_MoveHero_Content	MiscText.Tutorial.MoveHero.Content
+	19	科技详情基地等级条件	TechDetail_Condition_BaseLevel	MiscText.TechDetail.Condition.BaseLevel
+	20	科技详情前置科技条件	TechDetail_Condition_PrereqTech	MiscText.TechDetail.Condition.PrereqTech
+	21	科技详情满足其一提示	TechDetail_Condition_AnyOf	MiscText.TechDetail.Condition.AnyOf
+	22	科技详情解锁科技描述	TechDetail_Unlock_Tech	MiscText.TechDetail.Unlock.Tech
+	23	科技详情持有能力描述	TechDetail_Unlock_Capability	MiscText.TechDetail.Unlock.Capability
+	24	科技详情基地等级解锁描述	TechDetail_Unlock_BaseLevel	MiscText.TechDetail.Unlock.BaseLevel
+	25	人口显示格式	Supply_CurrentMax	MiscText.Supply.CurrentMax
+	26	资源增加提示	ResourceModify_Add	MiscText.ResourceModify.Add
+	27	资源减少提示	ResourceModify_Reduce	MiscText.ResourceModify.Reduce
+	28	物品增加提示	ItemModify_Add	MiscText.ItemModify.Add
+	29	物品减少提示	ItemModify_Reduce	MiscText.ItemModify.Reduce

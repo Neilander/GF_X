@@ -4,8 +4,12 @@ using UnityGameFramework.Runtime;
 
 public partial class PhaseSwitchUIForm : UIFormBase
 {
-    private const string BlockedSwitchTipTitle = "无法切换阶段";
-    private const string BlockedSwitchTipContent = "请先离开敌方据点。";
+    private const string BlockedSwitchTipTitleId = "PhaseSwitch_Blocked_Title";
+    private const string BlockedSwitchTipContentId = "PhaseSwitch_Blocked_Content";
+    private const string DayPhaseFormatTextId = "PhaseSwitch_DayPhase_Format";
+    private const string BuildPhaseTextId = "PhaseSwitch_Phase_Build";
+    private const string InvadePhaseTextId = "PhaseSwitch_Phase_Invade";
+    private const string DefendPhaseTextId = "PhaseSwitch_Phase_Defend";
     private const float BlockedSwitchTipDuration = 2f;
 
     protected override void OnOpen(object userData)
@@ -29,7 +33,10 @@ public partial class PhaseSwitchUIForm : UIFormBase
         if (TryGetCurrentEnemyStronghold(out Stronghold stronghold))
         {
             if (GF.UI != null)
-                GF.UI.ShowSideTips(BlockedSwitchTipTitle, BlockedSwitchTipContent, BlockedSwitchTipDuration);
+                GF.UI.ShowSideTips(
+                    LocalizationTextDataModel.GetText(BlockedSwitchTipTitleId),
+                    LocalizationTextDataModel.GetText(BlockedSwitchTipContentId),
+                    BlockedSwitchTipDuration);
 
             string strongholdId = stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "unknown";
             Log.Info("[PhaseSwitch] Blocked switch: player is in enemy stronghold. id={0}, ownerFaction={1}.", strongholdId, stronghold.OwnerFactionId);
@@ -59,7 +66,10 @@ public partial class PhaseSwitchUIForm : UIFormBase
     {
         int day = InGameDataModel.GetValue(IngameValueType.Day);
         GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
-        varCurrentDayText.text = $"Day{day} {GetPhaseDisplayName(phase)}";
+        varCurrentDayText.text = string.Format(
+            LocalizationTextDataModel.GetText(DayPhaseFormatTextId),
+            day,
+            GetPhaseDisplayName(phase));
     }
 
     private static string GetPhaseDisplayName(GamePhase phase)
@@ -67,11 +77,11 @@ public partial class PhaseSwitchUIForm : UIFormBase
         switch (phase)
         {
             case GamePhase.Build:
-                return "运营";
+                return LocalizationTextDataModel.GetText(BuildPhaseTextId);
             case GamePhase.Invade:
-                return "战斗";
+                return LocalizationTextDataModel.GetText(InvadePhaseTextId);
             case GamePhase.Defend:
-                return "防御";
+                return LocalizationTextDataModel.GetText(DefendPhaseTextId);
             default:
                 return phase.ToString();
         }

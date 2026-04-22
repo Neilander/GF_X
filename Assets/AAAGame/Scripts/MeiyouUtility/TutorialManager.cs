@@ -12,8 +12,8 @@ public enum TutorialTriggerType
 public class TutorialManager : GameFrameworkComponent
 {
     private const string MoveHeroTipId = "tutorial.move.hero.wasd";
-    private const string MoveHeroTipTitle = "提示";
-    private const string MoveHeroTipContent = "按 W/A/S/D 键移动你的英雄。";
+    private const string MoveHeroTipTitleTextId = "Tutorial_MoveHero_Title";
+    private const string MoveHeroTipContentTextId = "Tutorial_MoveHero_Content";
     private const float MoveInputThreshold = 0.1f;
 
     private InputModel inputModel;
@@ -89,13 +89,15 @@ public class TutorialManager : GameFrameworkComponent
             return false;
         }
 
-        if (string.IsNullOrEmpty(MoveHeroTipTitle) && string.IsNullOrEmpty(MoveHeroTipContent))
+        string tipTitle = LocalizationTextDataModel.GetText(MoveHeroTipTitleTextId);
+        string tipContent = LocalizationTextDataModel.GetText(MoveHeroTipContentTextId);
+        if (string.IsNullOrEmpty(tipTitle) && string.IsNullOrEmpty(tipContent))
         {
             Log.Warning("[Tutorial] Move tutorial tip content is empty.");
             return false;
         }
 
-        sideTipsManager.ShowConditionalTip(MoveHeroTipId, MoveHeroTipTitle, MoveHeroTipContent);
+        sideTipsManager.ShowConditionalTip(MoveHeroTipId, tipTitle, tipContent);
         activeTutorials.Add(TutorialTriggerType.MoveHeroByWASD);
 
         string sourceName = triggerSource != null ? triggerSource.name : "Unknown";

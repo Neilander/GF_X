@@ -144,8 +144,7 @@ public class PhaseManager : GameFrameworkComponent
         // 统一移除 Creature 组内全部 Soldier
         RemoveAllSoldiers();
 
-        // 资源建筑提供收入
-        if (!isFirstPhase) ProvideResourceIncome();
+        RewardManager.HandleEnterBuildPhaseReward(isFirstPhase);
     }
 
     /// <summary>
@@ -182,23 +181,6 @@ public class PhaseManager : GameFrameworkComponent
     private static void RemoveAllSoldiers()
     {
         SoldierFactory.RemoveAllSoldiersInCreatureGroup();
-    }
-
-    /// <summary>
-    /// 资源建筑提供收入
-    /// </summary>
-    private static void ProvideResourceIncome()
-    {
-        // 获取所有资源建筑
-        var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
-        foreach (var building in ingameData.Buildings)
-        {
-            if (building.buildingData.Type == BuilType.Prod && building.OwnerFactionID == EntitySideHelper.PlayerFactionId)
-            {
-                // 调用建筑的harvest函数获取资源
-                building.Harvest();
-            }
-        }
     }
 
     /// <summary>

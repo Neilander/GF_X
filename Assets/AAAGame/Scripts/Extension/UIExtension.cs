@@ -521,13 +521,13 @@ public static class UIExtension
         {
             GF.Sound.PlayEffect("add_money.wav");
         });
-        var richText = "<sprite name=USD_0>";
+        //var richText = "<sprite name=USD_0>";
         for (int i = 0; i < num; i++)
         {
             var animPrams = EntityParams.Create(centerPos, Vector3.zero, Vector3.one);
             animPrams.OnShowCallback = moneyEntity =>
             {
-                moneyEntity.GetComponent<TMPro.TextMeshPro>().text = richText;
+                //moneyEntity.GetComponent<TMPro.TextMeshPro>().text = richText;
                 var spawnPos = UnityEngine.Random.insideUnitCircle * 3;
                 var expPos = centerPos;
                 expPos.x += spawnPos.x;

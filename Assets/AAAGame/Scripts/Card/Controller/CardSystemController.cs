@@ -12,8 +12,6 @@ namespace AAAGame.Card
     /// </summary>
     public class CardSystemController
     {
-        private const string DiscardResourceConversionRateConfigKey = "DiscardResourceConversionRate";
-
         private sealed class Card
         {
             public ICardDataProvider CardData { get; }
@@ -406,7 +404,7 @@ namespace AAAGame.Card
                 return false;
             }
 
-            ApplyDiscardResourceReward(cardModel);
+            RewardManager.HandleCardDiscardReward(cardModel);
 
             // 触发丢弃事件（C# 委托 + GF.Event）
             OnCardDiscarded?.Invoke(cardModel);
@@ -416,36 +414,6 @@ namespace AAAGame.Card
             Debug.Log($"[DISCARD-BUFF] CardSystemController.DiscardCard 已 Fire CardDiscardedEventArgs");
 
             return true;
-        }
-
-        private void ApplyDiscardResourceReward(CardModel cardModel)
-        {
-            if (GF.Config == null)
-            {
-                Log.Error("[Card] Discard reward skipped: GF.Config is not ready.");
-                return;
-            }
-
-            int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-            int conversionRate = GF.Config.GetInt(DiscardResourceConversionRateConfigKey);
-            if (conversionRate <= 0)
-            {
-                Log.Error("[Card] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, conversionRate);
-                return;
-            }
-
-            int gainedCoin = occupiedSupply / conversionRate;
-            Log.Info("[Card] Discard reward calc. card={0}, occupiedSupply={1}, rate={2}, gainedCoin={3}",
-                cardModel.GetCardName(), occupiedSupply, conversionRate, gainedCoin);
-
-            if (gainedCoin <= 0)
-                return;
-
-            if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, gainedCoin, true))
-            {
-                Log.Error("[Card] Discard reward apply failed. deltaCoin={0}", gainedCoin);
-                return;
-            }
         }
 
 
