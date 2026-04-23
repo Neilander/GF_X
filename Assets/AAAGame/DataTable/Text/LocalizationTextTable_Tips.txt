@@ -4,3 +4,6 @@
 #		备注	在代码中的命名标识符	选项文本(多语言)
 	1	切换阶段失败提示_标题	Tips_PhaseSwitchBlocked_Title	Tips.PhaseSwitchBlocked.Title
 	2	切换阶段失败提示_内容	Tips_PhaseSwitchBlocked_Content	Tips.PhaseSwitchBlocked.Content
+	3	卡牌打出失败提示_标题	Tips_CardPlayBlocked_Title	Tips.CardPlayBlocked.Title
+	4	卡牌打出失败提示_禁止区域	Tips_CardPlayBlocked_ForbiddenArea	Tips.CardPlayBlocked.ForbiddenArea
+	5	卡牌打出失败提示_人口不足	Tips_CardPlayBlocked_InsufficientSupply	Tips.CardPlayBlocked.InsufficientSupply

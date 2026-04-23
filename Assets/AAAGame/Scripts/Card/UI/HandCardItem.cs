@@ -215,8 +215,16 @@ namespace AAAGame.Card
 
         public void OnBeginDrag(PointerEventData eventData)
         {
+            if (m_CardModel == null)
+            {
+                return;
+            }
+
+            m_CanPlay = m_CardModel.CanPlay();
             if (!m_CanPlay)
             {
+                UpdatePlayability();
+                m_ParentForm?.ShowInsufficientSupplyTip();
                 Log.Warning(Utility.Text.Format("Population not enough to play {0}", 
                     m_CardModel.DataProvider.CardName));
                 return;

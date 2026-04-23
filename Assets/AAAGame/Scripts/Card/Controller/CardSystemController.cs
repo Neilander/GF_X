@@ -30,6 +30,7 @@ namespace AAAGame.Card
         private AreaDetectionController m_AreaDetectionController;
         private EnemyBuildingForbiddenZoneController m_EnemyBuildingForbiddenZoneController;
         private bool m_IsIngameValueSubscribed;
+        private bool m_LastConfirmBlockedBySupply;
 
         private List<ICardDataProvider> m_CardPool;
         private readonly List<Card> m_DeckCards = new List<Card>();
@@ -329,6 +330,7 @@ namespace AAAGame.Card
                 return;
             }
 
+            m_LastConfirmBlockedBySupply = false;
             m_PlacementController.StartPlacement(cardModel);
             m_EnemyBuildingForbiddenZoneController?.BeginPlacement();
         }
@@ -347,9 +349,12 @@ namespace AAAGame.Card
         /// </summary>
         public bool ConfirmPlacement(CardModel cardModel, Vector2? releaseScreenPosition = null)
         {
+            m_LastConfirmBlockedBySupply = false;
+
             int occupiedSupply = cardModel != null ? cardModel.GetOccupiedSupply() : 0;
             if (!HasEnoughPopulation(occupiedSupply))
             {
+                m_LastConfirmBlockedBySupply = true;
                 Debug.LogWarning("[Card] Cannot confirm placement: not enough population.");
                 return false;
             }
@@ -378,11 +383,27 @@ namespace AAAGame.Card
             return true;
         }
 
+        public bool WasLastConfirmBlockedBySupply()
+        {
+            return m_LastConfirmBlockedBySupply;
+        }
+
+        public CardPlacementInvalidReason GetLastPlacementInvalidReason()
+        {
+            if (m_PlacementController == null)
+            {
+                return CardPlacementInvalidReason.None;
+            }
+
+            return m_PlacementController.LastInvalidReason;
+        }
+
         /// <summary>
         /// 取消放置
         /// </summary>
         public void CancelPlacement()
         {
+            m_LastConfirmBlockedBySupply = false;
             m_PlacementController.CancelPlacement();
             m_EnemyBuildingForbiddenZoneController?.EndPlacement();
         }

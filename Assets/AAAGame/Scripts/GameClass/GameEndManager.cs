@@ -9,6 +9,7 @@ public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, Consume
 
 public class GameEndManager : GameFrameworkComponent
 {
+    private const string ObjectiveTitleTextId = "GameEnd_Cond_Title";
     private const string ObjectiveOccupyBeforeDayTextId = "GameEnd_Cond_OccupyBeforeDay";
     private const string ObjectiveOccupyTextId = "GameEnd_Cond_Occupy";
     private const string ObjectiveSurviveToDayTextId = "GameEnd_Cond_SurviveToDay";
@@ -109,7 +110,7 @@ public class GameEndManager : GameFrameworkComponent
             return;
         }
 
-        sideTipsManager.ShowRuntimeTip(string.Empty, content, LevelObjectiveTipsDurationSeconds);
+        sideTipsManager.ShowRuntimeTip(LocalizationTextDataModel.GetText(ObjectiveTitleTextId), content, LevelObjectiveTipsDurationSeconds);
     }
 
     private string BuildLevelObjectiveTipsContent()
