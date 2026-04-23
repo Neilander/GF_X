@@ -109,6 +109,46 @@ namespace AAAGame.Card
         }
 
         /// <summary>
+        /// 检查一个带半径的放置位置是否与禁止区域发生重叠。
+        /// </summary>
+        public bool IsPositionBlockedByInvalidArea(Vector3 worldPosition, float radius)
+        {
+            if (IsPositionInInvalidArea(worldPosition))
+            {
+                return true;
+            }
+
+            float clampedRadius = Mathf.Max(0f, radius);
+            if (clampedRadius <= 0.01f)
+            {
+                return false;
+            }
+
+            return SampleInvalidArea(worldPosition, clampedRadius * 0.5f, 8)
+                || SampleInvalidArea(worldPosition, clampedRadius, 12);
+        }
+
+        private bool SampleInvalidArea(Vector3 center, float radius, int sampleCount)
+        {
+            if (radius <= 0.01f)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float angle = Mathf.PI * 2f * i / sampleCount;
+                Vector3 samplePoint = center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                if (IsPositionInInvalidArea(samplePoint))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// 判断位置的区域类型
         /// </summary>
         public AreaType DetermineAreaType(Vector3 worldPosition)

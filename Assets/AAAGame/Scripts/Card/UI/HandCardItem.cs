@@ -25,8 +25,12 @@ namespace AAAGame.Card
 
         [Header("动画设置")]
         [SerializeField] private float dragScale = 1.2f;
-        [SerializeField] private float hoverScale = 1.1f;
         [SerializeField] private float animationDuration = 0.2f;
+
+        [Header("悬停效果")]
+        [SerializeField] [InspectorName("悬停放大倍率")] private float hoverScale = 1.15f;
+        [SerializeField] [InspectorName("悬停边缘泛光材质")] private Material hoverGlowMaterial;
+        [SerializeField] [InspectorName("悬停泛光目标")] private Graphic hoverGlowTarget;
 
         private CardModel m_CardModel;
         private CardUIForm m_ParentForm;
@@ -35,17 +39,27 @@ namespace AAAGame.Card
         private Vector3 m_OriginalPosition;
         private int m_OriginalSiblingIndex;
         private Canvas m_Canvas;
-        
+        private Canvas m_SortingCanvas;
+        private GraphicRaycaster m_SortingRaycaster;
+
         private bool m_IsDragging;
         private bool m_CanPlay;
         private bool m_IsSelected;
+        private bool m_IsTargetingMode;
+        private bool m_IsPointerInside;
 
         private Sprite m_DefaultCardBackSprite;
         private Color m_DefaultCardBackColor;
         private bool m_DefaultCardBackCached;
-        
+        private Material m_DefaultHoverGlowMaterial;
+        private bool m_DefaultHoverGlowCached;
+
         private Tween m_ScaleTween;
         private Tween m_MoveTween;
+
+        private const int NormalSortingOrder = 0;
+        private const int HoverSortingOrder = 20;
+        private const int DragSortingOrder = 40;
 
         protected override void OnInit()
         {
@@ -61,6 +75,22 @@ namespace AAAGame.Card
             }
             
             m_Canvas = GetComponentInParent<Canvas>();
+            m_SortingCanvas = GetComponent<Canvas>();
+            if (m_SortingCanvas == null)
+            {
+                m_SortingCanvas = gameObject.AddComponent<Canvas>();
+            }
+
+            m_SortingRaycaster = GetComponent<GraphicRaycaster>();
+            if (m_SortingRaycaster == null)
+            {
+                m_SortingRaycaster = gameObject.AddComponent<GraphicRaycaster>();
+            }
+
+            m_SortingCanvas.overrideSorting = false;
+            m_SortingCanvas.sortingOrder = NormalSortingOrder;
+            m_SortingCanvas.enabled = true;
+            m_SortingRaycaster.enabled = true;
         }
 
         /// <summary>
@@ -68,10 +98,38 @@ namespace AAAGame.Card
         /// </summary>
         public void Initialize(CardModel cardModel, CardUIForm parentForm)
         {
+            ResetRuntimeState();
             m_CardModel = cardModel;
             m_ParentForm = parentForm;
             
             RefreshView();
+        }
+
+        private void ResetRuntimeState()
+        {
+            m_ScaleTween?.Kill();
+            m_MoveTween?.Kill();
+
+            m_IsDragging = false;
+            m_CanPlay = false;
+            m_IsSelected = false;
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
+
+            if (m_RectTransform != null)
+            {
+                m_RectTransform.localScale = Vector3.one;
+            }
+
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.blocksRaycasts = true;
+                canvasGroup.interactable = true;
+            }
+
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
         }
 
         /// <summary>
@@ -131,6 +189,7 @@ namespace AAAGame.Card
             }
 
             CacheDefaultCardBackState();
+            ResolveHoverGlowTarget();
         }
 
         private void CacheDefaultCardBackState()
@@ -164,6 +223,100 @@ namespace AAAGame.Card
                 cardBackImage.color = data.CardColor;
         }
 
+        private Graphic ResolveHoverGlowTarget()
+        {
+            if (hoverGlowTarget == null && cardBackImage != null)
+            {
+                hoverGlowTarget = cardBackImage;
+            }
+
+            if (hoverGlowTarget == null)
+            {
+                hoverGlowTarget = GetComponent<Graphic>();
+            }
+
+            CacheDefaultHoverGlowMaterial();
+            return hoverGlowTarget;
+        }
+
+        private void CacheDefaultHoverGlowMaterial()
+        {
+            if (m_DefaultHoverGlowCached)
+            {
+                return;
+            }
+
+            Graphic target = hoverGlowTarget != null ? hoverGlowTarget : cardBackImage;
+            if (target == null)
+            {
+                return;
+            }
+
+            m_DefaultHoverGlowMaterial = target.material;
+            m_DefaultHoverGlowCached = true;
+        }
+
+        private void RefreshHoverVisualState()
+        {
+            bool suppressHover = m_ParentForm != null && m_ParentForm.HasActiveHandCardDrag(this);
+            bool shouldHighlight = !suppressHover && m_IsPointerInside && !m_IsDragging && !m_IsSelected && m_CanPlay;
+            ApplyHoverGlow(shouldHighlight);
+            UpdateRenderPriority();
+
+            if (!m_IsDragging && !m_IsSelected)
+            {
+                ScaleTo(shouldHighlight ? hoverScale : 1f);
+            }
+        }
+
+        private void UpdateRenderPriority()
+        {
+            if (m_SortingCanvas == null)
+            {
+                return;
+            }
+
+            bool suppressHover = m_ParentForm != null && m_ParentForm.HasActiveHandCardDrag(this);
+            bool shouldPromote = m_IsDragging || m_IsTargetingMode || m_IsSelected || (!suppressHover && m_IsPointerInside && m_CanPlay);
+            if (!shouldPromote)
+            {
+                m_SortingCanvas.overrideSorting = false;
+                m_SortingCanvas.sortingOrder = NormalSortingOrder;
+                return;
+            }
+
+            m_SortingCanvas.overrideSorting = true;
+            m_SortingCanvas.sortingOrder = m_IsDragging || m_IsTargetingMode
+                ? DragSortingOrder
+                : HoverSortingOrder;
+        }
+
+        private void ApplyHoverGlow(bool enabled)
+        {
+            Graphic target = ResolveHoverGlowTarget();
+            if (target == null)
+            {
+                return;
+            }
+
+            if (enabled && hoverGlowMaterial != null)
+            {
+                if (target.material != hoverGlowMaterial)
+                {
+                    target.material = hoverGlowMaterial;
+                    target.SetMaterialDirty();
+                }
+
+                return;
+            }
+
+            if (target.material != m_DefaultHoverGlowMaterial)
+            {
+                target.material = m_DefaultHoverGlowMaterial;
+                target.SetMaterialDirty();
+            }
+        }
+
         /// <summary>
         /// 更新可打出状态
         /// </summary>
@@ -178,6 +331,8 @@ namespace AAAGame.Card
             {
                 canvasGroup.alpha = m_CanPlay ? 1f : 0.5f;
             }
+
+            RefreshHoverVisualState();
         }
 
         public void RefreshView()
@@ -186,13 +341,27 @@ namespace AAAGame.Card
             UpdatePlayability();
         }
 
+        public void RefreshInteractionVisualState()
+        {
+            RefreshHoverVisualState();
+        }
+
         /// <summary>
         /// 设置选中状态
         /// </summary>
         public void SetSelected(bool selected)
         {
             m_IsSelected = selected;
-            ScaleTo(m_IsSelected ? 1.2f : 1f);
+
+            if (m_IsSelected)
+            {
+                ApplyHoverGlow(false);
+                UpdateRenderPriority();
+                ScaleTo(1.2f);
+                return;
+            }
+
+            RefreshHoverVisualState();
         }
 
         /// <summary>
@@ -223,6 +392,7 @@ namespace AAAGame.Card
             }
 
             m_IsDragging = true;
+            m_IsPointerInside = false;
             m_OriginalPosition = m_RectTransform.position;
             m_OriginalParent = transform.parent;
             m_OriginalSiblingIndex = transform.GetSiblingIndex();
@@ -232,6 +402,8 @@ namespace AAAGame.Card
             transform.SetAsLastSibling();
 
             canvasGroup.blocksRaycasts = false;
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
             ScaleTo(dragScale);
 
             // 通知父界面
@@ -242,8 +414,11 @@ namespace AAAGame.Card
         {
             if (!m_IsDragging) return;
 
-            // 跟随鼠标
-            m_RectTransform.position = eventData.position;
+            // 只有在普通拖拽态下才让卡牌本体跟随鼠标
+            if (!m_IsTargetingMode)
+            {
+                m_RectTransform.position = eventData.position;
+            }
 
             // 通知父界面
             m_ParentForm?.OnCardDragging(this, eventData.position);
@@ -255,6 +430,8 @@ namespace AAAGame.Card
 
             m_IsDragging = false;
             canvasGroup.blocksRaycasts = true;
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
 
             // 通知父界面
             bool success = m_ParentForm?.OnCardEndDrag(this, eventData.position) ?? false;
@@ -278,18 +455,14 @@ namespace AAAGame.Card
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (!m_IsDragging && !m_IsSelected && m_CanPlay)
-            {
-                ScaleTo(hoverScale);
-            }
+            m_IsPointerInside = true;
+            RefreshHoverVisualState();
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            if (!m_IsDragging && !m_IsSelected)
-            {
-                ScaleTo(1f);
-            }
+            m_IsPointerInside = false;
+            RefreshHoverVisualState();
         }
 
         #endregion
@@ -299,8 +472,17 @@ namespace AAAGame.Card
         /// </summary>
         private void ReturnToOriginalPosition()
         {
-            transform.SetParent(m_OriginalParent);
-            transform.SetSiblingIndex(m_OriginalSiblingIndex);
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
+
+            if (m_OriginalParent != null)
+            {
+                transform.SetParent(m_OriginalParent, true);
+                transform.SetSiblingIndex(m_OriginalSiblingIndex);
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
 
             m_MoveTween?.Kill();
             m_MoveTween = m_RectTransform.DOMove(m_OriginalPosition, 0.3f)
@@ -325,6 +507,7 @@ namespace AAAGame.Card
         public void MoveToHandFromScreenPosition(Vector2 startScreenPosition, float duration = 0.5f)
         {
             canvasGroup.blocksRaycasts = false;
+            RefreshOwningLayout();
 
             Vector3 targetPosition = m_RectTransform.position;
             m_RectTransform.position = startScreenPosition;
@@ -335,7 +518,98 @@ namespace AAAGame.Card
                 .OnComplete(() =>
                 {
                     canvasGroup.blocksRaycasts = true;
+                    RefreshOwningLayout();
                 });
+        }
+
+        private void RefreshOwningLayout()
+        {
+            Canvas.ForceUpdateCanvases();
+
+            Transform current = transform.parent;
+            while (current != null)
+            {
+                RectTransform rectTransform = current as RectTransform;
+                if (rectTransform != null)
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(rectTransform);
+
+                current = current.parent;
+            }
+
+            Canvas.ForceUpdateCanvases();
+        }
+
+        private void RefreshLayoutHierarchy(Transform root)
+        {
+            Canvas.ForceUpdateCanvases();
+
+            Transform current = root;
+            while (current != null)
+            {
+                RectTransform rectTransform = current as RectTransform;
+                if (rectTransform != null)
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(rectTransform);
+
+                current = current.parent;
+            }
+
+            Canvas.ForceUpdateCanvases();
+        }
+
+        public void EnterTargetingMode()
+        {
+            if (!m_IsDragging || m_IsTargetingMode)
+                return;
+
+            m_IsTargetingMode = true;
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
+
+            if (m_OriginalParent != null)
+            {
+                transform.SetParent(m_OriginalParent, true);
+                transform.SetSiblingIndex(m_OriginalSiblingIndex);
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
+
+            m_MoveTween?.Kill();
+            m_MoveTween = m_RectTransform.DOMove(m_OriginalPosition, animationDuration)
+                .SetEase(Ease.OutCubic);
+
+            ScaleTo(hoverScale);
+        }
+
+        public void ExitTargetingMode(Vector2 screenPosition)
+        {
+            if (!m_IsDragging || !m_IsTargetingMode)
+                return;
+
+            m_IsTargetingMode = false;
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
+
+            if (m_Canvas != null)
+            {
+                transform.SetParent(m_Canvas.transform, true);
+                transform.SetAsLastSibling();
+            }
+
+            if (m_OriginalParent != null)
+            {
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
+
+            m_MoveTween?.Kill();
+            m_RectTransform.position = screenPosition;
+            ScaleTo(dragScale);
+        }
+
+        public Vector2 GetScreenAnchorPosition(Camera uiCamera)
+        {
+            if (m_RectTransform == null)
+                return Vector2.zero;
+
+            return RectTransformUtility.WorldToScreenPoint(uiCamera, m_RectTransform.position);
         }
 
         /// <summary>
@@ -345,7 +619,11 @@ namespace AAAGame.Card
         {
             // 立即停止拖拽状态
             m_IsDragging = false;
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
             canvasGroup.blocksRaycasts = false; // 禁用交互，防止再次拖拽
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
             
             // 恢复父级（避免卡在 Canvas 顶层）
             if (m_OriginalParent != null)
@@ -374,7 +652,11 @@ namespace AAAGame.Card
         {
             // 立即停止拖拽状态
             m_IsDragging = false;
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
             canvasGroup.blocksRaycasts = false; // 禁用交互
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
             
             // 恢复父级（避免卡在 Canvas 顶层）
             if (m_OriginalParent != null)
@@ -398,6 +680,7 @@ namespace AAAGame.Card
 
         private void OnDestroy()
         {
+            ApplyHoverGlow(false);
             m_ScaleTween?.Kill();
             m_MoveTween?.Kill();
         }

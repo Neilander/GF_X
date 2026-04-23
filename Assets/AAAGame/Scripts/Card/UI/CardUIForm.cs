@@ -1,18 +1,18 @@
 using System;
-using UnityEngine;
-using UnityEngine.UI;
+using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Event;
-using UnityGameFramework.Runtime;
-using System.Collections.Generic;
 using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityGameFramework.Runtime;
+using CardFx = AAAGame.Card.UI;
 
 namespace AAAGame.Card
 {
     /// <summary>
-    /// 卡牌UI界面
-    /// 继承自 UIFormBase，符合 GF_X UI 规范
-    /// 使用 GF_X 对象池管理 HandCardItem
+    /// GF_X 手牌界面。
+    /// 负责手牌列表、拖拽放置、拖拽目标模式和场景预览反馈。
     /// </summary>
     public partial class CardUIForm : UIFormBase
     {
@@ -20,34 +20,58 @@ namespace AAAGame.Card
         [SerializeField] private Transform handCardContainer;
         [SerializeField] private RectTransform handCardArea;
         [SerializeField] private GameObject trashBin;
-        [SerializeField] private TMPro.TextMeshProUGUI trashBinHintText;
+        [SerializeField] private TextMeshProUGUI trashBinHintText;
 
         [Header("预制体")]
         [SerializeField] private GameObject handCardItemPrefab;
 
-        [Header("区域材质效果")]
-        [SerializeField] private UI.CardAreaMaterialOverlay areaMaterialOverlay;
+        [Header("场景放置反馈")]
+        [SerializeField] private CardFx.CardAreaMaterialOverlay areaMaterialOverlay;
 
         [Header("抽卡动画")]
         [SerializeField] private RectTransform cardDeckTransform;
         [SerializeField] private float cardMoveToHandDuration = 0.5f;
 
+        [Header("目标拖拽表现")]
+        [SerializeField] [InspectorName("准星图片")] private Sprite targetingReticleSprite;
+        [SerializeField] [InspectorName("准星尺寸")] private Vector2 targetingReticleSize = new Vector2(72f, 72f);
+        [SerializeField] [InspectorName("连线颜色")] private Color targetingCurveColor = new Color(0.6f, 1f, 0.75f, 0.92f);
+        [SerializeField] [InspectorName("连线粗细")] private float targetingCurveThickness = 14f;
+        [SerializeField] [InspectorName("连线弯曲高度")] private float targetingCurveHeight = 120f;
+        [SerializeField] [InspectorName("连线分段数")] [Range(4, 64)] private int targetingCurveSegments = 24;
+
         [Header("快捷键")]
         [SerializeField] private KeyCode toggleUIKey = KeyCode.Tab;
 
+        private readonly List<UIItemObject> m_HandCardItemObjects = new List<UIItemObject>();
+        private readonly List<Vector3> m_PreviewSpawnPositions = new List<Vector3>();
+
         private CardSystemController m_CardSystemController;
-        private List<UIItemObject> m_HandCardItemObjects = new List<UIItemObject>();
         private HandCardItem m_DraggingCard;
         private RectTransform m_TrashBinRect;
         private bool m_IsUIVisible = true;
 
+        private Canvas m_FormCanvas;
+        private RectTransform m_FormRectTransform;
+        private Camera m_UICamera;
 
+        private CardFx.CardTargetingCurveGraphic m_TargetingCurveGraphic;
+        private RectTransform m_TargetingReticleRect;
+        private Image m_TargetingReticleImage;
+        private Sprite m_RuntimeFallbackReticleSprite;
 
         protected override void OnInit(object userData)
         {
             base.OnInit(userData);
 
-            // 初始化垃圾桶
+            m_FormCanvas = GetComponent<Canvas>();
+            m_FormRectTransform = transform as RectTransform;
+            m_UICamera = ResolveCanvasCamera();
+
+            ResolveAreaMaterialOverlay();
+            EnsureTargetingVisuals();
+            HideTargetingVisuals();
+
             if (trashBin != null)
             {
                 m_TrashBinRect = trashBin.GetComponent<RectTransform>();
@@ -65,7 +89,6 @@ namespace AAAGame.Card
             GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
             GF.Event.Subscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyBuildingCardPropertyChanged);
 
-            // 从 UIParams 获取 CardSystemController
             UIParams uiParams = userData as UIParams;
             if (uiParams != null)
             {
@@ -78,7 +101,6 @@ namespace AAAGame.Card
                 return;
             }
 
-            // 初始化手牌显示
             RefreshHandCards();
         }
 
@@ -94,35 +116,297 @@ namespace AAAGame.Card
                     GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
                     GF.Event.Unsubscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyBuildingCardPropertyChanged);
                 }
-                catch (System.Exception ex)
+                catch (Exception ex)
                 {
-                    Log.Info("CardUIForm: Error unsubscribing events: " + ex.Message);
+                    Log.Info("CardUIForm unsubscribe error: " + ex.Message);
                 }
             }
 
             base.OnClose(isShutdown, userData);
 
-            // 清理手牌
             ClearHandCards();
+            HideTargetingVisuals();
+            areaMaterialOverlay?.HideAreaEffect();
         }
 
         protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
         {
             base.OnUpdate(elapseSeconds, realElapseSeconds);
 
-            // Tab键切换UI显示/隐藏
             if (Input.GetKeyDown(toggleUIKey))
             {
                 ToggleUIVisibility();
             }
 
-            // 处理快捷键
             HandleHotkeys();
         }
 
-        /// <summary>
-        /// 切换UI显示/隐藏
-        /// </summary>
+        private void RefreshHandCardLayout()
+        {
+            Canvas.ForceUpdateCanvases();
+
+            RectTransform containerRect = handCardContainer as RectTransform;
+            if (containerRect != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(containerRect);
+            }
+
+            if (handCardArea != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(handCardArea);
+            }
+
+            if (containerRect != null && containerRect.parent is RectTransform parentRect)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(parentRect);
+            }
+
+            Canvas.ForceUpdateCanvases();
+        }
+
+        private void ResolveAreaMaterialOverlay()
+        {
+            if (areaMaterialOverlay == null)
+            {
+                areaMaterialOverlay = GetComponent<CardFx.CardAreaMaterialOverlay>();
+            }
+
+            if (areaMaterialOverlay == null)
+            {
+                areaMaterialOverlay = gameObject.AddComponent<CardFx.CardAreaMaterialOverlay>();
+            }
+        }
+
+        private void EnsureTargetingVisuals()
+        {
+            if (m_FormRectTransform == null)
+            {
+                m_FormRectTransform = transform as RectTransform;
+            }
+
+            if (m_TargetingCurveGraphic == null)
+            {
+                GameObject curveObject = new GameObject("CardTargetingCurve", typeof(RectTransform), typeof(CanvasRenderer), typeof(CardFx.CardTargetingCurveGraphic));
+                RectTransform curveRect = curveObject.GetComponent<RectTransform>();
+                curveRect.SetParent(m_FormRectTransform, false);
+                curveRect.anchorMin = Vector2.zero;
+                curveRect.anchorMax = Vector2.one;
+                curveRect.offsetMin = Vector2.zero;
+                curveRect.offsetMax = Vector2.zero;
+                curveRect.SetAsLastSibling();
+
+                m_TargetingCurveGraphic = curveObject.GetComponent<CardFx.CardTargetingCurveGraphic>();
+                m_TargetingCurveGraphic.color = targetingCurveColor;
+                m_TargetingCurveGraphic.Thickness = targetingCurveThickness;
+                m_TargetingCurveGraphic.SegmentCount = targetingCurveSegments;
+            }
+
+            if (m_TargetingReticleRect == null)
+            {
+                GameObject reticleObject = new GameObject("CardTargetingReticle", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                m_TargetingReticleRect = reticleObject.GetComponent<RectTransform>();
+                m_TargetingReticleRect.SetParent(m_FormRectTransform, false);
+                m_TargetingReticleRect.anchorMin = new Vector2(0.5f, 0.5f);
+                m_TargetingReticleRect.anchorMax = new Vector2(0.5f, 0.5f);
+                m_TargetingReticleRect.pivot = new Vector2(0.5f, 0.5f);
+                m_TargetingReticleRect.sizeDelta = targetingReticleSize;
+                m_TargetingReticleRect.SetAsLastSibling();
+
+                m_TargetingReticleImage = reticleObject.GetComponent<Image>();
+                m_TargetingReticleImage.raycastTarget = false;
+                m_TargetingReticleImage.preserveAspect = true;
+                m_TargetingReticleImage.color = targetingCurveColor;
+                m_TargetingReticleImage.sprite = GetTargetingReticleSprite();
+            }
+        }
+
+        private void HideTargetingVisuals()
+        {
+            if (m_TargetingCurveGraphic != null)
+            {
+                m_TargetingCurveGraphic.ClearCurve();
+                m_TargetingCurveGraphic.enabled = false;
+            }
+
+            if (m_TargetingReticleImage != null)
+            {
+                m_TargetingReticleImage.enabled = false;
+            }
+        }
+
+        private void UpdateTargetingVisuals(HandCardItem cardItem, Vector3 worldPosition, bool isValid)
+        {
+            EnsureTargetingVisuals();
+
+            if (cardItem == null || Camera.main == null || m_FormRectTransform == null)
+            {
+                HideTargetingVisuals();
+                return;
+            }
+
+            Vector3 reticleScreenPoint3 = Camera.main.WorldToScreenPoint(worldPosition);
+            if (reticleScreenPoint3.z <= 0f)
+            {
+                HideTargetingVisuals();
+                return;
+            }
+
+            Vector2 cardScreenPoint = cardItem.GetScreenAnchorPosition(GetUICamera());
+            Vector2 reticleScreenPoint = new Vector2(reticleScreenPoint3.x, reticleScreenPoint3.y);
+
+            if (!TryConvertScreenPointToLocal(cardScreenPoint, out Vector2 startLocalPoint)
+                || !TryConvertScreenPointToLocal(reticleScreenPoint, out Vector2 endLocalPoint))
+            {
+                HideTargetingVisuals();
+                return;
+            }
+
+            float sceneAdaptiveCurveHeight = CalculateSceneAdaptiveCurveHeight(
+                startLocalPoint,
+                endLocalPoint,
+                reticleScreenPoint3.z);
+
+            Color targetingColor = isValid
+                ? targetingCurveColor
+                : new Color(1f, 0.42f, 0.42f, 0.92f);
+
+            m_TargetingCurveGraphic.color = targetingColor;
+            m_TargetingCurveGraphic.Thickness = targetingCurveThickness;
+            m_TargetingCurveGraphic.SegmentCount = targetingCurveSegments;
+            m_TargetingCurveGraphic.SetCurve(startLocalPoint, endLocalPoint, sceneAdaptiveCurveHeight);
+            m_TargetingCurveGraphic.enabled = true;
+
+            m_TargetingReticleRect.sizeDelta = targetingReticleSize;
+            m_TargetingReticleRect.anchoredPosition = endLocalPoint;
+            m_TargetingReticleImage.sprite = GetTargetingReticleSprite();
+            m_TargetingReticleImage.color = targetingColor;
+            m_TargetingReticleImage.enabled = true;
+        }
+
+        private float CalculateSceneAdaptiveCurveHeight(Vector2 startLocalPoint, Vector2 endLocalPoint, float sceneDepth)
+        {
+            Vector2 delta = endLocalPoint - startLocalPoint;
+            float screenDistance = delta.magnitude;
+            float horizontalDistance = Mathf.Abs(delta.x);
+            float verticalDistance = Mathf.Max(0f, delta.y);
+
+            float distanceFactor = Mathf.InverseLerp(160f, 900f, screenDistance);
+            float horizontalFactor = Mathf.InverseLerp(80f, 700f, horizontalDistance);
+            float verticalFactor = Mathf.InverseLerp(40f, 420f, verticalDistance);
+            float depthFactor = Mathf.InverseLerp(8f, 45f, sceneDepth);
+
+            float adaptiveScale = 1f
+                + distanceFactor * 0.3f
+                + horizontalFactor * 0.25f
+                + verticalFactor * 0.2f
+                + depthFactor * 0.2f;
+
+            return targetingCurveHeight * adaptiveScale;
+        }
+
+        private bool TryConvertScreenPointToLocal(Vector2 screenPoint, out Vector2 localPoint)
+        {
+            if (m_FormRectTransform == null)
+            {
+                localPoint = Vector2.zero;
+                return false;
+            }
+
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                m_FormRectTransform,
+                screenPoint,
+                GetUICamera(),
+                out localPoint);
+        }
+
+        private Camera ResolveCanvasCamera()
+        {
+            if (m_FormCanvas == null)
+            {
+                return GFBuiltin.UICamera;
+            }
+
+            if (m_FormCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
+            {
+                return null;
+            }
+
+            return m_FormCanvas.worldCamera != null ? m_FormCanvas.worldCamera : GFBuiltin.UICamera;
+        }
+
+        private Camera GetUICamera()
+        {
+            if (m_FormCanvas == null)
+            {
+                return GFBuiltin.UICamera;
+            }
+
+            if (m_UICamera == null && m_FormCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            {
+                m_UICamera = ResolveCanvasCamera();
+            }
+
+            return m_UICamera;
+        }
+
+        private Sprite GetTargetingReticleSprite()
+        {
+            if (targetingReticleSprite != null)
+            {
+                return targetingReticleSprite;
+            }
+
+            if (m_RuntimeFallbackReticleSprite == null)
+            {
+                m_RuntimeFallbackReticleSprite = CreateFallbackReticleSprite();
+            }
+
+            return m_RuntimeFallbackReticleSprite;
+        }
+
+        private static Sprite CreateFallbackReticleSprite()
+        {
+            const int size = 128;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.ARGB32, false);
+            texture.name = "RuntimeCardTargetingReticle";
+            texture.filterMode = FilterMode.Bilinear;
+            texture.wrapMode = TextureWrapMode.Clamp;
+
+            Color clear = new Color(0f, 0f, 0f, 0f);
+            Color solid = Color.white;
+
+            int center = size / 2;
+            int outerRadius = 42;
+            int innerRadius = 31;
+            int armGap = 12;
+            int armLength = 18;
+            int thickness = 3;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    int dx = x - center;
+                    int dy = y - center;
+                    float distance = Mathf.Sqrt(dx * dx + dy * dy);
+
+                    bool drawRing = distance >= innerRadius && distance <= outerRadius;
+                    bool drawHorizontal = Mathf.Abs(dy) <= thickness && Mathf.Abs(dx) >= armGap && Mathf.Abs(dx) <= armGap + armLength;
+                    bool drawVertical = Mathf.Abs(dx) <= thickness && Mathf.Abs(dy) >= armGap && Mathf.Abs(dy) <= armGap + armLength;
+
+                    texture.SetPixel(x, y, drawRing || drawHorizontal || drawVertical ? solid : clear);
+                }
+            }
+
+            texture.Apply(false, false);
+
+            return Sprite.Create(
+                texture,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f);
+        }
+
         private void ToggleUIVisibility()
         {
             m_IsUIVisible = !m_IsUIVisible;
@@ -130,9 +414,6 @@ namespace AAAGame.Card
             Log.Info(Utility.Text.Format("Card UI {0}", m_IsUIVisible ? "显示" : "隐藏"));
         }
 
-        /// <summary>
-        /// 处理快捷键
-        /// </summary>
         private void HandleHotkeys()
         {
             if (Input.GetKeyDown(KeyCode.Alpha1))
@@ -153,16 +434,15 @@ namespace AAAGame.Card
             }
         }
 
-        /// <summary>
-        /// 通过索引打出卡牌
-        /// </summary>
         private void PlayCardByIndex(int index)
         {
-            if (index < 0 || index >= m_HandCardItemObjects.Count) return;
+            if (index < 0 || index >= m_HandCardItemObjects.Count)
+            {
+                return;
+            }
 
-            var itemObj = m_HandCardItemObjects[index];
-            HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
-
+            UIItemObject itemObject = m_HandCardItemObjects[index];
+            HandCardItem cardItem = itemObject != null ? itemObject.gameObject.GetComponent<HandCardItem>() : null;
             if (cardItem != null && cardItem.CanPlay())
             {
                 cardItem.SetSelected(true);
@@ -170,27 +450,26 @@ namespace AAAGame.Card
             }
         }
 
-        /// <summary>
-        /// 刷新手牌显示
-        /// </summary>
         private void RefreshHandCards()
         {
             ClearHandCards();
 
             PlayerHandModel handModel = m_CardSystemController.GetHandModel();
-            if (handModel == null) return;
+            if (handModel == null)
+            {
+                return;
+            }
 
             List<CardModel> cards = handModel.GetAllCards();
-            foreach (var cardModel in cards)
+            bool playInitialDealAnimation = cardDeckTransform != null;
+            foreach (CardModel cardModel in cards)
             {
-                //Debug.Log($"[Card] Card drawn: {cardModel.GetCardName()}");
-                CreateHandCardItem(cardModel, playAnimation: false);
+                CreateHandCardItem(cardModel, playInitialDealAnimation);
             }
+
+            RefreshHandCardLayout();
         }
 
-        /// <summary>
-        /// 创建手牌UI项 - 使用 GF_X 对象池
-        /// </summary>
         private void CreateHandCardItem(CardModel cardModel, bool playAnimation = true)
         {
             if (handCardItemPrefab == null || handCardContainer == null)
@@ -199,15 +478,13 @@ namespace AAAGame.Card
                 return;
             }
 
-            // 使用 GF_X 对象池创建 HandCardItem
-            var itemObject = SpawnItem<UIItemObject>(handCardItemPrefab, handCardContainer);
+            UIItemObject itemObject = SpawnItem<UIItemObject>(handCardItemPrefab, handCardContainer);
             if (itemObject == null)
             {
                 Log.Error("Failed to spawn HandCardItem from object pool.");
                 return;
             }
 
-            // 使用 gameObject 属性获取 GameObject
             HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
             if (cardItem == null)
             {
@@ -215,62 +492,54 @@ namespace AAAGame.Card
                 return;
             }
 
+            RectTransform itemRectTransform = itemObject.gameObject.GetComponent<RectTransform>();
+            if (itemRectTransform != null)
+            {
+                itemRectTransform.SetParent(handCardContainer, false);
+                itemRectTransform.localScale = Vector3.one;
+                itemRectTransform.SetAsLastSibling();
+            }
+
             cardItem.Initialize(cardModel, this);
             m_HandCardItemObjects.Add(itemObject);
+            RefreshHandCardLayout();
 
-            // 播放抽卡动画
             if (playAnimation && cardDeckTransform != null)
             {
                 cardItem.MoveToHandFromScreenPosition(cardDeckTransform.position, cardMoveToHandDuration);
             }
         }
 
-        /// <summary>
-        /// 移除手牌UI项 - 回收到对象池（直接移除，不检查是否已存在）
-        /// </summary>
         private void RemoveHandCardItemDirect(CardModel cardModel)
         {
-            Log.Info($"[CardUI] RemoveHandCardItemDirect called for: {cardModel?.GetCardName()}");
-
             UIItemObject itemToRemove = null;
-            foreach (var itemObj in m_HandCardItemObjects)
+            foreach (UIItemObject itemObject in m_HandCardItemObjects)
             {
-                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
+                HandCardItem cardItem = itemObject != null ? itemObject.gameObject.GetComponent<HandCardItem>() : null;
                 if (cardItem != null && cardItem.GetCardModel() == cardModel)
                 {
-                    itemToRemove = itemObj;
-                    Log.Info($"[CardUI] Found matching card item: {cardItem.GetCardModel().GetCardName()}");
+                    itemToRemove = itemObject;
                     break;
                 }
             }
 
             if (itemToRemove != null)
             {
-                Log.Info($"[CardUI] Removing item from list and unspawning...");
                 m_HandCardItemObjects.Remove(itemToRemove);
                 UnspawnItem<UIItemObject>(handCardItemPrefab, itemToRemove);
-                Log.Info($"[CardUI] ✅ Item removed. Remaining count: {m_HandCardItemObjects.Count}");
-            }
-            else
-            {
-                Log.Warning($"[CardUI] Could not find card item to remove for: {cardModel?.GetCardName()}");
+                RefreshHandCardLayout();
             }
         }
 
-        /// <summary>
-        /// 移除手牌UI项 - 回收到对象池（通过事件调用，检查是否已移除）
-        /// </summary>
         private void RemoveHandCardItem(CardModel cardModel)
         {
-            Log.Info($"[CardUI] RemoveHandCardItem called for: {cardModel?.GetCardName()}");
-
             UIItemObject itemToRemove = null;
-            foreach (var itemObj in m_HandCardItemObjects)
+            foreach (UIItemObject itemObject in m_HandCardItemObjects)
             {
-                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
+                HandCardItem cardItem = itemObject != null ? itemObject.gameObject.GetComponent<HandCardItem>() : null;
                 if (cardItem != null && cardItem.GetCardModel() == cardModel)
                 {
-                    itemToRemove = itemObj;
+                    itemToRemove = itemObject;
                     break;
                 }
             }
@@ -279,33 +548,24 @@ namespace AAAGame.Card
             {
                 m_HandCardItemObjects.Remove(itemToRemove);
                 UnspawnItem<UIItemObject>(handCardItemPrefab, itemToRemove);
-                Log.Info($"[CardUI] Item removed. Remaining count: {m_HandCardItemObjects.Count}");
-            }
-            else
-            {
-                // 不报错，因为可能已经被直接移除了
-                Log.Info($"[CardUI] Card item already removed or not found: {cardModel?.GetCardName()}");
+                RefreshHandCardLayout();
             }
         }
 
-        /// <summary>
-        /// 清理所有手牌 - 回收到对象池
-        /// </summary>
         private void ClearHandCards()
         {
-            // 使用 GF_X 对象池回收所有 HandCardItem
             UnspawnAllItem<UIItemObject>(handCardItemPrefab);
             m_HandCardItemObjects.Clear();
+            RefreshHandCardLayout();
         }
 
-        /// <summary>
-        /// 卡牌开始拖拽回调
-        /// </summary>
         public void OnCardBeginDrag(HandCardItem cardItem)
         {
             m_DraggingCard = cardItem;
+            RefreshHandCardInteractionVisuals();
+            EnsureTargetingVisuals();
+            HideTargetingVisuals();
 
-            // 显示垃圾桶
             if (trashBin != null)
             {
                 trashBin.SetActive(true);
@@ -314,161 +574,142 @@ namespace AAAGame.Card
             m_CardSystemController.StartPlacement(cardItem.GetCardModel());
         }
 
-        /// <summary>
-        /// 卡牌拖拽中回调
-        /// </summary>
         public void OnCardDragging(HandCardItem cardItem, Vector2 screenPosition)
         {
-            // 更新垃圾桶提示
             UpdateTrashBinHint(screenPosition);
-
-            // 更新区域材质效果
-            UpdateAreaMaterialEffect(screenPosition);
+            UpdateAreaMaterialEffect(cardItem, screenPosition);
         }
 
-        /// <summary>
-        /// 卡牌结束拖拽回调
-        /// </summary>
         public bool OnCardEndDrag(HandCardItem cardItem, Vector2 screenPosition)
         {
             m_DraggingCard = null;
+            RefreshHandCardInteractionVisuals();
 
-            Log.Info($"[CardUI] ========== OnCardEndDrag START ==========");
-            Log.Info($"[CardUI] Screen Position: {screenPosition}");
-
-            // 隐藏垃圾桶
             if (trashBin != null)
             {
                 trashBin.SetActive(false);
             }
 
-            // 隐藏区域材质效果
-            if (areaMaterialOverlay != null)
-            {
-                areaMaterialOverlay.HideAreaEffect();
-            }
+            HideTargetingVisuals();
+            areaMaterialOverlay?.HideAreaEffect();
 
-            // 优先级 1：检查是否在垃圾桶区域（最高优先级！）
-            bool isInTrash = IsInTrashBin(screenPosition);
-            Log.Info($"[CardUI] ✅ Is in trash bin: {isInTrash}");
-
+            bool isInTrash = IsInTrashBin(screenPosition, true);
             if (isInTrash)
             {
-                Log.Info($"[CardUI] ✅✅✅ Card in trash bin, DISCARDING");
-
-                // 取消放置（防止生成对象）
                 m_CardSystemController.CancelPlacement();
-
-                // 先通知 HandCardItem 停止拖拽状态并播放消失动画
                 cardItem.OnDiscardSuccess();
-
-                // 先移除 UI（避免事件重复移除）
                 RemoveHandCardItemDirect(cardItem.GetCardModel());
 
-                // 调用 Controller 丢弃卡牌（更新数据模型 + 触发事件）
                 bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel());
-
-                if (discarded)
+                if (!discarded)
                 {
-                    Log.Info("[CardUI] ✅ Card discarded and removed successfully");
-                }
-                else
-                {
-                    Log.Error("[CardUI] ❌ Failed to discard card in controller");
+                    Log.Error("[CardUI] Failed to discard card in controller.");
                 }
 
                 return true;
             }
 
-            // 优先级 2：检查是否拖回手牌区域
-            bool isOverHand = IsOverHandCardArea(screenPosition);
-            Log.Info($"[CardUI] Is over hand area: {isOverHand}");
-
+            bool isOverHand = IsOverHandCardArea(screenPosition, true);
             if (isOverHand)
             {
-                Log.Info("[CardUI] Card dragged back to hand, CANCELING PLACEMENT");
                 m_CardSystemController.CancelPlacement();
                 return false;
             }
 
-            // 优先级 3：尝试确认放置到场景
-            Log.Info("[CardUI] Attempting to place card in scene");
             bool placed = m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel(), screenPosition);
-            Log.Info($"[CardUI] Card placement result: {placed}");
-
             if (placed)
             {
-                Log.Info($"[CardUI] ✅ Card placed successfully: {cardItem.GetCardModel().GetCardName()}");
-                cardItem.OnPlaySuccess();
+                // ConfirmPlacement 会同步触发 CardPlayed 事件并回收对应 UI。
+                // 这里不要再对 cardItem 做成功动画或重设父级，否则会把已回收的对象重新拽回手牌区。
             }
             else
             {
-                Log.Info($"[CardUI] ❌ Placement failed, canceling");
                 m_CardSystemController.CancelPlacement();
             }
 
-            Log.Info($"[CardUI] ========== OnCardEndDrag END (returned {placed}) ==========");
             return placed;
         }
 
-        /// <summary>
-        /// 更新垃圾桶提示
-        /// </summary>
-        private void UpdateTrashBinHint(Vector2 screenPosition)
+        public bool HasActiveHandCardDrag(HandCardItem requester = null)
         {
-            if (m_TrashBinRect == null) return;
+            return m_DraggingCard != null && !ReferenceEquals(m_DraggingCard, requester);
+        }
 
-            bool isOver = RectTransformUtility.RectangleContainsScreenPoint(
-                m_TrashBinRect, screenPosition, GFBuiltin.UICamera);
-
-            if (trashBinHintText != null)
+        private void RefreshHandCardInteractionVisuals()
+        {
+            foreach (UIItemObject itemObject in m_HandCardItemObjects)
             {
-                trashBinHintText.gameObject.SetActive(isOver);
+                HandCardItem cardItem = itemObject != null ? itemObject.gameObject.GetComponent<HandCardItem>() : null;
+                if (cardItem == null)
+                {
+                    continue;
+                }
+
+                cardItem.RefreshInteractionVisualState();
             }
         }
 
-        /// <summary>
-        /// 更新区域材质效果
-        /// </summary>
-        private void UpdateAreaMaterialEffect(Vector2 screenPosition)
+        private void UpdateTrashBinHint(Vector2 screenPosition)
         {
-            if (areaMaterialOverlay == null || Camera.main == null) return;
-
-            // 发射射线
-            Ray ray = Camera.main.ScreenPointToRay(screenPosition);
-            if (!Physics.Raycast(ray, out RaycastHit hit, 1000f))
+            if (m_TrashBinRect == null || trashBinHintText == null)
             {
-                areaMaterialOverlay.HideAreaEffect();
                 return;
             }
 
-            Vector3 worldPos = hit.point;
+            bool isOver = RectTransformUtility.RectangleContainsScreenPoint(
+                m_TrashBinRect,
+                screenPosition,
+                GetUICamera());
 
-            // 检查是否在禁止区域
-            bool isForbidden = m_CardSystemController.IsInForbiddenArea(worldPos);
-
-            // 显示区域效果 (isValid = !isForbidden)
-            areaMaterialOverlay.ShowAreaEffect(worldPos, !isForbidden);
+            trashBinHintText.gameObject.SetActive(isOver);
         }
 
-        /// <summary>
-        /// 检查是否在手牌区域
-        /// </summary>
-        private bool IsOverHandCardArea(Vector2 screenPosition)
+        private void UpdateAreaMaterialEffect(HandCardItem cardItem, Vector2 screenPosition)
+        {
+            if (m_CardSystemController == null || cardItem == null)
+            {
+                areaMaterialOverlay?.HideAreaEffect();
+                HideTargetingVisuals();
+                return;
+            }
+
+            bool isOverTrash = IsInTrashBin(screenPosition, false);
+            bool isOverHandArea = IsOverHandCardArea(screenPosition, false);
+
+            if (isOverTrash || isOverHandArea)
+            {
+                areaMaterialOverlay?.HideAreaEffect();
+                HideTargetingVisuals();
+                cardItem.ExitTargetingMode(screenPosition);
+                return;
+            }
+
+            if (!m_CardSystemController.TryGetPlacementPreview(screenPosition, out Vector3 worldPosition, out bool isValid, m_PreviewSpawnPositions))
+            {
+                areaMaterialOverlay?.HideAreaEffect();
+                HideTargetingVisuals();
+                cardItem.EnterTargetingMode();
+                return;
+            }
+
+            float previewRadius = Mathf.Max(0.1f, m_CardSystemController.GetCurrentPlacementRadius());
+            areaMaterialOverlay?.ShowPlacementPreview(worldPosition, previewRadius, isValid, cardItem.GetCardModel(), m_PreviewSpawnPositions);
+
+            cardItem.EnterTargetingMode();
+            UpdateTargetingVisuals(cardItem, worldPosition, isValid);
+        }
+
+        private bool IsOverHandCardArea(Vector2 screenPosition, bool logResult = true)
         {
             RectTransform targetRect = null;
-
-            // 优先使用 handCardArea
             if (handCardArea != null)
             {
                 targetRect = handCardArea;
             }
-            // 如果没有配置 handCardArea，使用 handCardContainer 的父级
             else if (handCardContainer != null && handCardContainer.parent != null)
             {
                 targetRect = handCardContainer.parent.GetComponent<RectTransform>();
             }
-            // 最后尝试使用 handCardContainer 本身
             else if (handCardContainer != null)
             {
                 targetRect = handCardContainer.GetComponent<RectTransform>();
@@ -476,116 +717,112 @@ namespace AAAGame.Card
 
             if (targetRect == null)
             {
-                Log.Warning("[CardUI] No valid hand card area RectTransform found");
+                if (logResult)
+                {
+                    Log.Warning("[CardUI] No valid hand card area RectTransform found.");
+                }
+
                 return false;
             }
 
-            // 尝试两种方式：使用 UICamera 和使用 null（Overlay 模式）
-            Camera uiCamera = GFBuiltin.UICamera;
+            Camera uiCamera = GetUICamera();
+            bool resultWithCamera = RectTransformUtility.RectangleContainsScreenPoint(targetRect, screenPosition, uiCamera);
+            bool resultWithoutCamera = RectTransformUtility.RectangleContainsScreenPoint(targetRect, screenPosition, null);
+            bool result = resultWithCamera || resultWithoutCamera;
 
-            // 方法 1：使用 UICamera
-            bool result1 = RectTransformUtility.RectangleContainsScreenPoint(
-                targetRect, screenPosition, uiCamera);
-
-            // 方法 2：使用 null（适用于 Overlay 模式的 Canvas）
-            bool result2 = RectTransformUtility.RectangleContainsScreenPoint(
-                targetRect, screenPosition, null);
-
-            Log.Info($"[CardUI] IsOverHandCardArea - With Camera: {result1}, Without Camera (null): {result2}");
-            Log.Info($"[CardUI] Target rect: {targetRect.name}, Camera: {(uiCamera != null ? uiCamera.name : "null")}");
-            Log.Info($"[CardUI] Screen Position: {screenPosition}");
-
-            // 如果任何一个方法返回 true，就认为在手牌区域
-            return result1 || result2;
-        }
-
-        /// <summary>
-        /// 检查是否在垃圾桶区域
-        /// </summary>
-        private bool IsInTrashBin(Vector2 screenPosition)
-        {
-            if (m_TrashBinRect == null)
+            if (logResult)
             {
-                Log.Warning("[CardUI] TrashBin RectTransform is null. Cannot detect trash bin area.");
-                return false;
+                Log.Info($"[CardUI] IsOverHandCardArea={result}, target={targetRect.name}, screen={screenPosition}");
             }
-
-            // 获取 Canvas 信息
-            Canvas canvas = m_TrashBinRect.GetComponentInParent<Canvas>();
-            if (canvas == null)
-            {
-                Log.Warning("[CardUI] Cannot find Canvas for trash bin.");
-                return false;
-            }
-
-            Camera uiCamera = null;
-            if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
-            {
-                // Overlay 模式不需要相机
-                uiCamera = null;
-            }
-            else
-            {
-                // Camera 模式使用 Canvas 的相机或 UICamera
-                uiCamera = canvas.worldCamera ?? GFBuiltin.UICamera;
-            }
-
-            // 使用 RectTransformUtility.RectangleContainsScreenPoint（最可靠的方法）
-            bool result = RectTransformUtility.RectangleContainsScreenPoint(
-                m_TrashBinRect, screenPosition, uiCamera);
-
-            Log.Info($"[CardUI] IsInTrashBin check: result={result}, Canvas mode={canvas.renderMode}");
-            Log.Info($"[CardUI] Screen pos: {screenPosition}, TrashBin: {m_TrashBinRect.name}");
 
             return result;
         }
 
-        #region 事件处理
+        private bool IsInTrashBin(Vector2 screenPosition, bool logResult = true)
+        {
+            if (m_TrashBinRect == null)
+            {
+                if (logResult)
+                {
+                    Log.Warning("[CardUI] TrashBin RectTransform is null.");
+                }
+
+                return false;
+            }
+
+            Canvas canvas = m_TrashBinRect.GetComponentInParent<Canvas>();
+            if (canvas == null)
+            {
+                if (logResult)
+                {
+                    Log.Warning("[CardUI] Cannot find Canvas for trash bin.");
+                }
+
+                return false;
+            }
+
+            Camera uiCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay
+                ? null
+                : (canvas.worldCamera != null ? canvas.worldCamera : GFBuiltin.UICamera);
+
+            bool result = RectTransformUtility.RectangleContainsScreenPoint(m_TrashBinRect, screenPosition, uiCamera);
+            if (logResult)
+            {
+                Log.Info($"[CardUI] IsInTrashBin={result}, screen={screenPosition}");
+            }
+
+            return result;
+        }
 
         private void OnCardDrawn(object sender, GameEventArgs e)
         {
             if (!ReferenceEquals(sender, m_CardSystemController))
-                return;
-
-            CardDrawnEventArgs ne = (CardDrawnEventArgs)e;
-            if (ContainsCardItem(ne.CardModel))
             {
-                Log.Info($"[CardUI] Skip duplicated draw event for card: {ne.CardModel?.GetCardName()}");
                 return;
             }
 
-            //Debug.Log($"[Card] Card drawn: {ne.CardModel.GetCardName()}");
-            CreateHandCardItem(ne.CardModel, playAnimation: true);
+            CardDrawnEventArgs args = (CardDrawnEventArgs)e;
+            if (ContainsCardItem(args.CardModel))
+            {
+                return;
+            }
+
+            CreateHandCardItem(args.CardModel, true);
         }
 
         private void OnCardPlayed(object sender, GameEventArgs e)
         {
             if (!ReferenceEquals(sender, m_CardSystemController))
+            {
                 return;
+            }
 
-            CardPlayedEventArgs ne = (CardPlayedEventArgs)e;
-            RemoveHandCardItem(ne.CardModel);
+            CardPlayedEventArgs args = (CardPlayedEventArgs)e;
+            RemoveHandCardItem(args.CardModel);
         }
 
         private void OnCardDiscarded(object sender, GameEventArgs e)
         {
             if (!ReferenceEquals(sender, m_CardSystemController))
+            {
                 return;
+            }
 
-            CardDiscardedEventArgs ne = (CardDiscardedEventArgs)e;
-            RemoveHandCardItem(ne.CardModel);
+            CardDiscardedEventArgs args = (CardDiscardedEventArgs)e;
+            RemoveHandCardItem(args.CardModel);
         }
 
         private void OnIngameValueChanged(object sender, GameEventArgs e)
         {
-            var ne = (IngameValueChangedEventArgs)e;
-            if (ne.DataType != IngameValueType.CurrentSupply && ne.DataType != IngameValueType.MaxSupply)
-                return;
-
-            // 更新所有手牌的可用状态
-            foreach (var itemObj in m_HandCardItemObjects)
+            IngameValueChangedEventArgs args = (IngameValueChangedEventArgs)e;
+            if (args.DataType != IngameValueType.CurrentSupply && args.DataType != IngameValueType.MaxSupply)
             {
-                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
+                return;
+            }
+
+            foreach (UIItemObject itemObject in m_HandCardItemObjects)
+            {
+                HandCardItem cardItem = itemObject != null ? itemObject.gameObject.GetComponent<HandCardItem>() : null;
                 if (cardItem != null)
                 {
                     cardItem.RefreshView();
@@ -595,73 +832,75 @@ namespace AAAGame.Card
 
         private void OnArmyBuildingCardPropertyChanged(object sender, GameEventArgs e)
         {
-            var ne = (ArmyBuildingCardPropertyChangedEventArgs)e;
-            if (string.IsNullOrWhiteSpace(ne.BuildingInstanceId))
-                return;
-
-            foreach (var itemObj in m_HandCardItemObjects)
+            ArmyBuildingCardPropertyChangedEventArgs args = (ArmyBuildingCardPropertyChangedEventArgs)e;
+            if (string.IsNullOrWhiteSpace(args.BuildingInstanceId))
             {
-                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
+                return;
+            }
+
+            foreach (UIItemObject itemObject in m_HandCardItemObjects)
+            {
+                HandCardItem cardItem = itemObject != null ? itemObject.gameObject.GetComponent<HandCardItem>() : null;
                 if (cardItem == null)
+                {
                     continue;
+                }
 
                 CardModel cardModel = cardItem.GetCardModel();
                 if (cardModel == null)
+                {
                     continue;
+                }
 
-                if (!string.Equals(cardModel.GetSourceBuildingInstanceId(), ne.BuildingInstanceId, StringComparison.Ordinal))
-                    continue;
-
-                cardItem.RefreshView();
+                if (string.Equals(cardModel.GetSourceBuildingInstanceId(), args.BuildingInstanceId, StringComparison.Ordinal))
+                {
+                    cardItem.RefreshView();
+                }
             }
         }
 
         private bool ContainsCardItem(CardModel cardModel)
         {
             if (cardModel == null)
+            {
                 return false;
+            }
 
             for (int i = 0; i < m_HandCardItemObjects.Count; i++)
             {
-                var itemObj = m_HandCardItemObjects[i];
-                if (itemObj == null || itemObj.gameObject == null)
+                UIItemObject itemObject = m_HandCardItemObjects[i];
+                if (itemObject == null || itemObject.gameObject == null)
+                {
                     continue;
+                }
 
-                HandCardItem cardItem = itemObj.gameObject.GetComponent<HandCardItem>();
-                if (cardItem == null)
-                    continue;
-
-                if (ReferenceEquals(cardItem.GetCardModel(), cardModel))
+                HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
+                if (cardItem != null && ReferenceEquals(cardItem.GetCardModel(), cardModel))
+                {
                     return true;
+                }
             }
 
             return false;
         }
 
-        #endregion
-
-        #region 公共接口
-
-        /// <summary>
-        /// 重新抽卡 - 清空手牌并重新抽取
-        /// </summary>
         public void RedrawCards()
         {
-            if (m_CardSystemController == null) return;
-
-            // 清空当前手牌
-            PlayerHandModel handModel = m_CardSystemController.GetHandModel();
-            if (handModel != null)
+            if (m_CardSystemController == null)
             {
-                int cardCount = handModel.CardCount;
-                handModel.Clear();
-
-                // 重新抽卡
-                m_CardSystemController.DrawCards(cardCount);
+                return;
             }
-        }
 
-        #endregion
+            PlayerHandModel handModel = m_CardSystemController.GetHandModel();
+            if (handModel == null)
+            {
+                return;
+            }
+
+            int cardCount = handModel.CardCount;
+            handModel.Clear();
+            m_CardSystemController.DrawCards(cardCount);
+        }
 
         protected override void OnRecycle()
         {
