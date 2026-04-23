@@ -75,8 +75,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         // 惰性刷新领袖
         if (_leader == null || !_leader.Alive)
             _leader = EntityRegistry.GetClosestLeader(self.Position);
-        // 惰性标记领袖 + 设置组
-        if (!_joinedGroup && _leader != null && _leader.Alive && GroupMoveManager.HasInstance)
+        // 惰性标记领袖 + 设置组（仅同阵营，敌方不入玩家组）
+        if (!_joinedGroup && _leader != null && _leader.Alive && self.Side == _leader.Side && GroupMoveManager.HasInstance)
         {
             int leaderId = (_leader as MAEntity)?.GetInstanceID() ?? _leader.GetHashCode();
             int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
