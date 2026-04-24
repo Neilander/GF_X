@@ -3,6 +3,7 @@ using GameFramework.Event;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
 using Unity.AI.Navigation;
 using UnityGameFramework.Runtime;
 using GiantGrey.TileWorldCreator;
@@ -96,6 +97,14 @@ public class LevelEntity : EntityBase
                 DoRebakeNavMesh();
             }
         }
+
+#if UNITY_EDITOR
+        if (Input.GetKeyDown(KeyCode.T))
+        {
+            Debug.Log("[LevelEntity] 手动烘焙 NavMesh (T)");
+            DoRebakeNavMesh();
+        }
+#endif
     }
 
     /// <summary>
@@ -113,12 +122,131 @@ public class LevelEntity : EntityBase
     private void DoRebakeNavMesh()
     {
         if (_navMeshSurfaces == null)
+        {
+            Debug.LogWarning("[LevelEntity] _navMeshSurfaces == null，烘焙跳过");
             return;
+        }
 
+        Debug.Log($"[LevelEntity] NavMeshSurface 数量={_navMeshSurfaces.Length}");
         for (int i = 0; i < _navMeshSurfaces.Length; i++)
         {
-            _navMeshSurfaces[i].BuildNavMesh();
+            var s = _navMeshSurfaces[i];
+            Debug.Log($"  [{i}] on='{s.gameObject.name}' collect={s.collectObjects} layers={s.layerMask.value} useGeom={s.useGeometry} agentType={s.agentTypeID} size={s.size} center={s.center}");
+            s.BuildNavMesh();
         }
+
+        TryUnstuckPlayerFromObstacle();
+    }
+
+    // 多方向扫描的最大水平半径
+    private const float UnstuckMaxSearchRadius = 15f;
+    // 每圈步进
+    private const float UnstuckRadiusStep = 1f;
+    // 每圈采样方向数
+    private const int UnstuckDirectionCount = 16;
+    // 每个探测点的 NavMesh 投影半径（允许投到附近的 NavMesh）
+    private const float UnstuckProbeSampleRadius = 1f;
+    // Y 容差：超过这个 Y 差值认为是上下层的另一块 NavMesh，不采纳
+    private const float UnstuckYTolerance = 0.2f;
+    // 沿入内方向再偏这么多，避免贴边被物理推回去
+    private const float UnstuckInwardOffset = 0.5f;
+    // 偏移后用这个半径验证目标点真的在 NavMesh 上
+    private const float UnstuckConfirmRadius = 0.2f;
+
+    private static void TryUnstuckPlayerFromObstacle()
+    {
+        var player = EntityRegistry.Player;
+        if (player == null)
+        {
+            Debug.Log("[LevelEntity] Unstuck 触发: 无 Player, 跳过");
+            return;
+        }
+        if (!(player is MAEntity mae) || mae == null)
+        {
+            Debug.Log("[LevelEntity] Unstuck 触发: Player 不是 MAEntity, 跳过");
+            return;
+        }
+
+        Vector3 curPos = mae.transform.position;
+        Debug.Log($"[LevelEntity] Unstuck 触发: playerPos={curPos}");
+
+        if (!TryFindNearestHorizontalNavMeshPoint(curPos, out Vector3 nearest))
+        {
+            Debug.LogWarning($"[LevelEntity] Unstuck 失败：{UnstuckMaxSearchRadius}m 内找不到同高度 NavMesh, player={curPos}");
+            return;
+        }
+
+        // 本来就在 NavMesh 上（水平距离基本为 0）→ 不动
+        Vector3 inward = nearest - curPos;
+        inward.y = 0f;
+        if (inward.sqrMagnitude < 1e-4f) return;
+
+        // 沿入内方向偏 0.5m，并严格验证偏移后仍在同高度 NavMesh 上
+        Vector3 candidate = nearest + inward.normalized * UnstuckInwardOffset;
+        Vector3 targetPos;
+        if (NavMesh.SamplePosition(candidate, out var confirmed, UnstuckConfirmRadius, NavMesh.AllAreas)
+            && Mathf.Abs(confirmed.position.y - curPos.y) <= UnstuckYTolerance)
+        {
+            targetPos = confirmed.position;
+        }
+        else
+        {
+            targetPos = nearest; // 偏移后脱离 NavMesh / 跨层，退回最近点
+        }
+
+        mae.transform.position = targetPos;
+        Debug.Log($"[LevelEntity] Unstuck: player {curPos} → {targetPos}");
+    }
+
+    /// <summary>
+    /// 以 origin 为圆心，在多个半径 * 多个方向上做 NavMesh 采样，
+    /// 过滤 Y 与 origin 差值 > UnstuckYTolerance 的点（避免拉到楼上/楼下的另一块 NavMesh），
+    /// 取水平距离最近的点返回。
+    /// </summary>
+    private static bool TryFindNearestHorizontalNavMeshPoint(Vector3 origin, out Vector3 result)
+    {
+        result = default;
+        bool found = false;
+        float bestHSqr = float.MaxValue;
+
+        // 先试 origin 本身（若离 NavMesh 很近，直接省下外层扫描）
+        if (NavMesh.SamplePosition(origin, out var hitSelf, UnstuckProbeSampleRadius, NavMesh.AllAreas)
+            && Mathf.Abs(hitSelf.position.y - origin.y) <= UnstuckYTolerance)
+        {
+            result = hitSelf.position;
+            bestHSqr = HorizontalSqrDist(hitSelf.position, origin);
+            found = true;
+        }
+
+        // 逐圈扫描，每圈 16 个方向
+        for (float r = UnstuckRadiusStep; r <= UnstuckMaxSearchRadius; r += UnstuckRadiusStep)
+        {
+            for (int i = 0; i < UnstuckDirectionCount; i++)
+            {
+                float ang = i * (2f * Mathf.PI / UnstuckDirectionCount);
+                Vector3 probe = origin + new Vector3(Mathf.Cos(ang) * r, 0f, Mathf.Sin(ang) * r);
+                if (!NavMesh.SamplePosition(probe, out var hit, UnstuckProbeSampleRadius, NavMesh.AllAreas))
+                    continue;
+                if (Mathf.Abs(hit.position.y - origin.y) > UnstuckYTolerance)
+                    continue;
+                float h2 = HorizontalSqrDist(hit.position, origin);
+                if (h2 < bestHSqr)
+                {
+                    bestHSqr = h2;
+                    result = hit.position;
+                    found = true;
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private static float HorizontalSqrDist(Vector3 a, Vector3 b)
+    {
+        float dx = a.x - b.x;
+        float dz = a.z - b.z;
+        return dx * dx + dz * dz;
     }
 
     private void SubscribeRuntimeLayerRules()

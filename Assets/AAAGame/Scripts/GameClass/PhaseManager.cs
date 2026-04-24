@@ -248,7 +248,7 @@ public class PhaseManager : GameFrameworkComponent
                 EnemyPresetClusterMinDistance,
                 unitType,
                 SideType.EnemySide,
-                BrainType.EnemyAI);
+                BrainType.SoldierAI);
 
             if (spawnSuccess)
             {
