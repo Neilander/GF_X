@@ -5,10 +5,22 @@ using UnityEngine;
 
 public static class AutoBoxColliderFromMesh
 {
-    // 参数（要调改这里，单次 Editor 工具用，不做 GUI 窗口）
-    public const int DefaultXZResolution = 16;  // 底面 XZ 切成 N*N 格，越大越精细越慢
+    // 参数
     public const int DefaultYLayers = 1;        // Y 方向分层数，>1 可处理坡顶/尖塔
     public const string AutoBoxNamePrefix = "_AutoBox_";
+    private const string XZResolutionKey = "AutoBoxCollider.XZResolution";
+
+    // 粒度可切换：Tools/Mesh Collider/Preview Grid/N
+    public static int CurrentXZResolution
+    {
+        get => Mathf.Max(2, EditorPrefs.GetInt(XZResolutionKey, 6));
+        set
+        {
+            EditorPrefs.SetInt(XZResolutionKey, Mathf.Max(2, value));
+            AutoBoxColliderPreview.InvalidateCache();
+            SceneView.RepaintAll();
+        }
+    }
 
     [MenuItem("Tools/Mesh Collider/Apply Box Collider Approximation")]
     private static void ApplyMenu()
@@ -20,23 +32,63 @@ public static class AutoBoxColliderFromMesh
             return;
         }
 
-        int totalBoxes = 0, ok = 0;
+        int totalBoxes = 0, ok = 0, prefabsSaved = 0;
         foreach (var root in roots)
         {
-            var boxes = ComputeApproximation(root, DefaultXZResolution, DefaultYLayers);
-            if (boxes.Count == 0)
+            if (root == null) continue;
+
+            bool isPrefabAsset = PrefabUtility.IsPartOfPrefabAsset(root);
+
+            if (isPrefabAsset)
             {
-                Debug.LogWarning($"[AutoBoxCollider] {root.name}: 没有有效几何或未产生 box");
-                continue;
+                // Project 窗口的 prefab asset：必须走 LoadPrefabContents / SaveAsPrefabAsset 才会落盘
+                string path = AssetDatabase.GetAssetPath(root);
+                if (string.IsNullOrEmpty(path))
+                {
+                    Debug.LogWarning($"[AutoBoxCollider] {root.name} 取不到 asset path，跳过");
+                    continue;
+                }
+
+                var contentsRoot = PrefabUtility.LoadPrefabContents(path);
+                try
+                {
+                    var boxes = ComputeApproximation(contentsRoot, CurrentXZResolution, DefaultYLayers);
+                    if (boxes.Count == 0)
+                    {
+                        Debug.LogWarning($"[AutoBoxCollider] {root.name}: 没有有效几何或未产生 box");
+                        continue;
+                    }
+                    Apply(contentsRoot, boxes, recordUndo: false);
+                    PrefabUtility.SaveAsPrefabAsset(contentsRoot, path);
+                    prefabsSaved++;
+                    totalBoxes += boxes.Count;
+                    ok++;
+                }
+                finally
+                {
+                    PrefabUtility.UnloadPrefabContents(contentsRoot);
+                }
             }
-            Apply(root, boxes);
-            totalBoxes += boxes.Count;
-            ok++;
+            else
+            {
+                // 场景物体 / prefab 实例 / Prefab Isolation 模式里的物体：直接改
+                var boxes = ComputeApproximation(root, CurrentXZResolution, DefaultYLayers);
+                if (boxes.Count == 0)
+                {
+                    Debug.LogWarning($"[AutoBoxCollider] {root.name}: 没有有效几何或未产生 box");
+                    continue;
+                }
+                Apply(root, boxes, recordUndo: true);
+                totalBoxes += boxes.Count;
+                ok++;
+            }
         }
+
+        if (prefabsSaved > 0) AssetDatabase.SaveAssets();
 
         AutoBoxColliderPreview.InvalidateCache();
         SceneView.RepaintAll();
-        Debug.Log($"[AutoBoxCollider] 处理 {ok}/{roots.Length} 个 root, 共生成 {totalBoxes} 个 BoxCollider");
+        Debug.Log($"[AutoBoxCollider] 处理 {ok}/{roots.Length} 个 root, 共生成 {totalBoxes} 个 BoxCollider, prefabsSaved={prefabsSaved}");
     }
 
     [MenuItem("Tools/Mesh Collider/Apply Box Collider Approximation", true)]
@@ -58,17 +110,82 @@ public static class AutoBoxColliderFromMesh
         return true;
     }
 
+    // 粒度切换（块越少越粗，宁可缺）
+    [MenuItem("Tools/Mesh Collider/Preview Grid/3")]
+    private static void SetGrid3() => CurrentXZResolution = 3;
+    [MenuItem("Tools/Mesh Collider/Preview Grid/3", true)]
+    private static bool SetGrid3V() { Menu.SetChecked("Tools/Mesh Collider/Preview Grid/3", CurrentXZResolution == 3); return true; }
+
+    [MenuItem("Tools/Mesh Collider/Preview Grid/4")]
+    private static void SetGrid4() => CurrentXZResolution = 4;
+    [MenuItem("Tools/Mesh Collider/Preview Grid/4", true)]
+    private static bool SetGrid4V() { Menu.SetChecked("Tools/Mesh Collider/Preview Grid/4", CurrentXZResolution == 4); return true; }
+
+    [MenuItem("Tools/Mesh Collider/Preview Grid/6")]
+    private static void SetGrid6() => CurrentXZResolution = 6;
+    [MenuItem("Tools/Mesh Collider/Preview Grid/6", true)]
+    private static bool SetGrid6V() { Menu.SetChecked("Tools/Mesh Collider/Preview Grid/6", CurrentXZResolution == 6); return true; }
+
+    [MenuItem("Tools/Mesh Collider/Preview Grid/8")]
+    private static void SetGrid8() => CurrentXZResolution = 8;
+    [MenuItem("Tools/Mesh Collider/Preview Grid/8", true)]
+    private static bool SetGrid8V() { Menu.SetChecked("Tools/Mesh Collider/Preview Grid/8", CurrentXZResolution == 8); return true; }
+
+    [MenuItem("Tools/Mesh Collider/Preview Grid/12")]
+    private static void SetGrid12() => CurrentXZResolution = 12;
+    [MenuItem("Tools/Mesh Collider/Preview Grid/12", true)]
+    private static bool SetGrid12V() { Menu.SetChecked("Tools/Mesh Collider/Preview Grid/12", CurrentXZResolution == 12); return true; }
+
+    [MenuItem("Tools/Mesh Collider/Preview Grid/16")]
+    private static void SetGrid16() => CurrentXZResolution = 16;
+    [MenuItem("Tools/Mesh Collider/Preview Grid/16", true)]
+    private static bool SetGrid16V() { Menu.SetChecked("Tools/Mesh Collider/Preview Grid/16", CurrentXZResolution == 16); return true; }
+
     [MenuItem("Tools/Mesh Collider/Clear Auto Boxes On Selection")]
     private static void ClearAutoBoxesMenu()
     {
         var roots = Selection.gameObjects;
         if (roots == null || roots.Length == 0) return;
-        int cleared = 0;
+
+        int cleared = 0, prefabsSaved = 0;
         foreach (var root in roots)
-            cleared += RemoveAutoBoxChildren(root);
+        {
+            if (root == null) continue;
+
+            if (PrefabUtility.IsPartOfPrefabAsset(root))
+            {
+                string path = AssetDatabase.GetAssetPath(root);
+                if (string.IsNullOrEmpty(path))
+                {
+                    Debug.LogWarning($"[AutoBoxCollider] {root.name} 取不到 asset path，跳过");
+                    continue;
+                }
+                var contentsRoot = PrefabUtility.LoadPrefabContents(path);
+                try
+                {
+                    int removed = RemoveAutoBoxChildren(contentsRoot, recordUndo: false);
+                    if (removed > 0)
+                    {
+                        PrefabUtility.SaveAsPrefabAsset(contentsRoot, path);
+                        prefabsSaved++;
+                    }
+                    cleared += removed;
+                }
+                finally
+                {
+                    PrefabUtility.UnloadPrefabContents(contentsRoot);
+                }
+            }
+            else
+            {
+                cleared += RemoveAutoBoxChildren(root, recordUndo: true);
+            }
+        }
+
+        if (prefabsSaved > 0) AssetDatabase.SaveAssets();
         AutoBoxColliderPreview.InvalidateCache();
         SceneView.RepaintAll();
-        Debug.Log($"[AutoBoxCollider] 清理 {cleared} 个自动生成的 box");
+        Debug.Log($"[AutoBoxCollider] 清理 {cleared} 个自动生成的 box, prefabsSaved={prefabsSaved}");
     }
 
     /// <summary>
@@ -80,7 +197,7 @@ public static class AutoBoxColliderFromMesh
     {
         var result = new List<Bounds>();
         if (root == null) return result;
-        xzRes = Mathf.Max(4, xzRes);
+        xzRes = Mathf.Max(2, xzRes);
         yLayers = Mathf.Max(1, yLayers);
 
         // 1) 收集所有顶点 / 三角面到 root 局部空间
@@ -198,25 +315,32 @@ public static class AutoBoxColliderFromMesh
         return result;
     }
 
-    private static void Apply(GameObject root, List<Bounds> boxes)
+    private const string AutoBoxLayerName = "Ground";
+
+    private static void Apply(GameObject root, List<Bounds> boxes, bool recordUndo)
     {
-        RemoveAutoBoxChildren(root);
+        RemoveAutoBoxChildren(root, recordUndo);
+        int layer = LayerMask.NameToLayer(AutoBoxLayerName);
+        if (layer < 0)
+            Debug.LogWarning($"[AutoBoxCollider] 项目里没有 Layer '{AutoBoxLayerName}'，子物体用默认 Layer");
+
         for (int i = 0; i < boxes.Count; i++)
         {
             var go = new GameObject($"{AutoBoxNamePrefix}{i}");
-            Undo.RegisterCreatedObjectUndo(go, "Auto Box Collider");
+            if (recordUndo) Undo.RegisterCreatedObjectUndo(go, "Auto Box Collider");
             go.transform.SetParent(root.transform, false);
             go.transform.localPosition = boxes[i].center;
             go.transform.localRotation = Quaternion.identity;
             go.transform.localScale = Vector3.one;
-            var bc = Undo.AddComponent<BoxCollider>(go);
+            if (layer >= 0) go.layer = layer;
+            BoxCollider bc = recordUndo ? Undo.AddComponent<BoxCollider>(go) : go.AddComponent<BoxCollider>();
             bc.center = Vector3.zero;
             bc.size = boxes[i].size;
         }
         EditorUtility.SetDirty(root);
     }
 
-    private static int RemoveAutoBoxChildren(GameObject root)
+    private static int RemoveAutoBoxChildren(GameObject root, bool recordUndo = true)
     {
         var toDelete = new List<GameObject>();
         for (int i = 0; i < root.transform.childCount; i++)
@@ -224,7 +348,11 @@ public static class AutoBoxColliderFromMesh
             var c = root.transform.GetChild(i);
             if (c.name.StartsWith(AutoBoxNamePrefix)) toDelete.Add(c.gameObject);
         }
-        foreach (var go in toDelete) Undo.DestroyObjectImmediate(go);
+        foreach (var go in toDelete)
+        {
+            if (recordUndo) Undo.DestroyObjectImmediate(go);
+            else Object.DestroyImmediate(go);
+        }
         return toDelete.Count;
     }
 
@@ -289,7 +417,7 @@ internal static class AutoBoxColliderPreview
             if (!_cache.TryGetValue(id, out var boxes))
             {
                 boxes = AutoBoxColliderFromMesh.ComputeApproximation(root,
-                    AutoBoxColliderFromMesh.DefaultXZResolution,
+                    AutoBoxColliderFromMesh.CurrentXZResolution,
                     AutoBoxColliderFromMesh.DefaultYLayers);
                 _cache[id] = boxes;
             }
