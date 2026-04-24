@@ -214,7 +214,7 @@ public class TechManager : GameFrameworkComponent
             if (techData == null)
                 continue;
 
-            string displayName = GF.Localization.GetString(techData.NameKey);
+            string displayName = LocalizationTextManager.GetLocalizedText(techData.NameKey, false);
             InteractionParams @params = InteractionParams.Create();
             @params.Set<VarString>("UpgradeBuildingId", upgradeBuildingId);
             @params.Set<VarString>("TechId", techId);
@@ -242,7 +242,7 @@ public class TechManager : GameFrameworkComponent
             if (techData == null)
                 continue;
 
-            string displayName = GF.Localization.GetString(techData.NameKey);
+            string displayName = LocalizationTextManager.GetLocalizedText(techData.NameKey, false);
             InteractionParams @params = InteractionParams.Create();
             @params.Set<VarString>("TechId", techId);
 

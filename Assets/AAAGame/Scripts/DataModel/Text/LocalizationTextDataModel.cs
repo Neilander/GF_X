@@ -40,8 +40,8 @@ public class LocalizationTextDataModel : DataModelBase
     {
         var model = GF.DataModel.GetDataModel<LocalizationTextDataModel>();
         if (model != null && model._localizationKeyDic != null && model._localizationKeyDic.TryGetValue(identifier, out var text))
-            return GF.Localization.GetString(text);
+            return LocalizationTextManager.ProcessText(GF.Localization.GetString(text));
 
-        return identifier;
+        return LocalizationTextManager.ProcessText(identifier);
     }
 }

@@ -10,3 +10,6 @@
 	6	阶段名_运营	Phase_Build	Phase.Build
 	7	阶段名_进攻	Phase_Invade	Phase.Invade
 	8	阶段名_防御	Phase_Defend	Phase.Defend
+	9	科技描述_升级已有技能	Tech_Desc_SkillAlreadyLearned	Tech.Desc.SkillAlreadyLearned
+	10	科技描述-学习主动技能	Tech_Desc_LearnActiveSkill	Tech.Desc.LearnActiveSkill
+	11	科技描述-学习被动技能	Tech_Desc_LearnPassiveSkill	Tech.Desc.LearnPassiveSkill

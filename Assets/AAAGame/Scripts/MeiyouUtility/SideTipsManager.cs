@@ -104,7 +104,7 @@ public class SideTipsManager : GameFrameworkComponent
         if (shownEnemyUnitTypes.Contains(unitType))
             return;
 
-        string title = Localize(nameKey);
+        string title = LocalizationTextManager.GetLocalizedText(nameKey, false);
         string content = entity.CharacterData.GetFormattedDesc();
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
             return;
@@ -132,14 +132,6 @@ public class SideTipsManager : GameFrameworkComponent
 
         nameKey = entity.CharacterData.NameKey;
         return true;
-    }
-
-    private static string Localize(string key)
-    {
-        if (string.IsNullOrEmpty(key) || GF.Localization == null)
-            return string.Empty;
-
-        return GF.Localization.GetString(key);
     }
 
     public void ShowRuntimeTip(string title, string content, float duration)

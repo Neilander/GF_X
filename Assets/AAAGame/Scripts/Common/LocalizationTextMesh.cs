@@ -10,7 +10,7 @@ public class LocalizationTextMesh : MonoBehaviour
         var txtMesh = GetComponent<UnityEngine.TextMesh>();
         if (txtMesh != null)
         {
-            txtMesh.text = GF.Localization.GetText(mKey);//.Replace("\\n", "\n");
+            txtMesh.text = LocalizationTextManager.ProcessText(GF.Localization.GetText(mKey));//.Replace("\\n", "\n");
         }
     }
 }
