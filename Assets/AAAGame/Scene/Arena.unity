@@ -199,7 +199,7 @@ MonoBehaviour:
   m_OverrideTileSize: 0
   m_TileSize: 256
   m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.6666667
+  m_VoxelSize: 0.13666667
   m_MinRegionArea: 2
   m_NavMeshData: {fileID: 23800000, guid: a8eadfad5c3d740b692b51b799074739, type: 2}
   m_BuildHeightMesh: 0
@@ -592,6 +592,12 @@ MonoBehaviour:
   legacyPivotEuler: {x: 30, y: 45, z: 0}
   legacyInnerCameraLocalPosition: {x: 0, y: 0, z: -250}
   legacyOrthographicSize: 30
+  enableScreenEdgePan: 1
+  edgeThresholdRatio: 0.1
+  edgeHoldDuration: 1
+  panDistanceRatio: 0.3
+  panSmoothTime: 0.2
+  logScreenEdgePan: 0
   followerVCamera: {fileID: 930603404}
 --- !u!114 &184670684
 MonoBehaviour:
@@ -2543,7 +2549,7 @@ MonoBehaviour:
   m_OverrideTileSize: 0
   m_TileSize: 256
   m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.6666667
+  m_VoxelSize: 0.13666667
   m_MinRegionArea: 2
   m_NavMeshData: {fileID: 23800000, guid: 0a35387bbacf24aecb739a29e05c5ee2, type: 2}
   m_BuildHeightMesh: 0

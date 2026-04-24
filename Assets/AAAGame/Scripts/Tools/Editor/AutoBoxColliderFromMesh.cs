@@ -317,7 +317,7 @@ public static class AutoBoxColliderFromMesh
 
     private const string AutoBoxLayerName = "Ground";
 
-    private static void Apply(GameObject root, List<Bounds> boxes, bool recordUndo)
+    internal static void Apply(GameObject root, List<Bounds> boxes, bool recordUndo)
     {
         RemoveAutoBoxChildren(root, recordUndo);
         int layer = LayerMask.NameToLayer(AutoBoxLayerName);
