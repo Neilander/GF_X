@@ -17,6 +17,8 @@ namespace AAAGame.Card
     public partial class CardUIForm : UIFormBase
     {
         [Header("UI容器")]
+        private const int DeferredHandLayoutRefreshFrameCount = 4;
+
         [SerializeField] private Transform handCardContainer;
         [SerializeField] private RectTransform handCardArea;
         [SerializeField] private GameObject trashBin;
@@ -49,6 +51,9 @@ namespace AAAGame.Card
         private CardSystemController m_CardSystemController;
         private HandCardItem m_DraggingCard;
         private RectTransform m_TrashBinRect;
+        private RectTransform m_ResolvedHandCardAreaRect;
+        private Canvas m_TrashBinCanvas;
+        private int m_PendingHandLayoutRefreshFrames;
         private bool m_IsUIVisible = true;
 
         private Canvas m_FormCanvas;
@@ -75,8 +80,11 @@ namespace AAAGame.Card
             if (trashBin != null)
             {
                 m_TrashBinRect = trashBin.GetComponent<RectTransform>();
+                m_TrashBinCanvas = m_TrashBinRect != null ? m_TrashBinRect.GetComponentInParent<Canvas>() : null;
                 trashBin.SetActive(false);
             }
+
+            m_ResolvedHandCardAreaRect = ResolveHandCardAreaRect();
         }
 
         protected override void OnOpen(object userData)
@@ -139,6 +147,7 @@ namespace AAAGame.Card
             }
 
             HandleHotkeys();
+            RefreshPendingHandLayout();
         }
 
         private void RefreshHandCardLayout()
@@ -148,20 +157,46 @@ namespace AAAGame.Card
             RectTransform containerRect = handCardContainer as RectTransform;
             if (containerRect != null)
             {
+                LayoutRebuilder.MarkLayoutForRebuild(containerRect);
                 LayoutRebuilder.ForceRebuildLayoutImmediate(containerRect);
+
+                ILayoutController[] layoutControllers = containerRect.GetComponents<ILayoutController>();
+                for (int i = 0; i < layoutControllers.Length; i++)
+                {
+                    layoutControllers[i].SetLayoutHorizontal();
+                    layoutControllers[i].SetLayoutVertical();
+                }
             }
 
             if (handCardArea != null)
             {
+                LayoutRebuilder.MarkLayoutForRebuild(handCardArea);
                 LayoutRebuilder.ForceRebuildLayoutImmediate(handCardArea);
             }
 
             if (containerRect != null && containerRect.parent is RectTransform parentRect)
             {
+                LayoutRebuilder.MarkLayoutForRebuild(parentRect);
                 LayoutRebuilder.ForceRebuildLayoutImmediate(parentRect);
             }
 
             Canvas.ForceUpdateCanvases();
+        }
+
+        private void RequestDeferredHandLayoutRefresh(int frameCount = DeferredHandLayoutRefreshFrameCount)
+        {
+            m_PendingHandLayoutRefreshFrames = Mathf.Max(m_PendingHandLayoutRefreshFrames, frameCount);
+        }
+
+        private void RefreshPendingHandLayout()
+        {
+            if (m_PendingHandLayoutRefreshFrames <= 0)
+            {
+                return;
+            }
+
+            RefreshHandCardLayout();
+            m_PendingHandLayoutRefreshFrames--;
         }
 
         private void ResolveAreaMaterialOverlay()
@@ -525,6 +560,12 @@ namespace AAAGame.Card
 
             if (itemToRemove != null)
             {
+                HandCardItem cardItem = itemToRemove.gameObject.GetComponent<HandCardItem>();
+                if (cardItem != null)
+                {
+                    cardItem.PrepareForRecycle();
+                }
+
                 m_HandCardItemObjects.Remove(itemToRemove);
                 UnspawnItem<UIItemObject>(handCardItemPrefab, itemToRemove);
                 RefreshHandCardLayout();
@@ -546,6 +587,12 @@ namespace AAAGame.Card
 
             if (itemToRemove != null)
             {
+                HandCardItem cardItem = itemToRemove.gameObject.GetComponent<HandCardItem>();
+                if (cardItem != null)
+                {
+                    cardItem.PrepareForRecycle();
+                }
+
                 m_HandCardItemObjects.Remove(itemToRemove);
                 UnspawnItem<UIItemObject>(handCardItemPrefab, itemToRemove);
                 RefreshHandCardLayout();
@@ -554,6 +601,15 @@ namespace AAAGame.Card
 
         private void ClearHandCards()
         {
+            foreach (UIItemObject itemObject in m_HandCardItemObjects)
+            {
+                HandCardItem cardItem = itemObject != null ? itemObject.gameObject.GetComponent<HandCardItem>() : null;
+                if (cardItem != null)
+                {
+                    cardItem.PrepareForRecycle();
+                }
+            }
+
             UnspawnAllItem<UIItemObject>(handCardItemPrefab);
             m_HandCardItemObjects.Clear();
             RefreshHandCardLayout();
@@ -613,7 +669,11 @@ namespace AAAGame.Card
             if (isOverHand)
             {
                 m_CardSystemController.CancelPlacement();
-                return false;
+                cardItem.RestoreToHandLayoutImmediately();
+                RefreshHandCardLayout();
+                RequestDeferredHandLayoutRefresh();
+                RefreshHandCardInteractionVisuals();
+                return true;
             }
 
             bool placed = m_CardSystemController.ConfirmPlacement(cardItem.GetCardModel(), screenPosition);
@@ -701,19 +761,9 @@ namespace AAAGame.Card
 
         private bool IsOverHandCardArea(Vector2 screenPosition, bool logResult = true)
         {
-            RectTransform targetRect = null;
-            if (handCardArea != null)
-            {
-                targetRect = handCardArea;
-            }
-            else if (handCardContainer != null && handCardContainer.parent != null)
-            {
-                targetRect = handCardContainer.parent.GetComponent<RectTransform>();
-            }
-            else if (handCardContainer != null)
-            {
-                targetRect = handCardContainer.GetComponent<RectTransform>();
-            }
+            RectTransform targetRect = m_ResolvedHandCardAreaRect != null
+                ? m_ResolvedHandCardAreaRect
+                : ResolveHandCardAreaRect();
 
             if (targetRect == null)
             {
@@ -738,6 +788,23 @@ namespace AAAGame.Card
             return result;
         }
 
+        private RectTransform ResolveHandCardAreaRect()
+        {
+            if (handCardArea != null)
+            {
+                return handCardArea;
+            }
+
+            if (handCardContainer != null && handCardContainer.parent != null)
+            {
+                return handCardContainer.parent.GetComponent<RectTransform>();
+            }
+
+            return handCardContainer != null
+                ? handCardContainer.GetComponent<RectTransform>()
+                : null;
+        }
+
         private bool IsInTrashBin(Vector2 screenPosition, bool logResult = true)
         {
             if (m_TrashBinRect == null)
@@ -750,7 +817,9 @@ namespace AAAGame.Card
                 return false;
             }
 
-            Canvas canvas = m_TrashBinRect.GetComponentInParent<Canvas>();
+            Canvas canvas = m_TrashBinCanvas != null
+                ? m_TrashBinCanvas
+                : m_TrashBinRect.GetComponentInParent<Canvas>();
             if (canvas == null)
             {
                 if (logResult)
@@ -760,6 +829,8 @@ namespace AAAGame.Card
 
                 return false;
             }
+
+            m_TrashBinCanvas = canvas;
 
             Camera uiCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay
                 ? null

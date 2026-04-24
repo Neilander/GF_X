@@ -12,6 +12,7 @@ namespace AAAGame.Card
     public class CardPlacementController
     {
         private const float PreviewReuseInterval = 0.08f;
+        private const int OverlapBufferSize = 32;
 
         private Camera m_MainCamera;
         private LayerMask m_GroundLayer;
@@ -31,6 +32,8 @@ namespace AAAGame.Card
 
         private float m_DetectionRadius = 0.5f;
         private Func<Vector3, float, bool> m_AdditionalForbiddenChecker;
+        private readonly Collider[] m_ForbiddenOverlapBuffer = new Collider[OverlapBufferSize];
+        private readonly Collider[] m_GroundOverlapBuffer = new Collider[OverlapBufferSize];
 
         public event Action<CardModel> OnPlacementStarted;
         public event Action<Vector3, bool> OnPositionUpdated;
@@ -353,7 +356,7 @@ namespace AAAGame.Card
         {
             groundPosition = Vector3.zero;
 
-            if (Camera.main != null)
+            if (m_MainCamera == null || !m_MainCamera.isActiveAndEnabled)
             {
                 m_MainCamera = Camera.main;
             }
@@ -380,8 +383,12 @@ namespace AAAGame.Card
                 return false;
             }
 
-            Collider[] forbiddenColliders = Physics.OverlapSphere(position, m_DetectionRadius, m_ForbiddenLayer);
-            if (forbiddenColliders.Length > 0)
+            int forbiddenCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_ForbiddenOverlapBuffer,
+                m_ForbiddenLayer);
+            if (forbiddenCount > 0)
             {
                 return false;
             }
@@ -392,8 +399,12 @@ namespace AAAGame.Card
                 return false;
             }
 
-            Collider[] groundColliders = Physics.OverlapSphere(position, m_DetectionRadius, m_GroundLayer);
-            return groundColliders.Length > 0;
+            int groundCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_GroundOverlapBuffer,
+                m_GroundLayer);
+            return groundCount > 0;
         }
 
         private bool CanSpawnCardAtPosition(CardModel cardModel, Vector3 centerPosition)
@@ -448,10 +459,14 @@ namespace AAAGame.Card
                 return;
             }
 
-            Collider[] forbiddenColliders = Physics.OverlapSphere(position, m_DetectionRadius, m_ForbiddenLayer);
-            if (forbiddenColliders.Length > 0)
+            int forbiddenCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_ForbiddenOverlapBuffer,
+                m_ForbiddenLayer);
+            if (forbiddenCount > 0)
             {
-                Debug.Log($"[Card] Cannot confirm placement: 命中静态禁区. pos={position}, forbiddenHits={forbiddenColliders.Length}");
+                Debug.Log($"[Card] Cannot confirm placement: 命中静态禁区. pos={position}, forbiddenHits={forbiddenCount}");
                 return;
             }
 
@@ -462,8 +477,12 @@ namespace AAAGame.Card
                 return;
             }
 
-            Collider[] groundColliders = Physics.OverlapSphere(position, m_DetectionRadius, m_GroundLayer);
-            if (groundColliders.Length == 0)
+            int groundCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_GroundOverlapBuffer,
+                m_GroundLayer);
+            if (groundCount == 0)
             {
                 Debug.Log($"[Card] Cannot confirm placement: Ground 检测失败. pos={position}, radius={m_DetectionRadius:F2}");
             }

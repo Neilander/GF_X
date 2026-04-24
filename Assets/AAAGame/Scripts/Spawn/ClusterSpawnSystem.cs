@@ -38,7 +38,7 @@ public static class ClusterSpawnSystem
             bool isOverlap = false;
             for (int j = 0; j < spawnPositions.Count; j++)
             {
-                if (Vector3.Distance(spawnPos, spawnPositions[j]) < minDistance)
+                if ((spawnPos - spawnPositions[j]).sqrMagnitude < minDistance * minDistance)
                 {
                     isOverlap = true;
                     break;
@@ -152,7 +152,7 @@ public static class ClusterSpawnSystem
             bool isOverlap = false;
             for (int j = 0; j < spawnPositions.Count; j++)
             {
-                if (Vector3.Distance(spawnPos, spawnPositions[j]) < FixedSpawnDistance)
+                if ((spawnPos - spawnPositions[j]).sqrMagnitude < FixedSpawnDistance * FixedSpawnDistance)
                 {
                     isOverlap = true;
                     break;
@@ -177,7 +177,7 @@ public static class ClusterSpawnSystem
 
         Vector2 navXZ = new Vector2(navHit.position.x, navHit.position.z);
         Vector2 candidateXZ = new Vector2(candidate.x, candidate.z);
-        if (Vector2.Distance(navXZ, candidateXZ) > MaxHorizontalSnapDistance)
+        if ((navXZ - candidateXZ).sqrMagnitude > MaxHorizontalSnapDistance * MaxHorizontalSnapDistance)
         {
             return false;
         }

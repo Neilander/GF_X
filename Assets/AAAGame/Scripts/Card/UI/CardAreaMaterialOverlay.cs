@@ -42,10 +42,13 @@ namespace AAAGame.Card.UI
         }
 
         private readonly Dictionary<Renderer, Material[]> m_OriginalMaterials = new Dictionary<Renderer, Material[]>();
+        private readonly Dictionary<GameObject, Collider[]> m_AreaColliderCache = new Dictionary<GameObject, Collider[]>();
+        private readonly Dictionary<int, string> m_PreviewAssetPathCache = new Dictionary<int, string>();
         private readonly Dictionary<string, GameObject> m_PreviewPrefabCache = new Dictionary<string, GameObject>();
         private readonly HashSet<string> m_PendingPreviewPrefabLoads = new HashSet<string>();
         private readonly List<PreviewSoldierInstance> m_PreviewSoldierInstances = new List<PreviewSoldierInstance>();
         private readonly List<Vector3> m_LastPreviewPositions = new List<Vector3>();
+        private readonly List<Vector3> m_LastRenderedPreviewPositions = new List<Vector3>();
 
         private GameObject m_CurrentActiveArea;
         private AreaType m_CurrentAreaType = AreaType.None;
@@ -56,6 +59,16 @@ namespace AAAGame.Card.UI
         private Material m_PreviewFallbackMaterial;
         private CardModel m_LastPreviewCardModel;
         private bool m_LastPreviewValid;
+        private CardModel m_LastRenderedPreviewCardModel;
+        private string m_LastRenderedPreviewAssetPath;
+        private bool m_LastRenderedPreviewUsedFallback;
+        private bool m_PreviewSoldiersVisible;
+        private bool m_HasPreviewRingState;
+        private Vector3 m_LastPreviewRingCenter;
+        private float m_LastPreviewRingRadius;
+        private float m_LastPreviewRingLineWidth;
+        private int m_LastPreviewRingSegmentCount;
+        private bool m_LastPreviewRingValid;
 
         public enum AreaType
         {
@@ -69,11 +82,13 @@ namespace AAAGame.Card.UI
             if (validAreaObject != null)
             {
                 StoreOriginalMaterials(validAreaObject);
+                CacheAreaColliders(validAreaObject);
             }
 
             if (invalidAreaObject != null)
             {
                 StoreOriginalMaterials(invalidAreaObject);
+                CacheAreaColliders(invalidAreaObject);
             }
         }
 
@@ -124,7 +139,7 @@ namespace AAAGame.Card.UI
                 return false;
             }
 
-            Collider[] colliders = areaObject.GetComponentsInChildren<Collider>();
+            Collider[] colliders = GetAreaColliders(areaObject);
             if (colliders.Length == 0)
             {
                 return false;
@@ -134,13 +149,40 @@ namespace AAAGame.Card.UI
             {
                 Collider collider = colliders[i];
                 Vector3 closestPoint = collider.ClosestPoint(worldPosition);
-                if (Vector3.Distance(worldPosition, closestPoint) < 0.01f)
+                if ((worldPosition - closestPoint).sqrMagnitude < 0.0001f)
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private Collider[] GetAreaColliders(GameObject areaObject)
+        {
+            if (areaObject == null)
+            {
+                return System.Array.Empty<Collider>();
+            }
+
+            if (!m_AreaColliderCache.TryGetValue(areaObject, out Collider[] colliders) || colliders == null)
+            {
+                colliders = CacheAreaColliders(areaObject);
+            }
+
+            return colliders;
+        }
+
+        private Collider[] CacheAreaColliders(GameObject areaObject)
+        {
+            if (areaObject == null)
+            {
+                return System.Array.Empty<Collider>();
+            }
+
+            Collider[] colliders = areaObject.GetComponentsInChildren<Collider>();
+            m_AreaColliderCache[areaObject] = colliders;
+            return colliders;
         }
 
         private void StoreOriginalMaterials(GameObject obj)
@@ -230,6 +272,14 @@ namespace AAAGame.Card.UI
             }
 
             int pointCount = Mathf.Max(16, previewSegmentCount);
+            Vector3 center = worldPosition + Vector3.up * previewHeightOffset;
+            float clampedRadius = Mathf.Max(0.1f, radius);
+            if (CanReusePreviewRing(center, clampedRadius, isValid, pointCount))
+            {
+                m_PreviewRingRenderer.enabled = true;
+                return;
+            }
+
             m_PreviewRingRenderer.positionCount = pointCount + 1;
             m_PreviewRingRenderer.startWidth = previewLineWidth;
             m_PreviewRingRenderer.endWidth = previewLineWidth;
@@ -238,8 +288,6 @@ namespace AAAGame.Card.UI
             m_PreviewRingRenderer.startColor = previewColor;
             m_PreviewRingRenderer.endColor = previewColor;
 
-            Vector3 center = worldPosition + Vector3.up * previewHeightOffset;
-            float clampedRadius = Mathf.Max(0.1f, radius);
             for (int i = 0; i < pointCount; i++)
             {
                 float angle = Mathf.PI * 2f * i / pointCount;
@@ -249,6 +297,7 @@ namespace AAAGame.Card.UI
 
             m_PreviewRingRenderer.SetPosition(pointCount, m_PreviewRingRenderer.GetPosition(0));
             m_PreviewRingRenderer.enabled = true;
+            CachePreviewRingState(center, clampedRadius, isValid, pointCount);
         }
 
         private void HidePreviewRing()
@@ -257,6 +306,29 @@ namespace AAAGame.Card.UI
             {
                 m_PreviewRingRenderer.enabled = false;
             }
+
+            m_HasPreviewRingState = false;
+        }
+
+        private bool CanReusePreviewRing(Vector3 center, float radius, bool isValid, int pointCount)
+        {
+            return m_HasPreviewRingState
+                && m_PreviewRingRenderer.enabled
+                && m_LastPreviewRingValid == isValid
+                && m_LastPreviewRingSegmentCount == pointCount
+                && Mathf.Abs(m_LastPreviewRingRadius - radius) <= 0.01f
+                && Mathf.Abs(m_LastPreviewRingLineWidth - previewLineWidth) <= 0.001f
+                && (m_LastPreviewRingCenter - center).sqrMagnitude <= 0.0004f;
+        }
+
+        private void CachePreviewRingState(Vector3 center, float radius, bool isValid, int pointCount)
+        {
+            m_HasPreviewRingState = true;
+            m_LastPreviewRingCenter = center;
+            m_LastPreviewRingRadius = radius;
+            m_LastPreviewRingLineWidth = previewLineWidth;
+            m_LastPreviewRingSegmentCount = pointCount;
+            m_LastPreviewRingValid = isValid;
         }
 
         private void EnsurePreviewRingRenderer()
@@ -318,6 +390,12 @@ namespace AAAGame.Card.UI
 
             if (!TryGetPreviewPrefabAssetPath(cardModel, out string assetPath))
             {
+                if (CanReusePreviewSoldiers(cardModel, previewSpawnPositions, string.Empty, true))
+                {
+                    return;
+                }
+
+                CacheRenderedPreviewSoldiers(cardModel, previewSpawnPositions, string.Empty, true);
                 ShowFallbackPreviewSoldiers(previewSpawnPositions);
                 return;
             }
@@ -325,10 +403,22 @@ namespace AAAGame.Card.UI
             GameObject previewPrefab = GetOrLoadPreviewPrefab(assetPath);
             if (previewPrefab == null)
             {
+                if (CanReusePreviewSoldiers(cardModel, previewSpawnPositions, assetPath, true))
+                {
+                    return;
+                }
+
+                CacheRenderedPreviewSoldiers(cardModel, previewSpawnPositions, assetPath, true);
                 ShowFallbackPreviewSoldiers(previewSpawnPositions);
                 return;
             }
 
+            if (CanReusePreviewSoldiers(cardModel, previewSpawnPositions, assetPath, false))
+            {
+                return;
+            }
+
+            CacheRenderedPreviewSoldiers(cardModel, previewSpawnPositions, assetPath, false);
             EnsurePreviewSoldierInstances(previewSpawnPositions.Count, assetPath, previewPrefab);
             for (int i = 0; i < previewSpawnPositions.Count; i++)
             {
@@ -338,7 +428,11 @@ namespace AAAGame.Card.UI
                     continue;
                 }
 
-                instance.GameObject.SetActive(true);
+                if (!instance.GameObject.activeSelf)
+                {
+                    instance.GameObject.SetActive(true);
+                }
+
                 instance.GameObject.transform.position = previewSpawnPositions[i] + Vector3.up * previewUnitHeightOffset;
             }
 
@@ -346,8 +440,63 @@ namespace AAAGame.Card.UI
             {
                 if (m_PreviewSoldierInstances[i]?.GameObject != null)
                 {
-                    m_PreviewSoldierInstances[i].GameObject.SetActive(false);
+                    GameObject instanceObject = m_PreviewSoldierInstances[i].GameObject;
+                    if (instanceObject.activeSelf)
+                    {
+                        instanceObject.SetActive(false);
+                    }
                 }
+            }
+
+            m_PreviewSoldiersVisible = true;
+        }
+
+        private bool CanReusePreviewSoldiers(
+            CardModel cardModel,
+            IReadOnlyList<Vector3> previewSpawnPositions,
+            string assetPath,
+            bool usesFallback)
+        {
+            if (!m_PreviewSoldiersVisible
+                || !ReferenceEquals(m_LastRenderedPreviewCardModel, cardModel)
+                || m_LastRenderedPreviewUsedFallback != usesFallback
+                || !string.Equals(m_LastRenderedPreviewAssetPath, assetPath, System.StringComparison.Ordinal)
+                || previewSpawnPositions == null
+                || m_LastRenderedPreviewPositions.Count != previewSpawnPositions.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < previewSpawnPositions.Count; i++)
+            {
+                if ((m_LastRenderedPreviewPositions[i] - previewSpawnPositions[i]).sqrMagnitude > 0.0004f)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void CacheRenderedPreviewSoldiers(
+            CardModel cardModel,
+            IReadOnlyList<Vector3> previewSpawnPositions,
+            string assetPath,
+            bool usesFallback)
+        {
+            m_LastRenderedPreviewCardModel = cardModel;
+            m_LastRenderedPreviewAssetPath = assetPath;
+            m_LastRenderedPreviewUsedFallback = usesFallback;
+            m_LastRenderedPreviewPositions.Clear();
+
+            if (previewSpawnPositions == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < previewSpawnPositions.Count; i++)
+            {
+                m_LastRenderedPreviewPositions.Add(previewSpawnPositions[i]);
             }
         }
 
@@ -494,7 +643,11 @@ namespace AAAGame.Card.UI
                 }
 
                 PreviewSoldierInstance instance = m_PreviewSoldierInstances[i];
-                instance.GameObject.SetActive(true);
+                if (!instance.GameObject.activeSelf)
+                {
+                    instance.GameObject.SetActive(true);
+                }
+
                 instance.GameObject.transform.position = previewSpawnPositions[i] + Vector3.up * previewUnitHeightOffset;
             }
 
@@ -502,9 +655,15 @@ namespace AAAGame.Card.UI
             {
                 if (m_PreviewSoldierInstances[i]?.GameObject != null)
                 {
-                    m_PreviewSoldierInstances[i].GameObject.SetActive(false);
+                    GameObject instanceObject = m_PreviewSoldierInstances[i].GameObject;
+                    if (instanceObject.activeSelf)
+                    {
+                        instanceObject.SetActive(false);
+                    }
                 }
             }
+
+            m_PreviewSoldiersVisible = true;
         }
 
         private PreviewSoldierInstance CreateFallbackPreviewInstance()
@@ -568,14 +727,25 @@ namespace AAAGame.Card.UI
 
         private void HidePreviewSoldiers()
         {
+            if (!m_PreviewSoldiersVisible)
+            {
+                return;
+            }
+
             for (int i = 0; i < m_PreviewSoldierInstances.Count; i++)
             {
                 PreviewSoldierInstance instance = m_PreviewSoldierInstances[i];
-                if (instance?.GameObject != null)
+                if (instance?.GameObject != null && instance.GameObject.activeSelf)
                 {
                     instance.GameObject.SetActive(false);
                 }
             }
+
+            m_PreviewSoldiersVisible = false;
+            m_LastRenderedPreviewCardModel = null;
+            m_LastRenderedPreviewAssetPath = null;
+            m_LastRenderedPreviewUsedFallback = false;
+            m_LastRenderedPreviewPositions.Clear();
         }
 
         private bool TryGetPreviewPrefabAssetPath(CardModel cardModel, out string assetPath)
@@ -584,6 +754,12 @@ namespace AAAGame.Card.UI
             if (cardModel == null || cardModel.DataProvider == null)
             {
                 return false;
+            }
+
+            int soldierKey = (int)cardModel.DataProvider.SoldierIndex;
+            if (m_PreviewAssetPathCache.TryGetValue(soldierKey, out assetPath))
+            {
+                return !string.IsNullOrWhiteSpace(assetPath);
             }
 
             if (GF.DataTable == null || !GF.DataTable.HasDataTable<CharacterDataDetail>())
@@ -597,10 +773,12 @@ namespace AAAGame.Card.UI
 
             if (tableRow == null || string.IsNullOrWhiteSpace(tableRow.PrefabPath))
             {
+                m_PreviewAssetPathCache[soldierKey] = string.Empty;
                 return false;
             }
 
             assetPath = UtilityBuiltin.AssetsPath.GetEntityPath(tableRow.PrefabPath);
+            m_PreviewAssetPathCache[soldierKey] = assetPath;
             return !string.IsNullOrWhiteSpace(assetPath);
         }
 
@@ -748,7 +926,7 @@ namespace AAAGame.Card.UI
                 }
 
                 newMaterials[originalMats.Length] = overlayMaterial;
-                renderer.materials = newMaterials;
+                renderer.sharedMaterials = newMaterials;
             }
         }
 
@@ -760,7 +938,7 @@ namespace AAAGame.Card.UI
                 Renderer renderer = renderers[i];
                 if (m_OriginalMaterials.TryGetValue(renderer, out Material[] materials))
                 {
-                    renderer.materials = materials;
+                    renderer.sharedMaterials = materials;
                 }
             }
         }
@@ -771,7 +949,7 @@ namespace AAAGame.Card.UI
             {
                 if (kvp.Key != null)
                 {
-                    kvp.Key.materials = kvp.Value;
+                    kvp.Key.sharedMaterials = kvp.Value;
                 }
             }
 
