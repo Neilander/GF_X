@@ -88,6 +88,9 @@ public partial class BuildingEntity : MAEntity
         // 拿到 extra 属性引用（升级场景同 BuildingInstanceId 共享同一对象，extra 数据自然延续）
         _extraProps = GameEntry.GetComponent<GlobalBuffManager>()?.GetOrCreateExtraProps(BuildingInstanceId);
 
+        // 初始化生产建筑的动态产出机制
+        InitializeDynamicProductionMechanism();
+
         if (HasUpgrade)
         {
             EnsureInteractionHost();
@@ -783,6 +786,87 @@ public partial class BuildingEntity : MAEntity
             return 0;
 
         return occupied >= int.MaxValue ? int.MaxValue : (int)occupied;
+    }
+
+    /// <summary>
+    /// 初始化生产建筑的动态产出机制
+    /// </summary>
+    private void InitializeDynamicProductionMechanism()
+    {
+        if (buildingData == null || buildingData.Type != BuilType.Prod)
+            return;
+
+        Debug.Log($"[BuildingEntity] 初始化生产建筑动态产出机制: {buildingData.Identifier}");
+
+        // 根据建筑类型应用对应的动态产出机制
+        switch (buildingData.Arche)
+        {
+            case Archetype.Delivery:
+                if (buildingData.Identifier.Contains("ParcelLocker"))
+                {
+                    ApplyDynamicProductionBuff<TechBuilParcelLockerDynamicEffectSO>();
+                }
+                break;
+            case Archetype.Sightseeing:
+                if (buildingData.Identifier.Contains("SouvenirStand"))
+                {
+                    ApplyDynamicProductionBuff<TechBuilSouvenirStandDynamicEffectSO>();
+                }
+                break;
+            case Archetype.Butchery:
+                if (buildingData.Identifier.Contains("MeatStall"))
+                {
+                    ApplyDynamicProductionBuff<TechBuilMeatStallDynamicEffectSO>();
+                }
+                break;
+            case Archetype.Coding:
+                if (buildingData.Identifier.Contains("MiningRig"))
+                {
+                    ApplyDynamicProductionBuff<TechBuilMiningRigDynamicEffectSO>();
+                }
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 应用动态产出Buff
+    /// </summary>
+    private void ApplyDynamicProductionBuff<T>() where T : TechEffectSO, new()
+    {
+        try
+        {
+            var techEffect = new T();
+            var techId = $"dynamic_production_{buildingData.Identifier}";
+            var techData = new TechData(
+                identifier: techId,
+                skillID: "",
+                nameKey: $"DynamicProduction_{buildingData.Identifier}",
+                descKey: $"Dynamic production for {buildingData.Identifier}",
+                cost: 0,
+                uniqueValues: new Fix64[0],
+                scopeType: TechScopeType.SelfBuil,
+                unitScope: new string[0],
+                tagScope: new UnitTag[0],
+                archScope: new Archetype[0],
+                spritePath: "",
+                isStackable: true
+            );
+            var buffData = techEffect.CreateBuildingScopedBuff(techData, techId);
+            
+            if (buffData != null)
+            {
+                var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
+                if (globalBuffManager != null)
+                {
+                    globalBuffManager.RegisterBuildingBuff(BuildingInstanceId, OwnerFactionID, techId, techEffect, techData);
+                    Debug.Log($"[BuildingEntity] 成功应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"[BuildingEntity] 应用动态产出Buff失败: {buildingData.Identifier} -> {typeof(T).Name}: {ex.Message}");
+        }
     }
 
     public void SetArmyForceBase(int value)
