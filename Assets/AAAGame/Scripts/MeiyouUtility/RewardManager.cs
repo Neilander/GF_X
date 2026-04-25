@@ -1,4 +1,4 @@
-﻿using AAAGame.Card;
+using AAAGame.Card;
 using GameFramework;
 using GameFramework.Event;
 using UnityEngine;

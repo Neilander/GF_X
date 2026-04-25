@@ -694,7 +694,7 @@ public partial class BuildingEntity : MAEntity
 
     /// <summary>
     /// 当前建筑的日产出值（仅对 Prod 类型建筑有意义）。
-    /// = BuildingData.Production (base) + BuildingExtraProps.Production (tech extra)
+    /// = BuildingData.Production (base) + BuildingExtraProps.Production (tech extra) + BuildingExtraProps.DynamicProduction (动态产出)
     /// </summary>
     public int GetProduction()
     {
@@ -702,8 +702,59 @@ public partial class BuildingEntity : MAEntity
             return 0;
 
         Fix64 baseValue = (Fix64)buildingData.Production;
-        Fix64 extra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
-        return Mathf.Max(0, (int)(baseValue + extra));
+        Fix64 techExtra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
+        Fix64 dynamicExtra = _extraProps != null ? _extraProps.DynamicProduction : Fix64.Zero;
+        Fix64 cap = _extraProps != null ? _extraProps.ProductionCap : (Fix64)int.MaxValue;
+        
+        // 应用上限限制
+        Fix64 total = baseValue + techExtra + dynamicExtra;
+        Fix64 cappedTotal = total > cap ? cap : total;
+        
+        return Mathf.Max(0, (int)cappedTotal);
+    }
+
+    /// <summary>
+    /// 设置动态产出值
+    /// </summary>
+    public void SetDynamicProduction(int value)
+    {
+        if (_extraProps != null)
+        {
+            _extraProps.DynamicProduction = (Fix64)value;
+        }
+    }
+
+    /// <summary>
+    /// 设置产出上限
+    /// </summary>
+    public void SetProductionCap(int value)
+    {
+        if (_extraProps != null)
+        {
+            _extraProps.ProductionCap = (Fix64)value;
+        }
+    }
+
+    /// <summary>
+    /// 设置产出计算类型
+    /// </summary>
+    public void SetProductionType(ProductionType productionType)
+    {
+        if (_extraProps != null)
+        {
+            _extraProps.ProductionType = productionType;
+        }
+    }
+
+    /// <summary>
+    /// 设置条件计数
+    /// </summary>
+    public void SetConditionCount(int count)
+    {
+        if (_extraProps != null)
+        {
+            _extraProps.ConditionCount = count;
+        }
     }
 
     public int GetArmyForce()
