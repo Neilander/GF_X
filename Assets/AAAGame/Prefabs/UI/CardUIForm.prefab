@@ -632,6 +632,12 @@ MonoBehaviour:
   areaMaterialOverlay: {fileID: 0}
   cardDeckTransform: {fileID: 7738495531804054913}
   cardMoveToHandDuration: 0.5
+  targetingReticleSprite: {fileID: 0}
+  targetingReticleSize: {x: 72, y: 72}
+  targetingCurveColor: {r: 0.6, g: 1, b: 0.75, a: 0.92}
+  targetingCurveThickness: 14
+  targetingCurveHeight: 120
+  targetingCurveSegments: 24
   toggleUIKey: 9
 --- !u!114 &-3563082574767264693
 MonoBehaviour:

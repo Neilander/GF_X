@@ -1,10 +1,10 @@
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
-using System.Collections.Generic;
 
 /// <summary>
-/// 簇生成系统
-/// 按范围批量生成单位，保证单位在NavMesh上且不重叠
+/// 批量单位生成系统。
+/// 负责生成、预检和预览点位计算，并保证三者使用同一套规则。
 /// </summary>
 public static class ClusterSpawnSystem
 {
@@ -14,86 +14,64 @@ public static class ClusterSpawnSystem
     private const float FixedEdgeClearance = 0.2f;
 
     /// <summary>
-    /// 校验生成条件
+    /// 旧版校验接口，保留兼容。
     /// </summary>
-    /// <param name="center">中心位置</param>
-    /// <param name="count">生成数量</param>
-    /// <param name="radius">生成半径</param>
-    /// <param name="minDistance">最小间距</param>
-    /// <param name="spawnPositions">生成位置列表</param>
-    /// <returns>是否可以生成</returns>
     public static bool ValidateSpawn(Vector3 center, int count, float radius, float minDistance, out List<Vector3> spawnPositions)
     {
-        spawnPositions = new List<Vector3>();
+        spawnPositions = new List<Vector3>(count);
 
-        if (count <= 0 || radius <= 0 || minDistance <= 0)
+        if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
             return false;
         }
 
-        // 在圆形区域内生成候选点（增加到10倍数量）
         int maxAttempts = count * 10;
-        int navMeshFailCount = 0;
-        int overlapFailCount = 0;
-
         for (int i = 0; i < maxAttempts; i++)
         {
             Vector3 candidate = GenerateDeterministicPointInCircle(center, radius, i, maxAttempts);
-
-            // 投影到NavMesh（增加搜索半径到3米）
-            if (NavMesh.SamplePosition(candidate, out NavMeshHit hit, 3f, NavMesh.AllAreas))
+            if (!NavMesh.SamplePosition(candidate, out NavMeshHit hit, 3f, NavMesh.AllAreas))
             {
-                Vector3 spawnPos = hit.position;
+                continue;
+            }
 
-                // 检查是否与已有生成位置重叠
-                bool isOverlap = false;
-                foreach (Vector3 existingPos in spawnPositions)
+            Vector3 spawnPos = hit.position;
+            bool isOverlap = false;
+            for (int j = 0; j < spawnPositions.Count; j++)
+            {
+                if ((spawnPos - spawnPositions[j]).sqrMagnitude < minDistance * minDistance)
                 {
-                    if (Vector3.Distance(spawnPos, existingPos) < minDistance)
-                    {
-                        isOverlap = true;
-                        overlapFailCount++;
-                        break;
-                    }
-                }
-
-                // 简化版：只检查与已有生成位置的重叠，不检查物理碰撞
-                if (!isOverlap)
-                {
-                    spawnPositions.Add(spawnPos);
-
-                    // 达到需求数量
-                    if (spawnPositions.Count >= count)
-                    {
-                        return true;
-                    }
+                    isOverlap = true;
+                    break;
                 }
             }
-            else
+
+            if (isOverlap)
             {
-                navMeshFailCount++;
+                continue;
+            }
+
+            spawnPositions.Add(spawnPos);
+            if (spawnPositions.Count >= count)
+            {
+                return true;
             }
         }
 
-
-
-        // 没有找到足够的位置
         return spawnPositions.Count >= count;
     }
 
     /// <summary>
-    /// 生成簇单位（简化版）
+    /// 实际生成整组单位。
     /// </summary>
-    /// <param name="center">中心位置</param>
-    /// <param name="count">生成数量</param>
-    /// <param name="radius">生成半径</param>
-    /// <param name="minDistance">最小间距</param>
-    /// <param name="unitIndex">单位索引</param>
-    /// <param name="side">阵营</param>
-    /// <param name="brainType">AI类型</param>
-    /// <returns>是否生成成功</returns>
-    public static bool SpawnCluster(Vector3 center, int count, float radius, float minDistance,
-        UnitType unitIndex, SideType side, BrainType brainType, string sourceBuildingInstanceId = null)
+    public static bool SpawnCluster(
+        Vector3 center,
+        int count,
+        float radius,
+        float minDistance,
+        UnitType unitIndex,
+        SideType side,
+        BrainType brainType,
+        string sourceBuildingInstanceId = null)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -101,13 +79,67 @@ public static class ClusterSpawnSystem
         }
 
         Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
-        if (!TryFindLegalNavMeshPoint(center, FixedEdgeClearance, out Vector3 legalCenter))
+
+        List<Vector3> spawnPositions = new List<Vector3>(count);
+        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions))
         {
-            Debug.LogWarning($"ClusterSpawnSystem: spawn failed, center not legal on NavMesh. center={center}");
+            Debug.LogWarning(
+                $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
             return false;
         }
 
+        for (int i = 0; i < spawnPositions.Count; i++)
+        {
+            Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
+            SoldierFactory.ShowSoldier(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 获取与真实生成一致的预览点位。
+    /// </summary>
+    public static bool TryGetPreviewSpawnPositions(
+        Vector3 center,
+        int count,
+        float radius,
+        float minDistance,
+        List<Vector3> previewPositions)
+    {
+        if (previewPositions == null)
+        {
+            return false;
+        }
+
+        previewPositions.Clear();
+        if (count <= 0 || radius <= 0f || minDistance <= 0f)
+        {
+            return false;
+        }
+
+        if (!TryFindLegalNavMeshPoint(center, FixedEdgeClearance, out Vector3 legalCenter))
+        {
+            return false;
+        }
+
+        CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions);
+        return previewPositions.Count >= count;
+    }
+
+    /// <summary>
+    /// 预检当前位置是否可以生成整组单位。
+    /// </summary>
+    public static bool CanSpawnCluster(Vector3 center, int count, float radius, float minDistance)
+    {
         List<Vector3> spawnPositions = new List<Vector3>(count);
+        return TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions);
+    }
+
+    private static void CollectLegalSpawnPositions(Vector3 legalCenter, int count, float radius, List<Vector3> spawnPositions)
+    {
+        spawnPositions.Clear();
+
         int maxAttempts = Mathf.Max(count * 120, 240);
         for (int i = 0; i < maxAttempts && spawnPositions.Count < count; i++)
         {
@@ -120,7 +152,7 @@ public static class ClusterSpawnSystem
             bool isOverlap = false;
             for (int j = 0; j < spawnPositions.Count; j++)
             {
-                if (Vector3.Distance(spawnPos, spawnPositions[j]) < FixedSpawnDistance)
+                if ((spawnPos - spawnPositions[j]).sqrMagnitude < FixedSpawnDistance * FixedSpawnDistance)
                 {
                     isOverlap = true;
                     break;
@@ -132,18 +164,6 @@ public static class ClusterSpawnSystem
                 spawnPositions.Add(spawnPos);
             }
         }
-
-        if (spawnPositions.Count < count)
-        {
-            Debug.LogWarning($"ClusterSpawnSystem: spawn failed, legal points不足. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
-            return false;
-        }
-
-        foreach (Vector3 pos in spawnPositions)
-        {
-            SoldierFactory.ShowSoldier(unitIndex, pos + Vector3.up * 0.05f, side, brainType, sourceBuildingInstanceId);
-        }
-        return true;
     }
 
     private static bool TryFindLegalNavMeshPoint(Vector3 candidate, float edgeClearance, out Vector3 legalPoint)
@@ -157,17 +177,14 @@ public static class ClusterSpawnSystem
 
         Vector2 navXZ = new Vector2(navHit.position.x, navHit.position.z);
         Vector2 candidateXZ = new Vector2(candidate.x, candidate.z);
-        if (Vector2.Distance(navXZ, candidateXZ) > MaxHorizontalSnapDistance)
+        if ((navXZ - candidateXZ).sqrMagnitude > MaxHorizontalSnapDistance * MaxHorizontalSnapDistance)
         {
             return false;
         }
 
-        if (NavMesh.FindClosestEdge(navHit.position, out NavMeshHit edgeHit, NavMesh.AllAreas))
+        if (NavMesh.FindClosestEdge(navHit.position, out NavMeshHit edgeHit, NavMesh.AllAreas) && edgeHit.distance < edgeClearance)
         {
-            if (edgeHit.distance < edgeClearance)
-            {
-                return false;
-            }
+            return false;
         }
 
         legalPoint = navHit.position;
@@ -175,7 +192,7 @@ public static class ClusterSpawnSystem
     }
 
     /// <summary>
-    /// 在圆形区域内生成确定性采样点（无随机）。
+    /// 在圆形区域内生成确定性采样点。
     /// </summary>
     private static Vector3 GenerateDeterministicPointInCircle(Vector3 center, float radius, int index, int total)
     {

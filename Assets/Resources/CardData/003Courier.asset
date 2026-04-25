@@ -20,6 +20,6 @@ MonoBehaviour:
   soldierCount: 5
   soldierName: "\u5FEB\u9012\u5458"
   soldierIndex: 5
-  spawnRadius: 1.5
-  cardColor: {r: 1, g: 1, b: 1, a: 1}
+  spawnRadius: 3.93
+  cardColor: {r: 1, g: 0, b: 0, a: 1}
   dropWeight: 10

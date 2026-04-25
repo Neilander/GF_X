@@ -1,8 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using AAAGame.MiniMap.FOG3;
 using UnityEngine;
-using Random = UnityEngine.Random;
-
 
 namespace AAAGame.Card
 {
@@ -17,11 +16,14 @@ namespace AAAGame.Card
     }
 
     /// <summary>
-    /// 卡牌放置控制器
-    /// 负责卡牌放置逻辑、区域检测、士兵生成
+    /// 卡牌放置控制器。
+    /// 负责放置判定、预览以及最终士兵生成。
     /// </summary>
     public class CardPlacementController
     {
+        private const float PreviewReuseInterval = 0.08f;
+        private const int OverlapBufferSize = 32;
+
         private Camera m_MainCamera;
         private LayerMask m_GroundLayer;
         private LayerMask m_ForbiddenLayer;
@@ -29,14 +31,20 @@ namespace AAAGame.Card
         private Vector3 m_CurrentPlacementPosition;
         private bool m_IsValidPlacement;
         private bool m_IsPlacing;
+        private CardModel m_CurrentCardModel;
 
-        // 区域检测配置
+        private readonly List<Vector3> m_CachedPreviewSpawnPositions = new List<Vector3>();
+        private Vector3 m_CachedPreviewCenterPosition;
+        private bool m_CachedPreviewResult;
+        private float m_CachedPreviewTime;
+        private CardModel m_CachedPreviewCard;
+        private bool m_HasPreviewCache;
+
         private float m_DetectionRadius = 0.5f;
         private Func<Vector3, float, bool> m_AdditionalForbiddenChecker;
+        private readonly Collider[] m_ForbiddenOverlapBuffer = new Collider[OverlapBufferSize];
+        private readonly Collider[] m_GroundOverlapBuffer = new Collider[OverlapBufferSize];
 
-        public CardPlacementInvalidReason LastInvalidReason { get; private set; }
-
-        // 事件回调
         public event Action<CardModel> OnPlacementStarted;
         public event Action<Vector3, bool> OnPositionUpdated;
         public event Action<bool> OnValidityChanged;
@@ -52,15 +60,23 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 设置检测半径
+        /// 设置检测半径。
         /// </summary>
         public void SetDetectionRadius(float radius)
         {
-            m_DetectionRadius = radius;
+            m_DetectionRadius = Mathf.Max(0.1f, radius);
         }
 
         /// <summary>
-        /// 设置附加禁止区域检测（用于动态禁区）。
+        /// 当前放置检测半径。
+        /// </summary>
+        public float GetDetectionRadius()
+        {
+            return m_DetectionRadius;
+        }
+
+        /// <summary>
+        /// 设置附加禁止区域检测。
         /// </summary>
         public void SetAdditionalForbiddenChecker(Func<Vector3, float, bool> checker)
         {
@@ -68,7 +84,7 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 开始放置卡牌
+        /// 开始放置卡牌。
         /// </summary>
         public void StartPlacement(CardModel cardModel)
         {
@@ -79,41 +95,60 @@ namespace AAAGame.Card
             }
 
             m_IsPlacing = true;
-            LastInvalidReason = CardPlacementInvalidReason.None;
+            m_CurrentCardModel = cardModel;
+            ResetPreviewCache();
             Debug.Log("[Card] Card placement started.");
 
-            // 触发开始放置事件
             OnPlacementStarted?.Invoke(cardModel);
         }
 
         /// <summary>
-        /// 更新放置位置（每帧调用）
+        /// 获取指定屏幕点的放置预览结果。
+        /// </summary>
+        public bool TryGetPlacementPreview(Vector2 screenPosition, out Vector3 groundPosition, out bool isValid)
+        {
+            return TryGetPlacementPreview(screenPosition, out groundPosition, out isValid, null);
+        }
+
+        /// <summary>
+        /// 获取指定屏幕点的放置预览结果，并返回与真实生成一致的预览士兵点位。
+        /// </summary>
+        public bool TryGetPlacementPreview(
+            Vector2 screenPosition,
+            out Vector3 groundPosition,
+            out bool isValid,
+            List<Vector3> previewSpawnPositions)
+        {
+            previewSpawnPositions?.Clear();
+            isValid = false;
+
+            if (!TryGetGroundPositionAtScreenPoint(screenPosition, out groundPosition))
+            {
+                return false;
+            }
+
+            isValid = EvaluatePlacementPreview(groundPosition, previewSpawnPositions);
+            return true;
+        }
+
+        /// <summary>
+        /// 更新放置位置。
         /// </summary>
         public void UpdatePlacement()
         {
-            if (!m_IsPlacing) return;
-
-            // 射线检测地面
-            if (TryGetGroundPosition(out Vector3 groundPosition))
+            if (!m_IsPlacing)
             {
-                m_CurrentPlacementPosition = groundPosition;
-                //Debug.Log($"[Card] Placement position updated: {groundPosition}");
-                // 检测区域合法性
-                bool wasValid = m_IsValidPlacement;
-                CardPlacementInvalidReason invalidReason = GetPlacementInvalidReason(groundPosition);
-                m_IsValidPlacement = invalidReason == CardPlacementInvalidReason.None;
-
-                // 触发位置更新事件
-                OnPositionUpdated?.Invoke(groundPosition, m_IsValidPlacement);
-
-                // 如果合法性改变，触发事件
-                if (wasValid != m_IsValidPlacement)
-                {
-                    OnValidityChanged?.Invoke(m_IsValidPlacement);
-                }
+                return;
             }
-            else
+
+            bool hasPreviewListeners = OnPositionUpdated != null || OnValidityChanged != null;
+            if (!TryGetGroundPosition(out Vector3 groundPosition))
             {
+                if (!hasPreviewListeners)
+                {
+                    return;
+                }
+
                 bool wasValid = m_IsValidPlacement;
                 m_IsValidPlacement = false;
                 LastInvalidReason = CardPlacementInvalidReason.NotOnGround;
@@ -121,11 +156,28 @@ namespace AAAGame.Card
                 {
                     OnValidityChanged?.Invoke(false);
                 }
+
+                return;
+            }
+
+            m_CurrentPlacementPosition = groundPosition;
+            if (!hasPreviewListeners)
+            {
+                return;
+            }
+
+            bool wasPlacementValid = m_IsValidPlacement;
+            m_IsValidPlacement = EvaluatePlacementPreview(groundPosition, null);
+
+            OnPositionUpdated?.Invoke(groundPosition, m_IsValidPlacement);
+            if (wasPlacementValid != m_IsValidPlacement)
+            {
+                OnValidityChanged?.Invoke(m_IsValidPlacement);
             }
         }
 
         /// <summary>
-        /// 确认放置卡牌
+        /// 确认放置卡牌。
         /// </summary>
         public bool ConfirmPlacement(CardModel cardModel, Vector2? releaseScreenPosition = null)
         {
@@ -152,10 +204,15 @@ namespace AAAGame.Card
                 return false;
             }
 
+            if (!CanSpawnCardAtPosition(cardModel, releaseGroundPosition))
+            {
+                Debug.Log($"[Card] Cannot confirm placement: 预检测生成失败. pos={releaseGroundPosition}");
+                return false;
+            }
+
             m_CurrentPlacementPosition = releaseGroundPosition;
             m_IsValidPlacement = true;
 
-            // 生成士兵
             int soldierCount = SpawnSoldiers(cardModel, m_CurrentPlacementPosition);
             if (soldierCount <= 0)
             {
@@ -164,9 +221,6 @@ namespace AAAGame.Card
                 return false;
             }
 
-            LastInvalidReason = CardPlacementInvalidReason.None;
-
-            // 触发放置成功事件
             OnPlacementConfirmed?.Invoke(cardModel, m_CurrentPlacementPosition);
 
             EndPlacement();
@@ -174,30 +228,141 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 取消放置
+        /// 取消放置。
         /// </summary>
         public void CancelPlacement()
         {
-            if (!m_IsPlacing) return;
+            if (!m_IsPlacing)
+            {
+                return;
+            }
 
-            // 触发取消事件
             OnPlacementCancelled?.Invoke();
-
             EndPlacement();
         }
 
         /// <summary>
-        /// 结束放置
+        /// 获取当前放置位置。
         /// </summary>
+        public Vector3 GetCurrentPlacementPosition()
+        {
+            return m_CurrentPlacementPosition;
+        }
+
+        /// <summary>
+        /// 是否正在放置。
+        /// </summary>
+        public bool IsPlacing()
+        {
+            return m_IsPlacing;
+        }
+
+        /// <summary>
+        /// 当前位置是否合法。
+        /// </summary>
+        public bool IsValidPlacement()
+        {
+            return m_IsValidPlacement;
+        }
+
+        /// <summary>
+        /// 清理。
+        /// </summary>
+        public void Shutdown()
+        {
+            m_IsPlacing = false;
+            m_IsValidPlacement = false;
+            m_CurrentCardModel = null;
+            ResetPreviewCache();
+        }
+
         private void EndPlacement()
         {
             m_IsPlacing = false;
             m_IsValidPlacement = false;
+            m_CurrentCardModel = null;
+            ResetPreviewCache();
         }
 
-        /// <summary>
-        /// 尝试获取地面位置
-        /// </summary>
+        private bool EvaluatePlacementPreview(Vector3 position, List<Vector3> previewSpawnPositions)
+        {
+            if (!CheckPlacementValidity(position))
+            {
+                previewSpawnPositions?.Clear();
+                return false;
+            }
+
+            return TryGetCurrentCardPreviewSpawnPositionsCached(position, previewSpawnPositions);
+        }
+
+        private bool TryGetCurrentCardPreviewSpawnPositionsCached(Vector3 centerPosition, List<Vector3> previewSpawnPositions)
+        {
+            previewSpawnPositions?.Clear();
+            if (m_CurrentCardModel == null)
+            {
+                return false;
+            }
+
+            ICardDataProvider dataProvider = m_CurrentCardModel.DataProvider;
+            float reuseDistance = dataProvider != null
+                ? Mathf.Max(0.25f, dataProvider.SpawnRadius * 0.2f)
+                : 0.25f;
+
+            if (m_HasPreviewCache
+                && ReferenceEquals(m_CachedPreviewCard, m_CurrentCardModel)
+                && (centerPosition - m_CachedPreviewCenterPosition).sqrMagnitude <= reuseDistance * reuseDistance
+                && Time.unscaledTime - m_CachedPreviewTime <= PreviewReuseInterval)
+            {
+                CopyCachedPreviewSpawnPositions(previewSpawnPositions);
+                return m_CachedPreviewResult;
+            }
+
+            bool result = TryGetCardPreviewSpawnPositions(m_CurrentCardModel, centerPosition, m_CachedPreviewSpawnPositions);
+            m_CachedPreviewCenterPosition = centerPosition;
+            m_CachedPreviewResult = result;
+            m_CachedPreviewTime = Time.unscaledTime;
+            m_CachedPreviewCard = m_CurrentCardModel;
+            m_HasPreviewCache = true;
+
+            CopyCachedPreviewSpawnPositions(previewSpawnPositions);
+            return result;
+        }
+
+        private void CopyCachedPreviewSpawnPositions(List<Vector3> previewSpawnPositions)
+        {
+            if (previewSpawnPositions == null)
+            {
+                return;
+            }
+
+            previewSpawnPositions.Clear();
+            previewSpawnPositions.AddRange(m_CachedPreviewSpawnPositions);
+        }
+
+        private bool TryGetCardPreviewSpawnPositions(CardModel cardModel, Vector3 centerPosition, List<Vector3> previewSpawnPositions)
+        {
+            if (cardModel == null || previewSpawnPositions == null)
+            {
+                return false;
+            }
+
+            previewSpawnPositions.Clear();
+
+            ICardDataProvider dataProvider = cardModel.DataProvider;
+            if (dataProvider == null)
+            {
+                return false;
+            }
+
+            int soldierCount = cardModel.GetTroopCount();
+            if (soldierCount <= 0)
+            {
+                return false;
+            }
+
+            return ClusterSpawnSystem.TryGetPreviewSpawnPositions(centerPosition, soldierCount, dataProvider.SpawnRadius, 2f, previewSpawnPositions);
+        }
+
         private bool TryGetGroundPosition(out Vector3 groundPosition)
         {
             return TryGetGroundPositionAtScreenPoint(Input.mousePosition, out groundPosition);
@@ -207,7 +372,7 @@ namespace AAAGame.Card
         {
             groundPosition = Vector3.zero;
 
-            if (Camera.main != null)
+            if (m_MainCamera == null || !m_MainCamera.isActiveAndEnabled)
             {
                 m_MainCamera = Camera.main;
             }
@@ -218,7 +383,6 @@ namespace AAAGame.Card
             }
 
             Ray ray = m_MainCamera.ScreenPointToRay(screenPosition);
-
             if (Physics.Raycast(ray, out RaycastHit hit, 1000f, m_GroundLayer))
             {
                 groundPosition = hit.point;
@@ -228,9 +392,6 @@ namespace AAAGame.Card
             return false;
         }
 
-        /// <summary>
-        /// 检查放置位置合法性
-        /// </summary>
         private bool CheckPlacementValidity(Vector3 position)
         {
             return GetPlacementInvalidReason(position) == CardPlacementInvalidReason.None;
@@ -243,11 +404,12 @@ namespace AAAGame.Card
                 return CardPlacementInvalidReason.NotInVisibleArea;
             }
 
-            // 检测是否在禁止区域
-            Collider[] forbiddenColliders = Physics.OverlapSphere(
-                position, m_DetectionRadius, m_ForbiddenLayer);
-
-            if (forbiddenColliders.Length > 0)
+            int forbiddenCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_ForbiddenOverlapBuffer,
+                m_ForbiddenLayer);
+            if (forbiddenCount > 0)
             {
                 return CardPlacementInvalidReason.StaticForbiddenArea;
             }
@@ -258,13 +420,44 @@ namespace AAAGame.Card
                 return CardPlacementInvalidReason.DynamicForbiddenArea;
             }
 
-            // 检测是否在地面上
-            Collider[] groundColliders = Physics.OverlapSphere(
-                position, m_DetectionRadius, m_GroundLayer);
+            int groundCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_GroundOverlapBuffer,
+                m_GroundLayer);
+            return groundCount > 0;
+        }
 
-            return groundColliders.Length > 0
-                ? CardPlacementInvalidReason.None
-                : CardPlacementInvalidReason.NotOnGround;
+        private bool CanSpawnCardAtPosition(CardModel cardModel, Vector3 centerPosition)
+        {
+            if (cardModel == null)
+            {
+                return false;
+            }
+
+            ICardDataProvider dataProvider = cardModel.DataProvider;
+            if (dataProvider == null)
+            {
+                return false;
+            }
+
+            int soldierCount = cardModel.GetTroopCount();
+            if (soldierCount <= 0)
+            {
+                return false;
+            }
+
+            return ClusterSpawnSystem.CanSpawnCluster(centerPosition, soldierCount, dataProvider.SpawnRadius, 2f);
+        }
+
+        private void ResetPreviewCache()
+        {
+            m_HasPreviewCache = false;
+            m_CachedPreviewCard = null;
+            m_CachedPreviewCenterPosition = Vector3.zero;
+            m_CachedPreviewResult = false;
+            m_CachedPreviewTime = 0f;
+            m_CachedPreviewSpawnPositions.Clear();
         }
 
         private bool IsPositionInVisibleArea(Vector3 position)
@@ -287,11 +480,14 @@ namespace AAAGame.Card
                 return;
             }
 
-            if (invalidReason == CardPlacementInvalidReason.StaticForbiddenArea)
+            int forbiddenCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_ForbiddenOverlapBuffer,
+                m_ForbiddenLayer);
+            if (forbiddenCount > 0)
             {
-                Collider[] forbiddenColliders = Physics.OverlapSphere(
-                    position, m_DetectionRadius, m_ForbiddenLayer);
-                Debug.Log($"[Card] Cannot confirm placement: 命中静态禁区. pos={position}, forbiddenHits={forbiddenColliders.Length}");
+                Debug.Log($"[Card] Cannot confirm placement: 命中静态禁区. pos={position}, forbiddenHits={forbiddenCount}");
                 return;
             }
 
@@ -301,7 +497,12 @@ namespace AAAGame.Card
                 return;
             }
 
-            if (invalidReason == CardPlacementInvalidReason.NotOnGround)
+            int groundCount = Physics.OverlapSphereNonAlloc(
+                position,
+                m_DetectionRadius,
+                m_GroundOverlapBuffer,
+                m_GroundLayer);
+            if (groundCount == 0)
             {
                 Debug.Log($"[Card] Cannot confirm placement: Ground 检测失败. pos={position}, radius={m_DetectionRadius:F2}");
             }
@@ -324,9 +525,6 @@ namespace AAAGame.Card
             return mapData.GetCellState(gridX, gridY);
         }
 
-        /// <summary>
-        /// 生成士兵
-        /// </summary>
         private int SpawnSoldiers(CardModel cardModel, Vector3 centerPosition)
         {
             ICardDataProvider dataProvider = cardModel.DataProvider;
@@ -348,68 +546,29 @@ namespace AAAGame.Card
 
             string sourceBuildingInstanceId = cardModel.GetSourceBuildingInstanceId();
             if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
+            {
                 sourceBuildingInstanceId = null;
+            }
 
-            bool spawnSuccess = ClusterSpawnSystem.SpawnCluster(centerPosition, soldierCount, spawnRadius, 2f, soldierIndex, SideType.PlayerSide, BrainType.SoldierAI, sourceBuildingInstanceId);
+            bool spawnSuccess = ClusterSpawnSystem.SpawnCluster(
+                centerPosition,
+                soldierCount,
+                spawnRadius,
+                2f,
+                soldierIndex,
+                SideType.PlayerSide,
+                BrainType.SoldierAI,
+                sourceBuildingInstanceId);
+
             if (!spawnSuccess)
             {
-                Debug.LogWarning($"[Card] SpawnCluster failed. center={centerPosition}, count={soldierCount}, radius={spawnRadius:F2}, minDistance=2.00, unit={soldierIndex}");
+                Debug.LogWarning(
+                    $"[Card] SpawnCluster failed. center={centerPosition}, count={soldierCount}, radius={spawnRadius:F2}, minDistance=2.00, unit={soldierIndex}");
                 return 0;
             }
-            // 在圆形区域内随机生成士兵
-            /*
-            for (int i = 0; i < soldierCount; i++)
-            {
-                Vector2 num=Random.insideUnitCircle * spawnRadius;
 
-                Vector3 randomOffset = new Vector3(num.x,num.y,0);
-                Vector3 spawnPosition = centerPosition + new Vector3(randomOffset.x, 0, randomOffset.y);
-                
-                // 直接实例化
-                //GameObject soldier = UnityEngine.Object.Instantiate(soldierPrefab, spawnPosition, Quaternion.identity);
-                //soldier.name = $"{dataProvider.SoldierName}_{i}";
-                
-                //Debug.Log($"[Card] Spawned soldier: {soldier.name} at {spawnPosition}");
-                Debug.LogError("这里不该用到");
-            }*/
-
-            // 触发士兵生成事件
             OnSoldiersSpawned?.Invoke(cardModel, centerPosition, soldierCount);
-
             return soldierCount;
-        }
-
-        /// <summary>
-        /// 获取当前放置位置
-        /// </summary>
-        public Vector3 GetCurrentPlacementPosition()
-        {
-            return m_CurrentPlacementPosition;
-        }
-
-        /// <summary>
-        /// 是否正在放置
-        /// </summary>
-        public bool IsPlacing()
-        {
-            return m_IsPlacing;
-        }
-
-        /// <summary>
-        /// 当前位置是否合法
-        /// </summary>
-        public bool IsValidPlacement()
-        {
-            return m_IsValidPlacement;
-        }
-
-        /// <summary>
-        /// 清理
-        /// </summary>
-        public void Shutdown()
-        {
-            m_IsPlacing = false;
-            m_IsValidPlacement = false;
         }
     }
 }
