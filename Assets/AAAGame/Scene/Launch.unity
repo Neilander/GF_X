@@ -2566,6 +2566,83 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1100769541
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1100769543}
+  - component: {fileID: 1100769542}
+  m_Layer: 0
+  m_Name: LocalizationTextManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1100769542
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1100769541}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d7c2103a3cbd44499a09b61edd4c647, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_AutoCollectUnitKeywords: 1
+  m_AutoCollectBuildingKeywords: 1
+  m_NoReplaceStartMarker: '[['
+  m_NoReplaceEndMarker: ']]'
+  m_PositiveNumberColor: {r: 0, g: 1, b: 0, a: 1}
+  m_NegativeNumberColor: {r: 1, g: 0, b: 0, a: 1}
+  m_IndustryKeywords:
+    Color: {r: 0, g: 1, b: 0.8853049, a: 1}
+    IconSpriteName: 
+    Keywords:
+    - "\u7F16\u7A0B"
+    - "\u7269\u6D41"
+    - "\u6E38\u5BA2"
+    - "\u5C60\u5BB0"
+    - "\u6D88\u9632"
+  m_UnitKeywords:
+    Color: {r: 0.5652341, g: 1, b: 0.1415093, a: 1}
+    IconSpriteName: 
+    Keywords: []
+  m_BuildingKeywords:
+    Color: {r: 1, g: 0.75752217, b: 0.41823888, a: 1}
+    IconSpriteName: 
+    Keywords: []
+  m_SpecialKeywords:
+  - Keyword: "\u6A59\u9AD3"
+    Color: {r: 1, g: 0.9792696, b: 0.13521993, a: 1}
+    IconSpriteName: Coin
+  - Keyword: "\u5175\u529B"
+    Color: {r: 1, g: 0.2556664, b: 0.07861614, a: 1}
+    IconSpriteName: Force
+  - Keyword: "\u9891\u6BB5"
+    Color: {r: 0.42452818, g: 1, b: 0.7534725, a: 1}
+    IconSpriteName: Supply
+--- !u!4 &1100769543
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1100769541}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1202308265
 GameObject:
   m_ObjectHideFlags: 0
@@ -4996,6 +5073,7 @@ SceneRoots:
   - {fileID: 1221507868}
   - {fileID: 1925905247}
   - {fileID: 1490215288}
+  - {fileID: 1100769543}
   - {fileID: 1857117722}
   - {fileID: 674136981}
   - {fileID: 1328631077}

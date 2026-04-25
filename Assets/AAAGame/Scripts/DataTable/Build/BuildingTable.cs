@@ -29,7 +29,7 @@ public class BuildingTable : DataRowBase
     }
 
         /// <summary>
-        /// 代码内标识符
+        /// 代内标识符
         /// </summary>
         public string Identifier
         {

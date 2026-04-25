@@ -47,7 +47,7 @@ public static class DescriptionValueFormatter
             return string.Empty;
 
         string localizedText = GF.Localization.GetString(descKey);
-        return Fill(localizedText, uniqueValues);
+        return LocalizationTextManager.ProcessText(Fill(localizedText, uniqueValues));
     }
 
     public static string Fill(string template, Fix64[] uniqueValues)

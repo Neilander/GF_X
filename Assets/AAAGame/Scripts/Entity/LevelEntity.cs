@@ -3,6 +3,7 @@ using GameFramework.Event;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
 using Unity.AI.Navigation;
 using UnityGameFramework.Runtime;
 using GiantGrey.TileWorldCreator;
@@ -96,6 +97,14 @@ public class LevelEntity : EntityBase
                 DoRebakeNavMesh();
             }
         }
+
+#if UNITY_EDITOR
+        if (Input.GetKeyDown(KeyCode.T))
+        {
+            Debug.Log("[LevelEntity] 手动烘焙 NavMesh (T)");
+            DoRebakeNavMesh();
+        }
+#endif
     }
 
     /// <summary>
@@ -113,12 +122,49 @@ public class LevelEntity : EntityBase
     private void DoRebakeNavMesh()
     {
         if (_navMeshSurfaces == null)
+        {
+            Debug.LogWarning("[LevelEntity] _navMeshSurfaces == null，烘焙跳过");
             return;
+        }
 
+        Debug.Log($"[LevelEntity] NavMeshSurface 数量={_navMeshSurfaces.Length}");
         for (int i = 0; i < _navMeshSurfaces.Length; i++)
         {
-            _navMeshSurfaces[i].BuildNavMesh();
+            var s = _navMeshSurfaces[i];
+            Debug.Log($"  [{i}] on='{s.gameObject.name}' collect={s.collectObjects} layers={s.layerMask.value} useGeom={s.useGeometry} agentType={s.agentTypeID} size={s.size} center={s.center}");
+            s.BuildNavMesh();
         }
+
+        EnablePlayerNavMeshBypass();
+    }
+
+    /// <summary>
+    /// 烘焙完后让玩家可以"无视 NavMesh 自由移动"，直到自己走回 NavMesh 上自动恢复。
+    /// 用于建造时玩家被新建筑围在 NavMesh 之外的情况。
+    /// </summary>
+    private static void EnablePlayerNavMeshBypass()
+    {
+        var player = EntityRegistry.Player;
+        if (player == null)
+        {
+            Debug.Log("[LevelEntity] NavMesh bypass 触发: 无 Player, 跳过");
+            return;
+        }
+        if (!(player is MAEntity mae) || mae == null)
+        {
+            Debug.Log("[LevelEntity] NavMesh bypass 触发: Player 不是 MAEntity, 跳过");
+            return;
+        }
+
+        var executor = mae.GetComponent<MoveExecutor>();
+        if (executor == null)
+        {
+            Debug.LogWarning("[LevelEntity] NavMesh bypass 触发: 玩家无 MoveExecutor, 跳过");
+            return;
+        }
+
+        executor.EnableBypassUntilOnNavMesh();
+        Debug.Log($"[LevelEntity] NavMesh bypass: 启用玩家自由移动 (无视 NavMesh) playerPos={mae.transform.position}");
     }
 
     private void SubscribeRuntimeLayerRules()

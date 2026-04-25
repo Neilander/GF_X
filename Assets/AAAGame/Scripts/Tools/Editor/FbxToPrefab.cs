@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEditor;
 
 public class FbxToPrefab : EditorWindow
@@ -15,9 +16,12 @@ public class FbxToPrefab : EditorWindow
     private string _parentObjectName = string.Empty;
     private bool _replaceSameName = true;
     private PrefabType _prefabType = PrefabType.Building;
+    private int _boxGrid = 6; // Box 近似粒度（等于 AutoBoxColliderFromMesh 的 XZResolution）
 
     private GameObject _preview;
     private Editor _previewEditor;
+    private List<Bounds> _boxPreview = new List<Bounds>();
+    private Bounds _boxPreviewAABB; // boxes 的 XZ 外包，用于俯视图映射
 
     [MenuItem("Tools/FbxToPrefab")]
     static void Open() => GetWindow<FbxToPrefab>("FbxToPrefab");
@@ -39,11 +43,22 @@ public class FbxToPrefab : EditorWindow
         if (EditorGUI.EndChangeCheck())
             RebuildPreview();
 
+        EditorGUI.BeginChangeCheck();
         _prefabType = (PrefabType)EditorGUILayout.EnumPopup("Type", _prefabType);
-        _parentObjectName = EditorGUILayout.TextField("Parent Name", _parentObjectName);
+        if (EditorGUI.EndChangeCheck())
+            RebuildBoxPreview();
+        _parentObjectName = EditorGUILayout.TextField(new GUIContent("Prefab Name", "可选。不填则用 FBX 文件名。"), _parentObjectName);
         _replaceSameName = EditorGUILayout.Toggle("Replace Same Name", _replaceSameName);
 
-        // 预览
+        if (_prefabType == PrefabType.Building)
+        {
+            EditorGUI.BeginChangeCheck();
+            _boxGrid = EditorGUILayout.IntSlider("Box Grid (粒度)", _boxGrid, 2, 16);
+            if (EditorGUI.EndChangeCheck())
+                RebuildBoxPreview();
+        }
+
+        // 3D 预览
         if (_preview != null)
         {
             GUILayout.Label("Preview", EditorStyles.boldLabel);
@@ -53,10 +68,69 @@ public class FbxToPrefab : EditorWindow
                 GUILayoutUtility.GetRect(256, 256), GUIStyle.none);
         }
 
+        // Box 近似俯视图
+        if (_prefabType == PrefabType.Building && _preview != null && _boxPreview.Count > 0)
+        {
+            GUILayout.Label($"Box Approximation (Top View) — {_boxPreview.Count} boxes", EditorStyles.boldLabel);
+            DrawBoxPreviewTopView(GUILayoutUtility.GetRect(256, 256));
+        }
+
         EditorGUI.BeginDisabledGroup(_sourceFbx == null);
         if (GUILayout.Button("Generate Prefab", GUILayout.Height(30)))
             Generate();
         EditorGUI.EndDisabledGroup();
+    }
+
+    private void DrawBoxPreviewTopView(Rect rect)
+    {
+        EditorGUI.DrawRect(rect, new Color(0.12f, 0.12f, 0.14f));
+
+        float aabbW = Mathf.Max(_boxPreviewAABB.size.x, 1e-5f);
+        float aabbH = Mathf.Max(_boxPreviewAABB.size.z, 1e-5f);
+        float margin = 6f;
+        float innerW = rect.width - margin * 2f;
+        float innerH = rect.height - margin * 2f;
+        float scale = Mathf.Min(innerW / aabbW, innerH / aabbH);
+        float drawnW = aabbW * scale;
+        float drawnH = aabbH * scale;
+        float offsetX = rect.x + margin + (innerW - drawnW) * 0.5f;
+        float offsetY = rect.y + margin + (innerH - drawnH) * 0.5f;
+
+        Vector2 ToScreen(float x, float z)
+        {
+            float u = (x - _boxPreviewAABB.min.x) * scale;
+            // Z 翻转，让俯视图上方是 +Z
+            float v = drawnH - (z - _boxPreviewAABB.min.z) * scale;
+            return new Vector2(offsetX + u, offsetY + v);
+        }
+
+        // 外框
+        var outlineMin = ToScreen(_boxPreviewAABB.min.x, _boxPreviewAABB.max.z);
+        EditorGUI.DrawRect(new Rect(outlineMin.x, outlineMin.y, drawnW, drawnH), new Color(0f, 0f, 0f, 0f));
+        Handles.BeginGUI();
+        Handles.color = new Color(0.5f, 0.5f, 0.5f);
+        DrawRectOutline(new Rect(outlineMin.x, outlineMin.y, drawnW, drawnH));
+
+        // 每个 box
+        Handles.color = new Color(0.2f, 1f, 0.3f);
+        foreach (var b in _boxPreview)
+        {
+            var topLeft = ToScreen(b.center.x - b.size.x * 0.5f, b.center.z + b.size.z * 0.5f);
+            float w = b.size.x * scale;
+            float h = b.size.z * scale;
+            var r = new Rect(topLeft.x, topLeft.y, w, h);
+            EditorGUI.DrawRect(r, new Color(0.2f, 1f, 0.3f, 0.25f));
+            DrawRectOutline(r);
+        }
+        Handles.EndGUI();
+    }
+
+    private static void DrawRectOutline(Rect r)
+    {
+        Handles.DrawLine(new Vector3(r.xMin, r.yMin), new Vector3(r.xMax, r.yMin));
+        Handles.DrawLine(new Vector3(r.xMax, r.yMin), new Vector3(r.xMax, r.yMax));
+        Handles.DrawLine(new Vector3(r.xMax, r.yMax), new Vector3(r.xMin, r.yMax));
+        Handles.DrawLine(new Vector3(r.xMin, r.yMax), new Vector3(r.xMin, r.yMin));
     }
 
     void RebuildPreview()
@@ -78,6 +152,45 @@ public class FbxToPrefab : EditorWindow
         {
             Debug.LogError(previewAlignError);
         }
+
+        RebuildBoxPreview();
+    }
+
+    void RebuildBoxPreview()
+    {
+        _boxPreview.Clear();
+        if (_sourceFbx == null || _prefabType != PrefabType.Building)
+        {
+            Repaint();
+            return;
+        }
+
+        // 用和 Generate 完全一样的 root+child 结构来算 box，保证预览和实际生成一致
+        var tempRoot = new GameObject("_tempBoxCalc");
+        tempRoot.hideFlags = HideFlags.HideAndDontSave;
+        try
+        {
+            var child = (GameObject)PrefabUtility.InstantiatePrefab(_sourceFbx, tempRoot.transform);
+            if (child == null) child = Instantiate(_sourceFbx, tempRoot.transform);
+            child.transform.localRotation = Quaternion.Euler(_rotation);
+            child.transform.localPosition = Vector3.zero;
+
+            if (!TryApplyDiameter(child.transform, _diameter, out _)) return;
+            if (!TryAlignToBottomAndCenter(tempRoot.transform, child.transform, out _)) return;
+
+            _boxPreview = AutoBoxColliderFromMesh.ComputeApproximation(tempRoot, _boxGrid, AutoBoxColliderFromMesh.DefaultYLayers);
+            if (_boxPreview.Count > 0)
+            {
+                _boxPreviewAABB = _boxPreview[0];
+                for (int i = 1; i < _boxPreview.Count; i++)
+                    _boxPreviewAABB.Encapsulate(_boxPreview[i]);
+            }
+        }
+        finally
+        {
+            DestroyImmediate(tempRoot);
+        }
+        Repaint();
     }
 
     void Generate()
@@ -124,18 +237,15 @@ public class FbxToPrefab : EditorWindow
 
         if (_prefabType == PrefabType.Building)
         {
-            if (!TryGetColliderMesh(child.transform, out var colliderMesh, out _))
+            // 用体素化多 BoxCollider 代替 Convex MeshCollider（Convex MeshCollider 参与 NavMesh 烘焙在部分平台/版本下无效）
+            var boxes = AutoBoxColliderFromMesh.ComputeApproximation(root, _boxGrid, AutoBoxColliderFromMesh.DefaultYLayers);
+            if (boxes.Count == 0)
             {
-                Debug.LogError("建筑类型要求生成 MeshCollider，但未找到可用 Mesh。请确认 FBX 下存在 MeshFilter 或 SkinnedMeshRenderer。");
+                Debug.LogError("建筑类型要求生成 BoxCollider，但未找到可用 Mesh 或近似结果为空。");
                 DestroyImmediate(root);
                 return;
             }
-
-            var meshCollider = child.GetComponent<MeshCollider>();
-            if (meshCollider == null)
-                meshCollider = child.AddComponent<MeshCollider>();
-            meshCollider.sharedMesh = colliderMesh;
-            meshCollider.convex = true;
+            AutoBoxColliderFromMesh.Apply(root, boxes, recordUndo: false);
         }
 
         // 保存 prefab

@@ -25,8 +25,15 @@ namespace AAAGame.Card
 
         [Header("动画设置")]
         [SerializeField] private float dragScale = 1.2f;
-        [SerializeField] private float hoverScale = 1.1f;
         [SerializeField] private float animationDuration = 0.2f;
+
+        [Header("悬停效果")]
+        [SerializeField] [InspectorName("悬停放大倍率")] private float hoverScale = 1.15f;
+        [SerializeField] [InspectorName("悬停自动上移")] private bool hoverAutoLift = true;
+        [SerializeField] [InspectorName("悬停上移额外偏移")] private float hoverExtraLift = 8f;
+        [SerializeField] [InspectorName("悬停上移补偿倍率")] private float hoverLiftMultiplier = 1f;
+        [SerializeField] [InspectorName("悬停边缘泛光材质")] private Material hoverGlowMaterial;
+        [SerializeField] [InspectorName("悬停泛光目标")] private Graphic hoverGlowTarget;
 
         private CardModel m_CardModel;
         private CardUIForm m_ParentForm;
@@ -35,17 +42,31 @@ namespace AAAGame.Card
         private Vector3 m_OriginalPosition;
         private int m_OriginalSiblingIndex;
         private Canvas m_Canvas;
-        
+        private Canvas m_SortingCanvas;
+        private GraphicRaycaster m_SortingRaycaster;
+        private GameObject m_LayoutPlaceholder;
+
         private bool m_IsDragging;
         private bool m_CanPlay;
         private bool m_IsSelected;
+        private bool m_IsTargetingMode;
+        private bool m_IsPointerInside;
 
         private Sprite m_DefaultCardBackSprite;
         private Color m_DefaultCardBackColor;
         private bool m_DefaultCardBackCached;
-        
+        private Material m_DefaultHoverGlowMaterial;
+        private bool m_DefaultHoverGlowCached;
+
         private Tween m_ScaleTween;
         private Tween m_MoveTween;
+        private Tween m_HoverLiftTween;
+        private bool m_HoverLiftActive;
+        private Vector2 m_HoverLiftBaseAnchoredPosition;
+
+        private const int NormalSortingOrder = 0;
+        private const int HoverSortingOrder = 20;
+        private const int DragSortingOrder = 40;
 
         protected override void OnInit()
         {
@@ -61,6 +82,22 @@ namespace AAAGame.Card
             }
             
             m_Canvas = GetComponentInParent<Canvas>();
+            m_SortingCanvas = GetComponent<Canvas>();
+            if (m_SortingCanvas == null)
+            {
+                m_SortingCanvas = gameObject.AddComponent<Canvas>();
+            }
+
+            m_SortingRaycaster = GetComponent<GraphicRaycaster>();
+            if (m_SortingRaycaster == null)
+            {
+                m_SortingRaycaster = gameObject.AddComponent<GraphicRaycaster>();
+            }
+
+            m_SortingCanvas.overrideSorting = false;
+            m_SortingCanvas.sortingOrder = NormalSortingOrder;
+            m_SortingCanvas.enabled = true;
+            m_SortingRaycaster.enabled = true;
         }
 
         /// <summary>
@@ -68,10 +105,41 @@ namespace AAAGame.Card
         /// </summary>
         public void Initialize(CardModel cardModel, CardUIForm parentForm)
         {
+            ResetRuntimeState();
             m_CardModel = cardModel;
             m_ParentForm = parentForm;
             
             RefreshView();
+        }
+
+        private void ResetRuntimeState()
+        {
+            m_ScaleTween?.Kill();
+            m_MoveTween?.Kill();
+            m_HoverLiftTween?.Kill();
+            ClearLayoutPlaceholder();
+
+            m_IsDragging = false;
+            m_CanPlay = false;
+            m_IsSelected = false;
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
+
+            if (m_RectTransform != null)
+            {
+                ResetHoverLiftImmediate();
+                m_RectTransform.localScale = Vector3.one;
+            }
+
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.blocksRaycasts = true;
+                canvasGroup.interactable = true;
+            }
+
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
         }
 
         /// <summary>
@@ -131,6 +199,7 @@ namespace AAAGame.Card
             }
 
             CacheDefaultCardBackState();
+            ResolveHoverGlowTarget();
         }
 
         private void CacheDefaultCardBackState()
@@ -164,6 +233,102 @@ namespace AAAGame.Card
                 cardBackImage.color = data.CardColor;
         }
 
+        private Graphic ResolveHoverGlowTarget()
+        {
+            if (hoverGlowTarget == null && cardBackImage != null)
+            {
+                hoverGlowTarget = cardBackImage;
+            }
+
+            if (hoverGlowTarget == null)
+            {
+                hoverGlowTarget = GetComponent<Graphic>();
+            }
+
+            CacheDefaultHoverGlowMaterial();
+            return hoverGlowTarget;
+        }
+
+        private void CacheDefaultHoverGlowMaterial()
+        {
+            if (m_DefaultHoverGlowCached)
+            {
+                return;
+            }
+
+            Graphic target = hoverGlowTarget != null ? hoverGlowTarget : cardBackImage;
+            if (target == null)
+            {
+                return;
+            }
+
+            m_DefaultHoverGlowMaterial = target.material;
+            m_DefaultHoverGlowCached = true;
+        }
+
+        private void RefreshHoverVisualState()
+        {
+            bool suppressHover = m_ParentForm != null && m_ParentForm.HasActiveHandCardDrag(this);
+            bool shouldHighlight = !suppressHover && m_IsPointerInside && !m_IsDragging && !m_IsSelected && m_CanPlay;
+            ApplyHoverGlow(shouldHighlight);
+            UpdateRenderPriority();
+
+            if (!m_IsDragging && !m_IsSelected)
+            {
+                float targetScale = shouldHighlight ? hoverScale : 1f;
+                ScaleTo(targetScale);
+                ApplyHoverLift(shouldHighlight, targetScale);
+            }
+        }
+
+        private void UpdateRenderPriority()
+        {
+            if (m_SortingCanvas == null)
+            {
+                return;
+            }
+
+            bool suppressHover = m_ParentForm != null && m_ParentForm.HasActiveHandCardDrag(this);
+            bool shouldPromote = m_IsDragging || m_IsTargetingMode || m_IsSelected || (!suppressHover && m_IsPointerInside && m_CanPlay);
+            if (!shouldPromote)
+            {
+                m_SortingCanvas.overrideSorting = false;
+                m_SortingCanvas.sortingOrder = NormalSortingOrder;
+                return;
+            }
+
+            m_SortingCanvas.overrideSorting = true;
+            m_SortingCanvas.sortingOrder = m_IsDragging || m_IsTargetingMode
+                ? DragSortingOrder
+                : HoverSortingOrder;
+        }
+
+        private void ApplyHoverGlow(bool enabled)
+        {
+            Graphic target = ResolveHoverGlowTarget();
+            if (target == null)
+            {
+                return;
+            }
+
+            if (enabled && hoverGlowMaterial != null)
+            {
+                if (target.material != hoverGlowMaterial)
+                {
+                    target.material = hoverGlowMaterial;
+                    target.SetMaterialDirty();
+                }
+
+                return;
+            }
+
+            if (target.material != m_DefaultHoverGlowMaterial)
+            {
+                target.material = m_DefaultHoverGlowMaterial;
+                target.SetMaterialDirty();
+            }
+        }
+
         /// <summary>
         /// 更新可打出状态
         /// </summary>
@@ -178,6 +343,8 @@ namespace AAAGame.Card
             {
                 canvasGroup.alpha = m_CanPlay ? 1f : 0.5f;
             }
+
+            RefreshHoverVisualState();
         }
 
         public void RefreshView()
@@ -186,13 +353,28 @@ namespace AAAGame.Card
             UpdatePlayability();
         }
 
+        public void RefreshInteractionVisualState()
+        {
+            RefreshHoverVisualState();
+        }
+
         /// <summary>
         /// 设置选中状态
         /// </summary>
         public void SetSelected(bool selected)
         {
             m_IsSelected = selected;
-            ScaleTo(m_IsSelected ? 1.2f : 1f);
+
+            if (m_IsSelected)
+            {
+                ApplyHoverGlow(false);
+                ApplyHoverLift(false, 1f);
+                UpdateRenderPriority();
+                ScaleTo(1.2f);
+                return;
+            }
+
+            RefreshHoverVisualState();
         }
 
         /// <summary>
@@ -223,15 +405,20 @@ namespace AAAGame.Card
             }
 
             m_IsDragging = true;
+            m_IsPointerInside = false;
+            ResetHoverLiftImmediate();
             m_OriginalPosition = m_RectTransform.position;
             m_OriginalParent = transform.parent;
             m_OriginalSiblingIndex = transform.GetSiblingIndex();
+            CreateLayoutPlaceholder();
 
             // 移到Canvas顶层
             transform.SetParent(m_Canvas.transform);
             transform.SetAsLastSibling();
 
             canvasGroup.blocksRaycasts = false;
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
             ScaleTo(dragScale);
 
             // 通知父界面
@@ -242,8 +429,11 @@ namespace AAAGame.Card
         {
             if (!m_IsDragging) return;
 
-            // 跟随鼠标
-            m_RectTransform.position = eventData.position;
+            // 只有在普通拖拽态下才让卡牌本体跟随鼠标
+            if (!m_IsTargetingMode)
+            {
+                m_RectTransform.position = eventData.position;
+            }
 
             // 通知父界面
             m_ParentForm?.OnCardDragging(this, eventData.position);
@@ -255,6 +445,8 @@ namespace AAAGame.Card
 
             m_IsDragging = false;
             canvasGroup.blocksRaycasts = true;
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
 
             // 通知父界面
             bool success = m_ParentForm?.OnCardEndDrag(this, eventData.position) ?? false;
@@ -266,9 +458,7 @@ namespace AAAGame.Card
             }
             else
             {
-                // 成功打出或丢弃，不需要返回原位
-                // 对象会被父界面回收到对象池
-                Log.Info($"[HandCardItem] Card action successful, will be recycled");
+                // 已由父界面处理：可能是打出、丢弃，也可能是拖回手牌区取消。
             }
         }
 
@@ -278,18 +468,14 @@ namespace AAAGame.Card
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (!m_IsDragging && !m_IsSelected && m_CanPlay)
-            {
-                ScaleTo(hoverScale);
-            }
+            m_IsPointerInside = true;
+            RefreshHoverVisualState();
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            if (!m_IsDragging && !m_IsSelected)
-            {
-                ScaleTo(1f);
-            }
+            m_IsPointerInside = false;
+            RefreshHoverVisualState();
         }
 
         #endregion
@@ -299,14 +485,70 @@ namespace AAAGame.Card
         /// </summary>
         private void ReturnToOriginalPosition()
         {
-            transform.SetParent(m_OriginalParent);
-            transform.SetSiblingIndex(m_OriginalSiblingIndex);
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
+            ApplyHoverLift(false, 1f);
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
+
+            if (m_LayoutPlaceholder != null)
+            {
+                m_MoveTween?.Kill();
+                m_MoveTween = m_RectTransform.DOMove(GetHandSlotWorldPosition(), 0.3f)
+                    .SetEase(Ease.OutBack)
+                    .OnComplete(RestoreToHandLayoutImmediately);
+
+                ScaleTo(1f);
+                return;
+            }
+
+            if (m_OriginalParent != null)
+            {
+                transform.SetParent(m_OriginalParent, true);
+                transform.SetSiblingIndex(m_OriginalSiblingIndex);
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
 
             m_MoveTween?.Kill();
             m_MoveTween = m_RectTransform.DOMove(m_OriginalPosition, 0.3f)
                 .SetEase(Ease.OutBack);
             
             ScaleTo(1f);
+        }
+
+        public void RestoreToHandLayoutImmediately()
+        {
+            m_IsDragging = false;
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
+
+            m_MoveTween?.Kill();
+            m_ScaleTween?.Kill();
+            ResetHoverLiftImmediate();
+
+            if (canvasGroup != null)
+            {
+                canvasGroup.blocksRaycasts = true;
+                canvasGroup.interactable = true;
+            }
+
+            ApplyHoverGlow(false);
+
+            if (m_OriginalParent != null)
+            {
+                transform.SetParent(m_OriginalParent, false);
+                transform.SetSiblingIndex(GetRestoreSiblingIndex());
+            }
+
+            ClearLayoutPlaceholder();
+
+            transform.localScale = Vector3.one;
+            UpdateRenderPriority();
+
+            if (m_OriginalParent != null)
+            {
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
         }
 
         /// <summary>
@@ -319,12 +561,102 @@ namespace AAAGame.Card
                 .SetEase(Ease.OutBack);
         }
 
+        private void ApplyHoverLift(bool enabled, float scale)
+        {
+            if (m_RectTransform == null)
+            {
+                return;
+            }
+
+            if (!hoverAutoLift || scale <= 1f)
+            {
+                enabled = false;
+            }
+
+            if (enabled)
+            {
+                if (!m_HoverLiftActive)
+                {
+                    m_HoverLiftBaseAnchoredPosition = m_RectTransform.anchoredPosition;
+                    m_HoverLiftActive = true;
+                }
+
+                Vector2 targetPosition = m_HoverLiftBaseAnchoredPosition + Vector2.up * CalculateHoverLift(scale);
+                MoveHoverLiftTo(targetPosition, Ease.OutBack);
+                return;
+            }
+
+            if (!m_HoverLiftActive)
+            {
+                return;
+            }
+
+            Vector2 basePosition = m_HoverLiftBaseAnchoredPosition;
+            m_HoverLiftTween?.Kill();
+            m_HoverLiftTween = m_RectTransform.DOAnchorPos(basePosition, animationDuration)
+                .SetEase(Ease.OutCubic)
+                .OnComplete(() => m_HoverLiftActive = false);
+        }
+
+        private float CalculateHoverLift(float scale)
+        {
+            float extraHeight = m_RectTransform.rect.height * Mathf.Max(0f, scale - 1f);
+            float lift = extraHeight * 0.5f + Mathf.Max(0f, hoverExtraLift);
+            return Mathf.Max(0f, lift * Mathf.Max(0f, hoverLiftMultiplier));
+        }
+
+        private void MoveHoverLiftTo(Vector2 targetPosition, Ease ease)
+        {
+            m_HoverLiftTween?.Kill();
+            m_HoverLiftTween = m_RectTransform.DOAnchorPos(targetPosition, animationDuration)
+                .SetEase(ease);
+        }
+
+        private Vector3 PrepareHoverLiftedWorldTarget(float scale, Vector3 baseWorldTarget)
+        {
+            if (m_RectTransform == null || !hoverAutoLift || scale <= 1f)
+            {
+                m_HoverLiftActive = false;
+                return baseWorldTarget;
+            }
+
+            m_HoverLiftTween?.Kill();
+
+            Vector2 baseAnchoredPosition = m_RectTransform.anchoredPosition;
+            Vector3 baseWorldPosition = m_RectTransform.position;
+            Vector2 liftedAnchoredPosition = baseAnchoredPosition + Vector2.up * CalculateHoverLift(scale);
+
+            m_RectTransform.anchoredPosition = liftedAnchoredPosition;
+            Vector3 liftedWorldPosition = m_RectTransform.position;
+            m_RectTransform.anchoredPosition = baseAnchoredPosition;
+
+            m_HoverLiftBaseAnchoredPosition = baseAnchoredPosition;
+            m_HoverLiftActive = true;
+
+            return baseWorldTarget + (liftedWorldPosition - baseWorldPosition);
+        }
+
+        private void ResetHoverLiftImmediate()
+        {
+            m_HoverLiftTween?.Kill();
+
+            if (m_RectTransform == null || !m_HoverLiftActive)
+            {
+                m_HoverLiftActive = false;
+                return;
+            }
+
+            m_RectTransform.anchoredPosition = m_HoverLiftBaseAnchoredPosition;
+            m_HoverLiftActive = false;
+        }
+
         /// <summary>
         /// 从屏幕位置移动到手牌区
         /// </summary>
         public void MoveToHandFromScreenPosition(Vector2 startScreenPosition, float duration = 0.5f)
         {
             canvasGroup.blocksRaycasts = false;
+            RefreshOwningLayout();
 
             Vector3 targetPosition = m_RectTransform.position;
             m_RectTransform.position = startScreenPosition;
@@ -335,7 +667,195 @@ namespace AAAGame.Card
                 .OnComplete(() =>
                 {
                     canvasGroup.blocksRaycasts = true;
+                    RefreshOwningLayout();
                 });
+        }
+
+        private void RefreshOwningLayout()
+        {
+            Canvas.ForceUpdateCanvases();
+
+            Transform current = transform.parent;
+            while (current != null)
+            {
+                RectTransform rectTransform = current as RectTransform;
+                if (rectTransform != null)
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(rectTransform);
+
+                current = current.parent;
+            }
+
+            Canvas.ForceUpdateCanvases();
+        }
+
+        private void RefreshLayoutHierarchy(Transform root)
+        {
+            Canvas.ForceUpdateCanvases();
+
+            Transform current = root;
+            while (current != null)
+            {
+                RectTransform rectTransform = current as RectTransform;
+                if (rectTransform != null)
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(rectTransform);
+
+                current = current.parent;
+            }
+
+            Canvas.ForceUpdateCanvases();
+        }
+
+        private void CreateLayoutPlaceholder()
+        {
+            ClearLayoutPlaceholder();
+
+            if (m_OriginalParent == null || m_RectTransform == null)
+            {
+                return;
+            }
+
+            GameObject placeholder = new GameObject($"{name}_LayoutPlaceholder", typeof(RectTransform), typeof(LayoutElement));
+            placeholder.hideFlags = HideFlags.DontSave;
+            placeholder.transform.SetParent(m_OriginalParent, false);
+            placeholder.transform.SetSiblingIndex(m_OriginalSiblingIndex);
+
+            RectTransform placeholderRect = placeholder.GetComponent<RectTransform>();
+            placeholderRect.anchorMin = m_RectTransform.anchorMin;
+            placeholderRect.anchorMax = m_RectTransform.anchorMax;
+            placeholderRect.pivot = m_RectTransform.pivot;
+            placeholderRect.localScale = Vector3.one;
+
+            Vector2 cardSize = m_RectTransform.rect.size;
+            if (cardSize.x <= 0f || cardSize.y <= 0f)
+            {
+                cardSize = m_RectTransform.sizeDelta;
+            }
+
+            cardSize.x = Mathf.Max(1f, cardSize.x);
+            cardSize.y = Mathf.Max(1f, cardSize.y);
+            placeholderRect.sizeDelta = cardSize;
+
+            LayoutElement layoutElement = placeholder.GetComponent<LayoutElement>();
+            layoutElement.minWidth = cardSize.x;
+            layoutElement.minHeight = cardSize.y;
+            layoutElement.preferredWidth = cardSize.x;
+            layoutElement.preferredHeight = cardSize.y;
+            layoutElement.flexibleWidth = 0f;
+            layoutElement.flexibleHeight = 0f;
+
+            m_LayoutPlaceholder = placeholder;
+            RefreshLayoutHierarchy(m_OriginalParent);
+        }
+
+        private void ClearLayoutPlaceholder()
+        {
+            if (m_LayoutPlaceholder == null)
+            {
+                return;
+            }
+
+            LayoutElement layoutElement = m_LayoutPlaceholder.GetComponent<LayoutElement>();
+            if (layoutElement != null)
+            {
+                layoutElement.ignoreLayout = true;
+            }
+
+            m_LayoutPlaceholder.SetActive(false);
+            Destroy(m_LayoutPlaceholder);
+            m_LayoutPlaceholder = null;
+        }
+
+        private int GetRestoreSiblingIndex()
+        {
+            if (m_LayoutPlaceholder != null && m_OriginalParent != null && m_LayoutPlaceholder.transform.parent == m_OriginalParent)
+            {
+                return m_LayoutPlaceholder.transform.GetSiblingIndex();
+            }
+
+            return m_OriginalSiblingIndex;
+        }
+
+        private Vector3 GetHandSlotWorldPosition()
+        {
+            if (m_LayoutPlaceholder != null)
+            {
+                RectTransform placeholderRect = m_LayoutPlaceholder.transform as RectTransform;
+                if (placeholderRect != null)
+                {
+                    return placeholderRect.position;
+                }
+            }
+
+            return m_OriginalPosition;
+        }
+
+        public void EnterTargetingMode()
+        {
+            if (!m_IsDragging || m_IsTargetingMode)
+                return;
+
+            m_IsTargetingMode = true;
+            ResetHoverLiftImmediate();
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
+
+            if (m_LayoutPlaceholder != null)
+            {
+                if (m_Canvas != null && transform.parent != m_Canvas.transform)
+                {
+                    transform.SetParent(m_Canvas.transform, true);
+                }
+
+                transform.SetAsLastSibling();
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
+            else if (m_OriginalParent != null)
+            {
+                transform.SetParent(m_OriginalParent, true);
+                transform.SetSiblingIndex(m_OriginalSiblingIndex);
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
+
+            m_MoveTween?.Kill();
+            Vector3 targetPosition = PrepareHoverLiftedWorldTarget(hoverScale, GetHandSlotWorldPosition());
+            m_MoveTween = m_RectTransform.DOMove(targetPosition, animationDuration)
+                .SetEase(Ease.OutCubic);
+
+            ScaleTo(hoverScale);
+        }
+
+        public void ExitTargetingMode(Vector2 screenPosition)
+        {
+            if (!m_IsDragging || !m_IsTargetingMode)
+                return;
+
+            m_IsTargetingMode = false;
+            ResetHoverLiftImmediate();
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
+
+            if (m_Canvas != null)
+            {
+                transform.SetParent(m_Canvas.transform, true);
+                transform.SetAsLastSibling();
+            }
+
+            if (m_OriginalParent != null)
+            {
+                RefreshLayoutHierarchy(m_OriginalParent);
+            }
+
+            m_MoveTween?.Kill();
+            m_RectTransform.position = screenPosition;
+            ScaleTo(dragScale);
+        }
+
+        public Vector2 GetScreenAnchorPosition(Camera uiCamera)
+        {
+            if (m_RectTransform == null)
+                return Vector2.zero;
+
+            return RectTransformUtility.WorldToScreenPoint(uiCamera, m_RectTransform.position);
         }
 
         /// <summary>
@@ -345,7 +865,12 @@ namespace AAAGame.Card
         {
             // 立即停止拖拽状态
             m_IsDragging = false;
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
+            ResetHoverLiftImmediate();
             canvasGroup.blocksRaycasts = false; // 禁用交互，防止再次拖拽
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
             
             // 恢复父级（避免卡在 Canvas 顶层）
             if (m_OriginalParent != null)
@@ -374,7 +899,12 @@ namespace AAAGame.Card
         {
             // 立即停止拖拽状态
             m_IsDragging = false;
+            m_IsTargetingMode = false;
+            m_IsPointerInside = false;
+            ResetHoverLiftImmediate();
             canvasGroup.blocksRaycasts = false; // 禁用交互
+            ApplyHoverGlow(false);
+            UpdateRenderPriority();
             
             // 恢复父级（避免卡在 Canvas 顶层）
             if (m_OriginalParent != null)
@@ -396,10 +926,22 @@ namespace AAAGame.Card
             Log.Info($"[HandCardItem] ✅ Card play animation started: {m_CardModel?.GetCardName()}");
         }
 
-        private void OnDestroy()
+        public void PrepareForRecycle()
         {
             m_ScaleTween?.Kill();
             m_MoveTween?.Kill();
+            m_HoverLiftTween?.Kill();
+            ClearLayoutPlaceholder();
+            ApplyHoverGlow(false);
+        }
+
+        private void OnDestroy()
+        {
+            ApplyHoverGlow(false);
+            m_ScaleTween?.Kill();
+            m_MoveTween?.Kill();
+            m_HoverLiftTween?.Kill();
+            ClearLayoutPlaceholder();
         }
     }
 }

@@ -91,7 +91,7 @@ public static class EntityExtension
 
             var textMesh = entity.GetComponent<TextMeshPro>();
             textMesh.fontSize = fontSize;
-            textMesh.text = text;
+            textMesh.text = LocalizationTextManager.ProcessText(text);
             var txtCol = textMesh.color;
             txtCol.a = 1;
             textMesh.color = txtCol;
@@ -142,7 +142,7 @@ public static class EntityExtension
                 }
 
                 // 设置TextMeshPro属性
-                textMesh.text = content;
+                textMesh.text = LocalizationTextManager.ProcessText(content);
                 textMesh.fontSize = fontSize;
                 textMesh.alignment = TextAlignmentOptions.Center;
                 textMesh.color = ResolveDamageTextColor(textType);

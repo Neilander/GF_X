@@ -160,7 +160,7 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
         foreach (var item in m_ItemPools)
         {
             item.ReleaseAllUnused();
-            
+
             item.UnspawnAll();
         }
     }
@@ -264,11 +264,11 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
         {
             if (t.TryGetComponent<TMPro.TextMeshProUGUI>(out var textMeshCom))
             {
-                textMeshCom.text = GF.Localization.GetString(t.Key);
+                textMeshCom.text = LocalizationTextManager.ProcessText(GF.Localization.GetString(t.Key));
             }
             else if (t.TryGetComponent<Text>(out var textCom))
             {
-                textCom.text = GF.Localization.GetString(t.Key);
+                textCom.text = LocalizationTextManager.ProcessText(GF.Localization.GetString(t.Key));
             }
         }
     }

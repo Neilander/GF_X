@@ -12,6 +12,8 @@ namespace AAAGame.Card
     /// </summary>
     public class CardSystemController
     {
+        private const string DiscardResourceConversionRateConfigKey = "DiscardResourceConversionRate";
+
         private sealed class Card
         {
             public ICardDataProvider CardData { get; }
@@ -54,8 +56,9 @@ namespace AAAGame.Card
             m_AreaDetectionController = new AreaDetectionController();
             m_EnemyBuildingForbiddenZoneController = new EnemyBuildingForbiddenZoneController();
             m_PlacementController.SetAdditionalForbiddenChecker((position, radius) =>
-                m_EnemyBuildingForbiddenZoneController != null
-                && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(position, radius));
+                IsBlockedByConfiguredInvalidArea(position, radius)
+                || (m_EnemyBuildingForbiddenZoneController != null
+                    && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(position, radius)));
 
             // 订阅子控制器事件
             m_HandCardController.OnCardDrawn += (card) =>
@@ -329,6 +332,13 @@ namespace AAAGame.Card
                 return;
             }
 
+            float previewRadius = 0.5f;
+            if (cardModel.DataProvider != null)
+            {
+                previewRadius = Mathf.Max(previewRadius, cardModel.DataProvider.SpawnRadius);
+            }
+
+            m_PlacementController.SetDetectionRadius(previewRadius);
             m_PlacementController.StartPlacement(cardModel);
             m_EnemyBuildingForbiddenZoneController?.BeginPlacement();
         }
@@ -347,6 +357,18 @@ namespace AAAGame.Card
         /// </summary>
         public bool ConfirmPlacement(CardModel cardModel, Vector2? releaseScreenPosition = null)
         {
+            if (cardModel == null)
+            {
+                Debug.LogError("[Card] Cannot confirm placement: CardModel is null.");
+                return false;
+            }
+
+            if (m_HandModel == null || !m_HandModel.Contains(cardModel))
+            {
+                Debug.LogWarning($"[Card] Cannot confirm placement: card is no longer in hand. card={cardModel.GetCardName()}");
+                return false;
+            }
+
             int occupiedSupply = cardModel != null ? cardModel.GetOccupiedSupply() : 0;
             if (!HasEnoughPopulation(occupiedSupply))
             {
@@ -369,10 +391,9 @@ namespace AAAGame.Card
             // 触发卡牌打出事件（C# 事件）
             OnCardPlayed?.Invoke(cardModel);
 
-            // 触发卡牌打出事件（GameFramework 事件系统）
+            // UI 需要在当前帧立刻移除手牌，避免事件队列晚一帧导致残留可交互卡牌。
             GameFramework.Event.GameEventArgs cardEvent = CardPlayedEventArgs.Create(cardModel);
-            GF.Event.Fire(this, cardEvent);
-            GameFramework.ReferencePool.Release(cardEvent);
+            GF.Event.FireNow(this, cardEvent);
 
             Debug.Log($"[Card] Card played: {cardModel.GetCardName()}, Population: {InGameDataModel.GetCurrentSupply()}/{InGameDataModel.GetMaxSupply()}");
             return true;
@@ -404,7 +425,7 @@ namespace AAAGame.Card
                 return false;
             }
 
-            RewardManager.HandleCardDiscardReward(cardModel);
+            ApplyDiscardResourceReward(cardModel);
 
             // 触发丢弃事件（C# 委托 + GF.Event）
             OnCardDiscarded?.Invoke(cardModel);
@@ -414,6 +435,36 @@ namespace AAAGame.Card
             Debug.Log($"[DISCARD-BUFF] CardSystemController.DiscardCard 已 Fire CardDiscardedEventArgs");
 
             return true;
+        }
+
+        private void ApplyDiscardResourceReward(CardModel cardModel)
+        {
+            if (GF.Config == null)
+            {
+                Log.Error("[Card] Discard reward skipped: GF.Config is not ready.");
+                return;
+            }
+
+            int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
+            int conversionRate = GF.Config.GetInt(DiscardResourceConversionRateConfigKey);
+            if (conversionRate <= 0)
+            {
+                Log.Error("[Card] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, conversionRate);
+                return;
+            }
+
+            int gainedCoin = occupiedSupply / conversionRate;
+            Log.Info("[Card] Discard reward calc. card={0}, occupiedSupply={1}, rate={2}, gainedCoin={3}",
+                cardModel.GetCardName(), occupiedSupply, conversionRate, gainedCoin);
+
+            if (gainedCoin <= 0)
+                return;
+
+            if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, gainedCoin, true))
+            {
+                Log.Error("[Card] Discard reward apply failed. deltaCoin={0}", gainedCoin);
+                return;
+            }
         }
 
 
@@ -434,6 +485,39 @@ namespace AAAGame.Card
         }
 
         /// <summary>
+        /// 获取当前屏幕点对应的放置预览结果。
+        /// </summary>
+        public bool TryGetPlacementPreview(Vector2 screenPosition, out Vector3 worldPosition, out bool isValid)
+        {
+            return TryGetPlacementPreview(screenPosition, out worldPosition, out isValid, null);
+        }
+
+        /// <summary>
+        /// 获取当前屏幕点对应的放置预览结果，并返回预生成士兵点位。
+        /// </summary>
+        public bool TryGetPlacementPreview(Vector2 screenPosition, out Vector3 worldPosition, out bool isValid, List<Vector3> previewSpawnPositions)
+        {
+            worldPosition = Vector3.zero;
+            isValid = false;
+            previewSpawnPositions?.Clear();
+
+            if (m_PlacementController == null)
+            {
+                return false;
+            }
+
+            return m_PlacementController.TryGetPlacementPreview(screenPosition, out worldPosition, out isValid, previewSpawnPositions);
+        }
+
+        /// <summary>
+        /// 获取当前放置检测半径。
+        /// </summary>
+        public float GetCurrentPlacementRadius()
+        {
+            return m_PlacementController != null ? m_PlacementController.GetDetectionRadius() : 0.5f;
+        }
+
+        /// <summary>
         /// 获取区域检测控制器
         /// </summary>
         public AreaDetectionController GetAreaDetectionController()
@@ -446,11 +530,17 @@ namespace AAAGame.Card
         /// </summary>
         public bool IsInForbiddenArea(Vector3 worldPosition)
         {
-            bool inStaticForbiddenArea = m_AreaDetectionController.IsPositionInInvalidArea(worldPosition);
+            bool inStaticForbiddenArea = IsBlockedByConfiguredInvalidArea(worldPosition, 0f);
             bool inEnemyBuildingForbiddenArea = m_EnemyBuildingForbiddenZoneController != null
                 && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(worldPosition, 0f);
             bool inInvisibleFogArea = !IsPositionInVisibleArea(worldPosition);
             return inStaticForbiddenArea || inEnemyBuildingForbiddenArea || inInvisibleFogArea;
+        }
+
+        private bool IsBlockedByConfiguredInvalidArea(Vector3 worldPosition, float radius)
+        {
+            return m_AreaDetectionController != null
+                && m_AreaDetectionController.IsPositionBlockedByInvalidArea(worldPosition, radius);
         }
 
         private static bool IsPositionInVisibleArea(Vector3 worldPosition)

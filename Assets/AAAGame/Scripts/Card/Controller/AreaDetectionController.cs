@@ -9,6 +9,8 @@ namespace AAAGame.Card
     /// </summary>
     public class AreaDetectionController
     {
+        private const int OverlapBufferSize = 32;
+
         private LayerMask m_GroundLayer;
         private LayerMask m_ForbiddenLayer;
         
@@ -18,6 +20,8 @@ namespace AAAGame.Card
         
         // 区域检测缓存
         private Dictionary<GameObject, Collider[]> m_AreaColliderCache;
+        private readonly Collider[] m_ForbiddenOverlapBuffer = new Collider[OverlapBufferSize];
+        private readonly Collider[] m_GroundOverlapBuffer = new Collider[OverlapBufferSize];
         
         public AreaDetectionController()
         {
@@ -80,10 +84,9 @@ namespace AAAGame.Card
                 if (collider == null) continue;
                 
                 Vector3 closestPoint = collider.ClosestPoint(worldPosition);
-                float distance = Vector3.Distance(worldPosition, closestPoint);
                 
                 // 距离小于阈值，说明在 Collider 内部或表面
-                if (distance < 0.01f)
+                if ((worldPosition - closestPoint).sqrMagnitude < 0.0001f)
                 {
                     return true;
                 }
@@ -106,6 +109,46 @@ namespace AAAGame.Card
         public bool IsPositionInInvalidArea(Vector3 worldPosition)
         {
             return IsPositionInArea(worldPosition, m_InvalidAreaObject);
+        }
+
+        /// <summary>
+        /// 检查一个带半径的放置位置是否与禁止区域发生重叠。
+        /// </summary>
+        public bool IsPositionBlockedByInvalidArea(Vector3 worldPosition, float radius)
+        {
+            if (IsPositionInInvalidArea(worldPosition))
+            {
+                return true;
+            }
+
+            float clampedRadius = Mathf.Max(0f, radius);
+            if (clampedRadius <= 0.01f)
+            {
+                return false;
+            }
+
+            return SampleInvalidArea(worldPosition, clampedRadius * 0.5f, 8)
+                || SampleInvalidArea(worldPosition, clampedRadius, 12);
+        }
+
+        private bool SampleInvalidArea(Vector3 center, float radius, int sampleCount)
+        {
+            if (radius <= 0.01f)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float angle = Mathf.PI * 2f * i / sampleCount;
+                Vector3 samplePoint = center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                if (IsPositionInInvalidArea(samplePoint))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -137,20 +180,26 @@ namespace AAAGame.Card
             areaType = AreaType.None;
             
             // 检测禁止区域
-            Collider[] forbiddenColliders = Physics.OverlapSphere(
-                worldPosition, radius, m_ForbiddenLayer);
-            
-            if (forbiddenColliders.Length > 0)
+            int forbiddenCount = Physics.OverlapSphereNonAlloc(
+                worldPosition,
+                radius,
+                m_ForbiddenOverlapBuffer,
+                m_ForbiddenLayer);
+
+            if (forbiddenCount > 0)
             {
                 areaType = AreaType.Invalid;
                 return true;
             }
             
             // 检测地面区域
-            Collider[] groundColliders = Physics.OverlapSphere(
-                worldPosition, radius, m_GroundLayer);
-            
-            if (groundColliders.Length > 0)
+            int groundCount = Physics.OverlapSphereNonAlloc(
+                worldPosition,
+                radius,
+                m_GroundOverlapBuffer,
+                m_GroundLayer);
+
+            if (groundCount > 0)
             {
                 areaType = AreaType.Valid;
                 return true;
