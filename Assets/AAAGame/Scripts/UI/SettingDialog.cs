@@ -30,7 +30,7 @@ public partial class SettingDialog : UIFormBase
         base.InitLocalization();
         varVersionTxt.text = Utility.Text.Format("{0}v{1}", AppSettings.Instance.DebugMode ? "Debug " : string.Empty, GF.Base.EditorResourceMode ? Application.version : Utility.Text.Format("{0}({1})", Application.version, GF.Resource.InternalResourceVersion));
         var handleText = varToggleVibrate.GetComponentInChildren<TextMeshProUGUI>();
-        handleText.text = varToggleVibrate.isOn ? GF.Localization.GetString("ON") : GF.Localization.GetString("OFF");
+        handleText.text = varToggleVibrate.isOn ? LocalizationTextManager.ProcessText(GF.Localization.GetString("ON")) : LocalizationTextManager.ProcessText(GF.Localization.GetString("OFF"));
     }
     private void OnSoundFxSliderChanged(float arg0)
     {
@@ -76,7 +76,7 @@ public partial class SettingDialog : UIFormBase
         float duration = (Mathf.Abs(targetX - varVibrateHandle.anchoredPosition.x) / m_ToggleHandleX) * 0.2f;
         varVibrateHandle.DOAnchorPosX(targetX, duration).onComplete = () =>
         {
-            handleText.text = tg.isOn ? GF.Localization.GetString("ON") : GF.Localization.GetString("OFF");
+            handleText.text = tg.isOn ? LocalizationTextManager.ProcessText(GF.Localization.GetString("ON")) : LocalizationTextManager.ProcessText(GF.Localization.GetString("OFF"));
         };
 
         GF.Setting.SetMediaMute(Const.SoundGroup.Vibrate, !varToggleVibrate.isOn);
@@ -103,15 +103,15 @@ public partial class SettingDialog : UIFormBase
         }
         else if (btSelf == varBtnHelp)
         {
-            GF.UI.ShowToast(GF.Localization.GetString("Nothing"));
+            GF.UI.ShowToast(LocalizationTextManager.ProcessText(GF.Localization.GetString("Nothing")));
         }
         else if (btSelf == varBtnPrivacy)
         {
-            GF.UI.ShowToast(GF.Localization.GetString("Nothing"));
+            GF.UI.ShowToast(LocalizationTextManager.ProcessText(GF.Localization.GetString("Nothing")));
         }
         else if (btSelf == varBtnTermsOfService)
         {
-            GF.UI.ShowToast(GF.Localization.GetString("Nothing"));
+            GF.UI.ShowToast(LocalizationTextManager.ProcessText(GF.Localization.GetString("Nothing")));
         }
         else if (btSelf == varBtnRating)
         {

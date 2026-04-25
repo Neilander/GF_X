@@ -217,7 +217,7 @@ public class BuildManager : GameFrameworkComponent
         {
             var candidate = candidates[i];
             string displayName = !string.IsNullOrWhiteSpace(candidate.NameKey)
-                ? GF.Localization.GetString(candidate.NameKey)
+                ? LocalizationTextManager.GetLocalizedText(candidate.NameKey, false)
                 : candidate.Identifier;
 
             InteractionParams @params = InteractionParams.Create();

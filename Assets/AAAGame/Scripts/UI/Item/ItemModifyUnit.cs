@@ -26,12 +26,12 @@ public partial class ItemModifyUnit : UIItemBase
     }
     public void OnAddButtonClick()
     {
-        GF.UI.ShowToast(string.Format(LocalizationTextDataModel.GetText("ItemModify_Add"), itemIdentifier));
+        GF.UI.ShowToast(LocalizationTextManager.ProcessText(string.Format(LocalizationTextDataModel.GetText("ItemModify_Add"), itemIdentifier)));
         ItemCollectionDataModel.ModifyItemAmount(itemIdentifier, 1);
     }
     public void OnReduceButtonClick()
     {
-        GF.UI.ShowToast(string.Format(LocalizationTextDataModel.GetText("ItemModify_Reduce"), itemIdentifier));
+        GF.UI.ShowToast(LocalizationTextManager.ProcessText(string.Format(LocalizationTextDataModel.GetText("ItemModify_Reduce"), itemIdentifier)));
         ItemCollectionDataModel.ModifyItemAmount(itemIdentifier, -1);
     }
 }

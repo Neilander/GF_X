@@ -51,8 +51,8 @@ public partial class TechNodeDetailTips : UIFormBase
 		bool unlocked = TechProgressDataModel.IsUnlocked(m_TechId);
 		bool canResearch = !unlocked && TechProgressDataModel.CanResearch(m_TechId, out _);
 
-		varNameText.text = GF.Localization.GetString(data.NameKey);
-		varDescriptionText.text = GF.Localization.GetString(data.DescriptionKey);
+		varNameText.text = LocalizationTextManager.GetLocalizedText(data.NameKey, false);
+		varDescriptionText.text = LocalizationTextManager.ProcessText(GF.Localization.GetString(data.DescriptionKey));
 		RefreshConditions(data, unlocked);
 		RefreshCosts(data, unlocked);
 		RefreshResearchButton(unlocked, canResearch);
@@ -91,7 +91,7 @@ public partial class TechNodeDetailTips : UIFormBase
 
 				var prereqData = TechNodeDataModel.GetNodeData(prereq);
 
-				SpawnTextLine(string.Format(LocalizationTextDataModel.GetText(ConditionPrereqTechTextId), GF.Localization.GetString(prereqData.NameKey)), ok, forceGray: unlocked);
+				SpawnTextLine(string.Format(LocalizationTextDataModel.GetText(ConditionPrereqTechTextId), LocalizationTextManager.GetLocalizedText(prereqData.NameKey, false)), ok, forceGray: unlocked);
 			}
 		}
 
@@ -252,7 +252,7 @@ public partial class TechNodeDetailTips : UIFormBase
 				{
 					var data = TechNodeDataModel.GetNodeData(c.Identifier);
 					if (data != null && !string.IsNullOrWhiteSpace(data.NameKey))
-						return string.Format(LocalizationTextDataModel.GetText(UnlockTechTextId), GF.Localization.GetString(data.NameKey));
+						return string.Format(LocalizationTextDataModel.GetText(UnlockTechTextId), LocalizationTextManager.GetLocalizedText(data.NameKey, false));
 					return string.Format(LocalizationTextDataModel.GetText(UnlockTechTextId), c.Identifier);
 				}
 			case UnlockConditionType.Capability:

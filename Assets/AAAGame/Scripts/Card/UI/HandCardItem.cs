@@ -12,7 +12,7 @@ namespace AAAGame.Card
     /// 手牌UI项 - 继承 UIItemBase，使用 GF_X 对象池
     /// 单张卡牌的显示和交互组件
     /// </summary>
-    public class HandCardItem : UIItemBase, IBeginDragHandler, IDragHandler, IEndDragHandler, 
+    public class HandCardItem : UIItemBase, IBeginDragHandler, IDragHandler, IEndDragHandler,
         IPointerEnterHandler, IPointerExitHandler
     {
         [Header("UI组件")]
@@ -35,7 +35,7 @@ namespace AAAGame.Card
         private Vector3 m_OriginalPosition;
         private int m_OriginalSiblingIndex;
         private Canvas m_Canvas;
-        
+
         private bool m_IsDragging;
         private bool m_CanPlay;
         private bool m_IsSelected;
@@ -43,23 +43,23 @@ namespace AAAGame.Card
         private Sprite m_DefaultCardBackSprite;
         private Color m_DefaultCardBackColor;
         private bool m_DefaultCardBackCached;
-        
+
         private Tween m_ScaleTween;
         private Tween m_MoveTween;
 
         protected override void OnInit()
         {
             base.OnInit();
-            
+
             m_RectTransform = GetComponent<RectTransform>();
             ResolveCardBackImage();
-            
+
             canvasGroup = GetComponent<CanvasGroup>();
             if (canvasGroup == null)
             {
                 canvasGroup = gameObject.AddComponent<CanvasGroup>();
             }
-            
+
             m_Canvas = GetComponentInParent<Canvas>();
         }
 
@@ -70,7 +70,7 @@ namespace AAAGame.Card
         {
             m_CardModel = cardModel;
             m_ParentForm = parentForm;
-            
+
             RefreshView();
         }
 
@@ -215,9 +215,17 @@ namespace AAAGame.Card
 
         public void OnBeginDrag(PointerEventData eventData)
         {
+            if (m_CardModel == null)
+            {
+                return;
+            }
+
+            m_CanPlay = m_CardModel.CanPlay();
             if (!m_CanPlay)
             {
-                Log.Warning(Utility.Text.Format("Population not enough to play {0}", 
+                UpdatePlayability();
+                m_ParentForm?.ShowInsufficientSupplyTip();
+                Log.Warning(Utility.Text.Format("Population not enough to play {0}",
                     m_CardModel.DataProvider.CardName));
                 return;
             }
@@ -305,7 +313,7 @@ namespace AAAGame.Card
             m_MoveTween?.Kill();
             m_MoveTween = m_RectTransform.DOMove(m_OriginalPosition, 0.3f)
                 .SetEase(Ease.OutBack);
-            
+
             ScaleTo(1f);
         }
 
@@ -346,24 +354,24 @@ namespace AAAGame.Card
             // 立即停止拖拽状态
             m_IsDragging = false;
             canvasGroup.blocksRaycasts = false; // 禁用交互，防止再次拖拽
-            
+
             // 恢复父级（避免卡在 Canvas 顶层）
             if (m_OriginalParent != null)
             {
                 transform.SetParent(m_OriginalParent);
             }
-            
+
             // 播放消失动画（缩放）
             m_ScaleTween?.Kill();
             m_ScaleTween = transform.DOScale(Vector3.zero, 0.2f)
                 .SetEase(Ease.InBack);
-            
+
             // 淡出效果
             if (canvasGroup != null)
             {
                 canvasGroup.DOFade(0f, 0.2f);
             }
-            
+
             Log.Info($"[HandCardItem] ✅ Card discard animation started: {m_CardModel?.GetCardName()}");
         }
 
@@ -375,24 +383,24 @@ namespace AAAGame.Card
             // 立即停止拖拽状态
             m_IsDragging = false;
             canvasGroup.blocksRaycasts = false; // 禁用交互
-            
+
             // 恢复父级（避免卡在 Canvas 顶层）
             if (m_OriginalParent != null)
             {
                 transform.SetParent(m_OriginalParent);
             }
-            
+
             // 播放消失动画（缩放 + 淡出）
             m_ScaleTween?.Kill();
             m_ScaleTween = transform.DOScale(Vector3.zero, 0.2f)
                 .SetEase(Ease.InBack);
-            
+
             // 淡出效果
             if (canvasGroup != null)
             {
                 canvasGroup.DOFade(0f, 0.2f);
             }
-            
+
             Log.Info($"[HandCardItem] ✅ Card play animation started: {m_CardModel?.GetCardName()}");
         }
 

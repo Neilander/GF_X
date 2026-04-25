@@ -38,11 +38,11 @@ public partial class RatingDialog : UIFormBase
 #else
                 Application.OpenURL(GF.Config.GetString("AppStoreSteam"));
 #endif
-                GF.UI.ShowToast(GF.Localization.GetString("RatingDialog.HighRatingTips"));
+                GF.UI.ShowToast(LocalizationTextManager.ProcessText(GF.Localization.GetString("RatingDialog.HighRatingTips")));
             }
             else
             {
-                GF.UI.ShowToast(GF.Localization.GetString("RatingDialog.LowRatingTips"));
+                GF.UI.ShowToast(LocalizationTextManager.ProcessText(GF.Localization.GetString("RatingDialog.LowRatingTips")));
             }
             GF.UI.Close(this.UIForm);
         }

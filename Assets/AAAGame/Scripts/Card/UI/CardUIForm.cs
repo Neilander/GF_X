@@ -16,6 +16,11 @@ namespace AAAGame.Card
     /// </summary>
     public partial class CardUIForm : UIFormBase
     {
+        private const string CardPlayBlockedTipTitleId = "Tips_CardPlayBlocked_Title";
+        private const string CardPlayBlockedForbiddenAreaTipContentId = "Tips_CardPlayBlocked_ForbiddenArea";
+        private const string CardPlayBlockedInsufficientSupplyTipContentId = "Tips_CardPlayBlocked_InsufficientSupply";
+        private const float CardPlayBlockedTipDurationSeconds = 2f;
+
         [Header("UI容器")]
         [SerializeField] private Transform handCardContainer;
         [SerializeField] private RectTransform handCardArea;
@@ -403,12 +408,60 @@ namespace AAAGame.Card
             }
             else
             {
+                if (m_CardSystemController.WasLastConfirmBlockedBySupply())
+                {
+                    ShowInsufficientSupplyTip();
+                }
+                else if (IsForbiddenAreaPlacementFailure())
+                {
+                    ShowForbiddenAreaTip();
+                }
+
                 Log.Info($"[CardUI] ❌ Placement failed, canceling");
                 m_CardSystemController.CancelPlacement();
             }
 
             Log.Info($"[CardUI] ========== OnCardEndDrag END (returned {placed}) ==========");
             return placed;
+        }
+
+        public void ShowInsufficientSupplyTip()
+        {
+            ShowCardPlayBlockedTip(CardPlayBlockedInsufficientSupplyTipContentId);
+        }
+
+        private void ShowForbiddenAreaTip()
+        {
+            ShowCardPlayBlockedTip(CardPlayBlockedForbiddenAreaTipContentId);
+        }
+
+        private bool IsForbiddenAreaPlacementFailure()
+        {
+            if (m_CardSystemController == null)
+            {
+                return false;
+            }
+
+            CardPlacementInvalidReason invalidReason = m_CardSystemController.GetLastPlacementInvalidReason();
+            return invalidReason == CardPlacementInvalidReason.NotInVisibleArea
+                || invalidReason == CardPlacementInvalidReason.StaticForbiddenArea
+                || invalidReason == CardPlacementInvalidReason.DynamicForbiddenArea
+                || invalidReason == CardPlacementInvalidReason.NotOnGround;
+        }
+
+        private void ShowCardPlayBlockedTip(string contentTextId)
+        {
+            SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
+            if (sideTipsManager == null)
+            {
+                Log.Warning("[CardUI] ShowCardPlayBlockedTip skipped: SideTipsManager is missing.");
+                return;
+            }
+
+            sideTipsManager.ShowRuntimeTip(
+                LocalizationTextDataModel.GetText(CardPlayBlockedTipTitleId),
+                LocalizationTextDataModel.GetText(contentTextId),
+                CardPlayBlockedTipDurationSeconds);
         }
 
         /// <summary>

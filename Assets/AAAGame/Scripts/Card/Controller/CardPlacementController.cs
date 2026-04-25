@@ -6,6 +6,16 @@ using Random = UnityEngine.Random;
 
 namespace AAAGame.Card
 {
+    public enum CardPlacementInvalidReason
+    {
+        None = 0,
+        NotInVisibleArea = 1,
+        StaticForbiddenArea = 2,
+        DynamicForbiddenArea = 3,
+        NotOnGround = 4,
+        SpawnFailed = 5
+    }
+
     /// <summary>
     /// 卡牌放置控制器
     /// 负责卡牌放置逻辑、区域检测、士兵生成
@@ -23,6 +33,8 @@ namespace AAAGame.Card
         // 区域检测配置
         private float m_DetectionRadius = 0.5f;
         private Func<Vector3, float, bool> m_AdditionalForbiddenChecker;
+
+        public CardPlacementInvalidReason LastInvalidReason { get; private set; }
 
         // 事件回调
         public event Action<CardModel> OnPlacementStarted;
@@ -67,6 +79,7 @@ namespace AAAGame.Card
             }
 
             m_IsPlacing = true;
+            LastInvalidReason = CardPlacementInvalidReason.None;
             Debug.Log("[Card] Card placement started.");
 
             // 触发开始放置事件
@@ -87,7 +100,8 @@ namespace AAAGame.Card
                 //Debug.Log($"[Card] Placement position updated: {groundPosition}");
                 // 检测区域合法性
                 bool wasValid = m_IsValidPlacement;
-                m_IsValidPlacement = CheckPlacementValidity(groundPosition);
+                CardPlacementInvalidReason invalidReason = GetPlacementInvalidReason(groundPosition);
+                m_IsValidPlacement = invalidReason == CardPlacementInvalidReason.None;
 
                 // 触发位置更新事件
                 OnPositionUpdated?.Invoke(groundPosition, m_IsValidPlacement);
@@ -102,6 +116,7 @@ namespace AAAGame.Card
             {
                 bool wasValid = m_IsValidPlacement;
                 m_IsValidPlacement = false;
+                LastInvalidReason = CardPlacementInvalidReason.NotOnGround;
                 if (wasValid)
                 {
                     OnValidityChanged?.Invoke(false);
@@ -117,6 +132,7 @@ namespace AAAGame.Card
             if (!m_IsPlacing)
             {
                 Debug.Log("[Card] Cannot confirm placement: 放置流程未开启.");
+                LastInvalidReason = CardPlacementInvalidReason.None;
                 return false;
             }
 
@@ -124,12 +140,15 @@ namespace AAAGame.Card
             if (!TryGetGroundPositionAtScreenPoint(screenPos, out Vector3 releaseGroundPosition))
             {
                 Debug.Log("[Card] Cannot confirm placement: 松手时未命中 Ground.");
+                LastInvalidReason = CardPlacementInvalidReason.NotOnGround;
                 return false;
             }
 
-            if (!CheckPlacementValidity(releaseGroundPosition))
+            CardPlacementInvalidReason invalidReason = GetPlacementInvalidReason(releaseGroundPosition);
+            if (invalidReason != CardPlacementInvalidReason.None)
             {
-                LogInvalidPlacementReason(releaseGroundPosition);
+                LastInvalidReason = invalidReason;
+                LogInvalidPlacementReason(releaseGroundPosition, invalidReason);
                 return false;
             }
 
@@ -141,8 +160,11 @@ namespace AAAGame.Card
             if (soldierCount <= 0)
             {
                 Debug.Log("[Card] Cannot confirm placement: 生成点不合法或无法生成单位.");
+                LastInvalidReason = CardPlacementInvalidReason.SpawnFailed;
                 return false;
             }
+
+            LastInvalidReason = CardPlacementInvalidReason.None;
 
             // 触发放置成功事件
             OnPlacementConfirmed?.Invoke(cardModel, m_CurrentPlacementPosition);
@@ -211,9 +233,14 @@ namespace AAAGame.Card
         /// </summary>
         private bool CheckPlacementValidity(Vector3 position)
         {
+            return GetPlacementInvalidReason(position) == CardPlacementInvalidReason.None;
+        }
+
+        private CardPlacementInvalidReason GetPlacementInvalidReason(Vector3 position)
+        {
             if (!IsPositionInVisibleArea(position))
             {
-                return false;
+                return CardPlacementInvalidReason.NotInVisibleArea;
             }
 
             // 检测是否在禁止区域
@@ -222,20 +249,22 @@ namespace AAAGame.Card
 
             if (forbiddenColliders.Length > 0)
             {
-                return false;
+                return CardPlacementInvalidReason.StaticForbiddenArea;
             }
 
             if (m_AdditionalForbiddenChecker != null
                 && m_AdditionalForbiddenChecker(position, m_DetectionRadius))
             {
-                return false;
+                return CardPlacementInvalidReason.DynamicForbiddenArea;
             }
 
             // 检测是否在地面上
             Collider[] groundColliders = Physics.OverlapSphere(
                 position, m_DetectionRadius, m_GroundLayer);
 
-            return groundColliders.Length > 0;
+            return groundColliders.Length > 0
+                ? CardPlacementInvalidReason.None
+                : CardPlacementInvalidReason.NotOnGround;
         }
 
         private bool IsPositionInVisibleArea(Vector3 position)
@@ -249,33 +278,30 @@ namespace AAAGame.Card
             return fogManager.IsPositionVisible(position);
         }
 
-        private void LogInvalidPlacementReason(Vector3 position)
+        private void LogInvalidPlacementReason(Vector3 position, CardPlacementInvalidReason invalidReason)
         {
-            if (!IsPositionInVisibleArea(position))
+            if (invalidReason == CardPlacementInvalidReason.NotInVisibleArea)
             {
                 Fog3CellState fogState = ResolveFogCellState(position);
                 Debug.Log($"[Card] Cannot confirm placement: 松手位置不在 Visible 区域. pos={position}, fogState={fogState}");
                 return;
             }
 
-            Collider[] forbiddenColliders = Physics.OverlapSphere(
-                position, m_DetectionRadius, m_ForbiddenLayer);
-            if (forbiddenColliders.Length > 0)
+            if (invalidReason == CardPlacementInvalidReason.StaticForbiddenArea)
             {
+                Collider[] forbiddenColliders = Physics.OverlapSphere(
+                    position, m_DetectionRadius, m_ForbiddenLayer);
                 Debug.Log($"[Card] Cannot confirm placement: 命中静态禁区. pos={position}, forbiddenHits={forbiddenColliders.Length}");
                 return;
             }
 
-            if (m_AdditionalForbiddenChecker != null
-                && m_AdditionalForbiddenChecker(position, m_DetectionRadius))
+            if (invalidReason == CardPlacementInvalidReason.DynamicForbiddenArea)
             {
                 Debug.Log($"[Card] Cannot confirm placement: 命中动态禁区. pos={position}, radius={m_DetectionRadius:F2}");
                 return;
             }
 
-            Collider[] groundColliders = Physics.OverlapSphere(
-                position, m_DetectionRadius, m_GroundLayer);
-            if (groundColliders.Length == 0)
+            if (invalidReason == CardPlacementInvalidReason.NotOnGround)
             {
                 Debug.Log($"[Card] Cannot confirm placement: Ground 检测失败. pos={position}, radius={m_DetectionRadius:F2}");
             }
