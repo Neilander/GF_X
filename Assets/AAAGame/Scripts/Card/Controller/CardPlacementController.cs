@@ -52,6 +52,8 @@ namespace AAAGame.Card
         public event Action OnPlacementCancelled;
         public event Action<CardModel, Vector3, int> OnSoldiersSpawned;
 
+        public CardPlacementInvalidReason LastInvalidReason { get; private set; } = CardPlacementInvalidReason.None;
+
         public CardPlacementController()
         {
             m_MainCamera = Camera.main;
@@ -425,7 +427,9 @@ namespace AAAGame.Card
                 m_DetectionRadius,
                 m_GroundOverlapBuffer,
                 m_GroundLayer);
-            return groundCount > 0;
+            return groundCount > 0
+                ? CardPlacementInvalidReason.None
+                : CardPlacementInvalidReason.NotOnGround;
         }
 
         private bool CanSpawnCardAtPosition(CardModel cardModel, Vector3 centerPosition)
