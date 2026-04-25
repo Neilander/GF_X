@@ -51,6 +51,11 @@ public class SimMoveExecutor : IMoveExecutor
         _constraintBypassForNextFrame = bypass;
     }
 
+    public void EnableBypassUntilOnNavMesh()
+    {
+        // 纯模拟执行器不做 NavMesh 约束，bypass 无意义，留空以满足接口。
+    }
+
     public void Execute()
     {
         Execute(0.02f); // 默认 50fps

@@ -17,6 +17,10 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 
     private bool _navMeshConstrained = true;
     private bool _constraintBypassForNextFrame;
+    // 持续 bypass，直到玩家走回 NavMesh 上自动解除
+    private bool _bypassUntilOnNavMesh;
+    // 检测"已回到 NavMesh"的容差
+    private const float OnNavMeshSampleRadius = 0.2f;
 
     private float _gravityVelocity;
     private float _edgeBuffer = 0.45f;
@@ -128,6 +132,13 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _constraintBypassForNextFrame = bypass;
     }
 
+    public void EnableBypassUntilOnNavMesh()
+    {
+        if (_bypassUntilOnNavMesh) return;
+        _bypassUntilOnNavMesh = true;
+        Debug.Log($"[MoveExecutor] 启用自由移动 (无视 NavMesh) 直到走回 NavMesh, gameObject={gameObject.name}");
+    }
+
     public void Execute()
     {
         Execute(Time.deltaTime);
@@ -152,7 +163,15 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         Vector3 horizontalVelocity = new Vector3(finalVelocity.x, 0f, finalVelocity.z);
         Vector3 horizontalDisplacement = horizontalVelocity * deltaTime;
 
-        bool shouldConstrain = _navMeshConstrained && !_constraintBypassForNextFrame;
+        // 持续 bypass：检测玩家是否已经回到 NavMesh，是则关闭 bypass
+        if (_bypassUntilOnNavMesh
+            && NavMesh.SamplePosition(transform.position, out _, OnNavMeshSampleRadius, _navFilter))
+        {
+            _bypassUntilOnNavMesh = false;
+            Debug.Log($"[MoveExecutor] 已回到 NavMesh，关闭自由移动, gameObject={gameObject.name}");
+        }
+
+        bool shouldConstrain = _navMeshConstrained && !_constraintBypassForNextFrame && !_bypassUntilOnNavMesh;
         if (shouldConstrain)
         {
             horizontalDisplacement = ConstrainHorizontalDisplacement(horizontalDisplacement);
