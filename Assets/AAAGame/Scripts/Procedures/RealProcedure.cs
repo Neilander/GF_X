@@ -4,11 +4,7 @@ public class RealProcedure : RuntimeProcedureBase
 {
     protected override string RuntimeInitLogTag => "[RealProcedure]";
     protected override RuntimeInitSystemFlags RequiredRuntimeSystems =>
-        RuntimeInitSystemFlags.MinimapSystem
-        | RuntimeInitSystemFlags.MinimapUI
-        | RuntimeInitSystemFlags.ResourceModifyBarUI
-        | RuntimeInitSystemFlags.PhaseSwitchUI
-        | RuntimeInitSystemFlags.SupplyUI;
+        RuntimeInitSystemFlags.MinimapSystem;
 
     protected override void OnRuntimeInitialized()
     {

@@ -23,6 +23,7 @@ public partial class PhaseSwitchUIForm : UIFormBase
         varPhaseSwitchButton.onClick.RemoveAllListeners();
         varPhaseSwitchButton.onClick.AddListener(SwitchPhase);
         GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        TutorialManager.PhaseSwitchButtonGuideChanged += OnPhaseSwitchButtonGuideChanged;
         RefreshTutorialPhaseSwitchState();
         RefreshCurrentDayText();
     }
@@ -30,14 +31,10 @@ public partial class PhaseSwitchUIForm : UIFormBase
     protected override void OnClose(bool isShutdown, object userData)
     {
         GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        TutorialManager.PhaseSwitchButtonGuideChanged -= OnPhaseSwitchButtonGuideChanged;
         varPhaseSwitchButton.onClick.RemoveAllListeners();
         StopPhaseSwitchBlink();
         base.OnClose(isShutdown, userData);
-    }
-
-    private void Update()
-    {
-        RefreshTutorialPhaseSwitchState();
     }
 
     private void SwitchPhase()
@@ -73,6 +70,11 @@ public partial class PhaseSwitchUIForm : UIFormBase
     {
         RefreshTutorialPhaseSwitchState();
         RefreshCurrentDayText();
+    }
+
+    private void OnPhaseSwitchButtonGuideChanged()
+    {
+        RefreshTutorialPhaseSwitchState();
     }
 
     private void RefreshCurrentDayText()

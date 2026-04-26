@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <UnityGameFramework>
   <ResourceCollection>
     <Resources>
@@ -37,9 +37,7 @@
       <Asset Guid="3fdcbb5b7d730f341bf585839b5502a5" ResourceName="UI" />
       <Asset Guid="47898ae6a0dbd6146949c86694773439" ResourceName="Entity" />
       <Asset Guid="4d9df7336d07eec4a95b89ac70eb06ea" ResourceName="DataTable" />
-      <Asset Guid="53b9781b792f33841a6a088ec392fbd8" ResourceName="SharedAssets" />
       <Asset Guid="587466d76b832b24883e5b64a9e9bff1" ResourceName="DataTable" />
-      <Asset Guid="588ff96c6882fb3448095d7a881bced3" ResourceName="SharedAssets" />
       <Asset Guid="5d19fed2387fc3c4ca37fc9bf11e7190" ResourceName="Language" />
       <Asset Guid="60088dd3b0214654ba9150c7fdda1a8d" ResourceName="DataTable" />
       <Asset Guid="63f5f6812a8f9724cac670756d524631" ResourceName="DataTable" />
@@ -59,16 +57,14 @@
       <Asset Guid="83bdadb9e1d24a94e8498def13d4804c" ResourceName="Language" />
       <Asset Guid="84a6440c0fd8e974e8986ff4df2d489f" ResourceName="Language" />
       <Asset Guid="879016ef1f756e74081c108699b52383" ResourceName="Entity" />
-      <Asset Guid="8a4e2875174034b4aabb43c9ca9028a1" ResourceName="SharedAssets" />
+      <Asset Guid="e9a16f855a1d8e14fbc6c3b745ba8734" ResourceName="SharedAssets" />
       <Asset Guid="8e978eccab638cf429b4757490af6554" ResourceName="Entity" />
       <Asset Guid="92cb04501693359419a839b8d33aace7" ResourceName="UI" />
       <Asset Guid="93e5244c613569f4ca34418e4a2b59b4" ResourceName="DataTable" />
       <Asset Guid="98662c21c0b96bc48a6440a4fe486556" ResourceName="DataTable" />
       <Asset Guid="9acbc6465cea7234d986cec615965aef" ResourceName="DataTable" />
       <Asset Guid="9deca69555354744b9e1fbdffb007bd8" ResourceName="SharedAssets" />
-      <Asset Guid="a29db755b6ae1104a94df297de29cfc8" ResourceName="SharedAssets" />
       <Asset Guid="a8043c8d11e46d648bb702e4a3572406" ResourceName="Entity" />
-      <Asset Guid="b8f790017d833da45a5aec7344ed4f97" ResourceName="SharedAssets" />
       <Asset Guid="c1bf70ce98a49bd4f8b60847ce98cfa8" ResourceName="Language" />
       <Asset Guid="c4e839cf3d001e0499336fb7f53c0310" ResourceName="DataTable" />
       <Asset Guid="c7a26b8d1ff63834298841254b2332c4" ResourceName="UI" />

@@ -11,7 +11,6 @@ public class CompleteGameProcedure : RuntimeProcedureBase
     protected override string RuntimeInitLogTag => "[CompleteGame]";
     protected override RuntimeInitSystemFlags RequiredRuntimeSystems =>
         RuntimeInitSystemFlags.MinimapSystem
-        | RuntimeInitSystemFlags.MinimapUI
         | RuntimeInitSystemFlags.CardSystem
         | RuntimeInitSystemFlags.CardUI;
 

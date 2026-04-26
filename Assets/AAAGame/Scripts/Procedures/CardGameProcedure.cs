@@ -9,7 +9,7 @@ public class CardGameProcedure : RuntimeProcedureBase
 {
     protected override string RuntimeInitLogTag => "[CardGame]";
     protected override RuntimeInitSystemFlags RequiredRuntimeSystems =>
-        RuntimeInitSystemFlags.MinimapSystem | RuntimeInitSystemFlags.MinimapUI;
+        RuntimeInitSystemFlags.MinimapSystem;
 
     protected override void OnRuntimeInitialized()
     {

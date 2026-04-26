@@ -9,6 +9,7 @@ using Debug = UnityEngine.Debug;
 public class GameDebugSettings : MonoBehaviour
 {
     public static GameDebugSettings Instance { get; private set; }
+    public static event System.Action<bool> RuntimeResourceModifyEnabledChanged;
 
     [Header("模块开关")]
     public bool targetDebug;
@@ -16,6 +17,10 @@ public class GameDebugSettings : MonoBehaviour
     public bool moveDebug;
     public bool brainDebug;
     public bool groupMoveDebug;
+
+    [Header("运行时调试")]
+    public bool runtimeResourceModifyEnabled = true;
+    private bool m_LastRuntimeResourceModifyEnabled;
 
     private void Awake()
     {
@@ -25,7 +30,20 @@ public class GameDebugSettings : MonoBehaviour
             return;
         }
         Instance = this;
+        m_LastRuntimeResourceModifyEnabled = runtimeResourceModifyEnabled;
         DontDestroyOnLoad(gameObject);
+    }
+
+    private void OnValidate()
+    {
+        if (!Application.isPlaying)
+            return;
+
+        if (m_LastRuntimeResourceModifyEnabled == runtimeResourceModifyEnabled)
+            return;
+
+        m_LastRuntimeResourceModifyEnabled = runtimeResourceModifyEnabled;
+        RuntimeResourceModifyEnabledChanged?.Invoke(runtimeResourceModifyEnabled);
     }
 
     /// <summary>
@@ -49,6 +67,11 @@ public class GameDebugSettings : MonoBehaviour
     {
         if (!IsEnabled(category)) return;
         Debug.Log($"[{category}] {message}");
+    }
+
+    public static bool IsRuntimeResourceModifyEnabled()
+    {
+        return Instance != null && Instance.runtimeResourceModifyEnabled;
     }
 }
 

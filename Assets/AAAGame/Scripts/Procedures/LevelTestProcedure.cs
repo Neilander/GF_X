@@ -13,9 +13,12 @@ public class LevelTestProcedure : ProcedureBase
         base.OnEnter(procedureOwner);
         InitDataModels();
 
-        GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
-
         GameEntry.GetComponent<InputManager>().ChangeState(InputState.Game);
+
+        if (!GF.UI.IsLoadingUIForm(UIViews.InGameUIForm) && !GF.UI.HasUIForm(UIViews.InGameUIForm))
+        {
+            GF.UI.OpenUIForm(UIViews.InGameUIForm);
+        }
 
         SpawnPresetEntities();
 

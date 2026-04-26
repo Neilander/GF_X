@@ -71,6 +71,7 @@ namespace AAAGame.MiniMap
         private int terrainGridWidth;
         private int terrainGridHeight;
         private float terrainCellSize = 1f;
+        private RectTransform minimapContent;
 
         protected override void OnInit(object userData)
         {
@@ -83,6 +84,10 @@ namespace AAAGame.MiniMap
                 Log.Error("[MinimapUI] MinimapManager not found!");
                 return;
             }
+
+            HideScaleText();
+            EnsureMinimapContent();
+            UpdateMinimapContentLayout();
 
             if (!EnsureCameraFrame())
             {
@@ -103,13 +108,13 @@ namespace AAAGame.MiniMap
 
             TryBuildTerrainMap(true);
             RefreshMinimapFogOverlay(true, 0f);
-            UpdateScaleText();
             Log.Info("[MinimapUI] MinimapUI initialized");
         }
 
         protected override void OnOpen(object userData)
         {
             base.OnOpen(userData);
+            UpdateMinimapContentLayout();
 
             if (minimapManager != null)
             {
@@ -176,19 +181,123 @@ namespace AAAGame.MiniMap
             if (Time.frameCount % 30 == 0)
             {
                 TryBuildTerrainMap(false);
-                UpdateScaleText();
             }
 
             RefreshMinimapFogOverlay(false, realElapseSeconds);
+        }
+
+        private RectTransform GetMinimapContent()
+        {
+            if (minimapContent == null)
+            {
+                EnsureMinimapContent();
+            }
+
+            return minimapContent != null ? minimapContent : minimapContainer;
+        }
+
+        private void EnsureMinimapContent()
+        {
+            if (minimapContainer == null)
+                return;
+
+            if (Params != null && Params.IsSubUIForm)
+            {
+                minimapContainer.anchorMin = Vector2.zero;
+                minimapContainer.anchorMax = Vector2.one;
+                minimapContainer.offsetMin = Vector2.zero;
+                minimapContainer.offsetMax = Vector2.zero;
+                minimapContainer.pivot = new Vector2(0.5f, 0.5f);
+                minimapContainer.anchoredPosition = Vector2.zero;
+                minimapContainer.localScale = Vector3.one;
+            }
+
+            Transform contentTransform = minimapContainer.Find("MinimapContent");
+            if (contentTransform == null)
+            {
+                GameObject contentObject = new GameObject("MinimapContent", typeof(RectTransform));
+                contentObject.transform.SetParent(minimapContainer, false);
+                minimapContent = contentObject.GetComponent<RectTransform>();
+            }
+            else
+            {
+                minimapContent = contentTransform as RectTransform;
+            }
+
+            minimapContent.anchorMin = new Vector2(0.5f, 0.5f);
+            minimapContent.anchorMax = new Vector2(0.5f, 0.5f);
+            minimapContent.pivot = new Vector2(0.5f, 0.5f);
+            minimapContent.anchoredPosition = Vector2.zero;
+            minimapContent.localScale = Vector3.one;
+
+            MoveChildToMinimapContent("CameraViewFrame");
+            MoveChildToMinimapContent("TerrainMap");
+            MoveChildToMinimapContent("FogMap");
+
+            if (cameraViewFrame != null && cameraViewFrame.parent == minimapContainer)
+                cameraViewFrame.SetParent(minimapContent, false);
+
+            if (cameraFrame != null && cameraFrame.transform.parent == minimapContainer)
+                cameraFrame.transform.SetParent(minimapContent, false);
+
+            if (cameraFrame != null)
+                cameraFrame.SetBounds(minimapContent);
+        }
+
+        private void MoveChildToMinimapContent(string childName)
+        {
+            if (minimapContainer == null || minimapContent == null || string.IsNullOrEmpty(childName))
+                return;
+
+            Transform child = minimapContainer.Find(childName);
+            if (child != null)
+                child.SetParent(minimapContent, false);
+        }
+
+        private void UpdateMinimapContentLayout()
+        {
+            EnsureMinimapContent();
+            if (minimapContainer == null || minimapContent == null || minimapManager == null)
+                return;
+
+            Rect boundsRect = minimapContainer.rect;
+            float boundsWidth = Mathf.Abs(boundsRect.width);
+            float boundsHeight = Mathf.Abs(boundsRect.height);
+            if (boundsWidth <= 0.01f || boundsHeight <= 0.01f)
+                return;
+
+            MinimapConfig config = minimapManager.Config;
+            float worldWidth = terrainGridWidth > 0 ? terrainGridWidth : Mathf.Max(0.01f, config.WorldMaxX - config.WorldMinX);
+            float worldHeight = terrainGridHeight > 0 ? terrainGridHeight : Mathf.Max(0.01f, config.WorldMaxZ - config.WorldMinZ);
+            float mapAspect = worldWidth / worldHeight;
+            float boundsAspect = boundsWidth / boundsHeight;
+
+            Vector2 contentSize = boundsAspect >= mapAspect
+                ? new Vector2(boundsHeight * mapAspect, boundsHeight)
+                : new Vector2(boundsWidth, boundsWidth / mapAspect);
+
+            minimapContent.sizeDelta = contentSize;
+            minimapContent.anchoredPosition = Vector2.zero;
+            UpdateOverlaySiblingOrder();
+        }
+
+        private void HideScaleText()
+        {
+            if (scaleTextHorizontal != null)
+                scaleTextHorizontal.gameObject.SetActive(false);
+
+            if (scaleTextVertical != null)
+                scaleTextVertical.gameObject.SetActive(false);
         }
 
         private void HandleUnitsUpdated(List<MinimapUnitData> units)
         {
             //Log.Info($"[MinimapUI] HandleUnitsUpdated called with {units?.Count ?? 0} units");
 
-            if (units == null || minimapContainer == null)
+            RectTransform content = GetMinimapContent();
+            if (units == null || content == null)
             {
-                Log.Warning($"[MinimapUI] HandleUnitsUpdated early return: units={units != null}, container={minimapContainer != null}");
+                Log.Warning($"[MinimapUI] HandleUnitsUpdated early return: units={units != null}, content={content != null}");
                 return;
             }
 
@@ -271,15 +380,18 @@ namespace AAAGame.MiniMap
         private void CreateUnitVisual(MinimapUnitData unit)
         {
             GameObject visualObj = null;
+            RectTransform content = GetMinimapContent();
+            if (content == null)
+                return;
 
             if (unit.UnitType == MinimapUnitType.Soldier)
             {
                 visualObj = soldierDotPrefab != null ?
-                    Instantiate(soldierDotPrefab, minimapContainer) :
+                    Instantiate(soldierDotPrefab, content) :
                     new GameObject($"Soldier_{unit.UnitId}");
 
                 if (soldierDotPrefab == null)
-                    visualObj.transform.SetParent(minimapContainer, false);
+                    visualObj.transform.SetParent(content, false);
 
                 Graphic markerGraphic = visualObj.GetComponent<Graphic>();
                 if (markerGraphic == null) markerGraphic = visualObj.AddComponent<RawImage>();
@@ -295,7 +407,7 @@ namespace AAAGame.MiniMap
             else
             {
                 visualObj = new GameObject($"Building_{unit.UnitId}");
-                visualObj.transform.SetParent(minimapContainer, false);
+                visualObj.transform.SetParent(content, false);
 
                 RawImage img = visualObj.AddComponent<RawImage>();
                 img.color = minimapManager.Config.GetSoldierColor(unit.Side);
@@ -313,6 +425,8 @@ namespace AAAGame.MiniMap
                 rectTransform.anchoredPosition = WorldToMinimapPosition(unit.WorldPosition);
                 unitVisuals[unit.UnitId] = rectTransform;
             }
+
+            SetCameraFrameAsLastSibling();
         }
 
         private void UpdateUnitVisual(MinimapUnitData unit)
@@ -375,7 +489,7 @@ namespace AAAGame.MiniMap
 
         private void RefreshMinimapFogOverlay(bool force, float deltaTime)
         {
-            if (!showMinimapFogSync || minimapContainer == null)
+            if (!showMinimapFogSync || GetMinimapContent() == null)
             {
                 DisableFogOverlay();
                 return;
@@ -441,16 +555,20 @@ namespace AAAGame.MiniMap
 
         private void EnsureFogMapImage()
         {
+            RectTransform content = GetMinimapContent();
+            if (content == null)
+                return;
+
             if (fogMapImage == null)
             {
-                Transform fogMapTransform = minimapContainer.Find("FogMap");
+                Transform fogMapTransform = content.Find("FogMap");
                 if (fogMapTransform != null)
                     fogMapImage = fogMapTransform.GetComponent<RawImage>();
 
                 if (fogMapImage == null)
                 {
                     GameObject fogMapObject = new GameObject("FogMap", typeof(RectTransform), typeof(RawImage));
-                    fogMapObject.transform.SetParent(minimapContainer, false);
+                    fogMapObject.transform.SetParent(content, false);
                     fogMapImage = fogMapObject.GetComponent<RawImage>();
                 }
             }
@@ -487,7 +605,8 @@ namespace AAAGame.MiniMap
 
         private void UpdateOverlaySiblingOrder()
         {
-            if (minimapContainer == null)
+            RectTransform content = GetMinimapContent();
+            if (content == null)
                 return;
 
             if (terrainMapImage != null)
@@ -495,9 +614,23 @@ namespace AAAGame.MiniMap
 
             if (fogMapImage != null)
             {
-                int fogSiblingIndex = minimapContainer.childCount > 1 ? 1 : 0;
+                int fogSiblingIndex = content.childCount > 1 ? 1 : 0;
                 fogMapImage.rectTransform.SetSiblingIndex(fogSiblingIndex);
             }
+
+            SetCameraFrameAsLastSibling();
+        }
+
+        private void SetCameraFrameAsLastSibling()
+        {
+            if (cameraFrame != null)
+            {
+                cameraFrame.transform.SetAsLastSibling();
+                return;
+            }
+
+            if (cameraViewFrame != null)
+                cameraViewFrame.SetAsLastSibling();
         }
 
         private Vector2 WorldToMinimapPosition(Vector3 worldPos)
@@ -557,9 +690,10 @@ namespace AAAGame.MiniMap
 
         private Vector2 GetMinimapRenderSize()
         {
-            if (minimapContainer != null)
+            RectTransform content = GetMinimapContent();
+            if (content != null)
             {
-                Rect rect = minimapContainer.rect;
+                Rect rect = content.rect;
                 float width = Mathf.Abs(rect.width);
                 float height = Mathf.Abs(rect.height);
                 if (width > 0.01f && height > 0.01f)
@@ -683,6 +817,7 @@ namespace AAAGame.MiniMap
         {
             if (cameraFrame != null)
             {
+                cameraFrame.SetBounds(GetMinimapContent());
                 ApplyCameraFrameStyle();
                 return true;
             }
@@ -696,6 +831,7 @@ namespace AAAGame.MiniMap
                 }
 
                 ApplyCameraFrameStyle();
+                cameraFrame.SetBounds(GetMinimapContent());
                 Log.Info("[MinimapUI] Migrated legacy cameraViewFrame to MinimapCameraFrame");
                 return true;
             }
@@ -738,14 +874,6 @@ namespace AAAGame.MiniMap
             return groundY + cameraFrameGroundYOffset;
         }
 
-        private void UpdateScaleText()
-        {
-            if (minimapManager == null) return;
-            MinimapConfig cfg = minimapManager.Config;
-            if (scaleTextHorizontal != null) scaleTextHorizontal.text = $"{cfg.WorldMaxX - cfg.WorldMinX:F0}m";
-            if (scaleTextVertical != null) scaleTextVertical.text = $"{cfg.WorldMaxZ - cfg.WorldMinZ:F0}m";
-        }
-
         private void ApplyCameraFrameStyle()
         {
             if (cameraFrame == null)
@@ -763,7 +891,7 @@ namespace AAAGame.MiniMap
 
         private void TryBuildTerrainMap(bool force)
         {
-            if (!showTerrainMap || minimapContainer == null || minimapManager == null)
+            if (!showTerrainMap || GetMinimapContent() == null || minimapManager == null)
             {
                 return;
             }
@@ -795,6 +923,8 @@ namespace AAAGame.MiniMap
             terrainGridWidth = gridWidth;
             terrainGridHeight = gridHeight;
             terrainCellSize = cellSize;
+            UpdateMinimapContentLayout();
+
             int texWidth = gridWidth;
             int texHeight = gridHeight;
 
@@ -867,9 +997,13 @@ namespace AAAGame.MiniMap
 
         private void EnsureTerrainMapImage()
         {
+            RectTransform content = GetMinimapContent();
+            if (content == null)
+                return;
+
             if (terrainMapImage == null)
             {
-                Transform terrainMapTransform = minimapContainer.Find("TerrainMap");
+                Transform terrainMapTransform = content.Find("TerrainMap");
                 if (terrainMapTransform != null)
                 {
                     terrainMapImage = terrainMapTransform.GetComponent<RawImage>();
@@ -878,7 +1012,7 @@ namespace AAAGame.MiniMap
                 if (terrainMapImage == null)
                 {
                     GameObject terrainMapObject = new GameObject("TerrainMap", typeof(RectTransform), typeof(RawImage));
-                    terrainMapObject.transform.SetParent(minimapContainer, false);
+                    terrainMapObject.transform.SetParent(content, false);
                     terrainMapImage = terrainMapObject.GetComponent<RawImage>();
                 }
             }

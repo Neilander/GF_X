@@ -10,7 +10,7 @@ public class MinimapGameProcedure : RuntimeProcedureBase
 {
     protected override string RuntimeInitLogTag => "[Minimap]";
     protected override RuntimeInitSystemFlags RequiredRuntimeSystems =>
-        RuntimeInitSystemFlags.MinimapSystem | RuntimeInitSystemFlags.MinimapUI;
+        RuntimeInitSystemFlags.MinimapSystem;
 
     protected override void OnRuntimeInitialized()
     {

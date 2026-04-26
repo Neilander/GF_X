@@ -1,0 +1,18 @@
+一、PSD2UIForm-导出PSD.jsx﻿
+此脚本用于优化导出psd文件，会做以下处理：
+1. 自动将文本图层转为智能对象，防止psd交付后因字库丢失出问题。
+2. 自动将带有特效的图层栅格化，以100%保留原貌，并大幅降低psd文件大小，以便插件还原美术图效果和快速读取解析psd。
+
+导出新的psd文件后, 原psd文件不会修改，不影响美术继续使用和维护原始psd文件。
+
+安装使用方法：
+1. 把 "PSD2UIForm-导出PSD.jsx"文件复制到Photoshop安装目录的Presets\Scripts文件夹下。 如：Adobe Photoshop 2025\Presets\Scripts
+
+2. 在Photoshop中顶部菜单栏找到文件->脚本-> PSD2UIForm-导出PSD菜单，点击菜单即可导出psd
+
+
+二、PSD2UGUI-LayerTagMenu.jsx
+此脚本用于美术提升效率，可以通过按钮快速为图层添加UI标签。
+安装使用方法：
+1. 把 "PSD2UGUI-LayerTagMenu.jsx"文件复制到Photoshop安装目录的Presets\Scripts文件夹下。 如：Adobe Photoshop 2025\Presets\Scripts
+2. (可选)通过PS顶部菜单栏，编辑->键盘快捷键，打开快捷键配置窗口。找到应用程序菜单命令->文件->脚本->PSD2UGUI-LayerTagMenu, 配置工具唤出快捷键，方便快速为图层添加标签。

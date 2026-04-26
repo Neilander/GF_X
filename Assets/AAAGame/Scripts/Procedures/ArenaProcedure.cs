@@ -4,7 +4,7 @@ public class ArenaProcedure : RuntimeProcedureBase
 {
     protected override string RuntimeInitLogTag => "[Arena]";
     protected override RuntimeInitSystemFlags RequiredRuntimeSystems =>
-        RuntimeInitSystemFlags.MinimapSystem | RuntimeInitSystemFlags.MinimapUI;
+        RuntimeInitSystemFlags.MinimapSystem;
 
     protected override void OnRuntimeInitialized()
     {

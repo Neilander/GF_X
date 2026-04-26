@@ -11,6 +11,7 @@ public enum UIViews : int
 	ResourceModifyBar = 13,
 	SupplyUIForm = 19,
 	SideTipsUIForm = 21,
+	InGameUIForm = 22,
 	SettingDialog = 5,
 	RatingDialog = 6,
 	TermsOfServiceDialog = 7,

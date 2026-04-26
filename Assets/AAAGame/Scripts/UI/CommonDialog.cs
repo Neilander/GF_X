@@ -37,8 +37,8 @@ public class CommonDialog : UIFormBase
         bool showClose = Params.Get<VarBoolean>("ShowClose", true);
 
         closeBt.interactable = showClose;
-        title.text = LocalizationTextManager.ProcessText(Params.Get<VarString>("Title"));
-        content.text = LocalizationTextManager.ProcessText(Params.Get<VarString>("Content"));
+        title.text = Params.Get<VarString>("Title");
+        content.text = Params.Get<VarString>("Content");
         //buttons[1].gameObject.SetActive(positiveAction != null);
         buttons[0].gameObject.SetActive(negativeAction != null);
     }

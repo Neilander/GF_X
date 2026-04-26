@@ -18,6 +18,8 @@ public enum TutorialType
 
 public class TutorialManager : GameFrameworkComponent
 {
+    public static event Action PhaseSwitchButtonGuideChanged;
+
     private const string Lv1Identifier = "Lv_1";
     private const string MoveHeroTipId = "tutorial.move.hero.wasd";
     private const string InvadeSHTipId = "tutorial.invade.sh";
@@ -131,6 +133,7 @@ public class TutorialManager : GameFrameworkComponent
         inputModel = null;
         hasLoggedWaitingForInputModel = false;
         m_BuildTutorialStartBuiltCount = 0;
+        NotifyPhaseSwitchButtonGuideChanged();
     }
 
     private void TickTutorial(TutorialType triggerType)
@@ -191,6 +194,7 @@ public class TutorialManager : GameFrameworkComponent
 
         string sourceName = triggerSource != null ? triggerSource.name : "Auto";
         Log.Info("[Tutorial] Tutorial started. type={0}, trigger={1}, chain={2}.", triggerType, sourceName, startedByChain);
+        NotifyPhaseSwitchButtonGuideChanged();
         return true;
     }
 
@@ -231,6 +235,8 @@ public class TutorialManager : GameFrameworkComponent
 
         if (autoChain)
             TryStartNextTutorial(triggerType);
+
+        NotifyPhaseSwitchButtonGuideChanged();
     }
 
     private void TryStartNextTutorial(TutorialType completedType)
@@ -351,6 +357,11 @@ public class TutorialManager : GameFrameworkComponent
         interactable = isSwitchPhaseTutorialActive;
         shouldBlink = isSwitchPhaseTutorialActive;
         return true;
+    }
+
+    private static void NotifyPhaseSwitchButtonGuideChanged()
+    {
+        PhaseSwitchButtonGuideChanged?.Invoke();
     }
 
     private static bool TryGetTutorialTipConfig(TutorialType triggerType, out string tipId, out string textId)

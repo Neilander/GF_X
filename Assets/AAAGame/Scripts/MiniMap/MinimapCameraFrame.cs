@@ -299,6 +299,11 @@ namespace AAAGame.MiniMap
             ApplyBorderStyle();
         }
 
+        public void SetBounds(RectTransform bounds)
+        {
+            minimapBounds = bounds;
+        }
+
         /// <summary>
         /// 强制刷新显示
         /// </summary>

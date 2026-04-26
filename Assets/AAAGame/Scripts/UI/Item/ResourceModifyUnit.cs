@@ -26,12 +26,12 @@ public partial class ResourceModifyUnit : UIItemBase
     }
     public void OnAddButtonClick()
     {
-        GF.UI.ShowToast(LocalizationTextManager.ProcessText(string.Format(LocalizationTextDataModel.GetText("ResourceModify_Add"), resourceType)));
+        GF.UI.ShowToast(string.Format(LocalizationTextDataModel.GetText("ResourceModify_Add"), resourceType));
         InGameDataModel.TryModifyValue(resourceType, 1, true);
     }
     public void OnReduceButtonClick()
     {
-        GF.UI.ShowToast(LocalizationTextManager.ProcessText(string.Format(LocalizationTextDataModel.GetText("ResourceModify_Reduce"), resourceType)));
+        GF.UI.ShowToast(string.Format(LocalizationTextDataModel.GetText("ResourceModify_Reduce"), resourceType));
         InGameDataModel.TryModifyValue(resourceType, -1, true);
     }
 }

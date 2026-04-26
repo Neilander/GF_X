@@ -12,9 +12,6 @@ public enum RuntimeInitSystemFlags
     MinimapUI = 1 << 1,
     CardSystem = 1 << 2,
     CardUI = 1 << 3,
-    ResourceModifyBarUI = 1 << 4,
-    PhaseSwitchUI = 1 << 5,
-    SupplyUI = 1 << 6,
 }
 
 public abstract class RuntimeProcedureBase : ProcedureBase
@@ -79,6 +76,7 @@ internal sealed class RuntimeInitPipeline
     private Action m_OnCompleted;
     private bool m_IsStarted;
     private int m_MinimapUIFormId;
+    private int m_InGameUIFormId;
 
     public bool IsCompleted { get; private set; }
 
@@ -88,6 +86,7 @@ internal sealed class RuntimeInitPipeline
         m_LevelIdentifier = string.IsNullOrWhiteSpace(levelIdentifier) ? "Lv_1" : levelIdentifier;
         m_RuntimeSystems = runtimeSystems;
         m_MinimapUIFormId = -1;
+        m_InGameUIFormId = -1;
     }
 
     public void Start(Action onCompleted)
@@ -138,7 +137,6 @@ internal sealed class RuntimeInitPipeline
             m_GeneralSetup.OnGeneralSetupCompleted -= HandleGeneralSetupCompleted;
         }
 
-        CloseRuntimeUIForms();
         ShutdownRuntimeManagers();
 
         if (m_GeneralSetup != null)
@@ -200,6 +198,23 @@ internal sealed class RuntimeInitPipeline
             }
         }
 
+        if (GF.UI.IsLoadingUIForm(UIViews.InGameUIForm) || GF.UI.HasUIForm(UIViews.InGameUIForm))
+        {
+            Log.Info("{0} InGameUIForm is already open/loading, skip open.", m_LogTag);
+        }
+        else
+        {
+            m_InGameUIFormId = GF.UI.OpenUIForm(UIViews.InGameUIForm);
+            if (m_InGameUIFormId == -1)
+            {
+                Log.Error("{0} Failed to open InGameUIForm.", m_LogTag);
+            }
+            else
+            {
+                Log.Info("{0} Opened InGameUIForm.", m_LogTag);
+            }
+        }
+
         if (needMinimapUI)
         {
             if (minimapManager != null)
@@ -231,21 +246,6 @@ internal sealed class RuntimeInitPipeline
         {
             cardSetup.OpenCardUI();
         }
-
-        if (HasFlag(RuntimeInitSystemFlags.ResourceModifyBarUI))
-        {
-            GF.UI.OpenUIForm(UIViews.ResourceModifyBar);
-        }
-
-        if (HasFlag(RuntimeInitSystemFlags.PhaseSwitchUI))
-        {
-            GF.UI.OpenUIForm(UIViews.PhaseSwitchUIForm);
-        }
-
-        if (HasFlag(RuntimeInitSystemFlags.SupplyUI))
-        {
-            GF.UI.OpenUIForm(UIViews.SupplyUIForm);
-        }
     }
 
     private void ShutdownRuntimeManagers()
@@ -259,6 +259,12 @@ internal sealed class RuntimeInitPipeline
             m_MinimapUIFormId = -1;
         }
 
+        if (m_InGameUIFormId != -1)
+        {
+            GF.UI.CloseUIForm(m_InGameUIFormId);
+            m_InGameUIFormId = -1;
+        }
+
         if (needCardSystem)
         {
             var cardSetup = GameEntry.GetComponent<CardSetup>();
@@ -266,24 +272,6 @@ internal sealed class RuntimeInitPipeline
             {
                 cardSetup.CardSystemShutdown();
             }
-        }
-    }
-
-    private void CloseRuntimeUIForms()
-    {
-        if (HasFlag(RuntimeInitSystemFlags.ResourceModifyBarUI))
-        {
-            GF.UI.CloseUIForms(UIViews.ResourceModifyBar);
-        }
-
-        if (HasFlag(RuntimeInitSystemFlags.PhaseSwitchUI))
-        {
-            GF.UI.CloseUIForms(UIViews.PhaseSwitchUIForm);
-        }
-
-        if (HasFlag(RuntimeInitSystemFlags.SupplyUI))
-        {
-            GF.UI.CloseUIForms(UIViews.SupplyUIForm);
         }
     }
 
