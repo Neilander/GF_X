@@ -15,7 +15,7 @@ public class UnitTypeEditorWindow : EditorWindow
     private string _newEntryName = "";
     private Vector2 _scrollPos;
 
-    [MenuItem("CustomTools/Unit Type Editor")]
+    [MenuItem("Tools/Unit Type Editor")]
     public static void Open()
     {
         var window = GetWindow<UnitTypeEditorWindow>("Unit Type Editor");
@@ -36,7 +36,6 @@ public class UnitTypeEditorWindow : EditorWindow
 
         string content = File.ReadAllText(fullPath);
 
-        // 匹配 enum 体内的成员名（忽略 = 后面的数字）
         var match = Regex.Match(content, @"enum\s+UnitType\s*\{([^}]*)\}", RegexOptions.Singleline);
         if (!match.Success) return;
 
@@ -70,21 +69,17 @@ public class UnitTypeEditorWindow : EditorWindow
             float y = rect.y + 2f;
             float h = rect.height - 4f;
 
-            // Index 标签
             EditorGUI.LabelField(new Rect(rect.x, y, indexW, h), index.ToString());
 
-            // 名称编辑
             string newName = EditorGUI.TextField(new Rect(rect.x + indexW + 4f, y, nameW, h), _entries[index]);
             if (newName != _entries[index])
             {
-                // 验证合法的 C# 标识符
                 if (IsValidIdentifier(newName))
                 {
                     _entries[index] = newName;
                 }
             }
 
-            // 删除按钮
             if (GUI.Button(new Rect(rect.x + indexW + nameW + 8f, y, deleteW, h), "x"))
             {
                 _entries.RemoveAt(index);
@@ -94,7 +89,6 @@ public class UnitTypeEditorWindow : EditorWindow
 
         _reorderableList.onReorderCallback = list =>
         {
-            // 拖拽排序后不需要额外操作，index 会在保存时自动重新分配
         };
     }
 
@@ -105,12 +99,10 @@ public class UnitTypeEditorWindow : EditorWindow
         EditorGUILayout.HelpBox("像编辑 Layer 一样编辑 UnitType 枚举。拖拽排序，名称即 index。", MessageType.Info);
         EditorGUILayout.Space(4);
 
-        // 列表
         _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
         _reorderableList.DoLayoutList();
         EditorGUILayout.EndScrollView();
 
-        // 添加新条目
         EditorGUILayout.Space(8);
         EditorGUILayout.BeginHorizontal();
         _newEntryName = EditorGUILayout.TextField("New Type", _newEntryName);
@@ -125,7 +117,6 @@ public class UnitTypeEditorWindow : EditorWindow
 
         EditorGUILayout.Space(4);
 
-        // 保存按钮
         if (GUILayout.Button("Save", GUILayout.Height(30)))
         {
             SaveEnum();
@@ -133,7 +124,6 @@ public class UnitTypeEditorWindow : EditorWindow
 
         EditorGUILayout.Space(4);
 
-        // 显示文件路径
         EditorGUI.BeginDisabledGroup(true);
         EditorGUILayout.TextField("File", EnumFilePath);
         EditorGUI.EndDisabledGroup();

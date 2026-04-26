@@ -411,7 +411,7 @@ namespace AAAGame.Card
         /// <summary>
         /// 丢弃卡牌
         /// </summary>
-        public bool DiscardCard(CardModel cardModel)
+        public bool DiscardCard(CardModel cardModel, Vector2? discardScreenPosition = null)
         {
             if (cardModel == null)
             {
@@ -425,7 +425,7 @@ namespace AAAGame.Card
                 return false;
             }
 
-            ApplyDiscardResourceReward(cardModel);
+            ApplyDiscardResourceReward(cardModel, discardScreenPosition);
 
             // 触发丢弃事件（C# 委托 + GF.Event）
             OnCardDiscarded?.Invoke(cardModel);
@@ -437,7 +437,7 @@ namespace AAAGame.Card
             return true;
         }
 
-        private void ApplyDiscardResourceReward(CardModel cardModel)
+        private void ApplyDiscardResourceReward(CardModel cardModel, Vector2? discardScreenPosition)
         {
             if (GF.Config == null)
             {
@@ -460,11 +460,7 @@ namespace AAAGame.Card
             if (gainedCoin <= 0)
                 return;
 
-            if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, gainedCoin, true))
-            {
-                Log.Error("[Card] Discard reward apply failed. deltaCoin={0}", gainedCoin);
-                return;
-            }
+            RewardManager.HandleCardDiscardReward(cardModel, gainedCoin, discardScreenPosition);
         }
 
 

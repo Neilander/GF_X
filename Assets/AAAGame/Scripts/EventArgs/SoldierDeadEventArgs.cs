@@ -27,8 +27,37 @@ public sealed class SoldierDeadEventArgs : GameEventArgs
         e.VictimEntityId = victim.Id;
         e.VictimSide = victim.Side;
         e.VictimSupply = victim.CharacterData != null ? Mathf.Max(0, victim.CharacterData.Supply) : 0;
-        e.WorldPosition = victim.transform.position;
+        e.WorldPosition = ResolveVictimWorldPosition(victim);
         return e;
+    }
+
+    private static Vector3 ResolveVictimWorldPosition(SoldierEntity victim)
+    {
+        Collider[] colliders = victim.GetComponentsInChildren<Collider>(true);
+        Bounds mergedBounds = default;
+        bool hasBounds = false;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider col = colliders[i];
+            if (col == null || !col.enabled)
+                continue;
+
+            if (!hasBounds)
+            {
+                mergedBounds = col.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                mergedBounds.Encapsulate(col.bounds);
+            }
+        }
+
+        if (hasBounds)
+            return mergedBounds.center;
+
+        return victim.transform.position;
     }
 
     public override void Clear()

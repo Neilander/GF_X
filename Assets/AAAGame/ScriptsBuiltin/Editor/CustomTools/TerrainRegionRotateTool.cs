@@ -10,7 +10,6 @@ namespace AAAGame.EditorTools
     /// </summary>
     public class TerrainRegionRotateTool : EditorWindow
     {
-        [MenuItem("CustomTools/Terrain/Rotate Height Region")]
         public static void Open()
         {
             var win = GetWindow<TerrainRegionRotateTool>(true, "Terrain Region Rotate");

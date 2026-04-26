@@ -56,7 +56,6 @@ public class TechLayoutGeneratorWindow : EditorWindow
     private Color m_EfficiencyBg = new Color(0.35f, 1.0f, 0.55f, 0.12f);
     private Color m_ProfitBg = new Color(1f, 0.95f, 0.3f, 0.12f);
 
-    [MenuItem("CustomTools/Tech/Tech Panel Generator")]
     public static void Open()
     {
         GetWindow<TechLayoutGeneratorWindow>("Tech Panel Generator");

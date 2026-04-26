@@ -9,6 +9,8 @@ using UnityEngine.U2D;
 
 public partial class ProjectPanelRightClickExtension
 {
+    private const string SpriteCloneSuffix = "(Clone)";
+
     [MenuItem("Assets/GF Tools/2D/SpriteAtlas -> TMP_SpriteAsset", priority = 100)]
     static void SpriteAtlas2TmpSpriteMenu()
     {
@@ -82,12 +84,12 @@ public partial class ProjectPanelRightClickExtension
         if (spriteAsset.material == null)
         {
             Material material = new Material(Shader.Find("TextMeshPro/Sprite"));
-            material.mainTexture = spriteAsset.spriteSheet;
             AssetDatabase.AddObjectToAsset(material, spriteAsset);
             AssetDatabase.SaveAssetIfDirty(spriteAsset);
             spriteAsset.material = material;
         }
-        var spNameTrim = "(Clone)".Length;
+        spriteAsset.material.mainTexture = spriteAsset.spriteSheet;
+        EditorUtility.SetDirty(spriteAsset.material);
         for (int i = 0; i < sprites.Length; i++)
         {
             var sp = sprites[i];
@@ -96,7 +98,7 @@ public partial class ProjectPanelRightClickExtension
             new UnityEngine.TextCore.GlyphRect(spUVRect), 1, 0);
             spriteAsset.spriteGlyphTable.Add(glyph);
             var spChar = new TMP_SpriteCharacter(ToUnicode(i.ToString()), glyph);
-            spChar.name = sp.name[..^spNameTrim];
+            spChar.name = NormalizeSpriteName(sp.name);
             spriteAsset.spriteCharacterTable.Add(spChar);
         }
         AssetDatabase.SaveAssetIfDirty(spriteAsset);
@@ -256,16 +258,26 @@ public partial class ProjectPanelRightClickExtension
         var getSpritesFunc = typeof(SpriteAtlasExtensions).GetMethod("GetPackedSprites", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         Sprite[] sprites = getSpritesFunc.Invoke(null, new object[] { atlas }) as Sprite[];
         SpriteRect[] spriteRects = new SpriteRect[sprites.Length];
-        var spNameTrim = "(Clone)".Length;
         for (int i = 0; i < sprites.Length; i++)
         {
             var sp = sprites[i];
             spriteRects[i] = new SpriteRect()
             {
-                name = sp.name[..^spNameTrim],
+                name = NormalizeSpriteName(sp.name),
                 rect = sp.textureRect
             };
         }
         return spriteRects;
+    }
+
+    private static string NormalizeSpriteName(string spriteName)
+    {
+        if (string.IsNullOrEmpty(spriteName))
+            return string.Empty;
+
+        if (spriteName.EndsWith(SpriteCloneSuffix))
+            return spriteName[..^SpriteCloneSuffix.Length];
+
+        return spriteName;
     }
 }

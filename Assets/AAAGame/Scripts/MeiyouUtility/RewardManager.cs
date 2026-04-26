@@ -66,7 +66,16 @@ public class RewardManager : GameFrameworkComponent
 		if (manager == null)
 			return;
 
-		manager.GrantDiscardCardReward(cardModel);
+		manager.GrantDiscardCardReward(cardModel, -1, null);
+	}
+
+	public static void HandleCardDiscardReward(CardModel cardModel, int gainedCoin, Vector2? discardScreenPosition)
+	{
+		RewardManager manager = GetRuntimeManager();
+		if (manager == null)
+			return;
+
+		manager.GrantDiscardCardReward(cardModel, gainedCoin, discardScreenPosition);
 	}
 
 	public static void HandleEnterBuildPhaseReward(bool isFirstPhase)
@@ -157,25 +166,30 @@ public class RewardManager : GameFrameworkComponent
 		GrantCoinAfterFly(args.WorldPosition, gainedCoin, "kill_supply");
 	}
 
-	private void GrantDiscardCardReward(CardModel cardModel)
+	private void GrantDiscardCardReward(CardModel cardModel, int gainedCoin, Vector2? discardScreenPosition)
 	{
 		if (cardModel == null)
 			return;
 
-		int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-		int conversionRate = GF.Config != null ? GF.Config.GetInt(DiscardResourceConversionRateConfigKey, 0) : 0;
-		if (conversionRate <= 0)
+		int resolvedCoin = gainedCoin;
+		if (resolvedCoin < 0)
 		{
-			Log.Error("[RewardManager] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, conversionRate);
-			return;
+			int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
+			int conversionRate = GF.Config != null ? GF.Config.GetInt(DiscardResourceConversionRateConfigKey, 0) : 0;
+			if (conversionRate <= 0)
+			{
+				Log.Error("[RewardManager] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, conversionRate);
+				return;
+			}
+
+			resolvedCoin = occupiedSupply / conversionRate;
 		}
 
-		int gainedCoin = occupiedSupply / conversionRate;
-		if (gainedCoin <= 0)
+		if (resolvedCoin <= 0)
 			return;
 
-		Vector3 sourcePos = ResolveDiscardRewardSourcePosition(cardModel);
-		GrantCoinAfterFly(sourcePos, gainedCoin, "discard_card");
+		Vector3 sourcePos = ResolveDiscardRewardSourcePosition(cardModel, discardScreenPosition);
+		GrantCoinAfterFly(sourcePos, resolvedCoin, "discard_card");
 	}
 
 	private void GrantBuildPhaseIncomeFromPlayerProdBuildings()
@@ -240,8 +254,11 @@ public class RewardManager : GameFrameworkComponent
 		}
 	}
 
-	private static Vector3 ResolveDiscardRewardSourcePosition(CardModel cardModel)
+	private static Vector3 ResolveDiscardRewardSourcePosition(CardModel cardModel, Vector2? discardScreenPosition)
 	{
+		if (discardScreenPosition.HasValue && TryResolveWorldPositionFromScreen(discardScreenPosition.Value, out Vector3 screenWorldPos))
+			return screenWorldPos;
+
 		if (cardModel.SourceBuilding != null)
 			return cardModel.SourceBuilding.transform.position;
 
@@ -249,6 +266,30 @@ public class RewardManager : GameFrameworkComponent
 			return playerPos;
 
 		return Vector3.zero;
+	}
+
+	private static bool TryResolveWorldPositionFromScreen(Vector2 screenPosition, out Vector3 worldPosition)
+	{
+		worldPosition = Vector3.zero;
+		Camera cam = Camera.main;
+		if (cam == null)
+			return false;
+
+		Ray ray = cam.ScreenPointToRay(screenPosition);
+		if (Physics.Raycast(ray, out RaycastHit hit, 1000f, ~0, QueryTriggerInteraction.Ignore))
+		{
+			worldPosition = hit.point;
+			return true;
+		}
+
+		Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
+		if (groundPlane.Raycast(ray, out float distance))
+		{
+			worldPosition = ray.GetPoint(distance);
+			return true;
+		}
+
+		return false;
 	}
 
 	private static bool TryGetPlayerPosition(out Vector3 position)

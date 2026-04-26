@@ -656,7 +656,7 @@ namespace AAAGame.Card
                 cardItem.OnDiscardSuccess();
                 RemoveHandCardItemDirect(cardItem.GetCardModel());
 
-                bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel());
+                bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel(), screenPosition);
                 if (!discarded)
                 {
                     Log.Error("[CardUI] Failed to discard card in controller.");

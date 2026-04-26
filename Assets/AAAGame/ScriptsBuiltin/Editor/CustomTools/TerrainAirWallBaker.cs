@@ -12,7 +12,6 @@ namespace AAAGame.EditorTools
     /// </summary>
     public class TerrainAirWallBaker : EditorWindow
     {
-        [MenuItem("CustomTools/Terrain/AirWall Baker")]
         public static void Open()
         {
             var win = GetWindow<TerrainAirWallBaker>(true, "Terrain AirWall Baker");
