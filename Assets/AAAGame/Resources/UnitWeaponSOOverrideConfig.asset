@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 03c8f0d58bab4e64fb8d368858711a30, type: 3}
+  m_Name: UnitWeaponSOOverrideConfig
+  m_EditorClassIdentifier: 
+  _entries:
+  - characterKey: Unit_Scapegoat
+    weaponSOPath: 
+  - characterKey: Unit_Intern
+    weaponSOPath: 
+  - characterKey: Unit_Coder
+    weaponSOPath: 
+  - characterKey: Unit_CanMaker
+    weaponSOPath: Assets/AAAGame/SOs/Weapon/CanMaker.asset
+  - characterKey: Unit_Brat
+    weaponSOPath: 
+  - characterKey: Unit_Courier
+    weaponSOPath: 
+  - characterKey: Unit_LateRider
+    weaponSOPath: 
+  - characterKey: Unit_BoneButcher
+    weaponSOPath: 
+  - characterKey: Unit_ColdCarrier
+    weaponSOPath: 
+  - characterKey: Unit_HydroGunner
+    weaponSOPath: 
+  - characterKey: Unit_Firefighter
+    weaponSOPath: 
+  - characterKey: Unit_Hero
+    weaponSOPath: 

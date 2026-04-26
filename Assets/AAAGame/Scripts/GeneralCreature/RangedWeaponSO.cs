@@ -8,10 +8,13 @@ public class RangedWeaponSO : BaseWeaponSO
 {
     [Header("弹道设置")]
     [SerializeField] private string _projectileName = "Projectile";
+    // Deprecated: projectile speed now comes from WeaponData.ProjectileSpeed (data table / weapon stats).
+    // Keep this serialized field only for backward compatibility with existing SO assets.
     [SerializeField] private float _projectileSpeed = 10f;
     [SerializeField] private string _hitVfxName;
 
     public string ProjectileName => _projectileName;
+    // Deprecated: runtime no longer reads projectile speed from SO.
     public float ProjectileSpeed => _projectileSpeed;
     public string HitVfxName => _hitVfxName;
 
@@ -31,7 +34,7 @@ public class RangedWeaponSO : BaseWeaponSO
         projectileParams.WeaponSO = this;
 
         // 使用对象池显示弹道
-        GF.Entity.ShowEntity<Projectile>(_projectileName, Const.EntityGroup.Default, projectileParams);
+        GF.Entity.ShowEntity<Projectile>(_projectileName, Const.EntityGroup.Bullet, projectileParams);
 
         // 播放攻击特效
         if (!string.IsNullOrEmpty(AttackVfxName))

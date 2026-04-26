@@ -104,6 +104,15 @@ public class MAEntity : CompCreature, IEntityContext
         if (moveComp is CharacterMoveComp characterMoveComp)
             characterMoveComp.Init(this, navAgentTypeID);
 
+        // 对象池复用时，清理上一生命周期残留的移动/目标状态，避免出生后被旧状态拉走。
+        moveComp?.StopMove();
+        if (targetComp != null)
+            targetComp.CurrentTarget = null;
+        durationMoveEffectComp?.StopAllMove();
+        _moveExecutor.SetInput(Vector3.zero);
+        _moveExecutor.SetExternal(Vector3.zero);
+        _moveExecutor.ClearOverride();
+
         InitializeCollisionScaleBase();
 
         // BuffComp 在 OnShow（而非 OnInit）中创建：每次 Show 重置所有 Buff 状态
@@ -198,9 +207,10 @@ public class MAEntity : CompCreature, IEntityContext
         base.OnHide(isShutdown, userData);
     }
 
-    protected virtual void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        float dt = Time.deltaTime;
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        float dt = realElapseSeconds;
 
         if (CanRun(_buffComp))
             _buffComp.UpdateBuff(dt);
@@ -261,6 +271,24 @@ public class MAEntity : CompCreature, IEntityContext
                 }
             }
         }
+        if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
+        {
+            Transform rotateTarget = _modelTransform;
+            if (_modelTransform.childCount > 0)
+            {
+                rotateTarget = _modelTransform.GetChild(0);
+            }
+
+            rotateTarget.rotation = Quaternion.RotateTowards(
+                rotateTarget.rotation,
+                _targetRotation.Value,
+                RotationSpeed * dt);
+
+            if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
+            {
+                _targetRotation = null;
+            }
+        }
     }
 
     public bool RegisterInvincibleSource(string sourceId)
@@ -302,28 +330,6 @@ public class MAEntity : CompCreature, IEntityContext
             modules: new List<BuffCallback> { new InvincibleStateBuff() });
 
         _buffComp.AddBuff(buffData, this);
-    }
-
-    protected virtual void LateUpdate()
-    {
-        if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
-        {
-            Transform rotateTarget = _modelTransform;
-            if (_modelTransform.childCount > 0)
-            {
-                rotateTarget = _modelTransform.GetChild(0);
-            }
-
-            rotateTarget.rotation = Quaternion.RotateTowards(
-                rotateTarget.rotation,
-                _targetRotation.Value,
-                RotationSpeed * Time.deltaTime);
-
-            if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
-            {
-                _targetRotation = null;
-            }
-        }
     }
 
     private void InitializeCollisionScaleBase()

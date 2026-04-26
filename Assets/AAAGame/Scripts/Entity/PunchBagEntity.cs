@@ -11,8 +11,10 @@ public class PunchBagEntity : GeneralCreature
         Side = SideType.EnemySide;
     }
 
-    private void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
+
         //if(Input.GetKeyDown(KeyCode.T))
         //animator.SetTrigger( "GetHit");
     }

@@ -16,9 +16,9 @@ public class SkillEntity : MAEntity
         _rangeTrans = transform.Find("CastRange");
     }
     
-    protected override void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.Update();
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
         
         if(CanRun(skillComp))
             skillComp.Skill();

@@ -46,14 +46,16 @@ public abstract class AbstractProjectile : EntityBase
        base.OnShow(userData);
    }
 
-   private void Update()
+   protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
    {
+       base.OnUpdate(elapseSeconds, realElapseSeconds);
+
        if (!startMove)
            return;
        
       //GF.Log("lassds");
-       elapsedTime += Time.deltaTime;
-       Move(elapsedTime, Time.deltaTime);
+       elapsedTime += elapseSeconds;
+       Move(elapsedTime, elapseSeconds);
    }
    
    protected abstract void Move(float totalPassed, float deltaTime);

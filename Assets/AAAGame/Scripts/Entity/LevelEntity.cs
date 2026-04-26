@@ -85,12 +85,14 @@ public class LevelEntity : EntityBase
     private float _rebakeTimer = -1f;
     private const float RebakeDelay = 0.5f;
 
-    private void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
+
         // 延迟烘焙：最后一次请求后 0.5 秒执行
         if (_rebakeTimer >= 0f)
         {
-            _rebakeTimer -= Time.deltaTime;
+            _rebakeTimer -= realElapseSeconds;
             if (_rebakeTimer < 0f)
             {
                 Debug.Log("[LevelEntity] 延迟烘焙 NavMesh 执行");
@@ -247,7 +249,8 @@ public class LevelEntity : EntityBase
     {
         var buildManager = GameEntry.GetComponent<BuildManager>();
         var gameEndManager = GameEntry.GetComponent<GameEndManager>();
-        var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
+        // 只使用当前关卡实体层级下的预设点，避免 launch 等并存场景中的同名点干扰出生位置。
+        var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
         var testSlotConfig = TechTestSlotConfig.LoadOrNull();
         if (testSlotConfig == null)
         {
@@ -295,6 +298,7 @@ public class LevelEntity : EntityBase
                         break;
                     }
 
+                    Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", point.name, point.Position);
                     SoldierFactory.ShowSoldier(heroUnitType, point.Position, SideType.PlayerSide, BrainType.Player);
                     heroSpawned = true;
                     break;

@@ -59,6 +59,17 @@ public class DirectAtkComp : IAtkComp
         }
     }
 
+    private string GetWeaponSOPath()
+    {
+        string overridePath = UnitWeaponSOOverrideResolver.GetWeaponSOPath(_ctx.CharacterKey);
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            return overridePath;
+        }
+
+        return $"Assets/AAAGame/SOs/Weapon/{GetWeaponSOAddress(_weapon.Type)}.asset";
+    }
+
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
@@ -100,7 +111,7 @@ public class DirectAtkComp : IAtkComp
         _activeWeaponIndex = 0;
         _weapon = _weapons[_activeWeaponIndex];
 
-        WeaponHelper.LoadWeapon($"Assets/AAAGame/SOs/Weapon/{GetWeaponSOAddress(_weapon.Type)}.asset", this);
+        WeaponHelper.LoadWeapon(GetWeaponSOPath(), this);
 
         Debug.Log($"[DirectAtkComp] Init: unit={ctx.CharacterKey} weaponType={_weapon.Type} damage={_weapon.Atk} range={_weapon.Range} interval={_weapon.Interval} windUp={_weapon.WindUp} windDown={_weapon.WindDown} projectileSpeed={_weapon.ProjectileSpeed}");
 

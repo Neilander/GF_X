@@ -9,11 +9,13 @@ using UnityEngine;
 public class UnitTypeEditorWindow : EditorWindow
 {
     private const string EnumFilePath = "Assets/AAAGame/Scripts/Definition/UnitType.cs";
+    private const string WeaponOverrideConfigPath = "Assets/AAAGame/Resources/UnitWeaponSOOverrideConfig.asset";
 
     private List<string> _entries = new List<string>();
     private ReorderableList _reorderableList;
     private string _newEntryName = "";
     private Vector2 _scrollPos;
+    private UnitWeaponSOOverrideConfig _weaponOverrideConfig;
 
     [MenuItem("Tools/Unit Type Editor")]
     public static void Open()
@@ -24,8 +26,10 @@ public class UnitTypeEditorWindow : EditorWindow
 
     private void OnEnable()
     {
+        EnsureWeaponOverrideConfig();
         LoadEnum();
         BuildList();
+        SyncWeaponOverrideEntries();
     }
 
     private void LoadEnum()
@@ -117,16 +121,59 @@ public class UnitTypeEditorWindow : EditorWindow
 
         EditorGUILayout.Space(4);
 
+        DrawWeaponSOOverrideSection();
+
+        EditorGUILayout.Space(4);
+
         if (GUILayout.Button("Save", GUILayout.Height(30)))
         {
             SaveEnum();
+            SaveWeaponOverrideConfig();
         }
 
         EditorGUILayout.Space(4);
 
         EditorGUI.BeginDisabledGroup(true);
         EditorGUILayout.TextField("File", EnumFilePath);
+        EditorGUILayout.TextField("Weapon Override Config", WeaponOverrideConfigPath);
         EditorGUI.EndDisabledGroup();
+    }
+
+    private void DrawWeaponSOOverrideSection()
+    {
+        if (_weaponOverrideConfig == null)
+        {
+            return;
+        }
+
+        EditorGUILayout.Space(4);
+        EditorGUILayout.LabelField("Weapon SO Override", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox("可按 UnitType 指定专用 Weapon SO。留空则走默认逻辑。", MessageType.None);
+
+        bool changed = false;
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            string characterKey = _entries[i];
+            UnitWeaponSOOverrideEntry entry = GetOrCreateOverrideEntry(characterKey);
+            BaseWeaponSO current = string.IsNullOrWhiteSpace(entry.weaponSOPath)
+                ? null
+                : AssetDatabase.LoadAssetAtPath<BaseWeaponSO>(entry.weaponSOPath);
+
+            BaseWeaponSO next = (BaseWeaponSO)EditorGUILayout.ObjectField(characterKey, current, typeof(BaseWeaponSO), false);
+            if (next == current)
+            {
+                continue;
+            }
+
+            entry.weaponSOPath = next == null ? string.Empty : AssetDatabase.GetAssetPath(next);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            _weaponOverrideConfig.MarkDirty();
+            EditorUtility.SetDirty(_weaponOverrideConfig);
+        }
     }
 
     private void SaveEnum()
@@ -146,6 +193,121 @@ public class UnitTypeEditorWindow : EditorWindow
 
         File.WriteAllText(fullPath, sb.ToString());
         AssetDatabase.Refresh();
+    }
+
+    private void EnsureWeaponOverrideConfig()
+    {
+        _weaponOverrideConfig = AssetDatabase.LoadAssetAtPath<UnitWeaponSOOverrideConfig>(WeaponOverrideConfigPath);
+        if (_weaponOverrideConfig != null)
+        {
+            return;
+        }
+
+        string dir = Path.GetDirectoryName(WeaponOverrideConfigPath);
+        if (!Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        _weaponOverrideConfig = ScriptableObject.CreateInstance<UnitWeaponSOOverrideConfig>();
+        AssetDatabase.CreateAsset(_weaponOverrideConfig, WeaponOverrideConfigPath);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+    }
+
+    private void SyncWeaponOverrideEntries()
+    {
+        if (_weaponOverrideConfig == null)
+        {
+            return;
+        }
+
+        bool changed = false;
+        var entries = _weaponOverrideConfig.Entries;
+
+        for (int i = entries.Count - 1; i >= 0; i--)
+        {
+            if (entries[i] == null || !_entries.Contains(entries[i].characterKey))
+            {
+                entries.RemoveAt(i);
+                changed = true;
+            }
+        }
+
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            if (FindEntry(_entries[i]) != null)
+            {
+                continue;
+            }
+
+            entries.Add(new UnitWeaponSOOverrideEntry
+            {
+                characterKey = _entries[i],
+                weaponSOPath = string.Empty
+            });
+            changed = true;
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        _weaponOverrideConfig.MarkDirty();
+        EditorUtility.SetDirty(_weaponOverrideConfig);
+        AssetDatabase.SaveAssets();
+    }
+
+    private UnitWeaponSOOverrideEntry GetOrCreateOverrideEntry(string characterKey)
+    {
+        UnitWeaponSOOverrideEntry entry = FindEntry(characterKey);
+        if (entry != null)
+        {
+            return entry;
+        }
+
+        entry = new UnitWeaponSOOverrideEntry
+        {
+            characterKey = characterKey,
+            weaponSOPath = string.Empty
+        };
+        _weaponOverrideConfig.Entries.Add(entry);
+        _weaponOverrideConfig.MarkDirty();
+        EditorUtility.SetDirty(_weaponOverrideConfig);
+        return entry;
+    }
+
+    private UnitWeaponSOOverrideEntry FindEntry(string characterKey)
+    {
+        var entries = _weaponOverrideConfig.Entries;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry == null)
+            {
+                continue;
+            }
+
+            if (entry.characterKey == characterKey)
+            {
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    private void SaveWeaponOverrideConfig()
+    {
+        if (_weaponOverrideConfig == null)
+        {
+            return;
+        }
+
+        _weaponOverrideConfig.MarkDirty();
+        EditorUtility.SetDirty(_weaponOverrideConfig);
+        AssetDatabase.SaveAssets();
     }
 
     private static bool IsValidIdentifier(string name)

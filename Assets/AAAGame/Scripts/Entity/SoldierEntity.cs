@@ -1,5 +1,6 @@
 using AAAGame.MiniMap;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 /// <summary>
 /// 小兵实体：使用 DirectAtkComp（直接选定目标造成伤害，不走攻击盒）。
@@ -26,9 +27,15 @@ public partial class SoldierEntity : MAEntity
         base.OnShow(userData);
         if (userData is EntityParams ep)
         {
+            if (ep.position.HasValue)
+                ApplySpawnPosition(ep.position.Value);
+            else if (ep.BrainType == BrainType.Player)
+                Log.Error("Player SoldierEntity missing spawn position in EntityParams. CharacterKey={0}", CharacterKey);
+
             Side = ep.Side;
-            BrainType = ep.BrainType; // 设置AI类型      
+            BrainType = ep.BrainType; // 设置AI类型
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
+
         }
 
 
@@ -48,9 +55,9 @@ public partial class SoldierEntity : MAEntity
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 
-    protected override void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.Update();
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
         TickGhostCollisionRuntime();
 
         if (m_MinimapReportComponent != null)
@@ -72,6 +79,7 @@ public partial class SoldierEntity : MAEntity
                 Debug.DrawRay(pos, navDir * 3f, Color.green);
             }
         }
+
     }
 
     protected override void SetUpMAComp(object userData)
@@ -97,10 +105,6 @@ public partial class SoldierEntity : MAEntity
     {
         return _unitIndex;
     }*/
-
-
-
-
 
     protected override void OnHide(bool isShutdown, object userData)
     {
@@ -162,6 +166,21 @@ public partial class SoldierEntity : MAEntity
             0.35f,
             0.08f,
             0.1f);
+    }
+
+    private void ApplySpawnPosition(Vector3 worldPosition)
+    {
+        CharacterController controller = GetComponent<CharacterController>();
+        if (controller != null)
+        {
+            bool wasEnabled = controller.enabled;
+            controller.enabled = false;
+            transform.position = worldPosition;
+            controller.enabled = wasEnabled;
+            return;
+        }
+
+        transform.position = worldPosition;
     }
 
 }

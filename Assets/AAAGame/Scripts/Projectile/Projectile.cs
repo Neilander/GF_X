@@ -31,7 +31,15 @@ public class Projectile : EntityBase
             _weaponSO = paramsData.WeaponSO as RangedWeaponSO;
         }
 
-        if (!_target.IsDestroyed())
+        if (_weaponData == null)
+        {
+            Debug.LogError("Projectile: WeaponData is null, cannot resolve projectile speed.");
+            _hasHit = true;
+            GF.Entity.HideEntity(Entity.Id);
+            return;
+        }
+
+        if (_target != null && !_target.IsDestroyed())
         {
             _targetPosition = _target.Position + Vector3.up * 0.5f;
         }
@@ -45,22 +53,18 @@ public class Projectile : EntityBase
         _hasHit = false;
     }
 
-    protected virtual void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
+
         if (_hasHit)
         {
             return;
         }
 
-        //添加空检查，防止_weaponSO为null导致的空引用异常
-        if (_weaponSO == null)
-        {
-            Debug.LogError("Projectile: _weaponSO is null!");
-            return;
-        }
-
+        // Keep tracking target position while projectile is flying.
         //实时更新目标位置，让子弹能够追踪移动的目标
-        if (!_target.IsDestroyed())
+        if (_target != null && !_target.IsDestroyed())
         {
             if (_target.Alive)
             {
@@ -78,10 +82,8 @@ public class Projectile : EntityBase
 
         // 计算到目标的距离
         float distance = Vector3.Distance(transform.position, _targetPosition);
-        Fix64 projectileSpeed = (_weaponData != null && _weaponData.ProjectileSpeed > Fix64.Zero)
-            ? _weaponData.ProjectileSpeed
-            : (Fix64)_weaponSO.ProjectileSpeed;
-        float moveDistance = (float)projectileSpeed * Time.deltaTime;
+        Fix64 projectileSpeed = _weaponData.ProjectileSpeed;
+        float moveDistance = (float)projectileSpeed * elapseSeconds;
 
         if (distance <= moveDistance)
         {
@@ -104,7 +106,7 @@ public class Projectile : EntityBase
         bool shouldDealDamage = false;
 
         // 检查目标是否还活着
-        if (!_target.IsDestroyed() && _target.Alive)
+        if (_target != null && !_target.IsDestroyed() && _target.Alive)
         {
             shouldDealDamage = true;
         }
@@ -132,6 +134,7 @@ public class Projectile : EntityBase
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        _hasHit = true;
         base.OnHide(isShutdown, userData);
         
         _target = null;

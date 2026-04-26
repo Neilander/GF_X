@@ -683,26 +683,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6706822643237537469}
     m_Modifications:
-    - target: {fileID: 1478268230580509816, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
-      propertyPath: m_NavMeshData
-      value: 
-      objectReference: {fileID: 23800000, guid: 2188a55c3cb08c54c93254d45ffe0def, type: 2}
-    - target: {fileID: 3910693883871430450, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
-      propertyPath: m_NavMeshData
-      value: 
-      objectReference: {fileID: 23800000, guid: e3ee8d5b678af714987c3f6449cacfc3, type: 2}
-    - target: {fileID: 6038623276583930824, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 1.2
-      objectReference: {fileID: 0}
-    - target: {fileID: 6038623276583930824, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 1.2
-      objectReference: {fileID: 0}
-    - target: {fileID: 6038623276583930824, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 1.2
-      objectReference: {fileID: 0}
     - target: {fileID: 6038623276583930824, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -743,14 +723,6 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 6038623276583930824, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
-      propertyPath: m_ConstrainProportionsScale
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 6184176831179895282, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
-      propertyPath: m_NavMeshData
-      value: 
-      objectReference: {fileID: 23800000, guid: b5b19f10db1ffff48a17469ff4d28594, type: 2}
     - target: {fileID: 7849028102806450505, guid: 12f0969519ebc91409df2c5e06e6998b, type: 3}
       propertyPath: m_Name
       value: Lv1

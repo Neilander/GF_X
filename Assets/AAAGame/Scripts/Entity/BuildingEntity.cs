@@ -156,9 +156,9 @@ public partial class BuildingEntity : MAEntity
         _buildingAtkComp.Init(this);
     }
 
-    protected override void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.Update();
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
         _minimapReportComponent?.Tick();
     }
 

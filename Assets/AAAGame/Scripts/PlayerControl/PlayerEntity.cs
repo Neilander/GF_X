@@ -22,10 +22,6 @@ public class PlayerEntity : SkillEntity
     {
         base.OnShow(userData);
         CameraController.Instance.SetFollowTarget(gameObject.transform);
-        if (userData is EntityParams)
-        {
-            transform.position = (userData as EntityParams).position ?? Vector3.zero;
-        }
 
         Side = SideType.PlayerSide;
         RegisterToGroupMove(); // Side 已赋值，安全注册
@@ -37,9 +33,9 @@ public class PlayerEntity : SkillEntity
         FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath(skillFacPath), this);
     }
 
-    protected override void Update()
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.Update();
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
 #if UNITY_EDITOR
         if (Input.GetKeyDown(KeyCode.T))
         {
