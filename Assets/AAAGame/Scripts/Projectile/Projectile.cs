@@ -41,7 +41,7 @@ public class Projectile : EntityBase
 
         if (_target != null && !_target.IsDestroyed())
         {
-            _targetPosition = _target.Position + Vector3.up * 0.5f;
+            _targetPosition = ResolveTargetAimPoint(_target, transform.position);
         }
         else
         {
@@ -68,7 +68,7 @@ public class Projectile : EntityBase
         {
             if (_target.Alive)
             {
-                _targetPosition = _target.Position + Vector3.up * 0.5f;
+                _targetPosition = ResolveTargetAimPoint(_target, transform.position);
             }
             else
             {
@@ -82,8 +82,8 @@ public class Projectile : EntityBase
 
         // 计算到目标的距离
         float distance = Vector3.Distance(transform.position, _targetPosition);
-        Fix64 projectileSpeed = _weaponData.ProjectileSpeed;
-        float moveDistance = (float)projectileSpeed * elapseSeconds;
+        float projectileSpeed = DistanceUnitConverter.ConvertToWorldFloat(_weaponData.ProjectileSpeed);
+        float moveDistance = projectileSpeed * elapseSeconds;
 
         if (distance <= moveDistance)
         {
@@ -97,6 +97,42 @@ public class Projectile : EntityBase
             transform.position += direction * moveDistance;
             transform.LookAt(_targetPosition);
         }
+    }
+
+    private static Vector3 ResolveTargetAimPoint(IEntityContext target, Vector3 fromPosition)
+    {
+        if (TryGetTargetClosestPoint(target, fromPosition, out Vector3 closestPoint))
+        {
+            return closestPoint;
+        }
+
+        return target.Position + Vector3.up * 0.5f;
+    }
+
+    private static bool TryGetTargetClosestPoint(IEntityContext target, Vector3 fromPosition, out Vector3 closestPoint)
+    {
+        closestPoint = default;
+
+        if (!(target is Component targetComponent) || targetComponent == null)
+        {
+            return false;
+        }
+
+        var hurtBox = targetComponent.GetComponentInChildren<HurtBox>();
+        if (hurtBox != null && hurtBox.TryGetComponent<Collider>(out var hurtCollider) && hurtCollider.enabled)
+        {
+            closestPoint = hurtCollider.ClosestPoint(fromPosition);
+            return true;
+        }
+
+        var collider = targetComponent.GetComponentInChildren<Collider>();
+        if (collider != null && collider.enabled)
+        {
+            closestPoint = collider.ClosestPoint(fromPosition);
+            return true;
+        }
+
+        return false;
     }
 
     private void HitTarget()
