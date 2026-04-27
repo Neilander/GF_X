@@ -36,10 +36,19 @@ SpriteAtlas:
     bindAsDefault: 1
     isAtlasV2: 0
     cachedData: {fileID: 0}
-    packedSpriteRenderDataKeys: []
+    packedSpriteRenderDataKeys:
+    - 4fdfbbb7b012ba04c87de48c7bac6d75: 21300000
+    - 4abbd0bb6bedf00438f56a7c0ae5126c: 21300000
+    - 17f328cbb9cdf024ab9c0f9ba0aea5af: 21300000
   m_MasterAtlas: {fileID: 0}
-  m_PackedSprites: []
-  m_PackedSpriteNamesToIndex: []
+  m_PackedSprites:
+  - {fileID: 21300000, guid: 4fdfbbb7b012ba04c87de48c7bac6d75, type: 3}
+  - {fileID: 21300000, guid: 4abbd0bb6bedf00438f56a7c0ae5126c, type: 3}
+  - {fileID: 21300000, guid: 17f328cbb9cdf024ab9c0f9ba0aea5af, type: 3}
+  m_PackedSpriteNamesToIndex:
+  - Coin
+  - Supply
+  - Force
   m_RenderDataMap: {}
   m_Tag: TMPIcon
   m_IsVariant: 0

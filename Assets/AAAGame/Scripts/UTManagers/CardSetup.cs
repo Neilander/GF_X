@@ -26,12 +26,13 @@ public partial class CardSetup : GameFrameworkComponent
 
     public void CardSystemShutdown()
     {
-        // 关闭卡牌 UI
-        if (m_CardUIFormId != -1)
+        // 关闭卡牌 UI（按视图关闭，避免 serialId 已失效时抛异常）
+        if (GF.UI.IsLoadingUIForm(UIViews.CardUIForm) || GF.UI.HasUIForm(UIViews.CardUIForm))
         {
-            GF.UI.CloseUIForm(m_CardUIFormId);
-            m_CardUIFormId = -1;
+            GF.UI.CloseUIForms(UIViews.CardUIForm);
         }
+
+        m_CardUIFormId = -1;
 
         // 清理卡牌系统
         if (m_CardSystemController != null)
@@ -111,6 +112,12 @@ public partial class CardSetup : GameFrameworkComponent
     /// </summary>
     public void OpenCardUI()
     {
+        if (GF.UI.IsLoadingUIForm(UIViews.CardUIForm) || GF.UI.HasUIForm(UIViews.CardUIForm))
+        {
+            Log.Info("[CardGame] 卡牌 UI 已在打开或加载中，跳过重复打开");
+            return;
+        }
+
         // 使用 GF.UI 打开 CardUIForm
         UIParams uiParams = UIParams.Create();
         uiParams.Set("CardSystemController", m_CardSystemController);
