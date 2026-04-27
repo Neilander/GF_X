@@ -109,8 +109,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -350, y: -86}
-  m_SizeDelta: {x: -1700, y: -1586}
+  m_AnchoredPosition: {x: -448.36105, y: -988}
+  m_SizeDelta: {x: -1754.0554, y: -1248.9481}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &4089568554609167524
 CanvasRenderer:
@@ -432,7 +432,7 @@ MonoBehaviour:
   m_text: "\u4E22\u5F03"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: f92a7f2cd719df14c988b698974d086e, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: f92a7f2cd719df14c988b698974d086e, type: 2}
+  m_sharedMaterial: {fileID: -6583939562247515600, guid: f92a7f2cd719df14c988b698974d086e, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -628,6 +628,9 @@ MonoBehaviour:
   handCardArea: {fileID: 4718142225825253850}
   trashBin: {fileID: 3733187908752676364}
   trashBinHintText: {fileID: 0}
+  trashBinClosedSprite: {fileID: 21300000, guid: 79fc36c59cccd39469f593944e1db8f8, type: 3}
+  trashBinOpenSprite: {fileID: 21300000, guid: 9fdf2423376c44500a69de40dd83ef49, type: 3}
+  trashHoverCardAlpha: 111
   handCardItemPrefab: {fileID: 1478813142199399011, guid: 67692d37767b7c74fa4177131ee36f31, type: 3}
   areaMaterialOverlay: {fileID: 0}
   cardDeckTransform: {fileID: 7738495531804054913}

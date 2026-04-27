@@ -26,6 +26,10 @@ namespace AAAGame.Card
         [Header("动画设置")]
         [SerializeField] private float dragScale = 1.2f;
         [SerializeField] private float animationDuration = 0.2f;
+        [SerializeField] [InspectorName("抽牌起始缩放")] [Range(0.05f, 1f)] private float drawStartScale = 0.18f;
+        [SerializeField] [InspectorName("丢弃放大倍率")] private float discardPeakScale = 1.25f;
+        [SerializeField] [InspectorName("丢弃放大时长")] private float discardPopDuration = 0.08f;
+        [SerializeField] [InspectorName("丢弃缩小时长")] private float discardShrinkDuration = 0.18f;
 
         [Header("悬停效果")]
         [SerializeField] [InspectorName("悬停放大倍率")] private float hoverScale = 1.15f;
@@ -61,12 +65,14 @@ namespace AAAGame.Card
         private Tween m_ScaleTween;
         private Tween m_MoveTween;
         private Tween m_HoverLiftTween;
+        private Tween m_FadeTween;
         private bool m_HoverLiftActive;
         private Vector2 m_HoverLiftBaseAnchoredPosition;
 
         private const int NormalSortingOrder = 0;
         private const int HoverSortingOrder = 20;
         private const int DragSortingOrder = 40;
+        private const float DisabledCardAlpha = 0.5f;
 
         protected override void OnInit()
         {
@@ -117,6 +123,7 @@ namespace AAAGame.Card
             m_ScaleTween?.Kill();
             m_MoveTween?.Kill();
             m_HoverLiftTween?.Kill();
+            m_FadeTween?.Kill();
             ClearLayoutPlaceholder();
 
             m_IsDragging = false;
@@ -339,10 +346,7 @@ namespace AAAGame.Card
             m_CanPlay = m_CardModel.CanPlay();
 
             // 人口不足时置灰
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = m_CanPlay ? 1f : 0.5f;
-            }
+            RestorePlayableAlpha();
 
             RefreshHoverVisualState();
         }
@@ -416,6 +420,7 @@ namespace AAAGame.Card
             transform.SetParent(m_Canvas.transform);
             transform.SetAsLastSibling();
 
+            SetTrashHoverTransparency(false, 255);
             canvasGroup.blocksRaycasts = false;
             ApplyHoverGlow(false);
             UpdateRenderPriority();
@@ -489,6 +494,7 @@ namespace AAAGame.Card
             m_IsPointerInside = false;
             ApplyHoverLift(false, 1f);
             ApplyHoverGlow(false);
+            RestorePlayableAlpha();
             UpdateRenderPriority();
 
             if (m_LayoutPlaceholder != null)
@@ -533,6 +539,7 @@ namespace AAAGame.Card
             }
 
             ApplyHoverGlow(false);
+            RestorePlayableAlpha();
 
             if (m_OriginalParent != null)
             {
@@ -650,6 +657,32 @@ namespace AAAGame.Card
             m_HoverLiftActive = false;
         }
 
+        public void SetTrashHoverTransparency(bool isOverTrash, int alpha255)
+        {
+            if (canvasGroup == null)
+            {
+                return;
+            }
+
+            if (isOverTrash)
+            {
+                canvasGroup.alpha = Mathf.Clamp(alpha255, 0, 255) / 255f;
+                return;
+            }
+
+            RestorePlayableAlpha();
+        }
+
+        private void RestorePlayableAlpha()
+        {
+            if (canvasGroup == null)
+            {
+                return;
+            }
+
+            canvasGroup.alpha = m_CanPlay ? 1f : DisabledCardAlpha;
+        }
+
         /// <summary>
         /// 从屏幕位置移动到手牌区
         /// </summary>
@@ -660,15 +693,21 @@ namespace AAAGame.Card
 
             Vector3 targetPosition = m_RectTransform.position;
             m_RectTransform.position = startScreenPosition;
+            transform.localScale = Vector3.one * Mathf.Clamp(drawStartScale, 0.05f, 1f);
 
             m_MoveTween?.Kill();
             m_MoveTween = m_RectTransform.DOMove(targetPosition, duration)
                 .SetEase(Ease.OutCubic)
                 .OnComplete(() =>
                 {
+                    transform.localScale = Vector3.one;
                     canvasGroup.blocksRaycasts = true;
                     RefreshOwningLayout();
                 });
+
+            m_ScaleTween?.Kill();
+            m_ScaleTween = transform.DOScale(Vector3.one, duration)
+                .SetEase(Ease.OutBack);
         }
 
         private void RefreshOwningLayout()
@@ -861,7 +900,7 @@ namespace AAAGame.Card
         /// <summary>
         /// 丢弃成功回调（在拖拽过程中被丢弃）
         /// </summary>
-        public void OnDiscardSuccess()
+        public void OnDiscardSuccess(System.Action onComplete = null)
         {
             // 立即停止拖拽状态
             m_IsDragging = false;
@@ -871,22 +910,25 @@ namespace AAAGame.Card
             canvasGroup.blocksRaycasts = false; // 禁用交互，防止再次拖拽
             ApplyHoverGlow(false);
             UpdateRenderPriority();
-            
-            // 恢复父级（避免卡在 Canvas 顶层）
-            if (m_OriginalParent != null)
-            {
-                transform.SetParent(m_OriginalParent);
-            }
-            
-            // 播放消失动画（缩放）
+
+            ClearLayoutPlaceholder();
+
+            float safePopDuration = Mathf.Max(0.01f, discardPopDuration);
+            float safeShrinkDuration = Mathf.Max(0.01f, discardShrinkDuration);
+            float safePeakScale = Mathf.Max(1f, discardPeakScale);
+
+            // 播放中心缩放消失动画：先略微放大，再缩小到 0。
             m_ScaleTween?.Kill();
-            m_ScaleTween = transform.DOScale(Vector3.zero, 0.2f)
-                .SetEase(Ease.InBack);
-            
+            m_ScaleTween = DOTween.Sequence()
+                .Append(transform.DOScale(Vector3.one * safePeakScale, safePopDuration).SetEase(Ease.OutCubic))
+                .Append(transform.DOScale(Vector3.zero, safeShrinkDuration).SetEase(Ease.InBack))
+                .OnComplete(() => onComplete?.Invoke());
+
             // 淡出效果
             if (canvasGroup != null)
             {
-                canvasGroup.DOFade(0f, 0.2f);
+                m_FadeTween?.Kill();
+                m_FadeTween = canvasGroup.DOFade(0f, safePopDuration + safeShrinkDuration);
             }
             
             Log.Info($"[HandCardItem] ✅ Card discard animation started: {m_CardModel?.GetCardName()}");
@@ -931,6 +973,7 @@ namespace AAAGame.Card
             m_ScaleTween?.Kill();
             m_MoveTween?.Kill();
             m_HoverLiftTween?.Kill();
+            m_FadeTween?.Kill();
             ClearLayoutPlaceholder();
             ApplyHoverGlow(false);
         }
@@ -941,6 +984,7 @@ namespace AAAGame.Card
             m_ScaleTween?.Kill();
             m_MoveTween?.Kill();
             m_HoverLiftTween?.Kill();
+            m_FadeTween?.Kill();
             ClearLayoutPlaceholder();
         }
     }

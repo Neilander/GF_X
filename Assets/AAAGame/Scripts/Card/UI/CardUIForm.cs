@@ -24,6 +24,11 @@ namespace AAAGame.Card
         [SerializeField] private GameObject trashBin;
         [SerializeField] private TextMeshProUGUI trashBinHintText;
 
+        [Header("垃圾桶拖拽反馈")]
+        [SerializeField] [InspectorName("垃圾桶关闭纹理")] private Sprite trashBinClosedSprite;
+        [SerializeField] [InspectorName("垃圾桶打开纹理")] private Sprite trashBinOpenSprite;
+        [SerializeField] [InspectorName("拖到垃圾桶卡牌透明度(0-255)")] [Range(0, 255)] private int trashHoverCardAlpha = 200;
+
         [Header("预制体")]
         [SerializeField] private GameObject handCardItemPrefab;
 
@@ -53,6 +58,9 @@ namespace AAAGame.Card
         private RectTransform m_TrashBinRect;
         private RectTransform m_ResolvedHandCardAreaRect;
         private Canvas m_TrashBinCanvas;
+        private Image m_TrashBinImage;
+        private Sprite m_DefaultTrashBinSprite;
+        private bool m_IsTrashBinOpen;
         private int m_PendingHandLayoutRefreshFrames;
         private bool m_IsUIVisible = true;
 
@@ -81,6 +89,8 @@ namespace AAAGame.Card
             {
                 m_TrashBinRect = trashBin.GetComponent<RectTransform>();
                 m_TrashBinCanvas = m_TrashBinRect != null ? m_TrashBinRect.GetComponentInParent<Canvas>() : null;
+                ResolveTrashBinImage();
+                SetTrashBinOpen(false, true);
                 trashBin.SetActive(false);
             }
 
@@ -134,6 +144,7 @@ namespace AAAGame.Card
 
             ClearHandCards();
             HideTargetingVisuals();
+            SetTrashBinDragFeedback(null, false);
             areaMaterialOverlay?.HideAreaEffect();
         }
 
@@ -624,6 +635,7 @@ namespace AAAGame.Card
 
             if (trashBin != null)
             {
+                SetTrashBinDragFeedback(cardItem, false);
                 trashBin.SetActive(true);
             }
 
@@ -632,7 +644,8 @@ namespace AAAGame.Card
 
         public void OnCardDragging(HandCardItem cardItem, Vector2 screenPosition)
         {
-            UpdateTrashBinHint(screenPosition);
+            bool isOverTrash = UpdateTrashBinHint(screenPosition);
+            SetTrashBinDragFeedback(cardItem, isOverTrash);
             UpdateAreaMaterialEffect(cardItem, screenPosition);
         }
 
@@ -640,6 +653,7 @@ namespace AAAGame.Card
         {
             m_DraggingCard = null;
             RefreshHandCardInteractionVisuals();
+            SetTrashBinDragFeedback(cardItem, false);
 
             if (trashBin != null)
             {
@@ -652,15 +666,20 @@ namespace AAAGame.Card
             bool isInTrash = IsInTrashBin(screenPosition, true);
             if (isInTrash)
             {
-                m_CardSystemController.CancelPlacement();
-                cardItem.OnDiscardSuccess();
-                RemoveHandCardItemDirect(cardItem.GetCardModel());
+                CardModel discardedCardModel = cardItem.GetCardModel();
+                Vector2 discardScreenPosition = screenPosition;
 
-                bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel(), screenPosition);
-                if (!discarded)
+                m_CardSystemController.CancelPlacement();
+                cardItem.OnDiscardSuccess(() =>
                 {
-                    Log.Error("[CardUI] Failed to discard card in controller.");
-                }
+                    RemoveHandCardItemDirect(discardedCardModel);
+
+                    bool discarded = m_CardSystemController.DiscardCard(discardedCardModel, discardScreenPosition);
+                    if (!discarded)
+                    {
+                        Log.Error("[CardUI] Failed to discard card in controller.");
+                    }
+                });
 
                 return true;
             }
@@ -709,19 +728,75 @@ namespace AAAGame.Card
             }
         }
 
-        private void UpdateTrashBinHint(Vector2 screenPosition)
+        private bool UpdateTrashBinHint(Vector2 screenPosition)
         {
-            if (m_TrashBinRect == null || trashBinHintText == null)
+            bool isOver = IsInTrashBin(screenPosition, false);
+
+            if (trashBinHintText != null)
+            {
+                trashBinHintText.gameObject.SetActive(isOver);
+            }
+
+            return isOver;
+        }
+
+        private void ResolveTrashBinImage()
+        {
+            if (trashBin == null)
             {
                 return;
             }
 
-            bool isOver = RectTransformUtility.RectangleContainsScreenPoint(
-                m_TrashBinRect,
-                screenPosition,
-                GetUICamera());
+            if (m_TrashBinImage == null)
+            {
+                m_TrashBinImage = trashBin.GetComponent<Image>();
+            }
 
-            trashBinHintText.gameObject.SetActive(isOver);
+            if (m_TrashBinImage == null)
+            {
+                m_TrashBinImage = trashBin.GetComponentInChildren<Image>(true);
+            }
+
+            if (m_TrashBinImage != null && m_DefaultTrashBinSprite == null)
+            {
+                m_DefaultTrashBinSprite = m_TrashBinImage.sprite;
+            }
+        }
+
+        private void SetTrashBinDragFeedback(HandCardItem cardItem, bool isOverTrash)
+        {
+            SetTrashBinOpen(isOverTrash);
+            cardItem?.SetTrashHoverTransparency(isOverTrash, trashHoverCardAlpha);
+        }
+
+        private void SetTrashBinOpen(bool open, bool force = false)
+        {
+            if (!force && m_IsTrashBinOpen == open)
+            {
+                return;
+            }
+
+            m_IsTrashBinOpen = open;
+            ResolveTrashBinImage();
+
+            if (m_TrashBinImage == null)
+            {
+                return;
+            }
+
+            if (open && trashBinOpenSprite == null)
+            {
+                return;
+            }
+
+            Sprite targetSprite = open
+                ? trashBinOpenSprite
+                : (trashBinClosedSprite != null ? trashBinClosedSprite : m_DefaultTrashBinSprite);
+
+            if (m_TrashBinImage.sprite != targetSprite)
+            {
+                m_TrashBinImage.sprite = targetSprite;
+            }
         }
 
         private void UpdateAreaMaterialEffect(HandCardItem cardItem, Vector2 screenPosition)
