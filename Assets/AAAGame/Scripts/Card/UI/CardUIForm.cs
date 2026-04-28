@@ -39,6 +39,15 @@ namespace AAAGame.Card
         [SerializeField] private RectTransform cardDeckTransform;
         [SerializeField] private float cardMoveToHandDuration = 0.5f;
 
+        [Header("卡组预览")]
+        [SerializeField] [InspectorName("悬浮抽卡点显示卡组")] private bool showDeckPreviewOnHover = true;
+        [SerializeField] [InspectorName("卡牌数据Resources路径")] private string cardDataResourcesPath = "CardData";
+        [SerializeField] [InspectorName("卡组预览面板")] private RectTransform deckPreviewPanel;
+        [SerializeField] [InspectorName("卡组预览内容容器")] private RectTransform deckPreviewContent;
+        [SerializeField] [InspectorName("卡组预览标题文本")] private TextMeshProUGUI deckPreviewTitleText;
+        [SerializeField] [InspectorName("卡组为空提示文本")] private TextMeshProUGUI deckPreviewEmptyText;
+        [SerializeField] [InspectorName("卡组预览卡牌条目模板")] private CardDeckPreviewItem deckPreviewItemTemplate;
+
         [Header("目标拖拽表现")]
         [SerializeField] [InspectorName("准星图片")] private Sprite targetingReticleSprite;
         [SerializeField] [InspectorName("准星尺寸")] private Vector2 targetingReticleSize = new Vector2(72f, 72f);
@@ -72,6 +81,11 @@ namespace AAAGame.Card
         private RectTransform m_TargetingReticleRect;
         private Image m_TargetingReticleImage;
         private Sprite m_RuntimeFallbackReticleSprite;
+
+        private readonly List<CardData> m_DeckPreviewCardData = new List<CardData>();
+        private int m_LastDeckPreviewHash = int.MinValue;
+        private bool m_DeckPreviewDataLoaded;
+        private bool m_DeckPreviewConfigWarningLogged;
 
         protected override void OnInit(object userData)
         {
@@ -145,6 +159,7 @@ namespace AAAGame.Card
             ClearHandCards();
             HideTargetingVisuals();
             SetTrashBinDragFeedback(null, false);
+            HideDeckPreviewPanel();
             areaMaterialOverlay?.HideAreaEffect();
         }
 
@@ -159,6 +174,7 @@ namespace AAAGame.Card
 
             HandleHotkeys();
             RefreshPendingHandLayout();
+            UpdateDeckPreviewHover();
         }
 
         private void RefreshHandCardLayout()
@@ -208,6 +224,196 @@ namespace AAAGame.Card
 
             RefreshHandCardLayout();
             m_PendingHandLayoutRefreshFrames--;
+        }
+
+        private void UpdateDeckPreviewHover()
+        {
+            if (!showDeckPreviewOnHover || cardDeckTransform == null || deckPreviewPanel == null || m_DraggingCard != null)
+            {
+                HideDeckPreviewPanel();
+                return;
+            }
+
+            Vector2 mousePosition = Input.mousePosition;
+            Camera uiCamera = GetUICamera();
+            bool isOverDeck = RectTransformUtility.RectangleContainsScreenPoint(cardDeckTransform, mousePosition, uiCamera);
+            bool isOverPanel = deckPreviewPanel.gameObject.activeSelf
+                && RectTransformUtility.RectangleContainsScreenPoint(deckPreviewPanel, mousePosition, uiCamera);
+
+            if (isOverDeck || isOverPanel)
+            {
+                ShowDeckPreviewPanel();
+                return;
+            }
+
+            HideDeckPreviewPanel();
+        }
+
+        private void ShowDeckPreviewPanel()
+        {
+            if (!ValidateDeckPreviewConfig())
+            {
+                return;
+            }
+
+            deckPreviewPanel.SetAsLastSibling();
+            if (!deckPreviewPanel.gameObject.activeSelf)
+            {
+                deckPreviewPanel.gameObject.SetActive(true);
+                m_LastDeckPreviewHash = int.MinValue;
+            }
+
+            if (!m_DeckPreviewDataLoaded)
+            {
+                LoadAllCardDataForPreview();
+            }
+
+            int deckHash = CalculateDeckPreviewHash();
+            if (deckHash != m_LastDeckPreviewHash)
+            {
+                RebuildDeckPreviewPanel();
+                m_LastDeckPreviewHash = deckHash;
+            }
+        }
+
+        private void HideDeckPreviewPanel()
+        {
+            if (deckPreviewPanel != null && deckPreviewPanel.gameObject.activeSelf)
+            {
+                deckPreviewPanel.gameObject.SetActive(false);
+                m_DeckPreviewDataLoaded = false;
+            }
+        }
+
+        private bool ValidateDeckPreviewConfig()
+        {
+            bool valid = deckPreviewPanel != null
+                && deckPreviewContent != null
+                && deckPreviewItemTemplate != null;
+
+            if (!valid && !m_DeckPreviewConfigWarningLogged)
+            {
+                Log.Warning("[CardUI] 卡组预览未配置完整。请在 CardUIForm 上绑定：卡组预览面板、内容容器、卡牌条目模板。");
+                m_DeckPreviewConfigWarningLogged = true;
+            }
+
+            if (valid)
+            {
+                m_DeckPreviewConfigWarningLogged = false;
+            }
+
+            return valid;
+        }
+
+        private void LoadAllCardDataForPreview()
+        {
+            m_DeckPreviewCardData.Clear();
+            m_DeckPreviewDataLoaded = true;
+
+            string resourcePath = string.IsNullOrWhiteSpace(cardDataResourcesPath)
+                ? "CardData"
+                : cardDataResourcesPath.Trim().Trim('/');
+
+            CardData[] cardDataArray = Resources.LoadAll<CardData>(resourcePath);
+            if (cardDataArray == null || cardDataArray.Length <= 0)
+            {
+                return;
+            }
+
+            m_DeckPreviewCardData.AddRange(cardDataArray);
+            m_DeckPreviewCardData.Sort((left, right) =>
+            {
+                string leftKey = left != null ? left.index : string.Empty;
+                string rightKey = right != null ? right.index : string.Empty;
+                int compare = string.Compare(leftKey, rightKey, StringComparison.Ordinal);
+                if (compare != 0)
+                    return compare;
+
+                string leftName = left != null ? left.cardName : string.Empty;
+                string rightName = right != null ? right.cardName : string.Empty;
+                return string.Compare(leftName, rightName, StringComparison.Ordinal);
+            });
+        }
+
+        private void RebuildDeckPreviewPanel()
+        {
+            if (deckPreviewContent == null)
+            {
+                return;
+            }
+
+            ClearDeckPreviewContent();
+
+            int cardCount = m_DeckPreviewCardData.Count;
+            if (deckPreviewTitleText != null)
+            {
+                deckPreviewTitleText.text = Utility.Text.Format("卡牌预览  共 {0} 张", cardCount);
+            }
+
+            if (deckPreviewEmptyText != null)
+            {
+                deckPreviewEmptyText.gameObject.SetActive(cardCount <= 0);
+                if (cardCount <= 0)
+                {
+                    deckPreviewEmptyText.text = Utility.Text.Format("未在 Resources/{0} 下找到 CardData", cardDataResourcesPath);
+                }
+            }
+
+            if (deckPreviewItemTemplate != null)
+            {
+                deckPreviewItemTemplate.gameObject.SetActive(false);
+            }
+
+            for (int i = 0; i < m_DeckPreviewCardData.Count; i++)
+            {
+                CardDeckPreviewItem previewItem = Instantiate(deckPreviewItemTemplate, deckPreviewContent);
+                previewItem.name = Utility.Text.Format("DeckPreviewCardItem_{0}", i);
+                previewItem.SetData(m_DeckPreviewCardData[i]);
+            }
+
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(deckPreviewContent);
+        }
+
+        private void ClearDeckPreviewContent()
+        {
+            if (deckPreviewContent == null)
+            {
+                return;
+            }
+
+            for (int i = deckPreviewContent.childCount - 1; i >= 0; i--)
+            {
+                Transform childTransform = deckPreviewContent.GetChild(i);
+                if (deckPreviewItemTemplate != null && childTransform == deckPreviewItemTemplate.transform)
+                {
+                    continue;
+                }
+
+                GameObject child = childTransform.gameObject;
+                child.SetActive(false);
+                Destroy(child);
+            }
+        }
+
+        private int CalculateDeckPreviewHash()
+        {
+            unchecked
+            {
+                int hash = 17;
+                int count = m_DeckPreviewCardData.Count;
+                hash = hash * 31 + count;
+                for (int i = 0; i < count; i++)
+                {
+                    CardData cardData = m_DeckPreviewCardData[i];
+                    hash = hash * 31 + (cardData != null && cardData.index != null ? cardData.index.GetHashCode() : 0);
+                    hash = hash * 31 + (cardData != null && cardData.cardName != null ? cardData.cardName.GetHashCode() : 0);
+                    hash = hash * 31 + (cardData != null ? cardData.populationCost : 0);
+                    hash = hash * 31 + (cardData != null ? cardData.soldierCount : 0);
+                }
+
+                return hash;
+            }
         }
 
         private void ResolveAreaMaterialOverlay()
