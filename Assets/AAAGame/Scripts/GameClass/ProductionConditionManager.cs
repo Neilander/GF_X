@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -8,27 +10,38 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public class ProductionConditionManager : GameFrameworkComponent
 {
-    private Dictionary<string, int> _troopCountByStronghold = new Dictionary<string, int>();
-    private Dictionary<string, int> _buildingCountByStronghold = new Dictionary<string, int>();
-    private Dictionary<string, int> _killCountByStronghold = new Dictionary<string, int>();
+    private readonly Dictionary<string, int> _killCountByStronghold = new Dictionary<string, int>();
+    private bool _eventsSubscribed;
+
+    private void Start()
+    {
+        TrySubscribeEvents();
+    }
+
+    private void Update()
+    {
+        if (!_eventsSubscribed)
+        {
+            TrySubscribeEvents();
+        }
+    }
+
+    private void OnDestroy()
+    {
+        TryUnsubscribeEvents();
+    }
     
     /// <summary>
     /// 统计同据点兵力
     /// </summary>
     public int GetTroopCountInStronghold(Stronghold stronghold)
     {
-        if (stronghold == null) return 0;
-        
-        string key = stronghold.strongholdData?.StrongholdId ?? "unknown";
-        if (_troopCountByStronghold.ContainsKey(key))
+        if (stronghold == null)
         {
-            return _troopCountByStronghold[key];
+            return 0;
         }
-        
-        // 如果没有缓存，计算实际兵力
-        int troopCount = CalculateActualTroopCount(stronghold);
-        _troopCountByStronghold[key] = troopCount;
-        return troopCount;
+
+        return CalculateActualTroopCount(stronghold);
     }
     
     /// <summary>
@@ -36,18 +49,10 @@ public class ProductionConditionManager : GameFrameworkComponent
     /// </summary>
     public int GetBuildingCountInStronghold(Stronghold stronghold, string buildingType)
     {
-        if (stronghold == null || string.IsNullOrEmpty(buildingType)) return 0;
-        
-        string key = $"{stronghold.strongholdData?.StrongholdId ?? "unknown"}_{buildingType}";
-        if (_buildingCountByStronghold.ContainsKey(key))
-        {
-            return _buildingCountByStronghold[key];
-        }
-        
-        // 如果没有缓存，计算实际建筑数量
-        int buildingCount = CalculateActualBuildingCount(stronghold, buildingType);
-        _buildingCountByStronghold[key] = buildingCount;
-        return buildingCount;
+        if (stronghold == null || string.IsNullOrWhiteSpace(buildingType))
+            return 0;
+
+        return CalculateActualBuildingCount(stronghold, buildingType);
     }
     
     /// <summary>
@@ -57,13 +62,12 @@ public class ProductionConditionManager : GameFrameworkComponent
     {
         if (stronghold == null) return 0;
         
-        string key = $"{stronghold.strongholdData?.StrongholdId ?? "unknown"}_{day}";
-        if (_killCountByStronghold.ContainsKey(key))
+        string key = BuildStrongholdDayKey(stronghold, day);
+        if (_killCountByStronghold.TryGetValue(key, out int count))
         {
-            return _killCountByStronghold[key];
+            return count;
         }
         
-        // 如果没有缓存，返回0（需要从游戏数据中获取）
         return 0;
     }
     
@@ -84,11 +88,6 @@ public class ProductionConditionManager : GameFrameworkComponent
     /// </summary>
     private void UpdateAllProductionConditions()
     {
-        // 清空缓存，强制重新计算
-        _troopCountByStronghold.Clear();
-        _buildingCountByStronghold.Clear();
-        
-        // 这里可以添加通知所有建筑更新产出的逻辑
         Debug.Log("[ProductionConditionManager] 更新所有产出条件统计");
     }
     
@@ -97,9 +96,34 @@ public class ProductionConditionManager : GameFrameworkComponent
     /// </summary>
     private int CalculateActualTroopCount(Stronghold stronghold)
     {
-        // 这里需要实现实际的兵力统计逻辑
-        // 暂时返回一个模拟值用于测试
-        return 10; // 模拟10个兵力
+        if (stronghold == null || EntityRegistry.AllEntities == null)
+            return 0;
+
+        int troopCount = 0;
+        SideType strongholdSide = ResolveStrongholdSide(stronghold);
+
+        for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
+        {
+            if (EntityRegistry.AllEntities[i] is not MAEntity entity)
+                continue;
+
+            if (entity is BuildingEntity)
+                continue;
+
+            if (!entity.Alive)
+                continue;
+
+            if (entity.Side != strongholdSide)
+                continue;
+
+            var entityStronghold = LevelEntity.GetStrongholdAtWorldPosition(entity.Position);
+            if (!ReferenceEquals(entityStronghold, stronghold))
+                continue;
+
+            troopCount++;
+        }
+
+        return troopCount;
     }
     
     /// <summary>
@@ -107,13 +131,30 @@ public class ProductionConditionManager : GameFrameworkComponent
     /// </summary>
     private int CalculateActualBuildingCount(Stronghold stronghold, string buildingType)
     {
-        // 这里需要实现实际的建筑统计逻辑
-        // 暂时返回一个模拟值用于测试
-        if (buildingType == "Buil_ParcelLocker")
+        if (stronghold == null || string.IsNullOrWhiteSpace(buildingType))
+            return 0;
+
+        if (stronghold.Buildings == null || stronghold.Buildings.Count == 0)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < stronghold.Buildings.Count; i++)
         {
-            return 1; // 模拟1个其他快递柜
+            var building = stronghold.Buildings[i];
+            if (building == null || building.buildingData == null || !building.Alive || building.IsDisabled)
+                continue;
+
+            string identifier = building.buildingData.Identifier;
+            if (string.IsNullOrWhiteSpace(identifier))
+                continue;
+
+            if (!identifier.StartsWith(buildingType, StringComparison.Ordinal))
+                continue;
+
+            count++;
         }
-        return 0;
+
+        return count;
     }
     
     /// <summary>
@@ -123,8 +164,8 @@ public class ProductionConditionManager : GameFrameworkComponent
     {
         if (stronghold == null) return;
         
-        string key = $"{stronghold.strongholdData?.StrongholdId ?? "unknown"}_{day}";
-        _killCountByStronghold[key] = killCount;
+        string key = BuildStrongholdDayKey(stronghold, day);
+        _killCountByStronghold[key] = Mathf.Max(0, killCount);
         
         Debug.Log($"[ProductionConditionManager] 设置击杀数: 据点={stronghold.strongholdData?.StrongholdId ?? "unknown"}, 天数={day}, 击杀={killCount}");
     }
@@ -134,10 +175,70 @@ public class ProductionConditionManager : GameFrameworkComponent
     /// </summary>
     public void ClearAllStatistics()
     {
-        _troopCountByStronghold.Clear();
-        _buildingCountByStronghold.Clear();
         _killCountByStronghold.Clear();
         
         Debug.Log("[ProductionConditionManager] 清空所有统计");
+    }
+
+    private void TrySubscribeEvents()
+    {
+        if (_eventsSubscribed || GF.Event == null)
+            return;
+
+        GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
+        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        _eventsSubscribed = true;
+    }
+
+    private void TryUnsubscribeEvents()
+    {
+        if (!_eventsSubscribed || GF.Event == null)
+            return;
+
+        GF.Event.Unsubscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
+        GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        _eventsSubscribed = false;
+    }
+
+    private void OnIngamePhaseChanged(object sender, GameEventArgs e)
+    {
+        var args = e as IngamePhaseChangedEventArgs;
+        if (args == null)
+            return;
+
+        OnPhaseChanged(args.NewPhase);
+    }
+
+    private void OnSoldierDead(object sender, GameEventArgs e)
+    {
+        var args = e as SoldierDeadEventArgs;
+        if (args == null)
+            return;
+
+        // 肉摊逻辑需要统计"敌方被击杀数"作为次日加成来源。
+        if (args.VictimSide != SideType.EnemySide)
+            return;
+
+        var stronghold = LevelEntity.GetStrongholdAtWorldPosition(args.WorldPosition);
+        if (stronghold == null)
+            return;
+
+        int currentDay = Mathf.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        string key = BuildStrongholdDayKey(stronghold, currentDay);
+        _killCountByStronghold.TryGetValue(key, out int currentKills);
+        _killCountByStronghold[key] = currentKills + 1;
+    }
+
+    private static string BuildStrongholdDayKey(Stronghold stronghold, int day)
+    {
+        string strongholdId = stronghold?.strongholdData?.StrongholdId ?? "unknown";
+        return $"{strongholdId}_{Mathf.Max(1, day)}";
+    }
+
+    private static SideType ResolveStrongholdSide(Stronghold stronghold)
+    {
+        return stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId
+            ? SideType.PlayerSide
+            : SideType.EnemySide;
     }
 }

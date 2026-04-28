@@ -60,6 +60,8 @@ public class BuildingDataModel : DataModelBase
 
     private void ImportBuildingDataRow(BuildingTable row)
     {
+        Debug.Log($"[BuildingDataModel] 导入建筑数据: {row.Identifier}, Production值: {row.Production}");
+        
         if (row.Identifier.Substring(row.Identifier.Length - 3) == "Lv0")
         {
             BuildingData building = new(row.Identifier,
@@ -78,6 +80,7 @@ public class BuildingDataModel : DataModelBase
                                 row.Production,
                                 null);
             buildingDataDic[building.Identifier] = building;
+            Debug.Log($"[BuildingDataModel] 创建Lv0建筑: {building.Identifier}, Production: {building.Production}");
         }
         else
         {
@@ -104,6 +107,7 @@ public class BuildingDataModel : DataModelBase
                                     row.Type == BuilType.Prod ? lv == 1 ? new string[] { row.Tech1ID } : new string[] { row.Tech2ID } :
                                     row.Type == BuilType.Tech ? new string[] { row.Tech1ID, row.Tech2ID, row.Tech3ID, row.Tech4ID } : null);
                 buildingDataDic[building.Identifier] = building;
+                Debug.Log($"[BuildingDataModel] 创建建筑: {building.Identifier}, Lv: {building.Lv}, Production: {building.Production}");
             }
         }
     }

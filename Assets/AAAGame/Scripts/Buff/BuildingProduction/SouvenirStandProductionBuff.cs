@@ -7,17 +7,19 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public class SouvenirStandProductionBuff : BuffCallback
 {
-    private const int BonusPerTroop = 5; // 每5兵力+1产出
-    private const int MaxBonus = 3;      // 上限3
+    private const int DefaultBonusPerTroop = 5; // 每5兵力+1产出
+    private const int DefaultMaxBonus = 3;      // 上限3
     
     public override void OnAdd()
     {
         var building = hostEntity as BuildingEntity;
-        if (building?.buildingData?.Identifier == "Buil_SouvenirStand")
+        if (IsSouvenirStand(building))
         {
+            int maxBonus = GetConfiguredMaxBonus(building);
+
             // 设置产出类型
             building.SetProductionType(ProductionType.ByTroopCount);
-            building.SetProductionCap(MaxBonus);
+            building.SetProductionCap(maxBonus);
             
             // 初始更新一次产出
             UpdateTroopCountProduction();
@@ -33,18 +35,21 @@ public class SouvenirStandProductionBuff : BuffCallback
     private void UpdateTroopCountProduction()
     {
         var building = hostEntity as BuildingEntity;
-        if (building == null || building.buildingData?.Identifier != "Buil_SouvenirStand") 
+        if (!IsSouvenirStand(building))
             return;
         
+        int bonusPerTroop = GetConfiguredBonusPerTroop(building);
+        int maxBonus = GetConfiguredMaxBonus(building);
+
         // 计算同据点内兵力
         int troopCount = CalculateTroopCountInStronghold(building);
         building.SetConditionCount(troopCount);
         
         // 计算产出加成
-        int bonus = Mathf.Min(troopCount / BonusPerTroop, MaxBonus);
+        int bonus = Mathf.Min(troopCount / Mathf.Max(1, bonusPerTroop), maxBonus);
         building.SetDynamicProduction(bonus);
         
-        Debug.Log($"[SouvenirStand] 兵力: {troopCount}, 加成: +{bonus}, 上限: {MaxBonus}");
+        Debug.Log($"[SouvenirStand] 兵力: {troopCount}, 阈值: {bonusPerTroop}, 加成: +{bonus}, 上限: {maxBonus}");
     }
     
     private int CalculateTroopCountInStronghold(BuildingEntity building)
@@ -60,7 +65,32 @@ public class SouvenirStandProductionBuff : BuffCallback
             return manager.GetTroopCountInStronghold(stronghold);
         }
         
-        // 如果管理器不存在，返回模拟值
-        return 10; // 模拟10个兵力
+        return 0;
+    }
+
+    private static bool IsSouvenirStand(BuildingEntity building)
+    {
+        return building?.buildingData?.Identifier != null
+               && building.buildingData.Identifier.Contains("SouvenirStand");
+    }
+
+    private static int GetConfiguredBonusPerTroop(BuildingEntity building)
+    {
+        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 0)
+        {
+            return Mathf.Max(1, (int)building.buildingData.UniqueValues[0]);
+        }
+
+        return DefaultBonusPerTroop;
+    }
+
+    private static int GetConfiguredMaxBonus(BuildingEntity building)
+    {
+        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 2)
+        {
+            return Mathf.Max(0, (int)building.buildingData.UniqueValues[2]);
+        }
+
+        return DefaultMaxBonus;
     }
 }

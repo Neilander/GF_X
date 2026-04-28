@@ -7,19 +7,20 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public class MeatStallProductionBuff : BuffCallback
 {
-    private const int KillsPerBonus = 8; // 每击杀8名敌人+1产出
-    private const int MaxBonus = 2;      // 上限2
-    
-    private int _previousDayKills = 0;
+    private const int DefaultKillsPerBonus = 8; // 每击杀8名敌人+1产出
+    private const int DefaultBonusPerStep = 1;
+    private const int DefaultMaxBonus = 2;      // 上限2
     
     public override void OnAdd()
     {
         var building = hostEntity as BuildingEntity;
-        if (building?.buildingData?.Identifier == "Buil_MeatStall")
+        if (IsMeatStall(building))
         {
+            int maxBonus = GetConfiguredMaxBonus(building);
+
             // 设置产出类型
             building.SetProductionType(ProductionType.ByKillCount);
-            building.SetProductionCap(MaxBonus);
+            building.SetProductionCap(maxBonus);
             
             // 初始更新一次产出
             UpdateKillCountProduction();
@@ -35,18 +36,22 @@ public class MeatStallProductionBuff : BuffCallback
     private void UpdateKillCountProduction()
     {
         var building = hostEntity as BuildingEntity;
-        if (building == null || building.buildingData?.Identifier != "Buil_MeatStall") 
+        if (!IsMeatStall(building))
             return;
         
+        int killsPerBonus = GetConfiguredKillsPerBonus(building);
+        int bonusPerStep = GetConfiguredBonusPerStep(building);
+        int maxBonus = GetConfiguredMaxBonus(building);
+
         // 获取前一天的击杀数
         int killCount = GetPreviousDayKillCount(building);
         building.SetConditionCount(killCount);
         
         // 计算产出加成
-        int bonus = Mathf.Min(killCount / KillsPerBonus, MaxBonus);
+        int bonus = Mathf.Min((killCount / Mathf.Max(1, killsPerBonus)) * Mathf.Max(1, bonusPerStep), maxBonus);
         building.SetDynamicProduction(bonus);
         
-        Debug.Log($"[MeatStall] 前一天击杀: {killCount}, 加成: +{bonus}, 上限: {MaxBonus}");
+        Debug.Log($"[MeatStall] 前一天击杀: {killCount}, 阈值: {killsPerBonus}, 加成步长: {bonusPerStep}, 加成: +{bonus}, 上限: {maxBonus}");
     }
     
     private int GetPreviousDayKillCount(BuildingEntity building)
@@ -64,14 +69,47 @@ public class MeatStallProductionBuff : BuffCallback
             return manager.GetKillCountForStronghold(stronghold, previousDay);
         }
         
-        // 如果管理器不存在，返回模拟值
-        return 8; // 模拟8个击杀
+        return 0;
     }
     
     private int GetCurrentDay()
     {
-        // 这里需要实现获取当前天数的逻辑
-        // 暂时返回一个模拟值用于测试
-        return 1; // 模拟第1天
+        return Mathf.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+    }
+
+    private static bool IsMeatStall(BuildingEntity building)
+    {
+        return building?.buildingData?.Identifier != null
+               && building.buildingData.Identifier.Contains("MeatStall");
+    }
+
+    private static int GetConfiguredKillsPerBonus(BuildingEntity building)
+    {
+        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 0)
+        {
+            return Mathf.Max(1, (int)building.buildingData.UniqueValues[0]);
+        }
+
+        return DefaultKillsPerBonus;
+    }
+
+    private static int GetConfiguredBonusPerStep(BuildingEntity building)
+    {
+        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 1)
+        {
+            return Mathf.Max(1, (int)building.buildingData.UniqueValues[1]);
+        }
+
+        return DefaultBonusPerStep;
+    }
+
+    private static int GetConfiguredMaxBonus(BuildingEntity building)
+    {
+        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 2)
+        {
+            return Mathf.Max(0, (int)building.buildingData.UniqueValues[2]);
+        }
+
+        return DefaultMaxBonus;
     }
 }

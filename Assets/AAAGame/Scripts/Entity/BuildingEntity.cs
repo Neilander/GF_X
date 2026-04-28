@@ -71,7 +71,10 @@ public partial class BuildingEntity : MAEntity
     {
         base.OnShow(userData);
         TauntLevel = 0; // 建筑默认嘲讽等级 0
-
+        
+        // 使用原始的RefreshCharacterData方法来初始化建筑数据
+        RefreshCharacterData(userData);
+        
         InitializeAttackCapabilityFlags();
         ResetCombatRuntimeState();
         ApplyBuildingPropertyOverrides();
@@ -89,7 +92,9 @@ public partial class BuildingEntity : MAEntity
         _extraProps = GameEntry.GetComponent<GlobalBuffManager>()?.GetOrCreateExtraProps(BuildingInstanceId);
 
         // 初始化生产建筑的动态产出机制
+        Debug.Log($"[BuildingEntity] 准备调用InitializeDynamicProductionMechanism，buildingData={buildingData?.Identifier}");
         InitializeDynamicProductionMechanism();
+        Debug.Log($"[BuildingEntity] InitializeDynamicProductionMechanism调用完成");
 
         if (HasUpgrade)
         {
@@ -793,10 +798,21 @@ public partial class BuildingEntity : MAEntity
     /// </summary>
     private void InitializeDynamicProductionMechanism()
     {
-        if (buildingData == null || buildingData.Type != BuilType.Prod)
+        Debug.Log($"[BuildingEntity] InitializeDynamicProductionMechanism开始执行");
+        
+        if (buildingData == null)
+        {
+            Debug.Log($"[BuildingEntity] 初始化失败: buildingData为null");
             return;
+        }
+        
+        if (buildingData.Type != BuilType.Prod)
+        {
+            Debug.Log($"[BuildingEntity] 初始化失败: {buildingData.Identifier}不是生产建筑 (Type={buildingData.Type}, 期望={BuilType.Prod})");
+            return;
+        }
 
-        Debug.Log($"[BuildingEntity] 初始化生产建筑动态产出机制: {buildingData.Identifier}");
+        Debug.Log($"[BuildingEntity] 初始化生产建筑动态产出机制: {buildingData.Identifier}, Arche={buildingData.Arche}");
 
         // 根据建筑类型应用对应的动态产出机制
         switch (buildingData.Arche)
@@ -804,7 +820,12 @@ public partial class BuildingEntity : MAEntity
             case Archetype.Delivery:
                 if (buildingData.Identifier.Contains("ParcelLocker"))
                 {
+                    Debug.Log($"[BuildingEntity] 检测到快递柜，准备应用动态产出Buff");
                     ApplyDynamicProductionBuff<TechBuilParcelLockerDynamicEffectSO>();
+                }
+                else
+                {
+                    Debug.Log($"[BuildingEntity] Archetype.Delivery但Identifier不包含ParcelLocker: {buildingData.Identifier}");
                 }
                 break;
             case Archetype.Sightseeing:
@@ -835,8 +856,12 @@ public partial class BuildingEntity : MAEntity
     {
         try
         {
+            Debug.Log($"[BuildingEntity] 开始应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
+            
             var techEffect = new T();
             var techId = $"dynamic_production_{buildingData.Identifier}";
+            Debug.Log($"[BuildingEntity] 创建TechEffect和TechData: techId={techId}");
+            
             var techData = new TechData(
                 identifier: techId,
                 skillID: "",
@@ -851,21 +876,44 @@ public partial class BuildingEntity : MAEntity
                 spritePath: "",
                 isStackable: true
             );
+            
+            Debug.Log($"[BuildingEntity] 调用CreateBuildingScopedBuff...");
             var buffData = techEffect.CreateBuildingScopedBuff(techData, techId);
             
             if (buffData != null)
             {
+                Debug.Log($"[BuildingEntity] BuffData创建成功，准备注册到GlobalBuffManager");
                 var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
                 if (globalBuffManager != null)
+                    {
+                        globalBuffManager.RegisterBuildingBuff(BuildingInstanceId, OwnerFactionID, techId, techEffect, techData);
+                        Debug.Log($"[BuildingEntity] 成功应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
+                        
+                        // 立即应用Buff效果到当前建筑实体
+                        if (BuffComp != null)
+                        {
+                            BuffComp.AddBuff(buffData, this);
+                            Debug.Log($"[BuildingEntity] 立即应用Buff到当前建筑实体");
+                        }
+                        else
+                        {
+                            Debug.LogError($"[BuildingEntity] BuffComp为null，无法应用Buff");
+                        }
+                    }
+                else
                 {
-                    globalBuffManager.RegisterBuildingBuff(BuildingInstanceId, OwnerFactionID, techId, techEffect, techData);
-                    Debug.Log($"[BuildingEntity] 成功应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
+                    Debug.LogError($"[BuildingEntity] GlobalBuffManager为null");
                 }
+            }
+            else
+            {
+                Debug.LogError($"[BuildingEntity] BuffData创建失败");
             }
         }
         catch (System.Exception ex)
         {
             Debug.LogError($"[BuildingEntity] 应用动态产出Buff失败: {buildingData.Identifier} -> {typeof(T).Name}: {ex.Message}");
+            Debug.LogError($"[BuildingEntity] 异常堆栈: {ex.StackTrace}");
         }
     }
 

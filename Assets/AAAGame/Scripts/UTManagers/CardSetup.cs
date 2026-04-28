@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Card;
@@ -29,7 +30,18 @@ public partial class CardSetup : GameFrameworkComponent
         // 关闭卡牌 UI
         if (m_CardUIFormId != -1)
         {
-            GF.UI.CloseUIForm(m_CardUIFormId);
+            var ui = GF.UI;
+            if (ui != null && ui.HasUIForm(m_CardUIFormId))
+            {
+                try
+                {
+                    ui.CloseUIForm(m_CardUIFormId);
+                }
+                catch (GameFrameworkException ex)
+                {
+                    Log.Warning("[CardGame] Close Card UI ignored: {0}", ex.Message);
+                }
+            }
             m_CardUIFormId = -1;
         }
 
