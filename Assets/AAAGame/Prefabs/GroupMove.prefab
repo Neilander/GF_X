@@ -57,4 +57,5 @@ MonoBehaviour:
   EnemyEquilibriumRadius: 0.5
   EnemyMaxInfluenceRange: 15
   ObstacleWeight: 100
-  MoveThreshold: 3
+  MoveThreshold: 0.5
+  MoveThresholdSpeedRatio: 1.5

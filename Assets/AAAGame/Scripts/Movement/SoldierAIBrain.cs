@@ -73,7 +73,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         if (!self.Alive) return;
 
         // 惰性刷新领袖
-        if (_leader == null || !_leader.Alive)
+        if (!IsValidFollowLeader(self, _leader))
             _leader = EntityRegistry.GetClosestLeader(self.Position);
         // 惰性标记领袖 + 设置组（仅同阵营，敌方不入玩家组）
         if (!_joinedGroup && _leader != null && _leader.Alive && self.Side == _leader.Side && GroupMoveManager.HasInstance)
@@ -112,12 +112,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         {
             case SoldierState.Idle:
                 // 有敌人 → 直接进 Combat
-                if (self.TargetComp?.CurrentTarget != null)
+                if (IsValidAttackTarget(self, self.TargetComp?.CurrentTarget))
                 {
                     State = SoldierState.Combat;
                 }
                 // 同阵营领袖在附近 → Follow（敌方单位不跟随玩家）
-                else if (_leader != null && _leader.Alive && self.Side == _leader.Side)
+                else if (IsValidFollowLeader(self, _leader))
                 {
                     if (HorizontalDist(self.Position, _leader.Position) <= RecruitRadius)
                         State = SoldierState.Follow;
@@ -125,12 +125,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 break;
 
             case SoldierState.Follow:
-                if (self.TargetComp?.CurrentTarget != null)
+                if (IsValidAttackTarget(self, self.TargetComp?.CurrentTarget))
                 {
                     State = SoldierState.Combat;
                 }
                 // 领袖丢失或太远 → 回 Idle，忘掉领袖和组
-                else if (_leader == null || !_leader.Alive ||
+                else if (!IsValidFollowLeader(self, _leader) ||
                          HorizontalDist(self.Position, _leader.Position) > LeashRange)
                 {
                     self.MoveComp.StopMove(); // 清掉残留目标，防止被斥力推远
@@ -148,20 +148,34 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 break;
 
             case SoldierState.Combat:
-                // 敌人死了或丢失才回 Follow，不受领袖距离限制
+                // 敌人死亡、不可被攻击或丢失后回 Idle，避免继续追踪幽灵/无效目标。
                 var enemy = self.TargetComp?.CurrentTarget;
-                if (enemy == null || !enemy.Alive)
+                if (!IsValidAttackTarget(self, enemy))
                 {
                     // 立即清掉旧 NavMesh 目标，防止继续走向已死敌人
                     self.MoveComp.StopMove();
                     GameDebugSettings.Log(DebugCategory.Brain,
-                        $"[{self.CharacterKey}] Combat→Follow: enemy={(enemy == null ? "null" : "dead")}" +
+                        $"[{self.CharacterKey}] Combat→Idle: enemy={(enemy == null ? "null" : "invalid")}" +
                         $", leader={(_leader != null ? _leader.CharacterKey : "null")}" +
                         $", joinedGroup={_joinedGroup}");
-                    State = SoldierState.Follow;
+                    State = SoldierState.Idle;
                 }
                 break;
         }
+    }
+
+    private static bool IsValidAttackTarget(IEntityContext self, IEntityContext target)
+    {
+        return target != null
+               && target.IsAttackTargetable()
+               && EntityCombatTeamHelper.IsEnemy(self, target);
+    }
+
+    private static bool IsValidFollowLeader(IEntityContext self, IEntityContext leader)
+    {
+        return leader != null
+               && leader.Alive
+               && self.Side == leader.Side;
     }
 
     private void SyncStateToCoordinator(IEntityContext self)
@@ -190,13 +204,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     private void TickFollow(IEntityContext self, float dt)
     {
-        if (_leader == null || !_leader.Alive)
+        if (!IsValidFollowLeader(self, _leader))
         {
             self.MoveComp.StopMove();
             return;
         }
 
-        float speed = DistanceUnitConverter.ConvertToWorldFloat(self.GetProperty(CreatureMainProperty.Speed));
+        float speed = GetWorldMoveSpeed(self);
         Move = Vector2.zero;
 
         // 计算死区范围：[leaderEqR, leaderEqR + _deadZoneRange]
@@ -283,10 +297,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     private void TickCombat(IEntityContext self, float dt)
     {
         var enemy = self.TargetComp?.CurrentTarget;
-        if (enemy == null || !enemy.Alive) return;
+        if (!IsValidAttackTarget(self, enemy))
+        {
+            self.MoveComp.StopMove();
+            return;
+        }
 
         float distToEnemy = self.DistanceToTargetSurface(enemy);
-        float speed = DistanceUnitConverter.ConvertToWorldFloat(self.GetProperty(CreatureMainProperty.Speed));
+        float speed = GetWorldMoveSpeed(self);
         float effectiveRange = GetEffectiveAttackRange(self);
 
         if (distToEnemy <= effectiveRange)
@@ -319,14 +337,23 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         var coordinator = GroupMoveManager.Instance.Coordinator;
         int agentId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
 
-        coordinator.SubmitDesiredVelocity(agentId, desiredVelocity, safeVel =>
+        coordinator.SubmitDesiredVelocity(agentId, desiredVelocity, speed, safeVel =>
         {
             ApplyVelocity(self, safeVel, speed);
         });
     }
 
+    private float GetWorldMoveSpeed(IEntityContext self)
+    {
+        Fix64 rawSpeed = self.GetProperty(CreatureMainProperty.Speed);
+        return DistanceUnitConverter.ConvertToWorldFloat(rawSpeed);
+    }
+
     private void ApplyVelocity(IEntityContext self, Vector3 velocity, float speed)
     {
+        if (self.MoveComp == null || !self.CanRun(self.MoveComp))
+            return;
+
         if (velocity.sqrMagnitude < 0.001f)
         {
             // 力为零，停止移动（清掉旧路径）
@@ -335,7 +362,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         }
 
         Vector3 myPos = self.Position;
-        Vector3 target = myPos + velocity.normalized * speed;
+        Vector3 frameVelocity = Vector3.ClampMagnitude(velocity, speed);
+        Vector3 target = myPos + frameVelocity;
         GameDebugSettings.Log(DebugCategory.Brain,
             $"[{self.CharacterKey}] ApplyVel state={State} vel={velocity} → target={target}" +
             $" leaderPos={(_leader != null ? _leader.Position.ToString() : "null")}");

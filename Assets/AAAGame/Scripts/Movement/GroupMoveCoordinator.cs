@@ -98,6 +98,7 @@ public class GroupMoveCoordinator
     {
         public int AgentId;
         public Vector3 DesiredVelocity;
+        public float MoveSpeed;
         public Action<Vector3> Callback;
     }
 
@@ -105,6 +106,7 @@ public class GroupMoveCoordinator
     private readonly Dictionary<int, AgentData> _agents = new Dictionary<int, AgentData>();
     private readonly Dictionary<int, ObstacleData> _obstacles = new Dictionary<int, ObstacleData>();
     private readonly List<VelocityRequest> _requests = new List<VelocityRequest>();
+    private readonly Dictionary<int, Vector3> _lastSafeVelocities = new Dictionary<int, Vector3>();
 
     // ── Gizmos 调试数据 ──
     public struct DebugAgentInfo
@@ -145,6 +147,8 @@ public class GroupMoveCoordinator
 
     // 力低于此值直接返回零速度（防抖动）
     public float MoveThreshold = 0.5f;
+    public float MoveThresholdSpeedRatio = 1.5f;
+    public float VelocitySmoothing = 0.35f;
 
     // ── 注册/注销 ──
 
@@ -172,6 +176,7 @@ public class GroupMoveCoordinator
     public void UnregisterAgent(int id)
     {
         _agents.Remove(id);
+        _lastSafeVelocities.Remove(id);
     }
 
     public void SetAgentLeader(int id, bool isLeader)
@@ -253,10 +258,16 @@ public class GroupMoveCoordinator
 
     public void SubmitDesiredVelocity(int agentId, Vector3 desiredVelocity, Action<Vector3> callback)
     {
+        SubmitDesiredVelocity(agentId, desiredVelocity, desiredVelocity.magnitude, callback);
+    }
+
+    public void SubmitDesiredVelocity(int agentId, Vector3 desiredVelocity, float moveSpeed, Action<Vector3> callback)
+    {
         _requests.Add(new VelocityRequest
         {
             AgentId = agentId,
             DesiredVelocity = desiredVelocity,
+            MoveSpeed = moveSpeed,
             Callback = callback
         });
     }
@@ -271,7 +282,8 @@ public class GroupMoveCoordinator
             if (!_agents.TryGetValue(req.AgentId, out var self))
                 continue;
 
-            Vector3 safeVelocity = ComputeSafeVelocity(self, req.DesiredVelocity, out var ljForce, out var obsForce);
+            Vector3 safeVelocity = ComputeSafeVelocity(self, req.DesiredVelocity, req.MoveSpeed, out var ljForce, out var obsForce);
+            safeVelocity = SmoothSafeVelocity(req.AgentId, safeVelocity);
 
             DebugData[req.AgentId] = new DebugAgentInfo
             {
@@ -289,7 +301,27 @@ public class GroupMoveCoordinator
         _requests.Clear();
     }
 
-    private Vector3 ComputeSafeVelocity(AgentData self, Vector3 desiredVelocity,
+    private Vector3 SmoothSafeVelocity(int agentId, Vector3 safeVelocity)
+    {
+        float t = Mathf.Clamp01(VelocitySmoothing);
+        if (t >= 0.999f)
+        {
+            _lastSafeVelocities[agentId] = safeVelocity;
+            return safeVelocity;
+        }
+
+        if (!_lastSafeVelocities.TryGetValue(agentId, out Vector3 lastVelocity))
+        {
+            _lastSafeVelocities[agentId] = safeVelocity;
+            return safeVelocity;
+        }
+
+        Vector3 smoothedVelocity = Vector3.Lerp(lastVelocity, safeVelocity, t);
+        _lastSafeVelocities[agentId] = smoothedVelocity;
+        return smoothedVelocity;
+    }
+
+    private Vector3 ComputeSafeVelocity(AgentData self, Vector3 desiredVelocity, float moveSpeed,
         out Vector3 outLJForce, out Vector3 outObstacleForce)
     {
         Vector3 ljForce = Vector3.zero;
@@ -450,10 +482,13 @@ public class GroupMoveCoordinator
         Vector3 safeVelocity = desiredVelocity + ljForce + obstacleAdjustment;
 
         // 力太小时平滑衰减，不硬切断
+        float threshold = moveSpeed > 0.001f
+            ? moveSpeed * Mathf.Max(0f, MoveThresholdSpeedRatio)
+            : MoveThreshold;
         float mag = safeVelocity.magnitude;
-        if (mag < MoveThreshold)
+        if (threshold > 0.001f && mag < threshold)
         {
-            float t = mag / MoveThreshold;
+            float t = mag / threshold;
             safeVelocity *= t * t;
         }
 

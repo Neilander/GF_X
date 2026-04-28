@@ -31,8 +31,13 @@ public class GroupMoveManager : MonoBehaviour
     public float ObstacleWeight = 100f;
 
     [Header("移动阈值")]
-    [Tooltip("合力低于此值不移动")]
+    [Tooltip("没有单位速度时使用的兜底阈值")]
     public float MoveThreshold = 0.5f;
+    [Tooltip("按单位世界速度的倍率计算低速忽略阈值。1.5 = 速度的 150%")]
+    public float MoveThresholdSpeedRatio = 1.5f;
+    [Tooltip("最终安全速度平滑系数。1=不平滑，越低越稳但响应越慢")]
+    [Range(0.01f, 1f)]
+    public float VelocitySmoothing = 0.35f;
 
     private const string PREFS_KEY = "GroupMoveManager_Params";
 
@@ -74,6 +79,8 @@ public class GroupMoveManager : MonoBehaviour
             enemyMaxR = EnemyMaxInfluenceRange,
             obsWeight = ObstacleWeight,
             moveThreshold = MoveThreshold,
+            moveThresholdSpeedRatio = MoveThresholdSpeedRatio,
+            velocitySmoothing = VelocitySmoothing,
         });
         PlayerPrefs.SetString(PREFS_KEY, json);
         PlayerPrefs.Save();
@@ -99,6 +106,8 @@ public class GroupMoveManager : MonoBehaviour
         EnemyMaxInfluenceRange = d.enemyMaxR;
         ObstacleWeight = d.obsWeight;
         MoveThreshold = d.moveThreshold;
+        MoveThresholdSpeedRatio = d.moveThresholdSpeedRatio <= 0f ? MoveThresholdSpeedRatio : d.moveThresholdSpeedRatio;
+        VelocitySmoothing = d.velocitySmoothing <= 0f ? VelocitySmoothing : d.velocitySmoothing;
     }
 
     [System.Serializable]
@@ -109,6 +118,8 @@ public class GroupMoveManager : MonoBehaviour
         public float enemyRepStr, enemyAttStr, enemyEqR, enemyMaxR;
         public float obsWeight;
         public float moveThreshold;
+        public float moveThresholdSpeedRatio;
+        public float velocitySmoothing;
     }
 
     private void LateUpdate()
@@ -136,6 +147,8 @@ public class GroupMoveManager : MonoBehaviour
 
         Coordinator.ObstacleWeight = ObstacleWeight;
         Coordinator.MoveThreshold = MoveThreshold;
+        Coordinator.MoveThresholdSpeedRatio = MoveThresholdSpeedRatio;
+        Coordinator.VelocitySmoothing = VelocitySmoothing;
 
         Coordinator.SyncAllAgentParams();
     }
