@@ -12,10 +12,6 @@ public class LevelEntity : EntityBase
 {
     private const string StrongholdLayerPrefix = "SH";
     private const string EnemyStrongholdFogPrefabPath = "Effect/EnemySHFog";
-    private const float EnemyStrongholdFogInsetDistance = 1f;
-    private const float EnemyStrongholdFogOuterHeight = 4.0f;
-    private const float EnemyStrongholdFogMiddleHeight = 1.5f;
-    private const float EnemyStrongholdFogInnerHeight = 0.5f;
     private const float EnemyStrongholdFogBaseYOffset = 0.15f;
     private TileWorldCreatorManager tileWorldCreatorManager;
     private NavMeshSurface[] _navMeshSurfaces;
@@ -607,26 +603,29 @@ public class LevelEntity : EntityBase
             return false;
 
         // Compute world-space corners using the manager's transform to respect rotation/position.
-        Vector3 localMin = new Vector3(minX * cellSize, 0f, minY * cellSize);
-        Vector3 localMax = new Vector3((maxX + 1) * cellSize, 0f, (maxY + 1) * cellSize);
+        Vector3 localMin = new Vector3((minX - 0.5f) * cellSize, 0f, (minY - 0.5f) * cellSize);
+        Vector3 localMax = new Vector3((maxX + 0.5f) * cellSize, 0f, (maxY + 0.5f) * cellSize);
 
         Vector3 worldMin = tileWorldCreatorManager.transform.TransformPoint(localMin);
         Vector3 worldMax = tileWorldCreatorManager.transform.TransformPoint(localMax);
 
         Vector3 centerXZ = new Vector3((worldMin.x + worldMax.x) * 0.5f, 0f, (worldMin.z + worldMax.z) * 0.5f);
-        float sampledLayerHeight = 0f;
-        try
+        float strongholdPlaneY = tileWorldCreatorManager.transform.position.y;
+        if (!TryGetStrongholdPlaneY(stronghold, out strongholdPlaneY))
         {
-            sampledLayerHeight = tileWorldCreatorManager.SampleLayerHeight(centerXZ);
-        }
-        catch
-        {
-            sampledLayerHeight = 0f;
+            try
+            {
+                strongholdPlaneY += tileWorldCreatorManager.SampleLayerHeight(centerXZ);
+            }
+            catch
+            {
+                strongholdPlaneY = tileWorldCreatorManager.transform.position.y;
+            }
         }
 
         Vector3 center = new Vector3(
             centerXZ.x,
-            tileWorldCreatorManager.transform.position.y + sampledLayerHeight + EnemyStrongholdFogBaseYOffset,
+            strongholdPlaneY + EnemyStrongholdFogBaseYOffset,
             centerXZ.z);
 
         Vector3 size = new Vector3(
@@ -638,10 +637,37 @@ public class LevelEntity : EntityBase
         return true;
     }
 
+    private bool TryGetStrongholdPlaneY(Stronghold stronghold, out float planeY)
+    {
+        planeY = 0f;
+
+        var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
+        bool hasValue = false;
+
+        for (int i = 0; i < presetPoints.Length; i++)
+        {
+            var point = presetPoints[i];
+            if (point == null)
+                continue;
+
+            var pointStronghold = GetStrongholdAtWorldPosition(point.Position);
+            if (pointStronghold != stronghold)
+                continue;
+
+            float pointY = point.Position.y;
+            if (!hasValue || pointY > planeY)
+            {
+                planeY = pointY;
+                hasValue = true;
+            }
+        }
+
+        return hasValue;
+    }
+
     private void SpawnEnemyStrongholdFogLayers(string strongholdId, Bounds worldBounds)
     {
         var entityIds = new List<int>();
-
         float areaBase = 50.0f;
 
         // --- 1. 边缘圈（Outer rim） ---
@@ -664,10 +690,10 @@ public class LevelEntity : EntityBase
         float lrEmission = (lrArea / areaBase) * 10f;
 
         // 生成四面高墙，完全实心 (shellThickness = 0)，只在自己那非常狭窄的范围里产云
-        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(0, 0, hz - otHalf), tbSize, 0f, 0f, tbEmission, 0.6f, 1.0f, -12); // 北墙
-        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(0, 0, -hz + otHalf), tbSize, 0f, 0f, tbEmission, 0.6f, 1.0f, -12); // 南墙
-        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(hx - otHalf, 0, 0), lrSize, 0f, 0f, lrEmission, 0.6f, 1.0f, -12);  // 东墙
-        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(-hx + otHalf, 0, 0), lrSize, 0f, 0f, lrEmission, 0.6f, 1.0f, -12); // 西墙
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(0, 0, hz - otHalf), tbSize, outerHeight * 0.5f, 0f, tbEmission, 0.6f, 1.0f, -12); // 北墙
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(0, 0, -hz + otHalf), tbSize, outerHeight * 0.5f, 0f, tbEmission, 0.6f, 1.0f, -12); // 南墙
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(hx - otHalf, 0, 0), lrSize, outerHeight * 0.5f, 0f, lrEmission, 0.6f, 1.0f, -12);  // 东墙
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(-hx + otHalf, 0, 0), lrSize, outerHeight * 0.5f, 0f, lrEmission, 0.6f, 1.0f, -12); // 西墙
 
         // --- 2. 内部（Inner area） ---
         // 内部我们只需要非常低矮、稀疏、甚至有点零星的云

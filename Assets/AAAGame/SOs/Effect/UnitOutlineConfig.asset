@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d82ea7f5a47f07e42bddeca4c4d0f718, type: 3}
   m_Name: UnitOutlineConfig
   m_EditorClassIdentifier: 
-  FriendlyOutlineColor: {r: 1, g: 1, b: 1, a: 1}
-  FriendlyOutlineWidth: 0.006
-  EnemyOutlineColor1: {r: 0.7, g: 0.1, b: 0.9, a: 0.8}
-  EnemyOutlineWidth1: 0.006
-  EnemyOutlineColor2: {r: 0.7, g: 0.1, b: 0.9, a: 0.3}
-  EnemyOutlineWidth2: 0.012
+  FriendlyOutlineColor: {r: 0.472054, g: 0.9811321, b: 0.5226642, a: 0.47058824}
+  FriendlyOutlineWidth: 0.002
+  EnemyOutlineColor1: {r: 0.94747066, g: 0.22327036, b: 1, a: 0.5137255}
+  EnemyOutlineWidth1: 0.002
+  EnemyOutlineColor2: {r: 0.81964487, g: 0.2924527, b: 1, a: 0.21568628}
+  EnemyOutlineWidth2: 0.004

@@ -1,6 +1,7 @@
 using AAAGame.MiniMap;
 using UnityEngine;
 using UnityGameFramework.Runtime;
+using GameFramework.Event;
 
 /// <summary>
 /// 小兵实体：使用 DirectAtkComp（直接选定目标造成伤害，不走攻击盒）。
@@ -53,6 +54,42 @@ public partial class SoldierEntity : MAEntity
 
 
         RegisterToGroupMove(); // Side 已赋值，安全注册
+        SubscribePhaseEvents();
+    }
+
+    private void SubscribePhaseEvents()
+    {
+        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
+    }
+
+    private void UnsubscribePhaseEvents()
+    {
+        GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
+    }
+
+    private void OnPhaseChanged(object sender, GameEventArgs e)
+    {
+        if (e is not IngamePhaseChangedEventArgs args)
+            return;
+
+        if (args.OldPhase == args.NewPhase)
+            return;
+
+        // 如果是英雄且存活，转阶段时回满血
+        if (Alive && IsHeroUnit())
+        {
+            Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+            Fix64 delta = maxHealth - HealthValue;
+            if (delta > Fix64.Zero)
+            {
+                CreaturePropertyManager.ModifyCurrentProperty(
+                    CreatureCurrentProperty.HealthCurrent,
+                    PropertyIrreversibleAdditiveModifier.Create(delta),
+                    true);
+
+                GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
+            }
+        }
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -109,6 +146,7 @@ public partial class SoldierEntity : MAEntity
     protected override void OnHide(bool isShutdown, object userData)
     {
         _isHidingOrShuttingDown = true;
+        UnsubscribePhaseEvents();
         ClearGhostRuntimeState();
         base.OnHide(isShutdown, userData);
     }

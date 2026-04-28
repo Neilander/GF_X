@@ -12,7 +12,7 @@ namespace AAAGame.Effect
         [Header("敌方描边配置 (多层)")]
         public Color EnemyOutlineColor1 = new Color(0.7f, 0.1f, 0.9f, 0.8f);
         [Range(0, 0.1f)] public float EnemyOutlineWidth1 = 0.05f;
-        
+
         public Color EnemyOutlineColor2 = new Color(0.7f, 0.1f, 0.9f, 0.3f);
         [Range(0, 0.1f)] public float EnemyOutlineWidth2 = 0.1f;
     }
