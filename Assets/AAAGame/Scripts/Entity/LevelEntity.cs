@@ -2,17 +2,24 @@ using GameFramework;
 using GameFramework.Event;
 using System;
 using System.Collections.Generic;
+using GiantGrey.TileWorldCreator;
 using UnityEngine;
 using UnityEngine.AI;
 using Unity.AI.Navigation;
 using UnityGameFramework.Runtime;
-using GiantGrey.TileWorldCreator;
 
 public class LevelEntity : EntityBase
 {
     private const string StrongholdLayerPrefix = "SH";
+    private const string EnemyStrongholdFogPrefabPath = "Effect/EnemySHFog";
+    private const float EnemyStrongholdFogInsetDistance = 1f;
+    private const float EnemyStrongholdFogOuterHeight = 4.0f;
+    private const float EnemyStrongholdFogMiddleHeight = 1.5f;
+    private const float EnemyStrongholdFogInnerHeight = 0.5f;
+    private const float EnemyStrongholdFogBaseYOffset = 0.15f;
     private TileWorldCreatorManager tileWorldCreatorManager;
     private NavMeshSurface[] _navMeshSurfaces;
+    private readonly Dictionary<string, List<int>> _enemyStrongholdFogEntityIdsByStrongholdId = new Dictionary<string, List<int>>();
 
 
     private static LevelEntity activeLevelEntity;
@@ -64,6 +71,7 @@ public class LevelEntity : EntityBase
         SubscribeRuntimeLayerRules();
         ApplyStrongholdRuntimeLayerRules();
         SpawnPresetEntities();
+        SyncEnemyStrongholdFogEffects();
     }
 
     protected override void OnHide(bool isShutdown, object userData)
@@ -76,6 +84,7 @@ public class LevelEntity : EntityBase
         }
 
         InGameDataModel.ClearStrongholdRuntimeData();
+        ClearEnemyStrongholdFogEffects();
         tileWorldCreatorManager = null;
         _navMeshSurfaces = null;
 
@@ -479,6 +488,259 @@ public class LevelEntity : EntityBase
         Log.Info("Stronghold captured. id={0}, newOwnerFaction={1}",
             stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "<unknown>",
             newOwnerFactionId);
+
+        RefreshEnemyStrongholdFogEffects(stronghold);
+    }
+
+    private void SyncEnemyStrongholdFogEffects()
+    {
+        ClearEnemyStrongholdFogEffects();
+
+        if (tileWorldCreatorManager == null || tileWorldCreatorManager.configuration == null)
+            return;
+
+        IReadOnlyList<Stronghold> strongholds = Strongholds;
+        if (strongholds == null || strongholds.Count == 0)
+            return;
+
+        for (int i = 0; i < strongholds.Count; i++)
+        {
+            Stronghold stronghold = strongholds[i];
+            if (stronghold == null
+                || stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId
+                || stronghold.strongholdData == null
+                || stronghold.strongholdData.RangeCells == null
+                || stronghold.strongholdData.RangeCells.Count == 0)
+            {
+                continue;
+            }
+
+            RefreshEnemyStrongholdFogEffects(stronghold);
+        }
+    }
+
+    private void RefreshEnemyStrongholdFogEffects(Stronghold stronghold)
+    {
+        if (stronghold == null || stronghold.strongholdData == null)
+            return;
+
+        string strongholdId = stronghold.strongholdData.StrongholdId;
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            return;
+
+        ClearEnemyStrongholdFogEffects(strongholdId);
+
+        if (stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+            return;
+
+        if (!TryGetStrongholdWorldBounds(stronghold, out var worldBounds))
+            return;
+
+        SpawnEnemyStrongholdFogLayers(strongholdId, worldBounds);
+    }
+
+    private void ClearEnemyStrongholdFogEffects()
+    {
+        if (_enemyStrongholdFogEntityIdsByStrongholdId.Count == 0)
+            return;
+
+        foreach (var pair in _enemyStrongholdFogEntityIdsByStrongholdId)
+        {
+            var entityIds = pair.Value;
+            if (entityIds == null)
+                continue;
+
+            for (int i = 0; i < entityIds.Count; i++)
+            {
+                GF.Entity.HideEntitySafe(entityIds[i]);
+            }
+        }
+
+        _enemyStrongholdFogEntityIdsByStrongholdId.Clear();
+    }
+
+    private void ClearEnemyStrongholdFogEffects(string strongholdId)
+    {
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            return;
+
+        if (!_enemyStrongholdFogEntityIdsByStrongholdId.TryGetValue(strongholdId, out var entityIds) || entityIds == null)
+            return;
+
+        for (int i = 0; i < entityIds.Count; i++)
+        {
+            GF.Entity.HideEntitySafe(entityIds[i]);
+        }
+
+        _enemyStrongholdFogEntityIdsByStrongholdId.Remove(strongholdId);
+    }
+
+    private bool TryGetStrongholdWorldBounds(Stronghold stronghold, out Bounds worldBounds)
+    {
+        worldBounds = default;
+
+        if (stronghold?.strongholdData?.RangeCells == null || stronghold.strongholdData.RangeCells.Count == 0)
+            return false;
+
+        var configuration = tileWorldCreatorManager != null ? tileWorldCreatorManager.configuration : null;
+        if (configuration == null)
+            return false;
+
+        float cellSize = Mathf.Max(0.01f, configuration.cellSize);
+
+        int minX = int.MaxValue;
+        int minY = int.MaxValue;
+        int maxX = int.MinValue;
+        int maxY = int.MinValue;
+
+        foreach (Vector2 cell in stronghold.strongholdData.RangeCells)
+        {
+            int x = Mathf.RoundToInt(cell.x);
+            int y = Mathf.RoundToInt(cell.y);
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+        }
+
+        if (minX == int.MaxValue || minY == int.MaxValue)
+            return false;
+
+        // Compute world-space corners using the manager's transform to respect rotation/position.
+        Vector3 localMin = new Vector3(minX * cellSize, 0f, minY * cellSize);
+        Vector3 localMax = new Vector3((maxX + 1) * cellSize, 0f, (maxY + 1) * cellSize);
+
+        Vector3 worldMin = tileWorldCreatorManager.transform.TransformPoint(localMin);
+        Vector3 worldMax = tileWorldCreatorManager.transform.TransformPoint(localMax);
+
+        Vector3 centerXZ = new Vector3((worldMin.x + worldMax.x) * 0.5f, 0f, (worldMin.z + worldMax.z) * 0.5f);
+        float sampledLayerHeight = 0f;
+        try
+        {
+            sampledLayerHeight = tileWorldCreatorManager.SampleLayerHeight(centerXZ);
+        }
+        catch
+        {
+            sampledLayerHeight = 0f;
+        }
+
+        Vector3 center = new Vector3(
+            centerXZ.x,
+            tileWorldCreatorManager.transform.position.y + sampledLayerHeight + EnemyStrongholdFogBaseYOffset,
+            centerXZ.z);
+
+        Vector3 size = new Vector3(
+            Mathf.Max(cellSize, Mathf.Abs(worldMax.x - worldMin.x)),
+            0.01f,
+            Mathf.Max(cellSize, Mathf.Abs(worldMax.z - worldMin.z)));
+
+        worldBounds = new Bounds(center, size);
+        return true;
+    }
+
+    private void SpawnEnemyStrongholdFogLayers(string strongholdId, Bounds worldBounds)
+    {
+        var entityIds = new List<int>();
+
+        float areaBase = 50.0f;
+
+        // --- 1. 边缘圈（Outer rim） ---
+        // 为了彻底解决“外圈生成框内部中心会产云”的问题，我们不再依赖BoxThickness的镂空，
+        // 而是直接在据点的4个边缘各自生成一个实心的薄栅栏形状，像拼乐高一样围住据点。
+        float outerThickness = 1.0f; // 边缘厚度
+        float outerHeight = 3.0f;    // 边缘高度
+        float hx = worldBounds.size.x * 0.5f;
+        float hz = worldBounds.size.z * 0.5f;
+        float otHalf = outerThickness * 0.5f;
+
+        // 南北两面墙 (Top / Bottom) - 沿X轴宽，沿Z轴薄
+        Vector3 tbSize = new Vector3(worldBounds.size.x, outerHeight, outerThickness);
+        float tbArea = tbSize.x * outerThickness;
+        float tbEmission = (tbArea / areaBase) * 10f; // 墙面越小，发射密度要对应增加以保持云量
+        
+        // 东西两面墙 (Left / Right) - 扣掉转角避免重叠，沿Z轴长，沿X轴薄
+        Vector3 lrSize = new Vector3(outerThickness, outerHeight, Mathf.Max(0.1f, worldBounds.size.z - outerThickness * 2f));
+        float lrArea = lrSize.z * outerThickness;
+        float lrEmission = (lrArea / areaBase) * 10f;
+
+        // 生成四面高墙，完全实心 (shellThickness = 0)，只在自己那非常狭窄的范围里产云
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(0, 0, hz - otHalf), tbSize, 0f, 0f, tbEmission, 0.6f, 1.0f, -12); // 北墙
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(0, 0, -hz + otHalf), tbSize, 0f, 0f, tbEmission, 0.6f, 1.0f, -12); // 南墙
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(hx - otHalf, 0, 0), lrSize, 0f, 0f, lrEmission, 0.6f, 1.0f, -12);  // 东墙
+        SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center + new Vector3(-hx + otHalf, 0, 0), lrSize, 0f, 0f, lrEmission, 0.6f, 1.0f, -12); // 西墙
+
+        // --- 2. 内部（Inner area） ---
+        // 内部我们只需要非常低矮、稀疏、甚至有点零星的云
+        float innerThickness = 0f; 
+        Vector3 innerSize = new Vector3(
+            Mathf.Max(0.1f, worldBounds.size.x - outerThickness * 2f),
+            0.1f, // 内部云完全压成饼
+            Mathf.Max(0.1f, worldBounds.size.z - outerThickness * 2f));
+        float innerArea = innerSize.x * innerSize.z;
+        float innerEmissionMult = (innerArea / areaBase) * 0.5f; 
+
+        if (innerSize.x > 0.5f && innerSize.z > 0.5f)
+        {
+            // 内圈使用实心Box生成，极低的高度，稍大的粒子。
+            SpawnEnemyStrongholdFogLayer(entityIds, worldBounds.center, innerSize, -0.2f, innerThickness, innerEmissionMult, 0.4f, 0.6f, -10);
+        }
+
+        _enemyStrongholdFogEntityIdsByStrongholdId[strongholdId] = entityIds;
+    }
+
+    private void SpawnEnemyStrongholdFogLayer(List<int> entityIds, Vector3 worldCenter, Vector3 size, float yOffset, float shellThickness, float emissionRate, float startSizeMultiplier, float alpha, int sortingOrder)
+    {
+        Vector3 spawnPosition = worldCenter;
+        spawnPosition.y = worldCenter.y + yOffset;
+
+        EntityParams fogParams = EntityParams.Create(spawnPosition, null, Vector3.one);
+        fogParams.Set<VarFloat>(ParticleEntity.LIFE_TIME, 0f);
+        fogParams.Set<VarInt32>(ParticleEntity.SORT_LAYER, sortingOrder);
+        fogParams.OnShowCallback = entity => ConfigureEnemyStrongholdFogParticle(entity, size, shellThickness, emissionRate, startSizeMultiplier, alpha, sortingOrder);
+
+        int entityId = GF.Entity.ShowEntity<ParticleEntity>(EnemyStrongholdFogPrefabPath, Const.EntityGroup.Effect, fogParams);
+        if (entityId > 0)
+            entityIds.Add(entityId);
+    }
+
+    private static void ConfigureEnemyStrongholdFogParticle(UnityGameFramework.Runtime.EntityLogic entity, Vector3 size, float shellThickness, float emissionRate, float startSizeMultiplier, float alpha, int sortingOrder)
+    {
+        if (entity == null)
+            return;
+
+        var particleSystems = entity.GetComponentsInChildren<ParticleSystem>(true);
+        if (particleSystems == null || particleSystems.Length == 0)
+            return;
+
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            var particleSystem = particleSystems[i];
+            if (particleSystem == null)
+                continue;
+
+            var main = particleSystem.main;
+            Color originalColor = main.startColor.color;
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(originalColor.r, originalColor.g, originalColor.b, originalColor.a * Mathf.Clamp01(alpha)));
+            main.startSizeMultiplier *= Mathf.Max(0.1f, startSizeMultiplier);
+
+            var emission = particleSystem.emission;
+            emission.rateOverTimeMultiplier *= Mathf.Max(0f, emissionRate);
+
+            var shape = particleSystem.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3(size.x, size.z, size.y); // Keep the emitter flat
+
+            float normX = shellThickness > 0f ? Mathf.Clamp01(shellThickness * 2f / Mathf.Max(0.1f, size.x)) : 1f;
+            float normY = shellThickness > 0f ? Mathf.Clamp01(shellThickness * 2f / Mathf.Max(0.1f, size.z)) : 1f;
+            shape.boxThickness = new Vector3(normX, normY, 1f);
+
+            var renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
+            if (renderer != null)
+                renderer.sortingOrder = sortingOrder;
+
+            particleSystem.Clear(true);
+            particleSystem.Play(true);
+        }
     }
 
     private static int ResolveCaptureFactionId(IEntityContext attacker)

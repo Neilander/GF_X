@@ -100,6 +100,36 @@ public class MAEntity : CompCreature, IEntityContext
             _maCompInitialized = true;
         }
 
+        // 自动挂载或更新描边效果
+        SideType targetSide = Side;
+        if (userData is EntityParams ep)
+        {
+            targetSide = ep.Side;
+        }
+
+        if (targetSide == SideType.PlayerSide || targetSide == SideType.EnemySide)
+        {
+            var outline = gameObject.GetComponent<AAAGame.Effect.UnitOutline>();
+            if (outline == null)
+            {
+                outline = gameObject.AddComponent<AAAGame.Effect.UnitOutline>();
+            }
+
+            outline.outlineType = targetSide == SideType.PlayerSide
+                ? AAAGame.Effect.UnitOutline.OutlineType.Friendly
+                : AAAGame.Effect.UnitOutline.OutlineType.Enemy;
+
+            outline.enabled = true;
+        }
+        else
+        {
+            var outline = gameObject.GetComponent<AAAGame.Effect.UnitOutline>();
+            if (outline != null)
+            {
+                outline.enabled = false;
+            }
+        }
+
         _moveExecutor.Init(cController, navAgentTypeID);
         if (moveComp is CharacterMoveComp characterMoveComp)
             characterMoveComp.Init(this, navAgentTypeID);
@@ -124,13 +154,13 @@ public class MAEntity : CompCreature, IEntityContext
             EnsureSharedInvincibleBuff();
 
         // 应用出生自带的 Buff
-        if (userData is EntityParams ep)
+        if (userData is EntityParams ep1)
         {
-            if (ep.StartBuffs != null)
+            if (ep1.StartBuffs != null)
             {
-                for (int i = 0; i < ep.StartBuffs.Count; i++)
+                for (int i = 0; i < ep1.StartBuffs.Count; i++)
                 {
-                    BuffData buff = ep.StartBuffs[i];
+                    BuffData buff = ep1.StartBuffs[i];
                     _buffComp.AddBuff(buff, this);
                 }
             }
