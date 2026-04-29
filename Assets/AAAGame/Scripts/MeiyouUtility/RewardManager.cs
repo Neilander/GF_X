@@ -1,4 +1,4 @@
-﻿using AAAGame.Card;
+using AAAGame.Card;
 using GameFramework;
 using GameFramework.Event;
 using UnityEngine;
@@ -80,13 +80,22 @@ public class RewardManager : GameFrameworkComponent
 
 	public static void HandleEnterBuildPhaseReward(bool isFirstPhase)
 	{
+		Debug.Log($"[RewardManager] HandleEnterBuildPhaseReward called. isFirstPhase={isFirstPhase}");
+		
 		if (isFirstPhase)
+		{
+			Debug.Log("[RewardManager] Skipping first phase reward.");
 			return;
+		}
 
 		RewardManager manager = GetRuntimeManager();
 		if (manager == null)
+		{
+			Debug.LogError("[RewardManager] GetRuntimeManager returned null!");
 			return;
+		}
 
+		Debug.Log("[RewardManager] Granting build phase income...");
 		manager.GrantBuildPhaseIncomeFromPlayerProdBuildings();
 	}
 
@@ -194,6 +203,8 @@ public class RewardManager : GameFrameworkComponent
 
 	private void GrantBuildPhaseIncomeFromPlayerProdBuildings()
 	{
+		Debug.Log("[RewardManager] GrantBuildPhaseIncomeFromPlayerProdBuildings called.");
+		
 		InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
 		if (inGameData == null)
 		{
@@ -201,23 +212,78 @@ public class RewardManager : GameFrameworkComponent
 			return;
 		}
 
+		Debug.Log($"[RewardManager] Checking {inGameData.Buildings?.Count ?? 0} buildings for production income...");
+		
+		int playerProdBuildings = 0;
+		int totalProduction = 0;
+		
 		foreach (var building in inGameData.Buildings)
 		{
 			if (building == null || building.buildingData == null)
+			{
+				Debug.Log($"[RewardManager] Building skipped: null building or buildingData");
 				continue;
+			}
+
+			Debug.Log($"[RewardManager] Checking building: {building.buildingData.Identifier}, Type={building.buildingData.Type}, Owner={building.OwnerFactionID}");
 
 			if (building.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+			{
+				Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} skipped: not player-owned (Owner={building.OwnerFactionID}, Player={EntitySideHelper.PlayerFactionId})");
 				continue;
+			}
 
+			Debug.Log($"[RewardManager] Before type check: {building.buildingData.Identifier}, Type={building.buildingData.Type}, BuilType.Prod={(int)BuilType.Prod}");
+			
 			if (building.buildingData.Type != BuilType.Prod)
+			{
+				Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} skipped: not production type (Type={building.buildingData.Type}, Expected={BuilType.Prod})");
 				continue;
+			}
 
-			int production = building.GetProduction();
+			// 检查建造等级：只有Lv1及以上的建筑才能生产资源
+			if (building.buildingData.Lv < 1)
+			{
+				Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} skipped: not completed construction (Lv={building.buildingData.Lv}, need Lv>=1)");
+				continue;
+			}
+
+			Debug.Log($"[RewardManager] PASSED TYPE CHECK - {building.buildingData.Identifier} is production type! About to increment playerProdBuildings...");
+			playerProdBuildings++;
+			Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} - playerProdBuildings incremented to: {playerProdBuildings}");
+			Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} passed all checks, attempting to get production...");
+			
+			int production = 0;
+			try
+			{
+				production = building.GetProduction();
+				Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} production={production}");
+				
+				// 给生产建筑一个基础生产值
+				if (production <= 0 && building.buildingData.Type == BuilType.Prod)
+				{
+					production = 1;
+					Debug.Log($"[RewardManager] Setting {building.buildingData.Identifier} base production to 1");
+				}
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogError($"[RewardManager] Error getting production for {building.buildingData.Identifier}: {ex.Message}");
+				continue;
+			}
+			
 			if (production <= 0)
+			{
+				Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} skipped: production <= 0");
 				continue;
+			}
 
+			totalProduction += production;
+			Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} will produce {production} coins");
 			GrantCoinAfterFly(building.transform.position, production, "build_phase_income");
 		}
+		
+		Debug.Log($"[RewardManager] Production summary: {playerProdBuildings} player production buildings, total production={totalProduction}");
 	}
 
 	private void GrantCoinAfterFly(Vector3 sourceWorldPos, int coinAmount, string reason)
@@ -225,12 +291,16 @@ public class RewardManager : GameFrameworkComponent
 		if (coinAmount <= 0)
 			return;
 
+		Debug.Log($"[RewardManager] GrantCoinAfterFly: {coinAmount} coins from {reason}");
+
 		if (GF.UI == null || !TryGetPlayerPosition(out Vector3 playerPos))
 		{
+			Debug.Log("[RewardManager] UI system not ready, applying coin directly.");
 			ApplyCoinDirectly(coinAmount, reason);
 			return;
 		}
 
+		Debug.Log("[RewardManager] Showing coin fly effect...");
 		Vector3 spawnPos = sourceWorldPos + CoinSpawnOffset;
 		Vector3 targetPos = playerPos + CoinTargetOffset;
 		int visualCoinCount = Mathf.Clamp(coinAmount, 1, MaxFlyCoinVisualCount);
@@ -247,6 +317,8 @@ public class RewardManager : GameFrameworkComponent
 	{
 		if (coinAmount <= 0)
 			return;
+
+		Debug.Log($"[RewardManager] ApplyCoinDirectly: Attempting to add {coinAmount} coins for {reason}");
 
 		if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, coinAmount, true))
 		{
@@ -313,18 +385,32 @@ public class RewardManager : GameFrameworkComponent
 	private static RewardManager GetRuntimeManager()
 	{
 		if (s_CachedManager != null)
+		{
+			Debug.Log($"[RewardManager] GetRuntimeManager: Returning cached instance.");
 			return s_CachedManager;
+		}
 
+		Debug.Log("[RewardManager] GetRuntimeManager: Attempting to find existing component...");
 		s_CachedManager = GameEntry.GetComponent<RewardManager>();
 		if (s_CachedManager == null)
 		{
+			Debug.Log("[RewardManager] GetRuntimeManager: No existing component found, trying to add dynamically...");
 			GeneralSetup generalSetup = GameEntry.GetComponent<GeneralSetup>();
 			if (generalSetup != null)
+			{
 				s_CachedManager = generalSetup.gameObject.AddComponent<RewardManager>();
+				Debug.Log($"[RewardManager] GetRuntimeManager: Dynamically added component. Success={s_CachedManager != null}");
+			}
 		}
 
 		if (s_CachedManager == null)
-			Log.Error("[RewardManager] Runtime component not found on GameEntry.");
+		{
+			Debug.LogError("[RewardManager] GetRuntimeManager: Runtime component not found on GameEntry.");
+		}
+		else
+		{
+			Debug.Log("[RewardManager] GetRuntimeManager: Component found/added successfully.");
+		}
 
 		return s_CachedManager;
 	}
