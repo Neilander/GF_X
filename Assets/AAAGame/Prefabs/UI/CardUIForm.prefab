@@ -1446,7 +1446,7 @@ MonoBehaviour:
   trashBin: {fileID: 3733187908752676364}
   trashBinHintText: {fileID: 0}
   trashBinClosedSprite: {fileID: 21300000, guid: 79fc36c59cccd39469f593944e1db8f8, type: 3}
-  trashBinOpenSprite: {fileID: 21300000, guid: 9fdf2423376c44500a69de40dd83ef49, type: 3}
+  trashBinOpenSprite: {fileID: 21300000, guid: dbdafdfea545b5f46b3e8744555fe8d0, type: 3}
   trashHoverCardAlpha: 111
   handCardItemPrefab: {fileID: 1478813142199399011, guid: 67692d37767b7c74fa4177131ee36f31, type: 3}
   areaMaterialOverlay: {fileID: 0}
