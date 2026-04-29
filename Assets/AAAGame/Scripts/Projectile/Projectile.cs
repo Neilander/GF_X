@@ -145,6 +145,7 @@ public class Projectile : EntityBase
         if (_target != null && !_target.IsDestroyed() && _target.Alive)
         {
             shouldDealDamage = true;
+            //Debug.LogError("该造成伤害的");
         }
 
         if (shouldDealDamage)
@@ -154,6 +155,7 @@ public class Projectile : EntityBase
             {
                 var damage = new Damage(_attacker as ITargetable, _weaponData.Damage, HealthModifyType.reduce);
                 DamageHelper.DoDamage(_target as ITargetable, damage, _attacker);
+                //Debug.LogError("已经造成伤害的");
             }
         }
 
