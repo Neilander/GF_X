@@ -2632,6 +2632,7 @@ MonoBehaviour:
   fogInnerStartSizeMultiplier: 0.4
   fogInnerAlpha: 0.6
   fogInnerSortingOrder: 85
+  enemyBuildingColor: {r: 0.70980394, g: 0.6509804, b: 0.7294118, a: 1}
 --- !u!1 &990002000
 GameObject:
   m_ObjectHideFlags: 0
