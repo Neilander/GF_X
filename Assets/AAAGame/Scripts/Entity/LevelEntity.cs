@@ -673,8 +673,8 @@ public class LevelEntity : EntityBase
         // --- 1. 边缘圈（Outer rim） ---
         // 为了彻底解决“外圈生成框内部中心会产云”的问题，我们不再依赖BoxThickness的镂空，
         // 而是直接在据点的4个边缘各自生成一个实心的薄栅栏形状，像拼乐高一样围住据点。
-        float outerThickness = 1.0f; // 边缘厚度
-        float outerHeight = 3.0f;    // 边缘高度
+        float outerThickness = 0.5f; // 边缘厚度
+        float outerHeight = 1.2f;    // 边缘高度
         float hx = worldBounds.size.x * 0.5f;
         float hz = worldBounds.size.z * 0.5f;
         float otHalf = outerThickness * 0.5f;
@@ -683,7 +683,7 @@ public class LevelEntity : EntityBase
         Vector3 tbSize = new Vector3(worldBounds.size.x, outerHeight, outerThickness);
         float tbArea = tbSize.x * outerThickness;
         float tbEmission = (tbArea / areaBase) * 10f; // 墙面越小，发射密度要对应增加以保持云量
-        
+
         // 东西两面墙 (Left / Right) - 扣掉转角避免重叠，沿Z轴长，沿X轴薄
         Vector3 lrSize = new Vector3(outerThickness, outerHeight, Mathf.Max(0.1f, worldBounds.size.z - outerThickness * 2f));
         float lrArea = lrSize.z * outerThickness;
@@ -697,13 +697,13 @@ public class LevelEntity : EntityBase
 
         // --- 2. 内部（Inner area） ---
         // 内部我们只需要非常低矮、稀疏、甚至有点零星的云
-        float innerThickness = 0f; 
+        float innerThickness = 0f;
         Vector3 innerSize = new Vector3(
             Mathf.Max(0.1f, worldBounds.size.x - outerThickness * 2f),
             0.1f, // 内部云完全压成饼
             Mathf.Max(0.1f, worldBounds.size.z - outerThickness * 2f));
         float innerArea = innerSize.x * innerSize.z;
-        float innerEmissionMult = (innerArea / areaBase) * 0.5f; 
+        float innerEmissionMult = (innerArea / areaBase) * 0.5f;
 
         if (innerSize.x > 0.5f && innerSize.z > 0.5f)
         {
@@ -763,6 +763,11 @@ public class LevelEntity : EntityBase
             var renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
                 renderer.sortingOrder = sortingOrder;
+
+            // var containment = particleSystem.GetComponent<ParticleCollisionBoxContainment>();
+            // if (containment == null)
+            //     containment = particleSystem.gameObject.AddComponent<ParticleCollisionBoxContainment>();
+            // containment.Configure(shape.scale);
 
             particleSystem.Clear(true);
             particleSystem.Play(true);
