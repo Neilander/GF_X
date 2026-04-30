@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 2886955329720636224}
   - component: {fileID: 529049599270215221}
   m_Layer: 0
-  m_Name: beijingfangbiankan
+  m_Name: "\u80CC\u666F\u65B9\u4FBF\u770B_2"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -80,7 +80,7 @@ GameObject:
   - component: {fileID: 2641115658852329622}
   - component: {fileID: 8250741640585007491}
   m_Layer: 0
-  m_Name: zhilingyuanzhong
+  m_Name: "\u6307\u4EE4\u5143\u7EC8"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -310,7 +310,7 @@ GameObject:
   - component: {fileID: 520069821228683104}
   - component: {fileID: 467349236441097169}
   m_Layer: 0
-  m_Name: tianshuzhong
+  m_Name: "\u5929\u6570\u7EC8"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -448,7 +448,7 @@ GameObject:
   - component: {fileID: 1432654610051629008}
   - component: {fileID: 8570703656719476187}
   m_Layer: 0
-  m_Name: esczhong
+  m_Name: "esc\u7EC8"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -516,7 +516,7 @@ GameObject:
   - component: {fileID: 8589857975675313435}
   - component: {fileID: 2750806733773496801}
   m_Layer: 0
-  m_Name: yunying
+  m_Name: "\u8FD0\u8425"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -584,7 +584,7 @@ GameObject:
   - component: {fileID: 5401237038151685901}
   - component: {fileID: 6755956488849529196}
   m_Layer: 0
-  m_Name: tuceng_3
+  m_Name: "\u56FE\u5C42 3"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -652,7 +652,7 @@ GameObject:
   - component: {fileID: 8760734155352391303}
   - component: {fileID: 2956757661244192775}
   m_Layer: 0
-  m_Name: 01_10_kaobei
+  m_Name: "01_10 \u62F7\u8D1D"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -720,7 +720,7 @@ GameObject:
   - component: {fileID: 4013610689372759573}
   - component: {fileID: 8593000175716220999}
   m_Layer: 0
-  m_Name: zu_55
+  m_Name: "\u7EC4 55"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -787,7 +787,7 @@ GameObject:
   - component: {fileID: 5676954843057109135}
   - component: {fileID: 8820990180291011647}
   m_Layer: 0
-  m_Name: xiaodituzhong
+  m_Name: "\u5C0F\u5730\u56FE\u7EC8"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -845,7 +845,7 @@ GameObject:
   - component: {fileID: 8679387003932073489}
   - component: {fileID: 968062802654940137}
   m_Layer: 0
-  m_Name: yishirongliangzhong
+  m_Name: "\u610F\u8BC6\u5BB9\u91CF\u7EC8"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -982,7 +982,7 @@ GameObject:
   - component: {fileID: 6767214187791165353}
   - component: {fileID: 360850959280879822}
   m_Layer: 0
-  m_Name: beijingfangbiankan
+  m_Name: "\u80CC\u666F\u65B9\u4FBF\u770B"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1050,7 +1050,7 @@ GameObject:
   - component: {fileID: 4347351712529615994}
   - component: {fileID: 7428019640041658704}
   m_Layer: 0
-  m_Name: tuceng_4
+  m_Name: "\u56FE\u5C42 4"
   m_TagString: EditorOnly
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
