@@ -3484,6 +3484,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f9b7719ce53328346b55b598197e0716, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  showCoinPopTextAsUI: 1
+  uiPopTextRoot: {fileID: 0}
+  uiStartOffset: {x: 0, y: 80}
+  uiRiseDistance: 80
+  uiDuration: 0.8
+  uiFontSize: 42
+  uiCoinGainColor: {r: 1, g: 0.84313726, b: 0, a: 1}
 --- !u!1 &1493508176
 GameObject:
   m_ObjectHideFlags: 0
@@ -3652,6 +3659,7 @@ MonoBehaviour:
   moveDebug: 0
   brainDebug: 0
   groupMoveDebug: 0
+  runtimeResourceModifyEnabled: 1
 --- !u!4 &1510408148
 Transform:
   m_ObjectHideFlags: 0
