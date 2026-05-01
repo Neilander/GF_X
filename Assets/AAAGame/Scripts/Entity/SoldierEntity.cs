@@ -51,6 +51,11 @@ public partial class SoldierEntity : MAEntity
             m_MinimapReportComponent.Initialize(Side);
         }
 
+        // 敌方 SoldierAI 记录出生点用于"超出追击距离脱战返航"。友方/玩家不记录。
+        if (Side == SideType.EnemySide && Brain is SoldierAIBrain soldierBrain)
+        {
+            soldierBrain.SetBirthPosition(transform.position);
+        }
 
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }

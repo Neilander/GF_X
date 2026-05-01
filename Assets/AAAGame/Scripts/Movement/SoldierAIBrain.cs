@@ -1,12 +1,15 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
 /// 小兵 AI Brain：基于 Steering Behaviors 的流体移动。
 ///
-/// 三个状态：
+/// 状态：
 /// - Idle：站着不动，等待玩家靠近
 /// - Follow：跟随玩家，自然散开在不同距离
 /// - Combat：发现敌人后脱离跟随，散开交战（用 NavMesh 寻路到敌人）
+/// - Returning：敌方专属，被拉离出生点超过 ChaseRange 时强制返航。
+///   挂 returning buff（移速 + 回血）；不可被打断；到家后清 buff 回 Idle。
 ///
 /// 核心原则：
 /// 1. 同阵营不阻拦同阵营（separation 力自动避让）
@@ -19,7 +22,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     {
         Idle,
         Follow,
-        Combat
+        Combat,
+        Returning
     }
 
     // --- 配置参数 ---
@@ -34,6 +38,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     public float AvoidPlayerStrength = 3f;  // 避让玩家力度
     public float SeekWeight = 0.6f;         // 趋向力权重
     public float LeashRange = 30f;          // 脱离战斗回到跟随的距离
+
+    // --- 脱战返航参数（仅敌方有效，调参先在这里改）---
+    public float ChaseRange = 23f;                  // 距出生点超过此值就进入 Returning
+    public float HomeArrivedRadius = 1.5f;          // 距出生点 < 此值视为到家
+    public Fix64 ReturnSpeedBonusPercent = (Fix64)0.5f;        // 返航移速加成（50%）
+    public Fix64 ReturnHpRegenPercentPerSec = (Fix64)0.2f;     // 返航回血（每秒最大血量的 20%）
+    private const string ReturningBuffId = "soldier_returning";
 
     // --- 状态 ---
     public SoldierState State { get; private set; } = SoldierState.Idle;
@@ -57,10 +68,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     private float _innerDeadZoneRange = 2f;  // 近死区：斥力半径+此值以内完全停下
     private Vector3? _deadZoneTarget;        // 死区内的随机导航目标点
 
+    private Vector3? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
+
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
     /// </summary>
     public void Inject() { }
+
+    /// <summary>
+    /// 敌方 SoldierEntity 在 OnShow 末尾调用，启用脱战返航逻辑。
+    /// 友方/玩家不调用 → _birthPosition = null → 永不进入 Returning。
+    /// </summary>
+    public void SetBirthPosition(Vector3 worldPos) => _birthPosition = worldPos;
 
     public Vector3 GetDesiredMoveDirection() => _desiredMoveDir;
 
@@ -103,11 +122,33 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             case SoldierState.Combat:
                 TickCombat(self, dt);
                 break;
+            case SoldierState.Returning:
+                TickReturning(self, dt);
+                break;
         }
     }
 
     private void UpdateState(IEntityContext self)
     {
+        // Returning 优先：一旦进入返航就锁死，直到回到出生点。不可被任何状态打断。
+        if (State == SoldierState.Returning)
+        {
+            if (_birthPosition.HasValue &&
+                HorizontalDist(self.Position, _birthPosition.Value) <= HomeArrivedRadius)
+            {
+                ExitReturning(self);
+            }
+            return;
+        }
+
+        // 仅敌方（已设置 _birthPosition）才检查脱战。Idle/Follow/Combat 都可被脱战打断。
+        if (_birthPosition.HasValue &&
+            HorizontalDist(self.Position, _birthPosition.Value) > ChaseRange)
+        {
+            EnterReturning(self);
+            return;
+        }
+
         switch (State)
         {
             case SoldierState.Idle:
@@ -164,6 +205,42 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         }
     }
 
+    private void EnterReturning(IEntityContext self)
+    {
+        // 清掉攻击意图和路径，避免返航过程中残留目标干扰
+        Attack = false;
+        if (self.TargetComp != null)
+            self.TargetComp.CurrentTarget = null;
+        self.MoveComp?.StopMove();
+
+        // 挂复合 buff：百分比移速 + 持续回血
+        if (self is MAEntity ma && ma.BuffComp != null)
+        {
+            var modules = new List<BuffCallback>
+            {
+                new PercentMoveSpeedBonusBuff(ReturnSpeedBonusPercent),
+                new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
+            };
+            var buff = BuffData.Create(ReturningBuffId, 0f, true, 1, modules);
+            ma.BuffComp.AddBuff(buff, ma);
+        }
+
+        State = SoldierState.Returning;
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.CharacterKey}] 进入 Returning, birth={_birthPosition.Value}, dist={HorizontalDist(self.Position, _birthPosition.Value):F2}");
+    }
+
+    private void ExitReturning(IEntityContext self)
+    {
+        if (self is MAEntity ma)
+            ma.BuffComp?.RemoveBuff(ReturningBuffId);
+
+        self.MoveComp?.StopMove();
+        State = SoldierState.Idle;
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.CharacterKey}] 到家, 退出 Returning");
+    }
+
     private static bool IsValidAttackTarget(IEntityContext self, IEntityContext target)
     {
         return target != null
@@ -191,6 +268,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             SoldierState.Idle => GroupMoveCoordinator.AgentState.Idle,
             SoldierState.Follow => GroupMoveCoordinator.AgentState.Follow,
             SoldierState.Combat => GroupMoveCoordinator.AgentState.Combat,
+            // Returning 当作 Combat：只受斥力，避免被同组拉走（敌方本来也不在玩家组）
+            SoldierState.Returning => GroupMoveCoordinator.AgentState.Combat,
             _ => GroupMoveCoordinator.AgentState.Idle
         };
         GroupMoveManager.Instance.Coordinator.SetAgentState(selfId, coordState);
@@ -325,6 +404,25 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             Move = Vector2.zero;
             SubmitToCoordinator(self, desiredVel, speed);
         }
+    }
+
+    private void TickReturning(IEntityContext self, float dt)
+    {
+        if (!_birthPosition.HasValue)
+        {
+            // 理论上不应该发生：Returning 是由 _birthPosition.HasValue 才能进入的
+            State = SoldierState.Idle;
+            return;
+        }
+
+        Move = Vector2.zero;
+        Attack = false;
+
+        float speed = GetWorldMoveSpeed(self);
+        self.MoveComp.SetNavTarget(_birthPosition.Value);
+        Vector3 navDir = self.MoveComp.GetNavDirection();
+        Vector3 desiredVel = navDir * speed;
+        SubmitToCoordinator(self, desiredVel, speed);
     }
 
     /// <summary>

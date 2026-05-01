@@ -12,5 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fcfadfd95944404984449c8651de998, type: 3}
   m_Name: CharacterTargetingFactory
   m_EditorClassIdentifier: 
-  defaultAggroRange: 20
-  defaultForgetRange: 30
+  defaultAggroRange: 10
+  defaultForgetRange: 20
+  defaultFollowRange: 30
