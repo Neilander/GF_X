@@ -13,5 +13,11 @@ public class BuildingExtraProps
     public Fix64 ArmyForce;   // Tech 带来的额外兵力
     public Fix64 Production;  // Tech 带来的额外日产出（仅对 Prod 类型建筑生效）
 
+    // 动态产出相关属性
+    public Fix64 DynamicProduction; // 动态计算的额外产出
+    public Fix64 ProductionCap;     // 产出上限
+    public int ConditionCount;      // 条件计数（兵力/建筑数/击杀数）
+    public ProductionType ProductionType; // 产出计算类型
+
     // 未来扩展：Multiplier、Cap 等
 }

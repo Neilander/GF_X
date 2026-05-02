@@ -315,6 +315,20 @@ public partial class LevelEntity : EntityBase
                     if (point.IsGameEndConditionBuilding)
                     {
                         int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
+                        
+                        // 特殊逻辑：快递柜的所有者应该根据据点所有权来设置
+                        // 如果快递柜位于敌方据点内，应该属于敌人（显示红色血条）
+                        // 如果快递柜位于玩家据点内，应该属于玩家（显示绿色血条）
+                        if (effectiveIdentifier.Contains("ParcelLocker"))
+                        {
+                            var stronghold = GetStrongholdAtWorldPosition(point.Position);
+                            if (stronghold != null)
+                            {
+                                initialOwnerFactionId = stronghold.OwnerFactionId;
+                                Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {stronghold.OwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
+                            }
+                        }
+                        
                         gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
                     }
                     break;
@@ -330,6 +344,8 @@ public partial class LevelEntity : EntityBase
         var stronghold = GetStrongholdAtWorldPosition(position);
         return stronghold != null ? stronghold.OwnerFactionId : EntitySideHelper.PlayerFactionId;
     }
+
+
 
     private void CollectStrongholds()
     {

@@ -24,6 +24,11 @@ namespace AAAGame.Card
         [SerializeField] private GameObject trashBin;
         [SerializeField] private TextMeshProUGUI trashBinHintText;
 
+        [Header("垃圾桶拖拽反馈")]
+        [SerializeField] [InspectorName("垃圾桶关闭纹理")] private Sprite trashBinClosedSprite;
+        [SerializeField] [InspectorName("垃圾桶打开纹理")] private Sprite trashBinOpenSprite;
+        [SerializeField] [InspectorName("拖到垃圾桶卡牌透明度(0-255)")] [Range(0, 255)] private int trashHoverCardAlpha = 200;
+
         [Header("预制体")]
         [SerializeField] private GameObject handCardItemPrefab;
 
@@ -33,6 +38,15 @@ namespace AAAGame.Card
         [Header("抽卡动画")]
         [SerializeField] private RectTransform cardDeckTransform;
         [SerializeField] private float cardMoveToHandDuration = 0.5f;
+
+        [Header("卡组预览")]
+        [SerializeField] [InspectorName("悬浮抽卡点显示卡组")] private bool showDeckPreviewOnHover = true;
+        [SerializeField] [InspectorName("卡牌数据Resources路径")] private string cardDataResourcesPath = "CardData";
+        [SerializeField] [InspectorName("卡组预览面板")] private RectTransform deckPreviewPanel;
+        [SerializeField] [InspectorName("卡组预览内容容器")] private RectTransform deckPreviewContent;
+        [SerializeField] [InspectorName("卡组预览标题文本")] private TextMeshProUGUI deckPreviewTitleText;
+        [SerializeField] [InspectorName("卡组为空提示文本")] private TextMeshProUGUI deckPreviewEmptyText;
+        [SerializeField] [InspectorName("卡组预览卡牌条目模板")] private CardDeckPreviewItem deckPreviewItemTemplate;
 
         [Header("目标拖拽表现")]
         [SerializeField] [InspectorName("准星图片")] private Sprite targetingReticleSprite;
@@ -53,6 +67,9 @@ namespace AAAGame.Card
         private RectTransform m_TrashBinRect;
         private RectTransform m_ResolvedHandCardAreaRect;
         private Canvas m_TrashBinCanvas;
+        private Image m_TrashBinImage;
+        private Sprite m_DefaultTrashBinSprite;
+        private bool m_IsTrashBinOpen;
         private int m_PendingHandLayoutRefreshFrames;
         private bool m_IsUIVisible = true;
 
@@ -64,6 +81,11 @@ namespace AAAGame.Card
         private RectTransform m_TargetingReticleRect;
         private Image m_TargetingReticleImage;
         private Sprite m_RuntimeFallbackReticleSprite;
+
+        private readonly List<CardData> m_DeckPreviewCardData = new List<CardData>();
+        private int m_LastDeckPreviewHash = int.MinValue;
+        private bool m_DeckPreviewDataLoaded;
+        private bool m_DeckPreviewConfigWarningLogged;
 
         protected override void OnInit(object userData)
         {
@@ -81,6 +103,8 @@ namespace AAAGame.Card
             {
                 m_TrashBinRect = trashBin.GetComponent<RectTransform>();
                 m_TrashBinCanvas = m_TrashBinRect != null ? m_TrashBinRect.GetComponentInParent<Canvas>() : null;
+                ResolveTrashBinImage();
+                SetTrashBinOpen(false, true);
                 trashBin.SetActive(false);
             }
 
@@ -134,6 +158,8 @@ namespace AAAGame.Card
 
             ClearHandCards();
             HideTargetingVisuals();
+            SetTrashBinDragFeedback(null, false);
+            HideDeckPreviewPanel();
             areaMaterialOverlay?.HideAreaEffect();
         }
 
@@ -148,6 +174,7 @@ namespace AAAGame.Card
 
             HandleHotkeys();
             RefreshPendingHandLayout();
+            UpdateDeckPreviewHover();
         }
 
         private void RefreshHandCardLayout()
@@ -197,6 +224,196 @@ namespace AAAGame.Card
 
             RefreshHandCardLayout();
             m_PendingHandLayoutRefreshFrames--;
+        }
+
+        private void UpdateDeckPreviewHover()
+        {
+            if (!showDeckPreviewOnHover || cardDeckTransform == null || deckPreviewPanel == null || m_DraggingCard != null)
+            {
+                HideDeckPreviewPanel();
+                return;
+            }
+
+            Vector2 mousePosition = Input.mousePosition;
+            Camera uiCamera = GetUICamera();
+            bool isOverDeck = RectTransformUtility.RectangleContainsScreenPoint(cardDeckTransform, mousePosition, uiCamera);
+            bool isOverPanel = deckPreviewPanel.gameObject.activeSelf
+                && RectTransformUtility.RectangleContainsScreenPoint(deckPreviewPanel, mousePosition, uiCamera);
+
+            if (isOverDeck || isOverPanel)
+            {
+                ShowDeckPreviewPanel();
+                return;
+            }
+
+            HideDeckPreviewPanel();
+        }
+
+        private void ShowDeckPreviewPanel()
+        {
+            if (!ValidateDeckPreviewConfig())
+            {
+                return;
+            }
+
+            deckPreviewPanel.SetAsLastSibling();
+            if (!deckPreviewPanel.gameObject.activeSelf)
+            {
+                deckPreviewPanel.gameObject.SetActive(true);
+                m_LastDeckPreviewHash = int.MinValue;
+            }
+
+            if (!m_DeckPreviewDataLoaded)
+            {
+                LoadAllCardDataForPreview();
+            }
+
+            int deckHash = CalculateDeckPreviewHash();
+            if (deckHash != m_LastDeckPreviewHash)
+            {
+                RebuildDeckPreviewPanel();
+                m_LastDeckPreviewHash = deckHash;
+            }
+        }
+
+        private void HideDeckPreviewPanel()
+        {
+            if (deckPreviewPanel != null && deckPreviewPanel.gameObject.activeSelf)
+            {
+                deckPreviewPanel.gameObject.SetActive(false);
+                m_DeckPreviewDataLoaded = false;
+            }
+        }
+
+        private bool ValidateDeckPreviewConfig()
+        {
+            bool valid = deckPreviewPanel != null
+                && deckPreviewContent != null
+                && deckPreviewItemTemplate != null;
+
+            if (!valid && !m_DeckPreviewConfigWarningLogged)
+            {
+                Log.Warning("[CardUI] 卡组预览未配置完整。请在 CardUIForm 上绑定：卡组预览面板、内容容器、卡牌条目模板。");
+                m_DeckPreviewConfigWarningLogged = true;
+            }
+
+            if (valid)
+            {
+                m_DeckPreviewConfigWarningLogged = false;
+            }
+
+            return valid;
+        }
+
+        private void LoadAllCardDataForPreview()
+        {
+            m_DeckPreviewCardData.Clear();
+            m_DeckPreviewDataLoaded = true;
+
+            string resourcePath = string.IsNullOrWhiteSpace(cardDataResourcesPath)
+                ? "CardData"
+                : cardDataResourcesPath.Trim().Trim('/');
+
+            CardData[] cardDataArray = Resources.LoadAll<CardData>(resourcePath);
+            if (cardDataArray == null || cardDataArray.Length <= 0)
+            {
+                return;
+            }
+
+            m_DeckPreviewCardData.AddRange(cardDataArray);
+            m_DeckPreviewCardData.Sort((left, right) =>
+            {
+                string leftKey = left != null ? left.index : string.Empty;
+                string rightKey = right != null ? right.index : string.Empty;
+                int compare = string.Compare(leftKey, rightKey, StringComparison.Ordinal);
+                if (compare != 0)
+                    return compare;
+
+                string leftName = left != null ? left.cardName : string.Empty;
+                string rightName = right != null ? right.cardName : string.Empty;
+                return string.Compare(leftName, rightName, StringComparison.Ordinal);
+            });
+        }
+
+        private void RebuildDeckPreviewPanel()
+        {
+            if (deckPreviewContent == null)
+            {
+                return;
+            }
+
+            ClearDeckPreviewContent();
+
+            int cardCount = m_DeckPreviewCardData.Count;
+            if (deckPreviewTitleText != null)
+            {
+                deckPreviewTitleText.text = Utility.Text.Format("卡牌预览  共 {0} 张", cardCount);
+            }
+
+            if (deckPreviewEmptyText != null)
+            {
+                deckPreviewEmptyText.gameObject.SetActive(cardCount <= 0);
+                if (cardCount <= 0)
+                {
+                    deckPreviewEmptyText.text = Utility.Text.Format("未在 Resources/{0} 下找到 CardData", cardDataResourcesPath);
+                }
+            }
+
+            if (deckPreviewItemTemplate != null)
+            {
+                deckPreviewItemTemplate.gameObject.SetActive(false);
+            }
+
+            for (int i = 0; i < m_DeckPreviewCardData.Count; i++)
+            {
+                CardDeckPreviewItem previewItem = Instantiate(deckPreviewItemTemplate, deckPreviewContent);
+                previewItem.name = Utility.Text.Format("DeckPreviewCardItem_{0}", i);
+                previewItem.SetData(m_DeckPreviewCardData[i]);
+            }
+
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(deckPreviewContent);
+        }
+
+        private void ClearDeckPreviewContent()
+        {
+            if (deckPreviewContent == null)
+            {
+                return;
+            }
+
+            for (int i = deckPreviewContent.childCount - 1; i >= 0; i--)
+            {
+                Transform childTransform = deckPreviewContent.GetChild(i);
+                if (deckPreviewItemTemplate != null && childTransform == deckPreviewItemTemplate.transform)
+                {
+                    continue;
+                }
+
+                GameObject child = childTransform.gameObject;
+                child.SetActive(false);
+                Destroy(child);
+            }
+        }
+
+        private int CalculateDeckPreviewHash()
+        {
+            unchecked
+            {
+                int hash = 17;
+                int count = m_DeckPreviewCardData.Count;
+                hash = hash * 31 + count;
+                for (int i = 0; i < count; i++)
+                {
+                    CardData cardData = m_DeckPreviewCardData[i];
+                    hash = hash * 31 + (cardData != null && cardData.index != null ? cardData.index.GetHashCode() : 0);
+                    hash = hash * 31 + (cardData != null && cardData.cardName != null ? cardData.cardName.GetHashCode() : 0);
+                    hash = hash * 31 + (cardData != null ? cardData.populationCost : 0);
+                    hash = hash * 31 + (cardData != null ? cardData.soldierCount : 0);
+                }
+
+                return hash;
+            }
         }
 
         private void ResolveAreaMaterialOverlay()
@@ -624,6 +841,7 @@ namespace AAAGame.Card
 
             if (trashBin != null)
             {
+                SetTrashBinDragFeedback(cardItem, false);
                 trashBin.SetActive(true);
             }
 
@@ -632,7 +850,8 @@ namespace AAAGame.Card
 
         public void OnCardDragging(HandCardItem cardItem, Vector2 screenPosition)
         {
-            UpdateTrashBinHint(screenPosition);
+            bool isOverTrash = UpdateTrashBinHint(screenPosition);
+            SetTrashBinDragFeedback(cardItem, isOverTrash);
             UpdateAreaMaterialEffect(cardItem, screenPosition);
         }
 
@@ -640,6 +859,7 @@ namespace AAAGame.Card
         {
             m_DraggingCard = null;
             RefreshHandCardInteractionVisuals();
+            SetTrashBinDragFeedback(cardItem, false);
 
             if (trashBin != null)
             {
@@ -652,15 +872,20 @@ namespace AAAGame.Card
             bool isInTrash = IsInTrashBin(screenPosition, true);
             if (isInTrash)
             {
-                m_CardSystemController.CancelPlacement();
-                cardItem.OnDiscardSuccess();
-                RemoveHandCardItemDirect(cardItem.GetCardModel());
+                CardModel discardedCardModel = cardItem.GetCardModel();
+                Vector2 discardScreenPosition = screenPosition;
 
-                bool discarded = m_CardSystemController.DiscardCard(cardItem.GetCardModel(), screenPosition);
-                if (!discarded)
+                m_CardSystemController.CancelPlacement();
+                cardItem.OnDiscardSuccess(() =>
                 {
-                    Log.Error("[CardUI] Failed to discard card in controller.");
-                }
+                    RemoveHandCardItemDirect(discardedCardModel);
+
+                    bool discarded = m_CardSystemController.DiscardCard(discardedCardModel, discardScreenPosition);
+                    if (!discarded)
+                    {
+                        Log.Error("[CardUI] Failed to discard card in controller.");
+                    }
+                });
 
                 return true;
             }
@@ -709,19 +934,75 @@ namespace AAAGame.Card
             }
         }
 
-        private void UpdateTrashBinHint(Vector2 screenPosition)
+        private bool UpdateTrashBinHint(Vector2 screenPosition)
         {
-            if (m_TrashBinRect == null || trashBinHintText == null)
+            bool isOver = IsInTrashBin(screenPosition, false);
+
+            if (trashBinHintText != null)
+            {
+                trashBinHintText.gameObject.SetActive(isOver);
+            }
+
+            return isOver;
+        }
+
+        private void ResolveTrashBinImage()
+        {
+            if (trashBin == null)
             {
                 return;
             }
 
-            bool isOver = RectTransformUtility.RectangleContainsScreenPoint(
-                m_TrashBinRect,
-                screenPosition,
-                GetUICamera());
+            if (m_TrashBinImage == null)
+            {
+                m_TrashBinImage = trashBin.GetComponent<Image>();
+            }
 
-            trashBinHintText.gameObject.SetActive(isOver);
+            if (m_TrashBinImage == null)
+            {
+                m_TrashBinImage = trashBin.GetComponentInChildren<Image>(true);
+            }
+
+            if (m_TrashBinImage != null && m_DefaultTrashBinSprite == null)
+            {
+                m_DefaultTrashBinSprite = m_TrashBinImage.sprite;
+            }
+        }
+
+        private void SetTrashBinDragFeedback(HandCardItem cardItem, bool isOverTrash)
+        {
+            SetTrashBinOpen(isOverTrash);
+            cardItem?.SetTrashHoverTransparency(isOverTrash, trashHoverCardAlpha);
+        }
+
+        private void SetTrashBinOpen(bool open, bool force = false)
+        {
+            if (!force && m_IsTrashBinOpen == open)
+            {
+                return;
+            }
+
+            m_IsTrashBinOpen = open;
+            ResolveTrashBinImage();
+
+            if (m_TrashBinImage == null)
+            {
+                return;
+            }
+
+            if (open && trashBinOpenSprite == null)
+            {
+                return;
+            }
+
+            Sprite targetSprite = open
+                ? trashBinOpenSprite
+                : (trashBinClosedSprite != null ? trashBinClosedSprite : m_DefaultTrashBinSprite);
+
+            if (m_TrashBinImage.sprite != targetSprite)
+            {
+                m_TrashBinImage.sprite = targetSprite;
+            }
         }
 
         private void UpdateAreaMaterialEffect(HandCardItem cardItem, Vector2 screenPosition)
