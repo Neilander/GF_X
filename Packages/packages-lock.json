@@ -258,6 +258,12 @@
         "com.unity.render-pipelines.core": "14.0.12"
       }
     },
+    "com.xuanxuan.nb.fx": {
+      "version": "file:com.xuanxuan.nb.fx",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "jillejr.newtonsoft.json-for-unity.converters": {
       "version": "1.6.3",
       "depth": 0,
