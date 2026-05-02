@@ -11,6 +11,7 @@
 	19	人口栏	3	SupplyUIForm	False	1	False	False
 	21	侧边提示	4	SideTipsUIForm	False	1	False	False
 	22	局内顶部界面	1	InGameUIForm	False	1	False	False
+	23	行动目标	3	GoalUIForm	False	1	False	False
 #	对话框(中层)							
 	5	设置	1	SettingDialog	True	2	True	True
 	6	评分	2	RatingDialog	True	2	True	True
@@ -27,3 +28,5 @@
 	17	小地图	1	MinimapUI	False	1	False	False
 	18	阶段切换按钮	3	PhaseSwitchUIForm	False	1	False	False
 	20	迷雾UI	1	FogUI	False	1	False	False
+	24	建筑建造面板	2	BuildingBuildTips	False	3	False	False
+	25	建筑信息/升级面板	2	BuildingInfoAndUpgradeTips	False	3	False	False

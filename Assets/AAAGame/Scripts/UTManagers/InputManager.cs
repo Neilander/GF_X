@@ -81,6 +81,34 @@ public partial class InputManager : GameFrameworkComponent
             _model = GF.DataModel.GetDataModel<InputModel>();
     }
 
+    public bool IsActionPressed(string actionName)
+    {
+        if (playerInput == null || playerInput.actions == null || string.IsNullOrWhiteSpace(actionName))
+            return false;
+
+        InputAction action = playerInput.actions.FindAction(actionName);
+        return action != null && action.IsPressed();
+    }
+
+    public bool WasActionPressedThisFrame(string actionName)
+    {
+        if (playerInput == null || playerInput.actions == null || string.IsNullOrWhiteSpace(actionName))
+            return false;
+
+        InputAction action = playerInput.actions.FindAction(actionName);
+        return action != null && action.WasPressedThisFrame();
+    }
+
+    public bool IsPrimaryPointerPressed()
+    {
+        return _attackAction != null && _attackAction.IsPressed();
+    }
+
+    public Vector2 GetPointerScreenPosition()
+    {
+        return _selectPositionAction != null ? _selectPositionAction.ReadValue<Vector2>() : Vector2.zero;
+    }
+
     private class InputSM : AbsStatemachine<InputState, InputManager>
     {
 

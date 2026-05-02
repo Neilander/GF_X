@@ -12,6 +12,7 @@ public enum UIViews : int
 	SupplyUIForm = 19,
 	SideTipsUIForm = 21,
 	InGameUIForm = 22,
+	GoalUIForm = 23,
 	SettingDialog = 5,
 	RatingDialog = 6,
 	TermsOfServiceDialog = 7,
@@ -25,5 +26,7 @@ public enum UIViews : int
 	CardUIForm = 16,
 	MinimapUI = 17,
 	PhaseSwitchUIForm = 18,
-	FogUI = 20
+	FogUI = 20,
+	BuildingBuildTips = 24,
+	BuildingInfoAndUpgradeTips = 25
 }

@@ -21,6 +21,7 @@ public class LocalizationTextDataModel : DataModelBase
         List<IDataTable<LocalizationTextTable>> tables = new()
         {
             GF.DataTable.GetDataTable<LocalizationTextTable>("InteractionOption"),
+            GF.DataTable.GetDataTable<LocalizationTextTable>("Archetype"),
             GF.DataTable.GetDataTable<LocalizationTextTable>("Misc"),
             GF.DataTable.GetDataTable<LocalizationTextTable>("Tips"),
             GF.DataTable.GetDataTable<LocalizationTextTable>("Tutorial"),
@@ -36,12 +37,19 @@ public class LocalizationTextDataModel : DataModelBase
     }
     protected override void OnRelease() { }
 
-    public static string GetText(string identifier)
+    /// <summary>
+    /// LocalizationTextTable 入口（如 Archetype_* / Tips_* / Tutorial_*）统一走这里。
+    /// 不要直接用 LocalizationTextManager.GetLocalizedText 读取这些 identifier。
+    /// </summary>
+    public static string GetText(string identifier, bool applyRichText = true)
     {
         var model = GF.DataModel.GetDataModel<LocalizationTextDataModel>();
         if (model != null && model._localizationKeyDic != null && model._localizationKeyDic.TryGetValue(identifier, out var text))
-            return LocalizationTextManager.ProcessText(GF.Localization.GetString(text));
+        {
+            string localized = GF.Localization.GetString(text);
+            return applyRichText ? LocalizationTextManager.ProcessText(localized) : localized;
+        }
 
-        return LocalizationTextManager.ProcessText(identifier);
+        return applyRichText ? LocalizationTextManager.ProcessText(identifier) : identifier;
     }
 }

@@ -9,12 +9,10 @@ public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, Consume
 
 public class GameEndManager : GameFrameworkComponent
 {
-    private const string ObjectiveTitleTextId = "GameEnd_Cond_Title";
     private const string ObjectiveOccupyBeforeDayTextId = "GameEnd_Cond_OccupyBeforeDay";
     private const string ObjectiveOccupyTextId = "GameEnd_Cond_Occupy";
     private const string ObjectiveSurviveToDayTextId = "GameEnd_Cond_SurviveToDay";
     private const string ObjectiveDefendBaseTextId = "GameEnd_Cond_DefendBase";
-    private const float LevelObjectiveTipsDurationSeconds = 5f;
 
     public bool IsGameEnded { get; private set; }
     public bool IsWin { get; private set; }
@@ -88,33 +86,15 @@ public class GameEndManager : GameFrameworkComponent
         EvaluateConditions();
     }
 
-    public void ShowLevelVictoryConditionTips()
+    public bool TryGetLevelObjectiveLines(out List<string> objectiveLines)
     {
+        objectiveLines = null;
+
         if (!m_ConditionInitialized)
         {
-            Log.Warning("[GameEndManager] ShowLevelVictoryConditionTips skipped: conditions are not initialized.");
-            return;
+            return false;
         }
 
-        string content = BuildLevelObjectiveTipsContent();
-        if (string.IsNullOrEmpty(content))
-        {
-            Log.Warning("[GameEndManager] ShowLevelVictoryConditionTips skipped: no displayable objectives.");
-            return;
-        }
-
-        var sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
-        if (sideTipsManager == null)
-        {
-            Log.Error("[GameEndManager] ShowLevelVictoryConditionTips failed: SideTipsManager is missing.");
-            return;
-        }
-
-        sideTipsManager.ShowRuntimeTip(LocalizationTextDataModel.GetText(ObjectiveTitleTextId), content, LevelObjectiveTipsDurationSeconds);
-    }
-
-    private string BuildLevelObjectiveTipsContent()
-    {
         var lines = new List<string>(4);
 
         if (m_EnableOccupySpecificBuildings)
@@ -139,7 +119,13 @@ public class GameEndManager : GameFrameworkComponent
             lines.Add(LocalizationTextDataModel.GetText(ObjectiveDefendBaseTextId));
         }
 
-        return string.Join("\n", lines);
+        if (lines.Count == 0)
+        {
+            return false;
+        }
+
+        objectiveLines = lines;
+        return true;
     }
 
     public void RegisterInitialConditionBuilding(string buildingInstanceId, int initialOwnerFactionId)

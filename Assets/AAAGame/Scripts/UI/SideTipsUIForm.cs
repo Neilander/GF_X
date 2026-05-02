@@ -5,6 +5,8 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public partial class SideTipsUIForm : UIFormBase
 {
+    private const float DefaultTipSpacing = 10f;
+
     private struct PendingTipData
     {
         public string Key;
@@ -14,7 +16,6 @@ public partial class SideTipsUIForm : UIFormBase
         public float Duration;
     }
 
-    private const float TipSpacing = 10f;
     private const float TipMoveDuration = 0.2f;
     private static readonly Queue<PendingTipData> s_PendingTips = new Queue<PendingTipData>(4);
     private static readonly HashSet<string> s_PendingTipKeys = new HashSet<string>();
@@ -31,6 +32,7 @@ public partial class SideTipsUIForm : UIFormBase
     private readonly HashSet<string> m_ActiveTipKeys = new HashSet<string>();
     private bool m_HasBaseTipPos;
     private Vector2 m_BaseTipPos;
+    private float m_TipSpacing = DefaultTipSpacing;
 
     private static string BuildTipKey(string tipId, string title, string content)
     {
@@ -106,6 +108,7 @@ public partial class SideTipsUIForm : UIFormBase
     {
         base.OnOpen(userData);
         Instance = this;
+        SyncTipSpacingFromManager();
         TryInitBaseTipPos();
         FlushPendingTips();
     }
@@ -281,7 +284,7 @@ public partial class SideTipsUIForm : UIFormBase
         for (int i = 1; i <= index; i++)
         {
             float currentHalf = GetItemHeight(i) * 0.5f;
-            centerY -= previousHalf + TipSpacing + currentHalf;
+            centerY -= previousHalf + m_TipSpacing + currentHalf;
             previousHalf = currentHalf;
         }
 
@@ -334,5 +337,11 @@ public partial class SideTipsUIForm : UIFormBase
         m_BaseTipPos = rect.anchoredPosition;
         m_HasBaseTipPos = true;
         return true;
+    }
+
+    private void SyncTipSpacingFromManager()
+    {
+        SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
+        m_TipSpacing = sideTipsManager != null ? sideTipsManager.TipSpacing : DefaultTipSpacing;
     }
 }

@@ -59,6 +59,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         BootstrapSideTipsManager();
         GF.UI.OpenUIForm(UIViews.SideTipsUIForm);
+        GF.UI.OpenUIForm(UIViews.GoalUIForm);
     }
 
     public void GeneralSystemShutDown()
@@ -70,6 +71,7 @@ public partial class GeneralSetup : GameFrameworkComponent
         }
 
         GF.UI.CloseUIForms(UIViews.SideTipsUIForm);
+        GF.UI.CloseUIForms(UIViews.GoalUIForm);
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
         m_PlayerReady = false;

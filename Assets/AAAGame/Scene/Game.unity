@@ -918,6 +918,8 @@ MonoBehaviour:
   EnemyMaxInfluenceRange: 15
   ObstacleWeight: 100
   MoveThreshold: 3
+  MoveThresholdSpeedRatio: 1.5
+  VelocitySmoothing: 0.35
 --- !u!4 &711701150
 Transform:
   m_ObjectHideFlags: 0

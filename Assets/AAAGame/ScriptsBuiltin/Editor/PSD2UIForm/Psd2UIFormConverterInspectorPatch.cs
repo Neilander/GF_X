@@ -10,6 +10,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
     internal sealed class Psd2UIFormConverterInspectorPatch : Editor
     {
         private Editor innerInspector;
+        private bool sanitizedOnEnable;
 
         private void OnEnable()
         {
@@ -18,6 +19,8 @@ namespace AAAGame.EditorTools.Psd2UIForm
             {
                 innerInspector = CreateEditor(targets, innerType);
             }
+
+            SanitizeCurrentTargetsOnce();
         }
 
         private void OnDisable()
@@ -31,8 +34,6 @@ namespace AAAGame.EditorTools.Psd2UIForm
 
         public override void OnInspectorGUI()
         {
-            SanitizeCurrentTargets();
-
             if (innerInspector != null)
             {
                 innerInspector.OnInspectorGUI();
@@ -67,9 +68,15 @@ namespace AAAGame.EditorTools.Psd2UIForm
             method?.Invoke(innerInspector, null);
         }
 
-        private void SanitizeCurrentTargets()
+        private void SanitizeCurrentTargetsOnce()
         {
-            bool changed = Psd2UIFormGeneratedPrefabPostprocessor.SanitizeAllParsedPrefabs();
+            if (sanitizedOnEnable)
+            {
+                return;
+            }
+
+            sanitizedOnEnable = true;
+            bool changed = false;
             foreach (UnityEngine.Object targetObject in targets)
             {
                 if (targetObject is Psd2UIFormConverter converter)

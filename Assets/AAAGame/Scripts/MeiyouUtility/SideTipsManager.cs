@@ -9,10 +9,13 @@ using UnityGameFramework.Runtime;
 public class SideTipsManager : GameFrameworkComponent
 {
     [SerializeField] private float tipDuration = 2f;
+    [SerializeField] private float tipSpacing = 10f;
 
     private readonly HashSet<UnitType> shownEnemyUnitTypes = new HashSet<UnitType>();
     private bool isSubscribed;
     private bool hasLoggedWaitingForEventComponent;
+
+    public float TipSpacing => tipSpacing;
 
     private void Start()
     {

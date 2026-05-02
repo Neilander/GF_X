@@ -100,6 +100,8 @@ public class LocalizationTextManager : GameFrameworkComponent
 
 	public static string GetLocalizedText(string key, bool applyRichText = true)
 	{
+		// 仅用于“直接本地化 key”（如 BuildingTable.NameKey/DescKey）。
+		// 对于 LocalizationTextTable 的 identifier（如 Archetype_*），请走 LocalizationTextDataModel.GetText。
 		string text = GF.Localization != null ? GF.Localization.GetString(key) : key;
 		return applyRichText ? ProcessText(text) : text;
 	}
