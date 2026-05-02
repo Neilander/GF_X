@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 4109294017652191477}
   - component: {fileID: 1807410652003879218}
   m_Layer: 5
-  m_Name: CoinIcon
+  m_Name: zhilingyuanzhong
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -133,7 +133,7 @@ GameObject:
   - component: {fileID: 5353033595969816272}
   - component: {fileID: 4203233979208417387}
   m_Layer: 5
-  m_Name: CoinText
+  m_Name: 10000
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -265,7 +265,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2428079121976121655}
   m_Layer: 5
-  m_Name: Minimap
+  m_Name: xiaodituzhong
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -497,7 +497,7 @@ GameObject:
   - component: {fileID: 2788779742980816938}
   - component: {fileID: 4292863767990892414}
   m_Layer: 5
-  m_Name: SupplyText
+  m_Name: 01_10_kaobei
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -631,7 +631,7 @@ GameObject:
   - component: {fileID: 9085724119022635708}
   - component: {fileID: 7803116634702496038}
   m_Layer: 5
-  m_Name: Mask
+  m_Name: tuceng_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -707,7 +707,7 @@ GameObject:
   - component: {fileID: 6355649407344740930}
   - component: {fileID: 6048466691403536800}
   m_Layer: 5
-  m_Name: PhaseBg
+  m_Name: tianshuzhong
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -829,7 +829,7 @@ GameObject:
   - component: {fileID: 901760501562014302}
   - component: {fileID: 4214267937034225324}
   m_Layer: 5
-  m_Name: SupplyIcon
+  m_Name: yishirongliangzhong
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -949,7 +949,7 @@ GameObject:
   - component: {fileID: 3041171416178614656}
   - component: {fileID: 2113318250125836583}
   m_Layer: 5
-  m_Name: PhaseText
+  m_Name: yunying
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1084,7 +1084,7 @@ GameObject:
   - component: {fileID: 1082078246357582493}
   - component: {fileID: 8335623395385150678}
   m_Layer: 5
-  m_Name: ReturnBtn
+  m_Name: esczhong
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1203,7 +1203,7 @@ GameObject:
   - component: {fileID: 1010557529828914228}
   - component: {fileID: 664336844774222128}
   m_Layer: 5
-  m_Name: DayText
+  m_Name: 01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1337,7 +1337,7 @@ GameObject:
   - component: {fileID: 5782441655332926577}
   - component: {fileID: 3108697384866581825}
   m_Layer: 5
-  m_Name: Border
+  m_Name: zu_55
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

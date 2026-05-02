@@ -2,13 +2,13 @@ using GameFramework;
 using GameFramework.Event;
 using System;
 using System.Collections.Generic;
+using GiantGrey.TileWorldCreator;
 using UnityEngine;
 using UnityEngine.AI;
 using Unity.AI.Navigation;
 using UnityGameFramework.Runtime;
-using GiantGrey.TileWorldCreator;
 
-public class LevelEntity : EntityBase
+public partial class LevelEntity : EntityBase
 {
     private const string StrongholdLayerPrefix = "SH";
     private TileWorldCreatorManager tileWorldCreatorManager;
@@ -64,6 +64,7 @@ public class LevelEntity : EntityBase
         SubscribeRuntimeLayerRules();
         ApplyStrongholdRuntimeLayerRules();
         SpawnPresetEntities();
+        SyncEnemyStrongholdFogEffects();
     }
 
     protected override void OnHide(bool isShutdown, object userData)
@@ -76,6 +77,7 @@ public class LevelEntity : EntityBase
         }
 
         InGameDataModel.ClearStrongholdRuntimeData();
+        ClearEnemyStrongholdFogEffects();
         tileWorldCreatorManager = null;
         _navMeshSurfaces = null;
 
@@ -89,7 +91,7 @@ public class LevelEntity : EntityBase
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
 
-        // 延迟烘焙：最后一次请求后 0.5 秒执行
+        // 延迟烘焙：最后一次请求后 0.5 秒执�?
         if (_rebakeTimer >= 0f)
         {
             _rebakeTimer -= realElapseSeconds;
@@ -110,8 +112,8 @@ public class LevelEntity : EntityBase
     }
 
     /// <summary>
-    /// 请求烘焙 NavMesh。不会立即执行，而是等最后一次请求后 0.5 秒再烘焙。
-    /// 多次调用会重置计时器，确保批量建造只烘焙一次。
+    /// 请求烘焙 NavMesh。不会立即执行，而是等最后一次请求后 0.5 秒再烘焙�?
+    /// 多次调用会重置计时器，确保批量建造只烘焙一次�?
     /// </summary>
     public static void RequestRebakeNavMesh()
     {
@@ -495,8 +497,9 @@ public class LevelEntity : EntityBase
         Log.Info("Stronghold captured. id={0}, newOwnerFaction={1}",
             stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "<unknown>",
             newOwnerFactionId);
-    }
 
+        RefreshEnemyStrongholdFogEffects(stronghold);
+    }
     private static int ResolveCaptureFactionId(IEntityContext attacker)
     {
         if (attacker == null)
@@ -509,3 +512,4 @@ public class LevelEntity : EntityBase
         return factionId >= 0 ? factionId : EntitySideHelper.PlayerFactionId;
     }
 }
+

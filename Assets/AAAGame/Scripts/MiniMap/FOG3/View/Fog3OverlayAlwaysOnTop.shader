@@ -36,12 +36,14 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
             {
                 float4 positionOS : POSITION;
                 float2 uv : TEXCOORD0;
+                float4 color : COLOR;
             };
 
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
+                float4 color : COLOR;
             };
 
             TEXTURE2D(_MainTex);
@@ -57,12 +59,13 @@ Shader "AAAGame/FOG3/OverlayAlwaysOnTop"
                 Varyings output;
                 output.positionHCS = TransformObjectToHClip(input.positionOS.xyz);
                 output.uv = TRANSFORM_TEX(input.uv, _MainTex);
+                output.color = input.color;
                 return output;
             }
 
             half4 frag(Varyings input) : SV_Target
             {
-                return SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv) * _Color;
+                return SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv) * _Color * input.color;
             }
             ENDHLSL
         }

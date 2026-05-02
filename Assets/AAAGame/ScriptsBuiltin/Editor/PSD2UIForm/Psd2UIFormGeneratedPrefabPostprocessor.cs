@@ -21,6 +21,28 @@ namespace AAAGame.EditorTools.Psd2UIForm
         private const string PsdDocumentTypeName = "cn.efunstudio.psdreader.PsdParser.PsdDocument";
         private const string PsdLayerTypeName = "cn.efunstudio.psdreader.PsdParser.PsdLayer";
         private const string ImageSourceTypeName = "cn.efunstudio.psdreader.PsdParser.IImageSource";
+        private const int ImageUIType = 1;
+        private const int LegacyTextUIType = 3;
+        private const int LegacyButtonUIType = 4;
+        private const int LegacyDropdownUIType = 5;
+        private const int LegacyInputFieldUIType = 6;
+        private const int LegacyToggleUIType = 7;
+        private const int TMPTextUIType = 12;
+        private const int TMPButtonUIType = 13;
+        private const int TMPDropdownUIType = 14;
+        private const int TMPInputFieldUIType = 15;
+        private const int TMPToggleUIType = 16;
+        private const string ImageHelperTypeName = "UGF.EditorTools.Psd2UGUI.ImageHelper";
+        private const string TextHelperTypeName = "UGF.EditorTools.Psd2UGUI.TextHelper";
+        private const string TMPTextHelperTypeName = "UGF.EditorTools.Psd2UGUI.TMPTextHelper";
+        private const string ButtonHelperTypeName = "UGF.EditorTools.Psd2UGUI.ButtonHelper";
+        private const string TMPButtonHelperTypeName = "UGF.EditorTools.Psd2UGUI.TMPButtonHelper";
+        private const string DropdownHelperTypeName = "UGF.EditorTools.Psd2UGUI.DropdownHelper";
+        private const string TMPDropdownHelperTypeName = "UGF.EditorTools.Psd2UGUI.TMPDropdownHelper";
+        private const string InputFieldHelperTypeName = "UGF.EditorTools.Psd2UGUI.InputFieldHelper";
+        private const string TMPInputFieldHelperTypeName = "UGF.EditorTools.Psd2UGUI.TMPInputFieldHelper";
+        private const string ToggleHelperTypeName = "UGF.EditorTools.Psd2UGUI.ToggleHelper";
+        private const string TMPToggleHelperTypeName = "UGF.EditorTools.Psd2UGUI.TMPToggleHelper";
 
         private static readonly HashSet<string> PendingPrefabPaths = new HashSet<string>();
         private static readonly HashSet<string> PendingParsedPrefabPaths = new HashSet<string>();
@@ -145,7 +167,24 @@ namespace AAAGame.EditorTools.Psd2UIForm
             }
 
             ExportMap exportMap = BuildExportMap();
+            HashSet<string> imagePathsToReplace = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string path in imagePaths)
+            {
+                imagePathsToReplace.Add(NormalizeAssetPath(path));
+            }
+
+            if (prefabPaths.Length > 0 || parsedPrefabPaths.Length > 0)
+            {
+                foreach (string pngPath in exportMap.EntriesByPngPath.Keys)
+                {
+                    if (File.Exists(Path.GetFullPath(pngPath)))
+                    {
+                        imagePathsToReplace.Add(pngPath);
+                    }
+                }
+            }
+
+            foreach (string path in imagePathsToReplace)
             {
                 changed |= ReplaceExportedImageIfNeeded(path, exportMap);
             }
@@ -228,6 +267,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
 
                 saved |= NormalizeRootRect(root.transform as RectTransform);
                 saved |= EnsureRootCanvasScaler(root);
+                saved |= RenameGeneratedPrefabObjects(root, info);
                 bool shouldScale = !sameScaledContent && (fromGenerationSignal || IsInPsdCoordinateSpace(rectTransforms, root.transform, info.PsdSize));
 
                 if (shouldScale)
@@ -262,6 +302,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 }
             }
 
+            saved |= RenameGeneratedPrefabAssetObjectNames(prefabPath, info);
             if (!saved)
             {
                 return false;
@@ -505,6 +546,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 changed |= SanitizePsdLayerNode(behaviour, root.name);
             }
 
+            changed |= PreserveChineseLayerNames(root.transform);
             return changed;
         }
 
@@ -522,6 +564,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 changed |= SanitizePsdLayerNode(behaviour, parsedPrefabPath);
             }
 
+            changed |= PreserveChineseLayerNames(prefab.transform);
             if (changed)
             {
                 EditorUtility.SetDirty(prefab);
@@ -541,21 +584,450 @@ namespace AAAGame.EditorTools.Psd2UIForm
 
             SerializedObject serializedObject = new SerializedObject(behaviour);
             SerializedProperty uiType = serializedObject.FindProperty("UIType");
-            if (uiType == null || uiType.intValue != 13)
+            if (uiType == null)
             {
                 return false;
             }
 
-            if (HasAssignedButtonText(behaviour.gameObject))
+            bool changed = false;
+            if (uiType.intValue == LegacyTextUIType)
+            {
+                uiType.intValue = TMPTextUIType;
+                changed = true;
+            }
+            else if (uiType.intValue == LegacyButtonUIType && HasAssignedButtonText(behaviour.gameObject))
+            {
+                uiType.intValue = TMPButtonUIType;
+                changed = true;
+            }
+            else if (uiType.intValue == LegacyDropdownUIType)
+            {
+                uiType.intValue = TMPDropdownUIType;
+                changed = true;
+            }
+            else if (uiType.intValue == LegacyInputFieldUIType)
+            {
+                uiType.intValue = TMPInputFieldUIType;
+                changed = true;
+            }
+            else if (uiType.intValue == LegacyToggleUIType)
+            {
+                uiType.intValue = TMPToggleUIType;
+                changed = true;
+            }
+
+            SerializedProperty roleUIType = serializedObject.FindProperty("RoleUIType");
+            if (roleUIType != null && roleUIType.intValue == LegacyTextUIType)
+            {
+                roleUIType.intValue = TMPTextUIType;
+                changed = true;
+            }
+
+            if (uiType.intValue == TMPButtonUIType && !HasAssignedButtonText(behaviour.gameObject))
+            {
+                uiType.intValue = ImageUIType;
+                changed = true;
+                changed |= ReplaceHelperComponent(behaviour.gameObject, behaviour, TMPButtonHelperTypeName, ImageHelperTypeName, "image");
+                Debug.Log($"PSD2UIForm parsed node downgraded from TMPButton to Image because it has no button text binding: {ownerName}/{behaviour.gameObject.name}");
+            }
+            else
+            {
+                changed |= ReplaceLegacyTextHelpers(behaviour.gameObject, behaviour, uiType.intValue);
+            }
+
+            if (!changed)
             {
                 return false;
             }
 
-            uiType.intValue = 1;
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(behaviour);
-            Debug.Log($"PSD2UIForm parsed node downgraded from TMPButton to Image because it has no button text binding: {ownerName}/{behaviour.gameObject.name}");
             return true;
+        }
+
+        private static bool RenameGeneratedPrefabObjects(GameObject root, ParsedPrefabInfo info)
+        {
+            if (info.GeneratedNamesByLocalId.Count == 0)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (!TryGetLocalFileIdentifier(transform.gameObject, out long localId))
+                {
+                    continue;
+                }
+
+                if (!info.GeneratedNamesByLocalId.TryGetValue(localId, out string desiredName) ||
+                    string.IsNullOrWhiteSpace(desiredName) ||
+                    transform.gameObject.name == desiredName)
+                {
+                    continue;
+                }
+
+                transform.gameObject.name = desiredName;
+                EditorUtility.SetDirty(transform.gameObject);
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static bool RenameGeneratedPrefabAssetObjectNames(string prefabPath, ParsedPrefabInfo info)
+        {
+            if (info.GeneratedNamesByLocalId.Count == 0)
+            {
+                return false;
+            }
+
+            string fullPath = Path.GetFullPath(prefabPath);
+            if (!File.Exists(fullPath))
+            {
+                return false;
+            }
+
+            string[] lines = File.ReadAllLines(fullPath);
+            bool changed = false;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!TryParseGameObjectYamlHeader(lines[i], out long localId) ||
+                    !info.GeneratedNamesByLocalId.TryGetValue(localId, out string desiredName))
+                {
+                    continue;
+                }
+
+                for (int j = i + 1; j < lines.Length && !lines[j].StartsWith("--- ", StringComparison.Ordinal); j++)
+                {
+                    if (!lines[j].StartsWith("  m_Name:", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    string newLine = $"  m_Name: {FormatYamlString(desiredName)}";
+                    if (lines[j] != newLine)
+                    {
+                        lines[j] = newLine;
+                        changed = true;
+                    }
+
+                    break;
+                }
+            }
+
+            if (!changed)
+            {
+                return false;
+            }
+
+            File.WriteAllLines(fullPath, lines);
+            AssetDatabase.ImportAsset(prefabPath, ImportAssetOptions.ForceUpdate);
+            Debug.Log($"PSD2UIForm generated prefab object names restored from metadata: {prefabPath}");
+            return true;
+        }
+
+        private static bool TryParseGameObjectYamlHeader(string line, out long localId)
+        {
+            localId = 0;
+            const string prefix = "--- !u!1 &";
+            if (!line.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return long.TryParse(line.Substring(prefix.Length), out localId);
+        }
+
+        private static string FormatYamlString(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            bool quote = false;
+            foreach (char c in value)
+            {
+                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-' && c != '.')
+                {
+                    quote = true;
+                    break;
+                }
+
+                if (c > 127)
+                {
+                    quote = true;
+                    break;
+                }
+            }
+
+            if (!quote)
+            {
+                return value;
+            }
+
+            System.Text.StringBuilder builder = new System.Text.StringBuilder(value.Length + 2);
+            builder.Append('"');
+            foreach (char c in value)
+            {
+                if (c == '\\' || c == '"')
+                {
+                    builder.Append('\\').Append(c);
+                }
+                else if (c == '\n')
+                {
+                    builder.Append("\\n");
+                }
+                else if (c == '\r')
+                {
+                    builder.Append("\\r");
+                }
+                else if (c < 32 || c > 127)
+                {
+                    builder.Append("\\u").Append(((int)c).ToString("X4"));
+                }
+                else
+                {
+                    builder.Append(c);
+                }
+            }
+
+            builder.Append('"');
+            return builder.ToString();
+        }
+
+        private static bool TryGetLocalFileIdentifier(UnityEngine.Object assetObject, out long localId)
+        {
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(assetObject, out string _, out localId))
+            {
+                return true;
+            }
+
+            Type unsupportedType = typeof(Editor).Assembly.GetType("UnityEditor.Unsupported");
+            MethodInfo method = unsupportedType?.GetMethod(
+                "GetLocalIdentifierInFile",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                new[] { typeof(UnityEngine.Object) },
+                null);
+            if (method == null)
+            {
+                localId = 0;
+                return false;
+            }
+
+            localId = Convert.ToInt64(method.Invoke(null, new object[] { assetObject }));
+            return localId != 0;
+        }
+
+        private static bool ReplaceLegacyTextHelpers(GameObject node, MonoBehaviour layerNode, int uiType)
+        {
+            bool changed = false;
+            if (uiType == TMPTextUIType)
+            {
+                changed |= ReplaceHelperComponent(node, layerNode, TextHelperTypeName, TMPTextHelperTypeName, "text");
+            }
+            else if (uiType == TMPButtonUIType)
+            {
+                changed |= ReplaceHelperComponent(node, layerNode, ButtonHelperTypeName, TMPButtonHelperTypeName, null);
+            }
+            else if (uiType == TMPDropdownUIType)
+            {
+                changed |= ReplaceHelperComponent(node, layerNode, DropdownHelperTypeName, TMPDropdownHelperTypeName, null);
+            }
+            else if (uiType == TMPInputFieldUIType)
+            {
+                changed |= ReplaceHelperComponent(node, layerNode, InputFieldHelperTypeName, TMPInputFieldHelperTypeName, null);
+            }
+            else if (uiType == TMPToggleUIType)
+            {
+                changed |= ReplaceHelperComponent(node, layerNode, ToggleHelperTypeName, TMPToggleHelperTypeName, null);
+            }
+
+            return changed;
+        }
+
+        private static bool ReplaceHelperComponent(
+            GameObject node,
+            MonoBehaviour layerNode,
+            string legacyHelperTypeName,
+            string tmpHelperTypeName,
+            string defaultLayerReferenceField)
+        {
+            bool changed = false;
+            MonoBehaviour targetHelper = null;
+            foreach (MonoBehaviour helper in node.GetComponents<MonoBehaviour>())
+            {
+                if (helper == null || helper.GetType().FullName != tmpHelperTypeName)
+                {
+                    continue;
+                }
+
+                targetHelper = helper;
+                break;
+            }
+
+            foreach (MonoBehaviour helper in node.GetComponents<MonoBehaviour>())
+            {
+                if (helper == null || helper.GetType().FullName != legacyHelperTypeName)
+                {
+                    continue;
+                }
+
+                if (targetHelper == null)
+                {
+                    Type targetType = helper.GetType().Assembly.GetType(tmpHelperTypeName, false);
+                    if (targetType == null)
+                    {
+                        continue;
+                    }
+
+                    targetHelper = (MonoBehaviour)node.AddComponent(targetType);
+                }
+
+                CopyHelperReferences(helper, targetHelper, layerNode, defaultLayerReferenceField);
+                UnityEngine.Object.DestroyImmediate(helper, true);
+                EditorUtility.SetDirty(targetHelper);
+                EditorUtility.SetDirty(node);
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static void CopyHelperReferences(
+            MonoBehaviour sourceHelper,
+            MonoBehaviour targetHelper,
+            MonoBehaviour layerNode,
+            string defaultLayerReferenceField)
+        {
+            SerializedObject source = new SerializedObject(sourceHelper);
+            SerializedObject target = new SerializedObject(targetHelper);
+            SerializedProperty sourceProperty = source.GetIterator();
+            bool enterChildren = true;
+            while (sourceProperty.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+                if (sourceProperty.name == "m_Script" || sourceProperty.propertyType != SerializedPropertyType.ObjectReference)
+                {
+                    continue;
+                }
+
+                SerializedProperty targetProperty = target.FindProperty(sourceProperty.name);
+                if (targetProperty != null && targetProperty.propertyType == SerializedPropertyType.ObjectReference)
+                {
+                    targetProperty.objectReferenceValue = sourceProperty.objectReferenceValue;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(defaultLayerReferenceField))
+            {
+                SerializedProperty targetProperty = target.FindProperty(defaultLayerReferenceField);
+                if (targetProperty != null &&
+                    targetProperty.propertyType == SerializedPropertyType.ObjectReference &&
+                    targetProperty.objectReferenceValue == null)
+                {
+                    targetProperty.objectReferenceValue = layerNode;
+                }
+            }
+
+            target.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static bool PreserveChineseLayerNames(Transform root)
+        {
+            bool changed = false;
+            foreach (Transform parent in root.GetComponentsInChildren<Transform>(true))
+            {
+                Dictionary<string, int> siblingNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (Transform child in parent)
+                {
+                    string desiredName = ReadPreservedLayerName(child.gameObject);
+                    string uniqueName = MakeUniqueSiblingName(desiredName ?? child.name, siblingNameCounts);
+                    if (desiredName == null || child.name == uniqueName)
+                    {
+                        continue;
+                    }
+
+                    child.gameObject.name = uniqueName;
+                    EditorUtility.SetDirty(child.gameObject);
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        private static string ReadPreservedLayerName(GameObject gameObject)
+        {
+            foreach (MonoBehaviour behaviour in gameObject.GetComponents<MonoBehaviour>())
+            {
+                if (behaviour == null || behaviour.GetType().FullName != PsdLayerNodeTypeName)
+                {
+                    continue;
+                }
+
+                SerializedObject serializedObject = new SerializedObject(behaviour);
+                string sourceLayerName = serializedObject.FindProperty("sourceLayerName")?.stringValue;
+                if (string.IsNullOrWhiteSpace(sourceLayerName) || !ContainsCjk(sourceLayerName))
+                {
+                    return null;
+                }
+
+                return SanitizeUnityObjectName(sourceLayerName);
+            }
+
+            return null;
+        }
+
+        private static string MakeUniqueSiblingName(string baseName, Dictionary<string, int> siblingNameCounts)
+        {
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = "Layer";
+            }
+
+            if (!siblingNameCounts.TryGetValue(baseName, out int count))
+            {
+                siblingNameCounts[baseName] = 1;
+                return baseName;
+            }
+
+            count++;
+            siblingNameCounts[baseName] = count;
+            return $"{baseName}_{count}";
+        }
+
+        private static string SanitizeUnityObjectName(string name)
+        {
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            char[] chars = name.Trim().ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (Array.IndexOf(invalidChars, c) >= 0 || char.IsControl(c))
+                {
+                    chars[i] = '_';
+                }
+            }
+
+            return new string(chars).Trim();
+        }
+
+        private static bool ContainsCjk(string value)
+        {
+            foreach (char c in value)
+            {
+                if ((c >= '\u3400' && c <= '\u4dbf') ||
+                    (c >= '\u4e00' && c <= '\u9fff') ||
+                    (c >= '\uf900' && c <= '\ufaff'))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool HasAssignedButtonText(GameObject node)
@@ -587,13 +1059,67 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 string imageOutputDir = $"Assets/AAAGame/Sprites/{info.UiFormName}";
                 foreach (ExportEntry entry in info.Entries)
                 {
-                    string pngPath = NormalizeAssetPath($"{imageOutputDir}/{entry.ObjectName}.png");
                     entry.PsdAssetPath = info.PsdAssetPath;
-                    map.EntriesByPngPath[pngPath] = entry;
+                    foreach (string exportName in GetExportFileNameCandidates(entry.ObjectName))
+                    {
+                        string pngPath = NormalizeAssetPath($"{imageOutputDir}/{exportName}.png");
+                        map.EntriesByPngPath[pngPath] = entry;
+                    }
                 }
             }
 
             return map;
+        }
+
+        private static IEnumerable<string> GetExportFileNameCandidates(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName))
+            {
+                yield break;
+            }
+
+            yield return objectName;
+
+            string normalizedName = NormalizePsd2UIFormFileName(objectName);
+            if (!string.Equals(normalizedName, objectName, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(normalizedName))
+            {
+                yield return normalizedName;
+            }
+
+            string suffixBaseName = !string.IsNullOrWhiteSpace(normalizedName) ? normalizedName : objectName;
+            for (int i = 1; i <= 32; i++)
+            {
+                yield return $"{suffixBaseName}_{i}";
+            }
+        }
+
+        private static string NormalizePsd2UIFormFileName(string name)
+        {
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            char[] chars = name.Trim().ToCharArray();
+            bool previousUnderscore = false;
+            List<char> normalized = new List<char>(chars.Length);
+            foreach (char c in chars)
+            {
+                bool keep = char.IsLetterOrDigit(c) ||
+                            (c >= '\u3400' && c <= '\u4dbf') ||
+                            (c >= '\u4e00' && c <= '\u9fff') ||
+                            (c >= '\uf900' && c <= '\ufaff');
+                if (keep && Array.IndexOf(invalidChars, c) < 0)
+                {
+                    normalized.Add(c);
+                    previousUnderscore = false;
+                    continue;
+                }
+
+                if (!previousUnderscore)
+                {
+                    normalized.Add('_');
+                    previousUnderscore = true;
+                }
+            }
+
+            return new string(normalized.ToArray()).Trim('_');
         }
 
         private static Dictionary<string, ParsedPrefabInfo> BuildParsedPrefabMap()
@@ -645,6 +1171,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                     info.UiFormName = serializedObject.FindProperty("uiFormName")?.stringValue;
                     UnityEngine.Object psdAsset = serializedObject.FindProperty("psdAsset")?.objectReferenceValue;
                     info.PsdAssetPath = psdAsset != null ? AssetDatabase.GetAssetPath(psdAsset) : null;
+                    ReadGeneratedMetadata(serializedObject, info);
                 }
                 else if (type.FullName == PsdLayerNodeTypeName)
                 {
@@ -669,6 +1196,76 @@ namespace AAAGame.EditorTools.Psd2UIForm
             }
 
             return info;
+        }
+
+        private static void ReadGeneratedMetadata(SerializedObject converterObject, ParsedPrefabInfo info)
+        {
+            SerializedProperty metadataEntries = converterObject.FindProperty("generatedMetadataEntries");
+            if (metadataEntries == null || !metadataEntries.isArray)
+            {
+                return;
+            }
+
+            for (int metadataIndex = 0; metadataIndex < metadataEntries.arraySize; metadataIndex++)
+            {
+                SerializedProperty metadata = metadataEntries.GetArrayElementAtIndex(metadataIndex);
+                SerializedProperty entries = metadata.FindPropertyRelative("Entries");
+                if (entries == null || !entries.isArray)
+                {
+                    continue;
+                }
+
+                for (int entryIndex = 0; entryIndex < entries.arraySize; entryIndex++)
+                {
+                    SerializedProperty entry = entries.GetArrayElementAtIndex(entryIndex);
+                    string globalObjectId = entry.FindPropertyRelative("GlobalObjectId")?.stringValue;
+                    string key = entry.FindPropertyRelative("Key")?.stringValue;
+                    if (string.IsNullOrWhiteSpace(globalObjectId) ||
+                        string.IsNullOrWhiteSpace(key) ||
+                        !TryParseGlobalObjectLocalId(globalObjectId, out long localId))
+                    {
+                        continue;
+                    }
+
+                    string generatedName = GetGeneratedObjectNameFromKey(key);
+                    if (!string.IsNullOrWhiteSpace(generatedName))
+                    {
+                        info.GeneratedNamesByLocalId[localId] = generatedName;
+                    }
+                }
+            }
+        }
+
+        private static bool TryParseGlobalObjectLocalId(string globalObjectId, out long localId)
+        {
+            localId = 0;
+            int lastDash = globalObjectId.LastIndexOf('-');
+            if (lastDash <= 0)
+            {
+                return false;
+            }
+
+            int previousDash = globalObjectId.LastIndexOf('-', lastDash - 1);
+            if (previousDash < 0 || previousDash + 1 >= lastDash)
+            {
+                return false;
+            }
+
+            string localIdText = globalObjectId.Substring(previousDash + 1, lastDash - previousDash - 1);
+            return long.TryParse(localIdText, out localId);
+        }
+
+        private static string GetGeneratedObjectNameFromKey(string key)
+        {
+            string name = key;
+            int slashIndex = key.LastIndexOf('/');
+            if (slashIndex >= 0 && slashIndex + 1 < key.Length)
+            {
+                name = key.Substring(slashIndex + 1);
+            }
+
+            name = name.Replace('[', '_').Replace("]", string.Empty);
+            return SanitizeUnityObjectName(name);
         }
 
         private static string NormalizeAssetPath(string path)
@@ -800,6 +1397,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
             public string PsdAssetPath;
             public Vector2 PsdSize;
             public readonly List<ExportEntry> Entries = new List<ExportEntry>();
+            public readonly Dictionary<long, string> GeneratedNamesByLocalId = new Dictionary<long, string>();
         }
 
         private sealed class ExportEntry
