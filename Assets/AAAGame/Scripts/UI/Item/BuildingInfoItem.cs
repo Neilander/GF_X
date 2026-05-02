@@ -38,6 +38,6 @@ public partial class BuildingInfoItem : UIItemBase
             root = varBuildingInfoItem.AddComponent<CanvasGroup>();
 
         if (root != null)
-            root.alpha = executable ? 1f : 0.45f;
+            root.alpha = executable ? 1f : 0.65f;
     }
 }

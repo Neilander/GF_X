@@ -426,12 +426,37 @@ public partial class BuildingBuildTips : UIFormBase
             ? Mathf.Min(starCount, m_HoldProgressStars + delta)
             : Mathf.Max(0f, m_HoldProgressStars - delta);
 
-        int highlightCount = pressing
-            ? Mathf.Clamp(Mathf.CeilToInt(m_HoldProgressStars - 1e-4f), 0, starCount)
-            : Mathf.Clamp(Mathf.FloorToInt(m_HoldProgressStars + 1e-4f), 0, starCount);
+        int highlightCount;
+        if (pressing)
+        {
+            if (m_HoldProgressStars <= 1e-4f)
+            {
+                highlightCount = 0;
+            }
+            else if (starCount <= 1)
+            {
+                highlightCount = 1;
+            }
+            else
+            {
+                // 规则：
+                // 1) 第一颗星按下即亮；
+                // 2) 最后一颗星在进度满时亮，并同帧触发建造；
+                // 3) 中间星在两者之间等间隔分配。
+                float interval = starCount / (starCount - 1f);
+                int extraHighlights = Mathf.FloorToInt((m_HoldProgressStars + 1e-4f) / interval);
+                highlightCount = Mathf.Clamp(1 + extraHighlights, 1, starCount);
+            }
+        }
+        else
+        {
+            // 松手回退沿用线性反向熄灭。
+            highlightCount = Mathf.Clamp(Mathf.FloorToInt(m_HoldProgressStars + 1e-4f), 0, starCount);
+        }
         ApplyStarHighlight(m_HoldBinding, highlightCount);
 
-        if (!m_HoldTriggered && m_HoldProgressStars >= starCount - 1e-4f)
+        // 视觉与行为对齐：最后一颗星点亮的同一帧就触发建造。
+        if (!m_HoldTriggered && pressing && highlightCount >= starCount)
         {
             m_HoldTriggered = true;
             TryConstructCurrentHoldingBuilding();
