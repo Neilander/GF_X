@@ -1,0 +1,9 @@
+﻿#	行业文本多语言表			i18n
+#	ID		Identifier	TextKey
+#	int		string	string
+#		备注	在代码中的命名标识符	选项文本(多语言)
+	1	编程	Archetype_Coding	Archetype.Coding
+	2	游客	Archetype_Sightseeing	Archetype.Sightseeing
+	3	物流	Archetype_Delivery	Archetype.Delivery
+	4	屠宰	Archetype_Butchery	Archetype.Butchery
+	5	消防	Archetype_Firefighting	Archetype.Firefighting

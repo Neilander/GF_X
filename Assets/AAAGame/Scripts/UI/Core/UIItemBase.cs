@@ -25,6 +25,7 @@ public class UIItemBase : MonoBehaviour, ISerializeFieldTool
         UIStringKey[] texts = GetComponentsInChildren<UIStringKey>(true);
         foreach (var t in texts)
         {
+            // UIStringKey 这里读的是直接本地化 key；LocalizationTextTable 的 identifier 入口请走 LocalizationTextDataModel。
             if (t.TryGetComponent<TMPro.TextMeshProUGUI>(out var textMeshCom))
             {
                 textMeshCom.text = LocalizationTextManager.ProcessText(GF.Localization.GetString(t.Key));

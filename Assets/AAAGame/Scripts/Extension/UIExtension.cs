@@ -5,11 +5,16 @@ using UnityGameFramework.Runtime;
 using UnityEngine.U2D;
 using DG.Tweening;
 using System;
+using System.Collections.Generic;
 using UnityEngine.UI;
 
 public static class UIExtension
 {
     private const float PersistentSideTipDuration = -1f;
+    private static readonly Dictionary<string, Sprite> s_SpriteCache = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, List<GameFrameworkAction<Sprite>>> s_PendingSpriteLoads = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, Texture2D> s_TextureCache = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, List<GameFrameworkAction<Texture2D>>> s_PendingTextureLoads = new(StringComparer.Ordinal);
 
     /// <summary>
     /// 异步加载并设置Sprite
@@ -21,11 +26,13 @@ public static class UIExtension
         spriteName = UtilityBuiltin.AssetsPath.GetSpritesPath(spriteName);
         GF.UI.LoadSprite(spriteName, sp =>
         {
-            if (sp != null)
-            {
-                image.sprite = sp;
-                if (resize) image.SetNativeSize();
-            }
+            // 异步回调到达时，目标 UI 可能因界面关闭/对象池回收已销毁，必须先做存活校验。
+            if (sp == null || image == null)
+                return;
+
+            image.sprite = sp;
+            if (resize && image.rectTransform != null)
+                image.SetNativeSize();
         });
     }
     /// <summary>
@@ -38,11 +45,13 @@ public static class UIExtension
         spriteName = UtilityBuiltin.AssetsPath.GetTexturePath(spriteName);
         GF.UI.LoadTexture(spriteName, tex =>
         {
-            if (tex != null)
-            {
-                rawImage.texture = tex;
-                if (resize) rawImage.SetNativeSize();
-            }
+            // 同 SetSprite：异步回调时目标对象可能已销毁。
+            if (tex == null || rawImage == null)
+                return;
+
+            rawImage.texture = tex;
+            if (resize && rawImage.rectTransform != null)
+                rawImage.SetNativeSize();
         });
     }
     /// <summary>
@@ -116,15 +125,49 @@ public static class UIExtension
     /// <param name="onSpriteLoaded"></param>
     public static void LoadSprite(this UIComponent uiCom, string spriteName, GameFrameworkAction<Sprite> onSpriteLoaded)
     {
+        if (string.IsNullOrWhiteSpace(spriteName))
+        {
+            onSpriteLoaded?.Invoke(null);
+            return;
+        }
+
+        if (s_SpriteCache.TryGetValue(spriteName, out Sprite cachedSprite) && cachedSprite != null)
+        {
+            onSpriteLoaded?.Invoke(cachedSprite);
+            return;
+        }
+
+        if (s_PendingSpriteLoads.TryGetValue(spriteName, out List<GameFrameworkAction<Sprite>> pendingSpriteLoads))
+        {
+            if (onSpriteLoaded != null)
+                pendingSpriteLoads.Add(onSpriteLoaded);
+            return;
+        }
+
         if (GF.Resource.HasAsset(spriteName) == GameFramework.Resource.HasAssetResult.NotExist)
         {
             Log.Warning("UIExtension.SetSprite()失败, 资源不存在:{0}", spriteName);
+            onSpriteLoaded?.Invoke(null);
             return;
         }
+
+        pendingSpriteLoads = new List<GameFrameworkAction<Sprite>>();
+        if (onSpriteLoaded != null)
+            pendingSpriteLoads.Add(onSpriteLoaded);
+        s_PendingSpriteLoads[spriteName] = pendingSpriteLoads;
+
         GF.Resource.LoadAsset(spriteName, typeof(Sprite), new GameFramework.Resource.LoadAssetCallbacks((string assetName, object asset, float duration, object userData) =>
         {
             Sprite resultSp = asset as Sprite;
-            onSpriteLoaded.Invoke(resultSp);
+            if (resultSp != null)
+                s_SpriteCache[spriteName] = resultSp;
+
+            if (s_PendingSpriteLoads.TryGetValue(spriteName, out List<GameFrameworkAction<Sprite>> callbacks))
+            {
+                s_PendingSpriteLoads.Remove(spriteName);
+                for (int i = 0; i < callbacks.Count; i++)
+                    callbacks[i]?.Invoke(resultSp);
+            }
         }));
     }
     /// <summary>
@@ -135,15 +178,49 @@ public static class UIExtension
     /// <param name="onSpriteLoaded"></param>
     public static void LoadTexture(this UIComponent uiCom, string spriteName, GameFrameworkAction<Texture2D> onSpriteLoaded)
     {
+        if (string.IsNullOrWhiteSpace(spriteName))
+        {
+            onSpriteLoaded?.Invoke(null);
+            return;
+        }
+
+        if (s_TextureCache.TryGetValue(spriteName, out Texture2D cachedTexture) && cachedTexture != null)
+        {
+            onSpriteLoaded?.Invoke(cachedTexture);
+            return;
+        }
+
+        if (s_PendingTextureLoads.TryGetValue(spriteName, out List<GameFrameworkAction<Texture2D>> pendingTextureLoads))
+        {
+            if (onSpriteLoaded != null)
+                pendingTextureLoads.Add(onSpriteLoaded);
+            return;
+        }
+
         if (GF.Resource.HasAsset(spriteName) == GameFramework.Resource.HasAssetResult.NotExist)
         {
             Log.Warning("UIExtension.LoadTexture()失败, 资源不存在:{0}", spriteName);
+            onSpriteLoaded?.Invoke(null);
             return;
         }
+
+        pendingTextureLoads = new List<GameFrameworkAction<Texture2D>>();
+        if (onSpriteLoaded != null)
+            pendingTextureLoads.Add(onSpriteLoaded);
+        s_PendingTextureLoads[spriteName] = pendingTextureLoads;
+
         GF.Resource.LoadAsset(spriteName, typeof(Texture2D), new GameFramework.Resource.LoadAssetCallbacks((string assetName, object asset, float duration, object userData) =>
         {
             Texture2D resultSp = asset as Texture2D;
-            onSpriteLoaded.Invoke(resultSp);
+            if (resultSp != null)
+                s_TextureCache[spriteName] = resultSp;
+
+            if (s_PendingTextureLoads.TryGetValue(spriteName, out List<GameFrameworkAction<Texture2D>> callbacks))
+            {
+                s_PendingTextureLoads.Remove(spriteName);
+                for (int i = 0; i < callbacks.Count; i++)
+                    callbacks[i]?.Invoke(resultSp);
+            }
         }));
     }
     /// <summary>

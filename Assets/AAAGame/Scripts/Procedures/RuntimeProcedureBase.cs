@@ -288,13 +288,6 @@ internal sealed class RuntimeInitPipeline
 
     private static void ShowLevelObjectiveTips()
     {
-        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
-        if (gameEndManager == null)
-        {
-            return;
-        }
-
-        gameEndManager.ShowLevelVictoryConditionTips();
     }
 
     private static void EnablePlayerInput()

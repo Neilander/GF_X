@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using TMPro;
 using DG.Tweening;
+using System;
 using GameFramework;
 using UnityGameFramework.Runtime;
 
@@ -63,7 +64,8 @@ namespace AAAGame.Card
         private bool m_DefaultHoverGlowCached;
 
         private Tween m_ScaleTween;
-        private Tween m_MoveTween;
+        private Tweener m_MoveTween;
+        private Action m_OnMoveToHandComplete;
         private Tween m_HoverLiftTween;
         private Tween m_FadeTween;
         private bool m_HoverLiftActive;
@@ -502,6 +504,7 @@ namespace AAAGame.Card
                 m_MoveTween?.Kill();
                 m_MoveTween = m_RectTransform.DOMove(GetHandSlotWorldPosition(), 0.3f)
                     .SetEase(Ease.OutBack)
+                    .SetLink(gameObject)
                     .OnComplete(RestoreToHandLayoutImmediately);
 
                 ScaleTo(1f);
@@ -517,7 +520,8 @@ namespace AAAGame.Card
 
             m_MoveTween?.Kill();
             m_MoveTween = m_RectTransform.DOMove(m_OriginalPosition, 0.3f)
-                .SetEase(Ease.OutBack);
+                .SetEase(Ease.OutBack)
+                .SetLink(gameObject);
             
             ScaleTo(1f);
         }
@@ -565,7 +569,8 @@ namespace AAAGame.Card
         {
             m_ScaleTween?.Kill();
             m_ScaleTween = transform.DOScale(Vector3.one * scale, animationDuration)
-                .SetEase(Ease.OutBack);
+                .SetEase(Ease.OutBack)
+                .SetLink(gameObject);
         }
 
         private void ApplyHoverLift(bool enabled, float scale)
@@ -602,6 +607,7 @@ namespace AAAGame.Card
             m_HoverLiftTween?.Kill();
             m_HoverLiftTween = m_RectTransform.DOAnchorPos(basePosition, animationDuration)
                 .SetEase(Ease.OutCubic)
+                .SetLink(gameObject)
                 .OnComplete(() => m_HoverLiftActive = false);
         }
 
@@ -616,7 +622,8 @@ namespace AAAGame.Card
         {
             m_HoverLiftTween?.Kill();
             m_HoverLiftTween = m_RectTransform.DOAnchorPos(targetPosition, animationDuration)
-                .SetEase(ease);
+                .SetEase(ease)
+                .SetLink(gameObject);
         }
 
         private Vector3 PrepareHoverLiftedWorldTarget(float scale, Vector3 baseWorldTarget)
@@ -686,7 +693,7 @@ namespace AAAGame.Card
         /// <summary>
         /// 从屏幕位置移动到手牌区
         /// </summary>
-        public void MoveToHandFromScreenPosition(Vector2 startScreenPosition, float duration = 0.5f)
+        public void MoveToHandFromScreenPosition(Vector2 startScreenPosition, float duration = 0.5f, Action onComplete = null)
         {
             canvasGroup.blocksRaycasts = false;
             RefreshOwningLayout();
@@ -695,19 +702,50 @@ namespace AAAGame.Card
             m_RectTransform.position = startScreenPosition;
             transform.localScale = Vector3.one * Mathf.Clamp(drawStartScale, 0.05f, 1f);
 
+            m_OnMoveToHandComplete = onComplete;
             m_MoveTween?.Kill();
             m_MoveTween = m_RectTransform.DOMove(targetPosition, duration)
                 .SetEase(Ease.OutCubic)
+                .SetLink(gameObject)
                 .OnComplete(() =>
                 {
                     transform.localScale = Vector3.one;
                     canvasGroup.blocksRaycasts = true;
+                    if (m_OnMoveToHandComplete != null)
+                    {
+                        m_OnMoveToHandComplete.Invoke();
+                        m_OnMoveToHandComplete = null;
+                    }
                     RefreshOwningLayout();
                 });
 
             m_ScaleTween?.Kill();
             m_ScaleTween = transform.DOScale(Vector3.one, duration)
-                .SetEase(Ease.OutBack);
+                .SetEase(Ease.OutBack)
+                .SetLink(gameObject);
+        }
+
+        public void SyncMoveTargetToCurrentLayout()
+        {
+            if (m_RectTransform == null || m_MoveTween == null || !m_MoveTween.IsActive())
+            {
+                return;
+            }
+
+            Vector3 newTargetPosition = m_RectTransform.position;
+            m_RectTransform.position = m_SavedTweenPosition;
+
+            m_MoveTween.ChangeEndValue(newTargetPosition, false);
+        }
+
+        private Vector3 m_SavedTweenPosition;
+
+        public void SaveCurrentPosition()
+        {
+            if (m_RectTransform != null && m_MoveTween != null && m_MoveTween.IsActive())
+            {
+                m_SavedTweenPosition = m_RectTransform.position;
+            }
         }
 
         private void RefreshOwningLayout()
@@ -858,7 +896,8 @@ namespace AAAGame.Card
             m_MoveTween?.Kill();
             Vector3 targetPosition = PrepareHoverLiftedWorldTarget(hoverScale, GetHandSlotWorldPosition());
             m_MoveTween = m_RectTransform.DOMove(targetPosition, animationDuration)
-                .SetEase(Ease.OutCubic);
+                .SetEase(Ease.OutCubic)
+                .SetLink(gameObject);
 
             ScaleTo(hoverScale);
         }
@@ -922,13 +961,14 @@ namespace AAAGame.Card
             m_ScaleTween = DOTween.Sequence()
                 .Append(transform.DOScale(Vector3.one * safePeakScale, safePopDuration).SetEase(Ease.OutCubic))
                 .Append(transform.DOScale(Vector3.zero, safeShrinkDuration).SetEase(Ease.InBack))
+                .SetLink(gameObject)
                 .OnComplete(() => onComplete?.Invoke());
 
             // 淡出效果
             if (canvasGroup != null)
             {
                 m_FadeTween?.Kill();
-                m_FadeTween = canvasGroup.DOFade(0f, safePopDuration + safeShrinkDuration);
+                m_FadeTween = canvasGroup.DOFade(0f, safePopDuration + safeShrinkDuration).SetLink(gameObject);
             }
             
             Log.Info($"[HandCardItem] ✅ Card discard animation started: {m_CardModel?.GetCardName()}");
@@ -957,12 +997,14 @@ namespace AAAGame.Card
             // 播放消失动画（缩放 + 淡出）
             m_ScaleTween?.Kill();
             m_ScaleTween = transform.DOScale(Vector3.zero, 0.2f)
-                .SetEase(Ease.InBack);
+                .SetEase(Ease.InBack)
+                .SetLink(gameObject);
             
             // 淡出效果
             if (canvasGroup != null)
             {
-                canvasGroup.DOFade(0f, 0.2f);
+                m_FadeTween?.Kill();
+                m_FadeTween = canvasGroup.DOFade(0f, 0.2f).SetLink(gameObject);
             }
             
             Log.Info($"[HandCardItem] ✅ Card play animation started: {m_CardModel?.GetCardName()}");
@@ -981,10 +1023,6 @@ namespace AAAGame.Card
         private void OnDestroy()
         {
             ApplyHoverGlow(false);
-            m_ScaleTween?.Kill();
-            m_MoveTween?.Kill();
-            m_HoverLiftTween?.Kill();
-            m_FadeTween?.Kill();
             ClearLayoutPlaceholder();
         }
     }

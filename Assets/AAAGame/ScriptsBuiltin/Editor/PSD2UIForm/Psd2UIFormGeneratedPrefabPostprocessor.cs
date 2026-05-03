@@ -15,12 +15,16 @@ namespace AAAGame.EditorTools.Psd2UIForm
     {
         private const float TargetWidth = 1920f;
         private const float TargetHeight = 1080f;
+        private const long MaxReplacementTextureBytes = 64L * 1024L * 1024L;
         private const string ScaleUserDataPrefix = "Psd2UIFormScaledHash:";
+        private const string CardSingleLayerName = "卡牌单个";
         private const string PsdLayerNodeTypeName = "UGF.EditorTools.Psd2UGUI.PsdLayerNode";
         private const string PsdConverterTypeName = "UGF.EditorTools.Psd2UGUI.Psd2UIFormConverter";
         private const string PsdDocumentTypeName = "cn.efunstudio.psdreader.PsdParser.PsdDocument";
         private const string PsdLayerTypeName = "cn.efunstudio.psdreader.PsdParser.PsdLayer";
         private const string ImageSourceTypeName = "cn.efunstudio.psdreader.PsdParser.IImageSource";
+        private const string PsdLayerRendererTypeName = "cn.efunstudio.psdreader.PsdParser.PsdLayerRenderer";
+        private const string PsdRenderedImageTypeName = "cn.efunstudio.psdreader.PsdParser.PsdRenderedImage";
         private const int ImageUIType = 1;
         private const int LegacyTextUIType = 3;
         private const int LegacyButtonUIType = 4;
@@ -48,19 +52,6 @@ namespace AAAGame.EditorTools.Psd2UIForm
         private static readonly HashSet<string> PendingParsedPrefabPaths = new HashSet<string>();
         private static readonly HashSet<string> PendingImagePaths = new HashSet<string>();
         private static bool s_DelayCallRegistered;
-        private static bool s_InitialScanRegistered;
-
-        [InitializeOnLoadMethod]
-        private static void RegisterInitialScan()
-        {
-            if (s_InitialScanRegistered)
-            {
-                return;
-            }
-
-            s_InitialScanRegistered = true;
-            EditorApplication.delayCall += ProcessExistingGeneratedPrefabs;
-        }
 
         private static void OnPostprocessAllAssets(
             string[] importedAssets,
@@ -70,20 +61,22 @@ namespace AAAGame.EditorTools.Psd2UIForm
         {
             foreach (string assetPath in importedAssets)
             {
-                if (assetPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
+                string normalizedAssetPath = NormalizeAssetPath(assetPath);
+                if (normalizedAssetPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (assetPath.EndsWith("_psd_layers_parsed.prefab", StringComparison.OrdinalIgnoreCase))
+                    if (normalizedAssetPath.EndsWith("_psd_layers_parsed.prefab", StringComparison.OrdinalIgnoreCase))
                     {
-                        PendingParsedPrefabPaths.Add(assetPath);
+                        PendingParsedPrefabPaths.Add(normalizedAssetPath);
                     }
-                    else
+                    else if (normalizedAssetPath.StartsWith("Assets/AAAGame/Prefabs/UI/", StringComparison.OrdinalIgnoreCase))
                     {
-                        PendingPrefabPaths.Add(assetPath);
+                        PendingPrefabPaths.Add(normalizedAssetPath);
                     }
                 }
-                else if (assetPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                else if (normalizedAssetPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase) &&
+                         normalizedAssetPath.StartsWith("Assets/AAAGame/Sprites/", StringComparison.OrdinalIgnoreCase))
                 {
-                    PendingImagePaths.Add(assetPath);
+                    PendingImagePaths.Add(normalizedAssetPath);
                 }
             }
 
@@ -153,6 +146,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
             string[] imagePaths = new string[PendingImagePaths.Count];
             PendingImagePaths.CopyTo(imagePaths);
             PendingImagePaths.Clear();
+            bool hasGenerationSignal = parsedPrefabPaths.Length > 0 || imagePaths.Length > 0;
 
             bool changed = false;
             foreach (string path in parsedPrefabPaths)
@@ -160,10 +154,13 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 changed |= SanitizeParsedPrefab(path);
             }
 
-            Dictionary<string, ParsedPrefabInfo> parsedPrefabs = BuildParsedPrefabMap();
-            foreach (string path in prefabPaths)
+            if (hasGenerationSignal)
             {
-                changed |= ScalePrefabIfNeeded(path, parsedPrefabs, parsedPrefabPaths.Length > 0);
+                Dictionary<string, ParsedPrefabInfo> parsedPrefabs = BuildParsedPrefabMap();
+                foreach (string path in prefabPaths)
+                {
+                    changed |= ScalePrefabIfNeeded(path, parsedPrefabs, parsedPrefabPaths.Length > 0);
+                }
             }
 
             ExportMap exportMap = BuildExportMap();
@@ -173,7 +170,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 imagePathsToReplace.Add(NormalizeAssetPath(path));
             }
 
-            if (prefabPaths.Length > 0 || parsedPrefabPaths.Length > 0)
+            if (parsedPrefabPaths.Length > 0)
             {
                 foreach (string pngPath in exportMap.EntriesByPngPath.Keys)
                 {
@@ -192,10 +189,10 @@ namespace AAAGame.EditorTools.Psd2UIForm
             if (changed)
             {
                 AssetDatabase.SaveAssets();
-                AssetDatabase.Refresh();
             }
         }
 
+        [MenuItem("Tools/Psd2UIForm/Fix All Generated UIForms")]
         private static void ProcessExistingGeneratedPrefabs()
         {
             bool changed = SanitizeAllParsedPrefabs();
@@ -244,7 +241,8 @@ namespace AAAGame.EditorTools.Psd2UIForm
 
             float scaleX = TargetWidth / info.PsdSize.x;
             float scaleY = TargetHeight / info.PsdSize.y;
-            if (scaleX <= 0f || scaleY <= 0f || (Mathf.Approximately(scaleX, 1f) && Mathf.Approximately(scaleY, 1f)))
+            bool canScale = scaleX > 0f && scaleY > 0f && (!Mathf.Approximately(scaleX, 1f) || !Mathf.Approximately(scaleY, 1f));
+            if (scaleX <= 0f || scaleY <= 0f)
             {
                 return false;
             }
@@ -259,6 +257,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                     return false;
                 }
 
+                saved |= RemoveDuplicateGeneratedObjects(root.transform, info);
                 RectTransform[] rectTransforms = root.GetComponentsInChildren<RectTransform>(true);
                 if (rectTransforms.Length <= 1)
                 {
@@ -267,26 +266,35 @@ namespace AAAGame.EditorTools.Psd2UIForm
 
                 saved |= NormalizeRootRect(root.transform as RectTransform);
                 saved |= EnsureRootCanvasScaler(root);
-                saved |= RenameGeneratedPrefabObjects(root, info);
-                bool shouldScale = !sameScaledContent && (fromGenerationSignal || IsInPsdCoordinateSpace(rectTransforms, root.transform, info.PsdSize));
+                if (fromGenerationSignal)
+                {
+                    saved |= RenameGeneratedPrefabObjectsByPluginAliases(root.transform, info);
+                    saved |= RestoreMissingGeneratedContainers(root.transform, info.ParsedHierarchy);
+                    saved |= RenameGeneratedPrefabObjectsByParsedHierarchy(root.transform, info.ParsedHierarchy);
+                }
+                saved |= NormalizeGeneratedImages(root);
+                saved |= NormalizeGeneratedImageSprites(root, info, Path.GetFileNameWithoutExtension(prefabPath), fromGenerationSignal);
+                bool shouldScale = canScale && !sameScaledContent && (fromGenerationSignal || IsInPsdCoordinateSpace(rectTransforms, root.transform, info.PsdSize));
 
                 if (shouldScale)
                 {
+                    HashSet<RectTransform> correctedRects = new HashSet<RectTransform>();
+                    bool scaledChanged = ApplyPsdBoundsToGeneratedPrefab(root.transform, info, scaleX, scaleY, correctedRects);
+
                     foreach (RectTransform rectTransform in rectTransforms)
                     {
-                        if (rectTransform.transform == root.transform)
+                        if (rectTransform.transform == root.transform || correctedRects.Contains(rectTransform))
                         {
                             continue;
                         }
 
-                        ScaleRectTransform(rectTransform, scaleX, scaleY);
+                        scaledChanged |= ScaleRectTransform(rectTransform, scaleX, scaleY);
                     }
 
                     float textScale = Mathf.Min(scaleX, scaleY);
-                    ScaleText(root, textScale);
-                    ScaleLayouts(root, scaleX, scaleY, textScale);
-
-                    saved = true;
+                    scaledChanged |= ScaleText(root, textScale);
+                    scaledChanged |= ScaleLayouts(root, scaleX, scaleY, textScale);
+                    saved |= scaledChanged;
                 }
 
                 if (saved)
@@ -302,7 +310,6 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 }
             }
 
-            saved |= RenameGeneratedPrefabAssetObjectNames(prefabPath, info);
             if (!saved)
             {
                 return false;
@@ -315,8 +322,290 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 updatedImporter.SaveAndReimport();
             }
 
-            Debug.Log($"PSD2UIForm generated prefab scaled by PSD size: {prefabPath} ({info.PsdSize.x:0.#}x{info.PsdSize.y:0.#} -> {TargetWidth:0.#}x{TargetHeight:0.#}, scale {scaleX:0.####},{scaleY:0.####})");
+            Debug.Log($"PSD2UIForm generated prefab normalized: {prefabPath} ({info.PsdSize.x:0.#}x{info.PsdSize.y:0.#} -> {TargetWidth:0.#}x{TargetHeight:0.#}, scale {scaleX:0.####},{scaleY:0.####})");
             return true;
+        }
+
+        private static bool RemoveDuplicateGeneratedObjects(Transform root, ParsedPrefabInfo info)
+        {
+            int expectedCount = info.GeneratedNamesInParsedHierarchyOrder.Count;
+            int currentCount = root.GetComponentsInChildren<Transform>(true).Length - 1;
+            if (expectedCount <= 0 || currentCount <= expectedCount)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            if (info.RootChildCount > 0 &&
+                root.childCount > info.RootChildCount &&
+                root.childCount % info.RootChildCount == 0)
+            {
+                int removeCount = root.childCount - info.RootChildCount;
+                for (int i = removeCount - 1; i >= 0; i--)
+                {
+                    UnityEngine.Object.DestroyImmediate(root.GetChild(i).gameObject, true);
+                    changed = true;
+                }
+
+                return true;
+            }
+
+            foreach (Transform parent in root.GetComponentsInChildren<Transform>(true).Reverse())
+            {
+                Dictionary<string, Transform> keptBySignature = new Dictionary<string, Transform>(StringComparer.Ordinal);
+                for (int i = parent.childCount - 1; i >= 0; i--)
+                {
+                    Transform child = parent.GetChild(i);
+                    string signature = BuildGeneratedObjectSignature(child);
+                    if (!keptBySignature.ContainsKey(signature))
+                    {
+                        keptBySignature.Add(signature, child);
+                        continue;
+                    }
+
+                    UnityEngine.Object.DestroyImmediate(child.gameObject, true);
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        private static string BuildGeneratedObjectSignature(Transform transform)
+        {
+            System.Text.StringBuilder builder = new System.Text.StringBuilder();
+            AppendGeneratedObjectSignature(transform, builder);
+            return builder.ToString();
+        }
+
+        private static void AppendGeneratedObjectSignature(Transform transform, System.Text.StringBuilder builder)
+        {
+            builder.Append("Name:");
+            builder.Append(transform.gameObject.name);
+            builder.Append('|');
+
+            RectTransform rectTransform = transform as RectTransform;
+            if (rectTransform != null)
+            {
+                AppendVector2(builder, rectTransform.anchorMin);
+                AppendVector2(builder, rectTransform.anchorMax);
+                AppendVector2(builder, rectTransform.anchoredPosition);
+                AppendVector2(builder, rectTransform.sizeDelta);
+                AppendVector2(builder, rectTransform.pivot);
+            }
+
+            Image image = transform.GetComponent<Image>();
+            if (image != null)
+            {
+                builder.Append("|Image:");
+                builder.Append(image.sprite != null ? AssetDatabase.GetAssetPath(image.sprite) : string.Empty);
+            }
+
+            TMP_Text tmpText = transform.GetComponent<TMP_Text>();
+            if (tmpText != null)
+            {
+                builder.Append("|TMP:");
+                builder.Append(tmpText.text);
+            }
+
+            builder.Append("|Children:").Append(transform.childCount).Append('[');
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                AppendGeneratedObjectSignature(transform.GetChild(i), builder);
+            }
+
+            builder.Append(']');
+        }
+
+        private static void AppendVector2(System.Text.StringBuilder builder, Vector2 value)
+        {
+            builder.Append(Mathf.RoundToInt(value.x * 100f));
+            builder.Append(',');
+            builder.Append(Mathf.RoundToInt(value.y * 100f));
+            builder.Append(';');
+        }
+
+        private static bool NormalizeGeneratedImages(GameObject root)
+        {
+            bool changed = false;
+            foreach (Image image in root.GetComponentsInChildren<Image>(true))
+            {
+                if (image.type != Image.Type.Sliced && image.type != Image.Type.Tiled)
+                {
+                    continue;
+                }
+
+                image.type = Image.Type.Simple;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private static bool NormalizeGeneratedImageSprites(GameObject root, ParsedPrefabInfo info, string preferredUiFormAlias, bool allowRename)
+        {
+            bool changed = false;
+            foreach (Transform parent in root.GetComponentsInChildren<Transform>(true))
+            {
+                Dictionary<string, int> siblingNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+                for (int i = 0; i < parent.childCount; i++)
+                {
+                    Transform child = parent.GetChild(i);
+                    Image image = child.GetComponent<Image>();
+                    ExportEntry entry = image != null ? FindExportEntryForGeneratedImage(image, info) : null;
+                    string desiredName = entry != null ? SanitizeUnityObjectName(entry.SourceLayerName) : child.gameObject.name;
+                    string uniqueName = MakeUniqueSiblingName(desiredName, siblingNameCounts);
+                    if (allowRename && entry != null && child.gameObject.name != uniqueName)
+                    {
+                        child.gameObject.name = uniqueName;
+                        EditorUtility.SetDirty(child.gameObject);
+                        changed = true;
+                    }
+
+                    if (entry == null)
+                    {
+                        continue;
+                    }
+
+                    Sprite sprite = FindExportedSpriteForEntry(entry, info, preferredUiFormAlias);
+                    if (sprite != null && image.sprite != sprite)
+                    {
+                        image.sprite = sprite;
+                        EditorUtility.SetDirty(image);
+                        changed = true;
+                    }
+                }
+            }
+
+            return changed;
+        }
+
+        private static bool RenameGeneratedPrefabObjectsByPluginAliases(Transform root, ParsedPrefabInfo info)
+        {
+            if (info.SourceNamesByPluginGeneratedName.Count == 0)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            foreach (Transform parent in root.GetComponentsInChildren<Transform>(true))
+            {
+                Dictionary<string, int> siblingNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+                for (int i = 0; i < parent.childCount; i++)
+                {
+                    Transform child = parent.GetChild(i);
+                    string desiredName = info.SourceNamesByPluginGeneratedName.TryGetValue(child.gameObject.name, out string sourceName)
+                        ? sourceName
+                        : child.gameObject.name;
+                    string uniqueName = MakeUniqueSiblingName(desiredName, siblingNameCounts);
+                    if (child.gameObject.name == uniqueName)
+                    {
+                        continue;
+                    }
+
+                    child.gameObject.name = uniqueName;
+                    EditorUtility.SetDirty(child.gameObject);
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        private static ExportEntry FindExportEntryForGeneratedImage(Image image, ParsedPrefabInfo info)
+        {
+            ExportEntry entry = FindExportEntryByObjectName(image.gameObject.name, info);
+            if (entry != null)
+            {
+                return entry;
+            }
+
+            return FindExportEntryBySprite(image.sprite, info);
+        }
+
+        private static ExportEntry FindExportEntryBySprite(Sprite sprite, ParsedPrefabInfo info)
+        {
+            if (sprite == null)
+            {
+                return null;
+            }
+
+            string spritePath = AssetDatabase.GetAssetPath(sprite);
+            if (string.IsNullOrWhiteSpace(spritePath))
+            {
+                return null;
+            }
+
+            string spriteName = Path.GetFileNameWithoutExtension(spritePath);
+            ExportEntry bestEntry = null;
+            int bestPriority = int.MinValue;
+            foreach (ExportEntry entry in info.Entries)
+            {
+                foreach (ExportNameCandidate candidate in GetExportFileNameCandidates(entry))
+                {
+                    if (!string.Equals(candidate.Name, spriteName, StringComparison.OrdinalIgnoreCase) ||
+                        candidate.Priority <= bestPriority)
+                    {
+                        continue;
+                    }
+
+                    bestEntry = entry;
+                    bestPriority = candidate.Priority;
+                }
+            }
+
+            return bestEntry;
+        }
+
+        private static Sprite FindExportedSpriteForEntry(ExportEntry entry, ParsedPrefabInfo info, string preferredUiFormAlias)
+        {
+            foreach (string uiFormAlias in EnumeratePreferredUiFormAliases(info, preferredUiFormAlias))
+            {
+                string imageOutputDir = $"Assets/AAAGame/Sprites/{uiFormAlias}";
+                foreach (ExportNameCandidate candidate in GetExportFileNameCandidates(entry).OrderByDescending(candidate => candidate.Priority))
+                {
+                    string spritePath = NormalizeAssetPath($"{imageOutputDir}/{candidate.Name}.png");
+                    Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(spritePath);
+                    if (sprite != null)
+                    {
+                        return sprite;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static ExportEntry FindExportEntryByObjectName(string objectName, ParsedPrefabInfo info)
+        {
+            string sanitizedObjectName = SanitizeUnityObjectName(objectName);
+            foreach (ExportEntry entry in info.Entries)
+            {
+                if (string.Equals(SanitizeUnityObjectName(entry.SourceLayerName), sanitizedObjectName, StringComparison.Ordinal) ||
+                    string.Equals(SanitizeUnityObjectName(entry.ObjectName), sanitizedObjectName, StringComparison.Ordinal))
+                {
+                    return entry;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> EnumeratePreferredUiFormAliases(ParsedPrefabInfo info, string preferredUiFormAlias)
+        {
+            if (!string.IsNullOrWhiteSpace(preferredUiFormAlias) &&
+                info.UiFormAliases.Any(alias => string.Equals(alias, preferredUiFormAlias, StringComparison.OrdinalIgnoreCase)))
+            {
+                yield return preferredUiFormAlias;
+            }
+
+            foreach (string alias in info.UiFormAliases)
+            {
+                if (!string.Equals(alias, preferredUiFormAlias, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return alias;
+                }
+            }
         }
 
         private static bool NormalizeRootRect(RectTransform rootRect)
@@ -417,57 +706,217 @@ namespace AAAGame.EditorTools.Psd2UIForm
             return false;
         }
 
-        private static void ScaleRectTransform(RectTransform rectTransform, float scaleX, float scaleY)
+        private static bool ScaleRectTransform(RectTransform rectTransform, float scaleX, float scaleY)
         {
             Vector2 anchoredPosition = rectTransform.anchoredPosition;
             Vector2 sizeDelta = rectTransform.sizeDelta;
-            rectTransform.anchoredPosition = new Vector2(anchoredPosition.x * scaleX, anchoredPosition.y * scaleY);
-            rectTransform.sizeDelta = new Vector2(sizeDelta.x * scaleX, sizeDelta.y * scaleY);
+            Vector2 targetPosition = new Vector2(anchoredPosition.x * scaleX, anchoredPosition.y * scaleY);
+            Vector2 targetSize = new Vector2(sizeDelta.x * scaleX, sizeDelta.y * scaleY);
+            if (rectTransform.anchoredPosition == targetPosition && rectTransform.sizeDelta == targetSize)
+            {
+                return false;
+            }
+
+            rectTransform.anchoredPosition = targetPosition;
+            rectTransform.sizeDelta = targetSize;
+            return true;
         }
 
-        private static void ScaleText(GameObject root, float scale)
+        private static bool ApplyPsdBoundsToGeneratedPrefab(
+            Transform root,
+            ParsedPrefabInfo info,
+            float scaleX,
+            float scaleY,
+            HashSet<RectTransform> correctedRects)
         {
+            if (root == null || info?.PsdHierarchy == null)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            ApplyPsdBoundsToGeneratedPrefab(root, info.PsdHierarchy, scaleX, scaleY, correctedRects, ref changed);
+            return changed;
+        }
+
+        private static void ApplyPsdBoundsToGeneratedPrefab(
+            Transform current,
+            PsdLayerHierarchyNode psd,
+            float scaleX,
+            float scaleY,
+            HashSet<RectTransform> correctedRects,
+            ref bool changed)
+        {
+            if (current == null || psd == null)
+            {
+                return;
+            }
+
+            Dictionary<string, PsdLayerHierarchyNode> psdChildrenByName = new Dictionary<string, PsdLayerHierarchyNode>(StringComparer.Ordinal);
+            foreach (PsdLayerHierarchyNode psdChild in psd.Children)
+            {
+                if (!string.IsNullOrWhiteSpace(psdChild.Name))
+                {
+                    psdChildrenByName[psdChild.Name] = psdChild;
+                }
+            }
+
+            for (int i = 0; i < current.childCount; i++)
+            {
+                Transform currentChild = current.GetChild(i);
+                if (!psdChildrenByName.TryGetValue(currentChild.gameObject.name, out PsdLayerHierarchyNode psdChild))
+                {
+                    continue;
+                }
+
+                RectTransform rectTransform = currentChild as RectTransform;
+                if (rectTransform != null)
+                {
+                    correctedRects.Add(rectTransform);
+                    if (ApplyPsdBoundsToRectTransform(rectTransform, psd.Bounds, psdChild.Bounds, scaleX, scaleY))
+                    {
+                        changed = true;
+                    }
+                }
+
+                ApplyPsdBoundsToGeneratedPrefab(currentChild, psdChild, scaleX, scaleY, correctedRects, ref changed);
+            }
+        }
+
+        private static bool ApplyPsdBoundsToRectTransform(
+            RectTransform rectTransform,
+            Rect parentBounds,
+            Rect childBounds,
+            float scaleX,
+            float scaleY)
+        {
+            if (rectTransform == null || childBounds.width <= 0f || childBounds.height <= 0f)
+            {
+                return false;
+            }
+
+            Vector2 anchor = new Vector2(0.5f, 0.5f);
+            Vector2 targetSize = new Vector2(childBounds.width * scaleX, childBounds.height * scaleY);
+            Vector2 parentCenter = new Vector2(parentBounds.xMin + (parentBounds.width * 0.5f), parentBounds.yMin + (parentBounds.height * 0.5f));
+            Vector2 childCenter = new Vector2(childBounds.xMin + (childBounds.width * 0.5f), childBounds.yMin + (childBounds.height * 0.5f));
+            Vector2 targetPosition = new Vector2(
+                (childCenter.x - parentCenter.x) * scaleX,
+                (parentCenter.y - childCenter.y) * scaleY);
+
+            bool changed = rectTransform.anchorMin != anchor ||
+                           rectTransform.anchorMax != anchor ||
+                           rectTransform.pivot != anchor ||
+                           rectTransform.localScale != Vector3.one ||
+                           rectTransform.anchoredPosition != targetPosition ||
+                           rectTransform.sizeDelta != targetSize;
+            if (!changed)
+            {
+                return false;
+            }
+
+            rectTransform.anchorMin = anchor;
+            rectTransform.anchorMax = anchor;
+            rectTransform.pivot = anchor;
+            rectTransform.localScale = Vector3.one;
+            rectTransform.anchoredPosition = targetPosition;
+            rectTransform.sizeDelta = targetSize;
+            return true;
+        }
+
+        private static bool ScaleText(GameObject root, float scale)
+        {
+            bool changed = false;
             foreach (Text text in root.GetComponentsInChildren<Text>(true))
             {
-                text.fontSize = Mathf.Max(1, Mathf.RoundToInt(text.fontSize * scale));
-                text.lineSpacing *= scale;
+                int targetFontSize = Mathf.Max(1, Mathf.RoundToInt(text.fontSize * scale));
+                float targetLineSpacing = text.lineSpacing * scale;
+                if (text.fontSize != targetFontSize || !Mathf.Approximately(text.lineSpacing, targetLineSpacing))
+                {
+                    text.fontSize = targetFontSize;
+                    text.lineSpacing = targetLineSpacing;
+                    changed = true;
+                }
             }
 
             foreach (TMP_Text text in root.GetComponentsInChildren<TMP_Text>(true))
             {
-                text.fontSize *= scale;
-                text.fontSizeMin *= scale;
-                text.fontSizeMax *= scale;
-                text.lineSpacing *= scale;
-                text.paragraphSpacing *= scale;
-                text.characterSpacing *= scale;
-                text.wordSpacing *= scale;
-                text.margin *= scale;
+                float targetFontSize = text.fontSize * scale;
+                float targetFontSizeMin = text.fontSizeMin * scale;
+                float targetFontSizeMax = text.fontSizeMax * scale;
+                float targetLineSpacing = text.lineSpacing * scale;
+                float targetParagraphSpacing = text.paragraphSpacing * scale;
+                float targetCharacterSpacing = text.characterSpacing * scale;
+                float targetWordSpacing = text.wordSpacing * scale;
+                Vector4 targetMargin = text.margin * scale;
+                if (!Mathf.Approximately(text.fontSize, targetFontSize) ||
+                    !Mathf.Approximately(text.fontSizeMin, targetFontSizeMin) ||
+                    !Mathf.Approximately(text.fontSizeMax, targetFontSizeMax) ||
+                    !Mathf.Approximately(text.lineSpacing, targetLineSpacing) ||
+                    !Mathf.Approximately(text.paragraphSpacing, targetParagraphSpacing) ||
+                    !Mathf.Approximately(text.characterSpacing, targetCharacterSpacing) ||
+                    !Mathf.Approximately(text.wordSpacing, targetWordSpacing) ||
+                    text.margin != targetMargin)
+                {
+                    text.fontSize = targetFontSize;
+                    text.fontSizeMin = targetFontSizeMin;
+                    text.fontSizeMax = targetFontSizeMax;
+                    text.lineSpacing = targetLineSpacing;
+                    text.paragraphSpacing = targetParagraphSpacing;
+                    text.characterSpacing = targetCharacterSpacing;
+                    text.wordSpacing = targetWordSpacing;
+                    text.margin = targetMargin;
+                    changed = true;
+                }
             }
+
+            return changed;
         }
 
-        private static void ScaleLayouts(GameObject root, float scaleX, float scaleY, float uniformScale)
+        private static bool ScaleLayouts(GameObject root, float scaleX, float scaleY, float uniformScale)
         {
+            bool changed = false;
             foreach (LayoutElement layout in root.GetComponentsInChildren<LayoutElement>(true))
             {
-                layout.minWidth = ScaleIfNonNegative(layout.minWidth, scaleX);
-                layout.minHeight = ScaleIfNonNegative(layout.minHeight, scaleY);
-                layout.preferredWidth = ScaleIfNonNegative(layout.preferredWidth, scaleX);
-                layout.preferredHeight = ScaleIfNonNegative(layout.preferredHeight, scaleY);
+                float minWidth = ScaleIfNonNegative(layout.minWidth, scaleX);
+                float minHeight = ScaleIfNonNegative(layout.minHeight, scaleY);
+                float preferredWidth = ScaleIfNonNegative(layout.preferredWidth, scaleX);
+                float preferredHeight = ScaleIfNonNegative(layout.preferredHeight, scaleY);
+                if (!Mathf.Approximately(layout.minWidth, minWidth) ||
+                    !Mathf.Approximately(layout.minHeight, minHeight) ||
+                    !Mathf.Approximately(layout.preferredWidth, preferredWidth) ||
+                    !Mathf.Approximately(layout.preferredHeight, preferredHeight))
+                {
+                    layout.minWidth = minWidth;
+                    layout.minHeight = minHeight;
+                    layout.preferredWidth = preferredWidth;
+                    layout.preferredHeight = preferredHeight;
+                    changed = true;
+                }
             }
 
             foreach (GridLayoutGroup grid in root.GetComponentsInChildren<GridLayoutGroup>(true))
             {
-                grid.cellSize = new Vector2(grid.cellSize.x * scaleX, grid.cellSize.y * scaleY);
-                grid.spacing = new Vector2(grid.spacing.x * scaleX, grid.spacing.y * scaleY);
-                ScalePadding(grid.padding, scaleX, scaleY);
+                Vector2 cellSize = new Vector2(grid.cellSize.x * scaleX, grid.cellSize.y * scaleY);
+                Vector2 spacing = new Vector2(grid.spacing.x * scaleX, grid.spacing.y * scaleY);
+                changed |= grid.cellSize != cellSize || grid.spacing != spacing;
+                grid.cellSize = cellSize;
+                grid.spacing = spacing;
+                changed |= ScalePadding(grid.padding, scaleX, scaleY);
             }
 
             foreach (HorizontalOrVerticalLayoutGroup layoutGroup in root.GetComponentsInChildren<HorizontalOrVerticalLayoutGroup>(true))
             {
-                layoutGroup.spacing *= uniformScale;
-                ScalePadding(layoutGroup.padding, scaleX, scaleY);
+                float spacing = layoutGroup.spacing * uniformScale;
+                if (!Mathf.Approximately(layoutGroup.spacing, spacing))
+                {
+                    layoutGroup.spacing = spacing;
+                    changed = true;
+                }
+
+                changed |= ScalePadding(layoutGroup.padding, scaleX, scaleY);
             }
+
+            return changed;
         }
 
         private static float ScaleIfNonNegative(float value, float scale)
@@ -475,18 +924,35 @@ namespace AAAGame.EditorTools.Psd2UIForm
             return value >= 0f ? value * scale : value;
         }
 
-        private static void ScalePadding(RectOffset padding, float scaleX, float scaleY)
+        private static bool ScalePadding(RectOffset padding, float scaleX, float scaleY)
         {
-            padding.left = Mathf.RoundToInt(padding.left * scaleX);
-            padding.right = Mathf.RoundToInt(padding.right * scaleX);
-            padding.top = Mathf.RoundToInt(padding.top * scaleY);
-            padding.bottom = Mathf.RoundToInt(padding.bottom * scaleY);
+            int left = Mathf.RoundToInt(padding.left * scaleX);
+            int right = Mathf.RoundToInt(padding.right * scaleX);
+            int top = Mathf.RoundToInt(padding.top * scaleY);
+            int bottom = Mathf.RoundToInt(padding.bottom * scaleY);
+            if (padding.left == left && padding.right == right && padding.top == top && padding.bottom == bottom)
+            {
+                return false;
+            }
+
+            padding.left = left;
+            padding.right = right;
+            padding.top = top;
+            padding.bottom = bottom;
+            return true;
         }
 
         private static bool ReplaceExportedImageIfNeeded(string pngPath, ExportMap exportMap)
         {
             if (!exportMap.EntriesByPngPath.TryGetValue(NormalizeAssetPath(pngPath), out ExportEntry entry))
             {
+                return false;
+            }
+
+            if (PsdRawPngExporter.TryReadLayerBounds(entry.PsdAssetPath, entry.SourceLayerName, out Rect bounds) &&
+                IsTooLargeForTextureEncoding(bounds.width, bounds.height))
+            {
+                Debug.LogWarning($"PSD2UIForm image replacement skipped because the layer is too large to encode safely: {pngPath} ({bounds.width:0}x{bounds.height:0})");
                 return false;
             }
 
@@ -546,6 +1012,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 changed |= SanitizePsdLayerNode(behaviour, root.name);
             }
 
+            changed |= SetAllChildrenActive(root.transform);
             changed |= PreserveChineseLayerNames(root.transform);
             return changed;
         }
@@ -564,6 +1031,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 changed |= SanitizePsdLayerNode(behaviour, parsedPrefabPath);
             }
 
+            changed |= SetAllChildrenActive(prefab.transform);
             changed |= PreserveChineseLayerNames(prefab.transform);
             if (changed)
             {
@@ -645,180 +1113,239 @@ namespace AAAGame.EditorTools.Psd2UIForm
             return true;
         }
 
-        private static bool RenameGeneratedPrefabObjects(GameObject root, ParsedPrefabInfo info)
+        private static bool SetAllChildrenActive(Transform root)
         {
-            if (info.GeneratedNamesByLocalId.Count == 0)
+            if (root == null)
             {
                 return false;
             }
 
             bool changed = false;
-            foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
+            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
             {
-                if (!TryGetLocalFileIdentifier(transform.gameObject, out long localId))
+                if (child == root || child.gameObject.activeSelf)
                 {
                     continue;
                 }
 
-                if (!info.GeneratedNamesByLocalId.TryGetValue(localId, out string desiredName) ||
-                    string.IsNullOrWhiteSpace(desiredName) ||
-                    transform.gameObject.name == desiredName)
-                {
-                    continue;
-                }
-
-                transform.gameObject.name = desiredName;
-                EditorUtility.SetDirty(transform.gameObject);
+                child.gameObject.SetActive(true);
+                EditorUtility.SetDirty(child.gameObject);
                 changed = true;
             }
 
             return changed;
         }
 
-        private static bool RenameGeneratedPrefabAssetObjectNames(string prefabPath, ParsedPrefabInfo info)
+        private static bool IsTooLargeForTextureEncoding(float width, float height)
         {
-            if (info.GeneratedNamesByLocalId.Count == 0)
+            return width > 0f && height > 0f && width * height * 4f > MaxReplacementTextureBytes;
+        }
+
+        private static bool RenameGeneratedPrefabObjectsByParsedHierarchy(Transform root, ParsedNameNode parsedRoot)
+        {
+            if (parsedRoot == null)
             {
                 return false;
             }
 
-            string fullPath = Path.GetFullPath(prefabPath);
-            if (!File.Exists(fullPath))
-            {
-                return false;
-            }
-
-            string[] lines = File.ReadAllLines(fullPath);
             bool changed = false;
-            for (int i = 0; i < lines.Length; i++)
+            RenameGeneratedPrefabObjectsByParsedHierarchy(root, parsedRoot, ref changed);
+            return changed;
+        }
+
+        private static bool RestoreMissingGeneratedContainers(Transform root, ParsedNameNode parsedRoot)
+        {
+            if (root == null || parsedRoot == null)
             {
-                if (!TryParseGameObjectYamlHeader(lines[i], out long localId) ||
-                    !info.GeneratedNamesByLocalId.TryGetValue(localId, out string desiredName))
+                return false;
+            }
+
+            bool changed = false;
+            RestoreMissingGeneratedContainers(root, parsedRoot, ref changed);
+            return changed;
+        }
+
+        private static void RestoreMissingGeneratedContainers(Transform current, ParsedNameNode parsed, ref bool changed)
+        {
+            if (current == null || parsed == null)
+            {
+                return;
+            }
+
+            Dictionary<string, Transform> currentChildrenByName = new Dictionary<string, Transform>(StringComparer.Ordinal);
+            foreach (Transform child in current)
+            {
+                if (!currentChildrenByName.ContainsKey(child.gameObject.name))
+                {
+                    currentChildrenByName.Add(child.gameObject.name, child);
+                }
+            }
+
+            HashSet<Transform> reservedChildren = new HashSet<Transform>();
+            foreach (ParsedNameNode parsedChild in parsed.Children)
+            {
+                if (currentChildrenByName.TryGetValue(parsedChild.Name, out Transform existingChild))
+                {
+                    reservedChildren.Add(existingChild);
+                }
+            }
+
+            foreach (ParsedNameNode parsedChild in parsed.Children)
+            {
+                if (!currentChildrenByName.TryGetValue(parsedChild.Name, out Transform currentChild))
+                {
+                    List<Transform> adoptableChildren = FindAdoptableChildrenForParsedNode(current, parsed, parsedChild, reservedChildren);
+                    if (adoptableChildren.Count > 0)
+                    {
+                        int siblingIndex = adoptableChildren.Min(child => child.GetSiblingIndex());
+                        RectTransform createdContainer = CreateGeneratedContainer(current, parsedChild.Name, siblingIndex);
+                        foreach (Transform adoptableChild in adoptableChildren)
+                        {
+                            adoptableChild.SetParent(createdContainer, false);
+                            EditorUtility.SetDirty(adoptableChild.gameObject);
+                        }
+
+                        EditorUtility.SetDirty(createdContainer.gameObject);
+                        currentChild = createdContainer;
+                        currentChildrenByName[parsedChild.Name] = currentChild;
+                        reservedChildren.Add(currentChild);
+                        changed = true;
+                    }
+                }
+
+                if (currentChild != null)
+                {
+                    RestoreMissingGeneratedContainers(currentChild, parsedChild, ref changed);
+                }
+            }
+        }
+
+        private static List<Transform> FindAdoptableChildrenForParsedNode(
+            Transform current,
+            ParsedNameNode parsedParent,
+            ParsedNameNode targetParsedNode,
+            HashSet<Transform> reservedChildren)
+        {
+            HashSet<string> targetNames = CollectParsedSubtreeNames(targetParsedNode);
+            HashSet<string> siblingNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ParsedNameNode sibling in parsedParent.Children)
+            {
+                if (ReferenceEquals(sibling, targetParsedNode))
                 {
                     continue;
                 }
 
-                for (int j = i + 1; j < lines.Length && !lines[j].StartsWith("--- ", StringComparison.Ordinal); j++)
+                siblingNames.UnionWith(CollectParsedSubtreeNames(sibling));
+            }
+
+            List<Transform> adoptable = new List<Transform>();
+            foreach (Transform child in current)
+            {
+                if (reservedChildren.Contains(child))
                 {
-                    if (!lines[j].StartsWith("  m_Name:", StringComparison.Ordinal))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    string newLine = $"  m_Name: {FormatYamlString(desiredName)}";
-                    if (lines[j] != newLine)
-                    {
-                        lines[j] = newLine;
-                        changed = true;
-                    }
-
-                    break;
+                HashSet<string> currentNames = CollectCurrentSubtreeNames(child);
+                bool matchesTarget = currentNames.Overlaps(targetNames);
+                bool matchesSibling = currentNames.Overlaps(siblingNames);
+                if (matchesTarget && !matchesSibling)
+                {
+                    adoptable.Add(child);
                 }
             }
 
-            if (!changed)
-            {
-                return false;
-            }
-
-            File.WriteAllLines(fullPath, lines);
-            AssetDatabase.ImportAsset(prefabPath, ImportAssetOptions.ForceUpdate);
-            Debug.Log($"PSD2UIForm generated prefab object names restored from metadata: {prefabPath}");
-            return true;
+            return adoptable;
         }
 
-        private static bool TryParseGameObjectYamlHeader(string line, out long localId)
+        private static HashSet<string> CollectParsedSubtreeNames(ParsedNameNode node)
         {
-            localId = 0;
-            const string prefix = "--- !u!1 &";
-            if (!line.StartsWith(prefix, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            return long.TryParse(line.Substring(prefix.Length), out localId);
+            HashSet<string> names = new HashSet<string>(StringComparer.Ordinal);
+            CollectParsedSubtreeNames(node, names);
+            return names;
         }
 
-        private static string FormatYamlString(string value)
+        private static void CollectParsedSubtreeNames(ParsedNameNode node, HashSet<string> names)
         {
-            if (string.IsNullOrEmpty(value))
+            if (node == null || names == null)
             {
-                return string.Empty;
+                return;
             }
 
-            bool quote = false;
-            foreach (char c in value)
+            if (!string.IsNullOrWhiteSpace(node.Name))
             {
-                if (!char.IsLetterOrDigit(c) && c != '_' && c != '-' && c != '.')
-                {
-                    quote = true;
-                    break;
-                }
-
-                if (c > 127)
-                {
-                    quote = true;
-                    break;
-                }
+                names.Add(node.Name);
             }
 
-            if (!quote)
+            foreach (ParsedNameNode child in node.Children)
             {
-                return value;
+                CollectParsedSubtreeNames(child, names);
             }
-
-            System.Text.StringBuilder builder = new System.Text.StringBuilder(value.Length + 2);
-            builder.Append('"');
-            foreach (char c in value)
-            {
-                if (c == '\\' || c == '"')
-                {
-                    builder.Append('\\').Append(c);
-                }
-                else if (c == '\n')
-                {
-                    builder.Append("\\n");
-                }
-                else if (c == '\r')
-                {
-                    builder.Append("\\r");
-                }
-                else if (c < 32 || c > 127)
-                {
-                    builder.Append("\\u").Append(((int)c).ToString("X4"));
-                }
-                else
-                {
-                    builder.Append(c);
-                }
-            }
-
-            builder.Append('"');
-            return builder.ToString();
         }
 
-        private static bool TryGetLocalFileIdentifier(UnityEngine.Object assetObject, out long localId)
+        private static HashSet<string> CollectCurrentSubtreeNames(Transform transform)
         {
-            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(assetObject, out string _, out localId))
+            HashSet<string> names = new HashSet<string>(StringComparer.Ordinal);
+            CollectCurrentSubtreeNames(transform, names);
+            return names;
+        }
+
+        private static void CollectCurrentSubtreeNames(Transform transform, HashSet<string> names)
+        {
+            if (transform == null || names == null)
             {
-                return true;
+                return;
             }
 
-            Type unsupportedType = typeof(Editor).Assembly.GetType("UnityEditor.Unsupported");
-            MethodInfo method = unsupportedType?.GetMethod(
-                "GetLocalIdentifierInFile",
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
-                null,
-                new[] { typeof(UnityEngine.Object) },
-                null);
-            if (method == null)
+            if (!string.IsNullOrWhiteSpace(transform.gameObject.name))
             {
-                localId = 0;
-                return false;
+                names.Add(transform.gameObject.name);
             }
 
-            localId = Convert.ToInt64(method.Invoke(null, new object[] { assetObject }));
-            return localId != 0;
+            foreach (Transform child in transform)
+            {
+                CollectCurrentSubtreeNames(child, names);
+            }
+        }
+
+        private static RectTransform CreateGeneratedContainer(Transform parent, string name, int siblingIndex)
+        {
+            GameObject gameObject = new GameObject(name, typeof(RectTransform));
+            gameObject.layer = parent.gameObject.layer;
+
+            RectTransform rectTransform = (RectTransform)gameObject.transform;
+            rectTransform.SetParent(parent, false);
+            rectTransform.SetSiblingIndex(Mathf.Clamp(siblingIndex, 0, Mathf.Max(0, parent.childCount - 1)));
+            rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            rectTransform.anchoredPosition = Vector2.zero;
+            rectTransform.sizeDelta = new Vector2(100f, 100f);
+            rectTransform.localScale = Vector3.one;
+            return rectTransform;
+        }
+
+        private static void RenameGeneratedPrefabObjectsByParsedHierarchy(Transform current, ParsedNameNode parsed, ref bool changed)
+        {
+            if (current == null || parsed == null || current.childCount != parsed.Children.Count)
+            {
+                return;
+            }
+
+            int childCount = current.childCount;
+            for (int i = 0; i < childCount; i++)
+            {
+                Transform currentChild = current.GetChild(i);
+                ParsedNameNode parsedChild = parsed.Children[i];
+                if (!string.IsNullOrWhiteSpace(parsedChild.Name) && currentChild.gameObject.name != parsedChild.Name)
+                {
+                    currentChild.gameObject.name = parsedChild.Name;
+                    EditorUtility.SetDirty(currentChild.gameObject);
+                    changed = true;
+                }
+
+                RenameGeneratedPrefabObjectsByParsedHierarchy(currentChild, parsedChild, ref changed);
+            }
         }
 
         private static bool ReplaceLegacyTextHelpers(GameObject node, MonoBehaviour layerNode, int uiType)
@@ -1053,17 +1580,28 @@ namespace AAAGame.EditorTools.Psd2UIForm
         private static ExportMap BuildExportMap()
         {
             ExportMap map = new ExportMap();
+            Dictionary<string, int> prioritiesByPngPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, ParsedPrefabInfo> parsedPrefabs = BuildParsedPrefabMap();
-            foreach (ParsedPrefabInfo info in parsedPrefabs.Values)
+            foreach (ParsedPrefabInfo info in new HashSet<ParsedPrefabInfo>(parsedPrefabs.Values))
             {
-                string imageOutputDir = $"Assets/AAAGame/Sprites/{info.UiFormName}";
-                foreach (ExportEntry entry in info.Entries)
+                foreach (string uiFormAlias in info.UiFormAliases)
                 {
-                    entry.PsdAssetPath = info.PsdAssetPath;
-                    foreach (string exportName in GetExportFileNameCandidates(entry.ObjectName))
+                    string imageOutputDir = $"Assets/AAAGame/Sprites/{uiFormAlias}";
+                    foreach (ExportEntry entry in info.Entries)
                     {
-                        string pngPath = NormalizeAssetPath($"{imageOutputDir}/{exportName}.png");
-                        map.EntriesByPngPath[pngPath] = entry;
+                        entry.PsdAssetPath = info.PsdAssetPath;
+                        foreach (ExportNameCandidate candidate in GetExportFileNameCandidates(entry))
+                        {
+                            string pngPath = NormalizeAssetPath($"{imageOutputDir}/{candidate.Name}.png");
+                            if (prioritiesByPngPath.TryGetValue(pngPath, out int existingPriority) &&
+                                existingPriority >= candidate.Priority)
+                            {
+                                continue;
+                            }
+
+                            prioritiesByPngPath[pngPath] = candidate.Priority;
+                            map.EntriesByPngPath[pngPath] = entry;
+                        }
                     }
                 }
             }
@@ -1071,26 +1609,52 @@ namespace AAAGame.EditorTools.Psd2UIForm
             return map;
         }
 
-        private static IEnumerable<string> GetExportFileNameCandidates(string objectName)
+        private static IEnumerable<ExportNameCandidate> GetExportFileNameCandidates(ExportEntry entry)
+        {
+            Dictionary<string, int> candidates = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            AddExportFileNameCandidates(entry.ObjectName, candidates);
+            AddExportFileNameCandidates(entry.SourceLayerName, candidates);
+            foreach (KeyValuePair<string, int> candidate in candidates)
+            {
+                yield return new ExportNameCandidate(candidate.Key, candidate.Value);
+            }
+        }
+
+        private static void AddExportFileNameCandidates(string objectName, Dictionary<string, int> candidates)
         {
             if (string.IsNullOrWhiteSpace(objectName))
             {
-                yield break;
+                return;
             }
 
-            yield return objectName;
+            AddExportFileNameCandidate(candidates, objectName, 100);
 
             string normalizedName = NormalizePsd2UIFormFileName(objectName);
             if (!string.Equals(normalizedName, objectName, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(normalizedName))
             {
-                yield return normalizedName;
+                AddExportFileNameCandidate(candidates, normalizedName, 100);
             }
 
             string suffixBaseName = !string.IsNullOrWhiteSpace(normalizedName) ? normalizedName : objectName;
             for (int i = 1; i <= 32; i++)
             {
-                yield return $"{suffixBaseName}_{i}";
+                AddExportFileNameCandidate(candidates, $"{suffixBaseName}_{i}", 10);
             }
+        }
+
+        private static void AddExportFileNameCandidate(Dictionary<string, int> candidates, string name, int priority)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
+
+            if (candidates.TryGetValue(name, out int existingPriority) && existingPriority >= priority)
+            {
+                return;
+            }
+
+            candidates[name] = priority;
         }
 
         private static string NormalizePsd2UIFormFileName(string name)
@@ -1122,9 +1686,154 @@ namespace AAAGame.EditorTools.Psd2UIForm
             return new string(normalized.ToArray()).Trim('_');
         }
 
+        private static string NormalizePsd2UIFormGeneratedPinyinName(string name)
+        {
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            List<char> normalized = new List<char>(name.Length * 4);
+            bool previousUnderscore = false;
+            foreach (char c in name.Trim())
+            {
+                if (Array.IndexOf(invalidChars, c) >= 0 || char.IsControl(c))
+                {
+                    AppendGeneratedNameUnderscore(normalized, ref previousUnderscore);
+                    continue;
+                }
+
+                if (TryGetKnownPinyin(c, out string pinyin))
+                {
+                    foreach (char pinyinChar in pinyin)
+                    {
+                        normalized.Add(pinyinChar);
+                    }
+
+                    previousUnderscore = false;
+                    continue;
+                }
+
+                if (char.IsLetterOrDigit(c))
+                {
+                    normalized.Add(c);
+                    previousUnderscore = false;
+                    continue;
+                }
+
+                AppendGeneratedNameUnderscore(normalized, ref previousUnderscore);
+            }
+
+            return new string(normalized.ToArray()).Trim('_');
+        }
+
+        private static void AppendGeneratedNameUnderscore(List<char> normalized, ref bool previousUnderscore)
+        {
+            if (previousUnderscore)
+            {
+                return;
+            }
+
+            normalized.Add('_');
+            previousUnderscore = true;
+        }
+
+        private static bool TryGetKnownPinyin(char c, out string pinyin)
+        {
+            switch (c)
+            {
+                case '图': pinyin = "tu"; return true;
+                case '层': pinyin = "ceng"; return true;
+                case '组': pinyin = "zu"; return true;
+                case '拷': pinyin = "kao"; return true;
+                case '贝': pinyin = "bei"; return true;
+                case '椭': pinyin = "tuo"; return true;
+                case '圆': pinyin = "yuan"; return true;
+                case '矩': pinyin = "ju"; return true;
+                case '形': pinyin = "xing"; return true;
+                case '条': pinyin = "tiao"; return true;
+                case '件': pinyin = "jian"; return true;
+                case '文': pinyin = "wen"; return true;
+                case '案': pinyin = "an"; return true;
+                case '升': pinyin = "sheng"; return true;
+                case '级': pinyin = "ji"; return true;
+                case '底': pinyin = "di"; return true;
+                case '地': pinyin = "di"; return true;
+                case '小': pinyin = "xiao"; return true;
+                case '终': pinyin = "zhong"; return true;
+                case '意': pinyin = "yi"; return true;
+                case '识': pinyin = "shi"; return true;
+                case '容': pinyin = "rong"; return true;
+                case '量': pinyin = "liang"; return true;
+                case '指': pinyin = "zhi"; return true;
+                case '令': pinyin = "ling"; return true;
+                case '元': pinyin = "yuan"; return true;
+                case '标': pinyin = "biao"; return true;
+                case '占': pinyin = "zhan"; return true;
+                case '位': pinyin = "wei"; return true;
+                case '点': pinyin = "dian"; return true;
+                case '完': pinyin = "wan"; return true;
+                case '成': pinyin = "cheng"; return true;
+                case '效': pinyin = "xiao"; return true;
+                case '果': pinyin = "guo"; return true;
+                case '卡': pinyin = "ka"; return true;
+                case '槽': pinyin = "cao"; return true;
+                case '本': pinyin = "ben"; return true;
+                case '体': pinyin = "ti"; return true;
+                case '删': pinyin = "shan"; return true;
+                case '除': pinyin = "chu"; return true;
+                case '背': pinyin = "bei"; return true;
+                case '景': pinyin = "jing"; return true;
+                case '方': pinyin = "fang"; return true;
+                case '便': pinyin = "bian"; return true;
+                case '看': pinyin = "kan"; return true;
+                case '过': pinyin = "guo"; return true;
+                case '程': pinyin = "cheng"; return true;
+                case '中': pinyin = "zhong"; return true;
+                case '进': pinyin = "jin"; return true;
+                case '度': pinyin = "du"; return true;
+                case '选': pinyin = "xuan"; return true;
+                case '择': pinyin = "ze"; return true;
+                case '展': pinyin = "zhan"; return true;
+                case '开': pinyin = "kai"; return true;
+                case '顶': pinyin = "ding"; return true;
+                case '天': pinyin = "tian"; return true;
+                case '数': pinyin = "shu"; return true;
+                case '运': pinyin = "yun"; return true;
+                case '营': pinyin = "ying"; return true;
+                case '置': pinyin = "zhi"; return true;
+                case '示': pinyin = "shi"; return true;
+                case '片': pinyin = "pian"; return true;
+                case '支': pinyin = "zhi"; return true;
+                case '满': pinyin = "man"; return true;
+                case '信': pinyin = "xin"; return true;
+                case '息': pinyin = "xi"; return true;
+                case '查': pinyin = "cha"; return true;
+                case '阅': pinyin = "yue"; return true;
+                case '任': pinyin = "ren"; return true;
+                case '务': pinyin = "wu"; return true;
+                case '目': pinyin = "mu"; return true;
+                case '一': pinyin = "yi"; return true;
+                case '二': pinyin = "er"; return true;
+                case '三': pinyin = "san"; return true;
+                case '快': pinyin = "kuai"; return true;
+                case '捷': pinyin = "jie"; return true;
+                case '键': pinyin = "jian"; return true;
+                case '单': pinyin = "dan"; return true;
+                case '名': pinyin = "ming"; return true;
+                case '称': pinyin = "cheng"; return true;
+                case '实': pinyin = "shi"; return true;
+                case '习': pinyin = "xi"; return true;
+                case '生': pinyin = "sheng"; return true;
+                case '面': pinyin = "mian"; return true;
+                case '试': pinyin = "shi"; return true;
+                case '间': pinyin = "jian"; return true;
+                default:
+                    pinyin = null;
+                    return false;
+            }
+        }
+
         private static Dictionary<string, ParsedPrefabInfo> BuildParsedPrefabMap()
         {
             Dictionary<string, ParsedPrefabInfo> map = new Dictionary<string, ParsedPrefabInfo>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, int> matchScoresByPrefabPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             string[] parsedPrefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/AAAGame/PSD" });
             foreach (string guid in parsedPrefabGuids)
             {
@@ -1147,8 +1856,27 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 }
 
                 info.PsdSize = ReadPsdSize(info.PsdAssetPath);
-                string uiFormPath = NormalizeAssetPath($"Assets/AAAGame/Prefabs/UI/{info.UiFormName}.prefab");
-                map[uiFormPath] = info;
+                info.PsdHierarchy = PsdRawPngExporter.ReadHierarchy(info.PsdAssetPath, info.PsdSize);
+                AddUiFormAlias(info, info.UiFormName);
+                foreach (string alias in FindUiFormAliasesBySpriteOverlap(info))
+                {
+                    AddUiFormAlias(info, alias);
+                }
+
+                foreach (string alias in info.UiFormAliases)
+                {
+                    string uiFormPath = NormalizeAssetPath($"Assets/AAAGame/Prefabs/UI/{alias}.prefab");
+                    int score = string.Equals(alias, info.UiFormName, StringComparison.OrdinalIgnoreCase)
+                        ? int.MaxValue
+                        : CountSpriteOverlap(alias, info);
+                    if (matchScoresByPrefabPath.TryGetValue(uiFormPath, out int existingScore) && existingScore >= score)
+                    {
+                        continue;
+                    }
+
+                    matchScoresByPrefabPath[uiFormPath] = score;
+                    map[uiFormPath] = info;
+                }
             }
 
             return map;
@@ -1157,6 +1885,18 @@ namespace AAAGame.EditorTools.Psd2UIForm
         private static ParsedPrefabInfo ReadParsedPrefabInfo(GameObject prefab)
         {
             ParsedPrefabInfo info = new ParsedPrefabInfo();
+            info.RootChildCount = prefab.transform.childCount;
+            info.ParsedHierarchy = BuildParsedNameTree(prefab.transform, null);
+            foreach (Transform transform in prefab.GetComponentsInChildren<Transform>(true))
+            {
+                if (transform == prefab.transform)
+                {
+                    continue;
+                }
+
+                info.GeneratedNamesInParsedHierarchyOrder.Add(SanitizeUnityObjectName(transform.gameObject.name));
+            }
+
             foreach (MonoBehaviour behaviour in prefab.GetComponentsInChildren<MonoBehaviour>(true))
             {
                 if (behaviour == null)
@@ -1171,10 +1911,11 @@ namespace AAAGame.EditorTools.Psd2UIForm
                     info.UiFormName = serializedObject.FindProperty("uiFormName")?.stringValue;
                     UnityEngine.Object psdAsset = serializedObject.FindProperty("psdAsset")?.objectReferenceValue;
                     info.PsdAssetPath = psdAsset != null ? AssetDatabase.GetAssetPath(psdAsset) : null;
-                    ReadGeneratedMetadata(serializedObject, info);
                 }
                 else if (type.FullName == PsdLayerNodeTypeName)
                 {
+                    AddPluginGeneratedNameAliases(behaviour.gameObject, info);
+
                     SerializedProperty markToExport = serializedObject.FindProperty("markToExport");
                     SerializedProperty sourceLayerName = serializedObject.FindProperty("sourceLayerName");
                     if (markToExport == null || sourceLayerName == null)
@@ -1189,7 +1930,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
 
                     info.Entries.Add(new ExportEntry
                     {
-                        ObjectName = behaviour.gameObject.name,
+                        ObjectName = ReadPreservedLayerName(behaviour.gameObject) ?? behaviour.gameObject.name,
                         SourceLayerName = sourceLayerName.stringValue
                     });
                 }
@@ -1198,74 +1939,117 @@ namespace AAAGame.EditorTools.Psd2UIForm
             return info;
         }
 
-        private static void ReadGeneratedMetadata(SerializedObject converterObject, ParsedPrefabInfo info)
+        private static void AddPluginGeneratedNameAliases(GameObject gameObject, ParsedPrefabInfo info)
         {
-            SerializedProperty metadataEntries = converterObject.FindProperty("generatedMetadataEntries");
-            if (metadataEntries == null || !metadataEntries.isArray)
+            string sourceName = ReadPreservedLayerName(gameObject);
+            if (string.IsNullOrWhiteSpace(sourceName))
             {
                 return;
             }
 
-            for (int metadataIndex = 0; metadataIndex < metadataEntries.arraySize; metadataIndex++)
+            AddPluginGeneratedNameAlias(info, NormalizePsd2UIFormFileName(sourceName), sourceName);
+            AddPluginGeneratedNameAlias(info, NormalizePsd2UIFormGeneratedPinyinName(sourceName), sourceName);
+        }
+
+        private static void AddPluginGeneratedNameAlias(ParsedPrefabInfo info, string alias, string sourceName)
+        {
+            if (string.IsNullOrWhiteSpace(alias) || string.Equals(alias, sourceName, StringComparison.Ordinal))
             {
-                SerializedProperty metadata = metadataEntries.GetArrayElementAtIndex(metadataIndex);
-                SerializedProperty entries = metadata.FindPropertyRelative("Entries");
-                if (entries == null || !entries.isArray)
+                return;
+            }
+
+            if (!info.SourceNamesByPluginGeneratedName.ContainsKey(alias))
+            {
+                info.SourceNamesByPluginGeneratedName.Add(alias, sourceName);
+            }
+        }
+
+        private static ParsedNameNode BuildParsedNameTree(Transform transform, Dictionary<string, int> siblingNameCounts)
+        {
+            string desiredName = ReadPreservedLayerName(transform.gameObject) ?? SanitizeUnityObjectName(transform.gameObject.name);
+            ParsedNameNode node = new ParsedNameNode
+            {
+                Name = siblingNameCounts != null ? MakeUniqueSiblingName(desiredName, siblingNameCounts) : desiredName
+            };
+
+            Dictionary<string, int> childNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                node.Children.Add(BuildParsedNameTree(transform.GetChild(i), childNameCounts));
+            }
+
+            return node;
+        }
+
+        private static void AddUiFormAlias(ParsedPrefabInfo info, string alias)
+        {
+            if (string.IsNullOrWhiteSpace(alias))
+            {
+                return;
+            }
+
+            alias = SanitizeUnityObjectName(alias);
+            if (string.IsNullOrWhiteSpace(alias) ||
+                info.UiFormAliases.Any(existing => string.Equals(existing, alias, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            info.UiFormAliases.Add(alias);
+        }
+
+        private static IEnumerable<string> FindUiFormAliasesBySpriteOverlap(ParsedPrefabInfo info)
+        {
+            string spritesRoot = Path.GetFullPath("Assets/AAAGame/Sprites");
+            if (!Directory.Exists(spritesRoot) || info.Entries.Count == 0)
+            {
+                yield break;
+            }
+
+            foreach (string directory in Directory.GetDirectories(spritesRoot))
+            {
+                string alias = Path.GetFileName(directory);
+                if (string.IsNullOrWhiteSpace(alias))
                 {
                     continue;
                 }
 
-                for (int entryIndex = 0; entryIndex < entries.arraySize; entryIndex++)
+                int overlap = CountSpriteOverlap(alias, info);
+                if (overlap >= Mathf.Min(3, info.Entries.Count))
                 {
-                    SerializedProperty entry = entries.GetArrayElementAtIndex(entryIndex);
-                    string globalObjectId = entry.FindPropertyRelative("GlobalObjectId")?.stringValue;
-                    string key = entry.FindPropertyRelative("Key")?.stringValue;
-                    if (string.IsNullOrWhiteSpace(globalObjectId) ||
-                        string.IsNullOrWhiteSpace(key) ||
-                        !TryParseGlobalObjectLocalId(globalObjectId, out long localId))
-                    {
-                        continue;
-                    }
-
-                    string generatedName = GetGeneratedObjectNameFromKey(key);
-                    if (!string.IsNullOrWhiteSpace(generatedName))
-                    {
-                        info.GeneratedNamesByLocalId[localId] = generatedName;
-                    }
+                    yield return alias;
                 }
             }
         }
 
-        private static bool TryParseGlobalObjectLocalId(string globalObjectId, out long localId)
+        private static int CountSpriteOverlap(string uiFormAlias, ParsedPrefabInfo info)
         {
-            localId = 0;
-            int lastDash = globalObjectId.LastIndexOf('-');
-            if (lastDash <= 0)
+            string imageOutputDir = Path.GetFullPath($"Assets/AAAGame/Sprites/{uiFormAlias}");
+            if (!Directory.Exists(imageOutputDir))
             {
-                return false;
+                return 0;
             }
 
-            int previousDash = globalObjectId.LastIndexOf('-', lastDash - 1);
-            if (previousDash < 0 || previousDash + 1 >= lastDash)
+            HashSet<string> pngNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string file in Directory.GetFiles(imageOutputDir, "*.png"))
             {
-                return false;
+                pngNames.Add(Path.GetFileNameWithoutExtension(file));
             }
 
-            string localIdText = globalObjectId.Substring(previousDash + 1, lastDash - previousDash - 1);
-            return long.TryParse(localIdText, out localId);
-        }
-
-        private static string GetGeneratedObjectNameFromKey(string key)
-        {
-            string name = key;
-            int slashIndex = key.LastIndexOf('/');
-            if (slashIndex >= 0 && slashIndex + 1 < key.Length)
+            int overlap = 0;
+            foreach (ExportEntry entry in info.Entries)
             {
-                name = key.Substring(slashIndex + 1);
+                foreach (ExportNameCandidate candidate in GetExportFileNameCandidates(entry))
+                {
+                    if (pngNames.Contains(candidate.Name))
+                    {
+                        overlap++;
+                        break;
+                    }
+                }
             }
 
-            name = name.Replace('[', '_').Replace("]", string.Empty);
-            return SanitizeUnityObjectName(name);
+            return overlap;
         }
 
         private static string NormalizeAssetPath(string path)
@@ -1396,8 +2180,26 @@ namespace AAAGame.EditorTools.Psd2UIForm
             public string UiFormName;
             public string PsdAssetPath;
             public Vector2 PsdSize;
+            public PsdLayerHierarchyNode PsdHierarchy;
+            public int RootChildCount;
+            public ParsedNameNode ParsedHierarchy;
             public readonly List<ExportEntry> Entries = new List<ExportEntry>();
-            public readonly Dictionary<long, string> GeneratedNamesByLocalId = new Dictionary<long, string>();
+            public readonly List<string> UiFormAliases = new List<string>();
+            public readonly List<string> GeneratedNamesInParsedHierarchyOrder = new List<string>();
+            public readonly Dictionary<string, string> SourceNamesByPluginGeneratedName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private sealed class ParsedNameNode
+        {
+            public string Name;
+            public readonly List<ParsedNameNode> Children = new List<ParsedNameNode>();
+        }
+
+        private sealed class PsdLayerHierarchyNode
+        {
+            public string Name;
+            public Rect Bounds;
+            public readonly List<PsdLayerHierarchyNode> Children = new List<PsdLayerHierarchyNode>();
         }
 
         private sealed class ExportEntry
@@ -1407,12 +2209,28 @@ namespace AAAGame.EditorTools.Psd2UIForm
             public string PsdAssetPath;
         }
 
+        private readonly struct ExportNameCandidate
+        {
+            public readonly string Name;
+            public readonly int Priority;
+
+            public ExportNameCandidate(string name, int priority)
+            {
+                Name = name;
+                Priority = priority;
+            }
+        }
+
         private static class PsdRawPngExporter
         {
             private static Assembly s_PsdAssembly;
             private static Type s_DocumentType;
             private static Type s_LayerType;
             private static Type s_ImageSourceType;
+            private static Type s_LayerRendererType;
+            private static Type s_RenderedImageType;
+            private static MethodInfo s_RenderLeafMethod;
+            private static MethodInfo s_RenderGroupMethod;
 
             public static byte[] ExportLayer(string psdAssetPath, string sourceLayerName)
             {
@@ -1433,10 +2251,15 @@ namespace AAAGame.EditorTools.Psd2UIForm
                         throw new InvalidOperationException($"PSD layer not found: {sourceLayerName}");
                     }
 
-                    RawImage image = RenderLayer(layer);
+                    RawImage image = RenderLayer(layer, true, true);
                     if (image.Width <= 0 || image.Height <= 0)
                     {
                         throw new InvalidOperationException($"PSD layer has no pixels: {sourceLayerName}");
+                    }
+
+                    if (IsTooLargeForTextureEncoding(image.Width, image.Height))
+                    {
+                        throw new InvalidOperationException($"PSD layer is too large to encode safely: {sourceLayerName} ({image.Width}x{image.Height})");
                     }
 
                     Texture2D texture = new Texture2D(image.Width, image.Height, TextureFormat.RGBA32, false);
@@ -1445,6 +2268,87 @@ namespace AAAGame.EditorTools.Psd2UIForm
                     byte[] pngBytes = texture.EncodeToPNG();
                     UnityEngine.Object.DestroyImmediate(texture);
                     return pngBytes;
+                }
+                finally
+                {
+                    if (document is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                }
+            }
+
+            public static PsdLayerHierarchyNode ReadHierarchy(string psdAssetPath, Vector2 fallbackDocumentSize)
+            {
+                EnsureTypes();
+
+                string psdFullPath = Path.GetFullPath(psdAssetPath);
+                object document = s_DocumentType.GetMethod("Create", new[] { typeof(string) })?.Invoke(null, new object[] { psdFullPath });
+                if (document == null)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    PsdLayerHierarchyNode root = new PsdLayerHierarchyNode
+                    {
+                        Name = string.Empty,
+                        Bounds = new Rect(
+                            0f,
+                            0f,
+                            ReadDocumentDimension(document, "Width", fallbackDocumentSize.x),
+                            ReadDocumentDimension(document, "Height", fallbackDocumentSize.y))
+                    };
+
+                    IEnumerable children = (IEnumerable)s_DocumentType.GetProperty("Childs")?.GetValue(document);
+                    if (children != null)
+                    {
+                        Dictionary<string, int> siblingNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+                        foreach (object child in children)
+                        {
+                            root.Children.Add(BuildHierarchyNode(child, siblingNameCounts));
+                        }
+                    }
+
+                    return root;
+                }
+                finally
+                {
+                    if (document is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                }
+            }
+
+            public static bool TryReadLayerBounds(string psdAssetPath, string sourceLayerName, out Rect bounds)
+            {
+                EnsureTypes();
+
+                string psdFullPath = Path.GetFullPath(psdAssetPath);
+                object document = s_DocumentType.GetMethod("Create", new[] { typeof(string) })?.Invoke(null, new object[] { psdFullPath });
+                if (document == null)
+                {
+                    bounds = default;
+                    return false;
+                }
+
+                try
+                {
+                    object layer = FindLayerByName(document, sourceLayerName);
+                    if (layer == null)
+                    {
+                        bounds = default;
+                        return false;
+                    }
+
+                    bounds = new Rect(
+                        ReadIntProperty(layer, "Left"),
+                        ReadIntProperty(layer, "Top"),
+                        ReadIntProperty(layer, "Width"),
+                        ReadIntProperty(layer, "Height"));
+                    return bounds.width > 0f && bounds.height > 0f;
                 }
                 finally
                 {
@@ -1482,6 +2386,40 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 {
                     s_ImageSourceType = s_PsdAssembly.GetType(ImageSourceTypeName, true);
                 }
+
+                if (s_LayerRendererType == null)
+                {
+                    s_LayerRendererType = s_PsdAssembly.GetType(PsdLayerRendererTypeName, false);
+                }
+
+                if (s_RenderedImageType == null)
+                {
+                    s_RenderedImageType = s_PsdAssembly.GetType(PsdRenderedImageTypeName, false);
+                }
+
+                if (s_LayerRendererType != null)
+                {
+                    if (s_RenderLeafMethod == null)
+                    {
+                        s_RenderLeafMethod = s_LayerRendererType.GetMethod(
+                            "RenderLeaf",
+                            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                            null,
+                            new[] { s_LayerType },
+                            null);
+                    }
+
+                    if (s_RenderGroupMethod == null)
+                    {
+                        s_RenderGroupMethod = s_LayerRendererType.GetMethod(
+                            "RenderGroup",
+                            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                            null,
+                            new[] { s_LayerType, typeof(bool), typeof(bool) },
+                            null);
+                    }
+                }
+
             }
 
             private static object FindLayerByName(object document, string sourceLayerName)
@@ -1518,10 +2456,10 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 }
             }
 
-            private static RawImage RenderLayer(object layer)
+            private static RawImage RenderLayer(object layer, bool includeHiddenRoot = false, bool includeAncestorOpacity = false)
             {
                 bool isVisible = (bool)(s_LayerType.GetProperty("IsVisible")?.GetValue(layer) ?? true);
-                if (!isVisible)
+                if (!isVisible && !includeHiddenRoot)
                 {
                     return RawImage.Empty;
                 }
@@ -1530,18 +2468,26 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 object[] children = childEnumerable != null ? childEnumerable.Cast<object>().ToArray() : Array.Empty<object>();
                 if (children.Length > 0)
                 {
-                    return RenderGroup(children);
+                    RawImage group = RenderGroup(children, includeHiddenRoot);
+                    if (!group.IsEmpty)
+                    {
+                        group.MultiplyAlpha(ReadLayerOpacity(layer, includeAncestorOpacity));
+                        return group;
+                    }
+
+                    return RenderWithLayerRenderer(layer, true);
                 }
 
-                return RenderLeaf(layer);
+                RawImage leaf = RenderLeaf(layer, includeAncestorOpacity);
+                return !leaf.IsEmpty ? leaf : RenderWithLayerRenderer(layer, false);
             }
 
-            private static RawImage RenderGroup(object[] children)
+            private static RawImage RenderGroup(object[] children, bool includeHiddenChildren)
             {
                 List<RawImage> renderedChildren = new List<RawImage>();
                 foreach (object child in children.Reverse())
                 {
-                    RawImage image = RenderLayer(child);
+                    RawImage image = RenderLayer(child, includeHiddenChildren);
                     if (!image.IsEmpty)
                     {
                         renderedChildren.Add(image);
@@ -1567,12 +2513,12 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 return group;
             }
 
-            private static RawImage RenderLeaf(object layer)
+            private static RawImage RenderLeaf(object layer, bool includeAncestorOpacity)
             {
                 int left = (int)s_LayerType.GetProperty("Left")?.GetValue(layer);
                 int top = (int)s_LayerType.GetProperty("Top")?.GetValue(layer);
-                int width = (int)s_ImageSourceType.GetProperty("Width")?.GetValue(layer);
-                int height = (int)s_ImageSourceType.GetProperty("Height")?.GetValue(layer);
+                int width = ReadIntProperty(layer, "Width");
+                int height = ReadIntProperty(layer, "Height");
                 if (width <= 0 || height <= 0)
                 {
                     return RawImage.Empty;
@@ -1580,6 +2526,7 @@ namespace AAAGame.EditorTools.Psd2UIForm
 
                 IEnumerable channels = (IEnumerable)s_ImageSourceType.GetProperty("Channels")?.GetValue(layer);
                 Dictionary<int, byte[]> channelData = new Dictionary<int, byte[]>();
+                Dictionary<int, float> channelOpacity = new Dictionary<int, float>();
                 foreach (object channel in channels)
                 {
                     int channelType = Convert.ToInt32(channel.GetType().GetProperty("Type")?.GetValue(channel));
@@ -1587,6 +2534,8 @@ namespace AAAGame.EditorTools.Psd2UIForm
                     if (data != null && data.Length >= width * height)
                     {
                         channelData[channelType] = data;
+                        object opacityValue = channel.GetType().GetProperty("Opacity")?.GetValue(channel);
+                        channelOpacity[channelType] = opacityValue != null ? Mathf.Clamp01(Convert.ToSingle(opacityValue)) : 1f;
                     }
                 }
 
@@ -1618,6 +2567,12 @@ namespace AAAGame.EditorTools.Psd2UIForm
                 }
 
                 RawImage image = new RawImage(left, top, width, height);
+                float opacity = ReadLayerOpacity(layer, includeAncestorOpacity);
+                if (channelOpacity.TryGetValue(-1, out float alphaOpacity))
+                {
+                    opacity *= alphaOpacity;
+                }
+
                 for (int y = 0; y < height; y++)
                 {
                     int srcRow = y * width;
@@ -1629,8 +2584,160 @@ namespace AAAGame.EditorTools.Psd2UIForm
                         image.RgbaBottomUp[dst] = red[src];
                         image.RgbaBottomUp[dst + 1] = green[src];
                         image.RgbaBottomUp[dst + 2] = blue[src];
-                        image.RgbaBottomUp[dst + 3] = alpha != null ? alpha[src] : (byte)255;
+                        byte sourceAlpha = alpha != null ? alpha[src] : (byte)255;
+                        image.RgbaBottomUp[dst + 3] = MultiplyAlpha(sourceAlpha, opacity);
                     }
+                }
+
+                return image;
+            }
+
+            private static int ReadIntProperty(object layer, string propertyName)
+            {
+                object value = s_LayerType.GetProperty(propertyName)?.GetValue(layer);
+                return value != null ? Convert.ToInt32(value) : 0;
+            }
+
+            private static float ReadDocumentDimension(object document, string propertyName, float fallbackValue)
+            {
+                object value = s_DocumentType.GetProperty(propertyName)?.GetValue(document);
+                return value != null ? Convert.ToSingle(value) : fallbackValue;
+            }
+
+            private static float ReadLayerOpacity(object layer, bool includeAncestors = false)
+            {
+                float opacity = ReadNormalizedLayerOpacity(layer);
+                if (!includeAncestors)
+                {
+                    return opacity;
+                }
+
+                object parent = layer?.GetType().GetProperty("Parent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(layer);
+                while (parent != null)
+                {
+                    opacity *= ReadNormalizedLayerOpacity(parent);
+
+                    parent = parent.GetType().GetProperty("Parent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(parent);
+                }
+
+                return opacity;
+            }
+
+            private static float ReadNormalizedLayerOpacity(object layer)
+            {
+                if (layer == null)
+                {
+                    return 1f;
+                }
+
+                Type runtimeType = layer.GetType();
+                object records = runtimeType.GetProperty("Records", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(layer);
+                float? opacity = records != null
+                    ? NormalizeOpacityValue(records.GetType().GetProperty("Opacity", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(records))
+                    : null;
+                if (opacity.HasValue)
+                {
+                    return opacity.Value;
+                }
+
+                return NormalizeOpacityValue(runtimeType.GetProperty("Opacity", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(layer)) ?? 1f;
+            }
+
+            private static float? NormalizeOpacityValue(object value)
+            {
+                if (value == null)
+                {
+                    return null;
+                }
+
+                float opacity = Convert.ToSingle(value);
+                if (opacity > 1f)
+                {
+                    opacity /= 255f;
+                }
+
+                return Mathf.Clamp01(opacity);
+            }
+
+            private static PsdLayerHierarchyNode BuildHierarchyNode(object layer, Dictionary<string, int> siblingNameCounts)
+            {
+                string desiredName = SanitizeUnityObjectName((string)s_LayerType.GetProperty("Name")?.GetValue(layer));
+                PsdLayerHierarchyNode node = new PsdLayerHierarchyNode
+                {
+                    Name = siblingNameCounts != null ? MakeUniqueSiblingName(desiredName, siblingNameCounts) : desiredName,
+                    Bounds = new Rect(
+                        ReadIntProperty(layer, "Left"),
+                        ReadIntProperty(layer, "Top"),
+                        ReadIntProperty(layer, "Width"),
+                        ReadIntProperty(layer, "Height"))
+                };
+
+                IEnumerable children = (IEnumerable)s_LayerType.GetProperty("Childs")?.GetValue(layer);
+                if (children != null)
+                {
+                    Dictionary<string, int> childNameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+                    foreach (object child in children)
+                    {
+                        node.Children.Add(BuildHierarchyNode(child, childNameCounts));
+                    }
+                }
+
+                return node;
+            }
+
+            private static byte MultiplyAlpha(byte alpha, float opacity)
+            {
+                return (byte)Mathf.Clamp(Mathf.RoundToInt(alpha * opacity), 0, 255);
+            }
+
+            private static RawImage RenderWithLayerRenderer(object layer, bool isGroup)
+            {
+                if (s_RenderedImageType == null)
+                {
+                    return RawImage.Empty;
+                }
+
+                MethodInfo renderMethod = isGroup ? s_RenderGroupMethod : s_RenderLeafMethod;
+                if (renderMethod == null)
+                {
+                    return RawImage.Empty;
+                }
+
+                object renderedImage;
+                try
+                {
+                    renderedImage = isGroup
+                        ? renderMethod.Invoke(null, new[] { layer, (object)false, true })
+                        : renderMethod.Invoke(null, new[] { layer });
+                }
+                catch (TargetInvocationException exception)
+                {
+                    Debug.LogWarning($"PSD2UIForm renderer fallback failed: {exception.InnerException?.Message ?? exception.Message}");
+                    return RawImage.Empty;
+                }
+
+                if (renderedImage == null)
+                {
+                    return RawImage.Empty;
+                }
+
+                bool isEmpty = (bool)(s_RenderedImageType.GetProperty("IsEmpty")?.GetValue(renderedImage) ?? true);
+                int width = (int)(s_RenderedImageType.GetProperty("Width")?.GetValue(renderedImage) ?? 0);
+                int height = (int)(s_RenderedImageType.GetProperty("Height")?.GetValue(renderedImage) ?? 0);
+                byte[] rgbaTopDown = (byte[])s_RenderedImageType.GetProperty("Rgba32")?.GetValue(renderedImage);
+                if (isEmpty || width <= 0 || height <= 0 || rgbaTopDown == null || rgbaTopDown.Length < width * height * 4)
+                {
+                    return RawImage.Empty;
+                }
+
+                int left = (int)(s_RenderedImageType.GetProperty("Left")?.GetValue(renderedImage) ?? 0);
+                int top = (int)(s_RenderedImageType.GetProperty("Top")?.GetValue(renderedImage) ?? 0);
+                RawImage image = new RawImage(left, top, width, height);
+                for (int y = 0; y < height; y++)
+                {
+                    int src = y * width * 4;
+                    int dst = (height - 1 - y) * width * 4;
+                    Buffer.BlockCopy(rgbaTopDown, src, image.RgbaBottomUp, dst, width * 4);
                 }
 
                 return image;
@@ -1680,6 +2787,19 @@ namespace AAAGame.EditorTools.Psd2UIForm
                         int dst = (dstY * Width + dstX) * 4;
                         BlendPixel(source.RgbaBottomUp, src, RgbaBottomUp, dst);
                     }
+                }
+            }
+
+            public void MultiplyAlpha(float opacity)
+            {
+                if (Mathf.Approximately(opacity, 1f))
+                {
+                    return;
+                }
+
+                for (int i = 3; i < RgbaBottomUp.Length; i += 4)
+                {
+                    RgbaBottomUp[i] = (byte)Mathf.Clamp(Mathf.RoundToInt(RgbaBottomUp[i] * opacity), 0, 255);
                 }
             }
 

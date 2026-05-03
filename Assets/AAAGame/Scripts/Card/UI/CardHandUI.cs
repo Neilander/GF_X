@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using TMPro;
 using DG.Tweening;
+using System;
 using AAAGame.Card;
 
 namespace AAAGame.Card.UI
@@ -43,7 +44,7 @@ namespace AAAGame.Card.UI
         private bool defaultCardBackCached;
 
         private Tween scaleTween;
-        private Tween moveTween;
+        private Tweener moveTween;
 
         public CardData CardData => cardData;
         public bool IsMovingToHand => isMovingToHand;
@@ -336,7 +337,7 @@ namespace AAAGame.Card.UI
         /// <summary>
         /// 从屏幕位置移动到手牌区
         /// </summary>
-        public void MoveToHandFromScreenPosition(Vector2 startScreenPosition, float duration = 0.5f)
+        public void MoveToHandFromScreenPosition(Vector2 startScreenPosition, float duration = 0.5f, Action onComplete = null)
         {
             // 确保组件已初始化
             if (rectTransform == null)
@@ -384,10 +385,24 @@ namespace AAAGame.Card.UI
                 {
                     isMovingToHand = false;
                     canvasGroup.blocksRaycasts = true;
+                    onComplete?.Invoke();
                     Debug.Log($"[Card] Card moved to hand: {cardData?.cardName}");
                 });
 
             Debug.Log($"[Card] Start moving card to hand: {cardData?.cardName}");
+        }
+
+        /// <summary>
+        /// 将正在飞行中的抽卡目标更新为当前布局位置。
+        /// </summary>
+        public void SyncMoveTargetToCurrentLayout()
+        {
+            if (!isMovingToHand || rectTransform == null || moveTween == null || !moveTween.IsActive())
+            {
+                return;
+            }
+
+            moveTween.ChangeEndValue(rectTransform.position, true);
         }
 
         void OnDestroy()

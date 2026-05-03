@@ -9,25 +9,51 @@ public partial class CardSetup : GameFrameworkComponent
 {
     private CardSystemController m_CardSystemController;
     private int m_CardUIFormId = -1;
+    private float m_NextAutoDrawTime;
+    private const float AutoDrawInterval = 0.15f;
 
     public void CardSystemSetup()
     {
+        m_NextAutoDrawTime = 0f;
         InitializeCardSystem();
     }
 
     public void CardSystemUpdate()
     {
-        // 自动补牌，再更新卡牌放置逻辑
         if (m_CardSystemController != null)
         {
-            m_CardSystemController.TryAutoDrawOneCardFromDeck();
+            if (CanAutoDrawNextCard())
+            {
+                if (m_CardSystemController.TryAutoDrawOneCardFromDeck())
+                {
+                    m_NextAutoDrawTime = Time.unscaledTime + AutoDrawInterval;
+                }
+            }
+
             m_CardSystemController.UpdatePlacement();
         }
     }
 
+    private bool CanAutoDrawNextCard()
+    {
+        if (Time.unscaledTime < m_NextAutoDrawTime)
+        {
+            return false;
+        }
+
+        if (m_CardUIFormId <= 0 || GF.UI == null)
+        {
+            return false;
+        }
+
+        var uiForm = GF.UI.GetUIForm(m_CardUIFormId) as UIForm;
+        var cardUIForm = uiForm != null ? uiForm.Logic as CardUIForm : null;
+        return cardUIForm != null && cardUIForm.IsReadyForAutoDraw;
+    }
+
     public void CardSystemShutdown()
     {
-        // 关闭卡牌 UI（按视图关闭，避免 serialId 已失效时抛异常）
+        // 关闭卡牌 UI（按序列号关闭，但优先播放面板关闭动画）
         if (GF.UI.IsLoadingUIForm(UIViews.CardUIForm) || GF.UI.HasUIForm(UIViews.CardUIForm))
         {
             var ui = GF.UI;
@@ -35,7 +61,16 @@ public partial class CardSetup : GameFrameworkComponent
             {
                 try
                 {
-                    ui.CloseUIForm(m_CardUIFormId);
+                    var uiForm = ui.GetUIForm(m_CardUIFormId) as UIForm;
+                    var cardUIForm = uiForm != null ? uiForm.Logic as CardUIForm : null;
+                    if (cardUIForm != null)
+                    {
+                        cardUIForm.CloseCardPanelWithAnimation();
+                    }
+                    else
+                    {
+                        ui.CloseUIForm(m_CardUIFormId);
+                    }
                 }
                 catch (GameFrameworkException ex)
                 {
@@ -53,6 +88,8 @@ public partial class CardSetup : GameFrameworkComponent
             m_CardSystemController.Shutdown();
             m_CardSystemController = null;
         }
+
+        m_NextAutoDrawTime = 0f;
     }
 
     /// <summary>

@@ -10,11 +10,15 @@ public class TechManager : GameFrameworkComponent
         InputKey.InteractionSecondary,
         InputKey.InteractionTertiary,
     };
+    private const string InfoOptionTextId = "InteractOption_Check";
 
     public bool HasTechInteraction(BuildingEntity owner)
     {
         if (owner == null || owner.buildingData == null || owner.buildingData.Lv == 0)
             return false;
+
+        if (HasInfoInteraction(owner))
+            return true;
 
         if (owner.buildingData.Type == BuilType.Tech)
             return HasResearchTechCandidates(owner);
@@ -26,6 +30,12 @@ public class TechManager : GameFrameworkComponent
     {
         if (owner == null || owner.buildingData == null || owner.buildingData.Lv == 0 || host == null)
             return;
+
+        if (HasInfoInteraction(owner))
+        {
+            ConfigureInfoOption(owner, host);
+            return;
+        }
 
         if (owner.buildingData.Type == BuilType.Tech)
         {
@@ -85,6 +95,11 @@ public class TechManager : GameFrameworkComponent
         return IsResearchOptionVisible(owner, techId)
             && SatisfyTechCondition(techId)
             && HasTechCost(techId);
+    }
+
+    public bool IsInfoOptionVisible(BuildingEntity owner)
+    {
+        return CanPlayerOperateInBuildPhase(owner) && HasInfoInteraction(owner);
     }
 
     public KeyValuePair<IngameValueType, int>[] GetTechResourceCosts(string techId)
@@ -194,6 +209,40 @@ public class TechManager : GameFrameworkComponent
         }
 
         return false;
+    }
+
+    private bool HasInfoInteraction(BuildingEntity owner)
+    {
+        if (owner == null || owner.buildingData == null)
+            return false;
+
+        BuildingData data = owner.buildingData;
+        if (data.Lv >= 3)
+            return true;
+
+        if (data.Type != BuilType.Tech || data.Lv <= 0 || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
+            return false;
+
+        if (data.UpgradeTechIDs == null)
+            return false;
+
+        for (int i = 0; i < data.UpgradeTechIDs.Length; i++)
+        {
+            string techId = data.UpgradeTechIDs[i];
+            if (string.IsNullOrWhiteSpace(techId))
+                continue;
+
+            if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void ConfigureInfoOption(BuildingEntity owner, InteractionHost host)
+    {
+        string displayName = LocalizationTextDataModel.GetText(InfoOptionTextId);
+        host.AddOption<BuildingInfoInteractionOption>(InputKey.InteractionPrimary, displayName, InteractionParams.Create());
     }
 
     private void ConfigureUpgradeOptions(BuildingEntity owner, InteractionHost host)

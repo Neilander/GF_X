@@ -4229,6 +4229,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   tipDuration: 2
+  tipSpacing: 15
 --- !u!4 &1857117722
 Transform:
   m_ObjectHideFlags: 0

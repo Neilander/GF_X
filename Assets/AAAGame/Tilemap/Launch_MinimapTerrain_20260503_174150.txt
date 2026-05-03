@@ -1,0 +1,12 @@
+﻿Minimap Terrain Export Info
+GridWidth: 97
+GridHeight: 102
+CellSize: 1.0000
+WorldMinX: 0.0000
+WorldMinZ: 0.0000
+WorldMaxX: 97.0000
+WorldMaxZ: 102.0000
+UseCenteredGrid: False
+PaintedCount: 11688
+GroundPaintedCount: 1794
+WaterPaintedCount: 9894

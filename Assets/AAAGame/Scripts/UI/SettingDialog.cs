@@ -132,6 +132,8 @@ public partial class SettingDialog : UIFormBase
 
     private void OnLanguageReloaded(object sender, GameEventArgs e)
     {
+        LocalizationTextManager.ClearCache();
+        DescriptionValueFormatter.ClearCache();
         GF.UI.UpdateLocalizationTexts();
     }
     public void OnClickVersionText()

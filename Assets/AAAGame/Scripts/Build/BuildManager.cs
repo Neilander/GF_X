@@ -7,6 +7,9 @@ using UnityGameFramework.Runtime;
 public class BuildManager : GameFrameworkComponent
 {
     private readonly BaseMilestoneTechService m_BaseMilestoneTechService = new("Tech_BaseBuilt_{0}_Lv{1}");
+    private readonly Dictionary<Archetype, List<BuildingData>> m_Lv0ConstructCandidatesByArchetype = new();
+    private HashSet<Archetype> m_PlayerUnlockedBaseArchesCache;
+    private bool m_IsSubscribedTechUnlocked;
 
     // 默认给前 3 个选项分配交互按键；更多选项仍走鼠标长按触发。
     private readonly InputKey[] OptionalOptionKeys =
@@ -21,8 +24,10 @@ public class BuildManager : GameFrameworkComponent
         if (owner == null || owner.buildingData == null)
             return false;
 
-        return owner.buildingData.Lv == 0
-            && GetLv0ConstructCandidates(owner, requireUnlockedArche: false).Count > 0;
+        if (owner.buildingData.Lv != 0)
+            return false;
+
+        return HasAnyLv0ConstructCandidate(owner, requireUnlockedArche: false);
     }
 
     public void ConfigureConstructInteractionOptions(BuildingEntity owner, InteractionHost host)
@@ -54,14 +59,53 @@ public class BuildManager : GameFrameworkComponent
         if (string.IsNullOrWhiteSpace(buildBuildingId))
             return false;
 
-        var candidates = GetLv0ConstructCandidates(owner);
-        for (int i = 0; i < candidates.Count; i++)
+        var target = BuildingDataModel.GetBuildingData(buildBuildingId);
+        if (target == null)
+            return false;
+
+        if (target.Lv != 1 || target.Type != owner.buildingData.Type)
+            return false;
+
+        if (target.Arche == Archetype.None)
+            return false;
+
+        if (!GetPlayerUnlockedBaseArches().Contains(target.Arche))
+            return false;
+
+        return true;
+    }
+
+    public List<BuildingData> GetLv0ConstructCandidates(BuildingEntity owner, bool requireUnlockedArche = true)
+    {
+        var results = new List<BuildingData>();
+        if (owner == null || owner.buildingData == null || owner.buildingData.Lv != 0)
+            return results;
+
+        HashSet<Archetype> unlockedArches = null;
+        if (requireUnlockedArche)
         {
-            if (string.Equals(candidates[i].Identifier, buildBuildingId, StringComparison.Ordinal))
-                return true;
+            unlockedArches = GetPlayerUnlockedBaseArches();
+            if (unlockedArches.Count == 0)
+                return results;
         }
 
-        return false;
+        foreach (var data in GetCachedLv0ConstructCandidates(owner.buildingData.Type))
+        {
+            if (data == null)
+                continue;
+            if (requireUnlockedArche && !unlockedArches.Contains(data.Arche))
+                continue;
+
+            results.Add(data);
+        }
+
+        results.Sort((a, b) => string.Compare(a.Identifier, b.Identifier, StringComparison.Ordinal));
+        return results;
+    }
+
+    private bool HasAnyLv0ConstructCandidate(BuildingEntity owner, bool requireUnlockedArche = true)
+    {
+        return GetLv0ConstructCandidates(owner, requireUnlockedArche).Count > 0;
     }
 
     public bool IsConstructOptionExecutable(BuildingEntity owner, string buildBuildingId)
@@ -232,40 +276,11 @@ public class BuildManager : GameFrameworkComponent
         }
     }
 
-    private List<BuildingData> GetLv0ConstructCandidates(BuildingEntity owner, bool requireUnlockedArche = true)
-    {
-        var results = new List<BuildingData>();
-        if (owner == null || owner.buildingData == null || owner.buildingData.Lv != 0)
-            return results;
-
-        HashSet<Archetype> unlockedArches = null;
-        if (requireUnlockedArche)
-        {
-            unlockedArches = GetPlayerUnlockedBaseArches();
-            if (unlockedArches.Count == 0)
-                return results;
-        }
-
-        foreach (var data in BuildingDataModel.GetAllBuildingData())
-        {
-            if (data == null)
-                continue;
-            if (data.Lv != 1)
-                continue;
-            if (data.Type != owner.buildingData.Type)
-                continue;
-            if (requireUnlockedArche && !unlockedArches.Contains(data.Arche))
-                continue;
-
-            results.Add(data);
-        }
-
-        results.Sort((a, b) => string.Compare(a.Identifier, b.Identifier, StringComparison.Ordinal));
-        return results;
-    }
-
     private HashSet<Archetype> GetPlayerUnlockedBaseArches()
     {
+        if (m_PlayerUnlockedBaseArchesCache != null)
+            return m_PlayerUnlockedBaseArchesCache;
+
         var arches = new HashSet<Archetype>();
         foreach (Archetype arche in Enum.GetValues(typeof(Archetype)))
         {
@@ -276,7 +291,52 @@ public class BuildManager : GameFrameworkComponent
                 arches.Add(arche);
         }
 
-        return arches;
+        m_PlayerUnlockedBaseArchesCache = arches;
+        return m_PlayerUnlockedBaseArchesCache;
+    }
+
+    private IEnumerable<BuildingData> GetCachedLv0ConstructCandidates(BuilType buildType)
+    {
+        if (m_Lv0ConstructCandidatesByArchetype.Count == 0)
+            BuildLv0ConstructCandidateCache();
+
+        foreach (var pair in m_Lv0ConstructCandidatesByArchetype)
+        {
+            if (pair.Value == null)
+                continue;
+
+            for (int i = 0; i < pair.Value.Count; i++)
+            {
+                BuildingData data = pair.Value[i];
+                if (data != null && data.Type == buildType)
+                    yield return data;
+            }
+        }
+    }
+
+    private void BuildLv0ConstructCandidateCache()
+    {
+        if (m_Lv0ConstructCandidatesByArchetype.Count > 0)
+            return;
+
+        foreach (var data in BuildingDataModel.GetAllBuildingData())
+        {
+            if (data == null || data.Lv != 1 || data.Arche == Archetype.None)
+                continue;
+
+            if (!m_Lv0ConstructCandidatesByArchetype.TryGetValue(data.Arche, out var list) || list == null)
+            {
+                list = new List<BuildingData>();
+                m_Lv0ConstructCandidatesByArchetype[data.Arche] = list;
+            }
+
+            list.Add(data);
+        }
+
+        foreach (var list in m_Lv0ConstructCandidatesByArchetype.Values)
+        {
+            list.Sort((a, b) => string.Compare(a.Identifier, b.Identifier, StringComparison.Ordinal));
+        }
     }
 
     private bool TryGetOptionalOptionKey(int optionIndex, out InputKey key)
@@ -352,5 +412,49 @@ public class BuildManager : GameFrameworkComponent
             deltaSupply = int.MaxValue;
 
         InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, (int)deltaSupply, true);
+    }
+    protected override void Awake()
+    {
+        base.Awake();
+        TrySubscribeTechUnlockedEvent();
+    }
+
+    private void Start()
+    {
+        TrySubscribeTechUnlockedEvent();
+    }
+
+    private void Update()
+    {
+        if (m_IsSubscribedTechUnlocked)
+            return;
+
+        TrySubscribeTechUnlockedEvent();
+    }
+
+    private void OnDestroy()
+    {
+        if (m_IsSubscribedTechUnlocked && GF.Event != null)
+            GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+
+        m_IsSubscribedTechUnlocked = false;
+    }
+
+    private void OnTechUnlocked(object sender, GameFramework.Event.GameEventArgs e)
+    {
+        m_PlayerUnlockedBaseArchesCache = null;
+    }
+
+    private bool TrySubscribeTechUnlockedEvent()
+    {
+        if (m_IsSubscribedTechUnlocked)
+            return true;
+
+        if (GF.Event == null)
+            return false;
+
+        GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+        m_IsSubscribedTechUnlocked = true;
+        return true;
     }
 }

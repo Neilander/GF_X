@@ -48,6 +48,7 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
 
     private bool isOnEscape;
     IList<IObjectPool<UIItemObject>> m_ItemPools = null;
+    private readonly Dictionary<string, List<UIItemObject>> m_SpawnedItemsByTemplate = new();
     /// <summary>
     /// 子UI界面, 会随着父界面关闭而关闭
     /// </summary>
@@ -156,13 +157,31 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
 
     private void UnspawnAllItemObjects()
     {
-        if (m_ItemPools == null) return;
-        foreach (var item in m_ItemPools)
-        {
-            item.ReleaseAllUnused();
+        if (m_SpawnedItemsByTemplate.Count == 0)
+            return;
 
-            item.UnspawnAll();
+        foreach (var pair in m_SpawnedItemsByTemplate)
+        {
+            if (pair.Value == null || pair.Value.Count <= 0)
+                continue;
+
+            var spawnedItems = pair.Value.ToArray();
+            for (int i = spawnedItems.Length - 1; i >= 0; i--)
+            {
+                var item = spawnedItems[i];
+                if (item == null || item.gameObject == null)
+                    continue;
+
+                var itemTempleId = pair.Key;
+                if (!GF.ObjectPool.HasObjectPool<UIItemObject>(itemTempleId))
+                    continue;
+
+                var pool = GF.ObjectPool.GetObjectPool<UIItemObject>(itemTempleId);
+                pool.Unspawn(item.gameObject);
+            }
         }
+
+        m_SpawnedItemsByTemplate.Clear();
     }
     private void DestroyAllItemPool()
     {
@@ -210,6 +229,13 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
             spawn = UIItemObject.Create<T>(itemInstance);
             pool.Register(spawn, true);
         }
+        else if (spawn.gameObject != null && instanceRoot != null)
+        {
+            // 对象池复用时必须重设父节点，否则会残留在上次的 instanceRoot 下。
+            spawn.gameObject.transform.SetParent(instanceRoot, false);
+        }
+
+        TrackSpawnedItem(itemTempleId, spawn);
         return spawn;
     }
     string GetItemPoolId(GameObject itemTemple)
@@ -237,6 +263,9 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
         var itemTempleId = GetItemPoolId(itemTemple);
         if (!GF.ObjectPool.HasObjectPool<T>(itemTempleId)) return;
 
+        if (!TryRemoveSpawnedItem(itemTempleId, itemInstance))
+            return;
+
         var pool = GF.ObjectPool.GetObjectPool<T>(itemTempleId);
         pool.Unspawn(itemInstance);
     }
@@ -251,8 +280,56 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
         if (!GF.ObjectPool.HasObjectPool<T>(itemTempleId)) return;
 
         var pool = GF.ObjectPool.GetObjectPool<T>(itemTempleId);
-        pool.ReleaseAllUnused();
-        pool.UnspawnAll();
+        if (!m_SpawnedItemsByTemplate.TryGetValue(itemTempleId, out var spawnedItems) || spawnedItems == null || spawnedItems.Count <= 0)
+            return;
+
+        var snapshot = spawnedItems.ToArray();
+        for (int i = snapshot.Length - 1; i >= 0; i--)
+        {
+            var item = snapshot[i];
+            if (item == null || item.gameObject == null)
+                continue;
+
+            pool.Unspawn(item.gameObject);
+        }
+
+        spawnedItems.Clear();
+    }
+
+    private void TrackSpawnedItem(string itemTempleId, UIItemObject item)
+    {
+        if (string.IsNullOrWhiteSpace(itemTempleId) || item == null)
+            return;
+
+        if (!m_SpawnedItemsByTemplate.TryGetValue(itemTempleId, out var list) || list == null)
+        {
+            list = new List<UIItemObject>();
+            m_SpawnedItemsByTemplate[itemTempleId] = list;
+        }
+
+        if (!list.Contains(item))
+            list.Add(item);
+    }
+
+    private bool TryRemoveSpawnedItem(string itemTempleId, GameObject itemInstance)
+    {
+        if (string.IsNullOrWhiteSpace(itemTempleId) || itemInstance == null)
+            return false;
+
+        if (!m_SpawnedItemsByTemplate.TryGetValue(itemTempleId, out var list) || list == null)
+            return false;
+
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            var item = list[i];
+            if (item == null || item.gameObject == null || item.gameObject != itemInstance)
+                continue;
+
+            list.RemoveAt(i);
+            return true;
+        }
+
+        return false;
     }
     /// <summary>
     /// 更新界面中静态文本的多语言文字
@@ -262,6 +339,7 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
         UIStringKey[] texts = GetComponentsInChildren<UIStringKey>(true);
         foreach (var t in texts)
         {
+            // UIStringKey 这里读的是直接本地化 key；LocalizationTextTable 的 identifier 入口请走 LocalizationTextDataModel。
             if (t.TryGetComponent<TMPro.TextMeshProUGUI>(out var textMeshCom))
             {
                 textMeshCom.text = LocalizationTextManager.ProcessText(GF.Localization.GetString(t.Key));

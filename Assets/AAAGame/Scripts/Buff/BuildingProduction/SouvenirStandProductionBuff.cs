@@ -23,12 +23,29 @@ public class SouvenirStandProductionBuff : BuffCallback
             
             // 初始更新一次产出
             UpdateTroopCountProduction();
+            
+            // 监听实体变化事件
+            GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnEntityChanged);
+            GF.Event.Subscribe(HideEntityCompleteEventArgs.EventId, OnEntityChanged);
+            GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnEntityChanged);
+            GF.Event.Subscribe(BuildingDisabledStateChangedEventArgs.EventId, OnEntityChanged);
         }
     }
     
-    public override void OnUpdate(float deltaTime)
+    public override void OnRemove()
     {
-        // 每帧更新兵力计数和产出计算
+        if (GF.Event != null)
+        {
+            GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnEntityChanged);
+            GF.Event.Unsubscribe(HideEntityCompleteEventArgs.EventId, OnEntityChanged);
+            GF.Event.Unsubscribe(SoldierDeadEventArgs.EventId, OnEntityChanged);
+            GF.Event.Unsubscribe(BuildingDisabledStateChangedEventArgs.EventId, OnEntityChanged);
+        }
+        base.OnRemove();
+    }
+
+    private void OnEntityChanged(object sender, GameFramework.Event.GameEventArgs e)
+    {
         UpdateTroopCountProduction();
     }
     
@@ -48,8 +65,6 @@ public class SouvenirStandProductionBuff : BuffCallback
         // 计算产出加成
         int bonus = Mathf.Min(troopCount / Mathf.Max(1, bonusPerTroop), maxBonus);
         building.SetDynamicProduction(bonus);
-        
-        Debug.Log($"[SouvenirStand] 兵力: {troopCount}, 阈值: {bonusPerTroop}, 加成: +{bonus}, 上限: {maxBonus}");
     }
     
     private int CalculateTroopCountInStronghold(BuildingEntity building)

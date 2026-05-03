@@ -31,6 +31,7 @@ public class LocalizationTextManager : GameFrameworkComponent
 	}
 
 	private static LocalizationTextManager s_Instance;
+	private static readonly Dictionary<string, string> s_ProcessedTextCache = new(StringComparer.Ordinal);
 	[SerializeField] private bool m_AutoCollectUnitKeywords = true;
 	[SerializeField] private bool m_AutoCollectBuildingKeywords = true;
 	private bool m_RulesDirty = true;
@@ -95,11 +96,32 @@ public class LocalizationTextManager : GameFrameworkComponent
 		{
 			manager.EnsureRulesBuilt();
 		}
-		return manager != null ? manager.ProcessTextInternal(text) : text;
+
+		if (manager == null)
+		{
+			return text;
+		}
+
+		string cacheKey = BuildCacheKey(text);
+		if (s_ProcessedTextCache.TryGetValue(cacheKey, out string cached))
+		{
+			return cached;
+		}
+
+		string processed = manager.ProcessTextInternal(text);
+		s_ProcessedTextCache[cacheKey] = processed;
+		return processed;
+	}
+
+	public static void ClearCache()
+	{
+		s_ProcessedTextCache.Clear();
 	}
 
 	public static string GetLocalizedText(string key, bool applyRichText = true)
 	{
+		// 仅用于“直接本地化 key”（如 BuildingTable.NameKey/DescKey）。
+		// 对于 LocalizationTextTable 的 identifier（如 Archetype_*），请走 LocalizationTextDataModel.GetText。
 		string text = GF.Localization != null ? GF.Localization.GetString(key) : key;
 		return applyRichText ? ProcessText(text) : text;
 	}
@@ -155,6 +177,7 @@ public class LocalizationTextManager : GameFrameworkComponent
 			return lengthCompare != 0 ? lengthCompare : right.Priority.CompareTo(left.Priority);
 		});
 		m_RulesDirty = !(unitKeywordsLoaded && buildingKeywordsLoaded);
+		ClearCache();
 	}
 
 	private void EnsureRulesBuilt()
@@ -400,5 +423,11 @@ public class LocalizationTextManager : GameFrameworkComponent
 		}
 
 		return $"<sprite name={iconSpriteName}>{coloredKeyword}";
+	}
+
+	private static string BuildCacheKey(string text)
+	{
+		string language = GF.Localization != null ? GF.Localization.Language.ToString() : string.Empty;
+		return string.Concat(language, "\u001F", text);
 	}
 }
