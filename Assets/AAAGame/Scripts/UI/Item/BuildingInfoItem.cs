@@ -9,6 +9,7 @@ public partial class BuildingInfoItem : UIItemBase
     public GameObject PriceRoot => varPrice;
     public GameObject PropertyListRoot => varPropertyList;
     public GameObject ProgressRoot => varProgress;
+    public GameObject PreviewRoot => varPreview;
     public RectTransform HoldRoot => (varBuildingInfoItem != null ? varBuildingInfoItem.transform : transform) as RectTransform;
     public GameObject IconNumTemplate => varIconNumItem;
     public GameObject StarTemplate => varStarItem;
@@ -39,5 +40,23 @@ public partial class BuildingInfoItem : UIItemBase
 
         if (root != null)
             root.alpha = executable ? 1f : 0.65f;
+    }
+
+    public void SetPreviewVisible(bool visible)
+    {
+        if (varPreview != null)
+            varPreview.SetActive(visible);
+    }
+
+    public void SetPriceVisible(bool visible)
+    {
+        if (varPrice != null)
+            varPrice.SetActive(visible);
+    }
+
+    public void SetProgressVisible(bool visible)
+    {
+        if (varProgress != null)
+            varProgress.SetActive(visible);
     }
 }

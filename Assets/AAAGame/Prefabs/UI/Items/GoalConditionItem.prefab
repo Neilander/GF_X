@@ -140,7 +140,13 @@ MonoBehaviour:
     - {fileID: 8868759441546568164}
     VarType: TMPro.TextMeshProUGUI
     VarPrefix: 0
+  - VarName: varIcon
+    Targets:
+    - {fileID: 2736174434488026934}
+    VarType: UnityEngine.UI.Image
+    VarPrefix: 0
   varGoalConditionItem: {fileID: 3215360954084560669}
+  varIcon: {fileID: 1944671039183364222}
 --- !u!114 &3215360954084560669
 MonoBehaviour:
   m_ObjectHideFlags: 0

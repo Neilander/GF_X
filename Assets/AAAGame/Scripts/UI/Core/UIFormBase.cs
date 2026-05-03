@@ -210,6 +210,11 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
             spawn = UIItemObject.Create<T>(itemInstance);
             pool.Register(spawn, true);
         }
+        else if (spawn.gameObject != null && instanceRoot != null)
+        {
+            // 对象池复用时必须重设父节点，否则会残留在上次的 instanceRoot 下。
+            spawn.gameObject.transform.SetParent(instanceRoot, false);
+        }
         return spawn;
     }
     string GetItemPoolId(GameObject itemTemple)

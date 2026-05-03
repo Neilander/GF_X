@@ -28,5 +28,6 @@ public enum UIViews : int
 	PhaseSwitchUIForm = 18,
 	FogUI = 20,
 	BuildingBuildTips = 24,
-	BuildingInfoAndUpgradeTips = 25
+	BuildingUpgradeTips = 25,
+	BuildingInfoTips = 26
 }

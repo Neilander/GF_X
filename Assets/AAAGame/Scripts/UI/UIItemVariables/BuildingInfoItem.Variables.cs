@@ -17,4 +17,5 @@ public partial class BuildingInfoItem
 	[SerializeField] protected GameObject varStarItem = null;
 	[SerializeField] protected GameObject varIconNumItem = null;
 	[SerializeField] private GameObject varBuildingInfoItem = null;
+	[SerializeField] private GameObject varPreview = null;
 }

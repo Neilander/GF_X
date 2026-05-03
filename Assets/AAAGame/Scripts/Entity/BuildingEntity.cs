@@ -33,7 +33,8 @@ public partial class BuildingEntity : MAEntity
             if (buildingData.Lv == 0)
                 return GameEntry.GetComponent<BuildManager>().HasConstructOption(this);
 
-            return GameEntry.GetComponent<TechManager>().HasTechInteraction(this);
+            var techManager = GameEntry.GetComponent<TechManager>();
+            return techManager != null && techManager.HasTechInteraction(this);
         }
     }
     public bool IsDisabled => _isDisabled;

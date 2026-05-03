@@ -267,7 +267,35 @@ public partial class LevelEntity
 
             var renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
+            {
                 renderer.sortingOrder = sortingOrder;
+
+                // Ensure the particle material renders below the FOG3 overlay but above regular geometry.
+                // Create material instances so we don't modify shared project assets at runtime.
+                try
+                {
+                    var mats = renderer.materials;
+                    if (mats != null && mats.Length > 0)
+                    {
+                        int desiredQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 50;
+                        for (int mi = 0; mi < mats.Length; mi++)
+                        {
+                            var orig = mats[mi];
+                            if (orig == null)
+                                continue;
+
+                            var inst = new Material(orig) { hideFlags = HideFlags.DontSave };
+                            inst.renderQueue = desiredQueue;
+                            mats[mi] = inst;
+                        }
+
+                        renderer.materials = mats;
+                    }
+                }
+                catch
+                {
+                }
+            }
 
             particleSystem.Clear(true);
             particleSystem.Play(true);

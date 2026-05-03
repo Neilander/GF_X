@@ -2,6 +2,8 @@
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using GameFramework;
+using System;
+using System.Collections.Generic;
 
 /// <summary>
 /// 监听交互焦点变化，打开/关闭交互提示UI（InteractOptionTips）。
@@ -12,6 +14,8 @@ public class InteractOptionTipsPresenter : MonoBehaviour
     private bool _subscribed;
     private int _tipsFormId = -1;
     private int _buildTipsFormId = -1;
+    private int _upgradeTipsFormId = -1;
+    private int _infoTipsFormId = -1;
 
     private void Awake()
     {
@@ -50,8 +54,12 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         {
             CloseInteractTips();
             CloseBuildTips();
+            CloseUpgradeTips();
+            CloseInfoTips();
             _tipsFormId = -1;
             _buildTipsFormId = -1;
+            _upgradeTipsFormId = -1;
+            _infoTipsFormId = -1;
             Debug.Log("[Interact Tips] Close tips (no focus)");
             return;
         }
@@ -59,13 +67,34 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         if (ShouldShowBuildTips(args.Target))
         {
             CloseInteractTips();
+            CloseUpgradeTips();
+            CloseInfoTips();
             OpenOrUpdateBuildTips(args.Target);
             return;
         }
 
-        CloseBuildTips();
+        if (ShouldShowUpgradeTips(args.Target))
+        {
+            CloseInteractTips();
+            CloseBuildTips();
+            CloseInfoTips();
+            OpenOrUpdateUpgradeTips(args.Target);
+            return;
+        }
 
-        // 已有实例则复用（避免 close/open 时序导致的立即关闭、以及避免 Presenter 因 UI 关闭而退订）
+        if (ShouldShowInfoTips(args.Target))
+        {
+            CloseInteractTips();
+            CloseBuildTips();
+            CloseUpgradeTips();
+            OpenOrUpdateInfoTips(args.Target);
+            return;
+        }
+
+        CloseBuildTips();
+        CloseUpgradeTips();
+        CloseInfoTips();
+
         if (_tipsFormId > 0 && GF.UI.HasUIForm(_tipsFormId))
         {
             var uiForm = GF.UI.GetUIForm(_tipsFormId) as UIForm;
@@ -77,12 +106,10 @@ public class InteractOptionTipsPresenter : MonoBehaviour
                 return;
             }
 
-            // 实例存在但逻辑不对/未就绪，兜底重开
             GF.UI.Close(_tipsFormId);
             _tipsFormId = -1;
         }
 
-        // 打开新实例
         var uiParams = UIParams.Create();
 
         Debug.Log($"[Interact Tips] Open tips for target={args.Target.Transform.name}");
@@ -111,6 +138,48 @@ public class InteractOptionTipsPresenter : MonoBehaviour
         _buildTipsFormId = GF.UI.OpenUIForm(UIViews.BuildingBuildTips, uiParams);
     }
 
+    private void OpenOrUpdateUpgradeTips(InteractionHost target)
+    {
+        if (_upgradeTipsFormId > 0 && GF.UI.HasUIForm(_upgradeTipsFormId))
+        {
+            var uiForm = GF.UI.GetUIForm(_upgradeTipsFormId) as UIForm;
+            var logic = uiForm != null ? uiForm.Logic as BuildingUpgradeTips : null;
+            if (logic != null)
+            {
+                logic.ApplyTarget(target);
+                return;
+            }
+
+            GF.UI.Close(_upgradeTipsFormId);
+            _upgradeTipsFormId = -1;
+        }
+
+        var uiParams = UIParams.Create();
+        uiParams.Set(BuildingUpgradeTips.P_TargetHost, target);
+        _upgradeTipsFormId = GF.UI.OpenUIForm(UIViews.BuildingUpgradeTips, uiParams);
+    }
+
+    private void OpenOrUpdateInfoTips(InteractionHost target)
+    {
+        if (_infoTipsFormId > 0 && GF.UI.HasUIForm(_infoTipsFormId))
+        {
+            var uiForm = GF.UI.GetUIForm(_infoTipsFormId) as UIForm;
+            var logic = uiForm != null ? uiForm.Logic as BuildingInfoTips : null;
+            if (logic != null)
+            {
+                logic.ApplyTarget(target);
+                return;
+            }
+
+            GF.UI.Close(_infoTipsFormId);
+            _infoTipsFormId = -1;
+        }
+
+        var uiParams = UIParams.Create();
+        uiParams.Set(BuildingInfoTips.P_TargetHost, target);
+        _infoTipsFormId = GF.UI.OpenUIForm(UIViews.BuildingInfoTips, uiParams);
+    }
+
     private static bool ShouldShowBuildTips(InteractionHost target)
     {
         if (target == null)
@@ -125,6 +194,38 @@ public class InteractOptionTipsPresenter : MonoBehaviour
 
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         return buildManager != null && buildManager.HasConstructOption(building);
+    }
+
+    private static bool ShouldShowUpgradeTips(InteractionHost target)
+    {
+        if (target == null)
+            return false;
+
+        List<IInteractionOption> options = new();
+        target.GetOptions(options);
+        for (int i = 0; i < options.Count; i++)
+        {
+            if (options[i] is BuildingUpgradeInteractionOption || options[i] is TechResearchInteractionOption)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ShouldShowInfoTips(InteractionHost target)
+    {
+        if (target == null)
+            return false;
+
+        List<IInteractionOption> options = new();
+        target.GetOptions(options);
+        for (int i = 0; i < options.Count; i++)
+        {
+            if (options[i] is BuildingInfoInteractionOption)
+                return true;
+        }
+
+        return false;
     }
 
     private void CloseInteractTips()
@@ -145,5 +246,25 @@ public class InteractOptionTipsPresenter : MonoBehaviour
             GF.UI.CloseUIForms(UIViews.BuildingBuildTips);
 
         _buildTipsFormId = -1;
+    }
+
+    private void CloseUpgradeTips()
+    {
+        if (_upgradeTipsFormId > 0 && GF.UI.HasUIForm(_upgradeTipsFormId))
+            GF.UI.Close(_upgradeTipsFormId);
+        else
+            GF.UI.CloseUIForms(UIViews.BuildingUpgradeTips);
+
+        _upgradeTipsFormId = -1;
+    }
+
+    private void CloseInfoTips()
+    {
+        if (_infoTipsFormId > 0 && GF.UI.HasUIForm(_infoTipsFormId))
+            GF.UI.Close(_infoTipsFormId);
+        else
+            GF.UI.CloseUIForms(UIViews.BuildingInfoTips);
+
+        _infoTipsFormId = -1;
     }
 }

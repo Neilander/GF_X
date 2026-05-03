@@ -99,8 +99,8 @@ RectTransform:
   - {fileID: 7219788300706840240}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 624, y: 141.1}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -162,6 +162,12 @@ MonoBehaviour:
     - {fileID: 1712773368288745964}
     VarType: UnityEngine.GameObject
     VarPrefix: 0
+  - VarName: varPreview
+    Targets:
+    - {fileID: 8921401722556163742}
+    VarType: UnityEngine.GameObject
+    VarPrefix: 0
+  progressDuration: 2
   varKey: {fileID: 5553342268113680939}
   varName: {fileID: 3720351339402688379}
   varDesc: {fileID: 6390010130266544863}
@@ -171,6 +177,7 @@ MonoBehaviour:
   varStarItem: {fileID: 7569420930296245711, guid: ba64ad22135a86542ac6191bc40c93c4, type: 3}
   varIconNumItem: {fileID: 4335673958394258115, guid: c06c04afa4f91024a87e4c1af39502ab, type: 3}
   varBuildingInfoItem: {fileID: 1712773368288745964}
+  varPreview: {fileID: 8921401722556163742}
 --- !u!1 &3942013616785914244
 GameObject:
   m_ObjectHideFlags: 0

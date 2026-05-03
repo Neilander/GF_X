@@ -29,4 +29,5 @@
 	18	阶段切换按钮	3	PhaseSwitchUIForm	False	1	False	False
 	20	迷雾UI	1	FogUI	False	1	False	False
 	24	建筑建造面板	2	BuildingBuildTips	False	3	False	False
-	25	建筑信息/升级面板	2	BuildingInfoAndUpgradeTips	False	3	False	False
+	25	建筑升级面板	2	BuildingUpgradeTips	False	3	False	False
+	26	建筑信息面板	2	BuildingInfoTips	False	3	False	False

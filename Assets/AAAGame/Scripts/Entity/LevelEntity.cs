@@ -112,8 +112,8 @@ public partial class LevelEntity : EntityBase
     }
 
     /// <summary>
-    /// 请求烘焙 NavMesh。不会立即执行，而是等最后一次请求后 0.5 秒再烘焙�?
-    /// 多次调用会重置计时器，确保批量建造只烘焙一次�?
+    /// 请求烘焙 NavMesh。不会立即执行，而是等最后一次请求后 0.5 秒再烘焙
+    /// 多次调用会重置计时器，确保批量建造只烘焙一次
     /// </summary>
     public static void RequestRebakeNavMesh()
     {
@@ -315,7 +315,7 @@ public partial class LevelEntity : EntityBase
                     if (point.IsGameEndConditionBuilding)
                     {
                         int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
-                        
+
                         // 特殊逻辑：快递柜的所有者应该根据据点所有权来设置
                         // 如果快递柜位于敌方据点内，应该属于敌人（显示红色血条）
                         // 如果快递柜位于玩家据点内，应该属于玩家（显示绿色血条）
@@ -328,7 +328,7 @@ public partial class LevelEntity : EntityBase
                                 Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {stronghold.OwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
                             }
                         }
-                        
+
                         gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
                     }
                     break;
