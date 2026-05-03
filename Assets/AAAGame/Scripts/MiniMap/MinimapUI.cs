@@ -917,24 +917,23 @@ namespace AAAGame.MiniMap
 
             EnsureTerrainBuildEventSubscription(tileWorldCreatorManager);
 
-            int gridWidth = Mathf.Max(1, tileWorldCreatorManager.configuration.width);
-            int gridHeight = Mathf.Max(1, tileWorldCreatorManager.configuration.height);
-            float cellSize = Mathf.Max(0.01f, tileWorldCreatorManager.configuration.cellSize);
-            terrainGridWidth = gridWidth;
-            terrainGridHeight = gridHeight;
-            terrainCellSize = cellSize;
-            UpdateMinimapContentLayout();
-
-            int texWidth = gridWidth;
-            int texHeight = gridHeight;
-
-            int maxDimension = Mathf.Max(texWidth, texHeight);
-            if (maxDimension > terrainTextureMaxSize)
+            MinimapTerrainMapBuildResult terrainMapBuildResult = MinimapTerrainMapBuilder.Build(
+                tileWorldCreatorManager.configuration,
+                terrainTextureMaxSize,
+                groundLayerKeyword,
+                waterLayerKeyword,
+                groundLayerColor,
+                waterLayerColor,
+                new Color32(0, 0, 0, 255));
+            if (terrainMapBuildResult == null)
             {
-                float scale = terrainTextureMaxSize / (float)maxDimension;
-                texWidth = Mathf.Max(1, Mathf.RoundToInt(texWidth * scale));
-                texHeight = Mathf.Max(1, Mathf.RoundToInt(texHeight * scale));
+                return;
             }
+
+            terrainGridWidth = terrainMapBuildResult.GridWidth;
+            terrainGridHeight = terrainMapBuildResult.GridHeight;
+            terrainCellSize = terrainMapBuildResult.CellSize;
+            UpdateMinimapContentLayout();
 
             EnsureTerrainMapImage();
 
@@ -943,56 +942,15 @@ namespace AAAGame.MiniMap
                 Destroy(terrainMapTexture);
                 terrainMapTexture = null;
             }
-
-            terrainMapTexture = new Texture2D(texWidth, texHeight, TextureFormat.RGBA32, false);
-            terrainMapTexture.filterMode = FilterMode.Point;
-            terrainMapTexture.wrapMode = TextureWrapMode.Clamp;
-
-            Color32[] pixels = new Color32[texWidth * texHeight];
-            Color32 backgroundColor = new Color32(0, 0, 0, 255);
-            for (int i = 0; i < pixels.Length; i++)
-            {
-                pixels[i] = backgroundColor;
-            }
-
-            HashSet<Vector2> groundPositions = CollectBlueprintLayerCells(tileWorldCreatorManager.configuration, groundLayerKeyword);
-            HashSet<Vector2> waterPositions = CollectBlueprintLayerCells(tileWorldCreatorManager.configuration, waterLayerKeyword);
-
-            HashSet<Vector2> coordinateSamplePositions = new HashSet<Vector2>();
-            coordinateSamplePositions.UnionWith(groundPositions);
-            coordinateSamplePositions.UnionWith(waterPositions);
-            if (coordinateSamplePositions.Count == 0)
-            {
-                coordinateSamplePositions = CollectAllBlueprintCells(tileWorldCreatorManager.configuration);
-            }
-            terrainMapUseCenteredGrid = DetermineGridCoordinateMode(coordinateSamplePositions, gridWidth, gridHeight, texWidth, texHeight);
-
-            int paintedCount = 0;
-            int waterPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, waterPositions, waterLayerColor, terrainMapUseCenteredGrid);
-            int groundPaintedCount = PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, groundPositions, groundLayerColor, terrainMapUseCenteredGrid);
-            paintedCount += waterPaintedCount + groundPaintedCount;
-
-            if (paintedCount == 0)
-            {
-                HashSet<Vector2> fallbackPositions = CollectAllBlueprintCells(tileWorldCreatorManager.configuration);
-                paintedCount += PaintLayerCells(pixels, texWidth, texHeight, gridWidth, gridHeight, fallbackPositions, groundLayerColor, terrainMapUseCenteredGrid);
-            }
-
-            terrainMapTexture.SetPixels32(pixels);
-            terrainMapTexture.Apply(false, false);
+            terrainMapTexture = terrainMapBuildResult.Texture;
+            terrainMapUseCenteredGrid = terrainMapBuildResult.UseCenteredGrid;
 
             terrainMapImage.texture = terrainMapTexture;
             terrainMapImage.color = Color.white;
             terrainMapImage.raycastTarget = false;
             UpdateOverlaySiblingOrder();
 
-            bool expectsGroundLayer = HasBlueprintLayerMatch(tileWorldCreatorManager.configuration, groundLayerKeyword);
-            bool expectsWaterLayer = HasBlueprintLayerMatch(tileWorldCreatorManager.configuration, waterLayerKeyword);
-            bool groundReady = !expectsGroundLayer || groundPaintedCount > 0;
-            bool waterReady = !expectsWaterLayer || waterPaintedCount > 0;
-            bool terrainReady = paintedCount > 0 && groundReady && waterReady;
-
-            terrainMapLevelEntityId = terrainReady ? levelEntityId : 0;
+            terrainMapLevelEntityId = terrainMapBuildResult.IsTerrainReady ? levelEntityId : 0;
         }
 
         private void EnsureTerrainMapImage()
@@ -1024,182 +982,6 @@ namespace AAAGame.MiniMap
             rt.sizeDelta = Vector2.zero;
             rt.pivot = new Vector2(0.5f, 0.5f);
             UpdateOverlaySiblingOrder();
-        }
-
-        private HashSet<Vector2> CollectBlueprintLayerCells(Configuration configuration, string layerKeyword)
-        {
-            HashSet<Vector2> positions = new HashSet<Vector2>();
-            if (configuration == null || string.IsNullOrWhiteSpace(layerKeyword))
-            {
-                return positions;
-            }
-
-            string keyword = layerKeyword.Trim();
-            for (int i = 0; i < configuration.blueprintLayerFolders.Count; i++)
-            {
-                var folder = configuration.blueprintLayerFolders[i];
-                if (folder == null || folder.blueprintLayers == null)
-                {
-                    continue;
-                }
-
-                for (int j = 0; j < folder.blueprintLayers.Count; j++)
-                {
-                    var layer = folder.blueprintLayers[j];
-                    if (layer == null || string.IsNullOrEmpty(layer.layerName))
-                    {
-                        continue;
-                    }
-
-                    if (layer.layerName.IndexOf(keyword, System.StringComparison.OrdinalIgnoreCase) < 0)
-                    {
-                        continue;
-                    }
-
-                    layer.GetAllCellPositions(positions);
-                }
-            }
-
-            return positions;
-        }
-
-        private HashSet<Vector2> CollectAllBlueprintCells(Configuration configuration)
-        {
-            HashSet<Vector2> positions = new HashSet<Vector2>();
-            if (configuration == null)
-            {
-                return positions;
-            }
-
-            for (int i = 0; i < configuration.blueprintLayerFolders.Count; i++)
-            {
-                var folder = configuration.blueprintLayerFolders[i];
-                if (folder == null || folder.blueprintLayers == null)
-                {
-                    continue;
-                }
-
-                for (int j = 0; j < folder.blueprintLayers.Count; j++)
-                {
-                    var layer = folder.blueprintLayers[j];
-                    if (layer == null)
-                    {
-                        continue;
-                    }
-
-                    layer.GetAllCellPositions(positions);
-                }
-            }
-
-            return positions;
-        }
-
-        private int PaintLayerCells(Color32[] pixels, int texWidth, int texHeight, int gridWidth, int gridHeight, HashSet<Vector2> positions, Color color, bool centeredGrid)
-        {
-            if (positions == null || positions.Count == 0)
-            {
-                return 0;
-            }
-
-            Color32 pixelColor = color;
-            int painted = 0;
-
-            foreach (Vector2 cellPos in positions)
-            {
-                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, centeredGrid, out int texX, out int texY))
-                {
-                    int idx = texX + texY * texWidth;
-                    pixels[idx] = pixelColor;
-                    painted++;
-                }
-            }
-
-            return painted;
-        }
-
-        private bool DetermineGridCoordinateMode(HashSet<Vector2> samplePositions, int gridWidth, int gridHeight, int texWidth, int texHeight)
-        {
-            if (samplePositions == null || samplePositions.Count == 0)
-            {
-                return terrainMapUseCenteredGrid;
-            }
-
-            int normalPaintable = CountPaintableCells(samplePositions, gridWidth, gridHeight, texWidth, texHeight, false);
-            int centeredPaintable = CountPaintableCells(samplePositions, gridWidth, gridHeight, texWidth, texHeight, true);
-            return centeredPaintable > normalPaintable;
-        }
-
-        private int CountPaintableCells(HashSet<Vector2> positions, int gridWidth, int gridHeight, int texWidth, int texHeight, bool centeredGrid)
-        {
-            int count = 0;
-            foreach (Vector2 cellPos in positions)
-            {
-                if (TryConvertCellToTexture(cellPos, gridWidth, gridHeight, texWidth, texHeight, centeredGrid, out _, out _))
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private bool TryConvertCellToTexture(Vector2 cellPos, int gridWidth, int gridHeight, int texWidth, int texHeight, bool centeredGrid, out int texX, out int texY)
-        {
-            float rawX = cellPos.x;
-            float rawY = cellPos.y;
-
-            if (centeredGrid)
-            {
-                rawX += gridWidth * 0.5f;
-                rawY += gridHeight * 0.5f;
-            }
-
-            int cellX = Mathf.RoundToInt(rawX);
-            int cellY = Mathf.RoundToInt(rawY);
-            if (cellX < 0 || cellX >= gridWidth || cellY < 0 || cellY >= gridHeight)
-            {
-                texX = 0;
-                texY = 0;
-                return false;
-            }
-
-            texX = Mathf.Clamp(Mathf.FloorToInt((cellX / (float)gridWidth) * texWidth), 0, texWidth - 1);
-            texY = Mathf.Clamp(Mathf.FloorToInt((cellY / (float)gridHeight) * texHeight), 0, texHeight - 1);
-            return true;
-        }
-
-        private bool HasBlueprintLayerMatch(Configuration configuration, string layerKeyword)
-        {
-            if (configuration == null || string.IsNullOrWhiteSpace(layerKeyword))
-            {
-                return false;
-            }
-
-            string keyword = layerKeyword.Trim();
-            for (int i = 0; i < configuration.blueprintLayerFolders.Count; i++)
-            {
-                var folder = configuration.blueprintLayerFolders[i];
-                if (folder == null || folder.blueprintLayers == null)
-                {
-                    continue;
-                }
-
-                for (int j = 0; j < folder.blueprintLayers.Count; j++)
-                {
-                    var layer = folder.blueprintLayers[j];
-                    if (layer == null || string.IsNullOrEmpty(layer.layerName))
-                    {
-                        continue;
-                    }
-
-                    if (layer.layerName.IndexOf(keyword, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
         }
 
         private void EnsureTerrainBuildEventSubscription(TileWorldCreatorManager manager)
