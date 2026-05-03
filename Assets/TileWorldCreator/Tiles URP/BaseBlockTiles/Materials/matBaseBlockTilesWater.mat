@@ -251,7 +251,7 @@ Material:
     - _SpecularColor: {r: 1, g: 0.95, b: 0.85, a: 1}
     - _Top_Color: {r: 0, g: 0.9500499, b: 1, a: 1}
     - _Vector2: {r: 0, g: 0, b: 0, a: 0}
-    - _WaveA: {r: 1, g: 0, b: 0.5, a: 20}
+    - _WaveA: {r: 1, g: 0, b: 0.25, a: 20}
     - _WaveB: {r: 0.6, g: 0.8, b: 0.35, a: 9}
     - _WaveC: {r: 0.8, g: -0.4, b: 0.25, a: 5}
     - _WaveD: {r: 0.3, g: 1, b: 0.15, a: 2.5}
