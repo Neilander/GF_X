@@ -21,7 +21,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: matBaseBlockTilesWater
-  m_Shader: {fileID: -6465566751694194690, guid: 32c107c34cbd88f4ea0b2e279a1fa43d, type: 3}
+  m_Shader: {fileID: 4800000, guid: af9712a5bcc2148978d73c17be1ad58a, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -159,6 +159,7 @@ Material:
     - _Cuastics_Strength: 7.91
     - _Cull: 2
     - _Cutoff: 0.5
+    - _DebugMode: 0
     - _Depth: 1.32
     - _Depth_Sample_Offset: 0
     - _Depth_Strength: 0
@@ -169,6 +170,14 @@ Material:
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
     - _Float: 0
+    - _FoamCutoff: 0.8
+    - _FoamDistance: 1.94
+    - _FoamFalloff: 5
+    - _FoamNoiseScale: 5.04
+    - _FoamNoiseSpeed: 2.57
+    - _FoamSharpness: 0.465
+    - _FoamStrength: 2
+    - _FoamWidth: 1
     - _Foam_Amount: 0.65
     - _Foam_Cutoff: 0.59
     - _Foam_Depth_Sample_Offset: 0
@@ -178,6 +187,8 @@ Material:
     - _Foam_Speed: 2
     - _Foam_Strength: 0.1
     - _Foam_Velocity: 0.02
+    - _FresnelPower: 8
+    - _FresnelStrength: 0.8
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
@@ -198,6 +209,8 @@ Material:
     - _Smoothness: 1
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
+    - _SpecularSmoothness: 0.85
+    - _SpecularStrength: 1.5
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
     - _Strength: 1.58
@@ -210,6 +223,7 @@ Material:
     - _Waterfall_Smoothness: 0.01
     - _Waterfall_Velocity: 1
     - _Waterfall_Width: 0.089
+    - _WaveSpeed: 0.5
     - _WorkflowMode: 1
     - _ZWrite: 1
     m_Colors:
@@ -223,15 +237,22 @@ Material:
     - _ColorOuterWorldMid: {r: 0, g: 0.9490197, b: 1, a: 1}
     - _Color_Deep: {r: 0.017799927, g: 0.538088, b: 0.754717, a: 1}
     - _Color_Surface: {r: 0, g: 0.83557034, b: 1, a: 1}
+    - _DeepColor: {r: 0.05, g: 0.18, b: 0.35, a: 1}
     - _Deep_Color: {r: 0, g: 0, b: 0, a: 0}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _FoamColor: {r: 0.40258992, g: 0.52600014, b: 0.7830189, a: 1}
     - _Foam_Color: {r: 1, g: 1, b: 1, a: 1}
     - _Foam_Velocity: {r: 0.1, g: 5, b: 0, a: 0}
     - _Mid_Color: {r: 0, g: 0.26570487, b: 0.509434, a: 1}
     - _Normal_Tiling_Far: {r: 2, g: 2, b: 0, a: 0}
     - _Normal_Tiling_Near: {r: 1, g: 1, b: 0, a: 0}
+    - _ShallowColor: {r: 0.45, g: 0.75, b: 0.85, a: 0.95}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
+    - _SpecularColor: {r: 1, g: 0.95, b: 0.85, a: 1}
     - _Top_Color: {r: 0, g: 0.9500499, b: 1, a: 1}
     - _Vector2: {r: 0, g: 0, b: 0, a: 0}
+    - _WaveA: {r: 1, g: 0, b: 0.5, a: 20}
+    - _WaveB: {r: 0.6, g: 0.8, b: 0.35, a: 9}
+    - _WaveC: {r: 0.8, g: -0.4, b: 0.25, a: 5}
+    - _WaveD: {r: 0.3, g: 1, b: 0.15, a: 2.5}
   m_BuildTextureStacks: []
-  m_AllowLocking: 1

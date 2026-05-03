@@ -25,6 +25,13 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
+    - _DebugMode: 0
+    - _FoamCutoff: 0.5
+    - _FoamFalloff: 2
+    - _FoamNoiseScale: 8
+    - _FoamNoiseSpeed: 0.8
+    - _FoamStrength: 1
+    - _FoamWidth: 0.15
     - _FresnelPower: 4
     - _FresnelStrength: 0.8
     - _SpecularSmoothness: 0.85
@@ -32,6 +39,7 @@ Material:
     - _WaveSpeed: 1
     m_Colors:
     - _DeepColor: {r: 0.05, g: 0.18, b: 0.35, a: 1}
+    - _FoamColor: {r: 1, g: 1, b: 1, a: 1}
     - _ShallowColor: {r: 0.45, g: 0.75, b: 0.85, a: 0.95}
     - _SpecularColor: {r: 1, g: 0.95, b: 0.85, a: 1}
     - _WaveA: {r: 1, g: 0, b: 0.45, a: 14}
