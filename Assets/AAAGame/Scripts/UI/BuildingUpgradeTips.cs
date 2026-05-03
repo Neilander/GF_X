@@ -75,8 +75,6 @@ public partial class BuildingUpgradeTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-
-        ClearAllSpawnedItems();
         ClearRuntimeState();
 
         base.OnClose(isShutdown, userData);

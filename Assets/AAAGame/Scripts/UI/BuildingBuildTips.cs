@@ -17,6 +17,7 @@ public partial class BuildingBuildTips : UIFormBase
     private const string BaseMilestoneTechPattern = "Tech_BaseBuilt_{0}_Lv1";
 
     private static readonly Dictionary<BuilType, Archetype> s_LastSelectedIndustryByType = new();
+    private static readonly Dictionary<string, int> s_ArmySupplyPerUnitCache = new(StringComparer.Ordinal);
 
     private readonly List<IndustryOptionBinding> m_IndustryBindings = new();
     private readonly List<BuildOptionBinding> m_BuildOptionBindings = new();
@@ -76,8 +77,6 @@ public partial class BuildingBuildTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-
-        ClearAllSpawnedItems();
         ClearRuntimeState();
 
         base.OnClose(isShutdown, userData);
@@ -96,36 +95,32 @@ public partial class BuildingBuildTips : UIFormBase
         ClearAllSpawnedItems();
         ClearRuntimeState();
 
-        if (!CanShowBuildTips())
+        if (!BuildIndustryCandidates())
             return;
 
-        BuildIndustryCandidates();
         SpawnIndustryOptions();
         SelectDefaultIndustry();
     }
 
-    private void BuildIndustryCandidates()
+    private bool BuildIndustryCandidates()
     {
         m_BuildingCandidatesByArchetype.Clear();
 
-        IEnumerable<BuildingData> allData = BuildingDataModel.GetAllBuildingData();
-        if (allData == null || m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
-            return;
+        if (m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
+            return false;
 
-        BuilType buildType = m_TargetBuilding.buildingData.Type;
         var buildManager = GameEntry.GetComponent<BuildManager>();
         if (buildManager == null)
-            return;
+            return false;
 
-        foreach (BuildingData data in allData)
+        List<BuildingData> candidates = buildManager.GetLv0ConstructCandidates(m_TargetBuilding, requireUnlockedArche: true);
+        if (candidates == null || candidates.Count <= 0)
+            return false;
+
+        for (int i = 0; i < candidates.Count; i++)
         {
-            if (data == null || data.Lv != 1 || data.Type != buildType || data.Arche == Archetype.None)
-                continue;
-
-            if (!buildManager.IsConstructOptionVisible(m_TargetBuilding, data.Identifier))
-                continue;
-
-            if (!HasUnlockedArchetypeLv1Tech(data.Arche))
+            BuildingData data = candidates[i];
+            if (data == null || data.Arche == Archetype.None)
                 continue;
 
             if (!m_BuildingCandidatesByArchetype.TryGetValue(data.Arche, out List<BuildingData> list))
@@ -141,6 +136,8 @@ public partial class BuildingBuildTips : UIFormBase
         {
             list.Sort((left, right) => string.Compare(left.Identifier, right.Identifier, StringComparison.Ordinal));
         }
+
+        return m_BuildingCandidatesByArchetype.Count > 0;
     }
 
     private void SpawnIndustryOptions()
@@ -535,17 +532,6 @@ public partial class BuildingBuildTips : UIFormBase
         panelRect.anchoredPosition = (Vector2)uiPos + uiOffset;
     }
 
-    private bool CanShowBuildTips()
-    {
-        if (m_TargetHost == null || m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
-            return false;
-
-        if (m_TargetBuilding.buildingData.Lv != 0)
-            return false;
-
-        return HasAnyVisibleIndustryCandidate();
-    }
-
     private void OnResourceChanged(object sender, GameEventArgs e)
     {
         RefreshView();
@@ -571,26 +557,27 @@ public partial class BuildingBuildTips : UIFormBase
         return targetHost.GetComponent<BuildingEntity>();
     }
 
-    private static bool HasUnlockedArchetypeLv1Tech(Archetype archetype)
-    {
-        if (archetype == Archetype.None)
-            return false;
-
-        string techId = string.Format(BaseMilestoneTechPattern, archetype);
-        return InGameDataModel.HasUnlockedTech(techId, EntitySideHelper.PlayerFactionId);
-    }
-
     private static int ResolveArmySupplyPerUnit(string unitId)
     {
         if (string.IsNullOrWhiteSpace(unitId) || GF.DataTable == null)
             return 0;
 
+        if (s_ArmySupplyPerUnitCache.TryGetValue(unitId, out int cachedSupply))
+            return cachedSupply;
+
         var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
         if (table == null)
             return 0;
 
-        CharacterDataDetail row = table.GetDataRow(r => r.CharacterKey == unitId);
-        return row != null ? Mathf.Max(0, row.Supply) : 0;
+        foreach (CharacterDataDetail row in table.GetAllDataRows())
+        {
+            if (row == null || string.IsNullOrWhiteSpace(row.CharacterKey))
+                continue;
+
+            s_ArmySupplyPerUnitCache[row.CharacterKey] = Mathf.Max(0, row.Supply);
+        }
+
+        return s_ArmySupplyPerUnitCache.TryGetValue(unitId, out cachedSupply) ? cachedSupply : 0;
     }
 
     private static string FormatSigned(int value)
@@ -659,25 +646,6 @@ public partial class BuildingBuildTips : UIFormBase
 
         m_IconNumTemplate = m_BuildInfoTemplate.IconNumTemplate;
         m_StarTemplate = m_BuildInfoTemplate.StarTemplate;
-    }
-
-    private bool HasAnyVisibleIndustryCandidate()
-    {
-        if (m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
-            return false;
-
-        foreach (BuildingData data in BuildingDataModel.GetAllBuildingData())
-        {
-            if (data == null || data.Lv != 1 || data.Type != m_TargetBuilding.buildingData.Type || data.Arche == Archetype.None)
-                continue;
-
-            if (!HasUnlockedArchetypeLv1Tech(data.Arche))
-                continue;
-
-            return true;
-        }
-
-        return false;
     }
 
     private void ClearRuntimeState()

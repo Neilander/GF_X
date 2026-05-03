@@ -88,7 +88,6 @@ public class ProductionConditionManager : GameFrameworkComponent
     /// </summary>
     private void UpdateAllProductionConditions()
     {
-        Debug.Log("[ProductionConditionManager] 更新所有产出条件统计");
     }
     
     /// <summary>
@@ -166,8 +165,6 @@ public class ProductionConditionManager : GameFrameworkComponent
         
         string key = BuildStrongholdDayKey(stronghold, day);
         _killCountByStronghold[key] = Mathf.Max(0, killCount);
-        
-        Debug.Log($"[ProductionConditionManager] 设置击杀数: 据点={stronghold.strongholdData?.StrongholdId ?? "unknown"}, 天数={day}, 击杀={killCount}");
     }
     
     /// <summary>
@@ -176,8 +173,6 @@ public class ProductionConditionManager : GameFrameworkComponent
     public void ClearAllStatistics()
     {
         _killCountByStronghold.Clear();
-        
-        Debug.Log("[ProductionConditionManager] 清空所有统计");
     }
 
     private void TrySubscribeEvents()

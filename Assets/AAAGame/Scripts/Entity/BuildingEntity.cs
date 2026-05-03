@@ -72,10 +72,10 @@ public partial class BuildingEntity : MAEntity
     {
         base.OnShow(userData);
         TauntLevel = 0; // 建筑默认嘲讽等级 0
-        
+
         // 使用原始的RefreshCharacterData方法来初始化建筑数据
         RefreshCharacterData(userData);
-        
+
         InitializeAttackCapabilityFlags();
         ResetCombatRuntimeState();
         ApplyBuildingPropertyOverrides();
@@ -714,11 +714,11 @@ public partial class BuildingEntity : MAEntity
         Fix64 techExtra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
         Fix64 dynamicExtra = _extraProps != null ? _extraProps.DynamicProduction : Fix64.Zero;
         Fix64 cap = _extraProps != null ? _extraProps.ProductionCap : (Fix64)int.MaxValue;
-        
+
         // 应用上限限制
         Fix64 total = baseValue + techExtra + dynamicExtra;
         Fix64 cappedTotal = total > cap ? cap : total;
-        
+
         return Mathf.Max(0, (int)cappedTotal);
     }
 
@@ -800,13 +800,13 @@ public partial class BuildingEntity : MAEntity
     private void InitializeDynamicProductionMechanism()
     {
         Debug.Log($"[BuildingEntity] InitializeDynamicProductionMechanism开始执行");
-        
+
         if (buildingData == null)
         {
             Debug.Log($"[BuildingEntity] 初始化失败: buildingData为null");
             return;
         }
-        
+
         if (buildingData.Type != BuilType.Prod)
         {
             Debug.Log($"[BuildingEntity] 初始化失败: {buildingData.Identifier}不是生产建筑 (Type={buildingData.Type}, 期望={BuilType.Prod})");
@@ -858,11 +858,11 @@ public partial class BuildingEntity : MAEntity
         try
         {
             Debug.Log($"[BuildingEntity] 开始应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
-            
+
             var techEffect = new T();
             var techId = $"dynamic_production_{buildingData.Identifier}";
             Debug.Log($"[BuildingEntity] 创建TechEffect和TechData: techId={techId}");
-            
+
             var techData = new TechData(
                 identifier: techId,
                 skillID: "",
@@ -877,30 +877,30 @@ public partial class BuildingEntity : MAEntity
                 spritePath: "",
                 isStackable: true
             );
-            
+
             Debug.Log($"[BuildingEntity] 调用CreateBuildingScopedBuff...");
             var buffData = techEffect.CreateBuildingScopedBuff(techData, techId);
-            
+
             if (buffData != null)
             {
                 Debug.Log($"[BuildingEntity] BuffData创建成功，准备注册到GlobalBuffManager");
                 var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
                 if (globalBuffManager != null)
+                {
+                    globalBuffManager.RegisterBuildingBuff(BuildingInstanceId, OwnerFactionID, techId, techEffect, techData);
+                    Debug.Log($"[BuildingEntity] 成功应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
+
+                    // 立即应用Buff效果到当前建筑实体
+                    if (BuffComp != null)
                     {
-                        globalBuffManager.RegisterBuildingBuff(BuildingInstanceId, OwnerFactionID, techId, techEffect, techData);
-                        Debug.Log($"[BuildingEntity] 成功应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
-                        
-                        // 立即应用Buff效果到当前建筑实体
-                        if (BuffComp != null)
-                        {
-                            BuffComp.AddBuff(buffData, this);
-                            Debug.Log($"[BuildingEntity] 立即应用Buff到当前建筑实体");
-                        }
-                        else
-                        {
-                            Debug.LogError($"[BuildingEntity] BuffComp为null，无法应用Buff");
-                        }
+                        BuffComp.AddBuff(buffData, this);
+                        Debug.Log($"[BuildingEntity] 立即应用Buff到当前建筑实体");
                     }
+                    else
+                    {
+                        Debug.LogError($"[BuildingEntity] BuffComp为null，无法应用Buff");
+                    }
+                }
                 else
                 {
                     Debug.LogError($"[BuildingEntity] GlobalBuffManager为null");

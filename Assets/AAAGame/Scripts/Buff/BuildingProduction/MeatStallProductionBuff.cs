@@ -24,13 +24,39 @@ public class MeatStallProductionBuff : BuffCallback
             
             // 初始更新一次产出
             UpdateKillCountProduction();
+            
+            // 监听天数变化事件
+            GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+            GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
         }
     }
     
-    public override void OnUpdate(float deltaTime)
+    public override void OnRemove()
     {
-        // 每帧更新击杀计数和产出计算
-        UpdateKillCountProduction();
+        if (GF.Event != null)
+        {
+            GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+            GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        }
+        base.OnRemove();
+    }
+
+    private void OnIngameValueChanged(object sender, GameFramework.Event.GameEventArgs e)
+    {
+        var args = e as IngameValueChangedEventArgs;
+        if (args != null && args.DataType == IngameValueType.Day)
+        {
+            UpdateKillCountProduction();
+        }
+    }
+
+    private void OnIngamePhaseChanged(object sender, GameFramework.Event.GameEventArgs e)
+    {
+        var args = e as IngamePhaseChangedEventArgs;
+        if (args != null && args.NewPhase == GamePhase.Build)
+        {
+            UpdateKillCountProduction();
+        }
     }
     
     private void UpdateKillCountProduction()
@@ -50,8 +76,6 @@ public class MeatStallProductionBuff : BuffCallback
         // 计算产出加成
         int bonus = Mathf.Min((killCount / Mathf.Max(1, killsPerBonus)) * Mathf.Max(1, bonusPerStep), maxBonus);
         building.SetDynamicProduction(bonus);
-        
-        Debug.Log($"[MeatStall] 前一天击杀: {killCount}, 阈值: {killsPerBonus}, 加成步长: {bonusPerStep}, 加成: +{bonus}, 上限: {maxBonus}");
     }
     
     private int GetPreviousDayKillCount(BuildingEntity building)

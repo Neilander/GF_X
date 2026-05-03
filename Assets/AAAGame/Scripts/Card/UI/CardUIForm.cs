@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Event;
+using DG.Tweening;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -38,6 +39,10 @@ namespace AAAGame.Card
         [Header("抽卡动画")]
         [SerializeField] private RectTransform cardDeckTransform;
         [SerializeField] private float cardMoveToHandDuration = 0.5f;
+
+        [Header("面板动画")]
+        [SerializeField] private float panelSlideDuration = 0.28f;
+        [SerializeField] private float panelSlideOffset = 260f;
 
         [Header("卡组预览")]
         [SerializeField] [InspectorName("悬浮抽卡点显示卡组")] private bool showDeckPreviewOnHover = true;
@@ -81,6 +86,13 @@ namespace AAAGame.Card
         private RectTransform m_TargetingReticleRect;
         private Image m_TargetingReticleImage;
         private Sprite m_RuntimeFallbackReticleSprite;
+        private int m_ActiveDrawAnimations;
+        private Tweener m_PanelTween;
+        private Vector2 m_PanelVisibleAnchoredPosition;
+        private Vector2 m_PanelHiddenAnchoredPosition;
+        private bool m_IsPanelOpening;
+        private bool m_IsPanelReady;
+        private bool m_IsPanelClosing;
 
         private readonly List<CardData> m_DeckPreviewCardData = new List<CardData>();
         private int m_LastDeckPreviewHash = int.MinValue;
@@ -94,6 +106,8 @@ namespace AAAGame.Card
             m_FormCanvas = GetComponent<Canvas>();
             m_FormRectTransform = transform as RectTransform;
             m_UICamera = ResolveCanvasCamera();
+            CachePanelPositions();
+            SetPanelHiddenImmediate();
 
             ResolveAreaMaterialOverlay();
             EnsureTargetingVisuals();
@@ -133,11 +147,21 @@ namespace AAAGame.Card
                 return;
             }
 
-            RefreshHandCards();
+            StartOpenPanelAnimation();
         }
 
         protected override void OnClose(bool isShutdown, object userData)
         {
+            m_IsPanelClosing = false;
+            m_IsPanelOpening = false;
+            m_IsPanelReady = false;
+
+            if (!isShutdown)
+            {
+                m_PanelTween?.Kill();
+                m_PanelTween = null;
+            }
+
             if (GF.Event != null)
             {
                 try
@@ -156,7 +180,11 @@ namespace AAAGame.Card
 
             base.OnClose(isShutdown, userData);
 
-            ClearHandCards();
+            if (!isShutdown)
+            {
+                ClearHandCards();
+            }
+
             HideTargetingVisuals();
             SetTrashBinDragFeedback(null, false);
             HideDeckPreviewPanel();
@@ -179,6 +207,16 @@ namespace AAAGame.Card
 
         private void RefreshHandCardLayout()
         {
+            for (int i = 0; i < m_HandCardItemObjects.Count; i++)
+            {
+                UIItemObject itemObject = m_HandCardItemObjects[i];
+                if (itemObject != null && itemObject.gameObject != null)
+                {
+                    HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
+                    cardItem?.SaveCurrentPosition();
+                }
+            }
+
             Canvas.ForceUpdateCanvases();
 
             RectTransform containerRect = handCardContainer as RectTransform;
@@ -208,6 +246,174 @@ namespace AAAGame.Card
             }
 
             Canvas.ForceUpdateCanvases();
+
+            SyncMovingCardTargets();
+        }
+
+        public bool IsReadyForAutoDraw => m_IsPanelReady && !m_IsPanelOpening && !m_IsPanelClosing;
+
+        public void CloseCardPanelWithAnimation()
+        {
+            StartClosePanelAnimation();
+        }
+
+        private void SyncMovingCardTargets()
+        {
+            for (int i = 0; i < m_HandCardItemObjects.Count; i++)
+            {
+                UIItemObject itemObject = m_HandCardItemObjects[i];
+                if (itemObject == null || itemObject.gameObject == null)
+                {
+                    continue;
+                }
+
+                HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
+                cardItem?.SyncMoveTargetToCurrentLayout();
+            }
+        }
+
+        private void CachePanelPositions()
+        {
+            if (m_FormRectTransform == null)
+            {
+                return;
+            }
+
+            m_PanelVisibleAnchoredPosition = m_FormRectTransform.anchoredPosition;
+            m_PanelHiddenAnchoredPosition = m_PanelVisibleAnchoredPosition + new Vector2(0f, -Mathf.Abs(panelSlideOffset));
+        }
+
+        private void SetPanelHiddenImmediate()
+        {
+            if (m_FormRectTransform == null)
+            {
+                return;
+            }
+
+            m_FormRectTransform.anchoredPosition = m_PanelHiddenAnchoredPosition;
+        }
+
+        private void StartOpenPanelAnimation()
+        {
+            if (m_FormRectTransform == null)
+            {
+                RefreshHandCards();
+                m_IsPanelReady = true;
+                return;
+            }
+
+            m_PanelTween?.Kill();
+            m_IsPanelOpening = true;
+            m_IsPanelClosing = false;
+            m_IsPanelReady = false;
+            Interactable = false;
+
+            if (panelSlideDuration <= 0f)
+            {
+                m_FormRectTransform.anchoredPosition = m_PanelVisibleAnchoredPosition;
+                OnPanelOpenAnimationComplete();
+                return;
+            }
+
+            m_FormRectTransform.anchoredPosition = m_PanelHiddenAnchoredPosition;
+            m_PanelTween = m_FormRectTransform.DOAnchorPos(m_PanelVisibleAnchoredPosition, panelSlideDuration)
+                .SetEase(Ease.OutCubic)
+                .SetLink(gameObject)
+                .OnComplete(OnPanelOpenAnimationComplete);
+        }
+
+        private void StartClosePanelAnimation()
+        {
+            if (m_FormRectTransform == null)
+            {
+                CloseUIImmediately();
+                return;
+            }
+
+            m_PanelTween?.Kill();
+            m_IsPanelOpening = false;
+            m_IsPanelReady = false;
+            m_IsPanelClosing = true;
+            Interactable = false;
+
+            if (panelSlideDuration <= 0f)
+            {
+                m_FormRectTransform.anchoredPosition = m_PanelHiddenAnchoredPosition;
+                CloseUIImmediately();
+                return;
+            }
+
+            m_PanelTween = m_FormRectTransform.DOAnchorPos(m_PanelHiddenAnchoredPosition, panelSlideDuration)
+                .SetEase(Ease.InCubic)
+                .SetLink(gameObject)
+                .OnComplete(CloseUIImmediately);
+        }
+
+        private void OnPanelOpenAnimationComplete()
+        {
+            m_IsPanelOpening = false;
+            m_IsPanelReady = true;
+            Interactable = true;
+            RefreshHandCards();
+        }
+
+        private void CloseUIImmediately()
+        {
+            if (m_CardSystemController != null)
+            {
+                m_CardSystemController = null;
+            }
+
+            GF.UI.CloseUIForm(this.UIForm);
+        }
+
+        public override void OnClickClose()
+        {
+            StartClosePanelAnimation();
+        }
+
+        private void CreateHandCardItem(CardModel cardModel, bool playAnimation = true)
+        {
+            if (handCardItemPrefab == null || handCardContainer == null)
+            {
+                Log.Error("HandCardItemPrefab or HandCardContainer is null.");
+                return;
+            }
+
+            UIItemObject itemObject = SpawnItem<UIItemObject>(handCardItemPrefab, handCardContainer);
+            if (itemObject == null)
+            {
+                Log.Error("Failed to spawn HandCardItem from object pool.");
+                return;
+            }
+
+            HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
+            if (cardItem == null)
+            {
+                Log.Error("HandCardItem component not found on spawned object.");
+                return;
+            }
+
+            RectTransform itemRectTransform = itemObject.gameObject.GetComponent<RectTransform>();
+            if (itemRectTransform != null)
+            {
+                itemRectTransform.SetParent(handCardContainer, false);
+                itemRectTransform.localScale = Vector3.one;
+                itemRectTransform.SetSiblingIndex(0);
+            }
+
+            cardItem.Initialize(cardModel, this);
+            m_HandCardItemObjects.Insert(0, itemObject);
+            RefreshHandCardLayout();
+
+            if (playAnimation && cardDeckTransform != null)
+            {
+                m_ActiveDrawAnimations++;
+                cardItem.MoveToHandFromScreenPosition(cardDeckTransform.position, cardMoveToHandDuration, () =>
+                {
+                    m_ActiveDrawAnimations = Mathf.Max(0, m_ActiveDrawAnimations - 1);
+                });
+            }
         }
 
         private void RequestDeferredHandLayoutRefresh(int frameCount = DeferredHandLayoutRefreshFrameCount)
@@ -720,46 +926,6 @@ namespace AAAGame.Card
             }
 
             RefreshHandCardLayout();
-        }
-
-        private void CreateHandCardItem(CardModel cardModel, bool playAnimation = true)
-        {
-            if (handCardItemPrefab == null || handCardContainer == null)
-            {
-                Log.Error("HandCardItemPrefab or HandCardContainer is null.");
-                return;
-            }
-
-            UIItemObject itemObject = SpawnItem<UIItemObject>(handCardItemPrefab, handCardContainer);
-            if (itemObject == null)
-            {
-                Log.Error("Failed to spawn HandCardItem from object pool.");
-                return;
-            }
-
-            HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
-            if (cardItem == null)
-            {
-                Log.Error("HandCardItem component not found on spawned object.");
-                return;
-            }
-
-            RectTransform itemRectTransform = itemObject.gameObject.GetComponent<RectTransform>();
-            if (itemRectTransform != null)
-            {
-                itemRectTransform.SetParent(handCardContainer, false);
-                itemRectTransform.localScale = Vector3.one;
-                itemRectTransform.SetAsLastSibling();
-            }
-
-            cardItem.Initialize(cardModel, this);
-            m_HandCardItemObjects.Add(itemObject);
-            RefreshHandCardLayout();
-
-            if (playAnimation && cardDeckTransform != null)
-            {
-                cardItem.MoveToHandFromScreenPosition(cardDeckTransform.position, cardMoveToHandDuration);
-            }
         }
 
         private void RemoveHandCardItemDirect(CardModel cardModel)

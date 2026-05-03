@@ -20,6 +20,7 @@ public class CameraController : MonoBehaviour
     [Header("Screen Edge Pan")]
     [SerializeField] bool enableScreenEdgePan = true;
     [SerializeField, Range(0f, 0.45f)] float edgeThresholdRatio = 0.1f;
+    [SerializeField, Range(0f, 0.45f)] float edgeExitThresholdRatio = 0.2f;
     [SerializeField, Min(0f)] float edgeHoldDuration = 1f;
     [SerializeField, Range(0f, 1f)] float panDistanceRatio = 0.3f;
     [SerializeField, Min(0.01f)] float panSmoothTime = 0.2f;
@@ -92,7 +93,7 @@ public class CameraController : MonoBehaviour
         }
 
         Vector2 mousePos = selectPositionAction.ReadValue<Vector2>();
-        bool isInEdgeArea = IsInScreenEdgeArea(mousePos);
+        bool isInEdgeArea = IsInScreenEdgeArea(mousePos, edgePanActivated);
         bool lastEdgePanActivated = edgePanActivated;
 
         if (isInEdgeArea)
@@ -250,7 +251,7 @@ public class CameraController : MonoBehaviour
         return inputManager.CurState == InputState.Game;
     }
 
-    private bool IsInScreenEdgeArea(Vector2 mousePos)
+    private bool IsInScreenEdgeArea(Vector2 mousePos, bool isActivated)
     {
         if (Screen.width <= 0 || Screen.height <= 0)
         {
@@ -262,8 +263,9 @@ public class CameraController : MonoBehaviour
             return false;
         }
 
-        float xThreshold = Screen.width * edgeThresholdRatio;
-        float yThreshold = Screen.height * edgeThresholdRatio;
+        float ratio = isActivated ? edgeExitThresholdRatio : edgeThresholdRatio;
+        float xThreshold = Screen.width * ratio;
+        float yThreshold = Screen.height * ratio;
 
         return mousePos.x <= xThreshold
                || mousePos.x >= Screen.width - xThreshold

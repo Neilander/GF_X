@@ -55,8 +55,6 @@ public partial class BuildingInfoTips : UIFormBase
         GF.Event.Unsubscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyPropertyChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
 
-        ClearSpawnedItems();
-
         m_TargetHost = null;
         m_TargetBuilding = null;
 
@@ -396,4 +394,3 @@ public partial class BuildingInfoTips : UIFormBase
         UnspawnAllItem<UIItemObject>(template);
     }
 }
-

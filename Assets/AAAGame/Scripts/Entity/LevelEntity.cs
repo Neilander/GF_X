@@ -492,6 +492,28 @@ public partial class LevelEntity : EntityBase
 
             building.SetStronghold(stronghold);
             building.RestoreToFullHealthAndEnable();
+
+            // 占领后短时无敌保护（避免队友立即误伤）
+            try
+            {
+                if (building.BuffComp != null)
+                {
+                    string buffId = $"building_capture_invincible_{building.Id}";
+                    var buffData = BuffData.Create(
+                        id: buffId,
+                        duration: 3f,
+                        isForever: false,
+                        maxStack: 1,
+                        modules: new System.Collections.Generic.List<BuffCallback> { new BuildingCaptureInvincibleBuff() }
+                    );
+
+                    building.BuffComp.AddBuff(buffData, building);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[LevelEntity] Failed to apply capture invincible buff to building id={building.Id}: {ex}");
+            }
         }
 
         Log.Info("Stronghold captured. id={0}, newOwnerFaction={1}",

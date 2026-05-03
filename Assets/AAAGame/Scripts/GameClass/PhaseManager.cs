@@ -145,6 +145,30 @@ public class PhaseManager : GameFrameworkComponent
         RemoveAllSoldiers();
 
         RewardManager.HandleEnterBuildPhaseReward(isFirstPhase);
+
+        // 进入建造阶段时，恢复玩家所属据点内的建筑到满血并启用
+        try
+        {
+            var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
+            if (ingameData != null)
+            {
+                foreach (var building in ingameData.Buildings)
+                {
+                    if (building == null)
+                        continue;
+
+                    var stronghold = building.CurrentStronghold;
+                    if (stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                    {
+                        building.RestoreToFullHealthAndEnable();
+                    }
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[PhaseManager] Restore buildings on enter build phase failed: {ex}");
+        }
     }
 
     /// <summary>
