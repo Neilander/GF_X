@@ -170,14 +170,14 @@ Material:
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
     - _Float: 0
-    - _FoamCutoff: 0.8
+    - _FoamCutoff: 1
     - _FoamDistance: 1.94
     - _FoamFalloff: 5
     - _FoamNoiseScale: 5.04
     - _FoamNoiseSpeed: 2.57
     - _FoamSharpness: 0.465
     - _FoamStrength: 2
-    - _FoamWidth: 1
+    - _FoamWidth: 2
     - _Foam_Amount: 0.65
     - _Foam_Cutoff: 0.59
     - _Foam_Depth_Sample_Offset: 0

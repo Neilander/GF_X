@@ -411,7 +411,7 @@ MonoBehaviour:
   m_CustomShadowLayers: 0
   m_ShadowLayerMask: 1
   m_ShadowRenderingLayers: 1
-  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieSize: {x: 60, y: 60}
   m_LightCookieOffset: {x: 0, y: 0}
   m_SoftShadowQuality: 2
 --- !u!108 &552587564
@@ -430,7 +430,7 @@ Light:
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
-  m_CookieSize: 10
+  m_CookieSize: 300
   m_Shadows:
     m_Type: 2
     m_Resolution: -1
@@ -457,7 +457,7 @@ Light:
       e32: 0
       e33: 1
     m_UseCullingMatrixOverride: 0
-  m_Cookie: {fileID: 0}
+  m_Cookie: {fileID: 8600000, guid: c1c100ddee5566778899aabbccddee03, type: 2}
   m_DrawHalo: 0
   m_Flare: {fileID: 0}
   m_RenderMode: 0
