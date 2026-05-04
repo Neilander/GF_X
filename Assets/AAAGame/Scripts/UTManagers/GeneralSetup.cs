@@ -4,8 +4,6 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 using GameFramework.Event;
 using AAAGame.Scripts.Entity;
-using SixLabors.ImageSharp.ColorSpaces.Companding;
-using log4net.Core;
 
 public partial class GeneralSetup : GameFrameworkComponent
 {

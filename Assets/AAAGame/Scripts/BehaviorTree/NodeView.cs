@@ -1,4 +1,5 @@
-﻿using UnityEditor;
+﻿#if UNITY_EDITOR
+using UnityEditor;
 using UnityEngine;
 
 public static class NodeView
@@ -43,3 +44,4 @@ public static class NodeView
         );
     }
 }
+#endif

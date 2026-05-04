@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -95,6 +97,59 @@ public static class ClusterSpawnSystem
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// 异步分帧生成整组单位，返回实际成功 Show 的单位数量。
+    /// </summary>
+    public static async UniTask<int> SpawnClusterAwait(
+        Vector3 center,
+        int count,
+        float radius,
+        float minDistance,
+        UnitType unitIndex,
+        SideType side,
+        BrainType brainType,
+        string sourceBuildingInstanceId = null,
+        int yieldEveryUnits = 2,
+        Func<bool> keepSpawningPredicate = null)
+    {
+        if (count <= 0 || radius <= 0f || minDistance <= 0f)
+        {
+            return 0;
+        }
+
+        List<Vector3> spawnPositions = new List<Vector3>(count);
+        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions))
+        {
+            Debug.LogWarning(
+                $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
+            return 0;
+        }
+
+        int spawnedCount = 0;
+        int batchSize = Mathf.Max(1, yieldEveryUnits);
+        for (int i = 0; i < spawnPositions.Count; i++)
+        {
+            if (keepSpawningPredicate != null && !keepSpawningPredicate())
+            {
+                break;
+            }
+
+            Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
+            bool shown = await SoldierFactory.ShowSoldierAwait(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId);
+            if (shown)
+            {
+                spawnedCount++;
+            }
+
+            if ((i + 1) % batchSize == 0)
+            {
+                await UniTask.Yield();
+            }
+        }
+
+        return spawnedCount;
     }
 
     /// <summary>
@@ -212,3 +267,6 @@ public static class ClusterSpawnSystem
         return new Vector3(x, center.y, z);
     }
 }
+
+
+

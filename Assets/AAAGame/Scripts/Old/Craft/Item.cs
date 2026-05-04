@@ -2,7 +2,6 @@
 using GameFramework.DataTable;
 using GameFramework.Event;
 using Newtonsoft.Json;
-using PlasticGui.Configuration.CloudEdition.Welcome;
 using System;
 using System.Collections;
 using System.Collections.Generic;

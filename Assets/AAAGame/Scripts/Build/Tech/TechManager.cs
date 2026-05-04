@@ -313,6 +313,9 @@ public class TechManager : GameFrameworkComponent
         if (techData == null)
             return false;
 
+        if (techData.ScopeType == TechScopeType.Skill)
+            return false;
+
         return techData.IsStackable || !InGameDataModel.HasUnlockedTech(techId);
     }
 

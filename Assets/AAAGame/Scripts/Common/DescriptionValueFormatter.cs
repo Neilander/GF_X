@@ -26,6 +26,35 @@ public static class DescriptionValueFormatter
         if (data == null)
             return string.Empty;
 
+        if (data.ScopeType == TechScopeType.Skill && !string.IsNullOrEmpty(data.SkillID))
+        {
+            var skillData = SkillDataModel.GetSkillData(data.SkillID);
+            if (skillData != null)
+            {
+                bool isLearned = InGameDataModel.IsSkillUnlocked(data.SkillID);
+                string skillName = GF.Localization.GetString(skillData.NameKey);
+                string skillDesc = skillData.GetFormattedDesc();
+
+                string fmtKey;
+                if (skillData.Type == SkillType.Active && isLearned)
+                {
+                    fmtKey = "Tech.Desc.SkillAlreadyLearned";
+                    string template = GF.Localization.GetString(fmtKey);
+                    return LocalizationTextManager.ProcessText(template.Replace("{0}", skillName));
+                }
+                else
+                {
+                    fmtKey = (skillData.Type == SkillType.Active && !isLearned) 
+                        ? "Tech.Desc.LearnActiveSkill" 
+                        : "Tech.Desc.LearnPassiveSkill";
+                    string template = GF.Localization.GetString(fmtKey);
+                    // 提前对template和skillName格式化，不将skillDesc卷入二次ProcessText，避免“橙髓”等关键字添加重复富文本
+                    string processedTemplate = LocalizationTextManager.ProcessText(template.Replace("{0}", skillName));
+                    return processedTemplate.Replace("{1}", skillDesc);
+                }
+            }
+        }
+
         return LocalizeAndFill(data.DescKey, data.UniqueValues);
     }
 

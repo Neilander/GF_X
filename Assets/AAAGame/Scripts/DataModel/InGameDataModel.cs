@@ -193,6 +193,28 @@ public class InGameDataModel : DataModelBase
         return dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) && owners != null && owners.Count > 0;
     }
 
+    public static bool IsSkillUnlocked(string skillId)
+    {
+        if (string.IsNullOrWhiteSpace(skillId))
+            return false;
+
+        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        if (dataModel == null) return false;
+
+        foreach (var kvp in dataModel.m_TechOwnerContextsById)
+        {
+            if (kvp.Value == null || kvp.Value.Count == 0)
+                continue;
+
+            var techData = TechDataModel.GetTechData(kvp.Key);
+            if (techData != null && techData.SkillID == skillId)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static bool HasUnlockedTech(string techId, string buildingContextKey)
     {
         if (string.IsNullOrWhiteSpace(techId) || string.IsNullOrWhiteSpace(buildingContextKey))

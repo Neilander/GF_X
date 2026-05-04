@@ -1,20 +1,19 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
-/// 士兵工厂类
-/// 封装创建不同类型士兵的方法
+/// Soldier factory.
 /// </summary>
 public static class SoldierFactory
 {
     private static readonly HashSet<string> LoggedPrefabSourceCharacterKeys = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// 统一移除士兵入口：使用 HideEntity。
-    /// 血条由 HideEntityComplete 事件监听链路自动清理。
+    /// Unified soldier remove entry via HideEntity.
     /// </summary>
     public static bool RemoveSoldier(SoldierEntity soldier)
     {
@@ -23,7 +22,7 @@ public static class SoldierFactory
     }
 
     /// <summary>
-    /// 移除 Creature 组中所有 SoldierEntity（不区分阵营）。
+    /// Remove all SoldierEntity in Creature group.
     /// </summary>
     public static void RemoveAllSoldiersInCreatureGroup()
     {
@@ -39,28 +38,49 @@ public static class SoldierFactory
     }
 
     /// <summary>
-    /// 创建士兵单位（异步，通过 OnShowCallback 在实体创建完成后自动添加 Buff）
+    /// Show one soldier entity.
     /// </summary>
-    /// <param name="index">单位类型索引</param>
-    /// <param name="position">出生位置</param>
-    /// <param name="side">阵营</param>
-    /// <param name="brainType">AI类型</param>
+    /// <param name="index">Unit type index.</param>
+    /// <param name="position">Spawn position.</param>
+    /// <param name="side">Side.</param>
+    /// <param name="brainType">Brain type.</param>
     public static int ShowSoldier(UnitType unitType, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI, string sourceBuildingInstanceId = null)
     {
         string characterKey = unitType.ToString();
         string prefabName = GetPrefabPathFromCharacterData(characterKey);
         Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
 
-        // 添加初始Buff到StartBuffs列表
+        // Build start buffs list.
         var startBuffs = new System.Collections.Generic.List<BuffData>();
         AddInitialBuffs(startBuffs, unitType);
         AddGlobalBuffs(startBuffs, unitType, side);
         AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
 
-        // 移除OnShowCallback，因为CreaturePropertyManager在回调执行后才初始化
-        // 改为在BuffTestProcedure的OnShowEntitySuccess回调中设置生命值
+        // Keep OnShowCallback empty here.
+        // Buff setup occurs in existing show-success chain.
 
         return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs);
+    }
+
+    public static async UniTask<bool> ShowSoldierAwait(
+        UnitType unitType,
+        Vector3 position,
+        SideType side = SideType.PlayerSide,
+        BrainType brainType = BrainType.SoldierAI,
+        string sourceBuildingInstanceId = null)
+    {
+        string characterKey = unitType.ToString();
+        string prefabName = GetPrefabPathFromCharacterData(characterKey);
+        Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
+
+        var startBuffs = new System.Collections.Generic.List<BuffData>();
+        AddInitialBuffs(startBuffs, unitType);
+        AddGlobalBuffs(startBuffs, unitType, side);
+        AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
+
+        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs);
+        var logic = await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);
+        return logic != null;
     }
 
     private static string GetPrefabPathFromCharacterData(string characterKey)
@@ -84,7 +104,7 @@ public static class SoldierFactory
 
 
     /// <summary>
-    /// 添加初始Buff到列表中
+    /// Add initial buffs to list.
     /// </summary>
     private static void AddInitialBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType index)
     {
@@ -135,3 +155,6 @@ public static class SoldierFactory
         buffList.AddRange(buildingBuffs);
     }
 }
+
+
+

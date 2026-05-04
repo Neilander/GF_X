@@ -111,13 +111,13 @@ public class CardSystemDiagnostic : MonoBehaviour
         if (File.Exists(prefabPath))
         {
             Debug.Log("✓ CardUIForm.prefab 存在");
-            
+#if UNITY_EDITOR
             // 尝试加载预制体
             GameObject prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             if (prefab != null)
             {
                 Debug.Log("✓ 预制体可以加载");
-                
+
                 // 检查脚本组件
                 var cardUIForm = prefab.GetComponent<AAAGame.Card.CardUIForm>();
                 if (cardUIForm != null)
@@ -133,6 +133,9 @@ public class CardSystemDiagnostic : MonoBehaviour
             {
                 Debug.LogError("❌ 预制体无法加载");
             }
+#else
+            Debug.Log("运行时环境跳过 AssetDatabase 预制体加载检查");
+#endif
         }
         else
         {
@@ -148,6 +151,7 @@ public class CardSystemDiagnostic : MonoBehaviour
         string prefabPath = "Assets/AAAGame/Prefabs/UI/CardUIForm.prefab";
         if (File.Exists(prefabPath))
         {
+#if UNITY_EDITOR
             var importer = UnityEditor.AssetImporter.GetAtPath(prefabPath);
             if (importer != null)
             {
@@ -162,6 +166,9 @@ public class CardSystemDiagnostic : MonoBehaviour
                     Debug.Log($"✓ AssetBundle 标签已设置: {assetBundleName}");
                 }
             }
+#else
+            Debug.Log("运行时环境跳过 AssetBundle 标签检查");
+#endif
         }
     }
 

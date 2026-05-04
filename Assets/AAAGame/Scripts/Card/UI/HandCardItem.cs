@@ -735,7 +735,24 @@ namespace AAAGame.Card
             Vector3 newTargetPosition = m_RectTransform.position;
             m_RectTransform.position = m_SavedTweenPosition;
 
-            m_MoveTween.ChangeEndValue(newTargetPosition, false);
+            float remainTime = m_MoveTween.Duration() - m_MoveTween.Elapsed();
+            remainTime = Mathf.Max(0.05f, remainTime);
+
+            m_MoveTween.Kill();
+            m_MoveTween = m_RectTransform.DOMove(newTargetPosition, remainTime)
+                .SetEase(Ease.OutCubic)
+                .SetLink(gameObject)
+                .OnComplete(() =>
+                {
+                    transform.localScale = Vector3.one;
+                    canvasGroup.blocksRaycasts = true;
+                    if (m_OnMoveToHandComplete != null)
+                    {
+                        m_OnMoveToHandComplete.Invoke();
+                        m_OnMoveToHandComplete = null;
+                    }
+                    RefreshOwningLayout();
+                });
         }
 
         private Vector3 m_SavedTweenPosition;
@@ -1023,6 +1040,10 @@ namespace AAAGame.Card
         private void OnDestroy()
         {
             ApplyHoverGlow(false);
+            m_ScaleTween?.Kill();
+            m_MoveTween?.Kill();
+            m_HoverLiftTween?.Kill();
+            m_FadeTween?.Kill();
             ClearLayoutPlaceholder();
         }
     }

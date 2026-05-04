@@ -270,7 +270,7 @@ internal sealed class RuntimeInitPipeline
             var cardSetup = GameEntry.GetComponent<CardSetup>();
             if (cardSetup != null)
             {
-                cardSetup.CardSystemShutdown();
+                cardSetup.CardSystemShutdown(false);
             }
         }
     }

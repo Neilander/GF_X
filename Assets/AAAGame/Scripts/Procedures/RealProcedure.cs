@@ -18,6 +18,6 @@ public class RealProcedure : RuntimeProcedureBase
 
     protected override void OnRuntimeShutdown()
     {
-        GameEntry.GetComponent<CardSetup>().CardSystemShutdown();
+        GameEntry.GetComponent<CardSetup>().CardSystemShutdown(false);
     }
 }

@@ -103,3 +103,43 @@ MonoBehaviour:
     packed: 0
     filterType: 0
     searchPatterns: '*.asset'
+  - valid: 1
+    name: Audio
+    variant: 
+    fileSystem: 
+    groups: 
+    assetsDirectoryPath: Assets/AAAGame/Audio
+    loadType: 2
+    packed: 0
+    filterType: 0
+    searchPatterns: '*.*'
+  - valid: 1
+    name: Sprites
+    variant: 
+    fileSystem: 
+    groups: 
+    assetsDirectoryPath: Assets/AAAGame/Sprites
+    loadType: 2
+    packed: 0
+    filterType: 0
+    searchPatterns: '*.*'
+  - valid: 1
+    name: Textures
+    variant: 
+    fileSystem: 
+    groups: 
+    assetsDirectoryPath: Assets/AAAGame/Textures
+    loadType: 2
+    packed: 0
+    filterType: 0
+    searchPatterns: '*.*'
+  - valid: 1
+    name: SOs
+    variant: 
+    fileSystem: 
+    groups: 
+    assetsDirectoryPath: Assets/AAAGame/SOs
+    loadType: 2
+    packed: 0
+    filterType: 0
+    searchPatterns: '*.*'

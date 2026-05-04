@@ -18,6 +18,9 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private const string ConditionBaseLevelTextId = "Building_Upgrade_Cond_BaseLevel";
     private const string ConditionUniqueTechTextId = "Building_Upgrade_Cond_UniqueTech";
+    private const float HoldPerStarMinSeconds = 0.1f;
+    private const float HoldPerStarMaxSeconds = 0.4f;
+    private const float HoldAlignedDurationSeconds = 2f;
     private static readonly Color32 DefaultLitColor = new(250, 112, 36, 255);
 
     private static readonly char[] s_OptionMarks = { '\u03B1', '\u03B2', '\u03B3', '\u03B4' };
@@ -322,6 +325,12 @@ public partial class BuildingUpgradeTips : UIFormBase
             bool satisfied = !InGameDataModel.HasUnlockedTech(m_SelectedBinding.TechId);
             SpawnCondition(text, satisfied);
         }
+
+        // 条件3：未实装的Skill Scope
+        if (m_SelectedBinding.TechData != null && m_SelectedBinding.TechData.ScopeType == TechScopeType.Skill)
+        {
+            SpawnCondition("后续版本推出", false);
+        }
     }
 
     private void SpawnCondition(string text, bool satisfied)
@@ -465,7 +474,7 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
-        float duration = m_HoldBinding.PreviewItem.ProgressDuration;
+        float duration = ResolveHoldDurationSeconds(starCount);
         float delta = (starCount / Mathf.Max(0.01f, duration)) * Time.deltaTime;
 
         bool pressing = IsBindingPressed(m_HoldBinding);
@@ -807,6 +816,16 @@ public partial class BuildingUpgradeTips : UIFormBase
     private static string FormatSigned(int value)
     {
         return value > 0 ? $"+{value}" : value.ToString();
+    }
+
+    private static float ResolveHoldDurationSeconds(int starCount)
+    {
+        if (starCount <= 1)
+            return HoldPerStarMinSeconds;
+
+        float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
+        perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
+        return perStarSeconds * (starCount - 1f);
     }
 
     private bool IsActionPressed(string actionName)

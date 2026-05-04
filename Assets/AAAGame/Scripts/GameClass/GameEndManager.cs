@@ -96,12 +96,13 @@ public class GameEndManager : GameFrameworkComponent
         }
 
         var lines = new List<string>(4);
+        int currentDay = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
 
         if (m_EnableOccupySpecificBuildings)
         {
             if (m_EnableArriveAmountDays)
             {
-                lines.Add(string.Format(LocalizationTextDataModel.GetText(ObjectiveOccupyBeforeDayTextId), m_ArriveAmountDaysValue));
+                lines.Add(string.Format(LocalizationTextDataModel.GetText(ObjectiveOccupyBeforeDayTextId), m_ArriveAmountDaysValue, GetRemainingDays(m_ArriveAmountDaysValue, currentDay)));
             }
             else
             {
@@ -111,7 +112,7 @@ public class GameEndManager : GameFrameworkComponent
 
         if (m_EnableSurviveAmountDays)
         {
-            lines.Add(string.Format(LocalizationTextDataModel.GetText(ObjectiveSurviveToDayTextId), m_SurviveAmountDaysValue));
+            lines.Add(string.Format(LocalizationTextDataModel.GetText(ObjectiveSurviveToDayTextId), m_SurviveAmountDaysValue, GetRemainingDays(m_SurviveAmountDaysValue, currentDay)));
         }
 
         if (m_EnableLoseSpecificBuildings)
@@ -403,6 +404,11 @@ public class GameEndManager : GameFrameworkComponent
     {
         int currentDay = InGameDataModel.GetValue(IngameValueType.Day);
         return currentDay > m_SurviveAmountDaysValue;
+    }
+
+    private static int GetRemainingDays(int targetDay, int currentDay)
+    {
+        return Math.Max(1, targetDay - currentDay + 1);
     }
 
     private bool EvaluateArriveAmountDays()

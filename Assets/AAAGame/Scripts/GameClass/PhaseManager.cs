@@ -1,32 +1,21 @@
-using GameFramework.Event;
-using System;
+﻿using System;
+using System.Diagnostics;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-/// <summary>
-/// 阶段管理器
-/// 处理游戏阶段切换逻辑
-/// </summary>
 public class PhaseManager : GameFrameworkComponent
 {
     public static event Action<GamePhase, GamePhase> OnPhaseChanged;
+
     private const float EnemyPresetClusterRadius = 3f;
     private const float EnemyPresetClusterMinDistance = 1.2f;
+    private const long PhaseStepWarnMs = 30;
+    private const int EnemySpawnYieldEveryUnits = 2;
+    private static int s_InvadeFlowToken;
 
-    /// <summary>
-    /// 获取当前游戏阶段
-    /// </summary>
-    public static GamePhase CurrentPhase
-    {
-        get
-        {
-            return (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
-        }
-    }
+    public static GamePhase CurrentPhase => (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
 
-    /// <summary>
-    /// 游戏开始时，按当前阶段执行一次进入逻辑。
-    /// </summary>
     public static void EnterCurrentPhaseOnGameStart()
     {
         GamePhase currentPhase = CurrentPhase;
@@ -36,19 +25,16 @@ public class PhaseManager : GameFrameworkComponent
                 HandleEnterBuildPhase(true);
                 break;
             case GamePhase.Invade:
-                HandleEnterInvadePhase();
+                HandleEnterInvadePhaseAsync().Forget();
                 break;
             case GamePhase.Defend:
                 HandleEnterDefendPhase();
                 break;
         }
 
-        Debug.Log($"Initial phase entered: {currentPhase}");
+        Log.Debug($"Initial phase entered: {currentPhase}");
     }
 
-    /// <summary>
-    /// 切换到下一个阶段
-    /// </summary>
     public static void SwitchToNextPhase()
     {
         GamePhase currentPhase = CurrentPhase;
@@ -73,9 +59,6 @@ public class PhaseManager : GameFrameworkComponent
         SwitchToPhase(nextPhase);
     }
 
-    /// <summary>
-    /// 切换到指定阶段
-    /// </summary>
     public static void SwitchToPhase(GamePhase phase)
     {
         GamePhase oldPhase = CurrentPhase;
@@ -84,18 +67,25 @@ public class PhaseManager : GameFrameworkComponent
             return;
         }
 
-        TryAdvanceDayOnBuildTransition(oldPhase, phase);
+        var totalWatch = Stopwatch.StartNew();
 
-        // 设置新阶段
+        TryAdvanceDayOnBuildTransition(oldPhase, phase);
         InGameDataModel.SetPhase(phase);
 
-        // 处理阶段切换逻辑
+        var transitionWatch = Stopwatch.StartNew();
         HandlePhaseTransition(oldPhase, phase);
+        transitionWatch.Stop();
+        LogPhaseStep($"transition {oldPhase}->{phase}", transitionWatch.ElapsedMilliseconds);
 
-        // 触发阶段切换事件
+        var eventWatch = Stopwatch.StartNew();
         OnPhaseChanged?.Invoke(oldPhase, phase);
+        eventWatch.Stop();
+        LogPhaseStep($"phase-event {oldPhase}->{phase}", eventWatch.ElapsedMilliseconds);
 
-        Debug.Log($"Phase switched from {oldPhase} to {phase}");
+        totalWatch.Stop();
+        LogPhaseStep($"switch-total {oldPhase}->{phase}", totalWatch.ElapsedMilliseconds);
+
+        Log.Debug($"Phase switched from {oldPhase} to {phase}");
     }
 
     private static void TryAdvanceDayOnBuildTransition(GamePhase oldPhase, GamePhase newPhase)
@@ -107,12 +97,9 @@ public class PhaseManager : GameFrameworkComponent
 
         InGameDataModel.TryModifyValue(IngameValueType.Day, 1);
         int currentDay = InGameDataModel.GetValue(IngameValueType.Day);
-        Debug.Log($"Day advanced to {currentDay} when entering {newPhase} from {oldPhase}");
+        Log.Debug($"Day advanced to {currentDay} when entering {newPhase} from {oldPhase}");
     }
 
-    /// <summary>
-    /// 处理阶段切换逻辑
-    /// </summary>
     private static void HandlePhaseTransition(GamePhase oldPhase, GamePhase newPhase)
     {
         switch (newPhase)
@@ -129,121 +116,176 @@ public class PhaseManager : GameFrameworkComponent
         }
     }
 
-    /// <summary>
-    /// 进入建造阶段
-    /// </summary>
     private static void HandleEnterBuildPhase(bool isFirstPhase = false)
     {
-        // 关闭卡牌界面
-        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
-        if (cardSetup != null)
-        {
-            cardSetup.CardSystemShutdown();
-        }
+        // 进入 Build 时取消未完成的 Invade 异步生成流程。
+        s_InvadeFlowToken++;
 
-        // 统一移除 Creature 组内全部 Soldier
+        var totalWatch = Stopwatch.StartNew();
+
+        var removeSoldiersWatch = Stopwatch.StartNew();
         RemoveAllSoldiers();
+        removeSoldiersWatch.Stop();
+        LogPhaseStep("build.remove-soldiers", removeSoldiersWatch.ElapsedMilliseconds);
 
+        var rewardWatch = Stopwatch.StartNew();
         RewardManager.HandleEnterBuildPhaseReward(isFirstPhase);
+        rewardWatch.Stop();
+        LogPhaseStep("build.reward", rewardWatch.ElapsedMilliseconds);
 
-        // 进入建造阶段时，恢复玩家所属据点内的建筑到满血并启用
         try
         {
+            var restoreWatch = Stopwatch.StartNew();
+            int restoredBuildingCount = 0;
+
             var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
             if (ingameData != null)
             {
                 foreach (var building in ingameData.Buildings)
                 {
                     if (building == null)
+                    {
                         continue;
+                    }
 
                     var stronghold = building.CurrentStronghold;
                     if (stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
                     {
                         building.RestoreToFullHealthAndEnable();
+                        restoredBuildingCount++;
                     }
                 }
             }
-        }
-        catch (System.Exception ex)
-        {
-            Debug.LogWarning($"[PhaseManager] Restore buildings on enter build phase failed: {ex}");
-        }
-    }
 
-    /// <summary>
-    /// 进入进攻阶段
-    /// </summary>
-    private static void HandleEnterInvadePhase()
-    {
-        // 打开卡牌界面
+            restoreWatch.Stop();
+            LogPhaseStep($"build.restore-buildings count={restoredBuildingCount}", restoreWatch.ElapsedMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning($"[PhaseManager] Restore buildings on enter build phase failed: {ex}");
+        }
+
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
         if (cardSetup != null)
         {
-            cardSetup.CardSystemSetup();
-            cardSetup.OpenCardUI();
+            var shutdownWatch = Stopwatch.StartNew();
+            cardSetup.CardSystemShutdown();
+            shutdownWatch.Stop();
+            LogPhaseStep("build.card-shutdown", shutdownWatch.ElapsedMilliseconds);
         }
 
-        // 每个部队建筑生成卡牌
-        GenerateCardsFromArmyBuildings();
-
-        // 生成敌方小兵
-        SpawnEnemySoldiers();
+        totalWatch.Stop();
+        LogPhaseStep("build.total", totalWatch.ElapsedMilliseconds);
     }
 
-    /// <summary>
-    /// 进入防御阶段
-    /// </summary>
+    private static void HandleEnterInvadePhase()
+    {
+        HandleEnterInvadePhaseAsync().Forget();
+    }
+
+    private static async UniTaskVoid HandleEnterInvadePhaseAsync()
+    {
+        int flowToken = ++s_InvadeFlowToken;
+        var totalWatch = Stopwatch.StartNew();
+
+        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
+        if (cardSetup != null)
+        {
+            var setupWatch = Stopwatch.StartNew();
+            cardSetup.CardSystemSetup();
+            setupWatch.Stop();
+            LogPhaseStep("invade.card-setup", setupWatch.ElapsedMilliseconds);
+        }
+
+        var generateCardsWatch = Stopwatch.StartNew();
+        GenerateCardsFromArmyBuildings();
+        generateCardsWatch.Stop();
+        LogPhaseStep("invade.generate-cards", generateCardsWatch.ElapsedMilliseconds);
+
+        if (cardSetup != null)
+        {
+            var openUiWatch = Stopwatch.StartNew();
+            cardSetup.OpenCardUI();
+            openUiWatch.Stop();
+            LogPhaseStep("invade.open-card-ui", openUiWatch.ElapsedMilliseconds);
+        }
+
+        var spawnEnemyWatch = Stopwatch.StartNew();
+        await SpawnEnemySoldiersAsync(flowToken);
+        spawnEnemyWatch.Stop();
+        LogPhaseStep("invade.spawn-enemy-async", spawnEnemyWatch.ElapsedMilliseconds);
+
+        totalWatch.Stop();
+        LogPhaseStep("invade.total-async", totalWatch.ElapsedMilliseconds);
+    }
+
     private static void HandleEnterDefendPhase()
     {
-        // 防御阶段逻辑
     }
 
-    /// <summary>
-    /// 旧隐藏/显示单位逻辑已废弃，统一走 SoldierFactory 的移除入口。
-    /// </summary>
     private static void RemoveAllSoldiers()
     {
         SoldierFactory.RemoveAllSoldiersInCreatureGroup();
     }
 
-    /// <summary>
-    /// 从部队建筑生成卡牌
-    /// </summary>
     private static void GenerateCardsFromArmyBuildings()
     {
-        // 获取所有部队建筑
+        var watch = Stopwatch.StartNew();
+
         var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
         var cardSetup = GameEntry.GetComponent<CardSetup>();
-        if (cardSetup != null)
+        int scanBuildingCount = 0;
+        int generatedCardCount = 0;
+
+        if (cardSetup != null && ingameData != null)
         {
             foreach (var building in ingameData.Buildings)
             {
-                if (building.CurrentStronghold == null)
+                scanBuildingCount++;
+                if (building == null || building.CurrentStronghold == null)
+                {
                     continue;
+                }
 
                 if (building.buildingData.Type == BuilType.Army
                     && building.CurrentStronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
                 {
                     cardSetup.GenerateCardToDeck(building);
+                    generatedCardCount++;
                 }
             }
         }
+
+        watch.Stop();
+        LogPhaseStep($"generate-cards.detail scan={scanBuildingCount},generated={generatedCardCount}", watch.ElapsedMilliseconds);
     }
 
-    /// <summary>
-    /// 生成敌方小兵
-    /// </summary>
-    private static void SpawnEnemySoldiers()
+    private static async UniTask SpawnEnemySoldiersAsync(int flowToken)
     {
+        var totalWatch = Stopwatch.StartNew();
+        LogCreatureEntityPoolState("before-spawn");
+
+        var findWatch = Stopwatch.StartNew();
         var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
+        findWatch.Stop();
+        LogPhaseStep($"spawn-enemy.find-preset-points count={presetPoints.Length}", findWatch.ElapsedMilliseconds);
+
         int spawnedCount = 0;
+        int attemptedClusterCount = 0;
+        long totalSpawnClusterMs = 0;
+        long maxSingleSpawnClusterMs = 0;
 
         foreach (var point in presetPoints)
         {
             if (point == null || point.PointType != EntityPresetPointType.Unit)
             {
                 continue;
+            }
+
+            if (flowToken != s_InvadeFlowToken || CurrentPhase != GamePhase.Invade)
+            {
+                Log.Warning("[PhasePerf] spawn-enemy canceled: phase changed while spawning.");
+                break;
             }
 
             var stronghold = LevelEntity.GetStrongholdAtWorldPosition(point.Position);
@@ -254,36 +296,91 @@ public class PhaseManager : GameFrameworkComponent
 
             if (!UnitTypeHelper.TryParseUnitType(point.Identifier, out var unitType))
             {
-                Debug.LogWarning($"Skip unit preset point '{point.name}': invalid identifier '{point.Identifier}'.");
+                Log.Warning($"Skip unit preset point '{point.name}': invalid identifier '{point.Identifier}'.");
                 continue;
             }
 
             int count = point.UnitSpawnCount;
             if (count <= 0)
             {
-                Debug.LogWarning($"Skip unit preset point '{point.name}': UnitSpawnCount={count}.");
+                Log.Warning($"Skip unit preset point '{point.name}': UnitSpawnCount={count}.");
                 continue;
             }
 
-            bool spawnSuccess = ClusterSpawnSystem.SpawnCluster(
+            attemptedClusterCount++;
+
+            var spawnWatch = Stopwatch.StartNew();
+            int clusterSpawned = await ClusterSpawnSystem.SpawnClusterAwait(
                 point.Position,
                 count,
                 EnemyPresetClusterRadius,
                 EnemyPresetClusterMinDistance,
                 unitType,
                 SideType.EnemySide,
-                BrainType.SoldierAI);
+                BrainType.SoldierAI,
+                null,
+                EnemySpawnYieldEveryUnits,
+                () => flowToken == s_InvadeFlowToken && CurrentPhase == GamePhase.Invade);
+            spawnWatch.Stop();
 
-            if (spawnSuccess)
+            long spawnMs = spawnWatch.ElapsedMilliseconds;
+            totalSpawnClusterMs += spawnMs;
+            if (spawnMs > maxSingleSpawnClusterMs)
             {
-                spawnedCount += count;
+                maxSingleSpawnClusterMs = spawnMs;
+            }
+
+            if (clusterSpawned > 0)
+            {
+                spawnedCount += clusterSpawned;
             }
             else
             {
-                Debug.LogWarning($"Cluster spawn failed at preset point '{point.name}', requestedCount={count}.");
+                Log.Warning($"Cluster spawn failed at preset point '{point.name}', requestedCount={count}.");
             }
         }
 
-        Debug.Log($"Spawned {spawnedCount} enemy soldiers from enemy stronghold unit preset points");
+        totalWatch.Stop();
+        LogCreatureEntityPoolState("after-spawn");
+        LogPhaseStep(
+            $"spawn-enemy.detail clusters={attemptedClusterCount},units={spawnedCount},clusterTotalMs={totalSpawnClusterMs},clusterMaxMs={maxSingleSpawnClusterMs}",
+            totalWatch.ElapsedMilliseconds);
+
+        Log.Debug($"Spawned {spawnedCount} enemy soldiers from enemy stronghold unit preset points");
+    }
+
+    private static void LogPhaseStep(string step, long elapsedMs)
+    {
+        if (elapsedMs >= PhaseStepWarnMs)
+        {
+            Log.Warning("[PhasePerf] {0}: {1}ms", step, elapsedMs);
+            return;
+        }
+
+        Log.Info("[PhasePerf] {0}: {1}ms", step, elapsedMs);
+    }
+
+    private static void LogCreatureEntityPoolState(string step)
+    {
+        if (GF.ObjectPool == null)
+        {
+            return;
+        }
+
+        var pool = GF.ObjectPool.GetObjectPool(p => p != null && p.FullName.Contains("Entity Instance Pool (Creature)"));
+        if (pool == null)
+        {
+            Log.Warning("[PhasePerf] creature-pool.{0}: not found", step);
+            return;
+        }
+
+        Log.Info(
+            "[PhasePerf] creature-pool.{0}: count={1},canRelease={2},capacity={3},expire={4}",
+            step,
+            pool.Count,
+            pool.CanReleaseCount,
+            pool.Capacity,
+            pool.ExpireTime);
     }
 }
+

@@ -15,6 +15,9 @@ public partial class BuildingBuildTips : UIFormBase
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
     private const string BaseMilestoneTechPattern = "Tech_BaseBuilt_{0}_Lv1";
+    private const float HoldPerStarMinSeconds = 0.1f;
+    private const float HoldPerStarMaxSeconds = 0.4f;
+    private const float HoldAlignedDurationSeconds = 2f;
 
     private static readonly Dictionary<BuilType, Archetype> s_LastSelectedIndustryByType = new();
     private static readonly Dictionary<string, int> s_ArmySupplyPerUnitCache = new(StringComparer.Ordinal);
@@ -414,7 +417,7 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
-        float duration = m_HoldBinding.Item != null ? m_HoldBinding.Item.ProgressDuration : 1f;
+        float duration = ResolveHoldDurationSeconds(starCount);
         float starsPerSecond = starCount / Mathf.Max(0.01f, duration);
         float delta = starsPerSecond * Time.deltaTime;
 
@@ -588,6 +591,16 @@ public partial class BuildingBuildTips : UIFormBase
     private static bool HasEnoughCoinForBuild(int cost)
     {
         return InGameDataModel.GetValue(IngameValueType.Coin) >= cost;
+    }
+
+    private static float ResolveHoldDurationSeconds(int starCount)
+    {
+        if (starCount <= 1)
+            return HoldPerStarMinSeconds;
+
+        float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
+        perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
+        return perStarSeconds * (starCount - 1f);
     }
 
     private bool IsActionPressed(string actionName)

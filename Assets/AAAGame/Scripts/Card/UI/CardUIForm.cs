@@ -26,9 +26,9 @@ namespace AAAGame.Card
         [SerializeField] private TextMeshProUGUI trashBinHintText;
 
         [Header("垃圾桶拖拽反馈")]
-        [SerializeField] [InspectorName("垃圾桶关闭纹理")] private Sprite trashBinClosedSprite;
-        [SerializeField] [InspectorName("垃圾桶打开纹理")] private Sprite trashBinOpenSprite;
-        [SerializeField] [InspectorName("拖到垃圾桶卡牌透明度(0-255)")] [Range(0, 255)] private int trashHoverCardAlpha = 200;
+        [SerializeField][InspectorName("垃圾桶关闭纹理")] private Sprite trashBinClosedSprite;
+        [SerializeField][InspectorName("垃圾桶打开纹理")] private Sprite trashBinOpenSprite;
+        [SerializeField][InspectorName("拖到垃圾桶卡牌透明度(0-255)")][Range(0, 255)] private int trashHoverCardAlpha = 200;
 
         [Header("预制体")]
         [SerializeField] private GameObject handCardItemPrefab;
@@ -42,24 +42,25 @@ namespace AAAGame.Card
 
         [Header("面板动画")]
         [SerializeField] private float panelSlideDuration = 0.28f;
+        [SerializeField] [Range(0.5f, 3f)] private float panelOpenDurationMultiplier = 1.45f;
         [SerializeField] private float panelSlideOffset = 260f;
 
         [Header("卡组预览")]
-        [SerializeField] [InspectorName("悬浮抽卡点显示卡组")] private bool showDeckPreviewOnHover = true;
-        [SerializeField] [InspectorName("卡牌数据Resources路径")] private string cardDataResourcesPath = "CardData";
-        [SerializeField] [InspectorName("卡组预览面板")] private RectTransform deckPreviewPanel;
-        [SerializeField] [InspectorName("卡组预览内容容器")] private RectTransform deckPreviewContent;
-        [SerializeField] [InspectorName("卡组预览标题文本")] private TextMeshProUGUI deckPreviewTitleText;
-        [SerializeField] [InspectorName("卡组为空提示文本")] private TextMeshProUGUI deckPreviewEmptyText;
-        [SerializeField] [InspectorName("卡组预览卡牌条目模板")] private CardDeckPreviewItem deckPreviewItemTemplate;
+        [SerializeField][InspectorName("悬浮抽卡点显示卡组")] private bool showDeckPreviewOnHover = true;
+        [SerializeField][InspectorName("卡牌数据Resources路径")] private string cardDataResourcesPath = "CardData";
+        [SerializeField][InspectorName("卡组预览面板")] private RectTransform deckPreviewPanel;
+        [SerializeField][InspectorName("卡组预览内容容器")] private RectTransform deckPreviewContent;
+        [SerializeField][InspectorName("卡组预览标题文本")] private TextMeshProUGUI deckPreviewTitleText;
+        [SerializeField][InspectorName("卡组为空提示文本")] private TextMeshProUGUI deckPreviewEmptyText;
+        [SerializeField][InspectorName("卡组预览卡牌条目模板")] private CardDeckPreviewItem deckPreviewItemTemplate;
 
         [Header("目标拖拽表现")]
-        [SerializeField] [InspectorName("准星图片")] private Sprite targetingReticleSprite;
-        [SerializeField] [InspectorName("准星尺寸")] private Vector2 targetingReticleSize = new Vector2(72f, 72f);
-        [SerializeField] [InspectorName("连线颜色")] private Color targetingCurveColor = new Color(0.6f, 1f, 0.75f, 0.92f);
-        [SerializeField] [InspectorName("连线粗细")] private float targetingCurveThickness = 14f;
-        [SerializeField] [InspectorName("连线弯曲高度")] private float targetingCurveHeight = 120f;
-        [SerializeField] [InspectorName("连线分段数")] [Range(4, 64)] private int targetingCurveSegments = 24;
+        [SerializeField][InspectorName("准星图片")] private Sprite targetingReticleSprite;
+        [SerializeField][InspectorName("准星尺寸")] private Vector2 targetingReticleSize = new Vector2(72f, 72f);
+        [SerializeField][InspectorName("连线颜色")] private Color targetingCurveColor = new Color(0.6f, 1f, 0.75f, 0.92f);
+        [SerializeField][InspectorName("连线粗细")] private float targetingCurveThickness = 14f;
+        [SerializeField][InspectorName("连线弯曲高度")] private float targetingCurveHeight = 120f;
+        [SerializeField][InspectorName("连线分段数")][Range(4, 64)] private int targetingCurveSegments = 24;
 
         [Header("快捷键")]
         [SerializeField] private KeyCode toggleUIKey = KeyCode.Tab;
@@ -184,7 +185,6 @@ namespace AAAGame.Card
             {
                 ClearHandCards();
             }
-
             HideTargetingVisuals();
             SetTrashBinDragFeedback(null, false);
             HideDeckPreviewPanel();
@@ -307,8 +307,9 @@ namespace AAAGame.Card
             m_IsPanelClosing = false;
             m_IsPanelReady = false;
             Interactable = false;
+            float openDuration = panelSlideDuration * Mathf.Max(0.5f, panelOpenDurationMultiplier);
 
-            if (panelSlideDuration <= 0f)
+            if (openDuration <= 0f)
             {
                 m_FormRectTransform.anchoredPosition = m_PanelVisibleAnchoredPosition;
                 OnPanelOpenAnimationComplete();
@@ -316,7 +317,7 @@ namespace AAAGame.Card
             }
 
             m_FormRectTransform.anchoredPosition = m_PanelHiddenAnchoredPosition;
-            m_PanelTween = m_FormRectTransform.DOAnchorPos(m_PanelVisibleAnchoredPosition, panelSlideDuration)
+            m_PanelTween = m_FormRectTransform.DOAnchorPos(m_PanelVisibleAnchoredPosition, openDuration)
                 .SetEase(Ease.OutCubic)
                 .SetLink(gameObject)
                 .OnComplete(OnPanelOpenAnimationComplete);
