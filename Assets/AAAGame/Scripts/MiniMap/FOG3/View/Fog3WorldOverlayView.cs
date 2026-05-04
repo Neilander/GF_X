@@ -25,6 +25,13 @@ namespace AAAGame.MiniMap.FOG3
             public float Y;
         }
 
+        public Texture2D FogTexture => fogTexture;
+        public Material FogMaterial => fogMaterial;
+        public Material OutsideMaterial => outsideMaterial;
+        public Bounds FogMeshBounds => fogMeshBounds;
+        public int OutsideMaskQuadCount => outsideMaskQuads.Count;
+        public bool FogMeshUsesCameraProjectionGrid => fogMeshUsesCameraProjectionGrid;
+
         public void Build(Fog3TerrainInfo terrainInfo, Fog3ViewSettings viewSettings, float resolvedOverlayHeight, LayerMask resolvedHeightSampleMask, Vector3 worldOffset)
         {
             this.terrainInfo = terrainInfo;
@@ -95,6 +102,65 @@ namespace AAAGame.MiniMap.FOG3
 
             fogTexture.SetPixels32(pixels);
             fogTexture.Apply(false);
+        }
+
+        public void GetTextureDiagnostics(
+            out int width,
+            out int height,
+            out float averageR,
+            out float averageG,
+            out float averageB,
+            out float averageA,
+            out int alphaZero,
+            out int alphaLow,
+            out int alphaMid,
+            out int alphaHigh,
+            out int alphaFull)
+        {
+            width = fogTexture != null ? fogTexture.width : 0;
+            height = fogTexture != null ? fogTexture.height : 0;
+            averageR = 0f;
+            averageG = 0f;
+            averageB = 0f;
+            averageA = 0f;
+            alphaZero = 0;
+            alphaLow = 0;
+            alphaMid = 0;
+            alphaHigh = 0;
+            alphaFull = 0;
+
+            if (pixels == null || pixels.Length == 0)
+                return;
+
+            long sumR = 0;
+            long sumG = 0;
+            long sumB = 0;
+            long sumA = 0;
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Color32 pixel = pixels[i];
+                sumR += pixel.r;
+                sumG += pixel.g;
+                sumB += pixel.b;
+                sumA += pixel.a;
+
+                if (pixel.a == 0)
+                    alphaZero++;
+                else if (pixel.a == byte.MaxValue)
+                    alphaFull++;
+                else if (pixel.a < 64)
+                    alphaLow++;
+                else if (pixel.a < 192)
+                    alphaMid++;
+                else
+                    alphaHigh++;
+            }
+
+            float divisor = pixels.Length * 255f;
+            averageR = sumR / divisor;
+            averageG = sumG / divisor;
+            averageB = sumB / divisor;
+            averageA = sumA / divisor;
         }
 
         private Color32 GetPixelColor(Fog3MapData mapData, int x, int y)

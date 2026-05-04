@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System;
 using System.Collections;
+using System.Globalization;
 using GameFramework.Event;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -89,6 +90,187 @@ namespace AAAGame.MiniMap.FOG3
         public Fog3Controller Controller => controller;
         public Fog3MapData MapData => controller?.MapData;
         public bool IsInitialized => isInitialized;
+
+        public void LogDiagnostics(string phase)
+        {
+            Fog3MapData mapData = controller?.MapData;
+            Log.Info(string.Format(
+                CultureInfo.InvariantCulture,
+                "[FOG3Diag] Header phase={0}, initialized={1}, active={2}, controller={3}, map={4}, overlay={5}, createWorldOverlay={6}, surfaceMode={7}, drawOverScene={8}, overlayHeight={9:F3}, overlayOffset={10}, terrain={11}",
+                phase,
+                isInitialized,
+                isActiveAndEnabled,
+                controller != null ? "present" : "null",
+                mapData != null ? "present" : "null",
+                overlayView != null ? "present" : "null",
+                createWorldOverlay,
+                viewSettings.SurfaceMode,
+                viewSettings.DrawOverSceneGeometry,
+                currentOverlayHeight,
+                FormatVector3(currentOverlayWorldOffset),
+                currentTerrainInfo != null
+                    ? string.Format(CultureInfo.InvariantCulture, "{0}x{1},cell={2:F3},origin={3},source={4}", currentTerrainInfo.Width, currentTerrainInfo.Height, currentTerrainInfo.CellSize, FormatVector3(currentTerrainInfo.Origin), currentTerrainInfo.SourceName)
+                    : "null"));
+
+            if (controller != null)
+            {
+                controller.GetRevealerDiagnostics(
+                    out int revealerTotal,
+                    out int revealerActive,
+                    out int revealerTargets,
+                    out int revealerStatic,
+                    out float maxRadius,
+                    out int firstActiveId,
+                    out int firstActiveEntityId,
+                    out Vector3 firstActivePosition);
+                Log.Info(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "[FOG3Diag] Revealers total={0}, active={1}, target={2}, static={3}, maxRadius={4:F3}, firstActiveId={5}, firstActiveEntityId={6}, firstActivePos={7}",
+                    revealerTotal,
+                    revealerActive,
+                    revealerTargets,
+                    revealerStatic,
+                    maxRadius,
+                    firstActiveId,
+                    firstActiveEntityId,
+                    FormatVector3(firstActivePosition)));
+            }
+
+            if (mapData != null)
+            {
+                mapData.GetDiagnostics(
+                    out int walkableCount,
+                    out int hiddenCount,
+                    out int exploredCount,
+                    out int visibleCount,
+                    out int outsideCount,
+                    out float averageVisibility);
+                Log.Info(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "[FOG3Diag] Map width={0}, height={1}, cell={2:F3}, origin={3}, walkable={4}, hidden={5}, explored={6}, visible={7}, outside={8}, avgVisibility={9:F4}, dirty={10}",
+                    mapData.Width,
+                    mapData.Height,
+                    mapData.CellSize,
+                    FormatVector3(mapData.WorldOrigin),
+                    walkableCount,
+                    hiddenCount,
+                    exploredCount,
+                    visibleCount,
+                    outsideCount,
+                    averageVisibility,
+                    mapData.IsDirty));
+
+                if (Camera.main != null)
+                    LogMapCell("MainCamera", mapData, Camera.main.transform.position);
+            }
+
+            if (overlayView == null)
+                return;
+
+            overlayView.GetTextureDiagnostics(
+                out int textureWidth,
+                out int textureHeight,
+                out float averageR,
+                out float averageG,
+                out float averageB,
+                out float averageA,
+                out int alphaZero,
+                out int alphaLow,
+                out int alphaMid,
+                out int alphaHigh,
+                out int alphaFull);
+            Log.Info(string.Format(
+                CultureInfo.InvariantCulture,
+                "[FOG3Diag] Overlay texture={0}x{1}, avg=({2:F4},{3:F4},{4:F4},{5:F4}), alphaZero={6}, alphaLow={7}, alphaMid={8}, alphaHigh={9}, alphaFull={10}, meshBoundsCenter={11}, meshBoundsSize={12}, outsideQuads={13}, cameraProjectionGrid={14}",
+                textureWidth,
+                textureHeight,
+                averageR,
+                averageG,
+                averageB,
+                averageA,
+                alphaZero,
+                alphaLow,
+                alphaMid,
+                alphaHigh,
+                alphaFull,
+                FormatVector3(overlayView.FogMeshBounds.center),
+                FormatVector3(overlayView.FogMeshBounds.size),
+                overlayView.OutsideMaskQuadCount,
+                overlayView.FogMeshUsesCameraProjectionGrid));
+
+            LogMaterialDiagnostics("FogMaterial", overlayView.FogMaterial);
+            LogMaterialDiagnostics("OutsideMaterial", overlayView.OutsideMaterial);
+        }
+
+        private static void LogMapCell(string label, Fog3MapData mapData, Vector3 worldPosition)
+        {
+            mapData.TryGetCellDiagnostics(worldPosition, out int gridX, out int gridY, out Fog3CellState state, out float visibility);
+            Log.Info(string.Format(
+                CultureInfo.InvariantCulture,
+                "[FOG3Diag] Cell label={0}, world={1}, grid=({2},{3}), state={4}, visibility={5:F4}",
+                label,
+                FormatVector3(worldPosition),
+                gridX,
+                gridY,
+                state,
+                visibility));
+        }
+
+        private static void LogMaterialDiagnostics(string label, Material material)
+        {
+            if (material == null)
+            {
+                Log.Info("[FOG3Diag] Material label={0}, material=null", label);
+                return;
+            }
+
+            Texture mainTexture = null;
+            if (material.HasProperty("_MainTex"))
+                mainTexture = material.GetTexture("_MainTex");
+            else if (material.HasProperty("_BaseMap"))
+                mainTexture = material.GetTexture("_BaseMap");
+
+            Log.Info(string.Format(
+                CultureInfo.InvariantCulture,
+                "[FOG3Diag] Material label={0}, name={1}, shader={2}, shaderSupported={3}, renderQueue={4}, color={5}, srcBlend={6}, dstBlend={7}, zWrite={8}, zTest={9}, mainTex={10}",
+                label,
+                material.name,
+                material.shader != null ? material.shader.name : "null",
+                material.shader != null && material.shader.isSupported,
+                material.renderQueue,
+                FormatColor(ReadMaterialColor(material)),
+                ReadMaterialFloat(material, "_SrcBlend"),
+                ReadMaterialFloat(material, "_DstBlend"),
+                ReadMaterialFloat(material, "_ZWrite"),
+                ReadMaterialFloat(material, "_ZTest"),
+                mainTexture != null ? string.Format(CultureInfo.InvariantCulture, "{0},{1}x{2}", mainTexture.name, mainTexture.width, mainTexture.height) : "null"));
+        }
+
+        private static Color ReadMaterialColor(Material material)
+        {
+            if (material.HasProperty("_Color"))
+                return material.GetColor("_Color");
+            if (material.HasProperty("_BaseColor"))
+                return material.GetColor("_BaseColor");
+            return Color.clear;
+        }
+
+        private static string ReadMaterialFloat(Material material, string propertyName)
+        {
+            return material.HasProperty(propertyName)
+                ? material.GetFloat(propertyName).ToString("F3", CultureInfo.InvariantCulture)
+                : "n/a";
+        }
+
+        private static string FormatVector3(Vector3 value)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "({0:F3},{1:F3},{2:F3})", value.x, value.y, value.z);
+        }
+
+        private static string FormatColor(Color value)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "({0:F4},{1:F4},{2:F4},{3:F4})", value.r, value.g, value.b, value.a);
+        }
 
         protected override void Awake()
         {

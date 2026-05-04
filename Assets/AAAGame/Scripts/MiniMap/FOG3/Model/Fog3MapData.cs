@@ -141,6 +141,59 @@ namespace AAAGame.MiniMap.FOG3
             return state == Fog3CellState.Visible || state == Fog3CellState.Explored;
         }
 
+        public void GetDiagnostics(
+            out int walkableCount,
+            out int hiddenCount,
+            out int exploredCount,
+            out int visibleCount,
+            out int outsideCount,
+            out float averageVisibility)
+        {
+            walkableCount = 0;
+            hiddenCount = 0;
+            exploredCount = 0;
+            visibleCount = 0;
+            outsideCount = 0;
+            float visibilitySum = 0f;
+
+            for (int i = 0; i < walkable.Length; i++)
+            {
+                if (!walkable[i])
+                {
+                    outsideCount++;
+                    continue;
+                }
+
+                walkableCount++;
+                float visibility = currentVisibility[i];
+                visibilitySum += visibility;
+
+                if (visibility > 0f)
+                    visibleCount++;
+                else if (explored[i])
+                    exploredCount++;
+                else
+                    hiddenCount++;
+            }
+
+            averageVisibility = walkableCount > 0 ? visibilitySum / walkableCount : 0f;
+        }
+
+        public bool TryGetCellDiagnostics(Vector3 worldPos, out int gridX, out int gridY, out Fog3CellState state, out float visibility)
+        {
+            bool isValid = WorldToGrid(worldPos, out gridX, out gridY);
+            if (!isValid)
+            {
+                state = Fog3CellState.Outside;
+                visibility = 0f;
+                return false;
+            }
+
+            state = GetCellState(gridX, gridY);
+            visibility = GetVisibility(gridX, gridY);
+            return true;
+        }
+
         public bool IsValidCell(int x, int y)
         {
             return x >= 0 && x < Width && y >= 0 && y < Height;

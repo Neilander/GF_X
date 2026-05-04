@@ -104,6 +104,50 @@ namespace AAAGame.MiniMap.FOG3
             return MapData != null && MapData.IsPositionExplored(worldPos);
         }
 
+        public void GetRevealerDiagnostics(
+            out int totalCount,
+            out int activeCount,
+            out int targetCount,
+            out int staticCount,
+            out float maxRadius,
+            out int firstActiveId,
+            out int firstActiveEntityId,
+            out Vector3 firstActivePosition)
+        {
+            totalCount = revealers.Count;
+            activeCount = 0;
+            targetCount = 0;
+            staticCount = 0;
+            maxRadius = 0f;
+            firstActiveId = 0;
+            firstActiveEntityId = 0;
+            firstActivePosition = Vector3.zero;
+
+            foreach (KeyValuePair<int, Fog3RevealerData> pair in revealers)
+            {
+                Fog3RevealerData revealer = pair.Value;
+                if (revealer == null)
+                    continue;
+
+                if (revealer.HasTarget)
+                    targetCount++;
+                else
+                    staticCount++;
+
+                if (!revealer.IsActive)
+                    continue;
+
+                activeCount++;
+                maxRadius = Mathf.Max(maxRadius, revealer.VisionRadius);
+                if (firstActiveId != 0)
+                    continue;
+
+                firstActiveId = revealer.Id;
+                firstActiveEntityId = revealer.EntityId;
+                firstActivePosition = revealer.Position;
+            }
+        }
+
         public void ResetExploration()
         {
             MapData?.ResetExploration();

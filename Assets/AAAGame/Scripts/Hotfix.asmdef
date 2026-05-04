@@ -5,6 +5,7 @@
         "Unity.TextMeshPro",
         "Cinemachine",
         "UnityGameFramework.Runtime",
+        "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.Universal.Runtime",
         "Builtin.Runtime",
         "UniTask",
