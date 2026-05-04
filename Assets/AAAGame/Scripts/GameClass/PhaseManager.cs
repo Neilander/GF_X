@@ -320,7 +320,8 @@ public class PhaseManager : GameFrameworkComponent
                 BrainType.SoldierAI,
                 null,
                 EnemySpawnYieldEveryUnits,
-                () => flowToken == s_InvadeFlowToken && CurrentPhase == GamePhase.Invade);
+                () => flowToken == s_InvadeFlowToken && CurrentPhase == GamePhase.Invade,
+                stronghold.strongholdData.StrongholdId);
             spawnWatch.Stop();
 
             long spawnMs = spawnWatch.ElapsedMilliseconds;

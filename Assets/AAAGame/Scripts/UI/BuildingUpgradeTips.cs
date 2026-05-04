@@ -280,7 +280,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         preview.SetExecutable(IsSelectedOptionExecutable());
 
         int cost = ResolveOptionCost(m_SelectedBinding);
-        PopulatePrice(preview, cost, executable: IsSelectedOptionExecutable());
+        PopulatePrice(preview, cost);
 
         if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Base)
             SpawnProperty(preview.PropertyListRoot.transform, ForceIconPath, "+30");
@@ -374,7 +374,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
     }
 
-    private void PopulatePrice(BuildingInfoItem item, int cost, bool executable)
+    private void PopulatePrice(BuildingInfoItem item, int cost)
     {
         if (item == null || m_IconNumTemplate == null)
             return;
@@ -388,7 +388,8 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         iconNum.SetData(CoinIconPath, cost.ToString());
-        UpdatePriceNumberColor(item, executable);
+        bool hasEnoughMoney = InGameDataModel.GetValue(IngameValueType.Coin) >= cost;
+        UpdatePriceNumberColor(item, hasEnoughMoney);
     }
 
     private void SpawnProperty(Transform root, string iconPath, string numberText)
@@ -952,10 +953,13 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         bool executable = IsSelectedOptionExecutable();
         m_SelectedBinding.PreviewItem.SetExecutable(executable);
-        UpdatePriceNumberColor(m_SelectedBinding.PreviewItem, executable);
+
+        int cost = ResolveOptionCost(m_SelectedBinding);
+        bool hasEnoughMoney = InGameDataModel.GetValue(IngameValueType.Coin) >= cost;
+        UpdatePriceNumberColor(m_SelectedBinding.PreviewItem, hasEnoughMoney);
     }
 
-    private static void UpdatePriceNumberColor(BuildingInfoItem item, bool executable)
+    private static void UpdatePriceNumberColor(BuildingInfoItem item, bool hasEnoughMoney)
     {
         if (item == null || item.PriceRoot == null)
             return;
@@ -964,7 +968,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (iconNum == null)
             return;
 
-        if (executable)
+        if (hasEnoughMoney)
             iconNum.ResetNumberColor();
         else
             iconNum.SetNumberColor(Color.red);

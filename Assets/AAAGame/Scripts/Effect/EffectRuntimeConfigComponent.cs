@@ -6,12 +6,16 @@ namespace AAAGame.Effect
     public sealed class EffectRuntimeConfigComponent : GameFrameworkComponent
     {
         [Header("Unit Outline")]
+        [SerializeField] private Shader unitOutlineShader;
         [SerializeField] private Color friendlyOutlineColor = new Color(0.472054f, 0.9811321f, 0.5226642f, 0.47058824f);
         [SerializeField, Range(0f, 0.1f)] private float friendlyOutlineWidth = 0.002f;
         [SerializeField] private Color enemyOutlineColor1 = new Color(0.94747066f, 0.22327036f, 1f, 0.5137255f);
         [SerializeField, Range(0f, 0.1f)] private float enemyOutlineWidth1 = 0.002f;
         [SerializeField] private Color enemyOutlineColor2 = new Color(0.81964487f, 0.2924527f, 1f, 0.21568628f);
         [SerializeField, Range(0f, 0.1f)] private float enemyOutlineWidth2 = 0.004f;
+
+        [Header("Trail")]
+        [SerializeField] private Material defaultCanTrailMaterial;
 
         [Header("Enemy Stronghold Fog")]
         [SerializeField] private float fogAreaBase = 50f;
@@ -34,12 +38,14 @@ namespace AAAGame.Effect
         [Header("Building Ownership Color")]
         [SerializeField] private Color enemyBuildingColor = new Color(0.70980394f, 0.6509804f, 0.7294118f, 1f); // #B5A6BA
 
+        public Shader UnitOutlineShader => unitOutlineShader;
         public Color FriendlyOutlineColor => friendlyOutlineColor;
         public float FriendlyOutlineWidth => friendlyOutlineWidth;
         public Color EnemyOutlineColor1 => enemyOutlineColor1;
         public float EnemyOutlineWidth1 => enemyOutlineWidth1;
         public Color EnemyOutlineColor2 => enemyOutlineColor2;
         public float EnemyOutlineWidth2 => enemyOutlineWidth2;
+        public Material DefaultCanTrailMaterial => defaultCanTrailMaterial;
 
         public float FogAreaBase => fogAreaBase;
         public float FogGroundYOffset => fogGroundYOffset;

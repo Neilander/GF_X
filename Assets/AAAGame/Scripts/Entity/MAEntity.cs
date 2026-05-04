@@ -45,6 +45,32 @@ public class MAEntity : CompCreature, IEntityContext
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
 
+    public void ChangeSide(SideType newSide)
+    {
+        int oldFactionId = EntitySideHelper.ToFactionId(Side);
+        Side = newSide;
+        int newFactionId = EntitySideHelper.ToFactionId(newSide);
+
+        if (oldFactionId != newFactionId)
+        {
+            var e = EntityFactionChangedEventArgs.Create(Id, oldFactionId, newFactionId, null);
+            GF.Event.Fire(this, e);
+        }
+        
+        HealthBarComp.ForceUpdateSide(Id, newSide == SideType.PlayerSide);
+
+        var outlines = gameObject.GetComponentsInChildren<AAAGame.Effect.UnitOutline>(true);
+        foreach (var outline in outlines)
+        {
+            if (outline != null)
+            {
+                outline.ForceRefreshOutline(newSide == SideType.PlayerSide
+                    ? AAAGame.Effect.UnitOutline.OutlineType.Friendly
+                    : AAAGame.Effect.UnitOutline.OutlineType.Enemy);
+            }
+        }
+    }
+
     #region IEntityContext 实现
 
     public Vector3 Position

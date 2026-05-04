@@ -42,6 +42,7 @@ public class EntityParams : RefParams
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int FollowEntityId { get; set; } = -1;
     public const string P_CharacterKey = "CharacterKey";
+    public const string P_SourceStrongholdId = "SourceStrongholdId";
 
     /// <summary>
     /// 出生时自带的 Buff 列表

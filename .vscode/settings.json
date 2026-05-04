@@ -67,5 +67,11 @@
         "*.sln": "*.csproj",
     },
     "dotnet.defaultSolution": "Avenge.sln",
-    "specstory.cloudSync.enabled": "always"
+    "specstory.cloudSync.enabled": "always",
+    "chat.tools.terminal.autoApprove": {
+        "/^dotnet build d:\\\\UnityProjects\\\\Avenge\\\\AAAGame\\.Scripts\\.Editor\\.csproj > \\$null; echo \\$LASTEXITCODE$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
 }

@@ -29,8 +29,24 @@ public partial class TipsItem : UIItemBase
 
     public void SetData(string title, string content)
     {
-        varTitle.text = title;
-        varContent.text = content;
+        bool hasTitle = !string.IsNullOrEmpty(title);
+        varTitle.gameObject.SetActive(hasTitle);
+        varContent.gameObject.SetActive(hasTitle);
+        
+        if (varNoTitleContent != null)
+        {
+            varNoTitleContent.gameObject.SetActive(!hasTitle);
+        }
+
+        if (hasTitle)
+        {
+            varTitle.text = title;
+            varContent.text = content;
+        }
+        else if (varNoTitleContent != null)
+        {
+            varNoTitleContent.text = content;
+        }
     }
 
     public void Play(string title, string content, float duration, Action<TipsItem> onComplete)

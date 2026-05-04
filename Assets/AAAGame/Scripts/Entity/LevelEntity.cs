@@ -484,6 +484,24 @@ public partial class LevelEntity : EntityBase
 
         stronghold.OwnerFactionId = newOwnerFactionId;
 
+        // 同步修改属于该据点的兵归属
+        SideType newSide = EntitySideHelper.ToSide(newOwnerFactionId);
+        var creatureGroup = GF.Entity.GetEntityGroup(Const.EntityGroup.Creature.ToString());
+        if (creatureGroup != null)
+        {
+            var entities = creatureGroup.GetAllEntities();
+            for (int i = 0; i < entities.Length; i++)
+            {
+                if (entities[i] is UnityGameFramework.Runtime.Entity entity && entity.Logic is SoldierEntity soldier)
+                {
+                    if (soldier.Alive && soldier.SourceStrongholdId == stronghold.strongholdData.StrongholdId && soldier.Side != newSide)
+                    {
+                        soldier.ChangeSide(newSide);
+                    }
+                }
+            }
+        }
+
         for (int i = 0; i < stronghold.Buildings.Count; i++)
         {
             var building = stronghold.Buildings[i];

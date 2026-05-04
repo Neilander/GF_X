@@ -327,6 +327,15 @@ public class HealthBarComp : MonoBehaviour
         comp.SetFogVisibleInternal(visible);
     }
 
+    public static void ForceUpdateSide(int entityId, bool isFriendly)
+    {
+        if (ActiveBars.TryGetValue(entityId, out HealthBarComp comp) && comp != null)
+        {
+            comp._isFriendly = isFriendly;
+            comp.UpdateFillColor();
+        }
+    }
+
     private void SetFogVisibleInternal(bool visible)
     {
         _visibleByFog = visible;

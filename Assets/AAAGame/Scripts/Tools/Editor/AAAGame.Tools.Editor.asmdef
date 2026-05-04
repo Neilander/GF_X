@@ -5,7 +5,8 @@
         "Hotfix",
         "Builtin.Runtime",
         "Unity.TextMeshPro",
-        "Unity.2D.Sprite.Editor"
+        "Unity.2D.Sprite.Editor",
+        "GiantGrey.TileWorldCreator"
     ],
     "includePlatforms": [
         "Editor"

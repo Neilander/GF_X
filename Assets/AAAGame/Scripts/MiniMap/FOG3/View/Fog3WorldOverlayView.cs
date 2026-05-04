@@ -5,8 +5,6 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3WorldOverlayView : MonoBehaviour
     {
-        private const string OverlayShaderName = "AAAGame/FOG3/OverlayAlwaysOnTop";
-
         private Texture2D fogTexture;
         private Color32[] pixels;
         private Material fogMaterial;
@@ -450,7 +448,13 @@ namespace AAAGame.MiniMap.FOG3
 
         private Material CreateTransparentMaterial(string materialName, Color color, int transparentQueueOffset)
         {
-            Shader shader = settings.DrawOverSceneGeometry ? Shader.Find(OverlayShaderName) : null;
+            Shader shader = settings.DrawOverSceneGeometry ? settings.OverlayAlwaysOnTopShader : null;
+            if (settings.DrawOverSceneGeometry && shader == null)
+            {
+                Debug.LogError("[FOG3] DrawOverSceneGeometry is enabled but OverlayAlwaysOnTopShader is not assigned.");
+                return null;
+            }
+
             if (shader == null)
                 shader = Shader.Find("Sprites/Default");
             if (shader == null)

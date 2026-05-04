@@ -13,7 +13,17 @@ public partial class SoldierEntity : MAEntity
     /// AI类型
     /// </summary>
     public BrainType BrainType { get; private set; }
+    public string SourceStrongholdId { get; private set; }
     private MinimapReportComponent m_MinimapReportComponent;
+
+    public void ChangeSide(SideType newSide)
+    {
+        base.ChangeSide(newSide);
+        if (m_MinimapReportComponent != null)
+        {
+            m_MinimapReportComponent.SetSide(newSide);
+        }
+    }
 
     protected override void OnInit(object userData)
     {
@@ -35,6 +45,7 @@ public partial class SoldierEntity : MAEntity
 
             Side = ep.Side;
             BrainType = ep.BrainType; // 设置AI类型
+            SourceStrongholdId = ep.GetString(EntityParams.P_SourceStrongholdId);
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
 
         }

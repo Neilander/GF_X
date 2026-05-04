@@ -15,17 +15,17 @@ public class ChangeSceneProcedure : ProcedureBase
     /// <summary>
     /// 编辑器工具可在运行前设置此字段，控制 "Game" 场景加载后切换到哪个 Procedure
     /// </summary>
-    public static string SelectedProcedureForGame = "CharacterTestProcedure";
+    public static string SelectedProcedureForGame = GetDefaultProcedureName();
 
     /// <summary>
     /// 编辑器工具可在运行前设置此字段，控制 Preload 完成后要加载的场景名称
     /// </summary>
-    public static string SelectedSceneForGame = "Game";
+    public static string SelectedSceneForGame = GetDefaultSceneName();
 
     /// <summary>
     /// 编辑器工具可在运行前设置此字段，控制 RuntimeProcedure 初始化时使用的关卡标识
     /// </summary>
-    public static string SelectedLevelIdentifier = "Lv_2";
+    public static string SelectedLevelIdentifier = GetDefaultLevelIdentifier();
 
     /// <summary>
     /// 场景→默认 Procedure 的映射，用于兼容性校验和回退
@@ -63,6 +63,30 @@ public class ChangeSceneProcedure : ProcedureBase
     static ChangeSceneProcedure()
     {
         RebuildProcedureTypeCache();
+    }
+
+    private static string GetDefaultProcedureName()
+    {
+        var settings = AppSettings.Instance;
+        return settings != null && !string.IsNullOrWhiteSpace(settings.StartProcedureName)
+            ? settings.StartProcedureName
+            : "CharacterTestProcedure";
+    }
+
+    private static string GetDefaultSceneName()
+    {
+        var settings = AppSettings.Instance;
+        return settings != null && !string.IsNullOrWhiteSpace(settings.StartSceneName)
+            ? settings.StartSceneName
+            : "Game";
+    }
+
+    private static string GetDefaultLevelIdentifier()
+    {
+        var settings = AppSettings.Instance;
+        return settings != null && !string.IsNullOrWhiteSpace(settings.StartLevelIdentifier)
+            ? settings.StartLevelIdentifier
+            : "Lv_2";
     }
 
     private static void RebuildProcedureTypeCache()

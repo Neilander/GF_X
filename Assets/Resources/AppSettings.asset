@@ -16,6 +16,10 @@ MonoBehaviour:
   ResourceMode: 1
   CheckVersionUrl: http://localhost/1_0_0_1/
   DesignResolution: {x: 1920, y: 1080}
+  StartSceneName: Real
+  StartProcedureName: RealProcedure
+  StartLevelIdentifier: Lv_2
+  ForceLandscape: 1
   EncryptAOTDlls:
   - Builtin.Runtime
   - UnityGameFramework.Runtime

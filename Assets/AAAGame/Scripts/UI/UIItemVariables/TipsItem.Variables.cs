@@ -10,4 +10,5 @@ public partial class TipsItem
 	[Header("UI Variables:")]
 	[SerializeField] private TextMeshProUGUI varTitle = null;
 	[SerializeField] private TextMeshProUGUI varContent = null;
+	[SerializeField] private TextMeshProUGUI varNoTitleContent = null;
 }

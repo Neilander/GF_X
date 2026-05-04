@@ -297,7 +297,7 @@ public class GameEndManager : GameFrameworkComponent
 
         if (string.IsNullOrWhiteSpace(args.BuildingInstanceId))
         {
-            Log.Error("[GameEndManager] EntityFactionChangedEventArgs missing BuildingInstanceId.");
+            // Soldier entities or other entities might not have BuildingInstanceId
             return;
         }
 

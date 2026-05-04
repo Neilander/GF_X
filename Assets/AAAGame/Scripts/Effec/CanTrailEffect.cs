@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityGameFramework.Runtime;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(TrailRenderer))]
@@ -213,32 +214,15 @@ public class CanTrailEffect : MonoBehaviour
             return s_RuntimeFallbackMaterial;
         }
 
-        Shader shader = Shader.Find("AAAGame/Effec/CanTrailAdditive")
-            ?? Shader.Find("Universal Render Pipeline/Particles/Unlit")
-            ?? Shader.Find("Universal Render Pipeline/Unlit")
-            ?? Shader.Find("Sprites/Default");
-
-        if (shader == null)
+        var config = GameEntry.GetComponent<AAAGame.Effect.EffectRuntimeConfigComponent>();
+        Material material = config != null ? config.DefaultCanTrailMaterial : null;
+        if (material == null)
         {
+            Debug.LogWarning("[CanTrailEffect] EffectRuntimeConfigComponent.DefaultCanTrailMaterial is not assigned.");
             return null;
         }
 
-        s_RuntimeFallbackMaterial = new Material(shader)
-        {
-            name = "Runtime_CanTrailMaterial",
-            hideFlags = HideFlags.HideAndDontSave,
-        };
-
-        if (s_RuntimeFallbackMaterial.HasProperty("_BaseColor"))
-        {
-            s_RuntimeFallbackMaterial.SetColor("_BaseColor", Color.white);
-        }
-
-        if (s_RuntimeFallbackMaterial.HasProperty("_Color"))
-        {
-            s_RuntimeFallbackMaterial.SetColor("_Color", Color.white);
-        }
-
+        s_RuntimeFallbackMaterial = material;
         return s_RuntimeFallbackMaterial;
     }
 }

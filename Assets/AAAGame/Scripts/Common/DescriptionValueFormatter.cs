@@ -44,8 +44,8 @@ public static class DescriptionValueFormatter
                 }
                 else
                 {
-                    fmtKey = (skillData.Type == SkillType.Active && !isLearned) 
-                        ? "Tech.Desc.LearnActiveSkill" 
+                    fmtKey = (skillData.Type == SkillType.Active && !isLearned)
+                        ? "Tech.Desc.LearnActiveSkill"
                         : "Tech.Desc.LearnPassiveSkill";
                     string template = GF.Localization.GetString(fmtKey);
                     // 提前对template和skillName格式化，不将skillDesc卷入二次ProcessText，避免“橙髓”等关键字添加重复富文本

@@ -32,6 +32,15 @@ namespace AAAGame.Effect
             }
         }
 
+        public void ForceRefreshOutline(OutlineType newType)
+        {
+            RemoveOutlineMaterials(); // Remove from OLD renderers first
+            _outlineType = newType;
+            InitializeMaterials();
+            renderers = GetComponentsInChildren<Renderer>(true); // Fetch NEW renderers
+            ApplyOutlineMaterials(); // Apply to NEW renderers
+        }
+
         private Renderer[] renderers;
 
         private static EffectRuntimeConfigComponent _configCache;
@@ -62,13 +71,16 @@ namespace AAAGame.Effect
             if (friendlyBaseMat != null)
                 return;
 
-            Shader outlineShader = Shader.Find("Hidden/AAAGame/UnitOutline");
-            if (outlineShader == null)
-                return;
-
             _configCache ??= GameEntry.GetComponent<EffectRuntimeConfigComponent>();
             if (_configCache == null)
                 return;
+
+            Shader outlineShader = _configCache.UnitOutlineShader;
+            if (outlineShader == null)
+            {
+                Log.Warning("[UnitOutline] EffectRuntimeConfigComponent.UnitOutlineShader is not assigned.");
+                return;
+            }
 
             friendlyBaseMat = new Material(outlineShader);
             friendlyBaseMat.SetColor("_OutlineColor", _configCache.FriendlyOutlineColor);

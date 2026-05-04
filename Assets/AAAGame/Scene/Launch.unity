@@ -1005,6 +1005,7 @@ MonoBehaviour:
     HeightSampleMaxDistance: 260
     SurfaceOffset: 0.08
     DrawOverSceneGeometry: 1
+    OverlayAlwaysOnTopShader: {fileID: 4800000, guid: 5c963af48b9ee844e8f10ba8d93c428d, type: 3}
     AutoHeightAboveScene: 0
     AutoHeightPadding: 2
     OutsideMaskPadding: 1000
@@ -2610,12 +2611,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7df4e0c6bd84f4f8ac41ad7d31f97c2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  unitOutlineShader: {fileID: 4800000, guid: aa5b82eda9fb6f445930bec975dfa14c, type: 3}
   friendlyOutlineColor: {r: 0.472054, g: 0.9811321, b: 0.5226642, a: 0.47058824}
   friendlyOutlineWidth: 0.002
   enemyOutlineColor1: {r: 0.94747066, g: 0.22327036, b: 1, a: 0.5137255}
   enemyOutlineWidth1: 0.002
   enemyOutlineColor2: {r: 0.81964487, g: 0.2924527, b: 1, a: 0.21568628}
   enemyOutlineWidth2: 0.004
+  defaultCanTrailMaterial: {fileID: 2100000, guid: 7c7d839c6f51449b81a88ddc65d54aa5, type: 2}
   fogAreaBase: 50
   fogGroundYOffset: 0
   fogOuterThickness: 0.5

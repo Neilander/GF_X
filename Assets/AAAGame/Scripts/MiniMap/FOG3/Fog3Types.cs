@@ -109,6 +109,8 @@ namespace AAAGame.MiniMap.FOG3
         [Header("渲染")]
         [Tooltip("使用 FOG3 置顶着色器，让迷雾覆盖在场景物体上方。")]
         public bool DrawOverSceneGeometry = true;
+        [Tooltip("DrawOverSceneGeometry 开启时使用的迷雾覆盖着色器。")]
+        public Shader OverlayAlwaysOnTopShader;
         [Tooltip("把实际迷雾网格抬到场景物体上方。固定云层迷雾通常不需要开启。")]
         public bool AutoHeightAboveScene;
         [Tooltip("自动高于场景时额外增加的高度余量。")]

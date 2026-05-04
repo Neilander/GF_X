@@ -1,4 +1,4 @@
-using GameFramework.Resource;
+﻿using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using UnityEngine.UI;
@@ -16,8 +16,8 @@ namespace UGF.EditorTools
         GUIContent designResolutionBtnContent;
         private void OnEnable()
         {
-            designResolutionContent = new GUIContent("UI Design Resolution", "UI设计分辨率:");
-            designResolutionBtnContent = new GUIContent("Conform", "确认修改");
+            designResolutionContent = new GUIContent("UI Design Resolution", "UI 设计分辨率");
+            designResolutionBtnContent = new GUIContent("Apply", "确认修改");
         }
         public override void OnInspectorGUI()
         {
@@ -43,7 +43,7 @@ namespace UGF.EditorTools
             var currentOpenScene = EditorSceneManager.GetActiveScene();
             if (currentOpenScene != null && currentOpenScene.isDirty)
             {
-                int opIndex = EditorUtility.DisplayDialogComplex("警告", $"当前场景{currentOpenScene.name}未保存,是否保存?", "保存", "取消", "不保存");
+                int opIndex = EditorUtility.DisplayDialogComplex("警告", $"当前场景 {currentOpenScene.name} 尚未保存，是否保存？", "保存", "取消", "不保存");
                 switch (opIndex)
                 {
                     case 0:
@@ -108,14 +108,23 @@ public class AppSettings : ScriptableObject
             return mInstance;
         }
     }
-    [Tooltip("debug模式,默认显示debug窗口")]
+    [Tooltip("Debug 模式，默认显示调试窗口")]
     public bool DebugMode = false;
-    [Tooltip("资源模式: 单机/全热更/需要时热更")]
+    [Tooltip("资源模式：单机/全量热更/按需热更")]
     public ResourceMode ResourceMode = ResourceMode.Package;
-    [Tooltip("热更版本检测URL:")]
+    [Tooltip("热更版本检测 URL")]
     public string CheckVersionUrl = "http://localhost/1_0_0_1/";
-    [Tooltip("屏幕设计分辨率:")]
+    [Tooltip("屏幕设计分辨率")]
     [HideInInspector] public Vector2Int DesignResolution = new Vector2Int(750, 1334);
-    [Tooltip("需要加密的dll列表")]
+    [Tooltip("启动后目标场景名（由 ChangeSceneProcedure 加载）")]
+    public string StartSceneName = "Real";
+    [Tooltip("目标场景加载完成后切换到的 Procedure 名称")]
+    public string StartProcedureName = "RealProcedure";
+    [Tooltip("RuntimeProcedure 使用的初始关卡标识（如 Lv_2）")]
+    public string StartLevelIdentifier = "Lv_2";
+    [Tooltip("是否在启动时强制为横屏（移动端）")]
+    public bool ForceLandscape = true;
+    [Tooltip("需要加密的 DLL 列表")]
     public string[] EncryptAOTDlls;
 }
+

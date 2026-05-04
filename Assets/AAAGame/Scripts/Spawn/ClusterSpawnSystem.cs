@@ -73,7 +73,8 @@ public static class ClusterSpawnSystem
         UnitType unitIndex,
         SideType side,
         BrainType brainType,
-        string sourceBuildingInstanceId = null)
+        string sourceBuildingInstanceId = null,
+        string sourceStrongholdId = null)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -93,7 +94,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < spawnPositions.Count; i++)
         {
             Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
-            SoldierFactory.ShowSoldier(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId);
+            SoldierFactory.ShowSoldier(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId, sourceStrongholdId);
         }
 
         return true;
@@ -112,7 +113,8 @@ public static class ClusterSpawnSystem
         BrainType brainType,
         string sourceBuildingInstanceId = null,
         int yieldEveryUnits = 2,
-        Func<bool> keepSpawningPredicate = null)
+        Func<bool> keepSpawningPredicate = null,
+        string sourceStrongholdId = null)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -137,7 +139,7 @@ public static class ClusterSpawnSystem
             }
 
             Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
-            bool shown = await SoldierFactory.ShowSoldierAwait(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId);
+            bool shown = await SoldierFactory.ShowSoldierAwait(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId, sourceStrongholdId);
             if (shown)
             {
                 spawnedCount++;
