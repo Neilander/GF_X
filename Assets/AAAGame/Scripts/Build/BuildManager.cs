@@ -319,10 +319,29 @@ public class BuildManager : GameFrameworkComponent
         if (m_Lv0ConstructCandidatesByArchetype.Count > 0)
             return;
 
+        var charDataDetailTb = GF.DataTable.GetDataTable<CharacterDataDetail>();
+
         foreach (var data in BuildingDataModel.GetAllBuildingData())
         {
             if (data == null || data.Lv != 1 || data.Arche == Archetype.None)
                 continue;
+
+            // 移除尚未配备 unit prefab 的兵营在建造列表中的展示。
+            if (data.Type == BuilType.Army && !string.IsNullOrWhiteSpace(data.UnitID) && charDataDetailTb != null)
+            {
+                var charRow = charDataDetailTb.GetDataRow(r => r.CharacterKey == data.UnitID);
+                if (charRow == null || string.IsNullOrWhiteSpace(charRow.PrefabPath))
+                {
+                    continue;
+                }
+
+                string assetPath = UtilityBuiltin.AssetsPath.GetEntityPath(charRow.PrefabPath);
+                if (GF.Resource.HasAsset(assetPath) == GameFramework.Resource.HasAssetResult.NotExist)
+                {
+                    Log.Warning($"建筑 '{data.Identifier}' 对应的军营单位 '{data.UnitID}' 的 Prefab ({assetPath}) 不存在，已从建造列表中隐藏。");
+                    continue;
+                }
+            }
 
             if (!m_Lv0ConstructCandidatesByArchetype.TryGetValue(data.Arche, out var list) || list == null)
             {

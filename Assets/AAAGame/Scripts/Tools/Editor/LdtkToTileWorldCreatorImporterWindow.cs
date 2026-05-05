@@ -5,8 +5,12 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using GiantGrey.TileWorldCreator;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace AAAGame.Tools.Editor
 {
@@ -17,12 +21,29 @@ namespace AAAGame.Tools.Editor
         private const string PlaneLayerName = "Plane";
         private const string WaterLayerName = "Water";
         private const string StrongholdLayerName = "SH";
+        private const string EntityLayerName = "Entities";
+        private const string LevelPrefabTemplatePath = "Assets/AAAGame/Prefabs/Entity/Level/Level_2.prefab";
+        private const string LevelPrefabFolderPath = "Assets/AAAGame/Prefabs/Entity/Level";
+        private const string TemplateTerrainPrefabPath = "Assets/AAAGame/Tilemap/Lv2.prefab";
+        private const string TerrainPrefabFolderPath = "Assets/AAAGame/Tilemap";
+        private const string EntityPresetPointPrefabPath = "Assets/AAAGame/Prefabs/Meiyou/EntityPresetPoint.prefab";
+        private const string PresetUnitsRootName = "\u5173\u5361\u9884\u8BBE\u5355\u4F4D";
+        private const string PresetBuildingsRootName = "\u5173\u5361\u9884\u8BBE\u5EFA\u7B51";
+        private const string DefaultHeroIdentifier = "Unit_Hero";
+        private const int EnemyStrongholdValue = 1;
+        private const int PlayerStrongholdValue = 2;
+        private const int PlayerStrongholdFaction = 0;
+        private const int EnemyStrongholdFaction = 1;
 
         private UnityEngine.Object ldtkLevelAsset;
         private Configuration configuration;
         private TileWorldCreatorManager manager;
+        private GameObject levelPrefabTemplate;
+        private GameObject levelPrefabTarget;
+        private GameObject entityPresetPointPrefab;
         private bool resizeConfiguration = true;
         private bool clearBlueprintModifiers = true;
+        private bool importEntityPresetPoints = true;
         private Vector2 scrollPosition;
         private string lastReport;
 
@@ -49,6 +70,21 @@ namespace AAAGame.Tools.Editor
             {
                 manager = FindObjectsByType<TileWorldCreatorManager>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID)
                     .FirstOrDefault(x => x != null && x.configuration == configuration);
+            }
+
+            if (levelPrefabTemplate == null)
+            {
+                levelPrefabTemplate = AssetDatabase.LoadAssetAtPath<GameObject>(LevelPrefabTemplatePath);
+            }
+
+            if (levelPrefabTarget == null)
+            {
+                levelPrefabTarget = AssetDatabase.LoadAssetAtPath<GameObject>(GetDefaultLevelPrefabPath());
+            }
+
+            if (entityPresetPointPrefab == null)
+            {
+                entityPresetPointPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(EntityPresetPointPrefabPath);
             }
         }
 
@@ -77,9 +113,32 @@ namespace AAAGame.Tools.Editor
 
             EditorGUILayout.Space(6f);
             EditorGUILayout.LabelField("Import Rules", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH is split by 4-neighbor connected components and assigned to SH_* blueprint layers. Lv2.asset is used only as a clone template when you click the template button.", MessageType.Info);
+            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. Lv2.asset is used only as a clone template when you click the template button.", MessageType.Info);
             resizeConfiguration = EditorGUILayout.Toggle("Resize configuration", resizeConfiguration);
             clearBlueprintModifiers = EditorGUILayout.Toggle("Clear blueprint modifiers", clearBlueprintModifiers);
+
+            EditorGUILayout.Space(6f);
+            EditorGUILayout.LabelField("Entity Preset Points", EditorStyles.boldLabel);
+            importEntityPresetPoints = EditorGUILayout.Toggle("Import entity points", importEntityPresetPoints);
+            using (new EditorGUI.DisabledScope(!importEntityPresetPoints))
+            {
+                levelPrefabTarget = (GameObject)EditorGUILayout.ObjectField("Level prefab target", levelPrefabTarget, typeof(GameObject), false);
+                levelPrefabTemplate = (GameObject)EditorGUILayout.ObjectField("Level prefab template", levelPrefabTemplate, typeof(GameObject), false);
+                entityPresetPointPrefab = (GameObject)EditorGUILayout.ObjectField("Point prefab", entityPresetPointPrefab, typeof(GameObject), false);
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Create/Select Level Prefab From Level_2 Template"))
+                    {
+                        CreateOrSelectLevelPrefabFromTemplate();
+                    }
+
+                    if (GUILayout.Button("Generate Level Prefab Only"))
+                    {
+                        ImportEntityPresetPointsOnly();
+                    }
+                }
+            }
 
             EditorGUILayout.Space(8f);
             using (new EditorGUILayout.HorizontalScope())
@@ -141,7 +200,7 @@ namespace AAAGame.Tools.Editor
                 return;
             }
 
-            if (!EnsureStrongholdLayers(plan.strongholdComponents.Count, out string ensureReport))
+            if (!EnsureStrongholdLayers(plan.strongholdComponentsByFaction, out string ensureReport))
             {
                 string message = "Failed to prepare SH layers.";
                 EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
@@ -150,11 +209,11 @@ namespace AAAGame.Tools.Editor
             }
 
             List<BlueprintLayer> strongholdLayers = GetStrongholdBlueprintLayers();
-            if (strongholdLayers.Count < plan.strongholdComponents.Count)
+            if (!HasRequiredStrongholdLayers(plan.strongholdComponentsByFaction, strongholdLayers, out string missingStrongholdLayer))
             {
-                string message = $"SH component count still exceeds SH_* blueprint layers.\nComponents: {plan.strongholdComponents.Count}\nSH layers: {strongholdLayers.Count}";
+                string message = $"SH component still has no matching blueprint layer: {missingStrongholdLayer}";
                 EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
-                lastReport = message + "\n\n" + BuildStrongholdReport(plan.strongholdComponents, strongholdLayers);
+                lastReport = message + "\n\n" + BuildStrongholdReport(plan.strongholdComponentsByFaction, strongholdLayers);
                 return;
             }
 
@@ -172,24 +231,56 @@ namespace AAAGame.Tools.Editor
 
             for (int i = 0; i < strongholdLayers.Count; i++)
             {
-                HashSet<Vector2> cells = i < plan.strongholdComponents.Count
-                    ? plan.strongholdComponents[i].cells
-                    : new HashSet<Vector2>();
+                HashSet<Vector2> cells = GetStrongholdCellsForLayer(plan.strongholdComponentsByFaction, strongholdLayers[i]);
                 clearedModifierCount += ImportCells(strongholdLayers[i], cells, clearBlueprintModifiers);
             }
 
             if (generateBuildLayers)
             {
                 manager.ExecuteBuildLayers(ExecutionMode.FromScratch);
-                ScheduleSaveAfterBuild(configuration);
+                ScheduleSaveAfterBuild(
+                    configuration,
+                    () =>
+                    {
+                        TerrainPrefabResult delayedTerrainResult = SaveTerrainPrefabFromManager();
+                        EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath);
+                        delayedEntityImportResult.terrainResult = delayedTerrainResult;
+                        AssetDatabase.SaveAssets();
+
+                        lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, true, clearedModifierCount, delayedEntityImportResult);
+                        if (!string.IsNullOrEmpty(ensureReport))
+                        {
+                            lastReport = ensureReport + "\n\n" + lastReport;
+                        }
+
+                        Debug.Log(lastReport);
+                    });
+
+                lastReport = "[LDtk Import] TileWorldCreator build layers are generating. Terrain prefab and level prefab will be saved after the editor build pass finishes.";
+                Debug.Log(lastReport);
+                return;
             }
-            else
+
+            TerrainPrefabResult terrainPrefabResult = TerrainPrefabResult.Skipped("Build layers were not generated.");
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(GetDefaultTerrainPrefabPath()) != null)
+            {
+                terrainPrefabResult = TerrainPrefabResult.Existing(GetDefaultTerrainPrefabPath());
+            }
+
+            EntityImportResult entityImportResult = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath);
+            entityImportResult.terrainResult = terrainPrefabResult;
+
+            if (!generateBuildLayers)
             {
                 MarkImportedAssetsDirty(configuration, planeLayer, waterLayer, strongholdLayers);
                 AssetDatabase.SaveAssets();
             }
+            else
+            {
+                AssetDatabase.SaveAssets();
+            }
 
-            lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, generateBuildLayers, clearedModifierCount);
+            lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, generateBuildLayers, clearedModifierCount, entityImportResult);
             if (!string.IsNullOrEmpty(ensureReport))
             {
                 lastReport = ensureReport + "\n\n" + lastReport;
@@ -207,6 +298,36 @@ namespace AAAGame.Tools.Editor
 
             string levelName = Path.GetFileNameWithoutExtension(ldtkPath);
             return $"Assets/AAAGame/Tilemap/{levelName}.asset";
+        }
+
+        private string GetDefaultLevelPrefabPath()
+        {
+            string ldtkPath = GetSelectedLdtkPath();
+            if (string.IsNullOrEmpty(ldtkPath))
+            {
+                return string.Empty;
+            }
+
+            string levelName = Path.GetFileNameWithoutExtension(ldtkPath);
+            Match lvMatch = Regex.Match(levelName, @"^Lv(\d+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (lvMatch.Success)
+            {
+                levelName = "Level_" + lvMatch.Groups[1].Value;
+            }
+
+            return $"{LevelPrefabFolderPath}/{levelName}.prefab";
+        }
+
+        private string GetDefaultTerrainPrefabPath()
+        {
+            string ldtkPath = GetSelectedLdtkPath();
+            if (string.IsNullOrEmpty(ldtkPath))
+            {
+                return string.Empty;
+            }
+
+            string terrainName = Path.GetFileNameWithoutExtension(ldtkPath);
+            return $"{TerrainPrefabFolderPath}/{terrainName}.prefab";
         }
 
         private void CreateOrSelectTargetFromTemplate()
@@ -253,6 +374,78 @@ namespace AAAGame.Tools.Editor
             lastReport = $"Created target from Lv2 template: {targetPath}";
         }
 
+        private void CreateOrSelectLevelPrefabFromTemplate()
+        {
+            if (!TryCreateOrSelectLevelPrefabFromTemplate(out string targetPath))
+            {
+                return;
+            }
+
+            lastReport = $"Selected level prefab target: {targetPath}";
+        }
+
+        private bool TryCreateOrSelectLevelPrefabFromTemplate(out string targetPath)
+        {
+            targetPath = GetDefaultLevelPrefabPath();
+            if (string.IsNullOrEmpty(targetPath))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "LDtk level json path is invalid.", "OK");
+                return false;
+            }
+
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(targetPath);
+            if (existing != null)
+            {
+                levelPrefabTarget = existing;
+                return true;
+            }
+
+            string templatePath = levelPrefabTemplate != null ? AssetDatabase.GetAssetPath(levelPrefabTemplate) : LevelPrefabTemplatePath;
+            if (string.IsNullOrEmpty(templatePath) || AssetDatabase.LoadAssetAtPath<GameObject>(templatePath) == null)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", $"Level prefab template is invalid:\n{templatePath}", "OK");
+                return false;
+            }
+
+            if (!AssetDatabase.IsValidFolder(LevelPrefabFolderPath))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", $"Missing level prefab folder:\n{LevelPrefabFolderPath}", "OK");
+                return false;
+            }
+
+            if (!AssetDatabase.CopyAsset(templatePath, targetPath))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", $"Failed to clone level prefab template:\n{templatePath}\n-> {targetPath}", "OK");
+                return false;
+            }
+
+            AssetDatabase.ImportAsset(targetPath);
+            levelPrefabTarget = AssetDatabase.LoadAssetAtPath<GameObject>(targetPath);
+            if (levelPrefabTarget == null)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", $"Cloned level prefab could not be loaded:\n{targetPath}", "OK");
+                return false;
+            }
+
+            RenamePrefabRoot(targetPath, Path.GetFileNameWithoutExtension(targetPath));
+            levelPrefabTarget = AssetDatabase.LoadAssetAtPath<GameObject>(targetPath);
+            return levelPrefabTarget != null;
+        }
+
+        private static void RenamePrefabRoot(string prefabPath, string rootName)
+        {
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
+            try
+            {
+                prefabRoot.name = rootName;
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
         private string GetSelectedLdtkPath()
         {
             return ldtkLevelAsset != null ? AssetDatabase.GetAssetPath(ldtkLevelAsset) : string.Empty;
@@ -285,7 +478,7 @@ namespace AAAGame.Tools.Editor
             try
             {
                 string json = File.ReadAllText(path);
-                level = JsonUtility.FromJson<LdtkLevelJson>(json);
+                level = JsonConvert.DeserializeObject<LdtkLevelJson>(json);
             }
             catch (Exception ex)
             {
@@ -315,22 +508,45 @@ namespace AAAGame.Tools.Editor
 
             int width = plane.__cWid;
             int height = plane.__cHei;
+            int gridSize = plane.__gridSize;
+            float cellSize = GetTileWorldCellSize();
             if (!ValidateSameGrid(plane, water, stronghold))
             {
                 return false;
             }
 
-            var strongholdCells = ReadIntGridCells(stronghold, width, height);
+            if (!TryReadStrongholdComponents(stronghold, width, height, out var strongholdComponentsByFaction))
+            {
+                return false;
+            }
+
             plan = new ImportPlan
             {
                 width = width,
                 height = height,
+                gridSize = gridSize,
+                cellSize = cellSize,
+                pixelHeight = level.pxHei > 0 ? level.pxHei : height * gridSize,
                 planeCells = ReadIntGridCells(plane, width, height),
                 waterCells = ReadIntGridCells(water, width, height),
-                strongholdComponents = SplitConnectedComponents(strongholdCells)
+                strongholdComponentsByFaction = strongholdComponentsByFaction,
+                entityPoints = ReadEntityPresetPoints(level, gridSize, cellSize)
             };
 
             return true;
+        }
+
+        private float GetTileWorldCellSize()
+        {
+            Configuration sourceConfiguration = configuration;
+            if (sourceConfiguration == null)
+            {
+                sourceConfiguration = AssetDatabase.LoadAssetAtPath<Configuration>(GetDefaultTargetPath());
+            }
+
+            return sourceConfiguration != null && sourceConfiguration.cellSize > 0f
+                ? sourceConfiguration.cellSize
+                : 1f;
         }
 
         private static bool TryFindLdtkLayer(LdtkLevelJson level, string layerName, out LdtkLayerInstance layer)
@@ -408,7 +624,7 @@ namespace AAAGame.Tools.Editor
             return layers;
         }
 
-        private bool EnsureStrongholdLayers(int requiredCount, out string report)
+        private bool EnsureStrongholdLayers(Dictionary<int, List<StrongholdComponent>> requiredByFaction, out string report)
         {
             report = string.Empty;
 
@@ -419,44 +635,86 @@ namespace AAAGame.Tools.Editor
                 return false;
             }
 
-            BlueprintLayer templateBlueprint = existingBlueprintLayers[existingBlueprintLayers.Count - 1];
-            TilesBuildLayer templateBuildLayer = GetStrongholdBuildLayer(templateBlueprint.layerName);
-            if (templateBuildLayer == null)
-            {
-                EditorUtility.DisplayDialog("LDtk import failed", $"Missing build layer for template stronghold layer: {templateBlueprint.layerName}", "OK");
-                return false;
-            }
-
             var created = new List<string>();
-            while (existingBlueprintLayers.Count < requiredCount)
+            foreach (var required in requiredByFaction.OrderBy(x => x.Key))
             {
-                string nextLayerName = BuildNextStrongholdLayerName(existingBlueprintLayers[existingBlueprintLayers.Count - 1].layerName);
-                string nextBuildLayerName = "Build " + nextLayerName;
-
-                if (!TryCloneBlueprintLayer(templateBlueprint, nextLayerName, out BlueprintLayer newBlueprint))
+                int factionId = required.Key;
+                int requiredCount = required.Value.Count;
+                for (int index = 0; index < requiredCount; index++)
                 {
-                    EditorUtility.DisplayDialog("LDtk import failed", $"Failed to create blueprint layer: {nextLayerName}", "OK");
-                    return false;
-                }
+                    string layerName = BuildStrongholdLayerName(factionId, index);
+                    BlueprintLayer blueprintLayer = existingBlueprintLayers.FirstOrDefault(x => string.Equals(x.layerName, layerName, StringComparison.OrdinalIgnoreCase));
+                    TilesBuildLayer buildLayerTemplate = null;
+                    if (blueprintLayer == null)
+                    {
+                        if (!TryFindStrongholdTemplate(existingBlueprintLayers, factionId, out BlueprintLayer templateBlueprint, out TilesBuildLayer templateBuildLayer))
+                        {
+                            return false;
+                        }
 
-                if (!TryCloneBuildLayer(templateBuildLayer, newBlueprint, nextBuildLayerName, out TilesBuildLayer newBuildLayer))
-                {
-                    EditorUtility.DisplayDialog("LDtk import failed", $"Failed to create build layer: {nextBuildLayerName}", "OK");
-                    return false;
-                }
+                        buildLayerTemplate = templateBuildLayer;
+                        if (!TryCloneBlueprintLayer(templateBlueprint, layerName, out blueprintLayer))
+                        {
+                            EditorUtility.DisplayDialog("LDtk import failed", $"Failed to create blueprint layer: {layerName}", "OK");
+                            return false;
+                        }
 
-                existingBlueprintLayers.Add(newBlueprint);
-                created.Add(nextLayerName);
+                        existingBlueprintLayers.Add(blueprintLayer);
+                        created.Add(layerName);
+                    }
+
+                    if (GetStrongholdBuildLayer(layerName) == null)
+                    {
+                        if (buildLayerTemplate == null && !TryFindStrongholdTemplate(existingBlueprintLayers, factionId, out _, out buildLayerTemplate))
+                        {
+                            return false;
+                        }
+
+                        string buildLayerName = "Build " + layerName;
+                        if (!TryCloneBuildLayer(buildLayerTemplate, blueprintLayer, buildLayerName, out _))
+                        {
+                            EditorUtility.DisplayDialog("LDtk import failed", $"Failed to create build layer: {buildLayerName}", "OK");
+                            return false;
+                        }
+
+                        created.Add(buildLayerName);
+                    }
+                }
             }
 
             if (created.Count > 0)
             {
                 report = "Created missing stronghold layers: " + string.Join(", ", created);
             }
-            else if (existingBlueprintLayers.Count > requiredCount)
+            else
             {
-                var extraLayerNames = existingBlueprintLayers.Skip(requiredCount).Select(x => x.layerName).ToArray();
-                report = "Cleared extra stronghold layers: " + string.Join(", ", extraLayerNames);
+                var extraLayerNames = GetExtraStrongholdLayerNames(requiredByFaction, existingBlueprintLayers);
+                if (extraLayerNames.Count > 0)
+                {
+                    report = "Cleared extra stronghold layers: " + string.Join(", ", extraLayerNames);
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryFindStrongholdTemplate(List<BlueprintLayer> existingBlueprintLayers, int factionId, out BlueprintLayer templateBlueprint, out TilesBuildLayer templateBuildLayer)
+        {
+            templateBlueprint = existingBlueprintLayers
+                .Where(x => ParseStrongholdName(x.layerName, out int layerFaction, out _) && layerFaction == factionId && GetStrongholdBuildLayer(x.layerName) != null)
+                .OrderBy(x =>
+                {
+                    ParseStrongholdName(x.layerName, out _, out int index);
+                    return index;
+                })
+                .LastOrDefault();
+
+            templateBlueprint ??= existingBlueprintLayers.LastOrDefault(x => GetStrongholdBuildLayer(x.layerName) != null);
+            templateBuildLayer = templateBlueprint != null ? GetStrongholdBuildLayer(templateBlueprint.layerName) : null;
+            if (templateBlueprint == null || templateBuildLayer == null)
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", "No usable SH_* blueprint/build layer template exists in the selected configuration.", "OK");
+                return false;
             }
 
             return true;
@@ -581,14 +839,9 @@ namespace AAAGame.Tools.Editor
             return null;
         }
 
-        private static string BuildNextStrongholdLayerName(string currentLayerName)
+        private static string BuildStrongholdLayerName(int factionId, int index)
         {
-            if (!ParseStrongholdName(currentLayerName, out int factionId, out int index))
-            {
-                return currentLayerName + "_1";
-            }
-
-            return $"SH_{factionId}_{index + 1}";
+            return $"SH_{factionId}_{index}";
         }
 
         private static bool IsStrongholdLayerName(string layerName)
@@ -641,6 +894,65 @@ namespace AAAGame.Tools.Editor
             }
 
             return cells;
+        }
+
+        private static bool TryReadStrongholdComponents(LdtkLayerInstance layer, int width, int height, out Dictionary<int, List<StrongholdComponent>> componentsByFaction)
+        {
+            componentsByFaction = new Dictionary<int, List<StrongholdComponent>>();
+            var cellsByFaction = new Dictionary<int, HashSet<Vector2>>();
+            int offsetX = Mathf.RoundToInt((layer.__pxTotalOffsetX + layer.pxOffsetX) / (float)layer.__gridSize);
+            int offsetY = Mathf.RoundToInt((layer.__pxTotalOffsetY + layer.pxOffsetY) / (float)layer.__gridSize);
+
+            for (int i = 0; i < layer.intGridCsv.Length; i++)
+            {
+                int value = layer.intGridCsv[i];
+                if (value == 0)
+                {
+                    continue;
+                }
+
+                if (!TryMapStrongholdValueToFaction(value, out int factionId))
+                {
+                    EditorUtility.DisplayDialog("LDtk import failed", $"Unsupported SH IntGrid value: {value}. Expected {PlayerStrongholdValue}=player and {EnemyStrongholdValue}=enemy.", "OK");
+                    return false;
+                }
+
+                int ldtkX = i % width + offsetX;
+                int ldtkY = i / width + offsetY;
+                int twcY = height - 1 - ldtkY;
+                if (!cellsByFaction.TryGetValue(factionId, out var cells))
+                {
+                    cells = new HashSet<Vector2>();
+                    cellsByFaction.Add(factionId, cells);
+                }
+
+                cells.Add(new Vector2(ldtkX, twcY));
+            }
+
+            foreach (var pair in cellsByFaction)
+            {
+                componentsByFaction[pair.Key] = SplitConnectedComponents(pair.Value);
+            }
+
+            return true;
+        }
+
+        private static bool TryMapStrongholdValueToFaction(int value, out int factionId)
+        {
+            switch (value)
+            {
+                case PlayerStrongholdValue:
+                    factionId = PlayerStrongholdFaction;
+                    return true;
+
+                case EnemyStrongholdValue:
+                    factionId = EnemyStrongholdFaction;
+                    return true;
+
+                default:
+                    factionId = -1;
+                    return false;
+            }
         }
 
         private static List<StrongholdComponent> SplitConnectedComponents(HashSet<Vector2> cells)
@@ -729,6 +1041,684 @@ namespace AAAGame.Tools.Editor
             return count;
         }
 
+        private TerrainPrefabResult SaveTerrainPrefabFromManager()
+        {
+            if (manager == null)
+            {
+                return TerrainPrefabResult.Skipped("TWC manager is not assigned.");
+            }
+
+            string terrainPrefabPath = GetDefaultTerrainPrefabPath();
+            if (string.IsNullOrEmpty(terrainPrefabPath))
+            {
+                return TerrainPrefabResult.Skipped("Terrain prefab path is invalid.");
+            }
+
+            if (!AssetDatabase.IsValidFolder(TerrainPrefabFolderPath))
+            {
+                return TerrainPrefabResult.Skipped($"Missing terrain prefab folder: {TerrainPrefabFolderPath}");
+            }
+
+            string terrainName = Path.GetFileNameWithoutExtension(terrainPrefabPath);
+            GameObject terrainClone = Instantiate(manager.gameObject);
+            terrainClone.name = terrainName;
+            terrainClone.transform.position = manager.transform.position;
+            terrainClone.transform.rotation = manager.transform.rotation;
+            terrainClone.transform.localScale = manager.transform.localScale;
+
+            try
+            {
+                SaveGeneratedMeshes(terrainClone, terrainPrefabPath);
+                PrefabUtility.SaveAsPrefabAsset(terrainClone, terrainPrefabPath);
+                AssetDatabase.ImportAsset(terrainPrefabPath);
+                int navMeshSurfaceCount = EnsureTerrainNavMeshSurfacesAndData(terrainPrefabPath);
+                return TerrainPrefabResult.Saved(terrainPrefabPath, navMeshSurfaceCount);
+            }
+            finally
+            {
+                DestroyImmediate(terrainClone);
+            }
+        }
+
+        private static int EnsureTerrainNavMeshSurfacesAndData(string terrainPrefabPath)
+        {
+            GameObject template = AssetDatabase.LoadAssetAtPath<GameObject>(TemplateTerrainPrefabPath);
+            if (template == null)
+            {
+                Debug.LogWarning($"[LDtk Import] Missing terrain navmesh template: {TemplateTerrainPrefabPath}");
+                return 0;
+            }
+
+            NavMeshSurface[] templateSurfaces = template.GetComponents<NavMeshSurface>();
+            if (templateSurfaces == null || templateSurfaces.Length == 0)
+            {
+                Debug.LogWarning($"[LDtk Import] No NavMeshSurface found on terrain template: {TemplateTerrainPrefabPath}");
+                return 0;
+            }
+
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(terrainPrefabPath);
+            try
+            {
+                foreach (NavMeshSurface existingSurface in prefabRoot.GetComponents<NavMeshSurface>())
+                {
+                    DestroyImmediate(existingSurface);
+                }
+
+                for (int i = 0; i < templateSurfaces.Length; i++)
+                {
+                    NavMeshSurface surface = prefabRoot.AddComponent<NavMeshSurface>();
+                    CopyNavMeshSurfaceSettings(templateSurfaces[i], surface);
+                    BuildAndSaveNavMeshData(surface, terrainPrefabPath, i);
+                    EditorUtility.SetDirty(surface);
+                }
+
+                EditorUtility.SetDirty(prefabRoot);
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, terrainPrefabPath);
+                AssetDatabase.ImportAsset(terrainPrefabPath);
+                return templateSurfaces.Length;
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
+        private static int CountTerrainNavMeshSurfaces(string terrainPrefabPath)
+        {
+            GameObject terrainPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath);
+            return terrainPrefab != null ? terrainPrefab.GetComponents<NavMeshSurface>().Length : 0;
+        }
+
+        private static void CopyNavMeshSurfaceSettings(NavMeshSurface source, NavMeshSurface target)
+        {
+            target.agentTypeID = source.agentTypeID;
+            target.collectObjects = source.collectObjects;
+            target.size = source.size;
+            target.center = source.center;
+            target.layerMask = source.layerMask;
+            target.useGeometry = source.useGeometry;
+            target.defaultArea = source.defaultArea;
+            target.ignoreNavMeshAgent = source.ignoreNavMeshAgent;
+            target.ignoreNavMeshObstacle = source.ignoreNavMeshObstacle;
+            target.overrideTileSize = source.overrideTileSize;
+            target.tileSize = source.tileSize;
+            target.overrideVoxelSize = source.overrideVoxelSize;
+            target.voxelSize = source.voxelSize;
+            target.minRegionArea = source.minRegionArea;
+            target.buildHeightMesh = source.buildHeightMesh;
+            target.navMeshData = null;
+
+            var sourceObject = new SerializedObject(source);
+            var targetObject = new SerializedObject(target);
+            SerializedProperty sourceGenerateLinks = sourceObject.FindProperty("m_GenerateLinks");
+            SerializedProperty targetGenerateLinks = targetObject.FindProperty("m_GenerateLinks");
+            if (sourceGenerateLinks != null && targetGenerateLinks != null)
+            {
+                targetGenerateLinks.boolValue = sourceGenerateLinks.boolValue;
+                targetObject.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
+        private static void BuildAndSaveNavMeshData(NavMeshSurface surface, string terrainPrefabPath, int surfaceIndex)
+        {
+            surface.BuildNavMesh();
+            if (surface.navMeshData == null)
+            {
+                Debug.LogWarning($"[LDtk Import] NavMesh build produced no data for agent type {surface.agentTypeID}.");
+                return;
+            }
+
+            string navMeshPath = GetTerrainNavMeshDataPath(terrainPrefabPath, surfaceIndex, surface.agentTypeID);
+            NavMeshData data = surface.navMeshData;
+            data.name = Path.GetFileNameWithoutExtension(navMeshPath);
+
+            NavMeshData existingData = AssetDatabase.LoadAssetAtPath<NavMeshData>(navMeshPath);
+            if (existingData != null)
+            {
+                AssetDatabase.DeleteAsset(navMeshPath);
+            }
+
+            AssetDatabase.CreateAsset(data, navMeshPath);
+            AssetDatabase.ImportAsset(navMeshPath);
+            surface.navMeshData = AssetDatabase.LoadAssetAtPath<NavMeshData>(navMeshPath);
+        }
+
+        private static string GetTerrainNavMeshDataPath(string terrainPrefabPath, int surfaceIndex, int agentTypeId)
+        {
+            string prefabFolder = Path.GetDirectoryName(terrainPrefabPath)?.Replace("\\", "/");
+            if (string.IsNullOrEmpty(prefabFolder))
+            {
+                prefabFolder = TerrainPrefabFolderPath;
+            }
+
+            string terrainName = Path.GetFileNameWithoutExtension(terrainPrefabPath);
+            string agentSuffix = agentTypeId == 0 ? "Default" : agentTypeId.ToString();
+            return $"{prefabFolder}/NavMesh-{terrainName}-{surfaceIndex}-{agentSuffix}.asset";
+        }
+
+        private static void SaveGeneratedMeshes(GameObject root, string terrainPrefabPath)
+        {
+            string prefabFolder = Path.GetDirectoryName(terrainPrefabPath)?.Replace("\\", "/");
+            if (string.IsNullOrEmpty(prefabFolder))
+            {
+                return;
+            }
+
+            string meshFolderName = root.name + "_Meshes";
+            string meshFolder = (prefabFolder + "/" + meshFolderName).Replace("\\", "/");
+            if (!AssetDatabase.IsValidFolder(meshFolder))
+            {
+                AssetDatabase.CreateFolder(prefabFolder, meshFolderName);
+            }
+
+            var components = new List<(UnityEngine.Object component, Mesh mesh, bool isCollider)>();
+            foreach (MeshFilter meshFilter in root.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (meshFilter.sharedMesh != null && meshFilter.sharedMesh.vertexCount > 0)
+                {
+                    components.Add((meshFilter, meshFilter.sharedMesh, false));
+                }
+            }
+
+            foreach (MeshCollider meshCollider in root.GetComponentsInChildren<MeshCollider>(true))
+            {
+                if (meshCollider.sharedMesh != null && meshCollider.sharedMesh.vertexCount > 0)
+                {
+                    components.Add((meshCollider, meshCollider.sharedMesh, true));
+                }
+            }
+
+            var meshMap = new Dictionary<Mesh, Mesh>();
+            foreach (var item in components)
+            {
+                if (!meshMap.TryGetValue(item.mesh, out Mesh savedMesh))
+                {
+                    savedMesh = SaveOrReuseMesh(item.component, item.mesh, item.isCollider, meshFolder);
+                    meshMap.Add(item.mesh, savedMesh);
+                }
+
+                if (item.isCollider)
+                {
+                    ((MeshCollider)item.component).sharedMesh = savedMesh;
+                }
+                else
+                {
+                    ((MeshFilter)item.component).sharedMesh = savedMesh;
+                }
+            }
+        }
+
+        private static Mesh SaveOrReuseMesh(UnityEngine.Object component, Mesh sourceMesh, bool isCollider, string meshFolder)
+        {
+            string baseName = string.IsNullOrEmpty(sourceMesh.name) ? component.name : sourceMesh.name;
+            string meshName = isCollider && !baseName.EndsWith("_Collider", StringComparison.Ordinal)
+                ? baseName + "_Collider"
+                : baseName;
+            string meshPath = Path.Combine(meshFolder, meshName + ".asset").Replace("\\", "/");
+
+            Mesh existingMesh = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+            if (existingMesh != null && !MeshChanged(sourceMesh, existingMesh))
+            {
+                return existingMesh;
+            }
+
+            if (existingMesh != null)
+            {
+                AssetDatabase.DeleteAsset(meshPath);
+            }
+
+            Mesh savedMesh = Instantiate(sourceMesh);
+            savedMesh.name = meshName;
+            AssetDatabase.CreateAsset(savedMesh, meshPath);
+            return savedMesh;
+        }
+
+        private static bool MeshChanged(Mesh a, Mesh b)
+        {
+            if (a == null || b == null)
+            {
+                return true;
+            }
+
+            return a.vertexCount != b.vertexCount ||
+                   a.subMeshCount != b.subMeshCount ||
+                   a.bounds != b.bounds;
+        }
+
+        private void ImportEntityPresetPointsOnly()
+        {
+            lastReport = string.Empty;
+
+            if (!TryGetLdtkPath(out string ldtkPath))
+            {
+                return;
+            }
+
+            if (!TryLoadLevel(ldtkPath, out LdtkLevelJson level))
+            {
+                return;
+            }
+
+            int gridSize = GetDefaultEntityGridSize(level);
+            float cellSize = GetTileWorldCellSize();
+            var plan = new ImportPlan
+            {
+                gridSize = gridSize,
+                cellSize = cellSize,
+                pixelHeight = level.pxHei,
+                entityPoints = ReadEntityPresetPoints(level, gridSize, cellSize)
+            };
+
+            string terrainPrefabPath = GetDefaultTerrainPrefabPath();
+            TerrainPrefabResult terrainPrefabResult = AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath) != null
+                ? TerrainPrefabResult.Existing(terrainPrefabPath)
+                : TerrainPrefabResult.Skipped("Terrain prefab has not been generated.");
+            EntityImportResult result = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath);
+            result.terrainResult = terrainPrefabResult;
+
+            lastReport = BuildEntityImportReport(ldtkPath, result);
+            Debug.Log(lastReport);
+        }
+
+        private EntityImportResult ImportEntityPresetPointsIfRequested(ImportPlan plan, string terrainPrefabPath)
+        {
+            if (!importEntityPresetPoints)
+            {
+                return EntityImportResult.Skipped("Entity preset point import disabled.");
+            }
+
+            if (levelPrefabTarget == null)
+            {
+                if (!TryCreateOrSelectLevelPrefabFromTemplate(out _))
+                {
+                    return EntityImportResult.Skipped("Failed to create or select level prefab target.");
+                }
+            }
+
+            if (entityPresetPointPrefab == null)
+            {
+                const string message = "EntityPresetPoint prefab is not assigned.";
+                EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                return EntityImportResult.Skipped(message);
+            }
+
+            if (entityPresetPointPrefab.GetComponent<EntityPresetPoint>() == null)
+            {
+                const string message = "Selected point prefab has no EntityPresetPoint component.";
+                EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                return EntityImportResult.Skipped(message);
+            }
+
+            string targetPath = AssetDatabase.GetAssetPath(levelPrefabTarget);
+            bool isPrefabAsset = !string.IsNullOrEmpty(targetPath) && PrefabUtility.GetPrefabAssetType(levelPrefabTarget) != PrefabAssetType.NotAPrefab;
+            if (!isPrefabAsset)
+            {
+                const string message = "Level prefab target must be a prefab asset.";
+                EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                return EntityImportResult.Skipped(message);
+            }
+
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(targetPath);
+            try
+            {
+                prefabRoot.name = Path.GetFileNameWithoutExtension(targetPath);
+                EntityImportResult result = ImportEntityPresetPointsIntoRoot(prefabRoot.transform, plan.entityPoints, terrainPrefabPath, useUndo: false);
+                result.targetPath = targetPath;
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, targetPath);
+                AssetDatabase.ImportAsset(targetPath);
+                levelPrefabTarget = AssetDatabase.LoadAssetAtPath<GameObject>(targetPath);
+                return result;
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
+        private EntityImportResult ImportEntityPresetPointsIntoRoot(Transform root, List<EntityPresetPointData> points, string terrainPrefabPath, bool useUndo)
+        {
+            int removedCount = ClearExistingEntityPresetPoints(root, useUndo);
+            int removedTerrainCount = ReplaceTerrainPrefab(root, terrainPrefabPath, useUndo);
+            Transform unitsRoot = FindOrCreateChild(root, PresetUnitsRootName, useUndo);
+            Transform buildingsRoot = FindOrCreateChild(root, PresetBuildingsRootName, useUndo);
+
+            var result = new EntityImportResult
+            {
+                removedCount = removedCount,
+                removedTerrainCount = removedTerrainCount,
+                terrainPrefabPath = terrainPrefabPath
+            };
+
+            foreach (var pointData in points)
+            {
+                Transform parent = pointData.pointType == EntityPresetPointType.Building ? buildingsRoot : unitsRoot;
+                GameObject pointObject = (GameObject)PrefabUtility.InstantiatePrefab(entityPresetPointPrefab, parent);
+                if (pointObject == null)
+                {
+                    pointObject = Instantiate(entityPresetPointPrefab, parent);
+                }
+
+                pointObject.name = BuildEntityPresetPointName(pointData);
+                pointObject.transform.localPosition = pointData.localPosition;
+                pointObject.transform.localRotation = Quaternion.identity;
+                pointObject.transform.localScale = Vector3.one;
+
+                EntityPresetPoint point = pointObject.GetComponent<EntityPresetPoint>();
+                point.Identifier = pointData.identifier;
+                point.PointType = pointData.pointType;
+                point.UnitSpawnCount = pointData.unitSpawnCount;
+                point.IsGameEndConditionBuilding = pointData.isGameEndConditionBuilding;
+                point.IsTestSlot = false;
+                point.TestSlotIndex = 0;
+
+                result.Add(pointData.pointType);
+                EditorUtility.SetDirty(pointObject);
+                EditorUtility.SetDirty(point);
+            }
+
+            EditorUtility.SetDirty(root.gameObject);
+            return result;
+        }
+
+        private static int ClearExistingEntityPresetPoints(Transform root, bool useUndo)
+        {
+            var points = root.GetComponentsInChildren<EntityPresetPoint>(true)
+                .Where(x => x != null && x.transform != root)
+                .Select(x => x.gameObject)
+                .Distinct()
+                .ToArray();
+
+            foreach (GameObject pointObject in points)
+            {
+                DestroyImmediateObject(pointObject, useUndo);
+            }
+
+            return points.Length;
+        }
+
+        private int ReplaceTerrainPrefab(Transform root, string terrainPrefabPath, bool useUndo)
+        {
+            var terrainPrefab = !string.IsNullOrEmpty(terrainPrefabPath)
+                ? AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath)
+                : null;
+            if (terrainPrefab == null)
+            {
+                return 0;
+            }
+
+            var terrainRoots = GetTerrainRoots(root).ToArray();
+            Vector3 localPosition = terrainRoots.Length > 0 ? terrainRoots[0].localPosition : Vector3.zero;
+            Quaternion localRotation = terrainRoots.Length > 0 ? terrainRoots[0].localRotation : Quaternion.identity;
+            Vector3 localScale = terrainRoots.Length > 0 ? terrainRoots[0].localScale : Vector3.one;
+
+            foreach (Transform terrainRoot in terrainRoots)
+            {
+                DestroyImmediateObject(terrainRoot.gameObject, useUndo);
+            }
+
+            GameObject terrainObject = (GameObject)PrefabUtility.InstantiatePrefab(terrainPrefab, root);
+            if (terrainObject == null)
+            {
+                terrainObject = Instantiate(terrainPrefab, root);
+            }
+
+            terrainObject.name = Path.GetFileNameWithoutExtension(terrainPrefabPath);
+            terrainObject.transform.localPosition = localPosition;
+            terrainObject.transform.localRotation = localRotation;
+            terrainObject.transform.localScale = localScale;
+            EditorUtility.SetDirty(terrainObject);
+            return terrainRoots.Length;
+        }
+
+        private static IEnumerable<Transform> GetTerrainRoots(Transform root)
+        {
+            for (int i = 0; i < root.childCount; i++)
+            {
+                Transform child = root.GetChild(i);
+                if (child.GetComponentInChildren<TileWorldCreatorManager>(true) != null)
+                {
+                    yield return child;
+                    continue;
+                }
+
+                GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(child.gameObject);
+                string sourcePath = source != null ? AssetDatabase.GetAssetPath(source) : string.Empty;
+                if (sourcePath.StartsWith(TerrainPrefabFolderPath + "/", StringComparison.OrdinalIgnoreCase) &&
+                    sourcePath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return child;
+                }
+            }
+        }
+
+        private static Transform FindOrCreateChild(Transform root, string childName, bool useUndo)
+        {
+            Transform child = root.Find(childName);
+            if (child != null)
+            {
+                return child;
+            }
+
+            var childObject = new GameObject(childName);
+            if (useUndo)
+            {
+                Undo.RegisterCreatedObjectUndo(childObject, "Create LDtk Entity Preset Root");
+            }
+
+            childObject.transform.SetParent(root, false);
+            return childObject.transform;
+        }
+
+        private static void DestroyImmediateObject(UnityEngine.Object target, bool useUndo)
+        {
+            if (useUndo)
+            {
+                Undo.DestroyObjectImmediate(target);
+            }
+            else
+            {
+                DestroyImmediate(target);
+            }
+        }
+
+        private static string BuildEntityPresetPointName(EntityPresetPointData pointData)
+        {
+            string typeName = pointData.pointType.ToString();
+            return string.IsNullOrEmpty(pointData.identifier) ? typeName : $"{typeName}_{pointData.identifier}";
+        }
+
+        private static int GetDefaultEntityGridSize(LdtkLevelJson level)
+        {
+            LdtkLayerInstance gridLayer = level.layerInstances?.FirstOrDefault(x => x != null && x.__gridSize > 0);
+            return gridLayer != null ? gridLayer.__gridSize : 16;
+        }
+
+        private static List<EntityPresetPointData> ReadEntityPresetPoints(LdtkLevelJson level, int gridSize, float cellSize)
+        {
+            var result = new List<EntityPresetPointData>();
+            LdtkLayerInstance entityLayer = level.layerInstances?.FirstOrDefault(x =>
+                x != null &&
+                string.Equals(x.__identifier, EntityLayerName, StringComparison.OrdinalIgnoreCase));
+
+            if (entityLayer?.entityInstances == null)
+            {
+                return result;
+            }
+
+            int pixelHeight = level.pxHei > 0 ? level.pxHei : entityLayer.__cHei * gridSize;
+            foreach (var entity in entityLayer.entityInstances)
+            {
+                if (entity == null || entity.px == null || entity.px.Length < 2)
+                {
+                    continue;
+                }
+
+                if (!TryConvertEntity(entity, gridSize, pixelHeight, cellSize, out EntityPresetPointData pointData))
+                {
+                    continue;
+                }
+
+                result.Add(pointData);
+            }
+
+            return result;
+        }
+
+        private static bool TryConvertEntity(LdtkEntityInstance entity, int gridSize, int pixelHeight, float cellSize, out EntityPresetPointData pointData)
+        {
+            pointData = default;
+            string entityType = entity.__identifier;
+            EntityPresetPointType pointType;
+            string identifier;
+            int unitSpawnCount = 0;
+
+            if (string.Equals(entityType, "Soldier", StringComparison.OrdinalIgnoreCase))
+            {
+                pointType = EntityPresetPointType.Unit;
+                identifier = GetFieldString(entity, "Identifier");
+                unitSpawnCount = GetFieldInt(entity, "Count", 0);
+            }
+            else if (string.Equals(entityType, "Hero", StringComparison.OrdinalIgnoreCase))
+            {
+                pointType = EntityPresetPointType.Hero;
+                identifier = GetFieldString(entity, "Identifier");
+                if (string.IsNullOrWhiteSpace(identifier))
+                {
+                    identifier = DefaultHeroIdentifier;
+                }
+            }
+            else if (string.Equals(entityType, "Building", StringComparison.OrdinalIgnoreCase))
+            {
+                pointType = EntityPresetPointType.Building;
+                identifier = NormalizeBuildingIdentifier(GetFieldString(entity, "Identifier"));
+            }
+            else
+            {
+                return false;
+            }
+
+            pointData = new EntityPresetPointData
+            {
+                pointType = pointType,
+                identifier = identifier,
+                unitSpawnCount = unitSpawnCount,
+                isGameEndConditionBuilding = GetFieldBool(entity, "IsGameEndConditionBuilding", false),
+                localPosition = new Vector3(
+                    entity.px[0] / (float)gridSize * cellSize,
+                    0f,
+                    (pixelHeight - entity.px[1]) / (float)gridSize * cellSize)
+            };
+            return true;
+        }
+
+        private static string NormalizeBuildingIdentifier(string identifier)
+        {
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                return identifier;
+            }
+
+            string trimmed = identifier.Trim();
+            return Regex.IsMatch(trimmed, @"_Lv\d+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ? trimmed : trimmed + "_Lv1";
+        }
+
+        private static string GetFieldString(LdtkEntityInstance entity, string fieldName)
+        {
+            JToken value = GetFieldValue(entity, fieldName);
+            if (value == null || value.Type == JTokenType.Null)
+            {
+                return string.Empty;
+            }
+
+            return value.Type == JTokenType.String ? value.Value<string>() : value.ToString(Formatting.None);
+        }
+
+        private static int GetFieldInt(LdtkEntityInstance entity, string fieldName, int defaultValue)
+        {
+            JToken value = GetFieldValue(entity, fieldName);
+            if (value == null || value.Type == JTokenType.Null)
+            {
+                return defaultValue;
+            }
+
+            return value.Type == JTokenType.Integer || value.Type == JTokenType.Float
+                ? value.Value<int>()
+                : int.TryParse(value.ToString(Formatting.None), out int parsed) ? parsed : defaultValue;
+        }
+
+        private static bool GetFieldBool(LdtkEntityInstance entity, string fieldName, bool defaultValue)
+        {
+            JToken value = GetFieldValue(entity, fieldName);
+            if (value == null || value.Type == JTokenType.Null)
+            {
+                return defaultValue;
+            }
+
+            return value.Type == JTokenType.Boolean
+                ? value.Value<bool>()
+                : bool.TryParse(value.ToString(Formatting.None), out bool parsed) ? parsed : defaultValue;
+        }
+
+        private static JToken GetFieldValue(LdtkEntityInstance entity, string fieldName)
+        {
+            return entity.fieldInstances?
+                .FirstOrDefault(x => x != null && string.Equals(x.__identifier, fieldName, StringComparison.OrdinalIgnoreCase))
+                ?.__value;
+        }
+
+        private static HashSet<Vector2> GetStrongholdCellsForLayer(Dictionary<int, List<StrongholdComponent>> componentsByFaction, BlueprintLayer layer)
+        {
+            if (layer == null || !ParseStrongholdName(layer.layerName, out int factionId, out int index))
+            {
+                return new HashSet<Vector2>();
+            }
+
+            return componentsByFaction.TryGetValue(factionId, out var components) && index >= 0 && index < components.Count
+                ? components[index].cells
+                : new HashSet<Vector2>();
+        }
+
+        private static bool HasRequiredStrongholdLayers(Dictionary<int, List<StrongholdComponent>> componentsByFaction, List<BlueprintLayer> layers, out string missingLayer)
+        {
+            foreach (var pair in componentsByFaction)
+            {
+                for (int i = 0; i < pair.Value.Count; i++)
+                {
+                    string layerName = BuildStrongholdLayerName(pair.Key, i);
+                    if (layers.Any(x => string.Equals(x.layerName, layerName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
+
+                    missingLayer = layerName;
+                    return false;
+                }
+            }
+
+            missingLayer = string.Empty;
+            return true;
+        }
+
+        private static List<string> GetExtraStrongholdLayerNames(Dictionary<int, List<StrongholdComponent>> componentsByFaction, List<BlueprintLayer> layers)
+        {
+            var result = new List<string>();
+            foreach (var layer in layers)
+            {
+                if (!ParseStrongholdName(layer.layerName, out int factionId, out int index))
+                {
+                    continue;
+                }
+
+                int requiredCount = componentsByFaction.TryGetValue(factionId, out var components) ? components.Count : 0;
+                if (index >= requiredCount)
+                {
+                    result.Add(layer.layerName);
+                }
+            }
+
+            return result;
+        }
+
         private static void MarkImportedAssetsDirty(Configuration configuration, BlueprintLayer planeLayer, BlueprintLayer waterLayer, List<BlueprintLayer> strongholdLayers)
         {
             EditorUtility.SetDirty(configuration);
@@ -743,7 +1733,7 @@ namespace AAAGame.Tools.Editor
             }
         }
 
-        private static void ScheduleSaveAfterBuild(Configuration configuration)
+        private static void ScheduleSaveAfterBuild(Configuration configuration, Action afterSave = null)
         {
             int framesLeft = 90;
             EditorApplication.CallbackFunction update = null;
@@ -801,38 +1791,80 @@ namespace AAAGame.Tools.Editor
 
                 AssetDatabase.SaveAssets();
                 Debug.Log("[LDtk Import] Build layers saved after TileWorldCreator editor generation.");
+                afterSave?.Invoke();
             };
 
             EditorApplication.update += update;
         }
 
-        private static string BuildImportReport(string path, ImportPlan plan, List<BlueprintLayer> strongholdLayers, bool generatedBuildLayers, int clearedModifierCount)
+        private static string BuildImportReport(string path, ImportPlan plan, List<BlueprintLayer> strongholdLayers, bool generatedBuildLayers, int clearedModifierCount, EntityImportResult entityImportResult)
         {
             var builder = new StringBuilder();
             builder.AppendLine("[LDtk Import] Completed");
             builder.AppendLine($"Source: {path}");
             builder.AppendLine($"Size: {plan.width} x {plan.height}");
+            builder.AppendLine($"TWC cell size: {plan.cellSize}");
             builder.AppendLine($"Plane cells: {plan.planeCells.Count}");
             builder.AppendLine($"Water cells: {plan.waterCells.Count}");
-            builder.AppendLine($"SH components: {plan.strongholdComponents.Count}");
+            builder.AppendLine($"SH components: {GetStrongholdComponentCount(plan.strongholdComponentsByFaction)}");
             builder.AppendLine($"Cleared blueprint modifiers: {clearedModifierCount}");
             builder.AppendLine($"Generated build layers: {generatedBuildLayers}");
-            builder.Append(BuildStrongholdReport(plan.strongholdComponents, strongholdLayers));
+            builder.Append(BuildEntityImportReport(path, entityImportResult));
+            builder.Append(BuildStrongholdReport(plan.strongholdComponentsByFaction, strongholdLayers));
             return builder.ToString();
         }
 
-        private static string BuildStrongholdReport(List<StrongholdComponent> components, List<BlueprintLayer> layers)
+        private static string BuildEntityImportReport(string path, EntityImportResult result)
         {
             var builder = new StringBuilder();
-            int count = Mathf.Max(components.Count, layers.Count);
-            for (int i = 0; i < count; i++)
+            builder.AppendLine($"Entity source: {path}");
+            builder.AppendLine($"Terrain prefab: {result.terrainResult.targetPath}");
+            builder.AppendLine($"Terrain prefab import: {(result.terrainResult.skipped ? "Skipped" : result.terrainResult.saved ? "Saved" : "Existing")}");
+            builder.AppendLine($"Terrain navmesh surfaces: {result.terrainResult.navMeshSurfaceCount}");
+            if (result.terrainResult.skipped)
             {
-                string layerName = i < layers.Count ? layers[i].layerName : "<missing layer>";
-                string component = i < components.Count ? components[i].ToString() : "<missing component>";
-                builder.AppendLine($"SH[{i}] {component} -> {layerName}");
+                builder.AppendLine($"Terrain skipped reason: {result.terrainResult.skippedReason}");
+            }
+
+            builder.AppendLine($"Entity import: {(result.skipped ? "Skipped" : "Completed")}");
+            if (result.skipped)
+            {
+                builder.AppendLine($"Entity skipped reason: {result.skippedReason}");
+                return builder.ToString();
+            }
+
+            builder.AppendLine($"Entity prefab: {result.targetPath}");
+            builder.AppendLine($"Entity removed old terrains: {result.removedTerrainCount}");
+            builder.AppendLine($"Entity terrain instance: {result.terrainPrefabPath}");
+            builder.AppendLine($"Entity removed old points: {result.removedCount}");
+            builder.AppendLine($"Entity heroes: {result.heroCount}");
+            builder.AppendLine($"Entity buildings: {result.buildingCount}");
+            builder.AppendLine($"Entity units: {result.unitCount}");
+            return builder.ToString();
+        }
+
+        private static string BuildStrongholdReport(Dictionary<int, List<StrongholdComponent>> componentsByFaction, List<BlueprintLayer> layers)
+        {
+            var builder = new StringBuilder();
+            foreach (var layer in layers)
+            {
+                if (!ParseStrongholdName(layer.layerName, out int factionId, out int index))
+                {
+                    continue;
+                }
+
+                string component = componentsByFaction.TryGetValue(factionId, out var components) && index < components.Count
+                    ? components[index].ToString()
+                    : "<empty>";
+                builder.AppendLine($"SH_{factionId}[{index}] {component} -> {layer.layerName}");
             }
 
             return builder.ToString();
+        }
+
+        private static int GetStrongholdComponentCount(Dictionary<int, List<StrongholdComponent>> componentsByFaction)
+        {
+            return componentsByFaction.Sum(x => x.Value.Count);
         }
 
         [Serializable]
@@ -857,15 +1889,120 @@ namespace AAAGame.Tools.Editor
             public int pxOffsetX;
             public int pxOffsetY;
             public int[] intGridCsv;
+            public LdtkEntityInstance[] entityInstances;
+        }
+
+        private sealed class LdtkEntityInstance
+        {
+            public string __identifier;
+            public int[] px;
+            public LdtkFieldInstance[] fieldInstances;
+        }
+
+        private sealed class LdtkFieldInstance
+        {
+            public string __identifier;
+            public JToken __value;
         }
 
         private sealed class ImportPlan
         {
             public int width;
             public int height;
+            public int gridSize;
+            public float cellSize;
+            public int pixelHeight;
             public HashSet<Vector2> planeCells;
             public HashSet<Vector2> waterCells;
-            public List<StrongholdComponent> strongholdComponents;
+            public Dictionary<int, List<StrongholdComponent>> strongholdComponentsByFaction;
+            public List<EntityPresetPointData> entityPoints;
+        }
+
+        private struct EntityPresetPointData
+        {
+            public EntityPresetPointType pointType;
+            public string identifier;
+            public int unitSpawnCount;
+            public bool isGameEndConditionBuilding;
+            public Vector3 localPosition;
+        }
+
+        private struct EntityImportResult
+        {
+            public bool skipped;
+            public string skippedReason;
+            public string targetPath;
+            public string terrainPrefabPath;
+            public TerrainPrefabResult terrainResult;
+            public int removedTerrainCount;
+            public int removedCount;
+            public int heroCount;
+            public int buildingCount;
+            public int unitCount;
+
+            public static EntityImportResult Skipped(string reason)
+            {
+                return new EntityImportResult
+                {
+                    skipped = true,
+                    skippedReason = reason
+                };
+            }
+
+            public void Add(EntityPresetPointType pointType)
+            {
+                switch (pointType)
+                {
+                    case EntityPresetPointType.Hero:
+                        heroCount++;
+                        break;
+
+                    case EntityPresetPointType.Building:
+                        buildingCount++;
+                        break;
+
+                    case EntityPresetPointType.Unit:
+                        unitCount++;
+                        break;
+                }
+            }
+        }
+
+        private struct TerrainPrefabResult
+        {
+            public bool skipped;
+            public bool saved;
+            public string skippedReason;
+            public string targetPath;
+            public int navMeshSurfaceCount;
+
+            public static TerrainPrefabResult Skipped(string reason)
+            {
+                return new TerrainPrefabResult
+                {
+                    skipped = true,
+                    skippedReason = reason
+                };
+            }
+
+            public static TerrainPrefabResult Existing(string targetPath)
+            {
+                return new TerrainPrefabResult
+                {
+                    targetPath = targetPath,
+                    navMeshSurfaceCount = CountTerrainNavMeshSurfaces(targetPath)
+                };
+            }
+
+            public static TerrainPrefabResult Saved(string targetPath, int navMeshSurfaceCount)
+            {
+                return new TerrainPrefabResult
+                {
+                    saved = true,
+                    targetPath = targetPath,
+                    navMeshSurfaceCount = navMeshSurfaceCount
+                };
+            }
         }
 
         private readonly struct StrongholdComponent

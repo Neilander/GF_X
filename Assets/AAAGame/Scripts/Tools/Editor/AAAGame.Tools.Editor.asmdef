@@ -6,7 +6,8 @@
         "Builtin.Runtime",
         "Unity.TextMeshPro",
         "Unity.2D.Sprite.Editor",
-        "GiantGrey.TileWorldCreator"
+        "GiantGrey.TileWorldCreator",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [
         "Editor"

@@ -69336,7 +69336,7 @@ MonoBehaviour:
   width: 97
   height: 102
   cellSizeOld: 0
-  cellSize: 1
+  cellSize: 1.2
   lastCellSize: 1
   mergePreviewTextures: 0
   clusterCellSize: 5
