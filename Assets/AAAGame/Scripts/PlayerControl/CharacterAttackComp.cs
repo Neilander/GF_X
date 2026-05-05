@@ -30,7 +30,10 @@ public class CharacterAttackComp : IAtkComp
             {
                 actions[_currentIndex].StartAction(body, out _actionInfo);
                 if (_actionInfo != null)
+                {
                     _actionInfo.damageInfo = new Damage(body, Fix64.One);
+                    WeaponAttackTrailEffect.Play(_ctx);
+                }
             }
 
             _ctx.LockComp(_ctx.MoveComp, this);
@@ -60,7 +63,10 @@ public class CharacterAttackComp : IAtkComp
                     {
                         actions[_currentIndex].StartAction(body, out _actionInfo);
                         if (_actionInfo != null)
+                        {
                             _actionInfo.damageInfo = new Damage(body, Fix64.One);
+                            WeaponAttackTrailEffect.Play(_ctx);
+                        }
                     }
 
                     _ifContinueAction = false;

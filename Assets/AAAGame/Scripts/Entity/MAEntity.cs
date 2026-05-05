@@ -229,7 +229,7 @@ public class MAEntity : CompCreature, IEntityContext
         }
     }
 
-    public void OnDead()
+    public virtual void OnDead()
     {
         _invincibleSourceRegistry.Clear();
 
