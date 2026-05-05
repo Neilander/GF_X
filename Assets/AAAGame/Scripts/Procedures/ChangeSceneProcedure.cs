@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System;
 using System.Linq;
 using System.Reflection;
+using UnityEngine.SceneManagement;
 
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public class ChangeSceneProcedure : ProcedureBase
@@ -168,17 +169,22 @@ public class ChangeSceneProcedure : ProcedureBase
     internal const string P_SceneName = "SceneName";
     private bool loadSceneOver = false;
     private string nextScene = string.Empty;
+    private string loadedSceneAssetName = string.Empty;
+    private bool sceneLightingSynced;
     private bool keepLoadingForRuntimeInit;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
 
         base.OnEnter(procedureOwner);
         loadSceneOver = false;
+        loadedSceneAssetName = string.Empty;
+        sceneLightingSynced = false;
         keepLoadingForRuntimeInit = false;
         GF.BuiltinView.ShowLoadingProgress();
         GF.Event.Subscribe(LoadSceneSuccessEventArgs.EventId, OnLoadSceneSuccess);
         GF.Event.Subscribe(LoadSceneFailureEventArgs.EventId, OnLoadSceneFailure);
         GF.Event.Subscribe(LoadSceneUpdateEventArgs.EventId, OnLoadSceneUpdate);
+        GF.Event.Subscribe(ActiveSceneChangedEventArgs.EventId, OnActiveSceneChanged);
         // 停止所有声音
         GF.Sound.StopAllLoadingSounds();
         GF.Sound.StopAllLoadedSounds();
@@ -215,6 +221,15 @@ public class ChangeSceneProcedure : ProcedureBase
         }
 
         // 场景-Procedure 兼容性校验：不兼容时回退到场景默认 Procedure
+        if (!sceneLightingSynced)
+        {
+            sceneLightingSynced = SyncLoadedSceneLighting(loadedSceneAssetName);
+            if (!sceneLightingSynced)
+            {
+                return;
+            }
+        }
+
         string targetProcedure = SelectedProcedureForGame;
         if (SceneCompatibleProcedures.TryGetValue(nextScene, out var compatible))
         {
@@ -248,6 +263,7 @@ public class ChangeSceneProcedure : ProcedureBase
         GF.Event.Unsubscribe(LoadSceneSuccessEventArgs.EventId, OnLoadSceneSuccess);
         GF.Event.Unsubscribe(LoadSceneFailureEventArgs.EventId, OnLoadSceneFailure);
         GF.Event.Unsubscribe(LoadSceneUpdateEventArgs.EventId, OnLoadSceneUpdate);
+        GF.Event.Unsubscribe(ActiveSceneChangedEventArgs.EventId, OnActiveSceneChanged);
         base.OnLeave(procedureOwner, isShutdown);
     }
     private void OnLoadSceneUpdate(object sender, GameEventArgs e)
@@ -267,9 +283,48 @@ public class ChangeSceneProcedure : ProcedureBase
         {
             return;
         }
+        loadedSceneAssetName = arg.SceneAssetName;
         loadSceneOver = true;
     }
     //加载场景资源失败 重启游戏框架
+    private bool SyncLoadedSceneLighting(string sceneAssetName)
+    {
+        Scene activeScene = SceneManager.GetActiveScene();
+        if (!IsTargetScene(activeScene, sceneAssetName))
+        {
+            return false;
+        }
+
+        DynamicGI.UpdateEnvironment();
+        return true;
+    }
+
+    private void OnActiveSceneChanged(object sender, GameEventArgs e)
+    {
+        var arg = (ActiveSceneChangedEventArgs)e;
+        if (!loadSceneOver || sceneLightingSynced || !IsTargetScene(arg.ActiveScene, loadedSceneAssetName))
+        {
+            return;
+        }
+
+        sceneLightingSynced = SyncLoadedSceneLighting(loadedSceneAssetName);
+    }
+
+    private bool IsTargetScene(Scene scene, string sceneAssetName)
+    {
+        if (!scene.IsValid() || !scene.isLoaded)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(sceneAssetName) && string.Equals(scene.path, sceneAssetName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(scene.name, nextScene, StringComparison.Ordinal);
+    }
+
     private void OnLoadSceneFailure(object sender, GameEventArgs e)
     {
         var arg = (LoadSceneFailureEventArgs)e;
