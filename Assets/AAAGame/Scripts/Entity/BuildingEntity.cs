@@ -673,8 +673,14 @@ public partial class BuildingEntity : MAEntity
         }
     }
 
+    // 是否显示建筑受伤跳字。false=不显示。改回 true 即可恢复
+    private const bool EnableDamagePopText = false;
+
     private void ShowDamagePopText(Fix64 damage)
     {
+        if (!EnableDamagePopText)
+            return;
+
         Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
         Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);

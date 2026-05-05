@@ -105,8 +105,16 @@ public partial class LevelEntity : EntityBase
 #if UNITY_EDITOR
         if (Input.GetKeyDown(KeyCode.T))
         {
-            Debug.Log("[LevelEntity] 手动烘焙 NavMesh (T)");
-            DoRebakeNavMesh();
+            var sh = Strongholds != null && Strongholds.Count > 0 ? Strongholds[0] : null;
+            if (sh != null)
+            {
+                Debug.Log("[LevelEntity] 测试播放占领特效 (T)");
+                PlayCaptureVfx(sh);
+            }
+            else
+            {
+                Debug.LogWarning("[LevelEntity] 没有可用的 Stronghold 来测试占领特效");
+            }
         }
 #endif
     }
@@ -538,7 +546,36 @@ public partial class LevelEntity : EntityBase
             stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "<unknown>",
             newOwnerFactionId);
 
+        PlayCaptureVfx(stronghold);
+
         RefreshEnemyStrongholdFogEffects(stronghold);
+    }
+
+    /// <summary>
+    /// 在据点中心播放占领特效
+    /// </summary>
+    private void PlayCaptureVfx(Stronghold stronghold)
+    {
+        if (stronghold == null || stronghold.Buildings == null || stronghold.Buildings.Count == 0)
+            return;
+
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+        for (int i = 0; i < stronghold.Buildings.Count; i++)
+        {
+            var b = stronghold.Buildings[i];
+            if (b == null)
+                continue;
+            sum += b.transform.position;
+            count++;
+        }
+        if (count == 0)
+            return;
+
+        Vector3 center = sum / count;
+        center.y += 0.1f;
+        var vfxParams = EntityParams.Create(center, Vector3.zero, Vector3.one);
+        GF.Entity.ShowEffect("占领特效", vfxParams);
     }
     private static int ResolveCaptureFactionId(IEntityContext attacker)
     {
