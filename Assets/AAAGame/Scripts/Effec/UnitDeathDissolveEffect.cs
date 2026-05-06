@@ -1,4 +1,4 @@
-﻿wusing UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace AAAGame.Effec
