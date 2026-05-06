@@ -1571,6 +1571,7 @@ namespace AAAGame.Tools.Editor
             EntityPresetPointType pointType;
             string identifier;
             int unitSpawnCount = 0;
+            bool isGameEndConditionBuilding = false;
 
             if (string.Equals(entityType, "Soldier", StringComparison.OrdinalIgnoreCase))
             {
@@ -1591,6 +1592,7 @@ namespace AAAGame.Tools.Editor
             {
                 pointType = EntityPresetPointType.Building;
                 identifier = NormalizeBuildingIdentifier(GetFieldString(entity, "Identifier"));
+                isGameEndConditionBuilding = GetFieldBool(entity, "IsGameEndCondition", false);
             }
             else
             {
@@ -1602,7 +1604,7 @@ namespace AAAGame.Tools.Editor
                 pointType = pointType,
                 identifier = identifier,
                 unitSpawnCount = unitSpawnCount,
-                isGameEndConditionBuilding = GetFieldBool(entity, "IsGameEndConditionBuilding", false),
+                isGameEndConditionBuilding = isGameEndConditionBuilding,
                 localPosition = new Vector3(
                     entity.px[0] / (float)gridSize * cellSize,
                     0f,

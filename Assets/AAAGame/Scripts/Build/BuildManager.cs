@@ -170,19 +170,19 @@ public class BuildManager : GameFrameworkComponent
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗。
-    public bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null)
+    public bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null, bool isGameEndConditionBuilding = false)
     {
-        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId);
+        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId, isGameEndConditionBuilding);
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗，并返回稳定 BuildingInstanceId。
-    public bool TryBuildBuildingForLevelInit(string buildingId, Vector3 position, out string resolvedBuildingInstanceId, string buildingInstanceId = null)
+    public bool TryBuildBuildingForLevelInit(string buildingId, Vector3 position, out string resolvedBuildingInstanceId, string buildingInstanceId = null, bool isGameEndConditionBuilding = false)
     {
         resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
             ? Guid.NewGuid().ToString("N")
             : buildingInstanceId;
 
-        int entityId = BuildBuildingInternal(buildingId, position, resolvedBuildingInstanceId, checkCondition: false, consumeCoins: false);
+        int entityId = BuildBuildingInternal(buildingId, position, resolvedBuildingInstanceId, checkCondition: false, consumeCoins: false, isGameEndConditionBuilding: isGameEndConditionBuilding);
         if (entityId <= 0)
         {
             resolvedBuildingInstanceId = null;
@@ -192,7 +192,7 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    private int BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins)
+    private int BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins, bool isGameEndConditionBuilding = false)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
@@ -218,7 +218,7 @@ public class BuildManager : GameFrameworkComponent
 
         int previousBaseLevel = ResolveExistingBaseLevel(buildingData, ownerFactionId, resolvedBuildingInstanceId);
 
-        int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId);
+        int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId, isGameEndConditionBuilding);
 
         if (entityId > 0)
             TryGrantBaseSupplyCapacity(buildingData, ownerFactionId, previousBaseLevel);

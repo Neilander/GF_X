@@ -7,6 +7,10 @@ public partial class SoldierEntity
     private const float GhostAlphaMultiplier = 0.35f;
     private static readonly int ColorId = Shader.PropertyToID("_Color");
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private static readonly int SurfaceId = Shader.PropertyToID("_Surface");
+    private static readonly int SrcBlendId = Shader.PropertyToID("_SrcBlend");
+    private static readonly int DstBlendId = Shader.PropertyToID("_DstBlend");
+    private static readonly int ZWriteId = Shader.PropertyToID("_ZWrite");
     private static readonly ICapability GhostCapabilityLocker = new GhostStateCapabilityLocker();
     private const int GhostCollisionSyncIntervalFrames = 6;
 
@@ -190,7 +194,32 @@ public partial class SoldierEntity
                 _ghostBaseColors[renderer] = baseColor;
             }
 
+            SetMaterialTransparentMode(material, enabled);
             SetMaterialColor(material, enabled ? ToGhostColor(baseColor) : baseColor);
+        }
+    }
+
+    private static void SetMaterialTransparentMode(Material material, bool transparent)
+    {
+        if (transparent)
+        {
+            if (material.HasProperty(SurfaceId)) material.SetFloat(SurfaceId, 1);
+            if (material.HasProperty(SrcBlendId)) material.SetInt(SrcBlendId, (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (material.HasProperty(DstBlendId)) material.SetInt(DstBlendId, (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (material.HasProperty(ZWriteId)) material.SetInt(ZWriteId, 0);
+            material.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        }
+        else
+        {
+            if (material.HasProperty(SurfaceId)) material.SetFloat(SurfaceId, 0);
+            if (material.HasProperty(SrcBlendId)) material.SetInt(SrcBlendId, (int)UnityEngine.Rendering.BlendMode.One);
+            if (material.HasProperty(DstBlendId)) material.SetInt(DstBlendId, (int)UnityEngine.Rendering.BlendMode.Zero);
+            if (material.HasProperty(ZWriteId)) material.SetInt(ZWriteId, 1);
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.renderQueue = -1; // Fallback to shader default, usually Opaque (2000)
         }
     }
 

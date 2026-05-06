@@ -45,7 +45,7 @@ public class MAEntity : CompCreature, IEntityContext
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
 
-    public void ChangeSide(SideType newSide)
+    public virtual void ChangeSide(SideType newSide)
     {
         int oldFactionId = EntitySideHelper.ToFactionId(Side);
         Side = newSide;
@@ -56,7 +56,7 @@ public class MAEntity : CompCreature, IEntityContext
             var e = EntityFactionChangedEventArgs.Create(Id, oldFactionId, newFactionId, null);
             GF.Event.Fire(this, e);
         }
-        
+
         HealthBarComp.ForceUpdateSide(Id, newSide == SideType.PlayerSide);
 
         var outlines = gameObject.GetComponentsInChildren<AAAGame.Effect.UnitOutline>(true);

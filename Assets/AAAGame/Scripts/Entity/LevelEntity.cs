@@ -314,7 +314,7 @@ public partial class LevelEntity : EntityBase
                     break;
 
                 case EntityPresetPointType.Building:
-                    if (!buildManager.TryBuildBuildingForLevelInit(effectiveIdentifier, point.Position, out var buildingInstanceId))
+                    if (!buildManager.TryBuildBuildingForLevelInit(effectiveIdentifier, point.Position, out var buildingInstanceId, isGameEndConditionBuilding: point.IsGameEndConditionBuilding))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         break;

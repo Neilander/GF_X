@@ -16,7 +16,7 @@ public partial class SoldierEntity : MAEntity
     public string SourceStrongholdId { get; private set; }
     private MinimapReportComponent m_MinimapReportComponent;
 
-    public void ChangeSide(SideType newSide)
+    public override void ChangeSide(SideType newSide)
     {
         base.ChangeSide(newSide);
         if (m_MinimapReportComponent != null)

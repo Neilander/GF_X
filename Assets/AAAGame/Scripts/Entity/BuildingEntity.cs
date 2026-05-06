@@ -8,6 +8,7 @@ public partial class BuildingEntity : MAEntity
 {
     public const string P_BuildingData = "BuildingData";
     public const string P_BuildingInstanceId = "BuildingInstanceId";
+    public const string P_IsGameEndConditionBuilding = "IsGameEndConditionBuilding";
 
     private const string DefaultPropertyTemplateId = "Unit_Coder";
     private static readonly Fix64 PlaceholderAttackInterval = (Fix64)1.6f;
@@ -23,6 +24,7 @@ public partial class BuildingEntity : MAEntity
     public int OwnerFactionID { get; set; }
     public string BuildingInstanceId { get; private set; }
     public Stronghold CurrentStronghold { get; private set; }
+    public bool IsGameEndConditionBuilding { get; private set; }
     public bool HasUpgrade
     {
         get
@@ -60,6 +62,9 @@ public partial class BuildingEntity : MAEntity
         var entityParams = userData as EntityParams;
         buildingData = entityParams?.Get(P_BuildingData) as BuildingData;
         BuildingInstanceId = entityParams != null && entityParams.TryGet<VarString>(P_BuildingInstanceId, out var instanceId) ? instanceId : null;
+        IsGameEndConditionBuilding = entityParams != null
+            && entityParams.TryGet<VarBoolean>(P_IsGameEndConditionBuilding, out var isGameEndConditionBuilding)
+            && isGameEndConditionBuilding;
 
         CharacterKey = ResolvePropertyTemplateId(buildingData);
         SetBrain(new BuildingAIBrain());
@@ -120,6 +125,7 @@ public partial class BuildingEntity : MAEntity
         CurrentStronghold = null;
         OwnerFactionID = 0;
         HasPermanentNoAttackCapability = false;
+        IsGameEndConditionBuilding = false;
         _lv0InvincibleByBuff = false;
         _phaseProtectionByBuff = false;
         _healthBarSuppressedByBuff = false;
@@ -137,6 +143,7 @@ public partial class BuildingEntity : MAEntity
         OwnerFactionID = stronghold != null ? stronghold.OwnerFactionId : 0;
         SyncSideFromFaction();
         _minimapReportComponent?.SetSide(Side);
+        UpdateMinimapReportVisibility();
 
         if (oldFactionId != OwnerFactionID)
         {
@@ -182,7 +189,20 @@ public partial class BuildingEntity : MAEntity
             }
         }
 
-        _minimapReportComponent.Initialize(Side, MinimapUnitType.Building);
+        string iconPrefabName = IsGameEndConditionBuilding ? MinimapUnitData.TargetLocationIconName : null;
+        _minimapReportComponent.Initialize(Side, MinimapUnitType.Building, iconPrefabName);
+        UpdateMinimapReportVisibility();
+    }
+
+    private void UpdateMinimapReportVisibility()
+    {
+        if (_minimapReportComponent == null)
+        {
+            return;
+        }
+
+        bool visible = !IsGameEndConditionBuilding || OwnerFactionID != EntitySideHelper.PlayerFactionId;
+        _minimapReportComponent.SetVisible(visible);
     }
 
     protected override void SetUpHurtBox()

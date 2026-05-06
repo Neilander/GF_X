@@ -80,10 +80,16 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [216,920],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DreamPark_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_DreamPark_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DreamPark_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_DreamPark_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
+							"id": "V_Bool",
+							"params": [ true ]
+						}] }
+					],
 					"__worldX": 216,
 					"__worldY": 1240
 				},
@@ -121,10 +127,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [776,760],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_OtakuDesk_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_OtakuDesk_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_OtakuDesk_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_OtakuDesk_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 776,
 					"__worldY": 1080
 				},
@@ -140,10 +149,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [648,456],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MeatStall_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_MeatStall_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MeatStall_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_MeatStall_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 648,
 					"__worldY": 776
 				},
@@ -159,10 +171,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [328,760],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Army_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Army_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 328,
 					"__worldY": 1080
 				},
@@ -178,10 +193,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [360,936],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Prod_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Prod_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 360,
 					"__worldY": 1256
 				},
@@ -197,10 +215,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [296,936],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Prod_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Prod_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 296,
 					"__worldY": 1256
 				},
@@ -216,10 +237,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [376,808],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Army_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Army_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 376,
 					"__worldY": 1128
 				},
@@ -235,10 +259,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [200,792],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Tech_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Tech_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 200,
 					"__worldY": 1112
 				},
@@ -254,10 +281,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [552,568],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Slaughterhouse_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Slaughterhouse_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 552,
 					"__worldY": 888
 				},
@@ -273,10 +303,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [552,632],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Army_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Army_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 552,
 					"__worldY": 952
 				},
@@ -314,10 +347,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [840,760],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Army_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Army_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 840,
 					"__worldY": 1080
 				},
@@ -333,10 +369,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [952,904],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ResearchCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_ResearchCenter_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ResearchCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_ResearchCenter_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 952,
 					"__worldY": 1224
 				},
@@ -352,10 +391,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [776,904],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Tech_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Tech_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 776,
 					"__worldY": 1224
 				},
@@ -371,10 +413,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [840,904],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Prod_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Prod_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 840,
 					"__worldY": 1224
 				},
@@ -412,10 +457,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1384,808],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FarmBase_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_FarmBase_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FarmBase_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_FarmBase_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1384,
 					"__worldY": 1128
 				},
@@ -431,10 +479,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1592,936],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Slaughterhouse_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Slaughterhouse_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1592,
 					"__worldY": 1256
 				},
@@ -450,10 +501,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1528,936],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Army_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Army_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1528,
 					"__worldY": 1256
 				},
@@ -469,10 +523,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1448,808],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MeatStall", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_MeatStall"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MeatStall", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_MeatStall"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1448,
 					"__worldY": 1128
 				},
@@ -488,10 +545,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1512,808],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Prod_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Prod_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1512,
 					"__worldY": 1128
 				},
@@ -507,10 +567,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [792,280],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ResearchCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_ResearchCenter_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ResearchCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_ResearchCenter_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 792,
 					"__worldY": 600
 				},
@@ -570,10 +633,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [856,280],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Tech_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Tech_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 856,
 					"__worldY": 600
 				},
@@ -589,10 +655,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [920,280],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MiningRig_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_MiningRig_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MiningRig_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_MiningRig_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 920,
 					"__worldY": 600
 				},
@@ -608,10 +677,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1016,120],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_OtakuDesk_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_OtakuDesk_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_OtakuDesk_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_OtakuDesk_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1016,
 					"__worldY": 440
 				},
@@ -627,10 +699,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [984,280],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Prod_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Prod_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 984,
 					"__worldY": 600
 				},
@@ -646,10 +721,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [888,120],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_Army_Lv0"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_Army_Lv0"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 888,
 					"__worldY": 440
 				},
@@ -665,10 +743,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [952,120],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_OtakuDesk_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_OtakuDesk_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_OtakuDesk_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_OtakuDesk_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 952,
 					"__worldY": 440
 				},
@@ -772,10 +853,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1544,376],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_GiantMascot_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_GiantMascot_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_GiantMascot_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_GiantMascot_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1544,
 					"__worldY": 696
 				},
@@ -791,10 +875,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1288,568],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_PickupPoint_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_PickupPoint_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_PickupPoint_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_PickupPoint_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1288,
 					"__worldY": 888
 				},
@@ -810,10 +897,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1368,568],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_PickupPoint_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_PickupPoint_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_PickupPoint_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_PickupPoint_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1368,
 					"__worldY": 888
 				},
@@ -829,10 +919,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1448,568],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_PickupPoint_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_PickupPoint_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_PickupPoint_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_PickupPoint_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1448,
 					"__worldY": 888
 				},
@@ -848,10 +941,13 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1320,376],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DrinkStand_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_DrinkStand_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_DrinkStand_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_DrinkStand_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+					],
 					"__worldX": 1320,
 					"__worldY": 696
 				},
@@ -867,10 +963,16 @@
 					"height": 16,
 					"defUid": 12,
 					"px": [1464,440],
-					"fieldInstances": [{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_SortingCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-						"id": "V_String",
-						"params": ["Buil_SortingCenter_Lv1"]
-					}] }],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_SortingCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Buil_SortingCenter_Lv1"]
+						}] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
+							"id": "V_Bool",
+							"params": [ true ]
+						}] }
+					],
 					"__worldX": 1464,
 					"__worldY": 760
 				},

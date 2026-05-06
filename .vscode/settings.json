@@ -76,6 +76,10 @@
         "/^git rev-parse --abbrev-ref HEAD; echo '---FILES---'; git show --name-only --pretty=\"\" HEAD; echo '---SAVE MSG---'; git log -1 --pretty=%B > \\.git/last_commit_message\\.txt; echo 'Saved commit message to \\.git/last_commit_message\\.txt'$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^Get-ChildItem -Path \"Assets\\\\AAAGame\" -Filter \"\\*\\.mat\" -Recurse \\| Select-Object -First 3 \\| % \\{ cat \\$_\\.FullName \\| Select-String \"_Surface\" -Context 0, 1\\}$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

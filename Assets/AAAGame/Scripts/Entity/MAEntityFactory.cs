@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using GameFramework;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 public static class MAEntityFactory
 {
@@ -50,11 +52,16 @@ public static class MAEntityFactory
         return GF.Entity.ShowEntity<CharacterEntity>(prefabName, entityGroup, entityParams);
     }
 
-    public static int ShowBuilding(BuildingData buildingData, Vector3 position, string buildingInstanceId)
+    public static int ShowBuilding(BuildingData buildingData, Vector3 position, string buildingInstanceId, bool isGameEndConditionBuilding = false)
     {
         EntityParams entityParams = EntityParams.Create(position);
         entityParams.Set(BuildingEntity.P_BuildingData, buildingData);
         entityParams.SetString(BuildingEntity.P_BuildingInstanceId, buildingInstanceId);
+        if (isGameEndConditionBuilding)
+        {
+            entityParams.Set<VarBoolean>(BuildingEntity.P_IsGameEndConditionBuilding, true);
+        }
+
         return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
     }
 }

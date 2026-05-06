@@ -15,6 +15,7 @@ namespace AAAGame.MiniMap
         private SideType side = SideType.NoSide;
         private MinimapUnitType unitType = MinimapUnitType.Soldier;
         private string iconPrefabName = null;
+        private bool isVisible = true;
 
         /// <summary>
         /// 初始化（士兵）
@@ -33,9 +34,15 @@ namespace AAAGame.MiniMap
         /// <param name="iconPrefabName">建筑图标预制体名称（仅建筑使用）</param>
         public void Initialize(SideType unitSide, MinimapUnitType unitType, string iconPrefabName = null)
         {
+            if (unitId >= 0 && (this.unitType != unitType || this.iconPrefabName != iconPrefabName))
+            {
+                UnregisterIfNeeded();
+            }
+
             side = unitSide;
             this.unitType = unitType;
             this.iconPrefabName = iconPrefabName;
+            isVisible = true;
 
             RegisterIfNeeded();
         }
@@ -45,11 +52,34 @@ namespace AAAGame.MiniMap
             side = unitSide;
         }
 
+        public void SetVisible(bool visible)
+        {
+            if (isVisible == visible)
+            {
+                return;
+            }
+
+            isVisible = visible;
+            if (!isVisible)
+            {
+                UnregisterIfNeeded();
+                return;
+            }
+
+            RegisterIfNeeded();
+        }
+
         /// <summary>
         /// Tick 更新（由 Entity 调用）
         /// </summary>
         public void Tick()
         {
+            if (!isVisible)
+            {
+                UnregisterIfNeeded();
+                return;
+            }
+
             if (unitId < 0 || minimapManager == null)
             {
                 RegisterIfNeeded();
@@ -73,6 +103,11 @@ namespace AAAGame.MiniMap
 
         private void RegisterIfNeeded()
         {
+            if (!isVisible)
+            {
+                return;
+            }
+
             if (unitId >= 0)
             {
                 return;

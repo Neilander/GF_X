@@ -32,6 +32,7 @@ namespace AAAGame.MiniMap
 
         [Header("建筑图标预制体字典")]
         [SerializeField] private List<BuildingIconMapping> buildingIconMappings = new List<BuildingIconMapping>();
+        [SerializeField] private Texture2D targetLocationIconTexture;
 
         [Header("地形显示")]
         [SerializeField] private bool showTerrainMap = true;
@@ -54,6 +55,7 @@ namespace AAAGame.MiniMap
         private HashSet<int> currentUnitIds = new HashSet<int>();
         private HashSet<int> snapshotUnitIds = new HashSet<int>();
         private HashSet<int> knownBuildingUnitIds = new HashSet<int>();
+        private HashSet<int> targetLocationUnitIds = new HashSet<int>();
         private RawImage terrainMapImage;
         private Texture2D terrainMapTexture;
         private RawImage fogMapImage;
@@ -138,6 +140,7 @@ namespace AAAGame.MiniMap
             }
             unitVisuals.Clear();
             knownBuildingUnitIds.Clear();
+            targetLocationUnitIds.Clear();
             currentUnitIds.Clear();
             snapshotUnitIds.Clear();
 
@@ -317,6 +320,20 @@ namespace AAAGame.MiniMap
                     continue;
                 }
 
+                if (IsTargetLocationUnit(unit))
+                {
+                    currentUnitIds.Add(unit.UnitId);
+                    targetLocationUnitIds.Add(unit.UnitId);
+                    knownBuildingUnitIds.Add(unit.UnitId);
+
+                    if (unitVisuals.ContainsKey(unit.UnitId))
+                        UpdateUnitVisual(unit);
+                    else
+                        CreateUnitVisual(unit);
+
+                    continue;
+                }
+
                 Fog3CellState fogCellState = hasFogMap
                     ? ResolveFogCellState(fogMapData, unit.WorldPosition)
                     : Fog3CellState.Visible;
@@ -374,7 +391,33 @@ namespace AAAGame.MiniMap
                 }
             }
 
+            if (targetLocationUnitIds.Count > 0)
+            {
+                List<int> staleTargetIds = null;
+                foreach (int targetId in targetLocationUnitIds)
+                {
+                    if (snapshotUnitIds.Contains(targetId))
+                        continue;
+
+                    staleTargetIds ??= new List<int>();
+                    staleTargetIds.Add(targetId);
+                }
+
+                if (staleTargetIds != null)
+                {
+                    for (int i = 0; i < staleTargetIds.Count; i++)
+                        targetLocationUnitIds.Remove(staleTargetIds[i]);
+                }
+            }
+
             RefreshMinimapFogOverlay(false, 0f);
+            SetTargetLocationIconsAsLastSibling();
+        }
+
+        private static bool IsTargetLocationUnit(MinimapUnitData unit)
+        {
+            return unit.UnitType == MinimapUnitType.Building
+                && unit.IconPrefabName == MinimapUnitData.TargetLocationIconName;
         }
 
         private void CreateUnitVisual(MinimapUnitData unit)
@@ -406,15 +449,7 @@ namespace AAAGame.MiniMap
             }
             else
             {
-                visualObj = new GameObject($"Building_{unit.UnitId}");
-                visualObj.transform.SetParent(content, false);
-
-                RawImage img = visualObj.AddComponent<RawImage>();
-                img.color = minimapManager.Config.GetSoldierColor(unit.Side);
-                img.raycastTarget = false;
-
-                RectTransform rt = visualObj.GetComponent<RectTransform>();
-                if (rt != null) rt.sizeDelta = new Vector2(minimapManager.Config.BuildingIconSize, minimapManager.Config.BuildingIconSize);
+                visualObj = CreateBuildingVisual(unit, content);
             }
 
             if (visualObj == null) return;
@@ -426,7 +461,52 @@ namespace AAAGame.MiniMap
                 unitVisuals[unit.UnitId] = rectTransform;
             }
 
-            SetCameraFrameAsLastSibling();
+            if (IsTargetLocationUnit(unit))
+                SetTargetLocationIconsAsLastSibling();
+            else
+                SetCameraFrameAsLastSibling();
+        }
+
+        private GameObject CreateBuildingVisual(MinimapUnitData unit, RectTransform content)
+        {
+            bool isTargetLocationIcon = unit.IconPrefabName == MinimapUnitData.TargetLocationIconName;
+            GameObject visualObj = null;
+
+            if (!isTargetLocationIcon
+                && !string.IsNullOrWhiteSpace(unit.IconPrefabName)
+                && buildingIconPrefabs.TryGetValue(unit.IconPrefabName, out GameObject iconPrefab)
+                && iconPrefab != null)
+            {
+                visualObj = Instantiate(iconPrefab, content);
+            }
+            else
+            {
+                visualObj = new GameObject($"Building_{unit.UnitId}");
+                visualObj.transform.SetParent(content, false);
+            }
+
+            RectTransform rt = visualObj.GetComponent<RectTransform>();
+            if (rt == null) rt = visualObj.AddComponent<RectTransform>();
+            float iconSize = minimapManager.Config.BuildingIconSize * (isTargetLocationIcon ? 2f : 1f);
+            rt.sizeDelta = new Vector2(iconSize, iconSize);
+
+            if (isTargetLocationIcon)
+            {
+                RawImage img = visualObj.GetComponent<RawImage>();
+                if (img == null) img = visualObj.AddComponent<RawImage>();
+
+                img.texture = targetLocationIconTexture;
+                img.color = Color.red;
+                img.raycastTarget = false;
+                return visualObj;
+            }
+
+            Graphic markerGraphic = visualObj.GetComponent<Graphic>();
+            if (markerGraphic == null) markerGraphic = visualObj.AddComponent<RawImage>();
+            markerGraphic.color = minimapManager.Config.GetSoldierColor(unit.Side);
+            markerGraphic.raycastTarget = false;
+
+            return visualObj;
         }
 
         private void UpdateUnitVisual(MinimapUnitData unit)
@@ -438,7 +518,12 @@ namespace AAAGame.MiniMap
             rt.anchoredPosition = WorldToMinimapPosition(unit.WorldPosition);
 
             Graphic markerGraphic = rt.GetComponent<Graphic>();
-            if (markerGraphic != null) markerGraphic.color = minimapManager.Config.GetSoldierColor(unit.Side);
+            if (markerGraphic != null)
+            {
+                markerGraphic.color = unit.IconPrefabName == MinimapUnitData.TargetLocationIconName
+                    ? Color.red
+                    : minimapManager.Config.GetSoldierColor(unit.Side);
+            }
         }
 
         private void RemoveUnitVisual(int unitId)
@@ -446,6 +531,7 @@ namespace AAAGame.MiniMap
             if (!unitVisuals.ContainsKey(unitId)) return;
             if (unitVisuals[unitId] != null) Destroy(unitVisuals[unitId].gameObject);
             unitVisuals.Remove(unitId);
+            targetLocationUnitIds.Remove(unitId);
         }
 
         private Fog3MapData GetFogMapData()
@@ -619,6 +705,7 @@ namespace AAAGame.MiniMap
             }
 
             SetCameraFrameAsLastSibling();
+            SetTargetLocationIconsAsLastSibling();
         }
 
         private void SetCameraFrameAsLastSibling()
@@ -631,6 +718,15 @@ namespace AAAGame.MiniMap
 
             if (cameraViewFrame != null)
                 cameraViewFrame.SetAsLastSibling();
+        }
+
+        private void SetTargetLocationIconsAsLastSibling()
+        {
+            foreach (int unitId in targetLocationUnitIds)
+            {
+                if (unitVisuals.TryGetValue(unitId, out RectTransform targetIcon) && targetIcon != null)
+                    targetIcon.SetAsLastSibling();
+            }
         }
 
         private Vector2 WorldToMinimapPosition(Vector3 worldPos)

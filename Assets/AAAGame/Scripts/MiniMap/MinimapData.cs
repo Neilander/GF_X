@@ -18,6 +18,8 @@ namespace AAAGame.MiniMap
     /// </summary>
     public struct MinimapUnitData
     {
+        public const string TargetLocationIconName = "TargetLocation";
+
         /// <summary>
         /// 单位唯一ID
         /// </summary>

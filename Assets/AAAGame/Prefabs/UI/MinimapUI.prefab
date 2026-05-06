@@ -257,6 +257,7 @@ MonoBehaviour:
   buildingIconMappings:
   - iconName: Barracks
     prefab: {fileID: 162860743113589181, guid: 9cca7a900c2eb474a930b2c4ab9c96c1, type: 3}
+  targetLocationIconTexture: {fileID: 2800000, guid: 2d8ade0b6650fa44e9364347c1e35546, type: 3}
 --- !u!114 &6402768866759593733
 MonoBehaviour:
   m_ObjectHideFlags: 0
