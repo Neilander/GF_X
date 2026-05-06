@@ -349,6 +349,12 @@ public class DirectAtkComp : IAtkComp
         {
             _animator.SetTrigger("Attack");
         }
+
+        if (newState == AtkState.WindUp && GetActiveWeapon().Type != WeaponType.Projectile)
+        {
+            float trailDuration = Mathf.Max(0.08f, (float)GetCurrentWindUp() + 0.08f);
+            WeaponAttackTrailEffect.Play(_ctx, trailDuration);
+        }
     }
 
     public void ShutDown()

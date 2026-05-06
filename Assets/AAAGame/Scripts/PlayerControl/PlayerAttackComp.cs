@@ -36,6 +36,7 @@ public class PlayerAttackComp : IAtkComp
                 {
                     actions[currentIndex].StartAction(body, out _actionInfo);
                     _actionInfo.damageInfo = new Damage(body, Fix64.One);
+                    WeaponAttackTrailEffect.Play(_ctx);
                 }
 
                 _ctx.LockComp(_ctx.MoveComp, this);
@@ -68,6 +69,7 @@ public class PlayerAttackComp : IAtkComp
                     {
                         actions[currentIndex].StartAction(body, out _actionInfo);
                         _actionInfo.damageInfo = new Damage(body, Fix64.One);
+                        WeaponAttackTrailEffect.Play(_ctx);
                     }
 
                     ifContinueAction = false;

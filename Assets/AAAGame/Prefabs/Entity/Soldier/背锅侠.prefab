@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 282874367510649349}
   - component: {fileID: 1932797867958151653}
   - component: {fileID: -5409559855405245601}
+  - component: {fileID: 8254947112388829342}
   m_Layer: 14
   m_Name: "\u80CC\u9505\u4FA0"
   m_TagString: Untagged
@@ -81,6 +82,37 @@ CharacterController:
   m_SkinWidth: 0.0001
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0.5, z: 0}
+--- !u!114 &8254947112388829342
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5667059355416220249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b3e96a8d89d4bdf90a9736e9df73c0e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  onlyPlayerSide: 1
+  allowRuntimeAutoFallback: 0
+  defaultDuration: 0.28
+  weaponAnchor: {fileID: 6500967793888820772}
+  trailPoint: {fileID: 6500967793888820772}
+  autoCreateTrailPoint: 1
+  handLocalOffset: {x: 0, y: 0.38, z: 0}
+  fallbackLocalCenter: {x: 0.35, y: 1.15, z: 0.45}
+  useProceduralFallback: 1
+  fallbackSwingWidth: 0.9
+  fallbackSwingHeight: 0.42
+  trailTime: 0.18
+  startWidth: 0.18
+  endWidth: 0.02
+  minVertexDistance: 0.02
+  alignment: 0
+  headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
+  tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
+  trailMaterial: {fileID: 0}
 --- !u!1 &8185178394744858697
 GameObject:
   m_ObjectHideFlags: 0
@@ -112,6 +144,37 @@ Transform:
   m_Children:
   - {fileID: 7908422258950157368}
   m_Father: {fileID: 282874367510649349}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &8762039172364303622
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6500967793888820772}
+  m_Layer: 0
+  m_Name: PointEffect
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6500967793888820772
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8762039172364303622}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.293, y: 0, z: 0.099}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6975121289920134609}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &7659186289534129107
 PrefabInstance:
@@ -167,12 +230,20 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8464939349181633022, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6500967793888820772}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1382654245192174759}
   m_SourcePrefab: {fileID: 100100000, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+--- !u!4 &6975121289920134609 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8464939349181633022, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+  m_PrefabInstance: {fileID: 7659186289534129107}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &7389154130653376130 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}

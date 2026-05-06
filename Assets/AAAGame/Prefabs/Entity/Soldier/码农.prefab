@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 282874367510649349}
   - component: {fileID: 1932797867958151653}
   - component: {fileID: -5409559855405245601}
+  - component: {fileID: 5068257602321739931}
   m_Layer: 0
   m_Name: "\u7801\u519C"
   m_TagString: Untagged
@@ -81,6 +82,37 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: -0.05, y: 0.61, z: 0}
+--- !u!114 &5068257602321739931
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5667059355416220249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b3e96a8d89d4bdf90a9736e9df73c0e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  onlyPlayerSide: 1
+  allowRuntimeAutoFallback: 0
+  defaultDuration: 0.28
+  weaponAnchor: {fileID: 0}
+  trailPoint: {fileID: 0}
+  autoCreateTrailPoint: 1
+  handLocalOffset: {x: 0, y: 0.38, z: 0}
+  fallbackLocalCenter: {x: 0.35, y: 1.15, z: 0.45}
+  useProceduralFallback: 1
+  fallbackSwingWidth: 0.9
+  fallbackSwingHeight: 0.42
+  trailTime: 0.18
+  startWidth: 0.18
+  endWidth: 0.02
+  minVertexDistance: 0.02
+  alignment: 0
+  headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
+  tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
+  trailMaterial: {fileID: 0}
 --- !u!1 &8185178394744858697
 GameObject:
   m_ObjectHideFlags: 0
