@@ -1,4 +1,5 @@
-﻿wusing UnityEngine;
+﻿using System.Collections;
+using UnityEngine;
 using UnityEngine.Rendering;
 
 namespace AAAGame.Effec
@@ -8,27 +9,37 @@ namespace AAAGame.Effec
     {
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
         private static readonly int ColorId = Shader.PropertyToID("_Color");
+        private static readonly int IntensityId = Shader.PropertyToID("_Intensity");
         private static readonly int SurfaceId = Shader.PropertyToID("_Surface");
         private static readonly int SrcBlendId = Shader.PropertyToID("_SrcBlend");
         private static readonly int DstBlendId = Shader.PropertyToID("_DstBlend");
         private static readonly int ZWriteId = Shader.PropertyToID("_ZWrite");
-        private static Material s_SmokeMaterial;
 
-        [Header("死亡消散特效")]
+        private static Material s_CoreMaterial;
+        private static Material s_SmokeMaterial;
+        private static Material s_SparkMaterial;
+
+        [Header("死亡VFX粒子")]
         [SerializeField, InspectorName("中心偏移")] private Vector3 centerOffset = new Vector3(0f, 0.45f, 0f);
         [SerializeField, InspectorName("大小倍率"), Min(0.1f)] private float sizeMultiplier = 1f;
-        [SerializeField, InspectorName("持续时间"), Min(0.1f)] private float duration = 1.2f;
+        [SerializeField, InspectorName("持续时间"), Min(0.1f)] private float duration = 1.15f;
 
-        [Header("白色圆球")]
-        [SerializeField, InspectorName("圆球初始大小"), Min(0.01f)] private float sphereStartScale = 0.25f;
-        [SerializeField, InspectorName("圆球结束大小"), Min(0.01f)] private float sphereEndScale = 1.35f;
-        [SerializeField, InspectorName("圆球颜色")] private Color sphereColor = new Color(1f, 1f, 1f, 0.85f);
+        [Header("核心光爆粒子")]
+        [SerializeField, InspectorName("核心粒子数量"), Min(1)] private int coreParticleCount = 18;
+        [SerializeField, InspectorName("核心颜色")] private Color coreColor = new Color(1f, 1f, 1f, 0.95f);
+        [SerializeField, InspectorName("核心粒子强度"), Min(0.1f)] private float coreIntensity = 1.35f;
+        [SerializeField, InspectorName("核心粒子尺寸"), Min(0.01f)] private float coreParticleSize = 0.42f;
 
-        [Header("消散烟雾")]
-        [SerializeField, InspectorName("烟雾粒子数量"), Min(1)] private int smokeParticleCount = 28;
-        [SerializeField, InspectorName("烟雾扩散半径"), Min(0.01f)] private float smokeRadius = 0.45f;
+        [Header("消散烟雾粒子")]
+        [SerializeField, InspectorName("烟雾粒子数量"), Min(1)] private int smokeParticleCount = 34;
+        [SerializeField, InspectorName("烟雾扩散半径"), Min(0.01f)] private float smokeRadius = 0.48f;
         [SerializeField, InspectorName("烟雾上升速度"), Min(0f)] private float smokeUpSpeed = 0.35f;
-        [SerializeField, InspectorName("烟雾颜色")] private Color smokeColor = new Color(1f, 1f, 1f, 0.72f);
+        [SerializeField, InspectorName("烟雾颜色")] private Color smokeColor = new Color(1f, 1f, 1f, 0.62f);
+
+        [Header("消散碎光粒子")]
+        [SerializeField, InspectorName("碎光粒子数量"), Min(0)] private int sparkParticleCount = 12;
+        [SerializeField, InspectorName("碎光颜色")] private Color sparkColor = new Color(1f, 1f, 1f, 0.85f);
+        [SerializeField, InspectorName("碎光速度"), Min(0f)] private float sparkSpeed = 1.15f;
 
         private bool m_PlayedThisLife;
 
@@ -78,12 +89,12 @@ namespace AAAGame.Effec
 
         private static void CreateRuntimeEffect(Vector3 worldPosition, float worldScale, UnitDeathDissolveEffect source)
         {
-            GameObject root = new GameObject("UnitDeathDissolveEffect_Runtime");
+            GameObject root = new GameObject("UnitDeathVFXParticle_Runtime");
             root.transform.position = worldPosition;
             root.transform.rotation = Quaternion.identity;
             root.transform.localScale = Vector3.one;
 
-            DeathEffectRuntime runtime = root.AddComponent<DeathEffectRuntime>();
+            DeathVfxRuntime runtime = root.AddComponent<DeathVfxRuntime>();
             runtime.Begin(source, worldScale);
         }
 
@@ -157,53 +168,74 @@ namespace AAAGame.Effec
             return hasBounds;
         }
 
-        private static Material CreateTransparentMaterial(Color color)
+        private static Material GetCoreMaterial()
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
-                ?? Shader.Find("Universal Render Pipeline/Unlit")
-                ?? Shader.Find("Sprites/Default");
+            if (s_CoreMaterial == null)
+            {
+                s_CoreMaterial = CreateParticleMaterial("Runtime_UnitDeathCoreVFX", new Color(1f, 1f, 1f, 1f), 1.35f);
+            }
+
+            return s_CoreMaterial;
+        }
+
+        private static Material GetSmokeMaterial()
+        {
+            if (s_SmokeMaterial == null)
+            {
+                s_SmokeMaterial = CreateParticleMaterial("Runtime_UnitDeathSmokeVFX", new Color(1f, 1f, 1f, 1f), 0.78f);
+            }
+
+            return s_SmokeMaterial;
+        }
+
+        private static Material GetSparkMaterial()
+        {
+            if (s_SparkMaterial == null)
+            {
+                s_SparkMaterial = CreateParticleMaterial("Runtime_UnitDeathSparkVFX", new Color(1f, 1f, 1f, 1f), 1.85f);
+            }
+
+            return s_SparkMaterial;
+        }
+
+        private static Material CreateParticleMaterial(string materialName, Color color, float intensity)
+        {
+            Shader shader = Resources.Load<Shader>("UnitDeathVFXParticle")
+                ?? Shader.Find("AAAGame/Effec/UnitDeathVFXParticle")
+                ?? ResolveTransparentShader();
 
             if (shader == null)
             {
+                Debug.LogWarning("[UnitDeathDissolveEffect] Cannot find a transparent shader for death VFX particles.");
                 return null;
             }
 
             Material material = new Material(shader)
             {
-                name = "Runtime_UnitDeathWhiteSphere",
+                name = materialName,
                 hideFlags = HideFlags.HideAndDontSave,
                 renderQueue = (int)RenderQueue.Transparent,
             };
 
             SetupTransparentMaterial(material);
             SetMaterialColor(material, color);
+
+            if (material.HasProperty(IntensityId))
+            {
+                material.SetFloat(IntensityId, intensity);
+            }
+
             return material;
         }
 
-        private static Material GetSmokeMaterial()
+        private static Shader ResolveTransparentShader()
         {
-            if (s_SmokeMaterial != null)
-            {
-                return s_SmokeMaterial;
-            }
-
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
-                ?? Shader.Find("Sprites/Default");
-            if (shader == null)
-            {
-                return null;
-            }
-
-            s_SmokeMaterial = new Material(shader)
-            {
-                name = "Runtime_UnitDeathSmokeMaterial",
-                hideFlags = HideFlags.HideAndDontSave,
-                renderQueue = (int)RenderQueue.Transparent,
-            };
-
-            SetupTransparentMaterial(s_SmokeMaterial);
-            SetMaterialColor(s_SmokeMaterial, Color.white);
-            return s_SmokeMaterial;
+            return Shader.Find("Universal Render Pipeline/Particles/Unlit")
+                ?? Shader.Find("Universal Render Pipeline/Unlit")
+                ?? Shader.Find("Unlit/Transparent")
+                ?? Shader.Find("Sprites/Default")
+                ?? Shader.Find("Unlit/Color")
+                ?? Shader.Find("Standard");
         }
 
         private static void SetupTransparentMaterial(Material material)
@@ -255,86 +287,74 @@ namespace AAAGame.Effec
             }
         }
 
-        private sealed class DeathEffectRuntime : MonoBehaviour
+        private sealed class DeathVfxRuntime : MonoBehaviour
         {
-            private GameObject m_Sphere;
-            private Material m_SphereMaterial;
             private float m_Duration;
-            private float m_StartScale;
-            private float m_EndScale;
-            private Color m_SphereColor;
 
             public void Begin(UnitDeathDissolveEffect source, float worldScale)
             {
-                m_Duration = source != null ? Mathf.Max(0.1f, source.duration) : 1.2f;
-                m_StartScale = (source != null ? source.sphereStartScale : 0.25f) * worldScale;
-                m_EndScale = (source != null ? source.sphereEndScale : 1.35f) * worldScale;
-                m_SphereColor = source != null ? source.sphereColor : new Color(1f, 1f, 1f, 0.85f);
+                m_Duration = source != null ? Mathf.Max(0.1f, source.duration) : 1.15f;
 
-                CreateSphere();
+                CreateCoreBurst(source, worldScale);
                 CreateSmoke(source, worldScale);
-                StartCoroutine(PlayRoutine());
+                CreateSparks(source, worldScale);
+
+                StartCoroutine(DestroyAfterParticles());
             }
 
-            private void CreateSphere()
+            private void CreateCoreBurst(UnitDeathDissolveEffect source, float worldScale)
             {
-                m_Sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                m_Sphere.name = "WhiteDissolveSphere";
-                m_Sphere.transform.SetParent(transform, false);
-                m_Sphere.transform.localPosition = Vector3.zero;
-                m_Sphere.transform.localRotation = Quaternion.identity;
-                m_Sphere.transform.localScale = Vector3.one * m_StartScale;
+                int count = source != null ? source.coreParticleCount : 18;
+                Color color = source != null ? source.coreColor : new Color(1f, 1f, 1f, 0.95f);
+                float baseSize = (source != null ? source.coreParticleSize : 0.42f) * worldScale;
+                Material material = GetCoreMaterial();
 
-                Collider collider = m_Sphere.GetComponent<Collider>();
-                if (collider != null)
-                {
-                    Destroy(collider);
-                }
+                ParticleSystem particleSystem = CreateParticleSystem("CoreBurstParticles");
+                ConfigureCommonParticleSystem(particleSystem, m_Duration, count, color);
 
-                m_SphereMaterial = CreateTransparentMaterial(m_SphereColor);
-                MeshRenderer renderer = m_Sphere.GetComponent<MeshRenderer>();
-                if (renderer != null && m_SphereMaterial != null)
-                {
-                    renderer.sharedMaterial = m_SphereMaterial;
-                }
+                ParticleSystem.MainModule main = particleSystem.main;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(m_Duration * 0.28f, m_Duration * 0.52f);
+                main.startSpeed = new ParticleSystem.MinMaxCurve(0.08f * worldScale, 0.34f * worldScale);
+                main.startSize = new ParticleSystem.MinMaxCurve(baseSize * 0.65f, baseSize * 1.25f);
+                main.maxParticles = Mathf.Max(8, count * 2);
+
+                ParticleSystem.ShapeModule shape = particleSystem.shape;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.08f * worldScale;
+                shape.randomDirectionAmount = 1f;
+
+                ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = particleSystem.sizeOverLifetime;
+                sizeOverLifetime.enabled = true;
+                sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+                    new Keyframe(0f, 0.55f),
+                    new Keyframe(0.28f, 1.65f),
+                    new Keyframe(1f, 0f)));
+
+                ParticleSystemRenderer renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
+                ApplyRendererMaterial(renderer, material, 5);
+
+                StartConfiguredParticleSystem(particleSystem);
             }
 
             private void CreateSmoke(UnitDeathDissolveEffect source, float worldScale)
             {
-                GameObject smokeObject = new GameObject("WhiteSmokeParticles");
-                smokeObject.transform.SetParent(transform, false);
-                smokeObject.transform.localPosition = Vector3.zero;
-                smokeObject.transform.localRotation = Quaternion.identity;
-                smokeObject.transform.localScale = Vector3.one;
-
-                ParticleSystem particleSystem = smokeObject.AddComponent<ParticleSystem>();
-
-                int particleCount = source != null ? source.smokeParticleCount : 28;
-                float radius = (source != null ? source.smokeRadius : 0.45f) * worldScale;
+                int count = source != null ? source.smokeParticleCount : 34;
+                float radius = (source != null ? source.smokeRadius : 0.48f) * worldScale;
                 float upSpeed = source != null ? source.smokeUpSpeed : 0.35f;
-                Color smokeColor = source != null ? source.smokeColor : new Color(1f, 1f, 1f, 0.72f);
+                Color color = source != null ? source.smokeColor : new Color(1f, 1f, 1f, 0.62f);
+                Material material = GetSmokeMaterial();
+
+                ParticleSystem particleSystem = CreateParticleSystem("SmokeDissolveParticles");
+                ConfigureCommonParticleSystem(particleSystem, m_Duration, count, color);
 
                 ParticleSystem.MainModule main = particleSystem.main;
-                main.duration = m_Duration;
-                main.loop = false;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(m_Duration * 0.55f, m_Duration);
-                main.startSpeed = new ParticleSystem.MinMaxCurve(upSpeed, upSpeed + 0.75f * worldScale);
-                main.startSize = new ParticleSystem.MinMaxCurve(0.12f * worldScale, 0.42f * worldScale);
-                main.startColor = smokeColor;
-                main.simulationSpace = ParticleSystemSimulationSpace.World;
-                main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(m_Duration * 0.62f, m_Duration * 1.08f);
+                main.startSpeed = new ParticleSystem.MinMaxCurve(upSpeed, upSpeed + 0.72f * worldScale);
+                main.startSize = new ParticleSystem.MinMaxCurve(0.14f * worldScale, 0.48f * worldScale);
                 main.gravityModifier = -0.04f;
-                main.maxParticles = Mathf.Max(16, particleCount * 2);
-
-                ParticleSystem.EmissionModule emission = particleSystem.emission;
-                emission.rateOverTime = 0f;
-                emission.SetBursts(new[]
-                {
-                    new ParticleSystem.Burst(0f, (short)Mathf.Clamp(particleCount, 1, short.MaxValue))
-                });
+                main.maxParticles = Mathf.Max(16, count * 2);
 
                 ParticleSystem.ShapeModule shape = particleSystem.shape;
-                shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Sphere;
                 shape.radius = radius;
                 shape.randomDirectionAmount = 0.65f;
@@ -350,8 +370,8 @@ namespace AAAGame.Effec
                     },
                     new[]
                     {
-                        new GradientAlphaKey(smokeColor.a, 0f),
-                        new GradientAlphaKey(smokeColor.a * 0.35f, 0.45f),
+                        new GradientAlphaKey(color.a, 0f),
+                        new GradientAlphaKey(color.a * 0.38f, 0.48f),
                         new GradientAlphaKey(0f, 1f),
                     });
                 colorOverLifetime.color = gradient;
@@ -363,49 +383,135 @@ namespace AAAGame.Effec
                     new Keyframe(0.55f, 1f),
                     new Keyframe(1f, 1.35f)));
 
-                ParticleSystemRenderer particleRenderer = smokeObject.GetComponent<ParticleSystemRenderer>();
-                particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
-                particleRenderer.sortingOrder = 2;
-                Material smokeMaterial = GetSmokeMaterial();
-                if (smokeMaterial != null)
+                ParticleSystemRenderer renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
+                ApplyRendererMaterial(renderer, material, 3);
+
+                StartConfiguredParticleSystem(particleSystem);
+            }
+
+            private void CreateSparks(UnitDeathDissolveEffect source, float worldScale)
+            {
+                int count = source != null ? source.sparkParticleCount : 12;
+                if (count <= 0)
                 {
-                    particleRenderer.sharedMaterial = smokeMaterial;
+                    return;
                 }
 
+                Color color = source != null ? source.sparkColor : new Color(1f, 1f, 1f, 0.85f);
+                float speed = (source != null ? source.sparkSpeed : 1.15f) * worldScale;
+                Material material = GetSparkMaterial();
+
+                ParticleSystem particleSystem = CreateParticleSystem("SparkDissolveParticles");
+                ConfigureCommonParticleSystem(particleSystem, m_Duration, count, color);
+
+                ParticleSystem.MainModule main = particleSystem.main;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(m_Duration * 0.25f, m_Duration * 0.75f);
+                main.startSpeed = new ParticleSystem.MinMaxCurve(speed * 0.55f, speed);
+                main.startSize = new ParticleSystem.MinMaxCurve(0.035f * worldScale, 0.095f * worldScale);
+                main.gravityModifier = 0.08f;
+                main.maxParticles = Mathf.Max(8, count * 2);
+
+                ParticleSystem.ShapeModule shape = particleSystem.shape;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.24f * worldScale;
+                shape.randomDirectionAmount = 1f;
+
+                ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = particleSystem.sizeOverLifetime;
+                sizeOverLifetime.enabled = true;
+                sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+                    new Keyframe(0f, 0.35f),
+                    new Keyframe(0.22f, 1f),
+                    new Keyframe(1f, 0f)));
+
+                ParticleSystemRenderer renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
+                ApplyRendererMaterial(renderer, material, 6);
+
+                StartConfiguredParticleSystem(particleSystem);
+            }
+
+            private ParticleSystem CreateParticleSystem(string objectName)
+            {
+                GameObject particleObject = new GameObject(objectName);
+                particleObject.SetActive(false);
+                particleObject.transform.SetParent(transform, false);
+                particleObject.transform.localPosition = Vector3.zero;
+                particleObject.transform.localRotation = Quaternion.identity;
+                particleObject.transform.localScale = Vector3.one;
+                return particleObject.AddComponent<ParticleSystem>();
+            }
+
+            private void ConfigureCommonParticleSystem(ParticleSystem particleSystem, float duration, int burstCount, Color startColor)
+            {
+                ParticleSystem.MainModule main = particleSystem.main;
+                main.playOnAwake = false;
+                main.duration = Mathf.Max(0.05f, duration);
+                main.loop = false;
+                main.startColor = startColor;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+
+                ParticleSystem.EmissionModule emission = particleSystem.emission;
+                emission.rateOverTime = 0f;
+                emission.SetBursts(new[]
+                {
+                    new ParticleSystem.Burst(0f, (short)Mathf.Clamp(burstCount, 1, short.MaxValue))
+                });
+
+                ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particleSystem.colorOverLifetime;
+                colorOverLifetime.enabled = true;
+                Gradient gradient = new Gradient();
+                gradient.SetKeys(
+                    new[]
+                    {
+                        new GradientColorKey(Color.white, 0f),
+                        new GradientColorKey(Color.white, 1f),
+                    },
+                    new[]
+                    {
+                        new GradientAlphaKey(startColor.a, 0f),
+                        new GradientAlphaKey(startColor.a * 0.42f, 0.48f),
+                        new GradientAlphaKey(0f, 1f),
+                    });
+                colorOverLifetime.color = gradient;
+            }
+
+            private void ApplyRendererMaterial(ParticleSystemRenderer renderer, Material material, int sortingOrder)
+            {
+                if (renderer == null)
+                {
+                    return;
+                }
+
+                renderer.renderMode = ParticleSystemRenderMode.Billboard;
+                renderer.alignment = ParticleSystemRenderSpace.View;
+                renderer.sortingOrder = sortingOrder;
+
+                if (material != null)
+                {
+                    renderer.sharedMaterial = material;
+                }
+                else
+                {
+                    renderer.enabled = false;
+                }
+            }
+
+            private void StartConfiguredParticleSystem(ParticleSystem particleSystem)
+            {
+                if (particleSystem == null)
+                {
+                    return;
+                }
+
+                particleSystem.gameObject.SetActive(true);
+                particleSystem.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
                 particleSystem.Play(true);
             }
 
-            private System.Collections.IEnumerator PlayRoutine()
+            private IEnumerator DestroyAfterParticles()
             {
-                float elapsed = 0f;
-                while (elapsed < m_Duration)
-                {
-                    elapsed += Time.deltaTime;
-                    float t = Mathf.Clamp01(elapsed / m_Duration);
-                    float eased = 1f - Mathf.Pow(1f - t, 2f);
-
-                    if (m_Sphere != null)
-                    {
-                        float scale = Mathf.Lerp(m_StartScale, m_EndScale, eased);
-                        m_Sphere.transform.localScale = Vector3.one * scale;
-                    }
-
-                    if (m_SphereMaterial != null)
-                    {
-                        Color color = m_SphereColor;
-                        color.a *= Mathf.Clamp01(1f - t);
-                        SetMaterialColor(m_SphereMaterial, color);
-                    }
-
-                    yield return null;
-                }
-
-                if (m_SphereMaterial != null)
-                {
-                    Destroy(m_SphereMaterial);
-                }
-
-                Destroy(gameObject, 0.1f);
+                yield return new WaitForSeconds(m_Duration + 0.35f);
+                Destroy(gameObject);
             }
         }
     }
