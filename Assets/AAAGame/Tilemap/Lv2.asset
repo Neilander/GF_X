@@ -3647,7 +3647,7 @@ MonoBehaviour:
   useDualGrid: 1
   meshGenerationOverride: 1
   mergeTiles: 1
-  shadowCastingMode: 1
+  shadowCastingMode: 0
   objectLayer:
     serializedVersion: 2
     m_Bits: 12
@@ -43924,7 +43924,7 @@ MonoBehaviour:
   objectLayer:
     serializedVersion: 2
     m_Bits: 0
-  colliderType: 0
+  colliderType: 1
   tileColliderHeight: 0
   tileColliderExtrusionHeight: 0
   invertCollisionWalls: 0
@@ -69336,7 +69336,7 @@ MonoBehaviour:
   width: 97
   height: 102
   cellSizeOld: 0
-  cellSize: 1.2
+  cellSize: 1.4
   lastCellSize: 1
   mergePreviewTextures: 0
   clusterCellSize: 5
@@ -78955,7 +78955,7 @@ MonoBehaviour:
   objectLayer:
     serializedVersion: 2
     m_Bits: 15
-  colliderType: 2
+  colliderType: 1
   tileColliderHeight: 0
   tileColliderExtrusionHeight: 0
   invertCollisionWalls: 0
@@ -86015,7 +86015,7 @@ MonoBehaviour:
   objectLayer:
     serializedVersion: 2
     m_Bits: 0
-  colliderType: 0
+  colliderType: 1
   tileColliderHeight: 0
   tileColliderExtrusionHeight: 0
   invertCollisionWalls: 0

@@ -40908,7 +40908,7 @@ MonoBehaviour:
   width: 87
   height: 102
   cellSizeOld: 0
-  cellSize: 1
+  cellSize: 1.4
   lastCellSize: 1
   mergePreviewTextures: 0
   clusterCellSize: 5
