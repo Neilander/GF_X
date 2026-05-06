@@ -80,6 +80,10 @@
         "/^Get-ChildItem -Path \"Assets\\\\AAAGame\" -Filter \"\\*\\.mat\" -Recurse \\| Select-Object -First 3 \\| % \\{ cat \\$_\\.FullName \\| Select-String \"_Surface\" -Context 0, 1\\}$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^Get-ChildItem -Path \"Assets\\\\AAAGame\" -Filter \"\\*\\.mat\" -Recurse \\| Where-Object \\{ \\$_\\.Name -like \"\\*unit\\*\" -or \\$_\\.Name -like \"\\*char\\*\" -or \\$_\\.Name -like \"\\*soldier\\*\" -or \\$_\\.Name -like \"\\*hero\\*\" \\} \\| Select-Object -First 10 \\| % \\{ cat \\$_\\.FullName \\| Select-String \"m_Shader:\" -Context 0, 1\\}$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

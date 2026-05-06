@@ -26,14 +26,14 @@ namespace AAAGame.Effect
         [SerializeField] private float fogOuterDensityScale = 0.5f;
         [SerializeField] private float fogOuterStartSizeMultiplier = 0.1f;
         [SerializeField, Range(0f, 1f)] private float fogOuterAlpha = 0.8f;
-        [SerializeField] private int fogOuterSortingOrder = 80;
+        [SerializeField] private int fogOuterSortingOrder = 0;
         [SerializeField] private float fogInnerHeight = 0.3f;
         [SerializeField] private float fogInnerThickness = 0f;
         [SerializeField] private float fogInnerBottomOffset = 0f;
         [SerializeField] private float fogInnerDensityScale = 1f;
         [SerializeField] private float fogInnerStartSizeMultiplier = 0.4f;
         [SerializeField, Range(0f, 1f)] private float fogInnerAlpha = 0.6f;
-        [SerializeField] private int fogInnerSortingOrder = 85;
+        [SerializeField] private int fogInnerSortingOrder = 0;
 
         [Header("Building Ownership Color")]
         [SerializeField] private Color enemyBuildingColor = new Color(0.70980394f, 0.6509804f, 0.7294118f, 1f); // #B5A6BA

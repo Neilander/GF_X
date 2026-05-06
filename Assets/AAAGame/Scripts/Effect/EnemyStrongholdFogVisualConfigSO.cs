@@ -17,7 +17,7 @@ public class EnemyStrongholdFogVisualConfigSO : ScriptableObject
     public float OuterDensityScale = 10f;
     public float OuterStartSizeMultiplier = 0.6f;
     [Range(0f, 1f)] public float OuterAlpha = 1.0f;
-    public int OuterSortingOrder = 80;
+    public int OuterSortingOrder = 0;
 
     [Header("Inner Area")]
     public float InnerHeight = 0.1f;
@@ -28,7 +28,7 @@ public class EnemyStrongholdFogVisualConfigSO : ScriptableObject
     public float InnerDensityScale = 0.5f;
     public float InnerStartSizeMultiplier = 0.4f;
     [Range(0f, 1f)] public float InnerAlpha = 0.6f;
-    public int InnerSortingOrder = 85;
+    public int InnerSortingOrder = 0;
 
     public static EnemyStrongholdFogVisualConfigSO CreateRuntimeDefault()
     {

@@ -10,6 +10,9 @@ namespace AAAGame.MiniMap
 {
     public class MinimapUI : UIFormBase
     {
+        private const float CameraFrameAspect = 16f / 9f;
+        private const float CameraFrameAdditionalScale = 1f / 2f;
+
         [Header("UI 组件")]
         [SerializeField] private RectTransform minimapContainer;
         [SerializeField] private GameObject soldierDotPrefab;
@@ -39,8 +42,6 @@ namespace AAAGame.MiniMap
         [SerializeField, Range(64, 512)] private int terrainTextureMaxSize = 256;
         [SerializeField] private string groundLayerKeyword = "Plane";
         [SerializeField] private string waterLayerKeyword = "Water";
-        [SerializeField] private Color groundLayerColor = new Color(0.42f, 0.45f, 0.33f, 1f);
-        [SerializeField] private Color waterLayerColor = new Color(0.14f, 0.36f, 0.52f, 1f);
 
         [Header("小地图迷雾同步")]
         [SerializeField] private bool showMinimapFogSync = true;
@@ -882,7 +883,8 @@ namespace AAAGame.MiniMap
                 float orthoMinY = Mathf.Min(orthoMbl.y, orthoMbr.y, orthoMtl.y, orthoMtr.y);
                 float orthoMaxY = Mathf.Max(orthoMbl.y, orthoMbr.y, orthoMtl.y, orthoMtr.y);
                 Vector2 orthoSize = new Vector2(Mathf.Abs(orthoMaxX - orthoMinX), Mathf.Abs(orthoMaxY - orthoMinY));
-                orthoSize *= cameraFrameSizeScale;
+                orthoSize *= cameraFrameSizeScale * CameraFrameAdditionalScale;
+                orthoSize = ApplyCameraFrameAspect(orthoSize);
 
                 cameraFrame.UpdateFrame(orthoPosition, orthoSize);
                 return;
@@ -904,9 +906,22 @@ namespace AAAGame.MiniMap
             float minY = Mathf.Min(mbl.y, mbr.y, mtl.y, mtr.y);
             float maxY = Mathf.Max(mbl.y, mbr.y, mtl.y, mtr.y);
             Vector2 size = new Vector2(Mathf.Abs(maxX - minX), Mathf.Abs(maxY - minY));
-            size *= cameraFrameSizeScale;
+            size *= cameraFrameSizeScale * CameraFrameAdditionalScale;
+            size = ApplyCameraFrameAspect(size);
 
             cameraFrame.UpdateFrame(position, size);
+        }
+
+        private static Vector2 ApplyCameraFrameAspect(Vector2 size)
+        {
+            float height = Mathf.Max(0f, size.y);
+            if (height <= 0.01f)
+            {
+                return size;
+            }
+
+            size.x = height * CameraFrameAspect;
+            return size;
         }
 
         private bool EnsureCameraFrame()
@@ -1018,8 +1033,8 @@ namespace AAAGame.MiniMap
                 terrainTextureMaxSize,
                 groundLayerKeyword,
                 waterLayerKeyword,
-                groundLayerColor,
-                waterLayerColor,
+                minimapManager.PlaneLayerColor,
+                minimapManager.WaterLayerColor,
                 new Color32(0, 0, 0, 255));
             if (terrainMapBuildResult == null)
             {

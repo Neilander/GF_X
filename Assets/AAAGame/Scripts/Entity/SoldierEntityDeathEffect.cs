@@ -2,7 +2,7 @@
 {
     public override void OnDead()
     {
-        AAAGame.Effec.UnitDeathDissolveEffect.PlayFor(gameObject);
+        AAAGame.Effect.UnitDeathDissolveEffect.PlayFor(gameObject);
         base.OnDead();
     }
 }

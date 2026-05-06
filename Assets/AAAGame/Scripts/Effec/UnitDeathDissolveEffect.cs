@@ -1,7 +1,7 @@
-﻿wusing UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace AAAGame.Effec
+namespace AAAGame.Effect
 {
     [DisallowMultipleComponent]
     public sealed class UnitDeathDissolveEffect : MonoBehaviour

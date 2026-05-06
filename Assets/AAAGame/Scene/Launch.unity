@@ -483,13 +483,15 @@ MonoBehaviour:
     WorldMaxX: 50
     WorldMinZ: -50
     WorldMaxZ: 50
-    PlayerSoldierColor: {r: 0.2, g: 0.5, b: 1, a: 1}
+    PlayerSoldierColor: {r: 1, g: 1, b: 1, a: 1}
     EnemySoldierColor: {r: 1, g: 0, b: 0, a: 1}
     SoldierDotSize: 5
-    BuildingIconSize: 15
+    BuildingIconSize: 10
     EnableFogOfWar: 0
     FogGridSize: 50
     VisionRadius: 5
+  waterLayerColor: {r: 0.09411766, g: 0.13333334, b: 0.18823531, a: 1}
+  planeLayerColor: {r: 0.4431373, g: 0.4431373, b: 0.4431373, a: 1}
 --- !u!4 &144036988
 Transform:
   m_ObjectHideFlags: 0
@@ -2627,14 +2629,14 @@ MonoBehaviour:
   fogOuterDensityScale: 5
   fogOuterStartSizeMultiplier: 1
   fogOuterAlpha: 1
-  fogOuterSortingOrder: 80
+  fogOuterSortingOrder: 0
   fogInnerHeight: 0.3
   fogInnerThickness: 0
   fogInnerBottomOffset: 0
   fogInnerDensityScale: 1
   fogInnerStartSizeMultiplier: 0.4
   fogInnerAlpha: 0.6
-  fogInnerSortingOrder: 85
+  fogInnerSortingOrder: 0
   enemyBuildingColor: {r: 0.70980394, g: 0.6509804, b: 0.7294118, a: 1}
 --- !u!1 &990002000
 GameObject:

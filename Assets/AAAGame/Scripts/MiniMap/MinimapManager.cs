@@ -14,12 +14,16 @@ namespace AAAGame.MiniMap
     public class MinimapManager : GameFrameworkComponent
     {
         [SerializeField] private MinimapConfig config = new MinimapConfig();
+        [SerializeField] private Color waterLayerColor = new Color(0.14f, 0.36f, 0.52f, 1f);
+        [SerializeField] private Color planeLayerColor = new Color(0.42f, 0.45f, 0.33f, 1f);
 
         private Dictionary<int, MinimapUnitData> units = new Dictionary<int, MinimapUnitData>();
         private int nextUnitId = 1;
         private int syncedLevelEntityId;
 
         public MinimapConfig Config => config;
+        public Color WaterLayerColor => waterLayerColor;
+        public Color PlaneLayerColor => planeLayerColor;
 
         // C# 委托事件 - 数据变化时触发
         public event Action<List<MinimapUnitData>> OnUnitsUpdated;
