@@ -149,7 +149,9 @@ public class TutorialManager : GameFrameworkComponent
             case TutorialType.InvadeSH:
             case TutorialType.SwitchPhase:
             case TutorialType.SwitchPhase2:
+                break;
             case TutorialType.PlayCard:
+                TickPlayCardTutorial();
                 break;
             default:
                 Log.Warning("[Tutorial] Unknown active tutorial trigger: {0}.", triggerType);
@@ -218,6 +220,14 @@ public class TutorialManager : GameFrameworkComponent
             return;
 
         CompleteTutorial(TutorialType.Build, autoChain: true);
+    }
+
+    private void TickPlayCardTutorial()
+    {
+        if (EntityRegistry.Player is not SoldierEntity player || !player.IsGhostState)
+            return;
+
+        CompleteTutorial(TutorialType.PlayCard, autoChain: false);
     }
 
     private void CompleteTutorial(TutorialType triggerType, bool autoChain)
@@ -349,6 +359,9 @@ public class TutorialManager : GameFrameworkComponent
         shouldBlink = false;
 
         if (!IsCurrentLevelLv1())
+            return false;
+
+        if (completedTutorials.Contains(TutorialType.PlayCard))
             return false;
 
         bool isSwitchPhaseTutorialActive = activeTutorials.Contains(TutorialType.SwitchPhase)

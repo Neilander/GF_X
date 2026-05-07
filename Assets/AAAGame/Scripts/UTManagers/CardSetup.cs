@@ -185,9 +185,9 @@ public partial class CardSetup : GameFrameworkComponent
         Log.Info("[PhasePerf] card-open-ui.total: {0}ms", watch.ElapsedMilliseconds);
     }
 
-    public void GenerateCardToDeck(BuildingEntity sourceBuilding)
+    public bool GenerateCardToDeck(BuildingEntity sourceBuilding)
     {
-        m_CardSystemController.AddCardToDeck(sourceBuilding);
+        return m_CardSystemController != null && m_CardSystemController.AddCardToDeck(sourceBuilding);
     }
 
     public bool AddCardToDeck(CardData cardData)

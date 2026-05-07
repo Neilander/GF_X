@@ -4,18 +4,33 @@ using UnityEngine.UI;
 
 namespace AAAGame.Card
 {
-    /// <summary>
-    /// 卡组预览中的单张卡牌条目。UI 由预制体配置，代码只填充 CardData 数据。
-    /// </summary>
     public class CardDeckPreviewItem : MonoBehaviour
     {
-        [Header("卡牌预览组件")]
-        [SerializeField] [InspectorName("卡牌背景图")] private Image cardBackImage;
-        [SerializeField] [InspectorName("卡面立绘")] private Image cardImage;
-        [SerializeField] [InspectorName("卡牌名称文本")] private TextMeshProUGUI cardNameText;
-        [SerializeField] [InspectorName("人口消耗文本")] private TextMeshProUGUI populationText;
-        [SerializeField] [InspectorName("士兵数量文本")] private TextMeshProUGUI soldierCountText;
-        [SerializeField] [InspectorName("士兵名称文本")] private TextMeshProUGUI soldierNameText;
+        [Header("Card Preview")]
+        [SerializeField] private Image cardBackImage;
+        [SerializeField] private Image cardImage;
+        [SerializeField] private TextMeshProUGUI cardNameText;
+        [SerializeField] private TextMeshProUGUI populationText;
+        [SerializeField] private TextMeshProUGUI soldierCountText;
+        [SerializeField] private TextMeshProUGUI soldierNameText;
+
+        public void SetData(ICardDataProvider cardData, BuildingEntity sourceBuilding)
+        {
+            if (cardData == null)
+            {
+                gameObject.SetActive(false);
+                return;
+            }
+
+            ApplyData(
+                cardData.CardBackSprite,
+                cardData.CardSprite,
+                cardData.CardColor,
+                cardData.CardName,
+                sourceBuilding != null ? sourceBuilding.GetArmyOccupiedSupply() : cardData.PopulationCost,
+                sourceBuilding != null ? sourceBuilding.GetArmyForce() : cardData.SoldierCount,
+                cardData.SoldierName);
+        }
 
         public void SetData(CardData cardData)
         {
@@ -25,50 +40,69 @@ namespace AAAGame.Card
                 return;
             }
 
+            ApplyData(
+                cardData.cardBackSprite,
+                cardData.cardSprite,
+                cardData.cardColor,
+                cardData.cardName,
+                cardData.populationCost,
+                cardData.soldierCount,
+                cardData.soldierName);
+        }
+
+        private void ApplyData(
+            Sprite cardBackSprite,
+            Sprite cardSprite,
+            Color cardColor,
+            string cardName,
+            int populationCost,
+            int soldierCount,
+            string soldierName)
+        {
             if (cardBackImage != null)
             {
-                if (cardData.cardBackSprite != null)
+                if (cardBackSprite != null)
                 {
-                    cardBackImage.sprite = cardData.cardBackSprite;
+                    cardBackImage.sprite = cardBackSprite;
                     cardBackImage.color = Color.white;
                 }
                 else
                 {
-                    cardBackImage.color = cardData.cardColor;
+                    cardBackImage.color = cardColor;
                 }
             }
 
             if (cardImage != null)
             {
-                if (cardData.cardSprite != null)
+                if (cardSprite != null)
                 {
-                    cardImage.sprite = cardData.cardSprite;
+                    cardImage.sprite = cardSprite;
                     cardImage.color = Color.white;
                 }
                 else
                 {
-                    cardImage.color = cardData.cardColor;
+                    cardImage.color = cardColor;
                 }
             }
 
             if (cardNameText != null)
             {
-                cardNameText.text = cardData.cardName;
+                cardNameText.text = cardName;
             }
 
             if (populationText != null)
             {
-                populationText.text = cardData.populationCost.ToString();
+                populationText.text = populationCost.ToString();
             }
 
             if (soldierCountText != null)
             {
-                soldierCountText.text = cardData.soldierCount.ToString();
+                soldierCountText.text = soldierCount.ToString();
             }
 
             if (soldierNameText != null)
             {
-                soldierNameText.text = cardData.soldierName;
+                soldierNameText.text = soldierName;
             }
 
             gameObject.SetActive(true);

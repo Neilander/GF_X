@@ -8,6 +8,7 @@ using GiantGrey.TileWorldCreator;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.AI;
@@ -36,6 +37,7 @@ namespace AAAGame.Tools.Editor
         private const int EnemyStrongholdFaction = 1;
 
         private UnityEngine.Object ldtkLevelAsset;
+        private Configuration templateConfiguration;
         private Configuration configuration;
         private TileWorldCreatorManager manager;
         private GameObject levelPrefabTemplate;
@@ -44,6 +46,10 @@ namespace AAAGame.Tools.Editor
         private bool resizeConfiguration = true;
         private bool clearBlueprintModifiers = true;
         private bool importEntityPresetPoints = true;
+        private bool syncBuildSettingsFromTemplate = true;
+        private bool autoResolveForSelectedLdtk = true;
+        private bool autoCreateMissingAssets = true;
+        private bool autoCreateSceneManager = true;
         private Vector2 scrollPosition;
         private string lastReport;
 
@@ -61,15 +67,9 @@ namespace AAAGame.Tools.Editor
                 ldtkLevelAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(DefaultLdtkPath);
             }
 
-            if (configuration == null)
+            if (templateConfiguration == null)
             {
-                configuration = AssetDatabase.LoadAssetAtPath<Configuration>(GetDefaultTargetPath());
-            }
-
-            if (manager == null)
-            {
-                manager = FindObjectsByType<TileWorldCreatorManager>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID)
-                    .FirstOrDefault(x => x != null && x.configuration == configuration);
+                templateConfiguration = AssetDatabase.LoadAssetAtPath<Configuration>(TemplateConfigurationPath);
             }
 
             if (levelPrefabTemplate == null)
@@ -77,15 +77,7 @@ namespace AAAGame.Tools.Editor
                 levelPrefabTemplate = AssetDatabase.LoadAssetAtPath<GameObject>(LevelPrefabTemplatePath);
             }
 
-            if (levelPrefabTarget == null)
-            {
-                levelPrefabTarget = AssetDatabase.LoadAssetAtPath<GameObject>(GetDefaultLevelPrefabPath());
-            }
-
-            if (entityPresetPointPrefab == null)
-            {
-                entityPresetPointPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(EntityPresetPointPrefabPath);
-            }
+            AutoResolveReferences(createMissingAssets: false, createSceneManager: false, out _);
         }
 
         private void OnGUI()
@@ -93,27 +85,44 @@ namespace AAAGame.Tools.Editor
             scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
 
             EditorGUILayout.LabelField("Source", EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
             ldtkLevelAsset = EditorGUILayout.ObjectField("LDtk level json", ldtkLevelAsset, typeof(UnityEngine.Object), false);
+            if (EditorGUI.EndChangeCheck() && autoResolveForSelectedLdtk)
+            {
+                AutoResolveReferences(createMissingAssets: false, createSceneManager: false, out _);
+            }
+
             configuration = (Configuration)EditorGUILayout.ObjectField("TWC configuration", configuration, typeof(Configuration), false);
+            templateConfiguration = (Configuration)EditorGUILayout.ObjectField("TWC template", templateConfiguration, typeof(Configuration), false);
             manager = (TileWorldCreatorManager)EditorGUILayout.ObjectField("TWC manager", manager, typeof(TileWorldCreatorManager), true);
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Create/Select Target From Lv3 Template"))
+                if (GUILayout.Button("Auto Setup Selected LDtk"))
+                {
+                    AutoResolveReferences(autoCreateMissingAssets, autoCreateSceneManager, out string report);
+                    lastReport = report;
+                }
+
+                if (GUILayout.Button("Create/Select TWC Asset"))
                 {
                     CreateOrSelectTargetFromTemplate();
                 }
 
-                if (GUILayout.Button("Find Manager For Target"))
+                if (GUILayout.Button("Find/Create Manager"))
                 {
-                    manager = FindObjectsByType<TileWorldCreatorManager>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID)
-                        .FirstOrDefault(x => x != null && x.configuration == configuration);
+                    manager = FindOrCreateManager(createSceneManager: true, out string managerReport);
+                    lastReport = managerReport;
                 }
             }
 
             EditorGUILayout.Space(6f);
             EditorGUILayout.LabelField("Import Rules", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. Lv3.asset is used as the clone template when you click the template button.", MessageType.Info);
+            autoResolveForSelectedLdtk = EditorGUILayout.Toggle("Auto select by LDtk", autoResolveForSelectedLdtk);
+            autoCreateMissingAssets = EditorGUILayout.Toggle("Auto create assets", autoCreateMissingAssets);
+            autoCreateSceneManager = EditorGUILayout.Toggle("Auto create manager", autoCreateSceneManager);
+            syncBuildSettingsFromTemplate = EditorGUILayout.Toggle("Sync build settings", syncBuildSettingsFromTemplate);
+            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. Missing TWC assets are cloned from the selected TWC template when auto create is enabled.", MessageType.Info);
             resizeConfiguration = EditorGUILayout.Toggle("Resize configuration", resizeConfiguration);
             clearBlueprintModifiers = EditorGUILayout.Toggle("Clear blueprint modifiers", clearBlueprintModifiers);
 
@@ -172,6 +181,16 @@ namespace AAAGame.Tools.Editor
                 return;
             }
 
+            if (autoResolveForSelectedLdtk)
+            {
+                bool autoResolved = AutoResolveReferences(autoCreateMissingAssets, generateBuildLayers && autoCreateSceneManager, out string autoReport);
+                if (!autoResolved)
+                {
+                    lastReport = autoReport;
+                    return;
+                }
+            }
+
             if (configuration == null)
             {
                 EditorUtility.DisplayDialog("LDtk import failed", "TWC configuration is not assigned.", "OK");
@@ -190,6 +209,12 @@ namespace AAAGame.Tools.Editor
             }
 
             if (!TryBuildImportPlan(level, out ImportPlan plan))
+            {
+                return;
+            }
+
+            string templateSyncReport = string.Empty;
+            if (!TrySyncBuildSettingsFromTemplate(out templateSyncReport))
             {
                 return;
             }
@@ -253,6 +278,11 @@ namespace AAAGame.Tools.Editor
                             lastReport = ensureReport + "\n\n" + lastReport;
                         }
 
+                        if (!string.IsNullOrEmpty(templateSyncReport))
+                        {
+                            lastReport = templateSyncReport + "\n\n" + lastReport;
+                        }
+
                         Debug.Log(lastReport);
                     });
 
@@ -285,6 +315,12 @@ namespace AAAGame.Tools.Editor
             {
                 lastReport = ensureReport + "\n\n" + lastReport;
             }
+
+            if (!string.IsNullOrEmpty(templateSyncReport))
+            {
+                lastReport = templateSyncReport + "\n\n" + lastReport;
+            }
+
             Debug.Log(lastReport);
         }
 
@@ -330,33 +366,207 @@ namespace AAAGame.Tools.Editor
             return $"{TerrainPrefabFolderPath}/{terrainName}.prefab";
         }
 
+        private Configuration GetTemplateConfiguration()
+        {
+            if (templateConfiguration == null)
+            {
+                templateConfiguration = AssetDatabase.LoadAssetAtPath<Configuration>(TemplateConfigurationPath);
+            }
+
+            return templateConfiguration;
+        }
+
+        private string GetTemplateConfigurationPath()
+        {
+            Configuration template = GetTemplateConfiguration();
+            string path = template != null ? AssetDatabase.GetAssetPath(template) : string.Empty;
+            return !string.IsNullOrEmpty(path) ? path : TemplateConfigurationPath;
+        }
+
+        private bool AutoResolveReferences(bool createMissingAssets, bool createSceneManager, out string report)
+        {
+            var builder = new StringBuilder();
+            bool success = true;
+
+            if (ldtkLevelAsset == null)
+            {
+                ldtkLevelAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(DefaultLdtkPath);
+            }
+
+            string ldtkPath = GetSelectedLdtkPath();
+            if (string.IsNullOrEmpty(ldtkPath))
+            {
+                report = "No LDtk level json selected.";
+                return false;
+            }
+
+            if (levelPrefabTemplate == null)
+            {
+                levelPrefabTemplate = AssetDatabase.LoadAssetAtPath<GameObject>(LevelPrefabTemplatePath);
+            }
+
+            if (GetTemplateConfiguration() != null)
+            {
+                builder.AppendLine($"Selected TWC template: {GetTemplateConfigurationPath()}");
+            }
+
+            if (entityPresetPointPrefab == null)
+            {
+                entityPresetPointPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(EntityPresetPointPrefabPath);
+            }
+
+            if (autoResolveForSelectedLdtk || configuration == null)
+            {
+                string targetPath = GetDefaultTargetPath();
+                Configuration targetConfiguration = !string.IsNullOrEmpty(targetPath)
+                    ? AssetDatabase.LoadAssetAtPath<Configuration>(targetPath)
+                    : null;
+
+                if (targetConfiguration == null && createMissingAssets)
+                {
+                    success &= TryCreateOrSelectTargetFromTemplate(out targetPath, out bool createdConfiguration);
+                    targetConfiguration = configuration;
+                    if (createdConfiguration)
+                    {
+                        builder.AppendLine($"Created TWC asset: {targetPath}");
+                    }
+                }
+                else if (targetConfiguration == null)
+                {
+                    configuration = null;
+                    manager = null;
+                    builder.AppendLine($"TWC asset not found: {targetPath}");
+                }
+                else if (targetConfiguration != null)
+                {
+                    configuration = targetConfiguration;
+                    builder.AppendLine($"Selected TWC asset: {targetPath}");
+                }
+            }
+
+            if (importEntityPresetPoints && (autoResolveForSelectedLdtk || levelPrefabTarget == null))
+            {
+                string levelPrefabPath = GetDefaultLevelPrefabPath();
+                GameObject targetLevelPrefab = !string.IsNullOrEmpty(levelPrefabPath)
+                    ? AssetDatabase.LoadAssetAtPath<GameObject>(levelPrefabPath)
+                    : null;
+
+                if (targetLevelPrefab == null && createMissingAssets)
+                {
+                    success &= TryCreateOrSelectLevelPrefabFromTemplate(out levelPrefabPath);
+                    targetLevelPrefab = levelPrefabTarget;
+                    if (targetLevelPrefab != null)
+                    {
+                        builder.AppendLine($"Created level prefab: {levelPrefabPath}");
+                    }
+                }
+                else if (targetLevelPrefab == null)
+                {
+                    levelPrefabTarget = null;
+                    builder.AppendLine($"Level prefab not found: {levelPrefabPath}");
+                }
+                else if (targetLevelPrefab != null)
+                {
+                    levelPrefabTarget = targetLevelPrefab;
+                    builder.AppendLine($"Selected level prefab: {levelPrefabPath}");
+                }
+            }
+
+            if (configuration != null)
+            {
+                manager = FindOrCreateManager(createSceneManager && autoCreateSceneManager, out string managerReport);
+                if (!string.IsNullOrEmpty(managerReport))
+                {
+                    builder.AppendLine(managerReport);
+                }
+            }
+
+            if (entityPresetPointPrefab != null)
+            {
+                builder.AppendLine($"Selected point prefab: {EntityPresetPointPrefabPath}");
+            }
+
+            report = builder.Length > 0 ? builder.ToString().TrimEnd() : "Auto setup finished.";
+            return success;
+        }
+
+        private TileWorldCreatorManager FindOrCreateManager(bool createSceneManager, out string report)
+        {
+            report = string.Empty;
+            if (configuration == null)
+            {
+                report = "TWC manager skipped: no configuration selected.";
+                return null;
+            }
+
+            TileWorldCreatorManager found = FindObjectsByType<TileWorldCreatorManager>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID)
+                .FirstOrDefault(x => x != null && x.configuration == configuration);
+            if (found != null)
+            {
+                report = $"Selected TWC manager: {found.name}";
+                return found;
+            }
+
+            if (!createSceneManager)
+            {
+                report = "No TWC manager found for selected configuration.";
+                return null;
+            }
+
+            string managerName = $"{configuration.name}_TWC";
+            var managerObject = new GameObject(managerName);
+            Undo.RegisterCreatedObjectUndo(managerObject, "Create LDtk TWC Manager");
+            found = managerObject.AddComponent<TileWorldCreatorManager>();
+            found.configuration = configuration;
+            EditorSceneManager.MarkSceneDirty(managerObject.scene);
+            report = $"Created TWC manager: {managerName}";
+            return found;
+        }
+
         private void CreateOrSelectTargetFromTemplate()
         {
-            if (!TryGetLdtkPath(out string ldtkPath))
+            if (!TryCreateOrSelectTargetFromTemplate(out string targetPath, out bool created))
             {
                 return;
             }
 
-            string targetPath = GetDefaultTargetPath();
+            lastReport = created ? $"Created target from template: {targetPath}" : $"Selected existing target: {targetPath}";
+        }
+
+        private bool TryCreateOrSelectTargetFromTemplate(out string targetPath, out bool created)
+        {
+            created = false;
+            targetPath = string.Empty;
+            if (!TryGetLdtkPath(out string ldtkPath))
+            {
+                return false;
+            }
+
+            targetPath = GetDefaultTargetPath();
             if (string.IsNullOrEmpty(targetPath))
             {
-                return;
+                return false;
             }
 
             Configuration existing = AssetDatabase.LoadAssetAtPath<Configuration>(targetPath);
             if (existing != null)
             {
                 configuration = existing;
-                manager = FindObjectsByType<TileWorldCreatorManager>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID)
-                    .FirstOrDefault(x => x != null && x.configuration == configuration);
-                lastReport = $"Selected existing target: {targetPath}";
-                return;
+                manager = FindOrCreateManager(createSceneManager: false, out _);
+                return true;
             }
 
-            if (!AssetDatabase.CopyAsset(TemplateConfigurationPath, targetPath))
+            string templatePath = GetTemplateConfigurationPath();
+            if (AssetDatabase.LoadAssetAtPath<Configuration>(templatePath) == null)
             {
-                EditorUtility.DisplayDialog("LDtk import failed", $"Failed to clone template:\n{TemplateConfigurationPath}\n-> {targetPath}", "OK");
-                return;
+                EditorUtility.DisplayDialog("LDtk import failed", $"TWC template is invalid:\n{templatePath}", "OK");
+                return false;
+            }
+
+            if (!AssetDatabase.CopyAsset(templatePath, targetPath))
+            {
+                EditorUtility.DisplayDialog("LDtk import failed", $"Failed to clone template:\n{templatePath}\n-> {targetPath}", "OK");
+                return false;
             }
 
             AssetDatabase.ImportAsset(targetPath);
@@ -364,14 +574,15 @@ namespace AAAGame.Tools.Editor
             if (configuration == null)
             {
                 EditorUtility.DisplayDialog("LDtk import failed", $"Cloned asset could not be loaded:\n{targetPath}", "OK");
-                return;
+                return false;
             }
 
             configuration.name = Path.GetFileNameWithoutExtension(ldtkPath);
             EditorUtility.SetDirty(configuration);
             AssetDatabase.SaveAssets();
             manager = null;
-            lastReport = $"Created target from Lv3 template: {targetPath}";
+            created = true;
+            return true;
         }
 
         private void CreateOrSelectLevelPrefabFromTemplate()
@@ -587,6 +798,262 @@ namespace AAAGame.Tools.Editor
             }
 
             return true;
+        }
+
+        private bool TrySyncBuildSettingsFromTemplate(out string report)
+        {
+            report = string.Empty;
+            if (!syncBuildSettingsFromTemplate || configuration == null)
+            {
+                return true;
+            }
+
+            Configuration template = GetTemplateConfiguration();
+            if (template == null)
+            {
+                const string message = "TWC template is not assigned.";
+                EditorUtility.DisplayDialog("LDtk import failed", message, "OK");
+                return false;
+            }
+
+            if (template == configuration)
+            {
+                return true;
+            }
+
+            var targetBuildLayers = GetBuildLayers(configuration).OfType<TilesBuildLayer>().ToList();
+            var templateBuildLayers = GetBuildLayers(template).OfType<TilesBuildLayer>().ToList();
+            if (targetBuildLayers.Count == 0 || templateBuildLayers.Count == 0)
+            {
+                report = "Build settings sync skipped: no Tiles build layer found.";
+                return true;
+            }
+
+            Dictionary<string, string> templateBlueprintNamesByGuid = GetBlueprintLayers(template)
+                .Where(x => x != null && !string.IsNullOrEmpty(x.guid))
+                .GroupBy(x => x.guid)
+                .ToDictionary(x => x.Key, x => x.First().layerName);
+            Dictionary<string, BlueprintLayer> targetBlueprintsByName = GetBlueprintLayers(configuration)
+                .Where(x => x != null && !string.IsNullOrEmpty(x.layerName))
+                .GroupBy(x => x.layerName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+
+            int syncedCount = 0;
+            foreach (TilesBuildLayer targetLayer in targetBuildLayers)
+            {
+                TilesBuildLayer templateLayer = FindTemplateBuildLayer(templateBuildLayers, templateBlueprintNamesByGuid, targetLayer.layerName);
+                if (templateLayer == null)
+                {
+                    continue;
+                }
+
+                SyncTilesBuildLayerFromTemplate(templateLayer, targetLayer, templateBlueprintNamesByGuid, targetBlueprintsByName);
+                syncedCount++;
+            }
+
+            if (syncedCount > 0)
+            {
+                EditorUtility.SetDirty(configuration);
+                report = $"Synced build settings from template: {GetTemplateConfigurationPath()} ({syncedCount} layers)";
+            }
+
+            return true;
+        }
+
+        private static TilesBuildLayer FindTemplateBuildLayer(
+            List<TilesBuildLayer> templateBuildLayers,
+            Dictionary<string, string> templateBlueprintNamesByGuid,
+            string targetLayerName)
+        {
+            TilesBuildLayer exact = templateBuildLayers.FirstOrDefault(x => string.Equals(x.layerName, targetLayerName, StringComparison.OrdinalIgnoreCase));
+            if (exact != null)
+            {
+                return exact;
+            }
+
+            if (!TryParseStrongholdBuildLayerName(targetLayerName, out int factionId))
+            {
+                return null;
+            }
+
+            return templateBuildLayers
+                .Where(x =>
+                    templateBlueprintNamesByGuid.TryGetValue(x.assignedBlueprintLayerGuid, out string blueprintName) &&
+                    ParseStrongholdName(blueprintName, out int templateFactionId, out _) &&
+                    templateFactionId == factionId)
+                .OrderBy(x =>
+                {
+                    templateBlueprintNamesByGuid.TryGetValue(x.assignedBlueprintLayerGuid, out string blueprintName);
+                    ParseStrongholdName(blueprintName, out _, out int index);
+                    return index;
+                })
+                .FirstOrDefault();
+        }
+
+        private void SyncTilesBuildLayerFromTemplate(
+            TilesBuildLayer templateLayer,
+            TilesBuildLayer targetLayer,
+            Dictionary<string, string> templateBlueprintNamesByGuid,
+            Dictionary<string, BlueprintLayer> targetBlueprintsByName)
+        {
+            string layerName = targetLayer.layerName;
+            string guid = targetLayer.guid;
+            string hierarchyLayerId = targetLayer.hierarchyLayerID;
+            string assignedBlueprintGuid = targetLayer.assignedBlueprintLayerGuid;
+            BlueprintLayer currentBlueprintLayer = targetLayer.currentBlueprintLayer != null
+                ? targetLayer.currentBlueprintLayer
+                : configuration.GetBlueprintLayerByGuid(assignedBlueprintGuid);
+            HideFlags hideFlags = targetLayer.hideFlags;
+
+            Undo.RegisterCompleteObjectUndo(targetLayer, "Sync TWC Build Layer From Template");
+            EditorUtility.CopySerialized(templateLayer, targetLayer);
+
+            targetLayer.hideFlags = hideFlags;
+            targetLayer.layerName = layerName;
+            targetLayer.guid = guid;
+            targetLayer.hierarchyLayerID = string.IsNullOrEmpty(hierarchyLayerId) ? guid : hierarchyLayerId;
+            targetLayer.configuration = configuration;
+
+            BlueprintLayer assignedBlueprintLayer = ResolveTargetBlueprintLayer(
+                templateLayer.assignedBlueprintLayerGuid,
+                currentBlueprintLayer,
+                templateBlueprintNamesByGuid,
+                targetBlueprintsByName);
+            if (assignedBlueprintLayer != null)
+            {
+                targetLayer.assignedBlueprintLayerGuid = assignedBlueprintLayer.guid;
+                targetLayer.currentBlueprintLayer = assignedBlueprintLayer;
+            }
+            else
+            {
+                targetLayer.assignedBlueprintLayerGuid = assignedBlueprintGuid;
+                targetLayer.currentBlueprintLayer = currentBlueprintLayer;
+            }
+
+            RemapCopiedBuildLayerBlueprintReferences(targetLayer, templateBlueprintNamesByGuid, targetBlueprintsByName);
+            targetLayer.ResetLayer(manager != null && manager.configuration == configuration ? manager : null);
+            EditorUtility.SetDirty(targetLayer);
+        }
+
+        private static BlueprintLayer ResolveTargetBlueprintLayer(
+            string templateBlueprintGuid,
+            BlueprintLayer fallback,
+            Dictionary<string, string> templateBlueprintNamesByGuid,
+            Dictionary<string, BlueprintLayer> targetBlueprintsByName)
+        {
+            if (templateBlueprintNamesByGuid.TryGetValue(templateBlueprintGuid, out string templateBlueprintName) &&
+                targetBlueprintsByName.TryGetValue(templateBlueprintName, out BlueprintLayer targetBlueprint))
+            {
+                return targetBlueprint;
+            }
+
+            return fallback;
+        }
+
+        private static void RemapCopiedBuildLayerBlueprintReferences(
+            TilesBuildLayer targetLayer,
+            Dictionary<string, string> templateBlueprintNamesByGuid,
+            Dictionary<string, BlueprintLayer> targetBlueprintsByName)
+        {
+            if (targetLayer.masks != null)
+            {
+                foreach (BuildLayerMask mask in targetLayer.masks)
+                {
+                    if (mask == null)
+                    {
+                        continue;
+                    }
+
+                    mask.assignedBlueprintLayerGuid = RemapTemplateBlueprintGuid(mask.assignedBlueprintLayerGuid, templateBlueprintNamesByGuid, targetBlueprintsByName);
+                }
+            }
+
+            if (targetLayer.tileLayers == null)
+            {
+                return;
+            }
+
+            foreach (TilesBuildLayer.TileLayers tileLayer in targetLayer.tileLayers)
+            {
+                if (tileLayer?.layerOverrides == null)
+                {
+                    continue;
+                }
+
+                foreach (TilesBuildLayer.TilePresetOverride layerOverride in tileLayer.layerOverrides)
+                {
+                    if (layerOverride == null)
+                    {
+                        continue;
+                    }
+
+                    layerOverride.blueprintOverrideLayer = RemapTemplateBlueprintGuid(layerOverride.blueprintOverrideLayer, templateBlueprintNamesByGuid, targetBlueprintsByName);
+                }
+            }
+        }
+
+        private static string RemapTemplateBlueprintGuid(
+            string templateBlueprintGuid,
+            Dictionary<string, string> templateBlueprintNamesByGuid,
+            Dictionary<string, BlueprintLayer> targetBlueprintsByName)
+        {
+            if (string.IsNullOrEmpty(templateBlueprintGuid))
+            {
+                return templateBlueprintGuid;
+            }
+
+            return templateBlueprintNamesByGuid.TryGetValue(templateBlueprintGuid, out string templateBlueprintName) &&
+                   targetBlueprintsByName.TryGetValue(templateBlueprintName, out BlueprintLayer targetBlueprint)
+                ? targetBlueprint.guid
+                : templateBlueprintGuid;
+        }
+
+        private static IEnumerable<BuildLayer> GetBuildLayers(Configuration asset)
+        {
+            if (asset?.buildLayerFolders == null)
+            {
+                yield break;
+            }
+
+            foreach (BuildLayerFolder folder in asset.buildLayerFolders)
+            {
+                if (folder?.buildLayers == null)
+                {
+                    continue;
+                }
+
+                foreach (BuildLayer layer in folder.buildLayers)
+                {
+                    if (layer != null)
+                    {
+                        yield return layer;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<BlueprintLayer> GetBlueprintLayers(Configuration asset)
+        {
+            if (asset?.blueprintLayerFolders == null)
+            {
+                yield break;
+            }
+
+            foreach (BlueprintLayerFolder folder in asset.blueprintLayerFolders)
+            {
+                if (folder?.blueprintLayers == null)
+                {
+                    continue;
+                }
+
+                foreach (BlueprintLayer layer in folder.blueprintLayers)
+                {
+                    if (layer != null)
+                    {
+                        yield return layer;
+                    }
+                }
+            }
         }
 
         private bool TryFindBlueprintLayer(string layerName, out BlueprintLayer layer)
@@ -849,6 +1316,18 @@ namespace AAAGame.Tools.Editor
             return Regex.IsMatch(layerName ?? string.Empty, @"^SH_\d+_\d+$", RegexOptions.IgnoreCase);
         }
 
+        private static bool TryParseStrongholdBuildLayerName(string layerName, out int factionId)
+        {
+            factionId = int.MaxValue;
+            const string buildPrefix = "Build ";
+            if (string.IsNullOrEmpty(layerName) || !layerName.StartsWith(buildPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return ParseStrongholdName(layerName.Substring(buildPrefix.Length), out factionId, out _);
+        }
+
         private static int CompareStrongholdLayers(BlueprintLayer a, BlueprintLayer b)
         {
             ParseStrongholdName(a.layerName, out int factionA, out int indexA);
@@ -1060,6 +1539,7 @@ namespace AAAGame.Tools.Editor
             }
 
             string terrainName = Path.GetFileNameWithoutExtension(terrainPrefabPath);
+            NavMeshSurfaceTemplateData[] navMeshTemplates = CollectTerrainNavMeshSurfaceTemplates(terrainPrefabPath, GetTemplateConfigurationPath());
             GameObject terrainClone = Instantiate(manager.gameObject);
             terrainClone.name = terrainName;
             terrainClone.transform.position = manager.transform.position;
@@ -1071,7 +1551,7 @@ namespace AAAGame.Tools.Editor
                 SaveGeneratedMeshes(terrainClone, terrainPrefabPath);
                 PrefabUtility.SaveAsPrefabAsset(terrainClone, terrainPrefabPath);
                 AssetDatabase.ImportAsset(terrainPrefabPath);
-                int navMeshSurfaceCount = EnsureTerrainNavMeshSurfacesAndData(terrainPrefabPath);
+                int navMeshSurfaceCount = EnsureTerrainNavMeshSurfacesAndData(terrainPrefabPath, navMeshTemplates);
                 return TerrainPrefabResult.Saved(terrainPrefabPath, navMeshSurfaceCount);
             }
             finally
@@ -1080,19 +1560,70 @@ namespace AAAGame.Tools.Editor
             }
         }
 
-        private static int EnsureTerrainNavMeshSurfacesAndData(string terrainPrefabPath)
+        private static NavMeshSurfaceTemplateData[] CollectTerrainNavMeshSurfaceTemplates(string terrainPrefabPath, string templateConfigurationPath)
         {
-            GameObject template = AssetDatabase.LoadAssetAtPath<GameObject>(TemplateTerrainPrefabPath);
-            if (template == null)
+            foreach (string candidatePath in GetTerrainNavMeshTemplateCandidatePaths(terrainPrefabPath, templateConfigurationPath))
             {
-                Debug.LogWarning($"[LDtk Import] Missing terrain navmesh template: {TemplateTerrainPrefabPath}");
-                return 0;
+                GameObject candidate = AssetDatabase.LoadAssetAtPath<GameObject>(candidatePath);
+                NavMeshSurface[] candidateSurfaces = candidate != null ? candidate.GetComponents<NavMeshSurface>() : Array.Empty<NavMeshSurface>();
+                if (candidateSurfaces.Length == 0)
+                {
+                    continue;
+                }
+
+                return candidateSurfaces.Select(ReadNavMeshSurfaceTemplateData).ToArray();
             }
 
-            NavMeshSurface[] templateSurfaces = template.GetComponents<NavMeshSurface>();
+            Debug.LogWarning("[LDtk Import] No terrain prefab with NavMeshSurface was found. Using built-in surface defaults.");
+            return GetFallbackNavMeshSurfaceTemplates();
+        }
+
+        private static IEnumerable<string> GetTerrainNavMeshTemplateCandidatePaths(string terrainPrefabPath, string templateConfigurationPath)
+        {
+            if (!string.IsNullOrEmpty(terrainPrefabPath))
+            {
+                yield return terrainPrefabPath;
+            }
+
+            if (!PathsEqual(TemplateTerrainPrefabPath, terrainPrefabPath))
+            {
+                yield return TemplateTerrainPrefabPath;
+            }
+
+            string templateConfigurationTerrainPath = $"{TerrainPrefabFolderPath}/{Path.GetFileNameWithoutExtension(templateConfigurationPath)}.prefab";
+            if (!PathsEqual(templateConfigurationTerrainPath, terrainPrefabPath) &&
+                !PathsEqual(templateConfigurationTerrainPath, TemplateTerrainPrefabPath))
+            {
+                yield return templateConfigurationTerrainPath;
+            }
+
+            foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { TerrainPrefabFolderPath }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                string folder = Path.GetDirectoryName(path)?.Replace("\\", "/");
+                if (!string.Equals(folder, TerrainPrefabFolderPath, StringComparison.OrdinalIgnoreCase) ||
+                    !path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase) ||
+                    PathsEqual(path, terrainPrefabPath) ||
+                    PathsEqual(path, TemplateTerrainPrefabPath) ||
+                    PathsEqual(path, templateConfigurationTerrainPath))
+                {
+                    continue;
+                }
+
+                yield return path;
+            }
+        }
+
+        private static bool PathsEqual(string a, string b)
+        {
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int EnsureTerrainNavMeshSurfacesAndData(string terrainPrefabPath, NavMeshSurfaceTemplateData[] templateSurfaces)
+        {
             if (templateSurfaces == null || templateSurfaces.Length == 0)
             {
-                Debug.LogWarning($"[LDtk Import] No NavMeshSurface found on terrain template: {TemplateTerrainPrefabPath}");
+                Debug.LogWarning("[LDtk Import] No NavMeshSurface template data is available.");
                 return 0;
             }
 
@@ -1107,7 +1638,7 @@ namespace AAAGame.Tools.Editor
                 for (int i = 0; i < templateSurfaces.Length; i++)
                 {
                     NavMeshSurface surface = prefabRoot.AddComponent<NavMeshSurface>();
-                    CopyNavMeshSurfaceSettings(templateSurfaces[i], surface);
+                    ApplyNavMeshSurfaceSettings(templateSurfaces[i], surface);
                     BuildAndSaveNavMeshData(surface, terrainPrefabPath, i);
                     EditorUtility.SetDirty(surface);
                 }
@@ -1129,7 +1660,73 @@ namespace AAAGame.Tools.Editor
             return terrainPrefab != null ? terrainPrefab.GetComponents<NavMeshSurface>().Length : 0;
         }
 
-        private static void CopyNavMeshSurfaceSettings(NavMeshSurface source, NavMeshSurface target)
+        private static NavMeshSurfaceTemplateData ReadNavMeshSurfaceTemplateData(NavMeshSurface source)
+        {
+            var data = new NavMeshSurfaceTemplateData
+            {
+                agentTypeID = source.agentTypeID,
+                collectObjects = source.collectObjects,
+                size = source.size,
+                center = source.center,
+                layerMask = source.layerMask,
+                useGeometry = source.useGeometry,
+                defaultArea = source.defaultArea,
+                ignoreNavMeshAgent = source.ignoreNavMeshAgent,
+                ignoreNavMeshObstacle = source.ignoreNavMeshObstacle,
+                overrideTileSize = source.overrideTileSize,
+                tileSize = source.tileSize,
+                overrideVoxelSize = source.overrideVoxelSize,
+                voxelSize = source.voxelSize,
+                minRegionArea = source.minRegionArea,
+                buildHeightMesh = source.buildHeightMesh
+            };
+
+            var sourceObject = new SerializedObject(source);
+            SerializedProperty sourceGenerateLinks = sourceObject.FindProperty("m_GenerateLinks");
+            if (sourceGenerateLinks != null)
+            {
+                data.hasGenerateLinks = true;
+                data.generateLinks = sourceGenerateLinks.boolValue;
+            }
+
+            return data;
+        }
+
+        private static NavMeshSurfaceTemplateData[] GetFallbackNavMeshSurfaceTemplates()
+        {
+            return new[]
+            {
+                CreateFallbackNavMeshSurfaceTemplate(0, 0.13666667f),
+                CreateFallbackNavMeshSurfaceTemplate(-1372625422, 0.20333333f),
+                CreateFallbackNavMeshSurfaceTemplate(-334000983, 0.27f)
+            };
+        }
+
+        private static NavMeshSurfaceTemplateData CreateFallbackNavMeshSurfaceTemplate(int agentTypeId, float voxelSize)
+        {
+            return new NavMeshSurfaceTemplateData
+            {
+                agentTypeID = agentTypeId,
+                collectObjects = CollectObjects.All,
+                size = new Vector3(10f, 10f, 10f),
+                center = new Vector3(0f, 2f, 0f),
+                layerMask = new LayerMask { value = 69632 },
+                useGeometry = NavMeshCollectGeometry.PhysicsColliders,
+                defaultArea = 0,
+                ignoreNavMeshAgent = true,
+                ignoreNavMeshObstacle = true,
+                overrideTileSize = false,
+                tileSize = 256,
+                overrideVoxelSize = false,
+                voxelSize = voxelSize,
+                minRegionArea = 10f,
+                buildHeightMesh = false,
+                hasGenerateLinks = true,
+                generateLinks = false
+            };
+        }
+
+        private static void ApplyNavMeshSurfaceSettings(NavMeshSurfaceTemplateData source, NavMeshSurface target)
         {
             target.agentTypeID = source.agentTypeID;
             target.collectObjects = source.collectObjects;
@@ -1148,13 +1745,11 @@ namespace AAAGame.Tools.Editor
             target.buildHeightMesh = source.buildHeightMesh;
             target.navMeshData = null;
 
-            var sourceObject = new SerializedObject(source);
             var targetObject = new SerializedObject(target);
-            SerializedProperty sourceGenerateLinks = sourceObject.FindProperty("m_GenerateLinks");
             SerializedProperty targetGenerateLinks = targetObject.FindProperty("m_GenerateLinks");
-            if (sourceGenerateLinks != null && targetGenerateLinks != null)
+            if (source.hasGenerateLinks && targetGenerateLinks != null)
             {
-                targetGenerateLinks.boolValue = sourceGenerateLinks.boolValue;
+                targetGenerateLinks.boolValue = source.generateLinks;
                 targetObject.ApplyModifiedPropertiesWithoutUndo();
             }
         }
@@ -1292,6 +1887,11 @@ namespace AAAGame.Tools.Editor
             if (!TryGetLdtkPath(out string ldtkPath))
             {
                 return;
+            }
+
+            if (autoResolveForSelectedLdtk)
+            {
+                AutoResolveReferences(autoCreateMissingAssets, createSceneManager: false, out _);
             }
 
             if (!TryLoadLevel(ldtkPath, out LdtkLevelJson level))
@@ -1447,9 +2047,7 @@ namespace AAAGame.Tools.Editor
             }
 
             var terrainRoots = GetTerrainRoots(root).ToArray();
-            Vector3 localPosition = terrainRoots.Length > 0 ? terrainRoots[0].localPosition : Vector3.zero;
-            Quaternion localRotation = terrainRoots.Length > 0 ? terrainRoots[0].localRotation : Quaternion.identity;
-            Vector3 localScale = terrainRoots.Length > 0 ? terrainRoots[0].localScale : Vector3.one;
+            TransformData transformData = ResolveTerrainInstanceTransform(terrainRoots, terrainPrefabPath);
 
             foreach (Transform terrainRoot in terrainRoots)
             {
@@ -1463,11 +2061,59 @@ namespace AAAGame.Tools.Editor
             }
 
             terrainObject.name = Path.GetFileNameWithoutExtension(terrainPrefabPath);
-            terrainObject.transform.localPosition = localPosition;
-            terrainObject.transform.localRotation = localRotation;
-            terrainObject.transform.localScale = localScale;
+            terrainObject.transform.localPosition = transformData.localPosition;
+            terrainObject.transform.localRotation = transformData.localRotation;
+            terrainObject.transform.localScale = transformData.localScale;
             EditorUtility.SetDirty(terrainObject);
             return terrainRoots.Length;
+        }
+
+        private static TransformData ResolveTerrainInstanceTransform(Transform[] terrainRoots, string terrainPrefabPath)
+        {
+            Transform matchingTerrainRoot = terrainRoots.FirstOrDefault(x => PathsEqual(GetPrefabSourcePath(x.gameObject), terrainPrefabPath));
+            if (matchingTerrainRoot != null)
+            {
+                return TransformData.FromTransform(matchingTerrainRoot);
+            }
+
+            if (TryReadTemplateTerrainTransform(out TransformData templateTransform))
+            {
+                return templateTransform;
+            }
+
+            if (terrainRoots.Length > 0)
+            {
+                return TransformData.FromTransform(terrainRoots[0]);
+            }
+
+            return TransformData.Identity;
+        }
+
+        private static bool TryReadTemplateTerrainTransform(out TransformData transformData)
+        {
+            transformData = TransformData.Identity;
+            GameObject prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(LevelPrefabTemplatePath);
+            if (prefabRoot == null)
+            {
+                return false;
+            }
+
+            GameObject loadedRoot = PrefabUtility.LoadPrefabContents(LevelPrefabTemplatePath);
+            try
+            {
+                Transform terrainRoot = GetTerrainRoots(loadedRoot.transform).FirstOrDefault();
+                if (terrainRoot == null)
+                {
+                    return false;
+                }
+
+                transformData = TransformData.FromTransform(terrainRoot);
+                return true;
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(loadedRoot);
+            }
         }
 
         private static IEnumerable<Transform> GetTerrainRoots(Transform root)
@@ -1481,14 +2127,19 @@ namespace AAAGame.Tools.Editor
                     continue;
                 }
 
-                GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(child.gameObject);
-                string sourcePath = source != null ? AssetDatabase.GetAssetPath(source) : string.Empty;
+                string sourcePath = GetPrefabSourcePath(child.gameObject);
                 if (sourcePath.StartsWith(TerrainPrefabFolderPath + "/", StringComparison.OrdinalIgnoreCase) &&
                     sourcePath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                 {
                     yield return child;
                 }
             }
+        }
+
+        private static string GetPrefabSourcePath(GameObject instance)
+        {
+            GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(instance);
+            return source != null ? AssetDatabase.GetAssetPath(source) : string.Empty;
         }
 
         private static Transform FindOrCreateChild(Transform root, string childName, bool useUndo)
@@ -1927,6 +2578,51 @@ namespace AAAGame.Tools.Editor
             public int unitSpawnCount;
             public bool isGameEndConditionBuilding;
             public Vector3 localPosition;
+        }
+
+        private struct TransformData
+        {
+            public Vector3 localPosition;
+            public Quaternion localRotation;
+            public Vector3 localScale;
+
+            public static TransformData Identity => new TransformData
+            {
+                localPosition = Vector3.zero,
+                localRotation = Quaternion.identity,
+                localScale = Vector3.one
+            };
+
+            public static TransformData FromTransform(Transform transform)
+            {
+                return new TransformData
+                {
+                    localPosition = transform.localPosition,
+                    localRotation = transform.localRotation,
+                    localScale = transform.localScale
+                };
+            }
+        }
+
+        private struct NavMeshSurfaceTemplateData
+        {
+            public int agentTypeID;
+            public CollectObjects collectObjects;
+            public Vector3 size;
+            public Vector3 center;
+            public LayerMask layerMask;
+            public NavMeshCollectGeometry useGeometry;
+            public int defaultArea;
+            public bool ignoreNavMeshAgent;
+            public bool ignoreNavMeshObstacle;
+            public bool overrideTileSize;
+            public int tileSize;
+            public bool overrideVoxelSize;
+            public float voxelSize;
+            public float minRegionArea;
+            public bool buildHeightMesh;
+            public bool hasGenerateLinks;
+            public bool generateLinks;
         }
 
         private struct EntityImportResult

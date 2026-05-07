@@ -47,7 +47,6 @@ namespace AAAGame.Card
 
         [Header("卡组预览")]
         [SerializeField][InspectorName("悬浮抽卡点显示卡组")] private bool showDeckPreviewOnHover = true;
-        [SerializeField][InspectorName("兼容查找Resources路径")] private string cardDataResourcesPath = "CardData";
         [SerializeField][InspectorName("卡组预览面板")] private RectTransform deckPreviewPanel;
         [SerializeField][InspectorName("卡组预览内容容器")] private RectTransform deckPreviewContent;
         [SerializeField][InspectorName("卡组预览标题文本")] private TextMeshProUGUI deckPreviewTitleText;
@@ -95,10 +94,8 @@ namespace AAAGame.Card
         private bool m_IsPanelReady;
         private bool m_IsPanelClosing;
 
-        private readonly List<CardData> m_DeckPreviewCardData = new List<CardData>();
-        private readonly List<CardData> m_DeckPreviewResourceFallbackData = new List<CardData>();
+        private readonly List<CardSystemController.DeckPreviewCard> m_DeckPreviewCards = new List<CardSystemController.DeckPreviewCard>();
         private int m_LastDeckPreviewHash = int.MinValue;
-        private bool m_DeckPreviewResourceFallbackLoaded;
         private bool m_DeckPreviewConfigWarningLogged;
 
         protected override void OnInit(object userData)
@@ -471,7 +468,7 @@ namespace AAAGame.Card
                 m_LastDeckPreviewHash = int.MinValue;
             }
 
-            LoadOwnedPlaceableCardDataForPreview();
+            LoadDeckCardsForPreview();
 
             int deckHash = CalculateDeckPreviewHash();
             if (deckHash != m_LastDeckPreviewHash)
@@ -509,154 +506,29 @@ namespace AAAGame.Card
             return valid;
         }
 
-        private void LoadOwnedPlaceableCardDataForPreview()
+        private void LoadDeckCardsForPreview()
         {
-            m_DeckPreviewCardData.Clear();
-            HashSet<string> addedKeys = new HashSet<string>();
+            m_DeckPreviewCards.Clear();
 
-            if (m_CardSystemController != null)
-            {
-                AddPreviewProviders(m_CardSystemController.GetOwnedPlaceableCardProviders(), addedKeys);
-            }
-
-            if (m_DeckPreviewCardData.Count <= 0 && PlayerHandManager.Instance != null)
-            {
-                AddPreviewCardData(PlayerHandManager.Instance.AvailableCards, addedKeys);
-            }
-
-            SortDeckPreviewCardData();
-        }
-
-        private void AddPreviewProviders(List<ICardDataProvider> providers, HashSet<string> addedKeys)
-        {
-            if (providers == null)
+            if (m_CardSystemController == null)
             {
                 return;
             }
 
-            for (int i = 0; i < providers.Count; i++)
-            {
-                CardData cardData = ResolvePreviewCardData(providers[i]);
-                AddPreviewCardData(cardData, addedKeys);
-            }
-        }
-
-        private void AddPreviewCardData(List<CardData> cardDataList, HashSet<string> addedKeys)
-        {
-            if (cardDataList == null)
+            List<CardSystemController.DeckPreviewCard> deckCards = m_CardSystemController.GetOrderedDeckPreviewCards();
+            if (deckCards == null)
             {
                 return;
             }
 
-            for (int i = 0; i < cardDataList.Count; i++)
+            for (int i = 0; i < deckCards.Count; i++)
             {
-                AddPreviewCardData(cardDataList[i], addedKeys);
-            }
-        }
-
-        private void AddPreviewCardData(CardData cardData, HashSet<string> addedKeys)
-        {
-            if (cardData == null)
-            {
-                return;
-            }
-
-            string key = GetDeckPreviewCardKey(cardData);
-            if (addedKeys.Add(key))
-            {
-                m_DeckPreviewCardData.Add(cardData);
-            }
-        }
-
-        private CardData ResolvePreviewCardData(ICardDataProvider provider)
-        {
-            if (provider == null)
-            {
-                return null;
-            }
-
-            CardDataAdapter adapter = provider as CardDataAdapter;
-            if (adapter != null)
-            {
-                return adapter.GetOriginalCardData();
-            }
-
-            EnsureDeckPreviewResourceFallbackLoaded();
-
-            for (int i = 0; i < m_DeckPreviewResourceFallbackData.Count; i++)
-            {
-                CardData cardData = m_DeckPreviewResourceFallbackData[i];
-                if (cardData == null)
+                CardSystemController.DeckPreviewCard previewCard = deckCards[i];
+                if (previewCard != null && previewCard.CardData != null)
                 {
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(provider.CardId)
-                    && string.Equals(cardData.index, provider.CardId, StringComparison.Ordinal))
-                {
-                    return cardData;
-                }
-
-                if (string.Equals(cardData.cardName, provider.CardName, StringComparison.Ordinal)
-                    && cardData.soldierIndex == provider.SoldierIndex)
-                {
-                    return cardData;
+                    m_DeckPreviewCards.Add(previewCard);
                 }
             }
-
-            return null;
-        }
-
-        private void EnsureDeckPreviewResourceFallbackLoaded()
-        {
-            if (m_DeckPreviewResourceFallbackLoaded)
-            {
-                return;
-            }
-
-            m_DeckPreviewResourceFallbackLoaded = true;
-            m_DeckPreviewResourceFallbackData.Clear();
-
-            string resourcePath = string.IsNullOrWhiteSpace(cardDataResourcesPath)
-                ? "CardData"
-                : cardDataResourcesPath.Trim().Trim('/');
-
-            CardData[] cardDataArray = Resources.LoadAll<CardData>(resourcePath);
-            if (cardDataArray != null && cardDataArray.Length > 0)
-            {
-                m_DeckPreviewResourceFallbackData.AddRange(cardDataArray);
-            }
-        }
-
-        private void SortDeckPreviewCardData()
-        {
-            m_DeckPreviewCardData.Sort((left, right) =>
-            {
-                string leftKey = left != null ? left.index : string.Empty;
-                string rightKey = right != null ? right.index : string.Empty;
-                int compare = string.Compare(leftKey, rightKey, StringComparison.Ordinal);
-                if (compare != 0)
-                    return compare;
-
-                string leftName = left != null ? left.cardName : string.Empty;
-                string rightName = right != null ? right.cardName : string.Empty;
-                return string.Compare(leftName, rightName, StringComparison.Ordinal);
-            });
-        }
-
-        private static string GetDeckPreviewCardKey(CardData cardData)
-        {
-            if (cardData == null)
-            {
-                return string.Empty;
-            }
-
-            if (!string.IsNullOrWhiteSpace(cardData.index))
-            {
-                return cardData.index;
-            }
-
-            return Utility.Text.Format("{0}_{1}", cardData.cardName, cardData.soldierIndex);
         }
 
         private void RebuildDeckPreviewPanel()
@@ -668,10 +540,10 @@ namespace AAAGame.Card
 
             ClearDeckPreviewContent();
 
-            int cardCount = m_DeckPreviewCardData.Count;
+            int cardCount = m_DeckPreviewCards.Count;
             if (deckPreviewTitleText != null)
             {
-                deckPreviewTitleText.text = Utility.Text.Format("可放置卡牌  共 {0} 张", cardCount);
+                deckPreviewTitleText.text = Utility.Text.Format("卡组  共 {0} 张", cardCount);
             }
 
             if (deckPreviewEmptyText != null)
@@ -679,7 +551,7 @@ namespace AAAGame.Card
                 deckPreviewEmptyText.gameObject.SetActive(cardCount <= 0);
                 if (cardCount <= 0)
                 {
-                    deckPreviewEmptyText.text = "当前玩家没有可放置卡牌";
+                    deckPreviewEmptyText.text = "当前卡组没有可预览卡牌";
                 }
             }
 
@@ -688,11 +560,12 @@ namespace AAAGame.Card
                 deckPreviewItemTemplate.gameObject.SetActive(false);
             }
 
-            for (int i = 0; i < m_DeckPreviewCardData.Count; i++)
+            for (int i = 0; i < m_DeckPreviewCards.Count; i++)
             {
                 CardDeckPreviewItem previewItem = Instantiate(deckPreviewItemTemplate, deckPreviewContent);
                 previewItem.name = Utility.Text.Format("DeckPreviewCardItem_{0}", i);
-                previewItem.SetData(m_DeckPreviewCardData[i]);
+                CardSystemController.DeckPreviewCard previewCard = m_DeckPreviewCards[i];
+                previewItem.SetData(previewCard.CardData, previewCard.SourceBuilding);
             }
 
             Canvas.ForceUpdateCanvases();
@@ -725,19 +598,39 @@ namespace AAAGame.Card
             unchecked
             {
                 int hash = 17;
-                int count = m_DeckPreviewCardData.Count;
+                int count = m_DeckPreviewCards.Count;
                 hash = hash * 31 + count;
                 for (int i = 0; i < count; i++)
                 {
-                    CardData cardData = m_DeckPreviewCardData[i];
-                    hash = hash * 31 + (cardData != null && cardData.index != null ? cardData.index.GetHashCode() : 0);
-                    hash = hash * 31 + (cardData != null && cardData.cardName != null ? cardData.cardName.GetHashCode() : 0);
-                    hash = hash * 31 + (cardData != null ? cardData.populationCost : 0);
-                    hash = hash * 31 + (cardData != null ? cardData.soldierCount : 0);
+                    CardSystemController.DeckPreviewCard previewCard = m_DeckPreviewCards[i];
+                    ICardDataProvider cardData = previewCard != null ? previewCard.CardData : null;
+                    BuildingEntity sourceBuilding = previewCard != null ? previewCard.SourceBuilding : null;
+                    string cardKey = GetDeckPreviewProviderKey(cardData);
+                    string sourceKey = sourceBuilding != null ? sourceBuilding.BuildingInstanceId : string.Empty;
+
+                    hash = hash * 31 + (cardKey != null ? cardKey.GetHashCode() : 0);
+                    hash = hash * 31 + (sourceKey != null ? sourceKey.GetHashCode() : 0);
+                    hash = hash * 31 + (sourceBuilding != null ? sourceBuilding.GetArmyOccupiedSupply() : (cardData != null ? cardData.PopulationCost : 0));
+                    hash = hash * 31 + (sourceBuilding != null ? sourceBuilding.GetArmyForce() : (cardData != null ? cardData.SoldierCount : 0));
                 }
 
                 return hash;
             }
+        }
+
+        private static string GetDeckPreviewProviderKey(ICardDataProvider provider)
+        {
+            if (provider == null)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(provider.CardId))
+            {
+                return provider.CardId;
+            }
+
+            return Utility.Text.Format("{0}_{1}", provider.CardName, provider.SoldierIndex);
         }
 
         private void ResolveAreaMaterialOverlay()

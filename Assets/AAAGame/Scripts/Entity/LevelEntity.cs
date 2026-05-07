@@ -556,23 +556,13 @@ public partial class LevelEntity : EntityBase
     /// </summary>
     private void PlayCaptureVfx(Stronghold stronghold)
     {
-        if (stronghold == null || stronghold.Buildings == null || stronghold.Buildings.Count == 0)
+        if (stronghold == null)
             return;
 
-        Vector3 sum = Vector3.zero;
-        int count = 0;
-        for (int i = 0; i < stronghold.Buildings.Count; i++)
-        {
-            var b = stronghold.Buildings[i];
-            if (b == null)
-                continue;
-            sum += b.transform.position;
-            count++;
-        }
-        if (count == 0)
+        if (!TryGetStrongholdWorldBounds(stronghold, out Bounds worldBounds))
             return;
 
-        Vector3 center = sum / count;
+        Vector3 center = worldBounds.center;
         center.y += 0.1f;
         var vfxParams = EntityParams.Create(center, Vector3.zero, Vector3.one);
         GF.Entity.ShowEffect("占领特效", vfxParams);

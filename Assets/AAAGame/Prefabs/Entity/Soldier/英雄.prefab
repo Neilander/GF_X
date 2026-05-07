@@ -46,7 +46,7 @@ Animator:
   m_GameObject: {fileID: 3908604912598156533}
   m_Enabled: 1
   m_Avatar: {fileID: 9000000, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
-  m_Controller: {fileID: 9100000, guid: 83711b8c1c88a2d47bb3c34c6dce0677, type: 2}
+  m_Controller: {fileID: 22100000, guid: fd9614e1095e3d0439e7136f9c3bc9d9, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
@@ -77,7 +77,7 @@ CharacterController:
   m_Enabled: 1
   serializedVersion: 3
   m_Height: 1.6
-  m_Radius: 0.25
+  m_Radius: 0.3
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.0001
@@ -191,7 +191,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 7076860943881685184}
+  m_Father: {fileID: 5483098626643201090}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!96 &-6037521101421872694
 TrailRenderer:
@@ -369,7 +369,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
-    - targetCorrespondingSourceObject: {fileID: -6220781893984836759, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3065430857182694010}
     m_AddedComponents: []
@@ -377,10 +377,5 @@ PrefabInstance:
 --- !u!4 &5483098626643201090 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
-  m_PrefabInstance: {fileID: 5448608272242011049}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &7076860943881685184 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -6220781893984836759, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
   m_PrefabInstance: {fileID: 5448608272242011049}
   m_PrefabAsset: {fileID: 0}

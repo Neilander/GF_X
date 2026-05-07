@@ -874,6 +874,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (binding == null || binding.Stars == null)
             return;
 
+        SortStarsByVisualOrder(binding.Stars);
         for (int i = 0; i < binding.Stars.Count; i++)
         {
             StarItem star = binding.Stars[i];
@@ -882,6 +883,28 @@ public partial class BuildingUpgradeTips : UIFormBase
 
             star.SetHighlight(i < highlightCount);
         }
+    }
+
+    private static void SortStarsByVisualOrder(List<StarItem> stars)
+    {
+        if (stars == null || stars.Count <= 1)
+            return;
+
+        stars.Sort((left, right) =>
+        {
+            if (left == right)
+                return 0;
+            if (left == null)
+                return 1;
+            if (right == null)
+                return -1;
+
+            RectTransform leftRect = left.transform as RectTransform;
+            RectTransform rightRect = right.transform as RectTransform;
+            float leftX = leftRect != null ? leftRect.anchoredPosition.x : left.transform.localPosition.x;
+            float rightX = rightRect != null ? rightRect.anchoredPosition.x : right.transform.localPosition.x;
+            return leftX.CompareTo(rightX);
+        });
     }
 
     private void ResetHoldState()

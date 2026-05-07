@@ -198,16 +198,20 @@ public class PhaseManager : GameFrameworkComponent
         }
 
         var generateCardsWatch = Stopwatch.StartNew();
-        GenerateCardsFromArmyBuildings();
+        int generatedCardCount = GenerateCardsFromArmyBuildings();
         generateCardsWatch.Stop();
         LogPhaseStep("invade.generate-cards", generateCardsWatch.ElapsedMilliseconds);
 
-        if (cardSetup != null)
+        if (cardSetup != null && generatedCardCount > 0)
         {
             var openUiWatch = Stopwatch.StartNew();
             cardSetup.OpenCardUI();
             openUiWatch.Stop();
             LogPhaseStep("invade.open-card-ui", openUiWatch.ElapsedMilliseconds);
+        }
+        else if (cardSetup != null)
+        {
+            Log.Info("[CardGame] Skip opening Card UI: no cards generated for this phase.");
         }
 
         var spawnEnemyWatch = Stopwatch.StartNew();
@@ -228,7 +232,7 @@ public class PhaseManager : GameFrameworkComponent
         SoldierFactory.RemoveAllSoldiersInCreatureGroup();
     }
 
-    private static void GenerateCardsFromArmyBuildings()
+    private static int GenerateCardsFromArmyBuildings()
     {
         var watch = Stopwatch.StartNew();
 
@@ -250,14 +254,17 @@ public class PhaseManager : GameFrameworkComponent
                 if (building.buildingData.Type == BuilType.Army
                     && building.CurrentStronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
                 {
-                    cardSetup.GenerateCardToDeck(building);
-                    generatedCardCount++;
+                    if (cardSetup.GenerateCardToDeck(building))
+                    {
+                        generatedCardCount++;
+                    }
                 }
             }
         }
 
         watch.Stop();
         LogPhaseStep($"generate-cards.detail scan={scanBuildingCount},generated={generatedCardCount}", watch.ElapsedMilliseconds);
+        return generatedCardCount;
     }
 
     private static async UniTask SpawnEnemySoldiersAsync(int flowToken)
@@ -384,4 +391,3 @@ public class PhaseManager : GameFrameworkComponent
             pool.ExpireTime);
     }
 }
-

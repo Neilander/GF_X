@@ -33,11 +33,11 @@ ModelImporter:
     extraUserProperties: []
     clipAnimations:
     - serializedVersion: 16
-      name: "\u9AA8\u67B6|Move (3)"
-      takeName: "\u9AA8\u67B6|Move"
+      name: "\u9AA8\u67B6|Attack_Slash"
+      takeName: "\u9AA8\u67B6|Attack_Slash"
       internalID: 1535910680151948468
       firstFrame: 0
-      lastFrame: 6
+      lastFrame: 22
       wrapMode: 0
       orientationOffsetY: 0
       level: 0
@@ -62,11 +62,11 @@ ModelImporter:
       maskSource: {instanceID: 0}
       additiveReferencePoseFrame: 0
     - serializedVersion: 16
-      name: "\u9AA8\u67B6|Move (1)"
-      takeName: "\u9AA8\u67B6|Move"
+      name: "\u9AA8\u67B6|Attack_Shoot"
+      takeName: "\u9AA8\u67B6|Attack_Shoot"
       internalID: -6656219484682266703
       firstFrame: 0
-      lastFrame: 6
+      lastFrame: 20
       wrapMode: 0
       orientationOffsetY: 0
       level: 0
@@ -91,11 +91,11 @@ ModelImporter:
       maskSource: {instanceID: 0}
       additiveReferencePoseFrame: 0
     - serializedVersion: 16
-      name: "\u9AA8\u67B6|Move (2)"
-      takeName: "\u9AA8\u67B6|Move"
+      name: "\u9AA8\u67B6|Attack_Puncture"
+      takeName: "\u9AA8\u67B6|Attack_Puncture"
       internalID: -3625742005964964509
       firstFrame: 0
-      lastFrame: 6
+      lastFrame: 20
       wrapMode: 0
       orientationOffsetY: 0
       level: 0

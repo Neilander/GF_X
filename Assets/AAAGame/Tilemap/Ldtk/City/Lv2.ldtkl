@@ -695,6 +695,22 @@
 					],
 					"__worldX": -968,
 					"__worldY": 776
+				},
+				{
+					"__identifier": "Hero",
+					"__grid": [60,24],
+					"__pivot": [0.5,0.5],
+					"__tags": [],
+					"__tile": null,
+					"__smartColor": "#FF0044",
+					"iid": "3546a470-48b0-11f1-84d1-bf7519f09c8b",
+					"width": 16,
+					"height": 16,
+					"defUid": 14,
+					"px": [968,392],
+					"fieldInstances": [],
+					"__worldX": -328,
+					"__worldY": 392
 				}
 			]
 		},

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: 77b4a1fa-4014-4c15-802e-a52aa19898c6
   layerName: Plane
   icon: {fileID: 0}
@@ -5468,13 +5468,13 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build SH_1_4
   guid: c8f94651-3c0f-4001-85ba-28115365c819
   assignedBlueprintLayerGuid: 3e3cbff8-a2b6-4dc6-b2b2-07dbdf4f06e5
   currentBlueprintLayer: {fileID: 617920943158326045}
-  foldoutState: 0
+  foldoutState: 1
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: c8f94651-3c0f-4001-85ba-28115365c819
@@ -5498,7 +5498,7 @@ MonoBehaviour:
   tilePresetsMiddle: []
   tilePresetsBottom: []
   scaleTileToCellSize: 1
-  layerYOffset: 10
+  layerYOffset: 4
   scaleOffset: {x: 1, y: 1, z: 1}
   addGrassRenderer: 0
   grassPointCount: 0
@@ -10850,7 +10850,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build Plane
   guid: 1c43cd3c-7ad2-460b-8d60-d2bccaafb00a
@@ -10909,30 +10909,6 @@ MonoBehaviour:
     layerOverrides: []
   - name: 
     heightOffset: 3
-    ignoreFillTiles: 0
-    layerOverrides: []
-  - name: 
-    heightOffset: 4
-    ignoreFillTiles: 0
-    layerOverrides: []
-  - name: 
-    heightOffset: 5
-    ignoreFillTiles: 0
-    layerOverrides: []
-  - name: 
-    heightOffset: 6
-    ignoreFillTiles: 0
-    layerOverrides: []
-  - name: 
-    heightOffset: 7
-    ignoreFillTiles: 0
-    layerOverrides: []
-  - name: 
-    heightOffset: 8
-    ignoreFillTiles: 0
-    layerOverrides: []
-  - name: 
-    heightOffset: 9
     ignoreFillTiles: 0
     layerOverrides: []
   serializedWorldPositions:
@@ -63486,13 +63462,13 @@ MonoBehaviour:
   m_Name: (Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build SH_1_0
   guid: 04a8f0ef-b52a-4497-b9e2-10c51ee0d4ef
   assignedBlueprintLayerGuid: b2d6a5d8-9d0f-4508-8727-8597970c8277
   currentBlueprintLayer: {fileID: 6392022126524296286}
-  foldoutState: 0
+  foldoutState: 1
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: 04a8f0ef-b52a-4497-b9e2-10c51ee0d4ef
@@ -63516,7 +63492,7 @@ MonoBehaviour:
   tilePresetsMiddle: []
   tilePresetsBottom: []
   scaleTileToCellSize: 1
-  layerYOffset: 10
+  layerYOffset: 4
   scaleOffset: {x: 1, y: 1, z: 1}
   addGrassRenderer: 0
   grassPointCount: 0
@@ -69286,13 +69262,13 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build SH_1_1
   guid: 714332d4-ddfc-452b-91c2-504bc13c26b5
   assignedBlueprintLayerGuid: 0624ce46-11cc-473b-989e-7bd1484a97b5
   currentBlueprintLayer: {fileID: 2329112791734016304}
-  foldoutState: 0
+  foldoutState: 1
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: 714332d4-ddfc-452b-91c2-504bc13c26b5
@@ -69316,7 +69292,7 @@ MonoBehaviour:
   tilePresetsMiddle: []
   tilePresetsBottom: []
   scaleTileToCellSize: 1
-  layerYOffset: 10
+  layerYOffset: 4
   scaleOffset: {x: 1, y: 1, z: 1}
   addGrassRenderer: 0
   grassPointCount: 0
@@ -78024,7 +78000,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: 78e4b8d3-db01-4917-a852-3f67b334116f
   layerName: Water
   icon: {fileID: 0}
@@ -94328,13 +94304,13 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build SH_1_3
   guid: c37566ac-9082-418e-905b-8c0f5013ae3e
   assignedBlueprintLayerGuid: 32f8cd33-8f15-41a9-a70b-79b16ae13985
   currentBlueprintLayer: {fileID: 122948437220023846}
-  foldoutState: 0
+  foldoutState: 1
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: c37566ac-9082-418e-905b-8c0f5013ae3e
@@ -94358,7 +94334,7 @@ MonoBehaviour:
   tilePresetsMiddle: []
   tilePresetsBottom: []
   scaleTileToCellSize: 1
-  layerYOffset: 10
+  layerYOffset: 4
   scaleOffset: {x: 1, y: 1, z: 1}
   addGrassRenderer: 0
   grassPointCount: 0
@@ -99211,7 +99187,7 @@ MonoBehaviour:
   clusterCellSize: 5
   useGlobalRandomSeed: 0
   globalRandomSeed: 1
-  currentRandomSeed: 4033282022
+  currentRandomSeed: 3182619723
   layerChanged: 1
   showGizmos: 0
   showPaintGrid: 0
@@ -99274,7 +99250,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: 32f8cd33-8f15-41a9-a70b-79b16ae13985
   layerName: SH_1_3
   icon: {fileID: 0}
@@ -99809,7 +99785,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: 3e3cbff8-a2b6-4dc6-b2b2-07dbdf4f06e5
   layerName: SH_1_4
   icon: {fileID: 0}
@@ -100400,7 +100376,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: 0624ce46-11cc-473b-989e-7bd1484a97b5
   layerName: SH_1_1
   icon: {fileID: 0}
@@ -101367,7 +101343,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: 5936ec16-4988-429c-9f83-8d98ac31fe93
   layerName: SH_0_0
   icon: {fileID: 0}
@@ -101910,7 +101886,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: e3e78a1c-5832-4330-a224-2a7d755fc3be
   layerName: SH_1_2
   icon: {fileID: 0}
@@ -102373,7 +102349,7 @@ MonoBehaviour:
   m_Name: (Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3711758907
+    state: 62751622
   guid: b2d6a5d8-9d0f-4508-8727-8597970c8277
   layerName: SH_1_0
   icon: {fileID: 0}
@@ -103004,13 +102980,13 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build SH_1_2
   guid: 2ad2fca9-9349-407a-b20f-8d79ecfdf7d3
   assignedBlueprintLayerGuid: e3e78a1c-5832-4330-a224-2a7d755fc3be
   currentBlueprintLayer: {fileID: 5144891850618815891}
-  foldoutState: 0
+  foldoutState: 1
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: 2ad2fca9-9349-407a-b20f-8d79ecfdf7d3
@@ -103034,7 +103010,7 @@ MonoBehaviour:
   tilePresetsMiddle: []
   tilePresetsBottom: []
   scaleTileToCellSize: 1
-  layerYOffset: 10
+  layerYOffset: 4
   scaleOffset: {x: 1, y: 1, z: 1}
   addGrassRenderer: 0
   grassPointCount: 0
@@ -107234,13 +107210,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build SH_0_0
   guid: dbdd11d5-35f3-4251-9389-455b0bdd33af
   assignedBlueprintLayerGuid: 5936ec16-4988-429c-9f83-8d98ac31fe93
   currentBlueprintLayer: {fileID: 4647114350144498822}
-  foldoutState: 0
+  foldoutState: 1
   useMultiLayers: 0
   masks: []
   hierarchyLayerID: dbdd11d5-35f3-4251-9389-455b0bdd33af
@@ -107264,7 +107240,7 @@ MonoBehaviour:
   tilePresetsMiddle: []
   tilePresetsBottom: []
   scaleTileToCellSize: 1
-  layerYOffset: 10
+  layerYOffset: 4
   scaleOffset: {x: 1, y: 1, z: 1}
   addGrassRenderer: 0
   grassPointCount: 0
@@ -112176,7 +112152,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3705613643
+    state: 3880023702
   isEnabled: 1
   layerName: Build Water
   guid: f8f48311-d058-47b7-bffa-f8ef335c4e6c

@@ -26,6 +26,18 @@ namespace AAAGame.Card
             }
         }
 
+        public sealed class DeckPreviewCard
+        {
+            public ICardDataProvider CardData { get; }
+            public BuildingEntity SourceBuilding { get; }
+
+            internal DeckPreviewCard(ICardDataProvider cardData, BuildingEntity sourceBuilding)
+            {
+                CardData = cardData;
+                SourceBuilding = sourceBuilding;
+            }
+        }
+
         private PlayerHandModel m_HandModel;
         private HandCardController m_HandCardController;
         private CardPlacementController m_PlacementController;
@@ -115,6 +127,18 @@ namespace AAAGame.Card
         /// </summary>
         public bool AddCardToDeck(BuildingEntity sourceBuilding)
         {
+            if (sourceBuilding == null || sourceBuilding.buildingData == null)
+            {
+                Debug.LogWarning("[Card] Skip adding card: source building is invalid.");
+                return false;
+            }
+
+            if (sourceBuilding.GetArmyForce() <= 0)
+            {
+                Debug.LogWarning($"[Card] Skip army building '{sourceBuilding.buildingData.Identifier}': army force is 0.");
+                return false;
+            }
+
             // 每个部队建筑生成对应的卡牌
             if (!UnitTypeHelper.TryParseUnitType(sourceBuilding.buildingData.UnitID, out var unitType))
             {
@@ -173,7 +197,7 @@ namespace AAAGame.Card
 
         /// <summary>
         /// 获取当前玩家拥有、可进入抽牌和放置流程的卡牌类型。
-        /// 这里合并运行时卡组与当前手牌，预览面板用它展示“玩家可用牌池”，而不是项目里的全部 CardData。
+        /// 这里合并运行时卡组与当前手牌，用于展示玩家可用牌池。
         /// </summary>
         public List<ICardDataProvider> GetOwnedPlaceableCardProviders()
         {
@@ -183,6 +207,31 @@ namespace AAAGame.Card
             AddOwnedProviders(result, addedKeys);
             AddDeckProviders(result, addedKeys);
             AddHandProviders(result, addedKeys);
+
+            return result;
+        }
+
+        public List<DeckPreviewCard> GetOrderedDeckPreviewCards()
+        {
+            List<DeckPreviewCard> result = new List<DeckPreviewCard>();
+            List<int> orderedIndices = GetDeckCardIndicesByDrawPriority();
+
+            for (int i = 0; i < orderedIndices.Count; i++)
+            {
+                int deckIndex = orderedIndices[i];
+                if (deckIndex < 0 || deckIndex >= m_DeckCards.Count)
+                {
+                    continue;
+                }
+
+                Card entry = m_DeckCards[deckIndex];
+                if (entry == null || entry.CardData == null)
+                {
+                    continue;
+                }
+
+                result.Add(new DeckPreviewCard(entry.CardData, entry.SourceBuilding));
+            }
 
             return result;
         }
@@ -344,36 +393,59 @@ namespace AAAGame.Card
                 return null;
             }
 
-            if (!TryGetHeroPosition(out var heroPosition))
+            List<int> orderedIndices = GetDeckCardIndicesByDrawPriority();
+            if (orderedIndices.Count <= 0)
             {
                 return m_DeckCards[0];
             }
 
-            Card bestEntry = null;
-            float bestDistanceSqr = float.MaxValue;
+            int bestIndex = orderedIndices[0];
+            return bestIndex >= 0 && bestIndex < m_DeckCards.Count
+                ? m_DeckCards[bestIndex]
+                : m_DeckCards[0];
+        }
+
+        private List<int> GetDeckCardIndicesByDrawPriority()
+        {
+            List<int> indices = new List<int>(m_DeckCards.Count);
 
             for (int i = 0; i < m_DeckCards.Count; i++)
             {
-                Card entry = m_DeckCards[i];
-                if (entry == null)
-                {
-                    continue;
-                }
-
-                float distanceSqr = float.MaxValue;
-                if (entry.SourceBuilding != null)
-                {
-                    distanceSqr = (entry.SourceBuilding.transform.position - heroPosition).sqrMagnitude;
-                }
-
-                if (distanceSqr < bestDistanceSqr)
-                {
-                    bestDistanceSqr = distanceSqr;
-                    bestEntry = entry;
-                }
+                indices.Add(i);
             }
 
-            return bestEntry ?? m_DeckCards[0];
+            if (!TryGetHeroPosition(out var heroPosition))
+            {
+                return indices;
+            }
+
+            indices.Sort((leftIndex, rightIndex) =>
+            {
+                Card left = leftIndex >= 0 && leftIndex < m_DeckCards.Count ? m_DeckCards[leftIndex] : null;
+                Card right = rightIndex >= 0 && rightIndex < m_DeckCards.Count ? m_DeckCards[rightIndex] : null;
+
+                float leftDistanceSqr = GetDeckCardDistanceSqr(left, heroPosition);
+                float rightDistanceSqr = GetDeckCardDistanceSqr(right, heroPosition);
+                int compare = leftDistanceSqr.CompareTo(rightDistanceSqr);
+                if (compare != 0)
+                {
+                    return compare;
+                }
+
+                return leftIndex.CompareTo(rightIndex);
+            });
+
+            return indices;
+        }
+
+        private static float GetDeckCardDistanceSqr(Card entry, Vector3 heroPosition)
+        {
+            if (entry == null || entry.SourceBuilding == null)
+            {
+                return float.MaxValue;
+            }
+
+            return (entry.SourceBuilding.transform.position - heroPosition).sqrMagnitude;
         }
 
         private static bool TryGetHeroPosition(out Vector3 heroPosition)
