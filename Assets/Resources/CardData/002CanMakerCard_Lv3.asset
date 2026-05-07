@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   index: card_002
   cardName: "\u6613\u62C9\u7F50\u751F\u4EA7\u8005"
-  cardBackSprite: {fileID: 21300000, guid: 75bea4f991bc447edbf53b9c1ee64fbc, type: 3}
+  cardBackSprite: {fileID: 21300000, guid: b2cc5ca8d378a4055aceaae8f7bdb0a5, type: 3}
   cardSprite: {fileID: 0}
   populationCost: 3
   soldierCount: 5
