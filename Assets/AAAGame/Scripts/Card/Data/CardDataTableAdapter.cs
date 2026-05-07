@@ -48,8 +48,9 @@ namespace AAAGame.Card
                 return default;
             }
         }
-        
 
+        // TODO: 等 DataTable 真正接入后从 m_DataRow 读，目前默认 1
+        public int RequiredLv => 1;
 
         public float SpawnRadius => m_DataRow.SpawnRadius;
         

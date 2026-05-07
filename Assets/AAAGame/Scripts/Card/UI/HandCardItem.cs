@@ -170,13 +170,13 @@ namespace AAAGame.Card
             {
                 if (data.CardSprite != null)
                 {
+                    cardImage.enabled = true;
                     cardImage.sprite = data.CardSprite;
                     cardImage.color = Color.white;
                 }
                 else
                 {
-                    cardImage.sprite = null;
-                    cardImage.color = data.CardColor;
+                    cardImage.enabled = false;
                 }
             }
 

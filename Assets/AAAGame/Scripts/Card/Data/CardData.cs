@@ -34,7 +34,11 @@ public class CardData : ScriptableObject
     [Header("士兵生成")]
     [Tooltip("士兵index")]
     public UnitType soldierIndex;
-    
+
+    [Tooltip("适用建筑等级（1/2/3...）。CardSystemController 按 (soldierIndex, requiredLv) 匹配建筑。")]
+    [Range(1, 10)]
+    public int requiredLv = 1;
+
     [Tooltip("生成半径（士兵围绕中心点生成的范围）")]
     [Range(0.5f, 5f)]
     public float spawnRadius = 1.5f;

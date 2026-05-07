@@ -42,12 +42,13 @@ namespace AAAGame.Card
             {
                 if (cardData.cardSprite != null)
                 {
+                    cardImage.enabled = true;
                     cardImage.sprite = cardData.cardSprite;
                     cardImage.color = Color.white;
                 }
                 else
                 {
-                    cardImage.color = cardData.cardColor;
+                    cardImage.enabled = false;
                 }
             }
 
