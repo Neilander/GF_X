@@ -91,6 +91,8 @@ public partial class BuildingEntity : MAEntity
         InGameDataModel.RegisterBuilding(this);
         SyncSideFromFaction();
         EnsureMinimapReportComponent();
+        SubscribeLv0PhaseVisibilityEvents();
+        RefreshLv0PhaseVisibility();
         EnsureLv0InvincibleBuff();
         EnsurePhaseProtectionBuff();
 
@@ -113,6 +115,8 @@ public partial class BuildingEntity : MAEntity
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        UnsubscribeLv0PhaseVisibilityEvents();
+        RestorePhaseVisibility();
         InGameDataModel.UnregisterBuilding(this);
 
         // 对象池安全：清理运行时引用，避免下次复用时指向旧数据
@@ -143,7 +147,7 @@ public partial class BuildingEntity : MAEntity
         OwnerFactionID = stronghold != null ? stronghold.OwnerFactionId : 0;
         SyncSideFromFaction();
         _minimapReportComponent?.SetSide(Side);
-        UpdateMinimapReportVisibility();
+        RefreshLv0PhaseVisibility();
 
         if (oldFactionId != OwnerFactionID)
         {
@@ -201,7 +205,8 @@ public partial class BuildingEntity : MAEntity
             return;
         }
 
-        bool visible = !IsGameEndConditionBuilding || OwnerFactionID != EntitySideHelper.PlayerFactionId;
+        bool visible = !IsLv0Building()
+            && (!IsGameEndConditionBuilding || OwnerFactionID != EntitySideHelper.PlayerFactionId);
         _minimapReportComponent.SetVisible(visible);
     }
 

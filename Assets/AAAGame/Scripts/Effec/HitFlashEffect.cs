@@ -65,6 +65,17 @@ namespace AAAGame.Effec
             m_FlashRoutine = StartCoroutine(PlayFlashRoutine());
         }
 
+        public void Cancel()
+        {
+            if (m_FlashRoutine != null)
+            {
+                StopCoroutine(m_FlashRoutine);
+                m_FlashRoutine = null;
+            }
+
+            RestoreOriginalMaterials();
+        }
+
         private void OnEnable()
         {
             m_CacheDirty = true;
@@ -89,6 +100,12 @@ namespace AAAGame.Effec
 
         private IEnumerator PlayFlashRoutine()
         {
+            if (TryGetComponent<SoldierEntity>(out SoldierEntity soldier) && soldier.IsGhostState)
+            {
+                m_FlashRoutine = null;
+                yield break;
+            }
+
             float safeDuration = Mathf.Max(0.01f, duration);
             float fadeStartTime = safeDuration * Mathf.Clamp01(1f - fadeOutPercent);
             float elapsed = 0f;
@@ -254,16 +271,47 @@ namespace AAAGame.Effec
                 return;
             }
 
+            bool externalMaterialChangeDetected = false;
             for (int i = 0; i < m_RendererStates.Count; i++)
             {
                 RendererState state = m_RendererStates[i];
                 if (state.Renderer != null)
                 {
-                    state.Renderer.sharedMaterials = state.OriginalMaterials;
+                    Material[] currentMaterials = state.Renderer.sharedMaterials;
+                    if (AreSameMaterialArray(currentMaterials, state.FlashMaterials))
+                    {
+                        state.Renderer.sharedMaterials = state.OriginalMaterials;
+                    }
+                    else
+                    {
+                        externalMaterialChangeDetected = true;
+                    }
                 }
             }
 
             m_UsingFlashMaterials = false;
+            if (externalMaterialChangeDetected)
+            {
+                m_CacheDirty = true;
+            }
+        }
+
+        private static bool AreSameMaterialArray(Material[] left, Material[] right)
+        {
+            if (left == null || right == null || left.Length != right.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < left.Length; i++)
+            {
+                if (left[i] != right[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void SetFlashAmount(float amount)

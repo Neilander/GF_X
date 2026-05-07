@@ -4,9 +4,13 @@ using UnityEngine;
 public partial class SoldierEntity
 {
     private const string HeroGhostBuffId = "hero_ghost_state";
-    private const float GhostAlphaMultiplier = 0.35f;
+    private const float GhostAlphaMultiplier = 0.6f;
+    private const string GhostShaderName = "AAAGame/Effect/GhostTransparent";
+    private const string UnitOutlineShaderName = "Hidden/AAAGame/UnitOutline";
     private static readonly int ColorId = Shader.PropertyToID("_Color");
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
+    private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
     private static readonly int SurfaceId = Shader.PropertyToID("_Surface");
     private static readonly int SrcBlendId = Shader.PropertyToID("_SrcBlend");
     private static readonly int DstBlendId = Shader.PropertyToID("_DstBlend");
@@ -14,8 +18,8 @@ public partial class SoldierEntity
     private static readonly ICapability GhostCapabilityLocker = new GhostStateCapabilityLocker();
     private const int GhostCollisionSyncIntervalFrames = 6;
 
-    private readonly Dictionary<Renderer, Material> _originalMaterials = new Dictionary<Renderer, Material>();
-    private readonly Dictionary<Renderer, Material> _ghostMaterials = new Dictionary<Renderer, Material>();
+    private readonly Dictionary<Renderer, Material[]> _originalMaterials = new Dictionary<Renderer, Material[]>();
+    private readonly Dictionary<Renderer, Material[]> _ghostMaterials = new Dictionary<Renderer, Material[]>();
     private readonly Dictionary<int, CharacterController> _ghostIgnoredUnitControllers = new Dictionary<int, CharacterController>();
     private bool _isHidingOrShuttingDown;
     private int _nextGhostCollisionSyncFrame;
@@ -60,6 +64,9 @@ public partial class SoldierEntity
             ResumeComp(atkComp, GhostCapabilityLocker);
             ResumeComp(targetComp, GhostCapabilityLocker);
         }
+
+        if (enabled)
+            CancelHitFlashVisual();
 
         SetGhostVisual(enabled);
         SetGhostGroupMoveCollisionIgnore(enabled);
@@ -182,67 +189,126 @@ public partial class SoldierEntity
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
-            if (renderer == null)
+            if (renderer == null || renderer is ParticleSystemRenderer || renderer is TrailRenderer)
                 continue;
 
             if (enabled)
             {
                 if (!_originalMaterials.ContainsKey(renderer))
                 {
-                    _originalMaterials[renderer] = renderer.sharedMaterial;
+                    _originalMaterials[renderer] = renderer.sharedMaterials;
                 }
 
-                if (!_ghostMaterials.TryGetValue(renderer, out Material ghostMat) || ghostMat == null)
+                if (!_ghostMaterials.TryGetValue(renderer, out Material[] ghostMats) || ghostMats == null)
                 {
-                    Material origMat = _originalMaterials[renderer];
-                    if (origMat == null) continue;
+                    Material[] origMats = _originalMaterials[renderer];
+                    if (origMats == null) continue;
 
-                    Shader ghostShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-                    if (ghostShader == null) ghostShader = Shader.Find("Universal Render Pipeline/Unlit");
-                    
-                    ghostMat = new Material(ghostShader)
+                    List<Material> ghostMatList = new List<Material>(origMats.Length);
+                    for (int m = 0; m < origMats.Length; m++)
                     {
-                        name = origMat.name + "_Ghost",
-                        hideFlags = HideFlags.HideAndDontSave
-                    };
+                        Material origMat = origMats[m];
+                        if (origMat == null) continue;
 
-                    Texture mainTex = null;
-                    if (origMat.HasProperty("_BaseMap")) mainTex = origMat.GetTexture("_BaseMap");
-                    else if (origMat.HasProperty("_MainTex")) mainTex = origMat.GetTexture("_MainTex");
-                    
-                    if (mainTex != null)
-                    {
-                        if (ghostMat.HasProperty("_BaseMap")) ghostMat.SetTexture("_BaseMap", mainTex);
-                        if (ghostMat.HasProperty("_MainTex")) ghostMat.SetTexture("_MainTex", mainTex);
+                        if (IsUnitOutlineMaterial(origMat))
+                            continue;
+
+                        Material ghostMat = CreateGhostMaterial(origMat);
+                        if (ghostMat != null)
+                            ghostMatList.Add(ghostMat);
                     }
-
-                    ghostMat.SetFloat(SurfaceId, 1);
-                    ghostMat.SetFloat(SrcBlendId, (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                    ghostMat.SetFloat(DstBlendId, (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                    ghostMat.SetFloat(ZWriteId, 0);
-
-                    ghostMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-                    ghostMat.EnableKeyword("_ALPHABLEND_ON");
-                    
-                    ghostMat.SetOverrideTag("RenderType", "Transparent");
-                    ghostMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-                    
-                    Color origColor = GetMaterialColor(origMat);
-                    SetMaterialColor(ghostMat, ToGhostColor(origColor));
-
-                    _ghostMaterials[renderer] = ghostMat;
+                    ghostMats = ghostMatList.ToArray();
+                    _ghostMaterials[renderer] = ghostMats;
                 }
 
-                renderer.sharedMaterial = _ghostMaterials[renderer];
+                renderer.sharedMaterials = _ghostMaterials[renderer];
             }
             else
             {
-                if (_originalMaterials.TryGetValue(renderer, out Material origMat) && origMat != null)
+                if (_originalMaterials.TryGetValue(renderer, out Material[] origMats) && origMats != null)
                 {
-                    renderer.sharedMaterial = origMat;
+                    renderer.sharedMaterials = origMats;
                 }
             }
         }
+    }
+
+    private void CancelHitFlashVisual()
+    {
+        AAAGame.Effec.HitFlashEffect hitFlashEffect = GetComponent<AAAGame.Effec.HitFlashEffect>();
+        if (hitFlashEffect != null)
+            hitFlashEffect.Cancel();
+    }
+
+    private static bool IsUnitOutlineMaterial(Material material)
+    {
+        return material != null
+            && material.shader != null
+            && material.shader.name == UnitOutlineShaderName;
+    }
+
+    private static Material CreateGhostMaterial(Material source)
+    {
+        Shader ghostShader = Resources.Load<Shader>("GhostTransparent");
+        if (ghostShader == null)
+            ghostShader = Shader.Find(GhostShaderName);
+        if (ghostShader == null)
+            ghostShader = Shader.Find("Universal Render Pipeline/Unlit");
+
+        if (ghostShader == null)
+            return null;
+
+        Material ghostMat = new Material(ghostShader)
+        {
+            name = source.name + "_Ghost",
+            hideFlags = HideFlags.HideAndDontSave,
+            renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent
+        };
+
+        Texture mainTex = GetMaterialMainTexture(source);
+        if (mainTex != null)
+        {
+            if (ghostMat.HasProperty(BaseMapId))
+                ghostMat.SetTexture(BaseMapId, mainTex);
+            if (ghostMat.HasProperty(MainTexId))
+                ghostMat.SetTexture(MainTexId, mainTex);
+        }
+
+        SetupTransparentMaterial(ghostMat);
+        SetMaterialColor(ghostMat, ToGhostColor(GetMaterialColor(source)));
+        return ghostMat;
+    }
+
+    private static Texture GetMaterialMainTexture(Material material)
+    {
+        if (material.HasProperty(BaseMapId))
+            return material.GetTexture(BaseMapId);
+
+        if (material.HasProperty(MainTexId))
+            return material.GetTexture(MainTexId);
+
+        return null;
+    }
+
+    private static void SetupTransparentMaterial(Material material)
+    {
+        if (material.HasProperty(SurfaceId))
+            material.SetFloat(SurfaceId, 1f);
+
+        if (material.HasProperty(SrcBlendId))
+            material.SetFloat(SrcBlendId, (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+
+        if (material.HasProperty(DstBlendId))
+            material.SetFloat(DstBlendId, (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+
+        if (material.HasProperty(ZWriteId))
+            material.SetFloat(ZWriteId, 0f);
+
+        material.DisableKeyword("_ALPHATEST_ON");
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.EnableKeyword("_ALPHABLEND_ON");
+        material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        material.SetOverrideTag("RenderType", "Transparent");
     }
 
     private static Color GetMaterialColor(Material material)
@@ -393,9 +459,13 @@ public partial class SoldierEntity
         SetGhostStateByBuff(false);
         IsGhostState = false;
 
-        foreach (var mat in _ghostMaterials.Values)
+        foreach (var mats in _ghostMaterials.Values)
         {
-            if (mat != null) Destroy(mat);
+            if (mats == null) continue;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] != null) Destroy(mats[i]);
+            }
         }
         _ghostMaterials.Clear();
         _originalMaterials.Clear();

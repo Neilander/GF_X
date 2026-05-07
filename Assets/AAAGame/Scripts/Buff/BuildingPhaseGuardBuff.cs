@@ -104,7 +104,8 @@ public class BuildingPhaseGuardBuff : BuffCallback
         else
             building.UnregisterInvincibleSource(_invincibleSourceId);
 
-        bool shouldSuppressHealthBar = phase == GamePhase.Build;
+        bool isLv0Building = building.buildingData != null && building.buildingData.Lv == 0;
+        bool shouldSuppressHealthBar = phase == GamePhase.Build || isLv0Building;
         if (building.IsHealthBarSuppressedByBuff == shouldSuppressHealthBar)
             return;
 

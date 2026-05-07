@@ -21,6 +21,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     private const float HoldPerStarMinSeconds = 0.1f;
     private const float HoldPerStarMaxSeconds = 0.4f;
     private const float HoldAlignedDurationSeconds = 2f;
+    private const float HoldDurationMinSeconds = 1f;
     private static readonly Color32 DefaultLitColor = new(250, 112, 36, 255);
 
     private static readonly char[] s_OptionMarks = { '\u03B1', '\u03B2', '\u03B3', '\u03B4' };
@@ -826,7 +827,12 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
         perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
-        return perStarSeconds * (starCount - 1f);
+        float duration = perStarSeconds * (starCount - 1f);
+        // 若因速度限幅导致总时长小于 1s，则无视速度限幅，按总时长 1s 重新分配。
+        if (duration < HoldDurationMinSeconds)
+            return HoldDurationMinSeconds;
+
+        return duration;
     }
 
     private bool IsActionPressed(string actionName)

@@ -39,7 +39,7 @@ public partial class PhaseSwitchUIForm : UIFormBase
 
     private void SwitchPhase()
     {
-        if (TryGetCurrentEnemyStronghold(out Stronghold stronghold))
+        if (!TryGetCurrentFriendlyStronghold(out Stronghold stronghold))
         {
             if (GF.UI != null)
                 GF.UI.ShowSideTips(
@@ -47,15 +47,16 @@ public partial class PhaseSwitchUIForm : UIFormBase
                     LocalizationTextDataModel.GetText(BlockedSwitchTipContentId),
                     BlockedSwitchTipDuration);
 
-            string strongholdId = stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "unknown";
-            Log.Info("[PhaseSwitch] Blocked switch: player is in enemy stronghold. id={0}, ownerFaction={1}.", strongholdId, stronghold.OwnerFactionId);
+            string strongholdId = stronghold?.strongholdData != null ? stronghold.strongholdData.StrongholdId : "none";
+            int ownerFactionId = stronghold != null ? stronghold.OwnerFactionId : -1;
+            Log.Info("[PhaseSwitch] Blocked switch: player is not in friendly stronghold. id={0}, ownerFaction={1}.", strongholdId, ownerFactionId);
             return;
         }
 
         PhaseManager.SwitchToNextPhase();
     }
 
-    private static bool TryGetCurrentEnemyStronghold(out Stronghold stronghold)
+    private static bool TryGetCurrentFriendlyStronghold(out Stronghold stronghold)
     {
         stronghold = null;
 
@@ -63,7 +64,7 @@ public partial class PhaseSwitchUIForm : UIFormBase
             return false;
 
         stronghold = LevelEntity.GetStrongholdAtWorldPosition(EntityRegistry.Player.Position);
-        return stronghold != null && stronghold.OwnerFactionId != EntitySideHelper.PlayerFactionId;
+        return stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId;
     }
 
     private void OnIngamePhaseChanged(object sender, GameEventArgs e)

@@ -18,6 +18,7 @@ public partial class BuildingBuildTips : UIFormBase
     private const float HoldPerStarMinSeconds = 0.1f;
     private const float HoldPerStarMaxSeconds = 0.4f;
     private const float HoldAlignedDurationSeconds = 2f;
+    private const float HoldDurationMinSeconds = 1f;
 
     private static readonly Dictionary<BuilType, Archetype> s_LastSelectedIndustryByType = new();
     private static readonly Dictionary<string, int> s_ArmySupplyPerUnitCache = new(StringComparer.Ordinal);
@@ -600,7 +601,12 @@ public partial class BuildingBuildTips : UIFormBase
 
         float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
         perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
-        return perStarSeconds * (starCount - 1f);
+        float duration = perStarSeconds * (starCount - 1f);
+        // 若因速度限幅导致总时长小于 1s，则无视速度限幅，按总时长 1s 重新分配。
+        if (duration < HoldDurationMinSeconds)
+            return HoldDurationMinSeconds;
+
+        return duration;
     }
 
     private bool IsActionPressed(string actionName)

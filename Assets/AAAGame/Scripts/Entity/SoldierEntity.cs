@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using AAAGame.MiniMap;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -9,6 +10,9 @@ using GameFramework.Event;
 /// </summary>
 public partial class SoldierEntity : MAEntity
 {
+    private const string HeroFullHealthSpeedBuffId = "hero_full_health_speed_x2";
+    private static readonly Fix64 HeroFullHealthSpeedBuffPercent = Fix64.One;
+
     /// <summary>
     /// AI类型
     /// </summary>
@@ -69,6 +73,7 @@ public partial class SoldierEntity : MAEntity
             soldierBrain.SetBirthPosition(transform.position);
         }
 
+        SyncHeroFullHealthSpeedBuff();
         RegisterToGroupMove(); // Side 已赋值，安全注册
         SubscribePhaseEvents();
     }
@@ -106,11 +111,14 @@ public partial class SoldierEntity : MAEntity
                 GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
             }
         }
+
+        SyncHeroFullHealthSpeedBuff();
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
+        SyncHeroFullHealthSpeedBuff();
         TickGhostCollisionRuntime();
 
         if (m_MinimapReportComponent != null)
@@ -235,6 +243,35 @@ public partial class SoldierEntity : MAEntity
         }
 
         transform.position = worldPosition;
+    }
+
+    private void SyncHeroFullHealthSpeedBuff()
+    {
+        if (!IsHeroUnit() || BuffComp == null || CreaturePropertyManager == null)
+            return;
+
+        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        bool isFullHealth = Alive && maxHealth > Fix64.Zero && HealthValue >= maxHealth;
+        bool hasBuff = BuffComp.HasBuff(HeroFullHealthSpeedBuffId);
+
+        if (isFullHealth)
+        {
+            if (hasBuff)
+                return;
+
+            BuffData buffData = BuffData.Create(
+                id: HeroFullHealthSpeedBuffId,
+                duration: float.MaxValue,
+                isForever: true,
+                maxStack: 1,
+                modules: new List<BuffCallback> { new PercentMoveSpeedBonusBuff(HeroFullHealthSpeedBuffPercent) });
+
+            BuffComp.AddBuff(buffData, this);
+            return;
+        }
+
+        if (hasBuff)
+            BuffComp.RemoveBuff(HeroFullHealthSpeedBuffId);
     }
 
 }

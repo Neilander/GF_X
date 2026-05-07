@@ -1205,6 +1205,16 @@ namespace AAAGame.MiniMap.FOG3
                     continue;
 
                 int entityId = entity.Id;
+                if (entity is BuildingEntity building && building.buildingData != null && building.buildingData.Lv == 0)
+                {
+                    if (enemyVisibilityStates.ContainsKey(entityId))
+                        enemyVisibilityStates.Remove(entityId);
+
+                    building.RefreshLv0PhaseVisibility();
+                    HealthBarComp.SetFogVisible(entityId, false);
+                    continue;
+                }
+
                 if (!enemyVisibilityStates.TryGetValue(entityId, out Fog3EntityVisibilityState visibilityState) || visibilityState.Entity != entity)
                 {
                     visibilityState = new Fog3EntityVisibilityState(entity, entity is BuildingEntity);
@@ -1330,6 +1340,13 @@ namespace AAAGame.MiniMap.FOG3
         {
             if (state == null)
                 return;
+
+            if (state.Entity is BuildingEntity building && building.buildingData != null && building.buildingData.Lv == 0)
+            {
+                building.RefreshLv0PhaseVisibility();
+                HealthBarComp.SetFogVisible(state.EntityId, false);
+                return;
+            }
 
             SetRenderersEnabled(state.Renderers, true);
             if (state.IsBuilding)
