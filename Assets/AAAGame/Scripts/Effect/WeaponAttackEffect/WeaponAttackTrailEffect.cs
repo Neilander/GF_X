@@ -12,6 +12,12 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     [SerializeField] private bool allowRuntimeAutoFallback = false;
     [SerializeField, Min(0.02f)] private float defaultDuration = 0.28f;
 
+    [Header("拖尾播放模式")]
+    [SerializeField, InspectorName("常态拖尾")] private bool alwaysEmitTrail = false;
+    [SerializeField, InspectorName("常态拖尾启动时清空旧轨迹")] private bool clearTrailWhenAlwaysEmitStarts = true;
+    [SerializeField, InspectorName("每次攻击前清空拖尾")] private bool clearTrailBeforeAttack = true;
+    [SerializeField, InspectorName("常态拖尾攻击时重启轨迹")] private bool restartAlwaysTrailOnAttack = true;
+
     [Header("拖尾挂点")]
     [SerializeField] private Transform weaponAnchor;
     [SerializeField] private Transform trailPoint;
@@ -34,11 +40,20 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     [Header("拖尾颜色")]
     [SerializeField] private Color headColor = new Color(0.7f, 1f, 1f, 0.95f);
     [SerializeField] private Color tailColor = new Color(0.1f, 0.65f, 1f, 0f);
+    [SerializeField, InspectorName("强制尾部Alpha为255")] private bool forceTailAlphaOpaque = true;
     [SerializeField] private Material trailMaterial;
+
+    [Header("拖尾可见度")]
+    [SerializeField, InspectorName("宽度倍率"), Min(0.1f)] private float trailWidthMultiplier = 1.45f;
+    [SerializeField, InspectorName("颜色强度"), Range(0.1f, 3f)] private float trailColorIntensity = 1.05f;
+    [SerializeField, InspectorName("忽略材质底色使用脚本颜色")] private bool ignoreMaterialTint = true;
 
     private TrailRenderer m_TrailRenderer;
     private Coroutine m_PlayCoroutine;
     private bool m_UsingFallbackPoint;
+    private Material m_RuntimeTrailMaterialInstance;
+    private Material m_RuntimeTrailMaterialSource;
+    private MaterialPropertyBlock m_TrailPropertyBlock;
     private static Material s_RuntimeFallbackMaterial;
 
     private void Awake()
@@ -51,7 +66,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
         EnsureTrailRenderer();
         ApplySettings();
-        StopTrail(true);
+        ApplyTrailMode(true);
     }
 
     private void OnEnable()
@@ -64,7 +79,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
         EnsureTrailRenderer();
         ApplySettings();
-        StopTrail(true);
+        ApplyTrailMode(true);
     }
 
     public static void Play(IEntityContext context, float duration = 0f)
@@ -133,10 +148,19 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         EnsureTrailRenderer();
         ApplySettings();
 
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(restartAlwaysTrailOnAttack || clearTrailBeforeAttack);
+            return;
+        }
+
         if (m_PlayCoroutine != null)
         {
             StopCoroutine(m_PlayCoroutine);
+            m_PlayCoroutine = null;
         }
+
+        ResetTrailRendererForFreshColor(clearTrailBeforeAttack);
 
         float playDuration = duration > 0f ? duration : defaultDuration;
         m_PlayCoroutine = StartCoroutine(PlayRoutine(playDuration));
@@ -182,12 +206,23 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
     public void StopTrailFromAnimationEvent()
     {
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(false);
+            return;
+        }
+
         StopTrail(false);
     }
 
     private void OnDisable()
     {
         StopTrail(true);
+    }
+
+    private void OnDestroy()
+    {
+        DestroyRuntimeTrailMaterialInstance();
     }
 
     private void OnValidate()
@@ -199,12 +234,20 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
         EnsureTrailRenderer();
         ApplySettings();
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(false);
+        }
+        else if (m_PlayCoroutine == null)
+        {
+            StopTrail(false);
+        }
     }
 
     private IEnumerator PlayRoutine(float duration)
     {
         m_TrailRenderer.emitting = false;
-        m_TrailRenderer.Clear();
+        ApplySettings();
         yield return null;
 
         m_TrailRenderer.emitting = true;
@@ -226,6 +269,58 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         yield return new WaitForSeconds(trailTime);
         m_TrailRenderer.Clear();
         m_PlayCoroutine = null;
+    }
+
+    private void ApplyTrailMode(bool clearTrail)
+    {
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(clearTrail && clearTrailWhenAlwaysEmitStarts);
+        }
+        else
+        {
+            StopTrail(clearTrail);
+        }
+    }
+
+    private void StartAlwaysEmitTrail(bool clearTrail)
+    {
+        if (m_PlayCoroutine != null)
+        {
+            StopCoroutine(m_PlayCoroutine);
+            m_PlayCoroutine = null;
+        }
+
+        EnsureTrailRenderer();
+        ApplySettings();
+
+        if (m_TrailRenderer == null)
+        {
+            return;
+        }
+
+        if (clearTrail)
+        {
+            ResetTrailRendererForFreshColor(true);
+        }
+
+        m_TrailRenderer.emitting = true;
+    }
+
+    private void ResetTrailRendererForFreshColor(bool clearTrail)
+    {
+        if (m_TrailRenderer == null)
+        {
+            return;
+        }
+
+        m_TrailRenderer.emitting = false;
+        ApplySettings();
+
+        if (clearTrail)
+        {
+            m_TrailRenderer.Clear();
+        }
     }
 
     private bool CanPlayForOwner()
@@ -402,8 +497,8 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         m_TrailRenderer.minVertexDistance = Mathf.Max(0.001f, minVertexDistance);
         m_TrailRenderer.widthMultiplier = 1f;
         m_TrailRenderer.widthCurve = new AnimationCurve(
-            new Keyframe(0f, Mathf.Max(0f, startWidth)),
-            new Keyframe(1f, Mathf.Max(0f, endWidth)));
+            new Keyframe(0f, Mathf.Max(0f, startWidth * trailWidthMultiplier)),
+            new Keyframe(1f, Mathf.Max(0f, endWidth * trailWidthMultiplier)));
         m_TrailRenderer.colorGradient = CreateGradient();
         m_TrailRenderer.alignment = alignment;
         m_TrailRenderer.textureMode = LineTextureMode.Stretch;
@@ -414,15 +509,20 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         m_TrailRenderer.receiveShadows = false;
 
         Material material = trailMaterial != null ? trailMaterial : GetRuntimeFallbackMaterial();
+        material = GetRuntimeTrailMaterialInstance(material);
         if (material != null && m_TrailRenderer.sharedMaterial != material)
         {
             m_TrailRenderer.sharedMaterial = material;
         }
+
+        ApplyTrailRendererPropertyBlock();
     }
 
     private Gradient CreateGradient()
     {
         var gradient = new Gradient();
+        float tailAlpha = forceTailAlphaOpaque ? 1f : tailColor.a;
+
         gradient.SetKeys(
             new[]
             {
@@ -432,9 +532,94 @@ public class WeaponAttackTrailEffect : MonoBehaviour
             new[]
             {
                 new GradientAlphaKey(headColor.a, 0f),
-                new GradientAlphaKey(tailColor.a, 1f),
+                new GradientAlphaKey(tailAlpha, 1f),
             });
         return gradient;
+    }
+
+    private void ApplyTrailRendererPropertyBlock()
+    {
+        if (m_TrailRenderer == null)
+        {
+            return;
+        }
+
+        if (m_TrailPropertyBlock == null)
+        {
+            m_TrailPropertyBlock = new MaterialPropertyBlock();
+        }
+
+        m_TrailPropertyBlock.Clear();
+        m_TrailPropertyBlock.SetColor("_BaseColor", Color.white);
+        m_TrailPropertyBlock.SetColor("_Color", Color.white);
+        m_TrailPropertyBlock.SetFloat("_Intensity", Mathf.Max(0.1f, trailColorIntensity));
+        m_TrailRenderer.SetPropertyBlock(m_TrailPropertyBlock);
+    }
+
+    private Material GetRuntimeTrailMaterialInstance(Material sourceMaterial)
+    {
+        if (sourceMaterial == null)
+        {
+            return null;
+        }
+
+        if (!Application.isPlaying)
+        {
+            return sourceMaterial;
+        }
+
+        if (m_RuntimeTrailMaterialInstance == null || m_RuntimeTrailMaterialSource != sourceMaterial)
+        {
+            DestroyRuntimeTrailMaterialInstance();
+            m_RuntimeTrailMaterialSource = sourceMaterial;
+            m_RuntimeTrailMaterialInstance = new Material(sourceMaterial)
+            {
+                name = $"{sourceMaterial.name}_{name}_RuntimeTrail",
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+        }
+
+        ApplyTrailMaterialColors(m_RuntimeTrailMaterialInstance);
+        return m_RuntimeTrailMaterialInstance;
+    }
+
+    private void ApplyTrailMaterialColors(Material material)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        if (ignoreMaterialTint)
+        {
+            SetMaterialColor(material, "_BaseColor", Color.white);
+            SetMaterialColor(material, "_Color", Color.white);
+        }
+
+        if (material.HasProperty("_Intensity"))
+        {
+            material.SetFloat("_Intensity", Mathf.Max(0.1f, trailColorIntensity));
+        }
+    }
+
+    private static void SetMaterialColor(Material material, string propertyName, Color color)
+    {
+        if (material != null && material.HasProperty(propertyName))
+        {
+            material.SetColor(propertyName, color);
+        }
+    }
+
+    private void DestroyRuntimeTrailMaterialInstance()
+    {
+        if (m_RuntimeTrailMaterialInstance == null)
+        {
+            return;
+        }
+
+        Destroy(m_RuntimeTrailMaterialInstance);
+        m_RuntimeTrailMaterialInstance = null;
+        m_RuntimeTrailMaterialSource = null;
     }
 
     private static Material GetRuntimeFallbackMaterial()

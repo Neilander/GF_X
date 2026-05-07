@@ -25,12 +25,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5566450224255434639}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.49999988, y: -0.49999988, z: -0.5000001, w: 0.5000002}
-  m_LocalPosition: {x: -0.317, y: -0.672, z: 0.292}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.215, y: -0.23, z: 0.216}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 8332285982858631801}
+  m_Father: {fileID: 4037260231493048492}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!96 &3882186343869056477
 TrailRenderer:
@@ -106,7 +106,7 @@ TrailRenderer:
     colorGradient:
       serializedVersion: 2
       key0: {r: 0.7, g: 1, b: 1, a: 0.95}
-      key1: {r: 0.1, g: 0.65, b: 1, a: 0}
+      key1: {r: 0.1, g: 0.65, b: 1, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -130,7 +130,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: -1
+      m_ColorSpace: 0
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2
@@ -157,6 +157,7 @@ GameObject:
   - component: {fileID: 1932797867958151653}
   - component: {fileID: -5409559855405245601}
   - component: {fileID: 8254947112388829342}
+  - component: {fileID: -6343579605612965739}
   m_Layer: 14
   m_Name: "\u5B9E\u4E60\u751F"
   m_TagString: Untagged
@@ -242,6 +243,10 @@ MonoBehaviour:
   onlyPlayerSide: 1
   allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
+  alwaysEmitTrail: 0
+  clearTrailWhenAlwaysEmitStarts: 1
+  clearTrailBeforeAttack: 1
+  restartAlwaysTrailOnAttack: 1
   weaponAnchor: {fileID: 7398009331757278200}
   trailPoint: {fileID: 7398009331757278200}
   autoCreateTrailPoint: 1
@@ -257,7 +262,47 @@ MonoBehaviour:
   alignment: 0
   headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
   tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
+  forceTailAlphaOpaque: 1
   trailMaterial: {fileID: 0}
+  trailWidthMultiplier: 1.45
+  trailColorIntensity: 1.05
+  ignoreMaterialTint: 1
+--- !u!114 &-6343579605612965739
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5667059355416220249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c25992cfd9424a49b1447d0710b8679, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  centerOffset: {x: 0, y: 0.45, z: 0}
+  sizeMultiplier: 1
+  duration: 1.45
+  enableImpactFlash: 1
+  impactFlashSize: 1.15
+  impactFlashDuration: 0.24
+  enableShockwaveRing: 1
+  shockwaveRadius: 1.45
+  shockwaveWidth: 0.075
+  shockwaveDuration: 0.36
+  enableImpactLight: 1
+  impactLightIntensity: 4.5
+  impactLightRange: 3.2
+  coreParticleCount: 36
+  coreColor: {r: 1, g: 1, b: 1, a: 0.95}
+  coreIntensity: 2.15
+  coreParticleSize: 0.56
+  smokeParticleCount: 78
+  smokeRadius: 0.72
+  smokeUpSpeed: 0.58
+  smokeColor: {r: 1, g: 1, b: 1, a: 0.88}
+  sparkParticleCount: 26
+  sparkColor: {r: 1, g: 1, b: 1, a: 0.9}
+  sparkSpeed: 2.1
 --- !u!1 &8185178394744858697
 GameObject:
   m_ObjectHideFlags: 0
@@ -345,18 +390,18 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
-    - targetCorrespondingSourceObject: {fileID: -7220686457543237407, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
+    - targetCorrespondingSourceObject: {fileID: 5796120429355360820, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7398009331757278200}
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
+--- !u!4 &4037260231493048492 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5796120429355360820, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
+  m_PrefabInstance: {fileID: 7523489780146387608}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &8062137560607317363 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
-  m_PrefabInstance: {fileID: 7523489780146387608}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &8332285982858631801 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -7220686457543237407, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
   m_PrefabInstance: {fileID: 7523489780146387608}
   m_PrefabAsset: {fileID: 0}

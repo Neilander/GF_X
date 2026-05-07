@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 1932797867958151653}
   - component: {fileID: -5409559855405245601}
   - component: {fileID: 5068257602321739931}
+  - component: {fileID: -2105039079619136227}
   m_Layer: 0
   m_Name: "\u7801\u519C"
   m_TagString: Untagged
@@ -97,8 +98,12 @@ MonoBehaviour:
   onlyPlayerSide: 1
   allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
-  weaponAnchor: {fileID: 0}
-  trailPoint: {fileID: 0}
+  alwaysEmitTrail: 0
+  clearTrailWhenAlwaysEmitStarts: 1
+  clearTrailBeforeAttack: 1
+  restartAlwaysTrailOnAttack: 1
+  weaponAnchor: {fileID: 7248614002885006315}
+  trailPoint: {fileID: 7248614002885006315}
   autoCreateTrailPoint: 1
   handLocalOffset: {x: 0, y: 0.38, z: 0}
   fallbackLocalCenter: {x: 0.35, y: 1.15, z: 0.45}
@@ -112,7 +117,78 @@ MonoBehaviour:
   alignment: 0
   headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
   tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
+  forceTailAlphaOpaque: 1
   trailMaterial: {fileID: 0}
+  trailWidthMultiplier: 1.45
+  trailColorIntensity: 1.05
+  ignoreMaterialTint: 1
+--- !u!114 &-2105039079619136227
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5667059355416220249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c25992cfd9424a49b1447d0710b8679, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  centerOffset: {x: 0, y: 0.45, z: 0}
+  sizeMultiplier: 1
+  duration: 1.45
+  enableImpactFlash: 1
+  impactFlashSize: 1.15
+  impactFlashDuration: 0.24
+  enableShockwaveRing: 1
+  shockwaveRadius: 1.45
+  shockwaveWidth: 0.075
+  shockwaveDuration: 0.36
+  enableImpactLight: 1
+  impactLightIntensity: 4.5
+  impactLightRange: 3.2
+  coreParticleCount: 36
+  coreColor: {r: 1, g: 1, b: 1, a: 0.95}
+  coreIntensity: 2.15
+  coreParticleSize: 0.56
+  smokeParticleCount: 78
+  smokeRadius: 0.72
+  smokeUpSpeed: 0.58
+  smokeColor: {r: 1, g: 1, b: 1, a: 0.88}
+  sparkParticleCount: 26
+  sparkColor: {r: 1, g: 1, b: 1, a: 0.9}
+  sparkSpeed: 2.1
+--- !u!1 &7845827929830798085
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7248614002885006315}
+  m_Layer: 0
+  m_Name: EffectPoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7248614002885006315
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7845827929830798085}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.268, y: 0, z: 0.131}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6975121289920134609}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &8185178394744858697
 GameObject:
   m_ObjectHideFlags: 0
@@ -199,12 +275,20 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8464939349181633022, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7248614002885006315}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1382654245192174759}
   m_SourcePrefab: {fileID: 100100000, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+--- !u!4 &6975121289920134609 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8464939349181633022, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+  m_PrefabInstance: {fileID: 7659186289534129107}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &7389154130653376130 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}

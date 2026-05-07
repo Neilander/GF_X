@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 3585839594239939683}
   - component: {fileID: 1824080283254273121}
   - component: {fileID: 2913555062493020147}
+  - component: {fileID: -1983763457457297900}
   m_Layer: 14
   m_Name: "\u82F1\u96C4"
   m_TagString: Untagged
@@ -90,7 +91,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3908604912598156533}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 36a669536be238a4ca615b113c29b063, type: 3}
   m_Name: 
@@ -113,6 +114,10 @@ MonoBehaviour:
   onlyPlayerSide: 1
   allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
+  alwaysEmitTrail: 1
+  clearTrailWhenAlwaysEmitStarts: 1
+  clearTrailBeforeAttack: 1
+  restartAlwaysTrailOnAttack: 1
   weaponAnchor: {fileID: 3065430857182694010}
   trailPoint: {fileID: 3065430857182694010}
   autoCreateTrailPoint: 1
@@ -121,14 +126,54 @@ MonoBehaviour:
   useProceduralFallback: 1
   fallbackSwingWidth: 0.9
   fallbackSwingHeight: 0.42
-  trailTime: 0.18
+  trailTime: 0.15
   startWidth: 0.18
   endWidth: 0.02
   minVertexDistance: 0.02
   alignment: 0
-  headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
+  headColor: {r: 0.9987322, g: 1, b: 0, a: 0.95}
   tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
+  forceTailAlphaOpaque: 1
   trailMaterial: {fileID: 0}
+  trailWidthMultiplier: 1.45
+  trailColorIntensity: 1.05
+  ignoreMaterialTint: 1
+--- !u!114 &-1983763457457297900
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3908604912598156533}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c25992cfd9424a49b1447d0710b8679, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  centerOffset: {x: 0, y: 0.45, z: 0}
+  sizeMultiplier: 1
+  duration: 1.45
+  enableImpactFlash: 1
+  impactFlashSize: 1.15
+  impactFlashDuration: 0.24
+  enableShockwaveRing: 1
+  shockwaveRadius: 1.45
+  shockwaveWidth: 0.075
+  shockwaveDuration: 0.36
+  enableImpactLight: 1
+  impactLightIntensity: 4.5
+  impactLightRange: 3.2
+  coreParticleCount: 36
+  coreColor: {r: 1, g: 0.72, b: 0.28, a: 0.95}
+  coreIntensity: 2.15
+  coreParticleSize: 0.56
+  smokeParticleCount: 78
+  smokeRadius: 0.72
+  smokeUpSpeed: 0.58
+  smokeColor: {r: 0.48, g: 0.42, b: 0.34, a: 0.88}
+  sparkParticleCount: 26
+  sparkColor: {r: 1, g: 0.46, b: 0.12, a: 0.9}
+  sparkSpeed: 2.1
 --- !u!1 &4779818598053146821
 GameObject:
   m_ObjectHideFlags: 0
@@ -187,11 +232,11 @@ Transform:
   m_GameObject: {fileID: 6156510547296696916}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0, y: 16.7, z: -0}
+  m_LocalPosition: {x: 0, y: 0.188, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 5483098626643201090}
+  m_Father: {fileID: 5969738049915555001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!96 &-6037521101421872694
 TrailRenderer:
@@ -235,7 +280,7 @@ TrailRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Time: 0.18
+  m_Time: 0.34
   m_PreviewTimeScale: 1
   m_Parameters:
     serializedVersion: 3
@@ -245,7 +290,7 @@ TrailRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.18
+        value: 0.261
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -254,7 +299,7 @@ TrailRenderer:
         outWeight: 0
       - serializedVersion: 3
         time: 1
-        value: 0.02
+        value: 0.029000001
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -266,8 +311,8 @@ TrailRenderer:
       m_RotationOrder: 4
     colorGradient:
       serializedVersion: 2
-      key0: {r: 0.7, g: 1, b: 1, a: 0.95}
-      key1: {r: 0.1, g: 0.65, b: 1, a: 0}
+      key0: {r: 0.9987322, g: 1, b: 0, a: 0.95}
+      key1: {r: 0.1, g: 0.65, b: 1, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -291,7 +336,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: -1
+      m_ColorSpace: 0
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2
@@ -369,7 +414,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
-    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
+    - targetCorrespondingSourceObject: {fileID: -7402337258484472048, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3065430857182694010}
     m_AddedComponents: []
@@ -377,5 +422,10 @@ PrefabInstance:
 --- !u!4 &5483098626643201090 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
+  m_PrefabInstance: {fileID: 5448608272242011049}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &5969738049915555001 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -7402337258484472048, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
   m_PrefabInstance: {fileID: 5448608272242011049}
   m_PrefabAsset: {fileID: 0}

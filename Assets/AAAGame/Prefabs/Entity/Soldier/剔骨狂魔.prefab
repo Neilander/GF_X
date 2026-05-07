@@ -44,6 +44,7 @@ GameObject:
   - component: {fileID: -7543852311272609006}
   - component: {fileID: -1701285708358209356}
   - component: {fileID: 3880993171114316422}
+  - component: {fileID: 2566636958249431468}
   m_Layer: 14
   m_Name: "\u5254\u9AA8\u72C2\u9B54"
   m_TagString: Untagged
@@ -129,6 +130,10 @@ MonoBehaviour:
   onlyPlayerSide: 1
   allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
+  alwaysEmitTrail: 0
+  clearTrailWhenAlwaysEmitStarts: 1
+  clearTrailBeforeAttack: 1
+  restartAlwaysTrailOnAttack: 1
   weaponAnchor: {fileID: 2092293645222156367}
   trailPoint: {fileID: 2092293645222156367}
   autoCreateTrailPoint: 1
@@ -138,13 +143,53 @@ MonoBehaviour:
   fallbackSwingWidth: 0.9
   fallbackSwingHeight: 0.42
   trailTime: 0.18
-  startWidth: 0.18
-  endWidth: 0.02
-  minVertexDistance: 0.02
+  startWidth: 0.43
+  endWidth: 0.08
+  minVertexDistance: 0.11
   alignment: 0
-  headColor: {r: 0.040850822, g: 0.9622642, b: 0.16222121, a: 0.95}
-  tailColor: {r: 1, g: 0.0047169924, b: 0.1286561, a: 0}
+  headColor: {r: 1, g: 0.003921569, b: 0.12941177, a: 0.95}
+  tailColor: {r: 0.039215688, g: 0.9607843, b: 0.16078432, a: 0}
+  forceTailAlphaOpaque: 1
   trailMaterial: {fileID: 0}
+  trailWidthMultiplier: 1.45
+  trailColorIntensity: 1.05
+  ignoreMaterialTint: 1
+--- !u!114 &2566636958249431468
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8295926571250896707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c25992cfd9424a49b1447d0710b8679, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  centerOffset: {x: 0, y: 0.45, z: 0}
+  sizeMultiplier: 1
+  duration: 1.45
+  enableImpactFlash: 1
+  impactFlashSize: 1.15
+  impactFlashDuration: 0.24
+  enableShockwaveRing: 1
+  shockwaveRadius: 1.45
+  shockwaveWidth: 0.075
+  shockwaveDuration: 0.36
+  enableImpactLight: 1
+  impactLightIntensity: 4.5
+  impactLightRange: 3.2
+  coreParticleCount: 36
+  coreColor: {r: 1, g: 0.72, b: 0.28, a: 0.95}
+  coreIntensity: 2.15
+  coreParticleSize: 0.56
+  smokeParticleCount: 78
+  smokeRadius: 0.72
+  smokeUpSpeed: 0.58
+  smokeColor: {r: 0.48, g: 0.42, b: 0.34, a: 0.88}
+  sparkParticleCount: 26
+  sparkColor: {r: 1, g: 0.46, b: 0.12, a: 0.9}
+  sparkSpeed: 2.1
 --- !u!1001 &5698854029042480810
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -284,7 +329,7 @@ TrailRenderer:
     colorGradient:
       serializedVersion: 2
       key0: {r: 0.040850822, g: 0.9622642, b: 0.16222121, a: 0.95}
-      key1: {r: 1, g: 0.0047169924, b: 0.1286561, a: 0}
+      key1: {r: 1, g: 0.0047169924, b: 0.1286561, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -308,7 +353,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: -1
+      m_ColorSpace: 0
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2
