@@ -6,6 +6,9 @@ using UnityEngine.Rendering;
 public class WeaponAttackTrailEffect : MonoBehaviour
 {
     private const string RuntimeTrailPointName = "WeaponAttackTrail_Tip";
+    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorId = Shader.PropertyToID("_Color");
+    private static readonly int IntensityId = Shader.PropertyToID("_Intensity");
 
     [Header("触发规则")]
     [SerializeField] private bool onlyPlayerSide = true;
@@ -36,8 +39,25 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     [SerializeField] private Color tailColor = new Color(0.1f, 0.65f, 1f, 0f);
     [SerializeField] private Material trailMaterial;
 
+    [Header("刀光效果")]
+    [SerializeField] private bool enableSlashArc = true;
+    [SerializeField, Min(0.03f)] private float slashDuration = 0.18f;
+    [SerializeField, Min(0.05f)] private float slashRadius = 0.92f;
+    [SerializeField, Range(0.05f, 0.95f)] private float slashInnerRadiusRatio = 0.38f;
+    [SerializeField, Range(30f, 180f)] private float slashArcAngle = 118f;
+    [SerializeField, Range(-180f, 180f)] private float slashAngleOffset = -18f;
+    [SerializeField, Range(6, 48)] private int slashSegments = 22;
+    [SerializeField, Min(0.1f)] private float slashIntensity = 2.2f;
+    [SerializeField] private Vector3 slashLocalOffset = new Vector3(0f, 0.15f, 0.08f);
+    [SerializeField] private Color slashCoreColor = new Color(0.7f, 1f, 1f, 0.95f);
+    [SerializeField] private Color slashEdgeColor = new Color(0.08f, 0.55f, 1f, 0f);
+    [SerializeField] private Material slashMaterial;
+    [SerializeField] private bool slashFaceCamera = true;
+
     private TrailRenderer m_TrailRenderer;
     private Coroutine m_PlayCoroutine;
+    private Coroutine m_SlashCoroutine;
+    private GameObject m_ActiveSlashObject;
     private bool m_UsingFallbackPoint;
     private static Material s_RuntimeFallbackMaterial;
 
@@ -160,6 +180,8 @@ public class WeaponAttackTrailEffect : MonoBehaviour
             m_PlayCoroutine = null;
         }
 
+        StopSlash();
+
         if (m_TrailRenderer == null)
         {
             m_TrailRenderer = trailPoint != null
@@ -208,6 +230,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         yield return null;
 
         m_TrailRenderer.emitting = true;
+        PlaySlashArc();
         float elapsed = 0f;
 
         while (elapsed < duration)
@@ -389,6 +412,220 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         float y = Mathf.Sin(angle) * fallbackSwingHeight;
         float z = Mathf.Lerp(0.36f, 0.72f, normalizedTime);
         trailPoint.localPosition = fallbackLocalCenter + new Vector3(x, y, z);
+    }
+
+    private void PlaySlashArc()
+    {
+        if (!enableSlashArc)
+        {
+            return;
+        }
+
+        StopSlash();
+
+        Material material = slashMaterial != null ? slashMaterial : GetRuntimeFallbackMaterial();
+        if (material == null)
+        {
+            return;
+        }
+
+        ResolveSlashPose(out Vector3 position, out Quaternion rotation);
+
+        GameObject slashObject = new GameObject("WeaponAttackSlashArc");
+        slashObject.transform.position = position;
+        slashObject.transform.rotation = rotation;
+        slashObject.transform.localScale = Vector3.one * 0.72f;
+
+        MeshFilter meshFilter = slashObject.AddComponent<MeshFilter>();
+        MeshRenderer meshRenderer = slashObject.AddComponent<MeshRenderer>();
+        Mesh mesh = CreateSlashMesh();
+        meshFilter.sharedMesh = mesh;
+        meshRenderer.sharedMaterial = material;
+        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+        meshRenderer.sortingOrder = 12;
+
+        m_ActiveSlashObject = slashObject;
+        float duration = Mathf.Max(0.03f, slashDuration);
+        m_SlashCoroutine = StartCoroutine(SlashArcRoutine(slashObject, meshRenderer, mesh, duration));
+    }
+
+    private void StopSlash()
+    {
+        if (m_SlashCoroutine != null)
+        {
+            StopCoroutine(m_SlashCoroutine);
+            m_SlashCoroutine = null;
+        }
+
+        DestroyActiveSlashObject();
+    }
+
+    private void DestroyActiveSlashObject()
+    {
+        if (m_ActiveSlashObject == null)
+        {
+            return;
+        }
+
+        MeshFilter meshFilter = m_ActiveSlashObject.GetComponent<MeshFilter>();
+        if (meshFilter != null && meshFilter.sharedMesh != null)
+        {
+            Destroy(meshFilter.sharedMesh);
+        }
+
+        Destroy(m_ActiveSlashObject);
+        m_ActiveSlashObject = null;
+    }
+
+    private IEnumerator SlashArcRoutine(GameObject slashObject, MeshRenderer renderer, Mesh mesh, float duration)
+    {
+        float elapsed = 0f;
+        MaterialPropertyBlock propertyBlock = new MaterialPropertyBlock();
+
+        while (elapsed < duration && slashObject != null && renderer != null)
+        {
+            float normalizedTime = Mathf.Clamp01(elapsed / duration);
+            float easeOut = 1f - Mathf.Pow(1f - normalizedTime, 3f);
+            float alpha = 1f - normalizedTime * normalizedTime;
+            float scale = Mathf.Lerp(0.72f, 1.16f, easeOut);
+
+            slashObject.transform.localScale = Vector3.one * scale;
+            slashObject.transform.Rotate(Vector3.forward, 34f * Time.deltaTime, Space.Self);
+
+            Color tint = new Color(1f, 1f, 1f, alpha);
+            renderer.GetPropertyBlock(propertyBlock);
+            propertyBlock.SetColor(BaseColorId, tint);
+            propertyBlock.SetColor(ColorId, tint);
+            propertyBlock.SetFloat(IntensityId, Mathf.Lerp(slashIntensity, 0.35f, normalizedTime));
+            renderer.SetPropertyBlock(propertyBlock);
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (mesh != null)
+        {
+            Destroy(mesh);
+        }
+
+        if (slashObject != null)
+        {
+            Destroy(slashObject);
+        }
+
+        if (m_ActiveSlashObject == slashObject)
+        {
+            m_ActiveSlashObject = null;
+        }
+
+        m_SlashCoroutine = null;
+    }
+
+    private Mesh CreateSlashMesh()
+    {
+        int segmentCount = Mathf.Clamp(slashSegments, 6, 48);
+        int ringCount = 3;
+        int vertexCount = (segmentCount + 1) * ringCount;
+        Vector3[] vertices = new Vector3[vertexCount];
+        Color[] colors = new Color[vertexCount];
+        int[] triangles = new int[segmentCount * 12];
+
+        float outerRadius = Mathf.Max(0.05f, slashRadius);
+        float innerRadius = outerRadius * Mathf.Clamp(slashInnerRadiusRatio, 0.05f, 0.95f);
+        float middleRadius = Mathf.Lerp(innerRadius, outerRadius, 0.58f);
+        float startAngle = slashAngleOffset - slashArcAngle * 0.5f;
+        float angleStep = slashArcAngle / segmentCount;
+
+        for (int i = 0; i <= segmentCount; i++)
+        {
+            float arcTime = (float)i / segmentCount;
+            float alphaAlongArc = Mathf.Sin(arcTime * Mathf.PI);
+            float angle = (startAngle + angleStep * i) * Mathf.Deg2Rad;
+            float cos = Mathf.Cos(angle);
+            float sin = Mathf.Sin(angle);
+            int baseIndex = i * ringCount;
+
+            vertices[baseIndex] = new Vector3(cos * innerRadius, sin * innerRadius, 0f);
+            vertices[baseIndex + 1] = new Vector3(cos * middleRadius, sin * middleRadius, 0f);
+            vertices[baseIndex + 2] = new Vector3(cos * outerRadius, sin * outerRadius, 0f);
+
+            Color transparentEdge = slashEdgeColor;
+            transparentEdge.a = 0f;
+            Color core = slashCoreColor;
+            core.a *= alphaAlongArc;
+
+            colors[baseIndex] = transparentEdge;
+            colors[baseIndex + 1] = core;
+            colors[baseIndex + 2] = transparentEdge;
+        }
+
+        int triangleIndex = 0;
+        for (int i = 0; i < segmentCount; i++)
+        {
+            int current = i * ringCount;
+            int next = (i + 1) * ringCount;
+
+            triangles[triangleIndex++] = current;
+            triangles[triangleIndex++] = next;
+            triangles[triangleIndex++] = current + 1;
+
+            triangles[triangleIndex++] = current + 1;
+            triangles[triangleIndex++] = next;
+            triangles[triangleIndex++] = next + 1;
+
+            triangles[triangleIndex++] = current + 1;
+            triangles[triangleIndex++] = next + 1;
+            triangles[triangleIndex++] = current + 2;
+
+            triangles[triangleIndex++] = current + 2;
+            triangles[triangleIndex++] = next + 1;
+            triangles[triangleIndex++] = next + 2;
+        }
+
+        Mesh mesh = new Mesh
+        {
+            name = "RuntimeWeaponAttackSlashMesh",
+            vertices = vertices,
+            colors = colors,
+            triangles = triangles,
+        };
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    private void ResolveSlashPose(out Vector3 position, out Quaternion rotation)
+    {
+        Transform anchor = trailPoint != null && !m_UsingFallbackPoint
+            ? trailPoint
+            : (weaponAnchor != null ? weaponAnchor : transform);
+
+        if (anchor == transform || m_UsingFallbackPoint)
+        {
+            position = transform.TransformPoint(fallbackLocalCenter + slashLocalOffset);
+        }
+        else
+        {
+            position = anchor.position + transform.TransformDirection(slashLocalOffset);
+        }
+
+        rotation = ResolveSlashRotation();
+    }
+
+    private Quaternion ResolveSlashRotation()
+    {
+        if (slashFaceCamera)
+        {
+            Camera camera = Camera.main;
+            if (camera != null)
+            {
+                return Quaternion.LookRotation(camera.transform.forward, Vector3.up);
+            }
+        }
+
+        Vector3 forward = transform.forward.sqrMagnitude > 0.0001f ? transform.forward : Vector3.forward;
+        Vector3 up = transform.up.sqrMagnitude > 0.0001f ? transform.up : Vector3.up;
+        return Quaternion.LookRotation(forward, up);
     }
 
     private void ApplySettings()

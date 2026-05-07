@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 1932797867958151653}
   - component: {fileID: -5409559855405245601}
   - component: {fileID: 5068257602321739931}
+  - component: {fileID: 7850473855027232561}
   m_Layer: 0
   m_Name: "\u7801\u519C"
   m_TagString: Untagged
@@ -113,6 +114,42 @@ MonoBehaviour:
   headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
   tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
   trailMaterial: {fileID: 0}
+--- !u!114 &7850473855027232561
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5667059355416220249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c25992cfd9424a49b1447d0710b8679, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  centerOffset: {x: 0, y: 0.45, z: 0}
+  sizeMultiplier: 1
+  duration: 1.45
+  enableImpactFlash: 1
+  impactFlashSize: 1.15
+  impactFlashDuration: 0.24
+  enableShockwaveRing: 1
+  shockwaveRadius: 1.45
+  shockwaveWidth: 0.075
+  shockwaveDuration: 0.36
+  enableImpactLight: 1
+  impactLightIntensity: 4.5
+  impactLightRange: 3.2
+  coreParticleCount: 36
+  coreColor: {r: 1, g: 0.72, b: 0.28, a: 0.95}
+  coreIntensity: 2.15
+  coreParticleSize: 0.56
+  smokeParticleCount: 78
+  smokeRadius: 0.72
+  smokeUpSpeed: 0.58
+  smokeColor: {r: 0.48, g: 0.42, b: 0.34, a: 0.88}
+  sparkParticleCount: 26
+  sparkColor: {r: 1, g: 0.46, b: 0.12, a: 0.9}
+  sparkSpeed: 2.1
 --- !u!1 &8185178394744858697
 GameObject:
   m_ObjectHideFlags: 0

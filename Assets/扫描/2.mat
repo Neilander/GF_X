@@ -177,12 +177,13 @@ Material:
     - _W9ParticleCustomDataFlag3: 0
     - _W9ParticleShaderColorChannelFlag: 0
     - _W9ParticleShaderFlags: 8450
-    - _W9ParticleShaderFlags1: 25427968
-    - _W9ParticleShaderGUIFoldToggle: 19
-    - _W9ParticleShaderGUIFoldToggle1: 25165825
-    - _W9ParticleShaderGUIFoldToggle2: 239
+    - _W9ParticleShaderFlags1: 25165824
+    - _W9ParticleShaderGUIFoldToggle: 24639
+    - _W9ParticleShaderGUIFoldToggle1: 159383553
+    - _W9ParticleShaderGUIFoldToggle2: 255
     - _W9ParticleShaderPNoiseBlendFlag: 0
     - _W9ParticleShaderWrapFlags: 1
+    - _W9ParticleShaderWrapFlags2: 0
     m_Floats:
     - _AdditiveToPreMultiplyAlphaLerp: 0
     - _AlphaAll: 1
@@ -208,10 +209,12 @@ Material:
     - _ChangeSaturability_Toggle: 0
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
+    - _ColorAdjustmentOnlyAffectMainTex: 0
     - _ColorBlendAlphaMultiplyMode: 0
     - _ColorBlendMap_Toggle: 0
     - _ColorMask: 15
     - _ColorMode: 0
+    - _ColorMultiAlpha: 0
     - _Contrast: 0.44
     - _Contrast_Toggle: 1
     - _Cull: 2
@@ -327,6 +330,7 @@ Material:
     - _ScreenDistortAlphaRefineToggle: 0
     - _ScreenDistortIntensity: 1
     - _ScreenDistortModeToggle: 0
+    - _SharedUVToggle: 0
     - _SixWayColorAbsorptionToggle: 0
     - _Smoothness: 0.5
     - _SmoothnessTextureChannel: 0
@@ -460,6 +464,8 @@ Material:
     - _RampColorBlendColor: {r: 1, g: 1, b: 1, a: 1}
     - _RampColorMapOffset: {r: 0, g: 0, b: 0, a: 0}
     - _ScreenDistortIntensityRangeVec: {r: 0, g: 1, b: 0, a: 0}
+    - _SharedUV_ST: {r: 1, g: 1, b: 0, a: 0}
+    - _SharedUV_Vec: {r: 0, g: 0, b: 0, a: 0}
     - _SixWayEmissionColor: {r: 1, g: 0.5, b: 0, a: 1}
     - _SixWayInfo: {r: 0.5, g: 0, b: 0, a: 0}
     - _SoftParticleFadeParams: {r: 0, g: 0.5, b: 0, a: 0}

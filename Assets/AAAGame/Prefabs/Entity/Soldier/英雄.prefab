@@ -129,6 +129,19 @@ MonoBehaviour:
   headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
   tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
   trailMaterial: {fileID: 0}
+  enableSlashArc: 1
+  slashDuration: 0.18
+  slashRadius: 0.92
+  slashInnerRadiusRatio: 0.38
+  slashArcAngle: 118
+  slashAngleOffset: -18
+  slashSegments: 22
+  slashIntensity: 2.2
+  slashLocalOffset: {x: 0, y: 0.15, z: 0.08}
+  slashCoreColor: {r: 0.7, g: 1, b: 1, a: 0.95}
+  slashEdgeColor: {r: 0.08, g: 0.55, b: 1, a: 0}
+  slashMaterial: {fileID: 0}
+  slashFaceCamera: 1
 --- !u!1 &4779818598053146821
 GameObject:
   m_ObjectHideFlags: 0
