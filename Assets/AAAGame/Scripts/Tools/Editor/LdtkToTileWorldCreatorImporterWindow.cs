@@ -17,7 +17,7 @@ namespace AAAGame.Tools.Editor
     public sealed class LdtkToTileWorldCreatorImporterWindow : EditorWindow
     {
         private const string DefaultLdtkPath = "Assets/AAAGame/Tilemap/Ldtk/City/Lv3.ldtkl";
-        private const string TemplateConfigurationPath = "Assets/AAAGame/Tilemap/Lv2.asset";
+        private const string TemplateConfigurationPath = "Assets/AAAGame/Tilemap/Lv3.asset";
         private const string PlaneLayerName = "Plane";
         private const string WaterLayerName = "Water";
         private const string StrongholdLayerName = "SH";
@@ -99,7 +99,7 @@ namespace AAAGame.Tools.Editor
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Create/Select Target From Lv2 Template"))
+                if (GUILayout.Button("Create/Select Target From Lv3 Template"))
                 {
                     CreateOrSelectTargetFromTemplate();
                 }
@@ -113,7 +113,7 @@ namespace AAAGame.Tools.Editor
 
             EditorGUILayout.Space(6f);
             EditorGUILayout.LabelField("Import Rules", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. Lv2.asset is used only as a clone template when you click the template button.", MessageType.Info);
+            EditorGUILayout.HelpBox("Plane -> Plane, Water -> Water. SH Player(value 2) -> SH_0_x, Enemy(value 1) -> SH_1_x, split by 4-neighbor connected components. Lv3.asset is used as the clone template when you click the template button.", MessageType.Info);
             resizeConfiguration = EditorGUILayout.Toggle("Resize configuration", resizeConfiguration);
             clearBlueprintModifiers = EditorGUILayout.Toggle("Clear blueprint modifiers", clearBlueprintModifiers);
 
@@ -371,7 +371,7 @@ namespace AAAGame.Tools.Editor
             EditorUtility.SetDirty(configuration);
             AssetDatabase.SaveAssets();
             manager = null;
-            lastReport = $"Created target from Lv2 template: {targetPath}";
+            lastReport = $"Created target from Lv3 template: {targetPath}";
         }
 
         private void CreateOrSelectLevelPrefabFromTemplate()

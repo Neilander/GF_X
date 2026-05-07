@@ -12,7 +12,7 @@
 	"iid": "8c774fa2-21a0-11f1-9c16-0b75036ff1ed",
 	"uid": 0,
 	"worldX": 0,
-	"worldY": 320,
+	"worldY": 0,
 	"worldDepth": 0,
 	"pxWid": 1936,
 	"pxHei": 1072,
@@ -66,7 +66,7 @@
 					"px": [280,856],
 					"fieldInstances": [],
 					"__worldX": 280,
-					"__worldY": 1176
+					"__worldY": 856
 				},
 				{
 					"__identifier": "Building",
@@ -91,7 +91,7 @@
 						}] }
 					],
 					"__worldX": 216,
-					"__worldY": 1240
+					"__worldY": 920
 				},
 				{
 					"__identifier": "Soldier",
@@ -113,7 +113,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 824,
-					"__worldY": 1144
+					"__worldY": 824
 				},
 				{
 					"__identifier": "Building",
@@ -135,7 +135,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 776,
-					"__worldY": 1080
+					"__worldY": 760
 				},
 				{
 					"__identifier": "Building",
@@ -157,7 +157,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 648,
-					"__worldY": 776
+					"__worldY": 456
 				},
 				{
 					"__identifier": "Building",
@@ -179,7 +179,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 328,
-					"__worldY": 1080
+					"__worldY": 760
 				},
 				{
 					"__identifier": "Building",
@@ -201,7 +201,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 360,
-					"__worldY": 1256
+					"__worldY": 936
 				},
 				{
 					"__identifier": "Building",
@@ -223,7 +223,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 296,
-					"__worldY": 1256
+					"__worldY": 936
 				},
 				{
 					"__identifier": "Building",
@@ -245,7 +245,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 376,
-					"__worldY": 1128
+					"__worldY": 808
 				},
 				{
 					"__identifier": "Building",
@@ -267,7 +267,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 200,
-					"__worldY": 1112
+					"__worldY": 792
 				},
 				{
 					"__identifier": "Building",
@@ -289,7 +289,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 552,
-					"__worldY": 888
+					"__worldY": 568
 				},
 				{
 					"__identifier": "Building",
@@ -311,7 +311,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 552,
-					"__worldY": 952
+					"__worldY": 632
 				},
 				{
 					"__identifier": "Soldier",
@@ -333,7 +333,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
 					],
 					"__worldX": 600,
-					"__worldY": 840
+					"__worldY": 520
 				},
 				{
 					"__identifier": "Building",
@@ -355,11 +355,11 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 840,
-					"__worldY": 1080
+					"__worldY": 760
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [59,56],
+					"__grid": [58,55],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -368,7 +368,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [952,904],
+					"px": [936,888],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_ResearchCenter_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -376,8 +376,8 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 952,
-					"__worldY": 1224
+					"__worldX": 936,
+					"__worldY": 888
 				},
 				{
 					"__identifier": "Building",
@@ -399,7 +399,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 776,
-					"__worldY": 1224
+					"__worldY": 904
 				},
 				{
 					"__identifier": "Building",
@@ -421,7 +421,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 840,
-					"__worldY": 1224
+					"__worldY": 904
 				},
 				{
 					"__identifier": "Soldier",
@@ -443,11 +443,11 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [6] }] }
 					],
 					"__worldX": 904,
-					"__worldY": 1112
+					"__worldY": 792
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [86,50],
+					"__grid": [87,50],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -456,7 +456,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [1384,808],
+					"px": [1400,808],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FarmBase_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -464,12 +464,12 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 1384,
-					"__worldY": 1128
+					"__worldX": 1400,
+					"__worldY": 808
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [99,58],
+					"__grid": [98,58],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -478,7 +478,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [1592,936],
+					"px": [1576,936],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Slaughterhouse_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -486,12 +486,12 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 1592,
-					"__worldY": 1256
+					"__worldX": 1576,
+					"__worldY": 936
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [95,58],
+					"__grid": [94,58],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -500,7 +500,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [1528,936],
+					"px": [1512,936],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Army_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -508,12 +508,12 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 1528,
-					"__worldY": 1256
+					"__worldX": 1512,
+					"__worldY": 936
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [90,50],
+					"__grid": [94,49],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -522,7 +522,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [1448,808],
+					"px": [1512,792],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MeatStall", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -530,12 +530,12 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 1448,
-					"__worldY": 1128
+					"__worldX": 1512,
+					"__worldY": 792
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [94,50],
+					"__grid": [98,49],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -544,7 +544,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [1512,808],
+					"px": [1576,792],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -552,8 +552,8 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 1512,
-					"__worldY": 1128
+					"__worldX": 1576,
+					"__worldY": 792
 				},
 				{
 					"__identifier": "Building",
@@ -575,11 +575,11 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 792,
-					"__worldY": 600
+					"__worldY": 280
 				},
 				{
 					"__identifier": "Soldier",
-					"__grid": [88,53],
+					"__grid": [87,54],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -588,7 +588,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 16,
-					"px": [1416,856],
+					"px": [1400,872],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Unit_BoneButcher", "__tile": null, "defUid": 17, "realEditorValues": [{
 							"id": "V_String",
@@ -596,8 +596,8 @@
 						}] },
 						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
 					],
-					"__worldX": 1416,
-					"__worldY": 1176
+					"__worldX": 1400,
+					"__worldY": 872
 				},
 				{
 					"__identifier": "Soldier",
@@ -619,11 +619,11 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
 					],
 					"__worldX": 1464,
-					"__worldY": 1240
+					"__worldY": 920
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [53,17],
+					"__grid": [55,17],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -632,7 +632,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [856,280],
+					"px": [888,280],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Tech_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -640,12 +640,12 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 856,
-					"__worldY": 600
+					"__worldX": 888,
+					"__worldY": 280
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [57,17],
+					"__grid": [59,17],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -654,7 +654,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [920,280],
+					"px": [952,280],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_MiningRig_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -662,8 +662,8 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 920,
-					"__worldY": 600
+					"__worldX": 952,
+					"__worldY": 280
 				},
 				{
 					"__identifier": "Building",
@@ -685,11 +685,11 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 1016,
-					"__worldY": 440
+					"__worldY": 120
 				},
 				{
 					"__identifier": "Building",
-					"__grid": [61,17],
+					"__grid": [63,17],
 					"__pivot": [0.5,0.5],
 					"__tags": [],
 					"__tile": null,
@@ -698,7 +698,7 @@
 					"width": 16,
 					"height": 16,
 					"defUid": 12,
-					"px": [984,280],
+					"px": [1016,280],
 					"fieldInstances": [
 						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Prod_Lv0", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
@@ -706,8 +706,8 @@
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
-					"__worldX": 984,
-					"__worldY": 600
+					"__worldX": 1016,
+					"__worldY": 280
 				},
 				{
 					"__identifier": "Building",
@@ -729,7 +729,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 888,
-					"__worldY": 440
+					"__worldY": 120
 				},
 				{
 					"__identifier": "Building",
@@ -751,7 +751,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 952,
-					"__worldY": 440
+					"__worldY": 120
 				},
 				{
 					"__identifier": "Soldier",
@@ -773,7 +773,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 824,
-					"__worldY": 440
+					"__worldY": 120
 				},
 				{
 					"__identifier": "Soldier",
@@ -795,7 +795,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 984,
-					"__worldY": 472
+					"__worldY": 152
 				},
 				{
 					"__identifier": "Soldier",
@@ -817,7 +817,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 808,
-					"__worldY": 552
+					"__worldY": 232
 				},
 				{
 					"__identifier": "Soldier",
@@ -839,7 +839,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 952,
-					"__worldY": 568
+					"__worldY": 248
 				},
 				{
 					"__identifier": "Building",
@@ -861,7 +861,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 1544,
-					"__worldY": 696
+					"__worldY": 376
 				},
 				{
 					"__identifier": "Building",
@@ -883,7 +883,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 1288,
-					"__worldY": 888
+					"__worldY": 568
 				},
 				{
 					"__identifier": "Building",
@@ -905,7 +905,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 1368,
-					"__worldY": 888
+					"__worldY": 568
 				},
 				{
 					"__identifier": "Building",
@@ -927,7 +927,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 1448,
-					"__worldY": 888
+					"__worldY": 568
 				},
 				{
 					"__identifier": "Building",
@@ -949,7 +949,7 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
 					],
 					"__worldX": 1320,
-					"__worldY": 696
+					"__worldY": 376
 				},
 				{
 					"__identifier": "Building",
@@ -974,7 +974,7 @@
 						}] }
 					],
 					"__worldX": 1464,
-					"__worldY": 760
+					"__worldY": 440
 				},
 				{
 					"__identifier": "Soldier",
@@ -996,7 +996,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
 					],
 					"__worldX": 1304,
-					"__worldY": 760
+					"__worldY": 440
 				},
 				{
 					"__identifier": "Soldier",
@@ -1018,7 +1018,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
 					],
 					"__worldX": 1512,
-					"__worldY": 840
+					"__worldY": 520
 				},
 				{
 					"__identifier": "Soldier",
@@ -1040,7 +1040,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
 					],
 					"__worldX": 1464,
-					"__worldY": 696
+					"__worldY": 376
 				},
 				{
 					"__identifier": "Soldier",
@@ -1062,7 +1062,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
 					],
 					"__worldX": 1320,
-					"__worldY": 856
+					"__worldY": 536
 				},
 				{
 					"__identifier": "Soldier",
@@ -1084,7 +1084,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
 					],
 					"__worldX": 1384,
-					"__worldY": 728
+					"__worldY": 408
 				},
 				{
 					"__identifier": "Soldier",
@@ -1106,7 +1106,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
 					],
 					"__worldX": 1416,
-					"__worldY": 840
+					"__worldY": 520
 				},
 				{
 					"__identifier": "Soldier",
@@ -1128,7 +1128,7 @@
 						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
 					],
 					"__worldX": 1368,
-					"__worldY": 792
+					"__worldY": 472
 				}
 			]
 		},
@@ -14502,5 +14502,5 @@
 			"entityInstances": []
 		}
 	],
-	"__neighbours": []
+	"__neighbours": [{ "levelIid": "8684dc60-48b0-11f1-9656-8bb06757e875", "dir": "w" }]
 }

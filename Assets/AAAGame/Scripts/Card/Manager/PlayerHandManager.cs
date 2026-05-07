@@ -36,6 +36,7 @@ namespace AAAGame.Card
     public int MaxHandSize => maxHandSize;
     public int CurrentHandSize => handCards.Count;
     public List<CardData> HandCards => new List<CardData>(handCards);
+    public List<CardData> AvailableCards => new List<CardData>(cardPool);
 
     // 手牌变化事件（兼容 Temp_script）
     public event Action<List<CardData>> OnHandChanged;
