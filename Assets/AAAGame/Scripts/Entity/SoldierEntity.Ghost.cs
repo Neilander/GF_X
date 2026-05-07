@@ -235,7 +235,7 @@ public partial class SoldierEntity
 
     private void CancelHitFlashVisual()
     {
-        AAAGame.Effec.HitFlashEffect hitFlashEffect = GetComponent<AAAGame.Effec.HitFlashEffect>();
+        AAAGame.Effect.HitFlashEffect hitFlashEffect = GetComponent<AAAGame.Effect.HitFlashEffect>();
         if (hitFlashEffect != null)
             hitFlashEffect.Cancel();
     }

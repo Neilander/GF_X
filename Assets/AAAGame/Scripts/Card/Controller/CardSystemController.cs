@@ -35,6 +35,8 @@ namespace AAAGame.Card
 
         private List<ICardDataProvider> m_CardPool;
         private readonly List<Card> m_DeckCards = new List<Card>();
+        private readonly List<ICardDataProvider> m_OwnedPlaceableCardProviders = new List<ICardDataProvider>();
+        private readonly HashSet<string> m_OwnedPlaceableCardProviderKeys = new HashSet<string>();
 
         // 事件回调
         public event Action<int, int> OnHandChanged; // (cardCount, maxCards)
@@ -102,6 +104,8 @@ namespace AAAGame.Card
         public void ResetDeckAndHand()
         {
             m_DeckCards.Clear();
+            m_OwnedPlaceableCardProviders.Clear();
+            m_OwnedPlaceableCardProviderKeys.Clear();
             m_HandModel?.Clear();
             OnHandChanged?.Invoke(m_HandModel != null ? m_HandModel.CardCount : 0, m_HandModel != null ? m_HandModel.MaxCards : CardConst.MaxHandCards);
         }
@@ -126,6 +130,7 @@ namespace AAAGame.Card
             }
 
             m_DeckCards.Add(new Card(cardData, sourceBuilding));
+            RememberOwnedPlaceableCard(cardData);
             Log.Info($"[CardGame] 卡牌入组: unitType={unitType}, source={sourceBuilding?.BuildingInstanceId ?? "None"}");
             return true;
         }
@@ -143,6 +148,7 @@ namespace AAAGame.Card
 
             var provider = new CardDataAdapter(cardData);
             m_DeckCards.Add(new Card(provider, null));
+            RememberOwnedPlaceableCard(provider);
             Log.Info($"[CardGame] 调试卡牌入组: cardId={provider.CardId}, soldierIndex={provider.SoldierIndex}");
             return true;
         }
@@ -163,6 +169,90 @@ namespace AAAGame.Card
             }
 
             return DrawCard();
+        }
+
+        /// <summary>
+        /// 获取当前玩家拥有、可进入抽牌和放置流程的卡牌类型。
+        /// 这里合并运行时卡组与当前手牌，预览面板用它展示“玩家可用牌池”，而不是项目里的全部 CardData。
+        /// </summary>
+        public List<ICardDataProvider> GetOwnedPlaceableCardProviders()
+        {
+            List<ICardDataProvider> result = new List<ICardDataProvider>();
+            HashSet<string> addedKeys = new HashSet<string>();
+
+            AddOwnedProviders(result, addedKeys);
+            AddDeckProviders(result, addedKeys);
+            AddHandProviders(result, addedKeys);
+
+            return result;
+        }
+
+        private void AddOwnedProviders(List<ICardDataProvider> result, HashSet<string> addedKeys)
+        {
+            for (int i = 0; i < m_OwnedPlaceableCardProviders.Count; i++)
+            {
+                AddUniqueProvider(result, addedKeys, m_OwnedPlaceableCardProviders[i]);
+            }
+        }
+
+        private void AddDeckProviders(List<ICardDataProvider> result, HashSet<string> addedKeys)
+        {
+            for (int i = 0; i < m_DeckCards.Count; i++)
+            {
+                Card entry = m_DeckCards[i];
+                AddUniqueProvider(result, addedKeys, entry != null ? entry.CardData : null);
+            }
+        }
+
+        private void AddHandProviders(List<ICardDataProvider> result, HashSet<string> addedKeys)
+        {
+            if (m_HandModel == null)
+            {
+                return;
+            }
+
+            List<CardModel> handCards = m_HandModel.GetAllCards();
+            for (int i = 0; i < handCards.Count; i++)
+            {
+                CardModel cardModel = handCards[i];
+                AddUniqueProvider(result, addedKeys, cardModel != null ? cardModel.DataProvider : null);
+            }
+        }
+
+        private static void AddUniqueProvider(List<ICardDataProvider> result, HashSet<string> addedKeys, ICardDataProvider provider)
+        {
+            if (provider == null)
+            {
+                return;
+            }
+
+            string key = GetProviderKey(provider);
+
+            if (addedKeys.Add(key))
+            {
+                result.Add(provider);
+            }
+        }
+
+        private void RememberOwnedPlaceableCard(ICardDataProvider provider)
+        {
+            if (provider == null)
+            {
+                return;
+            }
+
+            if (m_OwnedPlaceableCardProviderKeys.Add(GetProviderKey(provider)))
+            {
+                m_OwnedPlaceableCardProviders.Add(provider);
+            }
+        }
+
+        private static string GetProviderKey(ICardDataProvider provider)
+        {
+            string cardId = provider.CardId;
+            return !string.IsNullOrWhiteSpace(cardId)
+                ? cardId
+                : $"{provider.CardName}_{provider.SoldierIndex}";
         }
 
         /// <summary>
@@ -561,6 +651,8 @@ namespace AAAGame.Card
             m_HandModel?.Clear();
             m_CardPool?.Clear();
             m_DeckCards.Clear();
+            m_OwnedPlaceableCardProviders.Clear();
+            m_OwnedPlaceableCardProviderKeys.Clear();
 
             Debug.Log("[Card] CardSystemController shutdown.");
         }
