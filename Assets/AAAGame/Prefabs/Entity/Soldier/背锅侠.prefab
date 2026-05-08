@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 1932797867958151653}
   - component: {fileID: -5409559855405245601}
   - component: {fileID: 8254947112388829342}
-  - component: {fileID: 3591403855473826266}
+  - component: {fileID: 4676256745257274438}
   m_Layer: 14
   m_Name: "\u80CC\u9505\u4FA0"
   m_TagString: Untagged
@@ -98,6 +98,10 @@ MonoBehaviour:
   onlyPlayerSide: 1
   allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
+  alwaysEmitTrail: 0
+  clearTrailWhenAlwaysEmitStarts: 1
+  clearTrailBeforeAttack: 1
+  restartAlwaysTrailOnAttack: 1
   weaponAnchor: {fileID: 6500967793888820772}
   trailPoint: {fileID: 6500967793888820772}
   autoCreateTrailPoint: 1
@@ -113,8 +117,12 @@ MonoBehaviour:
   alignment: 0
   headColor: {r: 0.7, g: 1, b: 1, a: 0.95}
   tailColor: {r: 0.1, g: 0.65, b: 1, a: 0}
+  forceTailAlphaOpaque: 1
   trailMaterial: {fileID: 0}
---- !u!114 &3591403855473826266
+  trailWidthMultiplier: 1.45
+  trailColorIntensity: 1.05
+  ignoreMaterialTint: 1
+--- !u!114 &4676256745257274438
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -140,15 +148,15 @@ MonoBehaviour:
   impactLightIntensity: 4.5
   impactLightRange: 3.2
   coreParticleCount: 36
-  coreColor: {r: 1, g: 0.72, b: 0.28, a: 0.95}
+  coreColor: {r: 1, g: 1, b: 1, a: 0.95}
   coreIntensity: 2.15
   coreParticleSize: 0.56
   smokeParticleCount: 78
   smokeRadius: 0.72
   smokeUpSpeed: 0.58
-  smokeColor: {r: 0.48, g: 0.42, b: 0.34, a: 0.88}
+  smokeColor: {r: 1, g: 1, b: 1, a: 0.88}
   sparkParticleCount: 26
-  sparkColor: {r: 1, g: 0.46, b: 0.12, a: 0.9}
+  sparkColor: {r: 1, g: 1, b: 1, a: 0.9}
   sparkSpeed: 2.1
 --- !u!1 &8185178394744858697
 GameObject:
@@ -288,7 +296,7 @@ TrailRenderer:
     colorGradient:
       serializedVersion: 2
       key0: {r: 0.7, g: 1, b: 1, a: 0.95}
-      key1: {r: 0.1, g: 0.65, b: 1, a: 0}
+      key1: {r: 0.1, g: 0.65, b: 1, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -312,7 +320,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: -1
+      m_ColorSpace: 0
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2

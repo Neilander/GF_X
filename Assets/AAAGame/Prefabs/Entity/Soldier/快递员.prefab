@@ -44,7 +44,7 @@ GameObject:
   - component: {fileID: -7543852311272609006}
   - component: {fileID: -1701285708358209356}
   - component: {fileID: 1697600842930683977}
-  - component: {fileID: 419401228995979165}
+  - component: {fileID: 2807262165190825879}
   m_Layer: 14
   m_Name: "\u5FEB\u9012\u5458"
   m_TagString: Untagged
@@ -130,6 +130,10 @@ MonoBehaviour:
   onlyPlayerSide: 1
   allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
+  alwaysEmitTrail: 0
+  clearTrailWhenAlwaysEmitStarts: 1
+  clearTrailBeforeAttack: 1
+  restartAlwaysTrailOnAttack: 1
   weaponAnchor: {fileID: 5137242415385193662}
   trailPoint: {fileID: 5137242415385193662}
   autoCreateTrailPoint: 1
@@ -138,15 +142,19 @@ MonoBehaviour:
   useProceduralFallback: 1
   fallbackSwingWidth: 0.9
   fallbackSwingHeight: 0.42
-  trailTime: 0.18
-  startWidth: 0.18
-  endWidth: 0.02
+  trailTime: 0.27
+  startWidth: 0.21
+  endWidth: 0.05
   minVertexDistance: 0.02
   alignment: 0
   headColor: {r: 0.89310676, g: 0.9716981, b: 0.087086126, a: 0.95}
   tailColor: {r: 0.054548755, g: 0.9528302, b: 0, a: 0}
+  forceTailAlphaOpaque: 1
   trailMaterial: {fileID: 0}
---- !u!114 &419401228995979165
+  trailWidthMultiplier: 1.45
+  trailColorIntensity: 1.05
+  ignoreMaterialTint: 1
+--- !u!114 &2807262165190825879
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -172,15 +180,15 @@ MonoBehaviour:
   impactLightIntensity: 4.5
   impactLightRange: 3.2
   coreParticleCount: 36
-  coreColor: {r: 1, g: 0.72, b: 0.28, a: 0.95}
+  coreColor: {r: 1, g: 1, b: 1, a: 0.95}
   coreIntensity: 2.15
   coreParticleSize: 0.56
   smokeParticleCount: 78
   smokeRadius: 0.72
   smokeUpSpeed: 0.58
-  smokeColor: {r: 0.48, g: 0.42, b: 0.34, a: 0.88}
+  smokeColor: {r: 1, g: 1, b: 1, a: 0.88}
   sparkParticleCount: 26
-  sparkColor: {r: 1, g: 0.46, b: 0.12, a: 0.9}
+  sparkColor: {r: 1, g: 1, b: 1, a: 0.9}
   sparkSpeed: 2.1
 --- !u!1001 &6476052338719641067
 PrefabInstance:
@@ -301,7 +309,7 @@ TrailRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Time: 0.18
+  m_Time: 0.27
   m_PreviewTimeScale: 1
   m_Parameters:
     serializedVersion: 3
@@ -311,7 +319,7 @@ TrailRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.18
+        value: 0.3045
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -320,7 +328,7 @@ TrailRenderer:
         outWeight: 0
       - serializedVersion: 3
         time: 1
-        value: 0.02
+        value: 0.072500005
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -333,7 +341,7 @@ TrailRenderer:
     colorGradient:
       serializedVersion: 2
       key0: {r: 0.89310676, g: 0.9716981, b: 0.087086126, a: 0.95}
-      key1: {r: 0.054548755, g: 0.9528302, b: 0, a: 0}
+      key1: {r: 0.054548755, g: 0.9528302, b: 0, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -370,7 +378,7 @@ TrailRenderer:
   m_MinVertexDistance: 0.02
   m_MaskInteraction: 0
   m_Autodestruct: 0
-  m_Emitting: 1
+  m_Emitting: 0
   m_ApplyActiveColorSpace: 1
 --- !u!4 &5137242415385193662 stripped
 Transform:

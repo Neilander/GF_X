@@ -1,8 +1,8 @@
-﻿using System.Collections;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace AAAGame.Effec
+namespace AAAGame.Effect
 {
     [DisallowMultipleComponent]
     public sealed class UnitDeathDissolveEffect : MonoBehaviour
@@ -83,6 +83,11 @@ namespace AAAGame.Effec
             }
 
             UnitDeathDissolveEffect effect = owner.GetComponent<UnitDeathDissolveEffect>();
+            if (effect == null)
+            {
+                effect = owner.GetComponentInChildren<UnitDeathDissolveEffect>(true);
+            }
+
             if (effect == null)
             {
                 return;
@@ -186,7 +191,7 @@ namespace AAAGame.Effec
         {
             if (s_CoreMaterial == null)
             {
-                s_CoreMaterial = CreateParticleMaterial("Runtime_UnitDeathCoreVFX", new Color(1f, 0.72f, 0.28f, 1f), 2.15f);
+                s_CoreMaterial = CreateParticleMaterial("Runtime_UnitDeathCoreVFX", Color.white, 2.15f);
             }
 
             return s_CoreMaterial;
@@ -196,7 +201,7 @@ namespace AAAGame.Effec
         {
             if (s_SmokeMaterial == null)
             {
-                s_SmokeMaterial = CreateParticleMaterial("Runtime_UnitDeathSmokeVFX", new Color(1f, 0.9f, 0.76f, 1f), 0.95f);
+                s_SmokeMaterial = CreateParticleMaterial("Runtime_UnitDeathSmokeVFX", Color.white, 0.95f);
             }
 
             return s_SmokeMaterial;
@@ -206,7 +211,7 @@ namespace AAAGame.Effec
         {
             if (s_SparkMaterial == null)
             {
-                s_SparkMaterial = CreateParticleMaterial("Runtime_UnitDeathSparkVFX", new Color(1f, 0.46f, 0.12f, 1f), 2.1f);
+                s_SparkMaterial = CreateParticleMaterial("Runtime_UnitDeathSparkVFX", Color.white, 2.1f);
             }
 
             return s_SparkMaterial;
@@ -216,7 +221,7 @@ namespace AAAGame.Effec
         {
             if (s_FlashMaterial == null)
             {
-                s_FlashMaterial = CreateParticleMaterial("Runtime_UnitDeathFlashVFX", new Color(1f, 0.66f, 0.25f, 1f), 3.1f);
+                s_FlashMaterial = CreateParticleMaterial("Runtime_UnitDeathFlashVFX", Color.white, 3.1f);
             }
 
             return s_FlashMaterial;
@@ -226,7 +231,7 @@ namespace AAAGame.Effec
         {
             if (s_ShockwaveMaterial == null)
             {
-                s_ShockwaveMaterial = CreateParticleMaterial("Runtime_UnitDeathShockwaveVFX", new Color(1f, 0.55f, 0.16f, 1f), 2.55f);
+                s_ShockwaveMaterial = CreateParticleMaterial("Runtime_UnitDeathShockwaveVFX", Color.white, 2.55f);
             }
 
             return s_ShockwaveMaterial;
@@ -235,6 +240,7 @@ namespace AAAGame.Effec
         private static Material CreateParticleMaterial(string materialName, Color color, float intensity)
         {
             Shader shader = Resources.Load<Shader>("UnitDeathVFXParticle")
+                ?? Shader.Find("AAAGame/Effect/UnitDeathVFXParticle")
                 ?? Shader.Find("AAAGame/Effec/UnitDeathVFXParticle")
                 ?? ResolveTransparentShader();
 
@@ -321,6 +327,41 @@ namespace AAAGame.Effec
             }
         }
 
+        private static Color WithAlpha(Color color, float alpha)
+        {
+            color.a = alpha;
+            return color;
+        }
+
+        private static Color BlendRgb(Color from, Color to, float t)
+        {
+            Color color = Color.Lerp(from, to, Mathf.Clamp01(t));
+            color.a = from.a;
+            return color;
+        }
+
+        private static Color ScaleRgb(Color color, float multiplier)
+        {
+            color.r = Mathf.Clamp01(color.r * multiplier);
+            color.g = Mathf.Clamp01(color.g * multiplier);
+            color.b = Mathf.Clamp01(color.b * multiplier);
+            return color;
+        }
+
+        private static Color ResolveImpactColor(UnitDeathDissolveEffect source)
+        {
+            Color color = source != null ? source.coreColor : new Color(1f, 0.72f, 0.28f, 0.95f);
+            color.a = Mathf.Max(0.05f, color.a);
+            return color;
+        }
+
+        private static Color ResolveSparkColor(UnitDeathDissolveEffect source)
+        {
+            Color color = source != null ? source.sparkColor : new Color(1f, 0.46f, 0.12f, 0.9f);
+            color.a = Mathf.Max(0.05f, color.a);
+            return color;
+        }
+
         private sealed class DeathVfxRuntime : MonoBehaviour
         {
             private float m_Duration;
@@ -379,7 +420,8 @@ namespace AAAGame.Effec
 
                 float maxSize = (source != null ? source.impactFlashSize : 1.15f) * worldScale;
                 float lifetime = source != null ? source.impactFlashDuration : 0.24f;
-                StartCoroutine(AnimateFlashSphere(flashObject.transform, renderer, maxSize, lifetime));
+                Color flashColor = ResolveImpactColor(source);
+                StartCoroutine(AnimateFlashSphere(flashObject.transform, renderer, maxSize, lifetime, flashColor));
             }
 
             private void CreateShockwaveRing(UnitDeathDissolveEffect source, float worldScale)
@@ -423,7 +465,8 @@ namespace AAAGame.Effec
                 float radius = (source != null ? source.shockwaveRadius : 1.45f) * worldScale;
                 float width = (source != null ? source.shockwaveWidth : 0.075f) * worldScale;
                 float lifetime = source != null ? source.shockwaveDuration : 0.36f;
-                StartCoroutine(AnimateShockwaveRing(lineRenderer, radius, width, lifetime));
+                Color ringColor = ResolveImpactColor(source);
+                StartCoroutine(AnimateShockwaveRing(lineRenderer, radius, width, lifetime, ringColor));
             }
 
             private void CreateImpactLight(UnitDeathDissolveEffect source, float worldScale)
@@ -445,7 +488,7 @@ namespace AAAGame.Effec
 
                 Light light = lightObject.AddComponent<Light>();
                 light.type = LightType.Point;
-                light.color = new Color(1f, 0.64f, 0.28f);
+                light.color = WithAlpha(ResolveImpactColor(source), 1f);
                 light.intensity = intensity;
                 light.range = (source != null ? source.impactLightRange : 3.2f) * worldScale;
                 light.shadows = LightShadows.None;
@@ -489,6 +532,7 @@ namespace AAAGame.Effec
 
                 ParticleSystemRenderer renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
                 ApplyRendererMaterial(renderer, material, 5);
+                ApplyRendererTint(renderer, Color.white, source != null ? source.coreIntensity : 2.15f);
 
                 StartConfiguredParticleSystem(particleSystem);
             }
@@ -533,13 +577,17 @@ namespace AAAGame.Effec
                 ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particleSystem.colorOverLifetime;
                 colorOverLifetime.enabled = true;
                 Gradient gradient = new Gradient();
+                Color brightSmoke = BlendRgb(color, Color.white, 0.2f);
+                Color midSmoke = color;
+                Color deepSmoke = ScaleRgb(color, 0.62f);
+                Color endSmoke = ScaleRgb(color, 0.28f);
                 gradient.SetKeys(
                     new[]
                     {
-                        new GradientColorKey(new Color(1f, 0.46f, 0.12f), 0f),
-                        new GradientColorKey(new Color(0.72f, 0.55f, 0.34f), 0.18f),
-                        new GradientColorKey(new Color(0.36f, 0.33f, 0.29f), 0.58f),
-                        new GradientColorKey(new Color(0.14f, 0.13f, 0.12f), 1f),
+                        new GradientColorKey(brightSmoke, 0f),
+                        new GradientColorKey(midSmoke, 0.18f),
+                        new GradientColorKey(deepSmoke, 0.58f),
+                        new GradientColorKey(endSmoke, 1f),
                     },
                     new[]
                     {
@@ -560,6 +608,7 @@ namespace AAAGame.Effec
 
                 ParticleSystemRenderer renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
                 ApplyRendererMaterial(renderer, material, 3);
+                ApplyRendererTint(renderer, Color.white, 0.95f);
 
                 StartConfiguredParticleSystem(particleSystem);
             }
@@ -572,7 +621,7 @@ namespace AAAGame.Effec
                     return;
                 }
 
-                Color color = source != null ? source.sparkColor : new Color(1f, 1f, 1f, 0.85f);
+                Color color = ResolveSparkColor(source);
                 float speed = (source != null ? source.sparkSpeed : 1.15f) * worldScale;
                 Material material = GetSparkMaterial();
 
@@ -600,11 +649,12 @@ namespace AAAGame.Effec
 
                 ParticleSystemRenderer renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
                 ApplyRendererMaterial(renderer, material, 6);
+                ApplyRendererTint(renderer, Color.white, 2.1f);
 
                 StartConfiguredParticleSystem(particleSystem);
             }
 
-            private IEnumerator AnimateFlashSphere(Transform flashTransform, Renderer renderer, float maxSize, float lifetime)
+            private IEnumerator AnimateFlashSphere(Transform flashTransform, Renderer renderer, float maxSize, float lifetime, Color flashColor)
             {
                 float elapsed = 0f;
                 while (elapsed < lifetime && flashTransform != null && renderer != null)
@@ -615,7 +665,7 @@ namespace AAAGame.Effec
                     float alpha = Mathf.Lerp(0.95f, 0f, normalizedTime * normalizedTime);
 
                     flashTransform.localScale = Vector3.one * scale;
-                    ApplyRendererTint(renderer, new Color(1f, 0.6f, 0.18f, alpha), Mathf.Lerp(3.2f, 0.4f, normalizedTime));
+                    ApplyRendererTint(renderer, WithAlpha(flashColor, alpha), Mathf.Lerp(3.2f, 0.4f, normalizedTime));
 
                     elapsed += Time.deltaTime;
                     yield return null;
@@ -627,7 +677,7 @@ namespace AAAGame.Effec
                 }
             }
 
-            private IEnumerator AnimateShockwaveRing(LineRenderer lineRenderer, float targetRadius, float width, float lifetime)
+            private IEnumerator AnimateShockwaveRing(LineRenderer lineRenderer, float targetRadius, float width, float lifetime, Color ringColor)
             {
                 float elapsed = 0f;
                 Transform ringTransform = lineRenderer != null ? lineRenderer.transform : null;
@@ -638,7 +688,7 @@ namespace AAAGame.Effec
                     float eased = 1f - Mathf.Pow(1f - normalizedTime, 3f);
                     float radius = Mathf.Lerp(targetRadius * 0.18f, targetRadius, eased);
                     float alpha = Mathf.Lerp(0.85f, 0f, normalizedTime);
-                    Color color = new Color(1f, 0.54f, 0.14f, alpha);
+                    Color color = WithAlpha(ringColor, alpha);
 
                     ringTransform.localScale = Vector3.one * radius;
                     lineRenderer.widthMultiplier = Mathf.Lerp(width, width * 0.2f, normalizedTime);

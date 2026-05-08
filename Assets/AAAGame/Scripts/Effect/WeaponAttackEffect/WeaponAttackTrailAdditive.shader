@@ -20,7 +20,7 @@ Shader "AAAGame/Effec/WeaponAttackTrailAdditive"
             Name "WeaponAttackTrailForward"
             Tags { "LightMode" = "UniversalForward" }
 
-            Blend SrcAlpha One
+            Blend SrcAlpha OneMinusSrcAlpha
             ZWrite Off
             ZTest LEqual
             Cull Off
@@ -59,7 +59,9 @@ Shader "AAAGame/Effec/WeaponAttackTrailAdditive"
             half4 Frag(Varyings input) : SV_Target
             {
                 half4 color = input.color * _BaseColor;
-                color.rgb *= _Intensity;
+                half3 boostedColor = color.rgb * _Intensity;
+                half maxChannel = max(max(boostedColor.r, boostedColor.g), boostedColor.b);
+                color.rgb = maxChannel > 1.0 ? boostedColor / maxChannel : boostedColor;
                 return color;
             }
             ENDHLSL

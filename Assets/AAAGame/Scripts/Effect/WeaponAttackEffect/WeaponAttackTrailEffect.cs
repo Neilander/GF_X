@@ -6,14 +6,17 @@ using UnityEngine.Rendering;
 public class WeaponAttackTrailEffect : MonoBehaviour
 {
     private const string RuntimeTrailPointName = "WeaponAttackTrail_Tip";
-    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
-    private static readonly int ColorId = Shader.PropertyToID("_Color");
-    private static readonly int IntensityId = Shader.PropertyToID("_Intensity");
 
     [Header("触发规则")]
     [SerializeField] private bool onlyPlayerSide = true;
     [SerializeField] private bool allowRuntimeAutoFallback = false;
     [SerializeField, Min(0.02f)] private float defaultDuration = 0.28f;
+
+    [Header("拖尾播放模式")]
+    [SerializeField, InspectorName("常态拖尾")] private bool alwaysEmitTrail = false;
+    [SerializeField, InspectorName("常态拖尾启动时清空旧轨迹")] private bool clearTrailWhenAlwaysEmitStarts = true;
+    [SerializeField, InspectorName("每次攻击前清空拖尾")] private bool clearTrailBeforeAttack = true;
+    [SerializeField, InspectorName("常态拖尾攻击时重启轨迹")] private bool restartAlwaysTrailOnAttack = true;
 
     [Header("拖尾挂点")]
     [SerializeField] private Transform weaponAnchor;
@@ -37,28 +40,20 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     [Header("拖尾颜色")]
     [SerializeField] private Color headColor = new Color(0.7f, 1f, 1f, 0.95f);
     [SerializeField] private Color tailColor = new Color(0.1f, 0.65f, 1f, 0f);
+    [SerializeField, InspectorName("强制尾部Alpha为255")] private bool forceTailAlphaOpaque = true;
     [SerializeField] private Material trailMaterial;
 
-    [Header("刀光效果")]
-    [SerializeField] private bool enableSlashArc = true;
-    [SerializeField, Min(0.03f)] private float slashDuration = 0.18f;
-    [SerializeField, Min(0.05f)] private float slashRadius = 0.92f;
-    [SerializeField, Range(0.05f, 0.95f)] private float slashInnerRadiusRatio = 0.38f;
-    [SerializeField, Range(30f, 180f)] private float slashArcAngle = 118f;
-    [SerializeField, Range(-180f, 180f)] private float slashAngleOffset = -18f;
-    [SerializeField, Range(6, 48)] private int slashSegments = 22;
-    [SerializeField, Min(0.1f)] private float slashIntensity = 2.2f;
-    [SerializeField] private Vector3 slashLocalOffset = new Vector3(0f, 0.15f, 0.08f);
-    [SerializeField] private Color slashCoreColor = new Color(0.7f, 1f, 1f, 0.95f);
-    [SerializeField] private Color slashEdgeColor = new Color(0.08f, 0.55f, 1f, 0f);
-    [SerializeField] private Material slashMaterial;
-    [SerializeField] private bool slashFaceCamera = true;
+    [Header("拖尾可见度")]
+    [SerializeField, InspectorName("宽度倍率"), Min(0.1f)] private float trailWidthMultiplier = 1.45f;
+    [SerializeField, InspectorName("颜色强度"), Range(0.1f, 3f)] private float trailColorIntensity = 1.05f;
+    [SerializeField, InspectorName("忽略材质底色使用脚本颜色")] private bool ignoreMaterialTint = true;
 
     private TrailRenderer m_TrailRenderer;
     private Coroutine m_PlayCoroutine;
-    private Coroutine m_SlashCoroutine;
-    private GameObject m_ActiveSlashObject;
     private bool m_UsingFallbackPoint;
+    private Material m_RuntimeTrailMaterialInstance;
+    private Material m_RuntimeTrailMaterialSource;
+    private MaterialPropertyBlock m_TrailPropertyBlock;
     private static Material s_RuntimeFallbackMaterial;
 
     private void Awake()
@@ -71,7 +66,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
         EnsureTrailRenderer();
         ApplySettings();
-        StopTrail(true);
+        ApplyTrailMode(true);
     }
 
     private void OnEnable()
@@ -84,7 +79,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
         EnsureTrailRenderer();
         ApplySettings();
-        StopTrail(true);
+        ApplyTrailMode(true);
     }
 
     public static void Play(IEntityContext context, float duration = 0f)
@@ -153,10 +148,19 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         EnsureTrailRenderer();
         ApplySettings();
 
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(restartAlwaysTrailOnAttack || clearTrailBeforeAttack);
+            return;
+        }
+
         if (m_PlayCoroutine != null)
         {
             StopCoroutine(m_PlayCoroutine);
+            m_PlayCoroutine = null;
         }
+
+        ResetTrailRendererForFreshColor(clearTrailBeforeAttack);
 
         float playDuration = duration > 0f ? duration : defaultDuration;
         m_PlayCoroutine = StartCoroutine(PlayRoutine(playDuration));
@@ -180,8 +184,6 @@ public class WeaponAttackTrailEffect : MonoBehaviour
             m_PlayCoroutine = null;
         }
 
-        StopSlash();
-
         if (m_TrailRenderer == null)
         {
             m_TrailRenderer = trailPoint != null
@@ -204,12 +206,23 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
     public void StopTrailFromAnimationEvent()
     {
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(false);
+            return;
+        }
+
         StopTrail(false);
     }
 
     private void OnDisable()
     {
         StopTrail(true);
+    }
+
+    private void OnDestroy()
+    {
+        DestroyRuntimeTrailMaterialInstance();
     }
 
     private void OnValidate()
@@ -221,16 +234,23 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
         EnsureTrailRenderer();
         ApplySettings();
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(false);
+        }
+        else if (m_PlayCoroutine == null)
+        {
+            StopTrail(false);
+        }
     }
 
     private IEnumerator PlayRoutine(float duration)
     {
         m_TrailRenderer.emitting = false;
-        m_TrailRenderer.Clear();
+        ApplySettings();
         yield return null;
 
         m_TrailRenderer.emitting = true;
-        PlaySlashArc();
         float elapsed = 0f;
 
         while (elapsed < duration)
@@ -249,6 +269,58 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         yield return new WaitForSeconds(trailTime);
         m_TrailRenderer.Clear();
         m_PlayCoroutine = null;
+    }
+
+    private void ApplyTrailMode(bool clearTrail)
+    {
+        if (alwaysEmitTrail)
+        {
+            StartAlwaysEmitTrail(clearTrail && clearTrailWhenAlwaysEmitStarts);
+        }
+        else
+        {
+            StopTrail(clearTrail);
+        }
+    }
+
+    private void StartAlwaysEmitTrail(bool clearTrail)
+    {
+        if (m_PlayCoroutine != null)
+        {
+            StopCoroutine(m_PlayCoroutine);
+            m_PlayCoroutine = null;
+        }
+
+        EnsureTrailRenderer();
+        ApplySettings();
+
+        if (m_TrailRenderer == null)
+        {
+            return;
+        }
+
+        if (clearTrail)
+        {
+            ResetTrailRendererForFreshColor(true);
+        }
+
+        m_TrailRenderer.emitting = true;
+    }
+
+    private void ResetTrailRendererForFreshColor(bool clearTrail)
+    {
+        if (m_TrailRenderer == null)
+        {
+            return;
+        }
+
+        m_TrailRenderer.emitting = false;
+        ApplySettings();
+
+        if (clearTrail)
+        {
+            m_TrailRenderer.Clear();
+        }
     }
 
     private bool CanPlayForOwner()
@@ -414,220 +486,6 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         trailPoint.localPosition = fallbackLocalCenter + new Vector3(x, y, z);
     }
 
-    private void PlaySlashArc()
-    {
-        if (!enableSlashArc)
-        {
-            return;
-        }
-
-        StopSlash();
-
-        Material material = slashMaterial != null ? slashMaterial : GetRuntimeFallbackMaterial();
-        if (material == null)
-        {
-            return;
-        }
-
-        ResolveSlashPose(out Vector3 position, out Quaternion rotation);
-
-        GameObject slashObject = new GameObject("WeaponAttackSlashArc");
-        slashObject.transform.position = position;
-        slashObject.transform.rotation = rotation;
-        slashObject.transform.localScale = Vector3.one * 0.72f;
-
-        MeshFilter meshFilter = slashObject.AddComponent<MeshFilter>();
-        MeshRenderer meshRenderer = slashObject.AddComponent<MeshRenderer>();
-        Mesh mesh = CreateSlashMesh();
-        meshFilter.sharedMesh = mesh;
-        meshRenderer.sharedMaterial = material;
-        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-        meshRenderer.receiveShadows = false;
-        meshRenderer.sortingOrder = 12;
-
-        m_ActiveSlashObject = slashObject;
-        float duration = Mathf.Max(0.03f, slashDuration);
-        m_SlashCoroutine = StartCoroutine(SlashArcRoutine(slashObject, meshRenderer, mesh, duration));
-    }
-
-    private void StopSlash()
-    {
-        if (m_SlashCoroutine != null)
-        {
-            StopCoroutine(m_SlashCoroutine);
-            m_SlashCoroutine = null;
-        }
-
-        DestroyActiveSlashObject();
-    }
-
-    private void DestroyActiveSlashObject()
-    {
-        if (m_ActiveSlashObject == null)
-        {
-            return;
-        }
-
-        MeshFilter meshFilter = m_ActiveSlashObject.GetComponent<MeshFilter>();
-        if (meshFilter != null && meshFilter.sharedMesh != null)
-        {
-            Destroy(meshFilter.sharedMesh);
-        }
-
-        Destroy(m_ActiveSlashObject);
-        m_ActiveSlashObject = null;
-    }
-
-    private IEnumerator SlashArcRoutine(GameObject slashObject, MeshRenderer renderer, Mesh mesh, float duration)
-    {
-        float elapsed = 0f;
-        MaterialPropertyBlock propertyBlock = new MaterialPropertyBlock();
-
-        while (elapsed < duration && slashObject != null && renderer != null)
-        {
-            float normalizedTime = Mathf.Clamp01(elapsed / duration);
-            float easeOut = 1f - Mathf.Pow(1f - normalizedTime, 3f);
-            float alpha = 1f - normalizedTime * normalizedTime;
-            float scale = Mathf.Lerp(0.72f, 1.16f, easeOut);
-
-            slashObject.transform.localScale = Vector3.one * scale;
-            slashObject.transform.Rotate(Vector3.forward, 34f * Time.deltaTime, Space.Self);
-
-            Color tint = new Color(1f, 1f, 1f, alpha);
-            renderer.GetPropertyBlock(propertyBlock);
-            propertyBlock.SetColor(BaseColorId, tint);
-            propertyBlock.SetColor(ColorId, tint);
-            propertyBlock.SetFloat(IntensityId, Mathf.Lerp(slashIntensity, 0.35f, normalizedTime));
-            renderer.SetPropertyBlock(propertyBlock);
-
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (mesh != null)
-        {
-            Destroy(mesh);
-        }
-
-        if (slashObject != null)
-        {
-            Destroy(slashObject);
-        }
-
-        if (m_ActiveSlashObject == slashObject)
-        {
-            m_ActiveSlashObject = null;
-        }
-
-        m_SlashCoroutine = null;
-    }
-
-    private Mesh CreateSlashMesh()
-    {
-        int segmentCount = Mathf.Clamp(slashSegments, 6, 48);
-        int ringCount = 3;
-        int vertexCount = (segmentCount + 1) * ringCount;
-        Vector3[] vertices = new Vector3[vertexCount];
-        Color[] colors = new Color[vertexCount];
-        int[] triangles = new int[segmentCount * 12];
-
-        float outerRadius = Mathf.Max(0.05f, slashRadius);
-        float innerRadius = outerRadius * Mathf.Clamp(slashInnerRadiusRatio, 0.05f, 0.95f);
-        float middleRadius = Mathf.Lerp(innerRadius, outerRadius, 0.58f);
-        float startAngle = slashAngleOffset - slashArcAngle * 0.5f;
-        float angleStep = slashArcAngle / segmentCount;
-
-        for (int i = 0; i <= segmentCount; i++)
-        {
-            float arcTime = (float)i / segmentCount;
-            float alphaAlongArc = Mathf.Sin(arcTime * Mathf.PI);
-            float angle = (startAngle + angleStep * i) * Mathf.Deg2Rad;
-            float cos = Mathf.Cos(angle);
-            float sin = Mathf.Sin(angle);
-            int baseIndex = i * ringCount;
-
-            vertices[baseIndex] = new Vector3(cos * innerRadius, sin * innerRadius, 0f);
-            vertices[baseIndex + 1] = new Vector3(cos * middleRadius, sin * middleRadius, 0f);
-            vertices[baseIndex + 2] = new Vector3(cos * outerRadius, sin * outerRadius, 0f);
-
-            Color transparentEdge = slashEdgeColor;
-            transparentEdge.a = 0f;
-            Color core = slashCoreColor;
-            core.a *= alphaAlongArc;
-
-            colors[baseIndex] = transparentEdge;
-            colors[baseIndex + 1] = core;
-            colors[baseIndex + 2] = transparentEdge;
-        }
-
-        int triangleIndex = 0;
-        for (int i = 0; i < segmentCount; i++)
-        {
-            int current = i * ringCount;
-            int next = (i + 1) * ringCount;
-
-            triangles[triangleIndex++] = current;
-            triangles[triangleIndex++] = next;
-            triangles[triangleIndex++] = current + 1;
-
-            triangles[triangleIndex++] = current + 1;
-            triangles[triangleIndex++] = next;
-            triangles[triangleIndex++] = next + 1;
-
-            triangles[triangleIndex++] = current + 1;
-            triangles[triangleIndex++] = next + 1;
-            triangles[triangleIndex++] = current + 2;
-
-            triangles[triangleIndex++] = current + 2;
-            triangles[triangleIndex++] = next + 1;
-            triangles[triangleIndex++] = next + 2;
-        }
-
-        Mesh mesh = new Mesh
-        {
-            name = "RuntimeWeaponAttackSlashMesh",
-            vertices = vertices,
-            colors = colors,
-            triangles = triangles,
-        };
-        mesh.RecalculateBounds();
-        return mesh;
-    }
-
-    private void ResolveSlashPose(out Vector3 position, out Quaternion rotation)
-    {
-        Transform anchor = trailPoint != null && !m_UsingFallbackPoint
-            ? trailPoint
-            : (weaponAnchor != null ? weaponAnchor : transform);
-
-        if (anchor == transform || m_UsingFallbackPoint)
-        {
-            position = transform.TransformPoint(fallbackLocalCenter + slashLocalOffset);
-        }
-        else
-        {
-            position = anchor.position + transform.TransformDirection(slashLocalOffset);
-        }
-
-        rotation = ResolveSlashRotation();
-    }
-
-    private Quaternion ResolveSlashRotation()
-    {
-        if (slashFaceCamera)
-        {
-            Camera camera = Camera.main;
-            if (camera != null)
-            {
-                return Quaternion.LookRotation(camera.transform.forward, Vector3.up);
-            }
-        }
-
-        Vector3 forward = transform.forward.sqrMagnitude > 0.0001f ? transform.forward : Vector3.forward;
-        Vector3 up = transform.up.sqrMagnitude > 0.0001f ? transform.up : Vector3.up;
-        return Quaternion.LookRotation(forward, up);
-    }
-
     private void ApplySettings()
     {
         if (m_TrailRenderer == null)
@@ -639,8 +497,8 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         m_TrailRenderer.minVertexDistance = Mathf.Max(0.001f, minVertexDistance);
         m_TrailRenderer.widthMultiplier = 1f;
         m_TrailRenderer.widthCurve = new AnimationCurve(
-            new Keyframe(0f, Mathf.Max(0f, startWidth)),
-            new Keyframe(1f, Mathf.Max(0f, endWidth)));
+            new Keyframe(0f, Mathf.Max(0f, startWidth * trailWidthMultiplier)),
+            new Keyframe(1f, Mathf.Max(0f, endWidth * trailWidthMultiplier)));
         m_TrailRenderer.colorGradient = CreateGradient();
         m_TrailRenderer.alignment = alignment;
         m_TrailRenderer.textureMode = LineTextureMode.Stretch;
@@ -651,15 +509,20 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         m_TrailRenderer.receiveShadows = false;
 
         Material material = trailMaterial != null ? trailMaterial : GetRuntimeFallbackMaterial();
+        material = GetRuntimeTrailMaterialInstance(material);
         if (material != null && m_TrailRenderer.sharedMaterial != material)
         {
             m_TrailRenderer.sharedMaterial = material;
         }
+
+        ApplyTrailRendererPropertyBlock();
     }
 
     private Gradient CreateGradient()
     {
         var gradient = new Gradient();
+        float tailAlpha = forceTailAlphaOpaque ? 1f : tailColor.a;
+
         gradient.SetKeys(
             new[]
             {
@@ -669,9 +532,94 @@ public class WeaponAttackTrailEffect : MonoBehaviour
             new[]
             {
                 new GradientAlphaKey(headColor.a, 0f),
-                new GradientAlphaKey(tailColor.a, 1f),
+                new GradientAlphaKey(tailAlpha, 1f),
             });
         return gradient;
+    }
+
+    private void ApplyTrailRendererPropertyBlock()
+    {
+        if (m_TrailRenderer == null)
+        {
+            return;
+        }
+
+        if (m_TrailPropertyBlock == null)
+        {
+            m_TrailPropertyBlock = new MaterialPropertyBlock();
+        }
+
+        m_TrailPropertyBlock.Clear();
+        m_TrailPropertyBlock.SetColor("_BaseColor", Color.white);
+        m_TrailPropertyBlock.SetColor("_Color", Color.white);
+        m_TrailPropertyBlock.SetFloat("_Intensity", Mathf.Max(0.1f, trailColorIntensity));
+        m_TrailRenderer.SetPropertyBlock(m_TrailPropertyBlock);
+    }
+
+    private Material GetRuntimeTrailMaterialInstance(Material sourceMaterial)
+    {
+        if (sourceMaterial == null)
+        {
+            return null;
+        }
+
+        if (!Application.isPlaying)
+        {
+            return sourceMaterial;
+        }
+
+        if (m_RuntimeTrailMaterialInstance == null || m_RuntimeTrailMaterialSource != sourceMaterial)
+        {
+            DestroyRuntimeTrailMaterialInstance();
+            m_RuntimeTrailMaterialSource = sourceMaterial;
+            m_RuntimeTrailMaterialInstance = new Material(sourceMaterial)
+            {
+                name = $"{sourceMaterial.name}_{name}_RuntimeTrail",
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+        }
+
+        ApplyTrailMaterialColors(m_RuntimeTrailMaterialInstance);
+        return m_RuntimeTrailMaterialInstance;
+    }
+
+    private void ApplyTrailMaterialColors(Material material)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        if (ignoreMaterialTint)
+        {
+            SetMaterialColor(material, "_BaseColor", Color.white);
+            SetMaterialColor(material, "_Color", Color.white);
+        }
+
+        if (material.HasProperty("_Intensity"))
+        {
+            material.SetFloat("_Intensity", Mathf.Max(0.1f, trailColorIntensity));
+        }
+    }
+
+    private static void SetMaterialColor(Material material, string propertyName, Color color)
+    {
+        if (material != null && material.HasProperty(propertyName))
+        {
+            material.SetColor(propertyName, color);
+        }
+    }
+
+    private void DestroyRuntimeTrailMaterialInstance()
+    {
+        if (m_RuntimeTrailMaterialInstance == null)
+        {
+            return;
+        }
+
+        Destroy(m_RuntimeTrailMaterialInstance);
+        m_RuntimeTrailMaterialInstance = null;
+        m_RuntimeTrailMaterialSource = null;
     }
 
     private static Material GetRuntimeFallbackMaterial()
