@@ -494,11 +494,7 @@ namespace AAAGame.Card
                 return;
             }
 
-            float previewRadius = 0.5f;
-            if (cardModel.DataProvider != null)
-            {
-                previewRadius = Mathf.Max(previewRadius, cardModel.DataProvider.SpawnRadius);
-            }
+            float previewRadius = ClusterSpawnSystem.CalculateAutoSpawnRadius(cardModel.GetTroopCount());
 
             m_PlacementController.SetDetectionRadius(previewRadius);
             m_PlacementController.StartPlacement(cardModel);

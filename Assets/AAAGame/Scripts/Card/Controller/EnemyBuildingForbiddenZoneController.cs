@@ -11,11 +11,13 @@ namespace AAAGame.Card
     public sealed class EnemyBuildingForbiddenZoneController
     {
         private const string RootObjectName = "EnemyBuildingForbiddenZones";
-        private const float FootprintScale = 2f;
+        private const float ZonePadding = 3f;
         private const int CircleSegmentCount = 24;
         private const float MinTriangleArea = 0.0001f;
+        private const float MaxMiterLengthMultiplier = 1.5f;
         private const float ZoneVisualHeight = 0.04f;
-        private const float ZoneYOffset = 0.03f;
+        private const float ZoneYOffset = 0.12f;
+        private const int ZoneRenderQueue = (int)RenderQueue.Transparent + 50;
 
         private readonly List<ZoneData> m_ActiveZones = new List<ZoneData>();
         private readonly List<ZoneData> m_ReusedZoneBuffer = new List<ZoneData>();
@@ -211,6 +213,57 @@ namespace AAAGame.Card
             return false;
         }
 
+        private static readonly List<Vector2> s_ProjectPointsBuffer = new List<Vector2>();
+        private static readonly List<Vector2> s_ProjectHullBuffer = new List<Vector2>();
+        private static readonly List<Vector2> s_ExpandedHullBuffer = new List<Vector2>();
+
+        private static bool TryBuildConvexHull(List<Vector2> points, List<Vector2> hull)
+        {
+            hull.Clear();
+            if (points == null || points.Count < 3)
+                return false;
+
+            points.Sort(CompareVector2);
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                AddHullPoint(hull, points[i]);
+            }
+
+            int lowerCount = hull.Count;
+            for (int i = points.Count - 2; i >= 0; i--)
+            {
+                AddHullPoint(hull, points[i], lowerCount);
+            }
+
+            if (hull.Count > 1)
+                hull.RemoveAt(hull.Count - 1);
+
+            return hull.Count >= 3;
+        }
+
+        private static int CompareVector2(Vector2 left, Vector2 right)
+        {
+            int xCompare = left.x.CompareTo(right.x);
+            return xCompare != 0 ? xCompare : left.y.CompareTo(right.y);
+        }
+
+        private static void AddHullPoint(List<Vector2> hull, Vector2 point, int minCount = 0)
+        {
+            while (hull.Count > minCount + 1
+                && Cross(hull[hull.Count - 2], hull[hull.Count - 1], point) <= 0f)
+            {
+                hull.RemoveAt(hull.Count - 1);
+            }
+
+            hull.Add(point);
+        }
+
+        private static float Cross(Vector2 origin, Vector2 a, Vector2 b)
+        {
+            return (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
+        }
+
         private static bool TryCreateZoneFromCollider(Collider collider, out ZoneData zone)
         {
             if (collider is MeshCollider meshCollider)
@@ -234,15 +287,18 @@ namespace AAAGame.Card
 
             Mesh mesh = meshCollider.sharedMesh;
             if (mesh == null)
-                return false;
+                return TryCreateBoundsZone(meshCollider.GetInstanceID(), meshCollider.bounds, out zone,
+                    meshCollider.transform.root.position.y);
 
             int[] triangles = mesh.triangles;
             if (triangles == null || triangles.Length < 3)
-                return false;
+                return TryCreateBoundsZone(meshCollider.GetInstanceID(), meshCollider.bounds, out zone,
+                    meshCollider.transform.root.position.y);
 
             Vector3[] meshVertices = mesh.vertices;
             if (meshVertices == null || meshVertices.Length < 3)
-                return false;
+                return TryCreateBoundsZone(meshCollider.GetInstanceID(), meshCollider.bounds, out zone,
+                    meshCollider.transform.root.position.y);
 
             Vector3[] worldVertices = new Vector3[meshVertices.Length];
             Transform meshTransform = meshCollider.transform;
@@ -252,7 +308,9 @@ namespace AAAGame.Card
             }
 
             float displayY = ResolveDisplayY(meshCollider.bounds.min.y, meshCollider.transform.root.position.y);
-            return TryCreateZoneFromVertices(meshCollider.GetInstanceID(), worldVertices, triangles, displayY, out zone);
+            return TryCreateZoneFromVertices(meshCollider.GetInstanceID(), worldVertices, displayY, out zone)
+                || TryCreateBoundsZone(meshCollider.GetInstanceID(), meshCollider.bounds, out zone,
+                    meshCollider.transform.root.position.y);
         }
 
         private static bool TryCreateBoxColliderZone(BoxCollider boxCollider, out ZoneData zone)
@@ -279,7 +337,7 @@ namespace AAAGame.Card
 
             int[] triangles = { 0, 1, 2, 0, 2, 3 };
             float displayY = ResolveDisplayY(boxCollider.bounds.min.y, boxCollider.transform.root.position.y);
-            return TryCreateZoneFromVertices(boxCollider.GetInstanceID(), world, triangles, displayY, out zone);
+            return TryCreateZoneFromVertices(boxCollider.GetInstanceID(), world, displayY, out zone);
         }
 
         private static bool TryCreateSphereColliderZone(SphereCollider sphereCollider, out ZoneData zone)
@@ -288,7 +346,7 @@ namespace AAAGame.Card
 
             Vector3 center = sphereCollider.transform.TransformPoint(sphereCollider.center);
             Vector3 lossyScale = sphereCollider.transform.lossyScale;
-            float radius = sphereCollider.radius * Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.z));
+            float radius = sphereCollider.radius * Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.z)) + ZonePadding;
             if (radius <= 0.0001f)
                 return false;
 
@@ -310,7 +368,7 @@ namespace AAAGame.Card
             }
 
             float displayY = ResolveDisplayY(sphereCollider.bounds.min.y, sphereCollider.transform.root.position.y);
-            return TryCreateZoneFromVertices(sphereCollider.GetInstanceID(), vertices, triangles, displayY, out zone);
+            return TryCreateZoneFromVertices(sphereCollider.GetInstanceID(), vertices, displayY, out zone, false);
         }
 
         private static bool TryCreateCapsuleColliderZone(CapsuleCollider capsuleCollider, out ZoneData zone)
@@ -332,40 +390,191 @@ namespace AAAGame.Card
 
             int[] triangles = { 0, 1, 2, 0, 2, 3 };
             float displayY = ResolveDisplayY(bounds.min.y, referenceY);
-            return TryCreateZoneFromVertices(key, vertices, triangles, displayY, out zone);
+            return TryCreateZoneFromVertices(key, vertices, displayY, out zone);
         }
 
-        private static bool TryCreateZoneFromVertices(int key, Vector3[] worldVertices, int[] triangles,
-            float displayY, out ZoneData zone)
+        private static bool TryCreateZoneFromVertices(int key, Vector3[] worldVertices, float displayY,
+            out ZoneData zone, bool expandFootprint = true)
         {
             zone = default;
 
             if (worldVertices == null || worldVertices.Length < 3)
                 return false;
-            if (triangles == null || triangles.Length < 3)
-                return false;
 
-            Vector2 pivot = CalculatePivot(worldVertices);
-
-            Vector2[] vertices2D = new Vector2[worldVertices.Length];
-            Vector3[] renderVertices = new Vector3[worldVertices.Length];
+            s_ProjectPointsBuffer.Clear();
+            s_ProjectHullBuffer.Clear();
 
             for (int i = 0; i < worldVertices.Length; i++)
             {
-                Vector3 scaled = ScaleFootprintPoint(worldVertices[i], pivot);
-                vertices2D[i] = new Vector2(scaled.x, scaled.z);
-
-                scaled.y = displayY;
-                renderVertices[i] = scaled;
+                s_ProjectPointsBuffer.Add(new Vector2(worldVertices[i].x, worldVertices[i].z));
             }
 
-            if (!TryBuildProjectedTriangles(vertices2D, triangles, out int[] projectedTriangles))
+            if (!TryBuildConvexHull(s_ProjectPointsBuffer, s_ProjectHullBuffer))
+            {
+                s_ProjectPointsBuffer.Clear();
+                s_ProjectHullBuffer.Clear();
                 return false;
+            }
+
+            bool created = expandFootprint
+                ? TryCreateZoneFromHull(key, s_ProjectHullBuffer, displayY, out zone)
+                : TryCreateZoneFromPolygon(key, s_ProjectHullBuffer, displayY, out zone);
+            s_ProjectPointsBuffer.Clear();
+            s_ProjectHullBuffer.Clear();
+            return created;
+        }
+
+        private static bool TryCreateZoneFromHull(int key, List<Vector2> hull, float displayY, out ZoneData zone)
+        {
+            zone = default;
+
+            if (hull == null || hull.Count < 3)
+                return false;
+
+            s_ExpandedHullBuffer.Clear();
+            bool expanded = TryExpandConvexPolygon(hull, ZonePadding, s_ExpandedHullBuffer);
+            bool created = expanded
+                ? TryCreateZoneFromPolygon(key, s_ExpandedHullBuffer, displayY, out zone)
+                : TryCreateZoneFromPolygon(key, hull, displayY, out zone);
+            s_ExpandedHullBuffer.Clear();
+            return created;
+        }
+
+        private static bool TryCreateZoneFromPolygon(int key, List<Vector2> polygon, float displayY, out ZoneData zone)
+        {
+            zone = default;
+
+            if (polygon == null || polygon.Count < 3)
+                return false;
+
+            Vector2 center = CalculatePolygonCenter(polygon);
+            Vector2[] vertices2D = new Vector2[polygon.Count + 1];
+            Vector3[] renderVertices = new Vector3[polygon.Count + 1];
+            int[] triangles = new int[polygon.Count * 3];
+
+            vertices2D[0] = center;
+            renderVertices[0] = new Vector3(center.x, displayY, center.y);
+
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Vector2 point = polygon[i];
+                vertices2D[i + 1] = point;
+                renderVertices[i + 1] = new Vector3(point.x, displayY, point.y);
+
+                int triOffset = i * 3;
+                triangles[triOffset] = 0;
+                triangles[triOffset + 1] = i + 1;
+                triangles[triOffset + 2] = (i + 1) % polygon.Count + 1;
+            }
 
             ComputeAabb(vertices2D, out float minX, out float maxX, out float minZ, out float maxZ);
 
-            zone = new ZoneData(key, vertices2D, renderVertices, projectedTriangles, minX, maxX, minZ, maxZ);
+            zone = new ZoneData(key, vertices2D, renderVertices, triangles, minX, maxX, minZ, maxZ);
             return true;
+        }
+
+        private static bool TryExpandConvexPolygon(List<Vector2> polygon, float distance, List<Vector2> output)
+        {
+            output.Clear();
+
+            if (polygon == null || polygon.Count < 3)
+                return false;
+
+            if (distance <= 0f)
+            {
+                output.AddRange(polygon);
+                return true;
+            }
+
+            float signedArea = CalculateSignedArea(polygon);
+            if (Mathf.Abs(signedArea) <= MinTriangleArea)
+                return false;
+
+            bool isClockwise = signedArea < 0f;
+            int count = polygon.Count;
+
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 prev = polygon[(i - 1 + count) % count];
+                Vector2 current = polygon[i];
+                Vector2 next = polygon[(i + 1) % count];
+
+                Vector2 prevDir = (current - prev).normalized;
+                Vector2 nextDir = (next - current).normalized;
+                Vector2 prevNormal = GetOutwardNormal(prevDir, isClockwise);
+                Vector2 nextNormal = GetOutwardNormal(nextDir, isClockwise);
+
+                Vector2 p1 = prev + prevNormal * distance;
+                Vector2 p2 = current + nextNormal * distance;
+                Vector2 currentPrevOffset = current + prevNormal * distance;
+                Vector2 currentNextOffset = current + nextNormal * distance;
+
+                if (TryIntersectLines(p1, prevDir, p2, nextDir, out Vector2 expandedPoint)
+                    && (expandedPoint - current).sqrMagnitude <= distance * distance * MaxMiterLengthMultiplier * MaxMiterLengthMultiplier)
+                {
+                    output.Add(expandedPoint);
+                    continue;
+                }
+
+                output.Add(currentPrevOffset);
+                output.Add(currentNextOffset);
+            }
+
+            return output.Count >= 3;
+        }
+
+        private static Vector2 GetOutwardNormal(Vector2 direction, bool isClockwise)
+        {
+            return isClockwise
+                ? new Vector2(-direction.y, direction.x)
+                : new Vector2(direction.y, -direction.x);
+        }
+
+        private static bool TryIntersectLines(Vector2 p1, Vector2 d1, Vector2 p2, Vector2 d2, out Vector2 intersection)
+        {
+            intersection = default;
+
+            float cross = d1.x * d2.y - d1.y * d2.x;
+            if (Mathf.Abs(cross) <= 0.000001f)
+                return false;
+
+            Vector2 delta = p2 - p1;
+            float t = (delta.x * d2.y - delta.y * d2.x) / cross;
+            intersection = p1 + d1 * t;
+            return true;
+        }
+
+        private static float CalculateSignedArea(List<Vector2> polygon)
+        {
+            float area = 0f;
+            if (polygon == null)
+                return area;
+
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Vector2 a = polygon[i];
+                Vector2 b = polygon[(i + 1) % polygon.Count];
+                area += a.x * b.y - b.x * a.y;
+            }
+
+            return area * 0.5f;
+        }
+
+        private static Vector2 CalculatePolygonCenter(List<Vector2> polygon)
+        {
+            if (polygon == null || polygon.Count == 0)
+                return Vector2.zero;
+
+            float sumX = 0f;
+            float sumY = 0f;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                sumX += polygon[i].x;
+                sumY += polygon[i].y;
+            }
+
+            float inv = 1f / polygon.Count;
+            return new Vector2(sumX * inv, sumY * inv);
         }
 
         private static float ResolveDisplayY(float minY, float referenceY)
@@ -414,30 +623,6 @@ namespace AAAGame.Card
 
             projectedTriangles = valid.ToArray();
             return true;
-        }
-
-        private static Vector2 CalculatePivot(Vector3[] vertices)
-        {
-            if (vertices == null || vertices.Length == 0)
-                return Vector2.zero;
-
-            float sumX = 0f;
-            float sumZ = 0f;
-            for (int i = 0; i < vertices.Length; i++)
-            {
-                sumX += vertices[i].x;
-                sumZ += vertices[i].z;
-            }
-
-            float inv = 1f / vertices.Length;
-            return new Vector2(sumX * inv, sumZ * inv);
-        }
-
-        private static Vector3 ScaleFootprintPoint(Vector3 point, Vector2 pivot)
-        {
-            float x = pivot.x + (point.x - pivot.x) * FootprintScale;
-            float z = pivot.y + (point.z - pivot.y) * FootprintScale;
-            return new Vector3(x, point.y, z);
         }
 
         private static void ComputeAabb(Vector2[] vertices, out float minX, out float maxX, out float minZ, out float maxZ)
@@ -543,11 +728,13 @@ namespace AAAGame.Card
             if (m_ZoneMaterial != null)
                 return m_ZoneMaterial;
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-                shader = Shader.Find("Unlit/Color");
+            Shader shader = Shader.Find("AAAGame/Card/ForbiddenZoneOverlay");
             if (shader == null)
                 shader = Shader.Find("Sprites/Default");
+            if (shader == null)
+                shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
+                shader = Shader.Find("Unlit/Color");
             if (shader == null)
                 shader = Shader.Find("Standard");
             if (shader == null)
@@ -562,10 +749,24 @@ namespace AAAGame.Card
                 m_ZoneMaterial.SetColor("_Color", color);
             if (m_ZoneMaterial.HasProperty("_Surface"))
                 m_ZoneMaterial.SetFloat("_Surface", 1f);
+            if (m_ZoneMaterial.HasProperty("_Blend"))
+                m_ZoneMaterial.SetFloat("_Blend", 0f);
+            if (m_ZoneMaterial.HasProperty("_AlphaClip"))
+                m_ZoneMaterial.SetFloat("_AlphaClip", 0f);
+            if (m_ZoneMaterial.HasProperty("_SrcBlend"))
+                m_ZoneMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            if (m_ZoneMaterial.HasProperty("_DstBlend"))
+                m_ZoneMaterial.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
             if (m_ZoneMaterial.HasProperty("_Cull"))
                 m_ZoneMaterial.SetFloat("_Cull", (float)CullMode.Off);
             if (m_ZoneMaterial.HasProperty("_ZWrite"))
                 m_ZoneMaterial.SetFloat("_ZWrite", 0f);
+            if (m_ZoneMaterial.HasProperty("_ZTest"))
+                m_ZoneMaterial.SetFloat("_ZTest", (float)CompareFunction.LessEqual);
+
+            m_ZoneMaterial.DisableKeyword("_ALPHATEST_ON");
+            m_ZoneMaterial.EnableKeyword("_ALPHABLEND_ON");
+            m_ZoneMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
 
             if (shader.name == "Standard")
             {
@@ -576,11 +777,10 @@ namespace AAAGame.Card
                 m_ZoneMaterial.DisableKeyword("_ALPHATEST_ON");
                 m_ZoneMaterial.EnableKeyword("_ALPHABLEND_ON");
                 m_ZoneMaterial.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-                m_ZoneMaterial.renderQueue = (int)RenderQueue.Transparent;
+                m_ZoneMaterial.renderQueue = ZoneRenderQueue;
             }
 
-            if (m_ZoneMaterial.renderQueue < (int)RenderQueue.Transparent)
-                m_ZoneMaterial.renderQueue = (int)RenderQueue.Transparent;
+            m_ZoneMaterial.renderQueue = ZoneRenderQueue;
 
             return m_ZoneMaterial;
         }

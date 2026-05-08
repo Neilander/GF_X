@@ -22,6 +22,7 @@ public class SimpleJoystick : MonoBehaviour, IDragHandler, IPointerDownHandler, 
         {
             m_Enable = value;
             canvasGroup.alpha = m_Enable ? 1 : 0;
+            canvasGroup.blocksRaycasts = m_Enable;
         }
     }
     // 输入值属性
@@ -40,16 +41,24 @@ public class SimpleJoystick : MonoBehaviour, IDragHandler, IPointerDownHandler, 
         originalBackgroundPos = background.anchoredPosition;
         canvasGroup = GetComponent<CanvasGroup>();
         if(canvasGroup == null) canvasGroup = gameObject.AddComponent<CanvasGroup>();
-        canvasGroup.blocksRaycasts = true;
+        canvasGroup.blocksRaycasts = m_Enable;
     }
     public void OnPointerDown(PointerEventData eventData)
     {
-        canvasGroup.alpha = 1;
+        if (!m_Enable)
+            return;
+
+        if (showOnTouch)
+            canvasGroup.alpha = 1;
+
         CalculateInput(eventData);
     }
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (!m_Enable)
+            return;
+
         CalculateInput(eventData);
     }
 
@@ -59,7 +68,7 @@ public class SimpleJoystick : MonoBehaviour, IDragHandler, IPointerDownHandler, 
         clampedInput = Vector2.zero;
         handle.anchoredPosition = Vector2.zero;
         background.anchoredPosition = originalBackgroundPos;
-        canvasGroup.alpha = 0.5f;
+        canvasGroup.alpha = m_Enable ? (showOnTouch ? 0.5f : 1) : 0;
         OnPointerUpCallback?.Invoke();
     }
 

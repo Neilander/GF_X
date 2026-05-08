@@ -47,11 +47,6 @@
         UnitType SoldierIndex { get; }
 
         /// <summary>
-        /// 生成半径
-        /// </summary>
-        float SpawnRadius { get; }
-
-        /// <summary>
         /// 卡牌颜色
         /// </summary>
         UnityEngine.Color CardColor { get; }

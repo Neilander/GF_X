@@ -49,11 +49,6 @@ namespace AAAGame.Card
         public string SoldierPrefabPath { get; private set; }
 
         /// <summary>
-        /// 生成半径
-        /// </summary>
-        public float SpawnRadius { get; private set; }
-
-        /// <summary>
         /// 卡牌颜色（十六进制字符串）
         /// </summary>
         public string CardColorHex { get; private set; }
@@ -69,10 +64,10 @@ namespace AAAGame.Card
         public bool ParseDataRow(string dataRowString, object userData)
         {
             // TODO: 实现数据解析逻辑
-            // 格式示例：id,cardName,spritePath,populationCost,soldierCount,soldierName,prefabPath,spawnRadius,colorHex,dropWeight
+            // 格式示例：id,cardName,spritePath,populationCost,soldierCount,soldierName,prefabPath,colorHex,dropWeight
             string[] columns = dataRowString.Split('\t');
             
-            if (columns.Length < 10)
+            if (columns.Length < 9)
             {
                 return false;
             }
@@ -85,7 +80,6 @@ namespace AAAGame.Card
             SoldierCount = int.Parse(columns[index++]);
             SoldierName = columns[index++];
             SoldierPrefabPath = columns[index++];
-            SpawnRadius = float.Parse(columns[index++]);
             CardColorHex = columns[index++];
             DropWeight = int.Parse(columns[index++]);
 

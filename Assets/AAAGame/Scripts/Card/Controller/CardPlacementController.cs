@@ -35,6 +35,7 @@ namespace AAAGame.Card
 
         private readonly List<Vector3> m_CachedPreviewSpawnPositions = new List<Vector3>();
         private Vector3 m_CachedPreviewCenterPosition;
+        private Vector3 m_CachedPreviewResolvedPosition;
         private bool m_CachedPreviewResult;
         private float m_CachedPreviewTime;
         private CardModel m_CachedPreviewCard;
@@ -129,7 +130,13 @@ namespace AAAGame.Card
                 return false;
             }
 
-            isValid = EvaluatePlacementPreview(groundPosition, previewSpawnPositions);
+            Vector3 requestedPosition = groundPosition;
+            isValid = EvaluatePlacementPreview(requestedPosition, previewSpawnPositions, out Vector3 resolvedPosition);
+            if (isValid)
+            {
+                groundPosition = resolvedPosition;
+            }
+
             return true;
         }
 
@@ -162,16 +169,17 @@ namespace AAAGame.Card
                 return;
             }
 
-            m_CurrentPlacementPosition = groundPosition;
+            Vector3 requestedPosition = groundPosition;
             if (!hasPreviewListeners)
             {
                 return;
             }
 
             bool wasPlacementValid = m_IsValidPlacement;
-            m_IsValidPlacement = EvaluatePlacementPreview(groundPosition, null);
+            m_IsValidPlacement = EvaluatePlacementPreview(requestedPosition, null, out Vector3 resolvedPosition);
+            m_CurrentPlacementPosition = m_IsValidPlacement ? resolvedPosition : requestedPosition;
 
-            OnPositionUpdated?.Invoke(groundPosition, m_IsValidPlacement);
+            OnPositionUpdated?.Invoke(m_CurrentPlacementPosition, m_IsValidPlacement);
             if (wasPlacementValid != m_IsValidPlacement)
             {
                 OnValidityChanged?.Invoke(m_IsValidPlacement);
@@ -198,21 +206,26 @@ namespace AAAGame.Card
                 return false;
             }
 
-            CardPlacementInvalidReason invalidReason = GetPlacementInvalidReason(releaseGroundPosition);
-            if (invalidReason != CardPlacementInvalidReason.None)
+            if (!TryResolveCardPlacement(
+                    cardModel,
+                    releaseGroundPosition,
+                    null,
+                    out Vector3 resolvedGroundPosition,
+                    out _,
+                    out CardPlacementInvalidReason invalidReason))
             {
                 LastInvalidReason = invalidReason;
                 LogInvalidPlacementReason(releaseGroundPosition, invalidReason);
                 return false;
             }
 
-            if (!CanSpawnCardAtPosition(cardModel, releaseGroundPosition))
+            if (!CanSpawnCardAtPosition(cardModel, resolvedGroundPosition))
             {
-                Debug.Log($"[Card] Cannot confirm placement: 预检测生成失败. pos={releaseGroundPosition}");
+                Debug.Log($"[Card] Cannot confirm placement: 预检测生成失败. requested={releaseGroundPosition}, resolved={resolvedGroundPosition}");
                 return false;
             }
 
-            m_CurrentPlacementPosition = releaseGroundPosition;
+            m_CurrentPlacementPosition = resolvedGroundPosition;
             m_IsValidPlacement = true;
 
             int soldierCount = SpawnSoldiers(cardModel, m_CurrentPlacementPosition);
@@ -286,29 +299,22 @@ namespace AAAGame.Card
             ResetPreviewCache();
         }
 
-        private bool EvaluatePlacementPreview(Vector3 position, List<Vector3> previewSpawnPositions)
+        private bool EvaluatePlacementPreview(Vector3 position, List<Vector3> previewSpawnPositions, out Vector3 resolvedPosition)
         {
-            if (!CheckPlacementValidity(position))
-            {
-                previewSpawnPositions?.Clear();
-                return false;
-            }
-
-            return TryGetCurrentCardPreviewSpawnPositionsCached(position, previewSpawnPositions);
+            return TryGetCurrentCardPreviewSpawnPositionsCached(position, previewSpawnPositions, out resolvedPosition);
         }
 
-        private bool TryGetCurrentCardPreviewSpawnPositionsCached(Vector3 centerPosition, List<Vector3> previewSpawnPositions)
+        private bool TryGetCurrentCardPreviewSpawnPositionsCached(Vector3 centerPosition, List<Vector3> previewSpawnPositions, out Vector3 resolvedPosition)
         {
             previewSpawnPositions?.Clear();
+            resolvedPosition = centerPosition;
             if (m_CurrentCardModel == null)
             {
                 return false;
             }
 
-            ICardDataProvider dataProvider = m_CurrentCardModel.DataProvider;
-            float reuseDistance = dataProvider != null
-                ? Mathf.Max(0.25f, dataProvider.SpawnRadius * 0.2f)
-                : 0.25f;
+            float formationRadius = GetCardFormationRadius(m_CurrentCardModel);
+            float reuseDistance = Mathf.Max(0.25f, formationRadius * 0.2f);
 
             if (m_HasPreviewCache
                 && ReferenceEquals(m_CachedPreviewCard, m_CurrentCardModel)
@@ -316,11 +322,18 @@ namespace AAAGame.Card
                 && Time.unscaledTime - m_CachedPreviewTime <= PreviewReuseInterval)
             {
                 CopyCachedPreviewSpawnPositions(previewSpawnPositions);
+                resolvedPosition = m_CachedPreviewResult ? m_CachedPreviewResolvedPosition : centerPosition;
                 return m_CachedPreviewResult;
             }
 
-            bool result = TryGetCardPreviewSpawnPositions(m_CurrentCardModel, centerPosition, m_CachedPreviewSpawnPositions);
+            bool result = TryGetCardPreviewSpawnPositions(m_CurrentCardModel, centerPosition, m_CachedPreviewSpawnPositions, out resolvedPosition);
+            if (result)
+            {
+                m_CurrentPlacementPosition = resolvedPosition;
+            }
+
             m_CachedPreviewCenterPosition = centerPosition;
+            m_CachedPreviewResolvedPosition = resolvedPosition;
             m_CachedPreviewResult = result;
             m_CachedPreviewTime = Time.unscaledTime;
             m_CachedPreviewCard = m_CurrentCardModel;
@@ -341,8 +354,9 @@ namespace AAAGame.Card
             previewSpawnPositions.AddRange(m_CachedPreviewSpawnPositions);
         }
 
-        private bool TryGetCardPreviewSpawnPositions(CardModel cardModel, Vector3 centerPosition, List<Vector3> previewSpawnPositions)
+        private bool TryGetCardPreviewSpawnPositions(CardModel cardModel, Vector3 centerPosition, List<Vector3> previewSpawnPositions, out Vector3 resolvedPosition)
         {
+            resolvedPosition = centerPosition;
             if (cardModel == null || previewSpawnPositions == null)
             {
                 return false;
@@ -362,7 +376,13 @@ namespace AAAGame.Card
                 return false;
             }
 
-            return ClusterSpawnSystem.TryGetPreviewSpawnPositions(centerPosition, soldierCount, dataProvider.SpawnRadius, 2f, previewSpawnPositions);
+            return TryResolveCardPlacement(
+                cardModel,
+                centerPosition,
+                previewSpawnPositions,
+                out resolvedPosition,
+                out _,
+                out _);
         }
 
         private bool TryGetGroundPosition(out Vector3 groundPosition)
@@ -396,19 +416,25 @@ namespace AAAGame.Card
 
         private bool CheckPlacementValidity(Vector3 position)
         {
-            return GetPlacementInvalidReason(position) == CardPlacementInvalidReason.None;
+            return GetPlacementInvalidReason(position, m_DetectionRadius) == CardPlacementInvalidReason.None;
         }
 
         private CardPlacementInvalidReason GetPlacementInvalidReason(Vector3 position)
+        {
+            return GetPlacementInvalidReason(position, m_DetectionRadius);
+        }
+
+        private CardPlacementInvalidReason GetPlacementInvalidReason(Vector3 position, float radius)
         {
             if (!IsPositionInVisibleArea(position))
             {
                 return CardPlacementInvalidReason.NotInVisibleArea;
             }
 
+            float checkRadius = Mathf.Max(0.1f, radius);
             int forbiddenCount = Physics.OverlapSphereNonAlloc(
                 position,
-                m_DetectionRadius,
+                checkRadius,
                 m_ForbiddenOverlapBuffer,
                 m_ForbiddenLayer);
             if (forbiddenCount > 0)
@@ -417,14 +443,14 @@ namespace AAAGame.Card
             }
 
             if (m_AdditionalForbiddenChecker != null
-                && m_AdditionalForbiddenChecker(position, m_DetectionRadius))
+                && m_AdditionalForbiddenChecker(position, checkRadius))
             {
                 return CardPlacementInvalidReason.DynamicForbiddenArea;
             }
 
             int groundCount = Physics.OverlapSphereNonAlloc(
                 position,
-                m_DetectionRadius,
+                checkRadius,
                 m_GroundOverlapBuffer,
                 m_GroundLayer);
             return groundCount > 0
@@ -451,7 +477,68 @@ namespace AAAGame.Card
                 return false;
             }
 
-            return ClusterSpawnSystem.CanSpawnCluster(centerPosition, soldierCount, dataProvider.SpawnRadius, 2f);
+            return ClusterSpawnSystem.CanSpawnCluster(centerPosition, soldierCount, GetCardFormationRadius(cardModel), 2f, true);
+        }
+
+        private bool TryResolveCardPlacement(
+            CardModel cardModel,
+            Vector3 requestedCenter,
+            List<Vector3> spawnPositions,
+            out Vector3 resolvedCenter,
+            out float formationRadius,
+            out CardPlacementInvalidReason invalidReason)
+        {
+            resolvedCenter = requestedCenter;
+            formationRadius = GetCardFormationRadius(cardModel);
+            invalidReason = CardPlacementInvalidReason.SpawnFailed;
+            spawnPositions?.Clear();
+
+            if (cardModel == null || cardModel.DataProvider == null)
+            {
+                return false;
+            }
+
+            int soldierCount = cardModel.GetTroopCount();
+            if (soldierCount <= 0)
+            {
+                return false;
+            }
+
+            List<Vector3> targetPositions = spawnPositions ?? m_CachedPreviewSpawnPositions;
+            bool resolved = ClusterSpawnSystem.TryResolvePreviewSpawnPositions(
+                requestedCenter,
+                soldierCount,
+                formationRadius,
+                2f,
+                IsPlacementCenterAllowed,
+                targetPositions,
+                out resolvedCenter);
+
+            if (resolved)
+            {
+                invalidReason = CardPlacementInvalidReason.None;
+                return true;
+            }
+
+            invalidReason = GetPlacementInvalidReason(requestedCenter, formationRadius);
+            if (invalidReason == CardPlacementInvalidReason.None)
+            {
+                invalidReason = CardPlacementInvalidReason.SpawnFailed;
+            }
+
+            targetPositions.Clear();
+            return false;
+        }
+
+        private bool IsPlacementCenterAllowed(Vector3 centerPosition, float radius)
+        {
+            return GetPlacementInvalidReason(centerPosition, radius) == CardPlacementInvalidReason.None;
+        }
+
+        private static float GetCardFormationRadius(CardModel cardModel)
+        {
+            int soldierCount = cardModel != null ? cardModel.GetTroopCount() : 0;
+            return ClusterSpawnSystem.CalculateAutoSpawnRadius(soldierCount);
         }
 
         private void ResetPreviewCache()
@@ -459,6 +546,7 @@ namespace AAAGame.Card
             m_HasPreviewCache = false;
             m_CachedPreviewCard = null;
             m_CachedPreviewCenterPosition = Vector3.zero;
+            m_CachedPreviewResolvedPosition = Vector3.zero;
             m_CachedPreviewResult = false;
             m_CachedPreviewTime = 0f;
             m_CachedPreviewSpawnPositions.Clear();
@@ -545,7 +633,7 @@ namespace AAAGame.Card
                 return 0;
             }
 
-            float spawnRadius = dataProvider.SpawnRadius;
+            float spawnRadius = GetCardFormationRadius(cardModel);
             UnitType soldierIndex = dataProvider.SoldierIndex;
 
             string sourceBuildingInstanceId = cardModel.GetSourceBuildingInstanceId();
@@ -562,7 +650,9 @@ namespace AAAGame.Card
                 soldierIndex,
                 SideType.PlayerSide,
                 BrainType.SoldierAI,
-                sourceBuildingInstanceId);
+                sourceBuildingInstanceId,
+                null,
+                true);
 
             if (!spawnSuccess)
             {

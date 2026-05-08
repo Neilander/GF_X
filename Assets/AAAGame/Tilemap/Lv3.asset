@@ -1734,6 +1734,7 @@ MonoBehaviour:
   - {x: 57, y: 21}
   - {x: 58, y: 21}
   - {x: 59, y: 21}
+  - {x: 60, y: 21}
   - {x: 61, y: 21}
   - {x: 62, y: 21}
   - {x: 63, y: 21}
@@ -4447,6 +4448,7 @@ MonoBehaviour:
   - {x: 57, y: 21}
   - {x: 58, y: 21}
   - {x: 59, y: 21}
+  - {x: 60, y: 21}
   - {x: 61, y: 21}
   - {x: 62, y: 21}
   - {x: 63, y: 21}
@@ -5468,7 +5470,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build SH_1_4
   guid: c8f94651-3c0f-4001-85ba-28115365c819
@@ -10850,7 +10852,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build Plane
   guid: 1c43cd3c-7ad2-460b-8d60-d2bccaafb00a
@@ -12656,13 +12658,14 @@ MonoBehaviour:
   - {x: 53, y: 20}
   - {x: 54, y: 20}
   - {x: 50, y: 21}
+  - {x: 61, y: 21}
   - {x: 62, y: 21}
   - {x: 63, y: 21}
   - {x: 60, y: 20}
   - {x: 61, y: 20}
   - {x: 62, y: 20}
   - {x: 63, y: 20}
-  - {x: 61, y: 21}
+  - {x: 60, y: 21}
   - {x: 11, y: 19}
   - {x: 12, y: 19}
   - {x: 13, y: 19}
@@ -44830,22 +44833,6 @@ MonoBehaviour:
     worldMapPosition: {x: 59, y: 22}
     yRotation: 270
     yRotationOffset: 0
-    configuration: 5
-    tileType: 4
-    location:
-      north: 0
-      west: 0
-      east: 0
-      south: 0
-      northWest: 0
-      northEast: 0
-      southWest: 0
-      southEast: 0
-  - isAssigned: 1
-    tilePosition: {x: 59.5, y: 20.5}
-    worldMapPosition: {x: 59, y: 21}
-    yRotation: 270
-    yRotationOffset: 0
     configuration: 13
     tileType: 2
     location:
@@ -44858,12 +44845,28 @@ MonoBehaviour:
       southWest: 0
       southEast: 0
   - isAssigned: 1
-    tilePosition: {x: 60.5, y: 20.5}
-    worldMapPosition: {x: 61, y: 21}
-    yRotation: 180
+    tilePosition: {x: 59.5, y: 20.5}
+    worldMapPosition: {x: 59, y: 21}
+    yRotation: 0
     yRotationOffset: 0
-    configuration: 14
-    tileType: 2
+    configuration: 15
+    tileType: 5
+    location:
+      north: 0
+      west: 0
+      east: 0
+      south: 0
+      northWest: 0
+      northEast: 0
+      southWest: 0
+      southEast: 0
+  - isAssigned: 1
+    tilePosition: {x: 60.5, y: 20.5}
+    worldMapPosition: {x: 60, y: 21}
+    yRotation: 0
+    yRotationOffset: 0
+    configuration: 15
+    tileType: 5
     location:
       north: 0
       west: 0
@@ -44875,11 +44878,11 @@ MonoBehaviour:
       southEast: 0
   - isAssigned: 1
     tilePosition: {x: 60.5, y: 21.5}
-    worldMapPosition: {x: 61, y: 21}
+    worldMapPosition: {x: 60, y: 21}
     yRotation: 180
     yRotationOffset: 0
-    configuration: 8
-    tileType: 1
+    configuration: 12
+    tileType: 4
     location:
       north: 0
       west: 0
@@ -63462,7 +63465,7 @@ MonoBehaviour:
   m_Name: (Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build SH_1_0
   guid: 04a8f0ef-b52a-4497-b9e2-10c51ee0d4ef
@@ -69262,7 +69265,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build SH_1_1
   guid: 714332d4-ddfc-452b-91c2-504bc13c26b5
@@ -94304,7 +94307,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build SH_1_3
   guid: c37566ac-9082-418e-905b-8c0f5013ae3e
@@ -99187,7 +99190,7 @@ MonoBehaviour:
   clusterCellSize: 5
   useGlobalRandomSeed: 0
   globalRandomSeed: 1
-  currentRandomSeed: 3182619723
+  currentRandomSeed: 3152481301
   layerChanged: 1
   showGizmos: 0
   showPaintGrid: 0
@@ -102980,7 +102983,7 @@ MonoBehaviour:
   m_Name: (Clone)(Clone)
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build SH_1_2
   guid: 2ad2fca9-9349-407a-b20f-8d79ecfdf7d3
@@ -107210,7 +107213,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build SH_0_0
   guid: dbdd11d5-35f3-4251-9389-455b0bdd33af
@@ -112152,7 +112155,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   random:
-    state: 3880023702
+    state: 383100359
   isEnabled: 1
   layerName: Build Water
   guid: f8f48311-d058-47b7-bffa-f8ef335c4e6c

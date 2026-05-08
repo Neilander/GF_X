@@ -34,10 +34,6 @@ public class CardData : ScriptableObject
     [Header("士兵生成")]
     [Tooltip("士兵index")]
     public UnitType soldierIndex;
-    
-    [Tooltip("生成半径（士兵围绕中心点生成的范围）")]
-    [Range(0.5f, 5f)]
-    public float spawnRadius = 1.5f;
 
     [Header("卡牌颜色（占位用）")]
     public Color cardColor = Color.white;

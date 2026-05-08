@@ -20,6 +20,5 @@ MonoBehaviour:
   soldierCount: 7
   soldierName: "\u7801\u519C"
   soldierIndex: 2
-  spawnRadius: 1.5
   cardColor: {r: 1, g: 1, b: 1, a: 1}
   dropWeight: 10

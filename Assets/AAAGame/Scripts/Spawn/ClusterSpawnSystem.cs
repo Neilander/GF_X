@@ -14,6 +14,26 @@ public static class ClusterSpawnSystem
     private const float MaxHorizontalSnapDistance = 1.2f;
     private const float FixedSpawnDistance = 0.7f;
     private const float FixedEdgeClearance = 0.2f;
+    private const float MinAutoSpawnRadius = 0.8f;
+    private const float NearbyCenterSearchStep = 0.8f;
+    private const int NearbyCenterSearchRings = 7;
+    private const int NearbyCenterSamplesPerRing = 12;
+
+    public delegate bool SpawnCenterValidator(Vector3 center, float radius);
+
+    /// <summary>
+    /// 根据单位数量推导编队半径，避免卡牌资源各自配置生成半径。
+    /// </summary>
+    public static float CalculateAutoSpawnRadius(int count)
+    {
+        if (count <= 1)
+        {
+            return MinAutoSpawnRadius;
+        }
+
+        float radius = Mathf.Sqrt(count) * FixedSpawnDistance * 0.55f + FixedSpawnDistance * 0.35f;
+        return Mathf.Max(MinAutoSpawnRadius, radius);
+    }
 
     /// <summary>
     /// 旧版校验接口，保留兼容。
@@ -74,7 +94,8 @@ public static class ClusterSpawnSystem
         SideType side,
         BrainType brainType,
         string sourceBuildingInstanceId = null,
-        string sourceStrongholdId = null)
+        string sourceStrongholdId = null,
+        bool avoidExistingAgents = false)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -84,7 +105,7 @@ public static class ClusterSpawnSystem
         Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
 
         List<Vector3> spawnPositions = new List<Vector3>(count);
-        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions))
+        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents))
         {
             Debug.LogWarning(
                 $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
@@ -114,7 +135,8 @@ public static class ClusterSpawnSystem
         string sourceBuildingInstanceId = null,
         int yieldEveryUnits = 2,
         Func<bool> keepSpawningPredicate = null,
-        string sourceStrongholdId = null)
+        string sourceStrongholdId = null,
+        bool avoidExistingAgents = false)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -122,7 +144,7 @@ public static class ClusterSpawnSystem
         }
 
         List<Vector3> spawnPositions = new List<Vector3>(count);
-        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions))
+        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents))
         {
             Debug.LogWarning(
                 $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
@@ -162,7 +184,8 @@ public static class ClusterSpawnSystem
         int count,
         float radius,
         float minDistance,
-        List<Vector3> previewPositions)
+        List<Vector3> previewPositions,
+        bool avoidExistingAgents = false)
     {
         if (previewPositions == null)
         {
@@ -180,20 +203,71 @@ public static class ClusterSpawnSystem
             return false;
         }
 
-        CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions);
+        CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, avoidExistingAgents);
         return previewPositions.Count >= count;
+    }
+
+    /// <summary>
+    /// 获取可部署编队点位。若目标点不可用，会在附近按确定性螺旋搜索合法中心点。
+    /// </summary>
+    public static bool TryResolvePreviewSpawnPositions(
+        Vector3 preferredCenter,
+        int count,
+        float radius,
+        float minDistance,
+        SpawnCenterValidator centerValidator,
+        List<Vector3> previewPositions,
+        out Vector3 resolvedCenter)
+    {
+        resolvedCenter = preferredCenter;
+
+        if (previewPositions == null)
+        {
+            return false;
+        }
+
+        previewPositions.Clear();
+        if (count <= 0 || radius <= 0f || minDistance <= 0f)
+        {
+            return false;
+        }
+
+        int totalCandidates = 1 + NearbyCenterSearchRings * NearbyCenterSamplesPerRing;
+        for (int i = 0; i < totalCandidates; i++)
+        {
+            Vector3 candidate = GenerateNearbyCenterCandidate(preferredCenter, radius, i);
+            if (!TryFindLegalNavMeshPoint(candidate, FixedEdgeClearance, out Vector3 legalCenter))
+            {
+                continue;
+            }
+
+            if (centerValidator != null && !centerValidator(legalCenter, radius))
+            {
+                continue;
+            }
+
+            CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, true);
+            if (previewPositions.Count >= count)
+            {
+                resolvedCenter = legalCenter;
+                return true;
+            }
+        }
+
+        previewPositions.Clear();
+        return false;
     }
 
     /// <summary>
     /// 预检当前位置是否可以生成整组单位。
     /// </summary>
-    public static bool CanSpawnCluster(Vector3 center, int count, float radius, float minDistance)
+    public static bool CanSpawnCluster(Vector3 center, int count, float radius, float minDistance, bool avoidExistingAgents = false)
     {
         List<Vector3> spawnPositions = new List<Vector3>(count);
-        return TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions);
+        return TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents);
     }
 
-    private static void CollectLegalSpawnPositions(Vector3 legalCenter, int count, float radius, List<Vector3> spawnPositions)
+    private static void CollectLegalSpawnPositions(Vector3 legalCenter, int count, float radius, List<Vector3> spawnPositions, bool avoidExistingAgents)
     {
         spawnPositions.Clear();
 
@@ -202,6 +276,11 @@ public static class ClusterSpawnSystem
         {
             Vector3 candidate = GenerateDeterministicPointInCircle(legalCenter, radius, i, maxAttempts);
             if (!TryFindLegalNavMeshPoint(candidate, FixedEdgeClearance, out Vector3 spawnPos))
+            {
+                continue;
+            }
+
+            if (avoidExistingAgents && IsBlockedByExistingAgent(spawnPos))
             {
                 continue;
             }
@@ -246,6 +325,49 @@ public static class ClusterSpawnSystem
 
         legalPoint = navHit.position;
         return true;
+    }
+
+    private static bool IsBlockedByExistingAgent(Vector3 position)
+    {
+        if (!GroupMoveManager.HasInstance || GroupMoveManager.Instance.Coordinator == null)
+        {
+            return false;
+        }
+
+        foreach (var pair in GroupMoveManager.Instance.Coordinator.AllAgents)
+        {
+            GroupMoveCoordinator.AgentData agent = pair.Value;
+            if (agent.IgnoreAgentCollision)
+            {
+                continue;
+            }
+
+            Vector2 agentXZ = new Vector2(agent.Position.x, agent.Position.z);
+            Vector2 posXZ = new Vector2(position.x, position.z);
+            float requiredDistance = Mathf.Max(FixedSpawnDistance, agent.Radius + FixedSpawnDistance * 0.5f);
+            if ((agentXZ - posXZ).sqrMagnitude < requiredDistance * requiredDistance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Vector3 GenerateNearbyCenterCandidate(Vector3 center, float formationRadius, int index)
+    {
+        if (index <= 0)
+        {
+            return center;
+        }
+
+        int adjusted = index - 1;
+        int ring = adjusted / NearbyCenterSamplesPerRing + 1;
+        int ringIndex = adjusted % NearbyCenterSamplesPerRing;
+        float angleOffset = ring * 0.37f;
+        float angle = Mathf.PI * 2f * ringIndex / NearbyCenterSamplesPerRing + angleOffset;
+        float distance = ring * Mathf.Max(NearbyCenterSearchStep, formationRadius * 0.45f);
+        return center + new Vector3(Mathf.Cos(angle) * distance, 0f, Mathf.Sin(angle) * distance);
     }
 
     /// <summary>

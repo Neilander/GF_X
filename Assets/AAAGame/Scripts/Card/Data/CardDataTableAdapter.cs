@@ -51,8 +51,6 @@ namespace AAAGame.Card
         
 
 
-        public float SpawnRadius => m_DataRow.SpawnRadius;
-        
         public Color CardColor
         {
             get
