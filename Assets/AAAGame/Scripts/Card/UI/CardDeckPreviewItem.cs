@@ -76,12 +76,13 @@ namespace AAAGame.Card
             {
                 if (cardSprite != null)
                 {
+                    cardImage.enabled = true;
                     cardImage.sprite = cardSprite;
                     cardImage.color = Color.white;
                 }
                 else
                 {
-                    cardImage.color = cardColor;
+                    cardImage.enabled = false;
                 }
             }
 

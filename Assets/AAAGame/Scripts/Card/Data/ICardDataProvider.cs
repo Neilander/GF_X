@@ -47,6 +47,11 @@
         UnitType SoldierIndex { get; }
 
         /// <summary>
+        /// 适用建筑等级（1/2/3...）。CardSystemController 按 (SoldierIndex, RequiredLv) 匹配建筑。
+        /// </summary>
+        int RequiredLv { get; }
+
+        /// <summary>
         /// 卡牌颜色
         /// </summary>
         UnityEngine.Color CardColor { get; }

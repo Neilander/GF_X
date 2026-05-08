@@ -23,6 +23,7 @@ namespace AAAGame.Card
         public int SoldierCount => m_CardData.soldierCount;
         public string SoldierName => m_CardData.soldierName;
         public UnitType SoldierIndex => m_CardData.soldierIndex;
+        public int RequiredLv => m_CardData.requiredLv;
         public Color CardColor => m_CardData.cardColor;
         public int DropWeight => m_CardData.dropWeight;
 

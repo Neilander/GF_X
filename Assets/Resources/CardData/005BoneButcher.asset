@@ -14,11 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   index: card_005
   cardName: "\u5254\u9AA8\u5C60\u592B"
-  cardBackSprite: {fileID: 21300000, guid: 6e54023ec6fd4f84084ee6c472ab1575, type: 3}
-  cardSprite: {fileID: 21300000, guid: fce7bdbe09d9b436d8a622810bad148b, type: 3}
+  cardBackSprite: {fileID: 21300000, guid: d8a8ca5050d1e4b5e8b1d2a863adaa7e, type: 3}
+  cardSprite: {fileID: 0}
   populationCost: 2
   soldierCount: 5
   soldierName: "\u5254\u9AA8\u5C60\u592B"
   soldierIndex: 7
+  requiredLv: 1
   cardColor: {r: 1, g: 1, b: 1, a: 1}
   dropWeight: 10

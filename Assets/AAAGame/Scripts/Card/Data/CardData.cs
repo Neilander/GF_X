@@ -35,6 +35,10 @@ public class CardData : ScriptableObject
     [Tooltip("士兵index")]
     public UnitType soldierIndex;
 
+    [Tooltip("适用建筑等级（1/2/3...）。CardSystemController 按 (soldierIndex, requiredLv) 匹配建筑。")]
+    [Range(1, 10)]
+    public int requiredLv = 1;
+
     [Header("卡牌颜色（占位用）")]
     public Color cardColor = Color.white;
 

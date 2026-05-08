@@ -146,16 +146,17 @@ namespace AAAGame.Card
                 return false;
             }
 
-            ICardDataProvider cardData = FindCardDataByUnitType(unitType);
+            int lv = sourceBuilding.buildingData.Lv;
+            ICardDataProvider cardData = FindCardData(unitType, lv);
             if (cardData == null)
             {
-                Debug.LogWarning($"[Card] No card configured for unit type '{unitType}'.");
+                Debug.LogWarning($"[Card] No card configured for unit type '{unitType}' lv={lv}.");
                 return false;
             }
 
             m_DeckCards.Add(new Card(cardData, sourceBuilding));
             RememberOwnedPlaceableCard(cardData);
-            Log.Info($"[CardGame] 卡牌入组: unitType={unitType}, source={sourceBuilding?.BuildingInstanceId ?? "None"}");
+            Log.Info($"[CardGame] 卡牌入组: unitType={unitType}, lv={lv}, source={sourceBuilding?.BuildingInstanceId ?? "None"}");
             return true;
         }
 
@@ -363,24 +364,40 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 根据单位类型查找卡牌模板。
+        /// 根据单位类型 + 建筑等级查找卡牌模板。
+        /// 优先精确匹配 (unitType, lv)；如果没找到，回退到该 unitType 下任意 lv 的第一张卡（避免完全没卡）。
         /// </summary>
-        private ICardDataProvider FindCardDataByUnitType(UnitType unitType)
+        private ICardDataProvider FindCardData(UnitType unitType, int lv)
         {
             if (m_CardPool == null)
             {
                 return null;
             }
 
+            ICardDataProvider fallback = null;
             foreach (var card in m_CardPool)
             {
-                if (card != null && card.SoldierIndex == unitType)
+                if (card == null || card.SoldierIndex != unitType)
                 {
-                    return card;
+                    continue;
+                }
+
+                if (card.RequiredLv == lv)
+                {
+                    return card; // 精确匹配
+                }
+
+                if (fallback == null)
+                {
+                    fallback = card; // 暂存同 unitType 的回退
                 }
             }
 
-            return null;
+            if (fallback != null)
+            {
+                Debug.LogWarning($"[Card] Lv={lv} 没找到对应卡，回退到 unitType={unitType} 的第一张 (lv={fallback.RequiredLv})");
+            }
+            return fallback;
         }
 
         /// <summary>

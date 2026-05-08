@@ -104,13 +104,13 @@ namespace AAAGame.Card.UI
             {
                 if (cardData.cardSprite != null)
                 {
+                    cardImage.enabled = true;
                     cardImage.sprite = cardData.cardSprite;
                     cardImage.color = Color.white;
                 }
                 else
                 {
-                    cardImage.sprite = null;
-                    cardImage.color = cardData.cardColor;
+                    cardImage.enabled = false;
                 }
             }
 
