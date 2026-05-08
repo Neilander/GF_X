@@ -302,8 +302,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         {
             var mgr = GroupMoveManager.Instance;
             leaderEqR = mgr.Coordinator.LeaderEquilibriumRadius;
-            deadZoneRange = mgr.FollowDeadZoneRange;
-            innerDeadZoneRange = mgr.FollowInnerDeadZoneRange;
+            var cfg = mgr.Config;
+            deadZoneRange = cfg != null ? cfg.FollowDeadZoneRange : FallbackDeadZoneRange;
+            innerDeadZoneRange = cfg != null ? cfg.FollowInnerDeadZoneRange : FallbackInnerDeadZoneRange;
         }
         else
         {

@@ -7,51 +7,15 @@ public class GroupMoveManager : MonoBehaviour
 
     public GroupMoveCoordinator Coordinator { get; private set; }
 
-    // ── Inspector 调参面板 ──
+    [SerializeField] private GroupMoveConfig _config;
+    public GroupMoveConfig Config => _config;
 
-    [Header("单位 LJ 参数")]
-    public float UnitRepulsionStrength = 50f;
-    public float UnitAttractionStrength = 2f;
-    public float UnitEquilibriumRadius = 60f / GroupMoveCoordinator.PX_SCALE;
-    public float UnitMaxInfluenceRange = 370f / GroupMoveCoordinator.PX_SCALE;
-
-    [Header("领袖 LJ 参数")]
-    public float LeaderRepulsionStrength = 50f;
-    public float LeaderAttractionStrength = 2f;
-    public float LeaderEquilibriumRadius = 105f / GroupMoveCoordinator.PX_SCALE;
-    public float LeaderMaxInfluenceRange = 370f / GroupMoveCoordinator.PX_SCALE;
-
-    [Header("敌对阵营 LJ 参数")]
-    public float EnemyRepulsionStrength = 50f;
-    public float EnemyAttractionStrength = 10f;
-    public float EnemyEquilibriumRadius = 1.5f;
-    public float EnemyMaxInfluenceRange = 15f;
-
-    [Header("跟随死区")]
-    [Tooltip("远死区宽度。死区外圈半径 = LeaderEquilibriumRadius + 此值。死区内 desiredVel 衰减；死区外走 NavMesh。")]
-    public float FollowDeadZoneRange = 12f;
-    [Tooltip("近死区宽度。近死区半径 = LeaderEquilibriumRadius + 此值。在近死区内 desiredVel = 0，完全停下，只受 LJ 力。")]
-    public float FollowInnerDeadZoneRange = 2f;
-
-    [Header("障碍物")]
-    public float ObstacleWeight = 100f;
-
-    [Header("移动阈值")]
-    [Tooltip("没有单位速度时使用的兜底阈值")]
-    public float MoveThreshold = 0.5f;
-    [Tooltip("按单位世界速度的倍率计算低速忽略阈值。1.5 = 速度的 150%")]
-    public float MoveThresholdSpeedRatio = 1.5f;
-    [Tooltip("最终安全速度平滑系数。1=不平滑，越低越稳但响应越慢")]
-    [Range(0.01f, 1f)]
-    public float VelocitySmoothing = 0.35f;
-
-    private const string PREFS_KEY = "GroupMoveManager_Params";
+    private bool _warnedConfigMissing;
 
     private void Awake()
     {
         Instance = this;
         Coordinator = new GroupMoveCoordinator();
-        LoadParams();
         SyncParams();
     }
 
@@ -63,76 +27,6 @@ public class GroupMoveManager : MonoBehaviour
     private void Update()
     {
         SyncParams();
-        SaveParams(); // 每帧存，保证退出 Play 前一定存上
-    }
-
-    [ContextMenu("保存参数")]
-    public void SaveParams()
-    {
-        var json = JsonUtility.ToJson(new SaveData
-        {
-            unitRepStr = UnitRepulsionStrength,
-            unitAttStr = UnitAttractionStrength,
-            unitEqR = UnitEquilibriumRadius,
-            unitMaxR = UnitMaxInfluenceRange,
-            leaderRepStr = LeaderRepulsionStrength,
-            leaderAttStr = LeaderAttractionStrength,
-            leaderEqR = LeaderEquilibriumRadius,
-            leaderMaxR = LeaderMaxInfluenceRange,
-            enemyRepStr = EnemyRepulsionStrength,
-            enemyAttStr = EnemyAttractionStrength,
-            enemyEqR = EnemyEquilibriumRadius,
-            enemyMaxR = EnemyMaxInfluenceRange,
-            obsWeight = ObstacleWeight,
-            moveThreshold = MoveThreshold,
-            moveThresholdSpeedRatio = MoveThresholdSpeedRatio,
-            velocitySmoothing = VelocitySmoothing,
-            followDeadZoneRange = FollowDeadZoneRange,
-            followInnerDeadZoneRange = FollowInnerDeadZoneRange,
-        });
-        PlayerPrefs.SetString(PREFS_KEY, json);
-        PlayerPrefs.Save();
-    }
-
-    [ContextMenu("读取参数")]
-    public void LoadParams()
-    {
-        if (!PlayerPrefs.HasKey(PREFS_KEY)) return;
-        var json = PlayerPrefs.GetString(PREFS_KEY);
-        var d = JsonUtility.FromJson<SaveData>(json);
-        UnitRepulsionStrength = d.unitRepStr;
-        UnitAttractionStrength = d.unitAttStr;
-        UnitEquilibriumRadius = d.unitEqR;
-        UnitMaxInfluenceRange = d.unitMaxR;
-        LeaderRepulsionStrength = d.leaderRepStr;
-        LeaderAttractionStrength = d.leaderAttStr;
-        LeaderEquilibriumRadius = d.leaderEqR;
-        LeaderMaxInfluenceRange = d.leaderMaxR;
-        EnemyRepulsionStrength = d.enemyRepStr;
-        EnemyAttractionStrength = d.enemyAttStr;
-        EnemyEquilibriumRadius = d.enemyEqR;
-        EnemyMaxInfluenceRange = d.enemyMaxR;
-        ObstacleWeight = d.obsWeight;
-        MoveThreshold = d.moveThreshold;
-        MoveThresholdSpeedRatio = d.moveThresholdSpeedRatio <= 0f ? MoveThresholdSpeedRatio : d.moveThresholdSpeedRatio;
-        VelocitySmoothing = d.velocitySmoothing <= 0f ? VelocitySmoothing : d.velocitySmoothing;
-        // 旧存档没有这两个字段时 (FromJson 留 0) 回落到代码默认值，避免误覆盖
-        FollowDeadZoneRange = d.followDeadZoneRange <= 0f ? FollowDeadZoneRange : d.followDeadZoneRange;
-        FollowInnerDeadZoneRange = d.followInnerDeadZoneRange <= 0f ? FollowInnerDeadZoneRange : d.followInnerDeadZoneRange;
-    }
-
-    [System.Serializable]
-    private struct SaveData
-    {
-        public float unitRepStr, unitAttStr, unitEqR, unitMaxR;
-        public float leaderRepStr, leaderAttStr, leaderEqR, leaderMaxR;
-        public float enemyRepStr, enemyAttStr, enemyEqR, enemyMaxR;
-        public float obsWeight;
-        public float moveThreshold;
-        public float moveThresholdSpeedRatio;
-        public float velocitySmoothing;
-        public float followDeadZoneRange;
-        public float followInnerDeadZoneRange;
     }
 
     private void LateUpdate()
@@ -143,27 +37,108 @@ public class GroupMoveManager : MonoBehaviour
     private void SyncParams()
     {
         if (Coordinator == null) return;
-        Coordinator.UnitRepulsionStrength = UnitRepulsionStrength;
-        Coordinator.UnitAttractionStrength = UnitAttractionStrength;
-        Coordinator.DefaultEquilibriumRadius = UnitEquilibriumRadius;
-        Coordinator.DefaultMaxInfluenceRange = UnitMaxInfluenceRange;
 
-        Coordinator.LeaderRepulsionStrength = LeaderRepulsionStrength;
-        Coordinator.LeaderAttractionStrength = LeaderAttractionStrength;
-        Coordinator.LeaderEquilibriumRadius = LeaderEquilibriumRadius;
-        Coordinator.LeaderMaxInfluenceRange = LeaderMaxInfluenceRange;
+        if (_config == null)
+        {
+            if (!_warnedConfigMissing)
+            {
+                Debug.LogWarning("[GroupMoveManager] Config 未指定，Coordinator 使用代码默认参数。请在 Inspector 拖入 GroupMoveConfig.asset。", this);
+                _warnedConfigMissing = true;
+            }
+            return;
+        }
+        _warnedConfigMissing = false;
 
-        Coordinator.EnemyRepulsionStrength = EnemyRepulsionStrength;
-        Coordinator.EnemyAttractionStrength = EnemyAttractionStrength;
-        Coordinator.EnemyEquilibriumRadius = EnemyEquilibriumRadius;
-        Coordinator.EnemyMaxInfluenceRange = EnemyMaxInfluenceRange;
+        var c = _config;
+        Coordinator.UnitRepulsionStrength = c.UnitRepulsionStrength;
+        Coordinator.UnitAttractionStrength = c.UnitAttractionStrength;
+        Coordinator.DefaultEquilibriumRadius = c.UnitEquilibriumRadius;
+        Coordinator.DefaultMaxInfluenceRange = c.UnitMaxInfluenceRange;
 
-        Coordinator.ObstacleWeight = ObstacleWeight;
-        Coordinator.MoveThreshold = MoveThreshold;
-        Coordinator.MoveThresholdSpeedRatio = MoveThresholdSpeedRatio;
-        Coordinator.VelocitySmoothing = VelocitySmoothing;
+        Coordinator.LeaderRepulsionStrength = c.LeaderRepulsionStrength;
+        Coordinator.LeaderAttractionStrength = c.LeaderAttractionStrength;
+        Coordinator.LeaderEquilibriumRadius = c.LeaderEquilibriumRadius;
+        Coordinator.LeaderMaxInfluenceRange = c.LeaderMaxInfluenceRange;
+
+        Coordinator.EnemyRepulsionStrength = c.EnemyRepulsionStrength;
+        Coordinator.EnemyAttractionStrength = c.EnemyAttractionStrength;
+        Coordinator.EnemyEquilibriumRadius = c.EnemyEquilibriumRadius;
+        Coordinator.EnemyMaxInfluenceRange = c.EnemyMaxInfluenceRange;
+
+        Coordinator.ObstacleWeight = c.ObstacleWeight;
+        Coordinator.MoveThreshold = c.MoveThreshold;
+        Coordinator.MoveThresholdSpeedRatio = c.MoveThresholdSpeedRatio;
+        Coordinator.VelocitySmoothing = c.VelocitySmoothing;
 
         Coordinator.SyncAllAgentParams();
+    }
+
+    /// <summary>
+    /// 一次性迁移工具：把旧版 PlayerPrefs 里的调参写到当前 Config SO 中，并清掉 PlayerPrefs。
+    /// 仅 Editor 使用，迁完即可移除。
+    /// </summary>
+    [ContextMenu("一次性迁移：旧 PlayerPrefs → Config SO")]
+    public void MigrateLegacyPrefsToConfig()
+    {
+#if UNITY_EDITOR
+        const string LEGACY_KEY = "GroupMoveManager_Params";
+        if (_config == null)
+        {
+            Debug.LogError("[GroupMoveManager] 迁移失败：先在 Inspector 拖入 Config 资产再点迁移。", this);
+            return;
+        }
+        if (!PlayerPrefs.HasKey(LEGACY_KEY))
+        {
+            Debug.Log("[GroupMoveManager] 没有旧 PlayerPrefs，无需迁移。", this);
+            return;
+        }
+
+        var json = PlayerPrefs.GetString(LEGACY_KEY);
+        var d = JsonUtility.FromJson<LegacySaveData>(json);
+        if (d.unitEqR > 0f) _config.UnitEquilibriumRadius = d.unitEqR;
+        if (d.unitMaxR > 0f) _config.UnitMaxInfluenceRange = d.unitMaxR;
+        if (d.unitRepStr > 0f) _config.UnitRepulsionStrength = d.unitRepStr;
+        if (d.unitAttStr > 0f) _config.UnitAttractionStrength = d.unitAttStr;
+
+        if (d.leaderEqR > 0f) _config.LeaderEquilibriumRadius = d.leaderEqR;
+        if (d.leaderMaxR > 0f) _config.LeaderMaxInfluenceRange = d.leaderMaxR;
+        if (d.leaderRepStr > 0f) _config.LeaderRepulsionStrength = d.leaderRepStr;
+        if (d.leaderAttStr > 0f) _config.LeaderAttractionStrength = d.leaderAttStr;
+
+        if (d.enemyEqR > 0f) _config.EnemyEquilibriumRadius = d.enemyEqR;
+        if (d.enemyMaxR > 0f) _config.EnemyMaxInfluenceRange = d.enemyMaxR;
+        if (d.enemyRepStr > 0f) _config.EnemyRepulsionStrength = d.enemyRepStr;
+        if (d.enemyAttStr > 0f) _config.EnemyAttractionStrength = d.enemyAttStr;
+
+        if (d.obsWeight > 0f) _config.ObstacleWeight = d.obsWeight;
+        if (d.moveThreshold > 0f) _config.MoveThreshold = d.moveThreshold;
+        if (d.moveThresholdSpeedRatio > 0f) _config.MoveThresholdSpeedRatio = d.moveThresholdSpeedRatio;
+        if (d.velocitySmoothing > 0f) _config.VelocitySmoothing = d.velocitySmoothing;
+        if (d.followDeadZoneRange > 0f) _config.FollowDeadZoneRange = d.followDeadZoneRange;
+        if (d.followInnerDeadZoneRange > 0f) _config.FollowInnerDeadZoneRange = d.followInnerDeadZoneRange;
+
+        UnityEditor.EditorUtility.SetDirty(_config);
+        UnityEditor.AssetDatabase.SaveAssets();
+        PlayerPrefs.DeleteKey(LEGACY_KEY);
+        PlayerPrefs.Save();
+        Debug.Log("[GroupMoveManager] 迁移完成，旧 PlayerPrefs 已清除。", _config);
+#else
+        Debug.LogWarning("[GroupMoveManager] 迁移工具仅 Editor 可用。");
+#endif
+    }
+
+    [System.Serializable]
+    private struct LegacySaveData
+    {
+        public float unitRepStr, unitAttStr, unitEqR, unitMaxR;
+        public float leaderRepStr, leaderAttStr, leaderEqR, leaderMaxR;
+        public float enemyRepStr, enemyAttStr, enemyEqR, enemyMaxR;
+        public float obsWeight;
+        public float moveThreshold;
+        public float moveThresholdSpeedRatio;
+        public float velocitySmoothing;
+        public float followDeadZoneRange;
+        public float followInnerDeadZoneRange;
     }
 
     // ── Agent 注册 ──
@@ -240,11 +215,9 @@ public class GroupMoveManager : MonoBehaviour
             var agent = kvp.Value;
             bool isLeader = agent.IsLeader;
 
-            // 斥力半径（实线，深色）
             Gizmos.color = isLeader ? Color.yellow : Color.white;
             DrawCircle(agent.Position, agent.EquilibriumRadius, 24);
 
-            // 最大影响范围（深色）
             Gizmos.color = isLeader ? new Color(1f, 0.6f, 0f, 0.8f) : new Color(0.5f, 0.5f, 1f, 0.6f);
             DrawCircle(agent.Position, agent.MaxInfluenceRange, 32);
         }
@@ -271,13 +244,6 @@ public class GroupMoveManager : MonoBehaviour
                 Gizmos.color = Color.blue;
                 Gizmos.DrawLine(pos, pos + info.DesiredVelocity.normalized * 1f);
             }
-
-            // if (info.SafeVelocity.sqrMagnitude > 0.01f)
-            // {
-            //     Gizmos.color = Color.green;
-            //     Gizmos.DrawLine(pos, pos + info.SafeVelocity.normalized * 1.2f);
-            //     DrawArrowHead(pos + info.SafeVelocity.normalized * 1.2f, info.SafeVelocity.normalized, 0.2f);
-            // }
         }
     }
 
