@@ -10,17 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 75e878bc02ba0cd4e8073a0df07a7ed1, type: 3}
-  m_Name: Cue_SFX_Move
+  m_Name: Build
   m_EditorClassIdentifier: 
   category: 2
   clips:
-  - {fileID: 8300000, guid: c2187892501ad324da746bcf3d02e404, type: 3}
-  - {fileID: 8300000, guid: 77f48cae11aadc84e842d8aa9a1f9939, type: 3}
-  - {fileID: 8300000, guid: d9395f25bf1cd44448ae4168a5d03e8a, type: 3}
+  - {fileID: 8300000, guid: 1d17f0aaf324ce84c8dd6807d9239535, type: 3}
   volume: 1
   volumeVariance: 0
   pitch: 1
   pitchVariance: 0
-  loop: 1
+  loop: 0
   fadeIn: 0
   fadeOut: 0
