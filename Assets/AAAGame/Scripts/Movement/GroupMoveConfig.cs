@@ -37,6 +37,11 @@ public class GroupMoveConfig : ScriptableObject
     [Range(0.01f, 1f)]
     public float VelocitySmoothing = 0.35f;
 
+    [Header("敌人脱战")]
+    [Tooltip("软返航比例：敌人离家距离 ≥ ChaseRange × 此值 且周围无敌时，温和走回家（不挂 buff，可被打断索敌）。0.6 = ChaseRange 的 60%。")]
+    [Range(0f, 1f)]
+    public float EnemySoftReturnRatio = 0.6f;
+
     [Header("跟随触发")]
     [Tooltip("领袖进入此距离时单位才切 Follow 状态。调大 = 单位更早被勾过来跟随。")]
     public float FollowRecruitRadius = 8f;

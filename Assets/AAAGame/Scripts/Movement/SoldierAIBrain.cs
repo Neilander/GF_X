@@ -46,6 +46,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     public float HomeArrivedRadius = 1.5f;          // 距出生点 < 此值视为到家
     public Fix64 ReturnSpeedBonusPercent = (Fix64)0.5f;        // 返航移速加成（50%）
     public Fix64 ReturnHpRegenPercentPerSec = (Fix64)0.2f;     // 返航回血（每秒最大血量的 20%）
+    public float SoftReturnRatio = 0.6f;            // 软返航比例的 fallback（运行时优先读 GroupMoveConfig）
     private const string ReturningBuffId = "soldier_returning";
 
     // --- 状态 ---
@@ -73,6 +74,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     private Vector3? _deadZoneTarget;        // 死区内的随机导航目标点
 
     private Vector3? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
+    private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -289,8 +291,74 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     private void TickIdle(IEntityContext self, float dt)
     {
-        // Idle 状态：安静站着，只有真正重叠时才推开
-        // 不每帧 MoveTo，避免抽搐
+        // 敌方专属：远离出生点 + 周围无敌 → 温和走回家（不挂返航 buff，可被 UpdateState 切回 Combat）
+        if (!_birthPosition.HasValue)
+        {
+            _softReturning = false;
+            return;
+        }
+
+        float distFromHome = HorizontalDist(self.Position, _birthPosition.Value);
+
+        // 已到家 → 停止
+        if (distFromHome <= HomeArrivedRadius)
+        {
+            if (_softReturning)
+            {
+                _softReturning = false;
+                self.MoveComp?.StopMove();
+            }
+            return;
+        }
+
+        // 周围有敌 → 终止软返航，让 UpdateState/TargetComp 切 Combat
+        if (HasEnemyInScanRange(self))
+        {
+            if (_softReturning)
+            {
+                _softReturning = false;
+                self.MoveComp?.StopMove();
+            }
+            return;
+        }
+
+        // 触发判定：尚未在软返航中，且未达 softThreshold → 站着等
+        if (!_softReturning)
+        {
+            float softThreshold = ChaseRange * GetSoftReturnRatio();
+            if (distFromHome < softThreshold) return;
+            _softReturning = true;
+        }
+
+        // 持续走回家直到 HomeArrivedRadius 才停
+        float speed = GetWorldMoveSpeed(self);
+        self.MoveComp.SetNavTarget(_birthPosition.Value);
+        Vector3 navDir = self.MoveComp.GetNavDirection();
+        Vector3 desiredVel = navDir * speed;
+        SubmitToCoordinator(self, desiredVel, speed);
+    }
+
+    private float GetSoftReturnRatio()
+    {
+        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
+        return cfg != null ? cfg.EnemySoftReturnRatio : SoftReturnRatio;
+    }
+
+    private bool HasEnemyInScanRange(IEntityContext self)
+    {
+        float r = DetectEnemyRange;
+        float rSq = r * r;
+        var all = EntityRegistry.AllEntities;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var ent = all[i];
+            if (ent == null || ReferenceEquals(ent, self)) continue;
+            if (!IsValidAttackTarget(self, ent)) continue;
+            Vector3 d = ent.Position - self.Position;
+            d.y = 0f;
+            if (d.sqrMagnitude <= rSq) return true;
+        }
+        return false;
     }
 
     private void TickFollow(IEntityContext self, float dt)
