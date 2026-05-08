@@ -73,10 +73,15 @@ public partial class BuildingEntity : MAEntity
             BuildingInstanceId = System.Guid.NewGuid().ToString("N");
     }
 
+    /// <summary>当前注册到 BuildingOutlineFeature 的 Renderer 缓存，OnHide 反注册用。</summary>
+    private Renderer[] _outlineRenderers;
+
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
         TauntLevel = 0; // 建筑默认嘲讽等级 0
+
+        RegisterOutlineRenderers();
 
         // 使用原始的RefreshCharacterData方法来初始化建筑数据
         RefreshCharacterData(userData);
@@ -113,10 +118,42 @@ public partial class BuildingEntity : MAEntity
         LevelEntity.RequestRebakeNavMesh();
     }
 
+    /// <summary>
+    /// 把所有子 Renderer 注册到 BuildingOutlineFeature 全局列表，让屏幕空间描边 Pass 拾取。
+    /// 配套 UnregisterOutlineRenderers 在 OnHide 调用，避免对象池复用时残留死引用。
+    /// 建筑根 GameObject 打 "SkipOutline" tag 可跳过描边（tag 需先在 Project Settings → Tags 里添加）。
+    /// </summary>
+    private const string SkipOutlineTag = "SkipOutline";
+
+    private void RegisterOutlineRenderers()
+    {
+        UnregisterOutlineRenderers(); // 防御：复用前残留先清掉
+        if (HasSkipOutlineTag()) return;
+        _outlineRenderers = GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < _outlineRenderers.Length; i++)
+            BuildingOutlineFeature.Register(_outlineRenderers[i]);
+    }
+
+    /// <summary>tag 未定义时 CompareTag 抛 UnityException，这里吞掉返回 false（默认全部描边）。</summary>
+    private bool HasSkipOutlineTag()
+    {
+        try { return gameObject.CompareTag(SkipOutlineTag); }
+        catch (UnityException) { return false; }
+    }
+
+    private void UnregisterOutlineRenderers()
+    {
+        if (_outlineRenderers == null) return;
+        for (int i = 0; i < _outlineRenderers.Length; i++)
+            BuildingOutlineFeature.Unregister(_outlineRenderers[i]);
+        _outlineRenderers = null;
+    }
+
     protected override void OnHide(bool isShutdown, object userData)
     {
         UnsubscribeLv0PhaseVisibilityEvents();
         RestorePhaseVisibility();
+        UnregisterOutlineRenderers();
         InGameDataModel.UnregisterBuilding(this);
 
         // 对象池安全：清理运行时引用，避免下次复用时指向旧数据

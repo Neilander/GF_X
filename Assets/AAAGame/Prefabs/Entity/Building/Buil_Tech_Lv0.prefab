@@ -223,7 +223,7 @@ GameObject:
   - component: {fileID: 6818348537083243268}
   m_Layer: 0
   m_Name: Buil_Tech_Lv0
-  m_TagString: Untagged
+  m_TagString: SkipOutline
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0

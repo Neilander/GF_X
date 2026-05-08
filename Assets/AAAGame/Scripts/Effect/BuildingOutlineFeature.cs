@@ -1,0 +1,234 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+
+/// <summary>
+/// 屏幕空间建筑描边 Renderer Feature。
+///
+/// 工作原理：
+///   1. MaskPass：遍历静态注册表 s_Renderers，对每个 Renderer 用 BuildingOutlineMask.shader 渲到 R8 mask RT
+///   2. OutlinePass：先把 SceneColor 拷到临时 RT，再 Blit 临时 RT 经 BuildingOutline.shader 回写 SceneColor
+///                   shader 内做 8 邻域采样，自身=0 但邻居=1 的像素就是外轮廓边
+///
+/// 不依赖 GameObject Layer / RenderingLayerMask。完全数据驱动：
+///   - 建筑 OnShow → BuildingOutlineFeature.Register(renderer)
+///   - 建筑 OnHide → BuildingOutlineFeature.Unregister(renderer)
+/// 不在视野的 Renderer 由 GPU 顶点阶段裁切，几乎无开销；50~100 个建筑 DrawCall 量级可忽略。
+/// </summary>
+public class BuildingOutlineFeature : ScriptableRendererFeature
+{
+    [System.Serializable]
+    public class Settings
+    {
+        public RenderPassEvent renderPassEvent = RenderPassEvent.AfterRenderingTransparents;
+
+        [ColorUsage(true, true)]
+        public Color outlineColor = Color.white;
+
+        [Range(0.5f, 5f)]
+        [Tooltip("Sobel 采样半径（像素）。越大描边越粗。")]
+        public float thickness = 1.5f;
+
+        public Shader maskShader;
+        public Shader outlineShader;
+    }
+
+    public Settings settings = new Settings();
+
+    private MaskPass _maskPass;
+    private OutlinePass _outlinePass;
+    private Material _outlineMaterial;
+    private Material _maskMaterial;
+
+    // ── 静态注册表 ───────────────────────────────────────────────────────
+    private static readonly List<Renderer> s_Renderers = new List<Renderer>(64);
+
+    public static void Register(Renderer r)
+    {
+        if (r == null) return;
+        if (!s_Renderers.Contains(r)) s_Renderers.Add(r);
+    }
+
+    public static void Unregister(Renderer r)
+    {
+        if (r == null) return;
+        s_Renderers.Remove(r);
+    }
+
+    public static void ClearAll() => s_Renderers.Clear();
+
+    // ── 生命周期 ─────────────────────────────────────────────────────────
+    public override void Create()
+    {
+        if (settings.maskShader == null || settings.outlineShader == null) return;
+
+        if (_maskMaterial == null)
+            _maskMaterial = CoreUtils.CreateEngineMaterial(settings.maskShader);
+        if (_outlineMaterial == null)
+            _outlineMaterial = CoreUtils.CreateEngineMaterial(settings.outlineShader);
+
+        _maskPass = new MaskPass(settings.renderPassEvent, _maskMaterial);
+        _outlinePass = new OutlinePass(settings.renderPassEvent + 1, _outlineMaterial, settings);
+    }
+
+    public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
+    {
+        if (_maskPass == null || _outlinePass == null) return;
+        if (s_Renderers.Count == 0) return; // 没建筑就不跑这两个 pass，省开销
+        var camType = renderingData.cameraData.cameraType;
+        if (camType != CameraType.Game && camType != CameraType.SceneView) return;
+
+        renderer.EnqueuePass(_maskPass);
+        renderer.EnqueuePass(_outlinePass);
+    }
+
+    /// <summary>
+    /// URP 14 在 AddRenderPasses 内访问 cameraColorTargetHandle 不安全；
+    /// SetupRenderPasses 在所有 pass enqueue 之后调用，此时 RT 已就绪。
+    /// </summary>
+    public override void SetupRenderPasses(ScriptableRenderer renderer, in RenderingData renderingData)
+    {
+        if (_maskPass == null || _outlinePass == null) return;
+        if (s_Renderers.Count == 0) return;
+        _outlinePass.Setup(renderer.cameraColorTargetHandle, _maskPass.MaskHandle);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        _maskPass?.Dispose();
+        _outlinePass?.Dispose();
+        if (_maskMaterial != null) CoreUtils.Destroy(_maskMaterial);
+        if (_outlineMaterial != null) CoreUtils.Destroy(_outlineMaterial);
+        _maskMaterial = null;
+        _outlineMaterial = null;
+    }
+
+    // ── MaskPass ──────────────────────────────────────────────────────────
+    private class MaskPass : ScriptableRenderPass
+    {
+        private static readonly ProfilingSampler s_Sampler = new ProfilingSampler("BuildingOutline.Mask");
+
+        private readonly Material _material;
+        private RTHandle _maskRT;
+        public RTHandle MaskHandle => _maskRT;
+
+        public MaskPass(RenderPassEvent ev, Material material)
+        {
+            renderPassEvent = ev;
+            _material = material;
+        }
+
+        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
+        {
+            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            desc.colorFormat = RenderTextureFormat.R8;
+            desc.depthBufferBits = 0;
+            desc.msaaSamples = 1;
+            RenderingUtils.ReAllocateIfNeeded(ref _maskRT, desc, FilterMode.Bilinear, TextureWrapMode.Clamp,
+                name: "_BuildingOutlineMask");
+
+            // 共享相机 SceneDepth 作 depth target → mask shader ZTest LEqual 自动剔除被前景遮挡的建筑像素，
+            // 这样士兵站在建筑前时，挡住的部分 mask=0，Sobel 边缘不会涂在士兵身上。
+            var depthHandle = renderingData.cameraData.renderer.cameraDepthTargetHandle;
+            ConfigureTarget(_maskRT, depthHandle);
+            ConfigureClear(ClearFlag.Color, Color.clear); // 只清 color；保留共享 depth
+        }
+
+        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        {
+            if (_material == null) return;
+            var cmd = CommandBufferPool.Get();
+            using (new ProfilingScope(cmd, s_Sampler))
+            {
+                for (int i = 0; i < s_Renderers.Count; i++)
+                {
+                    var r = s_Renderers[i];
+                    if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+
+                    int subMeshCount = 1;
+                    var mats = r.sharedMaterials;
+                    if (mats != null && mats.Length > 1) subMeshCount = mats.Length;
+
+                    for (int s = 0; s < subMeshCount; s++)
+                        cmd.DrawRenderer(r, _material, s, 0);
+                }
+            }
+            context.ExecuteCommandBuffer(cmd);
+            CommandBufferPool.Release(cmd);
+        }
+
+        public void Dispose()
+        {
+            _maskRT?.Release();
+            _maskRT = null;
+        }
+    }
+
+    // ── OutlinePass ───────────────────────────────────────────────────────
+    private class OutlinePass : ScriptableRenderPass
+    {
+        private static readonly int s_MaskTexId = Shader.PropertyToID("_OutlineMask");
+        private static readonly int s_ColorId = Shader.PropertyToID("_OutlineColor");
+        private static readonly int s_ThicknessId = Shader.PropertyToID("_OutlineThickness");
+        private static readonly ProfilingSampler s_Sampler = new ProfilingSampler("BuildingOutline.Draw");
+
+        private readonly Material _material;
+        private readonly Settings _settings;
+        private RTHandle _cameraColor;
+        private RTHandle _maskRT;
+        private RTHandle _tempRT;
+
+        public OutlinePass(RenderPassEvent ev, Material material, Settings settings)
+        {
+            renderPassEvent = ev;
+            _material = material;
+            _settings = settings;
+        }
+
+        public void Setup(RTHandle cameraColor, RTHandle mask)
+        {
+            _cameraColor = cameraColor;
+            _maskRT = mask;
+        }
+
+        public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
+        {
+            var desc = renderingData.cameraData.cameraTargetDescriptor;
+            desc.depthBufferBits = 0;
+            desc.msaaSamples = 1;
+            RenderingUtils.ReAllocateIfNeeded(ref _tempRT, desc, FilterMode.Bilinear, TextureWrapMode.Clamp,
+                name: "_BuildingOutlineTemp");
+        }
+
+        public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
+        {
+            if (_material == null || _cameraColor == null || _maskRT == null) return;
+            var cmd = CommandBufferPool.Get();
+            using (new ProfilingScope(cmd, s_Sampler))
+            {
+                _material.SetTexture(s_MaskTexId, _maskRT);
+                _material.SetColor(s_ColorId, _settings.outlineColor);
+                _material.SetFloat(s_ThicknessId, _settings.thickness);
+
+                Blitter.BlitCameraTexture(cmd, _cameraColor, _tempRT);
+                Blitter.BlitCameraTexture(cmd, _tempRT, _cameraColor, _material, 0);
+            }
+            context.ExecuteCommandBuffer(cmd);
+            CommandBufferPool.Release(cmd);
+        }
+
+        public void Dispose()
+        {
+            _tempRT?.Release();
+            _tempRT = null;
+        }
+    }
+
+    // ── Domain Reload 清理 ──────────────────────────────────────────────
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStaticState()
+    {
+        s_Renderers.Clear();
+    }
+}
