@@ -64,8 +64,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     private bool _joinedGroup;
     private SoldierState _lastSyncedState = SoldierState.Idle;
     private bool _inDeadZone;                // 是否已进入 leader 附近的死区
-    private float _deadZoneRange = 12f;      // 死区宽度：从斥力半径到斥力半径+此值
-    private float _innerDeadZoneRange = 2f;  // 近死区：斥力半径+此值以内完全停下
+    // 死区宽度由 GroupMoveManager.FollowDeadZoneRange / FollowInnerDeadZoneRange 提供
+    // 协调器不在场（测试环境）时使用下面的兜底默认值
+    private const float FallbackDeadZoneRange = 12f;
+    private const float FallbackInnerDeadZoneRange = 2f;
     private Vector3? _deadZoneTarget;        // 死区内的随机导航目标点
 
     private Vector3? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
@@ -292,14 +294,27 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         float speed = GetWorldMoveSpeed(self);
         Move = Vector2.zero;
 
-        // 计算死区范围：[leaderEqR, leaderEqR + _deadZoneRange]
-        float leaderEqR = GroupMoveManager.HasInstance
-            ? GroupMoveManager.Instance.Coordinator.LeaderEquilibriumRadius
-            : 1.5f;
-        float deadZoneOuter = leaderEqR + _deadZoneRange;
+        // 计算死区范围：[leaderEqR, leaderEqR + FollowDeadZoneRange]
+        float leaderEqR;
+        float deadZoneRange;
+        float innerDeadZoneRange;
+        if (GroupMoveManager.HasInstance)
+        {
+            var mgr = GroupMoveManager.Instance;
+            leaderEqR = mgr.Coordinator.LeaderEquilibriumRadius;
+            deadZoneRange = mgr.FollowDeadZoneRange;
+            innerDeadZoneRange = mgr.FollowInnerDeadZoneRange;
+        }
+        else
+        {
+            leaderEqR = 1.5f;
+            deadZoneRange = FallbackDeadZoneRange;
+            innerDeadZoneRange = FallbackInnerDeadZoneRange;
+        }
+        float deadZoneOuter = leaderEqR + deadZoneRange;
         float distToLeader = HorizontalDist(self.Position, _leader.Position);
 
-        float innerDeadZone = leaderEqR + _innerDeadZoneRange;
+        float innerDeadZone = leaderEqR + innerDeadZoneRange;
 
         if (distToLeader <= deadZoneOuter)
         {

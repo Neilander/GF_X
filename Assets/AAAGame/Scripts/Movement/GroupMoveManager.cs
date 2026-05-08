@@ -27,6 +27,12 @@ public class GroupMoveManager : MonoBehaviour
     public float EnemyEquilibriumRadius = 1.5f;
     public float EnemyMaxInfluenceRange = 15f;
 
+    [Header("跟随死区")]
+    [Tooltip("远死区宽度。死区外圈半径 = LeaderEquilibriumRadius + 此值。死区内 desiredVel 衰减；死区外走 NavMesh。")]
+    public float FollowDeadZoneRange = 12f;
+    [Tooltip("近死区宽度。近死区半径 = LeaderEquilibriumRadius + 此值。在近死区内 desiredVel = 0，完全停下，只受 LJ 力。")]
+    public float FollowInnerDeadZoneRange = 2f;
+
     [Header("障碍物")]
     public float ObstacleWeight = 100f;
 
@@ -81,6 +87,8 @@ public class GroupMoveManager : MonoBehaviour
             moveThreshold = MoveThreshold,
             moveThresholdSpeedRatio = MoveThresholdSpeedRatio,
             velocitySmoothing = VelocitySmoothing,
+            followDeadZoneRange = FollowDeadZoneRange,
+            followInnerDeadZoneRange = FollowInnerDeadZoneRange,
         });
         PlayerPrefs.SetString(PREFS_KEY, json);
         PlayerPrefs.Save();
@@ -108,6 +116,9 @@ public class GroupMoveManager : MonoBehaviour
         MoveThreshold = d.moveThreshold;
         MoveThresholdSpeedRatio = d.moveThresholdSpeedRatio <= 0f ? MoveThresholdSpeedRatio : d.moveThresholdSpeedRatio;
         VelocitySmoothing = d.velocitySmoothing <= 0f ? VelocitySmoothing : d.velocitySmoothing;
+        // 旧存档没有这两个字段时 (FromJson 留 0) 回落到代码默认值，避免误覆盖
+        FollowDeadZoneRange = d.followDeadZoneRange <= 0f ? FollowDeadZoneRange : d.followDeadZoneRange;
+        FollowInnerDeadZoneRange = d.followInnerDeadZoneRange <= 0f ? FollowInnerDeadZoneRange : d.followInnerDeadZoneRange;
     }
 
     [System.Serializable]
@@ -120,6 +131,8 @@ public class GroupMoveManager : MonoBehaviour
         public float moveThreshold;
         public float moveThresholdSpeedRatio;
         public float velocitySmoothing;
+        public float followDeadZoneRange;
+        public float followInnerDeadZoneRange;
     }
 
     private void LateUpdate()
