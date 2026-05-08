@@ -122,17 +122,15 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
             var desc = renderingData.cameraData.cameraTargetDescriptor;
-            desc.colorFormat = RenderTextureFormat.R8;
-            desc.depthBufferBits = 0;
+            // 存"建筑最近 NDC 深度"，需要浮点单通道 + 自带 depth buffer 让多个建筑互相 ZTest 取最近
+            desc.colorFormat = RenderTextureFormat.RHalf;
+            desc.depthBufferBits = 24;
             desc.msaaSamples = 1;
             RenderingUtils.ReAllocateIfNeeded(ref _maskRT, desc, FilterMode.Bilinear, TextureWrapMode.Clamp,
                 name: "_BuildingOutlineMask");
 
-            // 共享相机 SceneDepth 作 depth target → mask shader ZTest LEqual 自动剔除被前景遮挡的建筑像素，
-            // 这样士兵站在建筑前时，挡住的部分 mask=0，Sobel 边缘不会涂在士兵身上。
-            var depthHandle = renderingData.cameraData.renderer.cameraDepthTargetHandle;
-            ConfigureTarget(_maskRT, depthHandle);
-            ConfigureClear(ClearFlag.Color, Color.clear); // 只清 color；保留共享 depth
+            ConfigureTarget(_maskRT);
+            ConfigureClear(ClearFlag.All, Color.clear); // 清色（=0 表示无建筑）+ 清深度
         }
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
@@ -184,6 +182,8 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
             renderPassEvent = ev;
             _material = material;
             _settings = settings;
+            // 让 URP 暴露 _CameraDepthTexture 给 fragment shader 做"前景遮挡"判断
+            ConfigureInput(ScriptableRenderPassInput.Depth);
         }
 
         public void Setup(RTHandle cameraColor, RTHandle mask)

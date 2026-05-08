@@ -15,6 +15,7 @@ Shader "Hidden/Custom/BuildingOutline"
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
             #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
 
             TEXTURE2D(_OutlineMask);
@@ -24,6 +25,12 @@ Shader "Hidden/Custom/BuildingOutline"
             half4 _OutlineColor;
             float _OutlineThickness;
 
+            // 读 mask R = 建筑 raw NDC depth；0 表示无建筑
+            float SampleMask(float2 uv)
+            {
+                return SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv).r;
+            }
+
             half4 frag(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
@@ -31,25 +38,34 @@ Shader "Hidden/Custom/BuildingOutline"
 
                 half4 sceneColor = SAMPLE_TEXTURE2D_X(_BlitTexture, sampler_LinearClamp, uv);
 
-                float center = SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv).r;
+                float center = SampleMask(uv);
 
                 float2 px = _OutlineMask_TexelSize.xy * _OutlineThickness;
 
-                // 8 邻域采样取最大值
+                // 8 邻域取最大 mask 值（建筑深度最近邻居）
                 float maxN = 0;
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2( px.x, 0     )).r);
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2(-px.x, 0     )).r);
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2(0    ,  px.y)).r);
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2(0    , -px.y)).r);
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2( px.x,  px.y)).r);
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2(-px.x,  px.y)).r);
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2( px.x, -px.y)).r);
-                maxN = max(maxN, SAMPLE_TEXTURE2D(_OutlineMask, sampler_OutlineMask, uv + float2(-px.x, -px.y)).r);
+                maxN = max(maxN, SampleMask(uv + float2( px.x, 0    )));
+                maxN = max(maxN, SampleMask(uv + float2(-px.x, 0    )));
+                maxN = max(maxN, SampleMask(uv + float2(0    ,  px.y)));
+                maxN = max(maxN, SampleMask(uv + float2(0    , -px.y)));
+                maxN = max(maxN, SampleMask(uv + float2( px.x,  px.y)));
+                maxN = max(maxN, SampleMask(uv + float2(-px.x,  px.y)));
+                maxN = max(maxN, SampleMask(uv + float2( px.x, -px.y)));
+                maxN = max(maxN, SampleMask(uv + float2(-px.x, -px.y)));
 
-                // 自身=0 但邻居≥0.5 → 这是建筑外缘像素
-                float edge = step(0.5, maxN) * (1.0 - center);
+                // 边缘判定：自身=0 但邻居有建筑（>0）
+                float isEdge = step(1e-3, maxN) * (1.0 - step(1e-3, center));
 
-                return lerp(sceneColor, _OutlineColor, edge * _OutlineColor.a);
+                // 前景遮挡判定：当前像素 SceneDepth 比邻居建筑深度更近 → 前景挡住，不画
+                // raw NDC depth (reverse-Z): 近=1 远=0。所以 sceneDepth_ndc > buildingDepth_ndc 表示前景更近
+                float sceneNdcDepth = SampleSceneDepth(uv);
+                float buildingNdcDepth = maxN;
+                // epsilon 容忍 alpha 像素 / 浮点误差
+                float occluded = step(buildingNdcDepth + 1e-4, sceneNdcDepth);
+
+                float drawEdge = isEdge * (1.0 - occluded);
+
+                return lerp(sceneColor, _OutlineColor, drawEdge * _OutlineColor.a);
             }
             ENDHLSL
         }
