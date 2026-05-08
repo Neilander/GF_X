@@ -27,7 +27,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     }
 
     // --- 配置参数 ---
-    public float RecruitRadius = 8f;        // 玩家多近时开始跟随
+    // RecruitRadius / LeashRange 运行时优先读 GroupMoveConfig (SO)；
+    // SO 不可用（如 Editor 测试）时回落到下面的字段值。
+    public float RecruitRadius = 8f;        // 玩家多近时开始跟随（fallback）
+    public float LeashRange = 30f;          // 脱离战斗回到跟随的距离（fallback）
     public float FollowDistanceMin = 2.5f;  // 跟随最近距离（不贴太紧）
     public float FollowDistanceMax = 5f;    // 跟随最远距离（超过才追）
     public float WeaponRange = 1.5f;          // 武器本身的攻击距离（WeaponData.AttackRange * 0.01）
@@ -37,7 +40,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     public float AvoidPlayerRadius = 2.5f;  // 避让玩家半径
     public float AvoidPlayerStrength = 3f;  // 避让玩家力度
     public float SeekWeight = 0.6f;         // 趋向力权重
-    public float LeashRange = 30f;          // 脱离战斗回到跟随的距离
 
     // --- 脱战返航参数（仅敌方有效，调参先在这里改）---
     public float ChaseRange = 23f;                  // 距出生点超过此值就进入 Returning
@@ -162,7 +164,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 // 同阵营领袖在附近 → Follow（敌方单位不跟随玩家）
                 else if (IsValidFollowLeader(self, _leader))
                 {
-                    if (HorizontalDist(self.Position, _leader.Position) <= RecruitRadius)
+                    if (HorizontalDist(self.Position, _leader.Position) <= GetRecruitRadius())
                         State = SoldierState.Follow;
                 }
                 break;
@@ -174,7 +176,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 }
                 // 领袖丢失或太远 → 回 Idle，忘掉领袖和组
                 else if (!IsValidFollowLeader(self, _leader) ||
-                         HorizontalDist(self.Position, _leader.Position) > LeashRange)
+                         HorizontalDist(self.Position, _leader.Position) > GetLeashRange())
                 {
                     self.MoveComp.StopMove(); // 清掉残留目标，防止被斥力推远
                     if (GroupMoveManager.HasInstance)
@@ -224,7 +226,15 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
             };
             var buff = BuffData.Create(ReturningBuffId, 0f, true, 1, modules);
-            ma.BuffComp.AddBuff(buff, ma);
+            bool added = ma.BuffComp.AddBuff(buff, ma);
+            UnityEngine.Debug.Log($"[Returning.AddBuff] host={self.CharacterKey} added={added} " +
+                                  $"buffCompType={ma.BuffComp.GetType().Name} " +
+                                  $"speedPct={(float)ReturnSpeedBonusPercent} hpPct={(float)ReturnHpRegenPercentPerSec}");
+        }
+        else
+        {
+            UnityEngine.Debug.LogWarning($"[Returning] host={self.CharacterKey} buff 未挂载: " +
+                                         $"isMA={(self is MAEntity)} buffComp={(self as MAEntity)?.BuffComp?.GetType().Name ?? "null"}");
         }
 
         State = SoldierState.Returning;
@@ -506,5 +516,17 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         float dx = a.x - b.x;
         float dz = a.z - b.z;
         return Mathf.Sqrt(dx * dx + dz * dz);
+    }
+
+    private float GetRecruitRadius()
+    {
+        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
+        return cfg != null ? cfg.FollowRecruitRadius : RecruitRadius;
+    }
+
+    private float GetLeashRange()
+    {
+        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
+        return cfg != null ? cfg.FollowLeashRange : LeashRange;
     }
 }

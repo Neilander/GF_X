@@ -28,5 +28,7 @@ MonoBehaviour:
   MoveThreshold: 15
   MoveThresholdSpeedRatio: 1.5
   VelocitySmoothing: 0.35
+  FollowRecruitRadius: 15
+  FollowLeashRange: 30
   FollowDeadZoneRange: 5
   FollowInnerDeadZoneRange: 2

@@ -37,6 +37,12 @@ public class GroupMoveConfig : ScriptableObject
     [Range(0.01f, 1f)]
     public float VelocitySmoothing = 0.35f;
 
+    [Header("跟随触发")]
+    [Tooltip("领袖进入此距离时单位才切 Follow 状态。调大 = 单位更早被勾过来跟随。")]
+    public float FollowRecruitRadius = 8f;
+    [Tooltip("跟随中领袖超过此距离则脱离 Follow 回 Idle。调大 = 领袖跑得再远也不放弃。")]
+    public float FollowLeashRange = 30f;
+
     [Header("跟随死区")]
     [Tooltip("远死区宽度。死区外圈半径 = LeaderEquilibriumRadius + 此值。")]
     public float FollowDeadZoneRange = 12f;
