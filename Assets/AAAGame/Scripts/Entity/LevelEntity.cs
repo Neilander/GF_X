@@ -2,6 +2,7 @@ using GameFramework;
 using GameFramework.Event;
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using GiantGrey.TileWorldCreator;
 using UnityEngine;
 using UnityEngine.AI;
@@ -11,9 +12,14 @@ using UnityGameFramework.Runtime;
 public partial class LevelEntity : EntityBase
 {
     private const string StrongholdLayerPrefix = "SH";
+    private const int RuntimeInitItemsPerFrame = 1;
+
     private TileWorldCreatorManager tileWorldCreatorManager;
     private NavMeshSurface[] _navMeshSurfaces;
+    private int m_RuntimeInitializationVersion;
 
+    public event Action<LevelEntity> RuntimeInitializationCompleted;
+    public bool IsRuntimeInitializationCompleted { get; private set; }
 
     private static LevelEntity activeLevelEntity;
 
@@ -57,31 +63,81 @@ public partial class LevelEntity : EntityBase
     {
         base.OnShow(userData);
         activeLevelEntity = this;
+        IsRuntimeInitializationCompleted = false;
+        int initVersion = ++m_RuntimeInitializationVersion;
 
         _navMeshSurfaces = GetComponentsInChildren<NavMeshSurface>();
 
         CollectStrongholds();
         SubscribeRuntimeLayerRules();
-        ApplyStrongholdRuntimeLayerRules();
-        SpawnPresetEntities();
-        SyncEnemyStrongholdFogEffects();
+        InitializeRuntimeAsync(initVersion).Forget();
     }
 
     protected override void OnHide(bool isShutdown, object userData)
     {
         UnsubscribeRuntimeLayerRules();
 
+        bool wasActiveLevel = activeLevelEntity == this;
         if (activeLevelEntity == this)
         {
             activeLevelEntity = null;
         }
 
-        InGameDataModel.ClearStrongholdRuntimeData();
+        if (wasActiveLevel)
+        {
+            InGameDataModel.ClearStrongholdRuntimeData();
+        }
         ClearEnemyStrongholdFogEffects();
         tileWorldCreatorManager = null;
         _navMeshSurfaces = null;
+        IsRuntimeInitializationCompleted = false;
+        RuntimeInitializationCompleted = null;
+        m_RuntimeInitializationVersion++;
 
         base.OnHide(isShutdown, userData);
+    }
+
+    private async UniTaskVoid InitializeRuntimeAsync(int initVersion)
+    {
+        try
+        {
+            await UniTask.Yield(PlayerLoopTiming.Update);
+            if (!IsRuntimeInitializationActive(initVersion))
+            {
+                return;
+            }
+
+            await ApplyStrongholdRuntimeLayerRulesAsync(initVersion);
+            if (!IsRuntimeInitializationActive(initVersion))
+            {
+                return;
+            }
+
+            await SpawnPresetEntitiesAsync(initVersion);
+            if (!IsRuntimeInitializationActive(initVersion))
+            {
+                return;
+            }
+
+            await UniTask.Yield(PlayerLoopTiming.Update);
+            if (!IsRuntimeInitializationActive(initVersion))
+            {
+                return;
+            }
+
+            SyncEnemyStrongholdFogEffects();
+            IsRuntimeInitializationCompleted = true;
+            RuntimeInitializationCompleted?.Invoke(this);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("LevelEntity runtime initialization failed: {0}", ex);
+        }
+    }
+
+    private bool IsRuntimeInitializationActive(int initVersion)
+    {
+        return m_RuntimeInitializationVersion == initVersion && activeLevelEntity == this;
     }
 
     private float _rebakeTimer = -1f;
@@ -255,6 +311,68 @@ public partial class LevelEntity : EntityBase
         }
     }
 
+    private async UniTask ApplyStrongholdRuntimeLayerRulesAsync(int initVersion)
+    {
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
+        if (tileWorldCreatorManager == null || tileWorldCreatorManager.configuration == null)
+        {
+            return;
+        }
+
+        var configuration = tileWorldCreatorManager.configuration;
+        for (int i = 0; i < configuration.buildLayerFolders.Count; i++)
+        {
+            var folder = configuration.buildLayerFolders[i];
+            if (folder == null || folder.buildLayers == null)
+            {
+                continue;
+            }
+
+            for (int j = 0; j < folder.buildLayers.Count; j++)
+            {
+                if (!IsRuntimeInitializationActive(initVersion))
+                {
+                    return;
+                }
+
+                var buildLayer = folder.buildLayers[j];
+                if (buildLayer == null)
+                {
+                    continue;
+                }
+
+                var blueprintLayer = configuration.GetBlueprintLayerByGuid(buildLayer.assignedBlueprintLayerGuid);
+                if (blueprintLayer == null)
+                {
+                    continue;
+                }
+
+                if (!TryParseStrongholdLayerName(blueprintLayer.layerName, out _))
+                {
+                    continue;
+                }
+
+                var layerObject = buildLayer.GetLayerObject(tileWorldCreatorManager.gameObject);
+                if (layerObject == null)
+                {
+                    continue;
+                }
+
+                var renderers = layerObject.GetComponentsInChildren<Renderer>(true);
+                for (int r = 0; r < renderers.Length; r++)
+                {
+                    renderers[r].enabled = false;
+                }
+
+                await UniTask.Yield(PlayerLoopTiming.Update);
+            }
+        }
+    }
+
     private void SpawnPresetEntities()
     {
         var buildManager = GameEntry.GetComponent<BuildManager>();
@@ -344,6 +462,107 @@ public partial class LevelEntity : EntityBase
         }
 
         // 所有初始建筑建完后请求烘焙（延迟 0.5 秒）
+        RequestRebakeNavMesh();
+    }
+
+    private async UniTask SpawnPresetEntitiesAsync(int initVersion)
+    {
+        var buildManager = GameEntry.GetComponent<BuildManager>();
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
+        var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
+        var testSlotConfig = TechTestSlotConfig.LoadOrNull();
+        if (testSlotConfig == null)
+        {
+            Debug.LogWarning("[TestSlot] TechTestSlotConfig 鏈姞杞?(Resources.Load 杩斿洖 null)");
+        }
+        else
+        {
+            Debug.Log($"[TestSlot] TechTestSlotConfig 鍔犺浇鎴愬姛锛屾Ы浣? [{string.Join(", ", testSlotConfig.SlotBuildingIds ?? new string[0])}]");
+        }
+
+        bool heroSpawned = false;
+        int itemsThisFrame = 0;
+        foreach (var point in presetPoints)
+        {
+            if (!IsRuntimeInitializationActive(initVersion))
+            {
+                return;
+            }
+
+            string effectiveIdentifier = point.Identifier;
+            if (point.IsTestSlot)
+            {
+                string slotId = null;
+                if (testSlotConfig != null
+                    && testSlotConfig.SlotBuildingIds != null
+                    && point.TestSlotIndex >= 0
+                    && point.TestSlotIndex < testSlotConfig.SlotBuildingIds.Length)
+                {
+                    slotId = testSlotConfig.SlotBuildingIds[point.TestSlotIndex];
+                }
+
+                if (string.IsNullOrWhiteSpace(slotId))
+                {
+                    Debug.LogWarning($"[TestSlot] 妲戒綅 {point.TestSlotIndex} 鏈厤寤虹瓚锛岃烦杩?{point.name}");
+                    continue;
+                }
+
+                effectiveIdentifier = slotId;
+            }
+
+            switch (point.PointType)
+            {
+                case EntityPresetPointType.Hero:
+                    if (heroSpawned)
+                    {
+                        break;
+                    }
+
+                    if (!UnitTypeHelper.TryParseUnitType(effectiveIdentifier, out var heroUnitType))
+                    {
+                        Log.Error("LevelEntity.SpawnPresetEntities failed: invalid hero identifier '{0}'.", effectiveIdentifier);
+                        break;
+                    }
+
+                    Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", point.name, point.Position);
+                    SoldierFactory.ShowSoldier(heroUnitType, point.Position, SideType.PlayerSide, BrainType.Player);
+                    heroSpawned = true;
+                    break;
+
+                case EntityPresetPointType.Building:
+                    if (!buildManager.TryBuildBuildingForLevelInit(effectiveIdentifier, point.Position, out var buildingInstanceId, isGameEndConditionBuilding: point.IsGameEndConditionBuilding))
+                    {
+                        Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
+                        break;
+                    }
+
+                    if (point.IsGameEndConditionBuilding)
+                    {
+                        int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
+
+                        if (effectiveIdentifier.Contains("ParcelLocker"))
+                        {
+                            var stronghold = GetStrongholdAtWorldPosition(point.Position);
+                            if (stronghold != null)
+                            {
+                                initialOwnerFactionId = stronghold.OwnerFactionId;
+                                Debug.Log($"[LevelEntity] 璁剧疆蹇€掓煖鎵€鏈夎€? {effectiveIdentifier}, 浣嶇疆: {point.Position}, 鎹偣鎵€鏈夎€? {stronghold.OwnerFactionId}, 琛€鏉￠鑹? {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "缁胯壊(鍙嬫柟)" : "绾㈣壊(鏁屾柟)")}");
+                            }
+                        }
+
+                        gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
+                    }
+                    break;
+            }
+
+            itemsThisFrame++;
+            if (itemsThisFrame >= RuntimeInitItemsPerFrame)
+            {
+                itemsThisFrame = 0;
+                await UniTask.Yield(PlayerLoopTiming.Update);
+            }
+        }
+
         RequestRebakeNavMesh();
     }
 

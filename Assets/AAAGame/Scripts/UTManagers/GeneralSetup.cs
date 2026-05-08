@@ -15,6 +15,7 @@ public partial class GeneralSetup : GameFrameworkComponent
     private bool m_PlayerReady;
     private bool m_SetupInProgress;
     private bool m_ShowEntitySubscribed;
+    private LevelEntity m_LevelEntity;
 
     public void GeneralSystemSetup(string lvIdentifier = "Lv_1")
     {
@@ -28,6 +29,7 @@ public partial class GeneralSetup : GameFrameworkComponent
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
         m_PlayerReady = false;
+        m_LevelEntity = null;
 
         var lvRow = GetLvRow(lvIdentifier);
         if (lvRow == null)
@@ -66,6 +68,12 @@ public partial class GeneralSetup : GameFrameworkComponent
         {
             GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
             m_ShowEntitySubscribed = false;
+        }
+
+        if (m_LevelEntity != null)
+        {
+            m_LevelEntity.RuntimeInitializationCompleted -= OnLevelRuntimeInitializationCompleted;
+            m_LevelEntity = null;
         }
 
         GF.UI.CloseUIForms(UIViews.SideTipsUIForm);
@@ -110,7 +118,21 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         if (args.Entity.Logic is LevelEntity)
         {
-            m_LevelReady = true;
+            if (m_LevelEntity != null)
+            {
+                m_LevelEntity.RuntimeInitializationCompleted -= OnLevelRuntimeInitializationCompleted;
+            }
+
+            m_LevelEntity = (LevelEntity)args.Entity.Logic;
+            if (m_LevelEntity.IsRuntimeInitializationCompleted)
+            {
+                m_LevelReady = true;
+            }
+            else
+            {
+                m_LevelEntity.RuntimeInitializationCompleted += OnLevelRuntimeInitializationCompleted;
+            }
+
             TryEnterInitialPhaseIfReady();
         }
 
@@ -166,6 +188,18 @@ public partial class GeneralSetup : GameFrameworkComponent
                 soldierBrain.Inject();
             }
         }
+    }
+
+    private void OnLevelRuntimeInitializationCompleted(LevelEntity levelEntity)
+    {
+        if (m_LevelEntity != levelEntity)
+        {
+            return;
+        }
+
+        m_LevelEntity.RuntimeInitializationCompleted -= OnLevelRuntimeInitializationCompleted;
+        m_LevelReady = true;
+        TryEnterInitialPhaseIfReady();
     }
 
     private void TryEnterInitialPhaseIfReady()

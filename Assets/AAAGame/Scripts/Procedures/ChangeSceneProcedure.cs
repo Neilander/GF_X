@@ -13,6 +13,8 @@ using UnityEngine.SceneManagement;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public class ChangeSceneProcedure : ProcedureBase
 {
+    private const float RuntimeSceneLoadProgressEnd = 0.85f;
+
     /// <summary>
     /// 编辑器工具可在运行前设置此字段，控制 "Game" 场景加载后切换到哪个 Procedure
     /// </summary>
@@ -172,6 +174,7 @@ public class ChangeSceneProcedure : ProcedureBase
     private string loadedSceneAssetName = string.Empty;
     private bool sceneLightingSynced;
     private bool keepLoadingForRuntimeInit;
+    private bool runtimeInitFollowsSceneLoad;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
 
@@ -180,6 +183,7 @@ public class ChangeSceneProcedure : ProcedureBase
         loadedSceneAssetName = string.Empty;
         sceneLightingSynced = false;
         keepLoadingForRuntimeInit = false;
+        runtimeInitFollowsSceneLoad = false;
         GF.BuiltinView.ShowLoadingProgress();
         GF.Event.Subscribe(LoadSceneSuccessEventArgs.EventId, OnLoadSceneSuccess);
         GF.Event.Subscribe(LoadSceneFailureEventArgs.EventId, OnLoadSceneFailure);
@@ -209,6 +213,7 @@ public class ChangeSceneProcedure : ProcedureBase
         }
         nextScene = procedureOwner.GetData<VarString>(P_SceneName);
         procedureOwner.RemoveData(P_SceneName);
+        runtimeInitFollowsSceneLoad = WillRuntimeInitFollowSceneLoad(nextScene);
         GF.Scene.LoadScene(UtilityBuiltin.AssetsPath.GetScenePath(nextScene), this);
     }
 
@@ -273,7 +278,10 @@ public class ChangeSceneProcedure : ProcedureBase
         {
             return;
         }
-        GF.BuiltinView.SetLoadingProgress(arg.Progress);
+        float progress = runtimeInitFollowsSceneLoad
+            ? Mathf.Clamp01(arg.Progress) * RuntimeSceneLoadProgressEnd
+            : arg.Progress;
+        GF.BuiltinView.SetLoadingProgress(progress);
     }
 
     private void OnLoadSceneSuccess(object sender, GameEventArgs e)
@@ -284,6 +292,10 @@ public class ChangeSceneProcedure : ProcedureBase
             return;
         }
         loadedSceneAssetName = arg.SceneAssetName;
+        if (runtimeInitFollowsSceneLoad)
+        {
+            GF.BuiltinView.SetLoadingProgress(RuntimeSceneLoadProgressEnd);
+        }
         loadSceneOver = true;
     }
     //加载场景资源失败 重启游戏框架
@@ -323,6 +335,19 @@ public class ChangeSceneProcedure : ProcedureBase
         }
 
         return string.Equals(scene.name, nextScene, StringComparison.Ordinal);
+    }
+
+    private bool WillRuntimeInitFollowSceneLoad(string sceneName)
+    {
+        string targetProcedure = SelectedProcedureForGame;
+        if (SceneCompatibleProcedures.TryGetValue(sceneName, out var compatible) && !compatible.Contains(targetProcedure))
+        {
+            targetProcedure = SceneDefaultProcedure.TryGetValue(sceneName, out var fallback)
+                ? fallback
+                : "CharacterTestProcedure";
+        }
+
+        return IsRuntimeProcedure(targetProcedure);
     }
 
     private void OnLoadSceneFailure(object sender, GameEventArgs e)

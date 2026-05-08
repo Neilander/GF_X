@@ -911,12 +911,12 @@ namespace AAAGame.Card
             }
 
             m_MoveTween?.Kill();
-            Vector3 targetPosition = PrepareHoverLiftedWorldTarget(hoverScale, GetHandSlotWorldPosition());
+            Vector3 targetPosition = GetHandSlotWorldPosition();
             m_MoveTween = m_RectTransform.DOMove(targetPosition, animationDuration)
                 .SetEase(Ease.OutCubic)
                 .SetLink(gameObject);
 
-            ScaleTo(hoverScale);
+            ScaleTo(1f);
         }
 
         public void ExitTargetingMode(Vector2 screenPosition)
