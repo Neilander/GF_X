@@ -14,6 +14,9 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private Vector3 _externalVelocity;
     private Vector3 _overrideVelocity;
     private bool _hasOverride;
+    
+    // 记录当前帧是否有移动输入（用于音效检测）
+    private bool _isMovingThisFrame;
 
     private bool _navMeshConstrained = true;
     private bool _constraintBypassForNextFrame;
@@ -127,6 +130,16 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _navMeshConstrained = constrained;
     }
 
+    /// <summary>
+    /// 检测单位是否正在移动
+    /// </summary>
+    /// <returns>true表示正在移动</returns>
+    public bool IsMoving()
+    {
+        // 使用记录的移动状态（在 Execute 中更新）
+        return _isMovingThisFrame;
+    }
+
     public void SetConstraintBypassForNextFrame(bool bypass = true)
     {
         _constraintBypassForNextFrame = bypass;
@@ -190,6 +203,9 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             _controller.Move(finalDisplacement);
         }
 
+        // 记录当前帧是否有移动输入（用于音效检测）
+        _isMovingThisFrame = (horizontalDisplacement.sqrMagnitude > 0.0001f);
+        
         // 输入每帧重置（非常重要）
         _inputVelocity = Vector3.zero;
         _hasOverride = false;

@@ -11,6 +11,8 @@ using UnityEngine.UI;
 public static class UIExtension
 {
     private const float PersistentSideTipDuration = -1f;
+    private const float RewardEffectMoveDurationPerUnit = 0.1f;
+    private const float RewardEffectRotationCycleDuration = 0.3f;
     private static readonly Dictionary<string, Sprite> s_SpriteCache = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, List<GameFrameworkAction<Sprite>>> s_PendingSpriteLoads = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, Texture2D> s_TextureCache = new(StringComparer.Ordinal);
@@ -611,13 +613,12 @@ public static class UIExtension
                 expPos.y += spawnPos.y;
                 var targetPos = fly2Pos;
                 int moneyEntityId = moneyEntity.Entity.Id;
-                var expDuration = Vector2.Distance(moneyEntity.transform.position, expPos) * 0.05f;// Mathf.Clamp(Vector3.Distance(moneyEntity.transform.position, expPos)*0.01f, 0.1f, 0.4f);
+                var expDuration = Vector2.Distance(moneyEntity.transform.position, expPos) * RewardEffectMoveDurationPerUnit;
                 var animSeq = DOTween.Sequence();
                 animSeq.Append(moneyEntity.transform.DOMove(expPos, expDuration));
-                animSeq.AppendInterval(0.25f);
-                var moveDuration = Vector2.Distance(expPos, targetPos) * 0.05f;// Mathf.Clamp(Vector3.Distance(expPos, targetPos)*0.01f, 0.1f, 0.8f);
+                var moveDuration = Vector2.Distance(expPos, targetPos) * RewardEffectMoveDurationPerUnit;
                 animSeq.Append(moneyEntity.transform.DOMove(targetPos, moveDuration).SetEase(Ease.Linear));
-                float yRotations = (moveDuration / 0.5f) * 360f;
+                float yRotations = (moveDuration / RewardEffectRotationCycleDuration) * 360f;
                 animSeq.Join(moneyEntity.transform.DORotate(new Vector3(0, yRotations, 0), moveDuration, RotateMode.WorldAxisAdd).SetEase(Ease.Linear));
                 animSeq.onComplete = () =>
                 {
@@ -661,20 +662,19 @@ public static class UIExtension
                 expPos.y += spawnPos.y;
 
                 int moneyEntityId = moneyEntity.Entity.Id;
-                float expDuration = Vector2.Distance(moneyEntity.transform.position, expPos) * 0.05f;
+                float expDuration = Vector2.Distance(moneyEntity.transform.position, expPos) * RewardEffectMoveDurationPerUnit;
                 Vector3 firstTarget = targetPositionProvider != null ? targetPositionProvider() : fallbackTargetPos;
-                float moveDuration = Mathf.Max(0.1f, Vector2.Distance(expPos, firstTarget) * 0.05f);
+                float moveDuration = Mathf.Max(0.1f, Vector2.Distance(expPos, firstTarget) * RewardEffectMoveDurationPerUnit);
 
                 var animSeq = DOTween.Sequence();
                 animSeq.Append(moneyEntity.transform.DOMove(expPos, expDuration));
-                animSeq.AppendInterval(0.2f);
                 var moveTweener = DOVirtual.Float(0f, 1f, moveDuration, t =>
                 {
                     Vector3 dynamicTarget = targetPositionProvider != null ? targetPositionProvider() : fallbackTargetPos;
                     moneyEntity.transform.position = Vector3.LerpUnclamped(expPos, dynamicTarget, t);
                 }).SetEase(Ease.Linear);
                 animSeq.Append(moveTweener);
-                float yRotations = (moveDuration / 0.5f) * 360f;
+                float yRotations = (moveDuration / RewardEffectRotationCycleDuration) * 360f;
                 animSeq.Join(moneyEntity.transform.DORotate(new Vector3(0, yRotations, 0), moveDuration, RotateMode.WorldAxisAdd).SetEase(Ease.Linear));
                 animSeq.onComplete = () =>
                 {
