@@ -88,6 +88,28 @@ public class GeneralCreature : EntityBase, ITargetable
     }
 
 
+    /// <summary>
+    /// 治疗。和 TakeDamage 对称：改属性 + Fire CreatureHealthChangedEventArgs，让 UI/特效能感知。
+    /// 已死或满血直接返回；非正数 amount 视为无效。
+    /// </summary>
+    public virtual void Heal(Fix64 amount)
+    {
+        if (!Alive) return;
+        if (amount <= Fix64.Zero) return;
+
+        Fix64 maxHp = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 curHp = HealthValue;
+        if (curHp >= maxHp) return;
+
+        CreaturePropertyManager.ModifyCurrentProperty(
+            CreatureCurrentProperty.HealthCurrent,
+            PropertyIrreversibleAdditiveModifier.Create(amount), true);
+
+        Fix64 newCur = HealthValue;
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(
+            Id, (float)newCur, (float)maxHp, (float)amount));
+    }
+
     public virtual void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
         if (!Alive) return;

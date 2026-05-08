@@ -70,10 +70,7 @@ public sealed class HealOverTimeBuff : BuffCallback
             return;
         }
 
-        pm.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(healThisFrame),
-            true);
+        creature.Heal(healThisFrame);
 
         if (shouldLog)
         {
