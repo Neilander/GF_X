@@ -617,6 +617,8 @@ public static class UIExtension
                 animSeq.AppendInterval(0.25f);
                 var moveDuration = Vector2.Distance(expPos, targetPos) * 0.05f;// Mathf.Clamp(Vector3.Distance(expPos, targetPos)*0.01f, 0.1f, 0.8f);
                 animSeq.Append(moneyEntity.transform.DOMove(targetPos, moveDuration).SetEase(Ease.Linear));
+                float yRotations = (moveDuration / 0.5f) * 360f;
+                animSeq.Join(moneyEntity.transform.DORotate(new Vector3(0, yRotations, 0), moveDuration, RotateMode.WorldAxisAdd).SetEase(Ease.Linear));
                 animSeq.onComplete = () =>
                 {
                     GF.Entity.HideEntitySafe(moneyEntityId);
@@ -666,11 +668,14 @@ public static class UIExtension
                 var animSeq = DOTween.Sequence();
                 animSeq.Append(moneyEntity.transform.DOMove(expPos, expDuration));
                 animSeq.AppendInterval(0.2f);
-                animSeq.Append(DOVirtual.Float(0f, 1f, moveDuration, t =>
+                var moveTweener = DOVirtual.Float(0f, 1f, moveDuration, t =>
                 {
                     Vector3 dynamicTarget = targetPositionProvider != null ? targetPositionProvider() : fallbackTargetPos;
                     moneyEntity.transform.position = Vector3.LerpUnclamped(expPos, dynamicTarget, t);
-                }).SetEase(Ease.Linear));
+                }).SetEase(Ease.Linear);
+                animSeq.Append(moveTweener);
+                float yRotations = (moveDuration / 0.5f) * 360f;
+                animSeq.Join(moneyEntity.transform.DORotate(new Vector3(0, yRotations, 0), moveDuration, RotateMode.WorldAxisAdd).SetEase(Ease.Linear));
                 animSeq.onComplete = () =>
                 {
                     GF.Entity.HideEntitySafe(moneyEntityId);
