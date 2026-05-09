@@ -3,7 +3,19 @@ using UnityEngine;
 public class CharacterTargetingComp : ITargetingComp
 {
     private IEntityContext _ctx;
-    public IEntityContext CurrentTarget { get; set; }
+    private IEntityContext _currentTarget;
+    public IEntityContext CurrentTarget
+    {
+        get => _currentTarget;
+        set
+        {
+            if (value != _currentTarget)
+            {
+                UnityEngine.Debug.Log($"GETTARGET {_ctx?.CharacterKey} {_currentTarget?.CharacterKey ?? "null"}->{value?.CharacterKey ?? "null"}\n{System.Environment.StackTrace}");
+            }
+            _currentTarget = value;
+        }
+    }
     public IEntityContext FollowTarget { get; private set; }
 
     public float AggroRange { get; set; } = 6f;
@@ -33,38 +45,17 @@ public class CharacterTargetingComp : ITargetingComp
 
     public void NotifyDamageTaken(IEntityContext attacker)
     {
-        UnityEngine.Debug.Log($"[AggroDamage] {_ctx?.CharacterKey ?? "null"} 被打 attacker={(attacker == null ? "null" : attacker.CharacterKey)} EnableFallback={EnableAggroFallback}\nStackTrace:\n{System.Environment.StackTrace}");
-
         // 基础校验
-        if (attacker == null || attacker == _ctx)
-        {
-            UnityEngine.Debug.Log($"[AggroDamage] {_ctx?.CharacterKey} 跳过：attacker null 或 == self");
-            return;
-        }
-        if (!attacker.IsAttackTargetable())
-        {
-            UnityEngine.Debug.Log($"[AggroDamage] {_ctx.CharacterKey} 跳过：attacker {attacker.CharacterKey} 不可被攻击");
-            return;
-        }
-        if (!EntityCombatTeamHelper.IsEnemy(_ctx, attacker))
-        {
-            UnityEngine.Debug.Log($"[AggroDamage] {_ctx.CharacterKey} 跳过：attacker {attacker.CharacterKey} 不是敌方阵营 (selfSide={_ctx.Side} attackerSide={attacker.Side})");
-            return;
-        }
+        if (attacker == null || attacker == _ctx) return;
+        if (!attacker.IsAttackTargetable()) return;
+        if (!EntityCombatTeamHelper.IsEnemy(_ctx, attacker)) return;
 
         // 自己记 _lastAttacker（仅 EnableAggroFallback 时；建筑这里不记，原地反击）
         if (EnableAggroFallback && _lastAttacker == null)
         {
             _lastAttacker = attacker;
-            UnityEngine.Debug.Log($"[AggroDamage] {_ctx.CharacterKey} 记下 _lastAttacker={attacker.CharacterKey}");
-        }
-        else if (!EnableAggroFallback)
-        {
-            UnityEngine.Debug.Log($"[AggroDamage] {_ctx.CharacterKey} 不记自己 _lastAttacker (EnableAggroFallback=false，建筑/特殊单位)");
-        }
-        else
-        {
-            UnityEngine.Debug.Log($"[AggroDamage] {_ctx.CharacterKey} 已有 _lastAttacker={_lastAttacker.CharacterKey}，不覆盖");
+            GameDebugSettings.Log(DebugCategory.Targeting,
+                $"{_ctx} 记下受击 attacker={attacker}（视线外仇恨）");
         }
 
         // 广播给周围友军：让附近士兵知道有人在打我（建筑被打也走这条路，召唤友军反击）
@@ -73,29 +64,14 @@ public class CharacterTargetingComp : ITargetingComp
 
     public void NotifyAllyFoundEnemy(IEntityContext enemy)
     {
-        if (!EnableAggroFallback)
-        {
-            UnityEngine.Debug.Log($"[AggroRecv] {_ctx?.CharacterKey} 收告警但 EnableAggroFallback=false，忽略 enemy={(enemy == null ? "null" : enemy.CharacterKey)}");
-            return;
-        }
-        if (_lastAttacker != null)
-        {
-            UnityEngine.Debug.Log($"[AggroRecv] {_ctx.CharacterKey} 收告警但已有 _lastAttacker={_lastAttacker.CharacterKey}，忽略 enemy={(enemy == null ? "null" : enemy.CharacterKey)}");
-            return;
-        }
+        if (!EnableAggroFallback) return;
+        if (_lastAttacker != null) return; // 已有记忆（受击或别的友军告警）→ 不覆盖
         if (enemy == null || enemy == _ctx) return;
-        if (!enemy.IsAttackTargetable())
-        {
-            UnityEngine.Debug.Log($"[AggroRecv] {_ctx.CharacterKey} 收告警但 enemy {enemy.CharacterKey} 不可被攻击");
-            return;
-        }
-        if (!EntityCombatTeamHelper.IsEnemy(_ctx, enemy))
-        {
-            UnityEngine.Debug.Log($"[AggroRecv] {_ctx.CharacterKey} 收告警但 enemy {enemy.CharacterKey} 不是敌方 (selfSide={_ctx.Side} enemySide={enemy.Side})");
-            return;
-        }
+        if (!enemy.IsAttackTargetable()) return;
+        if (!EntityCombatTeamHelper.IsEnemy(_ctx, enemy)) return;
         _lastAttacker = enemy;
-        UnityEngine.Debug.Log($"[AggroRecv] {_ctx.CharacterKey} 接受告警，_lastAttacker={enemy.CharacterKey}@{enemy.Position}");
+        GameDebugSettings.Log(DebugCategory.Targeting,
+            $"{_ctx} 收到友军告警 enemy={enemy}（视线外仇恨）");
     }
 
     public void ClearAggro()
@@ -108,15 +84,8 @@ public class CharacterTargetingComp : ITargetingComp
 
     private void BroadcastEnemyToAllies(IEntityContext enemy)
     {
-        if (enemy == null || AlertRadius <= 0f)
-        {
-            UnityEngine.Debug.Log($"[AggroBroadcast] {_ctx?.CharacterKey ?? "null"} 跳过广播：enemy={(enemy == null ? "null" : enemy.CharacterKey)} AlertRadius={AlertRadius}");
-            return;
-        }
+        if (enemy == null || AlertRadius <= 0f) return;
         float r2 = AlertRadius * AlertRadius;
-        int notified = 0;
-        var notifiedNames = new System.Text.StringBuilder();
-        int totalScanned = 0;
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
@@ -126,18 +95,9 @@ public class CharacterTargetingComp : ITargetingComp
             if (!ally.Alive) continue;
             Vector3 d = ally.Position - _ctx.Position;
             d.y = 0f;
-            float distSq = d.sqrMagnitude;
-            totalScanned++;
-            if (distSq > r2) continue;
+            if (d.sqrMagnitude > r2) continue;
             ally.TargetComp?.NotifyAllyFoundEnemy(enemy);
-            if (notified > 0) notifiedNames.Append(", ");
-            notifiedNames.Append($"{ally.CharacterKey}(d={Mathf.Sqrt(distSq):F1})");
-            notified++;
         }
-        UnityEngine.Debug.Log(
-            $"[AggroBroadcast] src={_ctx.CharacterKey}@{_ctx.Position} side={_ctx.Side} " +
-            $"radius={AlertRadius} enemyTarget={enemy.CharacterKey}@{enemy.Position} " +
-            $"sameSideScanned={totalScanned} notified={notified} → [{notifiedNames}]");
     }
 
     private bool IsLastAttackerStillValid()
