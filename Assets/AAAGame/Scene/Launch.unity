@@ -2743,12 +2743,24 @@ MonoBehaviour:
   entries:
   - key: move
     cue: {fileID: 11400000, guid: a36fd86486c72834f9971f2ddea2f01c, type: 2}
-  - key: build
+  - key: buildImportant
     cue: {fileID: 11400000, guid: a4115c19c4fbc1648af50a4fc6b5b7c4, type: 2}
   - key: enemyDeath
     cue: {fileID: 11400000, guid: 6866320a69dcc40d4a5fa705316f2d3f, type: 2}
   - key: bgm
     cue: {fileID: 11400000, guid: 5ae88b723c5384098a869cfe5eeec947, type: 2}
+  - key: buildDeath
+    cue: {fileID: 11400000, guid: 24d0ebfb12ab24fd485c0259855a29f0, type: 2}
+  - key: buildNormal
+    cue: {fileID: 11400000, guid: 6f4bf0bebae004021bd50ddc9db04a57, type: 2}
+  - key: enterBattle
+    cue: {fileID: 11400000, guid: 6141a0d9f020f4b72ac1eeb46a20b606, type: 2}
+  - key: enterManage
+    cue: {fileID: 11400000, guid: bb828dd7689b64134a9e9e7c5b0f67f1, type: 2}
+  - key: createUnit
+    cue: {fileID: 11400000, guid: 8b40ec437bf2142868ecba171a6eb296, type: 2}
+  - key: goldPay
+    cue: {fileID: 11400000, guid: c9f672d976cc9452487c1e02407cc824, type: 2}
 --- !u!1 &1100769541
 GameObject:
   m_ObjectHideFlags: 0

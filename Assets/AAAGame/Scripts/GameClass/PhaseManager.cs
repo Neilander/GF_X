@@ -118,6 +118,8 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void HandleEnterBuildPhase(bool isFirstPhase = false)
     {
+        PlayPhaseEnterSound("enterManage");
+
         // 进入 Build 时取消未完成的 Invade 异步生成流程。
         s_InvadeFlowToken++;
 
@@ -185,6 +187,8 @@ public class PhaseManager : GameFrameworkComponent
 
     private static async UniTaskVoid HandleEnterInvadePhaseAsync()
     {
+        PlayPhaseEnterSound("enterBattle");
+
         int flowToken = ++s_InvadeFlowToken;
         var totalWatch = Stopwatch.StartNew();
 
@@ -225,6 +229,14 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void HandleEnterDefendPhase()
     {
+        PlayPhaseEnterSound("enterBattle");
+    }
+
+    /// <summary>阶段进入时的统一音效播放入口（cue key 在 AudioCueLibrary 配映射）。</summary>
+    private static void PlayPhaseEnterSound(string cueKey)
+    {
+        if (AudioManager.Instance == null) return;
+        AudioManager.Instance.Play(cueKey);
     }
 
     private static void RemoveAllSoldiers()

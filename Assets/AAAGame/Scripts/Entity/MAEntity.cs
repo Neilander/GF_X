@@ -239,7 +239,14 @@ public class MAEntity : CompCreature, IEntityContext
             _buffComp.OnHostDead();
         }
 
-        // 敌方死亡播 SFX（cue key 在 AudioCueLibrary 里映射）
+        PlayDeathSound();
+    }
+
+    /// <summary>
+    /// 死亡音效。默认：敌方死亡播 "enemyDeath"。子类可覆盖（建筑覆盖为 "buildDeath"，无视阵营）。
+    /// </summary>
+    protected virtual void PlayDeathSound()
+    {
         if (Side == SideType.EnemySide && AudioManager.Instance != null)
         {
             AudioManager.Instance.Play("enemyDeath");

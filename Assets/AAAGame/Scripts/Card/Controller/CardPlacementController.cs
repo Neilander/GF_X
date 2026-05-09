@@ -661,6 +661,10 @@ namespace AAAGame.Card
                 return 0;
             }
 
+            // 卡牌出兵音效；敌方阶段切换自动生成走 PhaseManager.SpawnEnemySoldiersAsync，不经过这里
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.Play("createUnit");
+
             OnSoldiersSpawned?.Invoke(cardModel, centerPosition, soldierCount);
             return soldierCount;
         }

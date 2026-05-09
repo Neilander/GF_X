@@ -118,6 +118,13 @@ public partial class BuildingEntity : MAEntity
         LevelEntity.RequestRebakeNavMesh();
     }
 
+    /// <summary>建筑死亡：无视阵营，统一播 "buildDeath" cue key。</summary>
+    protected override void PlayDeathSound()
+    {
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.Play("buildDeath");
+    }
+
     /// <summary>
     /// 把所有子 Renderer 注册到 BuildingOutlineFeature 全局列表，让屏幕空间描边 Pass 拾取。
     /// 配套 UnregisterOutlineRenderers 在 OnHide 调用，避免对象池复用时残留死引用。
