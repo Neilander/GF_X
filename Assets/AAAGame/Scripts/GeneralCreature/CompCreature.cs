@@ -11,6 +11,22 @@ public class CompCreature : GeneralCreature
         base.OnInit(userData);
         compLockers = new Dictionary<ICapability, List<ICapability>>();
     }
+
+    /// <summary>
+    /// 对象池复用：Show 时清掉 targetComp 残留状态（CurrentTarget / _lastAttacker），
+    /// 避免上次该 entity 被 hide 时（比如 Returning 中切阶段被 RemoveAllSoldiers）残留的目标，
+    /// 让新一轮生命周期里单位莫名继承上次的目标 / 仇恨。
+    /// </summary>
+    protected override void OnShow(object userData)
+    {
+        base.OnShow(userData);
+        var tc = (this as IEntityContext)?.TargetComp;
+        if (tc != null)
+        {
+            tc.CurrentTarget = null;
+            tc.ClearAggro();
+        }
+    }
     
     public void LockComp(ICapability toLock, ICapability locker)
     {

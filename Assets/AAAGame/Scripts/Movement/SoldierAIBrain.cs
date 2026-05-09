@@ -218,7 +218,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         if (self.TargetComp != null)
         {
             self.TargetComp.CurrentTarget = null;
-            self.TargetComp.ClearAggro(); // 受击仇恨记忆同步清掉，避免返航回家又被拉走
+            self.TargetComp.ClearAggro();
         }
         self.MoveComp?.StopMove();
 
@@ -253,8 +253,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             ma.BuffComp?.RemoveBuff(ReturningBuffId);
 
         self.MoveComp?.StopMove();
-        // 返航途中可能被打记下 _lastAttacker，回到家也一并清掉，避免刚到家又被拉走
-        self.TargetComp?.ClearAggro();
+        // 返航途中可能被打 / scan 设了 CurrentTarget，回到家也清掉，避免刚到家又被拉走
+        if (self.TargetComp != null)
+        {
+            self.TargetComp.CurrentTarget = null;
+            self.TargetComp.ClearAggro();
+        }
         State = SoldierState.Idle;
         GameDebugSettings.Log(DebugCategory.Brain,
             $"[{self.CharacterKey}] 到家, 退出 Returning");
@@ -517,6 +521,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
         Move = Vector2.zero;
         Attack = false;
+
+        // 返航期间持续清 _lastAttacker / CurrentTarget，
+        // 避免被友军告警 / 受击通知重新设上，导致 ExitReturning 后立刻 fallback 又追出去
+        if (self.TargetComp != null)
+        {
+            if (self.TargetComp.CurrentTarget != null) self.TargetComp.CurrentTarget = null;
+            self.TargetComp.ClearAggro();
+        }
 
         float speed = GetWorldMoveSpeed(self);
         self.MoveComp.SetNavTarget(_birthPosition.Value);

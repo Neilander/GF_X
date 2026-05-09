@@ -333,10 +333,7 @@ public class DirectAtkComp : IAtkComp
         // 普通攻击造成伤害的音效；远程武器在这里只是创建子弹（命中是子弹的事），跳过
         bool isRanged = _weaponSO is RangedWeaponSO;
         if (!isRanged && AudioManager.Instance != null)
-        {
-            UnityEngine.Debug.Log($"[BasicAttackSfx] DirectAtkComp.DealDamage 播 basicAttack: attacker={_ctx?.CharacterKey} target={_lockedTarget?.CharacterKey}");
             AudioManager.Instance.Play("basicAttack");
-        }
     }
 
     private void ApplySplashDamage(Fix64 damage)
