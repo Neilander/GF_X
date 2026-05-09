@@ -1,4 +1,4 @@
-Shader "AAAGame/Effec/HitFlashWhite"
+Shader "AAAGame/Effect/HitFlashWhite"
 {
     Properties
     {

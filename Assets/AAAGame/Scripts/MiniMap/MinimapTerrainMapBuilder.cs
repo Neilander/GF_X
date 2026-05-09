@@ -321,8 +321,8 @@ namespace AAAGame.MiniMap
                 return false;
             }
 
-            texX = Mathf.Clamp(Mathf.FloorToInt((cellX / (float)gridWidth) * texWidth), 0, texWidth - 1);
-            texY = Mathf.Clamp(Mathf.FloorToInt((cellY / (float)gridHeight) * texHeight), 0, texHeight - 1);
+            texX = Mathf.Clamp((int)(((long)cellX * texWidth) / gridWidth), 0, texWidth - 1);
+            texY = Mathf.Clamp((int)(((long)cellY * texHeight) / gridHeight), 0, texHeight - 1);
             return true;
         }
 

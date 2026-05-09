@@ -239,14 +239,11 @@ namespace AAAGame.Effect
 
         private static Material CreateParticleMaterial(string materialName, Color color, float intensity)
         {
-            Shader shader = Resources.Load<Shader>("UnitDeathVFXParticle")
-                ?? Shader.Find("AAAGame/Effect/UnitDeathVFXParticle")
-                ?? Shader.Find("AAAGame/Effec/UnitDeathVFXParticle")
-                ?? ResolveTransparentShader();
+            Shader shader = EffectShaderAssetLoader.TryGet(EffectShaderAssetLoader.UnitDeathShaderAssetPath);
 
             if (shader == null)
             {
-                Debug.LogWarning("[UnitDeathDissolveEffect] Cannot find a transparent shader for death VFX particles.");
+                Debug.LogError($"[UnitDeathDissolveEffect] Shader is not ready: {EffectShaderAssetLoader.UnitDeathShaderAssetPath}");
                 return null;
             }
 
@@ -266,16 +263,6 @@ namespace AAAGame.Effect
             }
 
             return material;
-        }
-
-        private static Shader ResolveTransparentShader()
-        {
-            return Shader.Find("Universal Render Pipeline/Particles/Unlit")
-                ?? Shader.Find("Universal Render Pipeline/Unlit")
-                ?? Shader.Find("Unlit/Transparent")
-                ?? Shader.Find("Sprites/Default")
-                ?? Shader.Find("Unlit/Color")
-                ?? Shader.Find("Standard");
         }
 
         private static void SetupTransparentMaterial(Material material)

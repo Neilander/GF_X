@@ -1,4 +1,4 @@
-Shader "AAAGame/Effec/WeaponAttackTrailAdditive"
+Shader "AAAGame/Effect/WeaponAttackTrailAdditive"
 {
     Properties
     {

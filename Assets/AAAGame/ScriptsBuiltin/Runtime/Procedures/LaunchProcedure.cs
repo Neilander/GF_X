@@ -24,7 +24,11 @@ public class LaunchProcedure : ProcedureBase
     {
         CultureInfo.CurrentCulture = CultureInfo.CreateSpecificCulture("en-GB");
 
+#if UNITY_EDITOR
         GFBuiltin.Debugger.ActiveWindow = AppSettings.Instance.DebugMode;
+#else
+        GFBuiltin.Debugger.ActiveWindow = false;
+#endif
         GFBuiltin.Debugger.WindowScale = 0.4f;
     }
 }

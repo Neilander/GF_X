@@ -27,7 +27,7 @@ public static class LevelSelectionService
 {
     private const int MinSelectableLevelId = 1;
     private const int MaxSelectableLevelId = 3;
-    private static bool s_ShouldShowStartupLevelSwitch = true;
+    private static bool s_ShouldShowStartupLevelSwitch = AppSettings.Instance == null || AppSettings.Instance.ShowStartupLevelSwitch;
     private static readonly List<Renderer> s_HiddenLoadingRenderers = new();
 
     public static event Action<float> LevelLoadProgressChanged;

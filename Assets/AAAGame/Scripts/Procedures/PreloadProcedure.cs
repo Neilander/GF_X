@@ -18,6 +18,7 @@ public class PreloadProcedure : ProcedureBase
     private bool preloadAllCompleted;
     private float progressSmoothSpeed = 10f;
     private int m_DataTablesCount;
+    private bool m_ShowBuiltinProgress;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
         base.OnEnter(procedureOwner);
@@ -27,9 +28,18 @@ public class PreloadProcedure : ProcedureBase
         GF.Event.Subscribe(LoadDataTableFailureEventArgs.EventId, OnLoadDataTableFailure);
         GF.Event.Subscribe(LoadDictionarySuccessEventArgs.EventId, OnLoadDicSuccess);
         GF.Event.Subscribe(LoadDictionaryFailureEventArgs.EventId, OnLoadDicFailure);
-        GF.BuiltinView.ShowLoadingProgress();
+        m_ShowBuiltinProgress = !LevelSelectionService.ShouldShowStartupLevelSwitch;
+        if (m_ShowBuiltinProgress)
+        {
+            GF.BuiltinView.ShowLoadingProgress();
+        }
+        else
+        {
+            GF.BuiltinView.HideLoadingProgress();
+        }
         GF.Log("进入HybridCLR热更流程! 预加载游戏数据...");
 
+        AAAGame.Effect.EffectShaderAssetLoader.PreloadEssentialShaders();
         InitAppSettings();
         PreloadAndInitData();
     }
@@ -37,7 +47,10 @@ public class PreloadProcedure : ProcedureBase
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
-        GF.BuiltinView.HideLoadingProgress();
+        if (m_ShowBuiltinProgress)
+        {
+            GF.BuiltinView.HideLoadingProgress();
+        }
         GF.Event.Unsubscribe(LoadConfigSuccessEventArgs.EventId, OnLoadConfigSuccess);
         GF.Event.Unsubscribe(LoadConfigFailureEventArgs.EventId, OnLoadConfigFailure);
         GF.Event.Unsubscribe(LoadDataTableSuccessEventArgs.EventId, OnLoadDataTableSuccess);
@@ -55,15 +68,26 @@ public class PreloadProcedure : ProcedureBase
 
         smoothProgress = Mathf.Lerp(smoothProgress, loadedProgress / (float)totalProgress, elapseSeconds * progressSmoothSpeed);
 
-        GF.BuiltinView.SetLoadingProgress(smoothProgress);
+        if (m_ShowBuiltinProgress)
+        {
+            GF.BuiltinView.SetLoadingProgress(smoothProgress);
+        }
         //预加载完成 切换场景
         if (loadedProgress >= totalProgress && smoothProgress >= 0.99f)
         {
             preloadAllCompleted = true;
             InitGameFrameworkSettings();
-            GF.Log("预加载完成, 进入游戏场景.");
-            procedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, ChangeSceneProcedure.SelectedSceneForGame);
-            ChangeState<ChangeSceneProcedure>(procedureOwner);
+            if (LevelSelectionService.ShouldShowStartupLevelSwitch)
+            {
+                GF.Log("预加载完成, 进入启动选关界面.");
+                ChangeState<StartupLevelSelectProcedure>(procedureOwner);
+            }
+            else
+            {
+                GF.Log("预加载完成, 进入游戏场景.");
+                procedureOwner.SetData<VarString>(ChangeSceneProcedure.P_SceneName, ChangeSceneProcedure.SelectedSceneForGame);
+                ChangeState<ChangeSceneProcedure>(procedureOwner);
+            }
         }
     }
     private void InitAppSettings()

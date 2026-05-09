@@ -5,7 +5,6 @@ public partial class SoldierEntity
 {
     private const string HeroGhostBuffId = "hero_ghost_state";
     private const float GhostAlphaMultiplier = 0.6f;
-    private const string GhostShaderName = "AAAGame/Effect/GhostTransparent";
     private const string UnitOutlineShaderName = "Hidden/AAAGame/UnitOutline";
     private static readonly int ColorId = Shader.PropertyToID("_Color");
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
@@ -25,6 +24,7 @@ public partial class SoldierEntity
     private int _nextGhostCollisionSyncFrame;
 
     public bool IsGhostState { get; private set; }
+    public bool IsHeroSoldier => IsHeroUnit();
 
     public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
@@ -71,7 +71,13 @@ public partial class SoldierEntity
         SetGhostVisual(enabled);
         SetGhostGroupMoveCollisionIgnore(enabled);
         SyncGhostUnitCollisionIgnores(force: true);
-        AAAGame.MiniMap.FOG3.Fog3Manager.Instance?.SetEntityRevealerAllowRevealHidden(Id, !enabled);
+        AAAGame.MiniMap.FOG3.Fog3Manager fogManager = AAAGame.MiniMap.FOG3.Fog3Manager.Instance;
+        if (fogManager == null)
+            return;
+
+        fogManager.SetEntityRevealerAllowRevealHidden(Id, !enabled);
+        if (IsHeroSoldier)
+            fogManager.RefreshRevealHiddenByHeroGhostState();
     }
 
     public void RestoreFromGhostState()
@@ -249,14 +255,13 @@ public partial class SoldierEntity
 
     private static Material CreateGhostMaterial(Material source)
     {
-        Shader ghostShader = Resources.Load<Shader>("GhostTransparent");
-        if (ghostShader == null)
-            ghostShader = Shader.Find(GhostShaderName);
-        if (ghostShader == null)
-            ghostShader = Shader.Find("Universal Render Pipeline/Unlit");
+        Shader ghostShader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(AAAGame.Effect.EffectShaderAssetLoader.GhostShaderAssetPath);
 
         if (ghostShader == null)
+        {
+            Debug.LogError($"[SoldierEntity.Ghost] Shader is not ready: {AAAGame.Effect.EffectShaderAssetLoader.GhostShaderAssetPath}");
             return null;
+        }
 
         Material ghostMat = new Material(ghostShader)
         {

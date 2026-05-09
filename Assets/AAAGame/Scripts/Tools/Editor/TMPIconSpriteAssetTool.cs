@@ -86,7 +86,14 @@ public static class TMPIconSpriteAssetTool
         spriteAsset.spriteGlyphTable.Clear();
         if (spriteAsset.material == null)
         {
-            Material material = new Material(Shader.Find("TextMeshPro/Sprite"));
+            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Sprite.shader");
+            if (shader == null)
+            {
+                Debug.LogError("[TMPIconSpriteAssetTool] Cannot load shader: Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Sprite.shader");
+                return;
+            }
+
+            Material material = new Material(shader);
             AssetDatabase.AddObjectToAsset(material, spriteAsset);
             AssetDatabase.SaveAssetIfDirty(spriteAsset);
             spriteAsset.material = material;

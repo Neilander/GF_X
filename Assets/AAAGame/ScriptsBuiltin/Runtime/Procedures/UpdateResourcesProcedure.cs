@@ -43,6 +43,7 @@ public class UpdateResourcesProcedure : ProcedureBase
     private bool initComplete = false;
     private bool waitPersistenceReady = false;
     private bool versionCheckStarted = false;
+    private bool showBuiltinProgress;
     private long mDownloadTotalZipLength = 0L;
     private List<DownloadProgressData> mDownloadProgressData;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
@@ -51,6 +52,7 @@ public class UpdateResourcesProcedure : ProcedureBase
         initComplete = false;
         waitPersistenceReady = false;
         versionCheckStarted = false;
+        showBuiltinProgress = AppSettings.Instance == null || !AppSettings.Instance.ShowStartupLevelSwitch;
         mDownloadProgressData = new List<DownloadProgressData>();
 
 
@@ -70,7 +72,7 @@ public class UpdateResourcesProcedure : ProcedureBase
         {
             WebGLPersistence.Initialize();
             GFBuiltin.Log("等待持久化资源文件系统初始化...");
-            GFBuiltin.BuiltinView.ShowLoadingProgress(0);
+            ShowLoadingProgress(0f);
         }
         else
         {
@@ -140,7 +142,7 @@ public class UpdateResourcesProcedure : ProcedureBase
             string verFileUrl = UtilityBuiltin.AssetsPath.GetCombinePath(AppSettings.Instance.CheckVersionUrl, GetPlatformPath(), ConstBuiltin.VersionFile);
             Log.Info("请求版本信息地址:{0}", verFileUrl);
             GFBuiltin.WebRequest.AddWebRequest(verFileUrl, this);
-            GFBuiltin.BuiltinView.ShowLoadingProgress(0);
+            ShowLoadingProgress(0f);
         }
         else
         {
@@ -289,7 +291,7 @@ public class UpdateResourcesProcedure : ProcedureBase
         }
 
         float progressTotal = (float)currentTotalUpdateLength / mDownloadTotalZipLength;
-        GFBuiltin.BuiltinView.SetLoadingProgress(progressTotal);
+        SetLoadingProgress(progressTotal);
     }
     private void OnResourceUpdateStart(object sender, GameEventArgs e)
     {
@@ -411,6 +413,27 @@ public class UpdateResourcesProcedure : ProcedureBase
 
         GFBuiltin.Log("All Resource Completed!");
     }
+
+    private void ShowLoadingProgress(float progress)
+    {
+        if (showBuiltinProgress)
+        {
+            GFBuiltin.BuiltinView.ShowLoadingProgress(progress);
+        }
+        else
+        {
+            GFBuiltin.BuiltinView.HideLoadingProgress();
+        }
+    }
+
+    private void SetLoadingProgress(float progress)
+    {
+        if (showBuiltinProgress)
+        {
+            GFBuiltin.BuiltinView.SetLoadingProgress(progress);
+        }
+    }
+
     private class DownloadProgressData
     {
         private readonly string m_Name;

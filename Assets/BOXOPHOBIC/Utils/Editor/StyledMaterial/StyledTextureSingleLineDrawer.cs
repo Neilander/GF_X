@@ -63,7 +63,14 @@ namespace Boxophobic.StyledGUI
                 {
                     if (previewMaterial == null)
                     {
-                        previewMaterial = new Material(Shader.Find("Hidden/BOXOPHOBIC/Helpers/Channel Preview"));
+                        Shader shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/BOXOPHOBIC/Utils/Shaders/Channel Preview.shader");
+                        if (shader == null)
+                        {
+                            Debug.LogError("[StyledTextureSingleLineDrawer] Cannot load shader: Assets/BOXOPHOBIC/Utils/Shaders/Channel Preview.shader");
+                            return;
+                        }
+
+                        previewMaterial = new Material(shader);
                     }
 
                     previewChannel = StyledGUI.DrawTexturePreview(prop.textureValue, previewMaterial, previewChannel);

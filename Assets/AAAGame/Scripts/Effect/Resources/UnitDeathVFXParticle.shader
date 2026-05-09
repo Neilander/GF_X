@@ -1,4 +1,4 @@
-Shader "AAAGame/Effec/UnitDeathVFXParticle"
+Shader "AAAGame/Effect/UnitDeathVFXParticle"
 {
     Properties
     {

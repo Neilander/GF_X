@@ -40,6 +40,7 @@ public class StaticUIComponent : GameFrameworkComponent
     {
         var uiRootCanvas = GFBuiltin.RootCanvas;
         var canvasRoot = this.GetComponent<Canvas>();
+        canvasRoot.renderMode = uiRootCanvas.renderMode;
         canvasRoot.worldCamera = uiRootCanvas.worldCamera;
         canvasRoot.planeDistance = uiRootCanvas.planeDistance;
         canvasRoot.sortingLayerID = uiRootCanvas.sortingLayerID;

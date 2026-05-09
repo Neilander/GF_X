@@ -8,6 +8,8 @@ namespace AAAGame.Card.Test
     /// </summary>
     public class SceneSetupChecker : MonoBehaviour
     {
+        private const string DebugAreaShaderAssetPath = "Assets/AAAGame/Scripts/Card/Material/CardForbiddenZoneOverlay.shader";
+
         [Header("自动检查")]
         [SerializeField] private bool checkOnStart = true;
 
@@ -213,7 +215,14 @@ namespace AAAGame.Card.Test
                 var renderer = validCube.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    var mat = new Material(Shader.Find("Standard"));
+                    Shader shader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(DebugAreaShaderAssetPath);
+                    if (shader == null)
+                    {
+                        Debug.LogError($"[SceneSetupChecker] Shader is not ready: {DebugAreaShaderAssetPath}");
+                        return;
+                    }
+
+                    var mat = new Material(shader);
                     mat.color = new Color(0, 1, 0, 0.3f);
                     mat.SetFloat("_Mode", 3); // Transparent
                     mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
@@ -243,7 +252,14 @@ namespace AAAGame.Card.Test
                 var renderer = forbiddenCube.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    var mat = new Material(Shader.Find("Standard"));
+                    Shader shader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(DebugAreaShaderAssetPath);
+                    if (shader == null)
+                    {
+                        Debug.LogError($"[SceneSetupChecker] Shader is not ready: {DebugAreaShaderAssetPath}");
+                        return;
+                    }
+
+                    var mat = new Material(shader);
                     mat.color = new Color(1, 0, 0, 0.3f);
                     mat.SetFloat("_Mode", 3); // Transparent
                     mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);

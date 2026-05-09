@@ -12,13 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b0c2169ebff9744c96d1933e54493ce, type: 3}
   m_Name: AppSettings
   m_EditorClassIdentifier: 
-  DebugMode: 1
+  DebugMode: 0
   ResourceMode: 1
   CheckVersionUrl: http://localhost/1_0_0_1/
   DesignResolution: {x: 1920, y: 1080}
   StartSceneName: Real
   StartProcedureName: RealProcedure
   StartLevelIdentifier: Lv_2
+  ShowStartupLevelSwitch: 1
   ForceLandscape: 1
   EncryptAOTDlls:
   - Builtin.Runtime

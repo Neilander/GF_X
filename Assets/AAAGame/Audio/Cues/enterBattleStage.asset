@@ -13,8 +13,9 @@ MonoBehaviour:
   m_Name: enterBattleStage
   m_EditorClassIdentifier: 
   category: 2
-  clips: []
-  volume: 0.489
+  clips:
+  - {fileID: 8300000, guid: 3906bfd63b772cd4a9c599ef8cbb7332, type: 3}
+  volume: 0.3
   volumeVariance: 0
   pitch: 1
   pitchVariance: 0

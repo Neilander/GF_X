@@ -10,6 +10,7 @@ namespace AAAGame.Card
     /// </summary>
     public sealed class EnemyBuildingForbiddenZoneController
     {
+        private const string ForbiddenZoneShaderAssetPath = "Assets/AAAGame/Scripts/Card/Material/CardForbiddenZoneOverlay.shader";
         private const string RootObjectName = "EnemyBuildingForbiddenZones";
         private const float ZonePadding = 3f;
         private const int CircleSegmentCount = 24;
@@ -728,17 +729,12 @@ namespace AAAGame.Card
             if (m_ZoneMaterial != null)
                 return m_ZoneMaterial;
 
-            Shader shader = Shader.Find("AAAGame/Card/ForbiddenZoneOverlay");
+            Shader shader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(ForbiddenZoneShaderAssetPath);
             if (shader == null)
-                shader = Shader.Find("Sprites/Default");
-            if (shader == null)
-                shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-                shader = Shader.Find("Unlit/Color");
-            if (shader == null)
-                shader = Shader.Find("Standard");
-            if (shader == null)
+            {
+                Debug.LogError($"[EnemyBuildingForbiddenZoneController] Shader is not ready: {ForbiddenZoneShaderAssetPath}");
                 return null;
+            }
 
             m_ZoneMaterial = new Material(shader);
 

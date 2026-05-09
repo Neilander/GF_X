@@ -24,17 +24,25 @@ public class SideTipsManager : GameFrameworkComponent
 
     private void OnEnable()
     {
+        LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
         TrySubscribeEvents();
     }
 
     private void OnDisable()
     {
+        LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
         UnsubscribeEvents();
     }
 
     private void OnDestroy()
     {
+        LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
         UnsubscribeEvents();
+    }
+
+    private void OnLevelLoadStarted()
+    {
+        ResetShownUnitTypes();
     }
 
     private void TrySubscribeEvents()

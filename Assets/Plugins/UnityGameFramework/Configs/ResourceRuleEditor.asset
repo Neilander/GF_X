@@ -143,3 +143,13 @@ MonoBehaviour:
     packed: 0
     filterType: 0
     searchPatterns: '*.*'
+  - valid: 1
+    name: RuntimeShaders
+    variant: 
+    fileSystem: 
+    groups: 
+    assetsDirectoryPath: Assets/AAAGame/Scripts
+    loadType: 2
+    packed: 0
+    filterType: 0
+    searchPatterns: '*.shader'

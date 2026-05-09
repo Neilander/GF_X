@@ -50,6 +50,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
     private TrailRenderer m_TrailRenderer;
     private Coroutine m_PlayCoroutine;
+    private Coroutine m_EnableAlwaysTrailCoroutine;
     private bool m_UsingFallbackPoint;
     private Material m_RuntimeTrailMaterialInstance;
     private Material m_RuntimeTrailMaterialSource;
@@ -184,6 +185,12 @@ public class WeaponAttackTrailEffect : MonoBehaviour
             m_PlayCoroutine = null;
         }
 
+        if (m_EnableAlwaysTrailCoroutine != null)
+        {
+            StopCoroutine(m_EnableAlwaysTrailCoroutine);
+            m_EnableAlwaysTrailCoroutine = null;
+        }
+
         if (m_TrailRenderer == null)
         {
             m_TrailRenderer = trailPoint != null
@@ -275,7 +282,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     {
         if (alwaysEmitTrail)
         {
-            StartAlwaysEmitTrail(clearTrail && clearTrailWhenAlwaysEmitStarts);
+            StartAlwaysEmitTrail(clearTrail && clearTrailWhenAlwaysEmitStarts, clearTrail);
         }
         else
         {
@@ -285,10 +292,21 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
     private void StartAlwaysEmitTrail(bool clearTrail)
     {
+        StartAlwaysEmitTrail(clearTrail, false);
+    }
+
+    private void StartAlwaysEmitTrail(bool clearTrail, bool waitForTransformSettled)
+    {
         if (m_PlayCoroutine != null)
         {
             StopCoroutine(m_PlayCoroutine);
             m_PlayCoroutine = null;
+        }
+
+        if (m_EnableAlwaysTrailCoroutine != null)
+        {
+            StopCoroutine(m_EnableAlwaysTrailCoroutine);
+            m_EnableAlwaysTrailCoroutine = null;
         }
 
         EnsureTrailRenderer();
@@ -299,12 +317,41 @@ public class WeaponAttackTrailEffect : MonoBehaviour
             return;
         }
 
+        if (waitForTransformSettled)
+        {
+            m_EnableAlwaysTrailCoroutine = StartCoroutine(EnableAlwaysTrailAfterTransformSettled(clearTrail));
+            return;
+        }
+
         if (clearTrail)
         {
             ResetTrailRendererForFreshColor(true);
         }
 
         m_TrailRenderer.emitting = true;
+    }
+
+    private IEnumerator EnableAlwaysTrailAfterTransformSettled(bool clearTrail)
+    {
+        m_TrailRenderer.emitting = false;
+        if (clearTrail)
+        {
+            m_TrailRenderer.Clear();
+        }
+
+        yield return null;
+        yield return null;
+
+        EnsureTrailRenderer();
+        ApplySettings();
+
+        if (m_TrailRenderer != null)
+        {
+            ResetTrailRendererForFreshColor(clearTrail);
+            m_TrailRenderer.emitting = true;
+        }
+
+        m_EnableAlwaysTrailCoroutine = null;
     }
 
     private void ResetTrailRendererForFreshColor(bool clearTrail)
@@ -629,13 +676,11 @@ public class WeaponAttackTrailEffect : MonoBehaviour
             return s_RuntimeFallbackMaterial;
         }
 
-        Shader shader = Shader.Find("AAAGame/Effec/WeaponAttackTrailAdditive")
-            ?? Shader.Find("Universal Render Pipeline/Particles/Unlit")
-            ?? Shader.Find("Universal Render Pipeline/Unlit")
-            ?? Shader.Find("Sprites/Default");
+        Shader shader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(AAAGame.Effect.EffectShaderAssetLoader.WeaponAttackTrailShaderAssetPath);
 
         if (shader == null)
         {
+            Debug.LogError($"[WeaponAttackTrailEffect] Shader is not ready: {AAAGame.Effect.EffectShaderAssetLoader.WeaponAttackTrailShaderAssetPath}");
             return null;
         }
 

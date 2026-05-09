@@ -250,11 +250,24 @@ public class ImageFontCreator : UtilitySubToolBase
                             string outputFontMat = Path.Combine(outputDir, $"{charsTexture.name}.mat");
                             if (!File.Exists(outputFontMat))
                             {
-                                var tempFontMat = new Material(Shader.Find("UI/Default Font"));
+                                Shader uiDefaultFontShader = AssetDatabase.GetBuiltinExtraResource<Shader>("UI/Default Font.shader");
+                                if (uiDefaultFontShader == null)
+                                {
+                                    Debug.LogError("[ImageFontCreator] Cannot load built-in shader: UI/Default Font.shader");
+                                    return;
+                                }
+
+                                var tempFontMat = new Material(uiDefaultFontShader);
                                 AssetDatabase.CreateAsset(tempFontMat, outputFontMat);
                             }
                             var fontMat = AssetDatabase.LoadAssetAtPath<Material>(outputFontMat);
-                            fontMat.shader = Shader.Find("UI/Default Font");
+                            Shader fontShader = AssetDatabase.GetBuiltinExtraResource<Shader>("UI/Default Font.shader");
+                            if (fontShader == null)
+                            {
+                                Debug.LogError("[ImageFontCreator] Cannot load built-in shader: UI/Default Font.shader");
+                                return;
+                            }
+                            fontMat.shader = fontShader;
                             fontMat.SetTexture("_MainTex", charsTexture);
                             EditorUtility.SetDirty(fontMat);
                             AssetDatabase.SaveAssetIfDirty(fontMat);
@@ -283,7 +296,14 @@ public class ImageFontCreator : UtilitySubToolBase
         var fontAsset = TMP_FontAsset.CreateFontAsset(m_TMPBaseFont, maxFontHeight, 0, UnityEngine.TextCore.LowLevel.GlyphRenderMode.SMOOTH, charsTexture.width, charsTexture.height, AtlasPopulationMode.Static, false);
         AssetDatabase.CreateAsset(fontAsset, outputFont);
 
-        var tmpMat = new Material(Shader.Find("TextMeshPro/Bitmap Custom Atlas"));
+        Shader tmpBitmapShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Bitmap-Custom-Atlas.shader");
+        if (tmpBitmapShader == null)
+        {
+            Debug.LogError("[ImageFontCreator] Cannot load shader: Assets/AAAGame/Font/TextMesh Pro/Shaders/TMP_Bitmap-Custom-Atlas.shader");
+            return;
+        }
+
+        var tmpMat = new Material(tmpBitmapShader);
         var charsAtlas = UnityEngine.Object.Instantiate<Texture2D>(charsTexture);
         charsAtlas.alphaIsTransparency = true;
         var fileName = Path.GetFileNameWithoutExtension(outputFont);

@@ -145,15 +145,11 @@ namespace AAAGame.Effect
 
             Shader shader = hitFlashShader != null
                 ? hitFlashShader
-                : Resources.Load<Shader>("HitFlashWhite");
-            if (shader == null)
-            {
-                shader = Shader.Find("AAAGame/Effec/HitFlashWhite");
-            }
+                : EffectShaderAssetLoader.TryGet(EffectShaderAssetLoader.HitFlashShaderAssetPath);
 
             if (shader == null)
             {
-                Debug.LogWarning("[HitFlashEffect] Cannot find shader: AAAGame/Effec/HitFlashWhite", this);
+                Debug.LogError($"[HitFlashEffect] Shader is not ready: {EffectShaderAssetLoader.HitFlashShaderAssetPath}", this);
                 return;
             }
 

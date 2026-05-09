@@ -62,11 +62,13 @@ public class TutorialManager : GameFrameworkComponent
 
     private void OnEnable()
     {
+        LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
         TrySubscribeEvents();
     }
 
     private void OnDisable()
     {
+        LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
         TryUnsubscribeEvents();
     }
 
@@ -145,6 +147,11 @@ public class TutorialManager : GameFrameworkComponent
         m_BuildTutorialStartBuiltCount = 0;
         m_InvadeTutorialStrongholdId = null;
         NotifyPhaseSwitchButtonGuideChanged();
+    }
+
+    private void OnLevelLoadStarted()
+    {
+        ResetAllTutorialsForDebug();
     }
 
     private void TickTutorial(TutorialType triggerType)

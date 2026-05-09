@@ -1,4 +1,4 @@
-Shader "AAAGame/Effec/CanTrailAdditive"
+Shader "AAAGame/Effect/CanTrailAdditive"
 {
     Properties
     {

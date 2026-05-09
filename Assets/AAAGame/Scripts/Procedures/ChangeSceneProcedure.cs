@@ -14,6 +14,7 @@ using UnityEngine.SceneManagement;
 public class ChangeSceneProcedure : ProcedureBase
 {
     private const float RuntimeSceneLoadProgressEnd = 0.85f;
+    public static bool SuppressNextBuiltinLoadingProgress { get; set; }
 
     /// <summary>
     /// 编辑器工具可在运行前设置此字段，控制 "Game" 场景加载后切换到哪个 Procedure
@@ -175,16 +176,26 @@ public class ChangeSceneProcedure : ProcedureBase
     private bool sceneLightingSynced;
     private bool keepLoadingForRuntimeInit;
     private bool runtimeInitFollowsSceneLoad;
+    private bool showBuiltinLoadingProgress;
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
 
         base.OnEnter(procedureOwner);
+        showBuiltinLoadingProgress = !SuppressNextBuiltinLoadingProgress;
+        SuppressNextBuiltinLoadingProgress = false;
         loadSceneOver = false;
         loadedSceneAssetName = string.Empty;
         sceneLightingSynced = false;
         keepLoadingForRuntimeInit = false;
         runtimeInitFollowsSceneLoad = false;
-        GF.BuiltinView.ShowLoadingProgress();
+        if (showBuiltinLoadingProgress)
+        {
+            GF.BuiltinView.ShowLoadingProgress();
+        }
+        else
+        {
+            GF.BuiltinView.HideLoadingProgress();
+        }
         GF.Event.Subscribe(LoadSceneSuccessEventArgs.EventId, OnLoadSceneSuccess);
         GF.Event.Subscribe(LoadSceneFailureEventArgs.EventId, OnLoadSceneFailure);
         GF.Event.Subscribe(LoadSceneUpdateEventArgs.EventId, OnLoadSceneUpdate);
@@ -261,7 +272,7 @@ public class ChangeSceneProcedure : ProcedureBase
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
-        if (!keepLoadingForRuntimeInit)
+        if (showBuiltinLoadingProgress && !keepLoadingForRuntimeInit)
         {
             GF.BuiltinView.HideLoadingProgress();
         }
@@ -281,7 +292,10 @@ public class ChangeSceneProcedure : ProcedureBase
         float progress = runtimeInitFollowsSceneLoad
             ? Mathf.Clamp01(arg.Progress) * RuntimeSceneLoadProgressEnd
             : arg.Progress;
-        GF.BuiltinView.SetLoadingProgress(progress);
+        if (showBuiltinLoadingProgress)
+        {
+            GF.BuiltinView.SetLoadingProgress(progress);
+        }
     }
 
     private void OnLoadSceneSuccess(object sender, GameEventArgs e)
@@ -294,7 +308,10 @@ public class ChangeSceneProcedure : ProcedureBase
         loadedSceneAssetName = arg.SceneAssetName;
         if (runtimeInitFollowsSceneLoad)
         {
-            GF.BuiltinView.SetLoadingProgress(RuntimeSceneLoadProgressEnd);
+            if (showBuiltinLoadingProgress)
+            {
+                GF.BuiltinView.SetLoadingProgress(RuntimeSceneLoadProgressEnd);
+            }
         }
         loadSceneOver = true;
     }

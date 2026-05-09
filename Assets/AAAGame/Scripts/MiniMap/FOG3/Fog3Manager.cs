@@ -490,6 +490,30 @@ namespace AAAGame.MiniMap.FOG3
             SetRevealerAllowRevealHidden(revealerId, allowRevealHidden);
         }
 
+        public void RefreshRevealHiddenByHeroGhostState()
+        {
+            if (controller == null)
+                return;
+
+            bool hasPlayerSideGhostHero = HasPlayerSideGhostHero();
+            IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
+            if (allEntities == null)
+                return;
+
+            for (int i = 0; i < allEntities.Count; i++)
+            {
+                if (allEntities[i] is not EntityBase entityBase)
+                    continue;
+
+                if (!entityRevealers.ContainsKey(entityBase.Id))
+                    continue;
+
+                SetEntityRevealerAllowRevealHidden(
+                    entityBase.Id,
+                    ShouldEntityRevealerAllowRevealHidden(entityBase, hasPlayerSideGhostHero));
+            }
+        }
+
         public bool IsPositionVisible(Vector3 worldPos)
         {
             return controller != null && controller.IsPositionVisible(worldPos);
@@ -1116,16 +1140,62 @@ namespace AAAGame.MiniMap.FOG3
             if (!TryReadEntityVision(logic, out float radius))
                 return;
 
-            int revealerId = RegisterRevealer(logic.transform, radius, entityId, false);
+            int revealerId = RegisterRevealer(
+                logic.transform,
+                radius,
+                entityId,
+                false,
+                ShouldEntityRevealerAllowRevealHidden(logic));
             if (revealerId <= 0)
                 return;
-
-            SetEntityRevealerAllowRevealHidden(entityId, !IsGhostSoldier(logic));
         }
 
         private static bool IsGhostSoldier(EntityLogic logic)
         {
             return logic is SoldierEntity soldier && soldier.IsGhostState;
+        }
+
+        private bool ShouldEntityRevealerAllowRevealHidden(EntityLogic logic)
+        {
+            return ShouldEntityRevealerAllowRevealHidden(logic, HasPlayerSideGhostHero());
+        }
+
+        private static bool ShouldEntityRevealerAllowRevealHidden(EntityLogic logic, bool hasPlayerSideGhostHero)
+        {
+            if (IsGhostSoldier(logic))
+                return false;
+
+            if (hasPlayerSideGhostHero && IsPlayerSideNonHeroSoldier(logic))
+                return false;
+
+            return true;
+        }
+
+        private static bool HasPlayerSideGhostHero()
+        {
+            IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
+            if (allEntities == null)
+                return false;
+
+            for (int i = 0; i < allEntities.Count; i++)
+            {
+                if (allEntities[i] is SoldierEntity soldier
+                    && soldier.Side == SideType.PlayerSide
+                    && soldier.IsHeroSoldier
+                    && soldier.IsGhostState)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsPlayerSideNonHeroSoldier(EntityLogic logic)
+        {
+            return logic is SoldierEntity soldier
+                && soldier.Side == SideType.PlayerSide
+                && !soldier.IsHeroSoldier;
         }
 
         private bool TryReadEntityVision(EntityLogic logic, out float radius)

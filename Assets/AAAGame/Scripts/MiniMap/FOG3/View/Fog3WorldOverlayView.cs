@@ -5,6 +5,7 @@ namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3WorldOverlayView : MonoBehaviour
     {
+        private const string FogOverlayShaderAssetPath = "Assets/AAAGame/Scripts/MiniMap/FOG3/View/Fog3OverlayAlwaysOnTop.shader";
         private Texture2D fogTexture;
         private Color32[] pixels;
         private Material fogMaterial;
@@ -522,11 +523,12 @@ namespace AAAGame.MiniMap.FOG3
             }
 
             if (shader == null)
-                shader = Shader.Find("Sprites/Default");
+                shader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(FogOverlayShaderAssetPath);
             if (shader == null)
-                shader = Shader.Find("Unlit/Transparent");
-            if (shader == null)
-                shader = Shader.Find("Universal Render Pipeline/Unlit");
+            {
+                Debug.LogError($"[FOG3] Shader is not ready: {FogOverlayShaderAssetPath}");
+                return null;
+            }
 
             Material material = new Material(shader)
             {

@@ -158,7 +158,11 @@ public partial class LevelSwitchUIForm : UIFormBase
         SetProgressVisible(true);
         SetProgress(0f);
 
-        if (!LevelSelectionService.TryEnterLevelInPlaceByNumber(levelNumber, out string errorMessage))
+        bool enterStarted = m_IsStartup
+            ? StartupLevelSelectProcedure.TryEnterLevelByNumber(levelNumber, out string errorMessage)
+            : LevelSelectionService.TryEnterLevelInPlaceByNumber(levelNumber, out errorMessage);
+
+        if (!enterStarted)
         {
             m_IsLoading = false;
             Interactable = true;

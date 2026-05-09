@@ -122,6 +122,8 @@ public class AppSettings : ScriptableObject
     public string StartProcedureName = "RealProcedure";
     [Tooltip("RuntimeProcedure 使用的初始关卡标识（如 Lv_2）")]
     public string StartLevelIdentifier = "Lv_2";
+    [Tooltip("启动预加载完成后是否先显示选关界面")]
+    public bool ShowStartupLevelSwitch = true;
     [Tooltip("是否在启动时强制为横屏（移动端）")]
     public bool ForceLandscape = true;
     [Tooltip("需要加密的 DLL 列表")]

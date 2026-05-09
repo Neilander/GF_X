@@ -41,6 +41,16 @@ public class GlobalBuffManager : GameFrameworkComponent
         TrySubscribeTechUnlockedEvent();
     }
 
+    private void OnEnable()
+    {
+        LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
+    }
+
+    private void OnDisable()
+    {
+        LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
+    }
+
     private void Update()
     {
         if (m_IsSubscribed)
@@ -56,6 +66,18 @@ public class GlobalBuffManager : GameFrameworkComponent
             GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
 
         m_IsSubscribed = false;
+    }
+
+    private void OnLevelLoadStarted()
+    {
+        ClearLevelRuntimeState();
+    }
+
+    public void ClearLevelRuntimeState()
+    {
+        m_UnitBuffsByFaction.Clear();
+        m_BuildingScopedBuffs.Clear();
+        m_BuildingExtraProps.Clear();
     }
 
     private void OnValidate()

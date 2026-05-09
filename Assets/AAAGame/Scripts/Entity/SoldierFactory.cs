@@ -86,13 +86,7 @@ public static class SoldierFactory
 
     private static string GetPrefabPathFromCharacterData(string characterKey)
     {
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            throw new InvalidOperationException("SoldierFactory.ShowSoldier failed: CharacterDataDetail data table is null.");
-
-        var row = table.GetDataRow(r => r.CharacterKey == characterKey);
-        if (row == null)
-            throw new InvalidOperationException($"SoldierFactory.ShowSoldier failed: CharacterDataDetail row not found. CharacterKey={characterKey}.");
+        var row = GetCharacterDataRow(characterKey);
 
         if (string.IsNullOrWhiteSpace(row.PrefabPath))
             throw new InvalidOperationException($"SoldierFactory.ShowSoldier failed: CharacterDataDetail.PrefabPath is empty. CharacterKey={characterKey}.");
@@ -103,6 +97,28 @@ public static class SoldierFactory
         return row.PrefabPath;
     }
 
+    private static CharacterDataDetail GetCharacterDataRow(string characterKey)
+    {
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        if (table == null)
+            throw new InvalidOperationException("SoldierFactory.ShowSoldier failed: CharacterDataDetail data table is null.");
+
+        var row = table.GetDataRow(r => r.CharacterKey == characterKey);
+        if (row == null)
+            throw new InvalidOperationException($"SoldierFactory.ShowSoldier failed: CharacterDataDetail row not found. CharacterKey={characterKey}.");
+
+        return row;
+    }
+
+    private static Fix64 GetFirstUniqueValue(UnitType unitType)
+    {
+        string characterKey = unitType.ToString();
+        var row = GetCharacterDataRow(characterKey);
+        if (row.UniqueValues == null || row.UniqueValues.Length == 0)
+            throw new InvalidOperationException($"SoldierFactory.AddInitialBuffs failed: CharacterDataDetail.UniqueValues is empty. CharacterKey={characterKey}.");
+
+        return row.UniqueValues[0];
+    }
 
     /// <summary>
     /// Add initial buffs to list.
@@ -116,7 +132,7 @@ public static class SoldierFactory
                 break;
 
             case UnitType.Unit_BoneButcher:
-                buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f, 25f));
+                buffList.Add(OnKillHealBuff.CreateOnKillHeal((float)GetFirstUniqueValue(index)));
                 break;
 
             case UnitType.Unit_Scapegoat:

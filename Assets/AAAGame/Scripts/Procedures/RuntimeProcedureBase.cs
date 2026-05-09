@@ -17,6 +17,8 @@ public enum RuntimeInitSystemFlags
 
 public abstract class RuntimeProcedureBase : ProcedureBase
 {
+    public static bool SuppressNextBuiltinLoadingProgress { get; set; }
+
     private RuntimeInitPipeline m_RuntimeInitPipeline;
     private IFsm<IProcedureManager> m_ProcedureOwner;
     private bool m_InPlaceLevelSwitchInProgress;
@@ -47,7 +49,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             return;
         }
 
-        StartRuntimeInitPipeline(RuntimeLevelIdentifier, true);
+        bool showBuiltinProgress = !SuppressNextBuiltinLoadingProgress;
+        SuppressNextBuiltinLoadingProgress = false;
+        StartRuntimeInitPipeline(RuntimeLevelIdentifier, showBuiltinProgress);
     }
 
     protected override void OnUpdate(IFsm<IProcedureManager> procedureOwner, float elapseSeconds, float realElapseSeconds)
@@ -441,7 +445,15 @@ internal sealed class RuntimeInitPipeline
         {
             if (minimapManager != null)
             {
-                if (GF.UI.IsLoadingUIForm(UIViews.MinimapUI) || GF.UI.HasUIForm(UIViews.MinimapUI))
+                bool inGameUIOwnsMinimap = m_InGameUIFormId != -1
+                    || GF.UI.IsLoadingUIForm(UIViews.InGameUIForm)
+                    || GF.UI.HasUIForm(UIViews.InGameUIForm);
+
+                if (inGameUIOwnsMinimap)
+                {
+                    Log.Info("{0} MinimapUI is owned by InGameUIForm, skip standalone open.", m_LogTag);
+                }
+                else if (GF.UI.IsLoadingUIForm(UIViews.MinimapUI) || GF.UI.HasUIForm(UIViews.MinimapUI))
                 {
                     Log.Info("{0} MinimapUI is already open/loading, skip open.", m_LogTag);
                 }

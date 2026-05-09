@@ -26,6 +26,12 @@ public class BuiltinViewComponent : GameFrameworkComponent
     
     private void Start()
     {
+        if (AppSettings.Instance != null && AppSettings.Instance.ShowStartupLevelSwitch)
+        {
+            HideLoadingProgress();
+            return;
+        }
+
         ShowLoadingProgress();
     }
     public void ShowLoadingProgress(float defaultProgress = 0)

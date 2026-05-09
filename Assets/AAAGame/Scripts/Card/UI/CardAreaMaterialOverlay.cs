@@ -12,6 +12,8 @@ namespace AAAGame.Card.UI
     /// </summary>
     public class CardAreaMaterialOverlay : MonoBehaviour
     {
+        private const string PreviewShaderAssetPath = "Assets/AAAGame/Scripts/Card/Material/CardForbiddenZoneOverlay.shader";
+
         [Header("材质设置")]
         [SerializeField] private Material validOverlayMaterial;
         [SerializeField] private Material invalidOverlayMaterial;
@@ -360,11 +362,7 @@ namespace AAAGame.Card.UI
             m_PreviewRingRenderer.numCapVertices = 2;
             m_PreviewRingRenderer.sortingOrder = 200;
 
-            Shader shader = Shader.Find("Sprites/Default");
-            if (shader == null)
-            {
-                shader = Shader.Find("Unlit/Color");
-            }
+            Shader shader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(PreviewShaderAssetPath);
 
             if (shader != null)
             {
@@ -373,6 +371,10 @@ namespace AAAGame.Card.UI
                     name = "CardPlacementPreviewRing_Material"
                 };
                 m_PreviewRingRenderer.material = m_PreviewRingMaterial;
+            }
+            else
+            {
+                Log.Error("[CardAreaMaterialOverlay] Shader is not ready: {0}", PreviewShaderAssetPath);
             }
 
             m_PreviewRingRenderer.enabled = false;
@@ -703,14 +705,11 @@ namespace AAAGame.Card.UI
                 return;
             }
 
-            Shader shader = Shader.Find("Unlit/Color");
-            if (shader == null)
-            {
-                shader = Shader.Find("Standard");
-            }
+            Shader shader = AAAGame.Effect.EffectShaderAssetLoader.TryGet(PreviewShaderAssetPath);
 
             if (shader == null)
             {
+                Log.Error("[CardAreaMaterialOverlay] Shader is not ready: {0}", PreviewShaderAssetPath);
                 return;
             }
 

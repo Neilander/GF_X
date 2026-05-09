@@ -18,6 +18,16 @@ public class ProductionConditionManager : GameFrameworkComponent
         TrySubscribeEvents();
     }
 
+    private void OnEnable()
+    {
+        LevelSelectionService.LevelLoadStarted += ClearAllStatistics;
+    }
+
+    private void OnDisable()
+    {
+        LevelSelectionService.LevelLoadStarted -= ClearAllStatistics;
+    }
+
     private void Update()
     {
         if (!_eventsSubscribed)
