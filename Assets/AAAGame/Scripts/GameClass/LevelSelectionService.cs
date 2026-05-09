@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Resource;
+using UnityEngine;
 using UnityGameFramework.Runtime;
 
 public sealed class LevelSelectionEntry
@@ -26,8 +27,27 @@ public static class LevelSelectionService
 {
     private const int MinSelectableLevelId = 1;
     private const int MaxSelectableLevelId = 3;
+    private static bool s_ShouldShowStartupLevelSwitch = true;
+    private static readonly List<Renderer> s_HiddenLoadingRenderers = new();
+
+    public static event Action<float> LevelLoadProgressChanged;
+    public static event Action LevelLoadStarted;
+    public static event Action LevelLoadCompleted;
+    public static event Action<string> LevelLoadFailed;
 
     public static string SelectedLevelIdentifier => ChangeSceneProcedure.SelectedLevelIdentifier;
+    public static bool ShouldShowStartupLevelSwitch => s_ShouldShowStartupLevelSwitch;
+    public static bool IsLevelLoading { get; private set; }
+
+    public static bool OpenLevelSwitch(bool isStartup)
+    {
+        return LevelSwitchUIForm.Open(isStartup);
+    }
+
+    public static void ConsumeStartupLevelSwitch()
+    {
+        s_ShouldShowStartupLevelSwitch = false;
+    }
 
     public static IReadOnlyList<LevelSelectionEntry> GetAvailableLevels()
     {
@@ -125,13 +145,79 @@ public static class LevelSelectionService
             return false;
         }
 
-        if (!runtimeProcedure.TryEnterRuntimeLevelInPlace(selectedLevel.Identifier, out errorMessage))
+        ConsumeStartupLevelSwitch();
+
+        if (!runtimeProcedure.TryEnterRuntimeLevelInPlace(selectedLevel.Identifier, out errorMessage)
+            && !runtimeProcedure.TryStartRuntimeLevel(selectedLevel.Identifier, out errorMessage))
         {
             return false;
         }
 
         Log.Info("[LevelSelection] Enter level in place requested. level={0}", selectedLevel.Identifier);
         return true;
+    }
+
+    internal static void NotifyLevelLoadStarted()
+    {
+        IsLevelLoading = true;
+        LevelLoadStarted?.Invoke();
+        NotifyLevelLoadProgress(0f);
+    }
+
+    internal static void NotifyLevelLoadProgress(float progress)
+    {
+        float clampedProgress = Math.Max(0f, Math.Min(1f, progress));
+        LevelLoadProgressChanged?.Invoke(clampedProgress);
+    }
+
+    internal static void NotifyLevelLoadCompleted()
+    {
+        IsLevelLoading = false;
+        RestoreHiddenLoadingRenderers();
+        NotifyLevelLoadProgress(1f);
+        LevelLoadCompleted?.Invoke();
+    }
+
+    internal static void NotifyLevelLoadFailed(string errorMessage)
+    {
+        IsLevelLoading = false;
+        RestoreHiddenLoadingRenderers();
+        LevelLoadFailed?.Invoke(errorMessage);
+    }
+
+    internal static void HideEntityRenderersDuringLoad(EntityLogic entityLogic)
+    {
+        if (!IsLevelLoading || entityLogic == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = entityLogic.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled)
+            {
+                continue;
+            }
+
+            renderer.enabled = false;
+            s_HiddenLoadingRenderers.Add(renderer);
+        }
+    }
+
+    private static void RestoreHiddenLoadingRenderers()
+    {
+        for (int i = 0; i < s_HiddenLoadingRenderers.Count; i++)
+        {
+            Renderer renderer = s_HiddenLoadingRenderers[i];
+            if (renderer != null)
+            {
+                renderer.enabled = true;
+            }
+        }
+
+        s_HiddenLoadingRenderers.Clear();
     }
 
     public static bool TryGetLevelRow(string levelIdentifier, out LevelTable row, out string errorMessage)

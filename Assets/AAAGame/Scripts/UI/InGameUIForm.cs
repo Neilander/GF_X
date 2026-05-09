@@ -40,9 +40,28 @@ public partial class InGameUIForm : UIFormBase
         base.OnClose(isShutdown, userData);
     }
 
+    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    {
+        base.OnUpdate(elapseSeconds, realElapseSeconds);
+
+        InputManager inputManager = GameEntry.GetComponent<InputManager>();
+        if (inputManager != null
+            && inputManager.CurState == InputState.Game
+            && inputManager.WasCancelPressedThisFrame())
+        {
+            OpenLevelSwitch();
+        }
+    }
+
     protected override void OnButtonClick(object sender, Button btSelf)
     {
         base.OnButtonClick(sender, btSelf);
+
+        if (btSelf == varReturnBtn)
+        {
+            OpenLevelSwitch();
+            return;
+        }
 
         if (btSelf == varPhaseBg)
         {
@@ -69,6 +88,7 @@ public partial class InGameUIForm : UIFormBase
 
     private void BindButtons()
     {
+        BindButton(varReturnBtn, OnReturnClicked);
         BindButton(varPhaseBg, OnPhaseBgClicked);
         BindButton(varCoinIcon, OnCoinIconClicked);
         BindButton(varSupplyIcon, OnSupplyIconClicked);
@@ -76,6 +96,7 @@ public partial class InGameUIForm : UIFormBase
 
     private void UnbindButtons()
     {
+        UnbindButton(varReturnBtn, OnReturnClicked);
         UnbindButton(varPhaseBg, OnPhaseBgClicked);
         UnbindButton(varCoinIcon, OnCoinIconClicked);
         UnbindButton(varSupplyIcon, OnSupplyIconClicked);
@@ -105,6 +126,26 @@ public partial class InGameUIForm : UIFormBase
     private void OnPhaseBgClicked()
     {
         ClickUIButton(varPhaseBg);
+    }
+
+    private void OnReturnClicked()
+    {
+        ClickUIButton(varReturnBtn);
+    }
+
+    private static void OpenLevelSwitch()
+    {
+        if (LevelSelectionService.IsLevelLoading)
+        {
+            return;
+        }
+
+        if (GF.UI.IsLoadingUIForm(UIViews.LevelSwitchUIForm) || GF.UI.HasUIForm(UIViews.LevelSwitchUIForm))
+        {
+            return;
+        }
+
+        LevelSwitchUIForm.Open(false);
     }
 
     private void OnCoinIconClicked()

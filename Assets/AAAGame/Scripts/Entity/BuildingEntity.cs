@@ -83,12 +83,15 @@ public partial class BuildingEntity : MAEntity
 
         RegisterOutlineRenderers();
 
-        // 使用原始的RefreshCharacterData方法来初始化建筑数据
-        RefreshCharacterData(userData);
+ 
+        // Property init uses a fallback template; combat identity should stay on the building id.
+        if (buildingData != null)
+            CharacterKey = buildingData.Identifier;
 
         InitializeAttackCapabilityFlags();
         ResetCombatRuntimeState();
         ApplyBuildingPropertyOverrides();
+        LogBuildingCombatState("OnShow");
         InitializeArmyCardProperties();
         ConfigureCombatByBuildingData();
         SyncHurtBoxToBuildingBounds();
@@ -293,23 +296,56 @@ public partial class BuildingEntity : MAEntity
         if (this.HasInvincibleBuff() || _isDisabled || !Alive)
             return;
 
+        Fix64 before = HealthValue;
+        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 finalDamage = CalculateIncomingDamage(damage, modType);
+        if (finalDamage <= Fix64.Zero)
+        {
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[BuildingDamage] {CharacterKey} raw={damage} def={GetCurrentDefense()} final=0 hp={before}/{max} attacker={attacker?.CharacterKey}");
+            return;
+        }
+
         TriggerHitAnimation();
 
         CreaturePropertyManager.ModifyCurrentProperty(
             CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(-damage), true);
+            PropertyIrreversibleAdditiveModifier.Create(-finalDamage), true);
 
         Fix64 cur = HealthValue;
-        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-damage)));
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-finalDamage)));
 
-        ShowDamagePopText(damage);
+        ShowDamagePopText(finalDamage);
+
+        GameDebugSettings.Log(DebugCategory.Attack,
+            $"[BuildingDamage] {CharacterKey} raw={damage} def={GetCurrentDefense()} final={finalDamage} hp={before}->{cur}/{max} attacker={attacker?.CharacterKey}");
 
         if (cur <= Fix64.Zero)
         {
             EnterDisabledState(attacker);
         }
+    }
+
+    private Fix64 CalculateIncomingDamage(Fix64 damage, HealthModifyType modType)
+    {
+        if (modType != HealthModifyType.reduce)
+            return damage;
+
+        Fix64 defense = GetCurrentDefense();
+        if (defense <= Fix64.Zero)
+            return damage;
+
+        return Fix64.Max(Fix64.Zero, damage - defense);
+    }
+
+    private Fix64 GetCurrentDefense()
+    {
+        if (CreaturePropertyManager == null)
+            return Fix64.Zero;
+
+        Fix64 defense = CreaturePropertyManager.GetProperty(CreatureMainProperty.Def);
+        return defense > Fix64.Zero ? defense : Fix64.Zero;
     }
 
     private void EnsureInteractionHost()
@@ -562,12 +598,12 @@ public partial class BuildingEntity : MAEntity
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.Health,
-            PropertyAdditiveModifier.Create(hpDelta),
+            PropertyDirectAdditiveModifier.Create(hpDelta),
             true);
 
         CreaturePropertyManager.ModifyMainPropertyValueBuff(
             CreatureMainProperty.Def,
-            PropertyAdditiveModifier.Create(defDelta),
+            PropertyDirectAdditiveModifier.Create(defDelta),
             true);
 
         Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
@@ -580,6 +616,18 @@ public partial class BuildingEntity : MAEntity
             PropertyIrreversibleAdditiveModifier.Create(delta),
                 true);
         }
+    }
+
+    private void LogBuildingCombatState(string stage)
+    {
+        if (CreaturePropertyManager == null)
+            return;
+
+        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 currentHealth = HealthValue;
+        Fix64 defense = CreaturePropertyManager.GetProperty(CreatureMainProperty.Def);
+        GameDebugSettings.Log(DebugCategory.Attack,
+            $"[BuildingCombat] {stage} {buildingData?.Identifier} tableHp={buildingData?.HP} hp={currentHealth}/{maxHealth} def={defense}");
     }
 
     private WeaponData CreatePlaceholderWeaponData()

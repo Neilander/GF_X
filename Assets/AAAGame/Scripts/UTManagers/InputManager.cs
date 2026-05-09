@@ -22,6 +22,7 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _skill1Action;
     private InputAction _skill2Action;
     private InputAction _skill3Action;
+    private InputAction _cancelAction;
 
     private InputAction _selectPositionAction;
     private InputAction _skillConfirmAction;
@@ -50,6 +51,7 @@ public partial class InputManager : GameFrameworkComponent
         _skill1Action = actions.FindAction("Player/Skill1");
         _skill2Action = actions.FindAction("Player/Skill2");
         _skill3Action = actions.FindAction("Player/Skill3");
+        _cancelAction = actions.FindAction("UI/Cancel");
 
         _selectPositionAction = actions.FindAction("Player/SelectPosition");
         _skillConfirmAction = actions.FindAction("Player/SkillConfirm");
@@ -77,8 +79,10 @@ public partial class InputManager : GameFrameworkComponent
 
     public void FindModel()
     {
-        if (_model == null && GF.DataModel != null)
+        if (GF.DataModel != null)
+        {
             _model = GF.DataModel.GetDataModel<InputModel>();
+        }
     }
 
     public bool IsActionPressed(string actionName)
@@ -97,6 +101,16 @@ public partial class InputManager : GameFrameworkComponent
 
         InputAction action = playerInput.actions.FindAction(actionName);
         return action != null && action.WasPressedThisFrame();
+    }
+
+    public bool WasCancelPressedThisFrame()
+    {
+        if (_cancelAction != null && _cancelAction.WasPressedThisFrame())
+        {
+            return true;
+        }
+
+        return WasActionPressedThisFrame("Cancel") || WasActionPressedThisFrame("UI/Cancel");
     }
 
     public bool IsPrimaryPointerPressed()

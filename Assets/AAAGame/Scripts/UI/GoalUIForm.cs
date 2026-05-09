@@ -20,13 +20,24 @@ public partial class GoalUIForm : UIFormBase
 		BindButtons();
 		RefreshGoalList();
 		ApplyExpandedState();
+		GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
 	}
 
 	protected override void OnClose(bool isShutdown, object userData)
 	{
+		GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
 		UnbindButtons();
 		UnspawnAllItem<UIItemObject>(varGoalConditionItem);
 		base.OnClose(isShutdown, userData);
+	}
+
+	private void OnIngameValueChanged(object sender, GameEventArgs e)
+	{
+		var args = e as IngameValueChangedEventArgs;
+		if (args != null && args.DataType == IngameValueType.Day)
+		{
+			RefreshGoalList();
+		}
 	}
 
 	protected override void OnButtonClick(object sender, Button btSelf)

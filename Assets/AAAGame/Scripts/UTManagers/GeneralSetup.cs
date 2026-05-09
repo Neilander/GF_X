@@ -95,6 +95,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         GF.UI.CloseUIForms(UIViews.SideTipsUIForm);
         GF.UI.CloseUIForms(UIViews.GoalUIForm);
+        DataModelShutDown();
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
         m_PlayerReady = false;
@@ -120,6 +121,21 @@ public partial class GeneralSetup : GameFrameworkComponent
         GF.DataModel.CreateDataModel<SkillDataModel>();
         GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
         GF.DataModel.CreateDataModel<InputModel>();
+    }
+
+    private void DataModelShutDown()
+    {
+        if (GF.DataModel == null)
+        {
+            return;
+        }
+
+        GF.DataModel.ReleaseDataModel<InGameDataModel>();
+        GF.DataModel.ReleaseDataModel<BuildingDataModel>();
+        GF.DataModel.ReleaseDataModel<TechDataModel>();
+        GF.DataModel.ReleaseDataModel<SkillDataModel>();
+        GF.DataModel.ReleaseDataModel<LocalizationTextDataModel>();
+        GF.DataModel.ReleaseDataModel<InputModel>();
     }
 
     public LevelTable GetLvRow(string lvIdentifier)
@@ -152,6 +168,10 @@ public partial class GeneralSetup : GameFrameworkComponent
 
             TryEnterInitialPhaseIfReady();
         }
+        else
+        {
+            LevelSelectionService.HideEntityRenderersDuringLoad(args.Entity.Logic);
+        }
 
         if (args.Entity.Logic is MAEntity ma)
         {
@@ -175,23 +195,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             if (ma is GeneralCreature creature)
             {
                 Log.Info($"Unit {ma.Id} created: type={ma.GetType().Name}, side={creature.Side}");
-                Fix64 originalMax = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-                Fix64 max = originalMax;
-                // 所有单位血量增加到10倍
-                Fix64 newMax = originalMax * (Fix64)10;
-                Fix64 addValue = newMax - originalMax;
-                var modifier = PropertyDirectAdditiveModifier.Create(addValue);
-                creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, modifier, true);
-                max = newMax;
-                // 更新当前生命值，确保单位满血
-                Fix64 currentHealth = creature.HealthValue;
-                Fix64 healAmount = max - currentHealth;
-                if (healAmount > Fix64.Zero)
-                {
-                    creature.CreaturePropertyManager.ModifyCurrentProperty(
-                        CreatureCurrentProperty.HealthCurrent,
-                    PropertyIrreversibleAdditiveModifier.Create(healAmount), true);
-                }
+                Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
                 // 根据单位的Side判断阵营，友方显示绿色血条，敌方显示红色血条
                 bool isFriendly = creature.Side == SideType.PlayerSide;

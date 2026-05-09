@@ -1,31 +1,80 @@
-﻿using DG.Tweening;
 using GameFramework;
-using GameFramework.Event;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityGameFramework.Runtime;
+
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public partial class GameOverUIForm : UIFormBase
 {
     public const string P_IsWin = "IsWin";
 
-    private bool isWin;
     protected override void OnOpen(object userData)
     {
         base.OnOpen(userData);
-
-        isWin = Params.Get<VarBoolean>(P_IsWin);
-        varTitleTxt.text = isWin ? LocalizationTextManager.ProcessText(GF.Localization.GetString("Victory")) : LocalizationTextManager.ProcessText(GF.Localization.GetString("Failed"));
+        RefreshResultView();
+        BindButtons();
+        LevelSelectionService.LevelLoadCompleted += OnLevelLoadCompleted;
     }
+
+    protected override void OnClose(bool isShutdown, object userData)
+    {
+        LevelSelectionService.LevelLoadCompleted -= OnLevelLoadCompleted;
+        UnbindButtons();
+        base.OnClose(isShutdown, userData);
+    }
+
     protected override void OnButtonClick(object sender, Button btSelf)
     {
         base.OnButtonClick(sender, btSelf);
-        if (btSelf == varBackBtn)
+
+        if (btSelf == varLvselectbtn)
         {
-            //(GF.Procedure.CurrentProcedure as GameOverProcedure).BackHome();
+            LevelSwitchUIForm.Open(false);
         }
+    }
+
+    private void RefreshResultView()
+    {
+        bool isWin = Params.Get<VarBoolean>(P_IsWin);
+
+        if (varShengli != null)
+        {
+            varShengli.SetActive(isWin);
+        }
+
+        if (varShibai != null)
+        {
+            varShibai.SetActive(!isWin);
+        }
+    }
+
+    private void BindButtons()
+    {
+        if (varLvselectbtn == null)
+        {
+            return;
+        }
+
+        varLvselectbtn.onClick.RemoveListener(OnLevelSelectClicked);
+        varLvselectbtn.onClick.AddListener(OnLevelSelectClicked);
+    }
+
+    private void UnbindButtons()
+    {
+        if (varLvselectbtn == null)
+        {
+            return;
+        }
+
+        varLvselectbtn.onClick.RemoveListener(OnLevelSelectClicked);
+    }
+
+    private void OnLevelSelectClicked()
+    {
+        ClickUIButton(varLvselectbtn);
+    }
+
+    private void OnLevelLoadCompleted()
+    {
+        GF.UI.Close(this.UIForm);
     }
 }
