@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 75e878bc02ba0cd4e8073a0df07a7ed1, type: 3}
-  m_Name: Build
+  m_Name: BGMTemp
   m_EditorClassIdentifier: 
-  category: 2
+  category: 0
   clips:
-  - {fileID: 8300000, guid: 1d17f0aaf324ce84c8dd6807d9239535, type: 3}
-  volume: 1
+  - {fileID: 8300000, guid: cbcb4f8b9c736422186975583bb4fc0b, type: 3}
+  volume: 0.7
   volumeVariance: 0
   pitch: 1
   pitchVariance: 0
-  loop: 0
-  fadeIn: 0
+  loop: 1
+  fadeIn: 15
   fadeOut: 0

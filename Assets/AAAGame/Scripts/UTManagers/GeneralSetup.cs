@@ -10,6 +10,10 @@ public partial class GeneralSetup : GameFrameworkComponent
     public event Action OnGeneralSetupCompleted;
     public bool IsGeneralSetupCompleted => m_InitialPhaseEntered;
 
+    [Header("BGM")]
+    [SerializeField, Tooltip("AudioCueLibrary 里配好的 BGM cue key；为空则不播放。")]
+    private string m_BgmCueKey = "BGM";
+
     private bool m_InitialPhaseEntered;
     private bool m_LevelReady;
     private bool m_PlayerReady;
@@ -60,6 +64,19 @@ public partial class GeneralSetup : GameFrameworkComponent
         BootstrapSideTipsManager();
         GF.UI.OpenUIForm(UIViews.SideTipsUIForm);
         GF.UI.OpenUIForm(UIViews.GoalUIForm);
+
+        PlayBgm();
+    }
+
+    private void PlayBgm()
+    {
+        if (string.IsNullOrWhiteSpace(m_BgmCueKey)) return;
+        if (AudioManager.Instance == null)
+        {
+            Log.Warning("[GeneralSetup] AudioManager.Instance 为空，跳过 BGM 播放。");
+            return;
+        }
+        AudioManager.Instance.Play(m_BgmCueKey);
     }
 
     public void GeneralSystemShutDown()

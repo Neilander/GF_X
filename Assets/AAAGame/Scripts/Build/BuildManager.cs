@@ -161,12 +161,18 @@ public class BuildManager : GameFrameworkComponent
 
     public bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
-        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: true) > 0;
+        bool ok = BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: true) > 0;
+        if (ok && AudioManager.Instance != null)
+            AudioManager.Instance.Play("buildNormal");
+        return ok;
     }
 
     public bool BuildBuildingForTechUpgrade(string buildingId, Vector3 position, string buildingInstanceId)
     {
-        return BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: false) > 0;
+        bool ok = BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: false) > 0;
+        if (ok && AudioManager.Instance != null)
+            AudioManager.Instance.Play("buildImportant");
+        return ok;
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗。

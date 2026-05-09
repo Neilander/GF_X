@@ -38,6 +38,7 @@ public partial class BuildingBuildTips : UIFormBase
 
     private BuildOptionBinding m_HoldBinding;
     private float m_HoldProgressStars;
+    private int m_LastHighlightStars;
     private bool m_HoldTriggered;
 
     private sealed class IndustryOptionBinding
@@ -404,6 +405,7 @@ public partial class BuildingBuildTips : UIFormBase
 
             m_HoldBinding = pressedBinding;
             m_HoldProgressStars = 0f;
+            m_LastHighlightStars = 0;
             m_HoldTriggered = false;
         }
         else if (pressedBinding != null && pressedBinding != m_HoldBinding)
@@ -411,6 +413,7 @@ public partial class BuildingBuildTips : UIFormBase
             ApplyStarHighlight(m_HoldBinding, 0);
             m_HoldBinding = pressedBinding;
             m_HoldProgressStars = 0f;
+            m_LastHighlightStars = 0;
             m_HoldTriggered = false;
         }
 
@@ -455,6 +458,11 @@ public partial class BuildingBuildTips : UIFormBase
             highlightCount = Mathf.Clamp(Mathf.FloorToInt(m_HoldProgressStars + 1e-4f), 0, starCount);
         }
         ApplyStarHighlight(m_HoldBinding, highlightCount);
+
+        // 每点亮一颗新星 → 播 goldPay（按住进度条扣钱的"叮"声）
+        if (highlightCount > m_LastHighlightStars && AudioManager.Instance != null)
+            AudioManager.Instance.Play("goldPay");
+        m_LastHighlightStars = highlightCount;
 
         // 视觉与行为对齐：最后一颗星点亮的同一帧就触发建造。
         if (!m_HoldTriggered && pressing && highlightCount >= starCount)
@@ -703,6 +711,7 @@ public partial class BuildingBuildTips : UIFormBase
     {
         m_HoldBinding = null;
         m_HoldProgressStars = 0f;
+        m_LastHighlightStars = 0;
         m_HoldTriggered = false;
     }
 

@@ -27,7 +27,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     }
 
     // --- 配置参数 ---
-    public float RecruitRadius = 8f;        // 玩家多近时开始跟随
+    // RecruitRadius / LeashRange 运行时优先读 GroupMoveConfig (SO)；
+    // SO 不可用（如 Editor 测试）时回落到下面的字段值。
+    public float RecruitRadius = 8f;        // 玩家多近时开始跟随（fallback）
+    public float LeashRange = 30f;          // 脱离战斗回到跟随的距离（fallback）
     public float FollowDistanceMin = 2.5f;  // 跟随最近距离（不贴太紧）
     public float FollowDistanceMax = 5f;    // 跟随最远距离（超过才追）
     public float WeaponRange = 1.5f;          // 武器本身的攻击距离（WeaponData.AttackRange * 0.01）
@@ -37,13 +40,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     public float AvoidPlayerRadius = 2.5f;  // 避让玩家半径
     public float AvoidPlayerStrength = 3f;  // 避让玩家力度
     public float SeekWeight = 0.6f;         // 趋向力权重
-    public float LeashRange = 30f;          // 脱离战斗回到跟随的距离
 
     // --- 脱战返航参数（仅敌方有效，调参先在这里改）---
     public float ChaseRange = 23f;                  // 距出生点超过此值就进入 Returning
     public float HomeArrivedRadius = 1.5f;          // 距出生点 < 此值视为到家
     public Fix64 ReturnSpeedBonusPercent = (Fix64)0.5f;        // 返航移速加成（50%）
     public Fix64 ReturnHpRegenPercentPerSec = (Fix64)0.2f;     // 返航回血（每秒最大血量的 20%）
+    public float SoftReturnRatio = 0.6f;            // 软返航比例的 fallback（运行时优先读 GroupMoveConfig）
     private const string ReturningBuffId = "soldier_returning";
 
     // --- 状态 ---
@@ -64,11 +67,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     private bool _joinedGroup;
     private SoldierState _lastSyncedState = SoldierState.Idle;
     private bool _inDeadZone;                // 是否已进入 leader 附近的死区
-    private float _deadZoneRange = 12f;      // 死区宽度：从斥力半径到斥力半径+此值
-    private float _innerDeadZoneRange = 2f;  // 近死区：斥力半径+此值以内完全停下
+    // 死区宽度由 GroupMoveManager.FollowDeadZoneRange / FollowInnerDeadZoneRange 提供
+    // 协调器不在场（测试环境）时使用下面的兜底默认值
+    private const float FallbackDeadZoneRange = 12f;
+    private const float FallbackInnerDeadZoneRange = 2f;
     private Vector3? _deadZoneTarget;        // 死区内的随机导航目标点
 
     private Vector3? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
+    private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -160,7 +166,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 // 同阵营领袖在附近 → Follow（敌方单位不跟随玩家）
                 else if (IsValidFollowLeader(self, _leader))
                 {
-                    if (HorizontalDist(self.Position, _leader.Position) <= RecruitRadius)
+                    if (HorizontalDist(self.Position, _leader.Position) <= GetRecruitRadius())
                         State = SoldierState.Follow;
                 }
                 break;
@@ -172,7 +178,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 }
                 // 领袖丢失或太远 → 回 Idle，忘掉领袖和组
                 else if (!IsValidFollowLeader(self, _leader) ||
-                         HorizontalDist(self.Position, _leader.Position) > LeashRange)
+                         HorizontalDist(self.Position, _leader.Position) > GetLeashRange())
                 {
                     self.MoveComp.StopMove(); // 清掉残留目标，防止被斥力推远
                     if (GroupMoveManager.HasInstance)
@@ -222,7 +228,15 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
                 new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
             };
             var buff = BuffData.Create(ReturningBuffId, 0f, true, 1, modules);
-            ma.BuffComp.AddBuff(buff, ma);
+            bool added = ma.BuffComp.AddBuff(buff, ma);
+            UnityEngine.Debug.Log($"[Returning.AddBuff] host={self.CharacterKey} added={added} " +
+                                  $"buffCompType={ma.BuffComp.GetType().Name} " +
+                                  $"speedPct={(float)ReturnSpeedBonusPercent} hpPct={(float)ReturnHpRegenPercentPerSec}");
+        }
+        else
+        {
+            UnityEngine.Debug.LogWarning($"[Returning] host={self.CharacterKey} buff 未挂载: " +
+                                         $"isMA={(self is MAEntity)} buffComp={(self as MAEntity)?.BuffComp?.GetType().Name ?? "null"}");
         }
 
         State = SoldierState.Returning;
@@ -277,8 +291,74 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
 
     private void TickIdle(IEntityContext self, float dt)
     {
-        // Idle 状态：安静站着，只有真正重叠时才推开
-        // 不每帧 MoveTo，避免抽搐
+        // 敌方专属：远离出生点 + 周围无敌 → 温和走回家（不挂返航 buff，可被 UpdateState 切回 Combat）
+        if (!_birthPosition.HasValue)
+        {
+            _softReturning = false;
+            return;
+        }
+
+        float distFromHome = HorizontalDist(self.Position, _birthPosition.Value);
+
+        // 已到家 → 停止
+        if (distFromHome <= HomeArrivedRadius)
+        {
+            if (_softReturning)
+            {
+                _softReturning = false;
+                self.MoveComp?.StopMove();
+            }
+            return;
+        }
+
+        // 周围有敌 → 终止软返航，让 UpdateState/TargetComp 切 Combat
+        if (HasEnemyInScanRange(self))
+        {
+            if (_softReturning)
+            {
+                _softReturning = false;
+                self.MoveComp?.StopMove();
+            }
+            return;
+        }
+
+        // 触发判定：尚未在软返航中，且未达 softThreshold → 站着等
+        if (!_softReturning)
+        {
+            float softThreshold = ChaseRange * GetSoftReturnRatio();
+            if (distFromHome < softThreshold) return;
+            _softReturning = true;
+        }
+
+        // 持续走回家直到 HomeArrivedRadius 才停
+        float speed = GetWorldMoveSpeed(self);
+        self.MoveComp.SetNavTarget(_birthPosition.Value);
+        Vector3 navDir = self.MoveComp.GetNavDirection();
+        Vector3 desiredVel = navDir * speed;
+        SubmitToCoordinator(self, desiredVel, speed);
+    }
+
+    private float GetSoftReturnRatio()
+    {
+        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
+        return cfg != null ? cfg.EnemySoftReturnRatio : SoftReturnRatio;
+    }
+
+    private bool HasEnemyInScanRange(IEntityContext self)
+    {
+        float r = DetectEnemyRange;
+        float rSq = r * r;
+        var all = EntityRegistry.AllEntities;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var ent = all[i];
+            if (ent == null || ReferenceEquals(ent, self)) continue;
+            if (!IsValidAttackTarget(self, ent)) continue;
+            Vector3 d = ent.Position - self.Position;
+            d.y = 0f;
+            if (d.sqrMagnitude <= rSq) return true;
+        }
+        return false;
     }
 
     private void TickFollow(IEntityContext self, float dt)
@@ -292,14 +372,28 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         float speed = GetWorldMoveSpeed(self);
         Move = Vector2.zero;
 
-        // 计算死区范围：[leaderEqR, leaderEqR + _deadZoneRange]
-        float leaderEqR = GroupMoveManager.HasInstance
-            ? GroupMoveManager.Instance.Coordinator.LeaderEquilibriumRadius
-            : 1.5f;
-        float deadZoneOuter = leaderEqR + _deadZoneRange;
+        // 计算死区范围：[leaderEqR, leaderEqR + FollowDeadZoneRange]
+        float leaderEqR;
+        float deadZoneRange;
+        float innerDeadZoneRange;
+        if (GroupMoveManager.HasInstance)
+        {
+            var mgr = GroupMoveManager.Instance;
+            leaderEqR = mgr.Coordinator.LeaderEquilibriumRadius;
+            var cfg = mgr.Config;
+            deadZoneRange = cfg != null ? cfg.FollowDeadZoneRange : FallbackDeadZoneRange;
+            innerDeadZoneRange = cfg != null ? cfg.FollowInnerDeadZoneRange : FallbackInnerDeadZoneRange;
+        }
+        else
+        {
+            leaderEqR = 1.5f;
+            deadZoneRange = FallbackDeadZoneRange;
+            innerDeadZoneRange = FallbackInnerDeadZoneRange;
+        }
+        float deadZoneOuter = leaderEqR + deadZoneRange;
         float distToLeader = HorizontalDist(self.Position, _leader.Position);
 
-        float innerDeadZone = leaderEqR + _innerDeadZoneRange;
+        float innerDeadZone = leaderEqR + innerDeadZoneRange;
 
         if (distToLeader <= deadZoneOuter)
         {
@@ -490,5 +584,17 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         float dx = a.x - b.x;
         float dz = a.z - b.z;
         return Mathf.Sqrt(dx * dx + dz * dz);
+    }
+
+    private float GetRecruitRadius()
+    {
+        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
+        return cfg != null ? cfg.FollowRecruitRadius : RecruitRadius;
+    }
+
+    private float GetLeashRange()
+    {
+        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
+        return cfg != null ? cfg.FollowLeashRange : LeashRange;
     }
 }

@@ -468,6 +468,9 @@ public class GameEndManager : GameFrameworkComponent
         CloseAllOpenedUIForms();
         OpenGameOverUI(isWin);
         DisablePlayerMoveInputOnGameEnd();
+
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.Play(isWin ? "levelSuccess" : "levelFail");
     }
 
     private void CloseAllOpenedUIForms()

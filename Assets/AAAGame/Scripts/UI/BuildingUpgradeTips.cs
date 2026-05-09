@@ -39,6 +39,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     private UpgradeOptionBinding m_SelectedBinding;
     private UpgradeOptionBinding m_HoldBinding;
     private float m_HoldProgressStars;
+    private int m_LastHighlightStars;
     private bool m_HoldTriggered;
     private Color m_ConditionIconSatisfiedColor = DefaultLitColor;
 
@@ -462,6 +463,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
             m_HoldBinding = pressed;
             m_HoldProgressStars = 0f;
+            m_LastHighlightStars = 0;
             m_HoldTriggered = false;
         }
         else if (pressed != null && pressed != m_HoldBinding)
@@ -469,6 +471,7 @@ public partial class BuildingUpgradeTips : UIFormBase
             ApplyStarHighlight(m_HoldBinding, 0);
             m_HoldBinding = pressed;
             m_HoldProgressStars = 0f;
+            m_LastHighlightStars = 0;
             m_HoldTriggered = false;
         }
 
@@ -508,6 +511,11 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
 
         ApplyStarHighlight(m_HoldBinding, highlightCount);
+
+        // 每点亮一颗新星 → 播 goldPay（按住进度条扣钱的"叮"声）
+        if (highlightCount > m_LastHighlightStars && AudioManager.Instance != null)
+            AudioManager.Instance.Play("goldPay");
+        m_LastHighlightStars = highlightCount;
 
         if (!m_HoldTriggered && pressing && highlightCount >= starCount)
         {
@@ -911,6 +919,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     {
         m_HoldBinding = null;
         m_HoldProgressStars = 0f;
+        m_LastHighlightStars = 0;
         m_HoldTriggered = false;
     }
 

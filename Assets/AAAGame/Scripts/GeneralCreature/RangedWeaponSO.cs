@@ -36,6 +36,10 @@ public class RangedWeaponSO : BaseWeaponSO
         // 使用对象池显示弹道
         GF.Entity.ShowEntity<Projectile>(_projectileName, Const.EntityGroup.Bullet, projectileParams);
 
+        // 远程攻击发射音效（命中音由 Projectile.HitTarget 单独播 basicAttack）
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.Play("rangeAttack");
+
         // 播放攻击特效
         if (!string.IsNullOrEmpty(AttackVfxName))
         {

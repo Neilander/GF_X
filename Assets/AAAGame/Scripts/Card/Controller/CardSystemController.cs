@@ -609,6 +609,9 @@ namespace AAAGame.Card
             GF.Event.Fire(this, cardEvent);
             Debug.Log($"[DISCARD-BUFF] CardSystemController.DiscardCard 已 Fire CardDiscardedEventArgs");
 
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.Play("discardCard");
+
             return true;
         }
 

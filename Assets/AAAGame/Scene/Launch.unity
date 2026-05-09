@@ -2743,8 +2743,36 @@ MonoBehaviour:
   entries:
   - key: move
     cue: {fileID: 11400000, guid: a36fd86486c72834f9971f2ddea2f01c, type: 2}
-  - key: build
+  - key: buildImportant
     cue: {fileID: 11400000, guid: a4115c19c4fbc1648af50a4fc6b5b7c4, type: 2}
+  - key: enemyDeath
+    cue: {fileID: 11400000, guid: 6866320a69dcc40d4a5fa705316f2d3f, type: 2}
+  - key: bgm
+    cue: {fileID: 11400000, guid: 5ae88b723c5384098a869cfe5eeec947, type: 2}
+  - key: buildDeath
+    cue: {fileID: 11400000, guid: 24d0ebfb12ab24fd485c0259855a29f0, type: 2}
+  - key: buildNormal
+    cue: {fileID: 11400000, guid: 6f4bf0bebae004021bd50ddc9db04a57, type: 2}
+  - key: enterBattle
+    cue: {fileID: 11400000, guid: 6141a0d9f020f4b72ac1eeb46a20b606, type: 2}
+  - key: enterManage
+    cue: {fileID: 11400000, guid: bb828dd7689b64134a9e9e7c5b0f67f1, type: 2}
+  - key: createUnit
+    cue: {fileID: 11400000, guid: 8b40ec437bf2142868ecba171a6eb296, type: 2}
+  - key: goldPay
+    cue: {fileID: 11400000, guid: c9f672d976cc9452487c1e02407cc824, type: 2}
+  - key: cancelCreate
+    cue: {fileID: 11400000, guid: c489749dbad73418195796724736ba2c, type: 2}
+  - key: discardCard
+    cue: {fileID: 11400000, guid: 4c0a2db9a8e374fa9a9f632620077b7f, type: 2}
+  - key: levelSuccess
+    cue: {fileID: 11400000, guid: 7b9f3ea6217644c7d8816a388e7a0fff, type: 2}
+  - key: levelFail
+    cue: {fileID: 11400000, guid: 594e917b4bd4e4cc2841f998d49556fb, type: 2}
+  - key: basicAttack
+    cue: {fileID: 11400000, guid: a0e9201bd996b48f286da9c89745b9f3, type: 2}
+  - key: rangeAttack
+    cue: {fileID: 11400000, guid: 2f34925ffedab46fd94e4329747dfc5f, type: 2}
 --- !u!1 &1100769541
 GameObject:
   m_ObjectHideFlags: 0
@@ -4895,6 +4923,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb83b17adcc354e3dbf1696bc9234436, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  m_BgmCueKey: bgm
 --- !u!4 &1975991655
 Transform:
   m_ObjectHideFlags: 0

@@ -238,6 +238,19 @@ public class MAEntity : CompCreature, IEntityContext
         {
             _buffComp.OnHostDead();
         }
+
+        PlayDeathSound();
+    }
+
+    /// <summary>
+    /// 死亡音效。默认：敌方死亡播 "enemyDeath"。子类可覆盖（建筑覆盖为 "buildDeath"，无视阵营）。
+    /// </summary>
+    protected virtual void PlayDeathSound()
+    {
+        if (Side == SideType.EnemySide && AudioManager.Instance != null)
+        {
+            AudioManager.Instance.Play("enemyDeath");
+        }
     }
 
     protected override void OnHide(bool isShutdown, object userData)
@@ -323,6 +336,21 @@ public class MAEntity : CompCreature, IEntityContext
                     if (moveDirection.sqrMagnitude > 0.001f)
                     {
                         _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+                    }
+                    else
+                    {
+                        // 没在主动移动时，如果有攻击目标 → 朝目标转向
+                        // （战斗状态进入攻击范围会停下，原逻辑保留最后移动方向，导致单位不看向敌人）
+                        var combatTarget = targetComp?.CurrentTarget;
+                        if (combatTarget != null && combatTarget.Alive)
+                        {
+                            Vector3 toTarget = combatTarget.Position - Position;
+                            toTarget.y = 0f;
+                            if (toTarget.sqrMagnitude > 0.001f)
+                            {
+                                _targetRotation = Quaternion.LookRotation(toTarget);
+                            }
+                        }
                     }
                 }
             }

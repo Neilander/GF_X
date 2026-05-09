@@ -116,7 +116,7 @@ public static class SoldierFactory
                 break;
 
             case UnitType.Unit_BoneButcher:
-                buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f));
+                buffList.Add(OnKillHealBuff.CreateOnKillHeal(3f, 25f));
                 break;
 
             case UnitType.Unit_Scapegoat:
