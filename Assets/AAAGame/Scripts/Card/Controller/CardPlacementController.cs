@@ -203,6 +203,7 @@ namespace AAAGame.Card
             {
                 Debug.Log("[Card] Cannot confirm placement: 松手时未命中 Ground.");
                 LastInvalidReason = CardPlacementInvalidReason.NotOnGround;
+                PlayCancelCreateSound();
                 return false;
             }
 
@@ -216,12 +217,14 @@ namespace AAAGame.Card
             {
                 LastInvalidReason = invalidReason;
                 LogInvalidPlacementReason(releaseGroundPosition, invalidReason);
+                PlayCancelCreateSound();
                 return false;
             }
 
             if (!CanSpawnCardAtPosition(cardModel, resolvedGroundPosition))
             {
                 Debug.Log($"[Card] Cannot confirm placement: 预检测生成失败. requested={releaseGroundPosition}, resolved={resolvedGroundPosition}");
+                PlayCancelCreateSound();
                 return false;
             }
 
@@ -233,6 +236,7 @@ namespace AAAGame.Card
             {
                 Debug.Log("[Card] Cannot confirm placement: 生成点不合法或无法生成单位.");
                 LastInvalidReason = CardPlacementInvalidReason.SpawnFailed;
+                PlayCancelCreateSound();
                 return false;
             }
 
@@ -615,6 +619,12 @@ namespace AAAGame.Card
             }
 
             return mapData.GetCellState(gridX, gridY);
+        }
+
+        /// <summary>放置失败统一播 cancelCreate（程序状态错误"放置流程未开启"不算用户失败，不播）。</summary>
+        private static void PlayCancelCreateSound()
+        {
+            if (AudioManager.Instance != null) AudioManager.Instance.Play("cancelCreate");
         }
 
         private int SpawnSoldiers(CardModel cardModel, Vector3 centerPosition)

@@ -2761,6 +2761,14 @@ MonoBehaviour:
     cue: {fileID: 11400000, guid: 8b40ec437bf2142868ecba171a6eb296, type: 2}
   - key: goldPay
     cue: {fileID: 11400000, guid: c9f672d976cc9452487c1e02407cc824, type: 2}
+  - key: cancelCreate
+    cue: {fileID: 11400000, guid: c489749dbad73418195796724736ba2c, type: 2}
+  - key: discardCard
+    cue: {fileID: 11400000, guid: 4c0a2db9a8e374fa9a9f632620077b7f, type: 2}
+  - key: levelSuccess
+    cue: {fileID: 11400000, guid: 7b9f3ea6217644c7d8816a388e7a0fff, type: 2}
+  - key: levelFail
+    cue: {fileID: 11400000, guid: 594e917b4bd4e4cc2841f998d49556fb, type: 2}
 --- !u!1 &1100769541
 GameObject:
   m_ObjectHideFlags: 0
