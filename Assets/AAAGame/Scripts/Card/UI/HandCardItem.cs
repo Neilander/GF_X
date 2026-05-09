@@ -484,7 +484,7 @@ namespace AAAGame.Card
             // 只有在普通拖拽态下才让卡牌本体跟随鼠标
             if (!m_IsTargetingMode)
             {
-                m_RectTransform.position = eventData.position;
+                MoveToScreenPosition(eventData.position);
             }
 
             // 通知父界面
@@ -986,8 +986,32 @@ namespace AAAGame.Card
             }
 
             m_MoveTween?.Kill();
-            m_RectTransform.position = screenPosition;
+            MoveToScreenPosition(screenPosition);
             ScaleTo(dragScale);
+        }
+
+        private void MoveToScreenPosition(Vector2 screenPosition)
+        {
+            if (m_RectTransform == null)
+            {
+                return;
+            }
+
+            RectTransform referenceRect = m_Canvas != null
+                ? m_Canvas.transform as RectTransform
+                : m_RectTransform.parent as RectTransform;
+
+            Camera eventCamera = m_Canvas != null && m_Canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? m_Canvas.worldCamera
+                : null;
+
+            if (referenceRect != null && RectTransformUtility.ScreenPointToWorldPointInRectangle(referenceRect, screenPosition, eventCamera, out Vector3 worldPosition))
+            {
+                m_RectTransform.position = worldPosition;
+                return;
+            }
+
+            m_RectTransform.position = screenPosition;
         }
 
         public Vector2 GetScreenAnchorPosition(Camera uiCamera)
