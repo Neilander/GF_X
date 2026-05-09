@@ -8,6 +8,9 @@ using UnityGameFramework.Runtime;
 
 public class CameraController : MonoBehaviour
 {
+    private const int GameRendererIndex = 0;
+    private const int UIRendererIndex = 1;
+
     public static CameraController Instance { get; private set; }
 
     [Header("Legacy Isometric (Orthographic)")]
@@ -129,6 +132,8 @@ public class CameraController : MonoBehaviour
         var urpCamData = mainCam.GetComponent<UniversalAdditionalCameraData>();
         if (urpCamData != null && GFBuiltin.UICamera != null)
         {
+            urpCamData.SetRenderer(GameRendererIndex);
+
             var uiCamData = GFBuiltin.UICamera.GetComponent<UniversalAdditionalCameraData>();
             if (uiCamData != null)
             {
@@ -136,6 +141,7 @@ public class CameraController : MonoBehaviour
                 {
                     uiCamData.renderType = CameraRenderType.Overlay;
                 }
+                uiCamData.SetRenderer(UIRendererIndex);
                 if (!urpCamData.cameraStack.Contains(GFBuiltin.UICamera))
                 {
                     urpCamData.cameraStack.Add(GFBuiltin.UICamera);

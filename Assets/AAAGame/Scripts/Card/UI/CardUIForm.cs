@@ -118,7 +118,7 @@ namespace AAAGame.Card
                 m_TrashBinCanvas = m_TrashBinRect != null ? m_TrashBinRect.GetComponentInParent<Canvas>() : null;
                 ResolveTrashBinImage();
                 SetTrashBinOpen(false, true);
-                trashBin.SetActive(false);
+                trashBin.SetActive(true);
             }
 
             m_ResolvedHandCardAreaRect = ResolveHandCardAreaRect();
@@ -1021,7 +1021,6 @@ namespace AAAGame.Card
             if (trashBin != null)
             {
                 SetTrashBinDragFeedback(cardItem, false);
-                trashBin.SetActive(true);
             }
 
             m_CardSystemController.StartPlacement(cardItem.GetCardModel());
@@ -1039,11 +1038,6 @@ namespace AAAGame.Card
             m_DraggingCard = null;
             RefreshHandCardInteractionVisuals();
             SetTrashBinDragFeedback(cardItem, false);
-
-            if (trashBin != null)
-            {
-                trashBin.SetActive(false);
-            }
 
             HideTargetingVisuals();
             areaMaterialOverlay?.HideAreaEffect();

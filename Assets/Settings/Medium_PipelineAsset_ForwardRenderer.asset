@@ -193,14 +193,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6d613f08f173d4dd895bb07b3230baa9, type: 3}
-  m_Name: FullScreenPassRendererFeature
+  m_Script: {fileID: 11500000, guid: 3f2d5d42860348efba9af690d7332e9f, type: 3}
+  m_Name: PixelationRendererFeature
   m_EditorClassIdentifier: 
   m_Active: 1
-  injectionPoint: 600
+  renderPassEvent: 600
   fetchColorBuffer: 1
   requirements: 0
   passMaterial: {fileID: 2100000, guid: 8cdf0fa6afefe4d08bd43f6aebb58291, type: 2}
   passIndex: 0
   bindDepthStencilAttachment: 0
-  m_Version: 1
+  skipOverlayCameras: 1

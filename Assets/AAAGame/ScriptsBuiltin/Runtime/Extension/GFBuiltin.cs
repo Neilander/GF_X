@@ -7,6 +7,7 @@ using UnityGameFramework.Runtime;
 public class GFBuiltin : MonoBehaviour
 {
     private const float DesignAspectRatio = 16f / 9f;
+    private const int UIRendererIndex = 1;
 
     public static GFBuiltin Instance { get; private set; }
     public static BaseComponent Base { get; private set; }
@@ -136,6 +137,25 @@ public class GFBuiltin : MonoBehaviour
 
         RootCanvas.renderMode = RenderMode.ScreenSpaceCamera;
         RootCanvas.worldCamera = UICamera;
+
+        ApplyUICameraRenderer(UICamera);
+    }
+
+    private static void ApplyUICameraRenderer(Camera camera)
+    {
+        if (camera == null)
+        {
+            return;
+        }
+
+        var cameraData = camera.GetComponent("UniversalAdditionalCameraData");
+        if (cameraData == null)
+        {
+            return;
+        }
+
+        var setRenderer = cameraData.GetType().GetMethod("SetRenderer", BindingFlags.Instance | BindingFlags.Public);
+        setRenderer?.Invoke(cameraData, new object[] { UIRendererIndex });
     }
 
     private void RefreshDesignViewport(bool force)

@@ -13,6 +13,7 @@ public partial class LevelEntity : EntityBase
 {
     private const string StrongholdLayerPrefix = "SH";
     private const int RuntimeInitItemsPerFrame = 1;
+    private const float CaptureVfxBaseDiameter = 12f;
 
     private TileWorldCreatorManager tileWorldCreatorManager;
     private NavMeshSurface[] _navMeshSurfaces;
@@ -792,7 +793,9 @@ public partial class LevelEntity : EntityBase
 
         Vector3 center = worldBounds.center;
         center.y += 0.1f;
-        var vfxParams = EntityParams.Create(center, Vector3.zero, Vector3.one);
+        float shortSide = Mathf.Min(worldBounds.size.x, worldBounds.size.z);
+        float vfxScale = shortSide / CaptureVfxBaseDiameter;
+        var vfxParams = EntityParams.Create(center, Vector3.zero, Vector3.one * Mathf.Max(0.01f, vfxScale));
         GF.Entity.ShowEffect("占领特效", vfxParams);
     }
     private static int ResolveCaptureFactionId(IEntityContext attacker)

@@ -23,19 +23,6 @@ public partial class BuildingBuildTips : UIFormBase
 
     private static readonly Dictionary<BuilType, Archetype> s_LastSelectedIndustryByType = new();
     private static readonly Dictionary<string, int> s_ArmySupplyPerUnitCache = new(StringComparer.Ordinal);
-    private static readonly Dictionary<string, string> s_BuildPreviewByIdentifier = new(StringComparer.Ordinal)
-    {
-        // 编程行业兵营有两种预览图，按建筑标识精确区分。
-        { "Buil_InterviewRoom", $"{BuildPreviewFolder}/兵营-程序1.png" },
-        { "Buil_OtakuDesk", $"{BuildPreviewFolder}/兵营-程序2.png" },
-    };
-    private static readonly Dictionary<Archetype, string> s_ArchetypePreviewSuffix = new()
-    {
-        { Archetype.Coding, "程序" },
-        { Archetype.Sightseeing, "乐园" },
-        { Archetype.Delivery, "物流" },
-        { Archetype.Butchery, "肉厂" },
-    };
 
     private readonly List<IndustryOptionBinding> m_IndustryBindings = new();
     private readonly List<BuildOptionBinding> m_BuildOptionBindings = new();
@@ -753,25 +740,10 @@ public partial class BuildingBuildTips : UIFormBase
             return null;
 
         string baseIdentifier = StripLevelSuffix(data.Identifier);
-        if (!string.IsNullOrWhiteSpace(baseIdentifier)
-            && s_BuildPreviewByIdentifier.TryGetValue(baseIdentifier, out string exactPath))
-            return exactPath;
-
-        if (!s_ArchetypePreviewSuffix.TryGetValue(data.Arche, out string archeSuffix))
+        if (string.IsNullOrWhiteSpace(baseIdentifier))
             return null;
 
-        string typePrefix = data.Type switch
-        {
-            BuilType.Tech => "科技",
-            BuilType.Prod => "资源",
-            BuilType.Army => "兵营",
-            _ => null
-        };
-
-        if (string.IsNullOrWhiteSpace(typePrefix))
-            return null;
-
-        return $"{BuildPreviewFolder}/{typePrefix}-{archeSuffix}.png";
+        return $"{BuildPreviewFolder}/{baseIdentifier}.png";
     }
 
     private static string StripLevelSuffix(string identifier)
