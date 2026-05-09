@@ -12,8 +12,8 @@ PlayerSettings:
   targetDevice: 2
   useOnDemandResources: 0
   accelerometerFrequency: 60
-  companyName: eFunTech
-  productName: GF_X
+  companyName: ShenJingGames
+  productName: BlackTide
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.12156863, g: 0.12156863, b: 0.1254902, a: 1}
@@ -141,7 +141,7 @@ PlayerSettings:
   loadStoreDebugModeEnabled: 0
   visionOSBundleVersion: 1.0
   tvOSBundleVersion: 1.0
-  bundleVersion: 1.0.0
+  bundleVersion: 0.1.0
   preloadedAssets:
   - {fileID: 11400000, guid: f4d8482f34dd84c82bd30dadf32c6b61, type: 2}
   - {fileID: -944628639613478452, guid: f51559efafeaf4f21a2302dc163bed19, type: 3}
@@ -165,8 +165,8 @@ PlayerSettings:
   androidSupportedAspectRatio: 1
   androidMaxAspectRatio: 2.1
   applicationIdentifier:
-    Android: com.eFunTech.GF_X
-    Standalone: com.eFunTech.GF-X
+    Android: com.ShenJingGames.BlackTide
+    Standalone: com.ShenJingGames.BlackTide
   buildNumber:
     Bratwurst: 0
     Standalone: 0

@@ -1310,7 +1310,7 @@
         inputData = (InputData)0;
 
     #if defined(REQUIRES_WORLD_SPACE_POS_INTERPOLATOR)
-        inputData.positionWS = input.positionWS;
+        inputData.positionWS = input.positionWS.xyz;
     #endif
     //Normal转到外面执行
     //     half3 viewDirWS = GetWorldSpaceNormalizeViewDir(input.positionWS);
@@ -1340,8 +1340,8 @@
         inputData.shadowCoord = float4(0, 0, 0, 0);
     #endif
     #ifdef _ADDITIONAL_LIGHTS_VERTEX
-        inputData.fogCoord = InitializeInputDataFog(float4(input.positionWS, 1.0), input.fogFactorAndVertexLight.x);
-        inputData.vertexLighting = input.fogFactorAndVertexLight.yzw;
+        inputData.fogCoord = InitializeInputDataFog(float4(input.positionWS.xyz, 1.0), input.positionWS.w);
+        inputData.vertexLighting = input.vertexLight;
     #else
         inputData.fogCoord = InitializeInputDataFog(float4(input.positionWS.xyz, 1.0), input.positionWS.w);
     #endif

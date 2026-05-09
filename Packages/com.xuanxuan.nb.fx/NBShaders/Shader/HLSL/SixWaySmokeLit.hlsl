@@ -244,7 +244,7 @@ half4 UniversalFragmentSixWay(InputData inputData,BSDFData bsdfData)
     #endif
 
     #if defined(_ADDITIONAL_LIGHTS_VERTEX)
-    lightingData.vertexLightingColor += inputData.vertexLighting * surfaceData.albedo;
+    lightingData.vertexLightingColor += inputData.vertexLighting * bsdfData.diffuseColor.rgb;
     #endif
 
     return CalculateFinalColor(lightingData, bsdfData.alpha);

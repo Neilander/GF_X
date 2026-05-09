@@ -103,7 +103,7 @@
             ParticleUVs particleUVs = (ParticleUVs)0;
             float2 screenUV = output.clipPos.xy/output.clipPos.w;
             screenUV = screenUV*0.5+0.5;
-            baseUVs = ProcessBaseUVs(input.texcoords,specialUVInTexcoord3,output.VaryingsP_Custom1,output.VaryingsP_Custom2,output.positionOS.xyz,output.positionWS,screenUV);
+            baseUVs = ProcessBaseUVs(input.texcoords,specialUVInTexcoord3,output.VaryingsP_Custom1,output.VaryingsP_Custom2,output.positionOS.xyz,output.positionWS.xyz,screenUV);
             ParticleProcessUV(particleUVs,input.texcoords,output.VaryingsP_Custom1,output.VaryingsP_Custom2,baseUVs);
             output.texcoord2AndSpecialUV.xy = particleUVs.animBlendUV;
             output.texcoord2AndSpecialUV.zw= particleUVs.specUV;
@@ -163,7 +163,7 @@
             {
                 float2 screenUV = output.clipPos.xy/output.clipPos.w;
                 screenUV = screenUV*0.5+0.5;
-                baseUVsForVertexOffset = ProcessBaseUVs(input.texcoords,0,output.VaryingsP_Custom1,output.VaryingsP_Custom2,positionOS,output.positionWS,screenUV);
+                baseUVsForVertexOffset = ProcessBaseUVs(input.texcoords,0,output.VaryingsP_Custom1,output.VaryingsP_Custom2,positionOS.xyz,output.positionWS.xyz,screenUV);
             }
             
             //因为极坐标和旋转会强制到Frag计算，所以顶点在这边特殊处理一遍。
@@ -237,7 +237,7 @@
 		half3 positionVS = 0;
 		if(needPositionVS())
 		{
-			positionVS = TransformWorldToView(input.positionWS);
+			positionVS = TransformWorldToView(input.positionWS.xyz);
 		}
 
         if(needEyeDepth())
