@@ -120,6 +120,26 @@ namespace AAAGame.Card
             RefreshView();
         }
 
+        public void ApplyRenderLayer(int layer)
+        {
+            gameObject.layer = layer;
+            SetGraphicLayer(cardBackImage, layer);
+            SetGraphicLayer(cardImage, layer);
+            SetGraphicLayer(cardNameText, layer);
+            SetGraphicLayer(populationText, layer);
+            SetGraphicLayer(soldierCountText, layer);
+        }
+
+        private static void SetGraphicLayer(Graphic graphic, int layer)
+        {
+            if (graphic == null)
+            {
+                return;
+            }
+
+            graphic.gameObject.layer = layer;
+        }
+
         private void ResetRuntimeState()
         {
             m_ScaleTween?.Kill();
