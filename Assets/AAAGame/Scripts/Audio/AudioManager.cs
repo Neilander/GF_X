@@ -23,6 +23,7 @@ public class AudioManager : GameFrameworkComponent
     private readonly List<AudioSource> sfxPool = new();
     private readonly Dictionary<int, ActiveSfx> activeSfx = new();
     private int nextHandleId = 1;
+    private AudioCueLibrary cueLibrary;
 
     private struct ActiveSfx
     {
@@ -40,6 +41,7 @@ public class AudioManager : GameFrameworkComponent
 
         base.Awake();
         Instance = this;
+        cueLibrary = GetComponent<AudioCueLibrary>();
 
         masterVol = PlayerPrefs.GetFloat(K_MASTER, 1f);
         musicVol = PlayerPrefs.GetFloat(K_MUSIC, 1f);
@@ -61,6 +63,25 @@ public class AudioManager : GameFrameworkComponent
         return cue.category == AudioCategory.SFX
             ? PlaySfxInternal(cue)
             : PlayPersistentInternal(cue);
+    }
+
+    public AudioHandle Play(string cueKey)
+    {
+        return Play(GetCue(cueKey));
+    }
+
+    public AudioCue GetCue(string cueKey)
+    {
+        if (cueLibrary == null)
+            cueLibrary = GetComponent<AudioCueLibrary>();
+
+        if (cueLibrary == null)
+        {
+            Debug.LogError("[AudioManager] Missing AudioCueLibrary component.");
+            return null;
+        }
+
+        return cueLibrary.Get(cueKey);
     }
 
     public void Stop(AudioCue cue)
