@@ -2745,6 +2745,10 @@ MonoBehaviour:
     cue: {fileID: 11400000, guid: a36fd86486c72834f9971f2ddea2f01c, type: 2}
   - key: build
     cue: {fileID: 11400000, guid: a4115c19c4fbc1648af50a4fc6b5b7c4, type: 2}
+  - key: enemyDeath
+    cue: {fileID: 11400000, guid: 6866320a69dcc40d4a5fa705316f2d3f, type: 2}
+  - key: bgm
+    cue: {fileID: 11400000, guid: 5ae88b723c5384098a869cfe5eeec947, type: 2}
 --- !u!1 &1100769541
 GameObject:
   m_ObjectHideFlags: 0
@@ -4895,6 +4899,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb83b17adcc354e3dbf1696bc9234436, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  m_BgmCueKey: bgm
 --- !u!4 &1975991655
 Transform:
   m_ObjectHideFlags: 0

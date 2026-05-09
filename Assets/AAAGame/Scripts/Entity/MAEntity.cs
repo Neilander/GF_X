@@ -238,6 +238,12 @@ public class MAEntity : CompCreature, IEntityContext
         {
             _buffComp.OnHostDead();
         }
+
+        // 敌方死亡播 SFX（cue key 在 AudioCueLibrary 里映射）
+        if (Side == SideType.EnemySide && AudioManager.Instance != null)
+        {
+            AudioManager.Instance.Play("enemyDeath");
+        }
     }
 
     protected override void OnHide(bool isShutdown, object userData)
