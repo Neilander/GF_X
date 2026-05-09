@@ -138,6 +138,12 @@ public class GeneralCreature : EntityBase, ITargetable
 
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-damage)));
 
+        // 视线外仇恨：受击时把 attacker 记到 TargetComp，让单位 scan 找不到敌人时 fallback 去打打过自己的人
+        if (attacker != null && this is IEntityContext ctx && ctx.TargetComp != null)
+        {
+            ctx.TargetComp.NotifyDamageTaken(attacker);
+        }
+
         // // 显示伤害跳字
         // Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
         // Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));

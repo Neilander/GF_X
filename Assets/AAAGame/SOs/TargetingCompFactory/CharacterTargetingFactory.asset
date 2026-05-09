@@ -15,3 +15,4 @@ MonoBehaviour:
   defaultAggroRange: 10
   defaultForgetRange: 20
   defaultFollowRange: 30
+  defaultAlertRadius: 5

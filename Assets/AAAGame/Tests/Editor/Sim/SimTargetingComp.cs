@@ -16,6 +16,7 @@ public class SimTargetingComp : ITargetingComp
     public float AggroRange { get; set; } = 6f;
     public float ForgetRange { get; set; } = 8f;
     public float FollowSearchRange { get; set; } = 30f;
+    public float AlertRadius { get; set; } = 0f;
 
     private float _scanTimer = 0f;
     private const float SCAN_INTERVAL = 0.2f;
@@ -95,4 +96,10 @@ public class SimTargetingComp : ITargetingComp
     }
 
     public void Resume() { }
+
+    public void NotifyDamageTaken(IEntityContext attacker) { }
+
+    public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
+
+    public void ClearAggro() { }
 }

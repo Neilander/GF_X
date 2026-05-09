@@ -10,6 +10,7 @@ public class NoTargetingComp : ITargetingComp
     public float AggroRange { get; set; } = 0f;
     public float ForgetRange { get; set; } = 0f;
     public float FollowSearchRange { get; set; } = 0f;
+    public float AlertRadius { get; set; } = 0f;
 
     // 接口方法留空
     public void Init(IEntityContext ctx) { }
@@ -19,4 +20,10 @@ public class NoTargetingComp : ITargetingComp
     public void ShutDown() { }
 
     public void Resume() { }
+
+    public void NotifyDamageTaken(IEntityContext attacker) { }
+
+    public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
+
+    public void ClearAggro() { }
 }

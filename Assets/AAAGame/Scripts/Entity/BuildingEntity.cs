@@ -128,6 +128,27 @@ public partial class BuildingEntity : MAEntity
             AudioManager.Instance.Play("buildDeath");
     }
 
+    /// <summary>调试：在场景里画建筑的告警广播范围（AlertRadius），便于核对召唤友军距离。</summary>
+    private void OnDrawGizmos()
+    {
+        if (targetComp == null) return; // 未播放或未初始化：跳过
+        float r = targetComp.AlertRadius;
+        if (r <= 0f) return;
+
+        Gizmos.color = new Color(1f, 0.85f, 0.2f, 0.6f); // 半透明黄
+        Vector3 center = transform.position;
+        const int segments = 36;
+        float step = 2f * Mathf.PI / segments;
+        Vector3 prev = center + new Vector3(r, 0f, 0f);
+        for (int i = 1; i <= segments; i++)
+        {
+            float a = step * i;
+            Vector3 next = center + new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
+            Gizmos.DrawLine(prev, next);
+            prev = next;
+        }
+    }
+
     /// <summary>
     /// 把所有子 Renderer 注册到 BuildingOutlineFeature 全局列表，让屏幕空间描边 Pass 拾取。
     /// 配套 UnregisterOutlineRenderers 在 OnHide 调用，避免对象池复用时残留死引用。
@@ -213,7 +234,9 @@ public partial class BuildingEntity : MAEntity
         {
             AggroRange = 6f,
             ForgetRange = 8f,
-            FollowSearchRange = 0f
+            FollowSearchRange = 0f,
+            EnableAggroFallback = false, // 建筑不需要"视线外仇恨"，原地反击就好
+            AlertRadius = 12f            // 建筑被打/扫到敌人时，召唤 12m 内友军反击
         };
         SetTargetingComp(targetingComp);
         targetingComp.Init(this);
@@ -320,6 +343,10 @@ public partial class BuildingEntity : MAEntity
 
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[BuildingDamage] {CharacterKey} raw={damage} def={GetCurrentDefense()} final={finalDamage} hp={before}->{cur}/{max} attacker={attacker?.CharacterKey}");
+
+        // 受击告警：通知 TargetingComp，让它广播 attacker 给周围友军（建筑自身 EnableAggroFallback=false 不记 _lastAttacker，但仍广播）
+        if (attacker != null && targetComp != null)
+            targetComp.NotifyDamageTaken(attacker);
 
         if (cur <= Fix64.Zero)
         {
