@@ -71,7 +71,7 @@ internal struct TypeIdPair : IEquatable<TypeIdPair>
         }
 
         string typeName = m_Type.FullName;
-        return Utility.Text.Format("{0}.{1}", typeName, m_Id);
+        return string.Concat(typeName, ".", m_Id.ToString());
     }
 
     /// <summary>

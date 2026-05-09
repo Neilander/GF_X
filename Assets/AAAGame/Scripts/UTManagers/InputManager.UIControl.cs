@@ -42,28 +42,14 @@ public partial class InputManager
             return;
         }
 
-        switch (e)
+        bool shouldRefresh = e is OpenUIFormSuccessEventArgs opened && IsBlockingAsset(opened.UIForm.UIFormAssetName)
+                             || e is CloseUIFormCompleteEventArgs closed && IsBlockingAsset(closed.UIFormAssetName);
+        if (!shouldRefresh)
         {
-            case OpenUIFormSuccessEventArgs opened:
-                if (IsBlockingAsset(opened.UIForm.UIFormAssetName))
-                {
-                    _openBlockingCount++;
-                    ApplyInputStateByBlockingCount();
-                }
-                break;
-            case CloseUIFormCompleteEventArgs closed:
-                if (IsBlockingAsset(closed.UIFormAssetName))
-                {
-                    if (_openBlockingCount > 0)
-                    {
-                        _openBlockingCount--;
-                    }
-                    ApplyInputStateByBlockingCount();
-                }
-                break;
-            default:
-                break;
+            return;
         }
+
+        RefreshUIFormInputState();
     }
 
     private HashSet<string> BuildBlockingAssetSet()
@@ -107,6 +93,12 @@ public partial class InputManager
     private bool IsBlockingAsset(string assetName)
     {
         return _blockingFormAssets != null && _blockingFormAssets.Contains(assetName);
+    }
+
+    public void RefreshUIFormInputState()
+    {
+        RecountOpenBlockingForms();
+        ApplyInputStateByBlockingCount();
     }
 
     private void ApplyInputStateByBlockingCount()

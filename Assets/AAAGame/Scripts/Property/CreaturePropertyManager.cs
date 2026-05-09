@@ -182,14 +182,7 @@ public class CreaturePropertyManager
 
     private Func<Func<Fix64>[], Func<Fix64>> RefFuncFactory(CreatureMainProperty mainProperty)
     {
-        return mainProperty switch
-        {
-            CreatureMainProperty.Def => PropertyFuncRef.GetAbilityWithConfigAndLevel,
-            CreatureMainProperty.Health => PropertyFuncRef.GetHealthWithConfigAndLevel,
-            CreatureMainProperty.Speed => PropertyFuncRef.GetSpeedWithConfigAndLevel,
-            CreatureMainProperty.Mana => PropertyFuncRef.GetManaWithConfigAndLevel,
-            _ => ConfigOnlyRefFunc
-        };
+        return ConfigOnlyRefFunc;
     }
 
     private Fix64 GetConfigValue(CreatureMainProperty prop)

@@ -34,8 +34,20 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         m_ProcedureOwner = procedureOwner;
-        m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems);
-        m_RuntimeInitPipeline.Start(OnRuntimeInitialized);
+
+        if (LevelSelectionService.ShouldShowStartupLevelSwitch)
+        {
+            GF.BuiltinView.HideLoadingProgress();
+            if (!LevelSelectionService.OpenLevelSwitch(true))
+            {
+                Log.Error("{0} Failed to open startup level switch UI.", RuntimeInitLogTag);
+                StartRuntimeInitPipeline(RuntimeLevelIdentifier, true);
+            }
+
+            return;
+        }
+
+        StartRuntimeInitPipeline(RuntimeLevelIdentifier, true);
     }
 
     protected override void OnUpdate(IFsm<IProcedureManager> procedureOwner, float elapseSeconds, float realElapseSeconds)
@@ -120,6 +132,32 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         return true;
     }
 
+    public bool TryStartRuntimeLevel(string levelIdentifier, out string errorMessage)
+    {
+        errorMessage = null;
+        if (string.IsNullOrWhiteSpace(levelIdentifier))
+        {
+            errorMessage = "Level identifier is empty.";
+            return false;
+        }
+
+        if (m_ProcedureOwner == null)
+        {
+            errorMessage = "Runtime procedure is not active.";
+            return false;
+        }
+
+        if (m_RuntimeInitPipeline != null || m_InPlaceLevelSwitchInProgress)
+        {
+            errorMessage = "Runtime level initialization is already running.";
+            return false;
+        }
+
+        ChangeSceneProcedure.SelectedLevelIdentifier = levelIdentifier;
+        StartRuntimeInitPipeline(RuntimeLevelIdentifier, false);
+        return true;
+    }
+
     private async UniTaskVoid EnterRuntimeLevelInPlaceAsync(string levelIdentifier)
     {
         LevelEntity previousLevel = LevelEntity.ActiveLevelEntity;
@@ -134,16 +172,14 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             }
 
             GF.Base.PauseGame();
-            GF.BuiltinView.ShowLoadingProgress(0.85f);
 
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;
-            GF.BuiltinView.ShowLoadingProgress(0.85f);
 
             HideRuntimeEntitiesExceptLevel();
             await UniTask.Yield(PlayerLoopTiming.Update);
 
-            m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems);
+            m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems, false);
             m_RuntimeInitPipeline.Start(() =>
             {
                 if (previousLevel != null && previousLevel.Available)
@@ -160,8 +196,15 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
             m_InPlaceLevelSwitchInProgress = false;
             GF.Base.ResumeGame();
+            LevelSelectionService.NotifyLevelLoadFailed(ex.Message);
             Log.Error("{0} Enter runtime level in place failed. level={1}, error={2}", RuntimeInitLogTag, levelIdentifier, ex);
         }
+    }
+
+    private void StartRuntimeInitPipeline(string levelIdentifier, bool showBuiltinProgress)
+    {
+        m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, levelIdentifier, RequiredRuntimeSystems, showBuiltinProgress);
+        m_RuntimeInitPipeline.Start(OnRuntimeInitialized);
     }
 
     private static void HideRuntimeEntitiesExceptLevel()
@@ -209,6 +252,7 @@ internal sealed class RuntimeInitPipeline
     private readonly string m_LogTag;
     private readonly string m_LevelIdentifier;
     private readonly RuntimeInitSystemFlags m_RuntimeSystems;
+    private readonly bool m_ShowBuiltinProgress;
 
     private GeneralSetup m_GeneralSetup;
     private Action m_OnCompleted;
@@ -221,11 +265,12 @@ internal sealed class RuntimeInitPipeline
 
     public bool IsCompleted { get; private set; }
 
-    public RuntimeInitPipeline(string logTag, string levelIdentifier, RuntimeInitSystemFlags runtimeSystems)
+    public RuntimeInitPipeline(string logTag, string levelIdentifier, RuntimeInitSystemFlags runtimeSystems, bool showBuiltinProgress = true)
     {
         m_LogTag = string.IsNullOrWhiteSpace(logTag) ? "[RuntimeInit]" : logTag;
         m_LevelIdentifier = string.IsNullOrWhiteSpace(levelIdentifier) ? "Lv_1" : levelIdentifier;
         m_RuntimeSystems = runtimeSystems;
+        m_ShowBuiltinProgress = showBuiltinProgress;
         m_MinimapUIFormId = -1;
         m_InGameUIFormId = -1;
     }
@@ -244,7 +289,16 @@ internal sealed class RuntimeInitPipeline
         m_DisplayedProgress = RuntimeProgressStart;
         m_TargetProgress = RuntimeProgressStart;
         m_FinishPending = false;
-        GF.BuiltinView.ShowLoadingProgress(RuntimeProgressStart);
+        LevelSelectionService.NotifyLevelLoadStarted();
+        NotifyLevelLoadProgress();
+        if (m_ShowBuiltinProgress)
+        {
+            GF.BuiltinView.ShowLoadingProgress(RuntimeProgressStart);
+        }
+        else
+        {
+            GF.BuiltinView.HideLoadingProgress();
+        }
 
         m_GeneralSetup = GameEntry.GetComponent<GeneralSetup>();
         if (m_GeneralSetup == null)
@@ -282,7 +336,11 @@ internal sealed class RuntimeInitPipeline
 
         float delta = Math.Max(0f, elapseSeconds);
         m_DisplayedProgress = Math.Min(m_TargetProgress, m_DisplayedProgress + RuntimeProgressSmoothSpeed * delta);
-        GF.BuiltinView.SetLoadingProgress(m_DisplayedProgress);
+        NotifyLevelLoadProgress();
+        if (m_ShowBuiltinProgress)
+        {
+            GF.BuiltinView.SetLoadingProgress(m_DisplayedProgress);
+        }
 
         if (m_FinishPending && m_DisplayedProgress >= 0.999f)
         {
@@ -419,13 +477,13 @@ internal sealed class RuntimeInitPipeline
 
         if (needMinimapUI && m_MinimapUIFormId != -1)
         {
-            GF.UI.CloseUIForm(m_MinimapUIFormId);
+            CloseUIFormIfAlive(m_MinimapUIFormId);
             m_MinimapUIFormId = -1;
         }
 
         if (m_InGameUIFormId != -1)
         {
-            GF.UI.CloseUIForm(m_InGameUIFormId);
+            CloseUIFormIfAlive(m_InGameUIFormId);
             m_InGameUIFormId = -1;
         }
 
@@ -436,6 +494,19 @@ internal sealed class RuntimeInitPipeline
             {
                 cardSetup.CardSystemShutdown(false);
             }
+        }
+    }
+
+    private static void CloseUIFormIfAlive(int uiFormId)
+    {
+        if (uiFormId == -1 || GF.UI == null)
+        {
+            return;
+        }
+
+        if (GF.UI.IsLoadingUIForm(uiFormId) || GF.UI.HasUIForm(uiFormId))
+        {
+            GF.UI.CloseUIForm(uiFormId);
         }
     }
 
@@ -463,9 +534,17 @@ internal sealed class RuntimeInitPipeline
         m_FinishPending = false;
         m_DisplayedProgress = 1f;
         m_TargetProgress = 1f;
-        GF.BuiltinView.SetLoadingProgress(1f);
+        NotifyLevelLoadProgress();
+        if (m_ShowBuiltinProgress)
+        {
+            GF.BuiltinView.SetLoadingProgress(1f);
+        }
         m_OnCompleted?.Invoke();
-        GF.BuiltinView.HideLoadingProgress();
+        if (m_ShowBuiltinProgress)
+        {
+            GF.BuiltinView.HideLoadingProgress();
+        }
+        LevelSelectionService.NotifyLevelLoadCompleted();
         Log.Info("{0} Runtime startup completed.", m_LogTag);
         ShowLevelObjectiveTips();
         EnablePlayerInput();
@@ -498,5 +577,11 @@ internal sealed class RuntimeInitPipeline
     private void SetTargetProgress(float progress)
     {
         m_TargetProgress = Math.Max(m_TargetProgress, Math.Min(progress, 0.99f));
+    }
+
+    private void NotifyLevelLoadProgress()
+    {
+        float progress = (m_DisplayedProgress - RuntimeProgressStart) / (1f - RuntimeProgressStart);
+        LevelSelectionService.NotifyLevelLoadProgress(progress);
     }
 }

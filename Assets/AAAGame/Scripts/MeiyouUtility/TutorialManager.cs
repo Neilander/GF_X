@@ -47,6 +47,7 @@ public class TutorialManager : GameFrameworkComponent
     private bool m_EventSubscribed;
     private bool m_WaitingEventReadyLogged;
     private int m_BuildTutorialStartBuiltCount;
+    private string m_InvadeTutorialStrongholdId;
 
     protected override void Awake()
     {
@@ -114,6 +115,15 @@ public class TutorialManager : GameFrameworkComponent
         return GameEntry.GetComponent<TutorialManager>().TryGetPhaseSwitchButtonGuideInternal(out interactable, out shouldBlink);
     }
 
+    public static bool IsInvadeTutorialMovementBlocked(Vector3 worldPosition)
+    {
+        TutorialManager manager = s_CachedManager;
+        if (manager == null)
+            return false;
+
+        return manager.IsInvadeTutorialMovementBlockedInternal(worldPosition);
+    }
+
     public void ResetMoveTutorialForDebug()
     {
         ResetAllTutorialsForDebug();
@@ -133,6 +143,7 @@ public class TutorialManager : GameFrameworkComponent
         inputModel = null;
         hasLoggedWaitingForInputModel = false;
         m_BuildTutorialStartBuiltCount = 0;
+        m_InvadeTutorialStrongholdId = null;
         NotifyPhaseSwitchButtonGuideChanged();
     }
 
@@ -147,6 +158,8 @@ public class TutorialManager : GameFrameworkComponent
                 TickBuildTutorial();
                 break;
             case TutorialType.InvadeSH:
+                TickInvadeTutorial();
+                break;
             case TutorialType.SwitchPhase:
             case TutorialType.SwitchPhase2:
                 break;
@@ -194,6 +207,9 @@ public class TutorialManager : GameFrameworkComponent
         if (triggerType == TutorialType.Build)
             m_BuildTutorialStartBuiltCount = CountPlayerBuiltBuildings();
 
+        if (triggerType == TutorialType.InvadeSH)
+            TryBindInvadeTutorialStronghold(triggerSource);
+
         string sourceName = triggerSource != null ? triggerSource.name : "Auto";
         Log.Info("[Tutorial] Tutorial started. type={0}, trigger={1}, chain={2}.", triggerType, sourceName, startedByChain);
         NotifyPhaseSwitchButtonGuideChanged();
@@ -211,6 +227,14 @@ public class TutorialManager : GameFrameworkComponent
             return;
 
         CompleteTutorial(TutorialType.MoveHeroByWASD, autoChain: false);
+    }
+
+    private void TickInvadeTutorial()
+    {
+        if (!string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
+            return;
+
+        TryBindInvadeTutorialStronghold(null);
     }
 
     private void TickBuildTutorial()
@@ -240,6 +264,9 @@ public class TutorialManager : GameFrameworkComponent
 
         if (TryGetTutorialTipConfig(triggerType, out string tipId, out _))
             RequestCloseSideTip(tipId);
+
+        if (triggerType == TutorialType.InvadeSH)
+            m_InvadeTutorialStrongholdId = null;
 
         Log.Info("[Tutorial] Tutorial completed. type={0}.", triggerType);
 
@@ -420,6 +447,64 @@ public class TutorialManager : GameFrameworkComponent
             || triggerType == TutorialType.Build
             || triggerType == TutorialType.SwitchPhase2
             || triggerType == TutorialType.PlayCard;
+    }
+
+    private bool IsInvadeTutorialMovementBlockedInternal(Vector3 worldPosition)
+    {
+        if (!activeTutorials.Contains(TutorialType.InvadeSH))
+            return false;
+
+        if (string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
+            TryBindInvadeTutorialStronghold(null);
+
+        if (string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
+            return false;
+
+        Stronghold stronghold = TryGetStrongholdAtWorldPosition(worldPosition);
+        return stronghold == null
+            || stronghold.strongholdData == null
+            || !string.Equals(stronghold.strongholdData.StrongholdId, m_InvadeTutorialStrongholdId, StringComparison.Ordinal);
+    }
+
+    private void TryBindInvadeTutorialStronghold(Component triggerSource)
+    {
+        if (!string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
+            return;
+
+        if (TryResolveStrongholdId(EntityRegistry.Player?.Position, out string playerStrongholdId))
+        {
+            m_InvadeTutorialStrongholdId = playerStrongholdId;
+            Log.Info("[Tutorial] Invade tutorial stronghold locked. id={0}, source=Player.", playerStrongholdId);
+            return;
+        }
+
+        if (triggerSource != null && TryResolveStrongholdId(triggerSource.transform.position, out string triggerStrongholdId))
+        {
+            m_InvadeTutorialStrongholdId = triggerStrongholdId;
+            Log.Info("[Tutorial] Invade tutorial stronghold locked. id={0}, source={1}.", triggerStrongholdId, triggerSource.name);
+        }
+    }
+
+    private static bool TryResolveStrongholdId(Vector3? worldPosition, out string strongholdId)
+    {
+        strongholdId = null;
+        if (!worldPosition.HasValue)
+            return false;
+
+        Stronghold stronghold = TryGetStrongholdAtWorldPosition(worldPosition.Value);
+        if (stronghold == null || stronghold.strongholdData == null || string.IsNullOrEmpty(stronghold.strongholdData.StrongholdId))
+            return false;
+
+        strongholdId = stronghold.strongholdData.StrongholdId;
+        return true;
+    }
+
+    private static Stronghold TryGetStrongholdAtWorldPosition(Vector3 worldPosition)
+    {
+        if (LevelEntity.ActiveLevelEntity == null)
+            return null;
+
+        return LevelEntity.GetStrongholdAtWorldPosition(worldPosition);
     }
 
     private static bool IsCurrentLevelLv1()

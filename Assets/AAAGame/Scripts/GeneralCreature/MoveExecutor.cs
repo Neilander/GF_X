@@ -259,6 +259,12 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             return Vector3.zero;
         }
 
+        if (IsInvadeTutorialStrongholdBlocked(navHit.position))
+        {
+            Debug.LogWarning($"[MoveExecutor] Invade tutorial stronghold boundary blocked. pos={navHit.position}, gameObject={gameObject.name}");
+            return Vector3.zero;
+        }
+
         if (IsNonVisibleBlocked(navHit.position))
         {
             Debug.LogWarning($"[MoveExecutor] 非可见区域被阻挡！pos={navHit.position}, gameObject={gameObject.name}");
@@ -312,5 +318,20 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         }
 
         return stronghold.OwnerFactionId != EntitySideHelper.PlayerFactionId;
+    }
+
+    private bool IsInvadeTutorialStrongholdBlocked(Vector3 worldPosition)
+    {
+        if (_ownerEntity == null)
+        {
+            _ownerEntity = GetComponent<MAEntity>();
+        }
+
+        if (_ownerEntity == null || _ownerEntity.Side != SideType.PlayerSide)
+        {
+            return false;
+        }
+
+        return TutorialManager.IsInvadeTutorialMovementBlocked(worldPosition);
     }
 }

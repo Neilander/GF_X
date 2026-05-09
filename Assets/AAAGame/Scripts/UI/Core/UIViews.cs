@@ -29,5 +29,6 @@ public enum UIViews : int
 	FogUI = 20,
 	BuildingBuildTips = 24,
 	BuildingUpgradeTips = 25,
-	BuildingInfoTips = 26
+	BuildingInfoTips = 26,
+	LevelSwitchUIForm = 27
 }

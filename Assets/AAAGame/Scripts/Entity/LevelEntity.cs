@@ -17,6 +17,7 @@ public partial class LevelEntity : EntityBase
     private TileWorldCreatorManager tileWorldCreatorManager;
     private NavMeshSurface[] _navMeshSurfaces;
     private int m_RuntimeInitializationVersion;
+    private bool m_HiddenDuringRuntimeInitialization;
 
     public event Action<LevelEntity> RuntimeInitializationCompleted;
     public bool IsRuntimeInitializationCompleted { get; private set; }
@@ -64,12 +65,19 @@ public partial class LevelEntity : EntityBase
         base.OnShow(userData);
         activeLevelEntity = this;
         IsRuntimeInitializationCompleted = false;
+        m_HiddenDuringRuntimeInitialization = LevelSelectionService.IsLevelLoading;
+
         int initVersion = ++m_RuntimeInitializationVersion;
 
         _navMeshSurfaces = GetComponentsInChildren<NavMeshSurface>();
 
         CollectStrongholds();
         SubscribeRuntimeLayerRules();
+        if (m_HiddenDuringRuntimeInitialization)
+        {
+            LevelSelectionService.HideEntityRenderersDuringLoad(this);
+        }
+
         InitializeRuntimeAsync(initVersion).Forget();
     }
 
@@ -91,6 +99,7 @@ public partial class LevelEntity : EntityBase
         tileWorldCreatorManager = null;
         _navMeshSurfaces = null;
         IsRuntimeInitializationCompleted = false;
+        m_HiddenDuringRuntimeInitialization = false;
         RuntimeInitializationCompleted = null;
         m_RuntimeInitializationVersion++;
 
