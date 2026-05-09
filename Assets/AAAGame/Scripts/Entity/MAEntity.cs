@@ -337,6 +337,21 @@ public class MAEntity : CompCreature, IEntityContext
                     {
                         _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
                     }
+                    else
+                    {
+                        // 没在主动移动时，如果有攻击目标 → 朝目标转向
+                        // （战斗状态进入攻击范围会停下，原逻辑保留最后移动方向，导致单位不看向敌人）
+                        var combatTarget = targetComp?.CurrentTarget;
+                        if (combatTarget != null && combatTarget.Alive)
+                        {
+                            Vector3 toTarget = combatTarget.Position - Position;
+                            toTarget.y = 0f;
+                            if (toTarget.sqrMagnitude > 0.001f)
+                            {
+                                _targetRotation = Quaternion.LookRotation(toTarget);
+                            }
+                        }
+                    }
                 }
             }
         }
