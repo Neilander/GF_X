@@ -12,7 +12,7 @@ public static class EntityContextExtensions
     }
 
     /// <summary>
-    /// 统一攻击目标判定：死亡、销毁和无敌状态都不可作为攻击目标。
+    /// 统一攻击目标判定：死亡、销毁、无敌、幽灵态都不可作为攻击目标。
     /// </summary>
     public static bool IsAttackTargetable(this IEntityContext ctx)
     {
@@ -20,6 +20,10 @@ public static class EntityContextExtensions
             return false;
 
         if (ctx.HasInvincibleBuff())
+            return false;
+
+        // 幽灵态（玩家死亡进入的复活等待状态）：Alive=true 但不可被攻击，避免敌人一直锁着它打
+        if (ctx is SoldierEntity se && se.IsGhostState)
             return false;
 
         // 检查是否处于战斗阶段（进攻阶段）

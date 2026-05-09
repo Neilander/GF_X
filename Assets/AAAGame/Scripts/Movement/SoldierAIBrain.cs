@@ -216,7 +216,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
         // 清掉攻击意图和路径，避免返航过程中残留目标干扰
         Attack = false;
         if (self.TargetComp != null)
+        {
             self.TargetComp.CurrentTarget = null;
+            self.TargetComp.ClearAggro(); // 受击仇恨记忆同步清掉，避免返航回家又被拉走
+        }
         self.MoveComp?.StopMove();
 
         // 挂复合 buff：百分比移速 + 持续回血
@@ -250,6 +253,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             ma.BuffComp?.RemoveBuff(ReturningBuffId);
 
         self.MoveComp?.StopMove();
+        // 返航途中可能被打记下 _lastAttacker，回到家也一并清掉，避免刚到家又被拉走
+        self.TargetComp?.ClearAggro();
         State = SoldierState.Idle;
         GameDebugSettings.Log(DebugCategory.Brain,
             $"[{self.CharacterKey}] 到家, 退出 Returning");
@@ -328,6 +333,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
             float softThreshold = ChaseRange * GetSoftReturnRatio();
             if (distFromHome < softThreshold) return;
             _softReturning = true;
+            self.TargetComp?.ClearAggro(); // 软返航触发时也清掉受击仇恨，避免回家路上又被拉走
         }
 
         // 持续走回家直到 HomeArrivedRadius 才停

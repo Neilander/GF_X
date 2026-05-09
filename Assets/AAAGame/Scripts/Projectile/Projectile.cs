@@ -159,7 +159,10 @@ public class Projectile : EntityBase
 
                 // 远程子弹命中造成伤害的音效
                 if (AudioManager.Instance != null)
+                {
+                    UnityEngine.Debug.Log($"[BasicAttackSfx] Projectile.HitTarget 播 basicAttack: attacker={_attacker?.CharacterKey} target={_target?.CharacterKey} projectileActive={gameObject.activeInHierarchy}");
                     AudioManager.Instance.Play("basicAttack");
+                }
             }
         }
 

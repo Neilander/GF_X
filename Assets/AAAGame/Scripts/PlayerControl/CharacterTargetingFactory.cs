@@ -11,17 +11,20 @@ public class CharacterTargetingFactory : TargetingCompFactory
     public float defaultAggroRange = 6f;
     public float defaultForgetRange = 8f;
     public float defaultFollowRange = 30f;
+    [Tooltip("自己扫描到敌人时，把敌人广播给此半径内的同阵营友军。0 = 关掉广播。")]
+    public float defaultAlertRadius = 5f;
 
     public override ITargetingComp CreateTargetingComp(MAEntity gmo)
     {
         var comp = new CharacterTargetingComp();
         comp.Init(gmo);
-        
+
         // 赋予初始面板值
         comp.AggroRange = defaultAggroRange;
         comp.ForgetRange = defaultForgetRange;
         comp.FollowSearchRange = defaultFollowRange;
-        
+        comp.AlertRadius = defaultAlertRadius;
+
         gmo.SetTargetingComp(comp);
         return comp;
     }
