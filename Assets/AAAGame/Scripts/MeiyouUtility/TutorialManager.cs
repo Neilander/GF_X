@@ -265,7 +265,7 @@ public class TutorialManager : GameFrameworkComponent
         if (TryGetTutorialTipConfig(triggerType, out string tipId, out _))
             RequestCloseSideTip(tipId);
 
-        if (triggerType == TutorialType.InvadeSH)
+        if (triggerType == TutorialType.SwitchPhase)
             m_InvadeTutorialStrongholdId = null;
 
         Log.Info("[Tutorial] Tutorial completed. type={0}.", triggerType);
@@ -451,7 +451,8 @@ public class TutorialManager : GameFrameworkComponent
 
     private bool IsInvadeTutorialMovementBlockedInternal(Vector3 worldPosition)
     {
-        if (!activeTutorials.Contains(TutorialType.InvadeSH))
+        if (!activeTutorials.Contains(TutorialType.InvadeSH)
+            && !activeTutorials.Contains(TutorialType.SwitchPhase))
             return false;
 
         if (string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))

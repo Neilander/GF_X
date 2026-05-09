@@ -71,7 +71,11 @@ public class GameDebugSettings : MonoBehaviour
 
     public static bool IsRuntimeResourceModifyEnabled()
     {
+#if UNITY_EDITOR
         return Instance != null && Instance.runtimeResourceModifyEnabled;
+#else
+        return false;
+#endif
     }
 }
 

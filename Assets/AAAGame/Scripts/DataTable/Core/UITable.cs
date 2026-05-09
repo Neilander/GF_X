@@ -47,7 +47,7 @@ public class UITable : DataRowBase
         }
 
         /// <summary>
-        /// 同组界面被覆盖时是否隐藏
+        /// 覆盖同组界面时是否隐藏对方
         /// </summary>
         public bool PauseCoveredUI
         {
