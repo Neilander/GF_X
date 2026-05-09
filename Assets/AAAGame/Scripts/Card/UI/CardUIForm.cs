@@ -386,6 +386,8 @@ namespace AAAGame.Card
                 return;
             }
 
+            SetLayerRecursively(itemObject.gameObject, gameObject.layer);
+
             HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
             if (cardItem == null)
             {
@@ -412,6 +414,21 @@ namespace AAAGame.Card
                 {
                     m_ActiveDrawAnimations = Mathf.Max(0, m_ActiveDrawAnimations - 1);
                 });
+            }
+        }
+
+        private static void SetLayerRecursively(GameObject root, int layer)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            root.layer = layer;
+            Transform rootTransform = root.transform;
+            for (int i = 0; i < rootTransform.childCount; i++)
+            {
+                SetLayerRecursively(rootTransform.GetChild(i).gameObject, layer);
             }
         }
 

@@ -4,6 +4,7 @@
 //---------------------------------
 using UnityEngine;
 using TMPro;
+using UnityEngine.UI;
 public partial class BuildingInfoItem
 {
 	[Space(10)]
@@ -18,4 +19,5 @@ public partial class BuildingInfoItem
 	[SerializeField] protected GameObject varIconNumItem = null;
 	[SerializeField] private GameObject varBuildingInfoItem = null;
 	[SerializeField] private GameObject varPreview = null;
+	[SerializeField] private Image varImage = null;
 }

@@ -14,6 +14,7 @@ public partial class BuildingBuildTips : UIFormBase
     private const string CoinIconPath = "UI/Icon/Coin.png";
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
+    private const string BuildPreviewFolder = "建筑预览";
     private const string BaseMilestoneTechPattern = "Tech_BaseBuilt_{0}_Lv1";
     private const float HoldPerStarMinSeconds = 0.1f;
     private const float HoldPerStarMaxSeconds = 0.4f;
@@ -22,6 +23,19 @@ public partial class BuildingBuildTips : UIFormBase
 
     private static readonly Dictionary<BuilType, Archetype> s_LastSelectedIndustryByType = new();
     private static readonly Dictionary<string, int> s_ArmySupplyPerUnitCache = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, string> s_BuildPreviewByIdentifier = new(StringComparer.Ordinal)
+    {
+        // 编程行业兵营有两种预览图，按建筑标识精确区分。
+        { "Buil_InterviewRoom", $"{BuildPreviewFolder}/兵营-程序1.png" },
+        { "Buil_OtakuDesk", $"{BuildPreviewFolder}/兵营-程序2.png" },
+    };
+    private static readonly Dictionary<Archetype, string> s_ArchetypePreviewSuffix = new()
+    {
+        { Archetype.Coding, "程序" },
+        { Archetype.Sightseeing, "乐园" },
+        { Archetype.Delivery, "物流" },
+        { Archetype.Butchery, "肉厂" },
+    };
 
     private readonly List<IndustryOptionBinding> m_IndustryBindings = new();
     private readonly List<BuildOptionBinding> m_BuildOptionBindings = new();
@@ -82,6 +96,7 @@ public partial class BuildingBuildTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        ClearBuildOptionPreviewImages();
         ClearRuntimeState();
 
         base.OnClose(isShutdown, userData);
@@ -240,6 +255,7 @@ public partial class BuildingBuildTips : UIFormBase
 
     private void SpawnBuildOptionsForSelectedIndustry()
     {
+        ClearBuildOptionPreviewImages();
         UnspawnItemTemplate(m_IconNumTemplate);
         UnspawnItemTemplate(m_StarTemplate);
         UnspawnItemTemplate(varBuildingInfoSeparationLineItem);
@@ -274,6 +290,7 @@ public partial class BuildingBuildTips : UIFormBase
             // desc 默认走富文本（关键词高亮、正负数字着色）。
             string desc = data.GetFormattedDesc();
             infoItem.SetData(keyText, name, desc);
+            ConfigureBuildPreview(infoItem, data);
 
             bool executable = buildManager != null && m_TargetBuilding != null && buildManager.IsConstructOptionExecutable(m_TargetBuilding, data.Identifier);
             infoItem.SetExecutable(executable);
@@ -575,7 +592,13 @@ public partial class BuildingBuildTips : UIFormBase
     private void OnEntityFactionChanged(object sender, GameEventArgs e)
     {
         EntityFactionChangedEventArgs args = e as EntityFactionChangedEventArgs;
-        if (args == null || m_TargetBuilding == null || m_TargetBuilding.Id != args.EntityId)
+        if (args == null)
+            return;
+
+        bool affectsPlayerOwnership =
+            args.OldFactionId == EntitySideHelper.PlayerFactionId ||
+            args.NewFactionId == EntitySideHelper.PlayerFactionId;
+        if (!affectsPlayerOwnership)
             return;
 
         RefreshView();
@@ -676,6 +699,7 @@ public partial class BuildingBuildTips : UIFormBase
 
     private void ClearAllSpawnedItems()
     {
+        ClearBuildOptionPreviewImages();
         UnspawnItemTemplate(m_IconNumTemplate);
         UnspawnItemTemplate(m_StarTemplate);
         UnspawnItemTemplate(varBuildingInfoSeparationLineItem);
@@ -721,5 +745,77 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         UnspawnAllItem<UIItemObject>(template);
+    }
+
+    private static string ResolveBuildPreviewSpritePath(BuildingData data)
+    {
+        if (data == null || data.Type == BuilType.Base)
+            return null;
+
+        string baseIdentifier = StripLevelSuffix(data.Identifier);
+        if (!string.IsNullOrWhiteSpace(baseIdentifier)
+            && s_BuildPreviewByIdentifier.TryGetValue(baseIdentifier, out string exactPath))
+            return exactPath;
+
+        if (!s_ArchetypePreviewSuffix.TryGetValue(data.Arche, out string archeSuffix))
+            return null;
+
+        string typePrefix = data.Type switch
+        {
+            BuilType.Tech => "科技",
+            BuilType.Prod => "资源",
+            BuilType.Army => "兵营",
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(typePrefix))
+            return null;
+
+        return $"{BuildPreviewFolder}/{typePrefix}-{archeSuffix}.png";
+    }
+
+    private static string StripLevelSuffix(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+            return string.Empty;
+
+        int lvIdx = identifier.LastIndexOf("_Lv", StringComparison.Ordinal);
+        if (lvIdx <= 0 || lvIdx + 3 >= identifier.Length)
+            return identifier;
+
+        for (int i = lvIdx + 3; i < identifier.Length; i++)
+        {
+            if (!char.IsDigit(identifier[i]))
+                return identifier;
+        }
+
+        return identifier.Substring(0, lvIdx);
+    }
+
+    private static void ConfigureBuildPreview(BuildingInfoItem infoItem, BuildingData data)
+    {
+        if (infoItem == null)
+            return;
+
+        string previewPath = ResolveBuildPreviewSpritePath(data);
+        if (string.IsNullOrWhiteSpace(previewPath))
+        {
+            infoItem.ClearPreviewImage();
+            return;
+        }
+
+        infoItem.SetPreviewImage(previewPath);
+    }
+
+    private void ClearBuildOptionPreviewImages()
+    {
+        for (int i = 0; i < m_BuildOptionBindings.Count; i++)
+        {
+            BuildOptionBinding binding = m_BuildOptionBindings[i];
+            if (binding?.Item == null)
+                continue;
+
+            binding.Item.ClearPreviewImage();
+        }
     }
 }

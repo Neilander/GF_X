@@ -13,9 +13,25 @@ public partial class CardSetup : GameFrameworkComponent
     private float m_NextAutoDrawTime;
     private const float AutoDrawInterval = 0.15f;
 
+    private void OnEnable()
+    {
+        LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
+    }
+
+    private void OnDisable()
+    {
+        LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
+    }
+
+    private void OnLevelLoadStarted()
+    {
+        CardSystemShutdown(false);
+    }
+
     public void CardSystemSetup()
     {
         var watch = Stopwatch.StartNew();
+        CardSystemShutdown(false);
         m_NextAutoDrawTime = 0f;
         InitializeCardSystem();
         watch.Stop();
@@ -59,37 +75,10 @@ public partial class CardSetup : GameFrameworkComponent
     {
         var totalWatch = Stopwatch.StartNew();
 
-        // Close Card UI first.
-        if (GF.UI.IsLoadingUIForm(UIViews.CardUIForm) || GF.UI.HasUIForm(UIViews.CardUIForm))
-        {
-            var closeUiWatch = Stopwatch.StartNew();
-            var ui = GF.UI;
-            if (ui != null && ui.HasUIForm(m_CardUIFormId))
-            {
-                try
-                {
-                    var uiForm = ui.GetUIForm(m_CardUIFormId) as UIForm;
-                    var cardUIForm = uiForm != null ? uiForm.Logic as CardUIForm : null;
-                    if (playCloseAnimation && cardUIForm != null)
-                    {
-                        cardUIForm.CloseCardPanelWithAnimation();
-                    }
-                    else
-                    {
-                        ui.CloseUIForm(m_CardUIFormId);
-                    }
-                }
-                catch (GameFrameworkException ex)
-                {
-                    Log.Warning("[CardGame] Close Card UI ignored: {0}", ex.Message);
-                }
-            }
-            m_CardUIFormId = -1;
-            closeUiWatch.Stop();
-            Log.Info("[PhasePerf] card-shutdown.close-ui: {0}ms", closeUiWatch.ElapsedMilliseconds);
-        }
-
-        m_CardUIFormId = -1;
+        var closeUiWatch = Stopwatch.StartNew();
+        CloseCardUI(playCloseAnimation);
+        closeUiWatch.Stop();
+        Log.Info("[PhasePerf] card-shutdown.close-ui: {0}ms", closeUiWatch.ElapsedMilliseconds);
 
         // Shutdown card system controller.
         if (m_CardSystemController != null)
@@ -104,6 +93,70 @@ public partial class CardSetup : GameFrameworkComponent
         m_NextAutoDrawTime = 0f;
         totalWatch.Stop();
         Log.Info("[PhasePerf] card-shutdown.total: {0}ms", totalWatch.ElapsedMilliseconds);
+    }
+
+    private void CloseCardUI(bool playCloseAnimation)
+    {
+        if (GF.UI == null)
+        {
+            m_CardUIFormId = -1;
+            return;
+        }
+
+        var ui = GF.UI;
+        if (m_CardUIFormId > 0 && (ui.IsLoadingUIForm(m_CardUIFormId) || ui.HasUIForm(m_CardUIFormId)))
+        {
+            try
+            {
+                if (playCloseAnimation && !ui.IsLoadingUIForm(m_CardUIFormId))
+                {
+                    var uiForm = ui.GetUIForm(m_CardUIFormId) as UIForm;
+                    var cardUIForm = uiForm != null ? uiForm.Logic as CardUIForm : null;
+                    if (cardUIForm != null)
+                    {
+                        cardUIForm.CloseCardPanelWithAnimation();
+                        m_CardUIFormId = -1;
+                        return;
+                    }
+                }
+
+                ui.CloseUIForm(m_CardUIFormId);
+            }
+            catch (GameFrameworkException ex)
+            {
+                Log.Warning("[CardGame] Close Card UI ignored: {0}", ex.Message);
+            }
+        }
+
+        CloseAllLoadedCardUIFormsImmediately(ui);
+
+        m_CardUIFormId = -1;
+    }
+
+    private static void CloseAllLoadedCardUIFormsImmediately(UIComponent ui)
+    {
+        if (ui == null)
+            return;
+
+        string cardUiAssetName = ui.GetUIFormAssetName(UIViews.CardUIForm);
+        if (string.IsNullOrEmpty(cardUiAssetName))
+            return;
+
+        var forms = ui.GetUIForms(cardUiAssetName);
+        for (int i = 0; i < forms.Length; i++)
+        {
+            if (forms[i] == null)
+                continue;
+
+            try
+            {
+                ui.CloseUIForm(forms[i].SerialId);
+            }
+            catch (GameFrameworkException ex)
+            {
+                Log.Warning("[CardGame] Close stray Card UI ignored: {0}", ex.Message);
+            }
+        }
     }
 
     private void InitializeCardSystem()

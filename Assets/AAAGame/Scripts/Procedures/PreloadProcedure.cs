@@ -39,7 +39,6 @@ public class PreloadProcedure : ProcedureBase
         }
         GF.Log("进入HybridCLR热更流程! 预加载游戏数据...");
 
-        AAAGame.Effect.EffectShaderAssetLoader.PreloadEssentialShaders();
         InitAppSettings();
         PreloadAndInitData();
     }
@@ -170,9 +169,23 @@ public class PreloadProcedure : ProcedureBase
         loadedProgress = 0;
         m_DataTablesCount = -1;
         var appConfig = await AppConfigs.GetInstanceSync();
-        totalProgress = appConfig.DataTables.Length + appConfig.Configs.Length + 2;//2是加载多语言和创建框架扩展
+        totalProgress = appConfig.DataTables.Length + appConfig.Configs.Length + 2 + AAAGame.Effect.EffectShaderAssetLoader.EssentialShaderCount;//2是加载多语言和创建框架扩展
+        AAAGame.Effect.EffectShaderAssetLoader.PreloadEssentialShaders(OnPreloadShaderSuccess, OnPreloadShaderFailure);
         CreateGFExtension();
     }
+
+    private void OnPreloadShaderSuccess(string assetName)
+    {
+        loadedProgress++;
+        Log.Info("Load Shader Success:{0}", assetName);
+    }
+
+    private void OnPreloadShaderFailure(string assetName, LoadResourceStatus status, string errorMessage)
+    {
+        loadedProgress++;
+        Log.Error("Load Shader Failure:{0}, status:{1}, error:{2}", assetName, status, errorMessage);
+    }
+
     private async void LoadConfigsAndDataTables()
     {
         var appConfig = await AppConfigs.GetInstanceSync();

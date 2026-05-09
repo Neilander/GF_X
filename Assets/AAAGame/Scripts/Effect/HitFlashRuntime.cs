@@ -73,8 +73,6 @@ namespace AAAGame.Effect
 
         private void TrySubscribe()
         {
-            EffectShaderAssetLoader.PreloadEssentialShaders();
-
             if (m_Subscribed || GF.Event == null)
             {
                 return;

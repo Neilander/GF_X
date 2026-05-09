@@ -10,6 +10,7 @@ public class BuildManager : GameFrameworkComponent
     private readonly Dictionary<Archetype, List<BuildingData>> m_Lv0ConstructCandidatesByArchetype = new();
     private HashSet<Archetype> m_PlayerUnlockedBaseArchesCache;
     private bool m_IsSubscribedTechUnlocked;
+    private bool m_IsSubscribedEntityFactionChanged;
 
     // 默认给前 3 个选项分配交互按键；更多选项仍走鼠标长按触发。
     private readonly InputKey[] OptionalOptionKeys =
@@ -156,7 +157,10 @@ public class BuildManager : GameFrameworkComponent
             return;
 
         if (owner.buildingData.Type == BuilType.Base)
+        {
             m_BaseMilestoneTechService.ReduceForDemolishedBase(owner.buildingData, owner.BuildingInstanceId);
+            InvalidateUnlockedArchetypeCache();
+        }
     }
 
     public bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
@@ -442,32 +446,47 @@ public class BuildManager : GameFrameworkComponent
     {
         base.Awake();
         TrySubscribeTechUnlockedEvent();
+        TrySubscribeEntityFactionChangedEvent();
     }
 
     private void Start()
     {
         TrySubscribeTechUnlockedEvent();
+        TrySubscribeEntityFactionChangedEvent();
     }
 
     private void Update()
     {
-        if (m_IsSubscribedTechUnlocked)
-            return;
-
-        TrySubscribeTechUnlockedEvent();
+        if (!m_IsSubscribedTechUnlocked)
+            TrySubscribeTechUnlockedEvent();
+        if (!m_IsSubscribedEntityFactionChanged)
+            TrySubscribeEntityFactionChangedEvent();
     }
 
     private void OnDestroy()
     {
         if (m_IsSubscribedTechUnlocked && GF.Event != null)
             GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+        if (m_IsSubscribedEntityFactionChanged && GF.Event != null)
+            GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
 
         m_IsSubscribedTechUnlocked = false;
+        m_IsSubscribedEntityFactionChanged = false;
     }
 
     private void OnTechUnlocked(object sender, GameFramework.Event.GameEventArgs e)
     {
-        m_PlayerUnlockedBaseArchesCache = null;
+        InvalidateUnlockedArchetypeCache();
+    }
+
+    private void OnEntityFactionChanged(object sender, GameFramework.Event.GameEventArgs e)
+    {
+        EntityFactionChangedEventArgs args = e as EntityFactionChangedEventArgs;
+        if (args == null)
+            return;
+
+        if (args.OldFactionId == EntitySideHelper.PlayerFactionId || args.NewFactionId == EntitySideHelper.PlayerFactionId)
+            InvalidateUnlockedArchetypeCache();
     }
 
     private bool TrySubscribeTechUnlockedEvent()
@@ -481,5 +500,23 @@ public class BuildManager : GameFrameworkComponent
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
         m_IsSubscribedTechUnlocked = true;
         return true;
+    }
+
+    private bool TrySubscribeEntityFactionChangedEvent()
+    {
+        if (m_IsSubscribedEntityFactionChanged)
+            return true;
+
+        if (GF.Event == null)
+            return false;
+
+        GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        m_IsSubscribedEntityFactionChanged = true;
+        return true;
+    }
+
+    private void InvalidateUnlockedArchetypeCache()
+    {
+        m_PlayerUnlockedBaseArchesCache = null;
     }
 }

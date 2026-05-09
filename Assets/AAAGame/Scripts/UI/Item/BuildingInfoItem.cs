@@ -1,9 +1,11 @@
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 public partial class BuildingInfoItem : UIItemBase
 {
     [SerializeField]
     private float progressDuration = 2f;
+    private int m_PreviewSpriteRequestVersion;
 
     public float ProgressDuration => Mathf.Max(0.01f, progressDuration);
     public GameObject PriceRoot => varPrice;
@@ -58,5 +60,48 @@ public partial class BuildingInfoItem : UIItemBase
     {
         if (varProgress != null)
             varProgress.SetActive(visible);
+    }
+
+    public void SetPreviewImage(string spriteRelativePath)
+    {
+        if (varImage == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(spriteRelativePath))
+        {
+            ClearPreviewImage();
+            return;
+        }
+
+        m_PreviewSpriteRequestVersion++;
+        int requestVersion = m_PreviewSpriteRequestVersion;
+        string assetPath = UtilityBuiltin.AssetsPath.GetSpritesPath(spriteRelativePath);
+
+        varImage.sprite = null;
+        varImage.gameObject.SetActive(true);
+
+        GF.UI.LoadSprite(assetPath, sp =>
+        {
+            if (varImage == null || requestVersion != m_PreviewSpriteRequestVersion)
+                return;
+
+            if (sp == null)
+            {
+                varImage.gameObject.SetActive(false);
+                return;
+            }
+
+            varImage.sprite = sp;
+        });
+    }
+
+    public void ClearPreviewImage()
+    {
+        m_PreviewSpriteRequestVersion++;
+        if (varImage == null)
+            return;
+
+        varImage.sprite = null;
+        varImage.gameObject.SetActive(false);
     }
 }
