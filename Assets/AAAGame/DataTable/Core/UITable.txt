@@ -24,8 +24,8 @@
 	11	合成面板	1	CraftingDialog	False	2	True	True
 	14	科技树	1	TechTreeDialog	False	2	True	True
 	15	科技节点详情	2	TechNodeDetailTips	False	2	False	True
-	3	游戏结算	3	GameOverUIForm	True	3	False	True
-	27	选关面板	4	LevelSwitchUIForm	True	3	True	True
+	3	游戏结算	3	GameOverUIForm	True	2	False	True
+	27	选关面板	4	LevelSwitchUIForm	True	2	True	True
 #	提示(顶层)							
 	10	吐司提示	1	ToastTips	False	3	False	False
 	12	交互选项	2	InteractOptionTips	False	3	False	False

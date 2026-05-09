@@ -22,7 +22,8 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _skill1Action;
     private InputAction _skill2Action;
     private InputAction _skill3Action;
-    private InputAction _cancelAction;
+    private InputAction _playerCancelAction;
+    private InputAction _uiCancelAction;
 
     private InputAction _selectPositionAction;
     private InputAction _skillConfirmAction;
@@ -51,7 +52,12 @@ public partial class InputManager : GameFrameworkComponent
         _skill1Action = actions.FindAction("Player/Skill1");
         _skill2Action = actions.FindAction("Player/Skill2");
         _skill3Action = actions.FindAction("Player/Skill3");
-        _cancelAction = actions.FindAction("UI/Cancel");
+        _playerCancelAction = actions.FindAction("Player/Cancel");
+        _uiCancelAction = actions.FindAction("UI/Cancel");
+        if (_playerCancelAction != null && !_playerCancelAction.enabled)
+        {
+            _playerCancelAction.Enable();
+        }
 
         _selectPositionAction = actions.FindAction("Player/SelectPosition");
         _skillConfirmAction = actions.FindAction("Player/SkillConfirm");
@@ -105,12 +111,35 @@ public partial class InputManager : GameFrameworkComponent
 
     public bool WasCancelPressedThisFrame()
     {
-        if (_cancelAction != null && _cancelAction.WasPressedThisFrame())
+        EnsureCancelActions();
+
+        if (_playerCancelAction != null && _playerCancelAction.WasPressedThisFrame())
         {
             return true;
         }
 
-        return WasActionPressedThisFrame("Cancel") || WasActionPressedThisFrame("UI/Cancel");
+        if (_uiCancelAction != null && _uiCancelAction.WasPressedThisFrame())
+        {
+            return true;
+        }
+
+        return WasActionPressedThisFrame("Player/Cancel") || WasActionPressedThisFrame("UI/Cancel");
+    }
+
+    private void EnsureCancelActions()
+    {
+        if (playerInput == null || playerInput.actions == null)
+        {
+            return;
+        }
+
+        _playerCancelAction ??= playerInput.actions.FindAction("Player/Cancel");
+        _uiCancelAction ??= playerInput.actions.FindAction("UI/Cancel");
+
+        if (_playerCancelAction != null && !_playerCancelAction.enabled)
+        {
+            _playerCancelAction.Enable();
+        }
     }
 
     public bool IsPrimaryPointerPressed()

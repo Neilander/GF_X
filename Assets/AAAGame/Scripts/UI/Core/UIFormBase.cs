@@ -47,6 +47,7 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
     protected Canvas UICanvas { get; private set; }
 
     private bool isOnEscape;
+    private int m_OpenFrame;
     IList<IObjectPool<UIItemObject>> m_ItemPools = null;
     private readonly Dictionary<string, List<UIItemObject>> m_SpawnedItemsByTemplate = new();
     /// <summary>
@@ -82,6 +83,7 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
         cvs.sortingOrder = Params.SortOrder.Value;
         Interactable = false;
         isOnEscape = Params.AllowEscapeClose.Value;
+        m_OpenFrame = Time.frameCount;
         Internal_PlayOpenUIAnimation(OnOpenAnimationComplete);
         Params.OpenCallback?.Invoke(this);
     }
@@ -90,7 +92,12 @@ public class UIFormBase : UIFormLogic, ISerializeFieldTool
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
-        if (isOnEscape && Input.GetKeyDown(KeyCode.Escape) && GF.UI.GetTopUIFormId() == this.UIForm.SerialId)
+        InputManager inputManager = GameEntry.GetComponent<InputManager>();
+        if (isOnEscape
+            && Time.frameCount != m_OpenFrame
+            && inputManager != null
+            && inputManager.WasCancelPressedThisFrame()
+            && GF.UI.GetTopUIFormId() == this.UIForm.SerialId)
         {
             this.OnClickClose();
         }

@@ -62,22 +62,6 @@ public partial class LevelSwitchUIForm : UIFormBase
         }
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
-    {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
-
-        if (m_IsStartup || m_IsLoading || Input.GetKeyDown(KeyCode.Escape))
-        {
-            return;
-        }
-
-        InputManager inputManager = GameEntry.GetComponent<InputManager>();
-        if (inputManager != null && inputManager.WasCancelPressedThisFrame())
-        {
-            OnClickClose();
-        }
-    }
-
     public override void OnClickClose()
     {
         if (m_IsStartup || m_IsLoading)
