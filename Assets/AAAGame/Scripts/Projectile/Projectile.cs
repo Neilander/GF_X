@@ -156,6 +156,10 @@ public class Projectile : EntityBase
                 var damage = new Damage(_attacker as ITargetable, _weaponData.Damage, HealthModifyType.reduce);
                 DamageHelper.DoDamage(_target as ITargetable, damage, _attacker);
                 //Debug.LogError("已经造成伤害的");
+
+                // 远程子弹命中造成伤害的音效
+                if (AudioManager.Instance != null)
+                    AudioManager.Instance.Play("basicAttack");
             }
         }
 

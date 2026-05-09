@@ -329,6 +329,11 @@ public class DirectAtkComp : IAtkComp
         {
             ApplySplashDamage(damage);
         }
+
+        // 普通攻击造成伤害的音效；远程武器在这里只是创建子弹（命中是子弹的事），跳过
+        bool isRanged = _weaponSO is RangedWeaponSO;
+        if (!isRanged && AudioManager.Instance != null)
+            AudioManager.Instance.Play("basicAttack");
     }
 
     private void ApplySplashDamage(Fix64 damage)

@@ -2769,6 +2769,10 @@ MonoBehaviour:
     cue: {fileID: 11400000, guid: 7b9f3ea6217644c7d8816a388e7a0fff, type: 2}
   - key: levelFail
     cue: {fileID: 11400000, guid: 594e917b4bd4e4cc2841f998d49556fb, type: 2}
+  - key: basicAttack
+    cue: {fileID: 11400000, guid: a0e9201bd996b48f286da9c89745b9f3, type: 2}
+  - key: rangeAttack
+    cue: {fileID: 11400000, guid: 2f34925ffedab46fd94e4329747dfc5f, type: 2}
 --- !u!1 &1100769541
 GameObject:
   m_ObjectHideFlags: 0
