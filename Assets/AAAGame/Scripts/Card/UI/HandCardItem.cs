@@ -116,6 +116,7 @@ namespace AAAGame.Card
             ResetRuntimeState();
             m_CardModel = cardModel;
             m_ParentForm = parentForm;
+            RefreshParentCanvas();
             
             RefreshView();
         }
@@ -327,9 +328,32 @@ namespace AAAGame.Card
             }
 
             m_SortingCanvas.overrideSorting = true;
+            if (m_Canvas != null)
+            {
+                m_SortingCanvas.sortingLayerID = m_Canvas.sortingLayerID;
+            }
+
+            int baseSortingOrder = m_Canvas != null && m_Canvas != m_SortingCanvas
+                ? m_Canvas.sortingOrder
+                : 0;
+
             m_SortingCanvas.sortingOrder = m_IsDragging || m_IsTargetingMode
-                ? DragSortingOrder
-                : HoverSortingOrder;
+                ? baseSortingOrder + DragSortingOrder
+                : baseSortingOrder + HoverSortingOrder;
+        }
+
+        private void RefreshParentCanvas()
+        {
+            if (transform.parent == null)
+            {
+                return;
+            }
+
+            Canvas parentCanvas = transform.parent.GetComponentInParent<Canvas>();
+            if (parentCanvas != null)
+            {
+                m_Canvas = parentCanvas;
+            }
         }
 
         private void ApplyHoverGlow(bool enabled)
@@ -436,6 +460,7 @@ namespace AAAGame.Card
             m_OriginalPosition = m_RectTransform.position;
             m_OriginalParent = transform.parent;
             m_OriginalSiblingIndex = transform.GetSiblingIndex();
+            RefreshParentCanvas();
             CreateLayoutPlaceholder();
 
             // 移到Canvas顶层
