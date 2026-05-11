@@ -80,6 +80,15 @@ public partial class InputManager : GameFrameworkComponent
             FindModel();
         }
 
+        if (newState == InputState.UIForm)
+        {
+            HideUIFormModeCoveredTips();
+        }
+        else if (newState == InputState.Game)
+        {
+            RestoreUIFormModeCoveredTips();
+        }
+
         selfStateMachine.StartState(newState);
     }
 

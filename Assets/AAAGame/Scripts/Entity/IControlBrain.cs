@@ -17,6 +17,11 @@ public interface ITickBrain
     void Tick(IEntityContext self, float dt);
 }
 
+public interface IBrainSideChangeHandler
+{
+    void OnSideChanged(IEntityContext self, SideType oldSide, SideType newSide);
+}
+
 public enum BrainType
 {
     Player = 0,

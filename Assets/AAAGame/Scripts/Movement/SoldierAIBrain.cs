@@ -16,7 +16,7 @@ using UnityEngine;
 /// 2. 小兵永远绕开玩家（AvoidEntity 力更强）
 /// 3. 交战时自然散开（separation + 趋敌 seek 混合）
 /// </summary>
-public class SoldierAIBrain : IControlBrain, ITickBrain
+public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 {
     public enum SoldierState
     {
@@ -86,6 +86,42 @@ public class SoldierAIBrain : IControlBrain, ITickBrain
     /// 友方/玩家不调用 → _birthPosition = null → 永不进入 Returning。
     /// </summary>
     public void SetBirthPosition(Vector3 worldPos) => _birthPosition = worldPos;
+
+    public void OnSideChanged(IEntityContext self, SideType oldSide, SideType newSide)
+    {
+        _leader = null;
+        _joinedGroup = false;
+        _inDeadZone = false;
+        _deadZoneTarget = null;
+        _softReturning = false;
+        State = SoldierState.Idle;
+        _lastSyncedState = SoldierState.Idle;
+
+        if (self is MAEntity ma)
+            ma.BuffComp?.RemoveBuff(ReturningBuffId);
+
+        if (self.TargetComp != null)
+        {
+            self.TargetComp.CurrentTarget = null;
+            self.TargetComp.ClearAggro();
+        }
+
+        self.MoveComp?.StopMove();
+
+        _birthPosition = newSide == SideType.EnemySide ? self.Position : null;
+
+        if (GroupMoveManager.HasInstance)
+        {
+            int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
+            var coordinator = GroupMoveManager.Instance.Coordinator;
+            coordinator.SetAgentGroup(selfId, -1);
+            coordinator.SetAgentLeader(selfId, false);
+            coordinator.SetAgentState(selfId, GroupMoveCoordinator.AgentState.Idle);
+        }
+
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.CharacterKey}] Side changed {oldSide} -> {newSide}, reset SoldierAI state");
+    }
 
     public Vector3 GetDesiredMoveDirection() => _desiredMoveDir;
 

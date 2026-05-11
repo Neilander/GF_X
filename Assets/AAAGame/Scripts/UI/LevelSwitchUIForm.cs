@@ -10,6 +10,7 @@ public partial class LevelSwitchUIForm : UIFormBase
 
     private bool m_IsStartup;
     private bool m_IsLoading;
+    private bool m_PausedGameOnOpen;
 
     public static bool Open(bool isStartup)
     {
@@ -34,6 +35,7 @@ public partial class LevelSwitchUIForm : UIFormBase
         base.OnOpen(userData);
         m_IsStartup = TryGetStartupParam();
         m_IsLoading = LevelSelectionService.IsLevelLoading;
+        PauseGameIfNeeded();
         SetInputModeToUIForm();
 
         BindButtons();
@@ -54,6 +56,7 @@ public partial class LevelSwitchUIForm : UIFormBase
         LevelSelectionService.LevelLoadCompleted -= OnLevelLoadCompleted;
         LevelSelectionService.LevelLoadFailed -= OnLevelLoadFailed;
         UnbindButtons();
+        ResumeGameIfNeeded();
         base.OnClose(isShutdown, userData);
 
         if (!isShutdown)
@@ -89,6 +92,32 @@ public partial class LevelSwitchUIForm : UIFormBase
         }
 
         return false;
+    }
+
+    private void PauseGameIfNeeded()
+    {
+        m_PausedGameOnOpen = false;
+        if (GF.Base == null || GF.Base.IsGamePaused)
+        {
+            return;
+        }
+
+        GF.Base.PauseGame();
+        m_PausedGameOnOpen = true;
+    }
+
+    private void ResumeGameIfNeeded()
+    {
+        if (!m_PausedGameOnOpen)
+        {
+            return;
+        }
+
+        m_PausedGameOnOpen = false;
+        if (GF.Base != null && GF.Base.IsGamePaused)
+        {
+            GF.Base.ResumeGame();
+        }
     }
 
     private void BindButtons()
@@ -175,6 +204,7 @@ public partial class LevelSwitchUIForm : UIFormBase
     private void OnLevelLoadStarted()
     {
         m_IsLoading = true;
+        PauseGameIfNeeded();
         SetInputModeToUIForm();
         Interactable = false;
         SetButtonsInteractable(false);
@@ -203,6 +233,7 @@ public partial class LevelSwitchUIForm : UIFormBase
     private void OnLevelLoadFailed(string errorMessage)
     {
         m_IsLoading = false;
+        PauseGameIfNeeded();
         Interactable = true;
         SetButtonsInteractable(true);
         SetProgressVisible(false);

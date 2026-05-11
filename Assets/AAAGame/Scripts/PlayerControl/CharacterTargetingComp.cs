@@ -129,7 +129,7 @@ public class CharacterTargetingComp : ITargetingComp
             currentTargetTaunt = GetTauntLevel(CurrentTarget);
             float targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : ForgetRange;
             // 视线外仇恨特例：CurrentTarget 是 fallback 来的 attacker → 跳过距离过滤，让单位一路追上去
-            bool isAggroFallback = (CurrentTarget == _lastAttacker);
+            bool isAggroFallback = !useAttackRangeOnlyForThisUnit && (CurrentTarget == _lastAttacker);
             bool dropByDistance = !isAggroFallback && dist > targetRetentionRange;
             if (dropByDistance || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
             {

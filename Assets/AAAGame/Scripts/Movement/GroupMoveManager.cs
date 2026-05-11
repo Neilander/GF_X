@@ -154,6 +154,14 @@ public class GroupMoveManager : MonoBehaviour
         Coordinator.UnregisterAgent(entity.GetInstanceID());
     }
 
+    public void UpdateAgentSide(MAEntity entity)
+    {
+        if (entity == null)
+            return;
+
+        Coordinator.SetAgentSide(entity.GetInstanceID(), entity.Side);
+    }
+
     public void UpdateAgentPosition(MAEntity entity)
     {
         int id = entity.GetInstanceID();

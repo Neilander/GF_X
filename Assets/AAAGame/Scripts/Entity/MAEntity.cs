@@ -47,9 +47,19 @@ public class MAEntity : CompCreature, IEntityContext
 
     public virtual void ChangeSide(SideType newSide)
     {
+        SideType oldSide = Side;
         int oldFactionId = EntitySideHelper.ToFactionId(Side);
         Side = newSide;
         int newFactionId = EntitySideHelper.ToFactionId(newSide);
+
+        if (oldSide != newSide)
+        {
+            if (GroupMoveManager.HasInstance)
+                GroupMoveManager.Instance.UpdateAgentSide(this);
+
+            if (Brain is IBrainSideChangeHandler sideChangeHandler)
+                sideChangeHandler.OnSideChanged(this, oldSide, newSide);
+        }
 
         if (oldFactionId != newFactionId)
         {

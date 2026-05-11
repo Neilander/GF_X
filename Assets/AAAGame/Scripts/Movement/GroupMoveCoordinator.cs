@@ -212,6 +212,15 @@ public class GroupMoveCoordinator
         }
     }
 
+    public void SetAgentSide(int id, SideType side)
+    {
+        if (_agents.TryGetValue(id, out var data))
+        {
+            data.Side = side;
+            _agents[id] = data;
+        }
+    }
+
     public void UpdateAgentPosition(int id, Vector3 position)
     {
         if (_agents.TryGetValue(id, out var data))
