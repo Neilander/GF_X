@@ -110,7 +110,7 @@
 							"id": "V_String",
 							"params": ["Unit_Scapegoat"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 6, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [6] }] }
 					],
 					"__worldX": 3432,
 					"__worldY": 1064
@@ -330,7 +330,7 @@
 							"id": "V_String",
 							"params": ["Unit_BoneButcher"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
 					],
 					"__worldX": 3208,
 					"__worldY": 760
@@ -594,7 +594,7 @@
 							"id": "V_String",
 							"params": ["Unit_BoneButcher"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
 					],
 					"__worldX": 4008,
 					"__worldY": 1112
@@ -616,7 +616,7 @@
 							"id": "V_String",
 							"params": ["Unit_BoneButcher"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
 					],
 					"__worldX": 4072,
 					"__worldY": 1160
@@ -993,7 +993,7 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 3912,
 					"__worldY": 680
@@ -1015,7 +1015,7 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
 					],
 					"__worldX": 4120,
 					"__worldY": 760
@@ -1037,7 +1037,7 @@
 							"id": "V_String",
 							"params": ["Unit_CanMaker"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
 					],
 					"__worldX": 4072,
 					"__worldY": 616
@@ -1059,7 +1059,7 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 3928,
 					"__worldY": 776
@@ -1081,7 +1081,7 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 3992,
 					"__worldY": 648
@@ -1103,7 +1103,7 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 4024,
 					"__worldY": 760
@@ -1125,10 +1125,54 @@
 							"id": "V_String",
 							"params": ["Unit_Courier"]
 						}] },
-						{ "__identifier": "Count", "__type": "Int", "__value": 4, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [4] }] }
+						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
 					],
 					"__worldX": 3976,
 					"__worldY": 712
+				},
+				{
+					"__identifier": "Soldier",
+					"__grid": [56,27],
+					"__pivot": [0.5,0.5],
+					"__tags": [],
+					"__tile": null,
+					"__smartColor": "#2CE8F5",
+					"iid": "a5ec0010-48b0-11f1-828a-55275013fdee",
+					"width": 16,
+					"height": 16,
+					"defUid": 16,
+					"px": [904,440],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Unit_Scapegoat", "__tile": null, "defUid": 17, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Unit_Scapegoat"]
+						}] },
+						{ "__identifier": "Count", "__type": "Int", "__value": 5, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [5] }] }
+					],
+					"__worldX": 3512,
+					"__worldY": 440
+				},
+				{
+					"__identifier": "Soldier",
+					"__grid": [95,68],
+					"__pivot": [0.5,0.5],
+					"__tags": [],
+					"__tile": null,
+					"__smartColor": "#2CE8F5",
+					"iid": "e97d8420-48b0-11f1-828a-53fa6b82549f",
+					"width": 16,
+					"height": 16,
+					"defUid": 16,
+					"px": [1528,1096],
+					"fieldInstances": [
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Unit_BoneButcher", "__tile": null, "defUid": 17, "realEditorValues": [{
+							"id": "V_String",
+							"params": ["Unit_BoneButcher"]
+						}] },
+						{ "__identifier": "Count", "__type": "Int", "__value": 3, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [3] }] }
+					],
+					"__worldX": 4136,
+					"__worldY": 1096
 				}
 			]
 		},
