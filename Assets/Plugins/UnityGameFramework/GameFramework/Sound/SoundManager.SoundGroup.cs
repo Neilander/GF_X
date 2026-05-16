@@ -151,6 +151,11 @@ namespace GameFramework.Sound
             /// <returns>用于播放的声音代理。</returns>
             public ISoundAgent PlaySound(int serialId, object soundAsset, PlaySoundParams playSoundParams, out PlaySoundErrorCode? errorCode)
             {
+                return PlaySound(serialId, soundAsset, playSoundParams, true, out errorCode);
+            }
+
+            public ISoundAgent PlaySound(int serialId, object soundAsset, PlaySoundParams playSoundParams, bool releaseSoundAsset, out PlaySoundErrorCode? errorCode)
+            {
                 errorCode = null;
                 SoundAgent candidateAgent = null;
                 foreach (SoundAgent soundAgent in m_SoundAgents)
@@ -183,7 +188,7 @@ namespace GameFramework.Sound
                     return null;
                 }
 
-                if (!candidateAgent.SetSoundAsset(soundAsset))
+                if (!candidateAgent.SetSoundAsset(soundAsset, releaseSoundAsset))
                 {
                     errorCode = PlaySoundErrorCode.SetSoundAssetFailure;
                     return null;

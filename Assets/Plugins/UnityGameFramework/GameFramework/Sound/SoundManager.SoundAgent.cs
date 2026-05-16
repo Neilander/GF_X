@@ -21,6 +21,7 @@ namespace GameFramework.Sound
             private readonly ISoundAgentHelper m_SoundAgentHelper;
             private int m_SerialId;
             private object m_SoundAsset;
+            private bool m_ReleaseSoundAsset;
             private DateTime m_SetSoundAssetTime;
             private bool m_MuteInSoundGroup;
             private float m_VolumeInSoundGroup;
@@ -54,6 +55,7 @@ namespace GameFramework.Sound
                 m_SoundAgentHelper.ResetSoundAgent += OnResetSoundAgent;
                 m_SerialId = 0;
                 m_SoundAsset = null;
+                m_ReleaseSoundAsset = false;
                 Reset();
             }
 
@@ -374,12 +376,13 @@ namespace GameFramework.Sound
             /// </summary>
             public void Reset()
             {
-                if (m_SoundAsset != null)
+                if (m_SoundAsset != null && m_ReleaseSoundAsset)
                 {
                     m_SoundHelper.ReleaseSoundAsset(m_SoundAsset);
-                    m_SoundAsset = null;
                 }
 
+                m_SoundAsset = null;
+                m_ReleaseSoundAsset = false;
                 m_SetSoundAssetTime = DateTime.MinValue;
                 Time = Constant.DefaultTime;
                 MuteInSoundGroup = Constant.DefaultMute;
@@ -396,8 +399,14 @@ namespace GameFramework.Sound
 
             internal bool SetSoundAsset(object soundAsset)
             {
+                return SetSoundAsset(soundAsset, true);
+            }
+
+            internal bool SetSoundAsset(object soundAsset, bool releaseSoundAsset)
+            {
                 Reset();
                 m_SoundAsset = soundAsset;
+                m_ReleaseSoundAsset = releaseSoundAsset;
                 m_SetSoundAssetTime = DateTime.UtcNow;
                 return m_SoundAgentHelper.SetSoundAsset(soundAsset);
             }

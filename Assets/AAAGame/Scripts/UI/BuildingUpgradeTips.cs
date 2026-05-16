@@ -285,7 +285,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         PopulatePrice(preview, cost);
 
         if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Base)
-            SpawnProperty(preview.PropertyListRoot.transform, ForceIconPath, "+30");
+            SpawnProperty(preview.PropertyListRoot.transform, SupplyIconPath, "+30");
 
         SpawnProgressStars(m_SelectedBinding, Mathf.Max(1, cost));
     }
@@ -362,7 +362,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         switch (building.buildingData.Type)
         {
             case BuilType.Base:
-                SpawnProperty(root, ForceIconPath, $"+{building.buildingData.Lv * 10}");
+                SpawnProperty(root, SupplyIconPath, $"+{building.buildingData.Lv * 10}");
                 break;
             case BuilType.Tech:
                 break;

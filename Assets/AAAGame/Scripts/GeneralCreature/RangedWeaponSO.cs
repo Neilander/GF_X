@@ -48,9 +48,9 @@ public class RangedWeaponSO : BaseWeaponSO
         }
 
         // 播放攻击音效
-        if (AttackSfx != null)
+        if (AttackSfx != null && AudioManager.Instance != null)
         {
-            AudioSource.PlayClipAtPoint(AttackSfx, attacker.Position);
+            AudioManager.Instance.PlayClip(AttackSfx, attacker.Position);
         }
     }
 }

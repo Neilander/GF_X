@@ -487,6 +487,36 @@ namespace UnityGameFramework.Runtime
             return m_SoundManager.PlaySound(soundAssetName, soundGroupName, priority, playSoundParams, PlaySoundInfo.Create(null, worldPosition, userData));
         }
 
+        public int PlaySound(AudioClip soundAsset, string soundGroupName, PlaySoundParams playSoundParams)
+        {
+            return PlaySound(soundAsset, soundGroupName, DefaultPriority, playSoundParams, Vector3.zero, null);
+        }
+
+        public int PlaySound(AudioClip soundAsset, string soundGroupName, int priority, PlaySoundParams playSoundParams)
+        {
+            return PlaySound(soundAsset, soundGroupName, priority, playSoundParams, Vector3.zero, null);
+        }
+
+        public int PlaySound(AudioClip soundAsset, string soundGroupName, int priority, PlaySoundParams playSoundParams, Entity bindingEntity)
+        {
+            return PlaySound(soundAsset, soundGroupName, priority, playSoundParams, bindingEntity, null);
+        }
+
+        public int PlaySound(AudioClip soundAsset, string soundGroupName, int priority, PlaySoundParams playSoundParams, Entity bindingEntity, object userData)
+        {
+            return m_SoundManager.PlaySoundAsset(soundAsset, soundAsset != null ? soundAsset.name : string.Empty, soundGroupName, priority, playSoundParams, PlaySoundInfo.Create(bindingEntity, Vector3.zero, userData));
+        }
+
+        public int PlaySound(AudioClip soundAsset, string soundGroupName, int priority, PlaySoundParams playSoundParams, Vector3 worldPosition)
+        {
+            return PlaySound(soundAsset, soundGroupName, priority, playSoundParams, worldPosition, null);
+        }
+
+        public int PlaySound(AudioClip soundAsset, string soundGroupName, int priority, PlaySoundParams playSoundParams, Vector3 worldPosition, object userData)
+        {
+            return m_SoundManager.PlaySoundAsset(soundAsset, soundAsset != null ? soundAsset.name : string.Empty, soundGroupName, priority, playSoundParams, PlaySoundInfo.Create(null, worldPosition, userData));
+        }
+
         /// <summary>
         /// 停止播放声音。
         /// </summary>

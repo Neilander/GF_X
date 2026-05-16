@@ -133,7 +133,10 @@ public class PreloadProcedure : ProcedureBase
                 group.Volume = tb.Volume;
                 continue;
             }
-            GF.Sound.AddSoundGroup(tb.Name, tb.AvoidBeingReplacedBySamePriority, tb.Mute, tb.Volume, tb.SoundAgentCount);
+            int soundAgentCount = tb.Name == Const.SoundGroup.Sound.ToString()
+                ? Mathf.Max(tb.SoundAgentCount, AudioManager.DefaultSfxAgentCount)
+                : tb.SoundAgentCount;
+            GF.Sound.AddSoundGroup(tb.Name, tb.AvoidBeingReplacedBySamePriority, tb.Mute, tb.Volume, soundAgentCount);
         }
         //初始化UIGroup
         var uiGroupTb = GF.DataTable.GetDataTable<UIGroupTable>();

@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using AAAGame.Audio;
 
 [CreateAssetMenu(fileName = "Cue_", menuName = "Audio/Audio Cue")]

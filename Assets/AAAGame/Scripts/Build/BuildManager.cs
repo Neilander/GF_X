@@ -485,8 +485,72 @@ public class BuildManager : GameFrameworkComponent
         if (args == null)
             return;
 
+        ApplyBaseOwnershipEffects(args);
+
         if (args.OldFactionId == EntitySideHelper.PlayerFactionId || args.NewFactionId == EntitySideHelper.PlayerFactionId)
             InvalidateUnlockedArchetypeCache();
+    }
+
+    private void ApplyBaseOwnershipEffects(EntityFactionChangedEventArgs args)
+    {
+        BuildingEntity building = FindRegisteredBuilding(args);
+        if (building == null || building.CurrentStronghold == null || building.buildingData == null)
+            return;
+
+        if (building.buildingData.Type != BuilType.Base)
+            return;
+
+        if (args.OldFactionId == args.NewFactionId)
+            return;
+
+        m_BaseMilestoneTechService.ReduceForDemolishedBase(building.buildingData, building.BuildingInstanceId);
+        m_BaseMilestoneTechService.GrantForBuiltBase(building.buildingData, building.BuildingInstanceId, args.NewFactionId);
+
+        int supplyDelta = CalculateBaseSupplyCapacity(building.buildingData, args.NewFactionId)
+                        - CalculateBaseSupplyCapacity(building.buildingData, args.OldFactionId);
+        if (supplyDelta != 0)
+            InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, supplyDelta, true);
+    }
+
+    private static BuildingEntity FindRegisteredBuilding(EntityFactionChangedEventArgs args)
+    {
+        var dataModel = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+        if (dataModel == null || dataModel.Buildings == null)
+            return null;
+
+        foreach (var building in dataModel.Buildings)
+        {
+            if (building == null)
+                continue;
+
+            if (building.Id == args.EntityId)
+                return building;
+
+            if (!string.IsNullOrWhiteSpace(args.BuildingInstanceId)
+                && string.Equals(building.BuildingInstanceId, args.BuildingInstanceId, StringComparison.Ordinal))
+            {
+                return building;
+            }
+        }
+
+        return null;
+    }
+
+    private static int CalculateBaseSupplyCapacity(BuildingData buildingData, int ownerFactionId)
+    {
+        if (buildingData == null
+            || buildingData.Type != BuilType.Base
+            || ownerFactionId != EntitySideHelper.PlayerFactionId)
+        {
+            return 0;
+        }
+
+        int providePerLevel = InGameDataModel.GetBaseProvideSupplyPerLevel();
+        if (providePerLevel <= 0)
+            return 0;
+
+        long capacity = (long)Mathf.Max(0, buildingData.Lv) * providePerLevel;
+        return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
     }
 
     private bool TrySubscribeTechUnlockedEvent()

@@ -208,7 +208,7 @@ public partial class BuildingEntity : MAEntity
         base.OnHide(isShutdown, userData);
     }
 
-    public void SetStronghold(Stronghold stronghold)
+    public void SetStronghold(Stronghold stronghold, bool triggerFactionChangedEvent = true)
     {
         int oldFactionId = OwnerFactionID;
         CurrentStronghold = stronghold;
@@ -220,7 +220,8 @@ public partial class BuildingEntity : MAEntity
         if (oldFactionId != OwnerFactionID)
         {
             RefreshInteractionHostForCurrentOwnership();
-            GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID, BuildingInstanceId));
+            if (triggerFactionChangedEvent)
+                GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID, BuildingInstanceId));
         }
     }
 
@@ -612,6 +613,9 @@ public partial class BuildingEntity : MAEntity
             return;
 
         Fix64 hp = buildingData != null && buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
+        if (TutorialManager.IsCurrentLevelTutorial())
+            hp *= (Fix64)0.5f;
+
         Fix64 def = buildingData != null ? buildingData.Def : (Fix64)10;
         if (def < Fix64.Zero)
             def = Fix64.Zero;

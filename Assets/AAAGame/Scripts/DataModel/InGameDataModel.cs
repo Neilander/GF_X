@@ -381,7 +381,7 @@ public class InGameDataModel : DataModelBase
         UnregisterBuilding(building);
 
         var stronghold = LevelEntity.GetStrongholdAtWorldPosition(building.transform.position);
-        building.SetStronghold(stronghold);
+        building.SetStronghold(stronghold, false);
         if (stronghold != null)
         {
             stronghold.Buildings.Add(building);
@@ -401,7 +401,7 @@ public class InGameDataModel : DataModelBase
             stronghold.Buildings.Remove(building);
         }
 
-        building.SetStronghold(null);
+        building.SetStronghold(null, false);
         dataModel.m_Buildings.Remove(building);
     }
 

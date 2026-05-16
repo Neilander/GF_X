@@ -1,15 +1,15 @@
 using System.Collections;
 using System.Collections.Generic;
 using AAAGame.Audio;
+using GameFramework;
+using GameFramework.Sound;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
 public class AudioManager : GameFrameworkComponent
 {
     public static AudioManager Instance { get; private set; }
-
-    [Header("SFX Pool")]
-    [SerializeField] private int sfxPoolSize = 16;
+    public const int DefaultSfxAgentCount = 16;
 
     private const string K_MASTER = "vol_master";
     private const string K_MUSIC = "vol_music";
@@ -19,16 +19,17 @@ public class AudioManager : GameFrameworkComponent
     private float musicVol;
     private float sfxVol;
 
-    private readonly Dictionary<AudioCue, AudioSource> persistent = new();
-    private readonly List<AudioSource> sfxPool = new();
+    private readonly Dictionary<AudioCue, int> persistent = new();
     private readonly Dictionary<int, ActiveSfx> activeSfx = new();
-    private int nextHandleId = 1;
+    private readonly HashSet<int> pausedGameplaySfx = new();
     private AudioCueLibrary cueLibrary;
+    private bool wasGamePaused;
 
     private struct ActiveSfx
     {
-        public AudioSource source;
         public AudioCue cue;
+        public AudioClip clip;
+        public float pitch;
     }
 
     protected override void Awake()
@@ -46,19 +47,33 @@ public class AudioManager : GameFrameworkComponent
         masterVol = PlayerPrefs.GetFloat(K_MASTER, 1f);
         musicVol = PlayerPrefs.GetFloat(K_MUSIC, 1f);
         sfxVol = PlayerPrefs.GetFloat(K_SFX, 1f);
+    }
 
-        for (int i = 0; i < sfxPoolSize; i++)
+    private void Update()
+    {
+        bool isGamePaused = GF.Base != null && GF.Base.IsGamePaused;
+        if (isGamePaused == wasGamePaused)
         {
-            var src = gameObject.AddComponent<AudioSource>();
-            src.playOnAwake = false;
-            sfxPool.Add(src);
+            return;
+        }
+
+        wasGamePaused = isGamePaused;
+        if (isGamePaused)
+        {
+            PauseActiveGameplaySfx();
+        }
+        else
+        {
+            ResumeActiveGameplaySfx();
         }
     }
 
     public AudioHandle Play(AudioCue cue)
     {
         if (cue == null)
+        {
             return AudioHandle.Invalid;
+        }
 
         return cue.category == AudioCategory.SFX
             ? PlaySfxInternal(cue)
@@ -70,10 +85,37 @@ public class AudioManager : GameFrameworkComponent
         return Play(GetCue(cueKey));
     }
 
+    public AudioHandle PlayClip(AudioClip clip, Vector3 worldPosition)
+    {
+        if (clip == null)
+        {
+            Debug.LogWarning("[AudioManager] AudioClip is null.");
+            return AudioHandle.Invalid;
+        }
+
+        PlaySoundParams playParams = PlaySoundParams.Create();
+        playParams.VolumeInSoundGroup = 1f;
+        playParams.Pitch = 1f;
+        playParams.SpatialBlend = 0f;
+
+        int serialId = PlaySound(clip, Const.SoundGroup.Sound.ToString(), playParams, worldPosition);
+        if (serialId <= 0)
+        {
+            return AudioHandle.Invalid;
+        }
+
+        activeSfx[serialId] = new ActiveSfx { cue = null, clip = clip, pitch = 1f };
+        StartCoroutine(ReleaseSfxAfter(serialId, clip, 1f));
+        PauseNewSfxIfGamePaused(serialId);
+        return new AudioHandle(serialId);
+    }
+
     public AudioCue GetCue(string cueKey)
     {
         if (cueLibrary == null)
+        {
             cueLibrary = GetComponent<AudioCueLibrary>();
+        }
 
         if (cueLibrary == null)
         {
@@ -86,68 +128,66 @@ public class AudioManager : GameFrameworkComponent
 
     public void Stop(AudioCue cue)
     {
-        if (cue == null || !persistent.TryGetValue(cue, out var src))
-            return;
-
-        if (cue.fadeOut > 0f)
-            StartCoroutine(FadeOutPersistent(cue, src));
-        else
+        if (cue == null || !persistent.TryGetValue(cue, out int serialId))
         {
-            Destroy(src);
-            persistent.Remove(cue);
+            return;
         }
+
+        StopSoundSafe(serialId, cue.fadeOut);
+        persistent.Remove(cue);
+        pausedGameplaySfx.Remove(serialId);
     }
 
     public void StopSfx(AudioHandle h, float fadeOut = 0f)
     {
-        if (!h.IsValid || !activeSfx.TryGetValue(h.Id, out var entry))
+        if (!h.IsValid || !activeSfx.ContainsKey(h.Id))
+        {
             return;
+        }
 
-        if (fadeOut <= 0f)
-        {
-            entry.source.Stop();
-            activeSfx.Remove(h.Id);
-        }
-        else
-        {
-            StartCoroutine(FadeOutSfx(h.Id, entry.source, fadeOut));
-        }
+        StopSoundSafe(h.Id, fadeOut);
+        activeSfx.Remove(h.Id);
+        pausedGameplaySfx.Remove(h.Id);
     }
 
     public void StopAll()
     {
-        foreach (var kv in persistent)
-            Destroy(kv.Value);
+        foreach (int serialId in persistent.Values)
+        {
+            StopSoundSafe(serialId, 0f);
+        }
 
+        StopAllSfx();
         persistent.Clear();
+    }
 
-        foreach (var s in activeSfx.Values)
-            s.source.Stop();
+    public void StopAllSfx()
+    {
+        foreach (int serialId in activeSfx.Keys)
+        {
+            StopSoundSafe(serialId, 0f);
+        }
 
         activeSfx.Clear();
+        pausedGameplaySfx.Clear();
     }
 
     [ContextMenu("Test Play Sound")]
     public void TestPlaySound()
     {
-        var testSource = gameObject.AddComponent<AudioSource>();
-        testSource.volume = 1f;
-        testSource.spatialBlend = 0f;
-
         foreach (var entry in activeSfx.Values)
         {
-            if (entry.cue == null || entry.source.clip == null)
+            if (entry.cue == null)
+            {
                 continue;
+            }
 
-            testSource.clip = entry.source.clip;
-            testSource.Play();
-            Debug.Log($"[AudioManager] Test playing: {entry.cue.name}, clip={entry.source.clip.name}");
-            Destroy(testSource, 2f);
+            Play(entry.cue);
+            Debug.Log($"[AudioManager] Test playing: {entry.cue.name}");
             return;
         }
 
         Debug.LogWarning("[AudioManager] No active SFX found for test playback.");
-        Destroy(testSource);
     }
 
     public bool IsPlaying(AudioCue cue)
@@ -188,144 +228,226 @@ public class AudioManager : GameFrameworkComponent
 
     private void ApplyVolumes()
     {
-        foreach (var kv in persistent)
-        {
-            var cue = kv.Key;
-            kv.Value.volume = cue.volume * LayerVol(cue.category) * masterVol;
-        }
-
-        foreach (var entry in activeSfx.Values)
-            entry.source.volume = entry.cue.volume * sfxVol * masterVol;
+        SetSoundGroupVolume(Const.SoundGroup.Music, musicVol * masterVol);
+        SetSoundGroupVolume(Const.SoundGroup.Sound, sfxVol * masterVol);
     }
 
-    private float LayerVol(AudioCategory c)
+    private static void SetSoundGroupVolume(Const.SoundGroup group, float volume)
     {
-        return c switch
+        if (GF.Sound == null || !GF.Sound.HasSoundGroup(group.ToString()))
         {
-            AudioCategory.BGM => musicVol,
-            AudioCategory.Ambient => musicVol,
-            _ => sfxVol,
-        };
+            return;
+        }
+
+        GF.Sound.GetSoundGroup(group.ToString()).Volume = Mathf.Clamp01(volume);
     }
 
     private AudioHandle PlaySfxInternal(AudioCue cue)
     {
-        var src = AcquireSfxSource();
-        if (src == null)
-        {
-            Debug.LogWarning($"[AudioManager] SFX pool is empty, cannot play: {cue.name}");
-            return AudioHandle.Invalid;
-        }
-
-        ConfigureSource(src, cue);
-
-        if (src.clip == null)
+        AudioClip clip = cue.PickClip();
+        if (clip == null)
         {
             Debug.LogWarning($"[AudioManager] AudioCue has no clip: {cue.name}");
             return AudioHandle.Invalid;
         }
 
-        src.Play();
+        PlaySoundParams playParams = CreatePlaySoundParams(cue, out float pitch);
+        int serialId = PlaySound(clip, Const.SoundGroup.Sound.ToString(), playParams, Vector3.zero);
+        if (serialId <= 0)
+        {
+            return AudioHandle.Invalid;
+        }
 
-        if (!src.isPlaying)
-            Debug.LogWarning($"[AudioManager] AudioSource.Play finished with isPlaying={src.isPlaying}, clipLength={src.clip.length:F2}s");
-
-        int id = nextHandleId++;
-        activeSfx[id] = new ActiveSfx { source = src, cue = cue };
+        activeSfx[serialId] = new ActiveSfx { cue = cue, clip = clip, pitch = pitch };
         if (!cue.loop)
-            StartCoroutine(ReleaseSfxAfter(id, src));
+        {
+            StartCoroutine(ReleaseSfxAfter(serialId, clip, pitch));
+        }
 
-        return new AudioHandle(id);
+        PauseNewSfxIfGamePaused(serialId);
+        return new AudioHandle(serialId);
     }
 
     private AudioHandle PlayPersistentInternal(AudioCue cue)
     {
         if (persistent.ContainsKey(cue))
+        {
             return AudioHandle.Invalid;
-
-        var src = gameObject.AddComponent<AudioSource>();
-        ConfigureSource(src, cue);
-        persistent[cue] = src;
-
-        if (cue.fadeIn > 0f)
-            StartCoroutine(FadeInPersistent(src, cue.fadeIn));
-        else
-            src.Play();
-
-        return AudioHandle.Invalid;
-    }
-
-    private void ConfigureSource(AudioSource src, AudioCue cue)
-    {
-        src.clip = cue.PickClip();
-        src.volume = cue.SampleVolume() * LayerVol(cue.category) * masterVol;
-        src.pitch = cue.SamplePitch();
-        src.loop = cue.loop;
-        src.spatialBlend = 0f;
-
-        if (src.clip == null)
-            Debug.LogWarning($"[AudioManager] AudioCue '{cue.name}' has no configured clip.");
-    }
-
-    private AudioSource AcquireSfxSource()
-    {
-        foreach (var s in sfxPool)
-        {
-            if (!s.isPlaying)
-                return s;
         }
 
-        return sfxPool.Count > 0 ? sfxPool[0] : null;
-    }
-
-    private IEnumerator ReleaseSfxAfter(int id, AudioSource src)
-    {
-        var clip = src.clip;
+        AudioClip clip = cue.PickClip();
         if (clip == null)
+        {
+            Debug.LogWarning($"[AudioManager] AudioCue has no clip: {cue.name}");
+            return AudioHandle.Invalid;
+        }
+
+        PlaySoundParams playParams = CreatePlaySoundParams(cue, out _);
+        int serialId = PlaySound(clip, Const.SoundGroup.Music.ToString(), playParams, Vector3.zero);
+        if (serialId <= 0)
+        {
+            return AudioHandle.Invalid;
+        }
+
+        persistent[cue] = serialId;
+        return new AudioHandle(serialId);
+    }
+
+    private static PlaySoundParams CreatePlaySoundParams(AudioCue cue, out float pitch)
+    {
+        pitch = cue.SamplePitch();
+        PlaySoundParams playParams = PlaySoundParams.Create();
+        playParams.Loop = cue.loop;
+        playParams.VolumeInSoundGroup = cue.SampleVolume();
+        playParams.FadeInSeconds = cue.category == AudioCategory.SFX ? 0f : cue.fadeIn;
+        playParams.Pitch = pitch;
+        playParams.SpatialBlend = 0f;
+        return playParams;
+    }
+
+    private static int PlaySound(AudioClip clip, string groupName, PlaySoundParams playParams, Vector3 worldPosition)
+    {
+        if (GF.Sound == null)
+        {
+            Debug.LogError("[AudioManager] GF.Sound is invalid.");
+            ReferencePool.Release(playParams);
+            return 0;
+        }
+
+        try
+        {
+            return GF.Sound.PlaySound(clip, groupName, 0, playParams, worldPosition);
+        }
+        catch (GameFrameworkException ex)
+        {
+            ReferencePool.Release(playParams);
+            Debug.LogError($"[AudioManager] Play sound failed. clip={(clip != null ? clip.name : "null")}, group={groupName}, error={ex.Message}");
+            return 0;
+        }
+    }
+
+    private static void StopSoundSafe(int serialId, float fadeOut)
+    {
+        if (GF.Sound == null || serialId <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (fadeOut > 0f)
+            {
+                GF.Sound.StopSound(serialId, fadeOut);
+            }
+            else
+            {
+                GF.Sound.StopSound(serialId);
+            }
+        }
+        catch (GameFrameworkException)
+        {
+        }
+    }
+
+    private IEnumerator ReleaseSfxAfter(int serialId, AudioClip clip, float pitch)
+    {
+        if (clip == null)
+        {
             yield break;
+        }
 
-        yield return new WaitForSeconds(clip.length / Mathf.Max(0.01f, src.pitch));
-        if (activeSfx.TryGetValue(id, out var e) && e.source == src)
-            activeSfx.Remove(id);
-    }
-
-    private IEnumerator FadeInPersistent(AudioSource src, float dur)
-    {
-        float target = src.volume;
-        src.volume = 0f;
-        src.Play();
-        for (float t = 0; t < dur; t += Time.unscaledDeltaTime)
+        float remaining = clip.length / Mathf.Max(0.01f, pitch);
+        while (remaining > 0f)
         {
-            src.volume = Mathf.Lerp(0f, target, t / dur);
+            if (!pausedGameplaySfx.Contains(serialId))
+            {
+                remaining -= Time.unscaledDeltaTime;
+            }
+
             yield return null;
         }
 
-        src.volume = target;
+        activeSfx.Remove(serialId);
+        pausedGameplaySfx.Remove(serialId);
     }
 
-    private IEnumerator FadeOutPersistent(AudioCue cue, AudioSource src)
+    private void PauseNewSfxIfGamePaused(int serialId)
     {
-        float start = src.volume;
-        for (float t = 0; t < cue.fadeOut; t += Time.unscaledDeltaTime)
+        if (GF.Base == null || !GF.Base.IsGamePaused)
         {
-            src.volume = Mathf.Lerp(start, 0f, t / cue.fadeOut);
+            return;
+        }
+
+        pausedGameplaySfx.Add(serialId);
+        StartCoroutine(PauseSoundWhenLoaded(serialId));
+    }
+
+    private IEnumerator PauseSoundWhenLoaded(int serialId)
+    {
+        while (GF.Sound != null && GF.Sound.IsLoadingSound(serialId))
+        {
             yield return null;
         }
 
-        Destroy(src);
-        persistent.Remove(cue);
+        if (GF.Base != null && GF.Base.IsGamePaused && activeSfx.ContainsKey(serialId))
+        {
+            PauseSoundSafe(serialId);
+        }
     }
 
-    private IEnumerator FadeOutSfx(int id, AudioSource src, float dur)
+    private void PauseActiveGameplaySfx()
     {
-        float start = src.volume;
-        for (float t = 0; t < dur; t += Time.unscaledDeltaTime)
+        foreach (var kv in activeSfx)
         {
-            src.volume = Mathf.Lerp(start, 0f, t / dur);
-            yield return null;
+            pausedGameplaySfx.Add(kv.Key);
+            StartCoroutine(PauseSoundWhenLoaded(kv.Key));
+        }
+    }
+
+    private void ResumeActiveGameplaySfx()
+    {
+        foreach (int serialId in pausedGameplaySfx)
+        {
+            if (!activeSfx.ContainsKey(serialId))
+            {
+                continue;
+            }
+
+            ResumeSoundSafe(serialId);
         }
 
-        src.Stop();
-        activeSfx.Remove(id);
+        pausedGameplaySfx.Clear();
+    }
+
+    private static void PauseSoundSafe(int serialId)
+    {
+        if (GF.Sound == null || serialId <= 0 || GF.Sound.IsLoadingSound(serialId))
+        {
+            return;
+        }
+
+        try
+        {
+            GF.Sound.PauseSound(serialId, 0f);
+        }
+        catch (GameFrameworkException)
+        {
+        }
+    }
+
+    private static void ResumeSoundSafe(int serialId)
+    {
+        if (GF.Sound == null || serialId <= 0 || GF.Sound.IsLoadingSound(serialId))
+        {
+            return;
+        }
+
+        try
+        {
+            GF.Sound.ResumeSound(serialId, 0f);
+        }
+        catch (GameFrameworkException)
+        {
+        }
     }
 }

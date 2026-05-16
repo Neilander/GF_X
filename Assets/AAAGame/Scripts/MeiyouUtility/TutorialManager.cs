@@ -126,6 +126,11 @@ public class TutorialManager : GameFrameworkComponent
         return manager.IsInvadeTutorialMovementBlockedInternal(worldPosition);
     }
 
+    public static bool IsCurrentLevelTutorial()
+    {
+        return IsCurrentLevelLv1();
+    }
+
     public void ResetMoveTutorialForDebug()
     {
         ResetAllTutorialsForDebug();

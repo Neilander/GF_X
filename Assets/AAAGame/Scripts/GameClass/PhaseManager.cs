@@ -13,6 +13,7 @@ public class PhaseManager : GameFrameworkComponent
     private const long PhaseStepWarnMs = 30;
     private const int EnemySpawnYieldEveryUnits = 2;
     private static int s_InvadeFlowToken;
+    private static int s_PhaseSoundToken;
 
     public static GamePhase CurrentPhase => (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
 
@@ -236,7 +237,24 @@ public class PhaseManager : GameFrameworkComponent
     private static void PlayPhaseEnterSound(string cueKey)
     {
         if (AudioManager.Instance == null) return;
+        int token = ++s_PhaseSoundToken;
+        if (GF.Base != null && GF.Base.IsGamePaused)
+        {
+            PlayPhaseEnterSoundWhenUnpausedAsync(cueKey, token).Forget();
+            return;
+        }
+
         AudioManager.Instance.Play(cueKey);
+    }
+
+    private static async UniTaskVoid PlayPhaseEnterSoundWhenUnpausedAsync(string cueKey, int token)
+    {
+        await UniTask.WaitUntil(() => GF.Base == null || !GF.Base.IsGamePaused, PlayerLoopTiming.Update);
+
+        if (token == s_PhaseSoundToken && AudioManager.Instance != null)
+        {
+            AudioManager.Instance.Play(cueKey);
+        }
     }
 
     private static void RemoveAllSoldiers()

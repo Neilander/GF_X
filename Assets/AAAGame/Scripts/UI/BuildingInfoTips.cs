@@ -100,7 +100,7 @@ public partial class BuildingInfoTips : UIFormBase
         switch (building.buildingData.Type)
         {
             case BuilType.Base:
-                SpawnProperty(root, ForceIconPath, "+30");
+                SpawnProperty(root, SupplyIconPath, "+30");
                 break;
 
             case BuilType.Tech:

@@ -176,6 +176,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             }
 
             GF.Base.PauseGame();
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.StopAllSfx();
+            }
 
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;

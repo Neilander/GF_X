@@ -325,7 +325,7 @@ public partial class BuildingBuildTips : UIFormBase
         switch (data.Type)
         {
             case BuilType.Base:
-                SpawnProperty(infoItem.PropertyListRoot.transform, ForceIconPath, "+10");
+                SpawnProperty(infoItem.PropertyListRoot.transform, SupplyIconPath, "+10");
                 break;
             case BuilType.Tech:
                 break;
