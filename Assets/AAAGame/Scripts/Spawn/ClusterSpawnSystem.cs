@@ -161,7 +161,15 @@ public static class ClusterSpawnSystem
             }
 
             Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
-            bool shown = await SoldierFactory.ShowSoldierAwait(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId, sourceStrongholdId);
+            bool shown = await SoldierFactory.ShowSoldierAwait(
+                unitIndex,
+                spawnPosition,
+                side,
+                brainType,
+                sourceBuildingInstanceId,
+                sourceStrongholdId,
+                keepSpawningPredicate);
+
             if (shown)
             {
                 spawnedCount++;

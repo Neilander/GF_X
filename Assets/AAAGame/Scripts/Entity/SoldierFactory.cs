@@ -68,7 +68,8 @@ public static class SoldierFactory
         SideType side = SideType.PlayerSide,
         BrainType brainType = BrainType.SoldierAI,
         string sourceBuildingInstanceId = null,
-        string sourceStrongholdId = null)
+        string sourceStrongholdId = null,
+        Func<bool> keepAlivePredicate = null)
     {
         string characterKey = unitType.ToString();
         string prefabName = GetPrefabPathFromCharacterData(characterKey);
@@ -81,6 +82,12 @@ public static class SoldierFactory
 
         EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId);
         var logic = await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);
+        if (logic != null && keepAlivePredicate != null && !keepAlivePredicate())
+        {
+            GF.Entity.HideEntitySafe(logic);
+            return false;
+        }
+
         return logic != null;
     }
 

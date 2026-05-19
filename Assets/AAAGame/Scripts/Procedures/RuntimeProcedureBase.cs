@@ -181,6 +181,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 AudioManager.Instance.StopAllSfx();
             }
 
+            PhaseManager.CancelRuntimePhaseFlows();
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;
 
@@ -297,6 +298,7 @@ internal sealed class RuntimeInitPipeline
         m_DisplayedProgress = RuntimeProgressStart;
         m_TargetProgress = RuntimeProgressStart;
         m_FinishPending = false;
+        PhaseManager.CancelRuntimePhaseFlows();
         LevelSelectionService.NotifyLevelLoadStarted();
         NotifyLevelLoadProgress();
         if (m_ShowBuiltinProgress)

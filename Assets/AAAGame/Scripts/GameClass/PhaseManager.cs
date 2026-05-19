@@ -17,6 +17,12 @@ public class PhaseManager : GameFrameworkComponent
 
     public static GamePhase CurrentPhase => (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
 
+    public static void CancelRuntimePhaseFlows()
+    {
+        s_InvadeFlowToken++;
+        s_PhaseSoundToken++;
+    }
+
     public static void EnterCurrentPhaseOnGameStart()
     {
         GamePhase currentPhase = CurrentPhase;
