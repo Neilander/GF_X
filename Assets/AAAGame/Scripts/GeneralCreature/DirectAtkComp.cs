@@ -228,9 +228,9 @@ public class DirectAtkComp : IAtkComp
         return GetActiveWeapon().SplashRadius;
     }
 
-    private Fix64 GetCurrentManaCost()
+    private Fix64 GetCurrentAmmunitionCapacity()
     {
-        return GetActiveWeapon().ManaCost;
+        return GetActiveWeapon().AmmunitionCapacity;
     }
 
     private void TryStartAttack()
@@ -314,7 +314,7 @@ public class DirectAtkComp : IAtkComp
                 activeWeapon.SplitAngle,
                 activeWeapon.SplitDist,
                 activeWeapon.ProjectileCount,
-                activeWeapon.ManaCost,
+                activeWeapon.AmmunitionCapacity,
                 Array.Empty<Fix64>());
             _weaponSO.Execute(_ctx, _lockedTarget, snapshot);
         }

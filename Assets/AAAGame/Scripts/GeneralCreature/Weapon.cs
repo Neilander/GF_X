@@ -6,7 +6,12 @@ public enum WeaponType
 {
     Melee,
     Projectile,
-    InstantRanged
+    InstantRanged,
+    CleaveMelee,
+    CleaveRanged,
+    SelfAoE,
+    HealMelee,
+    HealProjectile,
 }
 
 /// <summary>
@@ -25,7 +30,7 @@ public enum WeaponStatId
     SplitAngle,
     SplitDist,
     ProjectileCount,
-    ManaCost,
+    AmmunitionCapacity,
 }
 
 /// <summary>
@@ -49,7 +54,7 @@ public class Weapon
     public Fix64 SplitAngle => m_Stats[(int)WeaponStatId.SplitAngle].Value;
     public Fix64 SplitDist => m_Stats[(int)WeaponStatId.SplitDist].Value;
     public Fix64 ProjectileCount => m_Stats[(int)WeaponStatId.ProjectileCount].Value;
-    public Fix64 ManaCost => m_Stats[(int)WeaponStatId.ManaCost].Value;
+    public Fix64 AmmunitionCapacity => m_Stats[(int)WeaponStatId.AmmunitionCapacity].Value;
 
     public Fix64 GetStat(WeaponStatId stat) => m_Stats[(int)stat].Value;
 
@@ -101,7 +106,7 @@ public class Weapon
         stats[(int)WeaponStatId.SplitAngle] = SimpleStat.From(data.SplitAngle);
         stats[(int)WeaponStatId.SplitDist] = SimpleStat.From(data.SplitDist);
         stats[(int)WeaponStatId.ProjectileCount] = SimpleStat.From(data.ProjectileCount);
-        stats[(int)WeaponStatId.ManaCost] = SimpleStat.From(data.ManaCost);
+        stats[(int)WeaponStatId.AmmunitionCapacity] = SimpleStat.From(data.AmmunitionCapacity);
 
         return new Weapon
         {

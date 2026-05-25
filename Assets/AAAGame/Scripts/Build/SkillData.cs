@@ -16,8 +16,8 @@ public class SkillData
     public string Identifier { get; protected set; }
     public Fix64[] Lv1UniqueValues { get; protected set; }
     public int Lv1UsageCount { get; protected set; }
-    public Fix64[] Lv2UniqueValues { get; protected set; }
-    public int Lv2UsageCount { get; protected set; }
+    public Fix64[] UpgradeIncrementUniqueValues { get; protected set; }
+    public int UpgradeIncrementUsageCount { get; protected set; }
     public SkillType Type { get; protected set; }
     public string NameKey { get; protected set; }
     public string DescKey { get; protected set; }
@@ -26,8 +26,8 @@ public class SkillData
     public SkillData(string identifier,
         Fix64[] lv1UniqueValues,
         int lv1UsageCount,
-        Fix64[] lv2UniqueValues,
-        int lv2UsageCount,
+        Fix64[] upgradeIncrementUniqueValues,
+        int upgradeIncrementUsageCount,
         SkillType type,
         string nameKey,
         string descKey,
@@ -36,8 +36,8 @@ public class SkillData
         Identifier = identifier;
         Lv1UniqueValues = lv1UniqueValues;
         Lv1UsageCount = lv1UsageCount;
-        Lv2UniqueValues = lv2UniqueValues;
-        Lv2UsageCount = lv2UsageCount;
+        UpgradeIncrementUniqueValues = upgradeIncrementUniqueValues;
+        UpgradeIncrementUsageCount = upgradeIncrementUsageCount;
         Type = type;
         NameKey = nameKey;
         DescKey = descKey;

@@ -71,9 +71,18 @@ public static class DescriptionValueFormatter
         if (data == null)
             return string.Empty;
 
-        Fix64[] uniqueValues = level >= 2 && data.Lv2UniqueValues != null && data.Lv2UniqueValues.Length > 0
-            ? data.Lv2UniqueValues
-            : data.Lv1UniqueValues;
+        Fix64[] uniqueValues = null;
+        if (data.Lv1UniqueValues != null)
+        {
+            uniqueValues = new Fix64[data.Lv1UniqueValues.Length];
+            for (int i = 0; i < uniqueValues.Length; i++)
+            {
+                Fix64 increment = (data.UpgradeIncrementUniqueValues != null && i < data.UpgradeIncrementUniqueValues.Length)
+                    ? data.UpgradeIncrementUniqueValues[i]
+                    : Fix64.Zero;
+                uniqueValues[i] = data.Lv1UniqueValues[i] + increment * (level - 1);
+            }
+        }
 
         return LocalizeAndFill(data.DescKey, uniqueValues);
     }

@@ -17,7 +17,7 @@ public class WeaponData
     public Fix64 SplitAngle { get; }
     public Fix64 SplitDist { get; }
     public Fix64 ProjectileCount { get; }
-    public Fix64 ManaCost { get; }
+    public Fix64 AmmunitionCapacity { get; }
     public Fix64[] UniqueValues { get; }
 
     // 兼容旧命名访问。
@@ -37,7 +37,7 @@ public class WeaponData
         Fix64 splitAngle,
         Fix64 splitDist,
         Fix64 projectileCount,
-        Fix64 manaCost,
+        Fix64 ammunitionCapacity,
         Fix64[] uniqueValues)
     {
         Type = type;
@@ -51,7 +51,7 @@ public class WeaponData
         SplitAngle = splitAngle;
         SplitDist = splitDist;
         ProjectileCount = projectileCount;
-        ManaCost = manaCost;
+        AmmunitionCapacity = ammunitionCapacity;
         UniqueValues = uniqueValues ?? Array.Empty<Fix64>();
     }
 

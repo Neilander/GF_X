@@ -61,7 +61,7 @@ public class BuildingDataModel : DataModelBase
     private void ImportBuildingDataRow(BuildingTable row)
     {
         Debug.Log($"[BuildingDataModel] 导入建筑数据: {row.Identifier}, Production值: {row.Production}");
-        
+
         if (row.Identifier.Substring(row.Identifier.Length - 3) == "Lv0")
         {
             BuildingData building = new(row.Identifier,
@@ -73,7 +73,7 @@ public class BuildingDataModel : DataModelBase
                                 0,
                                 0,
                                 Fix64.One,
-                                Fix64.Zero,
+                                null,
                                 Fix64.Zero,
                                 row.UniqueValues,
                                 row.UnitID,
@@ -87,6 +87,25 @@ public class BuildingDataModel : DataModelBase
             int maxLv = row.Type == BuilType.Tech ? 1 : 3;
             for (int lv = 1; lv <= maxLv; lv++)
             {
+                WeaponData weaponData = null;
+                if (row.Weapon1Atk > Fix64.Zero)
+                {
+                    weaponData = new WeaponData(
+                        row.Weapon1Type,
+                        row.Weapon1Atk,
+                        row.Weapon1Interval,
+                        row.Weapon1Range,
+                        row.Weapon1Speed,
+                        row.Weapon1WindUp,
+                        row.Weapon1WindDown,
+                        row.Weapon1SplashRadius,
+                        row.Weapon1SplitAngle,
+                        row.Weapon1SplitDist,
+                        row.Weapon1ProjectileCount,
+                        row.Weapon1AmmunitionCapacity,
+                        row.Weapon1UniqueValues);
+                }
+
                 BuildingData building = new(row.Identifier + "_Lv" + lv,
                                     row.Type,
                                     row.Archetype,
@@ -96,7 +115,7 @@ public class BuildingDataModel : DataModelBase
                                     lv,
                                     lv == 1 ? row.Lv1Cost : lv == 2 ? row.Lv2Cost : row.Lv3Cost,
                                     lv == 1 ? row.Lv1HP : lv == 2 ? row.Lv2HP : row.Lv3HP,
-                                    lv == 1 ? row.Lv1Atk : lv == 2 ? row.Lv2Atk : row.Lv3Atk,
+                                    weaponData,
                                     lv == 1 ? row.Lv1Def : lv == 2 ? row.Lv2Def : row.Lv3Def,
                                     row.UniqueValues,
                                     row.UnitID,

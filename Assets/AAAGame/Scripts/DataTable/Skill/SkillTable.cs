@@ -56,18 +56,18 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
-        /// 2级数值
+        /// 升级增加数值
         /// </summary>
-        public Fix64[] Lv2UniqueValues
+        public Fix64[] UpgradeIncrementUniqueValues
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 2级使用次数
+        /// 升级增加使用次数
         /// </summary>
-        public int Lv2UsageCount
+        public int UpgradeIncrementUsageCount
         {
             get;
             private set;
@@ -125,8 +125,9 @@ public class SkillTable : DataRowBase
             index++;
             Lv1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             Lv1UsageCount = DataTableExtension.ParseInt32(columnStrings[index++]);
-            Lv2UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Lv2UsageCount = DataTableExtension.ParseInt32(columnStrings[index++]);
+            UpgradeIncrementUniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            UpgradeIncrementUsageCount = DataTableExtension.ParseInt32(columnStrings[index++]);
+            index++;
             Type = DataTableExtension.ParseEnum<SkillType>(columnStrings[index++]);
             NameKey = columnStrings[index++];
             DescKey = columnStrings[index++];
@@ -145,8 +146,8 @@ public class SkillTable : DataRowBase
                     Identifier = binaryReader.ReadString();
                     Lv1UniqueValues = binaryReader.ReadFix64Array();
                     Lv1UsageCount = binaryReader.Read7BitEncodedInt32();
-                    Lv2UniqueValues = binaryReader.ReadFix64Array();
-                    Lv2UsageCount = binaryReader.Read7BitEncodedInt32();
+                    UpgradeIncrementUniqueValues = binaryReader.ReadFix64Array();
+                    UpgradeIncrementUsageCount = binaryReader.Read7BitEncodedInt32();
                     Type = binaryReader.ReadEnum<SkillType>();
                     NameKey = binaryReader.ReadString();
                     DescKey = binaryReader.ReadString();

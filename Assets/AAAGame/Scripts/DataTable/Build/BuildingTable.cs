@@ -146,15 +146,6 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 1级攻击力
-        /// </summary>
-        public Fix64 Lv1Atk
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
         /// 1级护甲
         /// </summary>
         public Fix64 Lv1Def
@@ -167,15 +158,6 @@ public class BuildingTable : DataRowBase
         /// 2级血量
         /// </summary>
         public Fix64 Lv2HP
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 2级攻击力
-        /// </summary>
-        public Fix64 Lv2Atk
         {
             get;
             private set;
@@ -200,18 +182,126 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
-        /// 3级攻击力
+        /// 3级护甲
         /// </summary>
-        public Fix64 Lv3Atk
+        public Fix64 Lv3Def
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 3级护甲
+        /// 武器1攻击力
         /// </summary>
-        public Fix64 Lv3Def
+        public Fix64 Weapon1Atk
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1攻击间隔
+        /// </summary>
+        public Fix64 Weapon1Interval
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1攻击类型
+        /// </summary>
+        public WeaponType Weapon1Type
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1攻击距离
+        /// </summary>
+        public Fix64 Weapon1Range
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1弹道速度
+        /// </summary>
+        public Fix64 Weapon1Speed
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1前摇
+        /// </summary>
+        public Fix64 Weapon1WindUp
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1后摇
+        /// </summary>
+        public Fix64 Weapon1WindDown
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1溅射半径
+        /// </summary>
+        public Fix64 Weapon1SplashRadius
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1分裂角度
+        /// </summary>
+        public Fix64 Weapon1SplitAngle
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1分裂距离
+        /// </summary>
+        public Fix64 Weapon1SplitDist
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1弹道数量
+        /// </summary>
+        public Fix64 Weapon1ProjectileCount
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1弹药量
+        /// </summary>
+        public Fix64 Weapon1AmmunitionCapacity
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 武器1其他数值
+        /// </summary>
+        public Fix64[] Weapon1UniqueValues
         {
             get;
             private set;
@@ -275,6 +365,15 @@ public class BuildingTable : DataRowBase
         /// 科技1生效单位范围
         /// </summary>
         public string[] Tech1UnitScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技1生效体型范围
+        /// </summary>
+        public UnitSize[] Tech1SizeScope
         {
             get;
             private set;
@@ -389,6 +488,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技2生效体型范围
+        /// </summary>
+        public UnitSize[] Tech2SizeScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技2生效标签范围
         /// </summary>
         public UnitTag[] Tech2TagScope
@@ -491,6 +599,15 @@ public class BuildingTable : DataRowBase
         /// 科技3生效单位范围
         /// </summary>
         public string[] Tech3UnitScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 科技3生效体型范围
+        /// </summary>
+        public UnitSize[] Tech3SizeScope
         {
             get;
             private set;
@@ -605,6 +722,15 @@ public class BuildingTable : DataRowBase
         }
 
         /// <summary>
+        /// 科技4生效体型范围
+        /// </summary>
+        public UnitSize[] Tech4SizeScope
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 科技4生效标签范围
         /// </summary>
         public UnitTag[] Tech4TagScope
@@ -693,14 +819,24 @@ public class BuildingTable : DataRowBase
             Lv2Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
             Lv3Cost = DataTableExtension.ParseInt32(columnStrings[index++]);
             Lv1HP = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Lv1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2HP = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Lv2Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv2Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3HP = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Lv3Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv3Def = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
+            Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1Speed = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1WindDown = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1SplashRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             UnitID = columnStrings[index++];
             Production = DataTableExtension.ParseInt32(columnStrings[index++]);
             Tech1ID = columnStrings[index++];
@@ -709,6 +845,7 @@ public class BuildingTable : DataRowBase
             Tech1Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech1ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech1UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech1SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
             Tech1TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech1ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech1SkillID = columnStrings[index++];
@@ -722,6 +859,7 @@ public class BuildingTable : DataRowBase
             Tech2Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech2ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech2UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech2SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
             Tech2TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech2ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech2SkillID = columnStrings[index++];
@@ -735,6 +873,7 @@ public class BuildingTable : DataRowBase
             Tech3Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech3ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech3UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech3SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
             Tech3TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech3ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech3SkillID = columnStrings[index++];
@@ -748,6 +887,7 @@ public class BuildingTable : DataRowBase
             Tech4Stackable = DataTableExtension.ParseBoolean(columnStrings[index++]);
             Tech4ScopeType = DataTableExtension.ParseEnum<TechScopeType>(columnStrings[index++]);
             Tech4UnitScope = DataTableExtension.ParseArray<string>(columnStrings[index++]);
+            Tech4SizeScope = DataTableExtension.ParseArray<UnitSize>(columnStrings[index++]);
             Tech4TagScope = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Tech4ArchScope = DataTableExtension.ParseArray<Archetype>(columnStrings[index++]);
             Tech4SkillID = columnStrings[index++];
@@ -779,14 +919,24 @@ public class BuildingTable : DataRowBase
                     Lv2Cost = binaryReader.Read7BitEncodedInt32();
                     Lv3Cost = binaryReader.Read7BitEncodedInt32();
                     Lv1HP = binaryReader.ReadFix64();
-                    Lv1Atk = binaryReader.ReadFix64();
                     Lv1Def = binaryReader.ReadFix64();
                     Lv2HP = binaryReader.ReadFix64();
-                    Lv2Atk = binaryReader.ReadFix64();
                     Lv2Def = binaryReader.ReadFix64();
                     Lv3HP = binaryReader.ReadFix64();
-                    Lv3Atk = binaryReader.ReadFix64();
                     Lv3Def = binaryReader.ReadFix64();
+                    Weapon1Atk = binaryReader.ReadFix64();
+                    Weapon1Interval = binaryReader.ReadFix64();
+                    Weapon1Type = binaryReader.ReadEnum<WeaponType>();
+                    Weapon1Range = binaryReader.ReadFix64();
+                    Weapon1Speed = binaryReader.ReadFix64();
+                    Weapon1WindUp = binaryReader.ReadFix64();
+                    Weapon1WindDown = binaryReader.ReadFix64();
+                    Weapon1SplashRadius = binaryReader.ReadFix64();
+                    Weapon1SplitAngle = binaryReader.ReadFix64();
+                    Weapon1SplitDist = binaryReader.ReadFix64();
+                    Weapon1ProjectileCount = binaryReader.ReadFix64();
+                    Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
+                    Weapon1UniqueValues = binaryReader.ReadFix64Array();
                     UnitID = binaryReader.ReadString();
                     Production = binaryReader.Read7BitEncodedInt32();
                     Tech1ID = binaryReader.ReadString();
@@ -794,6 +944,7 @@ public class BuildingTable : DataRowBase
                     Tech1Stackable = binaryReader.ReadBoolean();
                     Tech1ScopeType = binaryReader.ReadEnum<TechScopeType>();
                     Tech1UnitScope = binaryReader.ReadArray<string>();
+                    Tech1SizeScope = binaryReader.ReadArray<UnitSize>();
                     Tech1TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech1ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech1SkillID = binaryReader.ReadString();
@@ -806,6 +957,7 @@ public class BuildingTable : DataRowBase
                     Tech2Stackable = binaryReader.ReadBoolean();
                     Tech2ScopeType = binaryReader.ReadEnum<TechScopeType>();
                     Tech2UnitScope = binaryReader.ReadArray<string>();
+                    Tech2SizeScope = binaryReader.ReadArray<UnitSize>();
                     Tech2TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech2ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech2SkillID = binaryReader.ReadString();
@@ -818,6 +970,7 @@ public class BuildingTable : DataRowBase
                     Tech3Stackable = binaryReader.ReadBoolean();
                     Tech3ScopeType = binaryReader.ReadEnum<TechScopeType>();
                     Tech3UnitScope = binaryReader.ReadArray<string>();
+                    Tech3SizeScope = binaryReader.ReadArray<UnitSize>();
                     Tech3TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech3ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech3SkillID = binaryReader.ReadString();
@@ -830,6 +983,7 @@ public class BuildingTable : DataRowBase
                     Tech4Stackable = binaryReader.ReadBoolean();
                     Tech4ScopeType = binaryReader.ReadEnum<TechScopeType>();
                     Tech4UnitScope = binaryReader.ReadArray<string>();
+                    Tech4SizeScope = binaryReader.ReadArray<UnitSize>();
                     Tech4TagScope = binaryReader.ReadArray<UnitTag>();
                     Tech4ArchScope = binaryReader.ReadArray<Archetype>();
                     Tech4SkillID = binaryReader.ReadString();

@@ -1,15 +1,14 @@
-﻿#	建筑表									i18n	i18n	
-#	ID	Identifier			Lv1UniqueValues	Lv1UsageCount	Lv2UniqueValues	Lv2UsageCount	Type	NameKey	DescKey	SpritePath
-#	int	string			Fix64[]	int	Fix64[]	int	enum	string	string	string
-#		代码内标识符	备注	备注2	1级数值	1级使用次数	2级数值	2级使用次数	技能类型	技能名称（多语言）	技能描述（多语言）	Sprite路径
-	1	Skill_UrgentRequest	临时需求	在目标地点召唤{0}个码农加入战斗，码农有寿命限制，会在{1}秒后自动死亡。	6,35	2	8,35	3	SkillType.Active	Skill_Name_UrgentRequest	Skill_Desc_UrgentRequest	
-	2	Skill_JustPassingBy	到此一游	在目标点留下一个“打卡点”标记，标记附近{0}码范围内的我方单位攻击速度提升{1}，标记持续{2}秒。	400,30,8	2	450,50,10	2	SkillType.Active	Skill_Name_JustPassingBy	Skill_Desc_JustPassingBy	
-	3	Skill_SpecialDelivery	您的外卖	消耗{0}橙髓，为英雄及附近{1}码内的我方单位回复{2}点生命。	2,300,40	3	2,350,60	4	SkillType.Active	Skill_Name_SpecialDelivery	Skill_Desc_SpecialDelivery	
-	4	Skill_BladeDance	刀舞	{0}秒内，英雄的攻击速度提升{1}。	6,80	3	8120	4	SkillType.Active	Skill_Name_BladeDance	Skill_Desc_BladeDance	
-	5	Skill_FireDrill	消防演习	在目标地点产生{0}码范围的浓烟，其中的敌人受到致盲效果，攻击有{1}%的概率落空。	250,50	2	300,70	2	SkillType.Active	Skill_Name_FireDrill	Skill_Desc_FireDrill	
-	6	Skill_CacheClear	缓存清理	丢弃单位牌时，英雄回复{0}%生命。	20				SkillType.Passive	Skill_Name_CacheClear	Skill_Desc_CacheClear	
-	7	Skill_SedentaryCurse	久坐病	英雄停止主动移动超过{0}秒后，攻击力增加{1}%，攻击距离增加{2}%。主动移动时该效果消失。	2,20,20				SkillType.Passive	Skill_Name_SedentaryCurse	Skill_Desc_SedentaryCurse	
-	8	Skill_JoinTheFun	凑热闹	附近{0}码内有不少于{1}个其他我方单位时，英雄攻击速度提升{2}。	300,4,40				SkillType.Passive	Skill_Name_JoinTheFun	Skill_Desc_JoinTheFun	
-	9	Skill_LightLoad	轻装上阵	英雄的移动速度+{0}%。	15				SkillType.Passive	Skill_Name_LightLoad	Skill_Desc_LightLoad	
-	10	Skill_Mighty	强壮	英雄的生命上限+{0}%。	30				SkillType.Passive	Skill_Name_Mighty	Skill_Desc_Mighty	
-	11	Skill_EmergencyEvac	紧急疏散	英雄血量低于{0}%时，在{1}秒内移动速度提升{2}%。冷却时间{3}秒。	30,5,80,25				SkillType.Passive	Skill_Name_EmergencyEvac	Skill_Desc_EmergencyEvac	
+﻿#	建筑表										i18n	i18n	
+#	ID	Identifier			Lv1UniqueValues	Lv1UsageCount	UpgradeIncrementUniqueValues	UpgradeIncrementUsageCount		Type	NameKey	DescKey	SpritePath
+#	int	string			Fix64[]	int	Fix64[]	int	Fix64	enum	string	string	string
+#		代码内标识符	备注	备注2	1级数值	1级使用次数	升级增加数值	升级增加使用次数	冷却时间	技能类型	技能名称（多语言）	技能描述（多语言）	Sprite路径
+	1	Skill_JustPassingBy	到此一游	在目标点留下一个“打卡点”标记，标记附近{0}码范围内的我方单位攻击速度提升{1}，标记持续{2}秒。	400,30,8	1	50,10,2	1	6	SkillType.Active	Skill_Name_JustPassingBy	Skill_Desc_JustPassingBy	
+	2	Skill_BladeDance	刀舞	{0}秒内，英雄的攻击速度提升{1}。	6,80	2	2,30	1	8	SkillType.Active	Skill_Name_BladeDance	Skill_Desc_BladeDance	
+	3	Skill_FireDrill	消防演习	在目标地点产生{0}码范围的浓烟，其中的敌人受到致盲效果，攻击有{1}%的概率落空。浓烟持续{2}秒。	250,50,7	1	30,10,1	1	8	SkillType.Active	Skill_Name_FireDrill	Skill_Desc_FireDrill	
+	4	Skill_UrgentRequest	临时需求	在目标点部署{0}名实习生,它们会在35秒后自动死亡。	8	2	2	1	10	SkillType.Active	Skill_Name_UrgentRequest	Skill_Desc_UrgentRequest	
+	5	Skill_LightLoad	轻装上阵	英雄的移动速度+{0}%。	16		12			SkillType.Passive	Skill_Name_LightLoad	Skill_Desc_LightLoad	
+	6	Skill_Disarm	卸除武装	英雄对敌方单位造成伤害时，使其攻击-(0)、护甲-(1)，持续{2}秒。（不叠加）	5,2,3		1,0.5,1			SkillType.Passive	Skill_Name_Disarm	Skill_Desc_Disarm	
+	7	Skill_GiantSlayer	巨人杀手	英雄的普通攻击额外造成敌人当前生命{0}%的伤害。	8		4			SkillType.Passive	Skill_Name_GiantSlayer	Skill_Desc_GiantSlayer	
+	8	Skill_Injection	打针	立刻对英雄附近{0}范围内的敌方单位施加持续{1}秒的恐惧，使其尝试远离恐惧来源。	300,4	1	50,1	1	8	SkillType.Active	Skill_Name_Injection	Skill_Desc_Injection	
+	9	Skill_Cheer Squad	啦啦队	每有{0}个我方单位在场，英雄便+{1}攻击、+{2}攻速。	3,1,2		0,0.5,1			SkillType.Passive	Skill_Name_Cheer Squad	Skill_Desc_Cheer Squad	
+	10	Skill_NeatAndTidy	整整齐齐	英雄的普通攻击对目标单位周围{0}范围内生命比例更高的单位造成{1}%伤害。	200,30		30,15			SkillType.Passive	Skill_Name_NeatAndTidy	Skill_Desc_NeatAndTidy	

@@ -10,7 +10,6 @@ public partial class BuildingEntity : MAEntity
     public const string P_BuildingInstanceId = "BuildingInstanceId";
     public const string P_IsGameEndConditionBuilding = "IsGameEndConditionBuilding";
 
-    private const string DefaultPropertyTemplateId = "Unit_Coder";
     private static readonly Fix64 PlaceholderAttackInterval = (Fix64)1.6f;
     private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
     private static readonly Fix64 PlaceholderWindUp = (Fix64)0.35f;
@@ -66,7 +65,7 @@ public partial class BuildingEntity : MAEntity
             && entityParams.TryGet<VarBoolean>(P_IsGameEndConditionBuilding, out var isGameEndConditionBuilding)
             && isGameEndConditionBuilding;
 
-        CharacterKey = ResolvePropertyTemplateId(buildingData);
+        CharacterKey = buildingData != null ? buildingData.Identifier : string.Empty;
         SetBrain(new BuildingAIBrain());
 
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
@@ -82,11 +81,6 @@ public partial class BuildingEntity : MAEntity
         TauntLevel = 0; // 建筑默认嘲讽等级 0
 
         RegisterOutlineRenderers();
-
- 
-        // Property init uses a fallback template; combat identity should stay on the building id.
-        if (buildingData != null)
-            CharacterKey = buildingData.Identifier;
 
         InitializeAttackCapabilityFlags();
         ResetCombatRuntimeState();
@@ -119,6 +113,31 @@ public partial class BuildingEntity : MAEntity
 
         // 建筑出现后请求重新烘焙 NavMesh（延迟合并，批量建造只烘焙一次）
         LevelEntity.RequestRebakeNavMesh();
+    }
+
+    protected override CreaturePropertyManager CreateCreaturePropertyManager()
+    {
+        return new CreaturePropertyManager(GetBuildingPropertyConfigValue);
+    }
+
+    private Fix64 GetBuildingPropertyConfigValue(CreatureMainProperty property)
+    {
+        switch (property)
+        {
+            case CreatureMainProperty.Def:
+                return buildingData != null && buildingData.Def > Fix64.Zero ? buildingData.Def : Fix64.Zero;
+            case CreatureMainProperty.Health:
+                return buildingData != null && buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
+            case CreatureMainProperty.Sight:
+                return buildingData != null && buildingData.Weapon != null && buildingData.Weapon.Range > Fix64.Zero
+                    ? buildingData.Weapon.Range
+                    : Fix64.Zero;
+            case CreatureMainProperty.Speed:
+            case CreatureMainProperty.CollisionRadius:
+            case CreatureMainProperty.TurnRate:
+            default:
+                return Fix64.Zero;
+        }
     }
 
     /// <summary>建筑死亡：无视阵营，统一播 "buildDeath" cue key。</summary>
@@ -577,24 +596,28 @@ public partial class BuildingEntity : MAEntity
         if (_buildingAtkComp == null)
             return;
 
-        Fix64 damage = Fix64.Zero;
-        if (!HasPermanentNoAttackCapability && buildingData != null)
-            damage = Fix64.Max(Fix64.Zero, buildingData.Atk);
-
-        var weaponData = new WeaponData(
-            WeaponType.Melee,
-            damage,
-            PlaceholderAttackInterval,
-            PlaceholderAttackRange,
-            Fix64.Zero,
-            PlaceholderWindUp,
-            PlaceholderWindDown,
-            Fix64.Zero,
-            Fix64.Zero,
-            Fix64.Zero,
-            Fix64.Zero,
-            Fix64.Zero,
-            new Fix64[0]);
+        WeaponData weaponData = null;
+        if (!HasPermanentNoAttackCapability && buildingData != null && buildingData.Weapon != null)
+        {
+            weaponData = buildingData.Weapon;
+        }
+        else
+        {
+            weaponData = new WeaponData(
+                WeaponType.Melee,
+                Fix64.Zero,
+                PlaceholderAttackInterval,
+                PlaceholderAttackRange,
+                Fix64.Zero,
+                PlaceholderWindUp,
+                PlaceholderWindDown,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                new Fix64[0]);
+        }
 
         _buildingAtkComp.UpdateWeaponData(weaponData);
 
@@ -681,28 +704,7 @@ public partial class BuildingEntity : MAEntity
 
     private void InitializeAttackCapabilityFlags()
     {
-        HasPermanentNoAttackCapability = buildingData != null && buildingData.Atk <= Fix64.Zero;
-    }
-
-    private string ResolvePropertyTemplateId(BuildingData data)
-    {
-        if (data != null && HasCharacterDataRow(data.Identifier))
-            return data.Identifier;
-
-        return DefaultPropertyTemplateId;
-    }
-
-    private bool HasCharacterDataRow(string characterId)
-    {
-        if (string.IsNullOrWhiteSpace(characterId) || GF.DataTable == null)
-            return false;
-
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            return false;
-
-        var rows = table.GetDataRows(r => r.CharacterKey == characterId);
-        return rows != null && rows.Length > 0;
+        HasPermanentNoAttackCapability = buildingData != null && (buildingData.Weapon == null || buildingData.Weapon.Atk <= Fix64.Zero);
     }
 
     private void EnterDisabledState(IEntityContext attacker)
@@ -826,12 +828,14 @@ public partial class BuildingEntity : MAEntity
 
     private void ShowDamagePopText(Fix64 damage)
     {
+#pragma warning disable 0162
         if (!EnableDamagePopText)
             return;
 
         Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
         Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
         GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
+#pragma warning restore 0162
     }
 
     /// <summary>

@@ -140,12 +140,6 @@ public class LevelTable : DataRowBase
             VictoryValue = DataTableExtension.ParseInt32(columnStrings[index++]);
             LoseConditions = DataTableExtension.ParseArray<FailConditionType>(columnStrings[index++]);
             LoseValue = DataTableExtension.ParseInt32(columnStrings[index++]);
-            index++;
-            index++;
-            index++;
-            index++;
-            index++;
-            index++;
 
             return true;
         }

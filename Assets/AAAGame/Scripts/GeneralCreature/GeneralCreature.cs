@@ -83,8 +83,13 @@ public class GeneralCreature : EntityBase, ITargetable
         base.OnShow(userData);
         Alive = true;
         TauntLevel = 1; // 生物默认嘲讽等级 1
-        CreaturePropertyManager = new CreaturePropertyManager(CharacterKey);
+        CreaturePropertyManager = CreateCreaturePropertyManager();
         //Debug.LogError($"[Creature] {CharacterKey} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
+    }
+
+    protected virtual CreaturePropertyManager CreateCreaturePropertyManager()
+    {
+        return new CreaturePropertyManager(CharacterKey);
     }
 
 

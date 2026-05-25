@@ -22,7 +22,7 @@ public static class CharacterDataDetailAccessor
             row.Weapon1SplitAngle,
             row.Weapon1SplitDist,
             row.Weapon1ProjectileCount,
-            row.Weapon1ManaCost,
+            row.Weapon1AmmunitionCapacity,
             row.Weapon1UniqueValues);
         if (row.Weapon2Atk == Fix64.Zero) return new[] { weapon1 };
         WeaponData weapon2 = new WeaponData(
@@ -37,7 +37,7 @@ public static class CharacterDataDetailAccessor
             row.Weapon2SplitAngle,
             row.Weapon2SplitDist,
             row.Weapon2ProjectileCount,
-            row.Weapon2ManaCost,
+            row.Weapon2AmmunitionCapacity,
             row.Weapon2UniqueValues);
 
         return new[] { weapon1, weapon2 };
@@ -70,7 +70,6 @@ public static class CharacterDataDetailAccessor
             CreatureMainProperty.Def => row.Def,
             CreatureMainProperty.Health => row.Health,
             CreatureMainProperty.Speed => row.Speed,
-            CreatureMainProperty.Mana => row.Mana,
             CreatureMainProperty.CollisionRadius => GetCollisionRadiusBySize(row.Size),
             CreatureMainProperty.TurnRate => row.TurnRate,
             CreatureMainProperty.Sight => row.Sight,

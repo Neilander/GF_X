@@ -128,15 +128,6 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 蓝量
-        /// </summary>
-        public Fix64 Mana
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
         /// 移速
         /// </summary>
         public Fix64 Speed
@@ -254,9 +245,9 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 武器1耗蓝
+        /// 武器1弹药量
         /// </summary>
-        public Fix64 Weapon1ManaCost
+        public Fix64 Weapon1AmmunitionCapacity
         {
             get;
             private set;
@@ -371,9 +362,9 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 武器2耗蓝
+        /// 武器2弹药量
         /// </summary>
-        public Fix64 Weapon2ManaCost
+        public Fix64 Weapon2AmmunitionCapacity
         {
             get;
             private set;
@@ -412,7 +403,6 @@ public class CharacterDataDetail : DataRowBase
             TurnRate = DataTableExtension.ParseFix64(columnStrings[index++]);
             Def = DataTableExtension.ParseFix64(columnStrings[index++]);
             Health = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Mana = DataTableExtension.ParseFix64(columnStrings[index++]);
             Speed = DataTableExtension.ParseFix64(columnStrings[index++]);
             Sight = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -426,7 +416,7 @@ public class CharacterDataDetail : DataRowBase
             Weapon1SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon1SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1ManaCost = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
             Weapon2Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon2Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
@@ -439,7 +429,7 @@ public class CharacterDataDetail : DataRowBase
             Weapon2SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon2SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon2ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2ManaCost = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Weapon2AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
             Weapon2UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
 
             return true;
@@ -463,7 +453,6 @@ public class CharacterDataDetail : DataRowBase
                     TurnRate = binaryReader.ReadFix64();
                     Def = binaryReader.ReadFix64();
                     Health = binaryReader.ReadFix64();
-                    Mana = binaryReader.ReadFix64();
                     Speed = binaryReader.ReadFix64();
                     Sight = binaryReader.ReadFix64();
                     Weapon1Atk = binaryReader.ReadFix64();
@@ -477,7 +466,7 @@ public class CharacterDataDetail : DataRowBase
                     Weapon1SplitAngle = binaryReader.ReadFix64();
                     Weapon1SplitDist = binaryReader.ReadFix64();
                     Weapon1ProjectileCount = binaryReader.ReadFix64();
-                    Weapon1ManaCost = binaryReader.ReadFix64();
+                    Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
                     Weapon1UniqueValues = binaryReader.ReadFix64Array();
                     Weapon2Atk = binaryReader.ReadFix64();
                     Weapon2Interval = binaryReader.ReadFix64();
@@ -490,7 +479,7 @@ public class CharacterDataDetail : DataRowBase
                     Weapon2SplitAngle = binaryReader.ReadFix64();
                     Weapon2SplitDist = binaryReader.ReadFix64();
                     Weapon2ProjectileCount = binaryReader.ReadFix64();
-                    Weapon2ManaCost = binaryReader.ReadFix64();
+                    Weapon2AmmunitionCapacity = binaryReader.ReadFix64();
                     Weapon2UniqueValues = binaryReader.ReadFix64Array();
                 }
             }

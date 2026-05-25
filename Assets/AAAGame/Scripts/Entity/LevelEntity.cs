@@ -483,11 +483,11 @@ public partial class LevelEntity : EntityBase
         var testSlotConfig = TechTestSlotConfig.LoadOrNull();
         if (testSlotConfig == null)
         {
-            Debug.LogWarning("[TestSlot] TechTestSlotConfig 鏈姞杞?(Resources.Load 杩斿洖 null)");
+            Debug.LogWarning("[TestSlot] TechTestSlotConfig 未加载 (Resources.Load 返回 null)");
         }
         else
         {
-            Debug.Log($"[TestSlot] TechTestSlotConfig 鍔犺浇鎴愬姛锛屾Ы浣? [{string.Join(", ", testSlotConfig.SlotBuildingIds ?? new string[0])}]");
+            Debug.Log($"[TestSlot] TechTestSlotConfig 加载成功，槽位: [{string.Join(", ", testSlotConfig.SlotBuildingIds ?? new string[0])}]");
         }
 
         bool heroSpawned = false;
@@ -513,7 +513,7 @@ public partial class LevelEntity : EntityBase
 
                 if (string.IsNullOrWhiteSpace(slotId))
                 {
-                    Debug.LogWarning($"[TestSlot] 妲戒綅 {point.TestSlotIndex} 鏈厤寤虹瓚锛岃烦杩?{point.name}");
+                    Debug.LogWarning($"[TestSlot] 槽位 {point.TestSlotIndex} 未配建筑，跳过 {point.name}");
                     continue;
                 }
 
@@ -556,7 +556,7 @@ public partial class LevelEntity : EntityBase
                             if (stronghold != null)
                             {
                                 initialOwnerFactionId = stronghold.OwnerFactionId;
-                                Debug.Log($"[LevelEntity] 璁剧疆蹇€掓煖鎵€鏈夎€? {effectiveIdentifier}, 浣嶇疆: {point.Position}, 鎹偣鎵€鏈夎€? {stronghold.OwnerFactionId}, 琛€鏉￠鑹? {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "缁胯壊(鍙嬫柟)" : "绾㈣壊(鏁屾柟)")}");
+                                Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {stronghold.OwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
                             }
                         }
 

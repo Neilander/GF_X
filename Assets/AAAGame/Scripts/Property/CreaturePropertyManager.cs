@@ -8,7 +8,6 @@ public enum CreatureMainProperty
     Def,
     Health,
     Speed,
-    Mana,
     CollisionRadius,
     TurnRate,
     Sight
@@ -16,14 +15,12 @@ public enum CreatureMainProperty
 
 public enum CreatureMinorProperty
 {
-    HealthRecover,
-    ManaRecover
+    HealthRecover
 }
 
 public enum CreatureCurrentProperty
 {
-    HealthCurrent,
-    ManaCurrent
+    HealthCurrent
 }
 
 public class CreaturePropertyManager
@@ -33,7 +30,6 @@ public class CreaturePropertyManager
         CreatureMainProperty.Def,
         CreatureMainProperty.Health,
         CreatureMainProperty.Speed,
-        CreatureMainProperty.Mana,
         CreatureMainProperty.CollisionRadius,
         CreatureMainProperty.TurnRate,
         CreatureMainProperty.Sight
@@ -48,9 +44,10 @@ public class CreaturePropertyManager
             }
 
             return funcArray[(int)RawComponent.Config]();
-        };
+    };
 
     private CharacterDataDetail _characterData;
+    private Func<CreatureMainProperty, Fix64> _configValueProvider;
 
     public PropertyManager propertyManager { get; private set; }
 
@@ -61,7 +58,18 @@ public class CreaturePropertyManager
         propertyManager = new PropertyManager();
 
         LoadCharacterData(creatureType);
+        InitializeProperties();
+    }
 
+    public CreaturePropertyManager(Func<CreatureMainProperty, Fix64> configValueProvider)
+    {
+        propertyManager = new PropertyManager();
+        _configValueProvider = configValueProvider;
+        InitializeProperties();
+    }
+
+    private void InitializeProperties()
+    {
         //创建所有属性的基准属性，等级
         CreateLevelProperty();
 
@@ -187,6 +195,11 @@ public class CreaturePropertyManager
 
     private Fix64 GetConfigValue(CreatureMainProperty prop)
     {
+        if (_configValueProvider != null)
+        {
+            return _configValueProvider(prop);
+        }
+
         if (_characterData == null)
         {
             return Fix64.Zero;
@@ -294,7 +307,6 @@ public class CreaturePropertyManager
     void CreateMinorProperty()
     {
         CreateSingleMinorProperty(nameof(CreatureMainProperty.Health), nameof(CreatureMinorProperty.HealthRecover));
-        CreateSingleMinorProperty(nameof(CreatureMainProperty.Mana), nameof(CreatureMinorProperty.ManaRecover));
 
     }
 
@@ -341,12 +353,6 @@ public class CreaturePropertyManager
             () => GetProperty(CreatureMainProperty.Health)
         };
         IrreversibleValueProperty.Create(PropertyFuncRef.GetDirectValue(arr), nameof(CreatureCurrentProperty.HealthCurrent)).Register(propertyManager);
-
-        Func<Fix64>[] arrM =
-        {
-            () => GetProperty(CreatureMainProperty.Mana)
-        };
-        IrreversibleValueProperty.Create(PropertyFuncRef.GetDirectValue(arrM), nameof(CreatureCurrentProperty.ManaCurrent)).Register(propertyManager);
     }
 
     #endregion

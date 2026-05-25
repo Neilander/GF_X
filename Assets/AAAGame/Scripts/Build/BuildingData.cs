@@ -23,7 +23,7 @@ public class BuildingData
     public string DescKey { get; protected set; }
     public int Lv { get; protected set; }
     public Fix64 HP { get; protected set; }
-    public Fix64 Atk { get; protected set; }
+    public WeaponData Weapon { get; protected set; }
     public Fix64 Def { get; protected set; }
     public string UnitID { get; protected set; }
     public int Production { get; protected set; }
@@ -38,7 +38,7 @@ public class BuildingData
         int lv,
         int cost,
         Fix64 hp,
-        Fix64 atk,
+        WeaponData weapon,
         Fix64 def,
         Fix64[] uniqueValues,
         string unitID,
@@ -54,7 +54,7 @@ public class BuildingData
         NameKey = nameKey;
         DescKey = descKey;
         HP = hp;
-        Atk = atk;
+        Weapon = weapon;
         Def = def;
         UniqueValues = uniqueValues;
         UnitID = unitID;

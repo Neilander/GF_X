@@ -26,13 +26,13 @@ public class TechScopeResolver
 
         switch (techData.ScopeType)
         {
-            case TechScopeType.Unit:
+            case TechScopeType.SpecificUnit:
                 ResolveUnitScope(techData, resolved);
                 break;
-            case TechScopeType.Tag:
+            case TechScopeType.UnitTag:
                 ResolveTagScope(techData, resolved);
                 break;
-            case TechScopeType.Arch:
+            case TechScopeType.UnitArch:
                 ResolveArchScope(techData, resolved);
                 break;
             case TechScopeType.AllUnit:
