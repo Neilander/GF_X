@@ -124,7 +124,7 @@ public partial class BuildingEntity
         if (IsNonPlayerOwnedBuilding())
             return false;
 
-        return (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) == GamePhase.Build;
+        return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
     }
 
     private bool IsNonPlayerOwnedBuilding()

@@ -28,7 +28,7 @@ public static class EntityContextExtensions
 
         // 检查是否处于战斗阶段（进攻阶段）
         int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);
-        if (currentPhase != (int)GamePhase.Invade)
+        if (currentPhase != (int)GamePhase.Invade && currentPhase != (int)GamePhase.Defend)
             return false;
 
         return true;

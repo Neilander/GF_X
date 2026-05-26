@@ -1,4 +1,4 @@
-﻿#	建筑表										i18n	i18n	
+#	建筑表										i18n	i18n	
 #	ID	Identifier			Lv1UniqueValues	Lv1UsageCount	UpgradeIncrementUniqueValues	UpgradeIncrementUsageCount		Type	NameKey	DescKey	SpritePath
 #	int	string			Fix64[]	int	Fix64[]	int	Fix64	enum	string	string	string
 #		代码内标识符	备注	备注2	1级数值	1级使用次数	升级增加数值	升级增加使用次数	冷却时间	技能类型	技能名称（多语言）	技能描述（多语言）	Sprite路径

@@ -17,6 +17,7 @@ public class EntityPresetPoint : MonoBehaviour
     public EntityPresetPointType PointType;
     public bool IsGameEndConditionBuilding;
     public int UnitSpawnCount; // 仅对 Unit 类型有效，表示在战斗阶段开始时以此预设点为中心生成多少个单位
+    public int DefendSpawnWeight = 1; // 仅对 DefendSpawn 类型有效，表示该点在防御阶段的出怪权重
 
     [Header("测试槽位（仅测试用；勾上后运行期 Identifier 从 TechTestSlotConfig 读）")]
     public bool IsTestSlot;
@@ -30,7 +31,7 @@ public class EntityPresetPoint : MonoBehaviour
 #endif
 }
 
-public enum EntityPresetPointType { Unit, Hero, Building } //Spawn, Respawn, Patrol, Device
+public enum EntityPresetPointType { Unit, Hero, Building, DefendSpawn } //Spawn, Respawn, Patrol, Device
 
 #if UNITY_EDITOR
 static class EntityPresetPointEditorPreview
@@ -514,6 +515,7 @@ static class EntityPresetPointEditorPreview
 
             case EntityPresetPointType.Unit:
             case EntityPresetPointType.Hero:
+            case EntityPresetPointType.DefendSpawn:
                 return TryGetUnitPrefabAssetPath(point.Identifier, out prefabAssetPath);
 
             default:

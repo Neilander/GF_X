@@ -1,4 +1,4 @@
-﻿#	装备表					
+#	装备表					
 #	ID		CraftingPlace	ProducedItems	RequiredItems	Workload
 #	int		string	StringIntPair[]	StringIntPair[]	Fix64
 #		备注	制造地	产品	原材料	工作量

@@ -152,7 +152,8 @@ public partial class PhaseSwitchUIForm : UIFormBase
     {
         switch (phase)
         {
-            case GamePhase.Build:
+            case GamePhase.BuildBeforeInvade:
+            case GamePhase.BuildBeforeDefend:
                 return LocalizationTextDataModel.GetText(BuildPhaseTextId);
             case GamePhase.Invade:
                 return LocalizationTextDataModel.GetText(InvadePhaseTextId);

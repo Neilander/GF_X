@@ -1,4 +1,4 @@
-﻿#	默认游戏配置		
+#	默认游戏配置		
 #	Key	备注	Value
 	MinAtkSpeed	攻速下限	10
 	MaxAtkSpeed	攻速上限	700
@@ -28,3 +28,6 @@
 	PullForceLevel1	1级拉力	2
 	PullForceLevel2	2级拉力	3
 	PullForceLevel3	3级拉力	4
+	DefendPhaseEnemyArriveInterval	防御阶段出怪间隔	0.8
+	DefendPhaseEnemyMinSpeed	防御阶段出怪移速最小值	500
+	DefendPhaseEnemyEndlessGrowthRate	防御阶段无尽出怪增长率	1.2

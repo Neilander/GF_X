@@ -54,7 +54,7 @@ public class BuildManager : GameFrameworkComponent
             return false;
 
         var inGameData = GF.DataModel.GetDataModel<InGameDataModel>();
-        if (inGameData == null || (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) != GamePhase.Build)
+        if (inGameData == null || !InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase)))
             return false;
 
         if (string.IsNullOrWhiteSpace(buildBuildingId))

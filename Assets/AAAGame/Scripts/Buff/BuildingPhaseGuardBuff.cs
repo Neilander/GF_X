@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -105,7 +105,7 @@ public class BuildingPhaseGuardBuff : BuffCallback
             building.UnregisterInvincibleSource(_invincibleSourceId);
 
         bool isLv0Building = building.buildingData != null && building.buildingData.Lv == 0;
-        bool shouldSuppressHealthBar = phase == GamePhase.Build || isLv0Building;
+        bool shouldSuppressHealthBar = InGameDataModel.IsBuildPhase(phase) || isLv0Building;
         if (building.IsHealthBarSuppressedByBuff == shouldSuppressHealthBar)
             return;
 

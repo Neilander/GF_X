@@ -1,4 +1,4 @@
-﻿#	材料表						i18n	i18n	
+#	材料表						i18n	i18n	
 #	ID		Identifier	Rarity	MaxStack	SpriteName	NameKey	DescriptionKey	Tags
 #	int		string	enum	int	string	string	string	enum[]
 #		备注	在代码中的命名标识符	品质	最大堆叠数(-1表示无限)	Sprite路径	物品名(多语言)	物品描述(多语言)	物品类型标签

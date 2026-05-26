@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityGameFramework.Runtime;
 
 /// <summary>
@@ -53,7 +53,7 @@ public class MeatStallProductionBuff : BuffCallback
     private void OnIngamePhaseChanged(object sender, GameFramework.Event.GameEventArgs e)
     {
         var args = e as IngamePhaseChangedEventArgs;
-        if (args != null && args.NewPhase == GamePhase.Build)
+        if (args != null && InGameDataModel.IsBuildPhase(args.NewPhase))
         {
             UpdateKillCountProduction();
         }

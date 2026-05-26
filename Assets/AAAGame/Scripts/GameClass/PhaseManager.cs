@@ -21,14 +21,17 @@ public class PhaseManager : GameFrameworkComponent
     {
         s_InvadeFlowToken++;
         s_PhaseSoundToken++;
+        DefendPhaseRuntime.CancelRuntime();
     }
 
     public static void EnterCurrentPhaseOnGameStart()
     {
+        DefendPhaseRuntime.PrepareForCurrentLevelIfNeeded();
         GamePhase currentPhase = CurrentPhase;
         switch (currentPhase)
         {
-            case GamePhase.Build:
+            case GamePhase.BuildBeforeInvade:
+            case GamePhase.BuildBeforeDefend:
                 HandleEnterBuildPhase(true);
                 break;
             case GamePhase.Invade:
@@ -49,17 +52,20 @@ public class PhaseManager : GameFrameworkComponent
 
         switch (currentPhase)
         {
-            case GamePhase.Build:
+            case GamePhase.BuildBeforeInvade:
                 nextPhase = GamePhase.Invade;
                 break;
             case GamePhase.Invade:
-                nextPhase = GamePhase.Build;
+                nextPhase = GamePhase.BuildBeforeDefend;
+                break;
+            case GamePhase.BuildBeforeDefend:
+                nextPhase = GamePhase.Defend;
                 break;
             case GamePhase.Defend:
-                nextPhase = GamePhase.Build;
+                nextPhase = GamePhase.BuildBeforeInvade;
                 break;
             default:
-                nextPhase = GamePhase.Build;
+                nextPhase = GamePhase.BuildBeforeInvade;
                 break;
         }
 
@@ -76,7 +82,7 @@ public class PhaseManager : GameFrameworkComponent
 
         var totalWatch = Stopwatch.StartNew();
 
-        TryAdvanceDayOnBuildTransition(oldPhase, phase);
+        TryAdvanceDayOnBattleTransition(oldPhase, phase);
         InGameDataModel.SetPhase(phase);
 
         var transitionWatch = Stopwatch.StartNew();
@@ -95,9 +101,9 @@ public class PhaseManager : GameFrameworkComponent
         Log.Debug($"Phase switched from {oldPhase} to {phase}");
     }
 
-    private static void TryAdvanceDayOnBuildTransition(GamePhase oldPhase, GamePhase newPhase)
+    private static void TryAdvanceDayOnBattleTransition(GamePhase oldPhase, GamePhase newPhase)
     {
-        if (newPhase != GamePhase.Build)
+        if (newPhase != GamePhase.Invade && newPhase != GamePhase.Defend)
         {
             return;
         }
@@ -111,7 +117,8 @@ public class PhaseManager : GameFrameworkComponent
     {
         switch (newPhase)
         {
-            case GamePhase.Build:
+            case GamePhase.BuildBeforeInvade:
+            case GamePhase.BuildBeforeDefend:
                 HandleEnterBuildPhase();
                 break;
             case GamePhase.Invade:
@@ -129,6 +136,7 @@ public class PhaseManager : GameFrameworkComponent
 
         // 进入 Build 时取消未完成的 Invade 异步生成流程。
         s_InvadeFlowToken++;
+        DefendPhaseRuntime.CancelRuntime();
 
         var totalWatch = Stopwatch.StartNew();
 
@@ -197,6 +205,7 @@ public class PhaseManager : GameFrameworkComponent
         PlayPhaseEnterSound("enterBattle");
 
         int flowToken = ++s_InvadeFlowToken;
+        DefendPhaseRuntime.CancelRuntime();
         var totalWatch = Stopwatch.StartNew();
 
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
@@ -237,6 +246,7 @@ public class PhaseManager : GameFrameworkComponent
     private static void HandleEnterDefendPhase()
     {
         PlayPhaseEnterSound("enterBattle");
+        DefendPhaseRuntime.EnterDefendPhaseAsync().Forget();
     }
 
     /// <summary>阶段进入时的统一音效播放入口（cue key 在 AudioCueLibrary 配映射）。</summary>

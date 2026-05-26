@@ -1,4 +1,4 @@
-﻿#	设备表						i18n	i18n			
+#	设备表						i18n	i18n			
 #	ID		Identifier	CostMaterial	Workload	PrefabName	NameKey	DescriptionKey	BuildCondition	UpgradeID	InteractionPanelID
 #	int		string	StringIntPair[]	Fix64	string	string	string	UnlockCondition	string	enum?
 #		备注	在代码中的命名标识符	材料消耗	工作量	Prefab路径	设备名(多语言)	设备描述(多语言)	建造条件	升级设备ID	交互面板UIViews

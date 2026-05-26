@@ -10,7 +10,8 @@ using UnityGameFramework.Runtime;
 
 public enum GamePhase
 {
-    Build,
+    BuildBeforeInvade,
+    BuildBeforeDefend,
     Invade,
     Defend
 }
@@ -73,7 +74,7 @@ public class InGameDataModel : DataModelBase
         int initMaxSupply = GF.Config.GetInt(InitMaxSupplyConfigKey, 0);
         m_IngameValue = new Dictionary<IngameValueType, int>
         {
-            [IngameValueType.Phase] = (int)GamePhase.Build,
+            [IngameValueType.Phase] = (int)GamePhase.BuildBeforeInvade,
             [IngameValueType.Day] = 1,
             [IngameValueType.Coin] = 0,
             [IngameValueType.CurrentSupply] = 0,
@@ -155,6 +156,11 @@ public class InGameDataModel : DataModelBase
     public static void SetPhase(GamePhase phase, bool triggerEvent = true)
     {
         SetValue(IngameValueType.Phase, (int)phase, triggerEvent);
+    }
+
+    public static bool IsBuildPhase(GamePhase phase)
+    {
+        return phase == GamePhase.BuildBeforeInvade || phase == GamePhase.BuildBeforeDefend;
     }
 
     public static int GetCurrentSupply()

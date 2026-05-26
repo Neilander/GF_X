@@ -1,4 +1,4 @@
-﻿#	行业文本多语言表			i18n
+#	行业文本多语言表			i18n
 #	ID		Identifier	TextKey
 #	int		string	string
 #		备注	在代码中的命名标识符	选项文本(多语言)

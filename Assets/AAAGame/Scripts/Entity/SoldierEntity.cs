@@ -113,12 +113,14 @@ public partial class SoldierEntity : MAEntity
         }
 
         SyncHeroFullHealthSpeedBuff();
+        OnPhaseChangedForDefendPhaseSpeed(args);
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
         SyncHeroFullHealthSpeedBuff();
+        TickDefendPhaseSpeedControl();
         TickGhostCollisionRuntime();
 
         if (m_MinimapReportComponent != null)
@@ -170,6 +172,7 @@ public partial class SoldierEntity : MAEntity
     protected override void OnHide(bool isShutdown, object userData)
     {
         _isHidingOrShuttingDown = true;
+        DisableDefendPhaseSpeedControl();
         UnsubscribePhaseEvents();
         ClearGhostRuntimeState();
         base.OnHide(isShutdown, userData);

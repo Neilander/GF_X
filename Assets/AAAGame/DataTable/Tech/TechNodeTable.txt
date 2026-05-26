@@ -1,4 +1,4 @@
-﻿#	科技表										i18n	i18n
+#	科技表										i18n	i18n
 #	ID		Identifier	PrereqTechIds	Level	Category	CostMaterial	AllConditions	AnyConditions	SpriteName	NameKey	DescriptionKey
 #	int		string	string[]	int	enum	StringIntPair[]	UnlockCondition[]	UnlockCondition[]	string	string	string
 #		备注	在代码中的命名标识符	前置科技标识符	对应科技等级	科技类型	材料消耗	AND 条件串	OR 条件串	Sprite路径	节点名(多语言)	节点描述(多语言)

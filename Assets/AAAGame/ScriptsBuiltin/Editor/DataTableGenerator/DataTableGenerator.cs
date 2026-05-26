@@ -21,9 +21,8 @@ namespace GameFramework.Editor.DataTableTools
         private static readonly Regex NameRegex = new Regex(@"^[A-Z][A-Za-z0-9_]*$");
 
         public static DataTableProcessor CreateDataTableProcessor(string dataTableFile)
-        {//Encoding.Unicode
-            return new DataTableProcessor(dataTableFile, Encoding.GetEncoding("GB2312"), 1, 2, null, 3, 4, 1);//Encoding.GetEncoding("GB2312")
-            //return null;
+        {
+            return new DataTableProcessor(dataTableFile, Encoding.UTF8, 1, 2, null, 3, 4, 1);
         }
         public static bool CheckRawData(DataTableProcessor dataTableProcessor, string dataTableFile)
         {
@@ -189,7 +188,11 @@ namespace GameFramework.Editor.DataTableTools
 
                 int isArrayType = ParseArrayType(languageKeyword);
 
-                if (dataTableProcessor.IsSystem(i))
+                if (dataTableProcessor.IsCustomJson(i))
+                {
+                    stringBuilder.AppendFormat("            {0} = DataTableExtension.ParseJson<{1}>(columnStrings[index++]);", dataTableProcessor.GetName(i), DataTableProcessor.GetCodeTypeName(dataTableProcessor.GetType(i))).AppendLine();
+                }
+                else if (dataTableProcessor.IsSystem(i))
                 {
                     if (isArrayType > 0)
                     {
@@ -347,7 +350,11 @@ namespace GameFramework.Editor.DataTableTools
                 string languageKeyword = dataTableProcessor.GetLanguageKeyword(i);
                 int isArrayType = ParseArrayType(languageKeyword);
 
-                if (dataTableProcessor.IsSystem(i))
+                if (dataTableProcessor.IsCustomJson(i))
+                {
+                    stringBuilder.AppendFormat("                    {0} = binaryReader.ReadJson<{1}>();", dataTableProcessor.GetName(i), DataTableProcessor.GetCodeTypeName(dataTableProcessor.GetType(i))).AppendLine();
+                }
+                else if (dataTableProcessor.IsSystem(i))
                 {
                     if (isArrayType > 0)
                     {

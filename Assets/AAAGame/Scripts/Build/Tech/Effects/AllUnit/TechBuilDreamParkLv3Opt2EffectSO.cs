@@ -18,7 +18,7 @@ using UnityGameFramework.Runtime;
 ///   - 每次丢卡：
 ///       a) RegisterUnitBuff（给未来出兵的单位）
 ///       b) 遍历 EntityRegistry 给已在场我方单位立即 AddBuff
-///   - 进入 Build 阶段清理两端：UnregisterUnitBuffByTechPrefix + 场上单位 RemoveBuffsByPrefix
+///   - 进入 BuildBefore 阶段清理两端：UnregisterUnitBuffByTechPrefix + 场上单位 RemoveBuffsByPrefix
 /// </summary>
 public class TechBuilDreamParkLv3Opt2EffectSO : TechEffectSO
 {
@@ -139,7 +139,7 @@ public class TechBuilDreamParkLv3Opt2EffectSO : TechEffectSO
     private void OnPhaseChanged(object sender, GameEventArgs e)
     {
         var args = (IngamePhaseChangedEventArgs)e;
-        if (args.NewPhase != GamePhase.Build) return;
+        if (!InGameDataModel.IsBuildPhase(args.NewPhase)) return;
 
         int factionId = EntitySideHelper.PlayerFactionId;
 
@@ -168,7 +168,7 @@ public class TechBuilDreamParkLv3Opt2EffectSO : TechEffectSO
         }
 
         m_DiscardCounter = 0;
-        Debug.Log($"[DreamPark_Lv3_Opt2] 进入 Build 阶段，清除未来注册 {unregistered} 条，场上单位 buff 清除 {fieldCleared} 条");
+        Debug.Log($"[DreamPark_Lv3_Opt2] 进入 BuildBefore 阶段，清除未来注册 {unregistered} 条，场上单位 buff 清除 {fieldCleared} 条");
     }
 
     public override BuffData CreateUnitInitialBuff(TechData techData, UnitType unitType, string techId)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityGameFramework.Runtime;
 
@@ -341,7 +341,7 @@ public class TechManager : GameFrameworkComponent
             return false;
 
         var inGameData = GF.DataModel.GetDataModel<InGameDataModel>();
-        return inGameData != null && (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) == GamePhase.Build;
+        return inGameData != null && InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
     }
 
     private static BuildManager RequireBuildManager()

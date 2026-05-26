@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using GameFramework.Event;
 using UnityEngine;
@@ -86,7 +86,7 @@ public class ProductionConditionManager : GameFrameworkComponent
     /// </summary>
     public void OnPhaseChanged(GamePhase newPhase)
     {
-        if (newPhase == GamePhase.Build)
+        if (InGameDataModel.IsBuildPhase(newPhase))
         {
             // 建造阶段开始时更新所有统计
             UpdateAllProductionConditions();
