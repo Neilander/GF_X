@@ -15,14 +15,7 @@ public class CharacterTargetingComp : ITargetingComp
     public IEntityContext CurrentTarget
     {
         get => _currentTarget;
-        set
-        {
-            if (value != _currentTarget)
-            {
-                UnityEngine.Debug.Log($"GETTARGET {_ctx?.CharacterKey} {_currentTarget?.CharacterKey ?? "null"}->{value?.CharacterKey ?? "null"}\n{System.Environment.StackTrace}");
-            }
-            _currentTarget = value;
-        }
+        set => _currentTarget = value;
     }
     public IEntityContext FollowTarget { get; private set; }
 
@@ -466,4 +459,5 @@ public class CharacterTargetingComp : ITargetingComp
 
         return entity != null && entity.CharacterKey == UnitType.Unit_Hero.ToString();
     }
+
 }

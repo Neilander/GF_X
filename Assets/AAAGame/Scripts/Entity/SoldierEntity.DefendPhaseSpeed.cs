@@ -1,6 +1,7 @@
 public partial class SoldierEntity
 {
     private const string DefendPhaseSpeedBuffId = "defend_phase_speed_override";
+    public const string P_DefendAssignedSpeed = "DefendAssignedSpeed";
 
     private bool m_DefendPhaseSpeedControlEnabled;
     private Fix64 m_DefendPhaseSpeedValue;

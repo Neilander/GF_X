@@ -44,7 +44,14 @@ public static class SoldierFactory
     /// <param name="position">Spawn position.</param>
     /// <param name="side">Side.</param>
     /// <param name="brainType">Brain type.</param>
-    public static int ShowSoldier(UnitType unitType, Vector3 position, SideType side = SideType.PlayerSide, BrainType brainType = BrainType.SoldierAI, string sourceBuildingInstanceId = null, string sourceStrongholdId = null)
+    public static int ShowSoldier(
+        UnitType unitType,
+        Vector3 position,
+        SideType side = SideType.PlayerSide,
+        BrainType brainType = BrainType.SoldierAI,
+        string sourceBuildingInstanceId = null,
+        string sourceStrongholdId = null,
+        System.Action<EntityParams> configureParams = null)
     {
         string characterKey = unitType.ToString();
         string prefabName = GetPrefabPathFromCharacterData(characterKey);
@@ -59,7 +66,7 @@ public static class SoldierFactory
         // Keep OnShowCallback empty here.
         // Buff setup occurs in existing show-success chain.
 
-        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId);
+        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams);
     }
 
     public static async UniTask<bool> ShowSoldierAwait(

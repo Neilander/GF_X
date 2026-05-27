@@ -330,6 +330,7 @@ RectTransform:
   - {fileID: 998589792179634124}
   - {fileID: 5461150234971734650}
   - {fileID: 6464242753611235526}
+  - {fileID: 4536797643127746160}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -470,6 +471,16 @@ MonoBehaviour:
     - {fileID: 2404199909699333810}
     VarType: UnityEngine.RectTransform
     VarPrefix: 0
+  - VarName: varDefendEnemySketchRoot
+    Targets:
+    - {fileID: 3359348965182560149}
+    VarType: UnityEngine.GameObject
+    VarPrefix: 0
+  - VarName: varDefendEnemySketchItem
+    Targets:
+    - {fileID: 0}
+    VarType: UnityEngine.GameObject
+    VarPrefix: 0
   m_UIAnimationType: 0
   m_OpenAnimation: {fileID: 0}
   m_CloseAnimation: {fileID: 0}
@@ -485,6 +496,8 @@ MonoBehaviour:
   varSupplyIcon: {fileID: 4214267937034225324}
   varCoinIcon: {fileID: 1807410652003879218}
   varMiniMapMask: {fileID: 8895978210600748454}
+  varDefendEnemySketchRoot: {fileID: 3359348965182560149}
+  varDefendEnemySketchItem: {fileID: 5119498110010872424, guid: 1d478ce3db157be46a1cfacb66766328, type: 3}
 --- !u!1 &1982711920668674379
 GameObject:
   m_ObjectHideFlags: 0
@@ -694,6 +707,41 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!1 &3359348965182560149
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4536797643127746160}
+  m_Layer: 0
+  m_Name: DefendEnemySketchRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &4536797643127746160
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3359348965182560149}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5289271423140313908}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &4998193661635131007
 GameObject:
   m_ObjectHideFlags: 0

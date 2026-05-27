@@ -52,6 +52,7 @@ public partial class SoldierEntity : MAEntity
             SourceStrongholdId = ep.GetString(EntityParams.P_SourceStrongholdId);
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
             ConfigureTargetingModeForSpawn();
+            ApplyDefendPhaseSpawnParams(ep);
 
         }
 
@@ -304,6 +305,21 @@ public partial class SoldierEntity : MAEntity
         }
 
         targetingComp.UseDefendEnemyMode(null);
+    }
+
+    private void ApplyDefendPhaseSpawnParams(EntityParams ep)
+    {
+        if (ep == null || BrainType != BrainType.DefendEnemyAI || Side != SideType.EnemySide)
+            return;
+
+        if (!ep.TryGet<VarFloat>(P_DefendAssignedSpeed, out VarFloat assignedSpeedVar))
+            return;
+
+        float assignedSpeed = assignedSpeedVar;
+        if (assignedSpeed <= 0f)
+            return;
+
+        EnableDefendPhaseSpeedControl((Fix64)assignedSpeed);
     }
 
 }

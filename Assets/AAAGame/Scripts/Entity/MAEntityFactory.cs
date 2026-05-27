@@ -33,9 +33,11 @@ public static class MAEntityFactory
         BrainType brainType,
         Const.EntityGroup entityGroup,
         List<BuffData> startBuffs = null,
-        string sourceStrongholdId = null)
+        string sourceStrongholdId = null,
+        System.Action<EntityParams> configureParams = null)
     {
         EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId);
+        configureParams?.Invoke(entityParams);
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
     }
 

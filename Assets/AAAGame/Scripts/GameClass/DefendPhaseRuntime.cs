@@ -27,6 +27,22 @@ public static class DefendPhaseRuntime
     private static bool s_SpawnScheduleCompleted;
     private static string s_WaveConfigLevelIdentifier = string.Empty;
 
+    public readonly struct DefendPreviewSpawnEntry
+    {
+        public readonly UnitType UnitType;
+        public readonly int Count;
+        public readonly Vector3 SpawnPosition;
+        public readonly string SpawnPointIdentifier;
+
+        public DefendPreviewSpawnEntry(UnitType unitType, int count, Vector3 spawnPosition, string spawnPointIdentifier)
+        {
+            UnitType = unitType;
+            Count = count;
+            SpawnPosition = spawnPosition;
+            SpawnPointIdentifier = spawnPointIdentifier;
+        }
+    }
+
     public static void CancelRuntime()
     {
         s_FlowToken++;
@@ -93,7 +109,11 @@ public static class DefendPhaseRuntime
                 SideType.EnemySide,
                 BrainType.DefendEnemyAI,
                 null,
-                evt.SourceStrongholdId);
+                evt.SourceStrongholdId,
+                entityParams =>
+                {
+                    entityParams.Set<VarFloat>(SoldierEntity.P_DefendAssignedSpeed, evt.SpeedProperty);
+                });
             if (entityId <= 0)
             {
                 Log.Warning("[DefendPhase] 生成单位失败。unit={0}, pos={1}", evt.UnitType, evt.SpawnPosition);
@@ -101,11 +121,6 @@ public static class DefendPhaseRuntime
             }
 
             s_AliveEnemyEntityIds.Add(entityId);
-            SoldierEntity soldier = GF.Entity.GetEntity(entityId)?.Logic as SoldierEntity;
-            if (soldier != null)
-            {
-                soldier.EnableDefendPhaseSpeedControl((Fix64)evt.SpeedProperty);
-            }
         }
 
         if (flowToken != s_FlowToken || PhaseManager.CurrentPhase != GamePhase.Defend)
@@ -113,6 +128,46 @@ public static class DefendPhaseRuntime
 
         s_SpawnScheduleCompleted = true;
         TryCompleteDefendPhase();
+    }
+
+    public static bool TryGetNextDefendPreviewSpawnEntries(List<DefendPreviewSpawnEntry> results)
+    {
+        if (results == null)
+            return false;
+
+        results.Clear();
+        EnsureArchetypeCache();
+        EnsureSpawnPointCache();
+        EnsureWaveConfigLoaded();
+
+        DefendWaveDefinition wave = ResolveWaveForRound(Mathf.Max(1, s_DefendRoundIndex + 1));
+        if (wave == null || wave.Entries.Count == 0)
+            return false;
+
+        for (int i = 0; i < wave.Entries.Count; i++)
+        {
+            DefendWaveEntry waveEntry = wave.Entries[i];
+            if (waveEntry.Count <= 0)
+                continue;
+
+            List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(waveEntry.UnitType, waveEntry.Count);
+            for (int j = 0; j < pointCounts.Count; j++)
+            {
+                PointSpawnCount pointCount = pointCounts[j];
+                if (pointCount == null || pointCount.Point == null || pointCount.Point.Point == null)
+                    continue;
+                if (pointCount.Count <= 0)
+                    continue;
+
+                results.Add(new DefendPreviewSpawnEntry(
+                    waveEntry.UnitType,
+                    pointCount.Count,
+                    pointCount.Point.Point.Position,
+                    ResolvePreviewSpawnPointIdentifier(pointCount.Point.Point)));
+            }
+        }
+
+        return results.Count > 0;
     }
 
     private static void EnsureSubscribedSoldierDead()
@@ -318,13 +373,18 @@ public static class DefendPhaseRuntime
 
     private static DefendWaveDefinition ResolveWaveForCurrentRound()
     {
+        return ResolveWaveForRound(s_DefendRoundIndex);
+    }
+
+    private static DefendWaveDefinition ResolveWaveForRound(int roundIndex)
+    {
         if (s_DefendWaves.Count == 0)
             return null;
 
-        if (s_DefendRoundIndex <= s_DefendWaves.Count)
-            return CloneWave(s_DefendWaves[s_DefendRoundIndex - 1], 1f);
+        if (roundIndex <= s_DefendWaves.Count)
+            return CloneWave(s_DefendWaves[Mathf.Max(0, roundIndex - 1)], 1f);
 
-        int overflowRounds = s_DefendRoundIndex - s_DefendWaves.Count;
+        int overflowRounds = roundIndex - s_DefendWaves.Count;
         float growthRate = GF.Config != null ? GF.Config.GetFloat(DefendEndlessGrowthRateConfigKey, 1f) : 1f;
         double scale = Math.Pow(Math.Max(0f, growthRate), overflowRounds);
         return CloneWave(s_DefendWaves[s_DefendWaves.Count - 1], (float)scale);
@@ -420,6 +480,8 @@ public static class DefendPhaseRuntime
                 previousLastArrival = pointLastArrival;
 
                 string strongholdId = pointCount.PointStronghold?.strongholdData?.StrongholdId;
+                string pointName = pointCount.Point.Point != null ? pointCount.Point.Point.name : "<null>";
+
                 for (int spawnIndex = 0; spawnIndex < spawnCount; spawnIndex++)
                 {
                     events.Add(new PlannedSpawnEvent
@@ -428,7 +490,9 @@ public static class DefendPhaseRuntime
                         UnitType = entry.UnitType,
                         SpawnPosition = pointCount.Point.Point.Position,
                         SpeedProperty = pointSpeedProperty,
-                        SourceStrongholdId = strongholdId
+                        SourceStrongholdId = strongholdId,
+                        SpawnPointName = pointName,
+                        TheoreticalArrivalTime = targetFirstArrival + spawnIndex * arriveInterval
                     });
                 }
             }
@@ -568,6 +632,17 @@ public static class DefendPhaseRuntime
         return false;
     }
 
+    private static string ResolvePreviewSpawnPointIdentifier(EntityPresetPoint point)
+    {
+        if (point == null)
+            return string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(point.Identifier))
+            return point.Identifier;
+
+        return string.IsNullOrWhiteSpace(point.name) ? string.Empty : point.name;
+    }
+
     private static void ResetDefendPhaseState(bool keepRoundIndex)
     {
         s_AliveEnemyEntityIds.Clear();
@@ -608,5 +683,7 @@ public static class DefendPhaseRuntime
         public Vector3 SpawnPosition;
         public float SpeedProperty;
         public string SourceStrongholdId;
+        public string SpawnPointName;
+        public float TheoreticalArrivalTime;
     }
 }

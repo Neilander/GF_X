@@ -26,6 +26,7 @@ public partial class InGameUIForm : UIFormBase
         TutorialManager.PhaseSwitchButtonGuideChanged += OnPhaseSwitchButtonGuideChanged;
         GameDebugSettings.RuntimeResourceModifyEnabledChanged += OnRuntimeResourceModifyEnabledChanged;
         InitializeMiniMap();
+        InitializeDefendEnemySketch();
         RefreshAll();
     }
 
@@ -36,6 +37,7 @@ public partial class InGameUIForm : UIFormBase
         GameDebugSettings.RuntimeResourceModifyEnabledChanged -= OnRuntimeResourceModifyEnabledChanged;
         UnbindButtons();
         ShutdownMiniMap();
+        ShutdownDefendEnemySketch();
         StopPhaseSwitchBlink();
         base.OnClose(isShutdown, userData);
     }
@@ -51,6 +53,8 @@ public partial class InGameUIForm : UIFormBase
         {
             OpenLevelSwitch();
         }
+
+        TickDefendEnemySketch();
     }
 
     protected override void OnButtonClick(object sender, Button btSelf)
@@ -184,6 +188,7 @@ public partial class InGameUIForm : UIFormBase
             case IngameValueType.CurrentSupply:
             case IngameValueType.MaxSupply:
                 RefreshAllText();
+                RefreshDefendEnemySketch();
                 break;
         }
     }
@@ -193,6 +198,7 @@ public partial class InGameUIForm : UIFormBase
         RefreshAllText();
         RefreshPhaseSwitchState();
         RefreshResourceModifyState();
+        RefreshDefendEnemySketch();
     }
 
     private void RefreshAllText()

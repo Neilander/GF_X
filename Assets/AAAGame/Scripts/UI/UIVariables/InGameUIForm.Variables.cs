@@ -18,4 +18,6 @@ public partial class InGameUIForm
 	[SerializeField] private Button varSupplyIcon = null;
 	[SerializeField] private Button varCoinIcon = null;
 	[SerializeField] private RectTransform varMiniMapMask = null;
+	[SerializeField] private GameObject varDefendEnemySketchRoot = null;
+	[SerializeField] private GameObject varDefendEnemySketchItem = null;
 }

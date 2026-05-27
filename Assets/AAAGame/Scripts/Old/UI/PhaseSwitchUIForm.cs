@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityGameFramework.Runtime;
 
+[System.Obsolete("PhaseSwitchUIForm is deprecated and moved to Old/UI.")]
 public partial class PhaseSwitchUIForm : UIFormBase
 {
     private const string BlockedSwitchTipTitleId = "Tips_PhaseSwitchBlocked_Title";
