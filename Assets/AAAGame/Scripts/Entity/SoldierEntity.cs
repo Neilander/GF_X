@@ -51,6 +51,7 @@ public partial class SoldierEntity : MAEntity
             BrainType = ep.BrainType; // 设置AI类型
             SourceStrongholdId = ep.GetString(EntityParams.P_SourceStrongholdId);
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
+            ConfigureTargetingModeForSpawn();
 
         }
 
@@ -67,8 +68,8 @@ public partial class SoldierEntity : MAEntity
             m_MinimapReportComponent.Initialize(Side);
         }
 
-        // 敌方 SoldierAI 记录出生点用于"超出追击距离脱战返航"。友方/玩家不记录。
-        if (Side == SideType.EnemySide && Brain is SoldierAIBrain soldierBrain)
+        // 敌方入侵兵记录出生点用于"超出追击距离脱战返航"。防御阶段敌兵不启用该逻辑。
+        if (Side == SideType.EnemySide && Brain is SoldierAIBrain soldierBrain && BrainType == BrainType.SoldierAI)
         {
             soldierBrain.SetBirthPosition(transform.position);
         }
@@ -275,6 +276,34 @@ public partial class SoldierEntity : MAEntity
 
         if (hasBuff)
             BuffComp.RemoveBuff(HeroFullHealthSpeedBuffId);
+    }
+
+    private void ConfigureTargetingModeForSpawn()
+    {
+        if (targetComp is not CharacterTargetingComp targetingComp)
+            return;
+
+        if (BrainType != BrainType.DefendEnemyAI || Side != SideType.EnemySide)
+        {
+            if (Brain is SoldierAIBrain defaultBrain)
+                defaultBrain.SetReturnToBirthEnabled(true);
+            targetingComp.UseDefaultMode();
+            return;
+        }
+
+        if (Brain is SoldierAIBrain defendBrain)
+            defendBrain.SetReturnToBirthEnabled(false);
+
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
+        if (gameEndManager != null
+            && gameEndManager.TryGetNearestPlayerInitialConditionBuilding(transform.position, out BuildingEntity baseBuilding)
+            && baseBuilding != null)
+        {
+            targetingComp.UseDefendEnemyMode(baseBuilding);
+            return;
+        }
+
+        targetingComp.UseDefendEnemyMode(null);
     }
 
 }

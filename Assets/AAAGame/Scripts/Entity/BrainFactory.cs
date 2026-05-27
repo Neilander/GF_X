@@ -20,6 +20,7 @@ public static class BrainFactory
                 return new FriendlyAIBrain();
 
             case BrainType.SoldierAI:
+            case BrainType.DefendEnemyAI:
                 var soldierBrain = new SoldierAIBrain();
                 soldierBrain.Inject();
                 return soldierBrain;

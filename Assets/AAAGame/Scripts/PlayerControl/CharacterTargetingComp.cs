@@ -2,8 +2,16 @@ using UnityEngine;
 
 public class CharacterTargetingComp : ITargetingComp
 {
+    private enum TargetingMode
+    {
+        Default = 0,
+        DefendEnemy = 1
+    }
+
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
+    private TargetingMode _targetingMode;
+    private IEntityContext _defendFallbackTarget;
     public IEntityContext CurrentTarget
     {
         get => _currentTarget;
@@ -34,6 +42,19 @@ public class CharacterTargetingComp : ITargetingComp
     private float _scanTimer = 0f;
     private const float SCAN_INTERVAL = 0.2f;
 
+    public void UseDefaultMode()
+    {
+        _targetingMode = TargetingMode.Default;
+        _defendFallbackTarget = null;
+    }
+
+    public void UseDefendEnemyMode(IEntityContext fallbackTarget)
+    {
+        _targetingMode = TargetingMode.DefendEnemy;
+        _defendFallbackTarget = fallbackTarget;
+        _lastAttacker = null;
+    }
+
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
@@ -41,6 +62,8 @@ public class CharacterTargetingComp : ITargetingComp
         FollowTarget = null;
         _lastAttacker = null;
         _scanTimer = 0f;
+        _targetingMode = TargetingMode.Default;
+        _defendFallbackTarget = null;
     }
 
     public void NotifyDamageTaken(IEntityContext attacker)
@@ -114,6 +137,11 @@ public class CharacterTargetingComp : ITargetingComp
     public void UpdateTargeting(float deltaTime)
     {
         if (_ctx == null) return;
+        if (_targetingMode == TargetingMode.DefendEnemy)
+        {
+            UpdateDefendEnemyTargeting(deltaTime);
+            return;
+        }
 
         bool useAttackRangeOnlyForThisUnit = ShouldUseAttackRangeOnly(_ctx);
         float effectiveAttackRange = GetEffectiveAttackRange();
@@ -296,8 +324,114 @@ public class CharacterTargetingComp : ITargetingComp
         CurrentTarget = null;
         FollowTarget = null;
         _lastAttacker = null;
+        _defendFallbackTarget = null;
+        _targetingMode = TargetingMode.Default;
     }
     public void Resume() { }
+
+    private void UpdateDefendEnemyTargeting(float deltaTime)
+    {
+        float effectiveAttackRange = GetEffectiveAttackRange();
+        float scanRange = Mathf.Max(AggroRange, effectiveAttackRange);
+
+        _scanTimer += deltaTime;
+        if (_scanTimer < SCAN_INTERVAL)
+            return;
+
+        _scanTimer = 0f;
+
+        IEntityContext bestTarget = null;
+        float bestDistance = float.PositiveInfinity;
+        int bestPriority = int.MaxValue;
+
+        var all = EntityRegistry.AllEntities;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var other = all[i];
+            if (other == null || ReferenceEquals(other, _ctx))
+                continue;
+            if (!other.IsAttackTargetable())
+                continue;
+            if (!EntityCombatTeamHelper.IsEnemy(_ctx, other))
+                continue;
+
+            float distance = _ctx.DistanceToTargetSurface(other);
+            if (distance > scanRange)
+                continue;
+
+            int priority = GetDefendEnemyPriority(other);
+            if (priority < 0)
+                continue;
+
+            if (priority < bestPriority || (priority == bestPriority && distance < bestDistance))
+            {
+                bestPriority = priority;
+                bestDistance = distance;
+                bestTarget = other;
+            }
+        }
+
+        IEntityContext desiredTarget = bestTarget;
+        if (desiredTarget == null && IsDefendFallbackTargetValid())
+            desiredTarget = _defendFallbackTarget;
+
+        if (CurrentTarget != null && desiredTarget == null && IsCurrentDefendTargetStillValid(CurrentTarget, scanRange))
+            return;
+
+        if (!ReferenceEquals(CurrentTarget, desiredTarget))
+            CurrentTarget = desiredTarget;
+    }
+
+    private bool IsCurrentDefendTargetStillValid(IEntityContext target, float scanRange)
+    {
+        if (target == null || !target.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, target))
+            return false;
+
+        if (ReferenceEquals(target, _defendFallbackTarget))
+            return IsDefendFallbackTargetValid();
+
+        int priority = GetDefendEnemyPriority(target);
+        if (priority < 0)
+            return false;
+
+        float distance = _ctx.DistanceToTargetSurface(target);
+        return distance <= Mathf.Max(ForgetRange, scanRange);
+    }
+
+    private bool IsDefendFallbackTargetValid()
+    {
+        if (_defendFallbackTarget == null)
+            return false;
+
+        if (!_defendFallbackTarget.IsAttackTargetable())
+            return false;
+
+        return EntityCombatTeamHelper.IsEnemy(_ctx, _defendFallbackTarget);
+    }
+
+    private int GetDefendEnemyPriority(IEntityContext target)
+    {
+        if (target == null)
+            return -1;
+
+        if (target is BuildingEntity building)
+        {
+            int taunt = GetTauntLevel(target);
+            if (taunt > 0)
+                return 1;
+
+            if (building.buildingData != null && building.buildingData.Type == BuilType.Def)
+                return 3;
+
+            if (ReferenceEquals(target, _defendFallbackTarget))
+                return 4;
+
+            return -1;
+        }
+
+        int unitTaunt = GetTauntLevel(target);
+        return unitTaunt > 1 ? 0 : 2;
+    }
 
     private float GetEffectiveAttackRange()
     {

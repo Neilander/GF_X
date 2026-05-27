@@ -91,7 +91,7 @@ public static class DefendPhaseRuntime
                 evt.UnitType,
                 evt.SpawnPosition,
                 SideType.EnemySide,
-                BrainType.SoldierAI,
+                BrainType.DefendEnemyAI,
                 null,
                 evt.SourceStrongholdId);
             if (entityId <= 0)
@@ -209,6 +209,10 @@ public static class DefendPhaseRuntime
 
     private static Vector3 ResolvePlayerBasePosition()
     {
+        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
+        if (gameEndManager != null && gameEndManager.TryGetAnyPlayerInitialConditionBuilding(out BuildingEntity initialBase) && initialBase != null)
+            return initialBase.transform.position;
+
         var inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
         if (inGameData != null)
         {

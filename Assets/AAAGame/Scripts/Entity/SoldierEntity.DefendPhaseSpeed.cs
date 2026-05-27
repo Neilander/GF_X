@@ -1,27 +1,20 @@
-﻿public partial class SoldierEntity
+public partial class SoldierEntity
 {
     private const string DefendPhaseSpeedBuffId = "defend_phase_speed_override";
 
     private bool m_DefendPhaseSpeedControlEnabled;
-    private bool m_HasEnteredPlayerStrongholdInDefend;
     private Fix64 m_DefendPhaseSpeedValue;
 
     public void EnableDefendPhaseSpeedControl(Fix64 speedValue)
     {
         m_DefendPhaseSpeedValue = speedValue;
         m_DefendPhaseSpeedControlEnabled = speedValue > Fix64.Zero;
-        if (m_DefendPhaseSpeedControlEnabled && IsInsidePlayerStronghold())
-        {
-            m_HasEnteredPlayerStrongholdInDefend = true;
-        }
-
         RefreshDefendPhaseSpeedBuff();
     }
 
     public void DisableDefendPhaseSpeedControl()
     {
         m_DefendPhaseSpeedControlEnabled = false;
-        m_HasEnteredPlayerStrongholdInDefend = false;
         m_DefendPhaseSpeedValue = Fix64.Zero;
         BuffComp?.RemoveBuff(DefendPhaseSpeedBuffId);
     }
@@ -30,11 +23,6 @@
     {
         if (!m_DefendPhaseSpeedControlEnabled)
             return;
-
-        if (!m_HasEnteredPlayerStrongholdInDefend && IsInsidePlayerStronghold())
-        {
-            m_HasEnteredPlayerStrongholdInDefend = true;
-        }
 
         RefreshDefendPhaseSpeedBuff();
     }
@@ -63,7 +51,7 @@
                            && Alive
                            && Side == SideType.EnemySide
                            && phase == GamePhase.Defend
-                           && !m_HasEnteredPlayerStrongholdInDefend
+                           && IsOutsidePlayerVision()
                            && m_DefendPhaseSpeedValue > Fix64.Zero;
 
         bool hasBuff = BuffComp.HasBuff(DefendPhaseSpeedBuffId);
@@ -86,12 +74,13 @@
             BuffComp.RemoveBuff(DefendPhaseSpeedBuffId);
     }
 
-    private bool IsInsidePlayerStronghold()
+    private bool IsOutsidePlayerVision()
     {
-        if (LevelEntity.ActiveLevelEntity == null)
+        var fogManager = AAAGame.MiniMap.FOG3.Fog3Manager.Instance;
+        var mapData = fogManager != null && fogManager.IsInitialized ? fogManager.MapData : null;
+        if (mapData == null)
             return false;
 
-        Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(Position);
-        return stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId;
+        return !mapData.IsPositionVisible(Position);
     }
 }

@@ -233,6 +233,12 @@ public partial class InGameUIForm : UIFormBase
             shouldBlink = guidedBlink;
         }
 
+        if (!IsPhaseSwitchAllowedByPhase())
+        {
+            interactable = false;
+            shouldBlink = false;
+        }
+
         varPhaseBg.interactable = interactable;
 
         if (shouldBlink)
@@ -254,6 +260,11 @@ public partial class InGameUIForm : UIFormBase
 
     private void SwitchPhase()
     {
+        if (!IsPhaseSwitchAllowedByPhase())
+        {
+            return;
+        }
+
         if (!TryGetCurrentFriendlyStronghold(out Stronghold stronghold))
         {
             if (GF.UI != null)
@@ -271,6 +282,12 @@ public partial class InGameUIForm : UIFormBase
         }
 
         PhaseManager.SwitchToNextPhase();
+    }
+
+    private static bool IsPhaseSwitchAllowedByPhase()
+    {
+        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        return phase != GamePhase.Defend;
     }
 
     private static bool TryGetCurrentFriendlyStronghold(out Stronghold stronghold)

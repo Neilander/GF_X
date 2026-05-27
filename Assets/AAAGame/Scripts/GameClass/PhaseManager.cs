@@ -208,31 +208,7 @@ public class PhaseManager : GameFrameworkComponent
         DefendPhaseRuntime.CancelRuntime();
         var totalWatch = Stopwatch.StartNew();
 
-        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
-        if (cardSetup != null)
-        {
-            var setupWatch = Stopwatch.StartNew();
-            cardSetup.CardSystemSetup();
-            setupWatch.Stop();
-            LogPhaseStep("invade.card-setup", setupWatch.ElapsedMilliseconds);
-        }
-
-        var generateCardsWatch = Stopwatch.StartNew();
-        int generatedCardCount = GenerateCardsFromArmyBuildings();
-        generateCardsWatch.Stop();
-        LogPhaseStep("invade.generate-cards", generateCardsWatch.ElapsedMilliseconds);
-
-        if (cardSetup != null && generatedCardCount > 0)
-        {
-            var openUiWatch = Stopwatch.StartNew();
-            cardSetup.OpenCardUI();
-            openUiWatch.Stop();
-            LogPhaseStep("invade.open-card-ui", openUiWatch.ElapsedMilliseconds);
-        }
-        else if (cardSetup != null)
-        {
-            Log.Info("[CardGame] Skip opening Card UI: no cards generated for this phase.");
-        }
+        PrepareBattlePhaseCards("invade");
 
         var spawnEnemyWatch = Stopwatch.StartNew();
         await SpawnEnemySoldiersAsync(flowToken);
@@ -246,7 +222,37 @@ public class PhaseManager : GameFrameworkComponent
     private static void HandleEnterDefendPhase()
     {
         PlayPhaseEnterSound("enterBattle");
+        PrepareBattlePhaseCards("defend");
         DefendPhaseRuntime.EnterDefendPhaseAsync().Forget();
+    }
+
+    private static void PrepareBattlePhaseCards(string phaseTag)
+    {
+        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
+        if (cardSetup == null)
+            return;
+
+        var setupWatch = Stopwatch.StartNew();
+        cardSetup.CardSystemSetup();
+        setupWatch.Stop();
+        LogPhaseStep($"{phaseTag}.card-setup", setupWatch.ElapsedMilliseconds);
+
+        var generateCardsWatch = Stopwatch.StartNew();
+        int generatedCardCount = GenerateCardsFromArmyBuildings();
+        generateCardsWatch.Stop();
+        LogPhaseStep($"{phaseTag}.generate-cards", generateCardsWatch.ElapsedMilliseconds);
+
+        if (generatedCardCount > 0)
+        {
+            var openUiWatch = Stopwatch.StartNew();
+            cardSetup.OpenCardUI();
+            openUiWatch.Stop();
+            LogPhaseStep($"{phaseTag}.open-card-ui", openUiWatch.ElapsedMilliseconds);
+        }
+        else
+        {
+            Log.Info("[CardGame] Skip opening Card UI: no cards generated for this phase.");
+        }
     }
 
     /// <summary>阶段进入时的统一音效播放入口（cue key 在 AudioCueLibrary 配映射）。</summary>

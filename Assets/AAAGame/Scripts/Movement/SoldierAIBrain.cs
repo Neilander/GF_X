@@ -75,6 +75,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private Vector3? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
     private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
+    private bool _allowEnemyReturnToBirth = true;
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -86,6 +87,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     /// 友方/玩家不调用 → _birthPosition = null → 永不进入 Returning。
     /// </summary>
     public void SetBirthPosition(Vector3 worldPos) => _birthPosition = worldPos;
+
+    public void SetReturnToBirthEnabled(bool enabled)
+    {
+        _allowEnemyReturnToBirth = enabled;
+        if (_allowEnemyReturnToBirth)
+            return;
+
+        _birthPosition = null;
+        _softReturning = false;
+        if (State == SoldierState.Returning)
+            State = SoldierState.Idle;
+    }
 
     public void OnSideChanged(IEntityContext self, SideType oldSide, SideType newSide)
     {
@@ -108,7 +121,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         self.MoveComp?.StopMove();
 
-        _birthPosition = newSide == SideType.EnemySide ? self.Position : null;
+        _birthPosition = _allowEnemyReturnToBirth && newSide == SideType.EnemySide ? self.Position : null;
 
         if (GroupMoveManager.HasInstance)
         {

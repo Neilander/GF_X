@@ -2007,6 +2007,7 @@ namespace AAAGame.Tools.Editor
                 point.Identifier = pointData.identifier;
                 point.PointType = pointData.pointType;
                 point.UnitSpawnCount = pointData.unitSpawnCount;
+                point.DefendSpawnWeight = pointData.defendSpawnWeight;
                 point.IsGameEndConditionBuilding = pointData.isGameEndConditionBuilding;
                 point.IsTestSlot = false;
                 point.TestSlotIndex = 0;
@@ -2222,6 +2223,7 @@ namespace AAAGame.Tools.Editor
             EntityPresetPointType pointType;
             string identifier;
             int unitSpawnCount = 0;
+            int defendSpawnWeight = 1;
             bool isGameEndConditionBuilding = false;
 
             if (string.Equals(entityType, "Soldier", StringComparison.OrdinalIgnoreCase))
@@ -2245,6 +2247,12 @@ namespace AAAGame.Tools.Editor
                 identifier = NormalizeBuildingIdentifier(GetFieldString(entity, "Identifier"));
                 isGameEndConditionBuilding = GetFieldBool(entity, "IsGameEndCondition", false);
             }
+            else if (string.Equals(entityType, "DefendSpawn", StringComparison.OrdinalIgnoreCase))
+            {
+                pointType = EntityPresetPointType.DefendSpawn;
+                identifier = GetFieldString(entity, "Identifier");
+                defendSpawnWeight = Mathf.Max(0, Mathf.RoundToInt(GetFieldFloat(entity, "Weight", 1f)));
+            }
             else
             {
                 return false;
@@ -2255,6 +2263,7 @@ namespace AAAGame.Tools.Editor
                 pointType = pointType,
                 identifier = identifier,
                 unitSpawnCount = unitSpawnCount,
+                defendSpawnWeight = defendSpawnWeight,
                 isGameEndConditionBuilding = isGameEndConditionBuilding,
                 localPosition = new Vector3(
                     entity.px[0] / (float)gridSize * cellSize,
@@ -2297,6 +2306,19 @@ namespace AAAGame.Tools.Editor
             return value.Type == JTokenType.Integer || value.Type == JTokenType.Float
                 ? value.Value<int>()
                 : int.TryParse(value.ToString(Formatting.None), out int parsed) ? parsed : defaultValue;
+        }
+
+        private static float GetFieldFloat(LdtkEntityInstance entity, string fieldName, float defaultValue)
+        {
+            JToken value = GetFieldValue(entity, fieldName);
+            if (value == null || value.Type == JTokenType.Null)
+            {
+                return defaultValue;
+            }
+
+            return value.Type == JTokenType.Integer || value.Type == JTokenType.Float
+                ? value.Value<float>()
+                : float.TryParse(value.ToString(Formatting.None), out float parsed) ? parsed : defaultValue;
         }
 
         private static bool GetFieldBool(LdtkEntityInstance entity, string fieldName, bool defaultValue)
@@ -2493,6 +2515,7 @@ namespace AAAGame.Tools.Editor
             builder.AppendLine($"Entity heroes: {result.heroCount}");
             builder.AppendLine($"Entity buildings: {result.buildingCount}");
             builder.AppendLine($"Entity units: {result.unitCount}");
+            builder.AppendLine($"Entity defend spawns: {result.defendSpawnCount}");
             return builder.ToString();
         }
 
@@ -2576,6 +2599,7 @@ namespace AAAGame.Tools.Editor
             public EntityPresetPointType pointType;
             public string identifier;
             public int unitSpawnCount;
+            public int defendSpawnWeight;
             public bool isGameEndConditionBuilding;
             public Vector3 localPosition;
         }
@@ -2637,6 +2661,7 @@ namespace AAAGame.Tools.Editor
             public int heroCount;
             public int buildingCount;
             public int unitCount;
+            public int defendSpawnCount;
 
             public static EntityImportResult Skipped(string reason)
             {
@@ -2661,6 +2686,10 @@ namespace AAAGame.Tools.Editor
 
                     case EntityPresetPointType.Unit:
                         unitCount++;
+                        break;
+
+                    case EntityPresetPointType.DefendSpawn:
+                        defendSpawnCount++;
                         break;
                 }
             }

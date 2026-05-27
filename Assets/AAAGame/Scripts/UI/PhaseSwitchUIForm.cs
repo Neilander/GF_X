@@ -39,6 +39,9 @@ public partial class PhaseSwitchUIForm : UIFormBase
 
     private void SwitchPhase()
     {
+        if (!IsPhaseSwitchAllowedByPhase())
+            return;
+
         if (!TryGetCurrentFriendlyStronghold(out Stronghold stronghold))
         {
             if (GF.UI != null)
@@ -96,12 +99,24 @@ public partial class PhaseSwitchUIForm : UIFormBase
             shouldBlink = guidedBlink;
         }
 
+        if (!IsPhaseSwitchAllowedByPhase())
+        {
+            interactable = false;
+            shouldBlink = false;
+        }
+
         varPhaseSwitchButton.interactable = interactable;
 
         if (shouldBlink)
             StartPhaseSwitchBlink();
         else
             StopPhaseSwitchBlink();
+    }
+
+    private static bool IsPhaseSwitchAllowedByPhase()
+    {
+        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        return phase != GamePhase.Defend;
     }
 
     private void StartPhaseSwitchBlink()
