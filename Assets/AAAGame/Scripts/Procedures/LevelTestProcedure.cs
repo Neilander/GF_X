@@ -42,7 +42,15 @@ public class LevelTestProcedure : ProcedureBase
             switch (point.PointType)
             {
                 case EntityPresetPointType.Building:
-                    if (!buildManager.TryBuildBuildingForLevelInit(point.Identifier, point.Position, out var buildingInstanceId, isGameEndConditionBuilding: point.IsGameEndConditionBuilding))
+                    int? initialCoinReserves = point.TryGetInitialCoinReserves(out int customCoinReserves)
+                        ? customCoinReserves
+                        : null;
+                    if (!buildManager.TryBuildBuildingForLevelInit(
+                            point.Identifier,
+                            point.Position,
+                            out var buildingInstanceId,
+                            isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
+                            initialCoinReserves: initialCoinReserves))
                     {
                         Log.Error("LevelTestProcedure.SpawnPresetEntities failed: cannot build preset building '{0}'.", point.Identifier);
                         break;

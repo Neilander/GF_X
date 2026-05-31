@@ -23,6 +23,7 @@ public partial class InGameUIForm : UIFormBase
         base.OnOpen(userData);
         BindButtons();
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+        IngameCoinPreviewState.PreviewChanged += OnCoinPreviewChanged;
         TutorialManager.PhaseSwitchButtonGuideChanged += OnPhaseSwitchButtonGuideChanged;
         GameDebugSettings.RuntimeResourceModifyEnabledChanged += OnRuntimeResourceModifyEnabledChanged;
         InitializeMiniMap();
@@ -33,6 +34,7 @@ public partial class InGameUIForm : UIFormBase
     protected override void OnClose(bool isShutdown, object userData)
     {
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+        IngameCoinPreviewState.PreviewChanged -= OnCoinPreviewChanged;
         TutorialManager.PhaseSwitchButtonGuideChanged -= OnPhaseSwitchButtonGuideChanged;
         GameDebugSettings.RuntimeResourceModifyEnabledChanged -= OnRuntimeResourceModifyEnabledChanged;
         UnbindButtons();
@@ -172,6 +174,11 @@ public partial class InGameUIForm : UIFormBase
         RefreshResourceModifyState();
     }
 
+    private void OnCoinPreviewChanged()
+    {
+        RefreshCoinText();
+    }
+
     private void OnIngameValueChanged(object sender, GameEventArgs e)
     {
         var args = e as IngameValueChangedEventArgs;
@@ -218,7 +225,9 @@ public partial class InGameUIForm : UIFormBase
 
     private void RefreshCoinText()
     {
-        varCoinText.text = InGameDataModel.GetValue(IngameValueType.Coin).ToString();
+        int realCoin = InGameDataModel.GetValue(IngameValueType.Coin);
+        int displayCoin = IngameCoinPreviewState.GetDisplayCoinValue(realCoin);
+        varCoinText.text = displayCoin.ToString();
     }
 
     private void RefreshSupplyText()
@@ -373,5 +382,61 @@ public partial class InGameUIForm : UIFormBase
             default:
                 return phase.ToString();
         }
+    }
+}
+
+/// <summary>
+/// UI层的临时资金预扣显示（不改真实数值）。
+/// 用于长按建造/升级时让顶部 Coin 文本即时反映星星进度。
+/// </summary>
+public static class IngameCoinPreviewState
+{
+    private static int s_OwnerId;
+    private static int s_PreviewDeduction;
+
+    public static event System.Action PreviewChanged;
+
+    public static int PreviewDeduction => Mathf.Max(0, s_PreviewDeduction);
+
+    public static int GetDisplayCoinValue(int realCoinValue)
+    {
+        return Mathf.Max(0, realCoinValue - PreviewDeduction);
+    }
+
+    public static void SetPreviewDeduction(int ownerId, int deduction)
+    {
+        if (ownerId == 0)
+            return;
+
+        deduction = Mathf.Max(0, deduction);
+
+        if (deduction <= 0)
+        {
+            ClearPreviewDeduction(ownerId);
+            return;
+        }
+
+        bool changed = s_OwnerId != ownerId || s_PreviewDeduction != deduction;
+        s_OwnerId = ownerId;
+        s_PreviewDeduction = deduction;
+
+        if (changed)
+            PreviewChanged?.Invoke();
+    }
+
+    public static void ClearPreviewDeduction(int ownerId)
+    {
+        if (ownerId == 0 || s_OwnerId != ownerId)
+            return;
+
+        if (s_PreviewDeduction == 0)
+        {
+            s_OwnerId = 0;
+            return;
+        }
+
+        s_OwnerId = 0;
+        s_PreviewDeduction = 0;
+        PreviewChanged?.Invoke();
     }
 }

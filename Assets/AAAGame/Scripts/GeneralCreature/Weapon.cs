@@ -12,6 +12,7 @@ public enum WeaponType
     SelfAoE,
     HealMelee,
     HealProjectile,
+    Special,
 }
 
 /// <summary>

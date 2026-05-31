@@ -227,6 +227,40 @@ public class GlobalBuffManager : GameFrameworkComponent
         return totalRemoved;
     }
 
+    public int UnregisterTechEffects(string techId, int ownerFactionId, string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(techId))
+            return 0;
+
+        int removed = 0;
+        if (m_UnitBuffsByFaction.TryGetValue(ownerFactionId, out var buffsByType))
+        {
+            foreach (var pair in buffsByType)
+            {
+                var entries = pair.Value;
+                if (entries == null)
+                    continue;
+
+                removed += entries.RemoveAll(e => e != null && string.Equals(e.TechId, techId, StringComparison.Ordinal));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(buildingInstanceId)
+            && m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding)
+            && buffsByBuilding.TryGetValue(buildingInstanceId, out var buildingEntries)
+            && buildingEntries != null)
+        {
+            removed += buildingEntries.RemoveAll(e => e != null && string.Equals(e.TechId, techId, StringComparison.Ordinal));
+            if (buildingEntries.Count == 0)
+                buffsByBuilding.Remove(buildingInstanceId);
+        }
+
+        if (removed > 0)
+            DebugLog($"UnregisterTechEffects: faction={ownerFactionId}, buildingInstanceId={buildingInstanceId}, techId={techId}, removed={removed}");
+
+        return removed;
+    }
+
     public void RegisterBuildingBuff(string buildingInstanceId, int ownerFactionId, string techId, TechEffectSO effect, TechData techData)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId) || string.IsNullOrWhiteSpace(techId) || effect == null || techData == null)
@@ -302,6 +336,16 @@ public class GlobalBuffManager : GameFrameworkComponent
             if (buffsByBuilding.Remove(buildingInstanceId))
                 DebugLog($"UnregisterBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
         }
+    }
+
+    public void ClearBuildingRuntimeTechState(string buildingInstanceId, int ownerFactionId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return;
+
+        UnregisterBuilding(buildingInstanceId, ownerFactionId);
+        if (m_BuildingExtraProps.Remove(buildingInstanceId))
+            DebugLog($"ClearBuildingRuntimeTechState: buildingInstanceId={buildingInstanceId}");
     }
 
     /// <summary>

@@ -12,6 +12,7 @@ public class PhaseManager : GameFrameworkComponent
     private const float EnemyPresetClusterMinDistance = 1.2f;
     private const long PhaseStepWarnMs = 30;
     private const int EnemySpawnYieldEveryUnits = 2;
+    private const string EnemyProductionBuildingDailyResourceCostConfigKey = "EnemyProductionBuildingDailyResourceCost";
     private static int s_InvadeFlowToken;
     private static int s_PhaseSoundToken;
 
@@ -32,7 +33,7 @@ public class PhaseManager : GameFrameworkComponent
         {
             case GamePhase.BuildBeforeInvade:
             case GamePhase.BuildBeforeDefend:
-                HandleEnterBuildPhase(true);
+                HandleEnterBuildPhase(currentPhase, true);
                 break;
             case GamePhase.Invade:
                 HandleEnterInvadePhaseAsync().Forget();
@@ -119,7 +120,7 @@ public class PhaseManager : GameFrameworkComponent
         {
             case GamePhase.BuildBeforeInvade:
             case GamePhase.BuildBeforeDefend:
-                HandleEnterBuildPhase();
+                HandleEnterBuildPhase(oldPhase);
                 break;
             case GamePhase.Invade:
                 HandleEnterInvadePhase();
@@ -130,7 +131,7 @@ public class PhaseManager : GameFrameworkComponent
         }
     }
 
-    private static void HandleEnterBuildPhase(bool isFirstPhase = false)
+    private static void HandleEnterBuildPhase(GamePhase previousPhase, bool isFirstPhase = false)
     {
         PlayPhaseEnterSound("enterManage");
 
@@ -146,7 +147,8 @@ public class PhaseManager : GameFrameworkComponent
         LogPhaseStep("build.remove-soldiers", removeSoldiersWatch.ElapsedMilliseconds);
 
         var rewardWatch = Stopwatch.StartNew();
-        RewardManager.HandleEnterBuildPhaseReward(isFirstPhase);
+        ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter();
+        RewardManager.HandleEnterBuildPhaseReward(isFirstPhase, previousPhase);
         rewardWatch.Stop();
         LogPhaseStep("build.reward", rewardWatch.ElapsedMilliseconds);
 
@@ -193,6 +195,31 @@ public class PhaseManager : GameFrameworkComponent
 
         totalWatch.Stop();
         LogPhaseStep("build.total", totalWatch.ElapsedMilliseconds);
+    }
+
+    private static void ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter()
+    {
+        int consumeCost = GF.Config != null ? GF.Config.GetInt(EnemyProductionBuildingDailyResourceCostConfigKey, 0) : 0;
+        if (consumeCost <= 0)
+            return;
+
+        InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+        if (inGameData == null)
+            return;
+
+        foreach (var building in inGameData.Buildings)
+        {
+            if (building == null || building.buildingData == null)
+                continue;
+
+            if (building.OwnerFactionID == EntitySideHelper.PlayerFactionId)
+                continue;
+
+            if (building.buildingData.Type != BuilType.Prod || building.buildingData.Lv <= 0)
+                continue;
+
+            InGameDataModel.ConsumeProductionBuildingCoinReserves(building.BuildingInstanceId, consumeCost);
+        }
     }
 
     private static void HandleEnterInvadePhase()

@@ -15,6 +15,9 @@ public partial class BuildingInfoTips : UIFormBase
     private const string CoinIconPath = "UI/Icon/Coin.png";
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
+    private const string CoinReservesPrefix = "剩余";
+    private const float RecycleHoldDurationSeconds = 2f;
+    private const string RecycleTextFormat = "回收  <sprite name=\"Coin\"> {0}";
 
     // 用 Unicode 转义避免文件编码导致的 αβγδ 乱码。
     private static readonly char[] s_OptionMarks = { '\u03B1', '\u03B2', '\u03B3', '\u03B4' };
@@ -23,6 +26,9 @@ public partial class BuildingInfoTips : UIFormBase
     private BuildingEntity m_TargetBuilding;
     private BuildingInfoItem m_ItemTemplate;
     private GameObject m_IconNumTemplate;
+    private InputManager m_InputManager;
+    private float m_RecycleHoldProgress;
+    private bool m_RecycleTriggered;
 
     private sealed class SelectedUpgradeInfo
     {
@@ -45,6 +51,7 @@ public partial class BuildingInfoTips : UIFormBase
         ApplyTarget(Params != null ? Params.Get(P_TargetHost) : null);
 
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+        GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
         GF.Event.Subscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyPropertyChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
     }
@@ -52,11 +59,13 @@ public partial class BuildingInfoTips : UIFormBase
     protected override void OnClose(bool isShutdown, object userData)
     {
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+        GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
         GF.Event.Unsubscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyPropertyChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
 
         m_TargetHost = null;
         m_TargetBuilding = null;
+        ResetRecycleHoldState();
 
         base.OnClose(isShutdown, userData);
     }
@@ -64,12 +73,14 @@ public partial class BuildingInfoTips : UIFormBase
     private void Update()
     {
         UpdatePanelPosition();
+        UpdateRecycleHoldProgress();
     }
 
     private void RefreshView()
     {
         CacheTemplates();
         ClearSpawnedItems();
+        RefreshRecycleArea();
 
         if (!CanShowInfoTips())
             return;
@@ -86,6 +97,7 @@ public partial class BuildingInfoTips : UIFormBase
         item.SetProgressVisible(false);
 
         PopulateProperties(item, m_TargetBuilding);
+        PopulateCoinReserves(item, m_TargetBuilding);
     }
 
     private void PopulateProperties(BuildingInfoItem item, BuildingEntity building)
@@ -127,6 +139,28 @@ public partial class BuildingInfoTips : UIFormBase
             return;
 
         iconNum.SetData(iconPath, numberText);
+    }
+
+    private void PopulateCoinReserves(BuildingInfoItem item, BuildingEntity building)
+    {
+        if (item == null || building == null || building.buildingData == null)
+            return;
+
+        bool shouldShow = building.buildingData.Type == BuilType.Prod;
+        item.SetCoinReservesVisible(shouldShow);
+        if (!shouldShow || m_IconNumTemplate == null)
+            return;
+
+        Transform root = item.CoinReservesRoot != null ? item.CoinReservesRoot.transform : null;
+        if (root == null)
+            return;
+
+        int reserves = InGameDataModel.GetProductionBuildingCoinReserves(building.BuildingInstanceId);
+        IconNumItem iconNum = SpawnItem<UIItemObject>(m_IconNumTemplate, root).itemLogic as IconNumItem;
+        if (iconNum == null)
+            return;
+
+        iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
     }
 
     private void ComposeDisplayText(BuildingEntity building, out string name, out string desc)
@@ -311,6 +345,15 @@ public partial class BuildingInfoTips : UIFormBase
         RefreshView();
     }
 
+    private void OnIngameValueChanged(object sender, GameEventArgs e)
+    {
+        IngameValueChangedEventArgs args = e as IngameValueChangedEventArgs;
+        if (args == null || args.DataType != IngameValueType.Phase)
+            return;
+
+        RefreshView();
+    }
+
     private void OnEntityFactionChanged(object sender, GameEventArgs e)
     {
         EntityFactionChangedEventArgs args = e as EntityFactionChangedEventArgs;
@@ -338,6 +381,112 @@ public partial class BuildingInfoTips : UIFormBase
     {
         UnspawnItemTemplate(m_IconNumTemplate);
         UnspawnItemTemplate(varBuildingInfoItem);
+    }
+
+    private void RefreshRecycleArea()
+    {
+        bool visible = CanShowRecycle();
+        if (varRecycleBtn != null)
+            varRecycleBtn.SetActive(visible);
+
+        if (!visible)
+        {
+            ResetRecycleHoldState();
+            return;
+        }
+
+        if (varRecycleText != null)
+            varRecycleText.text = string.Format(RecycleTextFormat, ResolveRecycleRefund());
+
+        if (varRecycleFill != null)
+            varRecycleFill.fillAmount = Mathf.Clamp01(m_RecycleHoldProgress);
+    }
+
+    private void UpdateRecycleHoldProgress()
+    {
+        if (!CanShowRecycle())
+        {
+            ResetRecycleHoldState();
+            return;
+        }
+
+        bool holding = IsPointerHoldingOnRecycleButton();
+        float delta = Time.deltaTime / Mathf.Max(0.01f, RecycleHoldDurationSeconds);
+        m_RecycleHoldProgress = holding
+            ? Mathf.Min(1f, m_RecycleHoldProgress + delta)
+            : Mathf.Max(0f, m_RecycleHoldProgress - delta);
+
+        if (varRecycleFill != null)
+            varRecycleFill.fillAmount = m_RecycleHoldProgress;
+
+        if (!m_RecycleTriggered && holding && m_RecycleHoldProgress >= 1f)
+        {
+            m_RecycleTriggered = true;
+            TryRecycleBuilding();
+        }
+
+        if (!holding && m_RecycleHoldProgress <= 1e-4f)
+            m_RecycleTriggered = false;
+    }
+
+    private bool CanShowRecycle()
+    {
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        return buildManager != null && buildManager.CanRecycleBuilding(m_TargetBuilding);
+    }
+
+    private int ResolveRecycleRefund()
+    {
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        return buildManager != null ? buildManager.CalculateRecycleRefund(m_TargetBuilding) : 0;
+    }
+
+    private bool IsPointerHoldingOnRecycleButton()
+    {
+        RectTransform rect = varRecycleBtn != null ? varRecycleBtn.transform as RectTransform : null;
+        return IsPointerHoldingOnItem(rect);
+    }
+
+    private bool IsPointerHoldingOnItem(RectTransform itemRect)
+    {
+        InputManager inputManager = EnsureInputManager();
+        if (itemRect == null || inputManager == null || !inputManager.IsPrimaryPointerPressed())
+            return false;
+
+        Vector2 screenPosition = inputManager.GetPointerScreenPosition();
+        Canvas canvas = itemRect.GetComponentInParent<Canvas>();
+        Camera uiCamera = null;
+        if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            uiCamera = canvas.worldCamera != null ? canvas.worldCamera : GF.UICamera;
+
+        return RectTransformUtility.RectangleContainsScreenPoint(itemRect, screenPosition, uiCamera);
+    }
+
+    private InputManager EnsureInputManager()
+    {
+        if (m_InputManager == null)
+            m_InputManager = GameEntry.GetComponent<InputManager>();
+        return m_InputManager;
+    }
+
+    private void TryRecycleBuilding()
+    {
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        if (buildManager == null || m_TargetBuilding == null)
+            return;
+
+        if (buildManager.RecycleBuilding(m_TargetBuilding))
+            GF.UI.Close(this.UIForm);
+        else
+            RefreshView();
+    }
+
+    private void ResetRecycleHoldState()
+    {
+        m_RecycleHoldProgress = 0f;
+        m_RecycleTriggered = false;
+        if (varRecycleFill != null)
+            varRecycleFill.fillAmount = 0f;
     }
 
     private static InteractionHost ResolveTargetHost(object target)

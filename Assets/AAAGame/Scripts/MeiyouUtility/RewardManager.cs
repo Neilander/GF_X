@@ -1,6 +1,7 @@
 using AAAGame.Card;
 using GameFramework;
 using GameFramework.Event;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -8,7 +9,10 @@ public class RewardManager : GameFrameworkComponent
 {
 	private const string DiscardResourceConversionRateConfigKey = "DiscardResourceConversionRate";
 	private const string KillRewardSupplyRatioConfigKey = "KillRewardSupplyRatio";
-	private const int MaxFlyCoinVisualCount = 30;
+	private const string BaseResourceIncomeDailyGrowthConfigKey = "BaseResourceIncomeDailyGrowth";
+	private const string DefendPhaseBaseResourceIncomeConfigKey = "DefendPhaseBaseResourceIncome";
+	private const string InvadePhaseIncomePerCapturedOutpostConfigKey = "InvadePhaseIncomePerCapturedOutpost";
+	private const float CoinFlySpawnIntervalSeconds = 0.1f;
 
 	private static readonly Vector3 CoinSpawnOffset = new Vector3(0f, 1.2f, 0f);
 	private static readonly Vector3 CoinTargetOffset = new Vector3(0f, 1.6f, 0f);
@@ -19,6 +23,7 @@ public class RewardManager : GameFrameworkComponent
 	private bool m_WaitingEventReadyLogged;
 	private int m_EnemyDeadSupplyRemainder;
 	private bool m_KillRewardConfigInvalidLogged;
+	private readonly HashSet<string> m_PlayerCapturedStrongholdIdsInCurrentInvade = new HashSet<string>();
 
 	protected override void Awake()
 	{
@@ -58,6 +63,7 @@ public class RewardManager : GameFrameworkComponent
 	{
 		m_EnemyDeadSupplyRemainder = 0;
 		m_KillRewardConfigInvalidLogged = false;
+		m_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
 	}
 
 	public static void HandleCardDiscardReward(CardModel cardModel)
@@ -78,7 +84,7 @@ public class RewardManager : GameFrameworkComponent
 		manager.GrantDiscardCardReward(cardModel, gainedCoin, discardScreenPosition);
 	}
 
-	public static void HandleEnterBuildPhaseReward(bool isFirstPhase)
+	public static void HandleEnterBuildPhaseReward(bool isFirstPhase, GamePhase previousPhase)
 	{
 		Debug.Log($"[RewardManager] HandleEnterBuildPhaseReward called. isFirstPhase={isFirstPhase}");
 		
@@ -96,7 +102,20 @@ public class RewardManager : GameFrameworkComponent
 		}
 
 		Debug.Log("[RewardManager] Granting build phase income...");
+		manager.GrantBattlePhaseIncomeOnEnterBuild(previousPhase);
 		manager.GrantBuildPhaseIncomeFromPlayerProdBuildings();
+	}
+
+	public static void HandleBuildingRecycleReward(Vector3 sourceWorldPos, int gainedCoin)
+	{
+		if (gainedCoin <= 0)
+			return;
+
+		RewardManager manager = GetRuntimeManager();
+		if (manager == null)
+			return;
+
+		manager.GrantCoinAfterFly(sourceWorldPos, gainedCoin, "building_recycle");
 	}
 
 	private void TrySubscribeEvents()
@@ -116,6 +135,8 @@ public class RewardManager : GameFrameworkComponent
 		}
 
 		GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
+		GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+		GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
 		m_DeathEventSubscribed = true;
 		m_WaitingEventReadyLogged = false;
 	}
@@ -130,6 +151,8 @@ public class RewardManager : GameFrameworkComponent
 			try
 			{
 				GF.Event.Unsubscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
+				GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+				GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
 			}
 			catch (GameFrameworkException)
 			{
@@ -138,6 +161,89 @@ public class RewardManager : GameFrameworkComponent
 		}
 
 		m_DeathEventSubscribed = false;
+	}
+
+	private void OnEntityFactionChanged(object sender, GameEventArgs e)
+	{
+		if (e is not EntityFactionChangedEventArgs args)
+			return;
+
+		if ((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) != GamePhase.Invade)
+			return;
+
+		if (args.OldFactionId == EntitySideHelper.PlayerFactionId || args.NewFactionId != EntitySideHelper.PlayerFactionId)
+			return;
+
+		if (!TryResolveStrongholdIdFromFactionChanged(args, out string strongholdId))
+			return;
+
+		m_PlayerCapturedStrongholdIdsInCurrentInvade.Add(strongholdId);
+	}
+
+	private void OnIngamePhaseChanged(object sender, GameEventArgs e)
+	{
+		if (e is not IngamePhaseChangedEventArgs args)
+			return;
+
+		if (args.NewPhase == GamePhase.Invade)
+		{
+			m_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
+		}
+	}
+
+	private void GrantBattlePhaseIncomeOnEnterBuild(GamePhase previousPhase)
+	{
+		if (previousPhase != GamePhase.Defend && previousPhase != GamePhase.Invade)
+			return;
+
+		float dailyGrowth = GF.Config != null ? GF.Config.GetFloat(BaseResourceIncomeDailyGrowthConfigKey, 0f) : 0f;
+		int currentDay = Mathf.Max(0, InGameDataModel.GetValue(IngameValueType.Day));
+
+		long phaseBaseIncome = 0;
+		if (previousPhase == GamePhase.Defend)
+		{
+			phaseBaseIncome = GF.Config != null ? GF.Config.GetInt(DefendPhaseBaseResourceIncomeConfigKey, 0) : 0;
+		}
+		else
+		{
+			int incomePerCapturedOutpost = GF.Config != null ? GF.Config.GetInt(InvadePhaseIncomePerCapturedOutpostConfigKey, 0) : 0;
+			phaseBaseIncome = (long)incomePerCapturedOutpost * m_PlayerCapturedStrongholdIdsInCurrentInvade.Count;
+			m_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
+		}
+
+		float totalIncome = currentDay * dailyGrowth + phaseBaseIncome;
+		int coinAmount = (int)System.Math.Round(totalIncome, System.MidpointRounding.AwayFromZero);
+		if (coinAmount <= 0)
+			return;
+
+		Vector3 sourcePosition = TryGetPlayerPosition(out Vector3 playerPos) ? playerPos : Vector3.zero;
+		GrantCoinAfterFly(sourcePosition, coinAmount, "battle_to_build_income");
+	}
+
+	private static bool TryResolveStrongholdIdFromFactionChanged(EntityFactionChangedEventArgs args, out string strongholdId)
+	{
+		strongholdId = null;
+
+		InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+		if (inGameData == null)
+			return false;
+
+		foreach (var building in inGameData.Buildings)
+		{
+			if (building == null)
+				continue;
+
+			bool entityMatched = args.EntityId > 0 && building.Id == args.EntityId;
+			bool instanceMatched = !string.IsNullOrWhiteSpace(args.BuildingInstanceId)
+				&& args.BuildingInstanceId == building.BuildingInstanceId;
+			if (!entityMatched && !instanceMatched)
+				continue;
+
+			strongholdId = building.CurrentStronghold?.strongholdData?.StrongholdId;
+			return !string.IsNullOrWhiteSpace(strongholdId);
+		}
+
+		return false;
 	}
 
 	private void OnSoldierDead(object sender, GameEventArgs e)
@@ -278,12 +384,28 @@ public class RewardManager : GameFrameworkComponent
 				continue;
 			}
 
-			totalProduction += production;
-			Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} will produce {production} coins");
-			GrantCoinAfterFly(building.transform.position, production, "build_phase_income");
+			int actualProduction = ResolveProductionByCoinReserves(building, production);
+			if (actualProduction <= 0)
+			{
+				Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} skipped: no coin reserves left");
+				continue;
+			}
+
+			totalProduction += actualProduction;
+			Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} will produce {actualProduction} coins (raw={production})");
+			GrantCoinAfterFly(building.transform.position, actualProduction, "build_phase_income");
 		}
 		
 		Debug.Log($"[RewardManager] Production summary: {playerProdBuildings} player production buildings, total production={totalProduction}");
+	}
+
+	private static int ResolveProductionByCoinReserves(BuildingEntity building, int rawProduction)
+	{
+		if (building == null || rawProduction <= 0)
+			return 0;
+
+		int consumed = InGameDataModel.ConsumeProductionBuildingCoinReserves(building.BuildingInstanceId, rawProduction);
+		return Mathf.Max(0, consumed);
 	}
 
 	private void GrantCoinAfterFly(Vector3 sourceWorldPos, int coinAmount, string reason)
@@ -303,14 +425,15 @@ public class RewardManager : GameFrameworkComponent
 		Debug.Log("[RewardManager] Showing coin fly effect...");
 		Vector3 spawnPos = sourceWorldPos + CoinSpawnOffset;
 		Vector3 targetPos = playerPos + CoinTargetOffset;
-		int visualCoinCount = Mathf.Clamp(coinAmount, 1, MaxFlyCoinVisualCount);
 
 		GF.UI.ShowCoinFlyEffectToDynamicTarget(
 			spawnPos,
 			() => TryGetPlayerPosition(out Vector3 dynamicPlayerPos) ? dynamicPlayerPos + CoinTargetOffset : targetPos,
 			0f,
-			() => ApplyCoinDirectly(coinAmount, reason),
-			visualCoinCount);
+			null,
+			coinAmount,
+			() => ApplyCoinDirectly(1, reason),
+			CoinFlySpawnIntervalSeconds);
 	}
 
 	private static void ApplyCoinDirectly(int coinAmount, string reason)

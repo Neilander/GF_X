@@ -17,6 +17,7 @@ MonoBehaviour:
   - CameraViewTable
   - CharacterDataDetail
   - LevelTable
+  - LevelTagTable
   - Build/BuildingTable
   - Build/DeviceTable
   - Core/EntityGroupTable

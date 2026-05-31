@@ -36,6 +36,11 @@ public class SimEntityContext : IEntityContext
     public ITargetingComp TargetComp { get; set; }
     public IBuffComp BuffComp { get; set; }
     public WeaponComp WeaponComp { get; set; }
+    public bool IsOutOfCombat { get; private set; } = true;
+    public float OutOfCombatElapsedSeconds => IsOutOfCombat ? _combatStateClock - _outOfCombatStartTime : 0f;
+
+    private float _combatStateClock;
+    private float _outOfCombatStartTime;
 
     // 属性系统
     private Dictionary<CreatureMainProperty, Fix64> _properties = new Dictionary<CreatureMainProperty, Fix64>();
@@ -52,9 +57,53 @@ public class SimEntityContext : IEntityContext
 
     public void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
+        if (damage <= Fix64.Zero || !Alive)
+            return;
+
         Health.ModifyHealth(modType, damage, false);
+        ResetOutOfCombatTimer();
         if (Health.currentHealth <= Fix64.Zero)
             Alive = false;
+    }
+
+    public void TickOutOfCombatState(float deltaTime)
+    {
+        _combatStateClock += deltaTime;
+
+        if (!Alive)
+        {
+            ExitOutOfCombat();
+            return;
+        }
+
+        IEntityContext currentTarget = TargetComp?.CurrentTarget;
+        if ((currentTarget != null && currentTarget.IsAttackTargetable()) || AtkComp?.IsAttacking == true)
+            ExitOutOfCombat();
+        else
+            EnterOutOfCombat();
+    }
+
+    private void ResetOutOfCombatTimer()
+    {
+        _outOfCombatStartTime = _combatStateClock;
+    }
+
+    private void EnterOutOfCombat()
+    {
+        if (IsOutOfCombat)
+            return;
+
+        IsOutOfCombat = true;
+        _outOfCombatStartTime = _combatStateClock;
+    }
+
+    private void ExitOutOfCombat()
+    {
+        if (!IsOutOfCombat)
+            return;
+
+        IsOutOfCombat = false;
+        _outOfCombatStartTime = _combatStateClock;
     }
 
     // 组件锁定（复用 CompCreature 的纯逻辑）

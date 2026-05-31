@@ -72,6 +72,9 @@ public class TechManager : GameFrameworkComponent
         if (owner.buildingData.Type != BuilType.Tech)
             return false;
 
+        if (HasResearchedAnyTech(owner))
+            return false;
+
         var techData = TechDataModel.GetTechData(techId);
         if (techData == null || string.IsNullOrWhiteSpace(techId))
             return false;
@@ -148,6 +151,7 @@ public class TechManager : GameFrameworkComponent
         if (!built)
             return false;
 
+        InGameDataModel.RecordBuildingCostSpent(owner.BuildingInstanceId, upgradeBuildingData.Cost);
         InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
         GF.Entity.HideEntity(owner.Entity);
         return true;
@@ -166,6 +170,36 @@ public class TechManager : GameFrameworkComponent
             return false;
 
         return InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
+    }
+
+    public int RollbackTechsForBuilding(BuildingEntity owner)
+    {
+        if (owner == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
+            return 0;
+
+        List<string> techIds = InGameDataModel.GetUnlockedTechIdsForBuilding(owner.BuildingInstanceId);
+        if (techIds == null || techIds.Count <= 0)
+            return 0;
+
+        int rolledBack = 0;
+        GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
+        for (int i = 0; i < techIds.Count; i++)
+        {
+            string techId = techIds[i];
+            if (string.IsNullOrWhiteSpace(techId))
+                continue;
+
+            if (!InGameDataModel.ReduceTechStack(techId, owner.BuildingInstanceId, 1))
+                continue;
+
+            globalBuffManager?.UnregisterTechEffects(techId, owner.OwnerFactionID, owner.BuildingInstanceId);
+            rolledBack++;
+        }
+
+        if (rolledBack > 0)
+            globalBuffManager?.ClearBuildingRuntimeTechState(owner.BuildingInstanceId, owner.OwnerFactionID);
+
+        return rolledBack;
     }
 
     private bool HasUpgradeTechCandidates(BuildingEntity owner)
@@ -229,6 +263,27 @@ public class TechManager : GameFrameworkComponent
         for (int i = 0; i < data.UpgradeTechIDs.Length; i++)
         {
             string techId = data.UpgradeTechIDs[i];
+            if (string.IsNullOrWhiteSpace(techId))
+                continue;
+
+            if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasResearchedAnyTech(BuildingEntity owner)
+    {
+        if (owner == null || owner.buildingData == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
+            return false;
+
+        if (owner.buildingData.UpgradeTechIDs == null)
+            return false;
+
+        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
+        {
+            string techId = owner.buildingData.UpgradeTechIDs[i];
             if (string.IsNullOrWhiteSpace(techId))
                 continue;
 

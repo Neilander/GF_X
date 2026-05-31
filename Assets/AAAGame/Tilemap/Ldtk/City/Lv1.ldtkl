@@ -88,7 +88,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ true ]
-						}] }
+						}] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 616,
 					"__worldY": 840
@@ -110,7 +111,8 @@
 							"id": "V_String",
 							"params": ["Buil_Army_Lv0"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 472,
 					"__worldY": 744
@@ -132,7 +134,8 @@
 							"id": "V_String",
 							"params": ["Buil_Prod_Lv0"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] }
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 472,
 					"__worldY": 808
@@ -223,7 +226,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ true ]
-						}] }
+						}] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 728,
 					"__worldY": 360
@@ -248,7 +252,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ false ]
-						}] }
+						}] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 872,
 					"__worldY": 456
@@ -273,7 +278,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ false ]
-						}] }
+						}] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 728,
 					"__worldY": 504
@@ -298,7 +304,8 @@
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",
 							"params": [ false ]
-						}] }
+						}] },
+						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 872,
 					"__worldY": 392

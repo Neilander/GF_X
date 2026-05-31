@@ -20,4 +20,5 @@ public partial class BuildingInfoItem
 	[SerializeField] private GameObject varBuildingInfoItem = null;
 	[SerializeField] private GameObject varPreview = null;
 	[SerializeField] private Image varImage = null;
+	[SerializeField] private GameObject varCoinReserves = null;
 }

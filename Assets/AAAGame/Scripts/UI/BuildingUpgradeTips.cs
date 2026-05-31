@@ -15,6 +15,7 @@ public partial class BuildingUpgradeTips : UIFormBase
     private const string CoinIconPath = "UI/Icon/Coin.png";
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
+    private const string CoinReservesPrefix = "剩余";
 
     private const string ConditionBaseLevelTextId = "Building_Upgrade_Cond_BaseLevel";
     private const string ConditionUniqueTechTextId = "Building_Upgrade_Cond_UniqueTech";
@@ -22,6 +23,8 @@ public partial class BuildingUpgradeTips : UIFormBase
     private const float HoldPerStarMaxSeconds = 0.4f;
     private const float HoldAlignedDurationSeconds = 2f;
     private const float HoldDurationMinSeconds = 1f;
+    private const float RecycleHoldDurationSeconds = 2f;
+    private const string RecycleTextFormat = "回收  <sprite name=\"Coin\"> {0}";
     private static readonly Color32 DefaultLitColor = new(250, 112, 36, 255);
 
     private static readonly char[] s_OptionMarks = { '\u03B1', '\u03B2', '\u03B3', '\u03B4' };
@@ -41,6 +44,8 @@ public partial class BuildingUpgradeTips : UIFormBase
     private float m_HoldProgressStars;
     private int m_LastHighlightStars;
     private bool m_HoldTriggered;
+    private float m_RecycleHoldProgress;
+    private bool m_RecycleTriggered;
     private Color m_ConditionIconSatisfiedColor = DefaultLitColor;
 
     private sealed class UpgradeOptionBinding
@@ -80,6 +85,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        ClearCoinPreviewDeduction();
         ClearRuntimeState();
 
         base.OnClose(isShutdown, userData);
@@ -90,6 +96,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         UpdatePanelPosition();
         UpdateButtonInput();
         UpdateUpgradeHoldProgress();
+        UpdateRecycleHoldProgress();
         UpdateExecutableStates();
     }
 
@@ -98,6 +105,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         CacheTemplates();
         ClearAllSpawnedItems();
         ClearRuntimeState();
+        RefreshRecycleArea();
 
         if (!CanShowUpgradeTips())
             return;
@@ -124,6 +132,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         item.SetProgressVisible(false);
 
         PopulateCurrentProperties(item, m_TargetBuilding);
+        PopulateCoinReserves(item, m_TargetBuilding);
     }
 
     private void BuildUpgradeCandidates()
@@ -280,6 +289,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         preview.SetData(keyText, name, desc);
         preview.SetPreviewVisible(false);
         preview.SetExecutable(IsSelectedOptionExecutable());
+        preview.SetCoinReservesVisible(false);
 
         int cost = ResolveOptionCost(m_SelectedBinding);
         PopulatePrice(preview, cost);
@@ -406,6 +416,28 @@ public partial class BuildingUpgradeTips : UIFormBase
         iconNum.SetData(iconPath, numberText);
     }
 
+    private void PopulateCoinReserves(BuildingInfoItem item, BuildingEntity building)
+    {
+        if (item == null || building == null || building.buildingData == null)
+            return;
+
+        bool shouldShow = building.buildingData.Type == BuilType.Prod;
+        item.SetCoinReservesVisible(shouldShow);
+        if (!shouldShow || m_IconNumTemplate == null)
+            return;
+
+        Transform root = item.CoinReservesRoot != null ? item.CoinReservesRoot.transform : null;
+        if (root == null)
+            return;
+
+        int reserves = InGameDataModel.GetProductionBuildingCoinReserves(building.BuildingInstanceId);
+        IconNumItem iconNum = SpawnItem<UIItemObject>(m_IconNumTemplate, root).itemLogic as IconNumItem;
+        if (iconNum == null)
+            return;
+
+        iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
+    }
+
     private void SpawnProgressStars(UpgradeOptionBinding binding, int cost)
     {
         if (binding == null || binding.PreviewItem == null || m_StarTemplate == null)
@@ -511,6 +543,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
 
         ApplyStarHighlight(m_HoldBinding, highlightCount);
+        UpdateCoinPreviewDeduction(highlightCount);
 
         // 每点亮一颗新星 → 播 goldPay（按住进度条扣钱的"叮"声）
         if (highlightCount > m_LastHighlightStars && AudioManager.Instance != null)
@@ -565,6 +598,8 @@ public partial class BuildingUpgradeTips : UIFormBase
         else
             success = techManager.UpgradeBuilding(m_TargetBuilding, m_SelectedBinding.UpgradeBuildingId, m_SelectedBinding.TechId);
 
+        if (success)
+            ClearCoinPreviewDeduction();
         if (!success)
             RefreshView();
     }
@@ -917,10 +952,95 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private void ResetHoldState()
     {
+        ClearCoinPreviewDeduction();
         m_HoldBinding = null;
         m_HoldProgressStars = 0f;
         m_LastHighlightStars = 0;
         m_HoldTriggered = false;
+    }
+
+    private void RefreshRecycleArea()
+    {
+        bool visible = CanShowRecycle();
+        if (varRecycleBtn != null)
+            varRecycleBtn.SetActive(visible);
+
+        if (!visible)
+        {
+            ResetRecycleHoldState();
+            return;
+        }
+
+        if (varRecycleText != null)
+            varRecycleText.text = string.Format(RecycleTextFormat, ResolveRecycleRefund());
+
+        if (varRecycleFill != null)
+            varRecycleFill.fillAmount = Mathf.Clamp01(m_RecycleHoldProgress);
+    }
+
+    private void UpdateRecycleHoldProgress()
+    {
+        if (!CanShowRecycle())
+        {
+            ResetRecycleHoldState();
+            return;
+        }
+
+        bool holding = IsPointerHoldingOnRecycleButton();
+        float delta = Time.deltaTime / Mathf.Max(0.01f, RecycleHoldDurationSeconds);
+        m_RecycleHoldProgress = holding
+            ? Mathf.Min(1f, m_RecycleHoldProgress + delta)
+            : Mathf.Max(0f, m_RecycleHoldProgress - delta);
+
+        if (varRecycleFill != null)
+            varRecycleFill.fillAmount = m_RecycleHoldProgress;
+
+        if (!m_RecycleTriggered && holding && m_RecycleHoldProgress >= 1f)
+        {
+            m_RecycleTriggered = true;
+            TryRecycleBuilding();
+        }
+
+        if (!holding && m_RecycleHoldProgress <= 1e-4f)
+            m_RecycleTriggered = false;
+    }
+
+    private bool CanShowRecycle()
+    {
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        return buildManager != null && buildManager.CanRecycleBuilding(m_TargetBuilding);
+    }
+
+    private int ResolveRecycleRefund()
+    {
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        return buildManager != null ? buildManager.CalculateRecycleRefund(m_TargetBuilding) : 0;
+    }
+
+    private bool IsPointerHoldingOnRecycleButton()
+    {
+        RectTransform rect = varRecycleBtn != null ? varRecycleBtn.transform as RectTransform : null;
+        return IsPointerHoldingOnItem(rect);
+    }
+
+    private void TryRecycleBuilding()
+    {
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        if (buildManager == null || m_TargetBuilding == null)
+            return;
+
+        if (buildManager.RecycleBuilding(m_TargetBuilding))
+            GF.UI.Close(this.UIForm);
+        else
+            RefreshView();
+    }
+
+    private void ResetRecycleHoldState()
+    {
+        m_RecycleHoldProgress = 0f;
+        m_RecycleTriggered = false;
+        if (varRecycleFill != null)
+            varRecycleFill.fillAmount = 0f;
     }
 
     private void OnStateChanged(object sender, GameEventArgs e)
@@ -973,6 +1093,7 @@ public partial class BuildingUpgradeTips : UIFormBase
         m_UpgradeBindings.Clear();
         m_SelectedBinding = null;
         ResetHoldState();
+        ResetRecycleHoldState();
     }
 
     private void UpdateExecutableStates()
@@ -1029,5 +1150,15 @@ public partial class BuildingUpgradeTips : UIFormBase
             return owner;
 
         return targetHost.GetComponent<BuildingEntity>();
+    }
+
+    private void UpdateCoinPreviewDeduction(int highlightCount)
+    {
+        IngameCoinPreviewState.SetPreviewDeduction(GetInstanceID(), Mathf.Max(0, highlightCount));
+    }
+
+    private void ClearCoinPreviewDeduction()
+    {
+        IngameCoinPreviewState.ClearPreviewDeduction(GetInstanceID());
     }
 }

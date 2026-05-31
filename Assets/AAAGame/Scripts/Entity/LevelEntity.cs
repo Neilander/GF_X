@@ -442,7 +442,15 @@ public partial class LevelEntity : EntityBase
                     break;
 
                 case EntityPresetPointType.Building:
-                    if (!buildManager.TryBuildBuildingForLevelInit(effectiveIdentifier, point.Position, out var buildingInstanceId, isGameEndConditionBuilding: point.IsGameEndConditionBuilding))
+                    int? initialCoinReserves = point.TryGetInitialCoinReserves(out int customCoinReserves)
+                        ? customCoinReserves
+                        : null;
+                    if (!buildManager.TryBuildBuildingForLevelInit(
+                            effectiveIdentifier,
+                            point.Position,
+                            out var buildingInstanceId,
+                            isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
+                            initialCoinReserves: initialCoinReserves))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         break;
@@ -540,7 +548,15 @@ public partial class LevelEntity : EntityBase
                     break;
 
                 case EntityPresetPointType.Building:
-                    if (!buildManager.TryBuildBuildingForLevelInit(effectiveIdentifier, point.Position, out var buildingInstanceId, isGameEndConditionBuilding: point.IsGameEndConditionBuilding))
+                    int? initialCoinReserves = point.TryGetInitialCoinReserves(out int customCoinReserves)
+                        ? customCoinReserves
+                        : null;
+                    if (!buildManager.TryBuildBuildingForLevelInit(
+                            effectiveIdentifier,
+                            point.Position,
+                            out var buildingInstanceId,
+                            isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
+                            initialCoinReserves: initialCoinReserves))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         break;

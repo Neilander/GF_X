@@ -95,6 +95,7 @@ RectTransform:
   - {fileID: 4442123805117892166}
   - {fileID: 8482801584154536592}
   - {fileID: 5267008696895381447}
+  - {fileID: 1248656808838436838}
   - {fileID: 6136049992636407130}
   - {fileID: 7219788300706840240}
   m_Father: {fileID: 0}
@@ -172,6 +173,11 @@ MonoBehaviour:
     - {fileID: 5902433198894012911}
     VarType: UnityEngine.UI.Image
     VarPrefix: 0
+  - VarName: varCoinReserves
+    Targets:
+    - {fileID: 4525307135950626532}
+    VarType: UnityEngine.GameObject
+    VarPrefix: 0
   progressDuration: 2
   varKey: {fileID: 5553342268113680939}
   varName: {fileID: 3720351339402688379}
@@ -184,6 +190,7 @@ MonoBehaviour:
   varBuildingInfoItem: {fileID: 1712773368288745964}
   varPreview: {fileID: 8921401722556163742}
   varImage: {fileID: 5754628406105192127}
+  varCoinReserves: {fileID: 4525307135950626532}
 --- !u!1 &3942013616785914244
 GameObject:
   m_ObjectHideFlags: 0
@@ -318,6 +325,41 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!1 &4525307135950626532
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1248656808838436838}
+  m_Layer: 5
+  m_Name: CoinReserves
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1248656808838436838
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4525307135950626532}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 8142907519898569660}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 236, y: -40.8}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &5256563875899817511
 GameObject:
   m_ObjectHideFlags: 0

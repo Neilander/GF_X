@@ -14,6 +14,7 @@ public partial class BuildingBuildTips : UIFormBase
     private const string CoinIconPath = "UI/Icon/Coin.png";
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
+    private const string CoinReservesPrefix = "剩余";
     private const string BuildPreviewFolder = "建筑预览";
     private const string BaseMilestoneTechPattern = "Tech_BaseBuilt_{0}_Lv1";
     private const float HoldPerStarMinSeconds = 0.1f;
@@ -83,6 +84,7 @@ public partial class BuildingBuildTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        ClearCoinPreviewDeduction();
         ClearBuildOptionPreviewImages();
         ClearRuntimeState();
 
@@ -284,6 +286,7 @@ public partial class BuildingBuildTips : UIFormBase
 
             PopulatePrice(infoItem, data);
             PopulateProperties(infoItem, data);
+            PopulateCoinReserves(infoItem);
 
             BuildOptionBinding binding = new()
             {
@@ -349,6 +352,28 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         iconNum.SetData(iconPath, numberText);
+    }
+
+    private void PopulateCoinReserves(BuildingInfoItem infoItem)
+    {
+        if (infoItem == null || m_TargetBuilding == null || m_TargetBuilding.buildingData == null)
+            return;
+
+        bool shouldShow = m_TargetBuilding.buildingData.Type == BuilType.Prod;
+        infoItem.SetCoinReservesVisible(shouldShow);
+        if (!shouldShow || m_IconNumTemplate == null)
+            return;
+
+        Transform root = infoItem.CoinReservesRoot != null ? infoItem.CoinReservesRoot.transform : null;
+        if (root == null)
+            return;
+
+        int reserves = InGameDataModel.GetProductionBuildingCoinReserves(m_TargetBuilding.BuildingInstanceId);
+        IconNumItem iconNum = SpawnItem<UIItemObject>(m_IconNumTemplate, root).itemLogic as IconNumItem;
+        if (iconNum == null)
+            return;
+
+        iconNum.SetData(CoinIconPath, $"{CoinReservesPrefix}{reserves}");
     }
 
     private void SpawnProgressStars(BuildOptionBinding binding)
@@ -462,6 +487,7 @@ public partial class BuildingBuildTips : UIFormBase
             highlightCount = Mathf.Clamp(Mathf.FloorToInt(m_HoldProgressStars + 1e-4f), 0, starCount);
         }
         ApplyStarHighlight(m_HoldBinding, highlightCount);
+        UpdateCoinPreviewDeduction(highlightCount);
 
         // 每点亮一颗新星 → 播 goldPay（按住进度条扣钱的"叮"声）
         if (highlightCount > m_LastHighlightStars && AudioManager.Instance != null)
@@ -515,6 +541,8 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         bool success = buildManager.ConstructBuilding(m_TargetBuilding, m_HoldBinding.BuildingData.Identifier);
+        if (success)
+            ClearCoinPreviewDeduction();
         if (!success)
             RefreshView();
     }
@@ -720,6 +748,7 @@ public partial class BuildingBuildTips : UIFormBase
 
     private void ResetHoldState()
     {
+        ClearCoinPreviewDeduction();
         m_HoldBinding = null;
         m_HoldProgressStars = 0f;
         m_LastHighlightStars = 0;
@@ -789,5 +818,15 @@ public partial class BuildingBuildTips : UIFormBase
 
             binding.Item.ClearPreviewImage();
         }
+    }
+
+    private void UpdateCoinPreviewDeduction(int highlightCount)
+    {
+        IngameCoinPreviewState.SetPreviewDeduction(GetInstanceID(), Mathf.Max(0, highlightCount));
+    }
+
+    private void ClearCoinPreviewDeduction()
+    {
+        IngameCoinPreviewState.ClearPreviewDeduction(GetInstanceID());
     }
 }

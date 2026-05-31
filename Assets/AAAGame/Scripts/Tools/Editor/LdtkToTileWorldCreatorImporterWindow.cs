@@ -2009,6 +2009,8 @@ namespace AAAGame.Tools.Editor
                 point.UnitSpawnCount = pointData.unitSpawnCount;
                 point.DefendSpawnWeight = pointData.defendSpawnWeight;
                 point.IsGameEndConditionBuilding = pointData.isGameEndConditionBuilding;
+                point.UseCustomCoinReserves = pointData.useCustomCoinReserves;
+                point.CustomCoinReserves = pointData.customCoinReserves;
                 point.IsTestSlot = false;
                 point.TestSlotIndex = 0;
 
@@ -2225,6 +2227,8 @@ namespace AAAGame.Tools.Editor
             int unitSpawnCount = 0;
             int defendSpawnWeight = 1;
             bool isGameEndConditionBuilding = false;
+            bool useCustomCoinReserves = false;
+            int customCoinReserves = 0;
 
             if (string.Equals(entityType, "Soldier", StringComparison.OrdinalIgnoreCase))
             {
@@ -2246,6 +2250,11 @@ namespace AAAGame.Tools.Editor
                 pointType = EntityPresetPointType.Building;
                 identifier = NormalizeBuildingIdentifier(GetFieldString(entity, "Identifier"));
                 isGameEndConditionBuilding = GetFieldBool(entity, "IsGameEndCondition", false);
+                useCustomCoinReserves = TryGetFieldInt(entity, "CoinReserves", out customCoinReserves);
+                if (useCustomCoinReserves)
+                {
+                    customCoinReserves = Mathf.Max(0, customCoinReserves);
+                }
             }
             else if (string.Equals(entityType, "DefendSpawn", StringComparison.OrdinalIgnoreCase))
             {
@@ -2265,6 +2274,8 @@ namespace AAAGame.Tools.Editor
                 unitSpawnCount = unitSpawnCount,
                 defendSpawnWeight = defendSpawnWeight,
                 isGameEndConditionBuilding = isGameEndConditionBuilding,
+                useCustomCoinReserves = useCustomCoinReserves,
+                customCoinReserves = customCoinReserves,
                 localPosition = new Vector3(
                     entity.px[0] / (float)gridSize * cellSize,
                     0f,
@@ -2306,6 +2317,24 @@ namespace AAAGame.Tools.Editor
             return value.Type == JTokenType.Integer || value.Type == JTokenType.Float
                 ? value.Value<int>()
                 : int.TryParse(value.ToString(Formatting.None), out int parsed) ? parsed : defaultValue;
+        }
+
+        private static bool TryGetFieldInt(LdtkEntityInstance entity, string fieldName, out int value)
+        {
+            value = default;
+            JToken token = GetFieldValue(entity, fieldName);
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                return false;
+            }
+
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                value = token.Value<int>();
+                return true;
+            }
+
+            return int.TryParse(token.ToString(Formatting.None), out value);
         }
 
         private static float GetFieldFloat(LdtkEntityInstance entity, string fieldName, float defaultValue)
@@ -2601,6 +2630,8 @@ namespace AAAGame.Tools.Editor
             public int unitSpawnCount;
             public int defendSpawnWeight;
             public bool isGameEndConditionBuilding;
+            public bool useCustomCoinReserves;
+            public int customCoinReserves;
             public Vector3 localPosition;
         }
 

@@ -25,6 +25,10 @@ public interface IEntityContext
     IBuffComp BuffComp { get; }
     WeaponComp WeaponComp { get; }
 
+    // 脱战状态：没有有效警戒目标且没有正在攻击时为 true，供后续 Buff 做延迟触发查询。
+    bool IsOutOfCombat { get; }
+    float OutOfCombatElapsedSeconds { get; }
+
     // 属性查询（逻辑层统一使用 Fix64）
     Fix64 GetProperty(CreatureMainProperty prop);
 

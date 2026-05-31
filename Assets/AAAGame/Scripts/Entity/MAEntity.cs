@@ -35,6 +35,8 @@ public class MAEntity : CompCreature, IEntityContext
     private Quaternion? _targetRotation = null;
     private Transform _modelTransform = null;
     private bool _maCompInitialized;
+    private float _combatStateClock;
+    private float _outOfCombatStartTime;
 
     private Vector3 _collisionScaleBase = Vector3.one;
     private float _collisionRadiusBaseWorld;
@@ -103,6 +105,8 @@ public class MAEntity : CompCreature, IEntityContext
     ITargetingComp IEntityContext.TargetComp => targetComp;
     IBuffComp IEntityContext.BuffComp => _buffComp;
     WeaponComp IEntityContext.WeaponComp => weaponComp;
+    public bool IsOutOfCombat { get; private set; }
+    public float OutOfCombatElapsedSeconds => IsOutOfCombat ? Mathf.Max(0f, _combatStateClock - _outOfCombatStartTime) : 0f;
 
     public Fix64 GetProperty(CreatureMainProperty prop)
     {
@@ -174,6 +178,7 @@ public class MAEntity : CompCreature, IEntityContext
         moveComp?.StopMove();
         if (targetComp != null)
             targetComp.CurrentTarget = null;
+        ResetOutOfCombatState();
         durationMoveEffectComp?.StopAllMove();
         _moveExecutor.SetInput(Vector3.zero);
         _moveExecutor.SetExternal(Vector3.zero);
@@ -290,6 +295,8 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
         float dt = realElapseSeconds;
+        _combatStateClock += dt;
+        RefreshOutOfCombatState();
 
         if (CanRun(_buffComp))
             _buffComp.UpdateBuff(dt);
@@ -314,6 +321,8 @@ public class MAEntity : CompCreature, IEntityContext
 
         if (CanRun(atkComp))
             atkComp.Attack(dt);
+
+        RefreshOutOfCombatState();
 
         if (Alive)
         {
@@ -383,6 +392,73 @@ public class MAEntity : CompCreature, IEntityContext
                 _targetRotation = null;
             }
         }
+    }
+
+    public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
+    {
+        if (damage <= Fix64.Zero || !Alive || CreaturePropertyManager == null)
+            return;
+
+        Fix64 before = HealthValue;
+        base.TakeDamage(damage, modType, attacker);
+
+        if (HealthValue < before)
+            NotifyDamageTakenForOutOfCombat();
+    }
+
+    protected void NotifyDamageTakenForOutOfCombat()
+    {
+        _outOfCombatStartTime = _combatStateClock;
+    }
+
+    private void ResetOutOfCombatState()
+    {
+        _combatStateClock = 0f;
+        _outOfCombatStartTime = 0f;
+        IsOutOfCombat = false;
+        RefreshOutOfCombatState();
+    }
+
+    private void RefreshOutOfCombatState()
+    {
+        if (!Alive)
+        {
+            ExitOutOfCombat();
+            return;
+        }
+
+        bool hasAttackTarget = HasAttackTarget();
+        if (hasAttackTarget)
+            ExitOutOfCombat();
+        else
+            EnterOutOfCombat();
+    }
+
+    private bool HasAttackTarget()
+    {
+        IEntityContext currentTarget = targetComp?.CurrentTarget;
+        if (currentTarget != null && currentTarget.IsAttackTargetable())
+            return true;
+
+        return atkComp != null && atkComp.IsAttacking;
+    }
+
+    private void EnterOutOfCombat()
+    {
+        if (IsOutOfCombat)
+            return;
+
+        IsOutOfCombat = true;
+        _outOfCombatStartTime = _combatStateClock;
+    }
+
+    private void ExitOutOfCombat()
+    {
+        if (!IsOutOfCombat)
+            return;
+
+        IsOutOfCombat = false;
+        _outOfCombatStartTime = _combatStateClock;
     }
 
     public bool RegisterInvincibleSource(string sourceId)

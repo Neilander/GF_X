@@ -6,6 +6,8 @@ using UnityGameFramework.Runtime;
 
 public class BuildManager : GameFrameworkComponent
 {
+    private const string BuildingRecycleRefundRateConfigKey = "BuildingRecycleRefundRate";
+
     private readonly BaseMilestoneTechService m_BaseMilestoneTechService = new("Tech_BaseBuilt_{0}_Lv{1}");
     private readonly Dictionary<Archetype, List<BuildingData>> m_Lv0ConstructCandidatesByArchetype = new();
     private HashSet<Archetype> m_PlayerUnlockedBaseArchesCache;
@@ -159,8 +161,86 @@ public class BuildManager : GameFrameworkComponent
         if (owner.buildingData.Type == BuilType.Base)
         {
             m_BaseMilestoneTechService.ReduceForDemolishedBase(owner.buildingData, owner.BuildingInstanceId);
+            int supplyCapacity = CalculateBaseSupplyCapacity(owner.buildingData, owner.OwnerFactionID);
+            if (supplyCapacity > 0)
+                InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, -supplyCapacity, true);
+
             InvalidateUnlockedArchetypeCache();
         }
+    }
+
+    public bool CanRecycleBuilding(BuildingEntity owner)
+    {
+        if (owner == null || owner.buildingData == null)
+            return false;
+
+        if (owner.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+            return false;
+
+        if (owner.buildingData.Lv <= 0)
+            return false;
+
+        if (owner.buildingData.Type == BuilType.Base)
+            return false;
+
+        return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
+    }
+
+    public int CalculateRecycleRefund(BuildingEntity owner)
+    {
+        if (owner == null || owner.buildingData == null)
+            return 0;
+
+        int spent = InGameDataModel.GetBuildingCostSpent(owner.BuildingInstanceId);
+        if (spent <= 0)
+            spent = InGameDataModel.CalculateOriginalBuildingCostSum(owner.buildingData);
+
+        if (spent <= 0)
+            return 0;
+
+        int refundRate = GF.Config != null ? GF.Config.GetInt(BuildingRecycleRefundRateConfigKey, 0) : 0;
+        if (refundRate <= 0)
+            return 0;
+
+        long numerator = (long)spent * refundRate;
+        long refund = (numerator + 50L) / 100L;
+        return refund > int.MaxValue ? int.MaxValue : (int)refund;
+    }
+
+    public bool RecycleBuilding(BuildingEntity owner)
+    {
+        if (!CanRecycleBuilding(owner))
+            return false;
+
+        string lv0BuildingId = ResolveLv0BuildingId(owner.buildingData.Type);
+        if (string.IsNullOrWhiteSpace(lv0BuildingId))
+            return false;
+
+        Vector3 position = owner.CachedTransform.position;
+        string buildingInstanceId = owner.BuildingInstanceId;
+        int refund = CalculateRecycleRefund(owner);
+
+        GameEntry.GetComponent<TechManager>()?.RollbackTechsForBuilding(owner);
+        GameEntry.GetComponent<GlobalBuffManager>()?.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionID);
+        OnBuildingDemolished(owner);
+
+        int entityId = BuildBuildingInternal(
+            lv0BuildingId,
+            position,
+            buildingInstanceId,
+            checkCondition: false,
+            consumeCoins: false);
+        if (entityId <= 0)
+            return false;
+
+        InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
+        GF.Entity.HideEntity(owner.Entity);
+        RewardManager.HandleBuildingRecycleReward(position, refund);
+
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.Play("buildNormal");
+
+        return true;
     }
 
     public bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
@@ -180,19 +260,26 @@ public class BuildManager : GameFrameworkComponent
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗。
-    public bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null, bool isGameEndConditionBuilding = false)
+    public bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null, bool isGameEndConditionBuilding = false, int? initialCoinReserves = null)
     {
-        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId, isGameEndConditionBuilding);
+        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId, isGameEndConditionBuilding, initialCoinReserves);
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗，并返回稳定 BuildingInstanceId。
-    public bool TryBuildBuildingForLevelInit(string buildingId, Vector3 position, out string resolvedBuildingInstanceId, string buildingInstanceId = null, bool isGameEndConditionBuilding = false)
+    public bool TryBuildBuildingForLevelInit(string buildingId, Vector3 position, out string resolvedBuildingInstanceId, string buildingInstanceId = null, bool isGameEndConditionBuilding = false, int? initialCoinReserves = null)
     {
         resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
             ? Guid.NewGuid().ToString("N")
             : buildingInstanceId;
 
-        int entityId = BuildBuildingInternal(buildingId, position, resolvedBuildingInstanceId, checkCondition: false, consumeCoins: false, isGameEndConditionBuilding: isGameEndConditionBuilding);
+        int entityId = BuildBuildingInternal(
+            buildingId,
+            position,
+            resolvedBuildingInstanceId,
+            checkCondition: false,
+            consumeCoins: false,
+            isGameEndConditionBuilding: isGameEndConditionBuilding,
+            initialCoinReserves: initialCoinReserves);
         if (entityId <= 0)
         {
             resolvedBuildingInstanceId = null;
@@ -202,7 +289,7 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    private int BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins, bool isGameEndConditionBuilding = false)
+    private int BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins, bool isGameEndConditionBuilding = false, int? initialCoinReserves = null)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
@@ -226,12 +313,22 @@ public class BuildManager : GameFrameworkComponent
             ? Guid.NewGuid().ToString("N")
             : buildingInstanceId;
 
+        if (buildingData.Type == BuilType.Prod)
+        {
+            InGameDataModel.EnsureProductionBuildingCoinReserves(resolvedBuildingInstanceId, initialCoinReserves);
+        }
+
         int previousBaseLevel = ResolveExistingBaseLevel(buildingData, ownerFactionId, resolvedBuildingInstanceId);
 
         int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId, isGameEndConditionBuilding);
 
         if (entityId > 0)
+        {
+            if (consumeCoins)
+                InGameDataModel.RecordBuildingCostSpent(resolvedBuildingInstanceId, buildingData.Cost);
+
             TryGrantBaseSupplyCapacity(buildingData, ownerFactionId, previousBaseLevel);
+        }
 
         m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId, ownerFactionId);
         return entityId;
@@ -485,10 +582,23 @@ public class BuildManager : GameFrameworkComponent
         if (args == null)
             return;
 
+        EnsureCapturedBuildingCostRecord(args);
         ApplyBaseOwnershipEffects(args);
 
         if (args.OldFactionId == EntitySideHelper.PlayerFactionId || args.NewFactionId == EntitySideHelper.PlayerFactionId)
             InvalidateUnlockedArchetypeCache();
+    }
+
+    private static void EnsureCapturedBuildingCostRecord(EntityFactionChangedEventArgs args)
+    {
+        if (args.NewFactionId != EntitySideHelper.PlayerFactionId || args.OldFactionId == EntitySideHelper.PlayerFactionId)
+            return;
+
+        BuildingEntity building = FindRegisteredBuilding(args);
+        if (building == null || building.buildingData == null)
+            return;
+
+        InGameDataModel.EnsureBuildingCostSpentFromOriginalCosts(building.BuildingInstanceId, building.buildingData);
     }
 
     private void ApplyBaseOwnershipEffects(EntityFactionChangedEventArgs args)
@@ -551,6 +661,19 @@ public class BuildManager : GameFrameworkComponent
 
         long capacity = (long)Mathf.Max(0, buildingData.Lv) * providePerLevel;
         return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
+    }
+
+    private static string ResolveLv0BuildingId(BuilType buildType)
+    {
+        foreach (BuildingData data in BuildingDataModel.GetAllBuildingData())
+        {
+            if (data == null || data.Type != buildType || data.Lv != 0)
+                continue;
+
+            return data.Identifier;
+        }
+
+        return null;
     }
 
     private bool TrySubscribeTechUnlockedEvent()

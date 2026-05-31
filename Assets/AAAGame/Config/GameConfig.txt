@@ -31,3 +31,7 @@
 	DefendPhaseEnemyArriveInterval	防御阶段出怪间隔	0.8
 	DefendPhaseEnemyMinSpeed	防御阶段出怪移速最小值	500
 	DefendPhaseEnemyEndlessGrowthRate	防御阶段无尽出怪增长率	1.2
+	BaseResourceIncomeDailyGrowth	基础资源收获每日增长量	0.5
+	DefendPhaseBaseResourceIncome	防御阶段基础资源收获	3
+	InvadePhaseIncomePerCapturedOutpost	进攻阶段每个占领据点提供资源收获	2
+	EnemyProductionBuildingDailyResourceCost	敌方生产建筑每日消耗资源量	3

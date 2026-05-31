@@ -40,6 +40,9 @@ public class PopTextManager : GameFrameworkComponent
     private readonly Vector3 popRiseOffset = new Vector3(0f, 1.5f, 0f);
     private bool eventSubscribed;
     private bool waitingEventReadyLogged;
+    private GameObject activeCoinPopTextObject;
+    private Tween activeCoinPopTween;
+    private int activeCoinPopDisplayValue;
 
     private void Start()
     {
@@ -60,11 +63,13 @@ public class PopTextManager : GameFrameworkComponent
     private void OnDisable()
     {
         UnsubscribeEvents();
+        ClearActiveCoinUIPopText(true);
     }
 
     private void OnDestroy()
     {
         UnsubscribeEvents();
+        ClearActiveCoinUIPopText(true);
     }
 
     private void TrySubscribeEvents()
@@ -138,24 +143,30 @@ public class PopTextManager : GameFrameworkComponent
             return;
         }
 
-        Vector3 endPos = startPos + popRiseOffset;
-        string content = $"<sprite name=\"Coin\">+{deltaCoin}";
-
         // 通过该开关控制 Coin 飘字层级：UI/屏幕飘字通常不会被场景建筑遮挡。
         if (showCoinPopTextAsUI)
         {
-            ShowCoinGainUIPopText(startPos, content);
+            ShowCoinGainUIPopText(startPos, deltaCoin);
         }
         else
         {
+            Vector3 endPos = startPos + popRiseOffset;
+            string content = $"<sprite name=\"Coin\">+{deltaCoin}";
             GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), content, endPos, DamageTextType.Coin);
         }
     }
 
-    private void ShowCoinGainUIPopText(Vector3 worldStartPos, string content)
+    private void ShowCoinGainUIPopText(Vector3 worldStartPos, int deltaCoin)
     {
+        if (deltaCoin <= 0)
+            return;
+
+        int displayValue = activeCoinPopDisplayValue > 0 ? activeCoinPopDisplayValue + deltaCoin : deltaCoin;
+        ClearActiveCoinUIPopText(false);
+
         if (!TryGetUIPopRoot(out RectTransform root))
         {
+            activeCoinPopDisplayValue = 0;
             Log.Warning("[PopTextManager] UI pop text skipped: no UI root available.");
             return;
         }
@@ -163,6 +174,7 @@ public class PopTextManager : GameFrameworkComponent
         Camera worldCamera = Camera.main;
         if (worldCamera == null)
         {
+            activeCoinPopDisplayValue = 0;
             Log.Warning("[PopTextManager] UI pop text skipped: Main Camera missing.");
             return;
         }
@@ -171,8 +183,11 @@ public class PopTextManager : GameFrameworkComponent
         Camera uiCamera = ResolveUICamera(root);
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screenPoint, uiCamera, out Vector2 localPoint))
         {
+            activeCoinPopDisplayValue = 0;
             return;
         }
+
+        activeCoinPopDisplayValue = displayValue;
 
         GameObject textObject = new GameObject("CoinPopTextUI", typeof(RectTransform), typeof(CanvasGroup), typeof(TextMeshProUGUI));
         textObject.transform.SetParent(root, false);
@@ -190,7 +205,7 @@ public class PopTextManager : GameFrameworkComponent
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.fontSize = uiFontSize;
         tmp.color = uiCoinGainColor;
-        tmp.text = content;
+        tmp.text = $"<sprite name=\"Coin\">+{displayValue}";
 
         CanvasGroup canvasGroup = textObject.GetComponent<CanvasGroup>();
         canvasGroup.alpha = 1f;
@@ -198,8 +213,44 @@ public class PopTextManager : GameFrameworkComponent
         Sequence seq = DOTween.Sequence();
         seq.Join(textRect.DOAnchorPosY(textRect.anchoredPosition.y + uiRiseDistance, uiDuration).SetEase(Ease.OutCubic));
         seq.Join(canvasGroup.DOFade(0f, uiDuration));
-        seq.OnComplete(() => Destroy(textObject));
+        activeCoinPopTextObject = textObject;
+        activeCoinPopTween = seq;
+        seq.OnComplete(() =>
+        {
+            if (activeCoinPopTextObject == textObject)
+            {
+                activeCoinPopTextObject = null;
+                activeCoinPopTween = null;
+                activeCoinPopDisplayValue = 0;
+            }
+
+            Destroy(textObject);
+        });
         seq.SetAutoKill();
+    }
+
+    private void ClearActiveCoinUIPopText(bool resetDisplayValue)
+    {
+        if (activeCoinPopTween != null)
+        {
+            if (activeCoinPopTween.IsActive())
+            {
+                activeCoinPopTween.Kill(false);
+            }
+
+            activeCoinPopTween = null;
+        }
+
+        if (activeCoinPopTextObject != null)
+        {
+            Destroy(activeCoinPopTextObject);
+            activeCoinPopTextObject = null;
+        }
+
+        if (resetDisplayValue)
+        {
+            activeCoinPopDisplayValue = 0;
+        }
     }
 
     private bool TryGetUIPopRoot(out RectTransform root)

@@ -12,6 +12,7 @@ public partial class BuildingInfoItem : UIItemBase
     public GameObject PropertyListRoot => varPropertyList;
     public GameObject ProgressRoot => varProgress;
     public GameObject PreviewRoot => varPreview;
+    public GameObject CoinReservesRoot => varCoinReserves;
     public RectTransform HoldRoot => (varBuildingInfoItem != null ? varBuildingInfoItem.transform : transform) as RectTransform;
     public GameObject IconNumTemplate => varIconNumItem;
     public GameObject StarTemplate => varStarItem;
@@ -60,6 +61,12 @@ public partial class BuildingInfoItem : UIItemBase
     {
         if (varProgress != null)
             varProgress.SetActive(visible);
+    }
+
+    public void SetCoinReservesVisible(bool visible)
+    {
+        if (varCoinReserves != null)
+            varCoinReserves.SetActive(visible);
     }
 
     public void SetPreviewImage(string spriteRelativePath)

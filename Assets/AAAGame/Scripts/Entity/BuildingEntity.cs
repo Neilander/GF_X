@@ -356,6 +356,7 @@ public partial class BuildingEntity : MAEntity
             PropertyIrreversibleAdditiveModifier.Create(-finalDamage), true);
 
         Fix64 cur = HealthValue;
+        NotifyDamageTakenForOutOfCombat();
 
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-finalDamage)));
 
@@ -852,9 +853,13 @@ public partial class BuildingEntity : MAEntity
             int production = GetProduction();
             if (production > 0)
             {
-                // 增加资源
-                InGameDataModel.TryModifyValue(IngameValueType.Coin, production, true);
-                Debug.Log($"Building {buildingData.Identifier} harvested {production} coins");
+                int actualProduction = InGameDataModel.ConsumeProductionBuildingCoinReserves(BuildingInstanceId, production);
+                if (actualProduction <= 0)
+                    return;
+
+                // 增加资源（受点位存量限制）
+                InGameDataModel.TryModifyValue(IngameValueType.Coin, actualProduction, true);
+                Debug.Log($"Building {buildingData.Identifier} harvested {actualProduction} coins (raw={production})");
             }
         }
     }

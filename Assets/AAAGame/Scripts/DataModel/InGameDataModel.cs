@@ -32,12 +32,17 @@ public class InGameDataModel : DataModelBase
 {
     private const string InitMaxSupplyConfigKey = "InitMaxSupply";
     private const string BaseProvideSupplyConfigKey = "BaseProvideSupply";
+    private const string ResourcePointInitialAmountConfigKey = "ResourcePointInitialAmount";
 
     public const string P_LevelData = "LevelData";
     public LevelData lvData;
     private Dictionary<IngameValueType, int> m_IngameValue;
     private readonly List<Stronghold> m_Strongholds = new();
     private readonly HashSet<BuildingEntity> m_Buildings = new();
+    // 建筑点位橙髓存量：key=BuildingInstanceId。升级/回收沿用同 id，因此存量可跨建筑形态保持。
+    private readonly Dictionary<string, int> m_ProductionBuildingCoinReservesByInstanceId = new(StringComparer.Ordinal);
+    // 建筑实际建造/升级花费：key=BuildingInstanceId。回收按历史实际花费返钱。
+    private readonly Dictionary<string, int> m_BuildingCostSpentByInstanceId = new(StringComparer.Ordinal);
     private bool m_SupplyEventsSubscribed;
     // techId -> 已拥有该科技的建筑实例集合。
     // 全局层数 = 集合 Count；单建筑是否拥有 = 集合 Contains(buildingInstanceId)。
@@ -85,6 +90,8 @@ public class InGameDataModel : DataModelBase
         Factions = new Dictionary<int, Faction>();
         m_TechOwnerContextsById.Clear();
         m_Buildings.Clear();
+        m_ProductionBuildingCoinReservesByInstanceId.Clear();
+        m_BuildingCostSpentByInstanceId.Clear();
 
         for (int i = 0; i < m_Strongholds.Count; i++)
         {
@@ -163,6 +170,145 @@ public class InGameDataModel : DataModelBase
         return phase == GamePhase.BuildBeforeInvade || phase == GamePhase.BuildBeforeDefend;
     }
 
+    public static int EnsureProductionBuildingCoinReserves(string buildingInstanceId, int? initialAmount = null)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return 0;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return 0;
+
+        if (dataModel.m_ProductionBuildingCoinReservesByInstanceId.TryGetValue(buildingInstanceId, out int current))
+            return current;
+
+        int defaultValue = GF.Config != null ? GF.Config.GetInt(ResourcePointInitialAmountConfigKey, 0) : 0;
+        int resolved = initialAmount.HasValue ? initialAmount.Value : defaultValue;
+        resolved = Mathf.Max(0, resolved);
+
+        dataModel.m_ProductionBuildingCoinReservesByInstanceId[buildingInstanceId] = resolved;
+        return resolved;
+    }
+
+    public static int GetProductionBuildingCoinReserves(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return 0;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return 0;
+
+        return EnsureProductionBuildingCoinReserves(buildingInstanceId);
+    }
+
+    public static int ConsumeProductionBuildingCoinReserves(string buildingInstanceId, int consumeAmount)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId) || consumeAmount <= 0)
+            return 0;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return 0;
+
+        int current = EnsureProductionBuildingCoinReserves(buildingInstanceId);
+        int consumed = Mathf.Min(current, consumeAmount);
+        dataModel.m_ProductionBuildingCoinReservesByInstanceId[buildingInstanceId] = current - consumed;
+        return consumed;
+    }
+
+    public static void RecordBuildingCostSpent(string buildingInstanceId, int cost)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId) || cost <= 0)
+            return;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return;
+
+        dataModel.m_BuildingCostSpentByInstanceId.TryGetValue(buildingInstanceId, out int current);
+        long total = (long)current + cost;
+        dataModel.m_BuildingCostSpentByInstanceId[buildingInstanceId] = total > int.MaxValue ? int.MaxValue : (int)total;
+    }
+
+    public static int GetBuildingCostSpent(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return 0;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return 0;
+
+        return dataModel.m_BuildingCostSpentByInstanceId.TryGetValue(buildingInstanceId, out int cost) ? Mathf.Max(0, cost) : 0;
+    }
+
+    public static void EnsureBuildingCostSpentFromOriginalCosts(string buildingInstanceId, BuildingData buildingData)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId) || buildingData == null || buildingData.Lv <= 0)
+            return;
+
+        if (GetBuildingCostSpent(buildingInstanceId) > 0)
+            return;
+
+        int originalCost = CalculateOriginalBuildingCostSum(buildingData);
+        if (originalCost <= 0)
+            return;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return;
+
+        dataModel.m_BuildingCostSpentByInstanceId[buildingInstanceId] = originalCost;
+    }
+
+    public static void ResetBuildingCostSpent(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return;
+
+        dataModel.m_BuildingCostSpentByInstanceId.Remove(buildingInstanceId);
+    }
+
+    public static int CalculateOriginalBuildingCostSum(BuildingData buildingData)
+    {
+        if (buildingData == null || buildingData.Lv <= 0)
+            return 0;
+
+        long total = 0;
+        for (int lv = 1; lv <= buildingData.Lv; lv++)
+        {
+            string levelIdentifier = ReplaceBuildingLevel(buildingData.Identifier, lv);
+            BuildingData levelData = !string.IsNullOrWhiteSpace(levelIdentifier)
+                ? BuildingDataModel.GetBuildingData(levelIdentifier)
+                : null;
+            if (levelData == null)
+                continue;
+
+            total += Mathf.Max(0, levelData.Cost);
+            if (total >= int.MaxValue)
+                return int.MaxValue;
+        }
+
+        return (int)total;
+    }
+
+    private static string ReplaceBuildingLevel(string identifier, int lv)
+    {
+        if (string.IsNullOrWhiteSpace(identifier) || lv <= 0)
+            return null;
+
+        int lvIndex = identifier.LastIndexOf("_Lv", StringComparison.Ordinal);
+        if (lvIndex < 0)
+            return null;
+
+        return identifier.Substring(0, lvIndex + 3) + lv;
+    }
+
     public static int GetCurrentSupply()
     {
         return GetValue(IngameValueType.CurrentSupply);
@@ -228,6 +374,28 @@ public class InGameDataModel : DataModelBase
 
         var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
         return dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) && owners.Contains(buildingContextKey);
+    }
+
+    public static List<string> GetUnlockedTechIdsForBuilding(string buildingContextKey)
+    {
+        List<string> results = new();
+        if (string.IsNullOrWhiteSpace(buildingContextKey))
+            return results;
+
+        var dataModel = GetModel();
+        if (dataModel == null)
+            return results;
+
+        foreach (var pair in dataModel.m_TechOwnerContextsById)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value == null)
+                continue;
+
+            if (pair.Value.Contains(buildingContextKey))
+                results.Add(pair.Key);
+        }
+
+        return results;
     }
 
     public static bool HasUnlockedTech(string techId, int ownerFactionId)

@@ -18,6 +18,10 @@ public class EntityPresetPoint : MonoBehaviour
     public bool IsGameEndConditionBuilding;
     public int UnitSpawnCount; // 仅对 Unit 类型有效，表示在战斗阶段开始时以此预设点为中心生成多少个单位
     public int DefendSpawnWeight = 1; // 仅对 DefendSpawn 类型有效，表示该点在防御阶段的出怪权重
+    [Tooltip("仅对 Building 类型有效：勾选后使用该点位配置的橙髓初始存量；不勾选则使用 GameConfig.ResourcePointInitialAmount")]
+    public bool UseCustomCoinReserves;
+    [Tooltip("仅对 Building 类型有效：橙髓初始存量（需勾选 UseCustomCoinReserves）")]
+    public int CustomCoinReserves;
 
     [Header("测试槽位（仅测试用；勾上后运行期 Identifier 从 TechTestSlotConfig 读）")]
     public bool IsTestSlot;
@@ -29,6 +33,12 @@ public class EntityPresetPoint : MonoBehaviour
         EntityPresetPointEditorPreview.RequestSync();
     }
 #endif
+
+    public bool TryGetInitialCoinReserves(out int coinReserves)
+    {
+        coinReserves = Mathf.Max(0, CustomCoinReserves);
+        return UseCustomCoinReserves;
+    }
 }
 
 public enum EntityPresetPointType { Unit, Hero, Building, DefendSpawn } //Spawn, Respawn, Patrol, Device
