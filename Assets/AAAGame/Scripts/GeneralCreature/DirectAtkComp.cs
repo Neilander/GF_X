@@ -94,7 +94,13 @@ public class DirectAtkComp : IAtkComp
         {
             string id = ctx.CharacterKey;
             var row = ctx.CharacterData;
-            WeaponData[] weaponDatas = CharacterDataDetailAccessor.GetWeaponDatas(row);
+            Fix64 level = Fix64.One;
+            if (ctx is MAEntity ownerEntity && ownerEntity.CreaturePropertyManager != null)
+            {
+                level = ownerEntity.CreaturePropertyManager.GetLevel();
+            }
+
+            WeaponData[] weaponDatas = CharacterDataDetailAccessor.GetWeaponDatas(row, level);
             if (weaponDatas == null || weaponDatas.Length == 0)
             {
                 throw new InvalidOperationException($"角色 {id} 缺少武器数据");

@@ -60,10 +60,11 @@ public class BuildingDataModel : DataModelBase
 
     private void ImportBuildingDataRow(BuildingTable row)
     {
-        Debug.Log($"[BuildingDataModel] 导入建筑数据: {row.Identifier}, Production值: {row.Production}");
+        Debug.Log($"[BuildingDataModel] 导入建筑数据: {row.Identifier}, Lv1Production值: {row.Lv1Production}");
 
         if (row.Identifier.Substring(row.Identifier.Length - 3) == "Lv0")
         {
+            int production = ResolveProduction(row, 1);
             BuildingData building = new(row.Identifier,
                                 row.Type,
                                 row.Archetype,
@@ -77,7 +78,7 @@ public class BuildingDataModel : DataModelBase
                                 Fix64.Zero,
                                 row.UniqueValues,
                                 row.UnitID,
-                                row.Production,
+                                production,
                                 null);
             buildingDataDic[building.Identifier] = building;
             Debug.Log($"[BuildingDataModel] 创建Lv0建筑: {building.Identifier}, Production: {building.Production}");
@@ -87,39 +88,22 @@ public class BuildingDataModel : DataModelBase
             int maxLv = row.Type == BuilType.Tech ? 1 : 3;
             for (int lv = 1; lv <= maxLv; lv++)
             {
-                WeaponData weaponData = null;
-                if (row.Weapon1Atk > Fix64.Zero)
-                {
-                    weaponData = new WeaponData(
-                        row.Weapon1Type,
-                        row.Weapon1Atk,
-                        row.Weapon1Interval,
-                        row.Weapon1Range,
-                        row.Weapon1Speed,
-                        row.Weapon1WindUp,
-                        row.Weapon1WindDown,
-                        row.Weapon1SplashRadius,
-                        row.Weapon1SplitAngle,
-                        row.Weapon1SplitDist,
-                        row.Weapon1ProjectileCount,
-                        row.Weapon1AmmunitionCapacity,
-                        row.Weapon1UniqueValues);
-                }
+                WeaponData weaponData = ResolveWeaponData(row, lv);
 
                 BuildingData building = new(row.Identifier + "_Lv" + lv,
                                     row.Type,
                                     row.Archetype,
-                                    lv == 1 ? row.Lv1PrefabPath : lv == 2 ? row.Lv2PrefabPath : row.Lv3PrefabPath,
+                                    ResolvePrefabPath(row, lv),
                                     row.NameKey,
                                     row.DescKey,
                                     lv,
                                     lv == 1 ? row.Lv1Cost : lv == 2 ? row.Lv2Cost : row.Lv3Cost,
-                                    lv == 1 ? row.Lv1HP : lv == 2 ? row.Lv2HP : row.Lv3HP,
+                                    ResolveHP(row, lv),
                                     weaponData,
-                                    lv == 1 ? row.Lv1Def : lv == 2 ? row.Lv2Def : row.Lv3Def,
+                                    ResolveDef(row, lv),
                                     row.UniqueValues,
                                     row.UnitID,
-                                    row.Production,
+                                    ResolveProduction(row, lv),
                                     lv == 3 ? null :
                                     row.Type == BuilType.Base || row.Type == BuilType.Army || row.Type == BuilType.Def ?
                                     lv == 1 ? new string[] { row.Tech1ID, row.Tech2ID } : new string[] { row.Tech3ID, row.Tech4ID } :
@@ -129,5 +113,148 @@ public class BuildingDataModel : DataModelBase
                 Debug.Log($"[BuildingDataModel] 创建建筑: {building.Identifier}, Lv: {building.Lv}, Production: {building.Production}");
             }
         }
+    }
+
+    private static string ResolvePrefabPath(BuildingTable row, int lv)
+    {
+        if (lv <= 1) return row.Lv1PrefabPath;
+        if (lv == 2) return PickString(row.Lv2PrefabPath, row.Lv1PrefabPath);
+
+        string lv2 = PickString(row.Lv2PrefabPath, row.Lv1PrefabPath);
+        return PickString(row.Lv3PrefabPath, lv2);
+    }
+
+    private static Fix64 ResolveHP(BuildingTable row, int lv)
+    {
+        return PickLevelValue(lv, row.Lv1HP, row.Lv2HP, row.Lv3HP);
+    }
+
+    private static Fix64 ResolveDef(BuildingTable row, int lv)
+    {
+        return PickLevelValue(lv, row.Lv1Def, row.Lv2Def, row.Lv3Def);
+    }
+
+    private static int ResolveProduction(BuildingTable row, int lv)
+    {
+        return PickLevelValue(lv, row.Lv1Production, row.Lv2Production, row.Lv3Production);
+    }
+
+    private static WeaponData ResolveWeaponData(BuildingTable row, int lv)
+    {
+        WeaponData lv1 = new WeaponData(
+            row.Lv1Weapon1Type,
+            row.Lv1Weapon1Atk,
+            row.Lv1Weapon1Interval,
+            row.Lv1Weapon1Range,
+            row.Lv1Weapon1ProjectileSpeed,
+            row.Lv1Weapon1WindUp,
+            row.Lv1Weapon1WindDown,
+            row.Lv1Weapon1SplashRadius,
+            row.Lv1Weapon1SplitAngle,
+            row.Lv1Weapon1SplitDist,
+            row.Lv1Weapon1ProjectileCount,
+            row.Lv1Weapon1AmmunitionCapacity,
+            row.Lv1Weapon1UniqueValues);
+
+        WeaponData resolved = lv1;
+        if (lv >= 2)
+        {
+            resolved = WithFallback(
+                resolved,
+                row.Lv2Weapon1Type,
+                row.Lv2Weapon1Atk,
+                row.Lv2Weapon1Interval,
+                row.Lv2Weapon1Range,
+                row.Lv2Weapon1ProjectileSpeed,
+                row.Lv2Weapon1WindUp,
+                row.Lv2Weapon1WindDown,
+                row.Lv2Weapon1SplashRadius,
+                row.Lv2Weapon1SplitAngle,
+                row.Lv2Weapon1SplitDist,
+                row.Lv2Weapon1ProjectileCount,
+                row.Lv2Weapon1AmmunitionCapacity,
+                row.Lv2Weapon1UniqueValues);
+        }
+
+        if (lv >= 3)
+        {
+            resolved = WithFallback(
+                resolved,
+                row.Lv3Weapon1Type,
+                row.Lv3Weapon1Atk,
+                row.Lv3Weapon1Interval,
+                row.Lv3Weapon1Range,
+                row.Lv3Weapon1ProjectileSpeed,
+                row.Lv3Weapon1WindUp,
+                row.Lv3Weapon1WindDown,
+                row.Lv3Weapon1SplashRadius,
+                row.Lv3Weapon1SplitAngle,
+                row.Lv3Weapon1SplitDist,
+                row.Lv3Weapon1ProjectileCount,
+                row.Lv3Weapon1AmmunitionCapacity,
+                row.Lv3Weapon1UniqueValues);
+        }
+
+        return resolved.Atk > Fix64.Zero ? resolved : null;
+    }
+
+    private static WeaponData WithFallback(
+        WeaponData previous,
+        WeaponType type,
+        Fix64 atk,
+        Fix64 interval,
+        Fix64 range,
+        Fix64 projectileSpeed,
+        Fix64 windUp,
+        Fix64 windDown,
+        Fix64 splashRadius,
+        Fix64 splitAngle,
+        Fix64 splitDist,
+        Fix64 projectileCount,
+        Fix64 ammunitionCapacity,
+        Fix64[] uniqueValues)
+    {
+        return new WeaponData(
+            type != default ? type : previous.Type,
+            PickValue(atk, previous.Atk),
+            PickValue(interval, previous.Interval),
+            PickValue(range, previous.Range),
+            PickValue(projectileSpeed, previous.ProjectileSpeed),
+            PickValue(windUp, previous.WindUp),
+            PickValue(windDown, previous.WindDown),
+            PickValue(splashRadius, previous.SplashRadius),
+            PickValue(splitAngle, previous.SplitAngle),
+            PickValue(splitDist, previous.SplitDist),
+            PickValue(projectileCount, previous.ProjectileCount),
+            PickValue(ammunitionCapacity, previous.AmmunitionCapacity),
+            uniqueValues != null && uniqueValues.Length > 0 ? uniqueValues : previous.UniqueValues);
+    }
+
+    private static Fix64 PickLevelValue(int lv, Fix64 lv1, Fix64 lv2, Fix64 lv3)
+    {
+        if (lv <= 1) return lv1;
+        if (lv == 2) return PickValue(lv2, lv1);
+
+        Fix64 resolvedLv2 = PickValue(lv2, lv1);
+        return PickValue(lv3, resolvedLv2);
+    }
+
+    private static int PickLevelValue(int lv, int lv1, int lv2, int lv3)
+    {
+        if (lv <= 1) return lv1;
+        if (lv == 2) return lv2 != 0 ? lv2 : lv1;
+
+        int resolvedLv2 = lv2 != 0 ? lv2 : lv1;
+        return lv3 != 0 ? lv3 : resolvedLv2;
+    }
+
+    private static Fix64 PickValue(Fix64 value, Fix64 fallback)
+    {
+        return value != Fix64.Zero ? value : fallback;
+    }
+
+    private static string PickString(string value, string fallback)
+    {
+        return !string.IsNullOrWhiteSpace(value) ? value : fallback;
     }
 }

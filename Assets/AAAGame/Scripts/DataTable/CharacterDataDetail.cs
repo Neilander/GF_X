@@ -110,33 +110,6 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 护甲
-        /// </summary>
-        public Fix64 Def
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 血量
-        /// </summary>
-        public Fix64 Health
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
-        /// 移速
-        /// </summary>
-        public Fix64 Speed
-        {
-            get;
-            private set;
-        }
-
-        /// <summary>
         /// 视野半径
         /// </summary>
         public Fix64 Sight
@@ -146,234 +119,432 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
-        /// 武器1攻击力
+        /// 1级护甲
         /// </summary>
-        public Fix64 Weapon1Atk
+        public Fix64 Lv1Def
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1攻击间隔
+        /// 1级血量
         /// </summary>
-        public Fix64 Weapon1Interval
+        public Fix64 Lv1HP
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1攻击类型
+        /// 1级移速
         /// </summary>
-        public WeaponType Weapon1Type
+        public Fix64 Lv1MoveSpeed
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1攻击距离
+        /// 1级武器1攻击力
         /// </summary>
-        public Fix64 Weapon1Range
+        public Fix64 Lv1Weapon1Atk
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1弹道速度
+        /// 1级武器1攻击距离
         /// </summary>
-        public Fix64 Weapon1Speed
+        public Fix64 Lv1Weapon1Range
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1前摇
+        /// 2级护甲
         /// </summary>
-        public Fix64 Weapon1WindUp
+        public Fix64 Lv2Def
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1后摇
+        /// 2级血量
         /// </summary>
-        public Fix64 Weapon1WindDown
+        public Fix64 Lv2HP
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1溅射半径
+        /// 2级移速
         /// </summary>
-        public Fix64 Weapon1SplashRadius
+        public Fix64 Lv2MoveSpeed
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1分裂角度
+        /// 2级武器1攻击力
         /// </summary>
-        public Fix64 Weapon1SplitAngle
+        public Fix64 Lv2Weapon1Atk
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1分裂距离
+        /// 2级武器1攻击距离
         /// </summary>
-        public Fix64 Weapon1SplitDist
+        public Fix64 Lv2Weapon1Range
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1弹道数量
+        /// 3级护甲
         /// </summary>
-        public Fix64 Weapon1ProjectileCount
+        public Fix64 Lv3Def
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1弹药量
+        /// 3级血量
         /// </summary>
-        public Fix64 Weapon1AmmunitionCapacity
+        public Fix64 Lv3HP
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器1其他数值
+        /// 3级移速
         /// </summary>
-        public Fix64[] Weapon1UniqueValues
+        public Fix64 Lv3MoveSpeed
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2攻击力
+        /// 3级武器1攻击力
         /// </summary>
-        public Fix64 Weapon2Atk
+        public Fix64 Lv3Weapon1Atk
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2攻击间隔
+        /// 3级武器1攻击距离
         /// </summary>
-        public Fix64 Weapon2Interval
+        public Fix64 Lv3Weapon1Range
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2攻击类型
+        /// 1级武器1攻击间隔
         /// </summary>
-        public WeaponType Weapon2Type
+        public Fix64 Lv1Weapon1Interval
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2攻击距离
+        /// 1级武器1攻击类型
         /// </summary>
-        public Fix64 Weapon2Range
+        public WeaponType Lv1Weapon1Type
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2弹道速度
+        /// 1级武器1弹道速度
         /// </summary>
-        public Fix64 Weapon2Speed
+        public Fix64 Lv1Weapon1ProjectileSpeed
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2前摇
+        /// 1级武器1前摇
         /// </summary>
-        public Fix64 Weapon2WindUp
+        public Fix64 Lv1Weapon1WindUp
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2后摇
+        /// 1级武器1后摇
         /// </summary>
-        public Fix64 Weapon2WindDown
+        public Fix64 Lv1Weapon1WindDown
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2溅射半径
+        /// 1级武器1溅射半径
         /// </summary>
-        public Fix64 Weapon2SplashRadius
+        public Fix64 Lv1Weapon1SplashRadius
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2分裂角度
+        /// 1级武器1分裂角度
         /// </summary>
-        public Fix64 Weapon2SplitAngle
+        public Fix64 Lv1Weapon1SplitAngle
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2分裂距离
+        /// 1级武器1分裂距离
         /// </summary>
-        public Fix64 Weapon2SplitDist
+        public Fix64 Lv1Weapon1SplitDist
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2弹道数量
+        /// 1级武器1弹道数量
         /// </summary>
-        public Fix64 Weapon2ProjectileCount
+        public Fix64 Lv1Weapon1ProjectileCount
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2弹药量
+        /// 1级武器1弹药量
         /// </summary>
-        public Fix64 Weapon2AmmunitionCapacity
+        public Fix64 Lv1Weapon1AmmunitionCapacity
         {
             get;
             private set;
         }
 
         /// <summary>
-        /// 武器2其他数值
+        /// 1级武器1其他数值
         /// </summary>
-        public Fix64[] Weapon2UniqueValues
+        public Fix64[] Lv1Weapon1UniqueValues
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1攻击间隔
+        /// </summary>
+        public Fix64 Lv2Weapon1Interval
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1攻击类型
+        /// </summary>
+        public WeaponType Lv2Weapon1Type
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1弹道速度
+        /// </summary>
+        public Fix64 Lv2Weapon1ProjectileSpeed
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1前摇
+        /// </summary>
+        public Fix64 Lv2Weapon1WindUp
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1后摇
+        /// </summary>
+        public Fix64 Lv2Weapon1WindDown
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1溅射半径
+        /// </summary>
+        public Fix64 Lv2Weapon1SplashRadius
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1分裂角度
+        /// </summary>
+        public Fix64 Lv2Weapon1SplitAngle
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1分裂距离
+        /// </summary>
+        public Fix64 Lv2Weapon1SplitDist
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1弹道数量
+        /// </summary>
+        public Fix64 Lv2Weapon1ProjectileCount
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1弹药量
+        /// </summary>
+        public Fix64 Lv2Weapon1AmmunitionCapacity
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 2级武器1其他数值
+        /// </summary>
+        public Fix64[] Lv2Weapon1UniqueValues
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1攻击间隔
+        /// </summary>
+        public Fix64 Lv3Weapon1Interval
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1攻击类型
+        /// </summary>
+        public WeaponType Lv3Weapon1Type
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1弹道速度
+        /// </summary>
+        public Fix64 Lv3Weapon1ProjectileSpeed
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1前摇
+        /// </summary>
+        public Fix64 Lv3Weapon1WindUp
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1后摇
+        /// </summary>
+        public Fix64 Lv3Weapon1WindDown
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1溅射半径
+        /// </summary>
+        public Fix64 Lv3Weapon1SplashRadius
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1分裂角度
+        /// </summary>
+        public Fix64 Lv3Weapon1SplitAngle
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1分裂距离
+        /// </summary>
+        public Fix64 Lv3Weapon1SplitDist
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1弹道数量
+        /// </summary>
+        public Fix64 Lv3Weapon1ProjectileCount
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1弹药量
+        /// </summary>
+        public Fix64 Lv3Weapon1AmmunitionCapacity
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 3级武器1其他数值
+        /// </summary>
+        public Fix64[] Lv3Weapon1UniqueValues
         {
             get;
             private set;
@@ -401,36 +572,55 @@ public class CharacterDataDetail : DataRowBase
             Supply = DataTableExtension.ParseInt32(columnStrings[index++]);
             Size = DataTableExtension.ParseEnum<UnitSize>(columnStrings[index++]);
             TurnRate = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Def = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Health = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Speed = DataTableExtension.ParseFix64(columnStrings[index++]);
             Sight = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
-            Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1Speed = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1WindDown = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1SplashRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
-            Weapon2Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
-            Weapon2Range = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2Speed = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2WindDown = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2SplashRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
-            Weapon2UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Lv1Def = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1HP = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1MoveSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Def = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2HP = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2MoveSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Def = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3HP = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3MoveSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1Atk = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1Range = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
+            Lv1Weapon1ProjectileSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1WindDown = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1SplashRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Lv2Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
+            Lv2Weapon1ProjectileSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1WindDown = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1SplashRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv2Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Lv3Weapon1Interval = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1Type = DataTableExtension.ParseEnum<WeaponType>(columnStrings[index++]);
+            Lv3Weapon1ProjectileSpeed = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1WindUp = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1WindDown = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1SplashRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1SplitAngle = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1SplitDist = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1ProjectileCount = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1AmmunitionCapacity = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv3Weapon1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
 
             return true;
         }
@@ -451,36 +641,55 @@ public class CharacterDataDetail : DataRowBase
                     Supply = binaryReader.Read7BitEncodedInt32();
                     Size = binaryReader.ReadEnum<UnitSize>();
                     TurnRate = binaryReader.ReadFix64();
-                    Def = binaryReader.ReadFix64();
-                    Health = binaryReader.ReadFix64();
-                    Speed = binaryReader.ReadFix64();
                     Sight = binaryReader.ReadFix64();
-                    Weapon1Atk = binaryReader.ReadFix64();
-                    Weapon1Interval = binaryReader.ReadFix64();
-                    Weapon1Type = binaryReader.ReadEnum<WeaponType>();
-                    Weapon1Range = binaryReader.ReadFix64();
-                    Weapon1Speed = binaryReader.ReadFix64();
-                    Weapon1WindUp = binaryReader.ReadFix64();
-                    Weapon1WindDown = binaryReader.ReadFix64();
-                    Weapon1SplashRadius = binaryReader.ReadFix64();
-                    Weapon1SplitAngle = binaryReader.ReadFix64();
-                    Weapon1SplitDist = binaryReader.ReadFix64();
-                    Weapon1ProjectileCount = binaryReader.ReadFix64();
-                    Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
-                    Weapon1UniqueValues = binaryReader.ReadFix64Array();
-                    Weapon2Atk = binaryReader.ReadFix64();
-                    Weapon2Interval = binaryReader.ReadFix64();
-                    Weapon2Type = binaryReader.ReadEnum<WeaponType>();
-                    Weapon2Range = binaryReader.ReadFix64();
-                    Weapon2Speed = binaryReader.ReadFix64();
-                    Weapon2WindUp = binaryReader.ReadFix64();
-                    Weapon2WindDown = binaryReader.ReadFix64();
-                    Weapon2SplashRadius = binaryReader.ReadFix64();
-                    Weapon2SplitAngle = binaryReader.ReadFix64();
-                    Weapon2SplitDist = binaryReader.ReadFix64();
-                    Weapon2ProjectileCount = binaryReader.ReadFix64();
-                    Weapon2AmmunitionCapacity = binaryReader.ReadFix64();
-                    Weapon2UniqueValues = binaryReader.ReadFix64Array();
+                    Lv1Def = binaryReader.ReadFix64();
+                    Lv1HP = binaryReader.ReadFix64();
+                    Lv1MoveSpeed = binaryReader.ReadFix64();
+                    Lv1Weapon1Atk = binaryReader.ReadFix64();
+                    Lv1Weapon1Range = binaryReader.ReadFix64();
+                    Lv2Def = binaryReader.ReadFix64();
+                    Lv2HP = binaryReader.ReadFix64();
+                    Lv2MoveSpeed = binaryReader.ReadFix64();
+                    Lv2Weapon1Atk = binaryReader.ReadFix64();
+                    Lv2Weapon1Range = binaryReader.ReadFix64();
+                    Lv3Def = binaryReader.ReadFix64();
+                    Lv3HP = binaryReader.ReadFix64();
+                    Lv3MoveSpeed = binaryReader.ReadFix64();
+                    Lv3Weapon1Atk = binaryReader.ReadFix64();
+                    Lv3Weapon1Range = binaryReader.ReadFix64();
+                    Lv1Weapon1Interval = binaryReader.ReadFix64();
+                    Lv1Weapon1Type = binaryReader.ReadEnum<WeaponType>();
+                    Lv1Weapon1ProjectileSpeed = binaryReader.ReadFix64();
+                    Lv1Weapon1WindUp = binaryReader.ReadFix64();
+                    Lv1Weapon1WindDown = binaryReader.ReadFix64();
+                    Lv1Weapon1SplashRadius = binaryReader.ReadFix64();
+                    Lv1Weapon1SplitAngle = binaryReader.ReadFix64();
+                    Lv1Weapon1SplitDist = binaryReader.ReadFix64();
+                    Lv1Weapon1ProjectileCount = binaryReader.ReadFix64();
+                    Lv1Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
+                    Lv1Weapon1UniqueValues = binaryReader.ReadFix64Array();
+                    Lv2Weapon1Interval = binaryReader.ReadFix64();
+                    Lv2Weapon1Type = binaryReader.ReadEnum<WeaponType>();
+                    Lv2Weapon1ProjectileSpeed = binaryReader.ReadFix64();
+                    Lv2Weapon1WindUp = binaryReader.ReadFix64();
+                    Lv2Weapon1WindDown = binaryReader.ReadFix64();
+                    Lv2Weapon1SplashRadius = binaryReader.ReadFix64();
+                    Lv2Weapon1SplitAngle = binaryReader.ReadFix64();
+                    Lv2Weapon1SplitDist = binaryReader.ReadFix64();
+                    Lv2Weapon1ProjectileCount = binaryReader.ReadFix64();
+                    Lv2Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
+                    Lv2Weapon1UniqueValues = binaryReader.ReadFix64Array();
+                    Lv3Weapon1Interval = binaryReader.ReadFix64();
+                    Lv3Weapon1Type = binaryReader.ReadEnum<WeaponType>();
+                    Lv3Weapon1ProjectileSpeed = binaryReader.ReadFix64();
+                    Lv3Weapon1WindUp = binaryReader.ReadFix64();
+                    Lv3Weapon1WindDown = binaryReader.ReadFix64();
+                    Lv3Weapon1SplashRadius = binaryReader.ReadFix64();
+                    Lv3Weapon1SplitAngle = binaryReader.ReadFix64();
+                    Lv3Weapon1SplitDist = binaryReader.ReadFix64();
+                    Lv3Weapon1ProjectileCount = binaryReader.ReadFix64();
+                    Lv3Weapon1AmmunitionCapacity = binaryReader.ReadFix64();
+                    Lv3Weapon1UniqueValues = binaryReader.ReadFix64Array();
                 }
             }
 

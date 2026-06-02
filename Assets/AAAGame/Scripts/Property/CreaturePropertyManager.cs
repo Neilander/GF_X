@@ -98,6 +98,12 @@ public class CreaturePropertyManager
         return propertyManager.GetValueProperty(property.ToString()).GetValue();
     }
 
+    public Fix64 GetLevel()
+    {
+        ValueProperty levelProperty = propertyManager.GetValueProperty(LevelPropertyName);
+        return levelProperty != null ? levelProperty.GetValue() : Fix64.One;
+    }
+
     /// <summary>
     /// 这个方法修改所有主要属性的白值Buff
     /// </summary>
@@ -190,6 +196,20 @@ public class CreaturePropertyManager
 
     private Func<Func<Fix64>[], Func<Fix64>> RefFuncFactory(CreatureMainProperty mainProperty)
     {
+        if (_configValueProvider == null && _characterData != null)
+        {
+            return funcArray => () =>
+            {
+                Fix64 level = Fix64.One;
+                if (funcArray != null && funcArray.Length > (int)RawComponent.Level)
+                {
+                    level = funcArray[(int)RawComponent.Level]();
+                }
+
+                return CharacterDataDetailAccessor.GetMainValue(_characterData, mainProperty, level);
+            };
+        }
+
         return ConfigOnlyRefFunc;
     }
 

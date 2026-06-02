@@ -83,7 +83,7 @@ public class PhaseManager : GameFrameworkComponent
 
         var totalWatch = Stopwatch.StartNew();
 
-        TryAdvanceDayOnBattleTransition(oldPhase, phase);
+        TryAdvanceDayOnBuildTransition(oldPhase, phase);
         InGameDataModel.SetPhase(phase);
 
         var transitionWatch = Stopwatch.StartNew();
@@ -102,16 +102,16 @@ public class PhaseManager : GameFrameworkComponent
         Log.Debug($"Phase switched from {oldPhase} to {phase}");
     }
 
-    private static void TryAdvanceDayOnBattleTransition(GamePhase oldPhase, GamePhase newPhase)
+    private static void TryAdvanceDayOnBuildTransition(GamePhase oldPhase, GamePhase newPhase)
     {
-        if (newPhase != GamePhase.Invade && newPhase != GamePhase.Defend)
+        if (!InGameDataModel.IsBuildPhase(newPhase))
         {
             return;
         }
 
         InGameDataModel.TryModifyValue(IngameValueType.Day, 1);
         int currentDay = InGameDataModel.GetValue(IngameValueType.Day);
-        Log.Debug($"Day advanced to {currentDay} when entering {newPhase} from {oldPhase}");
+        Log.Debug($"Day advanced to {currentDay} when entering build phase {newPhase} from {oldPhase}");
     }
 
     private static void HandlePhaseTransition(GamePhase oldPhase, GamePhase newPhase)
