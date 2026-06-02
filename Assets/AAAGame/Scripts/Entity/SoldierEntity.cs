@@ -10,8 +10,12 @@ using GameFramework.Event;
 /// </summary>
 public partial class SoldierEntity : MAEntity
 {
-    private const string HeroFullHealthSpeedBuffId = "hero_full_health_speed_x2";
-    private static readonly Fix64 HeroFullHealthSpeedBuffPercent = Fix64.One;
+    private const string HeroOutOfCombatSpeedBuffId = "hero_out_of_combat_speed_x2";
+    private const float HeroOutOfCombatSpeedDelay = 2f;
+    private const float HeroOutOfCombatSpeedRampDuration = 1f;
+    private static readonly Fix64 HeroOutOfCombatSpeedBuffPercent = Fix64.One;
+    private bool _heroOutOfCombatSpeedFirstApplyPending;
+    private bool _heroOutOfCombatSpeedInitialGraceActive;
 
     /// <summary>
     /// AI类型
@@ -38,6 +42,8 @@ public partial class SoldierEntity : MAEntity
     protected override void OnShow(object userData)
     {
         _isHidingOrShuttingDown = false;
+        _heroOutOfCombatSpeedFirstApplyPending = true;
+        _heroOutOfCombatSpeedInitialGraceActive = false;
 
         base.OnShow(userData);
         if (userData is EntityParams ep)
@@ -75,7 +81,7 @@ public partial class SoldierEntity : MAEntity
             soldierBrain.SetBirthPosition(transform.position);
         }
 
-        SyncHeroFullHealthSpeedBuff();
+        SyncHeroOutOfCombatSpeedBuff();
         RegisterToGroupMove(); // Side 已赋值，安全注册
         SubscribePhaseEvents();
     }
@@ -114,14 +120,14 @@ public partial class SoldierEntity : MAEntity
             }
         }
 
-        SyncHeroFullHealthSpeedBuff();
+        SyncHeroOutOfCombatSpeedBuff();
         OnPhaseChangedForDefendPhaseSpeed(args);
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
-        SyncHeroFullHealthSpeedBuff();
+        SyncHeroOutOfCombatSpeedBuff();
         TickDefendPhaseSpeedControl();
         TickGhostCollisionRuntime();
 
@@ -250,33 +256,62 @@ public partial class SoldierEntity : MAEntity
         transform.position = worldPosition;
     }
 
-    private void SyncHeroFullHealthSpeedBuff()
+    protected override void OnOutOfCombatStateRefreshed()
+    {
+        base.OnOutOfCombatStateRefreshed();
+        SyncHeroOutOfCombatSpeedBuff();
+    }
+
+    private void SyncHeroOutOfCombatSpeedBuff()
     {
         if (!IsHeroUnit() || BuffComp == null || CreaturePropertyManager == null)
             return;
 
-        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        bool isFullHealth = Alive && maxHealth > Fix64.Zero && HealthValue >= maxHealth;
-        bool hasBuff = BuffComp.HasBuff(HeroFullHealthSpeedBuffId);
+        if (!IsOutOfCombat)
+            _heroOutOfCombatSpeedInitialGraceActive = false;
 
-        if (isFullHealth)
+        bool isFirstApply = _heroOutOfCombatSpeedFirstApplyPending;
+        bool keepInitialGraceBuff = _heroOutOfCombatSpeedInitialGraceActive && IsOutOfCombat;
+        bool canEnableBuff = Alive
+                             && (isFirstApply
+                                 || keepInitialGraceBuff
+                                 || (IsOutOfCombat && OutOfCombatElapsedSeconds >= HeroOutOfCombatSpeedDelay));
+        bool hasBuff = BuffComp.HasBuff(HeroOutOfCombatSpeedBuffId);
+
+        if (canEnableBuff)
         {
+            _heroOutOfCombatSpeedFirstApplyPending = false;
+            if (isFirstApply)
+                _heroOutOfCombatSpeedInitialGraceActive = true;
+
             if (hasBuff)
                 return;
 
             BuffData buffData = BuffData.Create(
-                id: HeroFullHealthSpeedBuffId,
+                id: HeroOutOfCombatSpeedBuffId,
                 duration: float.MaxValue,
                 isForever: true,
                 maxStack: 1,
-                modules: new List<BuffCallback> { new PercentMoveSpeedBonusBuff(HeroFullHealthSpeedBuffPercent) });
+                modules: new List<BuffCallback>
+                {
+                    new RampedPercentMoveSpeedBonusBuff(
+                        HeroOutOfCombatSpeedBuffPercent,
+                        HeroOutOfCombatSpeedRampDuration,
+                        isFirstApply)
+                });
 
             BuffComp.AddBuff(buffData, this);
             return;
         }
 
-        if (hasBuff)
-            BuffComp.RemoveBuff(HeroFullHealthSpeedBuffId);
+        RemoveHeroOutOfCombatSpeedBuff();
+    }
+
+    private void RemoveHeroOutOfCombatSpeedBuff()
+    {
+        _heroOutOfCombatSpeedInitialGraceActive = false;
+        if (BuffComp != null && BuffComp.HasBuff(HeroOutOfCombatSpeedBuffId))
+            BuffComp.RemoveBuff(HeroOutOfCombatSpeedBuffId);
     }
 
     private void ConfigureTargetingModeForSpawn()

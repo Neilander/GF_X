@@ -159,6 +159,8 @@ public class CharacterTargetingComp : ITargetingComp
                 CurrentTarget = null;
                 currentTargetDist = float.PositiveInfinity;
                 currentTargetTaunt = -1;
+                if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
+                    ClearAggro();
             }
         }
 
@@ -233,7 +235,7 @@ public class CharacterTargetingComp : ITargetingComp
                     // 走正常索敌了，受击仇恨记忆作废（即使 nearest 就是 _lastAttacker 本人，也清掉，让后续切换走正常规则）
                     if (_lastAttacker != null) ClearAggro();
                 }
-                else if (EnableAggroFallback && IsLastAttackerStillValid())
+                else if (!useAttackRangeOnlyForThisUnit && EnableAggroFallback && IsLastAttackerStillValid())
                 {
                     // 视线外仇恨 fallback：scan 范围空，回去打打过自己的人
                     CurrentTarget = _lastAttacker;

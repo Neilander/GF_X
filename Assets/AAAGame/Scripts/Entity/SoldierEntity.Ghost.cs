@@ -31,7 +31,10 @@ public partial class SoldierEntity
         if (this.HasInvincibleBuff())
             return;
 
+        Fix64 before = HealthValue;
         base.TakeDamage(damage, modType, attacker);
+        if (HealthValue < before)
+            RemoveHeroOutOfCombatSpeedBuff();
     }
 
     protected override bool TryHandleZeroHealth(IEntityContext attacker)

@@ -4,6 +4,7 @@ using System;
 /// </summary>
 public enum WeaponType
 {
+    None,
     Melee,
     Projectile,
     InstantRanged,

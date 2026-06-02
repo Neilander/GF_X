@@ -297,6 +297,7 @@ public class MAEntity : CompCreature, IEntityContext
         float dt = realElapseSeconds;
         _combatStateClock += dt;
         RefreshOutOfCombatState();
+        OnOutOfCombatStateRefreshed();
 
         if (CanRun(_buffComp))
             _buffComp.UpdateBuff(dt);
@@ -315,6 +316,8 @@ public class MAEntity : CompCreature, IEntityContext
 
         if (CanRun(targetComp))
             targetComp.UpdateTargeting(dt);
+        RefreshOutOfCombatState();
+        OnOutOfCombatStateRefreshed();
 
         if (CanRun(moveComp))
             moveComp.Move(dt);
@@ -323,6 +326,7 @@ public class MAEntity : CompCreature, IEntityContext
             atkComp.Attack(dt);
 
         RefreshOutOfCombatState();
+        OnOutOfCombatStateRefreshed();
 
         if (Alive)
         {
@@ -432,6 +436,10 @@ public class MAEntity : CompCreature, IEntityContext
             ExitOutOfCombat();
         else
             EnterOutOfCombat();
+    }
+
+    protected virtual void OnOutOfCombatStateRefreshed()
+    {
     }
 
     private bool HasAttackTarget()

@@ -38,3 +38,76 @@ public sealed class PercentMoveSpeedBonusBuff : BuffCallback
         pm.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, false);
     }
 }
+
+public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback
+{
+    private readonly Fix64 m_TargetPercent;
+    private readonly float m_RampDuration;
+    private readonly bool m_StartFull;
+    private Fix64 m_CurrentPercent;
+    private float m_Elapsed;
+    private IPropertyModifier m_Modifier;
+    private ValueProperty m_MulBuffProperty;
+
+    public RampedPercentMoveSpeedBonusBuff(Fix64 targetPercent, float rampDuration, bool startFull = false)
+    {
+        m_TargetPercent = targetPercent;
+        m_RampDuration = rampDuration;
+        m_StartFull = startFull;
+    }
+
+    public override void OnAdd()
+    {
+        base.OnAdd();
+
+        var creature = hostEntity as GeneralCreature;
+        var propertyManager = creature?.CreaturePropertyManager;
+        if (propertyManager == null || m_TargetPercent == Fix64.Zero)
+            return;
+
+        m_CurrentPercent = m_StartFull ? m_TargetPercent : Fix64.Zero;
+        m_Elapsed = m_StartFull ? m_RampDuration : 0f;
+        string propertyId = PropertyHelper.ModName(
+            CreatureMainProperty.Speed.ToString(),
+            nameof(NormalComputeTp.Mul),
+            nameof(NormalBaseValueTp.Buff));
+        m_MulBuffProperty = propertyManager.propertyManager.GetValueProperty(propertyId);
+        m_Modifier = PropertyDirectAdditiveModifier.Create(() => m_CurrentPercent);
+        propertyManager.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, true);
+    }
+
+    public override void OnUpdate(float deltaTime)
+    {
+        base.OnUpdate(deltaTime);
+
+        if (m_Modifier == null)
+            return;
+
+        m_Elapsed += Mathf.Max(0f, deltaTime);
+        float t = m_RampDuration <= 0f ? 1f : Mathf.Clamp01(m_Elapsed / m_RampDuration);
+        SetCurrentPercent(m_TargetPercent * (Fix64)t);
+    }
+
+    public override void OnRemove()
+    {
+        base.OnRemove();
+
+        var creature = hostEntity as GeneralCreature;
+        var propertyManager = creature?.CreaturePropertyManager;
+        if (propertyManager == null || m_Modifier == null)
+            return;
+
+        propertyManager.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, false);
+        m_Modifier = null;
+        m_MulBuffProperty = null;
+    }
+
+    private void SetCurrentPercent(Fix64 value)
+    {
+        if (m_CurrentPercent == value)
+            return;
+
+        m_CurrentPercent = value;
+        m_MulBuffProperty?.MakeDirty();
+    }
+}
