@@ -8,7 +8,7 @@ public class EnemySpawner : MonoBehaviour
 {
     [Header("生成配置")]
     [Tooltip("单位类型")]
-    public UnitType unitType = UnitType.Unit_Coder;
+    public UnitType unitType = UnitType.Unit_Intern;
 
     [Tooltip("生成数量")]
     [Range(1, 100)]

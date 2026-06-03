@@ -141,7 +141,7 @@ public static class SoldierFactory
     {
         switch (index)
         {
-            case UnitType.Unit_Coder:
+            case UnitType.Unit_Intern:
                 buffList.Add(TimedDeathBuff.CreateTimedDeath(35f));
                 break;
 

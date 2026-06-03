@@ -27,6 +27,7 @@ public static class LevelSelectionService
 {
     private const int MinSelectableLevelId = 1;
     private const int MaxSelectableLevelId = 3;
+    public const string TestLevelIdentifier = "LvTest";
     private static bool s_ShouldShowStartupLevelSwitch = AppSettings.Instance == null || AppSettings.Instance.ShowStartupLevelSwitch;
     private static readonly List<Renderer> s_HiddenLoadingRenderers = new();
 
@@ -270,8 +271,8 @@ public static class LevelSelectionService
     private static bool IsSelectableLevelRow(LevelTable row)
     {
         return row != null
-               && row.Id >= MinSelectableLevelId
-               && row.Id <= MaxSelectableLevelId
+               && (row.Id >= MinSelectableLevelId && row.Id <= MaxSelectableLevelId
+                   || string.Equals(row.Identifier, TestLevelIdentifier, StringComparison.Ordinal))
                && !string.IsNullOrWhiteSpace(row.Identifier)
                && !string.IsNullOrWhiteSpace(row.PrefabPath);
     }

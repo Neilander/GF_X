@@ -1,72 +1,82 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
-/// 卡牌数据 ScriptableObject
+/// 军营卡牌模板。单位、等级和可选卡面图保存在资产里，其余显示与数值从单位表/来源建筑读取。
 /// </summary>
 [CreateAssetMenu(fileName = "CardData", menuName = "Game/Card Data", order = 1)]
 public class CardData : ScriptableObject
 {
-    [Header("卡牌基础信息")]
-    [Tooltip("卡牌ID，对应表里的ID")]
-    public string index = "card_001";
+    [Header("单位")]
+    [SerializeField] private UnitType m_SoldierIndex;
 
-    [Header("测试用数据")]
-    [Tooltip("卡牌名称")]
-    public string cardName = "测试卡牌";
+    [Tooltip("适用建筑等级（1/2/3）。CardSystemController 按 (soldierIndex, requiredLv) 匹配建筑。")]
+    [Range(1, 3)]
+    [SerializeField] private int m_RequiredLv = 1;
 
-    [Tooltip("卡牌背景图")]
-    public Sprite cardBackSprite;
+    [Header("可选表现")]
+    [SerializeField] private Sprite m_CardSprite;
 
-    [Tooltip("卡面立绘（占位图）")]
-    public Sprite cardSprite;
+    public UnitType SoldierIndex => m_SoldierIndex;
+    public int RequiredLv => m_RequiredLv;
+    public Sprite CardSprite => m_CardSprite;
 
-    [Tooltip("人口消耗")]
-    [Range(1, 10)]
-    public int populationCost = 2;
+    // 兼容旧调用点：这些值不再序列化维护。
+    public string index => $"{m_SoldierIndex}_Lv{m_RequiredLv}";
+    public string cardName => ResolveUnitDisplayName();
+    public Sprite cardBackSprite => null;
+    public Sprite cardSprite => m_CardSprite;
+    public int populationCost => ResolveUnitSupply();
+    public int soldierCount => 1;
+    public string soldierName => ResolveUnitDisplayName();
+    public UnitType soldierIndex => m_SoldierIndex;
+    public int requiredLv => m_RequiredLv;
+    public Color cardColor => Color.white;
+    public int dropWeight => 1;
 
-    [Tooltip("生成士兵数量")]
-    [Range(1, 20)]
-    public int soldierCount = 5;
+    // 旧版 CardUISystem 的兼容属性，当前 GF 卡牌流程不使用。
+    public GameObject soldierPrefab => null;
 
-    [Tooltip("生成士兵名字")]
-    public string soldierName = "步兵";
+    public void Configure(int unitTypeValue, int requiredLevel)
+    {
+        m_SoldierIndex = (UnitType)unitTypeValue;
+        m_RequiredLv = Mathf.Clamp(requiredLevel, 1, 3);
+    }
 
-    [Header("士兵生成")]
-    [Tooltip("士兵index")]
-    public UnitType soldierIndex;
-
-    [Tooltip("适用建筑等级（1/2/3...）。CardSystemController 按 (soldierIndex, requiredLv) 匹配建筑。")]
-    [Range(1, 10)]
-    public int requiredLv = 1;
-
-    [Header("卡牌颜色（占位用）")]
-    public Color cardColor = Color.white;
-
-    [Header("抽卡概率")]
-    [Tooltip("卡牌出现概率权重（数值越大越容易抽到）")]
-    [Range(1, 100)]
-    public int dropWeight = 10;
-
-    /// <summary>
-    /// 获取卡牌数据
-    /// 当前阶段返回测试数据，之后改成根据index读表
-    /// </summary>
     public CardData GetCardData()
     {
-        // TODO: 之后改成从 DataTable 读取
-        // var cardTable = GF.DataTable.GetDataTable<CardTable>();
-        // var cardRow = cardTable.GetDataRow(index);
-        // return ConvertToCardData(cardRow);
-
-        // 当前返回自身测试数据
         return this;
     }
 
-    /// <summary>
-    /// 获取卡牌显示信息
-    /// </summary>
     public string GetDisplayInfo()
     {
-        return $"{cardName}\n人口:{populationCost}\n士兵:{soldierCount}";
+        return $"{cardName}\n人口:{populationCost}";
+    }
+
+    private string ResolveUnitDisplayName()
+    {
+        CharacterDataDetail row = ResolveCharacterRow();
+        if (row == null || string.IsNullOrWhiteSpace(row.NameKey))
+            return m_SoldierIndex.ToString();
+
+        return LocalizationTextManager.GetLocalizedText(row.NameKey, false);
+    }
+
+    private int ResolveUnitSupply()
+    {
+        CharacterDataDetail row = ResolveCharacterRow();
+        return row != null ? Mathf.Max(0, row.Supply) : 0;
+    }
+
+    private CharacterDataDetail ResolveCharacterRow()
+    {
+        if (GF.DataTable == null)
+            return null;
+
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
+        if (table == null)
+            return null;
+
+        string characterKey = m_SoldierIndex.ToString();
+        return table.GetDataRow(r => r.CharacterKey == characterKey);
     }
 }

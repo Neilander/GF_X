@@ -1,27 +1,54 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
+using GameFramework.DataTable;
 
 /// <summary>
-/// 种族到单位类型的集中映射。
-/// 当前项目里没有现成表结构承载这层关系，先集中收口到这里，后续调整只改这一处。
+/// 从单位表读取种族到单位类型的映射。
 /// </summary>
 public class ArchetypeUnitTypeMapper
 {
-    private readonly Dictionary<Archetype, UnitType[]> m_UnitTypesByArchetype = new()
+    private readonly Dictionary<Archetype, HashSet<UnitType>> m_UnitTypesByArchetype = new();
+
+    public ArchetypeUnitTypeMapper()
     {
-        [Archetype.Coding] = new[] { UnitType.Unit_Intern, UnitType.Unit_Coder,UnitType.Unit_Scapegoat },
-        [Archetype.Sightseeing] = new[] {  UnitType.Unit_CanMaker, UnitType.Unit_Brat },
-        [Archetype.Butchery] = new[] { UnitType.Unit_BoneButcher, UnitType.Unit_ColdCarrier },
-        [Archetype.Delivery] = new[] { UnitType.Unit_Courier, UnitType.Unit_LateRider },
-        [Archetype.Firefighting] = new[] { UnitType.Unit_HydroGunner, UnitType.Unit_Firefighter },
-    };
+        BuildFromCurrentDataTables();
+    }
 
     public IReadOnlyCollection<UnitType> GetUnitTypes(Archetype archetype)
     {
         if (archetype == Archetype.None)
-            return System.Array.Empty<UnitType>();
+            return Array.Empty<UnitType>();
 
         return m_UnitTypesByArchetype.TryGetValue(archetype, out var unitTypes)
             ? unitTypes
-            : System.Array.Empty<UnitType>();
+            : Array.Empty<UnitType>();
+    }
+
+    private void BuildFromCurrentDataTables()
+    {
+        IDataTable<CharacterDataDetail> table = GF.DataTable?.GetDataTable<CharacterDataDetail>();
+        if (table == null)
+            return;
+
+        foreach (CharacterDataDetail row in table.GetAllDataRows())
+        {
+            if (row == null
+                || row.Archetype == Archetype.None
+                || string.IsNullOrWhiteSpace(row.CharacterKey))
+            {
+                continue;
+            }
+
+            if (!UnitTypeHelper.TryParseUnitType(row.CharacterKey, out UnitType unitType))
+                continue;
+
+            if (!m_UnitTypesByArchetype.TryGetValue(row.Archetype, out var unitTypes))
+            {
+                unitTypes = new HashSet<UnitType>();
+                m_UnitTypesByArchetype[row.Archetype] = unitTypes;
+            }
+
+            unitTypes.Add(unitType);
+        }
     }
 }

@@ -88,7 +88,7 @@ public class DirectAtkComp : IAtkComp
 
         if (ctx.WeaponComp?.Data != null)
         {
-            _weapons = new[] { ctx.WeaponComp.Data };
+            SetWeapons(new[] { ctx.WeaponComp.Data });
         }
         else
         {
@@ -106,12 +106,7 @@ public class DirectAtkComp : IAtkComp
                 throw new InvalidOperationException($"角色 {id} 缺少武器数据");
             }
 
-            PropertyManager ownerManager = (ctx as MAEntity)?.CreaturePropertyManager?.propertyManager;
-            _weapons = new Weapon[weaponDatas.Length];
-            for (int i = 0; i < weaponDatas.Length; i++)
-            {
-                _weapons[i] = weaponDatas[i].ToWeapon($"{ctx.CharacterKey}_Weapon{i + 1}", ownerManager);
-            }
+            SetWeapons(weaponDatas);
         }
 
         _activeWeaponIndex = 0;
@@ -131,6 +126,43 @@ public class DirectAtkComp : IAtkComp
         else
         {
         }
+    }
+
+    public void UpdateWeaponData(WeaponData weaponData)
+    {
+        if (weaponData == null)
+            return;
+
+        SetWeapons(new[] { weaponData });
+        _activeWeaponIndex = 0;
+        _weapon = _weapons[_activeWeaponIndex];
+
+        var maEntity = _ctx as MAEntity;
+        if (maEntity != null)
+        {
+            if (maEntity.weaponComp == null)
+                maEntity.SetWeaponComp(new WeaponComp(_weapon));
+            else
+                maEntity.weaponComp.SwapWeapon(_weapon);
+        }
+
+        WeaponHelper.LoadWeapon(GetWeaponSOPath(), this);
+        ShutDown();
+    }
+
+    private void SetWeapons(WeaponData[] weaponDatas)
+    {
+        PropertyManager ownerManager = (_ctx as MAEntity)?.CreaturePropertyManager?.propertyManager;
+        _weapons = new Weapon[weaponDatas.Length];
+        for (int i = 0; i < weaponDatas.Length; i++)
+        {
+            _weapons[i] = weaponDatas[i].ToWeapon($"{_ctx.CharacterKey}_Weapon{i + 1}", ownerManager);
+        }
+    }
+
+    private void SetWeapons(Weapon[] weapons)
+    {
+        _weapons = weapons;
     }
 
     public void SelectWeapon(int weaponIndex)

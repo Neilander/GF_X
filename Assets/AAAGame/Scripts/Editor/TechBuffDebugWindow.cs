@@ -14,7 +14,7 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public sealed class TechBuffDebugWindow : EditorWindow
 {
-    private UnitType m_SelectedUnitType = UnitType.Unit_Coder;
+    private UnitType m_SelectedUnitType = UnitType.Unit_Intern;
     private SideType m_SelectedSide = SideType.PlayerSide;
     private string m_BuildingInstanceId = "";
     private Vector2 m_Scroll;

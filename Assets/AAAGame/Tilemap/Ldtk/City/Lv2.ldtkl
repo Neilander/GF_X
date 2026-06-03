@@ -799,7 +799,7 @@
 			"layerDefUid": 3,
 			"pxOffsetX": 0,
 			"pxOffsetY": 0,
-			"visible": true,
+			"visible": false,
 			"optionalRules": [],
 			"intGridCsv": [
 				1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
@@ -10816,5 +10816,5 @@
 			"entityInstances": []
 		}
 	],
-	"__neighbours": [ { "levelIid": "8c774fa2-21a0-11f1-9c16-0b75036ff1ed", "dir": "e" }, { "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "w" } ]
+	"__neighbours": [ { "levelIid": "8c774fa2-21a0-11f1-9c16-0b75036ff1ed", "dir": "e" }, { "levelIid": "ef816340-48b0-11f1-bab9-837fb0260b2c", "dir": "n" }, { "levelIid": "3b31da10-48b0-11f1-9e84-db94604cbb12", "dir": "w" } ]
 }

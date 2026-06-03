@@ -125,9 +125,11 @@ public partial class LevelSwitchUIForm : UIFormBase
         EnsureButtonTargetGraphic(varAnjian);
         EnsureButtonTargetGraphic(varAnjian2);
         EnsureButtonTargetGraphic(varAnjian3);
+        EnsureButtonTargetGraphic(varTestlv);
         BindButton(varAnjian, OnLevel1Clicked);
         BindButton(varAnjian2, OnLevel2Clicked);
         BindButton(varAnjian3, OnLevel3Clicked);
+        BindButton(varTestlv, OnTestLevelClicked);
     }
 
     private void UnbindButtons()
@@ -135,6 +137,7 @@ public partial class LevelSwitchUIForm : UIFormBase
         UnbindButton(varAnjian, OnLevel1Clicked);
         UnbindButton(varAnjian2, OnLevel2Clicked);
         UnbindButton(varAnjian3, OnLevel3Clicked);
+        UnbindButton(varTestlv, OnTestLevelClicked);
     }
 
     private static void BindButton(Button button, UnityEngine.Events.UnityAction action)
@@ -173,7 +176,17 @@ public partial class LevelSwitchUIForm : UIFormBase
         TryLoadLevel(3);
     }
 
+    private void OnTestLevelClicked()
+    {
+        TryLoadLevel(LevelSelectionService.TestLevelIdentifier);
+    }
+
     private void TryLoadLevel(int levelNumber)
+    {
+        TryLoadLevel($"Lv_{levelNumber}");
+    }
+
+    private void TryLoadLevel(string levelIdentifier)
     {
         if (m_IsLoading)
         {
@@ -188,8 +201,8 @@ public partial class LevelSwitchUIForm : UIFormBase
         SetProgress(0f);
 
         bool enterStarted = m_IsStartup
-            ? StartupLevelSelectProcedure.TryEnterLevelByNumber(levelNumber, out string errorMessage)
-            : LevelSelectionService.TryEnterLevelInPlaceByNumber(levelNumber, out errorMessage);
+            ? StartupLevelSelectProcedure.TryEnterLevel(levelIdentifier, out string errorMessage)
+            : LevelSelectionService.TryEnterLevelInPlace(levelIdentifier, out errorMessage);
 
         if (!enterStarted)
         {
@@ -197,7 +210,7 @@ public partial class LevelSwitchUIForm : UIFormBase
             Interactable = true;
             SetButtonsInteractable(true);
             SetProgressVisible(false);
-            Log.Warning("[LevelSwitchUIForm] Failed to load level {0}: {1}", levelNumber, errorMessage);
+            Log.Warning("[LevelSwitchUIForm] Failed to load level {0}: {1}", levelIdentifier, errorMessage);
         }
     }
 
@@ -245,6 +258,7 @@ public partial class LevelSwitchUIForm : UIFormBase
         SetButtonInteractable(varAnjian, interactable);
         SetButtonInteractable(varAnjian2, interactable);
         SetButtonInteractable(varAnjian3, interactable);
+        SetButtonInteractable(varTestlv, interactable);
     }
 
     private static void SetButtonInteractable(Button button, bool interactable)

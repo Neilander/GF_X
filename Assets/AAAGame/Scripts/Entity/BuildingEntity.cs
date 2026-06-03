@@ -44,7 +44,7 @@ public partial class BuildingEntity : MAEntity
     public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff;
     public bool HasPermanentNoAttackCapability { get; private set; }
 
-    private BuildingAtkComp _buildingAtkComp;
+    private DirectAtkComp _directAtkComp;
     private bool _isDisabled;
     private bool _lv0InvincibleByBuff;
     private bool _phaseProtectionByBuff;
@@ -100,11 +100,6 @@ public partial class BuildingEntity : MAEntity
 
         // 拿到 extra 属性引用（升级场景同 BuildingInstanceId 共享同一对象，extra 数据自然延续）
         _extraProps = GameEntry.GetComponent<GlobalBuffManager>()?.GetOrCreateExtraProps(BuildingInstanceId);
-
-        // 初始化生产建筑的动态产出机制
-        Debug.Log($"[BuildingEntity] 准备调用InitializeDynamicProductionMechanism，buildingData={buildingData?.Identifier}");
-        InitializeDynamicProductionMechanism();
-        Debug.Log($"[BuildingEntity] InitializeDynamicProductionMechanism调用完成");
 
         if (HasUpgrade)
         {
@@ -261,9 +256,11 @@ public partial class BuildingEntity : MAEntity
         SetTargetingComp(targetingComp);
         targetingComp.Init(this);
 
-        _buildingAtkComp = new BuildingAtkComp(CreatePlaceholderWeaponData());
-        SetAtkComp(_buildingAtkComp);
-        _buildingAtkComp.Init(this);
+        SetWeaponComp(new WeaponComp(CreateBuildingWeaponData().ToWeapon($"{CharacterKey}_Weapon1", CreaturePropertyManager?.propertyManager)));
+
+        _directAtkComp = new DirectAtkComp();
+        SetAtkComp(_directAtkComp);
+        _directAtkComp.Init(this);
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -594,33 +591,12 @@ public partial class BuildingEntity : MAEntity
 
     private void ConfigureCombatByBuildingData()
     {
-        if (_buildingAtkComp == null)
+        if (_directAtkComp == null)
             return;
 
-        WeaponData weaponData = null;
-        if (!HasPermanentNoAttackCapability && buildingData != null && buildingData.Weapon != null)
-        {
-            weaponData = buildingData.Weapon;
-        }
-        else
-        {
-            weaponData = new WeaponData(
-                WeaponType.Melee,
-                Fix64.Zero,
-                PlaceholderAttackInterval,
-                PlaceholderAttackRange,
-                Fix64.Zero,
-                PlaceholderWindUp,
-                PlaceholderWindDown,
-                Fix64.Zero,
-                Fix64.Zero,
-                Fix64.Zero,
-                Fix64.Zero,
-                Fix64.Zero,
-                new Fix64[0]);
-        }
+        WeaponData weaponData = CreateBuildingWeaponData();
 
-        _buildingAtkComp.UpdateWeaponData(weaponData);
+        _directAtkComp.UpdateWeaponData(weaponData);
 
         if (targetComp is CharacterTargetingComp targetingComp)
         {
@@ -701,6 +677,14 @@ public partial class BuildingEntity : MAEntity
             Fix64.Zero,
             Fix64.Zero,
             new Fix64[0]);
+    }
+
+    private WeaponData CreateBuildingWeaponData()
+    {
+        if (buildingData != null && buildingData.Weapon != null && buildingData.Weapon.Atk > Fix64.Zero)
+            return buildingData.Weapon;
+
+        return CreatePlaceholderWeaponData();
     }
 
     private void InitializeAttackCapabilityFlags()
@@ -955,130 +939,6 @@ public partial class BuildingEntity : MAEntity
             return 0;
 
         return occupied >= int.MaxValue ? int.MaxValue : (int)occupied;
-    }
-
-    /// <summary>
-    /// 初始化生产建筑的动态产出机制
-    /// </summary>
-    private void InitializeDynamicProductionMechanism()
-    {
-        Debug.Log($"[BuildingEntity] InitializeDynamicProductionMechanism开始执行");
-
-        if (buildingData == null)
-        {
-            Debug.Log($"[BuildingEntity] 初始化失败: buildingData为null");
-            return;
-        }
-
-        if (buildingData.Type != BuilType.Prod)
-        {
-            Debug.Log($"[BuildingEntity] 初始化失败: {buildingData.Identifier}不是生产建筑 (Type={buildingData.Type}, 期望={BuilType.Prod})");
-            return;
-        }
-
-        Debug.Log($"[BuildingEntity] 初始化生产建筑动态产出机制: {buildingData.Identifier}, Arche={buildingData.Arche}");
-
-        // 根据建筑类型应用对应的动态产出机制
-        switch (buildingData.Arche)
-        {
-            case Archetype.Delivery:
-                if (buildingData.Identifier.Contains("ParcelLocker"))
-                {
-                    Debug.Log($"[BuildingEntity] 检测到快递柜，准备应用动态产出Buff");
-                    ApplyDynamicProductionBuff<TechBuilParcelLockerDynamicEffectSO>();
-                }
-                else
-                {
-                    Debug.Log($"[BuildingEntity] Archetype.Delivery但Identifier不包含ParcelLocker: {buildingData.Identifier}");
-                }
-                break;
-            case Archetype.Sightseeing:
-                if (buildingData.Identifier.Contains("SouvenirStand"))
-                {
-                    ApplyDynamicProductionBuff<TechBuilSouvenirStandDynamicEffectSO>();
-                }
-                break;
-            case Archetype.Butchery:
-                if (buildingData.Identifier.Contains("MeatStall"))
-                {
-                    ApplyDynamicProductionBuff<TechBuilMeatStallDynamicEffectSO>();
-                }
-                break;
-            case Archetype.Coding:
-                if (buildingData.Identifier.Contains("MiningRig"))
-                {
-                    ApplyDynamicProductionBuff<TechBuilMiningRigDynamicEffectSO>();
-                }
-                break;
-        }
-    }
-
-    /// <summary>
-    /// 应用动态产出Buff
-    /// </summary>
-    private void ApplyDynamicProductionBuff<T>() where T : TechEffectSO, new()
-    {
-        try
-        {
-            Debug.Log($"[BuildingEntity] 开始应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
-
-            var techEffect = new T();
-            var techId = $"dynamic_production_{buildingData.Identifier}";
-            Debug.Log($"[BuildingEntity] 创建TechEffect和TechData: techId={techId}");
-
-            var techData = new TechData(
-                identifier: techId,
-                skillID: "",
-                nameKey: $"DynamicProduction_{buildingData.Identifier}",
-                descKey: $"Dynamic production for {buildingData.Identifier}",
-                cost: 0,
-                uniqueValues: new Fix64[0],
-                scopeType: TechScopeType.SelfBuil,
-                unitScope: new string[0],
-                tagScope: new UnitTag[0],
-                archScope: new Archetype[0],
-                spritePath: "",
-                isStackable: true
-            );
-
-            Debug.Log($"[BuildingEntity] 调用CreateBuildingScopedBuff...");
-            var buffData = techEffect.CreateBuildingScopedBuff(techData, techId);
-
-            if (buffData != null)
-            {
-                Debug.Log($"[BuildingEntity] BuffData创建成功，准备注册到GlobalBuffManager");
-                var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
-                if (globalBuffManager != null)
-                {
-                    globalBuffManager.RegisterBuildingBuff(BuildingInstanceId, OwnerFactionID, techId, techEffect, techData);
-                    Debug.Log($"[BuildingEntity] 成功应用动态产出Buff: {buildingData.Identifier} -> {typeof(T).Name}");
-
-                    // 立即应用Buff效果到当前建筑实体
-                    if (BuffComp != null)
-                    {
-                        BuffComp.AddBuff(buffData, this);
-                        Debug.Log($"[BuildingEntity] 立即应用Buff到当前建筑实体");
-                    }
-                    else
-                    {
-                        Debug.LogError($"[BuildingEntity] BuffComp为null，无法应用Buff");
-                    }
-                }
-                else
-                {
-                    Debug.LogError($"[BuildingEntity] GlobalBuffManager为null");
-                }
-            }
-            else
-            {
-                Debug.LogError($"[BuildingEntity] BuffData创建失败");
-            }
-        }
-        catch (System.Exception ex)
-        {
-            Debug.LogError($"[BuildingEntity] 应用动态产出Buff失败: {buildingData.Identifier} -> {typeof(T).Name}: {ex.Message}");
-            Debug.LogError($"[BuildingEntity] 异常堆栈: {ex.StackTrace}");
-        }
     }
 
     public void SetArmyForceBase(int value)

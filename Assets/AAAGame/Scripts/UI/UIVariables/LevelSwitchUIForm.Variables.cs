@@ -13,4 +13,5 @@ public partial class LevelSwitchUIForm
 	[SerializeField] private Button varAnjian2 = null;
 	[SerializeField] private Button varAnjian3 = null;
 	[SerializeField] private GameObject varProgressGO = null;
+	[SerializeField] private Button varTestlv = null;
 }

@@ -74,6 +74,15 @@ public class CharacterDataDetail : DataRowBase
         }
 
         /// <summary>
+        /// 所属种族
+        /// </summary>
+        public Archetype Archetype
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 单位标签
         /// </summary>
         public UnitTag[] UnitTags
@@ -568,6 +577,7 @@ public class CharacterDataDetail : DataRowBase
             PrefabPath = columnStrings[index++];
             NameKey = columnStrings[index++];
             DescKey = columnStrings[index++];
+            Archetype = DataTableExtension.ParseEnum<Archetype>(columnStrings[index++]);
             UnitTags = DataTableExtension.ParseArray<UnitTag>(columnStrings[index++]);
             Supply = DataTableExtension.ParseInt32(columnStrings[index++]);
             Size = DataTableExtension.ParseEnum<UnitSize>(columnStrings[index++]);
@@ -637,6 +647,7 @@ public class CharacterDataDetail : DataRowBase
                     PrefabPath = binaryReader.ReadString();
                     NameKey = binaryReader.ReadString();
                     DescKey = binaryReader.ReadString();
+                    Archetype = binaryReader.ReadEnum<Archetype>();
                     UnitTags = binaryReader.ReadArray<UnitTag>();
                     Supply = binaryReader.Read7BitEncodedInt32();
                     Size = binaryReader.ReadEnum<UnitSize>();

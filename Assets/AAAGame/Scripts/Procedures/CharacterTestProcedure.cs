@@ -66,7 +66,7 @@ public class CharacterTestProcedure : ProcedureBase
         // --- 玩家 ---
         MAEntityFactory.ShowCharacter(
             prefabName: "gujia",
-            characterKey: "Unit_Coder",
+            characterKey: "Unit_Intern",
             position: playerSpawn,
             side: SideType.PlayerSide,
             brainType: BrainType.Player,
@@ -78,7 +78,7 @@ public class CharacterTestProcedure : ProcedureBase
             Vector3 spawnPos = new Vector3(1f + (i * friendlySpacing), 1f, 0f);
             MAEntityFactory.ShowSoldier(
                 prefabName: "gujia",
-                characterKey: "Unit_Coder",
+                characterKey: "Unit_Intern",
                 position: spawnPos,
                 side: SideType.PlayerSide,
                 brainType: BrainType.SoldierAI,

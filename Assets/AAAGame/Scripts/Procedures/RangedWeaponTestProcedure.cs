@@ -71,7 +71,7 @@ public class RangedWeaponTestProcedure : ProcedureBase
         // 创建玩家侧的远程单位（使用ranged_test来加载远程武器）
         MAEntityFactory.ShowSoldier(
             prefabName: "gujia",
-            characterKey: "Unit_Coder",
+            characterKey: "Unit_Intern",
             position: new Vector3(0, 1, -10),
             side: SideType.PlayerSide,
             brainType: BrainType.Player,
@@ -83,7 +83,7 @@ public class RangedWeaponTestProcedure : ProcedureBase
             Vector3 spawnPos = new Vector3(-4f + (i * 3f), 1f, -8f);
             MAEntityFactory.ShowSoldier(
                 prefabName: "gujia",
-                characterKey: "Unit_Coder",
+                characterKey: "Unit_Intern",
                 position: spawnPos,
                 side: SideType.PlayerSide,
                 brainType: BrainType.SoldierAI,

@@ -17,8 +17,6 @@ MonoBehaviour:
     weaponSOPath: 
   - characterKey: Unit_Intern
     weaponSOPath: 
-  - characterKey: Unit_Coder
-    weaponSOPath: 
   - characterKey: Unit_CanMaker
     weaponSOPath: Assets/AAAGame/SOs/Weapon/CanMaker.asset
   - characterKey: Unit_Brat
@@ -36,4 +34,26 @@ MonoBehaviour:
   - characterKey: Unit_Firefighter
     weaponSOPath: 
   - characterKey: Unit_Hero
+    weaponSOPath: 
+  - characterKey: Unit_HiredBodyguard
+    weaponSOPath: 
+  - characterKey: Unit_GateGuard
+    weaponSOPath: 
+  - characterKey: Unit_RiotGuard
+    weaponSOPath: 
+  - characterKey: Unit_LongbowHunter
+    weaponSOPath: 
+  - characterKey: Unit_Poacher
+    weaponSOPath: 
+  - characterKey: Unit_Gardener
+    weaponSOPath: 
+  - characterKey: Unit_Harvester
+    weaponSOPath: 
+  - characterKey: Unit_Surgeon
+    weaponSOPath: 
+  - characterKey: Unit_Nurse
+    weaponSOPath: 
+  - characterKey: Unit_Sprinter
+    weaponSOPath: 
+  - characterKey: Unit_JavelinThrower
     weaponSOPath: 
