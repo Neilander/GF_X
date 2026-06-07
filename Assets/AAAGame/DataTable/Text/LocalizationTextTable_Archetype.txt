@@ -7,3 +7,8 @@
 	3	物流	Archetype_Delivery	Archetype.Delivery
 	4	屠宰	Archetype_Butchery	Archetype.Butchery
 	5	消防	Archetype_Firefighting	Archetype.Firefighting
+	6	安保	Archetype_Security	Archetype.Security
+	7	猎人	Archetype_Hunting	Archetype.Hunting
+	8	园艺	Archetype_Gardening	Archetype.Gardening
+	9	医疗	Archetype_Medical	Archetype.Medical
+	10	体育	Archetype_Sports	Archetype.Sports
