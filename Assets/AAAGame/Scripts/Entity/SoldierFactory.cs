@@ -10,6 +10,7 @@ using AAAGame.Scripts.BuffSystem;
 /// </summary>
 public static class SoldierFactory
 {
+    private const float NurseAmmoDepletedDeathDelaySeconds = 0.6f;
     private static readonly HashSet<string> LoggedPrefabSourceCharacterKeys = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -134,6 +135,29 @@ public static class SoldierFactory
         return row.UniqueValues[0];
     }
 
+    private static Fix64[] GetUniqueValues(UnitType unitType, int requiredCount)
+    {
+        string characterKey = unitType.ToString();
+        var row = GetCharacterDataRow(characterKey);
+        if (row.UniqueValues == null || row.UniqueValues.Length < requiredCount)
+            throw new InvalidOperationException($"SoldierFactory.AddInitialBuffs failed: CharacterDataDetail.UniqueValues count is less than {requiredCount}. CharacterKey={characterKey}.");
+
+        return row.UniqueValues;
+    }
+
+    private static BuffData CreateInitialBuff(string id, bool isForever, float duration, params BuffCallback[] modules)
+    {
+        if (modules == null || modules.Length == 0)
+            throw new InvalidOperationException($"SoldierFactory.CreateInitialBuff failed: modules is empty. BuffId={id}.");
+
+        return BuffData.Create(
+            id: id,
+            duration: duration,
+            isForever: isForever,
+            maxStack: 1,
+            modules: new List<BuffCallback>(modules));
+    }
+
     /// <summary>
     /// Add initial buffs to list.
     /// </summary>
@@ -151,6 +175,96 @@ public static class SoldierFactory
 
             case UnitType.Unit_Scapegoat:
                 buffList.Add(TauntBuffCallback.CreateTaunt(1));
+                break;
+
+            case UnitType.Unit_ColdCarrier:
+            {
+                Fix64[] values = GetUniqueValues(index, 2);
+                buffList.Add(CreateInitialBuff(
+                    "unit_cold_carrier_excess_damage_reduction",
+                    true,
+                    float.MaxValue,
+                    new ExcessDamageReductionBuff(values[0], values[1])));
+                break;
+            }
+
+            case UnitType.Unit_RiotGuard:
+                buffList.Add(TauntBuffCallback.CreateTaunt((int)GetFirstUniqueValue(index)));
+                break;
+
+            case UnitType.Unit_Poacher:
+                buffList.Add(CreateInitialBuff(
+                    "unit_poacher_first_hit_critical",
+                    true,
+                    float.MaxValue,
+                    new FirstHitPerTargetCriticalBuff()));
+                break;
+
+            case UnitType.Unit_Gardener:
+                buffList.Add(CreateInitialBuff(
+                    "unit_gardener_high_health_critical",
+                    true,
+                    float.MaxValue,
+                    new HighHealthTargetCriticalBuff(GetFirstUniqueValue(index))));
+                break;
+
+            case UnitType.Unit_Surgeon:
+                buffList.Add(TimedDeathBuff.CreateTimedDeath((float)GetFirstUniqueValue(index)));
+                break;
+
+            case UnitType.Unit_Nurse:
+                buffList.Add(CreateInitialBuff(
+                    "unit_nurse_ammo_depleted_death",
+                    true,
+                    float.MaxValue,
+                    new AmmoDepletedDeathBuff(NurseAmmoDepletedDeathDelaySeconds)));
+                break;
+
+            case UnitType.Unit_Brat:
+                buffList.Add(CreateInitialBuff(
+                    "unit_brat_nearby_enemy_attack_lock",
+                    true,
+                    float.MaxValue,
+                    new NearbyEnemyAttackLockBuff(GetFirstUniqueValue(index))));
+                break;
+
+            case UnitType.Unit_LateRider:
+            {
+                Fix64[] values = GetUniqueValues(index, 5);
+                buffList.Add(CreateInitialBuff(
+                    "unit_late_rider_charge",
+                    true,
+                    float.MaxValue,
+                    new LateRiderChargeBuff(
+                        values[0],
+                        values[1],
+                        values[2],
+                        values[3],
+                        (float)values[4])));
+                break;
+            }
+
+            case UnitType.Unit_Sprinter:
+            {
+                Fix64[] values = GetUniqueValues(index, 5);
+                buffList.Add(CreateInitialBuff(
+                    "unit_sprinter_deploy_boost",
+                    false,
+                    (float)values[0],
+                    new PercentAttackBonusBuff(values[1]),
+                    new AttackSpeedBonusBuff(values[2]),
+                    new RevertibleMoveSpeedBonusBuff(values[3]),
+                    new PercentDamageReductionBuff(values[4])));
+                break;
+            }
+
+            case UnitType.Unit_JavelinThrower:
+                buffList.Add(CreateInitialBuff(
+                    "unit_javelin_thrower_critical_and_drain",
+                    true,
+                    float.MaxValue,
+                    new AlwaysCriticalDamageBuff(),
+                    new HealthDrainOverTimeBuff(GetFirstUniqueValue(index))));
                 break;
         }
     }

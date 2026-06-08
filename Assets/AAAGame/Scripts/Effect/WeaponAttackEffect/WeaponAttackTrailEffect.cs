@@ -99,6 +99,22 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         effect.Play(duration);
     }
 
+    public static void Stop(IEntityContext context, bool clearTrail = false)
+    {
+        if (context is not Component component)
+        {
+            return;
+        }
+
+        var effect = ResolveEffect(component);
+        if (effect == null)
+        {
+            return;
+        }
+
+        effect.StopTrail(clearTrail);
+    }
+
     private static WeaponAttackTrailEffect ResolveEffect(Component owner)
     {
         var effects = owner.GetComponentsInChildren<WeaponAttackTrailEffect>(true);

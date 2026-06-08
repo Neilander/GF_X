@@ -141,8 +141,8 @@ public class Projectile : EntityBase
 
         bool shouldDealDamage = false;
 
-        // 检查目标是否还活着
-        if (_target != null && !_target.IsDestroyed() && _target.Alive)
+        // 检查目标是否仍然符合当前武器命中条件
+        if (_weaponData != null && WeaponTargetRules.IsValidTargetForWeapon(_attacker, _target, _weaponData.Type))
         {
             shouldDealDamage = true;
             //Debug.LogError("该造成伤害的");
@@ -153,8 +153,19 @@ public class Projectile : EntityBase
             // 添加空检查，防止_weaponData为null
             if (_weaponData != null)
             {
-                var damage = new Damage(_attacker as ITargetable, _weaponData.Damage, HealthModifyType.reduce);
-                DamageHelper.DoDamage(_target as ITargetable, damage, _attacker);
+                if (WeaponTargetRules.IsHealingWeapon(_weaponData.Type))
+                {
+                    HealingWeaponEffect.Execute(_attacker, _target, _weaponData);
+                }
+                else if (_weaponData.SplashRadius > Fix64.Zero)
+                {
+                    AreaWeaponDamage.DealSplash(_attacker, _target, _weaponData);
+                }
+                else
+                {
+                    var damage = new Damage(_attacker as ITargetable, _weaponData.Damage, HealthModifyType.reduce);
+                    DamageHelper.DoDamage(_target as ITargetable, damage, _attacker);
+                }
                 //Debug.LogError("已经造成伤害的");
 
                 // 远程子弹命中造成伤害的音效

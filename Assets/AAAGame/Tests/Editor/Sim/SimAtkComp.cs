@@ -47,10 +47,20 @@ public class SimAtkComp : IAtkComp
         }
     }
 
-    public void ShutDown()
+    public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced)
     {
+        if (IsAttacking && _ctx != null)
+        {
+            _ctx.ResumeComp(_ctx.MoveComp, this);
+        }
+
         IsAttacking = false;
         _attackTimer = 0f;
+    }
+
+    public void ShutDown()
+    {
+        InterruptAttack(AttackInterruptReason.CapabilityLocked);
     }
 
     public void Resume() { }

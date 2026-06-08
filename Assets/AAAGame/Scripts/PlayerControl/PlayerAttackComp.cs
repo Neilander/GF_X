@@ -94,6 +94,24 @@ public class PlayerAttackComp : IAtkComp
 
     public bool IsAttacking => _actionInfo != null;
 
-    public void ShutDown() { }
+    public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced)
+    {
+        if (_actionInfo != null && actions != null && actions.Length > 0 && currentIndex >= 0 && currentIndex < actions.Length)
+        {
+            actions[currentIndex].Interrupt(_actionInfo);
+        }
+
+        _actionInfo = null;
+        ifContinueAction = false;
+        currentIndex = 0;
+        WeaponAttackTrailEffect.Stop(_ctx, true);
+        _ctx?.ResumeComp(_ctx.MoveComp, this);
+    }
+
+    public void ShutDown()
+    {
+        InterruptAttack(AttackInterruptReason.CapabilityLocked);
+    }
+
     public void Resume() { }
 }

@@ -34,6 +34,45 @@ public static class EntityContextExtensions
         return true;
     }
 
+    public static bool IsHealTargetable(this IEntityContext ctx)
+    {
+        if (ctx.IsDestroyed() || !ctx.Alive)
+            return false;
+
+        if (ctx is SoldierEntity se && se.IsGhostState)
+            return false;
+
+        int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);
+        if (currentPhase != (int)GamePhase.Invade && currentPhase != (int)GamePhase.Defend)
+            return false;
+
+        return ctx.NeedsHealing();
+    }
+
+    public static bool NeedsHealing(this IEntityContext ctx)
+    {
+        if (!(ctx is GeneralCreature creature) || creature.CreaturePropertyManager == null)
+            return false;
+
+        Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        if (max <= Fix64.Zero)
+            return false;
+
+        return creature.HealthValue < max;
+    }
+
+    public static float HealthRatio(this IEntityContext ctx)
+    {
+        if (!(ctx is GeneralCreature creature) || creature.CreaturePropertyManager == null)
+            return 1f;
+
+        Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        if (max <= Fix64.Zero)
+            return 1f;
+
+        return Mathf.Clamp01((float)(creature.HealthValue / max));
+    }
+
     public static bool HasInvincibleBuff(this IEntityContext ctx)
     {
         return ctx?.BuffComp != null && ctx.BuffComp.HasBuff(InvincibleStateBuff.BuffId);

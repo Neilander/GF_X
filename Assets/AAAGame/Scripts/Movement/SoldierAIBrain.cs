@@ -315,9 +315,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private static bool IsValidAttackTarget(IEntityContext self, IEntityContext target)
     {
-        return target != null
-               && target.IsAttackTargetable()
-               && EntityCombatTeamHelper.IsEnemy(self, target);
+        return WeaponTargetRules.IsValidTargetForCurrentWeapon(self, target);
     }
 
     private static bool IsValidFollowLeader(IEntityContext self, IEntityContext leader)

@@ -463,3 +463,147 @@ public class CharacterTargetingComp : ITargetingComp
     }
 
 }
+
+public sealed class HealTargetingComp : ITargetingComp
+{
+    private const float ScanInterval = 0.2f;
+
+    private IEntityContext _ctx;
+    private IEntityContext _currentTarget;
+    private float _scanTimer;
+
+    public IEntityContext CurrentTarget
+    {
+        get => _currentTarget;
+        set => _currentTarget = value;
+    }
+
+    public IEntityContext FollowTarget { get; private set; }
+    public float AggroRange { get; set; } = 6f;
+    public float ForgetRange { get; set; } = 8f;
+    public float FollowSearchRange { get; set; } = 30f;
+    public float AlertRadius { get; set; } = 5f;
+
+    public void Init(IEntityContext ctx)
+    {
+        _ctx = ctx;
+        CurrentTarget = null;
+        FollowTarget = null;
+        _scanTimer = 0f;
+    }
+
+    public void UpdateTargeting(float deltaTime)
+    {
+        if (_ctx == null)
+            return;
+
+        MaintainCurrentTarget();
+        MaintainFollowTarget();
+
+        _scanTimer += deltaTime;
+        if (_scanTimer < ScanInterval)
+            return;
+
+        _scanTimer = 0f;
+
+        if (CurrentTarget == null)
+            CurrentTarget = FindLowestHealthRatioAlly();
+
+        if (FollowTarget == null)
+            TryAcquireFollowTarget();
+    }
+
+    private void MaintainCurrentTarget()
+    {
+        if (CurrentTarget == null)
+            return;
+
+        if (!WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, requireDamaged: true))
+            CurrentTarget = null;
+    }
+
+    private void MaintainFollowTarget()
+    {
+        if (FollowTarget == null)
+            return;
+
+        float dist = Vector3.Distance(_ctx.Position, FollowTarget.Position);
+        if (dist > FollowSearchRange || !FollowTarget.Alive)
+            FollowTarget = null;
+    }
+
+    private IEntityContext FindLowestHealthRatioAlly()
+    {
+        var all = EntityRegistry.AllEntities;
+        if (all == null)
+            throw new System.InvalidOperationException("HealTargetingComp.FindLowestHealthRatioAlly failed: EntityRegistry.AllEntities is null.");
+
+        float scanRange = Mathf.Max(AggroRange, GetEffectiveAttackRange());
+        IEntityContext best = null;
+        float bestHpRatio = 1f;
+        float bestDistance = float.PositiveInfinity;
+
+        for (int i = 0; i < all.Count; i++)
+        {
+            IEntityContext candidate = all[i];
+            if (candidate == null)
+                continue;
+            if (!WeaponTargetRules.IsValidHealTarget(_ctx, candidate, requireDamaged: true))
+                continue;
+
+            float distance = _ctx.DistanceToTargetSurface(candidate);
+            if (distance > scanRange)
+                continue;
+
+            float hpRatio = candidate.HealthRatio();
+            if (hpRatio < bestHpRatio || (Mathf.Approximately(hpRatio, bestHpRatio) && distance < bestDistance))
+            {
+                bestHpRatio = hpRatio;
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+
+        return best;
+    }
+
+    private void TryAcquireFollowTarget()
+    {
+        var player = EntityRegistry.Player;
+        if (player == null || !player.Alive || player.Side != _ctx.Side)
+            return;
+
+        float dist = Vector3.Distance(_ctx.Position, player.Position);
+        if (dist <= FollowSearchRange)
+            FollowTarget = player;
+    }
+
+    private float GetEffectiveAttackRange()
+    {
+        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
+        return (float)weaponRange;
+    }
+
+    public void NotifyDamageTaken(IEntityContext attacker)
+    {
+    }
+
+    public void NotifyAllyFoundEnemy(IEntityContext enemy)
+    {
+    }
+
+    public void ClearAggro()
+    {
+    }
+
+    public void ShutDown()
+    {
+        CurrentTarget = null;
+        FollowTarget = null;
+        _ctx = null;
+    }
+
+    public void Resume()
+    {
+    }
+}

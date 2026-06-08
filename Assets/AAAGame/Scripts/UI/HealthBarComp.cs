@@ -16,11 +16,16 @@ public class HealthBarComp : MonoBehaviour
     private const float BuildingMinBarWidth = 170f;
     private const float BuildingMaxBarWidth = 320f;
     private const float CameraBiasDistance = 0.35f;
+    private const float AmmoBarHeight = 5f;
+    private const float AmmoBarGap = 1.5f;
+    private static readonly Color AmmoFilledColor = new Color(1f, 0.28f, 0.08f, 0.95f);
+    private static readonly Color AmmoEmptyColor = new Color(0.35f, 0.35f, 0.35f, 0.85f);
     private static readonly Dictionary<int, HealthBarComp> ActiveBars = new Dictionary<int, HealthBarComp>();
 
     [SerializeField] private RectTransform fillRect;
     [SerializeField] private Image fillImage;
     [SerializeField] private Canvas ownerCanvas;
+    [SerializeField] private RectTransform ammoRoot;
 
     private int _entityId;
     private Transform _followTarget;
@@ -29,6 +34,7 @@ public class HealthBarComp : MonoBehaviour
     private bool _pendingDestroy;
     private bool _isFriendly;
     private bool _visibleByFog = true;
+    private readonly List<Image> _ammoSegments = new List<Image>();
 
     /// <summary>
     /// 由外部调用初始化。
@@ -125,6 +131,7 @@ public class HealthBarComp : MonoBehaviour
             ownerCanvas.enabled = true;
 
         if (_followTarget == null) return;
+        UpdateAmmoBar();
         Vector3 worldPos = _followTarget.position + _offset;
 
         // 始终面向主摄像机
@@ -252,6 +259,7 @@ public class HealthBarComp : MonoBehaviour
         comp.fillImage = fillImg;
         comp.ownerCanvas = canvas;
         comp._isFriendly = isFriendly;
+        comp.CreateAmmoBarIfNeeded(followTarget, barWidth);
         comp.Init(entityId, followTarget, curHp, maxHp, offset);
         ActiveBars[entityId] = comp;
 
@@ -353,6 +361,68 @@ public class HealthBarComp : MonoBehaviour
             return;
 
         fillImage.color = _isFriendly ? Color.green : Color.red;
+    }
+
+    private void CreateAmmoBarIfNeeded(Transform followTarget, float barWidth)
+    {
+        var entity = followTarget != null ? followTarget.GetComponent<MAEntity>() : null;
+        var weaponComp = entity != null ? entity.weaponComp : null;
+        if (weaponComp == null || !weaponComp.HasAmmunition)
+            return;
+
+        var rootGo = new GameObject("AmmoBar");
+        rootGo.transform.SetParent(transform, false);
+        ammoRoot = rootGo.AddComponent<RectTransform>();
+        ammoRoot.anchorMin = new Vector2(0f, 0f);
+        ammoRoot.anchorMax = new Vector2(1f, 0f);
+        ammoRoot.pivot = new Vector2(0.5f, 1f);
+        ammoRoot.offsetMin = new Vector2(0f, -AmmoBarHeight - 2f);
+        ammoRoot.offsetMax = new Vector2(0f, -2f);
+
+        int maxAmmo = weaponComp.MaxAmmo;
+        float gap = maxAmmo > 1 ? Mathf.Min(AmmoBarGap, (barWidth / maxAmmo) * 0.35f) : 0f;
+        float segmentWidth = Mathf.Max(0.5f, (barWidth - gap * (maxAmmo - 1)) / maxAmmo);
+        for (int i = 0; i < maxAmmo; i++)
+        {
+            var segmentGo = new GameObject($"Ammo_{i + 1}");
+            segmentGo.transform.SetParent(rootGo.transform, false);
+            var image = segmentGo.AddComponent<Image>();
+            image.color = AmmoFilledColor;
+            var segmentRt = segmentGo.GetComponent<RectTransform>();
+            segmentRt.anchorMin = new Vector2(0f, 0f);
+            segmentRt.anchorMax = new Vector2(0f, 1f);
+            segmentRt.pivot = new Vector2(0f, 0.5f);
+
+            float x = i * (segmentWidth + gap);
+            segmentRt.anchoredPosition = new Vector2(x, 0f);
+            segmentRt.sizeDelta = new Vector2(segmentWidth, AmmoBarHeight);
+            _ammoSegments.Add(image);
+        }
+
+        UpdateAmmoBar();
+    }
+
+    private void UpdateAmmoBar()
+    {
+        if (ammoRoot == null || _ammoSegments.Count == 0 || _followTarget == null)
+            return;
+
+        var entity = _followTarget.GetComponent<MAEntity>();
+        var weaponComp = entity != null ? entity.weaponComp : null;
+        if (weaponComp == null || !weaponComp.HasAmmunition)
+        {
+            ammoRoot.gameObject.SetActive(false);
+            return;
+        }
+
+        if (!ammoRoot.gameObject.activeSelf)
+            ammoRoot.gameObject.SetActive(true);
+
+        int currentAmmo = weaponComp.CurrentAmmo;
+        for (int i = 0; i < _ammoSegments.Count; i++)
+        {
+            _ammoSegments[i].color = i < currentAmmo ? AmmoFilledColor : AmmoEmptyColor;
+        }
     }
 
     private static bool ResolveIsFriendlyFromTarget(Transform followTarget, bool fallback)

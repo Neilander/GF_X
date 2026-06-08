@@ -1,5 +1,7 @@
 using UnityEngine;
 using System;
+using System.Collections.Generic;
+using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
 /// 直接攻击组件：选定目标后直接造成伤害，不使用攻击盒。
@@ -16,6 +18,8 @@ using System;
 /// </summary>
 public class DirectAtkComp : IAtkComp
 {
+    private static readonly List<BuffCallback> EmptyBuffModuleSnapshot = new List<BuffCallback>(0);
+
     public enum AtkState
     {
         Idle,
@@ -51,7 +55,11 @@ public class DirectAtkComp : IAtkComp
                 return "soldier_default";
 
             case WeaponType.Projectile:
+            case WeaponType.HealProjectile:
                 return "ranged_default";
+
+            case WeaponType.HealMelee:
+                return "soldier_default";
 
             default:
                 return "soldier_default";
@@ -204,6 +212,7 @@ public class DirectAtkComp : IAtkComp
                         _ctx.ResumeComp(_ctx.MoveComp, this);
                         _movementLockedByThisAttack = false;
                     }
+                    NotifyAttackCompleted(_lockedTarget);
                     EnterState(AtkState.Cooldown);
                 }
                 break;
@@ -288,10 +297,17 @@ public class DirectAtkComp : IAtkComp
         }
 
         var target = _ctx.TargetComp?.CurrentTarget;
-        if (!target.IsAttackTargetable())
+        if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(_ctx, target))
         {
             GameDebugSettings.Log(DebugCategory.Attack,
                 $"[{_ctx.CharacterKey}] TryStart: 无目标 targetComp={(_ctx.TargetComp != null ? "有" : "null")} target={target} alive={target?.Alive}");
+            return;
+        }
+
+        if (_ctx.WeaponComp != null && !_ctx.WeaponComp.HasAmmoToAttack)
+        {
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[{_ctx.CharacterKey}] TryStart: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
             return;
         }
 
@@ -316,6 +332,7 @@ public class DirectAtkComp : IAtkComp
             _ctx.LockComp(_ctx.MoveComp, this);
 
         EnterState(AtkState.WindUp);
+        NotifyAttackStarted(_lockedTarget);
 
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx.CharacterKey}] → WindUp 第{AttackCount}次攻击 目标={target.CharacterKey} dist={dist:F2} range={range:F2}");
@@ -323,7 +340,8 @@ public class DirectAtkComp : IAtkComp
 
     private void DealDamage()
     {
-        if (!_lockedTarget.IsAttackTargetable())
+        Weapon activeWeapon = GetActiveWeapon();
+        if (!WeaponTargetRules.IsValidTargetForWeapon(_ctx, _lockedTarget, activeWeapon.Type))
         {
             GameDebugSettings.Log(DebugCategory.Attack,
                 $"[{_ctx.CharacterKey}] DealDamage: 目标丢失或已死 target={_lockedTarget} alive={_lockedTarget?.Alive}");
@@ -331,29 +349,33 @@ public class DirectAtkComp : IAtkComp
         }
 
         Fix64 damage = GetCurrentDamage();
-        Fix64 splashRadius = GetCurrentSplashRadius();
+        WeaponData snapshot = CreateWeaponSnapshot(activeWeapon);
 
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx.CharacterKey}] DealDamage: 对 {_lockedTarget.CharacterKey} 造成 {damage} 伤害");
 
-        // 优先委托武器 SO 执行伤害
-        if (_weaponSO != null)
+        if (_ctx.WeaponComp != null && !_ctx.WeaponComp.TryConsumeAmmo(1))
         {
-            Weapon activeWeapon = GetActiveWeapon();
-            WeaponData snapshot = new WeaponData(
-                activeWeapon.Type,
-                activeWeapon.Atk,
-                activeWeapon.Interval,
-                activeWeapon.Range,
-                activeWeapon.ProjectileSpeed,
-                activeWeapon.WindUp,
-                activeWeapon.WindDown,
-                activeWeapon.SplashRadius,
-                activeWeapon.SplitAngle,
-                activeWeapon.SplitDist,
-                activeWeapon.ProjectileCount,
-                activeWeapon.AmmunitionCapacity,
-                Array.Empty<Fix64>());
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[{_ctx.CharacterKey}] DealDamage: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
+            return;
+        }
+
+        if (activeWeapon.Type == WeaponType.HealMelee)
+        {
+            HealingWeaponEffect.Execute(_ctx, _lockedTarget, snapshot);
+        }
+        else if (activeWeapon.Type == WeaponType.CleaveMelee || activeWeapon.Type == WeaponType.CleaveRanged)
+        {
+            AreaWeaponDamage.DealCleave(_ctx, _lockedTarget, snapshot);
+        }
+        else if (activeWeapon.Type == WeaponType.SelfAoE)
+        {
+            AreaWeaponDamage.DealSelfAoE(_ctx, _lockedTarget, snapshot);
+        }
+        // 优先委托武器 SO 执行伤害
+        else if (_weaponSO != null)
+        {
             _weaponSO.Execute(_ctx, _lockedTarget, snapshot);
         }
         else
@@ -363,21 +385,28 @@ public class DirectAtkComp : IAtkComp
             DamageHelper.DoDamage(_lockedTarget as ITargetable, dmg, _ctx);
         }
 
-        if (splashRadius > Fix64.Zero)
-        {
-            ApplySplashDamage(damage);
-        }
-
         // 普通攻击造成伤害的音效；远程武器在这里只是创建子弹（命中是子弹的事），跳过
         bool isRanged = _weaponSO is RangedWeaponSO;
         if (!isRanged && AudioManager.Instance != null)
             AudioManager.Instance.Play("basicAttack");
     }
 
-    private void ApplySplashDamage(Fix64 damage)
+    private static WeaponData CreateWeaponSnapshot(Weapon activeWeapon)
     {
-        // 溅射需要知道周围所有敌方单位，暂留接口
-        // 后续可通过 IEntityContext 暴露 "查询附近单位" 的方法
+        return new WeaponData(
+            activeWeapon.Type,
+            activeWeapon.Atk,
+            activeWeapon.Interval,
+            activeWeapon.Range,
+            activeWeapon.ProjectileSpeed,
+            activeWeapon.WindUp,
+            activeWeapon.WindDown,
+            activeWeapon.SplashRadius,
+            activeWeapon.SplitAngle,
+            activeWeapon.SplitDist,
+            activeWeapon.ProjectileCount,
+            activeWeapon.AmmunitionCapacity,
+            Array.Empty<Fix64>());
     }
 
     private void EnterState(AtkState newState)
@@ -393,29 +422,93 @@ public class DirectAtkComp : IAtkComp
             _animator.SetTrigger("Attack");
         }
 
-        if (newState == AtkState.WindUp && GetActiveWeapon().Type != WeaponType.Projectile)
+        if (newState == AtkState.WindUp && !WeaponTargetRules.IsProjectileLikeWeapon(GetActiveWeapon().Type))
         {
             float trailDuration = Mathf.Max(0.08f, (float)GetCurrentWindUp() + 0.08f);
             WeaponAttackTrailEffect.Play(_ctx, trailDuration);
         }
     }
 
-    public void ShutDown()
+    public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced)
     {
+        bool wasAttacking = IsAttacking;
+        IEntityContext interruptedTarget = _lockedTarget;
+
         if (IsAttacking && _ctx != null && _movementLockedByThisAttack)
         {
             _ctx.ResumeComp(_ctx.MoveComp, this);
         }
+
+        if (wasAttacking)
+            NotifyAttackInterrupted(reason, interruptedTarget);
+
+        WeaponAttackTrailEffect.Stop(_ctx, true);
+        ResetPendingAttackAnimationTrigger();
+
         _movementLockedByThisAttack = false;
         State = AtkState.Idle;
         _stateTimer = 0f;
         _lockedTarget = null;
+
+        GameDebugSettings.Log(DebugCategory.Attack,
+            $"[{_ctx?.CharacterKey}] InterruptAttack reason={reason}");
+    }
+
+    public void ShutDown()
+    {
+        InterruptAttack(AttackInterruptReason.CapabilityLocked);
     }
 
     private bool ShouldLockMoveDuringAttack()
     {
         // 玩家脑控下允许边移动边攻击。
         return !(_ctx?.Brain is AAAGame.Scripts.Entity.PlayerBrain);
+    }
+
+    private void NotifyAttackStarted(IEntityContext target)
+    {
+        foreach (BuffCallback module in GetBuffModuleSnapshot())
+            module.OnAttackStarted(target);
+    }
+
+    private void NotifyAttackCompleted(IEntityContext target)
+    {
+        foreach (BuffCallback module in GetBuffModuleSnapshot())
+            module.OnAttackCompleted(target);
+    }
+
+    private void NotifyAttackInterrupted(AttackInterruptReason reason, IEntityContext target)
+    {
+        foreach (BuffCallback module in GetBuffModuleSnapshot())
+            module.OnAttackInterrupted(reason, target);
+    }
+
+    private List<BuffCallback> GetBuffModuleSnapshot()
+    {
+        if (!(_ctx is MAEntity entity) || !(entity.BuffComp is CharacterBuffComp buffComp))
+            return EmptyBuffModuleSnapshot;
+
+        var result = new List<BuffCallback>();
+        foreach (BuffCallback module in buffComp.EnumerateAllModules())
+            result.Add(module);
+
+        return result;
+    }
+
+    private void ResetPendingAttackAnimationTrigger()
+    {
+        if (_animator == null)
+            return;
+
+        AnimatorControllerParameter[] parameters = _animator.parameters;
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].type == AnimatorControllerParameterType.Trigger && parameters[i].name == "Attack")
+            {
+                _animator.ResetTrigger("Attack");
+                return;
+            }
+        }
     }
 
     public void Resume() { }

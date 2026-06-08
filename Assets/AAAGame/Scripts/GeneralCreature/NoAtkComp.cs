@@ -12,6 +12,8 @@ public class NoAtkComp : IAtkComp
     }
 
     public bool IsAttacking => false;
+
+    public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced) { }
     
     public void ShutDown() { }
     public void Resume() { }

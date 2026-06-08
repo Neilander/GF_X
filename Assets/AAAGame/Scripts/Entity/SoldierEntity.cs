@@ -159,12 +159,13 @@ public partial class SoldierEntity : MAEntity
         string targetFacPath = "CharacterTargetingFactory";
 
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
-        FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
 
         // 直接创建 DirectAtkComp，不再走 Factory
         var atkComp = new DirectAtkComp();
         this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
+
+        FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
     }
 
 

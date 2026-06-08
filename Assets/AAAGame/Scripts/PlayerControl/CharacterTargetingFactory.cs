@@ -16,7 +16,10 @@ public class CharacterTargetingFactory : TargetingCompFactory
 
     public override ITargetingComp CreateTargetingComp(MAEntity gmo)
     {
-        var comp = new CharacterTargetingComp();
+        ITargetingComp comp = WeaponTargetRules.IsHealingWeapon(gmo?.weaponComp?.Data?.Type ?? WeaponType.None)
+            ? new HealTargetingComp()
+            : new CharacterTargetingComp();
+
         comp.Init(gmo);
 
         // 赋予初始面板值
