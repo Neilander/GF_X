@@ -25,6 +25,8 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
     private readonly List<string> m_AllBuildingIds = new();
     // 建筑 Identifier -> 它覆盖的 TechId 列表
     private readonly Dictionary<string, List<string>> m_BuildingToTechs = new(StringComparer.Ordinal);
+    // 已迁入 BuildingTechRuntimeEffectSO 的建筑科技不再走旧 TechEffectSO 绑定。
+    private readonly HashSet<string> m_RuntimeDrivenTechIds = new(StringComparer.Ordinal);
 
     // 当前用户勾选的建筑（最多 MaxSlotCount 个）
     private readonly List<string> m_SelectedBuildings = new();
@@ -53,6 +55,7 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
             m_TargetManager = (GlobalBuffManager)EditorGUILayout.ObjectField("GlobalBuffManager", m_TargetManager, typeof(GlobalBuffManager), true);
             m_BuildingTableAsset = (TextAsset)EditorGUILayout.ObjectField("BuildingTable Txt", m_BuildingTableAsset, typeof(TextAsset), false);
             m_SlotConfig = (TechTestSlotConfig)EditorGUILayout.ObjectField("TechTestSlotConfig", m_SlotConfig, typeof(TechTestSlotConfig), false);
+            EditorGUILayout.HelpBox("已迁入运行时规则表的建筑科技不应再在旧 TechEffectSO Binding 里新增或自动绑定。", MessageType.Info);
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -100,20 +103,26 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
     private void DrawStatusBoard()
     {
         var bindings = m_TargetManager.TechEffectBindings;
-        int tested = 0, untested = 0, unbound = 0;
+        int tested = 0, untested = 0, unbound = 0, runtimeDriven = 0;
         if (bindings != null)
         {
             for (int i = 0; i < bindings.Count; i++)
             {
                 var b = bindings[i];
                 if (b == null) continue;
+                if (IsRuntimeDrivenTechId(b.TechId))
+                {
+                    runtimeDriven++;
+                    continue;
+                }
+
                 if (b.Effect == null) unbound++;
                 else if (b.Tested) tested++;
                 else untested++;
             }
         }
 
-        string header = $"Tech 状态板  总览: ✅ {tested} / ⬜ {untested} / ❌ {unbound}  (共 {bindings?.Count ?? 0})";
+        string header = $"Tech 状态板  总览: R {runtimeDriven} / ✅ {tested} / ⬜ {untested} / ❌ {unbound}  (旧绑定共 {tested + untested + unbound})";
         m_StatusBoardFoldout = EditorGUILayout.Foldout(m_StatusBoardFoldout, header, true);
         if (!m_StatusBoardFoldout)
             return;
@@ -139,27 +148,35 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
     {
         using (new EditorGUILayout.HorizontalScope())
         {
-            string statusIcon = GetStatusIcon(binding);
+            bool runtimeDriven = IsRuntimeDrivenTechId(binding.TechId);
+            string statusIcon = runtimeDriven ? "R" : GetStatusIcon(binding);
             GUILayout.Label(statusIcon, GUILayout.Width(24f));
 
             EditorGUILayout.SelectableLabel(binding.TechId ?? string.Empty, GUILayout.Height(EditorGUIUtility.singleLineHeight), GUILayout.MinWidth(260f));
 
-            EditorGUI.BeginChangeCheck();
-            var effect = (TechEffectSO)EditorGUILayout.ObjectField(binding.Effect, typeof(TechEffectSO), false);
-            if (EditorGUI.EndChangeCheck())
+            if (runtimeDriven)
             {
-                Undo.RecordObject(m_TargetManager, "Change Tech Effect Binding");
-                binding.Effect = effect;
-                MarkManagerDirty();
+                GUILayout.Label("运行时规则表，旧绑定会被忽略", EditorStyles.miniLabel, GUILayout.MinWidth(220f));
             }
-
-            using (new EditorGUI.DisabledScope(binding.Effect == null))
+            else
             {
-                if (GUILayout.Button(binding.Tested ? "✅ 已测试" : "⬜ 未测试", GUILayout.Width(90f)))
+                EditorGUI.BeginChangeCheck();
+                var effect = (TechEffectSO)EditorGUILayout.ObjectField(binding.Effect, typeof(TechEffectSO), false);
+                if (EditorGUI.EndChangeCheck())
                 {
-                    Undo.RecordObject(m_TargetManager, "Toggle Tech Tested");
-                    binding.Tested = !binding.Tested;
+                    Undo.RecordObject(m_TargetManager, "Change Tech Effect Binding");
+                    binding.Effect = effect;
                     MarkManagerDirty();
+                }
+
+                using (new EditorGUI.DisabledScope(binding.Effect == null))
+                {
+                    if (GUILayout.Button(binding.Tested ? "✅ 已测试" : "⬜ 未测试", GUILayout.Width(90f)))
+                    {
+                        Undo.RecordObject(m_TargetManager, "Toggle Tech Tested");
+                        binding.Tested = !binding.Tested;
+                        MarkManagerDirty();
+                    }
                 }
             }
         }
@@ -279,10 +296,10 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     bindingByTech.TryGetValue(tid, out var b);
-                    GUILayout.Label(GetStatusIcon(b), GUILayout.Width(24f));
+                    GUILayout.Label(IsRuntimeDrivenTechId(tid) ? "R" : GetStatusIcon(b), GUILayout.Width(24f));
                     EditorGUILayout.SelectableLabel(tid, GUILayout.Height(EditorGUIUtility.singleLineHeight));
 
-                    using (new EditorGUI.DisabledScope(b == null || b.Effect == null))
+                    using (new EditorGUI.DisabledScope(IsRuntimeDrivenTechId(tid) || b == null || b.Effect == null))
                     {
                         if (GUILayout.Button(b != null && b.Tested ? "✅" : "⬜", GUILayout.Width(32f)))
                         {
@@ -303,6 +320,7 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
 
         var bindings = m_TargetManager.TechEffectBindings;
         int tested = 0, untested = 0, unbound = 0;
+        int runtimeDriven = 0;
         if (bindings != null)
         {
             var set = new HashSet<string>(list, StringComparer.Ordinal);
@@ -315,8 +333,13 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
                 else untested++;
             }
         }
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (IsRuntimeDrivenTechId(list[i]))
+                runtimeDriven++;
+        }
         int total = list.Count;
-        return $"{total} tech (✅ {tested} / ⬜ {untested} / ❌ {unbound})";
+        return $"{total} tech (R {runtimeDriven} / ✅ {tested} / ⬜ {untested} / ❌ {unbound})";
     }
 
     private void ApplyToSlotConfig()
@@ -371,6 +394,7 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
         m_TechToBuilding.Clear();
         m_AllBuildingIds.Clear();
         m_BuildingToTechs.Clear();
+        m_RuntimeDrivenTechIds.Clear();
 
         if (m_BuildingTableAsset == null) return;
 
@@ -399,6 +423,8 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
                 for (int i = 0; i < techs.Count; i++)
                 {
                     m_TechToBuilding[techs[i]] = row.Identifier;
+                    if (IsRuntimeDrivenTechIdStatic(techs[i]))
+                        m_RuntimeDrivenTechIds.Add(techs[i]);
                 }
             }
         }
@@ -414,10 +440,10 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
 
     private void SyncBindings()
     {
-        List<string> techIds = CollectDistinctTechIds(m_BuildingTableAsset);
+        List<string> techIds = CollectLegacyBindingTechIds(m_BuildingTableAsset);
         if (techIds.Count == 0)
         {
-            EditorUtility.DisplayDialog("Tech Effect Binding", "没有从 BuildingTable 中扫到任何 TechId。", "OK");
+            EditorUtility.DisplayDialog("Tech Effect Binding", "没有从 BuildingTable 中扫到任何需要旧 TechEffectSO Binding 的 TechId。", "OK");
             return;
         }
 
@@ -457,7 +483,7 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
         }
 
         MarkManagerDirty();
-        EditorUtility.DisplayDialog("Tech Effect Binding", $"同步完成，共 {bindings.Count} 条 TechEffect 绑定。", "OK");
+        EditorUtility.DisplayDialog("Tech Effect Binding", $"同步完成，共 {bindings.Count} 条旧 TechEffectSO 绑定。已迁入运行时规则表的建筑科技已排除。", "OK");
     }
 
     /// <summary>
@@ -497,6 +523,7 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
         {
             var b = bindings[i];
             if (b == null || string.IsNullOrWhiteSpace(b.TechId)) continue;
+            if (IsRuntimeDrivenTechId(b.TechId)) continue;
 
             if (byName.TryGetValue(b.TechId, out var so))
             {
@@ -543,7 +570,7 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
             m_SlotConfig = AssetDatabase.LoadAssetAtPath<TechTestSlotConfig>(DefaultSlotConfigPath);
     }
 
-    private static List<string> CollectDistinctTechIds(TextAsset buildingTableAsset)
+    private static List<string> CollectLegacyBindingTechIds(TextAsset buildingTableAsset)
     {
         var result = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -558,6 +585,17 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
 
                 var row = new BuildingTable();
                 if (!row.ParseDataRow(line, null)) continue;
+                if (IsRuntimeDrivenTechIdStatic(row.Tech1ID)
+                    || IsRuntimeDrivenTechIdStatic(row.Tech2ID)
+                    || IsRuntimeDrivenTechIdStatic(row.Tech3ID)
+                    || IsRuntimeDrivenTechIdStatic(row.Tech4ID))
+                {
+                    AddLegacyTechId(row.Tech1ID, seen, result);
+                    AddLegacyTechId(row.Tech2ID, seen, result);
+                    AddLegacyTechId(row.Tech3ID, seen, result);
+                    AddLegacyTechId(row.Tech4ID, seen, result);
+                    continue;
+                }
 
                 AddTechId(row.Tech1ID, seen, result);
                 AddTechId(row.Tech2ID, seen, result);
@@ -573,6 +611,24 @@ public sealed class TechEffectBindingToolWindow : EditorWindow
     {
         if (string.IsNullOrWhiteSpace(techId) || !seen.Add(techId)) return;
         result.Add(techId);
+    }
+
+    private bool IsRuntimeDrivenTechId(string techId)
+    {
+        return !string.IsNullOrWhiteSpace(techId) && m_RuntimeDrivenTechIds.Contains(techId);
+    }
+
+    private static bool IsRuntimeDrivenTechIdStatic(string techId)
+    {
+        return BuildingTechRuntimeEffectSO.IsRuntimeDrivenTechId(techId);
+    }
+
+    private static void AddLegacyTechId(string techId, HashSet<string> seen, List<string> result)
+    {
+        if (IsRuntimeDrivenTechIdStatic(techId))
+            return;
+
+        AddTechId(techId, seen, result);
     }
 
     private void MarkManagerDirty()

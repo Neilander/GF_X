@@ -521,7 +521,8 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
         if (CurrentTarget == null)
             return;
 
-        if (!WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, requireDamaged: true))
+        if (!WeaponTargetRules.IsValidHealTarget(_ctx, CurrentTarget, requireDamaged: true)
+            || !HealingTargetFilterService.IsValidHealTargetForHealer(_ctx, CurrentTarget))
             CurrentTarget = null;
     }
 
@@ -529,7 +530,8 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
     {
         for (int i = _currentTargets.Count - 1; i >= 0; i--)
         {
-            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], requireDamaged: true))
+            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], requireDamaged: true)
+                || !HealingTargetFilterService.IsValidHealTargetForHealer(_ctx, _currentTargets[i]))
                 _currentTargets.RemoveAt(i);
         }
     }
@@ -562,6 +564,8 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
             if (candidate == null)
                 continue;
             if (!WeaponTargetRules.IsValidHealTarget(_ctx, candidate, requireDamaged: true))
+                continue;
+            if (!HealingTargetFilterService.IsValidHealTargetForHealer(_ctx, candidate))
                 continue;
 
             float distance = _ctx.DistanceToTargetSurface(candidate);

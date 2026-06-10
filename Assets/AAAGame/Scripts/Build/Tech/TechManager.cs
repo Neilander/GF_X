@@ -90,7 +90,7 @@ public class TechManager : GameFrameworkComponent
         var buildManager = RequireBuildManager();
         return IsUpgradeOptionVisible(owner, upgradeBuildingId, techId)
             && SatisfyUpgradeCondition(owner, upgradeBuildingId, techId)
-            && buildManager.HasBuildCost(upgradeBuildingId);
+            && buildManager.HasBuildCost(upgradeBuildingId, owner);
     }
 
     public bool IsResearchOptionExecutable(BuildingEntity owner, string techId)
@@ -143,15 +143,16 @@ public class TechManager : GameFrameworkComponent
         if (upgradeBuildingData == null)
             return false;
 
-        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -upgradeBuildingData.Cost, true))
+        var buildManager = RequireBuildManager();
+        int upgradeCost = buildManager.GetBuildingCost(upgradeBuildingData, owner.CurrentStronghold);
+        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -upgradeCost, true))
             return false;
 
-        var buildManager = RequireBuildManager();
         bool built = buildManager.BuildBuildingForTechUpgrade(upgradeBuildingId, owner.CachedTransform.position, owner.BuildingInstanceId);
         if (!built)
             return false;
 
-        InGameDataModel.RecordBuildingCostSpent(owner.BuildingInstanceId, upgradeBuildingData.Cost);
+        InGameDataModel.RecordBuildingCostSpent(owner.BuildingInstanceId, upgradeCost);
         InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
         GF.Entity.HideEntity(owner.Entity);
         return true;

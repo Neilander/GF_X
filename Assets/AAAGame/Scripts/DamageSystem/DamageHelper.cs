@@ -8,6 +8,42 @@ using AAAGame.Scripts.BuffSystem;
 /// </summary>
 public static class DamageHelper
 {
+    private sealed class AttackHitSequence
+    {
+        public IEntityContext Attacker;
+        public int TotalHits;
+        public int CurrentHitIndex;
+    }
+
+    [System.ThreadStatic] private static Stack<AttackHitSequence> s_HitSequences;
+
+    public static System.IDisposable BeginAttackHitSequence(IEntityContext attacker, int totalHits)
+    {
+        if (attacker == null || totalHits <= 1)
+            return NullDisposable.Instance;
+
+        s_HitSequences ??= new Stack<AttackHitSequence>();
+        s_HitSequences.Push(new AttackHitSequence
+        {
+            Attacker = attacker,
+            TotalHits = totalHits,
+            CurrentHitIndex = 0,
+        });
+        return new AttackHitSequenceScope();
+    }
+
+    public static int GetCurrentAttackHitIndex(IEntityContext attacker)
+    {
+        AttackHitSequence sequence = GetCurrentSequence(attacker);
+        return sequence != null ? sequence.CurrentHitIndex : 1;
+    }
+
+    public static int GetCurrentAttackTotalHits(IEntityContext attacker)
+    {
+        AttackHitSequence sequence = GetCurrentSequence(attacker);
+        return sequence != null ? sequence.TotalHits : 1;
+    }
+
     /// <summary>
     /// 对 target 造成伤害。attacker 为可空（比如环境伤害），若有则允许其身上的 Buff 修改最终伤害。
     /// </summary>
@@ -15,6 +51,8 @@ public static class DamageHelper
     {
         if (target == null || !target.Alive)
             return;
+
+        AdvanceHitIndex(attacker);
 
         Fix64 finalAmount = damage != null ? damage.amount : Fix64.Zero;
         HealthModifyType modType = damage != null ? damage.modType : HealthModifyType.reduce;
@@ -57,6 +95,39 @@ public static class DamageHelper
             gc.TakeDamage(finalAmount, modType, attacker);
         }
     }
+
+    private static void AdvanceHitIndex(IEntityContext attacker)
+    {
+        AttackHitSequence sequence = GetCurrentSequence(attacker);
+        if (sequence != null)
+            sequence.CurrentHitIndex++;
+    }
+
+    private static AttackHitSequence GetCurrentSequence(IEntityContext attacker)
+    {
+        if (attacker == null || s_HitSequences == null || s_HitSequences.Count == 0)
+            return null;
+
+        AttackHitSequence sequence = s_HitSequences.Peek();
+        return ReferenceEquals(sequence.Attacker, attacker) ? sequence : null;
+    }
+
+    private sealed class AttackHitSequenceScope : System.IDisposable
+    {
+        public void Dispose()
+        {
+            if (s_HitSequences == null || s_HitSequences.Count == 0)
+                return;
+
+            s_HitSequences.Pop();
+        }
+    }
+
+    private sealed class NullDisposable : System.IDisposable
+    {
+        public static readonly NullDisposable Instance = new();
+        public void Dispose() { }
+    }
 }
 
 public static class AreaWeaponDamage
@@ -76,11 +147,15 @@ public static class AreaWeaponDamage
             return;
         }
 
-        DealSingle(attacker, mainTarget, weaponData);
+        var targets = new List<IEntityContext> { mainTarget };
         float radius = DistanceUnitConverter.ConvertToWorldFloat(weaponData.SplashRadius);
         foreach (var target in CollectEnemiesInCircle(attacker, mainTarget.Position, radius, mainTarget))
+            targets.Add(target);
+
+        using (DamageHelper.BeginAttackHitSequence(attacker, targets.Count))
         {
-            DealSingle(attacker, target, weaponData);
+            for (int i = 0; i < targets.Count; i++)
+                DealSingle(attacker, targets[i], weaponData);
         }
     }
 
@@ -93,11 +168,15 @@ public static class AreaWeaponDamage
         if (weaponData == null)
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealSelfAoE failed: weaponData is null. attacker={attacker.CharacterKey}.");
 
-        DealSingle(attacker, mainTarget, weaponData);
+        var targets = new List<IEntityContext> { mainTarget };
         float radius = DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range);
         foreach (var target in CollectEnemiesInCircle(attacker, attacker.Position, radius, mainTarget))
+            targets.Add(target);
+
+        using (DamageHelper.BeginAttackHitSequence(attacker, targets.Count))
         {
-            DealSingle(attacker, target, weaponData);
+            for (int i = 0; i < targets.Count; i++)
+                DealSingle(attacker, targets[i], weaponData);
         }
     }
 
@@ -109,8 +188,6 @@ public static class AreaWeaponDamage
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealCleave failed: mainTarget is null. attacker={attacker.CharacterKey}.");
         if (weaponData == null)
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealCleave failed: weaponData is null. attacker={attacker.CharacterKey}.");
-
-        DealSingle(attacker, mainTarget, weaponData);
 
         Vector3 forward = mainTarget.Position - attacker.Position;
         forward.y = 0f;
@@ -124,9 +201,14 @@ public static class AreaWeaponDamage
         float tanHalfAngle = Mathf.Tan(halfAngle);
         float baseRadius = GetCollisionRadiusWorld(attacker);
 
+        var targets = new List<IEntityContext> { mainTarget };
         foreach (var target in CollectEnemiesInRoundedCone(attacker, forward, range, tanHalfAngle, baseRadius, mainTarget))
+            targets.Add(target);
+
+        using (DamageHelper.BeginAttackHitSequence(attacker, targets.Count))
         {
-            DealSingle(attacker, target, weaponData);
+            for (int i = 0; i < targets.Count; i++)
+                DealSingle(attacker, targets[i], weaponData);
         }
     }
 

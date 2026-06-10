@@ -35,6 +35,9 @@ public class TechScopeResolver
             case TechScopeType.UnitArch:
                 ResolveArchScope(techData, resolved);
                 break;
+            case TechScopeType.UnitSize:
+                ResolveSizeScope(techData, resolved);
+                break;
             case TechScopeType.AllUnit:
                 ResolveAllUnitScope(resolved);
                 break;
@@ -107,6 +110,21 @@ public class TechScopeResolver
             foreach (var unitType in unitTypes)
             {
                 AddUnitType(unitType, resolved);
+            }
+        }
+    }
+
+    private void ResolveSizeScope(TechData techData, ResolvedTechUnitScope resolved)
+    {
+        if (techData.SizeScope == null || techData.SizeScope.Length == 0)
+            return;
+
+        for (int i = 0; i < techData.SizeScope.Length; i++)
+        {
+            var characterKeys = m_Index.GetCharacterKeysBySize(techData.SizeScope[i]);
+            foreach (var characterKey in characterKeys)
+            {
+                AddCharacterKey(characterKey, resolved);
             }
         }
     }

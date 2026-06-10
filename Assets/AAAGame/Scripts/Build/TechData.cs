@@ -19,6 +19,7 @@ public class TechData
     public Fix64[] UniqueValues { get; protected set; }
     public TechScopeType ScopeType { get; protected set; }
     public string[] UnitScope { get; protected set; }
+    public UnitSize[] SizeScope { get; protected set; }
     public UnitTag[] TagScope { get; protected set; }
     public Archetype[] ArchScope { get; protected set; }
     public string SpritePath { get; protected set; }
@@ -34,6 +35,7 @@ public class TechData
         Fix64[] uniqueValues,
         TechScopeType scopeType,
         string[] unitScope,
+        UnitSize[] sizeScope,
         UnitTag[] tagScope,
         Archetype[] archScope,
         string spritePath,
@@ -47,6 +49,7 @@ public class TechData
         UniqueValues = uniqueValues;
         ScopeType = scopeType;
         UnitScope = unitScope;
+        SizeScope = sizeScope;
         TagScope = tagScope;
         ArchScope = archScope;
         SpritePath = spritePath;

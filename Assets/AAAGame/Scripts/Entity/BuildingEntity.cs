@@ -501,11 +501,21 @@ public partial class BuildingEntity : MAEntity
             return;
 
         List<BuffData> buffs = BuildingInitialBuffFactory.CreateInitialBuffs(buildingData);
-        if (buffs == null)
+        List<BuffData> runtimeTechBuffs = GameEntry.GetComponent<GlobalBuffManager>()?.GetRuntimeBuffsForBuildingEntity(this);
+        if (buffs == null && runtimeTechBuffs == null)
             return;
 
-        for (int i = 0; i < buffs.Count; i++)
-            BuffComp.AddBuff(buffs[i], this);
+        if (buffs != null)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+                BuffComp.AddBuff(buffs[i], this);
+        }
+
+        if (runtimeTechBuffs != null)
+        {
+            for (int i = 0; i < runtimeTechBuffs.Count; i++)
+                BuffComp.AddBuff(runtimeTechBuffs[i], this);
+        }
     }
 
     public void SetPhaseProtectionByBuff(bool enabled)
@@ -1045,6 +1055,13 @@ public partial class BuildingEntity : MAEntity
 
     public int GetArmyForce()
     {
+        Fix64 baseValue = (Fix64)GetArmyForceWithoutRuntimeRules();
+        Fix64 runtimeBonus = GameEntry.GetComponent<GlobalBuffManager>()?.CalculateRuntimeArmyForceBonus(this) ?? Fix64.Zero;
+        return Mathf.Max(0, (int)(baseValue + runtimeBonus));
+    }
+
+    public int GetArmyForceWithoutRuntimeRules()
+    {
         if (_armyForceProperty == null)
             return 0;
 
@@ -1149,6 +1166,11 @@ public partial class BuildingEntity : MAEntity
                 armyForce,
                 supplyPerUnit,
                 occupiedSupply));
+    }
+
+    public void RaiseArmyCardPropertyChangedEventForTech()
+    {
+        RaiseArmyCardPropertyChangedEvent();
     }
 
     private static int ResolveUnitSupplyByCharacterKey(string characterKey)

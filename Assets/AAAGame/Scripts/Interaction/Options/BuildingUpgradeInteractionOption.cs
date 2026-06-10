@@ -10,7 +10,7 @@ public sealed class BuildingUpgradeInteractionOption : IInteractionOption
 
     public string DisplayName { get; private set; }
     public string DisplayDesc { get; private set; }
-    public KeyValuePair<IngameValueType, int>[] CostResource => GameEntry.GetComponent<BuildManager>().GetBuildingResourceCosts(_upgradeBuildingId);
+    public KeyValuePair<IngameValueType, int>[] CostResource => GameEntry.GetComponent<BuildManager>().GetBuildingResourceCosts(_upgradeBuildingId, _owner);
 
     public bool IsVisible()
     {

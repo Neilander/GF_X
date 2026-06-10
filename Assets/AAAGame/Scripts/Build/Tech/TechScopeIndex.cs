@@ -12,6 +12,7 @@ public class TechScopeIndex
     private readonly Dictionary<UnitType, string> m_CharacterKeyByUnitType = new();
     private readonly Dictionary<string, UnitType> m_UnitTypeByCharacterKey = new(StringComparer.Ordinal);
     private readonly Dictionary<UnitTag, HashSet<string>> m_CharacterKeysByTag = new();
+    private readonly Dictionary<UnitSize, HashSet<string>> m_CharacterKeysBySize = new();
 
     public TechScopeIndex(IEnumerable<CharacterDataDetail> rows)
     {
@@ -42,6 +43,13 @@ public class TechScopeIndex
             : Array.Empty<string>();
     }
 
+    public IReadOnlyCollection<string> GetCharacterKeysBySize(UnitSize unitSize)
+    {
+        return m_CharacterKeysBySize.TryGetValue(unitSize, out var keys)
+            ? keys
+            : Array.Empty<string>();
+    }
+
     public bool TryGetCharacterKey(UnitType unitType, out string characterKey)
     {
         return m_CharacterKeyByUnitType.TryGetValue(unitType, out characterKey);
@@ -64,6 +72,7 @@ public class TechScopeIndex
             m_CharacterDataByKey[row.CharacterKey] = row;
             CacheUnitTypeMapping(row.CharacterKey);
             CacheTagMapping(row);
+            CacheSizeMapping(row);
         }
     }
 
@@ -92,5 +101,16 @@ public class TechScopeIndex
 
             keys.Add(row.CharacterKey);
         }
+    }
+
+    private void CacheSizeMapping(CharacterDataDetail row)
+    {
+        if (!m_CharacterKeysBySize.TryGetValue(row.Size, out var keys))
+        {
+            keys = new HashSet<string>(StringComparer.Ordinal);
+            m_CharacterKeysBySize[row.Size] = keys;
+        }
+
+        keys.Add(row.CharacterKey);
     }
 }

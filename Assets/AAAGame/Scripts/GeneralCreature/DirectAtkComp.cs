@@ -373,17 +373,20 @@ public class DirectAtkComp : IAtkComp
             return;
         }
 
-        for (int i = 0; i < targetCount; i++)
+        using (DamageHelper.BeginAttackHitSequence(_ctx, targetCount))
         {
-            IEntityContext target = _lockedTargets[i];
-            if (_ctx.WeaponComp != null && !_ctx.WeaponComp.TryConsumeAmmo(1))
+            for (int i = 0; i < targetCount; i++)
             {
-                GameDebugSettings.Log(DebugCategory.Attack,
-                    $"[{_ctx.CharacterKey}] DealDamage: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
-                break;
-            }
+                IEntityContext target = _lockedTargets[i];
+                if (_ctx.WeaponComp != null && !_ctx.WeaponComp.TryConsumeAmmo(1))
+                {
+                    GameDebugSettings.Log(DebugCategory.Attack,
+                        $"[{_ctx.CharacterKey}] DealDamage: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
+                    break;
+                }
 
-            ExecuteWeaponEffect(activeWeapon, target, snapshot);
+                ExecuteWeaponEffect(activeWeapon, target, snapshot);
+            }
         }
 
         // 普通攻击造成伤害的音效；远程武器在这里只是创建子弹（命中是子弹的事），跳过

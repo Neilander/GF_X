@@ -112,8 +112,10 @@ public class GeneralCreature : EntityBase, ITargetable
             PropertyIrreversibleAdditiveModifier.Create(amount), true);
 
         Fix64 newCur = HealthValue;
+        Fix64 actualAmount = newCur - curHp;
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(
-            Id, (float)newCur, (float)maxHp, (float)amount));
+            Id, (float)newCur, (float)maxHp, (float)actualAmount));
+        GF.Event.Fire(this, CreatureHealedEventArgs.Create(Id, (float)actualAmount));
     }
 
     public virtual void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)

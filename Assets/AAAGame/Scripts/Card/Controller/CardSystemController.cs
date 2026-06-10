@@ -624,7 +624,7 @@ namespace AAAGame.Card
             }
 
             int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-            int conversionRate = GF.Config.GetInt(DiscardResourceConversionRateConfigKey);
+            int conversionRate = DiscardRewardModifierService.CalculateConversionRate(GF.Config.GetInt(DiscardResourceConversionRateConfigKey));
             if (conversionRate <= 0)
             {
                 Log.Error("[Card] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, conversionRate);

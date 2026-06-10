@@ -11,6 +11,7 @@ using UnityGameFramework.Runtime;
 public class GlobalBuffManager : GameFrameworkComponent
 {
     [SerializeField] private bool enableDebugLogs = true;
+    [Tooltip("旧 TechEffectSO 绑定列表。已迁入 BuildingTechRuntimeEffectSO 规则表的建筑科技不走这里。")]
     [SerializeField] private List<TechEffectBinding> techEffectBindings = new();
 
     private sealed class GlobalUnitBuffEntry
@@ -20,15 +21,47 @@ public class GlobalBuffManager : GameFrameworkComponent
         public TechData TechData;
     }
 
+    private sealed class PersistentBuildingBuffRule
+    {
+        public int OwnerFactionId;
+        public string SourceBuildingInstanceId;
+        public string TechId;
+        public TechEffectSO Effect;
+        public TechData TechData;
+        public Func<BuildingEntity, bool> Matches;
+        public Func<BuildingEntity, string> ResolveTechId;
+    }
+
+    private sealed class RuntimeArmyForceRule
+    {
+        public int OwnerFactionId;
+        public string SourceBuildingInstanceId;
+        public string TechId;
+        public Func<BuildingEntity, Fix64> ResolveBonus;
+    }
+
+    private sealed class PersistentBuildingEntityBuffRule
+    {
+        public int OwnerFactionId;
+        public string SourceBuildingInstanceId;
+        public string TechId;
+        public Func<BuildingEntity, bool> Matches;
+        public Func<BuildingEntity, List<BuffCallback>> CreateModules;
+    }
+
     private TechScopeIndex m_TechScopeIndex;
     private TechScopeResolver m_TechScopeResolver;
     private bool m_IsSubscribed;
     private readonly Dictionary<int, Dictionary<UnitType, List<GlobalUnitBuffEntry>>> m_UnitBuffsByFaction = new();
     private readonly Dictionary<int, Dictionary<string, List<GlobalUnitBuffEntry>>> m_BuildingScopedBuffs = new();
+    private readonly List<PersistentBuildingBuffRule> m_PersistentBuildingBuffRules = new();
+    private readonly List<RuntimeArmyForceRule> m_RuntimeArmyForceRules = new();
+    private readonly List<PersistentBuildingEntityBuffRule> m_PersistentBuildingEntityBuffRules = new();
     // 第三个桶：按 BuildingInstanceId 存建筑额外属性（独立于 BuildingEntity 生命周期，升级时同 id 共享同对象）
     private readonly Dictionary<string, BuildingExtraProps> m_BuildingExtraProps = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TechEffectSO> m_TechEffectLookup = new(StringComparer.Ordinal);
     private bool m_IsTechEffectLookupDirty = true;
+    private BuildingTechRuntimeEffectSO m_BuildingTechRuntimeEffect;
 
     [SerializeField] private TechEffectSO defaultTechEffect;
 
@@ -77,7 +110,12 @@ public class GlobalBuffManager : GameFrameworkComponent
     {
         m_UnitBuffsByFaction.Clear();
         m_BuildingScopedBuffs.Clear();
+        m_PersistentBuildingBuffRules.Clear();
+        m_RuntimeArmyForceRules.Clear();
+        m_PersistentBuildingEntityBuffRules.Clear();
         m_BuildingExtraProps.Clear();
+        BuildingCostModifierService.Clear();
+        m_BuildingTechRuntimeEffect?.ClearRuntimeState();
     }
 
     private void OnValidate()
@@ -105,6 +143,28 @@ public class GlobalBuffManager : GameFrameworkComponent
         }
 
         var resolvedScope = m_TechScopeResolver.Resolve(techData, args.SourceBuildingInstanceId);
+        var runtimeEffect = GetBuildingTechRuntimeEffect();
+        if (runtimeEffect.CanHandle(techData))
+        {
+            runtimeEffect.Activate(new TechEffectContext
+            {
+                TechId = args.TechId,
+                OwnerFactionId = args.OwnerFactionId,
+                SourceBuildingInstanceId = args.SourceBuildingInstanceId,
+                TechData = techData,
+                ResolvedScope = resolvedScope,
+                GlobalBuffManager = this,
+            });
+
+            DebugLog(
+                $"[GlobalBuffManager] 建筑科技运行时规则解锁: techId={args.TechId}, " +
+                $"ownerFactionId={args.OwnerFactionId}, " +
+                $"scopeType={techData.ScopeType}, " +
+                $"characterKeys=[{string.Join(",", resolvedScope.CharacterKeys)}], " +
+                $"unitTypes=[{string.Join(",", resolvedScope.UnitTypes)}]");
+            return;
+        }
+
         var effect = ResolveEffect(techData);
         if (effect == null)
         {
@@ -261,6 +321,27 @@ public class GlobalBuffManager : GameFrameworkComponent
                 buffsByBuilding.Remove(buildingInstanceId);
         }
 
+        removed += m_PersistentBuildingBuffRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.TechId, techId, StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(buildingInstanceId)
+                || string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal)));
+
+        removed += m_RuntimeArmyForceRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.TechId, techId, StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(buildingInstanceId)
+                || string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal)));
+
+        removed += m_PersistentBuildingEntityBuffRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.TechId, techId, StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(buildingInstanceId)
+                || string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal)));
+
         if (removed > 0)
             DebugLog($"UnregisterTechEffects: faction={ownerFactionId}, buildingInstanceId={buildingInstanceId}, techId={techId}, removed={removed}");
 
@@ -295,38 +376,205 @@ public class GlobalBuffManager : GameFrameworkComponent
         DebugLog($"RegisterBuildingBuff: techId={techId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, totalEntriesForBuilding={entries.Count}");
     }
 
+    public void RegisterPersistentBuildingBuffRule(
+        int ownerFactionId,
+        string sourceBuildingInstanceId,
+        string techId,
+        TechEffectSO effect,
+        TechData techData,
+        Func<BuildingEntity, bool> matches,
+        Func<BuildingEntity, string> resolveTechId = null)
+    {
+        if (string.IsNullOrWhiteSpace(techId) || effect == null || techData == null || matches == null)
+            return;
+
+        m_PersistentBuildingBuffRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.SourceBuildingInstanceId, sourceBuildingInstanceId, StringComparison.Ordinal)
+            && string.Equals(rule.TechId, techId, StringComparison.Ordinal));
+
+        m_PersistentBuildingBuffRules.Add(new PersistentBuildingBuffRule
+        {
+            OwnerFactionId = ownerFactionId,
+            SourceBuildingInstanceId = sourceBuildingInstanceId,
+            TechId = techId,
+            Effect = effect,
+            TechData = techData,
+            Matches = matches,
+            ResolveTechId = resolveTechId,
+        });
+
+        DebugLog($"RegisterPersistentBuildingBuffRule: techId={techId}, ownerFactionId={ownerFactionId}, sourceBuildingInstanceId={sourceBuildingInstanceId}");
+    }
+
+    public void RegisterRuntimeArmyForceRule(
+        int ownerFactionId,
+        string sourceBuildingInstanceId,
+        string techId,
+        Func<BuildingEntity, Fix64> resolveBonus)
+    {
+        if (string.IsNullOrWhiteSpace(techId) || resolveBonus == null)
+            return;
+
+        m_RuntimeArmyForceRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.SourceBuildingInstanceId, sourceBuildingInstanceId, StringComparison.Ordinal)
+            && string.Equals(rule.TechId, techId, StringComparison.Ordinal));
+
+        m_RuntimeArmyForceRules.Add(new RuntimeArmyForceRule
+        {
+            OwnerFactionId = ownerFactionId,
+            SourceBuildingInstanceId = sourceBuildingInstanceId,
+            TechId = techId,
+            ResolveBonus = resolveBonus,
+        });
+
+        NotifyArmyCardPropertiesChangedForCurrentBuildings(ownerFactionId);
+        DebugLog($"RegisterRuntimeArmyForceRule: techId={techId}, ownerFactionId={ownerFactionId}, sourceBuildingInstanceId={sourceBuildingInstanceId}");
+    }
+
+    public Fix64 CalculateRuntimeArmyForceBonus(BuildingEntity building)
+    {
+        if (building == null || building.buildingData == null || m_RuntimeArmyForceRules.Count == 0)
+            return Fix64.Zero;
+
+        Fix64 total = Fix64.Zero;
+        for (int i = 0; i < m_RuntimeArmyForceRules.Count; i++)
+        {
+            RuntimeArmyForceRule rule = m_RuntimeArmyForceRules[i];
+            if (rule == null || rule.OwnerFactionId != building.OwnerFactionID || rule.ResolveBonus == null)
+                continue;
+
+            total += rule.ResolveBonus.Invoke(building);
+        }
+
+        return total;
+    }
+
+    public void RegisterPersistentBuildingEntityBuffRule(
+        int ownerFactionId,
+        string sourceBuildingInstanceId,
+        string techId,
+        Func<BuildingEntity, bool> matches,
+        Func<BuildingEntity, List<BuffCallback>> createModules)
+    {
+        if (string.IsNullOrWhiteSpace(techId) || matches == null || createModules == null)
+            return;
+
+        m_PersistentBuildingEntityBuffRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.SourceBuildingInstanceId, sourceBuildingInstanceId, StringComparison.Ordinal)
+            && string.Equals(rule.TechId, techId, StringComparison.Ordinal));
+
+        m_PersistentBuildingEntityBuffRules.Add(new PersistentBuildingEntityBuffRule
+        {
+            OwnerFactionId = ownerFactionId,
+            SourceBuildingInstanceId = sourceBuildingInstanceId,
+            TechId = techId,
+            Matches = matches,
+            CreateModules = createModules,
+        });
+
+        ApplyPersistentBuildingEntityBuffsToCurrentBuildings(ownerFactionId);
+        DebugLog($"RegisterPersistentBuildingEntityBuffRule: techId={techId}, ownerFactionId={ownerFactionId}, sourceBuildingInstanceId={sourceBuildingInstanceId}");
+    }
+
+    public List<BuffData> GetRuntimeBuffsForBuildingEntity(BuildingEntity building)
+    {
+        if (building == null || m_PersistentBuildingEntityBuffRules.Count == 0)
+            return null;
+
+        var result = new List<BuffData>();
+        for (int i = 0; i < m_PersistentBuildingEntityBuffRules.Count; i++)
+        {
+            PersistentBuildingEntityBuffRule rule = m_PersistentBuildingEntityBuffRules[i];
+            if (rule == null || rule.OwnerFactionId != building.OwnerFactionID || rule.Matches == null || !rule.Matches.Invoke(building))
+                continue;
+
+            List<BuffCallback> modules = rule.CreateModules?.Invoke(building);
+            if (modules == null || modules.Count == 0)
+                continue;
+
+            result.Add(BuffData.Create(
+                id: $"building_runtime_tech_{rule.TechId}_{building.BuildingInstanceId}",
+                duration: float.MaxValue,
+                isForever: true,
+                maxStack: 1,
+                modules: modules));
+        }
+
+        return result.Count > 0 ? result : null;
+    }
+
     public List<BuffData> GetBuffsForBuilding(string buildingInstanceId, int ownerFactionId)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             return null;
 
-        if (!m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding)
-            || !buffsByBuilding.TryGetValue(buildingInstanceId, out var entries)
-            || entries == null
-            || entries.Count == 0)
+        var result = new List<BuffData>();
+        if (m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding)
+            && buffsByBuilding.TryGetValue(buildingInstanceId, out var entries)
+            && entries != null)
         {
-            DebugLog($"GetBuffsForBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, entries=0");
-            return null;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                AddBuildingScopedBuff(result, entry, ownerFactionId, buildingInstanceId);
+            }
         }
 
-        var result = new List<BuffData>(entries.Count);
-        for (int i = 0; i < entries.Count; i++)
-        {
-            var entry = entries[i];
-            var buffData = entry.Effect?.CreateBuildingScopedBuff(entry.TechData, entry.TechId);
-            if (buffData != null)
-            {
-                result.Add(buffData);
-                DebugLog($"GetBuffsForBuilding: created buff id={buffData.id}, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
-            }
-            else
-            {
-                DebugLog($"GetBuffsForBuilding: effect returned null buff, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
-            }
-        }
+        AddPersistentBuildingBuffs(result, buildingInstanceId, ownerFactionId);
 
         DebugLog($"GetBuffsForBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, createdCount={result.Count}");
         return result.Count > 0 ? result : null;
+    }
+
+    private void AddBuildingScopedBuff(List<BuffData> result, GlobalUnitBuffEntry entry, int ownerFactionId, string buildingInstanceId)
+    {
+        if (entry == null)
+            return;
+
+        var buffData = entry.Effect?.CreateBuildingScopedBuff(entry.TechData, entry.TechId);
+        if (buffData != null)
+        {
+            result.Add(buffData);
+            DebugLog($"GetBuffsForBuilding: created buff id={buffData.id}, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
+        }
+        else
+        {
+            DebugLog($"GetBuffsForBuilding: effect returned null buff, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
+        }
+    }
+
+    private void AddPersistentBuildingBuffs(List<BuffData> result, string buildingInstanceId, int ownerFactionId)
+    {
+        if (m_PersistentBuildingBuffRules.Count == 0)
+            return;
+
+        BuildingEntity building = FindBuildingByInstanceId(buildingInstanceId);
+        if (building == null)
+            return;
+
+        for (int i = 0; i < m_PersistentBuildingBuffRules.Count; i++)
+        {
+            PersistentBuildingBuffRule rule = m_PersistentBuildingBuffRules[i];
+            if (rule == null || rule.OwnerFactionId != ownerFactionId || rule.Matches == null || !rule.Matches.Invoke(building))
+                continue;
+
+            string techId = rule.ResolveTechId != null ? rule.ResolveTechId.Invoke(building) : rule.TechId;
+            if (string.IsNullOrWhiteSpace(techId))
+                continue;
+
+            AddBuildingScopedBuff(result, new GlobalUnitBuffEntry
+            {
+                TechId = techId,
+                Effect = rule.Effect,
+                TechData = rule.TechData,
+            }, ownerFactionId, buildingInstanceId);
+        }
     }
 
     /// <summary>
@@ -350,8 +598,71 @@ public class GlobalBuffManager : GameFrameworkComponent
             return;
 
         UnregisterBuilding(buildingInstanceId, ownerFactionId);
+        m_PersistentBuildingBuffRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal));
+        m_RuntimeArmyForceRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal));
+        m_PersistentBuildingEntityBuffRules.RemoveAll(rule =>
+            rule != null
+            && rule.OwnerFactionId == ownerFactionId
+            && string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal));
         if (m_BuildingExtraProps.Remove(buildingInstanceId))
             DebugLog($"ClearBuildingRuntimeTechState: buildingInstanceId={buildingInstanceId}");
+    }
+
+    private static BuildingEntity FindBuildingByInstanceId(string buildingInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            return null;
+
+        var dataModel = GF.DataModel?.GetDataModel<InGameDataModel>();
+        if (dataModel?.Buildings == null)
+            return null;
+
+        foreach (BuildingEntity building in dataModel.Buildings)
+        {
+            if (building != null && string.Equals(building.BuildingInstanceId, buildingInstanceId, StringComparison.Ordinal))
+                return building;
+        }
+
+        return null;
+    }
+
+    private static void NotifyArmyCardPropertiesChangedForCurrentBuildings(int ownerFactionId)
+    {
+        var dataModel = GF.DataModel?.GetDataModel<InGameDataModel>();
+        if (dataModel?.Buildings == null)
+            return;
+
+        foreach (BuildingEntity building in dataModel.Buildings)
+        {
+            if (building != null && building.OwnerFactionID == ownerFactionId && building.buildingData?.Type == BuilType.Army)
+                building.RaiseArmyCardPropertyChangedEventForTech();
+        }
+    }
+
+    private void ApplyPersistentBuildingEntityBuffsToCurrentBuildings(int ownerFactionId)
+    {
+        var dataModel = GF.DataModel?.GetDataModel<InGameDataModel>();
+        if (dataModel?.Buildings == null)
+            return;
+
+        foreach (BuildingEntity building in dataModel.Buildings)
+        {
+            if (building == null || building.OwnerFactionID != ownerFactionId || building.BuffComp == null)
+                continue;
+
+            List<BuffData> buffs = GetRuntimeBuffsForBuildingEntity(building);
+            if (buffs == null)
+                continue;
+
+            for (int i = 0; i < buffs.Count; i++)
+                building.BuffComp.AddBuff(buffs[i], building);
+        }
     }
 
     /// <summary>
@@ -428,6 +739,14 @@ public class GlobalBuffManager : GameFrameworkComponent
         }
 
         return defaultTechEffect;
+    }
+
+    private BuildingTechRuntimeEffectSO GetBuildingTechRuntimeEffect()
+    {
+        if (m_BuildingTechRuntimeEffect == null)
+            m_BuildingTechRuntimeEffect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
+
+        return m_BuildingTechRuntimeEffect;
     }
 
     private static bool IsProductionBuildingLevelTech(TechData techData)

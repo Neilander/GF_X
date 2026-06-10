@@ -117,7 +117,7 @@ public class BuildManager : GameFrameworkComponent
             return false;
 
         BuildingData target = BuildingDataModel.GetBuildingData(buildBuildingId);
-        return target != null && SatisfyBuildCondition(target, owner.OwnerFactionID) && HasBuildCost(buildBuildingId);
+        return target != null && SatisfyBuildCondition(target, owner.OwnerFactionID) && HasBuildCost(buildBuildingId, owner);
     }
 
     public bool ConstructBuilding(BuildingEntity owner, string buildBuildingId)
@@ -138,18 +138,44 @@ public class BuildManager : GameFrameworkComponent
         if (buildingData == null)
             return false;
 
-        return InGameDataModel.GetValue(IngameValueType.Coin) >= buildingData.Cost;
+        return HasBuildCost(buildingData, null);
+    }
+
+    public bool HasBuildCost(string buildingId, BuildingEntity owner)
+    {
+        BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
+        if (buildingData == null)
+            return false;
+
+        return HasBuildCost(buildingData, owner != null ? owner.CurrentStronghold : null);
+    }
+
+    public int GetBuildingCost(string buildingId, BuildingEntity owner)
+    {
+        BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
+        return GetBuildingCost(buildingData, owner != null ? owner.CurrentStronghold : null);
+    }
+
+    public int GetBuildingCost(BuildingData buildingData, Stronghold stronghold)
+    {
+        return BuildingCostModifierService.CalculateBuildingCost(buildingData, stronghold);
     }
 
     public KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId)
     {
+        return GetBuildingResourceCosts(buildingId, null);
+    }
+
+    public KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId, BuildingEntity owner)
+    {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
-        if (buildingData == null || buildingData.Cost <= 0)
+        int cost = GetBuildingCost(buildingData, owner != null ? owner.CurrentStronghold : null);
+        if (buildingData == null || cost <= 0)
             return null;
 
         return new[]
         {
-            new KeyValuePair<IngameValueType, int>(IngameValueType.Coin, buildingData.Cost)
+            new KeyValuePair<IngameValueType, int>(IngameValueType.Coin, cost)
         };
     }
 
@@ -295,18 +321,23 @@ public class BuildManager : GameFrameworkComponent
         if (buildingData == null)
             return 0;
 
-        int ownerFactionId = ResolveOwnerFactionId(position);
+        Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
+        int ownerFactionId = stronghold != null ? stronghold.OwnerFactionId : 0;
 
         if (checkCondition && !SatisfyBuildCondition(buildingData, ownerFactionId))
             return 0;
 
+        int consumedCost = 0;
         if (consumeCoins)
         {
-            if (!HasBuildCost(buildingId))
+            int actualCost = GetBuildingCost(buildingData, stronghold);
+            if (!HasBuildCost(buildingData, stronghold))
                 return 0;
 
-            if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -buildingData.Cost, true))
+            if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -actualCost, true))
                 return 0;
+
+            consumedCost = actualCost;
         }
 
         string resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
@@ -325,7 +356,7 @@ public class BuildManager : GameFrameworkComponent
         if (entityId > 0)
         {
             if (consumeCoins)
-                InGameDataModel.RecordBuildingCostSpent(resolvedBuildingInstanceId, buildingData.Cost);
+                InGameDataModel.RecordBuildingCostSpent(resolvedBuildingInstanceId, consumedCost);
 
             TryGrantBaseSupplyCapacity(buildingData, ownerFactionId, previousBaseLevel);
         }
@@ -482,6 +513,12 @@ public class BuildManager : GameFrameworkComponent
     {
         var stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
         return stronghold != null ? stronghold.OwnerFactionId : 0;
+    }
+
+    private static bool HasBuildCost(BuildingData buildingData, Stronghold stronghold)
+    {
+        return buildingData != null
+               && InGameDataModel.GetValue(IngameValueType.Coin) >= BuildingCostModifierService.CalculateBuildingCost(buildingData, stronghold);
     }
 
     private static int ResolveExistingBaseLevel(BuildingData targetBuildingData, int ownerFactionId, string buildingInstanceId)

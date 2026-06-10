@@ -386,7 +386,7 @@ public class PhaseManager : GameFrameworkComponent
                 continue;
             }
 
-            int count = point.UnitSpawnCount;
+            int count = EnemyArmyForceModifierService.CalculateSpawnCount(point.UnitSpawnCount);
             if (count <= 0)
             {
                 Log.Warning($"Skip unit preset point '{point.name}': UnitSpawnCount={count}.");

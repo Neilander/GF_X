@@ -9,7 +9,7 @@ public sealed class BuildingConstructInteractionOption : IInteractionOption
 
     public string DisplayName { get; private set; }
     public string DisplayDesc { get; private set; }
-    public KeyValuePair<IngameValueType, int>[] CostResource => GameEntry.GetComponent<BuildManager>().GetBuildingResourceCosts(_buildBuildingId);
+    public KeyValuePair<IngameValueType, int>[] CostResource => GameEntry.GetComponent<BuildManager>().GetBuildingResourceCosts(_buildBuildingId, _owner);
 
     public bool IsVisible()
     {

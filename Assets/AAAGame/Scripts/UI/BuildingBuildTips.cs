@@ -293,7 +293,7 @@ public partial class BuildingBuildTips : UIFormBase
                 BuildingData = data,
                 Item = infoItem,
                 ActionName = actionName,
-                StarCount = Mathf.Max(1, data.Cost),
+                StarCount = Mathf.Max(1, ResolveBuildCost(data)),
                 Executable = executable,
             };
 
@@ -315,9 +315,18 @@ public partial class BuildingBuildTips : UIFormBase
         if (iconNum == null)
             return;
 
-        iconNum.SetData(CoinIconPath, data.Cost.ToString());
-        if (!HasEnoughCoinForBuild(data.Cost))
+        int cost = ResolveBuildCost(data);
+        iconNum.SetData(CoinIconPath, cost.ToString());
+        if (!HasEnoughCoinForBuild(cost))
             iconNum.SetNumberColor(Color.red);
+    }
+
+    private int ResolveBuildCost(BuildingData data)
+    {
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        return buildManager != null
+            ? buildManager.GetBuildingCost(data, m_TargetBuilding != null ? m_TargetBuilding.CurrentStronghold : null)
+            : (data != null ? Mathf.Max(0, data.Cost) : 0);
     }
 
     private void PopulateProperties(BuildingInfoItem infoItem, BuildingData data)

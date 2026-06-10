@@ -714,7 +714,10 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (m_TargetBuilding != null && m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Tech)
             return binding.TechData != null ? Mathf.Max(0, binding.TechData.Cost) : 0;
 
-        return binding.UpgradeBuildingData != null ? Mathf.Max(0, binding.UpgradeBuildingData.Cost) : 0;
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        return buildManager != null
+            ? buildManager.GetBuildingCost(binding.UpgradeBuildingData, m_TargetBuilding != null ? m_TargetBuilding.CurrentStronghold : null)
+            : (binding.UpgradeBuildingData != null ? Mathf.Max(0, binding.UpgradeBuildingData.Cost) : 0);
     }
 
     private bool IsSelectedOptionExecutable()
