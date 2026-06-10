@@ -338,6 +338,43 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         AddUnit(rules, "Tech_Buil_TrainingRoom_Opt4",
             (techData, _) => Modules(new OutOfCombatStickyMoveSpeedBuff((float)GetValue(techData, 0), GetValue(techData, 1), (float)GetValue(techData, 2))));
 
+        AddNoEffect(rules, "Tech_Buil_SouthernMoon_Lv2");
+        AddNoEffect(rules, "Tech_Buil_SouthernMoon_Lv3");
+        AddSelfBuilding(rules, "Tech_Buil_Monitor_Lv2",
+            techData => Modules(new BlindChanceBonusBuff(GetValue(techData, 0))));
+        AddNoEffect(rules, "Tech_Buil_Monitor_Lv3");
+        AddSelfBuilding(rules, "Tech_Buil_Restroom_Lv2",
+            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), (float)GetValue(techData, 1))));
+        AddSelfBuilding(rules, "Tech_Buil_Restroom_Lv3",
+            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), (float)GetValue(techData, 1))));
+        AddSelfBuilding(rules, "Tech_Buil_SortingTable_Lv2",
+            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
+        AddSelfBuilding(rules, "Tech_Buil_SortingTable_Lv3",
+            techData => Modules(new KnockbackOnOutgoingDamageBuff(GetValue(techData, 0))));
+        AddNoEffect(rules, "Tech_Buil_MeatRack_Lv2");
+        AddSelfBuilding(rules, "Tech_Buil_MeatRack_Lv3",
+            techData => Modules(new PullOnOutgoingDamageBuff(GetValue(techData, 0))));
+        AddSelfBuilding(rules, "Tech_Buil_SprinklerHead_Lv2",
+            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
+        AddSelfBuilding(rules, "Tech_Buil_SprinklerHead_Lv3",
+            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
+        AddNoEffect(rules, "Tech_Buil_Bollard_Lv2");
+        AddSelfBuilding(rules, "Tech_Buil_Bollard_Lv3",
+            techData => Modules(CreateTauntModule((int)GetValue(techData, 0))));
+        AddNoEffect(rules, "Tech_Buil_Trap_Lv2");
+        AddNoEffect(rules, "Tech_Buil_Trap_Lv3");
+        AddSelfBuilding(rules, "Tech_Buil_RoseBush_Lv2",
+            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
+        AddSelfBuilding(rules, "Tech_Buil_RoseBush_Lv3",
+            techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
+        AddNoEffect(rules, "Tech_Buil_Pharmacy_Lv2");
+        AddNoEffect(rules, "Tech_Buil_Pharmacy_Lv3");
+        AddNoEffect(rules, "Tech_Buil_BallLauncher_Lv2");
+        AddSelfBuilding(rules, "Tech_Buil_BallLauncher_Lv3",
+            techData => Modules(
+                new AttackSpeedBonusBuff(GetValue(techData, 0)),
+                new AmmoReloadDelayModifierBuff(-(float)GetValue(techData, 1))));
+
         AddSkipped(rules, "Tech_Buil_NavStation_Opt4", "作战结算合约等级链路待接入");
         AddSkipped(rules, "Tech_Buil_QualityCheck_Opt3", "运行时体型与寻路/碰撞尺寸变更链路待接入");
 
@@ -392,6 +429,20 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         GetOrCreateRule(rules, techId).CreateBuildingModules = factory;
     }
 
+    private static void AddSelfBuilding(
+        Dictionary<string, RuntimeTechRule> rules,
+        string techId,
+        Func<TechData, List<BuffCallback>> factory)
+    {
+        AddActivation(rules, techId,
+            (self, context) => self.RegisterSourceBuildingWatcher(context, _ => factory?.Invoke(context.TechData)));
+    }
+
+    private static void AddNoEffect(Dictionary<string, RuntimeTechRule> rules, string techId)
+    {
+        AddActivation(rules, techId, (_, _) => { });
+    }
+
     private static void AddSkipped(Dictionary<string, RuntimeTechRule> rules, string techId, string reason)
     {
         GetOrCreateRule(rules, techId).SkipReason = reason;
@@ -416,6 +467,13 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
     private static List<BuffCallback> Modules(params BuffCallback[] modules)
     {
         return new List<BuffCallback>(modules);
+    }
+
+    private static BuffCallback CreateTauntModule(int tauntValue)
+    {
+        var module = new TauntBuffCallback();
+        module.SetTauntValue(tauntValue);
+        return module;
     }
 
     private void AddMaxSupply(TechEffectContext context, Fix64 amount)

@@ -146,11 +146,154 @@ public sealed class AmmoReloadBuff : BuffCallback
         }
 
         _timer += deltaTime;
-        if (_timer < _delaySeconds)
+        if (_timer < BuildingCombatModifierUtility.ResolveAmmoReloadDelay(hostEntity, _delaySeconds))
             return;
 
         weaponComp.ReloadFull();
         _timer = 0f;
+    }
+}
+
+public sealed class AmmoReloadDelayModifierBuff : BuffCallback
+{
+    public float DeltaSeconds { get; }
+
+    public AmmoReloadDelayModifierBuff(float deltaSeconds)
+    {
+        DeltaSeconds = deltaSeconds;
+    }
+}
+
+public sealed class RestroomQueueModifierBuff : BuffCallback
+{
+    public int QueueLimitDelta { get; }
+    public float ReleaseIntervalDelta { get; }
+
+    public RestroomQueueModifierBuff(int queueLimitDelta, float releaseIntervalDelta)
+    {
+        QueueLimitDelta = queueLimitDelta;
+        ReleaseIntervalDelta = releaseIntervalDelta;
+    }
+}
+
+public sealed class BlindChanceBonusBuff : BuffCallback
+{
+    public Fix64 ChancePercentDelta { get; }
+
+    public BlindChanceBonusBuff(Fix64 chancePercentDelta)
+    {
+        ChancePercentDelta = chancePercentDelta;
+    }
+}
+
+public sealed class PullOnOutgoingDamageBuff : BuffCallback
+{
+    private const string PullDistancePerLevelKey = "MeatRackPullDistancePerLevel";
+    private const string PullDurationKey = "MeatRackPullDuration";
+    private const float DefaultPullDistancePerLevel = 120f;
+    private const float DefaultPullDuration = 0.18f;
+
+    private readonly Fix64 _pullLevel;
+
+    public PullOnOutgoingDamageBuff(Fix64 pullLevel)
+    {
+        _pullLevel = pullLevel;
+    }
+
+    public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
+    {
+        if (_pullLevel <= Fix64.Zero)
+            return baseDamage;
+
+        if (hostEntity == null || target is not MAEntity targetEntity || targetEntity.durationMoveEffectComp == null)
+            return baseDamage;
+
+        Vector3 direction = hostEntity.Position - targetEntity.Position;
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.0001f)
+            return baseDamage;
+
+        direction.Normalize();
+
+        Fix64 distance = (Fix64)(GF.Config != null
+            ? GF.Config.GetFloat(PullDistancePerLevelKey, DefaultPullDistancePerLevel)
+            : DefaultPullDistancePerLevel) * _pullLevel;
+        float duration = Mathf.Max(0.01f, GF.Config != null
+            ? GF.Config.GetFloat(PullDurationKey, DefaultPullDuration)
+            : DefaultPullDuration);
+        float worldDistance = DistanceUnitConverter.ConvertToWorldFloat(distance);
+        Vector3 speed = direction * (worldDistance / duration);
+
+        targetEntity.atkComp?.InterruptAttack(AttackInterruptReason.Displacement);
+        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speed);
+        return baseDamage;
+    }
+}
+
+public static class BuildingCombatModifierUtility
+{
+    public static float ResolveAmmoReloadDelay(MAEntity host, float baseDelaySeconds)
+    {
+        float result = baseDelaySeconds;
+        var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
+        if (buffComp != null)
+        {
+            foreach (BuffCallback module in buffComp.EnumerateAllModules())
+            {
+                if (module is AmmoReloadDelayModifierBuff modifier)
+                    result += modifier.DeltaSeconds;
+            }
+        }
+
+        return Mathf.Max(0f, result);
+    }
+
+    public static int ResolveRestroomQueueLimit(MAEntity host, int baseQueueLimit)
+    {
+        int result = baseQueueLimit;
+        var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
+        if (buffComp != null)
+        {
+            foreach (BuffCallback module in buffComp.EnumerateAllModules())
+            {
+                if (module is RestroomQueueModifierBuff modifier)
+                    result += modifier.QueueLimitDelta;
+            }
+        }
+
+        return Mathf.Max(1, result);
+    }
+
+    public static float ResolveRestroomReleaseInterval(MAEntity host, float baseReleaseInterval)
+    {
+        float result = baseReleaseInterval;
+        var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
+        if (buffComp != null)
+        {
+            foreach (BuffCallback module in buffComp.EnumerateAllModules())
+            {
+                if (module is RestroomQueueModifierBuff modifier)
+                    result += modifier.ReleaseIntervalDelta;
+            }
+        }
+
+        return Mathf.Max(0.1f, result);
+    }
+
+    public static Fix64 ResolveBlindPercent(IEntityContext host, Fix64 baseBlindPercent)
+    {
+        Fix64 result = baseBlindPercent;
+        var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
+        if (buffComp != null)
+        {
+            foreach (BuffCallback module in buffComp.EnumerateAllModules())
+            {
+                if (module is BlindChanceBonusBuff modifier)
+                    result += modifier.ChancePercentDelta;
+            }
+        }
+
+        return result > Fix64.Zero ? result : Fix64.Zero;
     }
 }
 
@@ -259,7 +402,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
         }
 
         _releaseTimer += deltaTime;
-        if (_releaseTimer < _releaseInterval)
+        if (_releaseTimer < GetReleaseInterval())
             return;
 
         _releaseTimer = 0f;
@@ -268,7 +411,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
 
     private void TryAcquireTargets(float deltaTime)
     {
-        if (_queue.Count >= _queueLimit)
+        if (_queue.Count >= GetQueueLimit())
             return;
 
         _scanTimer += deltaTime;
@@ -276,7 +419,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
             return;
 
         _scanTimer = 0f;
-        while (_queue.Count < _queueLimit)
+        while (_queue.Count < GetQueueLimit())
         {
             MAEntity target = FindNearestEligibleTarget();
             if (target == null)
@@ -457,6 +600,16 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
             throw new InvalidOperationException("RestroomQueueBuff.GetBuilding failed: buildingData is null.");
 
         return building;
+    }
+
+    private int GetQueueLimit()
+    {
+        return BuildingCombatModifierUtility.ResolveRestroomQueueLimit(hostEntity, _queueLimit);
+    }
+
+    private float GetReleaseInterval()
+    {
+        return BuildingCombatModifierUtility.ResolveRestroomReleaseInterval(hostEntity, _releaseInterval);
     }
 
     private static float GetWorldRange(BuildingEntity building)
@@ -644,10 +797,11 @@ public static class MonitorWeaponEffect
 
     private static Fix64 ResolveBlindPercent(IEntityContext attacker)
     {
+        Fix64 baseBlindPercent = Fix64.Zero;
         if (attacker is BuildingEntity building && building.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 0)
-            return building.buildingData.UniqueValues[0];
+            baseBlindPercent = building.buildingData.UniqueValues[0];
 
-        return Fix64.Zero;
+        return BuildingCombatModifierUtility.ResolveBlindPercent(attacker, baseBlindPercent);
     }
 
     public static float ResolveFacingConeAngle(IEntityContext attacker)

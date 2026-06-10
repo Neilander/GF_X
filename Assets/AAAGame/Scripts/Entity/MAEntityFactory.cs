@@ -137,6 +137,26 @@ public static class BuildingInitialBuffFactory
             int tauntValue = GetUniqueInt(buildingData, 0, 1);
             buffList.Add(TauntBuffCallback.CreateTaunt(tauntValue));
         }
+        else if (IsBuilding(buildingData, BuildingAbilityIds.SortingTable))
+        {
+            Fix64 pushLevel = GetUniqueValue(buildingData, 0, Fix64.Zero);
+            if (pushLevel > Fix64.Zero)
+            {
+                buffList.Add(CreateInitialBuff(
+                    "building_sorting_table_knockback",
+                    new KnockbackOnOutgoingDamageBuff(pushLevel)));
+            }
+        }
+        else if (IsBuilding(buildingData, BuildingAbilityIds.MeatRack))
+        {
+            Fix64 pullLevel = GetUniqueValue(buildingData, 0, Fix64.Zero);
+            if (pullLevel > Fix64.Zero)
+            {
+                buffList.Add(CreateInitialBuff(
+                    "building_meat_rack_pull",
+                    new PullOnOutgoingDamageBuff(pullLevel)));
+            }
+        }
         else if (IsBuilding(buildingData, BuildingAbilityIds.Trap))
         {
             buffList.Add(CreateInitialBuff(

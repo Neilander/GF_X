@@ -11,8 +11,6 @@ using UnityGameFramework.Runtime;
 public class GlobalBuffManager : GameFrameworkComponent
 {
     [SerializeField] private bool enableDebugLogs = true;
-    [Tooltip("旧 TechEffectSO 绑定列表。已迁入 BuildingTechRuntimeEffectSO 规则表的建筑科技不走这里。")]
-    [SerializeField] private List<TechEffectBinding> techEffectBindings = new();
 
     private sealed class GlobalUnitBuffEntry
     {
@@ -59,14 +57,9 @@ public class GlobalBuffManager : GameFrameworkComponent
     private readonly List<PersistentBuildingEntityBuffRule> m_PersistentBuildingEntityBuffRules = new();
     // 第三个桶：按 BuildingInstanceId 存建筑额外属性（独立于 BuildingEntity 生命周期，升级时同 id 共享同对象）
     private readonly Dictionary<string, BuildingExtraProps> m_BuildingExtraProps = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, TechEffectSO> m_TechEffectLookup = new(StringComparer.Ordinal);
-    private bool m_IsTechEffectLookupDirty = true;
     private BuildingTechRuntimeEffectSO m_BuildingTechRuntimeEffect;
 
-    [SerializeField] private TechEffectSO defaultTechEffect;
-
     public TechScopeResolver ScopeResolver => m_TechScopeResolver;
-    public List<TechEffectBinding> TechEffectBindings => techEffectBindings;
 
     protected void Start()
     {
@@ -118,11 +111,6 @@ public class GlobalBuffManager : GameFrameworkComponent
         m_BuildingTechRuntimeEffect?.ClearRuntimeState();
     }
 
-    private void OnValidate()
-    {
-        m_IsTechEffectLookupDirty = true;
-    }
-
     private void OnTechUnlocked(object sender, GameEventArgs e)
     {
         if (!TryInitializeScopeResolver())
@@ -165,29 +153,7 @@ public class GlobalBuffManager : GameFrameworkComponent
             return;
         }
 
-        var effect = ResolveEffect(techData);
-        if (effect == null)
-        {
-            Debug.LogWarning($"[GlobalBuffManager] 找不到可用的 TechEffect, techId={args.TechId}");
-            return;
-        }
-
-        effect.Activate(new TechEffectContext
-        {
-            TechId = args.TechId,
-            OwnerFactionId = args.OwnerFactionId,
-            SourceBuildingInstanceId = args.SourceBuildingInstanceId,
-            TechData = techData,
-            ResolvedScope = resolvedScope,
-            GlobalBuffManager = this,
-        });
-
-        DebugLog(
-            $"[GlobalBuffManager] 科技解锁: techId={args.TechId}, " +
-            $"ownerFactionId={args.OwnerFactionId}, " +
-            $"scopeType={techData.ScopeType}, " +
-            $"characterKeys=[{string.Join(",", resolvedScope.CharacterKeys)}], " +
-            $"unitTypes=[{string.Join(",", resolvedScope.UnitTypes)}]");
+        Debug.LogWarning($"[GlobalBuffManager] 缺少 BuildingTechRuntimeEffectSO 运行时规则，techId={args.TechId}, scopeType={techData.ScopeType}");
     }
 
     private bool TryInitializeScopeResolver()
@@ -726,21 +692,6 @@ public class GlobalBuffManager : GameFrameworkComponent
         return result.Count > 0 ? result : null;
     }
 
-    private TechEffectSO ResolveEffect(TechData techData)
-    {
-        RebuildTechEffectLookupIfNeeded();
-
-        if (techData != null
-            && !string.IsNullOrWhiteSpace(techData.Identifier)
-            && m_TechEffectLookup.TryGetValue(techData.Identifier, out var mappedEffect)
-            && mappedEffect != null)
-        {
-            return mappedEffect;
-        }
-
-        return defaultTechEffect;
-    }
-
     private BuildingTechRuntimeEffectSO GetBuildingTechRuntimeEffect()
     {
         if (m_BuildingTechRuntimeEffect == null)
@@ -764,32 +715,6 @@ public class GlobalBuffManager : GameFrameworkComponent
                 || string.Equals(r.Tech2ID, techData.Identifier, StringComparison.Ordinal)));
 
         return row != null;
-    }
-
-    private void RebuildTechEffectLookupIfNeeded()
-    {
-        if (!m_IsTechEffectLookupDirty)
-            return;
-
-        m_TechEffectLookup.Clear();
-        if (techEffectBindings != null)
-        {
-            for (int i = 0; i < techEffectBindings.Count; i++)
-            {
-                var binding = techEffectBindings[i];
-                if (binding == null || string.IsNullOrWhiteSpace(binding.TechId))
-                    continue;
-
-                m_TechEffectLookup[binding.TechId] = binding.Effect;
-            }
-        }
-
-        m_IsTechEffectLookupDirty = false;
-    }
-
-    public void MarkTechEffectBindingsDirty()
-    {
-        m_IsTechEffectLookupDirty = true;
     }
 
     private void DebugLog(string message)
