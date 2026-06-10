@@ -10,9 +10,6 @@ public class TechBuilInsuranceOfficeLv3EffectSO : HybridBuildingTechEffectSO
 {
     protected override void ApplyExtraProps(BuildingExtraProps extra, TechData td)
     {
-        if (td?.UniqueValues != null && td.UniqueValues.Length > 0)
-        {
-            extra.Production += td.UniqueValues[0];
-        }
+        // 日产出由升级后的 BuildingData.Production 读取，避免与生产 buff 重复结算。
     }
 }

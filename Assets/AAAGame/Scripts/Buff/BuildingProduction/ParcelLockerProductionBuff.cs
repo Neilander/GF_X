@@ -16,11 +16,8 @@ public class ParcelLockerProductionBuff : BuffCallback
         var building = hostEntity as BuildingEntity;
         if (building?.buildingData?.Identifier != null && building.buildingData.Identifier.Contains("ParcelLocker"))
         {
-            int maxBonus = GetConfiguredMaxBonus(building);
-            
             // 设置产出类型
             building.SetProductionType(ProductionType.BySameBuildingCount);
-            building.SetProductionCap(maxBonus);
             
             // 初始更新一次产出
             UpdateBuildingCountProduction();
@@ -124,21 +121,12 @@ public class ParcelLockerProductionBuff : BuffCallback
 
     private static int GetConfiguredBonusPerBuilding(BuildingEntity building)
     {
-        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 0)
-        {
-            return Mathf.Max(1, (int)building.buildingData.UniqueValues[0]);
-        }
-
-        return DefaultBonusPerBuilding;
+        return ProductionTraitUtility.GetUniqueInt(building, 0, DefaultBonusPerBuilding);
     }
 
     private static int GetConfiguredMaxBonus(BuildingEntity building)
     {
-        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 1)
-        {
-            return Mathf.Max(0, (int)building.buildingData.UniqueValues[1]);
-        }
-
-        return DefaultMaxBonus;
+        return ProductionTraitUtility.GetUniqueInt(building, 1, DefaultMaxBonus)
+               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
     }
 }

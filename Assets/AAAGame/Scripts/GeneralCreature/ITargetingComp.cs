@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using System.Collections.Generic;
+using UnityEngine;
 
 public interface ITargetingComp:ICapability
 {
@@ -29,4 +30,9 @@ public interface ITargetingComp:ICapability
 
     /// <summary>清掉受击/告警仇恨记忆（如：进入返航、目标丢失等）。</summary>
     void ClearAggro();
+}
+
+public interface IMultiTargetingComp
+{
+    IReadOnlyList<IEntityContext> CurrentTargets { get; }
 }

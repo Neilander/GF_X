@@ -41,6 +41,14 @@ public class WeaponComp : ICapability
         return true;
     }
 
+    public void ReloadFull()
+    {
+        if (!HasAmmunition)
+            return;
+
+        CurrentAmmo = MaxAmmo;
+    }
+
     private static int ResolveAmmoCapacity(Weapon weapon)
     {
         if (weapon == null || weapon.AmmunitionCapacity <= Fix64.Zero)

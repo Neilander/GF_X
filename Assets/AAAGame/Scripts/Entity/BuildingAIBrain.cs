@@ -25,14 +25,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
             return;
 
         var target = self.TargetComp?.CurrentTarget;
-        if (!target.IsAttackTargetable())
-        {
-            if (self.TargetComp != null)
-                self.TargetComp.CurrentTarget = null;
-            return;
-        }
-
-        if (!EntityCombatTeamHelper.IsEnemy(self, target))
+        if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(self, target))
         {
             if (self.TargetComp != null)
                 self.TargetComp.CurrentTarget = null;

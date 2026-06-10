@@ -56,6 +56,15 @@ namespace AAAGame.Scripts.BuffSystem
             // 检查是否已存在该Buff
             if (_buffDict.TryGetValue(buffData.id, out BuffData existingBuff))
             {
+                if (existingBuff.currentStack >= existingBuff.maxStack && existingBuff.maxStack <= 1)
+                {
+                    if (!existingBuff.isForever && !buffData.isForever)
+                        existingBuff.remainingTime = Mathf.Max(existingBuff.remainingTime, buffData.remainingTime);
+
+                    ReferencePool.Release(buffData);
+                    return true;
+                }
+
                 // 如果达到最大层数，不叠加
                 if (existingBuff.currentStack >= existingBuff.maxStack)
                 {

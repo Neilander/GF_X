@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class CharacterTargetingComp : ITargetingComp
@@ -464,12 +465,13 @@ public class CharacterTargetingComp : ITargetingComp
 
 }
 
-public sealed class HealTargetingComp : ITargetingComp
+public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
 {
     private const float ScanInterval = 0.2f;
 
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
+    private readonly List<IEntityContext> _currentTargets = new List<IEntityContext>();
     private float _scanTimer;
 
     public IEntityContext CurrentTarget
@@ -479,6 +481,7 @@ public sealed class HealTargetingComp : ITargetingComp
     }
 
     public IEntityContext FollowTarget { get; private set; }
+    public IReadOnlyList<IEntityContext> CurrentTargets => _currentTargets;
     public float AggroRange { get; set; } = 6f;
     public float ForgetRange { get; set; } = 8f;
     public float FollowSearchRange { get; set; } = 30f;
@@ -498,6 +501,7 @@ public sealed class HealTargetingComp : ITargetingComp
             return;
 
         MaintainCurrentTarget();
+        MaintainCurrentTargets();
         MaintainFollowTarget();
 
         _scanTimer += deltaTime;
@@ -506,8 +510,7 @@ public sealed class HealTargetingComp : ITargetingComp
 
         _scanTimer = 0f;
 
-        if (CurrentTarget == null)
-            CurrentTarget = FindLowestHealthRatioAlly();
+        RebuildHealTargetsByRangePriority();
 
         if (FollowTarget == null)
             TryAcquireFollowTarget();
@@ -522,6 +525,15 @@ public sealed class HealTargetingComp : ITargetingComp
             CurrentTarget = null;
     }
 
+    private void MaintainCurrentTargets()
+    {
+        for (int i = _currentTargets.Count - 1; i >= 0; i--)
+        {
+            if (!WeaponTargetRules.IsValidHealTarget(_ctx, _currentTargets[i], requireDamaged: true))
+                _currentTargets.RemoveAt(i);
+        }
+    }
+
     private void MaintainFollowTarget()
     {
         if (FollowTarget == null)
@@ -532,16 +544,17 @@ public sealed class HealTargetingComp : ITargetingComp
             FollowTarget = null;
     }
 
-    private IEntityContext FindLowestHealthRatioAlly()
+    private void RebuildHealTargetsByRangePriority()
     {
         var all = EntityRegistry.AllEntities;
         if (all == null)
-            throw new System.InvalidOperationException("HealTargetingComp.FindLowestHealthRatioAlly failed: EntityRegistry.AllEntities is null.");
+            throw new System.InvalidOperationException("HealTargetingComp.FindHealTargetByRangePriority failed: EntityRegistry.AllEntities is null.");
 
-        float scanRange = Mathf.Max(AggroRange, GetEffectiveAttackRange());
-        IEntityContext best = null;
-        float bestHpRatio = 1f;
-        float bestDistance = float.PositiveInfinity;
+        float attackRange = GetEffectiveAttackRange();
+        float scanRange = Mathf.Max(AggroRange, attackRange);
+        int targetCount = ResolveTargetCount();
+        var inAttackRange = new List<HealCandidate>(targetCount);
+        var outsideAttackRange = new List<HealCandidate>(targetCount);
 
         for (int i = 0; i < all.Count; i++)
         {
@@ -556,15 +569,49 @@ public sealed class HealTargetingComp : ITargetingComp
                 continue;
 
             float hpRatio = candidate.HealthRatio();
-            if (hpRatio < bestHpRatio || (Mathf.Approximately(hpRatio, bestHpRatio) && distance < bestDistance))
+            if (distance <= attackRange)
             {
-                bestHpRatio = hpRatio;
-                bestDistance = distance;
-                best = candidate;
+                InsertHealCandidate(inAttackRange, new HealCandidate(candidate, hpRatio, distance), targetCount);
+            }
+            else
+            {
+                InsertHealCandidate(outsideAttackRange, new HealCandidate(candidate, hpRatio, distance), targetCount);
             }
         }
 
-        return best;
+        var selected = inAttackRange.Count > 0 ? inAttackRange : outsideAttackRange;
+        _currentTargets.Clear();
+        for (int i = 0; i < selected.Count; i++)
+            _currentTargets.Add(selected[i].Target);
+
+        CurrentTarget = _currentTargets.Count > 0 ? _currentTargets[0] : null;
+    }
+
+    private static void InsertHealCandidate(List<HealCandidate> list, HealCandidate candidate, int maxCount)
+    {
+        int index = 0;
+        while (index < list.Count && !IsBetterHealTarget(candidate, list[index]))
+            index++;
+
+        if (index >= maxCount)
+            return;
+
+        list.Insert(index, candidate);
+        if (list.Count > maxCount)
+            list.RemoveAt(list.Count - 1);
+    }
+
+    private static bool IsBetterHealTarget(HealCandidate candidate, HealCandidate current)
+    {
+        return candidate.HpRatio < current.HpRatio
+               || (Mathf.Approximately(candidate.HpRatio, current.HpRatio) && candidate.Distance < current.Distance);
+    }
+
+    private int ResolveTargetCount()
+    {
+        Fix64 count = _ctx?.WeaponComp?.Data != null ? _ctx.WeaponComp.Data.ProjectileCount : Fix64.One;
+        int result = (int)count;
+        return Mathf.Max(1, result);
     }
 
     private void TryAcquireFollowTarget()
@@ -599,11 +646,25 @@ public sealed class HealTargetingComp : ITargetingComp
     public void ShutDown()
     {
         CurrentTarget = null;
+        _currentTargets.Clear();
         FollowTarget = null;
-        _ctx = null;
     }
 
     public void Resume()
     {
+    }
+
+    private readonly struct HealCandidate
+    {
+        public readonly IEntityContext Target;
+        public readonly float HpRatio;
+        public readonly float Distance;
+
+        public HealCandidate(IEntityContext target, float hpRatio, float distance)
+        {
+            Target = target;
+            HpRatio = hpRatio;
+            Distance = distance;
+        }
     }
 }

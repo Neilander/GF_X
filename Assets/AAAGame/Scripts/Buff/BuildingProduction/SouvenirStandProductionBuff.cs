@@ -15,11 +15,8 @@ public class SouvenirStandProductionBuff : BuffCallback
         var building = hostEntity as BuildingEntity;
         if (IsSouvenirStand(building))
         {
-            int maxBonus = GetConfiguredMaxBonus(building);
-
             // 设置产出类型
             building.SetProductionType(ProductionType.ByTroopCount);
-            building.SetProductionCap(maxBonus);
             
             // 初始更新一次产出
             UpdateTroopCountProduction();
@@ -85,27 +82,17 @@ public class SouvenirStandProductionBuff : BuffCallback
 
     private static bool IsSouvenirStand(BuildingEntity building)
     {
-        return building?.buildingData?.Identifier != null
-               && building.buildingData.Identifier.Contains("SouvenirStand");
+        return ProductionTraitUtility.IsBuilding(building, "Buil_SouvenirStand");
     }
 
     private static int GetConfiguredBonusPerTroop(BuildingEntity building)
     {
-        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 0)
-        {
-            return Mathf.Max(1, (int)building.buildingData.UniqueValues[0]);
-        }
-
-        return DefaultBonusPerTroop;
+        return ProductionTraitUtility.GetUniqueInt(building, 0, DefaultBonusPerTroop);
     }
 
     private static int GetConfiguredMaxBonus(BuildingEntity building)
     {
-        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 2)
-        {
-            return Mathf.Max(0, (int)building.buildingData.UniqueValues[2]);
-        }
-
-        return DefaultMaxBonus;
+        return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
+               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
     }
 }

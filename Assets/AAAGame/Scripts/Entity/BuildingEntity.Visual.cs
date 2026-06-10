@@ -157,6 +157,39 @@ public partial class BuildingEntity
         _phaseVisibilityApplied = !visible;
     }
 
+    private void SetStealthVisualState(bool stealthActive, bool hidden, float visibleAlpha)
+    {
+        EnsureVisualCache();
+
+        if (_propertyBlock == null)
+            _propertyBlock = new MaterialPropertyBlock();
+
+        for (int i = 0; i < _visualRenderers.Count; i++)
+        {
+            Renderer renderer = _visualRenderers[i];
+            if (renderer == null)
+                continue;
+
+            bool baseEnabled = i >= _visualBaseEnabledStates.Count || _visualBaseEnabledStates[i];
+            renderer.enabled = !hidden && baseEnabled;
+
+            Color baseColor = i < _visualBaseColors.Count ? _visualBaseColors[i] : Color.white;
+            Color targetColor = stealthActive && !hidden
+                ? new Color(baseColor.r, baseColor.g, baseColor.b, Mathf.Clamp01(visibleAlpha))
+                : baseColor;
+
+            renderer.GetPropertyBlock(_propertyBlock);
+            if (HasColorProperty(renderer, BaseColorId))
+                _propertyBlock.SetColor(BaseColorId, targetColor);
+            if (HasColorProperty(renderer, ColorId))
+                _propertyBlock.SetColor(ColorId, targetColor);
+            renderer.SetPropertyBlock(_propertyBlock);
+        }
+
+        if (!hidden && !stealthActive)
+            RefreshLv0PhaseVisibility();
+    }
+
     private void RestorePhaseVisibility()
     {
         if (!_phaseVisibilityApplied)

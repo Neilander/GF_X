@@ -3,16 +3,13 @@ using UnityEngine;
 /// <summary>
 /// TechID: Tech_Buil_MiningRig_Lv2
 /// ScopeType: SelfBuil
-/// 策划描述: 日产出+<val1>
-/// UniqueValues: 2
+/// 策划描述: 等级基础产量提升
+/// UniqueValues:
 /// </summary>
 public class TechBuilMiningRigLv2EffectSO : HybridBuildingTechEffectSO
 {
     protected override void ApplyExtraProps(BuildingExtraProps extra, TechData td)
     {
-        if (td?.UniqueValues != null && td.UniqueValues.Length > 0)
-        {
-            extra.Production += td.UniqueValues[0];
-        }
+        // 基础产量由升级后的 BuildingData.Production 提供。
     }
 }

@@ -106,7 +106,7 @@ public class BuildingPhaseGuardBuff : BuffCallback
 
         bool isLv0Building = building.buildingData != null && building.buildingData.Lv == 0;
         bool shouldSuppressHealthBar = InGameDataModel.IsBuildPhase(phase) || isLv0Building;
-        if (building.IsHealthBarSuppressedByBuff == shouldSuppressHealthBar)
+        if (building.IsHealthBarSuppressedByPhaseBuff == shouldSuppressHealthBar)
             return;
 
         building.SetHealthBarSuppressedByBuff(shouldSuppressHealthBar);
@@ -115,6 +115,9 @@ public class BuildingPhaseGuardBuff : BuffCallback
             HealthBarComp.Remove(building.Id);
             return;
         }
+
+        if (building.IsHealthBarSuppressedByBuff)
+            return;
 
         if (GameObject.Find($"HealthBar_{building.Id}") != null)
             return;

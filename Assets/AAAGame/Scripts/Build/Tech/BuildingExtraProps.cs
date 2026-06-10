@@ -15,7 +15,9 @@ public class BuildingExtraProps
 
     // 动态产出相关属性
     public Fix64 DynamicProduction; // 动态计算的额外产出
-    public Fix64 ProductionCap;     // 产出上限
+    public Fix64 ProductionCap;     // 总产出上限。<=0 表示不限制
+    public int StoredProduction;    // 部分生产建筑的累计待产出资源
+    public int ProductionTraitFirstDay; // 生产特性开始计日的日期，0 表示尚未开始
     public int ConditionCount;      // 条件计数（兵力/建筑数/击杀数）
     public ProductionType ProductionType; // 产出计算类型
 

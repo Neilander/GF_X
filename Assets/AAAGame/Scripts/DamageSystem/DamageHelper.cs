@@ -321,7 +321,10 @@ public static class WeaponTargetRules
 
     public static bool IsProjectileLikeWeapon(WeaponType weaponType)
     {
-        return weaponType == WeaponType.Projectile || weaponType == WeaponType.HealProjectile;
+        return weaponType == WeaponType.Projectile
+               || weaponType == WeaponType.HealProjectile
+               || weaponType == WeaponType.InstantRanged
+               || weaponType == WeaponType.Special;
     }
 
     public static bool IsValidTargetForCurrentWeapon(IEntityContext attacker, IEntityContext target)

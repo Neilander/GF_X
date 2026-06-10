@@ -364,13 +364,6 @@ public class RewardManager : GameFrameworkComponent
 			{
 				production = building.GetProduction();
 				Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} production={production}");
-				
-				// 给生产建筑一个基础生产值
-				if (production <= 0 && building.buildingData.Type == BuilType.Prod)
-				{
-					production = 1;
-					Debug.Log($"[RewardManager] Setting {building.buildingData.Identifier} base production to 1");
-				}
 			}
 			catch (System.Exception ex)
 			{
@@ -393,6 +386,7 @@ public class RewardManager : GameFrameworkComponent
 
 			totalProduction += actualProduction;
 			Debug.Log($"[RewardManager] Building {building.buildingData.Identifier} will produce {actualProduction} coins (raw={production})");
+			building.NotifyProductionGranted(production, actualProduction);
 			GrantCoinAfterFly(building.transform.position, actualProduction, "build_phase_income");
 		}
 		

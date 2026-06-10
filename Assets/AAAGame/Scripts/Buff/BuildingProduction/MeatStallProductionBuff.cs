@@ -16,11 +16,8 @@ public class MeatStallProductionBuff : BuffCallback
         var building = hostEntity as BuildingEntity;
         if (IsMeatStall(building))
         {
-            int maxBonus = GetConfiguredMaxBonus(building);
-
             // 设置产出类型
             building.SetProductionType(ProductionType.ByKillCount);
-            building.SetProductionCap(maxBonus);
             
             // 初始更新一次产出
             UpdateKillCountProduction();
@@ -98,42 +95,27 @@ public class MeatStallProductionBuff : BuffCallback
     
     private int GetCurrentDay()
     {
-        return Mathf.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        return ProductionTraitUtility.GetCurrentDay();
     }
 
     private static bool IsMeatStall(BuildingEntity building)
     {
-        return building?.buildingData?.Identifier != null
-               && building.buildingData.Identifier.Contains("MeatStall");
+        return ProductionTraitUtility.IsBuilding(building, "Buil_MeatStall");
     }
 
     private static int GetConfiguredKillsPerBonus(BuildingEntity building)
     {
-        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 0)
-        {
-            return Mathf.Max(1, (int)building.buildingData.UniqueValues[0]);
-        }
-
-        return DefaultKillsPerBonus;
+        return ProductionTraitUtility.GetUniqueInt(building, 0, DefaultKillsPerBonus);
     }
 
     private static int GetConfiguredBonusPerStep(BuildingEntity building)
     {
-        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 1)
-        {
-            return Mathf.Max(1, (int)building.buildingData.UniqueValues[1]);
-        }
-
-        return DefaultBonusPerStep;
+        return ProductionTraitUtility.GetUniqueInt(building, 1, DefaultBonusPerStep);
     }
 
     private static int GetConfiguredMaxBonus(BuildingEntity building)
     {
-        if (building?.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 2)
-        {
-            return Mathf.Max(0, (int)building.buildingData.UniqueValues[2]);
-        }
-
-        return DefaultMaxBonus;
+        return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
+               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
     }
 }

@@ -10,6 +10,7 @@ public sealed class SoldierDeadEventArgs : GameEventArgs
     public int VictimEntityId { get; private set; }
     public SideType VictimSide { get; private set; }
     public int VictimSupply { get; private set; }
+    public UnitSize VictimSize { get; private set; }
     public Vector3 WorldPosition { get; private set; }
 
     public static SoldierDeadEventArgs Create(SoldierEntity victim)
@@ -20,6 +21,7 @@ public sealed class SoldierDeadEventArgs : GameEventArgs
             e.VictimEntityId = 0;
             e.VictimSide = SideType.NoSide;
             e.VictimSupply = 0;
+            e.VictimSize = UnitSize.Small;
             e.WorldPosition = Vector3.zero;
             return e;
         }
@@ -27,6 +29,7 @@ public sealed class SoldierDeadEventArgs : GameEventArgs
         e.VictimEntityId = victim.Id;
         e.VictimSide = victim.Side;
         e.VictimSupply = victim.CharacterData != null ? Mathf.Max(0, victim.CharacterData.Supply) : 0;
+        e.VictimSize = victim.CharacterData != null ? victim.CharacterData.Size : UnitSize.Small;
         e.WorldPosition = ResolveVictimWorldPosition(victim);
         return e;
     }
@@ -65,6 +68,7 @@ public sealed class SoldierDeadEventArgs : GameEventArgs
         VictimEntityId = 0;
         VictimSide = SideType.NoSide;
         VictimSupply = 0;
+        VictimSize = UnitSize.Small;
         WorldPosition = Vector3.zero;
     }
 }

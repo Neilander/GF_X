@@ -11,6 +11,9 @@ using UnityGameFramework.Runtime;
 public class ProductionConditionManager : GameFrameworkComponent
 {
     private readonly Dictionary<string, int> _killCountByStronghold = new Dictionary<string, int>();
+    private readonly Dictionary<string, int> _heavyKillCountByStronghold = new Dictionary<string, int>();
+    private readonly Dictionary<string, int> _survivorCountByStronghold = new Dictionary<string, int>();
+    private readonly HashSet<string> _buildingDamagedByStronghold = new HashSet<string>();
     private bool _eventsSubscribed;
 
     private void Start()
@@ -79,6 +82,49 @@ public class ProductionConditionManager : GameFrameworkComponent
         }
         
         return 0;
+    }
+
+    public int GetHeavyKillCountForStronghold(Stronghold stronghold, int day)
+    {
+        if (stronghold == null)
+            return 0;
+
+        string key = BuildStrongholdDayKey(stronghold, day);
+        return _heavyKillCountByStronghold.TryGetValue(key, out int count) ? count : 0;
+    }
+
+    public int GetSurvivorCountForStronghold(Stronghold stronghold, int day)
+    {
+        if (stronghold == null)
+            return 0;
+
+        string key = BuildStrongholdDayKey(stronghold, day);
+        return _survivorCountByStronghold.TryGetValue(key, out int count) ? count : 0;
+    }
+
+    public bool WasBuildingDamagedInStronghold(Stronghold stronghold, int day)
+    {
+        if (stronghold == null)
+            return false;
+
+        return _buildingDamagedByStronghold.Contains(BuildStrongholdDayKey(stronghold, day));
+    }
+
+    public int GetPlayerOccupiedStrongholdCount()
+    {
+        IReadOnlyList<Stronghold> strongholds = InGameDataModel.GetStrongholds();
+        if (strongholds == null || strongholds.Count == 0)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < strongholds.Count; i++)
+        {
+            Stronghold stronghold = strongholds[i];
+            if (stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                count++;
+        }
+
+        return count;
     }
     
     /// <summary>
@@ -183,6 +229,9 @@ public class ProductionConditionManager : GameFrameworkComponent
     public void ClearAllStatistics()
     {
         _killCountByStronghold.Clear();
+        _heavyKillCountByStronghold.Clear();
+        _survivorCountByStronghold.Clear();
+        _buildingDamagedByStronghold.Clear();
     }
 
     private void TrySubscribeEvents()
@@ -192,6 +241,7 @@ public class ProductionConditionManager : GameFrameworkComponent
 
         GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
         GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        GF.Event.Subscribe(CreatureHealthChangedEventArgs.EventId, OnCreatureHealthChanged);
         _eventsSubscribed = true;
     }
 
@@ -202,6 +252,7 @@ public class ProductionConditionManager : GameFrameworkComponent
 
         GF.Event.Unsubscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
         GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        GF.Event.Unsubscribe(CreatureHealthChangedEventArgs.EventId, OnCreatureHealthChanged);
         _eventsSubscribed = false;
     }
 
@@ -210,6 +261,9 @@ public class ProductionConditionManager : GameFrameworkComponent
         var args = e as IngamePhaseChangedEventArgs;
         if (args == null)
             return;
+
+        if (InGameDataModel.IsBuildPhase(args.NewPhase))
+            SnapshotSurvivorsForPreviousDay();
 
         OnPhaseChanged(args.NewPhase);
     }
@@ -232,6 +286,61 @@ public class ProductionConditionManager : GameFrameworkComponent
         string key = BuildStrongholdDayKey(stronghold, currentDay);
         _killCountByStronghold.TryGetValue(key, out int currentKills);
         _killCountByStronghold[key] = currentKills + 1;
+
+        if (args.VictimSize == UnitSize.Large || args.VictimSize == UnitSize.SuperLarge)
+        {
+            _heavyKillCountByStronghold.TryGetValue(key, out int currentHeavyKills);
+            _heavyKillCountByStronghold[key] = currentHeavyKills + 1;
+        }
+    }
+
+    private void OnCreatureHealthChanged(object sender, GameEventArgs e)
+    {
+        if (e is not CreatureHealthChangedEventArgs args || args.Delta >= 0f)
+            return;
+
+        BuildingEntity building = FindBuildingByEntityId(args.EntityId);
+        if (building == null || building.CurrentStronghold == null)
+            return;
+
+        int currentDay = Mathf.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        _buildingDamagedByStronghold.Add(BuildStrongholdDayKey(building.CurrentStronghold, currentDay));
+    }
+
+    private static BuildingEntity FindBuildingByEntityId(int entityId)
+    {
+        if (entityId <= 0)
+            return null;
+
+        var model = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+        if (model?.Buildings == null)
+            return null;
+
+        foreach (BuildingEntity building in model.Buildings)
+        {
+            if (building != null && building.Id == entityId)
+                return building;
+        }
+
+        return null;
+    }
+
+    private void SnapshotSurvivorsForPreviousDay()
+    {
+        IReadOnlyList<Stronghold> strongholds = InGameDataModel.GetStrongholds();
+        if (strongholds == null || strongholds.Count == 0)
+            return;
+
+        int currentDay = Mathf.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
+        int previousDay = Mathf.Max(1, currentDay - 1);
+        for (int i = 0; i < strongholds.Count; i++)
+        {
+            Stronghold stronghold = strongholds[i];
+            if (stronghold == null)
+                continue;
+
+            _survivorCountByStronghold[BuildStrongholdDayKey(stronghold, previousDay)] = CalculateActualTroopCount(stronghold);
+        }
     }
 
     private static string BuildStrongholdDayKey(Stronghold stronghold, int day)

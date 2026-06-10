@@ -41,7 +41,8 @@ public partial class BuildingEntity : MAEntity
     public bool IsDisabled => _isDisabled;
     public bool IsLv0Invincible => _lv0InvincibleByBuff;
     public bool IsPhaseProtected => _phaseProtectionByBuff;
-    public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff;
+    public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff || _stealthHealthBarSuppressed;
+    public bool IsHealthBarSuppressedByPhaseBuff => _healthBarSuppressedByBuff;
     public bool HasPermanentNoAttackCapability { get; private set; }
 
     private DirectAtkComp _directAtkComp;
@@ -49,6 +50,9 @@ public partial class BuildingEntity : MAEntity
     private bool _lv0InvincibleByBuff;
     private bool _phaseProtectionByBuff;
     private bool _healthBarSuppressedByBuff;
+    private bool _stealthHealthBarSuppressed;
+    private bool _stealthMinimapHidden;
+    private bool _permanentStealthVisibility;
     private bool _combatLocked;
     private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
     private BaseValueProperty _armyForceProperty;
@@ -95,11 +99,12 @@ public partial class BuildingEntity : MAEntity
         EnsureMinimapReportComponent();
         SubscribeLv0PhaseVisibilityEvents();
         RefreshLv0PhaseVisibility();
-        EnsureLv0InvincibleBuff();
-        EnsurePhaseProtectionBuff();
-
         // 拿到 extra 属性引用（升级场景同 BuildingInstanceId 共享同一对象，extra 数据自然延续）
         _extraProps = GameEntry.GetComponent<GlobalBuffManager>()?.GetOrCreateExtraProps(BuildingInstanceId);
+
+        EnsureLv0InvincibleBuff();
+        EnsurePhaseProtectionBuff();
+        ApplyBuildingInitialBuffs();
 
         if (HasUpgrade)
         {
@@ -198,6 +203,7 @@ public partial class BuildingEntity : MAEntity
     {
         UnsubscribeLv0PhaseVisibilityEvents();
         RestorePhaseVisibility();
+        SetStealthVisualState(false, false, 1f);
         UnregisterOutlineRenderers();
         InGameDataModel.UnregisterBuilding(this);
 
@@ -215,6 +221,9 @@ public partial class BuildingEntity : MAEntity
         _lv0InvincibleByBuff = false;
         _phaseProtectionByBuff = false;
         _healthBarSuppressedByBuff = false;
+        _stealthHealthBarSuppressed = false;
+        _stealthMinimapHidden = false;
+        _permanentStealthVisibility = false;
         ClearArmyCardProperties();
         _extraProps = null; // 仅清字段引用，中央字典里的对象保留给同 id 的下次 Show
         buildingData = null;
@@ -230,6 +239,7 @@ public partial class BuildingEntity : MAEntity
         SyncSideFromFaction();
         _minimapReportComponent?.SetSide(Side);
         RefreshLv0PhaseVisibility();
+        RefreshPermanentStealthVisibility();
 
         if (oldFactionId != OwnerFactionID)
         {
@@ -245,14 +255,7 @@ public partial class BuildingEntity : MAEntity
         SetMoveComp(noMoveComp);
         noMoveComp.Init(this);
 
-        var targetingComp = new CharacterTargetingComp
-        {
-            AggroRange = 6f,
-            ForgetRange = 8f,
-            FollowSearchRange = 0f,
-            EnableAggroFallback = false, // 建筑不需要"视线外仇恨"，原地反击就好
-            AlertRadius = 12f            // 建筑被打/扫到敌人时，召唤 12m 内友军反击
-        };
+        ITargetingComp targetingComp = CreateBuildingTargetingComp();
         SetTargetingComp(targetingComp);
         targetingComp.Init(this);
 
@@ -261,6 +264,54 @@ public partial class BuildingEntity : MAEntity
         _directAtkComp = new DirectAtkComp();
         SetAtkComp(_directAtkComp);
         _directAtkComp.Init(this);
+    }
+
+    private ITargetingComp CreateBuildingTargetingComp()
+    {
+        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Pharmacy))
+        {
+            return new HealTargetingComp
+            {
+                AggroRange = 6f,
+                ForgetRange = 8f,
+                FollowSearchRange = 0f,
+                AlertRadius = 12f
+            };
+        }
+
+        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.MeatRack))
+        {
+            return new MeatRackTargetingComp
+            {
+                AggroRange = 6f,
+                ForgetRange = 8f,
+                FollowSearchRange = 0f,
+                AlertRadius = 12f
+            };
+        }
+
+        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Monitor))
+        {
+            return new MonitorTargetingComp(MonitorWeaponEffect.ResolveFacingConeAngle(this))
+            {
+                AggroRange = 6f,
+                ForgetRange = 8f,
+                FollowSearchRange = 0f,
+                AlertRadius = 12f
+            };
+        }
+
+        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Restroom))
+            return new NoTargetingComp();
+
+        return new CharacterTargetingComp
+        {
+            AggroRange = 6f,
+            ForgetRange = 8f,
+            FollowSearchRange = 0f,
+            EnableAggroFallback = false, // 建筑不需要"视线外仇恨"，原地反击就好
+            AlertRadius = 12f            // 建筑被打/扫到敌人时，召唤 12m 内友军反击
+        };
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -292,7 +343,8 @@ public partial class BuildingEntity : MAEntity
             return;
         }
 
-        bool visible = !IsLv0Building()
+        bool visible = !_stealthMinimapHidden
+            && !IsLv0Building()
             && (!IsGameEndConditionBuilding || OwnerFactionID != EntitySideHelper.PlayerFactionId);
         _minimapReportComponent.SetVisible(visible);
     }
@@ -443,6 +495,19 @@ public partial class BuildingEntity : MAEntity
         BuffComp.AddBuff(buffData, this);
     }
 
+    private void ApplyBuildingInitialBuffs()
+    {
+        if (BuffComp == null)
+            return;
+
+        List<BuffData> buffs = BuildingInitialBuffFactory.CreateInitialBuffs(buildingData);
+        if (buffs == null)
+            return;
+
+        for (int i = 0; i < buffs.Count; i++)
+            BuffComp.AddBuff(buffs[i], this);
+    }
+
     public void SetPhaseProtectionByBuff(bool enabled)
     {
         if (_phaseProtectionByBuff == enabled)
@@ -469,6 +534,28 @@ public partial class BuildingEntity : MAEntity
             return;
 
         _healthBarSuppressedByBuff = enabled;
+    }
+
+    public void SetPermanentStealthVisibility(bool enabled)
+    {
+        if (_permanentStealthVisibility == enabled)
+            return;
+
+        _permanentStealthVisibility = enabled;
+        RefreshPermanentStealthVisibility();
+    }
+
+    private void RefreshPermanentStealthVisibility()
+    {
+        bool hiddenFromPlayer = _permanentStealthVisibility && OwnerFactionID != EntitySideHelper.PlayerFactionId;
+        _stealthHealthBarSuppressed = hiddenFromPlayer;
+        _stealthMinimapHidden = hiddenFromPlayer;
+
+        if (hiddenFromPlayer)
+            HealthBarComp.Remove(Id);
+
+        SetStealthVisualState(_permanentStealthVisibility, hiddenFromPlayer, 0.55f);
+        UpdateMinimapReportVisibility();
     }
 
     private void RefreshInteractionHostForCurrentOwnership()
@@ -598,12 +685,12 @@ public partial class BuildingEntity : MAEntity
 
         _directAtkComp.UpdateWeaponData(weaponData);
 
-        if (targetComp is CharacterTargetingComp targetingComp)
+        if (targetComp != null)
         {
             float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range) + 1.5f, 4f);
-            targetingComp.AggroRange = aggroRange;
-            targetingComp.ForgetRange = aggroRange + 2f;
-            targetingComp.FollowSearchRange = 0f;
+            targetComp.AggroRange = aggroRange;
+            targetComp.ForgetRange = aggroRange + 2f;
+            targetComp.FollowSearchRange = 0f;
         }
     }
 
@@ -860,7 +947,9 @@ public partial class BuildingEntity : MAEntity
         Fix64 baseValue = (Fix64)buildingData.Production;
         Fix64 techExtra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
         Fix64 dynamicExtra = _extraProps != null ? _extraProps.DynamicProduction : Fix64.Zero;
-        Fix64 cap = _extraProps != null ? _extraProps.ProductionCap : (Fix64)int.MaxValue;
+        Fix64 cap = _extraProps != null && _extraProps.ProductionCap > Fix64.Zero
+            ? _extraProps.ProductionCap
+            : (Fix64)int.MaxValue;
 
         // 应用上限限制
         Fix64 total = baseValue + techExtra + dynamicExtra;
@@ -880,6 +969,16 @@ public partial class BuildingEntity : MAEntity
         }
     }
 
+    public int GetBaseProductionWithTechExtra()
+    {
+        if (buildingData == null)
+            return 0;
+
+        Fix64 baseValue = (Fix64)buildingData.Production;
+        Fix64 techExtra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
+        return Mathf.Max(0, (int)(baseValue + techExtra));
+    }
+
     /// <summary>
     /// 设置产出上限
     /// </summary>
@@ -888,6 +987,37 @@ public partial class BuildingEntity : MAEntity
         if (_extraProps != null)
         {
             _extraProps.ProductionCap = (Fix64)value;
+        }
+    }
+
+    public int GetStoredProduction()
+    {
+        return _extraProps != null ? Mathf.Max(0, _extraProps.StoredProduction) : 0;
+    }
+
+    public void SetStoredProduction(int value)
+    {
+        if (_extraProps != null)
+            _extraProps.StoredProduction = Mathf.Max(0, value);
+    }
+
+    public int GetProductionTraitFirstDay()
+    {
+        return _extraProps != null ? Mathf.Max(0, _extraProps.ProductionTraitFirstDay) : 0;
+    }
+
+    public void SetProductionTraitFirstDay(int day)
+    {
+        if (_extraProps != null)
+            _extraProps.ProductionTraitFirstDay = Mathf.Max(0, day);
+    }
+
+    public void NotifyProductionGranted(int rawProduction, int actualProduction)
+    {
+        if (BuffComp is AAAGame.Scripts.BuffSystem.CharacterBuffComp buffComp)
+        {
+            foreach (BuffCallback module in buffComp.EnumerateAllModules())
+                module.OnBuildingProductionGranted(this, rawProduction, actualProduction);
         }
     }
 

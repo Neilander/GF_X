@@ -45,6 +45,7 @@ public class DirectAtkComp : IAtkComp
 
     private float _stateTimer;
     private IEntityContext _lockedTarget;
+    private readonly List<IEntityContext> _lockedTargets = new List<IEntityContext>();
     private bool _movementLockedByThisAttack;
 
     private string GetWeaponSOAddress(WeaponType index)
@@ -85,6 +86,7 @@ public class DirectAtkComp : IAtkComp
         _stateTimer = 0f;
         AttackCount = 0;
         _lockedTarget = null;
+        _lockedTargets.Clear();
         _movementLockedByThisAttack = false;
 
         // 获取Animator组件
@@ -296,6 +298,7 @@ public class DirectAtkComp : IAtkComp
             return;
         }
 
+        Weapon activeWeapon = GetActiveWeapon();
         var target = _ctx.TargetComp?.CurrentTarget;
         if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(_ctx, target))
         {
@@ -311,9 +314,8 @@ public class DirectAtkComp : IAtkComp
             return;
         }
 
-        Fix64 attackRange = GetCurrentAttackRange();
         float dist = _ctx.DistanceToTargetSurface(target);
-        float wpnRange = DistanceUnitConverter.ConvertToWorldFloat(attackRange);
+        float wpnRange = DistanceUnitConverter.ConvertToWorldFloat(activeWeapon.Range);
 
         // 统一判定：攻击者中心到目标碰撞体边缘的 XZ 距离，和武器射程直接比较。
         float range = wpnRange;
@@ -325,7 +327,11 @@ public class DirectAtkComp : IAtkComp
             return;
         }
 
-        _lockedTarget = target;
+        LockAttackTargets(target, activeWeapon, range);
+        if (_lockedTargets.Count == 0)
+            return;
+
+        _lockedTarget = _lockedTargets[0];
         AttackCount++;
         _movementLockedByThisAttack = ShouldLockMoveDuringAttack();
         if (_movementLockedByThisAttack)
@@ -341,7 +347,11 @@ public class DirectAtkComp : IAtkComp
     private void DealDamage()
     {
         Weapon activeWeapon = GetActiveWeapon();
-        if (!WeaponTargetRules.IsValidTargetForWeapon(_ctx, _lockedTarget, activeWeapon.Type))
+        if (_lockedTargets.Count == 0)
+            _lockedTargets.Add(_lockedTarget);
+
+        RemoveInvalidLockedTargets(activeWeapon);
+        if (_lockedTargets.Count == 0)
         {
             GameDebugSettings.Log(DebugCategory.Attack,
                 $"[{_ctx.CharacterKey}] DealDamage: 目标丢失或已死 target={_lockedTarget} alive={_lockedTarget?.Alive}");
@@ -354,41 +364,126 @@ public class DirectAtkComp : IAtkComp
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx.CharacterKey}] DealDamage: 对 {_lockedTarget.CharacterKey} 造成 {damage} 伤害");
 
-        if (_ctx.WeaponComp != null && !_ctx.WeaponComp.TryConsumeAmmo(1))
+        bool missed = AttackMissUtility.ShouldMissAttack(_ctx);
+        int targetCount = _lockedTargets.Count;
+        if (missed)
         {
-            GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.CharacterKey}] DealDamage: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
+            ConsumeAmmoForLockedTargets(targetCount);
+            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.CharacterKey}] DealDamage: 攻击落空 targetCount={targetCount}");
             return;
         }
 
-        if (activeWeapon.Type == WeaponType.HealMelee)
+        for (int i = 0; i < targetCount; i++)
         {
-            HealingWeaponEffect.Execute(_ctx, _lockedTarget, snapshot);
-        }
-        else if (activeWeapon.Type == WeaponType.CleaveMelee || activeWeapon.Type == WeaponType.CleaveRanged)
-        {
-            AreaWeaponDamage.DealCleave(_ctx, _lockedTarget, snapshot);
-        }
-        else if (activeWeapon.Type == WeaponType.SelfAoE)
-        {
-            AreaWeaponDamage.DealSelfAoE(_ctx, _lockedTarget, snapshot);
-        }
-        // 优先委托武器 SO 执行伤害
-        else if (_weaponSO != null)
-        {
-            _weaponSO.Execute(_ctx, _lockedTarget, snapshot);
-        }
-        else
-        {
-            // 降级 fallback：走 DamageHelper 统一走 buff 钩子链路
-            var dmg = new Damage(_ctx as ITargetable, damage, HealthModifyType.reduce);
-            DamageHelper.DoDamage(_lockedTarget as ITargetable, dmg, _ctx);
+            IEntityContext target = _lockedTargets[i];
+            if (_ctx.WeaponComp != null && !_ctx.WeaponComp.TryConsumeAmmo(1))
+            {
+                GameDebugSettings.Log(DebugCategory.Attack,
+                    $"[{_ctx.CharacterKey}] DealDamage: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
+                break;
+            }
+
+            ExecuteWeaponEffect(activeWeapon, target, snapshot);
         }
 
         // 普通攻击造成伤害的音效；远程武器在这里只是创建子弹（命中是子弹的事），跳过
         bool isRanged = _weaponSO is RangedWeaponSO;
         if (!isRanged && AudioManager.Instance != null)
             AudioManager.Instance.Play("basicAttack");
+    }
+
+    private void ExecuteWeaponEffect(Weapon activeWeapon, IEntityContext target, WeaponData snapshot)
+    {
+        if (activeWeapon.Type == WeaponType.HealMelee)
+        {
+            HealingWeaponEffect.Execute(_ctx, target, snapshot);
+        }
+        else if (activeWeapon.Type == WeaponType.CleaveMelee || activeWeapon.Type == WeaponType.CleaveRanged)
+        {
+            AreaWeaponDamage.DealCleave(_ctx, target, snapshot);
+        }
+        else if (activeWeapon.Type == WeaponType.SelfAoE)
+        {
+            AreaWeaponDamage.DealSelfAoE(_ctx, target, snapshot);
+        }
+        else if (activeWeapon.Type == WeaponType.Special && _ctx is BuildingEntity building && BuildingAbilityIds.IsBuilding(building.buildingData, BuildingAbilityIds.Monitor))
+        {
+            MonitorWeaponEffect.Execute(_ctx, target, snapshot);
+        }
+        // 优先委托武器 SO 执行伤害
+        else if (_weaponSO != null)
+        {
+            _weaponSO.Execute(_ctx, target, snapshot);
+        }
+        else
+        {
+            // 降级 fallback：走 DamageHelper 统一走 buff 钩子链路
+            var dmg = new Damage(_ctx as ITargetable, snapshot.Damage, HealthModifyType.reduce);
+            DamageHelper.DoDamage(target as ITargetable, dmg, _ctx);
+        }
+    }
+
+    private void LockAttackTargets(IEntityContext mainTarget, Weapon activeWeapon, float attackRange)
+    {
+        _lockedTargets.Clear();
+        int maxTargets = ResolveAttackTargetCount(activeWeapon);
+        if (_ctx.WeaponComp != null && _ctx.WeaponComp.HasAmmunition)
+            maxTargets = Mathf.Min(maxTargets, _ctx.WeaponComp.CurrentAmmo);
+
+        AddLockedTargetIfValid(mainTarget, activeWeapon, attackRange, maxTargets);
+        if (maxTargets <= 1 || !(_ctx.TargetComp is IMultiTargetingComp multiTargeting))
+            return;
+
+        IReadOnlyList<IEntityContext> targets = multiTargeting.CurrentTargets;
+        if (targets == null)
+            return;
+
+        for (int i = 0; i < targets.Count && _lockedTargets.Count < maxTargets; i++)
+            AddLockedTargetIfValid(targets[i], activeWeapon, attackRange, maxTargets);
+    }
+
+    private void AddLockedTargetIfValid(IEntityContext target, Weapon activeWeapon, float attackRange, int maxTargets)
+    {
+        if (_lockedTargets.Count >= maxTargets || target == null)
+            return;
+        if (_lockedTargets.Contains(target))
+            return;
+        if (!WeaponTargetRules.IsValidTargetForWeapon(_ctx, target, activeWeapon.Type))
+            return;
+        if (_ctx.DistanceToTargetSurface(target) > attackRange)
+            return;
+
+        _lockedTargets.Add(target);
+    }
+
+    private void RemoveInvalidLockedTargets(Weapon activeWeapon)
+    {
+        for (int i = _lockedTargets.Count - 1; i >= 0; i--)
+        {
+            if (!WeaponTargetRules.IsValidTargetForWeapon(_ctx, _lockedTargets[i], activeWeapon.Type))
+                _lockedTargets.RemoveAt(i);
+        }
+    }
+
+    private int ResolveAttackTargetCount(Weapon activeWeapon)
+    {
+        if (activeWeapon == null)
+            return 1;
+
+        int count = (int)activeWeapon.ProjectileCount;
+        return Mathf.Max(1, count);
+    }
+
+    private void ConsumeAmmoForLockedTargets(int targetCount)
+    {
+        if (_ctx.WeaponComp == null || !_ctx.WeaponComp.HasAmmunition)
+            return;
+
+        for (int i = 0; i < targetCount; i++)
+        {
+            if (!_ctx.WeaponComp.TryConsumeAmmo(1))
+                return;
+        }
     }
 
     private static WeaponData CreateWeaponSnapshot(Weapon activeWeapon)
@@ -449,6 +544,7 @@ public class DirectAtkComp : IAtkComp
         State = AtkState.Idle;
         _stateTimer = 0f;
         _lockedTarget = null;
+        _lockedTargets.Clear();
 
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx?.CharacterKey}] InterruptAttack reason={reason}");
