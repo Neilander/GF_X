@@ -30,13 +30,15 @@ public static class DefendPhaseRuntime
     public readonly struct DefendPreviewSpawnEntry
     {
         public readonly UnitType UnitType;
+        public readonly int UnitLevel;
         public readonly int Count;
         public readonly Vector3 SpawnPosition;
         public readonly string SpawnPointIdentifier;
 
-        public DefendPreviewSpawnEntry(UnitType unitType, int count, Vector3 spawnPosition, string spawnPointIdentifier)
+        public DefendPreviewSpawnEntry(UnitType unitType, int unitLevel, int count, Vector3 spawnPosition, string spawnPointIdentifier)
         {
             UnitType = unitType;
+            UnitLevel = unitLevel;
             Count = count;
             SpawnPosition = spawnPosition;
             SpawnPointIdentifier = spawnPointIdentifier;
@@ -113,7 +115,8 @@ public static class DefendPhaseRuntime
                 entityParams =>
                 {
                     entityParams.Set<VarFloat>(SoldierEntity.P_DefendAssignedSpeed, evt.SpeedProperty);
-                });
+                },
+                evt.UnitLevel);
             if (entityId <= 0)
             {
                 Log.Warning("[DefendPhase] 生成单位失败。unit={0}, pos={1}", evt.UnitType, evt.SpawnPosition);
@@ -161,6 +164,7 @@ public static class DefendPhaseRuntime
 
                 results.Add(new DefendPreviewSpawnEntry(
                     waveEntry.UnitType,
+                    waveEntry.UnitLevel,
                     pointCount.Count,
                     pointCount.Point.Point.Position,
                     ResolvePreviewSpawnPointIdentifier(pointCount.Point.Point)));
@@ -355,7 +359,7 @@ public static class DefendPhaseRuntime
         {
             string unitId = wavePairs[i].str;
             int count = wavePairs[i].num;
-            if (!UnitTypeHelper.TryParseUnitType(unitId, out UnitType unitType))
+            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(unitId, out UnitType unitType, out int unitLevel))
                 continue;
             if (count <= 0)
                 continue;
@@ -363,6 +367,7 @@ public static class DefendPhaseRuntime
             wave.Entries.Add(new DefendWaveEntry
             {
                 UnitType = unitType,
+                UnitLevel = unitLevel,
                 Count = count
             });
         }
@@ -406,6 +411,7 @@ public static class DefendPhaseRuntime
             clone.Entries.Add(new DefendWaveEntry
             {
                 UnitType = entry.UnitType,
+                UnitLevel = entry.UnitLevel,
                 Count = scaledCount
             });
         }
@@ -488,6 +494,7 @@ public static class DefendPhaseRuntime
                     {
                         Time = spawnDelay + spawnIndex * arriveInterval,
                         UnitType = entry.UnitType,
+                        UnitLevel = entry.UnitLevel,
                         SpawnPosition = pointCount.Point.Point.Position,
                         SpeedProperty = pointSpeedProperty,
                         SourceStrongholdId = strongholdId,
@@ -665,6 +672,7 @@ public static class DefendPhaseRuntime
     private sealed class DefendWaveEntry
     {
         public UnitType UnitType;
+        public int UnitLevel;
         public int Count;
     }
 
@@ -680,6 +688,7 @@ public static class DefendPhaseRuntime
     {
         public float Time;
         public UnitType UnitType;
+        public int UnitLevel;
         public Vector3 SpawnPosition;
         public float SpeedProperty;
         public string SourceStrongholdId;

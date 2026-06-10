@@ -380,7 +380,7 @@ public class PhaseManager : GameFrameworkComponent
                 continue;
             }
 
-            if (!UnitTypeHelper.TryParseUnitType(point.Identifier, out var unitType))
+            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out var unitType, out int unitLevel))
             {
                 Log.Warning($"Skip unit preset point '{point.name}': invalid identifier '{point.Identifier}'.");
                 continue;
@@ -407,7 +407,8 @@ public class PhaseManager : GameFrameworkComponent
                 null,
                 EnemySpawnYieldEveryUnits,
                 () => flowToken == s_InvadeFlowToken && CurrentPhase == GamePhase.Invade,
-                stronghold.strongholdData.StrongholdId);
+                stronghold.strongholdData.StrongholdId,
+                unitLevel: unitLevel);
             spawnWatch.Stop();
 
             long spawnMs = spawnWatch.ElapsedMilliseconds;

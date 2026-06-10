@@ -95,7 +95,8 @@ public static class ClusterSpawnSystem
         BrainType brainType,
         string sourceBuildingInstanceId = null,
         string sourceStrongholdId = null,
-        bool avoidExistingAgents = false)
+        bool avoidExistingAgents = false,
+        int unitLevel = 1)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -115,7 +116,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < spawnPositions.Count; i++)
         {
             Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
-            SoldierFactory.ShowSoldier(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId, sourceStrongholdId);
+            SoldierFactory.ShowSoldier(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId, sourceStrongholdId, null, unitLevel);
         }
 
         return true;
@@ -136,7 +137,8 @@ public static class ClusterSpawnSystem
         int yieldEveryUnits = 2,
         Func<bool> keepSpawningPredicate = null,
         string sourceStrongholdId = null,
-        bool avoidExistingAgents = false)
+        bool avoidExistingAgents = false,
+        int unitLevel = 1)
     {
         if (count <= 0 || radius <= 0f || minDistance <= 0f)
         {
@@ -168,7 +170,8 @@ public static class ClusterSpawnSystem
                 brainType,
                 sourceBuildingInstanceId,
                 sourceStrongholdId,
-                keepSpawningPredicate);
+                keepSpawningPredicate,
+                unitLevel);
 
             if (shown)
             {

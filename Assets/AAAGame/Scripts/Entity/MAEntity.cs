@@ -10,6 +10,7 @@ using UnityEngine.AI;
 public class MAEntity : CompCreature, IEntityContext
 {
     public CharacterDataDetail CharacterData { get; protected set; }
+    public int UnitLevel { get; protected set; } = 1;
     public IMoveComp moveComp { get; protected set; }
     public IAtkComp atkComp { get; protected set; }
 
@@ -215,7 +216,12 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected virtual void RefreshCharacterData(object userData)
     {
-        CharacterKey = (userData as EntityParams).GetString(EntityParams.P_CharacterKey);
+        EntityParams entityParams = userData as EntityParams;
+        if (entityParams == null)
+            throw new InvalidOperationException("MAEntity 初始化失败: userData 不是 EntityParams。");
+
+        CharacterKey = entityParams.GetString(EntityParams.P_CharacterKey);
+        UnitLevel = Mathf.Clamp(entityParams.UnitLevel, 1, 3);
 
         var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
         CharacterData = table.GetDataRow(r => r.CharacterKey == CharacterKey);
@@ -287,6 +293,7 @@ public class MAEntity : CompCreature, IEntityContext
         _hasAppliedCollisionScale = false;
         _collisionRadiusBaseWorld = 0f;
         _collisionScaleBase = Vector3.one;
+        _maCompInitialized = false;
 
         base.OnHide(isShutdown, userData);
     }

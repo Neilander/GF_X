@@ -40,6 +40,7 @@ public class EntityParams : RefParams
     }
 
     public BrainType BrainType { get; set; } = BrainType.Player;
+    public int UnitLevel { get; set; } = 1;
     public int FollowEntityId { get; set; } = -1;
     public const string P_CharacterKey = "CharacterKey";
     public const string P_SourceStrongholdId = "SourceStrongholdId";
@@ -113,6 +114,7 @@ public class EntityParams : RefParams
         _side = SideType.NoSide;
         _factionId = -1;
         BrainType = BrainType.Player;
+        UnitLevel = 1;
         FollowEntityId = -1;
         StartBuffs = null;
     }

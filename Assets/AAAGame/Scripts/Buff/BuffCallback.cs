@@ -91,6 +91,87 @@ public static class CriticalDamageUtility
     }
 }
 
+public sealed class CriticalDamageBonusBuff : BuffCallback
+{
+    private readonly Fix64 m_BonusPercent;
+
+    public CriticalDamageBonusBuff(Fix64 bonusPercent)
+    {
+        m_BonusPercent = bonusPercent;
+    }
+
+    public override Fix64 GetCriticalDamageBonusPercent() => m_BonusPercent;
+}
+
+public sealed class HealOnOutgoingDamageBuff : BuffCallback
+{
+    private readonly Fix64 m_HealPerHit;
+
+    public HealOnOutgoingDamageBuff(Fix64 healPerHit)
+    {
+        m_HealPerHit = healPerHit;
+    }
+
+    public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
+    {
+        if (m_HealPerHit <= Fix64.Zero)
+            return baseDamage;
+
+        if (hostEntity is GeneralCreature creature)
+            creature.Heal(m_HealPerHit);
+
+        return baseDamage;
+    }
+}
+
+public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
+{
+    private const string PushDistancePerLevelKey = "HydroGunnerPushDistancePerLevel";
+    private const string PushDurationKey = "HydroGunnerPushDuration";
+    private const float DefaultPushDistancePerLevel = 120f;
+    private const float DefaultPushDuration = 0.18f;
+
+    private readonly Fix64 m_PushLevel;
+
+    public KnockbackOnOutgoingDamageBuff(Fix64 pushLevel)
+    {
+        m_PushLevel = pushLevel;
+    }
+
+    public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
+    {
+        if (m_PushLevel <= Fix64.Zero)
+            return baseDamage;
+
+        if (hostEntity == null || target is not MAEntity targetEntity || targetEntity.durationMoveEffectComp == null)
+            return baseDamage;
+
+        UnityEngine.Vector3 direction = targetEntity.Position - hostEntity.Position;
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.0001f)
+            direction = hostEntity.Rotation * UnityEngine.Vector3.forward;
+
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.0001f)
+            return baseDamage;
+
+        direction.Normalize();
+
+        Fix64 distance = (Fix64)(GF.Config != null
+            ? GF.Config.GetFloat(PushDistancePerLevelKey, DefaultPushDistancePerLevel)
+            : DefaultPushDistancePerLevel) * m_PushLevel;
+        float duration = UnityEngine.Mathf.Max(0.01f, GF.Config != null
+            ? GF.Config.GetFloat(PushDurationKey, DefaultPushDuration)
+            : DefaultPushDuration);
+        float worldDistance = DistanceUnitConverter.ConvertToWorldFloat(distance);
+        UnityEngine.Vector3 speed = direction * (worldDistance / duration);
+
+        targetEntity.atkComp?.InterruptAttack(AttackInterruptReason.Displacement);
+        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speed);
+        return baseDamage;
+    }
+}
+
 public sealed class PercentAttackBonusBuff : BuffCallback
 {
     private readonly Fix64 m_Percent;

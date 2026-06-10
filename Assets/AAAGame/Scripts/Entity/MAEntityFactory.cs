@@ -11,11 +11,13 @@ public static class MAEntityFactory
         SideType side,
         BrainType brainType,
         List<BuffData> startBuffs = null,
-        string sourceStrongholdId = null)
+        string sourceStrongholdId = null,
+        int unitLevel = 1)
     {
         EntityParams entityParams = EntityParams.Create(position: position);
         entityParams.Side = side;
         entityParams.BrainType = brainType;
+        entityParams.UnitLevel = Mathf.Clamp(unitLevel, 1, 3);
         entityParams.SetString(EntityParams.P_CharacterKey, characterKey);
         if (!string.IsNullOrEmpty(sourceStrongholdId))
         {
@@ -34,9 +36,10 @@ public static class MAEntityFactory
         Const.EntityGroup entityGroup,
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
-        System.Action<EntityParams> configureParams = null)
+        System.Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
     {
-        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId);
+        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
         configureParams?.Invoke(entityParams);
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
     }

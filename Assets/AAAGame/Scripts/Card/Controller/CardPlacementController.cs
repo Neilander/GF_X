@@ -662,7 +662,8 @@ namespace AAAGame.Card
                 BrainType.SoldierAI,
                 sourceBuildingInstanceId,
                 null,
-                true);
+                true,
+                dataProvider.RequiredLv);
 
             if (!spawnSuccess)
             {

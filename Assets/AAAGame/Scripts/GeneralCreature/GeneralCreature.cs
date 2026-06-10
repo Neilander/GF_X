@@ -89,7 +89,8 @@ public class GeneralCreature : EntityBase, ITargetable
 
     protected virtual CreaturePropertyManager CreateCreaturePropertyManager()
     {
-        return new CreaturePropertyManager(CharacterKey);
+        int level = this is MAEntity maEntity ? maEntity.UnitLevel : 1;
+        return new CreaturePropertyManager(CharacterKey, level);
     }
 
 

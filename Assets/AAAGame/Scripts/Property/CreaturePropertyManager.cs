@@ -48,14 +48,21 @@ public class CreaturePropertyManager
 
     private CharacterDataDetail _characterData;
     private Func<CreatureMainProperty, Fix64> _configValueProvider;
+    private int _level = 1;
 
     public PropertyManager propertyManager { get; private set; }
 
     public const string LevelPropertyName = nameof(RawComponent.Level);
 
     public CreaturePropertyManager(string creatureType)
+        : this(creatureType, 1)
+    {
+    }
+
+    public CreaturePropertyManager(string creatureType, int level)
     {
         propertyManager = new PropertyManager();
+        _level = Math.Max(1, Math.Min(3, level));
 
         LoadCharacterData(creatureType);
         InitializeProperties();
@@ -163,7 +170,7 @@ public class CreaturePropertyManager
 
     void CreateLevelProperty()
     {
-        PropertyHelper.CreateBaseProperty(LevelPropertyName, propertyManager).SetBaseValue((Fix64)1);
+        PropertyHelper.CreateBaseProperty(LevelPropertyName, propertyManager).SetBaseValue((Fix64)_level);
     }
 
     private void LoadCharacterData(string creatureType)

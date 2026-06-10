@@ -52,22 +52,24 @@ public static class SoldierFactory
         BrainType brainType = BrainType.SoldierAI,
         string sourceBuildingInstanceId = null,
         string sourceStrongholdId = null,
-        System.Action<EntityParams> configureParams = null)
+        System.Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
     {
+        unitLevel = NormalizeUnitLevel(unitLevel);
         string characterKey = unitType.ToString();
         string prefabName = GetPrefabPathFromCharacterData(characterKey);
         Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
 
         // Build start buffs list.
         var startBuffs = new System.Collections.Generic.List<BuffData>();
-        AddInitialBuffs(startBuffs, unitType);
+        AddInitialBuffs(startBuffs, unitType, unitLevel);
         AddGlobalBuffs(startBuffs, unitType, side);
         AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
 
         // Keep OnShowCallback empty here.
         // Buff setup occurs in existing show-success chain.
 
-        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams);
+        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
     }
 
     public static async UniTask<bool> ShowSoldierAwait(
@@ -77,18 +79,20 @@ public static class SoldierFactory
         BrainType brainType = BrainType.SoldierAI,
         string sourceBuildingInstanceId = null,
         string sourceStrongholdId = null,
-        Func<bool> keepAlivePredicate = null)
+        Func<bool> keepAlivePredicate = null,
+        int unitLevel = 1)
     {
+        unitLevel = NormalizeUnitLevel(unitLevel);
         string characterKey = unitType.ToString();
         string prefabName = GetPrefabPathFromCharacterData(characterKey);
         Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
 
         var startBuffs = new System.Collections.Generic.List<BuffData>();
-        AddInitialBuffs(startBuffs, unitType);
+        AddInitialBuffs(startBuffs, unitType, unitLevel);
         AddGlobalBuffs(startBuffs, unitType, side);
         AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
 
-        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId);
+        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
         var logic = await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);
         if (logic != null && keepAlivePredicate != null && !keepAlivePredicate())
         {
@@ -161,16 +165,19 @@ public static class SoldierFactory
     /// <summary>
     /// Add initial buffs to list.
     /// </summary>
-    private static void AddInitialBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType index)
+    private static void AddInitialBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType index, int unitLevel)
     {
+        unitLevel = NormalizeUnitLevel(unitLevel);
+        ArmyLevelTechModifiers tech = ResolveArmyLevelTechModifiers(index, unitLevel);
+
         switch (index)
         {
             case UnitType.Unit_Intern:
-                buffList.Add(TimedDeathBuff.CreateTimedDeath(35f));
+                buffList.Add(TimedDeathBuff.CreateTimedDeath(35f + (float)tech.LifetimeSecondsDelta));
                 break;
 
             case UnitType.Unit_BoneButcher:
-                buffList.Add(OnKillHealBuff.CreateOnKillHeal((float)GetFirstUniqueValue(index)));
+                buffList.Add(OnKillHealBuff.CreateOnKillHeal((float)(GetFirstUniqueValue(index) + tech.OnKillHealPercentDelta)));
                 break;
 
             case UnitType.Unit_Scapegoat:
@@ -184,12 +191,12 @@ public static class SoldierFactory
                     "unit_cold_carrier_excess_damage_reduction",
                     true,
                     float.MaxValue,
-                    new ExcessDamageReductionBuff(values[0], values[1])));
+                    new ExcessDamageReductionBuff(values[0] + tech.ExcessDamageThresholdDelta, values[1] + tech.ExcessDamageReductionPercentDelta)));
                 break;
             }
 
             case UnitType.Unit_RiotGuard:
-                buffList.Add(TauntBuffCallback.CreateTaunt((int)GetFirstUniqueValue(index)));
+                buffList.Add(TauntBuffCallback.CreateTaunt((int)(GetFirstUniqueValue(index) + tech.TauntLevelDelta)));
                 break;
 
             case UnitType.Unit_Poacher:
@@ -205,11 +212,11 @@ public static class SoldierFactory
                     "unit_gardener_high_health_critical",
                     true,
                     float.MaxValue,
-                    new HighHealthTargetCriticalBuff(GetFirstUniqueValue(index))));
+                    new HighHealthTargetCriticalBuff(GetFirstUniqueValue(index) + tech.GardenerThresholdPercentDelta)));
                 break;
 
             case UnitType.Unit_Surgeon:
-                buffList.Add(TimedDeathBuff.CreateTimedDeath((float)GetFirstUniqueValue(index)));
+                buffList.Add(TimedDeathBuff.CreateTimedDeath((float)(GetFirstUniqueValue(index) + tech.LifetimeSecondsDelta)));
                 break;
 
             case UnitType.Unit_Nurse:
@@ -237,9 +244,9 @@ public static class SoldierFactory
                     float.MaxValue,
                     new LateRiderChargeBuff(
                         values[0],
-                        values[1],
-                        values[2],
-                        values[3],
+                        values[1] + tech.LateRiderMaxDistanceDelta,
+                        values[2] + tech.LateRiderMoveSpeedDelta,
+                        values[3] + tech.LateRiderAttackDelta,
                         (float)values[4])));
                 break;
             }
@@ -250,11 +257,11 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_sprinter_deploy_boost",
                     false,
-                    (float)values[0],
-                    new PercentAttackBonusBuff(values[1]),
-                    new AttackSpeedBonusBuff(values[2]),
-                    new RevertibleMoveSpeedBonusBuff(values[3]),
-                    new PercentDamageReductionBuff(values[4])));
+                    (float)(values[0] + tech.SprinterDurationDelta),
+                    new PercentAttackBonusBuff(values[1] + tech.SprinterAttackPercentDelta),
+                    new AttackSpeedBonusBuff(values[2] + tech.SprinterAttackSpeedPercentDelta),
+                    new RevertibleMoveSpeedBonusBuff(values[3] + tech.SprinterMoveSpeedDelta),
+                    new PercentDamageReductionBuff(values[4] + tech.SprinterDamageReductionPercentDelta)));
                 break;
             }
 
@@ -264,9 +271,202 @@ public static class SoldierFactory
                     true,
                     float.MaxValue,
                     new AlwaysCriticalDamageBuff(),
-                    new HealthDrainOverTimeBuff(GetFirstUniqueValue(index))));
+                    new HealthDrainOverTimeBuff(GetFirstUniqueValue(index) + tech.HealthDrainPerSecondDelta)));
                 break;
         }
+
+        AddArmyLevelTechBuffs(buffList, index, tech);
+    }
+
+    private static void AddArmyLevelTechBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType unitType, ArmyLevelTechModifiers tech)
+    {
+        if (tech.AttackSpeedPercent != Fix64.Zero)
+        {
+            buffList.Add(CreateInitialBuff(
+                $"army_level_tech_attack_speed_{unitType}",
+                true,
+                float.MaxValue,
+                new AttackSpeedBonusBuff(tech.AttackSpeedPercent)));
+        }
+
+        if (tech.CriticalDamageBonusPercent != Fix64.Zero)
+        {
+            buffList.Add(CreateInitialBuff(
+                $"army_level_tech_critical_damage_{unitType}",
+                true,
+                float.MaxValue,
+                new CriticalDamageBonusBuff(tech.CriticalDamageBonusPercent)));
+        }
+
+        if (tech.HealOnHit != Fix64.Zero)
+        {
+            buffList.Add(CreateInitialBuff(
+                $"army_level_tech_heal_on_hit_{unitType}",
+                true,
+                float.MaxValue,
+                new HealOnOutgoingDamageBuff(tech.HealOnHit)));
+        }
+
+        if (tech.KnockbackLevel != Fix64.Zero)
+        {
+            buffList.Add(CreateInitialBuff(
+                $"army_level_tech_knockback_{unitType}",
+                true,
+                float.MaxValue,
+                new KnockbackOnOutgoingDamageBuff(tech.KnockbackLevel)));
+        }
+    }
+
+    private static ArmyLevelTechModifiers ResolveArmyLevelTechModifiers(UnitType unitType, int unitLevel)
+    {
+        var modifiers = new ArmyLevelTechModifiers();
+        if (unitLevel <= 1)
+            return modifiers;
+
+        BuildingTable row = FindArmyBuildingRow(unitType);
+        if (row == null)
+            return modifiers;
+
+        Fix64[] lv2 = unitLevel >= 2 ? row.Tech1UniqueValues : null;
+        Fix64[] lv3 = unitLevel >= 3 ? row.Tech2UniqueValues : null;
+
+        switch (unitType)
+        {
+            case UnitType.Unit_Intern:
+                modifiers.AttackSpeedPercent += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.LifetimeSecondsDelta -= TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_CanMaker:
+                modifiers.AttackSpeedPercent += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.AttackSpeedPercent += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_Brat:
+                modifiers.AttackSpeedPercent += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.AttackSpeedPercent += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_LateRider:
+                modifiers.LateRiderMaxDistanceDelta += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.LateRiderMaxDistanceDelta += TechValue(lv3, 0, row.Tech2ID);
+                modifiers.LateRiderMoveSpeedDelta += TechValue(lv3, 1, row.Tech2ID);
+                modifiers.LateRiderAttackDelta += TechValue(lv3, 2, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_BoneButcher:
+                modifiers.OnKillHealPercentDelta += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_ColdCarrier:
+                modifiers.ExcessDamageThresholdDelta -= TechValue(lv2, 0, row.Tech1ID);
+                modifiers.ExcessDamageReductionPercentDelta += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_HydroGunner:
+                modifiers.AttackSpeedPercent += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.KnockbackLevel += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_RiotGuard:
+                modifiers.TauntLevelDelta += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_LongbowHunter:
+                modifiers.AttackSpeedPercent -= TechValue(lv2, 0, row.Tech1ID);
+                modifiers.AttackSpeedPercent -= TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_Poacher:
+                modifiers.AttackSpeedPercent -= TechValue(lv2, 0, row.Tech1ID);
+                modifiers.CriticalDamageBonusPercent += TechValue(lv3, 0, row.Tech2ID);
+                modifiers.AttackSpeedPercent -= TechValue(lv3, 1, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_Gardener:
+                modifiers.GardenerThresholdPercentDelta -= TechValue(lv2, 0, row.Tech1ID);
+                modifiers.CriticalDamageBonusPercent += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_Harvester:
+                modifiers.HealOnHit += TechValue(lv3, 0, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_Surgeon:
+                modifiers.LifetimeSecondsDelta += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.AttackSpeedPercent += TechValue(lv3, 0, row.Tech2ID);
+                modifiers.LifetimeSecondsDelta += TechValue(lv3, 1, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_Sprinter:
+                modifiers.SprinterAttackPercentDelta += TechValue(lv2, 0, row.Tech1ID);
+                modifiers.SprinterAttackSpeedPercentDelta += TechValue(lv2, 1, row.Tech1ID);
+                modifiers.SprinterMoveSpeedDelta += TechValue(lv2, 2, row.Tech1ID);
+                modifiers.SprinterDamageReductionPercentDelta += TechValue(lv3, 0, row.Tech2ID);
+                modifiers.SprinterDurationDelta += TechValue(lv3, 1, row.Tech2ID);
+                break;
+
+            case UnitType.Unit_JavelinThrower:
+                modifiers.AttackSpeedPercent += TechValue(lv3, 0, row.Tech2ID);
+                modifiers.CriticalDamageBonusPercent += TechValue(lv3, 1, row.Tech2ID);
+                modifiers.HealthDrainPerSecondDelta -= TechValue(lv3, 2, row.Tech2ID);
+                break;
+        }
+
+        return modifiers;
+    }
+
+    private static BuildingTable FindArmyBuildingRow(UnitType unitType)
+    {
+        var table = GF.DataTable.GetDataTable<BuildingTable>();
+        if (table == null)
+            throw new InvalidOperationException("SoldierFactory.ResolveArmyLevelTechModifiers failed: BuildingTable data table is null.");
+
+        string unitId = unitType.ToString();
+        return table.GetDataRow(r => r.Type == BuilType.Army && string.Equals(r.UnitID, unitId, StringComparison.Ordinal));
+    }
+
+    private static Fix64 TechValue(Fix64[] values, int index, string techId)
+    {
+        if (values == null || values.Length == 0)
+            return Fix64.Zero;
+
+        if (index < 0 || index >= values.Length)
+            throw new InvalidOperationException($"SoldierFactory.ResolveArmyLevelTechModifiers failed: Tech value index out of range. TechId={techId}, Index={index}, Count={values.Length}.");
+
+        return values[index];
+    }
+
+    private static int NormalizeUnitLevel(int unitLevel)
+    {
+        if (unitLevel < 1)
+            return 1;
+        if (unitLevel > 3)
+            return 3;
+        return unitLevel;
+    }
+
+    private struct ArmyLevelTechModifiers
+    {
+        public Fix64 AttackSpeedPercent;
+        public Fix64 CriticalDamageBonusPercent;
+        public Fix64 LifetimeSecondsDelta;
+        public Fix64 OnKillHealPercentDelta;
+        public Fix64 ExcessDamageThresholdDelta;
+        public Fix64 ExcessDamageReductionPercentDelta;
+        public Fix64 TauntLevelDelta;
+        public Fix64 GardenerThresholdPercentDelta;
+        public Fix64 LateRiderMaxDistanceDelta;
+        public Fix64 LateRiderMoveSpeedDelta;
+        public Fix64 LateRiderAttackDelta;
+        public Fix64 SprinterDurationDelta;
+        public Fix64 SprinterAttackPercentDelta;
+        public Fix64 SprinterAttackSpeedPercentDelta;
+        public Fix64 SprinterMoveSpeedDelta;
+        public Fix64 SprinterDamageReductionPercentDelta;
+        public Fix64 HealthDrainPerSecondDelta;
+        public Fix64 HealOnHit;
+        public Fix64 KnockbackLevel;
     }
 
     private static void AddGlobalBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType unitType, SideType side)
