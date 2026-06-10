@@ -116,6 +116,6 @@ public class MeatStallProductionBuff : BuffCallback
     private static int GetConfiguredMaxBonus(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 }

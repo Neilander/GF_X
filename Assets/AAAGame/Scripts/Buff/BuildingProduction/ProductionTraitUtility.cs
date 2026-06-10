@@ -37,13 +37,16 @@ public static class ProductionTraitUtility
         building.SetDynamicProduction(Mathf.Max(0, finalProduction) - baseWithTech);
     }
 
-    public static int GetLevelTechValueSum(BuildingEntity building, int uniqueValueIndex)
+    public static int GetProdLevelTechValueSum(BuildingEntity building, int uniqueValueIndex)
     {
         if (building?.buildingData == null || uniqueValueIndex < 0)
             return 0;
 
+        if (building.buildingData.Type != BuilType.Prod)
+            return 0;
+
         BuildingTable row = FindSourceRow(building);
-        if (row == null)
+        if (row == null || row.Type != BuilType.Prod)
             return 0;
 
         int total = 0;

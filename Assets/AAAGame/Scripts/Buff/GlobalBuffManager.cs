@@ -98,6 +98,12 @@ public class GlobalBuffManager : GameFrameworkComponent
             return;
         }
 
+        if (IsProductionBuildingLevelTech(techData))
+        {
+            DebugLog($"忽略 Prod 建筑等级科技事件，效果由建筑生产 buff 按等级读取。techId={args.TechId}");
+            return;
+        }
+
         var resolvedScope = m_TechScopeResolver.Resolve(techData, args.SourceBuildingInstanceId);
         var effect = ResolveEffect(techData);
         if (effect == null)
@@ -422,6 +428,23 @@ public class GlobalBuffManager : GameFrameworkComponent
         }
 
         return defaultTechEffect;
+    }
+
+    private static bool IsProductionBuildingLevelTech(TechData techData)
+    {
+        if (techData == null || string.IsNullOrWhiteSpace(techData.Identifier))
+            return false;
+
+        var table = GF.DataTable?.GetDataTable<BuildingTable>();
+        if (table == null)
+            return false;
+
+        BuildingTable row = table.GetDataRow(r =>
+            r.Type == BuilType.Prod
+            && (string.Equals(r.Tech1ID, techData.Identifier, StringComparison.Ordinal)
+                || string.Equals(r.Tech2ID, techData.Identifier, StringComparison.Ordinal)));
+
+        return row != null;
     }
 
     private void RebuildTechEffectLookupIfNeeded()

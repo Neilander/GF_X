@@ -53,7 +53,7 @@ public sealed class ServiceDeskProductionBuff : BuffCallback
     private static int GetMaxBonus(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 
     private static bool IsServiceDesk(BuildingEntity building)
@@ -124,7 +124,7 @@ public sealed class TrophyRackProductionBuff : BuffCallback
     private static int GetMaxBonus(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 
     private static bool IsTrophyRack(BuildingEntity building)
@@ -198,7 +198,7 @@ public sealed class NurseryProductionBuff : BuffCallback
     private static int GetMaxBonus(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 
     private static bool IsNursery(BuildingEntity building)
@@ -259,7 +259,7 @@ public sealed class ReceptionDeskProductionBuff : BuffCallback
     private static int GetMaxBonus(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 
     private static bool IsReceptionDesk(BuildingEntity building)
@@ -363,7 +363,7 @@ public sealed class TicketBoothProductionBuff : BuffCallback
         int elapsedDays = Mathf.Max(0, ProductionTraitUtility.GetCurrentDay() - firstDay);
         int interval = Mathf.Max(1,
             ProductionTraitUtility.GetUniqueInt(building, 0, DefaultDayInterval)
-            - ProductionTraitUtility.GetLevelTechValueSum(building, 0));
+            - ProductionTraitUtility.GetProdLevelTechValueSum(building, 0));
         bool shouldProduce = elapsedDays > 0 && elapsedDays % interval == 0;
 
         building.SetConditionCount(elapsedDays);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -127,6 +127,6 @@ public class ParcelLockerProductionBuff : BuffCallback
     private static int GetConfiguredMaxBonus(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 1, DefaultMaxBonus)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 }

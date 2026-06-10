@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
 /// 矿卡阵列产出Buff
@@ -90,6 +90,6 @@ public class MiningRigProductionBuff : BuffCallback
     private static int GetConfiguredMinProduction(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMinProduction)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 }

@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityGameFramework.Runtime;
 
 /// <summary>
@@ -93,6 +93,6 @@ public class SouvenirStandProductionBuff : BuffCallback
     private static int GetConfiguredMaxBonus(BuildingEntity building)
     {
         return ProductionTraitUtility.GetUniqueInt(building, 2, DefaultMaxBonus)
-               + ProductionTraitUtility.GetLevelTechValueSum(building, 0);
+               + ProductionTraitUtility.GetProdLevelTechValueSum(building, 0);
     }
 }
