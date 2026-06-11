@@ -668,6 +668,7 @@ public sealed class BlindAttackMissBuff : BuffCallback
 {
     public Fix64 ChancePercent { get; }
     private Fix64 _progress;
+    public override bool IsNegativeStatus => true;
 
     public BlindAttackMissBuff(Fix64 chancePercent)
     {

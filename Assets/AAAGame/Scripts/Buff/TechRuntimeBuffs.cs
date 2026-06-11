@@ -3,6 +3,66 @@ using System.Collections.Generic;
 using AAAGame.Scripts.BuffSystem;
 using UnityEngine;
 
+public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBuildingUnitBuffProvider
+{
+    private readonly int m_OwnerFactionId;
+    private readonly string m_TechId;
+    private readonly TechEffectSO m_Effect;
+    private readonly TechData m_TechData;
+    private readonly Func<BuildingEntity, bool> m_Matches;
+    private readonly Func<BuildingEntity, string> m_ResolveTechId;
+
+    public SourceBuildingTechUnitBuffProvider(
+        int ownerFactionId,
+        string techId,
+        TechEffectSO effect,
+        TechData techData,
+        Func<BuildingEntity, bool> matches,
+        Func<BuildingEntity, string> resolveTechId)
+    {
+        m_OwnerFactionId = ownerFactionId;
+        m_TechId = techId;
+        m_Effect = effect;
+        m_TechData = techData;
+        m_Matches = matches;
+        m_ResolveTechId = resolveTechId;
+    }
+
+    public bool CanProvideUnitBuffs()
+    {
+        BuildingEntity building = GetHostBuilding();
+        return building != null
+               && building.OwnerFactionID == m_OwnerFactionId
+               && !string.IsNullOrWhiteSpace(m_TechId)
+               && m_Effect != null
+               && m_TechData != null
+               && m_Matches != null
+               && m_Matches.Invoke(building);
+    }
+
+    public void CreateUnitBuffModules(List<BuffCallback> modules)
+    {
+        if (modules == null || !CanProvideUnitBuffs())
+            return;
+
+        BuildingEntity building = GetHostBuilding();
+        string resolvedTechId = m_ResolveTechId != null ? m_ResolveTechId.Invoke(building) : m_TechId;
+        if (string.IsNullOrWhiteSpace(resolvedTechId))
+            return;
+
+        List<BuffCallback> createdModules = m_Effect.CreateBuildingScopedModules(m_TechData, resolvedTechId);
+        if (createdModules == null || createdModules.Count == 0)
+            return;
+
+        modules.AddRange(createdModules);
+    }
+
+    private BuildingEntity GetHostBuilding()
+    {
+        return hostEntity as BuildingEntity;
+    }
+}
+
 public sealed class MainPropertyAdditiveBuff : BuffCallback
 {
     private readonly CreatureMainProperty m_Property;
@@ -123,7 +183,7 @@ public sealed class OutgoingAttackDebuffBuff : BuffCallback
             duration: m_Duration,
             isForever: false,
             maxStack: 1,
-            modules: new List<BuffCallback> { new FlatAttackBonusBuff(m_AttackDelta) }), targetEntity);
+            modules: new List<BuffCallback> { new FlatAttackBonusBuff(m_AttackDelta), new NegativeStatusMarkerBuff() }), targetEntity);
 
         return baseDamage;
     }
@@ -632,7 +692,7 @@ public sealed class OnDeathEnemyAttackDebuffBuff : BuffCallback
                 duration: m_Duration,
                 isForever: false,
                 maxStack: 1,
-                modules: new List<BuffCallback> { new FlatAttackBonusBuff(m_AttackDelta) }), enemy);
+                modules: new List<BuffCallback> { new FlatAttackBonusBuff(m_AttackDelta), new NegativeStatusMarkerBuff() }), enemy);
         }
     }
 }

@@ -53,6 +53,8 @@ public abstract class BuffCallback
     /// </summary>
     public virtual Fix64 ModifyIncomingDamage(IEntityContext attacker, Fix64 baseDamage, HealthModifyType modType) => baseDamage;
 
+    public virtual bool IsNegativeStatus => false;
+
     /// <summary>
     /// 暴击伤害加成百分比。基础暴击伤害来自 GameConfig.BaseCriticalDamageRate。
     /// </summary>
@@ -63,6 +65,12 @@ public abstract class BuffCallback
         buffData = null;
         hostEntity = null;
     }
+}
+
+public interface ISourceBuildingUnitBuffProvider
+{
+    bool CanProvideUnitBuffs();
+    void CreateUnitBuffModules(List<BuffCallback> modules);
 }
 
 public static class CriticalDamageUtility

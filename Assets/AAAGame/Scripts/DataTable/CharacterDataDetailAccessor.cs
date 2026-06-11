@@ -72,6 +72,8 @@ public static class CharacterDataDetailAccessor
             CreatureMainProperty.CollisionRadius => GetCollisionRadiusBySize(row.Size),
             CreatureMainProperty.TurnRate => row.TurnRate,
             CreatureMainProperty.Sight => row.Sight,
+            CreatureMainProperty.StatusResistance => Fix64.Zero,
+            CreatureMainProperty.WeightLevel => GetWeightLevelBySize(row.Size),
             _ => Fix64.Zero
         };
     }
@@ -204,5 +206,17 @@ public static class CharacterDataDetailAccessor
         };
 
         return (Fix64)radius;
+    }
+
+    private static Fix64 GetWeightLevelBySize(UnitSize size)
+    {
+        return size switch
+        {
+            UnitSize.Small => (Fix64)1,
+            UnitSize.Medium => (Fix64)2,
+            UnitSize.Large => (Fix64)3,
+            UnitSize.SuperLarge => (Fix64)4,
+            _ => Fix64.One
+        };
     }
 }

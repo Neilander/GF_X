@@ -72,7 +72,7 @@ public class TechManager : GameFrameworkComponent
         if (owner.buildingData.Type != BuilType.Tech)
             return false;
 
-        if (HasResearchedAnyTech(owner))
+        if (HasReachedResearchLimit(owner))
             return false;
 
         var techData = TechDataModel.GetTechData(techId);
@@ -108,12 +108,16 @@ public class TechManager : GameFrameworkComponent
     public KeyValuePair<IngameValueType, int>[] GetTechResourceCosts(string techId)
     {
         var techData = TechDataModel.GetTechData(techId);
-        if (techData == null || techData.Cost <= 0)
+        if (techData == null)
+            return null;
+
+        int cost = LevelTagRuntime.ModifyTechCost(techData.Cost);
+        if (cost <= 0)
             return null;
 
         return new[]
         {
-            new KeyValuePair<IngameValueType, int>(IngameValueType.Coin, techData.Cost)
+            new KeyValuePair<IngameValueType, int>(IngameValueType.Coin, cost)
         };
     }
 
@@ -167,7 +171,8 @@ public class TechManager : GameFrameworkComponent
         if (techData == null)
             return false;
 
-        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -techData.Cost, true))
+        int techCost = LevelTagRuntime.ModifyTechCost(techData.Cost);
+        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -techCost, true))
             return false;
 
         return InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
@@ -268,20 +273,34 @@ public class TechManager : GameFrameworkComponent
                 continue;
 
             if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
-                return true;
+                return HasReachedResearchLimit(owner);
         }
 
         return false;
     }
 
-    private static bool HasResearchedAnyTech(BuildingEntity owner)
+    private static bool HasReachedResearchLimit(BuildingEntity owner)
+    {
+        return CountResearchedTech(owner) >= GetResearchLimit(owner);
+    }
+
+    private static int GetResearchLimit(BuildingEntity owner)
+    {
+        if (owner?.buildingData == null || owner.buildingData.Type != BuilType.Tech)
+            return 1;
+
+        return Math.Max(1, 1 + LevelTagRuntime.GetExtraTechResearchCountPerBuilding());
+    }
+
+    private static int CountResearchedTech(BuildingEntity owner)
     {
         if (owner == null || owner.buildingData == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
-            return false;
+            return 0;
 
         if (owner.buildingData.UpgradeTechIDs == null)
-            return false;
+            return 0;
 
+        int count = 0;
         for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
         {
             string techId = owner.buildingData.UpgradeTechIDs[i];
@@ -289,10 +308,10 @@ public class TechManager : GameFrameworkComponent
                 continue;
 
             if (InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId))
-                return true;
+                count++;
         }
 
-        return false;
+        return count;
     }
 
     private void ConfigureInfoOption(BuildingEntity owner, InteractionHost host)
@@ -378,7 +397,7 @@ public class TechManager : GameFrameworkComponent
     private bool HasTechCost(string techId)
     {
         var techData = TechDataModel.GetTechData(techId);
-        return techData != null && InGameDataModel.GetValue(IngameValueType.Coin) >= techData.Cost;
+        return techData != null && InGameDataModel.GetValue(IngameValueType.Coin) >= LevelTagRuntime.ModifyTechCost(techData.Cost);
     }
 
     private bool TryGetOptionalOptionKey(int optionIndex, out InputKey key)

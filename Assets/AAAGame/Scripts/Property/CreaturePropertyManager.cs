@@ -10,7 +10,9 @@ public enum CreatureMainProperty
     Speed,
     CollisionRadius,
     TurnRate,
-    Sight
+    Sight,
+    StatusResistance,
+    WeightLevel
 }
 
 public enum CreatureMinorProperty
@@ -32,7 +34,9 @@ public class CreaturePropertyManager
         CreatureMainProperty.Speed,
         CreatureMainProperty.CollisionRadius,
         CreatureMainProperty.TurnRate,
-        CreatureMainProperty.Sight
+        CreatureMainProperty.Sight,
+        CreatureMainProperty.StatusResistance,
+        CreatureMainProperty.WeightLevel
     };
 
     private static readonly Func<Func<Fix64>[], Func<Fix64>> ConfigOnlyRefFunc =

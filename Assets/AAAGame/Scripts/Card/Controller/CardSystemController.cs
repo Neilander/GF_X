@@ -62,7 +62,7 @@ namespace AAAGame.Card
         public void Initialize()
         {
             // 初始化模型
-            m_HandModel = new PlayerHandModel();
+            m_HandModel = new PlayerHandModel(LevelTagRuntime.ModifyMaxHandCards(CardConst.MaxHandCards));
 
             // 初始化控制器
             m_HandCardController = new HandCardController(m_HandModel);
@@ -624,13 +624,14 @@ namespace AAAGame.Card
             }
 
             int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-            int conversionRate = DiscardRewardModifierService.CalculateConversionRate(GF.Config.GetInt(DiscardResourceConversionRateConfigKey));
-            if (conversionRate <= 0)
+            int baseConversionRate = GF.Config.GetInt(DiscardResourceConversionRateConfigKey);
+            if (baseConversionRate <= 0)
             {
-                Log.Error("[Card] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, conversionRate);
+                Log.Error("[Card] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, baseConversionRate);
                 return;
             }
 
+            int conversionRate = DiscardRewardModifierService.CalculateConversionRate(baseConversionRate);
             int gainedCoin = occupiedSupply / conversionRate;
             Log.Info("[Card] Discard reward calc. card={0}, occupiedSupply={1}, rate={2}, gainedCoin={3}",
                 cardModel.GetCardName(), occupiedSupply, conversionRate, gainedCoin);

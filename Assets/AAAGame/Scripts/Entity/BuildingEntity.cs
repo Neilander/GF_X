@@ -1075,7 +1075,7 @@ public partial class BuildingEntity : MAEntity
         if (_armySupplyPerUnitProperty == null)
             return 0;
 
-        int value = (int)_armySupplyPerUnitProperty.GetValue();
+        int value = (int)_armySupplyPerUnitProperty.GetValue() + LevelTagRuntime.CalculateArmySupplyPerUnitBonus(this);
         return Mathf.Max(0, value);
     }
 

@@ -9,7 +9,7 @@ using UnityGameFramework.Runtime;
 /// 运行时调试面板：查看指定 UnitType + Faction 下，如果现在出兵会挂哪些 buff。
 /// 数据源：
 ///   - per-unit 桶：GlobalBuffManager.m_UnitBuffsByFaction（通过 GetBuffs 查询）
-///   - per-building 桶：GlobalBuffManager.m_BuildingScopedBuffs（指定 BuildingInstanceId 时展示）
+///   - 来源建筑 provider buff：指定 BuildingInstanceId 后通过建筑实体当前 buff 查询
 /// 默认 1 秒刷新。
 /// </summary>
 public sealed class TechBuffDebugWindow : EditorWindow

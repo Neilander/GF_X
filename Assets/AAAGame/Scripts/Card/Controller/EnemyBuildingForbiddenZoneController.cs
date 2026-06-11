@@ -347,7 +347,7 @@ namespace AAAGame.Card
 
             Vector3 center = sphereCollider.transform.TransformPoint(sphereCollider.center);
             Vector3 lossyScale = sphereCollider.transform.lossyScale;
-            float radius = sphereCollider.radius * Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.z)) + ZonePadding;
+            float radius = sphereCollider.radius * Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.z)) + ResolveZonePadding();
             if (radius <= 0.0001f)
                 return false;
 
@@ -433,7 +433,7 @@ namespace AAAGame.Card
                 return false;
 
             s_ExpandedHullBuffer.Clear();
-            bool expanded = TryExpandConvexPolygon(hull, ZonePadding, s_ExpandedHullBuffer);
+            bool expanded = TryExpandConvexPolygon(hull, ResolveZonePadding(), s_ExpandedHullBuffer);
             bool created = expanded
                 ? TryCreateZoneFromPolygon(key, s_ExpandedHullBuffer, displayY, out zone)
                 : TryCreateZoneFromPolygon(key, hull, displayY, out zone);
@@ -522,6 +522,11 @@ namespace AAAGame.Card
             }
 
             return output.Count >= 3;
+        }
+
+        private static float ResolveZonePadding()
+        {
+            return ZonePadding * (float)LevelTagRuntime.GetEnemyBuildingForbiddenZonePaddingMultiplier();
         }
 
         private static Vector2 GetOutwardNormal(Vector2 direction, bool isClockwise)

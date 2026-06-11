@@ -225,6 +225,7 @@ public class BuildManager : GameFrameworkComponent
             return 0;
 
         int refundRate = GF.Config != null ? GF.Config.GetInt(BuildingRecycleRefundRateConfigKey, 0) : 0;
+        refundRate = LevelTagRuntime.ModifyRecycleRefundRate(refundRate);
         if (refundRate <= 0)
             return 0;
 
@@ -385,7 +386,7 @@ public class BuildManager : GameFrameworkComponent
         if (buildingData == null || buildingData.Type == BuilType.Base)
             return 0;
 
-        return Mathf.Clamp(buildingData.Lv, 1, 3);
+        return LevelTagRuntime.ModifyRequiredBaseLevel(Mathf.Clamp(buildingData.Lv, 1, 3));
     }
 
     private void ConfigureLv0ConstructOptions(BuildingEntity owner, InteractionHost host)

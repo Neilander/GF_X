@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using AAAGame.Scripts.BuffSystem;
 using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -51,7 +52,6 @@ public class GlobalBuffManager : GameFrameworkComponent
     private TechScopeResolver m_TechScopeResolver;
     private bool m_IsSubscribed;
     private readonly Dictionary<int, Dictionary<UnitType, List<GlobalUnitBuffEntry>>> m_UnitBuffsByFaction = new();
-    private readonly Dictionary<int, Dictionary<string, List<GlobalUnitBuffEntry>>> m_BuildingScopedBuffs = new();
     private readonly List<PersistentBuildingBuffRule> m_PersistentBuildingBuffRules = new();
     private readonly List<RuntimeArmyForceRule> m_RuntimeArmyForceRules = new();
     private readonly List<PersistentBuildingEntityBuffRule> m_PersistentBuildingEntityBuffRules = new();
@@ -102,7 +102,6 @@ public class GlobalBuffManager : GameFrameworkComponent
     public void ClearLevelRuntimeState()
     {
         m_UnitBuffsByFaction.Clear();
-        m_BuildingScopedBuffs.Clear();
         m_PersistentBuildingBuffRules.Clear();
         m_RuntimeArmyForceRules.Clear();
         m_PersistentBuildingEntityBuffRules.Clear();
@@ -277,16 +276,6 @@ public class GlobalBuffManager : GameFrameworkComponent
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(buildingInstanceId)
-            && m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding)
-            && buffsByBuilding.TryGetValue(buildingInstanceId, out var buildingEntries)
-            && buildingEntries != null)
-        {
-            removed += buildingEntries.RemoveAll(e => e != null && string.Equals(e.TechId, techId, StringComparison.Ordinal));
-            if (buildingEntries.Count == 0)
-                buffsByBuilding.Remove(buildingInstanceId);
-        }
-
         removed += m_PersistentBuildingBuffRules.RemoveAll(rule =>
             rule != null
             && rule.OwnerFactionId == ownerFactionId
@@ -308,38 +297,12 @@ public class GlobalBuffManager : GameFrameworkComponent
             && (string.IsNullOrWhiteSpace(buildingInstanceId)
                 || string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal)));
 
+        RemoveBuildingUnitProviderBuffs(ownerFactionId, buildingInstanceId, techId);
+
         if (removed > 0)
             DebugLog($"UnregisterTechEffects: faction={ownerFactionId}, buildingInstanceId={buildingInstanceId}, techId={techId}, removed={removed}");
 
         return removed;
-    }
-
-    public void RegisterBuildingBuff(string buildingInstanceId, int ownerFactionId, string techId, TechEffectSO effect, TechData techData)
-    {
-        if (string.IsNullOrWhiteSpace(buildingInstanceId) || string.IsNullOrWhiteSpace(techId) || effect == null || techData == null)
-            return;
-
-        if (!m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding))
-        {
-            buffsByBuilding = new Dictionary<string, List<GlobalUnitBuffEntry>>(StringComparer.Ordinal);
-            m_BuildingScopedBuffs[ownerFactionId] = buffsByBuilding;
-        }
-
-        if (!buffsByBuilding.TryGetValue(buildingInstanceId, out var entries))
-        {
-            entries = new List<GlobalUnitBuffEntry>();
-            buffsByBuilding[buildingInstanceId] = entries;
-        }
-
-        // stackable 暂不处理；允许同 techId 重复注册。
-        entries.Add(new GlobalUnitBuffEntry
-        {
-            TechId = techId,
-            Effect = effect,
-            TechData = techData,
-        });
-
-        DebugLog($"RegisterBuildingBuff: techId={techId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, totalEntriesForBuilding={entries.Count}");
     }
 
     public void RegisterPersistentBuildingBuffRule(
@@ -371,6 +334,7 @@ public class GlobalBuffManager : GameFrameworkComponent
             ResolveTechId = resolveTechId,
         });
 
+        ApplyPersistentBuildingEntityBuffsToCurrentBuildings(ownerFactionId);
         DebugLog($"RegisterPersistentBuildingBuffRule: techId={techId}, ownerFactionId={ownerFactionId}, sourceBuildingInstanceId={sourceBuildingInstanceId}");
     }
 
@@ -403,10 +367,10 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     public Fix64 CalculateRuntimeArmyForceBonus(BuildingEntity building)
     {
-        if (building == null || building.buildingData == null || m_RuntimeArmyForceRules.Count == 0)
+        if (building == null || building.buildingData == null)
             return Fix64.Zero;
 
-        Fix64 total = Fix64.Zero;
+        Fix64 total = LevelTagRuntime.CalculateArmyForceBonus(building);
         for (int i = 0; i < m_RuntimeArmyForceRules.Count; i++)
         {
             RuntimeArmyForceRule rule = m_RuntimeArmyForceRules[i];
@@ -450,10 +414,11 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     public List<BuffData> GetRuntimeBuffsForBuildingEntity(BuildingEntity building)
     {
-        if (building == null || m_PersistentBuildingEntityBuffRules.Count == 0)
+        if (building == null)
             return null;
 
-        var result = new List<BuffData>();
+        var result = LevelTagRuntime.CreateBuildingBuffs(building) ?? new List<BuffData>();
+        AddPersistentBuildingUnitProviderBuffs(result, building);
         for (int i = 0; i < m_PersistentBuildingEntityBuffRules.Count; i++)
         {
             PersistentBuildingEntityBuffRule rule = m_PersistentBuildingEntityBuffRules[i];
@@ -475,87 +440,58 @@ public class GlobalBuffManager : GameFrameworkComponent
         return result.Count > 0 ? result : null;
     }
 
+    private void AddPersistentBuildingUnitProviderBuffs(List<BuffData> result, BuildingEntity building)
+    {
+        if (result == null || building == null || m_PersistentBuildingBuffRules.Count == 0)
+            return;
+
+        for (int i = 0; i < m_PersistentBuildingBuffRules.Count; i++)
+        {
+            PersistentBuildingBuffRule rule = m_PersistentBuildingBuffRules[i];
+            if (rule == null || rule.OwnerFactionId != building.OwnerFactionID)
+                continue;
+
+            result.Add(BuffData.Create(
+                id: GetBuildingUnitProviderBuffId(rule.SourceBuildingInstanceId, rule.TechId, building.BuildingInstanceId),
+                duration: float.MaxValue,
+                isForever: true,
+                maxStack: 1,
+                modules: new List<BuffCallback>
+                {
+                    new SourceBuildingTechUnitBuffProvider(
+                        rule.OwnerFactionId,
+                        rule.TechId,
+                        rule.Effect,
+                        rule.TechData,
+                        rule.Matches,
+                        rule.ResolveTechId)
+                }));
+        }
+    }
+
+    private static string GetBuildingUnitProviderBuffId(string sourceBuildingInstanceId, string techId, string targetBuildingInstanceId)
+    {
+        return $"{GetBuildingUnitProviderBuffPrefix(sourceBuildingInstanceId)}{techId}_{targetBuildingInstanceId}";
+    }
+
+    private static string GetBuildingUnitProviderBuffPrefix(string sourceBuildingInstanceId)
+    {
+        return $"building_unit_provider_tech_{sourceBuildingInstanceId}_";
+    }
+
     public List<BuffData> GetBuffsForBuilding(string buildingInstanceId, int ownerFactionId)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             return null;
 
         var result = new List<BuffData>();
-        if (m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding)
-            && buffsByBuilding.TryGetValue(buildingInstanceId, out var entries)
-            && entries != null)
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
-                var entry = entries[i];
-                AddBuildingScopedBuff(result, entry, ownerFactionId, buildingInstanceId);
-            }
-        }
-
-        AddPersistentBuildingBuffs(result, buildingInstanceId, ownerFactionId);
+        BuildingEntity sourceBuilding = FindBuildingByInstanceId(buildingInstanceId);
+        List<BuffData> levelTagBuildingBuffs = LevelTagRuntime.CreateUnitBuffsFromSourceBuilding(sourceBuilding);
+        if (levelTagBuildingBuffs != null && levelTagBuildingBuffs.Count > 0)
+            result.AddRange(levelTagBuildingBuffs);
 
         DebugLog($"GetBuffsForBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}, createdCount={result.Count}");
         return result.Count > 0 ? result : null;
-    }
-
-    private void AddBuildingScopedBuff(List<BuffData> result, GlobalUnitBuffEntry entry, int ownerFactionId, string buildingInstanceId)
-    {
-        if (entry == null)
-            return;
-
-        var buffData = entry.Effect?.CreateBuildingScopedBuff(entry.TechData, entry.TechId);
-        if (buffData != null)
-        {
-            result.Add(buffData);
-            DebugLog($"GetBuffsForBuilding: created buff id={buffData.id}, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
-        }
-        else
-        {
-            DebugLog($"GetBuffsForBuilding: effect returned null buff, techId={entry.TechId}, ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
-        }
-    }
-
-    private void AddPersistentBuildingBuffs(List<BuffData> result, string buildingInstanceId, int ownerFactionId)
-    {
-        if (m_PersistentBuildingBuffRules.Count == 0)
-            return;
-
-        BuildingEntity building = FindBuildingByInstanceId(buildingInstanceId);
-        if (building == null)
-            return;
-
-        for (int i = 0; i < m_PersistentBuildingBuffRules.Count; i++)
-        {
-            PersistentBuildingBuffRule rule = m_PersistentBuildingBuffRules[i];
-            if (rule == null || rule.OwnerFactionId != ownerFactionId || rule.Matches == null || !rule.Matches.Invoke(building))
-                continue;
-
-            string techId = rule.ResolveTechId != null ? rule.ResolveTechId.Invoke(building) : rule.TechId;
-            if (string.IsNullOrWhiteSpace(techId))
-                continue;
-
-            AddBuildingScopedBuff(result, new GlobalUnitBuffEntry
-            {
-                TechId = techId,
-                Effect = rule.Effect,
-                TechData = rule.TechData,
-            }, ownerFactionId, buildingInstanceId);
-        }
-    }
-
-    /// <summary>
-    /// 预留清理接口。当前实现不会自动调用（建筑拆除/升级不清，允许条目保留）。
-    /// </summary>
-    public void UnregisterBuilding(string buildingInstanceId, int ownerFactionId)
-    {
-        if (string.IsNullOrWhiteSpace(buildingInstanceId))
-            return;
-
-        if (m_BuildingScopedBuffs.TryGetValue(ownerFactionId, out var buffsByBuilding))
-        {
-            if (buffsByBuilding.Remove(buildingInstanceId))
-                DebugLog($"UnregisterBuilding: ownerFactionId={ownerFactionId}, buildingInstanceId={buildingInstanceId}");
-        }
     }
 
     public void ClearBuildingRuntimeTechState(string buildingInstanceId, int ownerFactionId)
@@ -563,7 +499,8 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             return;
 
-        UnregisterBuilding(buildingInstanceId, ownerFactionId);
+        RemoveBuildingUnitProviderBuffs(ownerFactionId, buildingInstanceId, null);
+
         m_PersistentBuildingBuffRules.RemoveAll(rule =>
             rule != null
             && rule.OwnerFactionId == ownerFactionId
@@ -578,6 +515,32 @@ public class GlobalBuffManager : GameFrameworkComponent
             && string.Equals(rule.SourceBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal));
         if (m_BuildingExtraProps.Remove(buildingInstanceId))
             DebugLog($"ClearBuildingRuntimeTechState: buildingInstanceId={buildingInstanceId}");
+    }
+
+    private void RemoveBuildingUnitProviderBuffs(int ownerFactionId, string sourceBuildingInstanceId, string techId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
+            return;
+
+        var dataModel = GF.DataModel?.GetDataModel<InGameDataModel>();
+        if (dataModel?.Buildings == null)
+            return;
+
+        string prefix = GetBuildingUnitProviderBuffPrefix(sourceBuildingInstanceId);
+        foreach (BuildingEntity building in dataModel.Buildings)
+        {
+            if (building == null || building.OwnerFactionID != ownerFactionId || building.BuffComp == null)
+                continue;
+
+            if (string.IsNullOrWhiteSpace(techId))
+            {
+                if (building.BuffComp is CharacterBuffComp buffComp)
+                    buffComp.RemoveBuffsByPrefix(prefix);
+                continue;
+            }
+
+            building.BuffComp.RemoveBuff(GetBuildingUnitProviderBuffId(sourceBuildingInstanceId, techId, building.BuildingInstanceId));
+        }
     }
 
     private static BuildingEntity FindBuildingByInstanceId(string buildingInstanceId)
@@ -663,16 +626,16 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     public List<BuffData> GetBuffs(UnitType unitType, int ownerFactionId)
     {
+        var result = LevelTagRuntime.CreateUnitBuffs(unitType, ownerFactionId) ?? new List<BuffData>();
         if (!m_UnitBuffsByFaction.TryGetValue(ownerFactionId, out var unitBuffsByType)
             || !unitBuffsByType.TryGetValue(unitType, out var entries)
             || entries == null
             || entries.Count == 0)
         {
             DebugLog($"GetBuffs: ownerFactionId={ownerFactionId}, unitType={unitType}, entries=0");
-            return null;
+            return result.Count > 0 ? result : null;
         }
 
-        var result = new List<BuffData>(entries.Count);
         for (int i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];

@@ -42,8 +42,30 @@ public partial class SoldierEntity
         if (!IsHeroUnit())
             return false;
 
+        if (LevelTagRuntime.TryConsumeHeroRevive(this))
+        {
+            ReviveHeroToFullHealth();
+            return true;
+        }
+
         EnterGhostState();
         return true;
+    }
+
+    private void ReviveHeroToFullHealth()
+    {
+        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 delta = maxHealth - HealthValue;
+        if (delta <= Fix64.Zero)
+            return;
+
+        CreaturePropertyManager.ModifyCurrentProperty(
+            CreatureCurrentProperty.HealthCurrent,
+            PropertyIrreversibleAdditiveModifier.Create(delta),
+            true);
+
+        Alive = true;
+        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
     }
 
     public void SetGhostStateByBuff(bool enabled)

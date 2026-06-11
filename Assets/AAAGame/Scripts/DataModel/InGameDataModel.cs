@@ -60,7 +60,7 @@ public class InGameDataModel : DataModelBase
 
         lvData = userdata.Get(P_LevelData) as LevelData;
         m_IngameValue[IngameValueType.Phase] = (int)lvData.StartPhase;
-        m_IngameValue[IngameValueType.Coin] = lvData.InitResource;
+        m_IngameValue[IngameValueType.Coin] = Mathf.Max(0, lvData.InitResource + LevelTagRuntime.GetInitialCoinDelta());
         Factions = new Dictionary<int, Faction> { { 0, new Faction(0) }, { 1, new Faction(1) } };   // 通常玩家势力key为0，敌对势力为1、2等。TODO：后续可根据 lvData.StartFactions 来初始化。
 
         RefreshCurrentSupplyFromFriendlyUnitsInternal(false);
@@ -76,7 +76,7 @@ public class InGameDataModel : DataModelBase
     public void ResetData()
     {
         lvData = null;
-        int initMaxSupply = GF.Config.GetInt(InitMaxSupplyConfigKey, 0);
+        int initMaxSupply = GF.Config.GetInt(InitMaxSupplyConfigKey, 0) + LevelTagRuntime.GetInitialMaxSupplyDelta();
         m_IngameValue = new Dictionary<IngameValueType, int>
         {
             [IngameValueType.Phase] = (int)GamePhase.BuildBeforeInvade,
@@ -184,6 +184,7 @@ public class InGameDataModel : DataModelBase
 
         int defaultValue = GF.Config != null ? GF.Config.GetInt(ResourcePointInitialAmountConfigKey, 0) : 0;
         int resolved = initialAmount.HasValue ? initialAmount.Value : defaultValue;
+        resolved = LevelTagRuntime.ModifyResourcePointInitialAmount(resolved);
         resolved = Mathf.Max(0, resolved);
 
         dataModel.m_ProductionBuildingCoinReservesByInstanceId[buildingInstanceId] = resolved;
@@ -683,7 +684,7 @@ public class InGameDataModel : DataModelBase
 
     public static int GetBaseProvideSupplyPerLevel()
     {
-        return Mathf.Max(0, GF.Config.GetInt(BaseProvideSupplyConfigKey, 0));
+        return Mathf.Max(0, GF.Config.GetInt(BaseProvideSupplyConfigKey, 0) + LevelTagRuntime.GetBaseProvideSupplyPerLevelDelta());
     }
 
     public static string GetResourceSprite(IngameValueType resourceType)

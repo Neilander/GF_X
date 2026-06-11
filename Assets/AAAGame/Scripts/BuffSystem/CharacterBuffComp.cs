@@ -53,6 +53,8 @@ namespace AAAGame.Scripts.BuffSystem
                 buffData.modules = new List<BuffCallback>();
             }
 
+            ApplyStatusResistanceToNegativeBuff(buffData);
+
             // 检查是否已存在该Buff
             if (_buffDict.TryGetValue(buffData.id, out BuffData existingBuff))
             {
@@ -110,6 +112,36 @@ namespace AAAGame.Scripts.BuffSystem
             }
 
             return true;
+        }
+
+        private void ApplyStatusResistanceToNegativeBuff(BuffData buffData)
+        {
+            if (buffData == null || buffData.isForever || buffData.duration <= 0f || !HasNegativeStatusModule(buffData))
+                return;
+
+            Fix64 resistance = _propertyManager != null
+                ? _propertyManager.GetProperty(CreatureMainProperty.StatusResistance)
+                : Fix64.Zero;
+            Fix64 multiplier = Fix64.One - resistance / (Fix64)100;
+            if (multiplier < Fix64.Zero)
+                multiplier = Fix64.Zero;
+
+            buffData.duration = Mathf.Max(0f, (float)((Fix64)buffData.duration * multiplier));
+            buffData.remainingTime = buffData.duration;
+        }
+
+        private static bool HasNegativeStatusModule(BuffData buffData)
+        {
+            if (buffData?.modules == null)
+                return false;
+
+            for (int i = 0; i < buffData.modules.Count; i++)
+            {
+                if (buffData.modules[i] != null && buffData.modules[i].IsNegativeStatus)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

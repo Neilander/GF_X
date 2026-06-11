@@ -123,7 +123,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             modules: modules);
     }
 
-    public override BuffData CreateBuildingScopedBuff(TechData techData, string techId)
+    public override List<BuffCallback> CreateBuildingScopedModules(TechData techData, string techId)
     {
         if (techData == null || string.IsNullOrWhiteSpace(techId))
             return null;
@@ -132,17 +132,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         if (!TryGetRule(rootTechId, out RuntimeTechRule rule) || rule.CreateBuildingModules == null)
             return null;
 
-        List<BuffCallback> modules = rule.CreateBuildingModules.Invoke(techData, techId);
-
-        if (modules == null || modules.Count == 0)
-            return null;
-
-        return BuffData.Create(
-            id: $"base_tech_building_{techId}",
-            duration: float.MaxValue,
-            isForever: true,
-            maxStack: 1,
-            modules: modules);
+        return rule.CreateBuildingModules.Invoke(techData, techId);
     }
 
     private void RegisterUnitBuffs(TechEffectContext context)
@@ -238,6 +228,8 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             (techData, _) => Modules(
                 new MainPropertyPercentBuff(CreatureMainProperty.Health, GetValue(techData, 0)),
                 new MainPropertyPercentBuff(CreatureMainProperty.Speed, -GetValue(techData, 1))));
+        AddUnit(rules, "Tech_Buil_QualityCheck_Opt3",
+            (techData, _) => Modules(new MainPropertyAdditiveBuff(CreatureMainProperty.WeightLevel, GetValue(techData, 0))));
         AddActivation(rules, "Tech_Buil_QualityCheck_Opt4",
             (self, context) => self.RegisterBuildingBuffForArmyForceAtMost(context, maxForce: (int)GetValue(context.TechData, 0)));
         AddBuilding(rules, "Tech_Buil_QualityCheck_Opt4",
@@ -376,8 +368,6 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
                 new AmmoReloadDelayModifierBuff(-(float)GetValue(techData, 1))));
 
         AddSkipped(rules, "Tech_Buil_NavStation_Opt4", "作战结算合约等级链路待接入");
-        AddSkipped(rules, "Tech_Buil_QualityCheck_Opt3", "运行时体型与寻路/碰撞尺寸变更链路待接入");
-
         AddSkipped(rules, "Tech_Buil_ResearchCenter_Lv2_Opt1", "技能系统未接入");
         AddSkipped(rules, "Tech_Buil_ResearchCenter_Lv3_Opt1", "技能系统未接入");
         AddSkipped(rules, "Tech_Buil_DreamPark_Lv2_Opt1", "技能系统未接入");
@@ -1894,7 +1884,7 @@ public static class DiscardRewardModifierService
                 result -= Mathf.Max(0, item.Reduction);
         }
 
-        return Mathf.Max(1, result);
+        return LevelTagRuntime.ModifyDiscardRewardConversionRate(Mathf.Max(1, result));
     }
 }
 
@@ -1933,7 +1923,7 @@ public static class EnemyArmyForceModifierService
                 result *= Fix64.One - item.Percent / (Fix64)100;
         }
 
-        return Mathf.Max(0, (int)Fix64.Ceiling(result));
+        return LevelTagRuntime.ModifyEnemySpawnCount(Mathf.Max(0, (int)Fix64.Ceiling(result)));
     }
 }
 
@@ -2042,7 +2032,7 @@ public static class BuildingCostModifierService
 
         int cost = Mathf.Max(0, buildingData.Cost);
         int discount = CalculateDiscount(stronghold);
-        return Mathf.Max(0, cost - discount);
+        return LevelTagRuntime.ModifyBuildingCost(buildingData, Mathf.Max(0, cost - discount));
     }
 
     private static int CalculateDiscount(Stronghold stronghold)

@@ -200,6 +200,7 @@ public class PhaseManager : GameFrameworkComponent
     private static void ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter()
     {
         int consumeCost = GF.Config != null ? GF.Config.GetInt(EnemyProductionBuildingDailyResourceCostConfigKey, 0) : 0;
+        consumeCost = LevelTagRuntime.ModifyEnemyProductionDailyResourceCost(consumeCost);
         if (consumeCost <= 0)
             return;
 

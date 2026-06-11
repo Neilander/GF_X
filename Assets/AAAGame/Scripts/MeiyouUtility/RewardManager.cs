@@ -207,11 +207,15 @@ public class RewardManager : GameFrameworkComponent
 		else
 		{
 			int incomePerCapturedOutpost = GF.Config != null ? GF.Config.GetInt(InvadePhaseIncomePerCapturedOutpostConfigKey, 0) : 0;
+			incomePerCapturedOutpost += LevelTagRuntime.GetCapturedOutpostIncomeDelta();
 			phaseBaseIncome = (long)incomePerCapturedOutpost * m_PlayerCapturedStrongholdIdsInCurrentInvade.Count;
 			m_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
 		}
 
-		float totalIncome = currentDay * dailyGrowth + phaseBaseIncome;
+		float totalIncome = currentDay * dailyGrowth
+			+ LevelTagRuntime.GetDailyBaseIncomeDelta()
+			+ phaseBaseIncome
+			- LevelTagRuntime.GetCapturedStrongholdDailyCost() * CountPlayerOwnedStrongholds();
 		int coinAmount = (int)System.Math.Round(totalIncome, System.MidpointRounding.AwayFromZero);
 		if (coinAmount <= 0)
 			return;
@@ -271,6 +275,7 @@ public class RewardManager : GameFrameworkComponent
 		}
 
 		m_KillRewardConfigInvalidLogged = false;
+		ratio = LevelTagRuntime.ModifyKillRewardConversionRate(ratio);
 		m_EnemyDeadSupplyRemainder += deadSupply;
 
 		int gainedCoin = m_EnemyDeadSupplyRemainder / ratio;
@@ -297,6 +302,7 @@ public class RewardManager : GameFrameworkComponent
 				return;
 			}
 
+			conversionRate = DiscardRewardModifierService.CalculateConversionRate(conversionRate);
 			resolvedCoin = occupiedSupply / conversionRate;
 		}
 
@@ -305,6 +311,22 @@ public class RewardManager : GameFrameworkComponent
 
 		Vector3 sourcePos = ResolveDiscardRewardSourcePosition(cardModel, discardScreenPosition);
 		GrantCoinAfterFly(sourcePos, resolvedCoin, "discard_card");
+	}
+
+	private static int CountPlayerOwnedStrongholds()
+	{
+		InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+		if (inGameData?.Strongholds == null)
+			return 0;
+
+		int count = 0;
+		foreach (Stronghold stronghold in inGameData.Strongholds)
+		{
+			if (stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+				count++;
+		}
+
+		return count;
 	}
 
 	private void GrantBuildPhaseIncomeFromPlayerProdBuildings()

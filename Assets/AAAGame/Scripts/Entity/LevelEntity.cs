@@ -735,7 +735,11 @@ public partial class LevelEntity : EntityBase
         if (stronghold == null)
             return;
 
+        int oldOwnerFactionId = stronghold.OwnerFactionId;
         stronghold.OwnerFactionId = newOwnerFactionId;
+        bool capturedByPlayer = oldOwnerFactionId != EntitySideHelper.PlayerFactionId
+                                && newOwnerFactionId == EntitySideHelper.PlayerFactionId;
+        int captureDay = capturedByPlayer ? Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day)) : 0;
 
         // 同步修改属于该据点的兵归属
         SideType newSide = EntitySideHelper.ToSide(newOwnerFactionId);
@@ -763,6 +767,8 @@ public partial class LevelEntity : EntityBase
 
             building.SetStronghold(stronghold);
             building.RestoreToFullHealthAndEnable();
+            if (capturedByPlayer)
+                LevelTagRuntime.ApplyCapturedStrongholdTrainingProvider(building, captureDay);
 
             // 占领后短时无敌保护（避免队友立即误伤）
             try
