@@ -26,6 +26,7 @@ public enum UIViews : int
 	TechNodeDetailTips = 15,
 	GameOverUIForm = 3,
 	LevelSwitchUIForm = 27,
+	LvEnterDialog = 28,
 	ToastTips = 10,
 	InteractOptionTips = 12,
 	BuildingBuildTips = 24,

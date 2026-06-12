@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "unityMCP": {
+      "command": "C:/Users/M/AppData/Local/uv/cache/archive-v0/V39YWloZLAbb1_JOXQPS8/Scripts/mcp-for-unity.exe",
+      "args": ["--transport", "stdio", "--http-url", "http://127.0.0.1:10086"]
+    }
+  }
+}

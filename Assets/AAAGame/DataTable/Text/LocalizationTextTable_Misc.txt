@@ -15,3 +15,5 @@
 	11	科技描述_学习被动技能	Tech_Desc_LearnPassiveSkill	Tech.Desc.LearnPassiveSkill
 	12	建筑升级条件_基地等级	Building_Upgrade_Cond_BaseLevel	Building.Upgrade.Cond.BaseLevel
 	13	建筑升级条件_唯一科技	Building_Upgrade_Cond_UniqueTech	Building.Upgrade.Cond.UniqueTech
+	14	关卡tag总称_正面	LvTag_Positive	LvTag.Positive
+	15	关卡tag总称_负面	LvTag_Negative	LvTag.Negative

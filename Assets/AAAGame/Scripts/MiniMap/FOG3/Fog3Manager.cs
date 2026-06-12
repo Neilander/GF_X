@@ -1002,6 +1002,7 @@ namespace AAAGame.MiniMap.FOG3
             GF.Event.Subscribe(UnloadSceneSuccessEventArgs.EventId, OnUnloadSceneSuccess);
             GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccess);
             GF.Event.Subscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityComplete);
+            GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
             gfEventsSubscribed = true;
         }
 
@@ -1020,6 +1021,7 @@ namespace AAAGame.MiniMap.FOG3
                 GF.Event.Unsubscribe(UnloadSceneSuccessEventArgs.EventId, OnUnloadSceneSuccess);
                 GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccess);
                 GF.Event.Unsubscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityComplete);
+                GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
             }
 
             gfEventsSubscribed = false;
@@ -1080,6 +1082,55 @@ namespace AAAGame.MiniMap.FOG3
             UpdateVisibilityImmediately();
         }
 
+        private void OnEntityFactionChanged(object sender, GameEventArgs e)
+        {
+            if (!autoRegisterPlayerSideEntities || !isInitialized)
+                return;
+
+            EntityFactionChangedEventArgs args = (EntityFactionChangedEventArgs)e;
+            SideType oldSide = EntitySideHelper.ToSide(args.OldFactionId);
+            SideType newSide = EntitySideHelper.ToSide(args.NewFactionId);
+            if (oldSide != SideType.PlayerSide && newSide != SideType.PlayerSide)
+                return;
+
+            if (newSide != SideType.PlayerSide)
+            {
+                if (entityRevealers.TryGetValue(args.EntityId, out int revealerId))
+                {
+                    UnregisterRevealer(revealerId);
+                    UpdateVisibilityImmediately();
+                }
+
+                return;
+            }
+
+            Entity entity = GF.Entity != null ? GF.Entity.GetEntity(args.EntityId) : null;
+            if (entity == null || entity.Logic == null)
+            {
+                Log.Error("[FOG3] Entity faction changed but entity logic is missing. entityId={0}, oldFaction={1}, newFaction={2}.",
+                    args.EntityId, args.OldFactionId, args.NewFactionId);
+                return;
+            }
+
+            if (enemyVisibilityStates.TryGetValue(args.EntityId, out Fog3EntityVisibilityState visibilityState))
+            {
+                RestoreEntityVisibilityState(visibilityState);
+                enemyVisibilityStates.Remove(args.EntityId);
+            }
+
+            if (entity.Logic is BuildingEntity building && !building.Alive)
+            {
+                StartCoroutine(RegisterEntityRevealerAfterAliveRefresh(args.EntityId));
+                return;
+            }
+
+            if (TryRegisterEntity(args.EntityId, entity.Logic))
+            {
+                RefreshOverlayHeightIfNeeded();
+                UpdateVisibilityImmediately();
+            }
+        }
+
         private static bool IsLevelEntityLogic(EntityLogic logic)
         {
             return logic != null && string.Equals(logic.GetType().Name, "LevelEntity", StringComparison.Ordinal);
@@ -1132,13 +1183,40 @@ namespace AAAGame.MiniMap.FOG3
             }
         }
 
-        private void TryRegisterEntity(int entityId, EntityLogic logic)
+        private IEnumerator RegisterEntityRevealerAfterAliveRefresh(int entityId)
+        {
+            yield return null;
+
+            if (!autoRegisterPlayerSideEntities || !isInitialized || entityRevealers.ContainsKey(entityId))
+                yield break;
+
+            Entity entity = GF.Entity != null ? GF.Entity.GetEntity(entityId) : null;
+            if (entity == null || entity.Logic == null)
+            {
+                Log.Error("[FOG3] Deferred player-side revealer registration failed, entity logic is missing. entityId={0}.", entityId);
+                yield break;
+            }
+
+            if (!TryRegisterEntity(entityId, entity.Logic))
+            {
+                SideType side = entity.Logic is IEntityContext context ? context.Side : SideType.NoSide;
+                bool alive = entity.Logic is IEntityContext aliveContext && aliveContext.Alive;
+                Log.Error("[FOG3] Deferred player-side revealer registration failed. entityId={0}, logic={1}, side={2}, alive={3}.",
+                    entityId, entity.Logic.GetType().Name, side, alive);
+                yield break;
+            }
+
+            RefreshOverlayHeightIfNeeded();
+            UpdateVisibilityImmediately();
+        }
+
+        private bool TryRegisterEntity(int entityId, EntityLogic logic)
         {
             if (logic == null || entityId == 0 || entityRevealers.ContainsKey(entityId))
-                return;
+                return false;
 
             if (!TryReadEntityVision(logic, out float radius))
-                return;
+                return false;
 
             int revealerId = RegisterRevealer(
                 logic.transform,
@@ -1146,8 +1224,7 @@ namespace AAAGame.MiniMap.FOG3
                 entityId,
                 false,
                 ShouldEntityRevealerAllowRevealHidden(logic));
-            if (revealerId <= 0)
-                return;
+            return revealerId > 0;
         }
 
         private static bool IsGhostSoldier(EntityLogic logic)

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"wmic process where ProcessId=18380 get Name,ExecutablePath 2>nul\")"
+    ]
+  }
+}

@@ -5,6 +5,8 @@ public partial class DefendEnemySketchItem : UIItemBase
 {
     public void SetData(Vector2 anchoredPosition, float arrowAngle, string label)
     {
+        _ = varIcon;
+
         if (transform is RectTransform rectTransform)
             rectTransform.anchoredPosition = anchoredPosition;
 

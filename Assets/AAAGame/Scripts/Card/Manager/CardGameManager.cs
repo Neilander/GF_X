@@ -1,5 +1,4 @@
 using UnityEngine;
-using System.Collections.Generic;
 using AAAGame.Card;
 
 namespace AAAGame.Card
@@ -23,9 +22,6 @@ namespace AAAGame.Card
                 return instance;
             }
         }
-
-        [Header("卡牌系统配置")]
-        [SerializeField] private int initialHandSize = 4;
 
         [Header("区域配置")]
         [SerializeField] private GameObject validAreaObject;
@@ -100,34 +96,6 @@ namespace AAAGame.Card
                 Debug.LogWarning("[Card] PopulationManager not found");
             }
 
-            // 连接 PlayerHandManager
-            if (PlayerHandManager.Instance != null)
-            {
-                PlayerHandManager.Instance.SetCardSystemController(cardSystemController);
-
-                // 设置卡牌池
-                var cardPool = PlayerHandManager.Instance.AvailableCards;
-                if (cardPool != null && cardPool.Count > 0)
-                {
-                    // 将 CardData 转换为 ICardDataProvider（使用 CardDataAdapter 包装）
-                    List<ICardDataProvider> providers = new List<ICardDataProvider>();
-                    foreach (CardData card in cardPool)
-                    {
-                        if (card != null)
-                        {
-                            providers.Add(new CardDataAdapter(card));
-                        }
-                    }
-                    cardSystemController.SetCardPool(providers);
-                    Debug.Log($"[Card] Set card pool with {providers.Count} cards");
-                }
-
-                Debug.Log("[Card] Connected to PlayerHandManager");
-            }
-            else
-            {
-                Debug.LogWarning("[Card] PlayerHandManager not found");
-            }
         }
 
         /// <summary>
@@ -157,12 +125,6 @@ namespace AAAGame.Card
         private void OnHandChanged(int cardCount, int maxCards)
         {
             Debug.Log($"[Card] Hand changed: {cardCount}/{maxCards}");
-
-            // 同步到 PlayerHandManager
-            if (PlayerHandManager.Instance != null)
-            {
-                // PlayerHandManager 会通过自己的事件更新 UI
-            }
         }
 
         private void OnCardDrawn(CardModel card)

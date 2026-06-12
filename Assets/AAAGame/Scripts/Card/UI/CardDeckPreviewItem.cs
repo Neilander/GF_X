@@ -23,9 +23,7 @@ namespace AAAGame.Card
             }
 
             ApplyData(
-                cardData.CardBackSprite,
                 cardData.CardSprite,
-                cardData.CardColor,
                 cardData.CardName,
                 sourceBuilding != null ? sourceBuilding.GetArmyOccupiedSupply() : cardData.PopulationCost,
                 sourceBuilding != null ? sourceBuilding.GetArmyForce() : cardData.SoldierCount,
@@ -40,20 +38,11 @@ namespace AAAGame.Card
                 return;
             }
 
-            ApplyData(
-                cardData.cardBackSprite,
-                cardData.cardSprite,
-                cardData.cardColor,
-                cardData.cardName,
-                cardData.populationCost,
-                cardData.soldierCount,
-                cardData.soldierName);
+            SetData(new CardDataAdapter(cardData), null);
         }
 
         private void ApplyData(
-            Sprite cardBackSprite,
             Sprite cardSprite,
-            Color cardColor,
             string cardName,
             int populationCost,
             int soldierCount,
@@ -61,29 +50,17 @@ namespace AAAGame.Card
         {
             if (cardBackImage != null)
             {
-                if (cardBackSprite != null)
+                if (cardSprite != null)
                 {
-                    cardBackImage.sprite = cardBackSprite;
-                    cardBackImage.color = Color.white;
+                    cardBackImage.sprite = cardSprite;
                 }
-                else
-                {
-                    cardBackImage.color = cardColor;
-                }
+
+                cardBackImage.color = Color.white;
             }
 
             if (cardImage != null)
             {
-                if (cardSprite != null)
-                {
-                    cardImage.enabled = true;
-                    cardImage.sprite = cardSprite;
-                    cardImage.color = Color.white;
-                }
-                else
-                {
-                    cardImage.enabled = false;
-                }
+                cardImage.enabled = false;
             }
 
             if (cardNameText != null)

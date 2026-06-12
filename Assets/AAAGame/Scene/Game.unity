@@ -511,6 +511,7 @@ MonoBehaviour:
   legacyOrthographicSize: 30
   enableScreenEdgePan: 1
   edgeThresholdRatio: 0.1
+  edgeExitThresholdRatio: 0.2
   edgeHoldDuration: 1
   panDistanceRatio: 0.3
   panSmoothTime: 0.2
@@ -904,22 +905,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ca3495685cb1a4a528b146f55f466159, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  UnitRepulsionStrength: 50
-  UnitAttractionStrength: 2
-  UnitEquilibriumRadius: 3
-  UnitMaxInfluenceRange: 18.5
-  LeaderRepulsionStrength: 50
-  LeaderAttractionStrength: 2
-  LeaderEquilibriumRadius: 5.25
-  LeaderMaxInfluenceRange: 18.5
-  EnemyRepulsionStrength: 50
-  EnemyAttractionStrength: 10
-  EnemyEquilibriumRadius: 1.5
-  EnemyMaxInfluenceRange: 15
-  ObstacleWeight: 100
-  MoveThreshold: 3
-  MoveThresholdSpeedRatio: 1.5
-  VelocitySmoothing: 0.35
+  _config: {fileID: 0}
 --- !u!4 &711701150
 Transform:
   m_ObjectHideFlags: 0

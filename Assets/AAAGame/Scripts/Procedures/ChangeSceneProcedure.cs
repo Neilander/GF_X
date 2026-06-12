@@ -39,7 +39,6 @@ public class ChangeSceneProcedure : ProcedureBase
         { "Game", "MenuProcedure" },
         { "LevelTestScene", "LevelTestProcedure" },
         { "CharacterAndSkillTestScene", "CharacterTestProcedure" },
-        {"UI_Card","CardGameProcedure"},
         {"Arena", "ArenaProcedure"}
     };
 

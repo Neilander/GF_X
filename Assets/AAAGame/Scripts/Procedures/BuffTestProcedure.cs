@@ -68,6 +68,7 @@ public class BuffTestProcedure : ProcedureBase
         }
         catch (System.Exception ex)
         {
+            Log.Error("[BuffTestProcedure] Spawn test units failed: {0}", ex);
         }
     }
     
@@ -133,6 +134,7 @@ public class BuffTestProcedure : ProcedureBase
                 }
                 catch (System.Exception ex)
                 {
+                    Log.Error("[BuffTestProcedure] Setup creature health bar failed, entityId={0}: {1}", creature.Id, ex);
                 }
             }
 

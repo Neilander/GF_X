@@ -27,8 +27,8 @@ public class CardTester : MonoBehaviour
 
         bool success = setup.AddCardToDeck(selectedCard);
         Debug.Log(success
-            ? $"[CardTester] Added card to deck: {selectedCard.cardName}"
-            : $"[CardTester] Failed to add card to deck: {selectedCard.cardName}");
+            ? $"[CardTester] Added card to deck: {selectedCard.DisplayName}"
+            : $"[CardTester] Failed to add card to deck: {selectedCard.DisplayName}");
     }
 
     [ContextMenu("Draw One Card")]

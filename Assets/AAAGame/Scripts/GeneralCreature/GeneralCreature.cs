@@ -107,12 +107,15 @@ public class GeneralCreature : EntityBase, ITargetable
         Fix64 curHp = HealthValue;
         if (curHp >= maxHp) return;
 
+        Fix64 actualAmount = Fix64.Min(amount, maxHp - curHp);
+        if (actualAmount <= Fix64.Zero) return;
+
         CreaturePropertyManager.ModifyCurrentProperty(
             CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(amount), true);
+            PropertyIrreversibleAdditiveModifier.Create(actualAmount), true);
 
         Fix64 newCur = HealthValue;
-        Fix64 actualAmount = newCur - curHp;
+        actualAmount = newCur - curHp;
         GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(
             Id, (float)newCur, (float)maxHp, (float)actualAmount));
         GF.Event.Fire(this, CreatureHealedEventArgs.Create(Id, (float)actualAmount));

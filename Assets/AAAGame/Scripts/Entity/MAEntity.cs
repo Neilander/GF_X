@@ -357,29 +357,23 @@ public class MAEntity : CompCreature, IEntityContext
 
                 if (moveComp != null && Brain != null)
                 {
-                    Vector3 moveDirection = moveComp.GetNavDirection();
-                    if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrainForDirection)
+                    if (!TryFaceAttackTarget())
                     {
-                        moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
-                    }
-
-                    if (moveDirection.sqrMagnitude > 0.001f)
-                    {
-                        _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
-                    }
-                    else
-                    {
-                        // 没在主动移动时，如果有攻击目标 → 朝目标转向
-                        // （战斗状态进入攻击范围会停下，原逻辑保留最后移动方向，导致单位不看向敌人）
-                        var combatTarget = targetComp?.CurrentTarget;
-                        if (combatTarget != null && combatTarget.Alive)
+                        Vector3 moveDirection = moveComp.GetNavDirection();
+                        if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrainForDirection)
                         {
-                            Vector3 toTarget = combatTarget.Position - Position;
-                            toTarget.y = 0f;
-                            if (toTarget.sqrMagnitude > 0.001f)
-                            {
-                                _targetRotation = Quaternion.LookRotation(toTarget);
-                            }
+                            moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
+                        }
+
+                        if (moveDirection.sqrMagnitude > 0.001f)
+                        {
+                            _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+                        }
+                        else
+                        {
+                            // 没在主动移动时，如果有攻击目标 → 朝目标转向
+                            // （战斗状态进入攻击范围会停下，原逻辑保留最后移动方向，导致单位不看向敌人）
+                            TrySetTargetRotation(targetComp?.CurrentTarget);
                         }
                     }
                 }
@@ -403,6 +397,28 @@ public class MAEntity : CompCreature, IEntityContext
                 _targetRotation = null;
             }
         }
+    }
+
+    private bool TryFaceAttackTarget()
+    {
+        if (atkComp == null || !atkComp.IsAttacking)
+            return false;
+
+        return TrySetTargetRotation(targetComp?.CurrentTarget);
+    }
+
+    private bool TrySetTargetRotation(IEntityContext target)
+    {
+        if (target == null || !target.Alive)
+            return false;
+
+        Vector3 toTarget = target.Position - Position;
+        toTarget.y = 0f;
+        if (toTarget.sqrMagnitude <= 0.001f)
+            return false;
+
+        _targetRotation = Quaternion.LookRotation(toTarget);
+        return true;
     }
 
     public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)

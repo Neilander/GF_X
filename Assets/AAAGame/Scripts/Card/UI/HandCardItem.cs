@@ -186,19 +186,9 @@ namespace AAAGame.Card
             ICardDataProvider data = m_CardModel.DataProvider;
             ApplyCardBackDisplay(data);
 
-            // 设置卡面
             if (cardImage != null)
             {
-                if (data.CardSprite != null)
-                {
-                    cardImage.enabled = true;
-                    cardImage.sprite = data.CardSprite;
-                    cardImage.color = Color.white;
-                }
-                else
-                {
-                    cardImage.enabled = false;
-                }
+                cardImage.enabled = false;
             }
 
             // 设置人口消耗
@@ -249,18 +239,16 @@ namespace AAAGame.Card
 
             CacheDefaultCardBackState();
 
-            if (data.CardBackSprite != null)
+            if (data.CardSprite != null)
             {
-                cardBackImage.sprite = data.CardBackSprite;
+                cardBackImage.sprite = data.CardSprite;
                 cardBackImage.color = Color.white;
-                return;
             }
-
-            cardBackImage.sprite = m_DefaultCardBackSprite;
-            if (m_DefaultCardBackSprite != null)
-                cardBackImage.color = m_DefaultCardBackColor;
             else
-                cardBackImage.color = data.CardColor;
+            {
+                cardBackImage.sprite = m_DefaultCardBackSprite;
+                cardBackImage.color = Color.white;
+            }
         }
 
         private Graphic ResolveHoverGlowTarget()

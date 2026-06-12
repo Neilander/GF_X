@@ -10,7 +10,6 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 using DG.Tweening;
 using Log = UnityGameFramework.Runtime.Log;
-using GameFramework.Event;
 public enum ADResult
 {
     Open,
@@ -20,8 +19,10 @@ public enum ADResult
 public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
 {
     [SerializeField] private bool m_SkipAd = false;
+#pragma warning disable 0414
     [SerializeField] private bool m_ShowLoadingView = false;
     [SerializeField] private float m_LoadingTimeout = 5f;
+#pragma warning restore 0414
     [SerializeField] private float m_ReloadingAdInterval = 10f;
 
     [SerializeField] private Color m_BannerBGColor = Color.white;
@@ -29,19 +30,17 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
 
     [Header("[Sdk Config for Android]")]
     [SerializeField] private string m_AdKey = "";
-    [SerializeField] private string m_AppsflyerKey = "";
-    [SerializeField] private string m_FlurryKey = "";
     [SerializeField] private string m_InterAdUnitId = "";
     [SerializeField] private string m_RewardAdUnitId = "";
     [SerializeField] private string m_BannerAdUnitId = "";
 
+#pragma warning disable 0414
     [Header("[Sdk Config for IOS]")]
     [SerializeField] private string m_AdKey_IOS = "";
-    [SerializeField] private string m_AppsflyerKey_IOS = "";
-    [SerializeField] private string m_FlurryKey_IOS = "";
     [SerializeField] private string m_InterAdUnitId_IOS = "";
     [SerializeField] private string m_RewardAdUnitId_IOS = "";
     [SerializeField] private string m_BannerAdUnitId_IOS = "";
+#pragma warning restore 0414
 
     private AndroidJavaObject activity = null;
     /// <summary>
@@ -59,9 +58,7 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
     }
 
 
-    private bool organicOutTime = false;
     private string targetAdKey;
-    private string targetFlurryKey;
     private string targetInterUnitId;
     private string targetRewardUnitId;
     private string targetBannerUnitId;
@@ -88,13 +85,11 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
     {
         base.Awake();
 #if UNITY_IOS
-        targetFlurryKey = m_FlurryKey_IOS;
         targetInterUnitId = m_InterAdUnitId_IOS;
         targetRewardUnitId = m_RewardAdUnitId_IOS;
         targetBannerUnitId = m_BannerAdUnitId_IOS;
         targetAdKey = m_AdKey_IOS;
 #else
-        targetFlurryKey = m_FlurryKey;
         targetInterUnitId = m_InterAdUnitId;
         targetRewardUnitId = m_RewardAdUnitId;
         targetBannerUnitId = m_BannerAdUnitId;
@@ -105,7 +100,6 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
 
     private void Start()
     {
-        GameEntry.GetComponent<EventComponent>().Subscribe(GFEventArgs.EventId, OnGFEvent);
         adEventsQueue = new Queue<Action>();
 
         //m_CustomADHelper = Helper.CreateHelper(m_ADHelperTypeName, m_CustomADHelper);
@@ -130,6 +124,7 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
         InitAppsFlyer();
         InitFlurry();
         InitAdSdk();
+        interstitialAdInterval = GF.Config.GetFloat("InterstitialAdInterval", 60);
     }
     public bool CheckAllInitiated()
     {
@@ -142,20 +137,6 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
         //return FB.IsInitialized && adInit && BuglyInitiated;
 #endif
     }
-    private void OnGFEvent(object sender, GameEventArgs e)
-    {
-        var args = e as GFEventArgs;
-        //switch (args.EventType)
-        //{
-        //    case GFEventType.ResourceInitialized:
-        //        {
-        //            interstitialAdInterval = GF.Config.GetFloat("InterstitialAdInterval", 60);
-        //            GF.Event.Unsubscribe(GFEventArgs.EventId, OnGFEvent);
-        //        }
-        //        break;
-        //}
-    }
-
     private void Update()
     {
         lock (adEventsQueue)
@@ -217,13 +198,13 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
         //          .WithMessaging(true)
         //          .WithPerformanceMetrics(Flurry.Performance.ALL)
         //          .WithAppVersion(Application.version)
-        //          .Build(targetFlurryKey);
+        //          .Build(flurryKey);
         //Flurry.SetReportLocation(true);
     }
     internal void InitAppsFlyer()
     {
         //AppsFlyer.setIsDebug(false);
-        //AppsFlyer.initSDK(m_AppsflyerKey, m_AppsflyerKey_IOS, this);
+        //AppsFlyer.initSDK(appsflyerKeyAndroid, appsflyerKeyIOS, this);
         //AppsFlyer.startSDK();
     }
 
@@ -498,7 +479,6 @@ public class ADComponent : GameFrameworkComponent//, IAppsFlyerConversionData
             {
                 IsOrganic = true;
                 //GF.UserData.RecodEvent("attribution_overtime", null, false);
-                organicOutTime = true;
             }
             else
             {

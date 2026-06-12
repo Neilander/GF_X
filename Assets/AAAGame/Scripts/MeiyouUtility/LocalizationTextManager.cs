@@ -8,6 +8,7 @@ using UnityGameFramework.Runtime;
 public class LocalizationTextManager : GameFrameworkComponent
 {
 	[Serializable]
+#pragma warning disable 0649
 	private sealed class KeywordGroupConfig
 	{
 		public Color Color = Color.white;
@@ -22,6 +23,7 @@ public class LocalizationTextManager : GameFrameworkComponent
 		public Color Color = Color.white;
 		public string IconSpriteName;
 	}
+#pragma warning restore 0649
 
 	private sealed class KeywordRule
 	{

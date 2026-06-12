@@ -163,22 +163,22 @@ public partial class LevelSwitchUIForm : UIFormBase
 
     private void OnLevel1Clicked()
     {
-        TryLoadLevel(1);
+        LvEnterDialog.Open("Lv_1", m_IsStartup);
     }
 
     private void OnLevel2Clicked()
     {
-        TryLoadLevel(2);
+        LvEnterDialog.Open("Lv_2", m_IsStartup);
     }
 
     private void OnLevel3Clicked()
     {
-        TryLoadLevel(3);
+        LvEnterDialog.Open("Lv_3", m_IsStartup);
     }
 
     private void OnTestLevelClicked()
     {
-        TryLoadLevel(LevelSelectionService.TestLevelIdentifier);
+        LvEnterDialog.Open(LevelSelectionService.TestLevelIdentifier, m_IsStartup);
     }
 
     private void TryLoadLevel(int levelNumber)

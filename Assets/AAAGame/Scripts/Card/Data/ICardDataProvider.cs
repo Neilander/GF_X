@@ -22,11 +22,6 @@
         UnityEngine.Sprite CardSprite { get; }
 
         /// <summary>
-        /// 卡牌背景图
-        /// </summary>
-        UnityEngine.Sprite CardBackSprite { get; }
-
-        /// <summary>
         /// 人口消耗
         /// </summary>
         int PopulationCost { get; }
@@ -50,16 +45,6 @@
         /// 适用建筑等级（1/2/3...）。CardSystemController 按 (SoldierIndex, RequiredLv) 匹配建筑。
         /// </summary>
         int RequiredLv { get; }
-
-        /// <summary>
-        /// 卡牌颜色
-        /// </summary>
-        UnityEngine.Color CardColor { get; }
-
-        /// <summary>
-        /// 抽卡权重
-        /// </summary>
-        int DropWeight { get; }
 
         /// <summary>
         /// 获取显示信息

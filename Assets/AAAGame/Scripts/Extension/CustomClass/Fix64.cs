@@ -89,6 +89,11 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
         return value1 > value2 ? value1 : value2;
     }
 
+    public static Fix64 Min(Fix64 value1, Fix64 value2)
+    {
+        return value1 < value2 ? value1 : value2;
+    }
+
     public static Fix64 operator +(Fix64 x, Fix64 y)
     {
         return new Fix64(x.m_rawValue + y.m_rawValue);

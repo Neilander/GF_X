@@ -5,7 +5,9 @@ using GameFramework;
 using UnityGameFramework.Runtime;
 public class ApplovinMaxSdkHelper : AdSdkHelper
 {
+#pragma warning disable 0414
     private bool isReceiveReward;
+#pragma warning restore 0414
     public override void InitSdk(string key, string interAdKey, string rewardAdKey, string bannerAdKey, GameFrameworkAction<bool> sdkInitialized = null)
     {
         base.InitSdk(key, interAdKey, rewardAdKey, bannerAdKey, sdkInitialized);

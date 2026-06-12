@@ -20,21 +20,10 @@ public class CardData : ScriptableObject
     public int RequiredLv => m_RequiredLv;
     public Sprite CardSprite => m_CardSprite;
 
-    // 兼容旧调用点：这些值不再序列化维护。
-    public string index => $"{m_SoldierIndex}_Lv{m_RequiredLv}";
-    public string cardName => ResolveUnitDisplayName();
-    public Sprite cardBackSprite => null;
-    public Sprite cardSprite => m_CardSprite;
-    public int populationCost => ResolveUnitSupply();
-    public int soldierCount => 1;
-    public string soldierName => ResolveUnitDisplayName();
-    public UnitType soldierIndex => m_SoldierIndex;
-    public int requiredLv => m_RequiredLv;
-    public Color cardColor => Color.white;
-    public int dropWeight => 1;
-
-    // 旧版 CardUISystem 的兼容属性，当前 GF 卡牌流程不使用。
-    public GameObject soldierPrefab => null;
+    public string CardId => $"{m_SoldierIndex}_Lv{m_RequiredLv}";
+    public string DisplayName => ResolveUnitDisplayName();
+    public int PopulationCost => ResolveUnitSupply();
+    public int SoldierCount => 1;
 
     public void Configure(int unitTypeValue, int requiredLevel)
     {
@@ -49,7 +38,7 @@ public class CardData : ScriptableObject
 
     public string GetDisplayInfo()
     {
-        return $"{cardName}\n人口:{populationCost}";
+        return $"{DisplayName}\n人口:{PopulationCost}";
     }
 
     private string ResolveUnitDisplayName()

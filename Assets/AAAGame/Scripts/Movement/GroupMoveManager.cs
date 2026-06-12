@@ -127,6 +127,7 @@ public class GroupMoveManager : MonoBehaviour
 #endif
     }
 
+#pragma warning disable 0649
     [System.Serializable]
     private struct LegacySaveData
     {
@@ -140,6 +141,7 @@ public class GroupMoveManager : MonoBehaviour
         public float followDeadZoneRange;
         public float followInnerDeadZoneRange;
     }
+#pragma warning restore 0649
 
     // ── Agent 注册 ──
 

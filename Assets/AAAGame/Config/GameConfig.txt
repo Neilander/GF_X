@@ -35,3 +35,4 @@
 	DefendPhaseBaseResourceIncome	防御阶段基础资源收获	3
 	InvadePhaseIncomePerCapturedOutpost	进攻阶段每个占领据点提供资源收获	2
 	EnemyProductionBuildingDailyResourceCost	敌方生产建筑每日消耗资源量	3
+	LvTagPositiveMaxCount	关卡正面tag选择数量上限	3
