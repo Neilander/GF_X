@@ -23,7 +23,7 @@ public static class EntityContextExtensions
             return false;
 
         // 幽灵态（玩家死亡进入的复活等待状态）：Alive=true 但不可被攻击，避免敌人一直锁着它打
-        if (ctx is SoldierEntity se && se.IsGhostState)
+        if (ctx is HeroEntity se && se.IsGhostState)
             return false;
 
         // 检查是否处于战斗阶段（进攻阶段）
@@ -39,7 +39,7 @@ public static class EntityContextExtensions
         if (ctx.IsDestroyed() || !ctx.Alive)
             return false;
 
-        if (ctx is SoldierEntity se && se.IsGhostState)
+        if (ctx is HeroEntity se && se.IsGhostState)
             return false;
 
         int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);

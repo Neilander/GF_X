@@ -124,8 +124,6 @@ public class DirectAtkComp : IAtkComp
 
         WeaponHelper.LoadWeapon(GetWeaponSOPath(), this);
 
-        Debug.Log($"[DirectAtkComp] Init: unit={ctx.CharacterKey} weaponType={_weapon.Type} damage={_weapon.Atk} range={_weapon.Range} interval={_weapon.Interval} windUp={_weapon.WindUp} windDown={_weapon.WindDown} projectileSpeed={_weapon.ProjectileSpeed}");
-
         // 创建 WeaponComp 并挂载到 Entity
         var wc = new WeaponComp(_weapon);
         var maEntity = _ctx as MAEntity;

@@ -44,6 +44,23 @@ public static class MAEntityFactory
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
     }
 
+    public static int ShowHero(
+        string prefabName,
+        string characterKey,
+        Vector3 position,
+        SideType side,
+        BrainType brainType,
+        Const.EntityGroup entityGroup,
+        List<BuffData> startBuffs = null,
+        string sourceStrongholdId = null,
+        System.Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
+    {
+        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
+        configureParams?.Invoke(entityParams);
+        return GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
+    }
+
     public static int ShowCharacter(
         string prefabName,
         string characterKey,

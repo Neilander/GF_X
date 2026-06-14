@@ -17,5 +17,7 @@ namespace AAAGame.Scripts.Entity
         public bool Skill1 => _input.Skill1Pressed;
         public bool Skill2 => _input.Skill2Pressed;
         public bool Skill3 => _input.Skill3Pressed;
+        public bool Skill4 => _input.Skill4Pressed;
+        public bool Skill5 => _input.Skill5Pressed;
     }
 }

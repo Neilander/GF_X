@@ -22,6 +22,8 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _skill1Action;
     private InputAction _skill2Action;
     private InputAction _skill3Action;
+    private InputAction _skill4Action;
+    private InputAction _skill5Action;
     private InputAction _playerCancelAction;
     private InputAction _uiCancelAction;
 
@@ -52,6 +54,8 @@ public partial class InputManager : GameFrameworkComponent
         _skill1Action = actions.FindAction("Player/Skill1");
         _skill2Action = actions.FindAction("Player/Skill2");
         _skill3Action = actions.FindAction("Player/Skill3");
+        _skill4Action = actions.FindAction("Player/Skill4");
+        _skill5Action = actions.FindAction("Player/Skill5");
         _playerCancelAction = actions.FindAction("Player/Cancel");
         _uiCancelAction = actions.FindAction("UI/Cancel");
         if (_playerCancelAction != null && !_playerCancelAction.enabled)
@@ -214,13 +218,15 @@ public partial class InputManager : GameFrameworkComponent
 
                     //攻击和技能触发
                     father._model.PlayerAttack = father._attackAction.WasPressedThisFrame();
-                    father._model.Skill1Pressed = father._skill1Action.WasPressedThisFrame();
-                    father._model.Skill2Pressed = father._skill2Action.WasPressedThisFrame();
-                    father._model.Skill3Pressed = father._skill3Action.WasPressedThisFrame();
+                    father._model.Skill1Pressed = father._skill1Action.WasPressedThisFrame() || father._model.ConsumeRequestedSkillPress(0);
+                    father._model.Skill2Pressed = father._skill2Action.WasPressedThisFrame() || father._model.ConsumeRequestedSkillPress(1);
+                    father._model.Skill3Pressed = father._skill3Action.WasPressedThisFrame() || father._model.ConsumeRequestedSkillPress(2);
+                    father._model.Skill4Pressed = (father._skill4Action != null && father._skill4Action.WasPressedThisFrame()) || father._model.ConsumeRequestedSkillPress(3);
+                    father._model.Skill5Pressed = (father._skill5Action != null && father._skill5Action.WasPressedThisFrame()) || father._model.ConsumeRequestedSkillPress(4);
 
                     //技能期间交互
-                    father._model.SelectScreenPosition = father._selectPositionAction.ReadValue<Vector2>();
-                    father._model.SkillConfirmPressed = father._skillConfirmAction.WasPressedThisFrame();
+                    father._model.SelectScreenPosition = father._model.ConsumeSelectScreenPosition(father._selectPositionAction.ReadValue<Vector2>());
+                    father._model.SkillConfirmPressed = father._skillConfirmAction.WasPressedThisFrame() || father._model.ConsumeRequestedSkillConfirm();
                     break;
             }
         }

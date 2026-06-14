@@ -202,6 +202,20 @@ public class PreloadProcedure : ProcedureBase
             GF.DataTable.LoadDataTable(item, appConfig.LoadFromBytes, this);
         }
     }
+
+    private static void InitializeGlobalTableCaches()
+    {
+        var dataModel = GameEntry.GetComponent<DataModelComponent>();
+        if (dataModel == null)
+        {
+            throw new GameFrameworkException("PreloadProcedure.InitializeGlobalTableCaches 失败：GameEntry 上缺少 DataModelComponent。");
+        }
+
+        dataModel.GetOrCreate<BuildingDataModel>();
+        dataModel.GetOrCreate<TechDataModel>();
+        dataModel.GetOrCreate<SkillDataModel>();
+        dataModel.GetOrCreate<LocalizationTextDataModel>();
+    }
     private void CreateGFExtension()
     {
         GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetPrefab("Core/GFExtension"), typeof(GameObject), new GameFramework.Resource.LoadAssetCallbacks(OnLoadGFExtensionSuccess, OnLoadGFExtensionFailed));
@@ -265,7 +279,6 @@ public class PreloadProcedure : ProcedureBase
         var args = e as LoadConfigSuccessEventArgs;
         if (args.UserData != this) return;
         loadedProgress++;
-        Log.Info("Load Config Success:{0}", args.ConfigAssetName);
     }
 
     private void OnLoadDataTableSuccess(object sender, GameEventArgs e)
@@ -274,9 +287,10 @@ public class PreloadProcedure : ProcedureBase
         if (args.UserData != this) return;
         loadedProgress++;
         m_DataTablesCount--;
-        Log.Info("Load DataTable Success:{0}", args.DataTableAssetName);
         if (m_DataTablesCount == 0)
         {
+            InitializeGlobalTableCaches();
+            GameEntry.GetComponent<GlobalBuffManager>()?.PrepareRuntimeDependencies();
             InitAndLoadLanguage();
         }
     }

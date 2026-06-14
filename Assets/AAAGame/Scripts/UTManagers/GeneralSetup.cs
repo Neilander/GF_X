@@ -116,10 +116,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         rewardManager.ResetLevelCounters();
 
-        GF.DataModel.CreateDataModel<BuildingDataModel>();
-        GF.DataModel.CreateDataModel<TechDataModel>();
-        GF.DataModel.CreateDataModel<SkillDataModel>();
-        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
+        GF.DataModel.CreateDataModel<SkillRuntimeDataModel>();
         GF.DataModel.CreateDataModel<InputModel>();
     }
 
@@ -131,10 +128,7 @@ public partial class GeneralSetup : GameFrameworkComponent
         }
 
         GF.DataModel.ReleaseDataModel<InGameDataModel>();
-        GF.DataModel.ReleaseDataModel<BuildingDataModel>();
-        GF.DataModel.ReleaseDataModel<TechDataModel>();
-        GF.DataModel.ReleaseDataModel<SkillDataModel>();
-        GF.DataModel.ReleaseDataModel<LocalizationTextDataModel>();
+        GF.DataModel.ReleaseDataModel<SkillRuntimeDataModel>();
         GF.DataModel.ReleaseDataModel<InputModel>();
     }
 
@@ -194,12 +188,10 @@ public partial class GeneralSetup : GameFrameworkComponent
             // 给所有生物挂血条
             if (ma is GeneralCreature creature)
             {
-                Log.Info($"Unit {ma.Id} created: type={ma.GetType().Name}, side={creature.Side}");
                 Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
                 // 根据单位的Side判断阵营，友方显示绿色血条，敌方显示红色血条
                 bool isFriendly = creature.Side == SideType.PlayerSide;
-                Log.Info($"Creating health bar for unit {creature.Id}, side={creature.Side}, isFriendly={isFriendly}");
                 HealthBarComp.Create(creature.Id, creature.transform, (float)creature.HealthValue, (float)max, isFriendly);
             }
 

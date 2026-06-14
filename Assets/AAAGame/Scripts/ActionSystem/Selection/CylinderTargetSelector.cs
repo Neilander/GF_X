@@ -10,6 +10,9 @@ public class CylinderTargetSelector:TargetableSelector
         base.OnInit(userData);
         _collider = GetComponent<CapsuleCollider>();
         _spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+
+        if (_collider == null)
+            throw new System.InvalidOperationException($"CylinderTargetSelector requires CapsuleCollider. gameObject={gameObject.name}");
     }
 
     /// <summary>

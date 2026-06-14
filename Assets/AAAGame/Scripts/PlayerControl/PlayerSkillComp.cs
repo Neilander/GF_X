@@ -1,66 +1,107 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
+using GameFramework.Event;
 using UnityEngine;
 using System.Linq;
 
 public class PlayerSkillComp : ISkillComp
 {
-    private SkillEntity _entity;
+    private MAEntity _entity;
     private InputModel _inputModel;
-    
-    public const int SKILL_NUM = 3;
-    
+
+    public const int SKILL_NUM = SkillInputRuntime.MaxSkillCount;
+
     private List<SkillSlot> _skillSlots;
-    
-    public void Init(SkillEntity entity, List<BasicSkill>skillSet)
+    private Dictionary<string, ActiveSkillSO> _skillsById;
+    private Dictionary<string, PassiveSkillSO> _passiveSkillsById;
+    private HashSet<string> _appliedPassiveSkillIds;
+    private Dictionary<string, GeneralCounter> _cooldownsBySkillId;
+
+    public void Init(MAEntity entity, List<ActiveSkillSO>skillSet, List<PassiveSkillSO> passiveSkillSet)
     {
         _entity = entity;
-        
+
         _skillSlots = new List<SkillSlot>();
+        _skillsById = new Dictionary<string, ActiveSkillSO>(System.StringComparer.Ordinal);
+        _passiveSkillsById = new Dictionary<string, PassiveSkillSO>(System.StringComparer.Ordinal);
+        _appliedPassiveSkillIds = new HashSet<string>(System.StringComparer.Ordinal);
+        _cooldownsBySkillId = new Dictionary<string, GeneralCounter>(System.StringComparer.Ordinal);
 
-        int count = Mathf.Min(SKILL_NUM, skillSet.Count);
+        for (int i = 0; i < skillSet.Count; i++)
+        {
+            ActiveSkillSO skill = skillSet[i];
+            if (skill == null)
+                throw new System.InvalidOperationException($"Player skill asset is null. index={i}");
 
-        for (int i = 0; i < count; i++)
+            if (string.IsNullOrWhiteSpace(skill.skillId))
+                throw new System.InvalidOperationException($"Player skill asset missing skillId. asset={skill.name}");
+
+            _skillsById[skill.skillId] = skill;
+            var cooldown = new GeneralCounter();
+            cooldown.Init((Fix64)skill.ResolveCooldownInterval(), true);
+            _cooldownsBySkillId[skill.skillId] = cooldown;
+        }
+
+        if (passiveSkillSet != null)
+        {
+            for (int i = 0; i < passiveSkillSet.Count; i++)
+            {
+                PassiveSkillSO skill = passiveSkillSet[i];
+                if (skill == null)
+                    throw new System.InvalidOperationException($"Player passive skill asset is null. index={i}");
+
+                if (string.IsNullOrWhiteSpace(skill.skillId))
+                    throw new System.InvalidOperationException($"Player passive skill asset missing skillId. asset={skill.name}");
+
+                _passiveSkillsById[skill.skillId] = skill;
+            }
+        }
+
+        for (int i = 0; i < SKILL_NUM; i++)
         {
             var cooldown = new GeneralCounter();
-            cooldown.Init((Fix64)skillSet[i].coolDownInterval, false);
+            cooldown.Init(Fix64.Zero, false);
 
             _skillSlots.Add(new SkillSlot
             {
-                skill = skillSet[i],
                 cooldown = cooldown
             });
         }
 
+        _inputModel = GF.DataModel.GetDataModel<InputModel>();
+        OnSkillChanged();
     }
-    
+
+    public void OnSkillChanged()
+    {
+        RefreshPassiveSkills();
+    }
+
     public void Skill()
     {
         //检测正在执行的技能，运行
         UpdateTickingSkill();
-        
-        
+
+
         //技能冷却
         CoolDown();
         UpdateSkillRuntime();
-        
+
         //检测输入
         int curSkillPressed = CheckInput();
-        
+
         //if(curSkillPressed != -1)
-            
-        
-        
+
+
         //如果冷却好了，就触发技能
         if (curSkillPressed == -1)
             return;
         GF.Log("使用技能："+(curSkillPressed+1));
-        LockCompWhenStart();
         SkillSlot curSlot = _skillSlots[curSkillPressed];
-       
-        
+        SyncSlotSkill(curSlot, curSkillPressed, true);
+
         //触发技能逻辑（恢复其他技能还没做好）
-        StartASkill(curSlot);
+        StartASkill(curSlot, curSkillPressed);
 
     }
 
@@ -76,10 +117,37 @@ public class PlayerSkillComp : ISkillComp
 
     public void ShutDown()
     {
+        RemoveAllPassiveSkills();
     }
 
     public void Resume()
     {
+    }
+
+    public void CancelSkills()
+    {
+        if (_skillSlots == null)
+            return;
+
+        bool canceled = false;
+        for (int i = 0; i < _skillSlots.Count; i++)
+        {
+            SkillSlot slot = _skillSlots[i];
+            if (slot == null || !slot.isTicking)
+                continue;
+
+            canceled = true;
+            if (slot.runInfo != null)
+                slot.skill.InterruptSkill(slot.runInfo);
+
+            slot.isTicking = false;
+            slot.runInfo = null;
+            slot.DirectUnlockAll();
+            SkillCastState.EndCast();
+        }
+
+        if (canceled)
+            UnlockCompWhenEnd();
     }
 
     private void UpdateTickingSkill()
@@ -95,23 +163,25 @@ public class PlayerSkillComp : ISkillComp
                     slot.isTicking = false;
                     slot.runInfo = null;
                     slot.DirectUnlockAll();
+                    SkillCastState.EndCast();
                     UnlockCompWhenEnd();
-                    
+
                 }
             }
         }
     }
 
-    private void StartASkill(SkillSlot curSlot)
+    private void StartASkill(SkillSlot curSlot, int slotIndex)
     {
         //技能进入冷却
         //后续要是想要什么持续技能，切换技能，再加上逻辑就可以，想过是可以实现的
         //切换+冷却本质是技能替换，然后新技能开局有个cd
+        curSlot.skill.StartSkill(_entity, out SkillInfo runInfo);
         curSlot.cooldown.Reset();
         //触发其开始函数
+        curSlot.runInfo = runInfo;
         curSlot.isTicking = true;
-        curSlot.skill.StartSkill(_entity, out curSlot.runInfo);
-        
+
         //根据技能的需求，关闭其他comp和技能输入
         //如果技能Ban所有其他的，其他的都按不了
         if (curSlot.skill.banOtherSkillWhenCast)
@@ -122,26 +192,36 @@ public class PlayerSkillComp : ISkillComp
         {
             foreach (var slot in _skillSlots)
             {
-                if(slot!=curSlot&& slot.skill.banWhenOtherSkill)
+                if (slot != curSlot && slot.skill != null && slot.skill.banWhenOtherSkill)
                     slot.Lock(curSlot);
             }
         }
+
+        LockCompWhenStart();
+        SkillCastState.BeginCast();
+        SkillRuntimeDataModel.ConsumeUsageAt(slotIndex);
     }
 
     private void CoolDown()
     {
-        foreach (var slot in _skillSlots)
+        if (_cooldownsBySkillId == null)
+            return;
+
+        foreach (var cooldown in _cooldownsBySkillId.Values)
         {
-            slot.cooldown.Tick((Fix64)Time.deltaTime);
-            slot.isCoolingDown = !slot.cooldown.IsFinished();
+            cooldown.Tick((Fix64)Time.deltaTime);
         }
     }
-    
+
     private void UpdateSkillRuntime()
     {
-        foreach (var slot in _skillSlots)
+        for (int i = 0; i < _skillSlots.Count; i++)
         {
+            SkillSlot slot = _skillSlots[i];
+            SyncSlotSkill(slot, i, false);
             slot.canCast =
+                slot.skill != null &&
+                slot.cooldown != null &&
                 !slot.isCoolingDown &&
                 !slot.IsBanned;
         }
@@ -153,13 +233,30 @@ public class PlayerSkillComp : ISkillComp
         if (_inputModel == null)
         {
             _inputModel = GF.DataModel.GetDataModel<InputModel>();
-            return curSkillPressed;
+            if (_inputModel == null)
+                return curSkillPressed;
         }
-       
-        List<bool> pressInfo = new List<bool>{ _inputModel.Skill1Pressed, _inputModel.Skill2Pressed, _inputModel.Skill3Pressed};
+
+        if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase())
+            return curSkillPressed;
+
+        bool[] pressInfo =
+        {
+            _inputModel.Skill1Pressed,
+            _inputModel.Skill2Pressed,
+            _inputModel.Skill3Pressed,
+            _inputModel.Skill4Pressed,
+            _inputModel.Skill5Pressed
+        };
         //GF.Log( _inputModel.Skill1Pressed.ToString());
         for (int i = 0; i < _skillSlots.Count; i++)
         {
+            if (!SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(i))
+                continue;
+
+            if (!SkillRuntimeDataModel.HasRemainingUsageAt(i))
+                continue;
+
             if (!pressInfo[i])
                 continue;
 
@@ -168,7 +265,35 @@ public class PlayerSkillComp : ISkillComp
         }
         return curSkillPressed;
     }
-    
+
+    private void SyncSlotSkill(SkillSlot slot, int slotIndex, bool requireAsset)
+    {
+        if (!SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(slotIndex))
+        {
+            slot.skill = null;
+            slot.cooldown = null;
+            slot.isCoolingDown = false;
+            slot.canCast = false;
+            return;
+        }
+
+        SkillRuntimeInfo skillInfo = SkillRuntimeDataModel.GetUnlockedSkillAt(slotIndex);
+        string skillId = skillInfo.Data.Identifier;
+        ActiveSkillSO skill = null;
+        GeneralCounter cooldown = null;
+        bool hasSkill = _skillsById != null && _skillsById.TryGetValue(skillId, out skill) && skill != null;
+        bool hasCooldown = _cooldownsBySkillId != null && _cooldownsBySkillId.TryGetValue(skillId, out cooldown) && cooldown != null;
+
+        if ((!hasSkill || !hasCooldown) && requireAsset)
+            throw new System.InvalidOperationException($"ActiveSkillSO asset not configured for skillId={skillId}.");
+
+        slot.skill = hasSkill ? skill : null;
+        slot.cooldown = hasCooldown ? cooldown : null;
+        if (hasSkill && hasCooldown)
+            cooldown.SetTarget((Fix64)skill.ResolveCooldownInterval(skillInfo.Level));
+        slot.isCoolingDown = hasCooldown && !cooldown.IsFinished();
+    }
+
     private void BanOtherSkill(SkillSlot curSlot)
     {
         foreach (var slot in _skillSlots)
@@ -177,24 +302,64 @@ public class PlayerSkillComp : ISkillComp
                 slot.Lock( curSlot);
         }
     }
+
+    private void RefreshPassiveSkills()
+    {
+        if (_entity == null || _passiveSkillsById == null)
+            return;
+
+        foreach (var pair in _passiveSkillsById)
+        {
+            bool unlocked = SkillRuntimeDataModel.IsUnlocked(pair.Key);
+            bool applied = _appliedPassiveSkillIds.Contains(pair.Key);
+
+            if (unlocked)
+            {
+                if (applied)
+                    pair.Value.Remove(_entity);
+
+                pair.Value.Apply(_entity);
+                _appliedPassiveSkillIds.Add(pair.Key);
+            }
+            else if (applied)
+            {
+                pair.Value.Remove(_entity);
+                _appliedPassiveSkillIds.Remove(pair.Key);
+            }
+        }
+    }
+
+    private void RemoveAllPassiveSkills()
+    {
+        if (_entity == null || _passiveSkillsById == null || _appliedPassiveSkillIds == null)
+            return;
+
+        foreach (string skillId in _appliedPassiveSkillIds)
+        {
+            if (_passiveSkillsById.TryGetValue(skillId, out PassiveSkillSO skill) && skill != null)
+                skill.Remove(_entity);
+        }
+
+        _appliedPassiveSkillIds.Clear();
+    }
 }
 public class SkillSlot: ISkillLocker
 {
-    public BasicSkill skill;
-    
+    public ActiveSkillSO skill;
+
     public GeneralCounter cooldown;
-    
-    
+
+
     //运行时数据
     public bool isCoolingDown = true;
-    
+
     //整合最终判断
     public bool canCast = false;
-    
+
     public bool isTicking = false;
     public SkillInfo runInfo = null;
-    
-    
+
+
     // ---------- 被谁锁 ----------
     private HashSet<ISkillLocker> _lockers = new HashSet<ISkillLocker>();
 
@@ -202,7 +367,7 @@ public class SkillSlot: ISkillLocker
     private HashSet<SkillSlot> _lockedSlotsByMe = new HashSet<SkillSlot>();
 
     public bool IsBanned => _lockers.Count > 0;
-    
+
     public void Lock(ISkillLocker locker)
     {
         if (locker == null)
@@ -218,7 +383,7 @@ public class SkillSlot: ISkillLocker
     {
         _lockers.Remove(locker);
     }
-    
+
     public void RecordLockedSkill(SkillSlot slot)
     {
         if (slot != null)
@@ -235,4 +400,3 @@ public class SkillSlot: ISkillLocker
         _lockedSlotsByMe.Clear();
     }
 }
-

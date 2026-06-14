@@ -44,7 +44,6 @@ public class MAEntity : CompCreature, IEntityContext
     private bool _collisionScaleBaseReady;
     private bool _hasAppliedCollisionScale;
     private Fix64 _lastAppliedCollisionRadius;
-
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
 
@@ -302,6 +301,7 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
         float dt = realElapseSeconds;
+
         _combatStateClock += dt;
         RefreshOutOfCombatState();
         OnOutOfCombatStateRefreshed();

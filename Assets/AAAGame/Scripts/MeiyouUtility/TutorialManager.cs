@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Event;
 using System;
 using System.Collections.Generic;
@@ -260,7 +260,7 @@ public class TutorialManager : GameFrameworkComponent
 
     private void TickPlayCardTutorial()
     {
-        if (EntityRegistry.Player is not SoldierEntity player || !player.IsGhostState)
+        if (EntityRegistry.Player is not HeroEntity player || !player.IsGhostState)
             return;
 
         CompleteTutorial(TutorialType.PlayCard, autoChain: false);

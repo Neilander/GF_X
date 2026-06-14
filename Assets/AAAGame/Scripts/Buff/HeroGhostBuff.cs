@@ -1,4 +1,4 @@
-﻿using GameFramework;
+using GameFramework;
 using GameFramework.Event;
 
 /// <summary>
@@ -18,7 +18,7 @@ public class HeroGhostBuff : BuffCallback
             : $"{buffData.id}::source";
 
         SubscribeEvents();
-        if (hostEntity is SoldierEntity soldier)
+        if (hostEntity is HeroEntity soldier)
         {
             soldier.RegisterInvincibleSource(_invincibleSourceId);
             soldier.SetGhostStateByBuff(true);
@@ -28,7 +28,7 @@ public class HeroGhostBuff : BuffCallback
     public override void OnRemove()
     {
         UnsubscribeEvents();
-        if (hostEntity is SoldierEntity soldier)
+        if (hostEntity is HeroEntity soldier)
         {
             soldier.UnregisterInvincibleSource(_invincibleSourceId);
             soldier.RestoreFromGhostState();

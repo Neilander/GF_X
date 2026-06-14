@@ -28,6 +28,7 @@ public partial class InGameUIForm : UIFormBase
         GameDebugSettings.RuntimeResourceModifyEnabledChanged += OnRuntimeResourceModifyEnabledChanged;
         InitializeMiniMap();
         InitializeDefendEnemySketch();
+        InitializeSkills();
         RefreshAll();
     }
 
@@ -38,6 +39,7 @@ public partial class InGameUIForm : UIFormBase
         TutorialManager.PhaseSwitchButtonGuideChanged -= OnPhaseSwitchButtonGuideChanged;
         GameDebugSettings.RuntimeResourceModifyEnabledChanged -= OnRuntimeResourceModifyEnabledChanged;
         UnbindButtons();
+        ShutdownSkills();
         ShutdownMiniMap();
         ShutdownDefendEnemySketch();
         StopPhaseSwitchBlink();
@@ -131,11 +133,13 @@ public partial class InGameUIForm : UIFormBase
 
     private void OnPhaseBgClicked()
     {
+        ClearSkillInputRequests();
         ClickUIButton(varPhaseBg);
     }
 
     private void OnReturnClicked()
     {
+        ClearSkillInputRequests();
         ClickUIButton(varReturnBtn);
     }
 
@@ -156,12 +160,21 @@ public partial class InGameUIForm : UIFormBase
 
     private void OnCoinIconClicked()
     {
+        ClearSkillInputRequests();
         ClickUIButton(varCoinIcon);
     }
 
     private void OnSupplyIconClicked()
     {
+        ClearSkillInputRequests();
         ClickUIButton(varSupplyIcon);
+    }
+
+    private static void ClearSkillInputRequests()
+    {
+        GF.DataModel.GetDataModel<InputModel>()?.ClearSkillRequests();
+        if (EntityRegistry.Player is ISkillCompHost skillHost)
+            skillHost.CancelRunningSkills();
     }
 
     private void OnPhaseSwitchButtonGuideChanged()
@@ -196,6 +209,7 @@ public partial class InGameUIForm : UIFormBase
             case IngameValueType.MaxSupply:
                 RefreshAllText();
                 RefreshDefendEnemySketch();
+                RefreshSkills();
                 break;
         }
     }

@@ -9,7 +9,8 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 
 /// <summary>
-/// 科技数据模型类, 预读各建筑的科技数据
+/// 科技数据缓存模型。
+/// 当前建筑科技主链路仍依赖这层缓存从 BuildingTable 汇总 TechData。
 /// </summary>
 public class TechDataModel : DataModelBase
 {

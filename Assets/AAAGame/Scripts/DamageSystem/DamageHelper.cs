@@ -435,7 +435,7 @@ public static class WeaponTargetRules
         {
             if (target.IsDestroyed() || !target.Alive)
                 return false;
-            if (target is SoldierEntity se && se.IsGhostState)
+            if (target is HeroEntity se && se.IsGhostState)
                 return false;
         }
 

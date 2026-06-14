@@ -10,13 +10,6 @@ using GameFramework.Event;
 /// </summary>
 public partial class SoldierEntity : MAEntity
 {
-    private const string HeroOutOfCombatSpeedBuffId = "hero_out_of_combat_speed_x2";
-    private const float HeroOutOfCombatSpeedDelay = 2f;
-    private const float HeroOutOfCombatSpeedRampDuration = 1f;
-    private static readonly Fix64 HeroOutOfCombatSpeedBuffPercent = Fix64.One;
-    private bool _heroOutOfCombatSpeedFirstApplyPending;
-    private bool _heroOutOfCombatSpeedInitialGraceActive;
-
     /// <summary>
     /// AI类型
     /// </summary>
@@ -41,10 +34,6 @@ public partial class SoldierEntity : MAEntity
 
     protected override void OnShow(object userData)
     {
-        _isHidingOrShuttingDown = false;
-        _heroOutOfCombatSpeedFirstApplyPending = true;
-        _heroOutOfCombatSpeedInitialGraceActive = false;
-
         base.OnShow(userData);
         if (userData is EntityParams ep)
         {
@@ -59,13 +48,6 @@ public partial class SoldierEntity : MAEntity
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
             ConfigureTargetingModeForSpawn();
             ApplyDefendPhaseSpawnParams(ep);
-
-        }
-
-
-        if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
-        {
-            EnsurePlayerInteractionRuntime();
         }
 
         //Debug.LogError("什么玩意");
@@ -81,7 +63,6 @@ public partial class SoldierEntity : MAEntity
             soldierBrain.SetBirthPosition(transform.position);
         }
 
-        SyncHeroOutOfCombatSpeedBuff();
         RegisterToGroupMove(); // Side 已赋值，安全注册
         SubscribePhaseEvents();
     }
@@ -104,32 +85,13 @@ public partial class SoldierEntity : MAEntity
         if (args.OldPhase == args.NewPhase)
             return;
 
-        // 如果是英雄且存活，转阶段时回满血
-        if (Alive && IsHeroUnit())
-        {
-            Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-            Fix64 delta = maxHealth - HealthValue;
-            if (delta > Fix64.Zero)
-            {
-                CreaturePropertyManager.ModifyCurrentProperty(
-                    CreatureCurrentProperty.HealthCurrent,
-                    PropertyIrreversibleAdditiveModifier.Create(delta),
-                    true);
-
-                GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
-            }
-        }
-
-        SyncHeroOutOfCombatSpeedBuff();
         OnPhaseChangedForDefendPhaseSpeed(args);
     }
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
-        SyncHeroOutOfCombatSpeedBuff();
         TickDefendPhaseSpeedControl();
-        TickGhostCollisionRuntime();
 
         if (m_MinimapReportComponent != null)
         {
@@ -168,7 +130,6 @@ public partial class SoldierEntity : MAEntity
         FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
     }
 
-
     /// <summary>
     /// 获取单位类型（重写基类方法）
     /// </summary>
@@ -180,66 +141,9 @@ public partial class SoldierEntity : MAEntity
 
     protected override void OnHide(bool isShutdown, object userData)
     {
-        _isHidingOrShuttingDown = true;
         DisableDefendPhaseSpeedControl();
         UnsubscribePhaseEvents();
-        ClearGhostRuntimeState();
         base.OnHide(isShutdown, userData);
-    }
-
-    private const string PlayerInteractionNodeName = "InteractCollider";
-    private const float PlayerInteractionRange = 2.7f;
-    private const float PlayerInteractionPadding = 0.7f;
-
-    private void EnsurePlayerInteractionRuntime()
-    {
-        Transform interactionNode = transform.Find(PlayerInteractionNodeName);
-        GameObject interactionObject;
-
-        if (interactionNode == null)
-        {
-            interactionObject = new GameObject(PlayerInteractionNodeName);
-            interactionObject.transform.SetParent(transform);
-            interactionObject.transform.localPosition = Vector3.zero;
-            interactionObject.transform.localRotation = Quaternion.identity;
-            interactionObject.transform.localScale = Vector3.one;
-        }
-        else
-        {
-            interactionObject = interactionNode.gameObject;
-        }
-
-        SphereCollider triggerSphere = interactionObject.GetComponent<SphereCollider>();
-        if (triggerSphere == null)
-            triggerSphere = interactionObject.AddComponent<SphereCollider>();
-        triggerSphere.isTrigger = true;
-
-        Rigidbody triggerBody = interactionObject.GetComponent<Rigidbody>();
-        if (triggerBody == null)
-            triggerBody = interactionObject.AddComponent<Rigidbody>();
-        triggerBody.isKinematic = true;
-        triggerBody.useGravity = false;
-        triggerBody.constraints = RigidbodyConstraints.FreezeAll;
-
-        InteractionDetector detector = interactionObject.GetComponent<InteractionDetector>();
-        if (detector == null)
-            detector = interactionObject.AddComponent<InteractionDetector>();
-
-        InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
-        if (manager == null)
-            manager = interactionObject.AddComponent<InteractionManager>();
-
-        if (interactionObject.GetComponent<InteractOptionTipsPresenter>() == null)
-            interactionObject.AddComponent<InteractOptionTipsPresenter>();
-
-        manager.ConfigureRuntime(
-            detector,
-            PlayerInteractionRange,
-            PlayerInteractionPadding,
-            0.65f,
-            0.35f,
-            0.08f,
-            0.1f);
     }
 
     private void ApplySpawnPosition(Vector3 worldPosition)
@@ -255,64 +159,6 @@ public partial class SoldierEntity : MAEntity
         }
 
         transform.position = worldPosition;
-    }
-
-    protected override void OnOutOfCombatStateRefreshed()
-    {
-        base.OnOutOfCombatStateRefreshed();
-        SyncHeroOutOfCombatSpeedBuff();
-    }
-
-    private void SyncHeroOutOfCombatSpeedBuff()
-    {
-        if (!IsHeroUnit() || BuffComp == null || CreaturePropertyManager == null)
-            return;
-
-        if (!IsOutOfCombat)
-            _heroOutOfCombatSpeedInitialGraceActive = false;
-
-        bool isFirstApply = _heroOutOfCombatSpeedFirstApplyPending;
-        bool keepInitialGraceBuff = _heroOutOfCombatSpeedInitialGraceActive && IsOutOfCombat;
-        bool canEnableBuff = Alive
-                             && (isFirstApply
-                                 || keepInitialGraceBuff
-                                 || (IsOutOfCombat && OutOfCombatElapsedSeconds >= HeroOutOfCombatSpeedDelay));
-        bool hasBuff = BuffComp.HasBuff(HeroOutOfCombatSpeedBuffId);
-
-        if (canEnableBuff)
-        {
-            _heroOutOfCombatSpeedFirstApplyPending = false;
-            if (isFirstApply)
-                _heroOutOfCombatSpeedInitialGraceActive = true;
-
-            if (hasBuff)
-                return;
-
-            BuffData buffData = BuffData.Create(
-                id: HeroOutOfCombatSpeedBuffId,
-                duration: float.MaxValue,
-                isForever: true,
-                maxStack: 1,
-                modules: new List<BuffCallback>
-                {
-                    new RampedPercentMoveSpeedBonusBuff(
-                        HeroOutOfCombatSpeedBuffPercent,
-                        HeroOutOfCombatSpeedRampDuration,
-                        isFirstApply)
-                });
-
-            BuffComp.AddBuff(buffData, this);
-            return;
-        }
-
-        RemoveHeroOutOfCombatSpeedBuff();
-    }
-
-    private void RemoveHeroOutOfCombatSpeedBuff()
-    {
-        _heroOutOfCombatSpeedInitialGraceActive = false;
-        if (BuffComp != null && BuffComp.HasBuff(HeroOutOfCombatSpeedBuffId))
-            BuffComp.RemoveBuff(HeroOutOfCombatSpeedBuffId);
     }
 
     private void ConfigureTargetingModeForSpawn()

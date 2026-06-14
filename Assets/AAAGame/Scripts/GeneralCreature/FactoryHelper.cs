@@ -47,7 +47,7 @@ public static class FactoryHelper
         GF.Resource.LoadAsset(factoryPath, wrappedCallback, entity);
     }
     
-    public static void CreateSkillComp(string factoryPath, SkillEntity entity)
+    public static void CreateSkillComp(string factoryPath, MAEntity entity)
     {
         if (_skillFactories.TryGetValue(factoryPath, out var factory))
         {

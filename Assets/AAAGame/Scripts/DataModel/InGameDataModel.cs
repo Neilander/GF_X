@@ -348,24 +348,7 @@ public class InGameDataModel : DataModelBase
 
     public static bool IsSkillUnlocked(string skillId)
     {
-        if (string.IsNullOrWhiteSpace(skillId))
-            return false;
-
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
-        if (dataModel == null) return false;
-
-        foreach (var kvp in dataModel.m_TechOwnerContextsById)
-        {
-            if (kvp.Value == null || kvp.Value.Count == 0)
-                continue;
-
-            var techData = TechDataModel.GetTechData(kvp.Key);
-            if (techData != null && techData.SkillID == skillId)
-            {
-                return true;
-            }
-        }
-        return false;
+        return SkillRuntimeDataModel.IsUnlocked(skillId);
     }
 
     public static bool HasUnlockedTech(string techId, string buildingContextKey)
@@ -431,6 +414,10 @@ public class InGameDataModel : DataModelBase
         owners.Add(buildingContextKey);
 
         dataModel.EnsureUnlockedTechIdCached(techId);
+
+        var techData = TechDataModel.GetTechData(techId);
+        if (techData != null && techData.ScopeType == TechScopeType.Skill)
+            SkillRuntimeDataModel.LearnOrUpgradeFromTech(techData);
 
         GF.Event.Fire(dataModel, TechUnlockedEventArgs.Create(techId, ownerFactionId, buildingContextKey));
         return true;

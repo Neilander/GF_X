@@ -20,4 +20,5 @@ public partial class InGameUIForm
 	[SerializeField] private RectTransform varMiniMapMask = null;
 	[SerializeField] private GameObject varDefendEnemySketchRoot = null;
 	[SerializeField] private GameObject varDefendEnemySketchItem = null;
+	[SerializeField] protected GameObject[] varSkills = null;
 }

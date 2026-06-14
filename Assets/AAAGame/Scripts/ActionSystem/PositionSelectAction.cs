@@ -64,7 +64,10 @@ public class PositionSelectAction : BasicAction
             };
         
             GF.Entity.ShowEntity<CylinderTargetSelector>(posSelectPrefabName, Const.EntityGroup.Default, selectorParams);
-            (info.selfBody as SkillEntity).ShowCastRange((posInfo.radius+posInfo.selectScale.x/2)*1.05f);
+            if (info.selfBody is not ICastRangePresenter rangePresenter)
+                throw new System.InvalidOperationException($"PositionSelectAction requires ICastRangePresenter. body={info.selfBody?.GetType().Name}");
+
+            rangePresenter.ShowCastRange(posInfo.radius);
         }
         else
         {
@@ -73,9 +76,12 @@ public class PositionSelectAction : BasicAction
 
         if (info.inputs.SkillConfirmPressed)
         {
+            posInfo.curSelector.GetSelected(out posInfo.selectedTargets);
+            posInfo.confirmedSelectPos = posInfo.lastSelectPos;
             GF.Entity.HideEntity(posInfo.curSelector.GetEntityID());
             posInfo.curSelector = null;
-            (info.selfBody as SkillEntity).HideCastRange();
+            if (info.selfBody is ICastRangePresenter rangePresenter)
+                rangePresenter.HideCastRange();
             FinishAction(info);
         }
 
@@ -86,6 +92,14 @@ public class PositionSelectAction : BasicAction
     protected override void OnInterrupt(ActionInfo info)
     {
         PositionSelectActionInfo posInfo = GetInfo(info);
+        if (posInfo.curSelector != null)
+        {
+            GF.Entity.HideEntity(posInfo.curSelector.GetEntityID());
+            posInfo.curSelector = null;
+        }
+
+        if (info.selfBody is ICastRangePresenter rangePresenter)
+            rangePresenter.HideCastRange();
     }
 
     private PositionSelectActionInfo GetInfo(ActionInfo info)
@@ -174,6 +188,8 @@ public class PositionSelectActionInfo : ActionInfo
     public Vector3 lastSelectPos;
     public bool getPosAlready;
     public bool showSelectorAlready;
+    public List<ISelectable> selectedTargets;
+    public Vector3 confirmedSelectPos;
 
     //需要设置的数值
     public Transform centerTrans;

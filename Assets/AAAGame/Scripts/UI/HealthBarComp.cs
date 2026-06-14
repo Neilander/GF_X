@@ -189,18 +189,6 @@ public class HealthBarComp : MonoBehaviour
     {
         if (ShouldSuppressHealthBar(followTarget))
         {
-            var building = followTarget != null ? followTarget.GetComponent<BuildingEntity>() : null;
-            if (building != null)
-            {
-                Log.Info(
-                    "[HealthBar] Suppressed create for building. id={0}, ownerFaction={1}, lv0Invincible={2}, healthBarSuppressedByBuff={3}, phaseProtected={4}",
-                    entityId,
-                    building.OwnerFactionID,
-                    building.IsLv0Invincible,
-                    building.IsHealthBarSuppressedByBuff,
-                    building.IsPhaseProtected);
-            }
-
             return null;
         }
 

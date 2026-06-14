@@ -55,7 +55,7 @@ public class SideTipsManager : GameFrameworkComponent
             if (!hasLoggedWaitingForEventComponent)
             {
                 hasLoggedWaitingForEventComponent = true;
-                Log.Warning("[SideTips] GF.Event is not ready yet, will retry subscription in Update.");
+                Log.Info("[SideTips] GF.Event is not ready yet, will retry subscription in Update.");
             }
             return;
         }
@@ -103,14 +103,8 @@ public class SideTipsManager : GameFrameworkComponent
         if (entity == null || !entity.Alive || entity.Side != SideType.EnemySide)
             return;
 
-        Log.Info("[SideTips] Enemy visibility visible event received. entityId={0}, old={1}, new={2}, characterKey={3}.",
-            args.EntityId, args.OldCellState, args.NewCellState, entity.CharacterKey);
-
         if (!TryResolveTipKeys(entity, out UnitType unitType, out string nameKey))
-        {
-            Log.Warning("[SideTips] Failed to resolve unit type or tip keys. entityId={0}, characterKey={1}.", args.EntityId, entity.CharacterKey);
             return;
-        }
 
         if (shownEnemyUnitTypes.Contains(unitType))
             return;

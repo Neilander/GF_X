@@ -16,6 +16,7 @@ namespace AAAGame.MiniMap
         [SerializeField] private MinimapConfig config = new MinimapConfig();
         [SerializeField] private Color waterLayerColor = new Color(0.14f, 0.36f, 0.52f, 1f);
         [SerializeField] private Color planeLayerColor = new Color(0.42f, 0.45f, 0.33f, 1f);
+        [SerializeField] private bool enableUnitLifecycleLogs;
 
         private Dictionary<int, MinimapUnitData> units = new Dictionary<int, MinimapUnitData>();
         private int nextUnitId = 1;
@@ -24,6 +25,7 @@ namespace AAAGame.MiniMap
         public MinimapConfig Config => config;
         public Color WaterLayerColor => waterLayerColor;
         public Color PlaneLayerColor => planeLayerColor;
+        public bool EnableUnitLifecycleLogs => enableUnitLifecycleLogs;
 
         // C# 委托事件 - 数据变化时触发
         public event Action<List<MinimapUnitData>> OnUnitsUpdated;
@@ -31,7 +33,6 @@ namespace AAAGame.MiniMap
         protected override void Awake()
         {
             base.Awake();
-            Log.Info("[MinimapManager] MinimapManager initialized with event system");
         }
 
         private void LateUpdate()
@@ -44,12 +45,7 @@ namespace AAAGame.MiniMap
                 if (OnUnitsUpdated != null)
                 {
                     List<MinimapUnitData> unitsList = new List<MinimapUnitData>(units.Values);
-                    //Log.Info($"[MinimapManager] Broadcasting {unitsList.Count} units to {OnUnitsUpdated.GetInvocationList().Length} subscribers");
                     OnUnitsUpdated.Invoke(unitsList);
-                }
-                else
-                {
-                    Log.Warning("[MinimapManager] OnUnitsUpdated has no subscribers!");
                 }
             }
         }
@@ -62,7 +58,10 @@ namespace AAAGame.MiniMap
             int unitId = nextUnitId++;
             var unitData = new MinimapUnitData(unitId, worldPosition, side, unitType, iconPrefabName, true);
             units[unitId] = unitData;
-            Log.Info($"[MinimapManager] Unit registered: ID={unitId}, Side={side}, Type={unitType}, Total units={units.Count}");
+            if (enableUnitLifecycleLogs)
+            {
+                Log.Info("[MinimapManager] Unit registered: ID={0}, Side={1}, Type={2}, Total units={3}", unitId, side, unitType, units.Count);
+            }
             return unitId;
         }
 
@@ -85,9 +84,9 @@ namespace AAAGame.MiniMap
         /// </summary>
         public void UnregisterUnit(int unitId)
         {
-            if (units.Remove(unitId))
+            if (units.Remove(unitId) && enableUnitLifecycleLogs)
             {
-                Log.Info($"[MinimapManager] Unit unregistered: ID={unitId}, Remaining units={units.Count}");
+                Log.Info("[MinimapManager] Unit unregistered: ID={0}, Remaining units={1}", unitId, units.Count);
             }
         }
 
@@ -131,7 +130,10 @@ namespace AAAGame.MiniMap
             config.WorldMaxZ = origin.z + worldHeight;
 
             syncedLevelEntityId = levelId;
-            Log.Info($"[MinimapManager] Synced bounds from TileWorldCreator: width={worldWidth:F2}, height={worldHeight:F2}, origin={origin}");
+            if (enableUnitLifecycleLogs)
+            {
+                Log.Info("[MinimapManager] Synced bounds from TileWorldCreator: width={0:F2}, height={1:F2}, origin={2}", worldWidth, worldHeight, origin);
+            }
         }
     }
 }

@@ -443,10 +443,7 @@ public class PhaseManager : GameFrameworkComponent
         if (elapsedMs >= PhaseStepWarnMs)
         {
             Log.Warning("[PhasePerf] {0}: {1}ms", step, elapsedMs);
-            return;
         }
-
-        Log.Info("[PhasePerf] {0}: {1}ms", step, elapsedMs);
     }
 
     private static void LogCreatureEntityPoolState(string step)
@@ -460,15 +457,16 @@ public class PhaseManager : GameFrameworkComponent
         if (pool == null)
         {
             Log.Warning("[PhasePerf] creature-pool.{0}: not found", step);
-            return;
         }
-
-        Log.Info(
-            "[PhasePerf] creature-pool.{0}: count={1},canRelease={2},capacity={3},expire={4}",
-            step,
-            pool.Count,
-            pool.CanReleaseCount,
-            pool.Capacity,
-            pool.ExpireTime);
+        else if (pool.Count >= pool.Capacity)
+        {
+            Log.Warning(
+                "[PhasePerf] creature-pool.{0}: count={1},canRelease={2},capacity={3},expire={4}",
+                step,
+                pool.Count,
+                pool.CanReleaseCount,
+                pool.Capacity,
+                pool.ExpireTime);
+        }
     }
 }

@@ -389,7 +389,7 @@ public class TechManager : GameFrameworkComponent
             return false;
 
         if (techData.ScopeType == TechScopeType.Skill)
-            return false;
+            return !string.IsNullOrWhiteSpace(techData.SkillID);
 
         return techData.IsStackable || !InGameDataModel.HasUnlockedTech(techId);
     }

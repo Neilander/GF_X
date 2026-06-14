@@ -10,6 +10,8 @@ public class ScriptedBrain : IControlBrain, ITickBrain
     public bool Skill1 { get; set; }
     public bool Skill2 { get; set; }
     public bool Skill3 { get; set; }
+    public bool Skill4 { get; set; }
+    public bool Skill5 { get; set; }
 
     public void Tick(IEntityContext self, float dt)
     {

@@ -7,6 +7,8 @@ public class EnemyAIBrain : IControlBrain, ITickBrain
     public bool Skill1 { get; private set; }
     public bool Skill2 { get; private set; }
     public bool Skill3 { get; private set; }
+    public bool Skill4 { get; private set; }
+    public bool Skill5 { get; private set; }
 
     public float AggroRange = 6f;
     public float AttackRange = 1.6f;
@@ -21,7 +23,7 @@ public class EnemyAIBrain : IControlBrain, ITickBrain
     public void Tick(IEntityContext self, float dt)
     {
         Attack = false;
-        Skill1 = Skill2 = Skill3 = false;
+        Skill1 = Skill2 = Skill3 = Skill4 = Skill5 = false;
 
         _target = self.TargetComp?.CurrentTarget;
 

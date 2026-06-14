@@ -1,16 +1,15 @@
-﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "SelectPositionSkill", 
+[CreateAssetMenu(fileName = "SelectPositionSkill",
     menuName = "Skills/(ZObsolete)SelectPositionSkill")]
-public class SelectPositionSkill : BasicSkill
+public class SelectPositionSkill : ActiveSkillSO
 {
     //[Header("选择相关数据")]
     //public float radius = 10f;
     //public Vector3 selectRatio;
-    
-    protected override SkillInfo CreateSkillInfo(SkillEntity body)
+
+    protected override SkillInfo CreateSkillInfo(MAEntity body)
     {
         return new SelectPosSkillInfo()
         {
@@ -22,7 +21,7 @@ public class SelectPositionSkill : BasicSkill
         };
     }
 
-    public override void StartSkill(SkillEntity body, out SkillInfo info)
+    public override void StartSkill(MAEntity body, out SkillInfo info)
     {
         base.StartSkill(body, out info);
     }
@@ -32,16 +31,16 @@ public class SelectPositionSkill : BasicSkill
          SelectPosSkillInfo posInfo = info as SelectPosSkillInfo;
          if (info.currentInfo is PositionSelectActionInfo)
          {
-             PositionSelectActionInfo actionInfo = 
+             PositionSelectActionInfo actionInfo =
                  info.currentInfo as PositionSelectActionInfo;
              //这是一个选择行为，要记录选择内容
-             posInfo.selectPos = actionInfo.lastSelectPos;
-             actionInfo.curSelector.GetSelected(out posInfo.selectTargets);
+             posInfo.selectPos = actionInfo.confirmedSelectPos;
+             posInfo.selectTargets = actionInfo.selectedTargets ?? new List<ISelectable>();
          }
          //如果不是，也不清空，如果有需要再清空
- 
+
          base.SwitchToNextAction(info);
-         
+
          //设置继承信息
          info.currentInfo.selectTargets = posInfo.selectTargets;
          info.currentInfo.selectPos = posInfo.selectPos;

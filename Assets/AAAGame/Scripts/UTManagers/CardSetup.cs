@@ -8,6 +8,7 @@ using AAAGame.Card;
 
 public partial class CardSetup : GameFrameworkComponent
 {
+    private const long CardPhasePerfWarnMs = 30;
     private CardSystemController m_CardSystemController;
     private int m_CardUIFormId = -1;
     private float m_NextAutoDrawTime;
@@ -35,7 +36,7 @@ public partial class CardSetup : GameFrameworkComponent
         m_NextAutoDrawTime = 0f;
         InitializeCardSystem();
         watch.Stop();
-        Log.Info("[PhasePerf] card-setup.total: {0}ms", watch.ElapsedMilliseconds);
+        LogPhasePerf("card-setup.total", watch.ElapsedMilliseconds);
     }
 
     public void CardSystemUpdate()
@@ -78,7 +79,7 @@ public partial class CardSetup : GameFrameworkComponent
         var closeUiWatch = Stopwatch.StartNew();
         CloseCardUI(playCloseAnimation);
         closeUiWatch.Stop();
-        Log.Info("[PhasePerf] card-shutdown.close-ui: {0}ms", closeUiWatch.ElapsedMilliseconds);
+        LogPhasePerf("card-shutdown.close-ui", closeUiWatch.ElapsedMilliseconds);
 
         // Shutdown card system controller.
         if (m_CardSystemController != null)
@@ -87,12 +88,12 @@ public partial class CardSetup : GameFrameworkComponent
             m_CardSystemController.Shutdown();
             m_CardSystemController = null;
             controllerShutdownWatch.Stop();
-            Log.Info("[PhasePerf] card-shutdown.controller: {0}ms", controllerShutdownWatch.ElapsedMilliseconds);
+            LogPhasePerf("card-shutdown.controller", controllerShutdownWatch.ElapsedMilliseconds);
         }
 
         m_NextAutoDrawTime = 0f;
         totalWatch.Stop();
-        Log.Info("[PhasePerf] card-shutdown.total: {0}ms", totalWatch.ElapsedMilliseconds);
+        LogPhasePerf("card-shutdown.total", totalWatch.ElapsedMilliseconds);
     }
 
     private void CloseCardUI(bool playCloseAnimation)
@@ -217,7 +218,7 @@ public partial class CardSetup : GameFrameworkComponent
         {
             Log.Info("[CardGame] Card UI is already loading/open. Skip duplicate open.");
             watch.Stop();
-            Log.Info("[PhasePerf] card-open-ui.total: {0}ms", watch.ElapsedMilliseconds);
+            LogPhasePerf("card-open-ui.total", watch.ElapsedMilliseconds);
             return;
         }
 
@@ -235,7 +236,13 @@ public partial class CardSetup : GameFrameworkComponent
         }
 
         watch.Stop();
-        Log.Info("[PhasePerf] card-open-ui.total: {0}ms", watch.ElapsedMilliseconds);
+        LogPhasePerf("card-open-ui.total", watch.ElapsedMilliseconds);
+    }
+
+    private static void LogPhasePerf(string step, long elapsedMilliseconds)
+    {
+        if (elapsedMilliseconds >= CardPhasePerfWarnMs)
+            Log.Warning("[PhasePerf] {0}: {1}ms", step, elapsedMilliseconds);
     }
 
     public bool GenerateCardToDeck(BuildingEntity sourceBuilding)

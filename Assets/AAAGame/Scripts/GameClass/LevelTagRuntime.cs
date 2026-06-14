@@ -53,6 +53,23 @@ public static class LevelTagRuntime
         s_HeroReviveStatesByEntityId.Clear();
     }
 
+    public static int GetHeroSkillLevelBonus()
+    {
+        int total = 0;
+        foreach (LevelTagTable tag in ResolveActiveTags())
+        {
+            if (tag.Identifier == "LvTag_Gifted")
+                total += IntValue(tag, 0);
+        }
+
+        return Math.Max(0, total);
+    }
+
+    public static int GetCurrentSettlementOffsetRateDelta()
+    {
+        return SettlementOffsetRateService.GetCurrentOffsetRateDelta();
+    }
+
     public static IReadOnlyList<LevelTagTable> GetActiveTags()
     {
         return ResolveActiveTags();
@@ -639,7 +656,6 @@ public static class LevelTagRuntime
                 if (enemy) modules.Add(new WeaponTypeIncomingDamageReductionBuff(Value(tag, 0), false));
                 break;
             case "LvTag_Gifted":
-                WarnUnsupported(tag, "当前技能运行链路未接入");
                 break;
             case "LvTag_Neurasthenia":
                 if (player) modules.Add(new MainPropertyAdditiveBuff(CreatureMainProperty.StatusResistance, -Value(tag, 0)));

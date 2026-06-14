@@ -13,6 +13,7 @@ public partial class InGameUIForm
     private const float DefendEnemySketchRotateSmoothSpeed = 4f;
     private const float DefendEnemySketchAvoidEpsilon = 0.5f;
     private const int DefendEnemySketchDiagLogIntervalFrames = 10;
+    [SerializeField] private bool enableDefendSketchDiagnostics;
 
     private readonly List<DefendPhaseRuntime.DefendPreviewSpawnEntry> m_DefendPreviewSpawnEntries = new();
     private readonly Dictionary<int, List<SketchEntryRenderData>> m_DefendBucketEntries = new();
@@ -722,6 +723,9 @@ public partial class InGameUIForm
 
     private bool TryConsumeDefendSketchDiagQuota()
     {
+        if (!enableDefendSketchDiagnostics)
+            return false;
+
         int frame = Time.frameCount;
         if (frame - m_DefendSketchLastDiagLogFrame < DefendEnemySketchDiagLogIntervalFrames)
             return false;

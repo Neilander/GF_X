@@ -69,6 +69,9 @@ public static class SoldierFactory
         // Keep OnShowCallback empty here.
         // Buff setup occurs in existing show-success chain.
 
+        if (unitType == UnitType.Unit_Hero)
+            return MAEntityFactory.ShowHero(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
+
         return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
     }
 
@@ -93,7 +96,9 @@ public static class SoldierFactory
         AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
 
         EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
-        var logic = await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);
+        var logic = unitType == UnitType.Unit_Hero
+            ? await GF.Entity.ShowEntityAwait<HeroEntity>(prefabName, entityGroup, entityParams)
+            : await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);
         if (logic != null && keepAlivePredicate != null && !keepAlivePredicate())
         {
             GF.Entity.HideEntitySafe(logic);
@@ -110,8 +115,7 @@ public static class SoldierFactory
         if (string.IsNullOrWhiteSpace(row.PrefabPath))
             throw new InvalidOperationException($"SoldierFactory.ShowSoldier failed: CharacterDataDetail.PrefabPath is empty. CharacterKey={characterKey}.");
 
-        if (LoggedPrefabSourceCharacterKeys.Add(characterKey))
-            Log.Info("[SoldierFactory] Unit prefab source: CharacterDataDetail.PrefabPath. CharacterKey={0}, PrefabPath={1}.", characterKey, row.PrefabPath);
+        LoggedPrefabSourceCharacterKeys.Add(characterKey);
 
         return row.PrefabPath;
     }

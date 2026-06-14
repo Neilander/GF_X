@@ -100,7 +100,7 @@ namespace AAAGame.Effect
 
         private IEnumerator PlayFlashRoutine()
         {
-            if (TryGetComponent<SoldierEntity>(out SoldierEntity soldier) && soldier.IsGhostState)
+            if (TryGetComponent<HeroEntity>(out HeroEntity soldier) && soldier.IsGhostState)
             {
                 m_FlashRoutine = null;
                 yield break;

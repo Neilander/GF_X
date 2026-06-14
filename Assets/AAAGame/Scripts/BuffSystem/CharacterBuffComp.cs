@@ -150,13 +150,18 @@ namespace AAAGame.Scripts.BuffSystem
         public void UpdateBuff(float deltaTime)
         {
             List<string> expiredBuffs = new List<string>();
+            List<string> buffIds = new List<string>(_buffDict.Keys);
 
-            foreach (KeyValuePair<string, BuffData> kvp in _buffDict)
+            foreach (string buffId in buffIds)
             {
-                BuffData buffData = kvp.Value;
+                if (!_buffDict.TryGetValue(buffId, out BuffData buffData))
+                {
+                    continue;
+                }
+
                 if (buffData == null)
                 {
-                    expiredBuffs.Add(kvp.Key);
+                    expiredBuffs.Add(buffId);
                     continue;
                 }
 
@@ -168,7 +173,7 @@ namespace AAAGame.Scripts.BuffSystem
                     // 检查是否过期
                     if (buffData.remainingTime <= 0f)
                     {
-                        expiredBuffs.Add(kvp.Key);
+                        expiredBuffs.Add(buffId);
                         continue;
                     }
                 }
@@ -179,7 +184,8 @@ namespace AAAGame.Scripts.BuffSystem
                     continue;
                 }
 
-                foreach (BuffCallback module in buffData.modules)
+                List<BuffCallback> modulesCopy = new List<BuffCallback>(buffData.modules);
+                foreach (BuffCallback module in modulesCopy)
                 {
                     if (module == null)
                     {

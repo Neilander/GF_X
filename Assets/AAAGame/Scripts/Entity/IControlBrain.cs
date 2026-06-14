@@ -7,6 +7,8 @@ public interface IControlBrain
     bool Skill1 { get; }
     bool Skill2 { get; }
     bool Skill3 { get; }
+    bool Skill4 { get; }
+    bool Skill5 { get; }
 }
 
 /// <summary>

@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 using UnityEngine.AI;
@@ -24,13 +22,17 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private bool _bypassUntilOnNavMesh;
     // 检测"已回到 NavMesh"的容差
     private const float OnNavMeshSampleRadius = 0.2f;
-
     private float _gravityVelocity;
     private float _edgeBuffer = 0.45f;
     private float _sampleRadius = 0.8f;
     private NavMeshQueryFilter _navFilter;
     private const float GravityAcceleration = -28f;
     private const float GroundStickVelocity = -2f;
+
+    public Vector3 DebugInputVelocity => _inputVelocity;
+    public Vector3 DebugExternalVelocity => _externalVelocity;
+    public Vector3 DebugOverrideVelocity => _overrideVelocity;
+    public bool DebugHasOverride => _hasOverride;
 
     public void Init(CharacterController controller) => Init(controller, 0);
 
@@ -46,16 +48,10 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 
         if (_controller != null)
         {
-            // 只有控制器存在时才输出debug日志
-            Debug.Log($"[MoveExecutor] Init: controller={controller != null}, agentTypeID={agentTypeID}, gameObject={gameObject.name}");
             _edgeBuffer = Mathf.Max(0.2f, _controller.radius + 0.05f);
             _sampleRadius = Mathf.Max(0.5f, _controller.radius + 0.2f);
-            Debug.Log($"[MoveExecutor] Controller settings: radius={_controller.radius}, height={_controller.height}, center={_controller.center}");
-
-            // 只有控制器存在时才检查NavMesh状态
             CheckNavMeshStatus();
         }
-        // 控制器为null时（如建筑）不输出debug日志
     }
 
     private void CheckNavMeshStatus()
@@ -65,29 +61,17 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         // 检查当前位置是否在NavMesh上
         bool isOnNavMesh = NavMesh.SamplePosition(currentPos, out NavMeshHit hit, 10f, _navFilter);
 
-        Debug.Log($"[MoveExecutor] NavMesh检查:");
-        Debug.Log($"  - 当前位置: {currentPos}");
-        Debug.Log($"  - 是否在NavMesh上: {isOnNavMesh}");
-        Debug.Log($"  - AgentTypeID: {_navFilter.agentTypeID}");
-        Debug.Log($"  - AreaMask: {_navFilter.areaMask}");
-
         if (isOnNavMesh)
         {
-            Debug.Log($"  - NavMesh位置: {hit.position}");
-            Debug.Log($"  - NavMesh距离: {hit.distance}");
+            NavMeshTriangulation triangulation = NavMesh.CalculateTriangulation();
+            if (triangulation.indices.Length == 0)
+            {
+                Debug.LogError("[MoveExecutor] 场景中没有NavMesh数据，请先烘焙NavMesh。");
+            }
         }
         else
         {
-            Debug.LogError($"[MoveExecutor] ⚠️ 当前位置不在NavMesh上！角色将无法移动！位置={currentPos}, gameObject={gameObject.name}");
-        }
-
-        // 检查NavMesh是否已烘焙
-        NavMeshTriangulation triangulation = NavMesh.CalculateTriangulation();
-        Debug.Log($"  - NavMesh三角形数量: {triangulation.indices.Length / 3}");
-
-        if (triangulation.indices.Length == 0)
-        {
-            Debug.LogError($"[MoveExecutor] ⚠️ 场景中没有NavMesh数据！请先烘焙NavMesh！");
+            Debug.LogError($"[MoveExecutor] 当前位置不在NavMesh上，角色将无法移动。位置={currentPos}, gameObject={gameObject.name}, agentTypeID={_navFilter.agentTypeID}");
         }
     }
 
@@ -95,10 +79,6 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     public void SetInput(Vector3 velocity)
     {
         _inputVelocity = velocity;
-        if (velocity.sqrMagnitude > 0.001f)
-        {
-            //Debug.Log($"[MoveExecutor] SetInput: velocity={velocity}, gameObject={gameObject.name}");
-        }
     }
 
     // 外力可叠加
@@ -149,7 +129,6 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     {
         if (_bypassUntilOnNavMesh) return;
         _bypassUntilOnNavMesh = true;
-        Debug.Log($"[MoveExecutor] 启用自由移动 (无视 NavMesh) 直到走回 NavMesh, gameObject={gameObject.name}");
     }
 
     public void Execute()
@@ -181,7 +160,6 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             && NavMesh.SamplePosition(transform.position, out _, OnNavMeshSampleRadius, _navFilter))
         {
             _bypassUntilOnNavMesh = false;
-            Debug.Log($"[MoveExecutor] 已回到 NavMesh，关闭自由移动, gameObject={gameObject.name}");
         }
 
         bool shouldConstrain = _navMeshConstrained && !_constraintBypassForNextFrame && !_bypassUntilOnNavMesh;
@@ -196,10 +174,8 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 
         Vector3 finalDisplacement = horizontalDisplacement + verticalDisplacement;
 
-        // 调试：打印移动信息
         if (finalDisplacement.sqrMagnitude > 0.000001f)
         {
-            //Debug.Log($"[MoveExecutor] Execute: finalDisplacement={finalDisplacement}, gameObject={gameObject.name}");
             _controller.Move(finalDisplacement);
         }
 

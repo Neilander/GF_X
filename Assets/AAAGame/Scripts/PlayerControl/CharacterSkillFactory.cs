@@ -1,17 +1,22 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(fileName = "CharacterSkillFactory", menuName = "Skill Factory/CharacterSkill")]
 public class CharacterSkillFactory : SkillCompFactory
 {
-    [Header("技能（最多3个）")]
-    public List<BasicSkill> skills;
+    [Header("主动技能")]
+    public List<ActiveSkillSO> skills;
+    [Header("被动技能")]
+    public List<PassiveSkillSO> passiveSkills;
 
-    public override ISkillComp CreateSkillComp(SkillEntity gmo)
+    public override ISkillComp CreateSkillComp(MAEntity gmo)
     {
+        if (gmo is not ISkillCompHost host)
+            throw new System.InvalidOperationException($"CharacterSkillFactory requires ISkillCompHost. entity={gmo?.GetType().Name}");
+
         var comp = new CharacterSkillComp();
-        gmo.SetSkillComp(comp);
-        comp.Init(gmo, skills);
+        host.SetSkillComp(comp);
+        comp.Init(gmo, skills, passiveSkills);
         return comp;
     }
 }

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System;
 using System.Collections;
 using System.Globalization;
@@ -1229,7 +1229,7 @@ namespace AAAGame.MiniMap.FOG3
 
         private static bool IsGhostSoldier(EntityLogic logic)
         {
-            return logic is SoldierEntity soldier && soldier.IsGhostState;
+            return logic is HeroEntity soldier && soldier.IsGhostState;
         }
 
         private bool ShouldEntityRevealerAllowRevealHidden(EntityLogic logic)
@@ -1256,9 +1256,8 @@ namespace AAAGame.MiniMap.FOG3
 
             for (int i = 0; i < allEntities.Count; i++)
             {
-                if (allEntities[i] is SoldierEntity soldier
+                if (allEntities[i] is HeroEntity soldier
                     && soldier.Side == SideType.PlayerSide
-                    && soldier.IsHeroSoldier
                     && soldier.IsGhostState)
                 {
                     return true;
@@ -1272,7 +1271,7 @@ namespace AAAGame.MiniMap.FOG3
         {
             return logic is SoldierEntity soldier
                 && soldier.Side == SideType.PlayerSide
-                && !soldier.IsHeroSoldier;
+                && soldier is not HeroEntity;
         }
 
         private bool TryReadEntityVision(EntityLogic logic, out float radius)

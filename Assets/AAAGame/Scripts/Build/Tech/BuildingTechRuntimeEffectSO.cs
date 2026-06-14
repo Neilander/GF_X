@@ -367,7 +367,8 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
                 new AttackSpeedBonusBuff(GetValue(techData, 0)),
                 new AmmoReloadDelayModifierBuff(-(float)GetValue(techData, 1))));
 
-        AddSkipped(rules, "Tech_Buil_NavStation_Opt4", "作战结算合约等级链路待接入");
+        AddActivation(rules, "Tech_Buil_NavStation_Opt4",
+            (self, context) => self.RegisterSettlementOffsetRate(context, (int)GetValue(context.TechData, 0)));
         AddSkipped(rules, "Tech_Buil_ResearchCenter_Lv2_Opt1", "技能系统未接入");
         AddSkipped(rules, "Tech_Buil_ResearchCenter_Lv3_Opt1", "技能系统未接入");
         AddSkipped(rules, "Tech_Buil_DreamPark_Lv2_Opt1", "技能系统未接入");
@@ -690,6 +691,11 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
     private void RegisterDiscardConversionRateReduction(TechEffectContext context, int reduction)
     {
         DiscardRewardModifierService.RegisterRateReduction(context.TechId, context.OwnerFactionId, reduction);
+    }
+
+    private void RegisterSettlementOffsetRate(TechEffectContext context, int offsetRate)
+    {
+        SettlementOffsetRateService.RegisterOffsetRate(context.TechId, context.OwnerFactionId, offsetRate);
     }
 
     private void RegisterBattleDeathSupplyCoin(TechEffectContext context, int supplyPerCoin)
@@ -2074,5 +2080,44 @@ public static class BuildingCostModifierService
         }
 
         return archetypes.Count;
+    }
+}
+
+public static class SettlementOffsetRateService
+{
+    private sealed class OffsetRate
+    {
+        public string TechId;
+        public int OwnerFactionId;
+        public int Value;
+    }
+
+    private static readonly List<OffsetRate> s_Values = new();
+
+    public static void Clear()
+    {
+        s_Values.Clear();
+    }
+
+    public static void RegisterOffsetRate(string techId, int ownerFactionId, int value)
+    {
+        if (string.IsNullOrWhiteSpace(techId) || value == 0)
+            return;
+
+        s_Values.RemoveAll(item => item.TechId == techId && item.OwnerFactionId == ownerFactionId);
+        s_Values.Add(new OffsetRate { TechId = techId, OwnerFactionId = ownerFactionId, Value = value });
+    }
+
+    public static int GetCurrentOffsetRateDelta()
+    {
+        int total = 0;
+        for (int i = 0; i < s_Values.Count; i++)
+        {
+            OffsetRate item = s_Values[i];
+            if (item.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                total += item.Value;
+        }
+
+        return total;
     }
 }

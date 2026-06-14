@@ -12,6 +12,7 @@ using UnityGameFramework.Runtime;
 public class GlobalBuffManager : GameFrameworkComponent
 {
     [SerializeField] private bool enableDebugLogs = true;
+    private bool m_HasLoggedScopeResolverDataNotReady;
 
     private sealed class GlobalUnitBuffEntry
     {
@@ -67,6 +68,12 @@ public class GlobalBuffManager : GameFrameworkComponent
         TrySubscribeTechUnlockedEvent();
     }
 
+    public void PrepareRuntimeDependencies()
+    {
+        TryInitializeScopeResolver();
+        TrySubscribeTechUnlockedEvent();
+    }
+
     private void OnEnable()
     {
         LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
@@ -107,6 +114,7 @@ public class GlobalBuffManager : GameFrameworkComponent
         m_PersistentBuildingEntityBuffRules.Clear();
         m_BuildingExtraProps.Clear();
         BuildingCostModifierService.Clear();
+        SettlementOffsetRateService.Clear();
         m_BuildingTechRuntimeEffect?.ClearRuntimeState();
     }
 
@@ -119,6 +127,9 @@ public class GlobalBuffManager : GameFrameworkComponent
         var techData = TechDataModel.GetTechData(args.TechId);
         if (techData == null)
         {
+            if (IsSyntheticRuntimeTechId(args.TechId))
+                return;
+
             Debug.LogWarning($"[GlobalBuffManager] 找不到 TechData, techId={args.TechId}");
             return;
         }
@@ -126,6 +137,12 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (IsProductionBuildingLevelTech(techData))
         {
             DebugLog($"忽略 Prod 建筑等级科技事件，效果由建筑生产 buff 按等级读取。techId={args.TechId}");
+            return;
+        }
+
+        if (techData.ScopeType == TechScopeType.Skill)
+        {
+            DebugLog($"忽略技能科技事件，效果由 SkillRuntimeDataModel 处理。techId={args.TechId}");
             return;
         }
 
@@ -160,15 +177,26 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (m_TechScopeResolver != null)
             return true;
 
+        if (GF.DataTable?.GetDataTable<CharacterDataDetail>() == null)
+        {
+            m_HasLoggedScopeResolverDataNotReady = true;
+            return false;
+        }
+
         try
         {
             m_TechScopeIndex = TechScopeIndex.CreateFromCurrentDataTables();
             m_TechScopeResolver = new TechScopeResolver(m_TechScopeIndex);
+            m_HasLoggedScopeResolverDataNotReady = false;
             return true;
         }
         catch (Exception exception)
         {
-            Debug.LogWarning($"[GlobalBuffManager] 初始化 TechScopeResolver 失败: {exception.Message}");
+            if (!m_HasLoggedScopeResolverDataNotReady)
+            {
+                Debug.LogWarning($"[GlobalBuffManager] 初始化 TechScopeResolver 失败: {exception.Message}");
+                m_HasLoggedScopeResolverDataNotReady = true;
+            }
             return false;
         }
     }
@@ -632,7 +660,6 @@ public class GlobalBuffManager : GameFrameworkComponent
             || entries == null
             || entries.Count == 0)
         {
-            DebugLog($"GetBuffs: ownerFactionId={ownerFactionId}, unitType={unitType}, entries=0");
             return result.Count > 0 ? result : null;
         }
 
@@ -678,6 +705,12 @@ public class GlobalBuffManager : GameFrameworkComponent
                 || string.Equals(r.Tech2ID, techData.Identifier, StringComparison.Ordinal)));
 
         return row != null;
+    }
+
+    private static bool IsSyntheticRuntimeTechId(string techId)
+    {
+        return !string.IsNullOrWhiteSpace(techId)
+            && techId.StartsWith("Tech_BaseBuilt_", StringComparison.Ordinal);
     }
 
     private void DebugLog(string message)

@@ -47,9 +47,45 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
+        /// 1级施法距离
+        /// </summary>
+        public Fix64 Lv1CastRange
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 1级作用范围
+        /// </summary>
+        public Fix64 Lv1EffectRadius
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 1级持续时间
+        /// </summary>
+        public Fix64 Lv1Duration
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 1级使用次数
         /// </summary>
         public int Lv1UsageCount
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 1级冷却时间
+        /// </summary>
+        public Fix64 Lv1Cooldown
         {
             get;
             private set;
@@ -65,9 +101,45 @@ public class SkillTable : DataRowBase
         }
 
         /// <summary>
+        /// 升级增加施法距离
+        /// </summary>
+        public Fix64 UpgradeIncrementCastRange
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 升级增加作用范围
+        /// </summary>
+        public Fix64 UpgradeIncrementEffectRadius
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 升级增加持续时间
+        /// </summary>
+        public Fix64 UpgradeIncrementDuration
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
         /// 升级增加使用次数
         /// </summary>
         public int UpgradeIncrementUsageCount
+        {
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// 升级减少冷却时间
+        /// </summary>
+        public Fix64 UpgradeDecrementCooldown
         {
             get;
             private set;
@@ -124,10 +196,17 @@ public class SkillTable : DataRowBase
             index++;
             index++;
             Lv1UniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            Lv1CastRange = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1EffectRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
+            Lv1Duration = DataTableExtension.ParseFix64(columnStrings[index++]);
             Lv1UsageCount = DataTableExtension.ParseInt32(columnStrings[index++]);
+            Lv1Cooldown = DataTableExtension.ParseFix64(columnStrings[index++]);
             UpgradeIncrementUniqueValues = DataTableExtension.ParseFix64Array(columnStrings[index++]);
+            UpgradeIncrementCastRange = DataTableExtension.ParseFix64(columnStrings[index++]);
+            UpgradeIncrementEffectRadius = DataTableExtension.ParseFix64(columnStrings[index++]);
+            UpgradeIncrementDuration = DataTableExtension.ParseFix64(columnStrings[index++]);
             UpgradeIncrementUsageCount = DataTableExtension.ParseInt32(columnStrings[index++]);
-            index++;
+            UpgradeDecrementCooldown = DataTableExtension.ParseFix64(columnStrings[index++]);
             Type = DataTableExtension.ParseEnum<SkillType>(columnStrings[index++]);
             NameKey = columnStrings[index++];
             DescKey = columnStrings[index++];
@@ -145,9 +224,17 @@ public class SkillTable : DataRowBase
                     m_Id = binaryReader.Read7BitEncodedInt32();
                     Identifier = binaryReader.ReadString();
                     Lv1UniqueValues = binaryReader.ReadFix64Array();
+                    Lv1CastRange = binaryReader.ReadFix64();
+                    Lv1EffectRadius = binaryReader.ReadFix64();
+                    Lv1Duration = binaryReader.ReadFix64();
                     Lv1UsageCount = binaryReader.Read7BitEncodedInt32();
+                    Lv1Cooldown = binaryReader.ReadFix64();
                     UpgradeIncrementUniqueValues = binaryReader.ReadFix64Array();
+                    UpgradeIncrementCastRange = binaryReader.ReadFix64();
+                    UpgradeIncrementEffectRadius = binaryReader.ReadFix64();
+                    UpgradeIncrementDuration = binaryReader.ReadFix64();
                     UpgradeIncrementUsageCount = binaryReader.Read7BitEncodedInt32();
+                    UpgradeDecrementCooldown = binaryReader.ReadFix64();
                     Type = binaryReader.ReadEnum<SkillType>();
                     NameKey = binaryReader.ReadString();
                     DescKey = binaryReader.ReadString();

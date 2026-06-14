@@ -163,7 +163,6 @@ public partial class LevelEntity : EntityBase
             _rebakeTimer -= realElapseSeconds;
             if (_rebakeTimer < 0f)
             {
-                Debug.Log("[LevelEntity] 延迟烘焙 NavMesh 执行");
                 DoRebakeNavMesh();
             }
         }
@@ -205,11 +204,9 @@ public partial class LevelEntity : EntityBase
             return;
         }
 
-        Debug.Log($"[LevelEntity] NavMeshSurface 数量={_navMeshSurfaces.Length}");
         for (int i = 0; i < _navMeshSurfaces.Length; i++)
         {
             var s = _navMeshSurfaces[i];
-            Debug.Log($"  [{i}] on='{s.gameObject.name}' collect={s.collectObjects} layers={s.layerMask.value} useGeom={s.useGeometry} agentType={s.agentTypeID} size={s.size} center={s.center}");
             s.BuildNavMesh();
         }
 
@@ -225,12 +222,10 @@ public partial class LevelEntity : EntityBase
         var player = EntityRegistry.Player;
         if (player == null)
         {
-            Debug.Log("[LevelEntity] NavMesh bypass 触发: 无 Player, 跳过");
             return;
         }
         if (!(player is MAEntity mae) || mae == null)
         {
-            Debug.Log("[LevelEntity] NavMesh bypass 触发: Player 不是 MAEntity, 跳过");
             return;
         }
 
@@ -242,7 +237,6 @@ public partial class LevelEntity : EntityBase
         }
 
         executor.EnableBypassUntilOnNavMesh();
-        Debug.Log($"[LevelEntity] NavMesh bypass: 启用玩家自由移动 (无视 NavMesh) playerPos={mae.transform.position}");
     }
 
     private void SubscribeRuntimeLayerRules()

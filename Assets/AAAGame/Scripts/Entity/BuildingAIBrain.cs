@@ -10,6 +10,8 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
     public bool Skill1 => false;
     public bool Skill2 => false;
     public bool Skill3 => false;
+    public bool Skill4 => false;
+    public bool Skill5 => false;
 
     public void Tick(IEntityContext self, float dt)
     {

@@ -28,11 +28,8 @@ public sealed class AttackSpeedBonusBuff : BuffCallback
             return;
 
         m_AppliedFactor = Fix64.One / denom;
-        Fix64 before = weapon.Interval;
         weapon.ApplyMultiplier(WeaponStatId.Interval, m_AppliedFactor);
-        Fix64 after = weapon.Interval;
         m_Applied = true;
-        UnityEngine.Debug.Log($"[AttackSpeedBonusBuff] host={hostEntity?.CharacterKey} Interval: {(float)before} -> {(float)after} (percent={(float)m_Percent}%, factor={(float)m_AppliedFactor})");
     }
 
     public override void OnRemove()

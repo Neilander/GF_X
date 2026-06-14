@@ -43,6 +43,18 @@ public class GeneralCounter
         _current = _start;
     }
 
+    public void SetTarget(Fix64 target)
+    {
+        if (!_setted)
+        {
+            Init(target, true);
+            return;
+        }
+
+        _target = target;
+        _finished = _current >= _target;
+    }
+
     public bool IsFinished()
     {
         if (!_setted)

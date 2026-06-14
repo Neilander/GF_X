@@ -338,11 +338,6 @@ public partial class BuildingUpgradeTips : UIFormBase
             SpawnCondition(text, satisfied);
         }
 
-        // 条件3：未实装的Skill Scope
-        if (m_SelectedBinding.TechData != null && m_SelectedBinding.TechData.ScopeType == TechScopeType.Skill)
-        {
-            SpawnCondition("后续版本推出", false);
-        }
     }
 
     private void SpawnCondition(string text, bool satisfied)

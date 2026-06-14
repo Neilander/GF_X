@@ -120,7 +120,14 @@ namespace AAAGame.MiniMap
             }
 
             unitId = minimapManager.RegisterUnit(transform.position, side, unitType, iconPrefabName);
-            UnityGameFramework.Runtime.Log.Info($"[MinimapReport] Unit registered: ID={unitId}, Side={side}, Type={unitType}, Pos={transform.position}");
+            if (minimapManager.EnableUnitLifecycleLogs)
+            {
+                UnityGameFramework.Runtime.Log.Info("[MinimapReport] Unit registered: ID={0}, Side={1}, Type={2}, Pos={3}",
+                    unitId,
+                    side,
+                    unitType,
+                    transform.position);
+            }
         }
 
         private void UnregisterIfNeeded()

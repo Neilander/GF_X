@@ -4570,7 +4570,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c9bc911c128324884a748e80b3b0ea1b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  enableDebugLogs: 1
+  enableDebugLogs: 0
 --- !u!4 &1925905247
 Transform:
   m_ObjectHideFlags: 0

@@ -16,7 +16,6 @@ public class StartupLevelSelectProcedure : ProcedureBase
         s_Current = this;
         m_ProcedureOwner = procedureOwner;
         GF.BuiltinView.HideLoadingProgress();
-        GF.DataModel.CreateDataModel<LocalizationTextDataModel>();
 
         if (!LevelSelectionService.OpenLevelSwitch(true))
         {
@@ -29,7 +28,6 @@ public class StartupLevelSelectProcedure : ProcedureBase
         if (s_Current == this)
         {
             s_Current = null;
-            GF.DataModel.ReleaseDataModel<LocalizationTextDataModel>();
         }
 
         m_ProcedureOwner = null;
