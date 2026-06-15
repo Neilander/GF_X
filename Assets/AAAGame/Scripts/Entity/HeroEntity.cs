@@ -605,7 +605,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         if (!GroupMoveManager.HasInstance)
             return;
 
-        GroupMoveManager.Instance.Coordinator.SetAgentIgnoreCollision(GetInstanceID(), ignore);
+        GroupMoveManager.Instance.SetAgentIgnoreCollision(GetInstanceID(), ignore);
     }
 
     private void TickGhostCollisionRuntime()

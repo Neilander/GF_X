@@ -194,6 +194,8 @@ public partial class LevelEntity : EntityBase
             return;
 
         activeLevelEntity._rebakeTimer = RebakeDelay;
+        if (GroupMoveManager.HasInstance)
+            GroupMoveManager.Instance.InvalidateNavigation("[LevelEntity] RequestRebakeNavMesh");
     }
 
     private void DoRebakeNavMesh()
@@ -209,6 +211,9 @@ public partial class LevelEntity : EntityBase
             var s = _navMeshSurfaces[i];
             s.BuildNavMesh();
         }
+
+        if (GroupMoveManager.HasInstance)
+            GroupMoveManager.Instance.InvalidateNavigation("[LevelEntity] DoRebakeNavMesh completed");
 
         EnablePlayerNavMeshBypass();
     }

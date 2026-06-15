@@ -17,21 +17,26 @@ public class GroupMoveManager : MonoBehaviour
         Instance = this;
         Coordinator = new GroupMoveCoordinator();
         SyncParams();
+        FlowFieldCrowdMovementSystem.SetConfig(_config);
     }
 
     private void OnDestroy()
     {
+        if (Instance == this)
+            FlowFieldCrowdMovementSystem.ResetAll();
         if (Instance == this) Instance = null;
     }
 
     private void Update()
     {
         SyncParams();
+        FlowFieldCrowdMovementSystem.SetConfig(_config);
     }
 
     private void LateUpdate()
     {
-        Coordinator.Resolve();
+        if (Coordinator != null && Coordinator.PendingRequestCount > 0)
+            Coordinator.Resolve();
     }
 
     private void SyncParams()
@@ -149,11 +154,13 @@ public class GroupMoveManager : MonoBehaviour
     {
         float radius = ResolveAgentRadius(entity);
         Coordinator.RegisterAgent(entity.GetInstanceID(), entity.Position, entity.Side, false, radius);
+        FlowFieldCrowdMovementSystem.RegisterAgent(entity, false, radius);
     }
 
     public void UnregisterAgent(MAEntity entity)
     {
         Coordinator.UnregisterAgent(entity.GetInstanceID());
+        FlowFieldCrowdMovementSystem.UnregisterAgent(entity.GetInstanceID());
     }
 
     public void UpdateAgentSide(MAEntity entity)
@@ -162,13 +169,16 @@ public class GroupMoveManager : MonoBehaviour
             return;
 
         Coordinator.SetAgentSide(entity.GetInstanceID(), entity.Side);
+        FlowFieldCrowdMovementSystem.SetAgentSide(entity.GetInstanceID(), entity.Side);
     }
 
     public void UpdateAgentPosition(MAEntity entity)
     {
         int id = entity.GetInstanceID();
+        float radius = ResolveAgentRadius(entity);
         Coordinator.UpdateAgentPosition(id, entity.Position);
-        Coordinator.SetAgentRadius(id, ResolveAgentRadius(entity));
+        Coordinator.SetAgentRadius(id, radius);
+        FlowFieldCrowdMovementSystem.UpdateAgent(entity, radius);
     }
 
     private static float ResolveAgentRadius(MAEntity entity)
@@ -201,17 +211,54 @@ public class GroupMoveManager : MonoBehaviour
     public void RegisterCircleObstacle(int id, Vector3 position, float radius)
     {
         Coordinator.RegisterObstacle(id, position, radius);
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacle(id, position, radius);
     }
 
     public void RegisterBoxObstacle(Collider collider)
     {
         var bounds = collider.bounds;
         Coordinator.RegisterBoxObstacle(collider.GetInstanceID(), bounds.center, bounds.extents);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(collider.GetInstanceID(), bounds.center, bounds.extents);
     }
 
     public void UnregisterObstacle(int id)
     {
         Coordinator.UnregisterObstacle(id);
+        FlowFieldCrowdMovementSystem.UnregisterObstacle(id);
+    }
+
+    public void SetAgentIgnoreCollision(int id, bool ignore)
+    {
+        Coordinator.SetAgentIgnoreCollision(id, ignore);
+        FlowFieldCrowdMovementSystem.SetAgentIgnoreCollision(id, ignore);
+    }
+
+    public void SetAgentLeader(int id, bool isLeader)
+    {
+        Coordinator.SetAgentLeader(id, isLeader);
+        FlowFieldCrowdMovementSystem.SetAgentLeader(id, isLeader);
+    }
+
+    public void SetAgentGroup(int id, int groupId)
+    {
+        Coordinator.SetAgentGroup(id, groupId);
+        FlowFieldCrowdMovementSystem.SetAgentGroup(id, groupId);
+    }
+
+    public void SetAgentState(int id, GroupMoveCoordinator.AgentState state)
+    {
+        Coordinator.SetAgentState(id, state);
+        FlowFieldCrowdMovementSystem.SetAgentState(id, state);
+    }
+
+    public void InvalidateNavigation(string reason = null)
+    {
+        FlowFieldCrowdMovementSystem.MarkWorldDirty(reason);
+    }
+
+    public bool IsPositionOccupiedByAgent(Vector3 position, float requiredDistance)
+    {
+        return FlowFieldCrowdMovementSystem.IsPositionOccupiedByAgent(position, requiredDistance);
     }
 
     // ── Gizmos ──
@@ -255,6 +302,8 @@ public class GroupMoveManager : MonoBehaviour
                 Gizmos.DrawLine(pos, pos + info.DesiredVelocity.normalized * 1f);
             }
         }
+
+        FlowFieldCrowdMovementSystem.DrawGizmos();
     }
 
     private static void DrawCircle(Vector3 center, float radius, int segments)

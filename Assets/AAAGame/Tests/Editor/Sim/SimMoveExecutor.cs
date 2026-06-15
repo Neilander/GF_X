@@ -14,6 +14,9 @@ public class SimMoveExecutor : IMoveExecutor
     private bool _hasOverride;
     private bool _navMeshConstrained = true;
     private bool _constraintBypassForNextFrame;
+    private MovementMode _movementMode = MovementMode.Normal;
+
+    public MovementMode MovementMode => _movementMode;
 
     public void SetInput(Vector3 velocity)
     {
@@ -41,6 +44,11 @@ public class SimMoveExecutor : IMoveExecutor
         _externalVelocity = velocity;
     }
 
+    public void SetMovementMode(MovementMode mode)
+    {
+        _movementMode = mode;
+    }
+
     public void SetNavMeshConstrained(bool constrained)
     {
         _navMeshConstrained = constrained;
@@ -66,9 +74,18 @@ public class SimMoveExecutor : IMoveExecutor
         // 纯模拟执行器不做 NavMesh 约束，仅保留接口语义以兼容真实实现。
         _ = _navMeshConstrained;
 
-        LastFrameVelocity = _hasOverride
-            ? _overrideVelocity
-            : _inputVelocity + _externalVelocity;
+        if (_hasOverride)
+        {
+            LastFrameVelocity = _overrideVelocity;
+        }
+        else if (_movementMode == MovementMode.Normal)
+        {
+            LastFrameVelocity = _inputVelocity + _externalVelocity;
+        }
+        else
+        {
+            LastFrameVelocity = _externalVelocity;
+        }
 
         Position += LastFrameVelocity * deltaTime;
 

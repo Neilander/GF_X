@@ -21,9 +21,7 @@ public class GroupMoveObstacle : MonoBehaviour
 
         if (col is BoxCollider)
         {
-            var bounds = col.bounds;
-            GroupMoveManager.Instance.Coordinator.RegisterBoxObstacle(
-                _obstacleId, bounds.center, bounds.extents);
+            GroupMoveManager.Instance.RegisterBoxObstacle(col);
         }
         else
         {

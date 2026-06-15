@@ -3,6 +3,7 @@ using AAAGame.MiniMap;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using GameFramework.Event;
+using UnityEngine.AI;
 
 /// <summary>
 /// 小兵实体：使用 DirectAtkComp（直接选定目标造成伤害，不走攻击盒）。
@@ -37,14 +38,18 @@ public partial class SoldierEntity : MAEntity
         base.OnShow(userData);
         if (userData is EntityParams ep)
         {
-            if (ep.position.HasValue)
-                ApplySpawnPosition(ep.position.Value);
-            else if (ep.BrainType == BrainType.Player)
-                Log.Error("Player SoldierEntity missing spawn position in EntityParams. CharacterKey={0}", CharacterKey);
-
             Side = ep.Side;
             BrainType = ep.BrainType; // 设置AI类型
             SourceStrongholdId = ep.GetString(EntityParams.P_SourceStrongholdId);
+
+            if (ep.position.HasValue)
+            {
+                ApplySpawnPosition(ep.position.Value);
+                LogSpawnDiagnostics(ep.position.Value);
+            }
+            else if (ep.BrainType == BrainType.Player)
+                Log.Error("Player SoldierEntity missing spawn position in EntityParams. CharacterKey={0}", CharacterKey);
+
             SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
             ConfigureTargetingModeForSpawn();
             ApplyDefendPhaseSpawnParams(ep);
@@ -159,6 +164,28 @@ public partial class SoldierEntity : MAEntity
         }
 
         transform.position = worldPosition;
+    }
+
+    private void LogSpawnDiagnostics(Vector3 requestedPosition)
+    {
+        NavMeshQueryFilter filter = new NavMeshQueryFilter
+        {
+            agentTypeID = navAgentTypeID,
+            areaMask = NavMesh.AllAreas
+        };
+        bool navHit = NavMesh.SamplePosition(requestedPosition, out NavMeshHit hit, 2.5f, filter);
+        Log.Info(
+            "[SoldierSpawn] key={0} brain={1} side={2} unitLevel={3} unitSize={4} navAgentType={5} requestedPos={6} actualPos={7} navHit={8} navPos={9}",
+            CharacterKey,
+            BrainType,
+            Side,
+            UnitLevel,
+            CharacterData != null ? CharacterData.Size.ToString() : "null",
+            navAgentTypeID,
+            requestedPosition,
+            transform.position,
+            navHit,
+            navHit ? hit.position.ToString() : "none");
     }
 
     private void ConfigureTargetingModeForSpawn()

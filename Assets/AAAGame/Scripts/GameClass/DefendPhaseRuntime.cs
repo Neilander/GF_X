@@ -13,6 +13,7 @@ public static class DefendPhaseRuntime
     private const string DefendEndlessGrowthRateConfigKey = "DefendPhaseEnemyEndlessGrowthRate";
     private const float MinArriveIntervalSeconds = 0.01f;
     private const float MinWorldSpeed = 0.001f;
+    private const float SpawnPointNavProbeRadius = 2.5f;
 
     private static readonly ArchetypeUnitTypeMapper s_ArchetypeUnitTypeMapper = new();
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
@@ -122,6 +123,8 @@ public static class DefendPhaseRuntime
                 Log.Warning("[DefendPhase] 生成单位失败。unit={0}, pos={1}", evt.UnitType, evt.SpawnPosition);
                 continue;
             }
+
+            LogDefendSpawnEvent(evt, entityId);
 
             s_AliveEnemyEntityIds.Add(entityId);
         }
@@ -256,6 +259,7 @@ public static class DefendPhaseRuntime
                 continue;
 
             float distance = CalculatePathDistance(point.Position, basePosition);
+            LogSpawnPointDiagnostics(point);
             s_DefendSpawnPoints.Add(new DefendSpawnPointRuntime
             {
                 Point = point,
@@ -309,6 +313,74 @@ public static class DefendPhaseRuntime
         }
 
         return total > 0f ? total : Vector3.Distance(from, to);
+    }
+
+    private static void LogSpawnPointDiagnostics(EntityPresetPoint point)
+    {
+        if (point == null)
+            return;
+
+        string identifier = ResolvePreviewSpawnPointIdentifier(point);
+        Vector3 position = point.Position;
+        Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
+
+        bool navAny = NavMesh.SamplePosition(position, out NavMeshHit anyHit, SpawnPointNavProbeRadius, NavMesh.AllAreas);
+        string anyHitPos = navAny ? anyHit.position.ToString() : "none";
+
+        int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
+        bool navSmall = TrySampleByAgentType(position, smallAgentTypeId, out NavMeshHit smallHit);
+        string smallHitPos = navSmall ? smallHit.position.ToString() : "none";
+
+        Log.Info(
+            "[DefendPhase] SpawnPoint diag id={0} name={1} pos={2} weight={3} stronghold={4} navAny={5} navAnyPos={6} navSmall={7} navSmallPos={8} smallAgentType={9}",
+            identifier,
+            point.name,
+            position,
+            point.DefendSpawnWeight,
+            stronghold != null ? stronghold.OwnerFactionId.ToString() : "null",
+            navAny,
+            anyHitPos,
+            navSmall,
+            smallHitPos,
+            smallAgentTypeId);
+    }
+
+    private static void LogDefendSpawnEvent(PlannedSpawnEvent evt, int entityId)
+    {
+        bool navAny = NavMesh.SamplePosition(evt.SpawnPosition, out NavMeshHit anyHit, SpawnPointNavProbeRadius, NavMesh.AllAreas);
+        int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
+        bool navSmall = TrySampleByAgentType(evt.SpawnPosition, smallAgentTypeId, out NavMeshHit smallHit);
+
+        Log.Info(
+            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} point={5} stronghold={6} navAny={7} navAnyPos={8} navSmall={9} navSmallPos={10} smallAgentType={11}",
+            entityId,
+            evt.UnitType,
+            evt.UnitLevel,
+            evt.SpawnPosition,
+            evt.SpeedProperty,
+            evt.SpawnPointName,
+            evt.SourceStrongholdId ?? "null",
+            navAny,
+            navAny ? anyHit.position.ToString() : "none",
+            navSmall,
+            navSmall ? smallHit.position.ToString() : "none",
+            smallAgentTypeId);
+    }
+
+    private static int ResolveAgentTypeId(UnitSize unitSize)
+    {
+        AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
+        return helper != null ? helper.GetNavAgentTypeID(unitSize) : 0;
+    }
+
+    private static bool TrySampleByAgentType(Vector3 position, int agentTypeId, out NavMeshHit hit)
+    {
+        NavMeshQueryFilter filter = new NavMeshQueryFilter
+        {
+            agentTypeID = agentTypeId,
+            areaMask = NavMesh.AllAreas
+        };
+        return NavMesh.SamplePosition(position, out hit, SpawnPointNavProbeRadius, filter);
     }
 
     private static void EnsureWaveConfigLoaded()

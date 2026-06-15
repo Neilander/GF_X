@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Diagnostics;
+using System;
 using Debug = UnityEngine.Debug;
 
 /// <summary>
@@ -10,6 +11,7 @@ public class GameDebugSettings : MonoBehaviour
 {
     public static GameDebugSettings Instance { get; private set; }
     public static event System.Action<bool> RuntimeResourceModifyEnabledChanged;
+    private const bool ForceMovementDiagnostics = true;
 
     [Header("模块开关")]
     public bool targetDebug;
@@ -51,6 +53,12 @@ public class GameDebugSettings : MonoBehaviour
     /// </summary>
     public static bool IsEnabled(DebugCategory category)
     {
+        if (ForceMovementDiagnostics
+            && (category == DebugCategory.Move || category == DebugCategory.Brain || category == DebugCategory.GroupMove))
+        {
+            return true;
+        }
+
         if (Instance == null) return false;
         return category switch
         {
@@ -67,6 +75,11 @@ public class GameDebugSettings : MonoBehaviour
     {
         if (!IsEnabled(category)) return;
         Debug.Log($"[{category}] {message}");
+    }
+
+    public static bool ShouldLogMovementForCharacter(string characterKey)
+    {
+        return !string.Equals(characterKey, "Unit_Hero", StringComparison.Ordinal);
     }
 
     public static bool IsRuntimeResourceModifyEnabled()

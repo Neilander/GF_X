@@ -54,6 +54,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
     {
         _timedAdditionalEffects.Clear();
         _timedOverrideEffects.Clear();
+        _ctx?.MoveExecutor?.SetMovementMode(MovementMode.Normal);
     }
 
     public void ApplyEffect(float deltaTime)
@@ -92,7 +93,15 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
             }
         }
 
-        // -------- 应用到 MoveExecutor --------
+        bool hasMotionEffect = _timedAdditionalEffects.Count > 0 || _timedOverrideEffects.Count > 0;
+        if (hasMotionEffect)
+        {
+            _ctx.MoveExecutor.SetMovementMode(MovementMode.Displaced);
+        }
+        else
+        {
+            _ctx.MoveExecutor.SetMovementMode(MovementMode.Normal);
+        }
 
         var executor = _ctx.MoveExecutor;
 
@@ -110,7 +119,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
 
     public void Resume()
     {
-
+        _ctx?.MoveExecutor?.SetMovementMode(MovementMode.Normal);
     }
 
     class TimedMoveEffect : TimedEffect

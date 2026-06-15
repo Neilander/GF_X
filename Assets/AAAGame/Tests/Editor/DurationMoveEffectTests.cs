@@ -32,7 +32,7 @@ public class DurationMoveEffectTests
     }
 
     [Test]
-    public void Additional效果叠加到移动()
+    public void 持续外力期间主动移动被抑制()
     {
         var ctx = CreateContext();
         var executor = ctx.MoveExecutor as SimMoveExecutor;
@@ -46,8 +46,8 @@ public class DurationMoveEffectTests
         effectComp.ApplyEffect(0.1f);
         executor.Execute(0.1f);
 
-        // 应该同时向前和向右
-        Assert.Greater(executor.Position.z, 0f);
+        // 位移期间不能主动寻路移动，只保留外力方向
+        Assert.AreEqual(0f, executor.Position.z, 0.01f);
         Assert.Greater(executor.Position.x, 0f);
     }
 
@@ -107,5 +107,27 @@ public class DurationMoveEffectTests
         executor.Execute(0.1f);
 
         Assert.AreEqual(posBeforeStop, executor.Position.x, 0.01f);
+    }
+
+    [Test]
+    public void 位移结束后恢复主动移动()
+    {
+        var ctx = CreateContext();
+        var executor = ctx.MoveExecutor as SimMoveExecutor;
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(ctx);
+
+        effectComp.StartDurationAdditionalMove(0.1f, Vector3.right * 5f);
+        effectComp.ApplyEffect(0.1f);
+        executor.SetInput(Vector3.forward * 4f);
+        executor.Execute(0.1f);
+
+        Assert.AreEqual(0f, executor.Position.z, 0.01f, "位移生效帧不应保留主动移动");
+
+        effectComp.ApplyEffect(0.1f);
+        executor.SetInput(Vector3.forward * 4f);
+        executor.Execute(0.1f);
+
+        Assert.Greater(executor.Position.z, 0f, "位移结束后应恢复主动移动");
     }
 }

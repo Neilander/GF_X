@@ -340,29 +340,11 @@ public static class ClusterSpawnSystem
 
     private static bool IsBlockedByExistingAgent(Vector3 position)
     {
-        if (!GroupMoveManager.HasInstance || GroupMoveManager.Instance.Coordinator == null)
-        {
+        if (!GroupMoveManager.HasInstance)
             return false;
-        }
 
-        foreach (var pair in GroupMoveManager.Instance.Coordinator.AllAgents)
-        {
-            GroupMoveCoordinator.AgentData agent = pair.Value;
-            if (agent.IgnoreAgentCollision)
-            {
-                continue;
-            }
-
-            Vector2 agentXZ = new Vector2(agent.Position.x, agent.Position.z);
-            Vector2 posXZ = new Vector2(position.x, position.z);
-            float requiredDistance = Mathf.Max(FixedSpawnDistance, agent.Radius + FixedSpawnDistance * 0.5f);
-            if ((agentXZ - posXZ).sqrMagnitude < requiredDistance * requiredDistance)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        float requiredDistance = FixedSpawnDistance;
+        return GroupMoveManager.Instance.IsPositionOccupiedByAgent(position, requiredDistance);
     }
 
     private static Vector3 GenerateNearbyCenterCandidate(Vector3 center, float formationRadius, int index)

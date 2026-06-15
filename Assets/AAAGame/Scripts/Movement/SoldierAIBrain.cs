@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
 
 /// <summary>
 /// 小兵 AI Brain：基于 Steering Behaviors 的流体移动。
@@ -74,7 +75,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private const float FallbackDeadZoneRange = 12f;
     private const float FallbackInnerDeadZoneRange = 2f;
     private Vector3? _deadZoneTarget;        // 死区内的随机导航目标点
-
     private Vector3? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
     private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
     private bool _allowEnemyReturnToBirth = true;
@@ -128,10 +128,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         if (GroupMoveManager.HasInstance)
         {
             int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
-            var coordinator = GroupMoveManager.Instance.Coordinator;
-            coordinator.SetAgentGroup(selfId, -1);
-            coordinator.SetAgentLeader(selfId, false);
-            coordinator.SetAgentState(selfId, GroupMoveCoordinator.AgentState.Idle);
+            GroupMoveManager.Instance.SetAgentGroup(selfId, -1);
+            GroupMoveManager.Instance.SetAgentLeader(selfId, false);
+            GroupMoveManager.Instance.SetAgentState(selfId, GroupMoveCoordinator.AgentState.Idle);
         }
 
         GameDebugSettings.Log(DebugCategory.Brain,
@@ -156,10 +155,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         {
             int leaderId = (_leader as MAEntity)?.GetInstanceID() ?? _leader.GetHashCode();
             int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
-            var coordinator = GroupMoveManager.Instance.Coordinator;
-            coordinator.SetAgentLeader(leaderId, true);
-            coordinator.SetAgentGroup(leaderId, leaderId); // 领袖自己也在组里
-            coordinator.SetAgentGroup(selfId, leaderId);   // 自己加入领袖的组
+            GroupMoveManager.Instance.SetAgentLeader(leaderId, true);
+            GroupMoveManager.Instance.SetAgentGroup(leaderId, leaderId); // 领袖自己也在组里
+            GroupMoveManager.Instance.SetAgentGroup(selfId, leaderId);   // 自己加入领袖的组
             _joinedGroup = true;
             GameDebugSettings.Log(DebugCategory.Brain,
                 $"[{self.CharacterKey}] 加入组 groupId={leaderId}, leader={_leader.CharacterKey}");
@@ -167,6 +165,14 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         UpdateState(self);
         SyncStateToCoordinator(self);
+
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Tick state={State} pos={self.Position} leader={_leader?.CharacterKey ?? "null"} " +
+                $"leaderPos={(_leader != null ? _leader.Position.ToString() : "null")} " +
+                $"target={self.TargetComp?.CurrentTarget?.CharacterKey ?? "null"}");
+        }
 
         switch (State)
         {
@@ -235,7 +241,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                     if (GroupMoveManager.HasInstance)
                     {
                         int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
-                        GroupMoveManager.Instance.Coordinator.SetAgentGroup(selfId, -1);
+                        GroupMoveManager.Instance.SetAgentGroup(selfId, -1);
                         GameDebugSettings.Log(DebugCategory.Brain,
                             $"[{self.CharacterKey}] 离开组, leader丢失或超距");
                     }
@@ -344,7 +350,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             SoldierState.Returning => GroupMoveCoordinator.AgentState.Combat,
             _ => GroupMoveCoordinator.AgentState.Idle
         };
-        GroupMoveManager.Instance.Coordinator.SetAgentState(selfId, coordState);
+        GroupMoveManager.Instance.SetAgentState(selfId, coordState);
     }
 
     private void TickIdle(IEntityContext self, float dt)
@@ -353,6 +359,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         if (!_birthPosition.HasValue)
         {
             _softReturning = false;
+            self.MoveComp?.StopMove();
             return;
         }
 
@@ -390,11 +397,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         }
 
         // 持续走回家直到 HomeArrivedRadius 才停
-        float speed = GetWorldMoveSpeed(self);
-        self.MoveComp.SetNavTarget(_birthPosition.Value);
-        Vector3 navDir = self.MoveComp.GetNavDirection();
-        Vector3 desiredVel = navDir * speed;
-        SubmitToCoordinator(self, desiredVel, speed);
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.CharacterKey}] Idle soft-return MoveTo birth={_birthPosition.Value} from={self.Position} distFromHome={distFromHome:F2}");
+        self.MoveComp.MoveTo(_birthPosition.Value);
     }
 
     private float GetSoftReturnRatio()
@@ -428,18 +433,15 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             return;
         }
 
-        float speed = GetWorldMoveSpeed(self);
         Move = Vector2.zero;
-
-        // 计算死区范围：[leaderEqR, leaderEqR + FollowDeadZoneRange]
         float leaderEqR;
         float deadZoneRange;
         float innerDeadZoneRange;
         if (GroupMoveManager.HasInstance)
         {
             var mgr = GroupMoveManager.Instance;
-            leaderEqR = mgr.Coordinator.LeaderEquilibriumRadius;
             var cfg = mgr.Config;
+            leaderEqR = cfg != null ? cfg.LeaderEquilibriumRadius : 1.5f;
             deadZoneRange = cfg != null ? cfg.FollowDeadZoneRange : FallbackDeadZoneRange;
             innerDeadZoneRange = cfg != null ? cfg.FollowInnerDeadZoneRange : FallbackInnerDeadZoneRange;
         }
@@ -451,55 +453,50 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         }
         float deadZoneOuter = leaderEqR + deadZoneRange;
         float distToLeader = HorizontalDist(self.Position, _leader.Position);
-
         float innerDeadZone = leaderEqR + innerDeadZoneRange;
 
         if (distToLeader <= deadZoneOuter)
         {
-            // 近死区内（<= innerDeadZone）：完全停下，只靠 LJ 力
-            // 近死区到远死区之间：线性衰减，越近意愿越弱
-            // t=1 在死区边缘（全速追），t=0 在近死区边缘（完全停）
-            float t = distToLeader <= innerDeadZone ? 0f : Mathf.InverseLerp(innerDeadZone, deadZoneOuter, distToLeader);
-            Vector3 toLeader = _leader.Position - self.Position;
-            toLeader.y = 0f;
-            Vector3 desiredVel = toLeader.normalized * speed * t;
-            SubmitToCoordinator(self, desiredVel, speed);
-
             if (!_inDeadZone)
             {
                 _inDeadZone = true;
                 _deadZoneTarget = null;
                 GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.CharacterKey}] 进入死区 dist={distToLeader:F2} t={t:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+                    $"[{self.CharacterKey}] 进入死区 dist={distToLeader:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
             }
+
+            self.MoveComp.StopMove();
         }
         else
         {
-            // 在死区外：NavMesh 导航到 leader 附近
             _inDeadZone = false;
 
-            // 没有目标点或目标点离 leader 太远（leader 移动了）→ 重新算
             if (!_deadZoneTarget.HasValue ||
                 HorizontalDist(_deadZoneTarget.Value, _leader.Position) > deadZoneOuter)
             {
-                _deadZoneTarget = PickRandomDeadZonePoint(_leader.Position, leaderEqR, deadZoneOuter);
+                _deadZoneTarget = PickRandomDeadZonePoint(self, _leader.Position, leaderEqR, deadZoneOuter);
                 GameDebugSettings.Log(DebugCategory.Brain,
                     $"[{self.CharacterKey}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
             }
 
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Follow MoveTo deadZoneTarget={_deadZoneTarget.Value} leader={_leader.CharacterKey} leaderPos={_leader.Position}");
             self.MoveComp.MoveTo(_deadZoneTarget.Value);
-            Vector3 navDir = self.MoveComp.GetNavDirection();
-            Vector3 desiredVel = navDir * speed;
-            SubmitToCoordinator(self, desiredVel, speed);
         }
 
-        // Debug 画死区范围（只在第一个小兵上画，避免刷屏）
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Follow dist={distToLeader:F2} deadZoneOuter={deadZoneOuter:F2} " +
+                $"inDeadZone={_inDeadZone} target={(_deadZoneTarget.HasValue ? _deadZoneTarget.Value.ToString() : "null")}");
+        }
+
         if (_leader != null && _leader.Alive)
         {
             Vector3 lp = _leader.Position + Vector3.up * 0.1f;
-            DrawCircle(lp, leaderEqR, Color.red);       // 斥力半径
-            DrawCircle(lp, innerDeadZone, Color.yellow); // 近死区边缘
-            DrawCircle(lp, deadZoneOuter, Color.green);  // 远死区边缘
+            DrawCircle(lp, leaderEqR, Color.red);
+            DrawCircle(lp, innerDeadZone, Color.yellow);
+            DrawCircle(lp, deadZoneOuter, Color.green);
         }
     }
 
@@ -536,26 +533,21 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         }
 
         float distToEnemy = self.DistanceToTargetSurface(enemy);
-        float speed = GetWorldMoveSpeed(self);
         float effectiveRange = GetEffectiveAttackRange(self);
 
         if (distToEnemy <= effectiveRange)
         {
-            // 在攻击范围内 → 攻击，提交零期望速度，协调器处理重叠推开
+            // 在攻击范围内 → 攻击并停下
             Attack = true;
             Move = Vector2.zero;
-            SubmitToCoordinator(self, Vector3.zero, speed);
+            self.MoveComp.StopMove();
         }
         else
         {
-            // 只设导航目标（不设路径），让协调器回调控制实际移动
-            self.MoveComp.SetNavTarget(enemy.Position);
-
-            // 拿 NavMesh 方向作为期望速度提交给协调器
-            Vector3 navDir = self.MoveComp.GetNavDirection();
-            Vector3 desiredVel = navDir * speed;
             Move = Vector2.zero;
-            SubmitToCoordinator(self, desiredVel, speed);
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Combat MoveTo enemy={enemy.CharacterKey} enemyPos={enemy.Position} selfPos={self.Position} dist={distToEnemy:F2} range={effectiveRange:F2}");
+            self.MoveComp.MoveTo(enemy.Position);
         }
     }
 
@@ -579,71 +571,46 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             self.TargetComp.ClearAggro();
         }
 
-        float speed = GetWorldMoveSpeed(self);
-        self.MoveComp.SetNavTarget(_birthPosition.Value);
-        Vector3 navDir = self.MoveComp.GetNavDirection();
-        Vector3 desiredVel = navDir * speed;
-        SubmitToCoordinator(self, desiredVel, speed);
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.CharacterKey}] Returning MoveTo birth={_birthPosition.Value} from={self.Position}");
+        self.MoveComp.MoveTo(_birthPosition.Value);
     }
 
-    /// <summary>
-    /// 向协调器提交期望速度，回调中执行 MoveTo。
-    /// 如果协调器不可用（测试环境），直接用期望速度。
-    /// </summary>
-    private void SubmitToCoordinator(IEntityContext self, Vector3 desiredVelocity, float speed)
+    private static Vector3 PickRandomDeadZonePoint(IEntityContext self, Vector3 leaderPos, float innerR, float outerR)
     {
-        if (!GroupMoveManager.HasInstance) return;
-        var coordinator = GroupMoveManager.Instance.Coordinator;
-        int agentId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
-
-        coordinator.SubmitDesiredVelocity(agentId, desiredVelocity, speed, safeVel =>
+        int agentTypeId = self is MAEntity ma ? ma.navAgentTypeID : MAEntity.UnknownNavAgentTypeId;
+        NavMeshQueryFilter filter = new NavMeshQueryFilter
         {
-            ApplyVelocity(self, safeVel, speed);
-        });
-    }
+            agentTypeID = agentTypeId == MAEntity.UnknownNavAgentTypeId ? 0 : agentTypeId,
+            areaMask = NavMesh.AllAreas
+        };
+        float sampleRadius = Mathf.Max(0.5f, outerR * 0.25f);
+        const int maxAttempts = 24;
 
-    private float GetWorldMoveSpeed(IEntityContext self)
-    {
-        Fix64 rawSpeed = self.GetProperty(CreatureMainProperty.Speed);
-        return DistanceUnitConverter.ConvertToWorldFloat(rawSpeed);
-    }
+        System.Text.StringBuilder failure = new System.Text.StringBuilder(512);
+        failure.Append($"[{self.CharacterKey}] 死区目标点生成失败 leaderPos={leaderPos} innerR={innerR:F2} outerR={outerR:F2} agentType={agentTypeId} sampleRadius={sampleRadius:F2} attempts=[");
 
-    private void ApplyVelocity(IEntityContext self, Vector3 velocity, float speed)
-    {
-        if (self.MoveComp == null || !self.CanRun(self.MoveComp))
-            return;
-
-        if (velocity.sqrMagnitude < 0.001f)
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            // 力为零，停止移动（清掉旧路径）
-            self.MoveComp.StopMove();
-            return;
+            float angle = Random.Range(0f, Mathf.PI * 2f);
+            float radius = Random.Range(innerR, outerR);
+            Vector3 candidate = leaderPos + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+            bool hit = NavMesh.SamplePosition(candidate, out NavMeshHit navHit, sampleRadius, filter);
+
+            if (attempt > 0)
+                failure.Append("; ");
+
+            failure.Append($"#{attempt}:candidate={candidate} hit={hit}");
+            if (hit)
+            {
+                failure.Append($" nav={navHit.position}");
+                failure.Append("]");
+                return navHit.position;
+            }
         }
 
-        Vector3 myPos = self.Position;
-        Vector3 frameVelocity = Vector3.ClampMagnitude(velocity, speed);
-        Vector3 target = myPos + frameVelocity;
-        GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.CharacterKey}] ApplyVel state={State} vel={velocity} → target={target}" +
-            $" leaderPos={(_leader != null ? _leader.Position.ToString() : "null")}");
-        Move = Vector2.zero;
-        self.MoveComp.MoveTo(target);
-    }
-
-    /// <summary>
-    /// 在 leader 周围 [innerR, outerR] 环形区域内随机选一个点，
-    /// 用 NavMesh.SamplePosition 确保在可行走区域上。
-    /// </summary>
-    private static Vector3 PickRandomDeadZonePoint(Vector3 leaderPos, float innerR, float outerR)
-    {
-        float angle = Random.Range(0f, Mathf.PI * 2f);
-        float radius = Random.Range(innerR, outerR);
-        Vector3 candidate = leaderPos + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
-
-        if (UnityEngine.AI.NavMesh.SamplePosition(candidate, out var hit, 3f, UnityEngine.AI.NavMesh.AllAreas))
-            return hit.position;
-
-        return candidate;
+        failure.Append("]");
+        throw new System.InvalidOperationException(failure.ToString());
     }
 
     private static float HorizontalDist(Vector3 a, Vector3 b)

@@ -26,7 +26,8 @@ public class MAEntity : CompCreature, IEntityContext
     /// NavMesh Agent Type ID，用于导航和移动约束。
     /// 子类可在 OnShow/SetUpMAComp 之前设置。
     /// </summary>
-    public int navAgentTypeID = -1372625422;
+    public const int UnknownNavAgentTypeId = int.MinValue;
+    public int navAgentTypeID = UnknownNavAgentTypeId;
     private const float RotationSpeed = 720f; // 度/秒
 
     private IBuffComp _buffComp;
@@ -183,6 +184,7 @@ public class MAEntity : CompCreature, IEntityContext
         _moveExecutor.SetInput(Vector3.zero);
         _moveExecutor.SetExternal(Vector3.zero);
         _moveExecutor.ClearOverride();
+        _moveExecutor.SetMovementMode(MovementMode.Normal);
 
         InitializeCollisionScaleBase();
 
@@ -326,9 +328,6 @@ public class MAEntity : CompCreature, IEntityContext
         RefreshOutOfCombatState();
         OnOutOfCombatStateRefreshed();
 
-        if (CanRun(moveComp))
-            moveComp.Move(dt);
-
         if (CanRun(atkComp))
             atkComp.Attack(dt);
 
@@ -339,6 +338,9 @@ public class MAEntity : CompCreature, IEntityContext
         {
             if (CanRun(durationMoveEffectComp))
                 durationMoveEffectComp.ApplyEffect(dt);
+
+            if (CanRun(moveComp))
+                moveComp.Move(dt);
 
             moveExecutor.Execute();
 

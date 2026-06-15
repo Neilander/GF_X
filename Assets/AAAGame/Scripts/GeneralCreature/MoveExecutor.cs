@@ -28,11 +28,14 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private NavMeshQueryFilter _navFilter;
     private const float GravityAcceleration = -28f;
     private const float GroundStickVelocity = -2f;
+    private MovementMode _movementMode = MovementMode.Normal;
+    private const float ConstraintSlideInset = 0.02f;
 
     public Vector3 DebugInputVelocity => _inputVelocity;
     public Vector3 DebugExternalVelocity => _externalVelocity;
     public Vector3 DebugOverrideVelocity => _overrideVelocity;
     public bool DebugHasOverride => _hasOverride;
+    public MovementMode MovementMode => _movementMode;
 
     public void Init(CharacterController controller) => Init(controller, 0);
 
@@ -105,6 +108,11 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _externalVelocity = velocity;
     }
 
+    public void SetMovementMode(MovementMode mode)
+    {
+        _movementMode = mode;
+    }
+
     public void SetNavMeshConstrained(bool constrained)
     {
         _navMeshConstrained = constrained;
@@ -148,9 +156,27 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             return;
         }
 
-        Vector3 finalVelocity = _hasOverride
-            ? _overrideVelocity
-            : _inputVelocity + _externalVelocity;
+        Vector3 finalVelocity;
+        if (_hasOverride)
+        {
+            finalVelocity = _overrideVelocity;
+        }
+        else if (_movementMode == MovementMode.Normal)
+        {
+            finalVelocity = _inputVelocity + _externalVelocity;
+        }
+        else
+        {
+            finalVelocity = _externalVelocity;
+        }
+
+        if (GameDebugSettings.IsEnabled(DebugCategory.Move)
+            && (_ownerEntity == null || GameDebugSettings.ShouldLogMovementForCharacter(_ownerEntity.CharacterKey)))
+        {
+            Debug.Log($"[Move] [{gameObject.name}] Execute mode={_movementMode} input={_inputVelocity} " +
+                      $"external={_externalVelocity} override={(_hasOverride ? _overrideVelocity.ToString() : "none")} " +
+                      $"finalVelocity={finalVelocity}");
+        }
 
         Vector3 horizontalVelocity = new Vector3(finalVelocity.x, 0f, finalVelocity.z);
         Vector3 horizontalDisplacement = horizontalVelocity * deltaTime;
@@ -166,6 +192,11 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         if (shouldConstrain)
         {
             horizontalDisplacement = ConstrainHorizontalDisplacement(horizontalDisplacement);
+            if (GameDebugSettings.IsEnabled(DebugCategory.Move)
+                && (_ownerEntity == null || GameDebugSettings.ShouldLogMovementForCharacter(_ownerEntity.CharacterKey)))
+            {
+                Debug.Log($"[Move] [{gameObject.name}] Constrained horizontalDisplacement={horizontalDisplacement}");
+            }
         }
 
         UpdateGravity(deltaTime);
@@ -200,6 +231,8 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     }
 
     private const float MaxOutOfBoundsDistance = 1.5f; // 允许超出 NavMesh 边缘的最大距离
+    private const int ConstraintBinarySearchSteps = 6;
+    private const float ConstraintMinStepDistance = 0.02f;
 
     private Vector3 ConstrainHorizontalDisplacement(Vector3 desiredHorizontalDisplacement)
     {
@@ -209,46 +242,277 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         }
 
         Vector3 currentPos = transform.position;
+        if (TryResolveConstrainedHorizontalDisplacement(currentPos, desiredHorizontalDisplacement, out Vector3 constrainedDisplacement))
+            return constrainedDisplacement;
+
+        return Vector3.zero;
+    }
+
+    private bool TryResolveConstrainedHorizontalDisplacement(Vector3 currentPos, Vector3 desiredHorizontalDisplacement, out Vector3 constrainedDisplacement)
+    {
+        if (TryProjectAllowedDisplacement(currentPos, desiredHorizontalDisplacement, out constrainedDisplacement, out _, out _, out _, logFailure: true))
+            return true;
+
+        float fullDistance = desiredHorizontalDisplacement.magnitude;
+        if (fullDistance <= ConstraintMinStepDistance)
+            return false;
+
+        Vector3 direction = desiredHorizontalDisplacement / fullDistance;
+        float low = 0f;
+        float high = fullDistance;
+        Vector3 bestDisplacement = Vector3.zero;
+        bool found = false;
+
+        for (int i = 0; i < ConstraintBinarySearchSteps; i++)
+        {
+            float mid = (low + high) * 0.5f;
+            if (mid <= ConstraintMinStepDistance)
+                break;
+
+            Vector3 candidateDisplacement = direction * mid;
+            bool projected = TryProjectAllowedDisplacement(currentPos, candidateDisplacement, out Vector3 projectedDisplacement, out string failureReason, out NavMeshHit navHit, out float distFromNavMesh, logFailure: false);
+            if (GameDebugSettings.IsEnabled(DebugCategory.Move)
+                && (_ownerEntity == null || GameDebugSettings.ShouldLogMovementForCharacter(_ownerEntity.CharacterKey)))
+            {
+                Debug.Log(
+                    $"[MoveExecutor] BinarySearch gameObject={gameObject.name} owner={_ownerEntity?.CharacterKey ?? "null"} step={i} low={low:F3} high={high:F3} mid={mid:F3} " +
+                    $"candidate={candidateDisplacement} projected={projected} projectedDisp={projectedDisplacement} reason={failureReason ?? "none"} " +
+                    $"navHitPos={(projected ? navHit.position.ToString() : "none")} distFromNavMesh={distFromNavMesh:F3}");
+            }
+
+            if (projected)
+            {
+                found = true;
+                bestDisplacement = projectedDisplacement;
+                low = mid;
+            }
+            else
+            {
+                high = mid;
+            }
+        }
+
+        if (found)
+        {
+            constrainedDisplacement = bestDisplacement;
+            return true;
+        }
+
+        constrainedDisplacement = Vector3.zero;
+        return false;
+    }
+
+    private bool TryProjectAllowedDisplacement(
+        Vector3 currentPos,
+        Vector3 desiredHorizontalDisplacement,
+        out Vector3 constrainedDisplacement,
+        out string failureReason,
+        out NavMeshHit navHit,
+        out float distFromNavMesh,
+        bool logFailure)
+    {
+        constrainedDisplacement = Vector3.zero;
+        failureReason = null;
+        navHit = default;
+        distFromNavMesh = -1f;
+
+        if (!NavMesh.SamplePosition(currentPos, out NavMeshHit currentNavHit, _sampleRadius, _navFilter))
+        {
+            failureReason = "当前位置不在NavMesh上";
+            if (logFailure)
+                Debug.LogWarning(BuildConstraintFailureDiagnostics(failureReason, currentPos, currentPos, desiredHorizontalDisplacement, false, default, -1f));
+            return false;
+        }
+
         Vector3 desiredPos = currentPos + desiredHorizontalDisplacement;
-        Vector3 desiredNavProbePos = new Vector3(desiredPos.x, currentPos.y, desiredPos.z);
+        Vector3 desiredNavProbePos = new Vector3(
+            currentNavHit.position.x + desiredHorizontalDisplacement.x,
+            currentNavHit.position.y,
+            currentNavHit.position.z + desiredHorizontalDisplacement.z);
 
-        // 检查目标位置是否在 NavMesh 上或附近
-        if (!NavMesh.SamplePosition(desiredNavProbePos, out NavMeshHit navHit, _sampleRadius, _navFilter))
+        if (!TryResolveNavConstrainedPosition(
+                currentNavHit.position,
+                desiredNavProbePos,
+                desiredHorizontalDisplacement,
+                out Vector3 constrainedNavPos,
+                out navHit,
+                out failureReason,
+                out distFromNavMesh))
         {
-            Debug.LogWarning($"[MoveExecutor] NavMesh.SamplePosition 失败！desiredPos={desiredNavProbePos}, gameObject={gameObject.name}");
-            return Vector3.zero;
+            if (logFailure)
+                Debug.LogWarning(BuildConstraintFailureDiagnostics(failureReason, currentPos, desiredPos, desiredHorizontalDisplacement, false, navHit, distFromNavMesh));
+            return false;
         }
 
-        // 目标点离最近的 NavMesh 点太远，说明完全跑出去了
-        Vector2 sampledXZ = new Vector2(navHit.position.x, navHit.position.z);
-        Vector2 desiredXZ = new Vector2(desiredPos.x, desiredPos.z);
-        float distFromNavMesh = Vector2.Distance(sampledXZ, desiredXZ);
-        if (distFromNavMesh > MaxOutOfBoundsDistance)
+        if (IsEnemyStrongholdBlocked(constrainedNavPos))
         {
-            Debug.LogWarning($"[MoveExecutor] 超出NavMesh边界！distFromNavMesh={distFromNavMesh}, gameObject={gameObject.name}");
-            return Vector3.zero;
+            failureReason = "敌方据点被阻挡";
+            if (logFailure)
+                Debug.LogWarning(BuildConstraintFailureDiagnostics(failureReason, currentPos, desiredPos, desiredHorizontalDisplacement, true, navHit, distFromNavMesh));
+            return false;
         }
 
-        if (IsEnemyStrongholdBlocked(navHit.position))
+        if (IsInvadeTutorialStrongholdBlocked(constrainedNavPos))
         {
-            Debug.LogWarning($"[MoveExecutor] 敌方据点被阻挡！pos={navHit.position}, gameObject={gameObject.name}");
-            return Vector3.zero;
+            failureReason = "Invade tutorial stronghold boundary blocked";
+            if (logFailure)
+                Debug.LogWarning(BuildConstraintFailureDiagnostics(failureReason, currentPos, desiredPos, desiredHorizontalDisplacement, true, navHit, distFromNavMesh));
+            return false;
         }
 
-        if (IsInvadeTutorialStrongholdBlocked(navHit.position))
+        if (IsNonVisibleBlocked(constrainedNavPos))
         {
-            Debug.LogWarning($"[MoveExecutor] Invade tutorial stronghold boundary blocked. pos={navHit.position}, gameObject={gameObject.name}");
-            return Vector3.zero;
+            failureReason = "非可见区域被阻挡";
+            if (logFailure)
+                Debug.LogWarning(BuildConstraintFailureDiagnostics(failureReason, currentPos, desiredPos, desiredHorizontalDisplacement, true, navHit, distFromNavMesh));
+            return false;
         }
 
-        if (IsNonVisibleBlocked(navHit.position))
+        Vector3 constrainedPos = new Vector3(constrainedNavPos.x, currentPos.y, constrainedNavPos.z);
+        constrainedDisplacement = constrainedPos - currentPos;
+        if (constrainedDisplacement.sqrMagnitude <= ConstraintMinStepDistance * ConstraintMinStepDistance
+            && desiredHorizontalDisplacement.sqrMagnitude > ConstraintMinStepDistance * ConstraintMinStepDistance)
         {
-            Debug.LogWarning($"[MoveExecutor] 非可见区域被阻挡！pos={navHit.position}, gameObject={gameObject.name}");
-            return Vector3.zero;
+            failureReason = "投影回原地";
+            if (logFailure)
+                Debug.LogWarning(BuildConstraintFailureDiagnostics(failureReason, currentPos, desiredPos, desiredHorizontalDisplacement, true, navHit, distFromNavMesh));
+            constrainedDisplacement = Vector3.zero;
+            return false;
         }
 
-        Vector3 constrainedPos = new Vector3(navHit.position.x, currentPos.y, navHit.position.z);
-        return constrainedPos - currentPos;
+        return true;
+    }
+
+    private bool TryResolveNavConstrainedPosition(
+        Vector3 currentNavPos,
+        Vector3 desiredNavPos,
+        Vector3 desiredHorizontalDisplacement,
+        out Vector3 constrainedNavPos,
+        out NavMeshHit navHit,
+        out string failureReason,
+        out float distFromNavMesh)
+    {
+        constrainedNavPos = currentNavPos;
+        navHit = default;
+        failureReason = null;
+        distFromNavMesh = -1f;
+
+        if (!NavMesh.Raycast(currentNavPos, desiredNavPos, out NavMeshHit rayHit, _navFilter))
+        {
+            if (!NavMesh.SamplePosition(desiredNavPos, out navHit, _sampleRadius, _navFilter))
+            {
+                failureReason = "NavMesh.SamplePosition 失败";
+                return false;
+            }
+
+            Vector2 sampledXZ = new Vector2(navHit.position.x, navHit.position.z);
+            Vector2 desiredXZ = new Vector2(desiredNavPos.x, desiredNavPos.z);
+            distFromNavMesh = Vector2.Distance(sampledXZ, desiredXZ);
+            if (distFromNavMesh > MaxOutOfBoundsDistance)
+            {
+                failureReason = "超出NavMesh边界";
+                return false;
+            }
+
+            constrainedNavPos = navHit.position;
+            return true;
+        }
+
+        Vector3 desiredDirection = desiredHorizontalDisplacement.normalized;
+        Vector3 toHit = rayHit.position - currentNavPos;
+        toHit.y = 0f;
+        float forwardDistance = Vector3.Dot(toHit, desiredDirection);
+        if (forwardDistance > ConstraintSlideInset)
+        {
+            constrainedNavPos = currentNavPos + desiredDirection * (forwardDistance - ConstraintSlideInset);
+            navHit = rayHit;
+            distFromNavMesh = Vector3.Distance(rayHit.position, desiredNavPos);
+            return true;
+        }
+
+        Vector3 tangent = Vector3.ProjectOnPlane(desiredHorizontalDisplacement, rayHit.normal);
+        tangent.y = 0f;
+        if (tangent.sqrMagnitude <= 0.0001f)
+        {
+            failureReason = "NavMesh射线命中边界";
+            navHit = rayHit;
+            distFromNavMesh = Vector3.Distance(rayHit.position, desiredNavPos);
+            return false;
+        }
+
+        tangent.Normalize();
+        float tangentDistance = Vector3.Dot(desiredHorizontalDisplacement, tangent);
+        if (tangentDistance <= ConstraintMinStepDistance)
+        {
+            failureReason = "NavMesh滑移距离不足";
+            navHit = rayHit;
+            distFromNavMesh = Vector3.Distance(rayHit.position, desiredNavPos);
+            return false;
+        }
+
+        Vector3 slideStart = currentNavPos + tangent * ConstraintSlideInset;
+        Vector3 slideTarget = slideStart + tangent * tangentDistance;
+        if (NavMesh.Raycast(slideStart, slideTarget, out NavMeshHit slideHit, _navFilter))
+        {
+            Vector3 slideReach = slideHit.position - slideStart;
+            slideReach.y = 0f;
+            float slideReachDistance = slideReach.magnitude - ConstraintSlideInset;
+            if (slideReachDistance <= ConstraintMinStepDistance)
+            {
+                failureReason = "NavMesh滑移被阻挡";
+                navHit = slideHit;
+                distFromNavMesh = Vector3.Distance(slideHit.position, desiredNavPos);
+                return false;
+            }
+
+            constrainedNavPos = slideStart + tangent * slideReachDistance;
+            navHit = slideHit;
+            distFromNavMesh = Vector3.Distance(slideHit.position, desiredNavPos);
+            return true;
+        }
+
+        if (!NavMesh.SamplePosition(slideTarget, out navHit, _sampleRadius, _navFilter))
+        {
+            failureReason = "NavMesh滑移终点采样失败";
+            return false;
+        }
+
+        constrainedNavPos = navHit.position;
+        distFromNavMesh = Vector3.Distance(navHit.position, desiredNavPos);
+        return true;
+    }
+
+    private string BuildConstraintFailureDiagnostics(
+        string reason,
+        Vector3 currentPos,
+        Vector3 desiredPos,
+        Vector3 desiredHorizontalDisplacement,
+        bool desiredNavHit,
+        NavMeshHit desiredNavHitInfo,
+        float distFromNavMesh)
+    {
+        bool currentNavHit = NavMesh.SamplePosition(currentPos, out NavMeshHit currentNavHitInfo, _sampleRadius, _navFilter);
+        bool navRayHit = false;
+        NavMeshHit navRayHitInfo = default;
+        if (currentNavHit)
+        {
+            Vector3 rayStart = currentNavHitInfo.position;
+            Vector3 rayEnd = new Vector3(rayStart.x + desiredHorizontalDisplacement.x, rayStart.y, rayStart.z + desiredHorizontalDisplacement.z);
+            navRayHit = NavMesh.Raycast(rayStart, rayEnd, out navRayHitInfo, _navFilter);
+        }
+
+        string ownerKey = _ownerEntity != null ? _ownerEntity.CharacterKey : "null";
+        string desiredNav = desiredNavHit ? desiredNavHitInfo.position.ToString() : "none";
+        string currentNav = currentNavHit ? currentNavHitInfo.position.ToString() : "none";
+        string rayHitPos = navRayHit ? navRayHitInfo.position.ToString() : "none";
+        string rayHitNormal = navRayHit ? navRayHitInfo.normal.ToString() : "none";
+
+        return $"[MoveExecutor] {reason} gameObject={gameObject.name} owner={ownerKey} side={_ownerEntity?.Side.ToString() ?? "null"} " +
+               $"agentType={_navFilter.agentTypeID} mode={_movementMode} sampleRadius={_sampleRadius:F2} edgeBuffer={_edgeBuffer:F2} " +
+               $"currentPos={currentPos} currentNavHit={currentNavHit} currentNavPos={currentNav} " +
+               $"desiredPos={desiredPos} desiredHorizontalDisplacement={desiredHorizontalDisplacement} " +
+               $"desiredNavHit={desiredNavHit} desiredNavPos={desiredNav} distFromNavMesh={distFromNavMesh:F3} " +
+               $"navRayHit={navRayHit} navRayPos={rayHitPos} navRayNormal={rayHitNormal}";
     }
 
     private bool IsNonVisibleBlocked(Vector3 worldPosition)

@@ -4,6 +4,7 @@ using UnityEngine.AI;
 using UnityGameFramework.Runtime;
 public class AgentTypeHelper : GameFrameworkComponent
 {
+    public const int UnknownNavAgentTypeId = int.MinValue;
     private bool s_navAgentTypeLoaded;
     private readonly Dictionary<UnitSize, int> s_navAgentTypeIds = new Dictionary<UnitSize, int>(3);
 

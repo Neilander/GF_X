@@ -157,6 +157,33 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void Follow状态_发现玩家后会以玩家为目标靠近()
+    {
+        var player = MakeSoldier(new Vector3(0, 0, 0));
+        var soldier = MakeSoldier(new Vector3(5, 0, 0));
+
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+
+        var brain = new SoldierAIBrain();
+        brain.RecruitRadius = 8f;
+        brain.FollowDistanceMin = 2.5f;
+        brain.FollowDistanceMax = 5f;
+        brain.Inject();
+        soldier.Brain = brain;
+
+        brain.Tick(soldier, 1f / 60f);
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State);
+
+        Vector3 before = soldier.Position;
+        soldier.MoveComp.Move(0.2f);
+        soldier.MoveExecutor.Execute(0.2f);
+        soldier.SyncPositionFromExecutor();
+
+        Assert.Less(soldier.Position.x, before.x, $"应向玩家靠近，before={before}, after={soldier.Position}");
+    }
+
+    [Test]
     public void 小兵Idle状态_玩家太远保持Idle()
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
