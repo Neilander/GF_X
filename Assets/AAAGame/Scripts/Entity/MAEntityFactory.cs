@@ -12,6 +12,7 @@ public static class MAEntityFactory
         BrainType brainType,
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
+        string sourceBuildingInstanceId = null,
         int unitLevel = 1)
     {
         EntityParams entityParams = EntityParams.Create(position: position);
@@ -22,6 +23,10 @@ public static class MAEntityFactory
         if (!string.IsNullOrEmpty(sourceStrongholdId))
         {
             entityParams.SetString(EntityParams.P_SourceStrongholdId, sourceStrongholdId);
+        }
+        if (!string.IsNullOrEmpty(sourceBuildingInstanceId))
+        {
+            entityParams.SetString(EntityParams.P_SourceBuildingInstanceId, sourceBuildingInstanceId);
         }
         entityParams.StartBuffs = startBuffs;
         return entityParams;
@@ -36,10 +41,11 @@ public static class MAEntityFactory
         Const.EntityGroup entityGroup,
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
+        string sourceBuildingInstanceId = null,
         System.Action<EntityParams> configureParams = null,
         int unitLevel = 1)
     {
-        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
+        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, sourceBuildingInstanceId, unitLevel);
         configureParams?.Invoke(entityParams);
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
     }
@@ -53,10 +59,11 @@ public static class MAEntityFactory
         Const.EntityGroup entityGroup,
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
+        string sourceBuildingInstanceId = null,
         System.Action<EntityParams> configureParams = null,
         int unitLevel = 1)
     {
-        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
+        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, sourceBuildingInstanceId, unitLevel);
         configureParams?.Invoke(entityParams);
         return GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
     }

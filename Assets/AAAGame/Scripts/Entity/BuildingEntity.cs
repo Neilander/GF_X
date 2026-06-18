@@ -59,6 +59,7 @@ public partial class BuildingEntity : MAEntity
     private BaseValueProperty _armySupplyPerUnitProperty;
     private MinimapReportComponent _minimapReportComponent;
     private BuildingExtraProps _extraProps; // 引用自 GlobalBuffManager 的中央字典，升级场景同 id 共享同对象
+    private readonly List<int> _registeredFlowObstacleIds = new List<int>();
 
     protected override void RefreshCharacterData(object userData)
     {
@@ -111,8 +112,7 @@ public partial class BuildingEntity : MAEntity
             EnsureInteractionHost();
         }
 
-        // 建筑出现后请求重新烘焙 NavMesh（延迟合并，批量建造只烘焙一次）
-        LevelEntity.RequestRebakeNavMesh();
+        RegisterFlowFieldObstacles();
     }
 
     protected override CreaturePropertyManager CreateCreaturePropertyManager()
@@ -205,6 +205,7 @@ public partial class BuildingEntity : MAEntity
         RestorePhaseVisibility();
         SetStealthVisualState(false, false, 1f);
         UnregisterOutlineRenderers();
+        UnregisterFlowFieldObstacles();
         InGameDataModel.UnregisterBuilding(this);
 
         // 对象池安全：清理运行时引用，避免下次复用时指向旧数据
@@ -229,6 +230,86 @@ public partial class BuildingEntity : MAEntity
         buildingData = null;
         BuildingInstanceId = null;
         base.OnHide(isShutdown, userData);
+    }
+
+    internal void RefreshFlowFieldObstacles()
+    {
+        UnregisterFlowFieldObstacles();
+        RegisterFlowFieldObstacles();
+    }
+
+    private void RegisterFlowFieldObstacles()
+    {
+        if (!GroupMoveManager.HasInstance)
+            return;
+
+        if (_registeredFlowObstacleIds.Count > 0)
+            throw new System.InvalidOperationException($"BuildingEntity.RegisterFlowFieldObstacles failed: stale obstacle ids. building={CharacterKey} count={_registeredFlowObstacleIds.Count}.");
+
+        Collider[] colliders = GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider collider = colliders[i];
+            if (collider == null || !collider.enabled || collider.isTrigger)
+                continue;
+
+            int obstacleId = GroupMoveManager.Instance.RegisterColliderObstacle(collider);
+            _registeredFlowObstacleIds.Add(obstacleId);
+
+            if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+            {
+                Bounds bounds = collider.bounds;
+                Debug.Log(
+                    $"[BuildingFlowObstacle] collider building={CharacterKey} instance={BuildingInstanceId} " +
+                    $"name={collider.gameObject.name} path={BuildHierarchyPath(collider.transform)} type={collider.GetType().Name} " +
+                    $"id={obstacleId} layer={collider.gameObject.layer} tag={collider.tag} enabled={collider.enabled} trigger={collider.isTrigger} " +
+                    $"active={collider.gameObject.activeInHierarchy} center={bounds.center} size={bounds.size}");
+            }
+        }
+
+        if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+        {
+            Debug.Log(
+                $"[BuildingFlowObstacle] register building={CharacterKey} instance={BuildingInstanceId} " +
+                $"colliders={colliders.Length} registered={_registeredFlowObstacleIds.Count} pos={Position}");
+        }
+    }
+
+    private static string BuildHierarchyPath(Transform transform)
+    {
+        if (transform == null)
+            return "null";
+
+        Stack<string> parts = new Stack<string>();
+        Transform current = transform;
+        while (current != null)
+        {
+            parts.Push(current.name);
+            current = current.parent;
+        }
+
+        return string.Join("/", parts);
+    }
+
+    private void UnregisterFlowFieldObstacles()
+    {
+        if (_registeredFlowObstacleIds.Count == 0)
+            return;
+
+        if (GroupMoveManager.HasInstance)
+        {
+            for (int i = 0; i < _registeredFlowObstacleIds.Count; i++)
+                GroupMoveManager.Instance.UnregisterObstacle(_registeredFlowObstacleIds[i]);
+        }
+
+        if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+        {
+            Debug.Log(
+                $"[BuildingFlowObstacle] unregister building={CharacterKey} instance={BuildingInstanceId} " +
+                $"registered={_registeredFlowObstacleIds.Count} pos={Position}");
+        }
+
+        _registeredFlowObstacleIds.Clear();
     }
 
     public void SetStronghold(Stronghold stronghold, bool triggerFactionChangedEvent = true)

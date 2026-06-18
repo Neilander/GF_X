@@ -73,7 +73,7 @@ public sealed class BuildingCollisionBlockingBuff : BuffCallback
         }
 
         _applied = true;
-        LevelEntity.RequestRebakeNavMesh();
+        building.RefreshFlowFieldObstacles();
     }
 
     public override void OnRemove()
@@ -90,7 +90,8 @@ public sealed class BuildingCollisionBlockingBuff : BuffCallback
 
         _states.Clear();
         _applied = false;
-        LevelEntity.RequestRebakeNavMesh();
+        if (hostEntity is BuildingEntity building)
+            building.RefreshFlowFieldObstacles();
     }
 
     private readonly struct ColliderState

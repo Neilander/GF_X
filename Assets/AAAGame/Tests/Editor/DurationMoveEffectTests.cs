@@ -130,4 +130,29 @@ public class DurationMoveEffectTests
 
         Assert.Greater(executor.Position.z, 0f, "位移结束后应恢复主动移动");
     }
+
+    [Test]
+    public void Override与Additional同时结束后恢复Normal模式()
+    {
+        var ctx = CreateContext();
+        var executor = ctx.MoveExecutor as SimMoveExecutor;
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(ctx);
+
+        effectComp.StartDurationAdditionalMove(0.1f, Vector3.right * 3f);
+        effectComp.StartDurationOverrideMove(0.1f, Vector3.back * 6f);
+
+        effectComp.ApplyEffect(0.1f);
+        Assert.AreEqual(MovementMode.Displaced, executor.MovementMode, "位移生效期间应切入 Displaced");
+        executor.SetInput(Vector3.forward * 5f);
+        executor.Execute(0.1f);
+        Assert.Less(executor.Position.z, 0f, "Override 生效帧应优先执行位移");
+
+        effectComp.ApplyEffect(0.1f);
+        Assert.AreEqual(MovementMode.Normal, executor.MovementMode, "所有位移效果结束后应恢复 Normal");
+        executor.SetInput(Vector3.forward * 5f);
+        executor.Execute(0.1f);
+
+        Assert.Greater(executor.Position.z, -0.6f, "恢复 Normal 后主动移动应重新生效");
+    }
 }

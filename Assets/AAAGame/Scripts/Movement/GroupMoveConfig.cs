@@ -70,6 +70,9 @@ public class GroupMoveConfig : ScriptableObject
     [Tooltip("flow tile 缓存上限。")]
     [Min(16)]
     public int FlowTileCacheLimit = 256;
+    [Tooltip("运行时障碍/CostStamp 脏数据每帧重建预算，单位毫秒。")]
+    [Min(0.05f)]
+    public float RuntimeRebuildBudgetMilliseconds = 1.5f;
 
     [Header("Crowd Steering")]
     [Tooltip("邻居预测时间，越大越会提前避让。")]
@@ -92,6 +95,9 @@ public class GroupMoveConfig : ScriptableObject
     [Tooltip("进入瓶颈口附近多远时开始受调度影响。")]
     [Min(0.1f)]
     public float BottleneckInfluenceDistance = 2.2f;
+    [Tooltip("瓶颈刚有单位通过后，继续为同向后继流保留通行权的时间。")]
+    [Min(0.05f)]
+    public float BottleneckClearanceHoldTime = 0.45f;
 
     [Header("Debug")]
     public bool DrawNavigationDebug = true;

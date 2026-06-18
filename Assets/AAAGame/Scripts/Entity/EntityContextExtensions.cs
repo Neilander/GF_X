@@ -87,7 +87,7 @@ public static class EntityContextExtensions
             return float.PositiveInfinity;
 
         Vector3 from = self.Position;
-        if (TryGetTargetClosestPoint(target, from, out Vector3 closestPoint))
+        if (target.TryGetTargetClosestPoint(from, out Vector3 closestPoint))
             return HorizontalDistance(from, closestPoint);
 
         return HorizontalDistance(from, target.Position);
@@ -100,7 +100,7 @@ public static class EntityContextExtensions
         return Mathf.Sqrt(dx * dx + dz * dz);
     }
 
-    private static bool TryGetTargetClosestPoint(IEntityContext target, Vector3 origin, out Vector3 closestPoint)
+    public static bool TryGetTargetClosestPoint(this IEntityContext target, Vector3 origin, out Vector3 closestPoint)
     {
         closestPoint = default;
 

@@ -19,6 +19,12 @@ using UnityEngine.AI;
 /// </summary>
 public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 {
+    private const float CombatApproachRangeSlack = 0.08f;
+    private const int CombatApproachCandidateCount = 16;
+    private const int CombatApproachRingCount = 3;
+    private const float CombatApproachRingSpacing = 0.55f;
+    private const float CombatApproachOccupancyPadding = 0.35f;
+
     public enum SoldierState
     {
         Idle,
@@ -78,6 +84,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private Vector3? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
     private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
     private bool _allowEnemyReturnToBirth = true;
+    private Vector3 _combatApproachPoint;
+    private int _combatApproachTargetId = int.MinValue;
+    private int _combatApproachRefreshFrame = -1;
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -109,6 +118,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         _inDeadZone = false;
         _deadZoneTarget = null;
         _softReturning = false;
+        _combatApproachTargetId = int.MinValue;
+        _combatApproachRefreshFrame = -1;
         State = SoldierState.Idle;
         _lastSyncedState = SoldierState.Idle;
 
@@ -534,8 +545,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         float distToEnemy = self.DistanceToTargetSurface(enemy);
         float effectiveRange = GetEffectiveAttackRange(self);
-
-        if (distToEnemy <= effectiveRange)
+        float selfRadius = DistanceUnitConverter.ConvertToWorldFloat(self.GetProperty(CreatureMainProperty.CollisionRadius));
+        float arriveDistance = ResolveNavigationArriveDistance(selfRadius);
+        Vector3 desiredApproachPoint = ResolveCombatApproachPoint(self, enemy, effectiveRange, selfRadius, arriveDistance);
+        bool shouldAttackNow = distToEnemy <= effectiveRange;
+        if (shouldAttackNow)
         {
             // 在攻击范围内 → 攻击并停下
             Attack = true;
@@ -545,10 +559,304 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         else
         {
             Move = Vector2.zero;
+            if (!FlowFieldCrowdMovementSystem.TryResolveNearestReachableGoal(
+                    self,
+                    desiredApproachPoint,
+                    Mathf.Max(effectiveRange + 2f, 4f),
+                    out Vector3 reachableApproachPoint,
+                    out string reachFailure))
+            {
+                throw new System.InvalidOperationException(
+                    $"[{self.CharacterKey}] Combat approach point unreachable enemy={enemy.CharacterKey} enemyPos={enemy.Position} " +
+                    $"desired={desiredApproachPoint} selfPos={self.Position} dist={distToEnemy:F2} range={effectiveRange:F2} reason={reachFailure}");
+            }
+
             GameDebugSettings.Log(DebugCategory.Brain,
-                $"[{self.CharacterKey}] Combat MoveTo enemy={enemy.CharacterKey} enemyPos={enemy.Position} selfPos={self.Position} dist={distToEnemy:F2} range={effectiveRange:F2}");
-            self.MoveComp.MoveTo(enemy.Position);
+                $"[{self.CharacterKey}] Combat MoveTo enemy={enemy.CharacterKey} enemyPos={enemy.Position} approach={reachableApproachPoint} " +
+                $"desired={desiredApproachPoint} selfPos={self.Position} dist={distToEnemy:F2} range={effectiveRange:F2} " +
+                $"attackNow={shouldAttackNow}");
+            Debug.LogWarning(
+                $"[CombatMoveBridgeDiag] self={self.CharacterKey} enemy={enemy.CharacterKey} selfPos={self.Position} enemyPos={enemy.Position} " +
+                $"desiredApproach={desiredApproachPoint} reachableApproach={reachableApproachPoint} distToEnemy={distToEnemy:F3} " +
+                $"range={effectiveRange:F3} selfRadius={selfRadius:F3} arriveDistance={arriveDistance:F3} " +
+                $"pathToApproach={BuildCombatPathDiagnostic(self, self.Position, reachableApproachPoint)} " +
+                $"pathApproachToEnemy={BuildCombatPathDiagnostic(self, reachableApproachPoint, enemy.Position)}");
+            self.MoveComp.MoveTo(reachableApproachPoint);
         }
+    }
+
+    private Vector3 ResolveCombatApproachPoint(IEntityContext self, IEntityContext enemy, float effectiveRange, float selfRadius, float arriveDistance)
+    {
+        int targetId = ResolveCombatEntityId(enemy);
+        int frame = Time.frameCount;
+        float minRefreshDistance = Mathf.Max(0.25f, selfRadius * 1.5f);
+        if (_combatApproachTargetId == targetId
+            && frame - _combatApproachRefreshFrame < 10
+            && HorizontalDist(_combatApproachPoint, enemy.Position) <= effectiveRange + CombatApproachRingSpacing
+            && HorizontalDist(self.Position, _combatApproachPoint) > minRefreshDistance
+            && !IsCombatApproachPointOccupiedByOther(self, _combatApproachPoint, selfRadius))
+        {
+            return _combatApproachPoint;
+        }
+
+        _combatApproachPoint = ResolveBestCombatApproachPoint(self, enemy, effectiveRange, selfRadius, arriveDistance);
+        _combatApproachTargetId = targetId;
+        _combatApproachRefreshFrame = frame;
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Combat approach refresh enemy={enemy.CharacterKey} selfPos={self.Position} enemyPos={enemy.Position} " +
+                $"approach={_combatApproachPoint} frame={frame}");
+        }
+        return _combatApproachPoint;
+    }
+
+    private static bool IsCombatApproachPointOccupiedByOther(IEntityContext self, Vector3 approachPoint, float selfRadius)
+    {
+        float requiredClearance = Mathf.Max(selfRadius * 2f + CombatApproachOccupancyPadding, 0.45f);
+        return FlowFieldCrowdMovementSystem.IsPositionOccupiedByOtherAgent(
+            ResolveCombatEntityId(self),
+            0,
+            approachPoint,
+            requiredClearance,
+            out _,
+            out _);
+    }
+
+    private static Vector3 ResolveBestCombatApproachPoint(IEntityContext self, IEntityContext enemy, float effectiveRange, float selfRadius, float arriveDistance)
+    {
+        float standOff = Mathf.Max(selfRadius + 0.05f, effectiveRange - arriveDistance - CombatApproachRangeSlack);
+        float requiredClearance = Mathf.Max(selfRadius * 2f + CombatApproachOccupancyPadding, 0.45f);
+        int selfId = ResolveCombatEntityId(self);
+        int enemyId = ResolveCombatEntityId(enemy);
+        Vector3 targetPoint = enemy.Position;
+        if (enemy.TryGetTargetClosestPoint(self.Position, out Vector3 surfacePoint))
+            targetPoint = surfacePoint;
+
+        Vector3 baseDirection = self.Position - targetPoint;
+        baseDirection.y = 0f;
+        if (baseDirection.sqrMagnitude <= 0.0001f)
+            baseDirection = Vector3.forward;
+        baseDirection.Normalize();
+
+        Vector3 basePoint = targetPoint + baseDirection * standOff;
+        Vector3 bestPoint = basePoint;
+        Vector3 bestDesiredPoint = basePoint;
+        float bestAngle = 0f;
+        int bestRing = -1;
+        bool bestOccupied = false;
+        bool bestPathToEnemyFound = false;
+        NavMeshPathStatus bestPathToEnemyStatus = NavMeshPathStatus.PathInvalid;
+        int bestPathToEnemyCorners = 0;
+        bool bestRayToEnemyBlocked = false;
+        Vector3 bestRayToEnemyHit = Vector3.zero;
+        float bestScore = float.PositiveInfinity;
+        string bestReason = "none";
+        int anomalyLogCount = 0;
+        for (int ring = 0; ring < CombatApproachRingCount; ring++)
+        {
+            float radius = standOff + ring * CombatApproachRingSpacing;
+            for (int i = 0; i < CombatApproachCandidateCount; i++)
+            {
+                float angle = ResolveRotatingApproachAngle(i);
+                Vector3 direction = Quaternion.AngleAxis(angle, Vector3.up) * baseDirection;
+                Vector3 candidate = targetPoint + direction * radius;
+                if (!FlowFieldCrowdMovementSystem.TryResolveNearestReachableGoal(
+                        self,
+                        candidate,
+                        Mathf.Max(1.5f, CombatApproachRingSpacing * 2f),
+                        out Vector3 reachableCandidate,
+                        out string reachFailure))
+                {
+                    bestReason = reachFailure;
+                    continue;
+                }
+
+                bool selfPathFound = TryCalculateCombatNavPath(self, self.Position, reachableCandidate, out NavMeshPathStatus selfPathStatus, out int selfPathCorners, out float selfPathLength);
+                if (!selfPathFound || selfPathStatus != NavMeshPathStatus.PathComplete)
+                {
+                    bestReason = $"selfPath={selfPathStatus}";
+                    continue;
+                }
+
+                bool pathToEnemyFound = TryCalculateCombatNavPath(self, reachableCandidate, targetPoint, out NavMeshPathStatus pathToEnemyStatus, out int pathToEnemyCorners, out _);
+                bool rayToEnemyBlocked = TryRaycastCombatNav(self, reachableCandidate, targetPoint, out Vector3 rayToEnemyHit);
+                float reachableOffset = HorizontalDist(candidate, reachableCandidate);
+                bool hasAttackLine = pathToEnemyFound && pathToEnemyStatus == NavMeshPathStatus.PathComplete && !rayToEnemyBlocked;
+                if (anomalyLogCount < 6
+                    && (reachableOffset > Mathf.Max(0.35f, selfRadius)
+                        || rayToEnemyBlocked
+                        || !pathToEnemyFound
+                        || pathToEnemyStatus != NavMeshPathStatus.PathComplete))
+                {
+                    anomalyLogCount++;
+                    Debug.LogWarning(
+                        $"[CombatApproachCandidateDiag] self={self.CharacterKey} enemy={enemy.CharacterKey} ring={ring} angle={angle:F1} " +
+                        $"selfPos={self.Position} enemyPos={enemy.Position} anchor={targetPoint} desired={candidate} reachable={reachableCandidate} " +
+                        $"offset={reachableOffset:F3} navPathFound={pathToEnemyFound} navPathStatus={pathToEnemyStatus} corners={pathToEnemyCorners} " +
+                        $"navRayBlocked={rayToEnemyBlocked} navRayHit={rayToEnemyHit}");
+                }
+
+                if (!hasAttackLine)
+                {
+                    bestReason = $"attackLine pathFound={pathToEnemyFound} status={pathToEnemyStatus} rayBlocked={rayToEnemyBlocked}";
+                    continue;
+                }
+
+                bool occupied = FlowFieldCrowdMovementSystem.IsPositionOccupiedByOtherAgent(
+                    selfId,
+                    enemyId,
+                    reachableCandidate,
+                    requiredClearance,
+                    out int blockingAgentId,
+                    out float blockingDistance);
+                float baseDistance = HorizontalDist(reachableCandidate, basePoint);
+                float targetDistanceError = Mathf.Abs(HorizontalDist(reachableCandidate, targetPoint) - standOff);
+                float rotationPenalty = Mathf.Abs(angle) * 0.015f;
+                float score = selfPathLength * 0.35f + baseDistance * 1.2f + targetDistanceError * 3.5f + reachableOffset * 4f + rotationPenalty + ring * 0.35f;
+                if (occupied)
+                    score += 1000f + (requiredClearance - blockingDistance) * 100f;
+
+                if (score >= bestScore)
+                    continue;
+
+                bestScore = score;
+                bestPoint = reachableCandidate;
+                bestDesiredPoint = candidate;
+                bestAngle = angle;
+                bestRing = ring;
+                bestOccupied = occupied;
+                bestPathToEnemyFound = pathToEnemyFound;
+                bestPathToEnemyStatus = pathToEnemyStatus;
+                bestPathToEnemyCorners = pathToEnemyCorners;
+                bestRayToEnemyBlocked = rayToEnemyBlocked;
+                bestRayToEnemyHit = rayToEnemyHit;
+                if (occupied)
+                    bestReason = $"occupiedBy={blockingAgentId} dist={blockingDistance:F3}";
+                else
+                    bestReason = "clear";
+            }
+        }
+
+        GameDebugSettings.Log(DebugCategory.Brain,
+            $"[{self.CharacterKey}] Combat slot enemy={enemy.CharacterKey} selfPos={self.Position} enemyPos={enemy.Position} anchor={targetPoint} " +
+            $"base={basePoint} chosen={bestPoint} score={bestScore:F3} reason={bestReason} standOff={standOff:F3} requiredClearance={requiredClearance:F3}");
+        if (bestRing >= 0
+            && (HorizontalDist(bestDesiredPoint, bestPoint) > Mathf.Max(0.35f, selfRadius)
+                || bestRayToEnemyBlocked
+                || !bestPathToEnemyFound
+                || bestPathToEnemyStatus != NavMeshPathStatus.PathComplete))
+        {
+            Debug.LogWarning(
+                $"[CombatApproachChosenDiag] self={self.CharacterKey} enemy={enemy.CharacterKey} ring={bestRing} angle={bestAngle:F1} " +
+                $"selfPos={self.Position} enemyPos={enemy.Position} anchor={targetPoint} base={basePoint} desired={bestDesiredPoint} chosen={bestPoint} " +
+                $"offset={HorizontalDist(bestDesiredPoint, bestPoint):F3} score={bestScore:F3} reason={bestReason} occupied={bestOccupied} " +
+                $"standOff={standOff:F3} requiredClearance={requiredClearance:F3} navPathFound={bestPathToEnemyFound} " +
+                $"navPathStatus={bestPathToEnemyStatus} corners={bestPathToEnemyCorners} navRayBlocked={bestRayToEnemyBlocked} navRayHit={bestRayToEnemyHit}");
+        }
+        return bestPoint;
+    }
+
+    private static bool TryCalculateCombatNavPath(IEntityContext self, Vector3 from, Vector3 to, out NavMeshPathStatus status, out int cornerCount, out float pathLength)
+    {
+        status = NavMeshPathStatus.PathInvalid;
+        cornerCount = 0;
+        pathLength = float.PositiveInfinity;
+        NavMeshQueryFilter filter = BuildCombatNavMeshFilter(self);
+        float sampleRadius = 0.75f;
+        if (!NavMesh.SamplePosition(from, out NavMeshHit fromHit, sampleRadius, filter)
+            || !NavMesh.SamplePosition(to, out NavMeshHit toHit, sampleRadius, filter))
+        {
+            return false;
+        }
+
+        NavMeshPath path = new NavMeshPath();
+        bool found = NavMesh.CalculatePath(fromHit.position, toHit.position, filter, path);
+        status = path.status;
+        cornerCount = path.corners != null ? path.corners.Length : 0;
+        if (found && path.corners != null && path.corners.Length > 0)
+        {
+            pathLength = 0f;
+            for (int i = 1; i < path.corners.Length; i++)
+                pathLength += HorizontalDist(path.corners[i - 1], path.corners[i]);
+        }
+        return found;
+    }
+
+    private static bool TryRaycastCombatNav(IEntityContext self, Vector3 from, Vector3 to, out Vector3 hitPosition)
+    {
+        hitPosition = Vector3.zero;
+        NavMeshQueryFilter filter = BuildCombatNavMeshFilter(self);
+        float sampleRadius = 0.75f;
+        if (!NavMesh.SamplePosition(from, out NavMeshHit fromHit, sampleRadius, filter)
+            || !NavMesh.SamplePosition(to, out NavMeshHit toHit, sampleRadius, filter))
+        {
+            return true;
+        }
+
+        bool blocked = NavMesh.Raycast(fromHit.position, toHit.position, out NavMeshHit rayHit, filter);
+        hitPosition = blocked ? rayHit.position : Vector3.zero;
+        return blocked;
+    }
+
+    private static string BuildCombatPathDiagnostic(IEntityContext self, Vector3 from, Vector3 to)
+    {
+        NavMeshQueryFilter filter = BuildCombatNavMeshFilter(self);
+        const float sampleRadius = 0.75f;
+        bool fromSampled = NavMesh.SamplePosition(from, out NavMeshHit fromHit, sampleRadius, filter);
+        bool toSampled = NavMesh.SamplePosition(to, out NavMeshHit toHit, sampleRadius, filter);
+        if (!fromSampled || !toSampled)
+            return $"sample-miss fromSampled={fromSampled} toSampled={toSampled} from={from} to={to}";
+
+        NavMeshPath path = new NavMeshPath();
+        bool found = NavMesh.CalculatePath(fromHit.position, toHit.position, filter, path);
+        int corners = path.corners != null ? path.corners.Length : 0;
+        Vector3 firstCorner = corners > 1 ? path.corners[1] : Vector3.zero;
+        Vector3 lastCorner = corners > 0 ? path.corners[corners - 1] : Vector3.zero;
+        bool rayBlocked = NavMesh.Raycast(fromHit.position, toHit.position, out NavMeshHit rayHit, filter);
+        return $"{{found={found},status={path.status},corners={corners},fromHit={fromHit.position},toHit={toHit.position},firstCorner={firstCorner},lastCorner={lastCorner},rayBlocked={rayBlocked},rayHit={(rayBlocked ? rayHit.position.ToString() : "none")}}}";
+    }
+
+    private static NavMeshQueryFilter BuildCombatNavMeshFilter(IEntityContext self)
+    {
+        int agentTypeId = 0;
+        if (self is MAEntity maEntity && maEntity.navAgentTypeID != MAEntity.UnknownNavAgentTypeId)
+            agentTypeId = maEntity.navAgentTypeID;
+
+        return new NavMeshQueryFilter
+        {
+            agentTypeID = agentTypeId,
+            areaMask = NavMesh.AllAreas
+        };
+    }
+
+    private static float ResolveRotatingApproachAngle(int index)
+    {
+        if (index == 0)
+            return 0f;
+
+        int step = (index + 1) / 2;
+        float sign = (index & 1) == 1 ? 1f : -1f;
+        return sign * step * (360f / CombatApproachCandidateCount);
+    }
+
+    private static int ResolveCombatEntityId(IEntityContext entity)
+    {
+        return entity is MAEntity maEntity ? maEntity.GetInstanceID() : entity.GetHashCode();
+    }
+
+    private static int PositiveModulo(int value, int modulus)
+    {
+        int result = value % modulus;
+        return result < 0 ? result + modulus : result;
+    }
+
+    private static float ResolveNavigationArriveDistance(float collisionRadius)
+    {
+        if (collisionRadius > 0.0001f)
+            return Mathf.Max(0.08f, collisionRadius * 0.6f);
+
+        return 0.15f;
     }
 
     private void TickReturning(IEntityContext self, float dt)

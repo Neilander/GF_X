@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using System.Collections.Generic;
+using System.Reflection;
 
 /// <summary>
 /// SteeringMovement 纯逻辑测试。
@@ -13,12 +14,55 @@ public class SteeringMovementTests
     public void SetUp()
     {
         EntityRegistry.Clear();
+        SetupCombatPhaseForTests();
     }
 
     [TearDown]
     public void TearDown()
     {
         EntityRegistry.Clear();
+    }
+
+    private static void SetupCombatPhaseForTests()
+    {
+        var dataModelField = typeof(GF).GetField("<DataModel>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic);
+        var current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
+        if (current == null)
+        {
+            var go = new GameObject("TestGF_DataModel");
+            current = go.AddComponent<GameFramework.DataModelComponent>();
+            dataModelField?.SetValue(null, current);
+        }
+
+        var dataModelsField = typeof(GameFramework.DataModelComponent).GetField("m_DataModels", BindingFlags.Instance | BindingFlags.NonPublic);
+        var dataModels = dataModelsField?.GetValue(current);
+        if (dataModelsField != null && (dataModels == null || dataModels.GetType() != dataModelsField.FieldType))
+        {
+            dataModels = System.Activator.CreateInstance(dataModelsField.FieldType);
+            dataModelsField.SetValue(current, dataModels);
+        }
+
+        var model = current.GetDataModel<InGameDataModel>();
+        if (model == null)
+        {
+            model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
+            var typeIdPairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
+            var pair = System.Activator.CreateInstance(typeIdPairType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                new object[] { typeof(InGameDataModel), 0 }, null);
+            var dict = dataModelsField.GetValue(current);
+            dict.GetType().GetMethod("Add").Invoke(dict, new[] { pair, model });
+        }
+
+        var phaseField = typeof(InGameDataModel).GetField("m_IngameValue", BindingFlags.Instance | BindingFlags.NonPublic);
+        var values = new Dictionary<IngameValueType, int>
+        {
+            [IngameValueType.Phase] = (int)GamePhase.Defend,
+            [IngameValueType.Day] = 1,
+            [IngameValueType.Coin] = 0,
+            [IngameValueType.CurrentSupply] = 0,
+            [IngameValueType.MaxSupply] = 0,
+        };
+        phaseField?.SetValue(model, values);
     }
 
     #region Seek
@@ -254,6 +298,39 @@ public class SteeringMovementTests
         enemy.Alive = false;
         brain.Tick(soldier, 1f / 60f);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "敌人死后回到 Follow");
+    }
+
+    [Test]
+    public void Combat状态_内圈单位在武器射程内会直接攻击()
+    {
+        var player = MakeSoldier(new Vector3(0, 0, 0));
+        var soldier = MakeSoldier(new Vector3(1.2f, 0, 0));
+        var enemy = MakeSoldier(new Vector3(2.1f, 0, 0), SideType.EnemySide);
+
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(enemy);
+
+        var targeting = new SimTargetingComp(soldier, new List<IEntityContext> { player, soldier, enemy });
+        targeting.Init(soldier);
+        targeting.CurrentTarget = enemy;
+        soldier.TargetComp = targeting;
+        Assert.IsTrue(WeaponTargetRules.IsValidTargetForCurrentWeapon(soldier, enemy),
+            $"测试前置失败 phase={(GamePhase)InGameDataModel.GetValue(IngameValueType.Phase)} " +
+            $"targetable={enemy.IsAttackTargetable()} enemy={EntityCombatTeamHelper.IsEnemy(soldier, enemy)}");
+
+        var brain = new SoldierAIBrain();
+        brain.RecruitRadius = 8f;
+        brain.DetectEnemyRange = 6f;
+        brain.WeaponRange = 1.5f;
+        brain.Inject();
+        soldier.Brain = brain;
+
+        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, 1f / 60f);
+
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
+        Assert.IsTrue(brain.Attack, "已经在武器射程内时应直接进入攻击态，而不是继续等到站位点");
     }
 
     #endregion

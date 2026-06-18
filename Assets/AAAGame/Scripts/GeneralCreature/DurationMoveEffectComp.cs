@@ -63,6 +63,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
         Vector3 finalOverrideVelocity = Vector3.zero;
         // -------- 计算 Additional --------
         var additionalKeys = new List<int>(_timedAdditionalEffects.Keys);
+        bool hadAdditionalEffectThisFrame = additionalKeys.Count > 0;
 
         foreach (var key in additionalKeys)
         {
@@ -81,6 +82,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
         // -------- 计算 Override --------
         var overrideKeys = new List<int>(_timedOverrideEffects.Keys);
         bool hasOverride = overrideKeys.Count > 0;
+        bool hadOverrideEffectThisFrame = hasOverride;
         foreach (var key in overrideKeys)
         {
             var effect = _timedOverrideEffects[key];
@@ -93,7 +95,18 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
             }
         }
 
-        bool hasMotionEffect = _timedAdditionalEffects.Count > 0 || _timedOverrideEffects.Count > 0;
+        var executor = _ctx.MoveExecutor;
+
+        if (hasOverride)
+        {
+            executor.SetOverride(finalOverrideVelocity);
+        }
+        executor.AddExternal(finalAdditionalVelocity);
+
+        bool hasMotionEffect = hadAdditionalEffectThisFrame
+                               || hadOverrideEffectThisFrame
+                               || _timedAdditionalEffects.Count > 0
+                               || _timedOverrideEffects.Count > 0;
         if (hasMotionEffect)
         {
             _ctx.MoveExecutor.SetMovementMode(MovementMode.Displaced);
@@ -102,14 +115,6 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
         {
             _ctx.MoveExecutor.SetMovementMode(MovementMode.Normal);
         }
-
-        var executor = _ctx.MoveExecutor;
-
-        if (hasOverride)
-        {
-            executor.SetOverride(finalOverrideVelocity);
-        }
-        executor.AddExternal(finalAdditionalVelocity);
     }
 
     public void ShutDown()

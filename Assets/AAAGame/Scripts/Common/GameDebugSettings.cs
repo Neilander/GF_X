@@ -11,7 +11,7 @@ public class GameDebugSettings : MonoBehaviour
 {
     public static GameDebugSettings Instance { get; private set; }
     public static event System.Action<bool> RuntimeResourceModifyEnabledChanged;
-    private const bool ForceMovementDiagnostics = true;
+    private const bool ForceMovementDiagnostics = false;
 
     [Header("模块开关")]
     public bool targetDebug;

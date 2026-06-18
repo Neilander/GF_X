@@ -136,6 +136,26 @@ public partial class LevelEntity : EntityBase
             }
 
             SyncEnemyStrongholdFogEffects();
+            if (_rebakeRequestedDuringRuntimeInitialization && _rebakeTimer >= 0f)
+            {
+                Debug.Log(
+                    $"[LevelEntity] Runtime init waiting pending rebake before prewarm timer={_rebakeTimer:F3}");
+                await UniTask.WaitUntil(() =>
+                    !IsRuntimeInitializationActive(initVersion)
+                    || (!_rebakeRequestedDuringRuntimeInitialization && _rebakeTimer < 0f));
+                if (!IsRuntimeInitializationActive(initVersion))
+                {
+                    return;
+                }
+            }
+
+            if (GroupMoveManager.HasInstance)
+            {
+                Debug.Log(
+                    $"[LevelEntity] Runtime init prewarm before complete afterRebake rebakeTimer={_rebakeTimer:F3} " +
+                    $"rebakeRequested={_rebakeRequestedDuringRuntimeInitialization}");
+                GroupMoveManager.Instance.PrewarmNavigationWorlds();
+            }
             IsRuntimeInitializationCompleted = true;
             RuntimeInitializationCompleted?.Invoke(this);
         }
@@ -151,6 +171,7 @@ public partial class LevelEntity : EntityBase
     }
 
     private float _rebakeTimer = -1f;
+    private bool _rebakeRequestedDuringRuntimeInitialization;
     private const float RebakeDelay = 0.5f;
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
@@ -194,8 +215,11 @@ public partial class LevelEntity : EntityBase
             return;
 
         activeLevelEntity._rebakeTimer = RebakeDelay;
-        if (GroupMoveManager.HasInstance)
-            GroupMoveManager.Instance.InvalidateNavigation("[LevelEntity] RequestRebakeNavMesh");
+        if (!activeLevelEntity.IsRuntimeInitializationCompleted)
+            activeLevelEntity._rebakeRequestedDuringRuntimeInitialization = true;
+        Debug.Log(
+            $"[LevelEntity] RequestRebakeNavMesh completed={activeLevelEntity.IsRuntimeInitializationCompleted} " +
+            $"timer={activeLevelEntity._rebakeTimer:F3} duringInit={activeLevelEntity._rebakeRequestedDuringRuntimeInitialization}");
     }
 
     private void DoRebakeNavMesh()
@@ -206,14 +230,28 @@ public partial class LevelEntity : EntityBase
             return;
         }
 
+        Debug.Log(
+            $"[LevelEntity] DoRebakeNavMesh begin surfaces={_navMeshSurfaces.Length} " +
+            $"duringInit={_rebakeRequestedDuringRuntimeInitialization} completed={IsRuntimeInitializationCompleted}");
         for (int i = 0; i < _navMeshSurfaces.Length; i++)
         {
             var s = _navMeshSurfaces[i];
             s.BuildNavMesh();
         }
 
+        bool shouldPrewarmAfterRebake = IsRuntimeInitializationCompleted;
+        _rebakeRequestedDuringRuntimeInitialization = false;
+
         if (GroupMoveManager.HasInstance)
+        {
             GroupMoveManager.Instance.InvalidateNavigation("[LevelEntity] DoRebakeNavMesh completed");
+            if (shouldPrewarmAfterRebake)
+                GroupMoveManager.Instance.PrewarmNavigationWorlds();
+        }
+
+        Debug.Log(
+            $"[LevelEntity] DoRebakeNavMesh end prewarmAfter={shouldPrewarmAfterRebake} " +
+            $"completed={IsRuntimeInitializationCompleted}");
 
         EnablePlayerNavMeshBypass();
     }

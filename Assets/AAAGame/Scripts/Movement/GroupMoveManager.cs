@@ -5,18 +5,12 @@ public class GroupMoveManager : MonoBehaviour
     public static GroupMoveManager Instance { get; private set; }
     public static bool HasInstance => Instance != null;
 
-    public GroupMoveCoordinator Coordinator { get; private set; }
-
     [SerializeField] private GroupMoveConfig _config;
     public GroupMoveConfig Config => _config;
-
-    private bool _warnedConfigMissing;
 
     private void Awake()
     {
         Instance = this;
-        Coordinator = new GroupMoveCoordinator();
-        SyncParams();
         FlowFieldCrowdMovementSystem.SetConfig(_config);
     }
 
@@ -29,53 +23,10 @@ public class GroupMoveManager : MonoBehaviour
 
     private void Update()
     {
-        SyncParams();
         FlowFieldCrowdMovementSystem.SetConfig(_config);
-    }
-
-    private void LateUpdate()
-    {
-        if (Coordinator != null && Coordinator.PendingRequestCount > 0)
-            Coordinator.Resolve();
-    }
-
-    private void SyncParams()
-    {
-        if (Coordinator == null) return;
-
-        if (_config == null)
-        {
-            if (!_warnedConfigMissing)
-            {
-                Debug.LogWarning("[GroupMoveManager] Config 未指定，Coordinator 使用代码默认参数。请在 Inspector 拖入 GroupMoveConfig.asset。", this);
-                _warnedConfigMissing = true;
-            }
-            return;
-        }
-        _warnedConfigMissing = false;
-
-        var c = _config;
-        Coordinator.UnitRepulsionStrength = c.UnitRepulsionStrength;
-        Coordinator.UnitAttractionStrength = c.UnitAttractionStrength;
-        Coordinator.DefaultEquilibriumRadius = c.UnitEquilibriumRadius;
-        Coordinator.DefaultMaxInfluenceRange = c.UnitMaxInfluenceRange;
-
-        Coordinator.LeaderRepulsionStrength = c.LeaderRepulsionStrength;
-        Coordinator.LeaderAttractionStrength = c.LeaderAttractionStrength;
-        Coordinator.LeaderEquilibriumRadius = c.LeaderEquilibriumRadius;
-        Coordinator.LeaderMaxInfluenceRange = c.LeaderMaxInfluenceRange;
-
-        Coordinator.EnemyRepulsionStrength = c.EnemyRepulsionStrength;
-        Coordinator.EnemyAttractionStrength = c.EnemyAttractionStrength;
-        Coordinator.EnemyEquilibriumRadius = c.EnemyEquilibriumRadius;
-        Coordinator.EnemyMaxInfluenceRange = c.EnemyMaxInfluenceRange;
-
-        Coordinator.ObstacleWeight = c.ObstacleWeight;
-        Coordinator.MoveThreshold = c.MoveThreshold;
-        Coordinator.MoveThresholdSpeedRatio = c.MoveThresholdSpeedRatio;
-        Coordinator.VelocitySmoothing = c.VelocitySmoothing;
-
-        Coordinator.SyncAllAgentParams();
+        FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
     }
 
     /// <summary>
@@ -153,13 +104,11 @@ public class GroupMoveManager : MonoBehaviour
     public void RegisterAgent(MAEntity entity)
     {
         float radius = ResolveAgentRadius(entity);
-        Coordinator.RegisterAgent(entity.GetInstanceID(), entity.Position, entity.Side, false, radius);
         FlowFieldCrowdMovementSystem.RegisterAgent(entity, false, radius);
     }
 
     public void UnregisterAgent(MAEntity entity)
     {
-        Coordinator.UnregisterAgent(entity.GetInstanceID());
         FlowFieldCrowdMovementSystem.UnregisterAgent(entity.GetInstanceID());
     }
 
@@ -168,7 +117,6 @@ public class GroupMoveManager : MonoBehaviour
         if (entity == null)
             return;
 
-        Coordinator.SetAgentSide(entity.GetInstanceID(), entity.Side);
         FlowFieldCrowdMovementSystem.SetAgentSide(entity.GetInstanceID(), entity.Side);
     }
 
@@ -176,8 +124,6 @@ public class GroupMoveManager : MonoBehaviour
     {
         int id = entity.GetInstanceID();
         float radius = ResolveAgentRadius(entity);
-        Coordinator.UpdateAgentPosition(id, entity.Position);
-        Coordinator.SetAgentRadius(id, radius);
         FlowFieldCrowdMovementSystem.UpdateAgent(entity, radius);
     }
 
@@ -210,50 +156,110 @@ public class GroupMoveManager : MonoBehaviour
 
     public void RegisterCircleObstacle(int id, Vector3 position, float radius)
     {
-        Coordinator.RegisterObstacle(id, position, radius);
         FlowFieldCrowdMovementSystem.RegisterCircleObstacle(id, position, radius);
     }
 
     public void RegisterBoxObstacle(Collider collider)
     {
         var bounds = collider.bounds;
-        Coordinator.RegisterBoxObstacle(collider.GetInstanceID(), bounds.center, bounds.extents);
         FlowFieldCrowdMovementSystem.RegisterBoxObstacle(collider.GetInstanceID(), bounds.center, bounds.extents);
+    }
+
+    public void RegisterBoxCostStamp(int id, Vector3 center, Vector3 halfExtents, byte cost)
+    {
+        FlowFieldCrowdMovementSystem.RegisterBoxCostStamp(id, center, halfExtents, cost);
+    }
+
+    public void RegisterBoxCostStamp(int id, int agentTypeId, Vector3 center, Vector3 halfExtents, byte cost)
+    {
+        FlowFieldCrowdMovementSystem.RegisterBoxCostStamp(id, agentTypeId, center, halfExtents, cost);
+    }
+
+    public void UnregisterCostStamp(int id)
+    {
+        FlowFieldCrowdMovementSystem.UnregisterCostStamp(id);
+    }
+
+    public int RegisterColliderObstacle(Collider collider)
+    {
+        if (collider == null)
+            throw new System.InvalidOperationException("GroupMoveManager.RegisterColliderObstacle failed: collider is null.");
+
+        int obstacleId = collider.GetInstanceID();
+        var bounds = collider.bounds;
+        if (collider is BoxCollider)
+        {
+            FlowFieldCrowdMovementSystem.RegisterBoxObstacle(obstacleId, bounds.center, bounds.extents);
+            LogColliderObstacleRegistration(collider, obstacleId, "box", bounds);
+            return obstacleId;
+        }
+
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacle(obstacleId, bounds.center, bounds.extents.magnitude);
+        LogColliderObstacleRegistration(collider, obstacleId, "circle", bounds);
+        return obstacleId;
+    }
+
+    private static void LogColliderObstacleRegistration(Collider collider, int obstacleId, string shape, Bounds bounds)
+    {
+        if (!GameDebugSettings.IsEnabled(DebugCategory.Move))
+            return;
+
+        Debug.Log(
+            $"[FlowColliderObstacle] register id={obstacleId} shape={shape} type={collider.GetType().Name} " +
+            $"name={collider.gameObject.name} path={BuildHierarchyPath(collider.transform)} layer={collider.gameObject.layer} " +
+            $"tag={collider.tag} enabled={collider.enabled} trigger={collider.isTrigger} active={collider.gameObject.activeInHierarchy} " +
+            $"center={bounds.center} size={bounds.size}");
+    }
+
+    private static string BuildHierarchyPath(Transform transform)
+    {
+        if (transform == null)
+            return "null";
+
+        System.Collections.Generic.Stack<string> parts = new System.Collections.Generic.Stack<string>();
+        Transform current = transform;
+        while (current != null)
+        {
+            parts.Push(current.name);
+            current = current.parent;
+        }
+
+        return string.Join("/", parts);
     }
 
     public void UnregisterObstacle(int id)
     {
-        Coordinator.UnregisterObstacle(id);
         FlowFieldCrowdMovementSystem.UnregisterObstacle(id);
     }
 
     public void SetAgentIgnoreCollision(int id, bool ignore)
     {
-        Coordinator.SetAgentIgnoreCollision(id, ignore);
         FlowFieldCrowdMovementSystem.SetAgentIgnoreCollision(id, ignore);
     }
 
     public void SetAgentLeader(int id, bool isLeader)
     {
-        Coordinator.SetAgentLeader(id, isLeader);
         FlowFieldCrowdMovementSystem.SetAgentLeader(id, isLeader);
     }
 
     public void SetAgentGroup(int id, int groupId)
     {
-        Coordinator.SetAgentGroup(id, groupId);
         FlowFieldCrowdMovementSystem.SetAgentGroup(id, groupId);
     }
 
     public void SetAgentState(int id, GroupMoveCoordinator.AgentState state)
     {
-        Coordinator.SetAgentState(id, state);
         FlowFieldCrowdMovementSystem.SetAgentState(id, state);
     }
 
     public void InvalidateNavigation(string reason = null)
     {
         FlowFieldCrowdMovementSystem.MarkWorldDirty(reason);
+    }
+
+    public void PrewarmNavigationWorlds()
+    {
+        FlowFieldCrowdMovementSystem.PrewarmNavigationWorlds();
     }
 
     public bool IsPositionOccupiedByAgent(Vector3 position, float requiredDistance)
@@ -265,64 +271,6 @@ public class GroupMoveManager : MonoBehaviour
 
     private void OnDrawGizmos()
     {
-        if (Coordinator == null) return;
-
-        foreach (var kvp in Coordinator.AllAgents)
-        {
-            var agent = kvp.Value;
-            bool isLeader = agent.IsLeader;
-
-            Gizmos.color = isLeader ? Color.yellow : Color.white;
-            DrawCircle(agent.Position, agent.EquilibriumRadius, 24);
-
-            Gizmos.color = isLeader ? new Color(1f, 0.6f, 0f, 0.8f) : new Color(0.5f, 0.5f, 1f, 0.6f);
-            DrawCircle(agent.Position, agent.MaxInfluenceRange, 32);
-        }
-
-        foreach (var kvp in Coordinator.DebugData)
-        {
-            var info = kvp.Value;
-            var pos = info.Position;
-
-            if (info.LJForce.sqrMagnitude > 0.01f)
-            {
-                Gizmos.color = Color.magenta;
-                Gizmos.DrawLine(pos, pos + info.LJForce * 0.3f);
-            }
-
-            if (info.ObstacleForce.sqrMagnitude > 0.01f)
-            {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawLine(pos, pos + info.ObstacleForce * 0.3f);
-            }
-
-            if (info.DesiredVelocity.sqrMagnitude > 0.01f)
-            {
-                Gizmos.color = Color.blue;
-                Gizmos.DrawLine(pos, pos + info.DesiredVelocity.normalized * 1f);
-            }
-        }
-
         FlowFieldCrowdMovementSystem.DrawGizmos();
-    }
-
-    private static void DrawCircle(Vector3 center, float radius, int segments)
-    {
-        float step = 360f / segments;
-        Vector3 prev = center + new Vector3(radius, 0, 0);
-        for (int i = 1; i <= segments; i++)
-        {
-            float angle = i * step * Mathf.Deg2Rad;
-            Vector3 next = center + new Vector3(Mathf.Cos(angle) * radius, 0, Mathf.Sin(angle) * radius);
-            Gizmos.DrawLine(prev, next);
-            prev = next;
-        }
-    }
-
-    private static void DrawArrowHead(Vector3 tip, Vector3 dir, float size)
-    {
-        Vector3 right = Vector3.Cross(Vector3.up, dir).normalized;
-        Gizmos.DrawLine(tip, tip - dir * size + right * size * 0.5f);
-        Gizmos.DrawLine(tip, tip - dir * size - right * size * 0.5f);
     }
 }

@@ -361,11 +361,7 @@ public class MAEntity : CompCreature, IEntityContext
                 {
                     if (!TryFaceAttackTarget())
                     {
-                        Vector3 moveDirection = moveComp.GetNavDirection();
-                        if (moveDirection.sqrMagnitude <= 0.001f && Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrainForDirection)
-                        {
-                            moveDirection = new Vector3(brainMove.x, 0f, brainMove.y);
-                        }
+                        Vector3 moveDirection = ResolveMoveFacingDirection(brainMove);
 
                         if (moveDirection.sqrMagnitude > 0.001f)
                         {
@@ -399,6 +395,17 @@ public class MAEntity : CompCreature, IEntityContext
                 _targetRotation = null;
             }
         }
+    }
+
+    private Vector3 ResolveMoveFacingDirection(Vector2 brainMove)
+    {
+        if (Brain is AAAGame.Scripts.Entity.PlayerBrain)
+        {
+            Vector3 inputDirection = new Vector3(brainMove.x, 0f, brainMove.y);
+            return inputDirection.sqrMagnitude > 0.001f ? inputDirection : Vector3.zero;
+        }
+
+        return moveComp.GetNavDirection();
     }
 
     private bool TryFaceAttackTarget()

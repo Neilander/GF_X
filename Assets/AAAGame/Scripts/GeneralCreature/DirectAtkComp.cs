@@ -334,6 +334,7 @@ public class DirectAtkComp : IAtkComp
         _movementLockedByThisAttack = ShouldLockMoveDuringAttack();
         if (_movementLockedByThisAttack)
             _ctx.LockComp(_ctx.MoveComp, this);
+        FlowFieldCrowdMovementSystem.LogCombatClusterDiagnostic(_ctx, _lockedTarget, _movementLockedByThisAttack, range);
 
         EnterState(AtkState.WindUp);
         NotifyAttackStarted(_lockedTarget);

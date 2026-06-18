@@ -33,12 +33,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain
 
             if (distToEnemy > AttackRange)
             {
-                // ClusterCalculator 需要 Transform，仅真实实体使用
-                Vector3 atkPos = target.Position;
-                if (target is CompCreature targetCC && self is MAEntity selfMA)
-                    atkPos = ClusterCalculator.GetClusteredPosition(targetCC.transform, selfMA, AttackRange * 0.8f);
-
-                self.MoveComp.MoveTo(atkPos);
+                self.MoveComp.MoveTo(target.Position);
             }
             else
             {
@@ -57,11 +52,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain
             {
                 _followTimer = 0f;
 
-                Vector3 followPos = followTarget.Position;
-                if (followTarget is CompCreature followCC && self is MAEntity selfMA)
-                    followPos = ClusterCalculator.GetClusteredPosition(followCC.transform, selfMA, FollowDistance);
-
-                self.MoveComp.MoveTo(followPos);
+                self.MoveComp.MoveTo(followTarget.Position);
             }
             return;
         }

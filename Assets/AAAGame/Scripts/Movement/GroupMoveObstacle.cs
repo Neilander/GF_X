@@ -17,18 +17,7 @@ public class GroupMoveObstacle : MonoBehaviour
             return;
         }
 
-        _obstacleId = col.GetInstanceID();
-
-        if (col is BoxCollider)
-        {
-            GroupMoveManager.Instance.RegisterBoxObstacle(col);
-        }
-        else
-        {
-            var bounds = col.bounds;
-            GroupMoveManager.Instance.RegisterCircleObstacle(
-                _obstacleId, bounds.center, bounds.extents.magnitude);
-        }
+        _obstacleId = GroupMoveManager.Instance.RegisterColliderObstacle(col);
     }
 
     private void OnDestroy()

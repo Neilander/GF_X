@@ -86,6 +86,11 @@ public class CharacterMoveComp : IMoveComp
                     $"[{_ctx.CharacterKey}] Flow steering rejected target={_targetPos.Value} pos={_ctx.Position} speed={speed:F3}");
             }
         }
+        else if (FlowFieldCrowdMovementSystem.TryGetIdleOverlapRecoveryVelocity(_ctx, speed, out Vector3 recoveryVelocity))
+        {
+            finalVelocity = recoveryVelocity;
+            _navDirection = finalVelocity.normalized;
+        }
 
         _ctx.MoveExecutor.SetInput(finalVelocity);
         _isMoving = finalVelocity.sqrMagnitude > 0.0001f;
@@ -114,6 +119,7 @@ public class CharacterMoveComp : IMoveComp
     }
 
     public bool IsMoving => _isMoving;
+    public bool HasNavigationTarget => _targetPos.HasValue;
 
     private float ResolveArriveDistance()
     {

@@ -32,3 +32,17 @@ MonoBehaviour:
   FollowLeashRange: 30
   FollowDeadZoneRange: 5
   FollowInnerDeadZoneRange: 2
+  NavigationCellSize: 0
+  NavigationBoundsPadding: 0.6
+  SectorSizeInCells: 12
+  PortalNarrowWidthCells: 2
+  FlowTileCacheLimit: 256
+  CrowdPredictionTime: 0.35
+  LaneBiasStrength: 0.22
+  BoundaryAvoidanceWeight: 1
+  BottleneckSwitchCooldown: 0.35
+  BottleneckWaitTimeout: 1.25
+  BottleneckInfluenceDistance: 2.2
+  BottleneckClearanceHoldTime: 0.45
+  DrawNavigationDebug: 1
+  DrawFlowFieldDebug: 0
