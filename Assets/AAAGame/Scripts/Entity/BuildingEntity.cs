@@ -60,6 +60,7 @@ public partial class BuildingEntity : MAEntity
     private MinimapReportComponent _minimapReportComponent;
     private BuildingExtraProps _extraProps; // 引用自 GlobalBuffManager 的中央字典，升级场景同 id 共享同对象
     private readonly List<int> _registeredFlowObstacleIds = new List<int>();
+    protected override bool UsesFlowNavigationAgent => false;
 
     protected override void RefreshCharacterData(object userData)
     {
@@ -241,7 +242,10 @@ public partial class BuildingEntity : MAEntity
     private void RegisterFlowFieldObstacles()
     {
         if (!GroupMoveManager.HasInstance)
+        {
+            Log.Error("BuildingEntity.RegisterFlowFieldObstacles failed: GroupMoveManager is not available. building={0} instance={1}", CharacterKey, BuildingInstanceId);
             return;
+        }
 
         if (_registeredFlowObstacleIds.Count > 0)
             throw new System.InvalidOperationException($"BuildingEntity.RegisterFlowFieldObstacles failed: stale obstacle ids. building={CharacterKey} count={_registeredFlowObstacleIds.Count}.");

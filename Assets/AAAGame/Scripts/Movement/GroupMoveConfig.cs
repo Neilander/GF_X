@@ -1,39 +1,14 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
-/// 群体移动协调器的全部可调参数。
-/// SO 资产由 GroupMoveManager 引用，运行时同步给 GroupMoveCoordinator。
+/// Flow field 群体移动和士兵 AI 的可调参数。
+/// SO 资产由 GroupMoveManager 引用，运行时同步给 FlowFieldCrowdMovementSystem。
 /// </summary>
 [CreateAssetMenu(fileName = "GroupMoveConfig", menuName = "Movement/GroupMoveConfig")]
 public class GroupMoveConfig : ScriptableObject
 {
-    [Header("单位 LJ 参数")]
-    public float UnitRepulsionStrength = 50f;
-    public float UnitAttractionStrength = 2f;
-    public float UnitEquilibriumRadius = 60f / GroupMoveCoordinator.PX_SCALE;
-    public float UnitMaxInfluenceRange = 370f / GroupMoveCoordinator.PX_SCALE;
-
-    [Header("领袖 LJ 参数")]
-    public float LeaderRepulsionStrength = 50f;
-    public float LeaderAttractionStrength = 2f;
-    public float LeaderEquilibriumRadius = 105f / GroupMoveCoordinator.PX_SCALE;
-    public float LeaderMaxInfluenceRange = 370f / GroupMoveCoordinator.PX_SCALE;
-
-    [Header("敌对阵营 LJ 参数")]
-    public float EnemyRepulsionStrength = 50f;
-    public float EnemyAttractionStrength = 10f;
-    public float EnemyEquilibriumRadius = 1.5f;
-    public float EnemyMaxInfluenceRange = 15f;
-
-    [Header("障碍物")]
-    public float ObstacleWeight = 100f;
-
-    [Header("移动阈值")]
-    [Tooltip("没有单位速度时使用的兜底阈值")]
-    public float MoveThreshold = 0.5f;
-    [Tooltip("按单位世界速度的倍率计算低速忽略阈值。1.5 = 速度的 150%")]
-    public float MoveThresholdSpeedRatio = 1.5f;
-    [Tooltip("最终安全速度平滑系数。1=不平滑，越低越稳但响应越慢")]
+    [Header("移动")]
+    [Tooltip("flow 方向和直接路径方向的混合系数。1=更贴近直接路径，越低越服从 flow。")]
     [Range(0.01f, 1f)]
     public float VelocitySmoothing = 0.35f;
 
@@ -49,12 +24,17 @@ public class GroupMoveConfig : ScriptableObject
     public float FollowLeashRange = 30f;
 
     [Header("跟随死区")]
-    [Tooltip("远死区宽度。死区外圈半径 = LeaderEquilibriumRadius + 此值。")]
+    [Tooltip("领袖周围的基础停靠半径。")]
+    [Min(0f)]
+    public float FollowBaseStopRadius = 1.5f;
+    [Tooltip("远死区宽度。死区外圈半径 = FollowBaseStopRadius + 此值。")]
     public float FollowDeadZoneRange = 12f;
-    [Tooltip("近死区宽度。近死区半径 = LeaderEquilibriumRadius + 此值。在近死区内 desiredVel = 0。")]
+    [Tooltip("近死区宽度。近死区半径 = FollowBaseStopRadius + 此值。在近死区内 desiredVel = 0。")]
     public float FollowInnerDeadZoneRange = 2f;
 
     [Header("Flow Field")]
+    [Tooltip("启用后必须由 FlowNavigationGridSource 提供第一手导航格；缺失时明确报错，不回退到 Unity NavMesh。")]
+    public bool RequireAuthoredNavigationSource = false;
     [Tooltip("导航底图格子大小。<= 0 时按 NavMesh Agent 半径自动推导。")]
     [Min(0f)]
     public float NavigationCellSize = 0f;
@@ -67,12 +47,20 @@ public class GroupMoveConfig : ScriptableObject
     [Tooltip("窄口判定：portal 宽度小于等于该格数时启用瓶颈调度。")]
     [Min(1)]
     public int PortalNarrowWidthCells = 2;
+    [Tooltip("宽 portal window 超过该格数时拆成多个 graph 节点，避免大门/宽边界只有一个中心点导致 A* 粒度过粗。")]
+    [Min(2)]
+    public int PortalMaxWindowWidthCells = 6;
     [Tooltip("flow tile 缓存上限。")]
     [Min(16)]
     public int FlowTileCacheLimit = 256;
     [Tooltip("运行时障碍/CostStamp 脏数据每帧重建预算，单位毫秒。")]
     [Min(0.05f)]
     public float RuntimeRebuildBudgetMilliseconds = 1.5f;
+    [Tooltip("根据相邻 NavMesh 采样点高度差给 CostField 增加坡度成本。")]
+    public bool UseNavMeshSlopeCost = true;
+    [Tooltip("每 1 个格子尺寸的高度差转换成多少额外 cost。")]
+    [Min(0f)]
+    public float SlopeCostPerCellHeight = 8f;
 
     [Header("Crowd Steering")]
     [Tooltip("邻居预测时间，越大越会提前避让。")]

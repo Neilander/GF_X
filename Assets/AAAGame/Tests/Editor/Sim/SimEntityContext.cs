@@ -5,7 +5,7 @@ using AAAGame.Scripts.BuffSystem;
 /// <summary>
 /// 纯数据实体上下文：不依赖 Unity MonoBehaviour，用于测试。
 /// </summary>
-public class SimEntityContext : IEntityContext
+public class SimEntityContext : IEntityContext, ITargetable
 {
     public Vector3 Position { get; set; }
     public Quaternion Rotation { get; set; } = Quaternion.identity;
@@ -13,8 +13,10 @@ public class SimEntityContext : IEntityContext
     public bool Alive { get; set; } = true;
     public string CharacterKey { get; protected set; } = "TestUnit";
     public CharacterDataDetail CharacterData { get; protected set; }
+    public GameObject Gmo => null;
 
     public HealthContainer Health { get; private set; } = new HealthContainer();
+    public Fix64 HealthValue => Health.currentHealth;
 
     public IControlBrain Brain { get; set; }
 
@@ -167,5 +169,18 @@ public class SimEntityContext : IEntityContext
         {
             sim.Position = Position;
         }
+    }
+
+    public bool CanBeSelected()
+    {
+        return Alive;
+    }
+
+    public void InSelection(ISelector selector)
+    {
+    }
+
+    public void DeSelection()
+    {
     }
 }

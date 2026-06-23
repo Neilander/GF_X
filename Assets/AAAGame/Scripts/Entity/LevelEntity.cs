@@ -5,8 +5,6 @@ using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using GiantGrey.TileWorldCreator;
 using UnityEngine;
-using UnityEngine.AI;
-using Unity.AI.Navigation;
 using UnityGameFramework.Runtime;
 
 public partial class LevelEntity : EntityBase
@@ -16,7 +14,6 @@ public partial class LevelEntity : EntityBase
     private const float CaptureVfxBaseDiameter = 12f;
 
     private TileWorldCreatorManager tileWorldCreatorManager;
-    private NavMeshSurface[] _navMeshSurfaces;
     private int m_RuntimeInitializationVersion;
     private bool m_HiddenDuringRuntimeInitialization;
 
@@ -70,8 +67,6 @@ public partial class LevelEntity : EntityBase
 
         int initVersion = ++m_RuntimeInitializationVersion;
 
-        _navMeshSurfaces = GetComponentsInChildren<NavMeshSurface>();
-
         CollectStrongholds();
         SubscribeRuntimeLayerRules();
         if (m_HiddenDuringRuntimeInitialization)
@@ -98,7 +93,6 @@ public partial class LevelEntity : EntityBase
         }
         ClearEnemyStrongholdFogEffects();
         tileWorldCreatorManager = null;
-        _navMeshSurfaces = null;
         IsRuntimeInitializationCompleted = false;
         m_HiddenDuringRuntimeInitialization = false;
         RuntimeInitializationCompleted = null;
@@ -136,24 +130,9 @@ public partial class LevelEntity : EntityBase
             }
 
             SyncEnemyStrongholdFogEffects();
-            if (_rebakeRequestedDuringRuntimeInitialization && _rebakeTimer >= 0f)
-            {
-                Debug.Log(
-                    $"[LevelEntity] Runtime init waiting pending rebake before prewarm timer={_rebakeTimer:F3}");
-                await UniTask.WaitUntil(() =>
-                    !IsRuntimeInitializationActive(initVersion)
-                    || (!_rebakeRequestedDuringRuntimeInitialization && _rebakeTimer < 0f));
-                if (!IsRuntimeInitializationActive(initVersion))
-                {
-                    return;
-                }
-            }
 
             if (GroupMoveManager.HasInstance)
             {
-                Debug.Log(
-                    $"[LevelEntity] Runtime init prewarm before complete afterRebake rebakeTimer={_rebakeTimer:F3} " +
-                    $"rebakeRequested={_rebakeRequestedDuringRuntimeInitialization}");
                 GroupMoveManager.Instance.PrewarmNavigationWorlds();
             }
             IsRuntimeInitializationCompleted = true;
@@ -170,23 +149,9 @@ public partial class LevelEntity : EntityBase
         return m_RuntimeInitializationVersion == initVersion && activeLevelEntity == this;
     }
 
-    private float _rebakeTimer = -1f;
-    private bool _rebakeRequestedDuringRuntimeInitialization;
-    private const float RebakeDelay = 0.5f;
-
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
-
-        // 延迟烘焙：最后一次请求后 0.5 秒执�?
-        if (_rebakeTimer >= 0f)
-        {
-            _rebakeTimer -= realElapseSeconds;
-            if (_rebakeTimer < 0f)
-            {
-                DoRebakeNavMesh();
-            }
-        }
 
 #if UNITY_EDITOR
         if (Input.GetKeyDown(KeyCode.T))
@@ -205,81 +170,25 @@ public partial class LevelEntity : EntityBase
 #endif
     }
 
-    /// <summary>
-    /// 请求烘焙 NavMesh。不会立即执行，而是等最后一次请求后 0.5 秒再烘焙
-    /// 多次调用会重置计时器，确保批量建造只烘焙一次
-    /// </summary>
-    public static void RequestRebakeNavMesh()
+    private static void RefreshAllBuildingFlowFieldObstacles()
     {
-        if (activeLevelEntity == null)
-            return;
-
-        activeLevelEntity._rebakeTimer = RebakeDelay;
-        if (!activeLevelEntity.IsRuntimeInitializationCompleted)
-            activeLevelEntity._rebakeRequestedDuringRuntimeInitialization = true;
-        Debug.Log(
-            $"[LevelEntity] RequestRebakeNavMesh completed={activeLevelEntity.IsRuntimeInitializationCompleted} " +
-            $"timer={activeLevelEntity._rebakeTimer:F3} duringInit={activeLevelEntity._rebakeRequestedDuringRuntimeInitialization}");
-    }
-
-    private void DoRebakeNavMesh()
-    {
-        if (_navMeshSurfaces == null)
+        if (!GroupMoveManager.HasInstance)
         {
-            Debug.LogWarning("[LevelEntity] _navMeshSurfaces == null，烘焙跳过");
+            Log.Error("LevelEntity.RefreshAllBuildingFlowFieldObstacles failed: GroupMoveManager is not available.");
             return;
         }
 
-        Debug.Log(
-            $"[LevelEntity] DoRebakeNavMesh begin surfaces={_navMeshSurfaces.Length} " +
-            $"duringInit={_rebakeRequestedDuringRuntimeInitialization} completed={IsRuntimeInitializationCompleted}");
-        for (int i = 0; i < _navMeshSurfaces.Length; i++)
+        BuildingEntity[] buildings = FindObjectsByType<BuildingEntity>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < buildings.Length; i++)
         {
-            var s = _navMeshSurfaces[i];
-            s.BuildNavMesh();
+            BuildingEntity building = buildings[i];
+            if (building == null || !building.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            building.RefreshFlowFieldObstacles();
         }
-
-        bool shouldPrewarmAfterRebake = IsRuntimeInitializationCompleted;
-        _rebakeRequestedDuringRuntimeInitialization = false;
-
-        if (GroupMoveManager.HasInstance)
-        {
-            GroupMoveManager.Instance.InvalidateNavigation("[LevelEntity] DoRebakeNavMesh completed");
-            if (shouldPrewarmAfterRebake)
-                GroupMoveManager.Instance.PrewarmNavigationWorlds();
-        }
-
-        Debug.Log(
-            $"[LevelEntity] DoRebakeNavMesh end prewarmAfter={shouldPrewarmAfterRebake} " +
-            $"completed={IsRuntimeInitializationCompleted}");
-
-        EnablePlayerNavMeshBypass();
-    }
-
-    /// <summary>
-    /// 烘焙完后让玩家可以"无视 NavMesh 自由移动"，直到自己走回 NavMesh 上自动恢复。
-    /// 用于建造时玩家被新建筑围在 NavMesh 之外的情况。
-    /// </summary>
-    private static void EnablePlayerNavMeshBypass()
-    {
-        var player = EntityRegistry.Player;
-        if (player == null)
-        {
-            return;
-        }
-        if (!(player is MAEntity mae) || mae == null)
-        {
-            return;
-        }
-
-        var executor = mae.GetComponent<MoveExecutor>();
-        if (executor == null)
-        {
-            Debug.LogWarning("[LevelEntity] NavMesh bypass 触发: 玩家无 MoveExecutor, 跳过");
-            return;
-        }
-
-        executor.EnableBypassUntilOnNavMesh();
     }
 
     private void SubscribeRuntimeLayerRules()
@@ -516,8 +425,7 @@ public partial class LevelEntity : EntityBase
             }
         }
 
-        // 所有初始建筑建完后请求烘焙（延迟 0.5 秒）
-        RequestRebakeNavMesh();
+        RefreshAllBuildingFlowFieldObstacles();
     }
 
     private async UniTask SpawnPresetEntitiesAsync(int initVersion)
@@ -626,7 +534,7 @@ public partial class LevelEntity : EntityBase
             }
         }
 
-        RequestRebakeNavMesh();
+        RefreshAllBuildingFlowFieldObstacles();
     }
 
     private int ResolveOwnerFactionIdByPosition(Vector3 position)

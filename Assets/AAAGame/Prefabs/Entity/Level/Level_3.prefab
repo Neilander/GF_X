@@ -161,6 +161,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 345754361201345211}
+  - component: {fileID: 1598038690203265399}
   m_Layer: 0
   m_Name: Level_3
   m_TagString: Untagged
@@ -187,6 +188,24 @@ Transform:
   - {fileID: 139167213586444979}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1598038690203265399
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9013978847504898741}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5cce46c185a1774880f4425c2a2ef63, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _grid: {fileID: 11400000, guid: 35c5ab12e7b0420428cebe0212ef1213, type: 2}
+  _applyOnEnable: 1
+  _applyInEditMode: 0
+  _clearOnDisable: 1
+  _drawGizmos: 1
+  _maxGizmoCells: 4096
 --- !u!1001 &722967256004014581
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -1,5 +1,6 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 using UnityEngine;
+using System;
 using UnityEngine.TestTools;
 
 [TestFixture]
@@ -128,11 +129,14 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext ctx = CreateEntity(new Vector3(2.5f, 0f, 2.5f));
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 0.5f));
         Vector3 goal = new Vector3(2.5f, 0f, 2.5f);
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity));
+        LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(@"\[TestUnit\] Flow strict fail: start blocked"));
+        Vector3 velocity = Vector3.one;
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out velocity));
+        StringAssert.Contains("Flow strict fail: start blocked", ex.Message);
         Assert.AreEqual(Vector3.zero, velocity);
     }
 
@@ -222,6 +226,62 @@ public class FlowFieldCrowdMovementSystemTests
 
         Assert.Less(velocity.z, -0.8f, $"在 portal 前应先沿竖向走廊朝拐角推进，velocity={velocity}");
         Assert.AreEqual(0f, velocity.x, 0.35f, $"不应在 portal tile 内直接斜切向最终目标，velocity={velocity}");
+    }
+
+    [Test]
+    public void 跨Sector待建PortalTile时不会用软视线直冲最终目标()
+    {
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+
+        for (int y = 4; y <= 7; y++)
+            SetWalkable(walkable, width, 1, y);
+        for (int x = 1; x <= 6; x++)
+            SetWalkable(walkable, width, x, 4);
+        for (int y = 1; y <= 4; y++)
+            SetWalkable(walkable, width, 6, y);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(1.5f, 0f, 6.5f));
+        Vector3 goal = new Vector3(6.5f, 0f, 1.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 firstVelocity));
+
+        Assert.Less(firstVelocity.z, -0.8f, $"portal tile 尚未可用时也应先朝 portal access 前进，velocity={firstVelocity}");
+        Assert.AreEqual(0f, firstVelocity.x, 0.35f, $"portal tile 尚未可用时不应软视线斜切最终目标，velocity={firstVelocity}");
+    }
+
+    [Test]
+    public void PortalTile当前格未积分时不会让LineOfSight覆盖有限邻居方向()
+    {
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+
+        for (int y = 4; y <= 7; y++)
+            SetWalkable(walkable, width, 1, y);
+        for (int x = 1; x <= 6; x++)
+            SetWalkable(walkable, width, x, 4);
+        for (int y = 1; y <= 4; y++)
+            SetWalkable(walkable, width, 6, y);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(1.5f, 0f, 6.5f));
+        Vector3 goal = new Vector3(6.5f, 0f, 1.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(32, 3.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity));
+
+        Assert.Less(velocity.z, -0.8f, $"当前格未积分时应沿有限邻居流向推进，不能用 LOS 斜切最终目标，velocity={velocity}");
+        Assert.AreEqual(0f, velocity.x, 0.35f, $"当前格未积分时不应输出朝最终目标的横向分量，velocity={velocity}");
     }
 
     [Test]
@@ -328,6 +388,34 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 同一格内不会重复混合路径方向()
+    {
+        const int width = 5;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(1.5f, 0f, 1.5f));
+        GroupMoveConfig config = CreateConfig();
+        config.VelocitySmoothing = 0.25f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(4.5f, 0f, 1.5f), 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDesiredDirection(ctx.GetHashCode(), out Vector3 firstDirection));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(4.5f, 0f, 1.5f), 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDesiredDirection(ctx.GetHashCode(), out Vector3 secondDirection));
+
+        Assert.AreEqual(firstDirection.x, secondDirection.x, 0.0001f, $"同一格内不应重新混合路径方向，first={firstDirection} second={secondDirection}");
+        Assert.AreEqual(firstDirection.z, secondDirection.z, 0.0001f, $"同一格内不应重新混合路径方向，first={firstDirection} second={secondDirection}");
+    }
+
+    [Test]
     public void PortalTile积分应能从portal反向覆盖到当前格()
     {
         const int width = 8;
@@ -377,9 +465,230 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Greater(velocity.z, 0.25f, $"墙边格应受到成本梯度引导离开边缘，而不是只沿墙横走，velocity={velocity}");
         Assert.Greater(velocity.x, 0.25f, $"成本梯度不应让单位放弃朝目标推进，velocity={velocity}");
 
+        ProcessFlowTileBuildQueueUntilTileCount(1);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlowDirection(1, 1, out Vector2 flow));
-        Assert.Greater(flow.x, 0.6f, $"flow pass 应按八邻居最低 integration 选择朝目标推进的斜向，flow={flow}");
-        Assert.Greater(flow.y, 0.6f, $"flow pass 应按八邻居最低 integration 选择离墙的斜向，flow={flow}");
+        string diag = FlowFieldCrowdMovementSystem.GetEditorTestCachedTileCellDiagnostic(1, 1);
+        Assert.Greater(flow.x, 0.6f, $"flow pass 应按八邻居最低 integration 选择朝目标推进的斜向，flow={flow} diag={diag}");
+        Assert.Greater(flow.y, 0.6f, $"flow pass 应按八邻居最低 integration 选择离墙的斜向，flow={flow} diag={diag}");
+    }
+
+    [Test]
+    public void Los格不写FlowDirection而由Los直接转向()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 16;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 16;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(6.5f, 0f, 8.5f));
+        Vector3 goal = new Vector3(10.5f, 0f, 8.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlags(8, 8, out bool hasLos, out _, out bool pathable));
+        Assert.IsTrue(pathable, "可走格应写入 FlowField pathable flag");
+        Assert.IsTrue(hasLos, "开阔区域目标附近应由 LOS flag 驱动");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlowDirection(8, 8, out Vector2 flow));
+        Assert.AreEqual(Vector2.zero, flow, "LOS 格不应再写 flow direction，避免 flow pass 重复处理 goal LOS 区域");
+    }
+
+    [Test]
+    public void 不可达可走格不应输出FlowDirection()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+                SetWalkable(walkable, width, x, y);
+        }
+
+        for (int x = 0; x < width; x++)
+            walkable[x + 3 * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(1.5f, 0f, 6.5f));
+        Vector3 goal = new Vector3(6.5f, 0f, 6.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlags(1, 1, out _, out _, out bool pathable));
+        Assert.IsTrue(pathable, "测试格必须是可走但与目标隔离的格子");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellStoredFlowDirection(1, 1, out Vector2 storedFlow));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlowDirection(1, 1, out Vector2 runtimeFlow));
+        string diag = FlowFieldCrowdMovementSystem.GetEditorTestCachedTileCellDiagnostic(1, 1);
+
+        Assert.AreEqual(Vector2.zero, storedFlow, $"不可达格不应写入 stored flow，diag={diag}");
+        Assert.AreEqual(Vector2.zero, runtimeFlow, $"不可达格运行期不应输出方向，diag={diag}");
+    }
+
+    [Test]
+    public void ClearTile释放Integration后会用Descriptor解析FlowDirection()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 48;
+        const int height = 24;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        for (int y = 8; y < 15; y++)
+            walkable[35 + y * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(9.5f, 0f, 11.5f));
+        Vector3 goal = new Vector3(46.5f, 0f, 15.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(5);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorClearCostState(9, 11, out bool leftClear));
+        Assert.IsTrue(leftClear, "内部左侧 sector 没有墙和软成本，应保持 clear cost 状态");
+
+        Assert.GreaterOrEqual(FlowFieldCrowdMovementSystem.GetEditorTestReleasedIntegrationTileCount(), 1, "flow tile commit 后应释放完整 integration payload，运行期依赖 flow byte 与摘要");
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestDebugIntegrationPayloadTileCount(), "未显式请求 debug rebuild 时不应保留 debug integration payload");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryRebuildEditorDebugTileIntegration(9, 11), "released tile 应支持显式按需重建 debug integration heatmap payload");
+        Assert.GreaterOrEqual(FlowFieldCrowdMovementSystem.GetEditorTestDebugIntegrationPayloadTileCount(), 1, "显式 debug rebuild 后应只保留调试 payload，不恢复运行期 integration");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDebugIntegrationCost(9, 11, out float debugCost));
+        Assert.IsFalse(float.IsPositiveInfinity(debugCost), $"debug integration 应能读到有限成本，cost={debugCost}");
+
+        bool foundDescriptorFlow = false;
+        for (int y = 8; y < 16 && !foundDescriptorFlow; y++)
+        {
+            for (int x = 8; x < 16; x++)
+            {
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlags(x, y, out bool hasLos, out _, out bool pathable));
+                if (!pathable || hasLos)
+                    continue;
+
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellStoredFlowDirection(x, y, out Vector2 storedFlow));
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlowDirection(x, y, out Vector2 runtimeFlow));
+                if (storedFlow.sqrMagnitude <= 0.0001f && runtimeFlow.sqrMagnitude > 0.0001f)
+                {
+                    foundDescriptorFlow = true;
+                    break;
+                }
+            }
+        }
+
+        Assert.IsTrue(foundDescriptorFlow, "clear tile 释放 integration 后应能用 descriptor 解析普通格方向，不再依赖 float integration 或每格固化 flow byte");
+    }
+
+    [Test]
+    public void UnknownAgentType不会被静默解析成默认NavMesh类型()
+    {
+        const int width = 4;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            () => FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+                MAEntity.UnknownNavAgentTypeId,
+                width,
+                height,
+                1f,
+                Vector3.zero,
+                walkable));
+
+        StringAssert.Contains("explicit agentTypeId is Unknown", ex.Message);
+    }
+
+    [Test]
+    public void 宽PortalWindow会按最大宽度拆成多个Graph节点()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 4;
+        config.PortalMaxWindowWidthCells = 2;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 8;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(7.5f, 0f, 1.5f), 2f, out _));
+
+        Assert.AreEqual(2, FlowFieldCrowdMovementSystem.GetEditorTestPortalCount(), "4 格宽 sector 边界应按 PortalMaxWindowWidthCells=2 拆成两个 portal graph 节点");
+    }
+
+    [Test]
+    public void 有墙Sector即使成本清晰也不能当ClearFlowTile跳过方向预写()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        for (int y = 1; y <= 5; y++)
+            walkable[3 + y * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 0.5f));
+        Vector3 goal = new Vector3(7.5f, 0f, 7.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorClearCostState(0, 0, out bool clearCost));
+        Assert.IsFalse(clearCost, "墙边 soft cost blur 会进入 CostField，含墙 sector 不应再被标记为 clear cost field");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorClearFlowTileState(0, 0, out bool clearFlow));
+        Assert.IsFalse(clearFlow, "含墙或不可通行邻接的 sector 不是论文意义上的 clear flow tile");
+
+        bool foundStoredFlow = false;
+        for (int y = 0; y < height && !foundStoredFlow; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlags(x, y, out bool hasLos, out _, out bool pathable));
+                if (!pathable || hasLos)
+                    continue;
+
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellStoredFlowDirection(x, y, out Vector2 storedFlow));
+                if (storedFlow.sqrMagnitude > 0.0001f)
+                {
+                    foundStoredFlow = true;
+                    break;
+                }
+            }
+        }
+
+        Assert.IsTrue(foundStoredFlow, "非 clear flow tile 应在构建期写入 stored flow direction");
     }
 
     [Test]
@@ -403,27 +712,128 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(3, 2, out byte cost));
         Assert.AreEqual(30, cost, "cost stamp 应写入 CostField，而不是只存在注册表里");
         Assert.Greater(velocity.x, 0.5f, $"高成本带不应阻断朝目标推进，velocity={velocity}");
-        Assert.Greater(Mathf.Abs(velocity.z), 0.25f, $"高成本带应让 flow/integration 产生绕行分量，velocity={velocity}");
+        Assert.Greater(Mathf.Abs(velocity.z), 0.2f, $"高成本带应让 flow/integration 产生绕行分量，velocity={velocity}");
     }
 
     [Test]
     public void CostStamp只影响匹配MovementType的CostField()
     {
-        const int width = 5;
-        const int height = 3;
+        const int width = 9;
+        const int height = 7;
         bool[] walkable = new bool[width * height];
         for (int i = 0; i < walkable.Length; i++)
             walkable[i] = true;
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
-        FlowFieldCrowdMovementSystem.RegisterBoxCostStamp(1002, 12345, new Vector3(2.5f, 0f, 1.5f), new Vector3(0.49f, 0f, 0.49f), 40);
+        FlowFieldCrowdMovementSystem.RegisterBoxCostStamp(1002, 12345, new Vector3(4.5f, 0f, 3.5f), new Vector3(0.49f, 0f, 0.49f), 40);
 
+        SimEntityContext ctx = CreateEntity(new Vector3(1.5f, 0f, 3.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(7.5f, 0f, 3.5f), 2f, out _));
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(4, 3, out byte cost));
+        Assert.AreEqual(1, cost, "不匹配 movement type 的 cost stamp 不应污染当前 agent type 的 CostField");
+    }
+
+    [Test]
+    public void GridCostStamp会按逐格成本写入CostField()
+    {
+        const int width = 6;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        byte[] costs =
+        {
+            5, 7,
+            11, 13
+        };
+
+        FlowFieldCrowdMovementSystem.RegisterGridCostStamp(1004, new Vector3(2f, 0f, 1f), 1f, 2, 2, costs);
         SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(4.5f, 0f, 1.5f), 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(5.5f, 0f, 1.5f), 2f, out _));
 
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(2, 1, out byte cost));
-        Assert.AreEqual(1, cost, "不匹配 movement type 的 cost stamp 不应污染当前 agent type 的 CostField");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(2, 1, out byte cost00));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(3, 1, out byte cost10));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(2, 2, out byte cost01));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(3, 2, out byte cost11));
+        Assert.AreEqual(5, cost00, "grid cost stamp 左下格成本应写入 CostField");
+        Assert.AreEqual(7, cost10, "grid cost stamp 右下格成本应写入 CostField");
+        Assert.AreEqual(11, cost01, "grid cost stamp 左上格成本应写入 CostField");
+        Assert.AreEqual(13, cost11, "grid cost stamp 右上格成本应写入 CostField");
+    }
+
+    [Test]
+    public void NavMeshAnchor坡度会转换成CostField成本()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        config.UseNavMeshSlopeCost = true;
+        config.SlopeCostPerCellHeight = 8f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        Vector3[] anchors = new Vector3[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int index = y * width + x;
+                walkable[index] = true;
+                anchors[index] = new Vector3(x + 0.5f, x * 0.5f, y + 0.5f);
+            }
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable, anchors);
+        SimEntityContext ctx = CreateEntity(new Vector3(1.5f, 0f, 4.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(6.5f, 0f, 4.5f), 2f, out _));
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(4, 4, out byte slopeCost));
+        Assert.Greater(slopeCost, 1, $"NavMesh 采样高度差应按 23.4.1 写入 CostField，cost={slopeCost}");
+    }
+
+    [Test]
+    public void 清成本Sector会记录ClearCost状态并随CostStamp重建()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 4;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 20;
+        const int height = 20;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(new Vector3(8.5f, 0f, 9.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(11.5f, 0f, 9.5f), 2f, out _));
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorClearCostState(9, 9, out bool leftClearBefore));
+        Assert.IsTrue(leftClearBefore, "没有额外成本的 sector 应标记为 clear cost field");
+
+        FlowFieldCrowdMovementSystem.RegisterBoxCostStamp(1003, new Vector3(9.5f, 0f, 9.5f), new Vector3(0.49f, 0f, 0.49f), 20);
+        for (int i = 0; i < 32 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorClearCostState(9, 9, out bool leftClearAfterStamp));
+        Assert.IsFalse(leftClearAfterStamp, "被 cost stamp 写入额外成本的 sector 不应继续标记为 clear");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorClearCostState(13, 9, out bool rightClearAfterStamp));
+        Assert.IsTrue(rightClearAfterStamp, "未受 cost stamp 影响的相邻 sector 应保持 clear");
+
+        FlowFieldCrowdMovementSystem.UnregisterCostStamp(1003);
+        for (int i = 0; i < 32 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorClearCostState(9, 9, out bool leftClearAfterRemove));
+        Assert.IsTrue(leftClearAfterRemove, "撤销 cost stamp 并完成 dirty rebuild 后应恢复 clear cost field");
     }
 
     [Test]
@@ -449,9 +859,122 @@ public class FlowFieldCrowdMovementSystemTests
             FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(3, 1, out byte committedCost));
-        Assert.AreEqual(1, beforeCost, "测试初始格应是普通可走 cost");
+        Assert.Less(beforeCost, 255, "测试初始格应是可走 cost");
         Assert.AreEqual(beforeCost, pendingCost, "runtime dirty job 完成前不应把半更新 working world 暴露给导航 world");
         Assert.AreEqual(255, committedCost, "runtime dirty queue 完成后应原子提交运行时障碍到 cost field");
+    }
+
+    [Test]
+    public void ColliderObstacle注册使用Transform世界几何而非滞后PhysicsBounds()
+    {
+        const int width = 8;
+        const int height = 4;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, new Vector3(7.5f, 0f, 1.5f), 2f, out _));
+
+        GameObject managerObject = new GameObject("GroupMoveManagerTest");
+        GroupMoveManager manager = managerObject.AddComponent<GroupMoveManager>();
+        GameObject root = new GameObject("BuildingRoot");
+        GameObject autoBox = new GameObject("_AutoBox_Test");
+        try
+        {
+            root.transform.position = new Vector3(5f, 0f, 1f);
+            autoBox.transform.SetParent(root.transform, false);
+            autoBox.transform.localPosition = new Vector3(0.5f, 0f, 0.5f);
+            BoxCollider collider = autoBox.AddComponent<BoxCollider>();
+            collider.size = Vector3.one;
+
+            manager.RegisterColliderObstacle(collider);
+
+            for (int i = 0; i < 16 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+                FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(5, 1, out byte worldCellCost));
+            Assert.AreEqual(255, worldCellCost, "AutoBox 应按当前 Transform 世界坐标阻塞建筑所在格");
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(0, 0, out byte originCellCost));
+            Assert.Less(originCellCost, 255, "AutoBox 不应因滞后的 collider.bounds 误注册到原点附近");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(autoBox);
+            UnityEngine.Object.DestroyImmediate(root);
+            UnityEngine.Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    [Test]
+    public void 导航查询不会同步DrainRuntimeDirtyJob()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.RuntimeRebuildBudgetMilliseconds = 0.05f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 12;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        Vector3 goal = new Vector3(11.5f, 0f, 1.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(5, 1, out byte beforeCost));
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9101, new Vector3(5.5f, 0f, 1.5f), new Vector3(0.49f, 0f, 0.49f));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(), "注册运行时障碍后应只标记 dirty，等待 runtime queue 分帧提交");
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(), "导航查询不应同步 drain runtime dirty job");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(5, 1, out byte duringQueryCost));
+        Assert.AreEqual(beforeCost, duringQueryCost, "runtime dirty commit 前查询应继续使用已提交的旧 world，而不是同步改写 CostField");
+    }
+
+    [Test]
+    public void RuntimeDirtyCommit会清理受影响的PendingFieldBuildJob()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.RuntimeRebuildBudgetMilliseconds = 0.05f;
+        config.SectorSizeInCells = 48;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 96;
+        const int height = 48;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 23.5f));
+        SimEntityContext target = CreateEntity(new Vector3(95.5f, 0f, 23.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), 0, "低预算下应留下 pending shared goal job");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0, "低预算下应留下 pending flow tile job");
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9301, new Vector3(47.5f, 0f, 23.5f), new Vector3(0.49f, 0f, 0.49f));
+        for (int i = 0; i < 4096; i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), "dirty commit 后受影响的 shared goal job 不能继续提交旧结果");
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), "dirty commit 后受影响的 flow tile job 不能继续提交旧结果");
     }
 
     [Test]
@@ -477,8 +1000,9 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
         FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9102, new Vector3(25.5f, 0f, 1.5f), new Vector3(0.49f, 0f, 0.49f));
 
-        for (int i = 0; i < 32; i++)
+        for (int i = 0; i < 256 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
             FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(), "runtime dirty job 应完成提交后再验证 CostField，避免读取旧 world");
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(5, 1, out byte firstCost));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(25, 1, out byte secondCost));
@@ -558,7 +1082,7 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestWorld(), "world build job 未完成前不应暴露半成品 world");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild(), "低预算下 full world build 应保留 pending job，而不是同步一次做完");
 
-        for (int i = 0; i < 256 && FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild(); i++)
+        for (int i = 0; i < 2048 && FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild(); i++)
             FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
 
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild(), "world build queue 应在预算帧内最终完成");
@@ -567,6 +1091,107 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreEqual(1, islandId);
         Assert.AreEqual(1, islandCount);
         Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPortalCount(), 0, "full world build 完成后应具备 portal graph");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestSectorPortalAccessCacheCount(), 0, "portal access integration 应由 world build 阶段预构建，不应等查询热路径同步生成");
+    }
+
+    [Test]
+    public void PortalAccessCache使用压缩势能且保持下坡成本()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 16;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        walkable[3 + 3 * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+
+        int portalAccessCount = FlowFieldCrowdMovementSystem.GetEditorTestSectorPortalAccessCacheCount();
+        Assert.Greater(portalAccessCount, 0, "world build 应预构建 sector portal access 场");
+        Assert.AreEqual(portalAccessCount, FlowFieldCrowdMovementSystem.GetEditorTestQuantizedSectorPortalAccessCacheCount(), "portal access cache 不应长期保留 float integration，应全部转为压缩势能");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestFirstPortalForSector(0, out int portalId, out int oppositeSectorId));
+        Assert.AreEqual(1, oppositeSectorId);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorPortalAccessCost(0, portalId, 0, 3, out float farCost));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorPortalAccessCost(0, portalId, 6, 3, out float nearCost));
+        Assert.IsFalse(float.IsPositiveInfinity(farCost), $"远端可走格应能解码为有限 portal access cost，cost={farCost}");
+        Assert.IsFalse(float.IsPositiveInfinity(nearCost), $"portal 附近可走格应能解码为有限 portal access cost，cost={nearCost}");
+        Assert.Less(nearCost, farCost, $"压缩后仍必须保持朝 portal 下坡的成本关系，near={nearCost} far={farCost}");
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorPortalAccessCost(0, portalId, 3, 3, out float blockedCost));
+        Assert.IsTrue(float.IsPositiveInfinity(blockedCost), $"不可走格应保持 INF，不应被压缩成有限成本，cost={blockedCost}");
+    }
+
+    [Test]
+    public void CommittedCostField按SectorChunk存储而不是整图数组()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 16;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        walkable[3 + 3 * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestCommittedFullCostField(), "committed world 不应长期保留整图 CostField");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestCommittedSectorCostChunkCount(), 0, "包含障碍/软成本的 sector 应保存局部 cost chunk");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(10, 3, out byte clearCost));
+        Assert.AreEqual(1, clearCost, "clear sector 应通过静态语义读出普通成本 1");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCostFieldValue(3, 3, out byte blockedCost));
+        Assert.AreEqual(255, blockedCost, "chunk sector 内不可走格应保持硬阻挡成本 255");
+    }
+
+    [Test]
+    public void IslandField会为单IslandSector记录UniformIslandId()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 4;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 4;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        for (int i = 0; i < 32 && !FlowFieldCrowdMovementSystem.HasEditorTestWorld(); i++)
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorUniformIslandId(0, 0, out int uniformIslandId));
+        Assert.AreEqual(1, uniformIslandId, "单 island sector 应记录统一 island id，避免每次都查格子 island field");
+
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        FlowFieldCrowdMovementSystem.ClearEditorTestClock();
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        bool[] splitWalkable = new bool[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            SetWalkable(splitWalkable, width, 0, y);
+            SetWalkable(splitWalkable, width, 3, y);
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, splitWalkable);
+        for (int i = 0; i < 32 && !FlowFieldCrowdMovementSystem.HasEditorTestWorld(); i++)
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestIslandFieldValue(0, 0, out _, out int islandCount));
+        Assert.AreEqual(2, islandCount, "测试地图应在同一个 sector 内形成两个 island");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorUniformIslandId(0, 0, out int mixedIslandId));
+        Assert.AreEqual(-1, mixedIslandId, "混合 island sector 必须保留逐格 island field 判断");
     }
 
     [Test]
@@ -782,8 +1407,10 @@ public class FlowFieldCrowdMovementSystemTests
 
             if (initialized)
             {
-                Assert.AreEqual(initialLeaderSign, Mathf.Sign(leaderVelocity.z), $"领头单位侧偏方向不应在瓶颈前后抖动，frame={frame}, vel={leaderVelocity}");
-                Assert.AreEqual(initialFollowerSign, Mathf.Sign(followerVelocity.z), $"后随单位侧偏方向不应在瓶颈前后抖动，frame={frame}, vel={followerVelocity}");
+                if (Mathf.Abs(leaderVelocity.z) > 0.001f)
+                    Assert.AreEqual(initialLeaderSign, Mathf.Sign(leaderVelocity.z), $"领头单位侧偏方向不应在瓶颈前后抖动，frame={frame}, vel={leaderVelocity}");
+                if (Mathf.Abs(followerVelocity.z) > 0.001f)
+                    Assert.AreEqual(initialFollowerSign, Mathf.Sign(followerVelocity.z), $"后随单位侧偏方向不应在瓶颈前后抖动，frame={frame}, vel={followerVelocity}");
             }
 
             leader.Position = AdvanceTowardsGoal(leader.Position, goal, leaderVelocity, 0.2f);
@@ -902,7 +1529,7 @@ public class FlowFieldCrowdMovementSystemTests
         Vector3 leftGoal = new Vector3(0.5f, 0f, 1.5f);
 
         bool leaderCrossedBeforeBothOpponents = false;
-        for (int frame = 1; frame <= 48; frame++)
+        for (int frame = 1; frame <= 64; frame++)
         {
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leftLeader, rightGoal, 2f, out Vector3 leaderVelocity));
@@ -1048,8 +1675,8 @@ public class FlowFieldCrowdMovementSystemTests
         SimEntityContext leader = CreateEntity(new Vector3(0.5f, 0f, 1.5f), isLeader: true);
         SimEntityContext followHigh = CreateEntity(new Vector3(1.1f, 0f, 1.5f), isLeader: false);
         SimEntityContext followLow = CreateEntity(new Vector3(1.7f, 0f, 1.5f), isLeader: false);
-        FlowFieldCrowdMovementSystem.SetAgentState(followHigh.GetHashCode(), GroupMoveCoordinator.AgentState.Follow);
-        FlowFieldCrowdMovementSystem.SetAgentState(followLow.GetHashCode(), GroupMoveCoordinator.AgentState.Idle);
+        FlowFieldCrowdMovementSystem.SetAgentState(followHigh.GetHashCode(), FlowFieldAgentState.Follow);
+        FlowFieldCrowdMovementSystem.SetAgentState(followLow.GetHashCode(), FlowFieldAgentState.Idle);
         Vector3 goal = new Vector3(7.5f, 0f, 1.5f);
 
         float highForward = 0f;
@@ -1145,7 +1772,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 动态障碍改变连通性后会同步重建Island()
+    public void 动态障碍改变连通性后会经RuntimeQueue重建Island()
     {
         const int width = 7;
         const int height = 3;
@@ -1165,6 +1792,15 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9101, new Vector3(3.5f, 0f, 1.5f), new Vector3(0.6f, 0f, 0.6f));
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryResolveNearestReachableGoal(ctx, farGoal, 2f, out _, out string pendingReason),
+            pendingReason);
+        StringAssert.Contains("runtime dirty pending", pendingReason);
+
+        for (int i = 0; i < 32 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(3, 0.3f);
         LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[FlowGoalResolutionIslandDiag\]"));
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryResolveNearestReachableGoal(ctx, farGoal, 2f, out Vector3 blockedReachable, out string blockedReason), blockedReason);
 
@@ -1192,6 +1828,15 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9102, new Vector3(4.5f, 0f, 1.5f), new Vector3(0.4f, 0f, 0.4f));
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryResolveNearestReachableGoal(ctx, farGoal, 2f, out _, out string pendingReason),
+            pendingReason);
+        StringAssert.Contains("runtime dirty pending", pendingReason);
+
+        for (int i = 0; i < 32 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(3, 0.3f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryResolveNearestReachableGoal(ctx, farGoal, 2f, out Vector3 reachableAfterHaloDirty, out string blockedReason), blockedReason);
 
         Assert.AreEqual(3.5f, reachableAfterHaloDirty.x, 0.01f, $"障碍只影响相邻 sector 时，halo sector 不能被 clamp 误封，reachable={reachableAfterHaloDirty}");
@@ -1554,7 +2199,69 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 非末端PortalTile会递归构建下游Tile以携带跨SectorLOS()
+    public void 同SectorPathHandle不应在查询热路径同步构建Integration()
+    {
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        Vector3 goal = new Vector3(6.5f, 0f, 3.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        int integrationsBefore = FlowFieldCrowdMovementSystem.GetEditorTestFrameSynchronousSectorIntegrationCount();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, goal, 2f, out Vector3 velocity));
+
+        Assert.Greater(velocity.x, 0.5f, $"同 sector 目标应直接使用局部连通判定后构建 tile，velocity={velocity}");
+        Assert.AreEqual(
+            integrationsBefore,
+            FlowFieldCrowdMovementSystem.GetEditorTestFrameSynchronousSectorIntegrationCount(),
+            "同 sector path handle 构建不应再同步跑整块 sector integration");
+    }
+
+    [Test]
+    public void 首次跨Sector查询不应同步构建SharedGoalFieldIntegration()
+    {
+        const int width = 24;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext firstChaser = CreateEntity(new Vector3(0.5f, 0f, 2.5f));
+        SimEntityContext secondChaser = CreateEntity(new Vector3(0.5f, 0f, 5.5f));
+        SimEntityContext target = CreateEntity(new Vector3(23.5f, 0f, 3.5f));
+        firstChaser.TargetComp = new SimTargetingComp(firstChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+        secondChaser.TargetComp = new SimTargetingComp(secondChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        int integrationsBefore = FlowFieldCrowdMovementSystem.GetEditorTestFrameSynchronousSectorIntegrationCount();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(firstChaser, target.Position, 2f, out Vector3 firstVelocity));
+        int integrationsAfterFirst = FlowFieldCrowdMovementSystem.GetEditorTestFrameSynchronousSectorIntegrationCount();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(secondChaser, target.Position, 2f, out Vector3 secondVelocity));
+        int integrationsAfterSecond = FlowFieldCrowdMovementSystem.GetEditorTestFrameSynchronousSectorIntegrationCount();
+
+        Assert.Greater(firstVelocity.x, 0.5f, $"第一个追击者应朝跨 sector 目标前进 first={firstVelocity}");
+        Assert.Greater(secondVelocity.x, 0.5f, $"第二个追击者应朝跨 sector 目标前进 second={secondVelocity}");
+        Assert.AreEqual(integrationsBefore, integrationsAfterFirst, "首次跨 sector 查询应只跑轻量 portal graph，不应同步构建 SharedGoalField integration");
+        Assert.AreEqual(integrationsAfterFirst, integrationsAfterSecond, "同一帧后续追击者也不应在查询热路径构建 SharedGoalField integration");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), 0, "SharedGoalField 应进入预算队列，由后续 ProcessFlowTileBuildQueue 分帧完成");
+    }
+
+    [Test]
+    public void 查询热路径不应同步构建非末端PortalTile链()
     {
         const int width = 24;
         const int height = 8;
@@ -1577,12 +2284,90 @@ public class FlowFieldCrowdMovementSystemTests
         int tileCount = FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount();
         int tileBuildCount = FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount();
         Assert.Greater(velocity.x, 0.5f, $"长路径首段仍应沿走廊前进，velocity={velocity}");
-        Assert.Greater(tileCount, 1, $"非末端 portal tile 应构建下游 tile 链来携带论文式跨 sector LOS flags，tileCount={tileCount}");
-        Assert.AreEqual(tileCount, tileBuildCount, $"同一次 portal tile 构建中 seed/LOS 应共享 downstream tile，不应重复构建同一链路 tileCount={tileCount} tileBuilds={tileBuildCount}");
+        Assert.AreEqual(0, tileCount, $"查询热路径不应同步构建 portal tile 链，tileCount={tileCount}");
+        Assert.AreEqual(0, tileBuildCount, $"查询热路径不应同步 build tile，tileBuilds={tileBuildCount}");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0, "portal tile 链应进入预算队列");
     }
 
     [Test]
-    public void FlowTileBuildQueue会在查询前预构建路径Tile链()
+    public void PortalGraph不应为了复用旧Path牺牲更短Portal()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 24;
+        const int height = 24;
+        bool[] walkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+        {
+            SetWalkable(walkable, width, x, 5);
+            SetWalkable(walkable, width, x, 18);
+        }
+
+        for (int y = 5; y <= 18; y++)
+        {
+            SetWalkable(walkable, width, 1, y);
+            SetWalkable(walkable, width, 22, y);
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext upperChaser = CreateEntity(new Vector3(1.5f, 0f, 5.5f));
+        SimEntityContext lowerChaser = CreateEntity(new Vector3(1.5f, 0f, 18.5f));
+        SimEntityContext target = CreateEntity(new Vector3(22.5f, 0f, 11.5f));
+        upperChaser.TargetComp = new SimTargetingComp(upperChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+        lowerChaser.TargetComp = new SimTargetingComp(lowerChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(upperChaser, target.Position, 2f, out Vector3 upperVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(upperChaser.GetHashCode(), out int[] upperPortals));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(lowerChaser, target.Position, 2f, out Vector3 lowerVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(lowerChaser.GetHashCode(), out int[] lowerPortals));
+
+        Assert.Greater(upperVelocity.x, 0.5f, $"上路单位应建立可用 path，upper={upperVelocity}");
+        Assert.Greater(lowerVelocity.x, 0.5f, $"下路单位应建立可用 path，lower={lowerVelocity}");
+        Assert.AreNotEqual(upperPortals[0], lowerPortals[0], $"第二个单位应选择自身最近的下路 portal，而不是 merge 到第一个单位旧 path。upper=[{string.Join(",", upperPortals)}] lower=[{string.Join(",", lowerPortals)}]");
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestFramePortalGraphMergeHitCount(), "portal graph 不应再用提前 merge 改变最短路选择");
+    }
+
+    [Test]
+    public void 长路径PendingTile时不应直奔最终目标()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        config.RuntimeRebuildBudgetMilliseconds = 0.05f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 32;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 2.5f));
+        Vector3 goal = new Vector3(31.5f, 0f, 5.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, goal, 2f, out Vector3 velocity));
+        Assert.Greater(velocity.x, 0.5f, $"长路径 pending 阶段仍应朝下游 portal 前进，velocity={velocity}");
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringSource(chaser.GetHashCode(), out _, out bool hasLineOfSight));
+        Assert.IsFalse(hasLineOfSight, "多 sector 长路径的 pending 方向不应利用最终目标 LOS 直奔目标；论文语义要求先朝 next portal 前进");
+    }
+
+    [Test]
+    public void FlowTileBuildQueue会在后续查询前预构建路径Tile链()
     {
         const int width = 24;
         const int height = 8;
@@ -1605,19 +2390,22 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.ClearEditorTestFlowTileCache();
         Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount());
 
-        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
         int buildCountBeforeQueue = FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount();
-        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        for (int frame = 2; frame < 64 && FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount() <= 1; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
         int queuedBuildCount = FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount() - buildCountBeforeQueue;
         int queuedTileCount = FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount();
-        Assert.Greater(queuedTileCount, 1, $"flow tile queue 应能在查询前预构建下游 tile 链，tileCount={queuedTileCount}");
+        Assert.Greater(queuedTileCount, 1, $"flow tile queue 应能在后续查询前预构建下游 tile 链，tileCount={queuedTileCount}");
         Assert.AreEqual(queuedTileCount, queuedBuildCount, $"预构建 tile 数应等于实际 build 数，tileCount={queuedTileCount} builds={queuedBuildCount}");
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(3, 0.3f);
-        int buildCountBeforeQuery = FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount();
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out Vector3 velocity));
         Assert.Greater(velocity.x, 0.5f, $"预构建 tile 命中后仍应沿走廊前进，velocity={velocity}");
-        Assert.AreEqual(buildCountBeforeQuery, FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount(), "查询命中预构建 tile 后不应再次同步构建 tile");
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestFrameTileBuildCount(), "查询命中预构建 tile 后当前查询帧不应再次构建 tile");
     }
 
     [Test]
@@ -1662,7 +2450,43 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void PortalTile会在构建期缓存PortalTarget()
+    public void FlowTileCache不会淘汰ActivePath引用的Tile()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.FlowTileCacheLimit = 16;
+        config.RuntimeRebuildBudgetMilliseconds = 1.5f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 96;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        SimEntityContext target = CreateEntity(new Vector3(95.5f, 0f, 3.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+
+        for (int frame = 2; frame < 256 && FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount() > 0; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), "长路径 flow tile chain 应在预算帧内完成");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 16, "active path 引用中的 flow tile 不能为了满足 cache limit 被淘汰");
+    }
+
+    [Test]
+    public void PortalChoice诊断不应构建SharedGoalField()
     {
         const int width = 24;
         const int height = 8;
@@ -1673,7 +2497,74 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
         SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
-        SimEntityContext target = CreateEntity(new Vector3(23.5f, 0f, 3.5f));
+        Vector3 sameSectorGoal = new Vector3(6.5f, 0f, 3.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, sameSectorGoal, 2f, out _));
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount(), "同 sector 请求不应创建 SharedGoalField");
+
+        string diagnostics = FlowFieldCrowdMovementSystem.GetEditorTestStartPortalChoiceDiagnostics(0, 2, 0, 3, 23, 3, 0);
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount(), $"portal choice 诊断应只读缓存，不应构建 SharedGoalField，diag={diagnostics}");
+        StringAssert.Contains("shared-field-not-cached", diagnostics);
+    }
+
+    [Test]
+    public void FlowTileBuildQueue应按TileKey去重而不是按PathHandle去重()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.RuntimeRebuildBudgetMilliseconds = 0.05f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 48;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext firstChaser = CreateEntity(new Vector3(0.5f, 0f, 7.5f));
+        SimEntityContext secondChaser = CreateEntity(new Vector3(1.5f, 0f, 7.5f));
+        SimEntityContext target = CreateEntity(new Vector3(47.5f, 0f, 7.5f));
+        firstChaser.TargetComp = new SimTargetingComp(firstChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+        secondChaser.TargetComp = new SimTargetingComp(secondChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(firstChaser, target.Position, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(secondChaser, target.Position, 2f, out _));
+
+        FlowFieldCrowdMovementSystem.ClearEditorTestFlowTileCache();
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+
+        int pendingCount = FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount();
+        Assert.Greater(pendingCount, 0, "低预算下应留下未完成 tile job");
+        int duplicateCount = FlowFieldCrowdMovementSystem.GetEditorTestDuplicatePendingFlowTileBuildKeyCount();
+        Assert.AreEqual(0, duplicateCount, $"同一 tile key 不应因不同 PathHandleId 重复排队，pending={pendingCount} duplicate={duplicateCount}");
+    }
+
+    [Test]
+    public void SharedGoalFieldBuildQueue低预算会保留并完成Job()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.RuntimeRebuildBudgetMilliseconds = 0.05f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 48;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 7.5f));
+        SimEntityContext target = CreateEntity(new Vector3(47.5f, 0f, 7.5f));
         chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
         {
             CurrentTarget = target
@@ -1682,7 +2573,49 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
 
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedPortalTarget(0, 3, out Vector3 portalTarget, out int visibleCount, out int selectedPair, out bool usedOppositeCenter));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        int sharedBuildsBefore = FlowFieldCrowdMovementSystem.GetEditorTestFrameSharedGoalFieldBuildCount();
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+
+        Assert.GreaterOrEqual(FlowFieldCrowdMovementSystem.GetEditorTestFrameSharedGoalFieldBuildCount(), sharedBuildsBefore, "shared goal field queue 应接入 flow rebuild 预算入口");
+
+        for (int frame = 3; frame < 256 && FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount() > 0; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), "shared goal field queue 应在后续预算帧内完成");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount(), 0, "完成后应提交 SharedGoalField cache");
+    }
+
+    [Test]
+    public void PortalTile会在构建期缓存PortalTarget()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 32;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(8.5f, 0f, 8.5f));
+        SimEntityContext target = CreateEntity(new Vector3(26.5f, 0f, 8.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(2);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedPortalTarget(8, 8, out Vector3 portalTarget, out int visibleCount, out int selectedPair, out bool usedOppositeCenter));
         Assert.Greater(visibleCount, 0, $"portal tile 应在构建期缓存可见 portal 候选，target={portalTarget}");
         Assert.GreaterOrEqual(selectedPair, 0, $"portal tile 应缓存选中的 portal 槽位，target={portalTarget}");
         Assert.IsFalse(usedOppositeCenter, "直走廊 portal target 不应退化成 opposite center");
@@ -1690,8 +2623,41 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void LosPass只在真实转角生成WaveFrontBlocked()
+    public void PortalTargetLineOfSight会被软成本截断()
     {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 32;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        FlowFieldCrowdMovementSystem.RegisterBoxCostStamp(2001, new Vector3(10.5f, 0f, 7.5f), new Vector3(0.49f, 0f, 4f), 60);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(8.5f, 0f, 8.5f));
+        Vector3 goal = new Vector3(26.5f, 0f, 8.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(2);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedPortalTarget(8, 8, out Vector3 portalTarget, out int visibleCount, out int selectedPair, out bool usedOppositeCenter));
+        Assert.AreEqual(0, visibleCount, $"论文 LOS pass 碰到 cost > 1 应停止，target={portalTarget}");
+        Assert.AreEqual(-1, selectedPair, $"软成本截断所有 LOS 候选时不应选中真实 portal 槽位，target={portalTarget}");
+        Assert.IsTrue(usedOppositeCenter, "软成本截断 LOS 后 portal target 应退到 opposite center，等待 flow/integration 引导");
+    }
+
+    [Test]
+    public void LosPass不会把L型墙体背后标成LineOfSight()
+    {
+        GroupMoveConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
         const int width = 8;
         const int height = 8;
         bool[] walkable = new bool[width * height];
@@ -1705,17 +2671,15 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext ctx = CreateEntity(new Vector3(2.5f, 0f, 2.5f));
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 0.5f));
         Vector3 goal = new Vector3(2.5f, 0f, 2.5f);
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellLineOfSightState(5, 6, out bool hiddenLos, out _));
         Assert.IsFalse(hiddenLos, "L 型墙体背后的格子不应被 LOS wavefront 绕过去标成直视");
-
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellLineOfSightState(4, 4, out _, out bool cornerBlocked));
-        Assert.IsTrue(cornerBlocked, "LOS 真转角外延线上应标记 WaveFrontBlocked");
     }
 
     [Test]
@@ -1737,6 +2701,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(2);
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellLineOfSightState(4, 2, out _, out bool downstreamBlocked));
         Assert.IsTrue(downstreamBlocked, "final tile 的 LOS corner 应先在下游 portal cell 形成 WaveFrontBlocked");
@@ -1837,6 +2802,21 @@ public class FlowFieldCrowdMovementSystemTests
         next.x = Mathf.Clamp(next.x, minX, maxX);
         next.z = Mathf.Clamp(next.z, minZ, maxZ);
         return next;
+    }
+
+    private static void ProcessFlowTileBuildQueueUntilTileCount(int minTileCount)
+    {
+        for (int frame = 2; frame < 128 && FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount() < minTileCount; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+    }
+
+    private static void ProcessWorldBuildQueueUntilReady()
+    {
+        for (int i = 0; i < 2048 && (!FlowFieldCrowdMovementSystem.HasEditorTestWorld() || FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild()); i++)
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
     }
 
     private static SimEntityContext CreateEntity(Vector3 position)

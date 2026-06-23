@@ -6,21 +6,42 @@ using UnityEngine;
 using UnityEngine.AI;
 using Debug = UnityEngine.Debug;
 
+public enum FlowFieldAgentState
+{
+    Idle,
+    Follow,
+    Combat
+}
+
 public static class FlowFieldCrowdMovementSystem
 {
-    private const int AnyAgentTypeId = int.MinValue;
+    private const int AnyAgentTypeId = int.MinValue + 1;
+    private const float PortalGraphMergePriorityBias = 0.35f;
     private const float MaxAgentAvoidBackwardSpeedRatio = 0.35f;
     private const float MaxAgentAvoidLateralSpeedRatio = 0.75f;
     private const float IdleOverlapRecoverySpeed = 0.65f;
     private const float EdgeRecoveryMinSpeedRatio = 0.28f;
+    private const float WalkableSteeringCandidateMinSpeedRatio = 0.25f;
     private const int PortalApproachProbeDepth = 2;
     private const int NavigationGoalCandidateCount = 16;
     private const int NavigationGoalRingCount = 3;
     private const float NavigationGoalOccupancyPadding = 0.35f;
+    private const int CombatTargetSlotCacheFrameLifetime = 120;
+    private const float IntegrationSignificantImprovement = 0.05f;
+    private const int BudgetTimeCheckInterval = 16;
+    private const byte FlowDirectionMask = 0x0F;
+    private const byte FlowLineOfSightFlag = 1 << 4;
+    private const byte FlowWaveFrontBlockedFlag = 1 << 5;
+    private const byte FlowPathableFlag = 1 << 6;
+    private const byte FlowReachableFlag = 1 << 7;
+    private const ushort QuantizedIntegrationInfinity = ushort.MaxValue;
+    private const ushort QuantizedIntegrationMaxFinite = ushort.MaxValue - 1;
     private static readonly long FlowPerfLogThresholdTicks = Stopwatch.Frequency * 4 / 1000;
     private const float WallCostBlurRadiusCells = 2.25f;
     private const int WallCostAdjacentPenalty = 7;
     private const int WallCostOuterPenalty = 3;
+    private const int PortalWindowSplitCostDelta = 8;
+    private const int FlowHeavyDiagnosticCooldownFrames = 90;
 
     private sealed class RuntimeConfig
     {
@@ -28,8 +49,12 @@ public static class FlowFieldCrowdMovementSystem
         public float NavigationBoundsPadding = 0.6f;
         public int SectorSizeInCells = 12;
         public int PortalNarrowWidthCells = 2;
+        public int PortalMaxWindowWidthCells = 6;
         public int FlowTileCacheLimit = 256;
         public float RuntimeRebuildBudgetMilliseconds = 1.5f;
+        public bool RequireAuthoredNavigationSource;
+        public bool UseNavMeshSlopeCost = true;
+        public float SlopeCostPerCellHeight = 8f;
         public float CrowdPredictionTime = 0.35f;
         public float LaneBiasStrength = 0.22f;
         public float BoundaryAvoidanceWeight = 1f;
@@ -55,6 +80,7 @@ public static class FlowFieldCrowdMovementSystem
         public bool[] BaseWalkableMask;
         public bool[] WalkableMask;
         public byte[] CostField;
+        public byte[][] SectorCostFields;
         public Vector3[] CellNavAnchors;
         public byte[] NeighborTraversalMask;
         public int[] IslandIds;
@@ -119,6 +145,11 @@ public static class FlowFieldCrowdMovementSystem
         public int Height;
         public Vector3 Center;
         public int DirtyVersion;
+        public bool IsClearCostField;
+        public bool IsClearFlowTile;
+        public int UniformIslandId;
+        public int[] LocalComponentIds;
+        public int LocalComponentCount;
         public readonly List<int> PortalIds = new List<int>(8);
         public readonly List<PortalTransition> PortalTransitions = new List<PortalTransition>(16);
     }
@@ -315,8 +346,27 @@ public static class FlowFieldCrowdMovementSystem
 
     private sealed class SectorPortalAccessEntry
     {
-        public float[] Integration;
+        public ushort[] QuantizedIntegration;
+        public float IntegrationScale;
         public int LastUsedFrame;
+    }
+
+    private readonly struct PendingSectorPortalAccess
+    {
+        public readonly int SectorId;
+        public readonly int PortalId;
+        public readonly int SectorDirtyVersion;
+        public readonly ushort[] QuantizedIntegration;
+        public readonly float IntegrationScale;
+
+        public PendingSectorPortalAccess(int sectorId, int portalId, int sectorDirtyVersion, ushort[] quantizedIntegration, float integrationScale)
+        {
+            SectorId = sectorId;
+            PortalId = portalId;
+            SectorDirtyVersion = sectorDirtyVersion;
+            QuantizedIntegration = quantizedIntegration;
+            IntegrationScale = integrationScale;
+        }
     }
 
     private readonly struct SharedGoalFieldKey : IEquatable<SharedGoalFieldKey>
@@ -392,6 +442,7 @@ public static class FlowFieldCrowdMovementSystem
         public Vector3 CurrentFlowDirection;
         public Vector3 PathDirection;
         public Vector2Int PathDirectionCell = new Vector2Int(int.MinValue, int.MinValue);
+        public int PathDirectionContextHash;
         public Vector3 DesiredVelocity;
         public Vector3 PreviousResolvedVelocity;
         public Vector3 ResolvedVelocity;
@@ -428,6 +479,9 @@ public static class FlowFieldCrowdMovementSystem
         public float LastSteeringMaxSpeed;
         public int LastConstraintDiagnosticFrame = -1;
         public int LastFlowExecutionMismatchDiagnosticFrame = -1;
+        public int LastFlowTileInvariantDiagnosticFrame = -1;
+        public int LastFlowWallProbeDiagnosticFrame = -1;
+        public int LastPortalRankDiagnosticFrame = -1;
         public int LastCombatClusterDiagnosticFrame = -1;
         public int LastIdleOverlapDiagnosticFrame = -1;
     }
@@ -442,7 +496,7 @@ public static class FlowFieldCrowdMovementSystem
         public bool IgnoreAgentCollision;
         public bool IsLeader;
         public int GroupId = -1;
-        public GroupMoveCoordinator.AgentState State = GroupMoveCoordinator.AgentState.Idle;
+        public FlowFieldAgentState State = FlowFieldAgentState.Idle;
         public int AgentTypeId;
         public string EntityTypeName;
         public string MoveCompTypeName;
@@ -463,7 +517,8 @@ public static class FlowFieldCrowdMovementSystem
     {
         LineOfSight = 0,
         FlowField = 1,
-        Zero = 2
+        PendingPortal = 2,
+        Zero = 3
     }
 
     private enum AvoidanceEncounterType
@@ -624,6 +679,23 @@ public static class FlowFieldCrowdMovementSystem
         }
     }
 
+    private sealed class IntegrationPayload
+    {
+        public float[] Values;
+        public int ReleasedFrame = -1;
+
+        public IntegrationPayload(int cellCount)
+        {
+            Values = RentIntegrationArray(cellCount);
+        }
+    }
+
+    private sealed class IntegrationCostSummary
+    {
+        public Vector2Int[] Cells;
+        public float[] Costs;
+    }
+
     private sealed class FlowTileCacheEntry
     {
         public FlowTileCacheKey Key;
@@ -631,13 +703,20 @@ public static class FlowFieldCrowdMovementSystem
         public int StartY;
         public int Width;
         public int Height;
-        public float[] Integration;
-        public Vector2[] FlowDirections;
-        public bool[] HasLineOfSight;
-        public bool[] WaveFrontBlocked;
+        public IntegrationPayload IntegrationPayload;
+        public IntegrationPayload DebugIntegrationPayload;
+        public byte[] FlowFieldValues;
         public CachedPortalTarget[] PortalTargets;
         public Vector2Int[] GoalCells;
+        public IntegrationCostSummary GoalIntegrationSummary;
+        public readonly Dictionary<int, IntegrationCostSummary> PortalSeamIntegrationSummaries = new Dictionary<int, IntegrationCostSummary>();
         public int LastUsedFrame;
+        public int LastReferencedFrame;
+        public int ActiveReferenceCount;
+        public bool IntegrationReleased;
+        public bool UsesClearFlowDescriptor;
+
+        public float[] Integration => IntegrationPayload?.Values;
 
         public int GetLocalIndex(int worldX, int worldY)
         {
@@ -648,16 +727,14 @@ public static class FlowFieldCrowdMovementSystem
     private readonly struct FlowTileBuildKey : IEquatable<FlowTileBuildKey>
     {
         public readonly FlowTileCacheKey CacheKey;
-        public readonly int PathHandleId;
         public readonly int SectorPathIndex;
         public readonly int GoalX;
         public readonly int GoalY;
         public readonly int AgentTypeId;
 
-        public FlowTileBuildKey(FlowTileCacheKey cacheKey, int pathHandleId, int sectorPathIndex, int goalX, int goalY, int agentTypeId)
+        public FlowTileBuildKey(FlowTileCacheKey cacheKey, int sectorPathIndex, int goalX, int goalY, int agentTypeId)
         {
             CacheKey = cacheKey;
-            PathHandleId = pathHandleId;
             SectorPathIndex = sectorPathIndex;
             GoalX = goalX;
             GoalY = goalY;
@@ -667,7 +744,6 @@ public static class FlowFieldCrowdMovementSystem
         public bool Equals(FlowTileBuildKey other)
         {
             return CacheKey.Equals(other.CacheKey)
-                   && PathHandleId == other.PathHandleId
                    && SectorPathIndex == other.SectorPathIndex
                    && GoalX == other.GoalX
                    && GoalY == other.GoalY
@@ -684,7 +760,6 @@ public static class FlowFieldCrowdMovementSystem
             unchecked
             {
                 int hash = CacheKey.GetHashCode();
-                hash = (hash * 397) ^ PathHandleId;
                 hash = (hash * 397) ^ SectorPathIndex;
                 hash = (hash * 397) ^ GoalX;
                 hash = (hash * 397) ^ GoalY;
@@ -719,6 +794,29 @@ public static class FlowFieldCrowdMovementSystem
         PortalHandoff = 4,
         Commit = 5,
         Complete = 6
+    }
+
+    private sealed class SharedGoalFieldBuildJob
+    {
+        public SharedGoalFieldKey Key;
+        public int GoalSectorId;
+        public int GoalX;
+        public int GoalY;
+        public int AgentTypeId;
+        public SharedGoalFieldBuildStage Stage;
+        public SectorData GoalSector;
+        public float[] GoalIntegration;
+        public MinHeap GoalIntegrationOpenSet;
+        public SharedGoalField Field;
+        public MinHeap PortalOpenSet;
+    }
+
+    private enum SharedGoalFieldBuildStage
+    {
+        GoalIntegration = 0,
+        PortalGraph = 1,
+        Commit = 2,
+        Complete = 3
     }
 
     private sealed class BottleneckRuntimeState
@@ -771,15 +869,18 @@ public static class FlowFieldCrowdMovementSystem
     private readonly struct MovingTargetAnchorKey : IEquatable<MovingTargetAnchorKey>
     {
         public readonly int TargetId;
+        public readonly int RawGoalCellIndex;
 
-        public MovingTargetAnchorKey(int targetId)
+        public MovingTargetAnchorKey(int targetId, int rawGoalCellIndex)
         {
             TargetId = targetId;
+            RawGoalCellIndex = rawGoalCellIndex;
         }
 
         public bool Equals(MovingTargetAnchorKey other)
         {
-            return TargetId == other.TargetId;
+            return TargetId == other.TargetId
+                   && RawGoalCellIndex == other.RawGoalCellIndex;
         }
 
         public override bool Equals(object obj)
@@ -789,7 +890,10 @@ public static class FlowFieldCrowdMovementSystem
 
         public override int GetHashCode()
         {
-            return TargetId;
+            unchecked
+            {
+                return (TargetId * 397) ^ RawGoalCellIndex;
+            }
         }
     }
 
@@ -806,6 +910,92 @@ public static class FlowFieldCrowdMovementSystem
         public int LastUsedFrame = -1;
     }
 
+    private readonly struct CombatTargetSlotKey : IEquatable<CombatTargetSlotKey>
+    {
+        public readonly int WorldVersion;
+        public readonly int AgentTypeId;
+        public readonly int TargetId;
+        public readonly int TargetCellIndex;
+        public readonly int TargetXBand;
+        public readonly int TargetYBand;
+        public readonly int StandOffBand;
+        public readonly int RingSpacingBand;
+        public readonly int RingCount;
+        public readonly int CandidateCount;
+
+        public CombatTargetSlotKey(
+            int worldVersion,
+            int agentTypeId,
+            int targetId,
+            int targetCellIndex,
+            int targetXBand,
+            int targetYBand,
+            int standOffBand,
+            int ringSpacingBand,
+            int ringCount,
+            int candidateCount)
+        {
+            WorldVersion = worldVersion;
+            AgentTypeId = agentTypeId;
+            TargetId = targetId;
+            TargetCellIndex = targetCellIndex;
+            TargetXBand = targetXBand;
+            TargetYBand = targetYBand;
+            StandOffBand = standOffBand;
+            RingSpacingBand = ringSpacingBand;
+            RingCount = ringCount;
+            CandidateCount = candidateCount;
+        }
+
+        public bool Equals(CombatTargetSlotKey other)
+        {
+            return WorldVersion == other.WorldVersion
+                   && AgentTypeId == other.AgentTypeId
+                   && TargetId == other.TargetId
+                   && TargetCellIndex == other.TargetCellIndex
+                   && TargetXBand == other.TargetXBand
+                   && TargetYBand == other.TargetYBand
+                   && StandOffBand == other.StandOffBand
+                   && RingSpacingBand == other.RingSpacingBand
+                   && RingCount == other.RingCount
+                   && CandidateCount == other.CandidateCount;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is CombatTargetSlotKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = WorldVersion;
+                hash = (hash * 397) ^ AgentTypeId;
+                hash = (hash * 397) ^ TargetId;
+                hash = (hash * 397) ^ TargetCellIndex;
+                hash = (hash * 397) ^ TargetXBand;
+                hash = (hash * 397) ^ TargetYBand;
+                hash = (hash * 397) ^ StandOffBand;
+                hash = (hash * 397) ^ RingSpacingBand;
+                hash = (hash * 397) ^ RingCount;
+                hash = (hash * 397) ^ CandidateCount;
+                return hash;
+            }
+        }
+    }
+
+    private sealed class CombatTargetSlotEntry
+    {
+        public Vector3 TargetPoint;
+        public Vector3[] Points;
+        public int[] CellX;
+        public int[] CellY;
+        public int[] IslandIds;
+        public int LastUsedFrame;
+        public string BuildSummary;
+    }
+
     private sealed class BoxObstacle
     {
         public int Id;
@@ -819,6 +1009,11 @@ public static class FlowFieldCrowdMovementSystem
         public int AgentTypeId;
         public Bounds Bounds;
         public byte Cost;
+        public int Width;
+        public int Height;
+        public float CellSize;
+        public Vector3 Origin;
+        public byte[] Costs;
     }
 
     private struct QueueNode
@@ -962,17 +1157,17 @@ public static class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
     private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>();
     private static readonly Dictionary<FlowTileCacheKey, FlowTileCacheEntry> FlowTileCache = new Dictionary<FlowTileCacheKey, FlowTileCacheEntry>();
-    private static readonly HashSet<FlowTileCacheKey> PendingTileBuildKeys = new HashSet<FlowTileCacheKey>();
     private static readonly LinkedList<FlowTileBuildJob> FlowTileBuildQueue = new LinkedList<FlowTileBuildJob>();
-    private static readonly HashSet<FlowTileBuildKey> PendingFlowTileBuildJobs = new HashSet<FlowTileBuildKey>();
+    private static readonly HashSet<FlowTileCacheKey> PendingFlowTileBuildJobs = new HashSet<FlowTileCacheKey>();
+    private static readonly Dictionary<int, Stack<float[]>> IntegrationArrayPool = new Dictionary<int, Stack<float[]>>();
     private static readonly Dictionary<SectorPathCacheKey, SectorPathCacheEntry> SectorPathCache = new Dictionary<SectorPathCacheKey, SectorPathCacheEntry>();
     private static readonly Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry> SectorPortalAccessCache = new Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry>();
     private static readonly Dictionary<SharedGoalFieldKey, SharedGoalField> SharedGoalFields = new Dictionary<SharedGoalFieldKey, SharedGoalField>();
+    private static readonly LinkedList<SharedGoalFieldBuildJob> SharedGoalFieldBuildQueue = new LinkedList<SharedGoalFieldBuildJob>();
+    private static readonly HashSet<SharedGoalFieldKey> PendingSharedGoalFieldBuildJobs = new HashSet<SharedGoalFieldKey>();
+    private static readonly Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry> CombatTargetSlotCache = new Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry>();
     private static readonly Dictionary<int, BottleneckRuntimeState> Bottlenecks = new Dictionary<int, BottleneckRuntimeState>();
     private static readonly Dictionary<int, CorridorBottleneckDescriptor> CorridorBottlenecks = new Dictionary<int, CorridorBottleneckDescriptor>();
-    private static readonly MinHeap OpenSet = new MinHeap();
-    private static readonly Dictionary<int, float> PortalNodeGScore = new Dictionary<int, float>();
-    private static readonly Dictionary<int, int> PortalNodeCameFrom = new Dictionary<int, int>();
 
     private static readonly int[] NeighborOffsetX = { -1, 0, 1, -1, 1, -1, 0, 1 };
     private static readonly int[] NeighborOffsetY = { -1, -1, -1, 0, 0, 1, 1, 1 };
@@ -998,6 +1193,501 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         return -1;
+    }
+
+    private static byte EncodeFlowDirectionIndex(Vector2 direction)
+    {
+        if (direction.sqrMagnitude <= 0.0001f)
+            return 0;
+
+        Vector2 normalized = direction.normalized;
+        float bestDot = float.NegativeInfinity;
+        int bestIndex = 0;
+        for (int i = 0; i < NeighborOffsetX.Length; i++)
+        {
+            Vector2 candidate = new Vector2(NeighborOffsetX[i], NeighborOffsetY[i]).normalized;
+            float dot = Vector2.Dot(normalized, candidate);
+            if (dot <= bestDot)
+                continue;
+
+            bestDot = dot;
+            bestIndex = i + 1;
+        }
+
+        return (byte)bestIndex;
+    }
+
+    private static Vector2 DecodeFlowDirectionIndex(byte directionIndex)
+    {
+        if (directionIndex == 0)
+            return Vector2.zero;
+
+        int offsetIndex = directionIndex - 1;
+        if (offsetIndex < 0 || offsetIndex >= NeighborOffsetX.Length)
+            throw new InvalidOperationException($"DecodeFlowDirectionIndex failed: invalid directionIndex={directionIndex}.");
+
+        return new Vector2(NeighborOffsetX[offsetIndex], NeighborOffsetY[offsetIndex]).normalized;
+    }
+
+    private static void ValidateFlowFieldCell(FlowTileCacheEntry tile, int localIndex)
+    {
+        if (tile == null)
+            throw new InvalidOperationException("ValidateFlowFieldCell failed: tile is null.");
+        if (tile.FlowFieldValues == null || tile.FlowFieldValues.Length != tile.Width * tile.Height)
+            throw new InvalidOperationException($"ValidateFlowFieldCell failed: invalid flow field values key={FormatTileKey(tile.Key)}.");
+        if (localIndex < 0 || localIndex >= tile.FlowFieldValues.Length)
+            throw new InvalidOperationException($"ValidateFlowFieldCell failed: localIndex out of range index={localIndex} key={FormatTileKey(tile.Key)}.");
+    }
+
+    private static byte GetFlowDirectionIndex(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        return (byte)(tile.FlowFieldValues[localIndex] & FlowDirectionMask);
+    }
+
+    private static Vector2 GetFlowDirection(FlowTileCacheEntry tile, int localIndex)
+    {
+        return DecodeFlowDirectionIndex(GetFlowDirectionIndex(tile, localIndex));
+    }
+
+    private static Vector2 ResolveRuntimeFlowDirection(FlowTileCacheEntry tile, int worldX, int worldY, int localIndex)
+    {
+        if (!IsFlowPathable(tile, localIndex))
+            return Vector2.zero;
+        if (!IsFlowReachable(tile, localIndex))
+            return Vector2.zero;
+
+        Vector2 storedDirection = GetFlowDirection(tile, localIndex);
+        if (storedDirection.sqrMagnitude > 0.0001f)
+            return storedDirection;
+        if (tile.UsesClearFlowDescriptor)
+            return ResolveClearFlowDescriptorDirection(tile, worldX, worldY);
+        if (_world == null || !TryGetSectorForCell(_world, worldX, worldY, out SectorData sector) || !sector.IsClearFlowTile)
+            return Vector2.zero;
+
+        return ResolveFlowDirectionFromIntegration(tile, worldX, worldY);
+    }
+
+    private static bool IsRuntimeLineOfSightCell(FlowTileCacheEntry tile, int localIndex)
+    {
+        return HasFlowLineOfSight(tile, localIndex)
+               && IsFlowPathable(tile, localIndex)
+               && IsFlowReachable(tile, localIndex);
+    }
+
+    private static Vector2 ResolveClearFlowDescriptorDirection(FlowTileCacheEntry tile, int worldX, int worldY)
+    {
+        if (tile?.GoalIntegrationSummary?.Cells == null || tile.GoalIntegrationSummary.Costs == null)
+            throw new InvalidOperationException($"ResolveClearFlowDescriptorDirection failed: missing goal summary key={FormatTileKey(tile.Key)}.");
+        if (tile.GoalIntegrationSummary.Cells.Length != tile.GoalIntegrationSummary.Costs.Length)
+            throw new InvalidOperationException($"ResolveClearFlowDescriptorDirection failed: goal summary length mismatch key={FormatTileKey(tile.Key)}.");
+
+        Vector2 current = new Vector2(worldX, worldY);
+        int bestIndex = -1;
+        float bestScore = float.PositiveInfinity;
+        for (int i = 0; i < tile.GoalIntegrationSummary.Cells.Length; i++)
+        {
+            float seedCost = tile.GoalIntegrationSummary.Costs[i];
+            if (float.IsPositiveInfinity(seedCost))
+                continue;
+
+            Vector2Int seed = tile.GoalIntegrationSummary.Cells[i];
+            float distance = Vector2.Distance(current, new Vector2(seed.x, seed.y));
+            float score = seedCost + distance;
+            if (score >= bestScore)
+                continue;
+
+            bestScore = score;
+            bestIndex = i;
+        }
+
+        if (bestIndex < 0)
+            return Vector2.zero;
+
+        Vector2Int bestCell = tile.GoalIntegrationSummary.Cells[bestIndex];
+        Vector2 direction = new Vector2(bestCell.x - worldX, bestCell.y - worldY);
+        return direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector2.zero;
+    }
+
+    private static float[] RequireTileIntegration(FlowTileCacheEntry tile, string caller)
+    {
+        if (tile == null)
+            throw new InvalidOperationException($"{caller} failed: tile is null.");
+        if (tile.IntegrationPayload?.Values == null)
+            throw new InvalidOperationException($"{caller} failed: integration payload has been released key={FormatTileKey(tile.Key)}.");
+        if (tile.IntegrationPayload.Values.Length != tile.Width * tile.Height)
+            throw new InvalidOperationException($"{caller} failed: invalid integration payload length={tile.IntegrationPayload.Values.Length} key={FormatTileKey(tile.Key)}.");
+
+        return tile.IntegrationPayload.Values;
+    }
+
+    private static float[] RentIntegrationArray(int length)
+    {
+        if (length <= 0)
+            throw new InvalidOperationException($"RentIntegrationArray failed: invalid length={length}.");
+
+        if (IntegrationArrayPool.TryGetValue(length, out Stack<float[]> stack) && stack.Count > 0)
+            return stack.Pop();
+
+        return new float[length];
+    }
+
+    private static void ReturnIntegrationArray(float[] array)
+    {
+        if (array == null)
+            return;
+        if (array.Length <= 0)
+            throw new InvalidOperationException("ReturnIntegrationArray failed: invalid zero-length array.");
+
+        if (!IntegrationArrayPool.TryGetValue(array.Length, out Stack<float[]> stack))
+        {
+            stack = new Stack<float[]>();
+            IntegrationArrayPool.Add(array.Length, stack);
+        }
+
+        if (stack.Count < 16)
+            stack.Push(array);
+    }
+
+    private static void ReturnTileIntegrationPayload(FlowTileCacheEntry tile)
+    {
+        if (tile?.IntegrationPayload?.Values == null)
+            return;
+
+        float[] values = tile.IntegrationPayload.Values;
+        tile.IntegrationPayload.Values = null;
+        tile.IntegrationPayload.ReleasedFrame = GetFrameCount();
+        tile.IntegrationPayload = null;
+        tile.IntegrationReleased = true;
+        ReturnIntegrationArray(values);
+    }
+
+    private static void ReturnTileDebugIntegrationPayload(FlowTileCacheEntry tile)
+    {
+        if (tile?.DebugIntegrationPayload?.Values == null)
+            return;
+
+        float[] values = tile.DebugIntegrationPayload.Values;
+        tile.DebugIntegrationPayload.Values = null;
+        tile.DebugIntegrationPayload = null;
+        ReturnIntegrationArray(values);
+    }
+
+    private static void ReleaseTilePayloads(FlowTileCacheEntry tile)
+    {
+        ReturnTileIntegrationPayload(tile);
+        ReturnTileDebugIntegrationPayload(tile);
+    }
+
+    private static void ClearFlowTileCache()
+    {
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+            ReleaseTilePayloads(tile);
+
+        FlowTileCache.Clear();
+    }
+
+    private static void RemoveFlowTileCacheEntry(FlowTileCacheKey key)
+    {
+        if (FlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile))
+            ReleaseTilePayloads(tile);
+
+        FlowTileCache.Remove(key);
+    }
+
+    private static void ReturnPendingFlowTileBuildIntegrations()
+    {
+        LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First;
+        while (node != null)
+        {
+            ReturnTileIntegrationPayload(node.Value?.Tile);
+            node = node.Next;
+        }
+    }
+
+    private static void ReturnSharedGoalFieldBuildIntegration(SharedGoalFieldBuildJob job)
+    {
+        if (job?.GoalIntegration == null)
+            return;
+
+        float[] integration = job.GoalIntegration;
+        job.GoalIntegration = null;
+        ReturnIntegrationArray(integration);
+    }
+
+    private static void ReturnPendingSharedGoalFieldBuildIntegrations()
+    {
+        LinkedListNode<SharedGoalFieldBuildJob> node = SharedGoalFieldBuildQueue.First;
+        while (node != null)
+        {
+            ReturnSharedGoalFieldBuildIntegration(node.Value);
+            node = node.Next;
+        }
+    }
+
+    private static void ReturnWorldBuildPortalTransitionIntegration(WorldBuildJob job)
+    {
+        if (job?.PortalTransitionIntegration == null)
+            return;
+
+        ReturnIntegrationArray(job.PortalTransitionIntegration);
+        job.PortalTransitionIntegration = null;
+        job.PortalTransitionOpenSet = null;
+        job.PortalTransitionIntegrationActive = false;
+    }
+
+    private static void ReturnRuntimeDirtyPortalTransitionIntegration(RuntimeDirtyRebuildJob job)
+    {
+        if (job?.PortalTransitionIntegration == null)
+            return;
+
+        ReturnIntegrationArray(job.PortalTransitionIntegration);
+        job.PortalTransitionIntegration = null;
+        job.PortalTransitionOpenSet = null;
+        job.PortalTransitionIntegrationActive = false;
+    }
+
+    private static bool TryGetIntegrationSummaryCost(IntegrationCostSummary summary, int worldX, int worldY, out float cost)
+    {
+        cost = float.PositiveInfinity;
+        if (summary?.Cells == null || summary.Costs == null || summary.Cells.Length != summary.Costs.Length)
+            return false;
+
+        for (int i = 0; i < summary.Cells.Length; i++)
+        {
+            if (summary.Cells[i].x != worldX || summary.Cells[i].y != worldY)
+                continue;
+
+            cost = summary.Costs[i];
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetPortalSeamIntegrationCost(FlowTileCacheEntry tile, int portalId, int worldX, int worldY, out float cost)
+    {
+        cost = float.PositiveInfinity;
+        return tile != null
+               && tile.PortalSeamIntegrationSummaries.TryGetValue(portalId, out IntegrationCostSummary summary)
+               && TryGetIntegrationSummaryCost(summary, worldX, worldY, out cost);
+    }
+
+    private static bool TryGetTileIntegrationCost(FlowTileCacheEntry tile, int worldX, int worldY, out float cost)
+    {
+        cost = float.PositiveInfinity;
+        if (tile == null || !IsInsideSector(tile, worldX, worldY))
+            return false;
+        if (tile.IntegrationPayload?.Values != null)
+        {
+            cost = tile.IntegrationPayload.Values[tile.GetLocalIndex(worldX, worldY)];
+            return true;
+        }
+        if (TryGetIntegrationSummaryCost(tile.GoalIntegrationSummary, worldX, worldY, out cost))
+            return true;
+
+        foreach (IntegrationCostSummary summary in tile.PortalSeamIntegrationSummaries.Values)
+        {
+            if (TryGetIntegrationSummaryCost(summary, worldX, worldY, out cost))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryRebuildTileDebugIntegration(FlowTileCacheEntry tile)
+    {
+        if (_world == null || tile == null)
+            return false;
+        if (tile.Key.SectorId < 0 || tile.Key.SectorId >= _world.Sectors.Length)
+            return false;
+
+        ReturnTileDebugIntegrationPayload(tile);
+        IntegrationPayload payload = new IntegrationPayload(tile.Width * tile.Height);
+        float[] integration = payload.Values;
+        InitializeIntegrationField(integration);
+        MinHeap openSet = new MinHeap();
+        int seedCount = 0;
+        seedCount += SeedDebugIntegrationSummary(tile, integration, openSet, tile.GoalIntegrationSummary);
+        foreach (IntegrationCostSummary summary in tile.PortalSeamIntegrationSummaries.Values)
+            seedCount += SeedDebugIntegrationSummary(tile, integration, openSet, summary);
+
+        if (seedCount == 0)
+        {
+            payload.Values = null;
+            ReturnIntegrationArray(integration);
+            return false;
+        }
+
+        SectorData sector = _world.Sectors[tile.Key.SectorId];
+        while (openSet.Count > 0)
+        {
+            QueueNode node = openSet.Pop();
+            if (node.Cost > integration[node.Index] + 0.0001f)
+                continue;
+
+            int localX = node.Index % tile.Width;
+            int localY = node.Index / tile.Width;
+            int worldX = tile.StartX + localX;
+            int worldY = tile.StartY + localY;
+            for (int i = 0; i < CardinalOffsetX.Length; i++)
+            {
+                int nextWorldX = worldX + CardinalOffsetX[i];
+                int nextWorldY = worldY + CardinalOffsetY[i];
+                if (!IsInsideSector(tile, nextWorldX, nextWorldY) || !_world.IsWalkable(nextWorldX, nextWorldY))
+                    continue;
+                if (!CanTraverseNeighborCells(_world, nextWorldX, nextWorldY, worldX, worldY))
+                    continue;
+
+                int nextLocalIndex = tile.GetLocalIndex(nextWorldX, nextWorldY);
+                float newCost = ResolveEikonalIntegrationCost(_world, sector, integration, nextWorldX, nextWorldY, reverseTraversal: true);
+                if (!IsSignificantIntegrationImprovement(newCost, integration[nextLocalIndex]))
+                    continue;
+
+                integration[nextLocalIndex] = newCost;
+                openSet.Push(nextLocalIndex, newCost);
+            }
+        }
+
+        tile.DebugIntegrationPayload = payload;
+        return true;
+    }
+
+    private static int SeedDebugIntegrationSummary(FlowTileCacheEntry tile, float[] integration, MinHeap openSet, IntegrationCostSummary summary)
+    {
+        if (summary?.Cells == null || summary.Costs == null || summary.Cells.Length != summary.Costs.Length)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < summary.Cells.Length; i++)
+        {
+            float cost = summary.Costs[i];
+            if (float.IsPositiveInfinity(cost) || float.IsNaN(cost))
+                continue;
+
+            Vector2Int cell = summary.Cells[i];
+            if (!IsInsideSector(tile, cell.x, cell.y))
+                continue;
+
+            int localIndex = tile.GetLocalIndex(cell.x, cell.y);
+            if (cost >= integration[localIndex])
+                continue;
+
+            integration[localIndex] = cost;
+            openSet.Push(localIndex, cost);
+            count++;
+        }
+
+        return count;
+    }
+
+    private static float GetTileIntegrationCostForDiagnostics(FlowTileCacheEntry tile, int worldX, int worldY)
+    {
+        return TryGetTileIntegrationCost(tile, worldX, worldY, out float cost)
+            ? cost
+            : float.PositiveInfinity;
+    }
+
+    private static bool TryGetTileIntegrationCostForDiagnostics(
+        FlowTileCacheEntry tile,
+        int worldX,
+        int worldY,
+        out float cost,
+        out string source)
+    {
+        cost = float.PositiveInfinity;
+        source = "missing";
+        if (tile == null || !IsInsideSector(tile, worldX, worldY))
+            return false;
+
+        int localIndex = tile.GetLocalIndex(worldX, worldY);
+        if (tile.IntegrationPayload?.Values != null)
+        {
+            cost = tile.IntegrationPayload.Values[localIndex];
+            source = "runtime";
+            return true;
+        }
+
+        if (tile.DebugIntegrationPayload?.Values != null)
+        {
+            cost = tile.DebugIntegrationPayload.Values[localIndex];
+            source = "debug";
+            return true;
+        }
+
+        if (TryGetIntegrationSummaryCost(tile.GoalIntegrationSummary, worldX, worldY, out cost))
+        {
+            source = "goal-summary";
+            return true;
+        }
+
+        foreach (KeyValuePair<int, IntegrationCostSummary> pair in tile.PortalSeamIntegrationSummaries)
+        {
+            if (!TryGetIntegrationSummaryCost(pair.Value, worldX, worldY, out cost))
+                continue;
+
+            source = "portal-seam:" + pair.Key;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void SetFlowDirectionIndex(FlowTileCacheEntry tile, int localIndex, byte directionIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        if ((directionIndex & ~FlowDirectionMask) != 0)
+            throw new InvalidOperationException($"SetFlowDirectionIndex failed: invalid directionIndex={directionIndex}.");
+
+        tile.FlowFieldValues[localIndex] = (byte)((tile.FlowFieldValues[localIndex] & ~FlowDirectionMask) | directionIndex);
+    }
+
+    private static bool HasFlowLineOfSight(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        return (tile.FlowFieldValues[localIndex] & FlowLineOfSightFlag) != 0;
+    }
+
+    private static void SetFlowLineOfSight(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        tile.FlowFieldValues[localIndex] |= FlowLineOfSightFlag;
+    }
+
+    private static bool IsFlowWaveFrontBlocked(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        return (tile.FlowFieldValues[localIndex] & FlowWaveFrontBlockedFlag) != 0;
+    }
+
+    private static void SetFlowWaveFrontBlocked(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        tile.FlowFieldValues[localIndex] |= FlowWaveFrontBlockedFlag;
+    }
+
+    private static bool IsFlowPathable(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        return (tile.FlowFieldValues[localIndex] & FlowPathableFlag) != 0;
+    }
+
+    private static void SetFlowPathable(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        tile.FlowFieldValues[localIndex] |= FlowPathableFlag;
+    }
+
+    private static bool IsFlowReachable(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        return (tile.FlowFieldValues[localIndex] & FlowReachableFlag) != 0;
+    }
+
+    private static void SetFlowReachable(FlowTileCacheEntry tile, int localIndex)
+    {
+        ValidateFlowFieldCell(tile, localIndex);
+        tile.FlowFieldValues[localIndex] |= FlowReachableFlag;
     }
 
     private static bool HasRawNeighborTraversal(NavigationWorld world, int fromX, int fromY, int toX, int toY)
@@ -1055,6 +1745,7 @@ public static class FlowFieldCrowdMovementSystem
         public bool[] BaseWalkableMask;
         public Vector3[] CellNavAnchors;
         public bool RequiresNavMeshAnchors;
+        public bool HasProvidedCellNavAnchors;
         public NavMeshQueryFilter Filter;
         public float SampleRadius;
         public int RasterCursor;
@@ -1084,6 +1775,7 @@ public static class FlowFieldCrowdMovementSystem
         public int PortalTransitionFromPortalId;
         public float[] PortalTransitionIntegration;
         public MinHeap PortalTransitionOpenSet;
+        public List<PendingSectorPortalAccess> PendingPortalAccessEntries;
         public string Reason;
     }
 
@@ -1146,6 +1838,7 @@ public static class FlowFieldCrowdMovementSystem
         public int PortalTransitionFromPortalId;
         public float[] PortalTransitionIntegration;
         public MinHeap PortalTransitionOpenSet;
+        public List<PendingSectorPortalAccess> PendingPortalAccessEntries;
         public string Reason;
     }
 
@@ -1157,7 +1850,10 @@ public static class FlowFieldCrowdMovementSystem
         public int PathBuilds;
         public int SectorPathSearches;
         public int SectorPathCacheHits;
+        public int PortalGraphMergeHits;
         public int TileBuilds;
+        public int SynchronousSectorIntegrations;
+        public int SharedGoalFieldBuilds;
         public int NeighborChecks;
         public int PathBuildNoHandle;
         public int PathBuildWorldMismatch;
@@ -1172,6 +1868,8 @@ public static class FlowFieldCrowdMovementSystem
         public int StableGoalRefreshCellDelta;
         public int TileCacheHits;
         public int TileCacheMisses;
+        public int PathPendingSharedGoal;
+        public int TilePendingBuild;
         public int RuntimeDirtyApplications;
         public int RuntimeDirtySectorCount;
         public long TotalTicks;
@@ -1221,15 +1919,25 @@ public static class FlowFieldCrowdMovementSystem
         BoxObstacles.Clear();
         CostStamps.Clear();
         MovingTargetAnchors.Clear();
-        FlowTileCache.Clear();
-        PendingTileBuildKeys.Clear();
+        CombatTargetSlotCache.Clear();
+        ClearFlowTileCache();
+        ReturnPendingFlowTileBuildIntegrations();
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
         SectorPathCache.Clear();
         SectorPortalAccessCache.Clear();
         SharedGoalFields.Clear();
+        ReturnPendingSharedGoalFieldBuildIntegrations();
+        SharedGoalFieldBuildQueue.Clear();
+        PendingSharedGoalFieldBuildJobs.Clear();
         Bottlenecks.Clear();
         CorridorBottlenecks.Clear();
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            ReturnRuntimeDirtyPortalTransitionIntegration(state.RuntimeDirtyJob);
+            ReturnWorldBuildPortalTransitionIntegration(state.BuildJob);
+        }
+
         WorldStates.Clear();
         RuntimeRebuildQueueScratch.Clear();
         _world = null;
@@ -1274,11 +1982,26 @@ public static class FlowFieldCrowdMovementSystem
 
     public static void SetEditorTestNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask)
     {
+        SetEditorTestNavigationSource(agentTypeId, width, height, cellSize, origin, walkableMask, null);
+    }
+
+    public static void SetEditorTestNavigationSource(int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors)
+    {
+        SetEditorTestNavigationSource(AnyAgentTypeId, width, height, cellSize, origin, walkableMask, cellNavAnchors);
+    }
+
+    public static void SetEditorTestNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors)
+    {
+        if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
+            throw new InvalidOperationException("SetEditorTestNavigationSource failed: explicit agentTypeId is Unknown. Use the overload without agentTypeId for Any test source.");
         if (walkableMask == null)
             throw new InvalidOperationException("SetEditorTestNavigationSource failed: walkableMask is null.");
         if (walkableMask.Length != width * height)
             throw new InvalidOperationException(
                 $"SetEditorTestNavigationSource failed: mask length {walkableMask.Length} does not match {width}x{height}.");
+        if (cellNavAnchors != null && cellNavAnchors.Length != width * height)
+            throw new InvalidOperationException(
+                $"SetEditorTestNavigationSource failed: anchor length {cellNavAnchors.Length} does not match {width}x{height}.");
 
         _testTerrainOverride = new TestTerrainOverride
         {
@@ -1288,7 +2011,7 @@ public static class FlowFieldCrowdMovementSystem
             CellSize = cellSize,
             Origin = origin,
             WalkableMask = (bool[])walkableMask.Clone(),
-            CellNavAnchors = null
+            CellNavAnchors = cellNavAnchors != null ? (Vector3[])cellNavAnchors.Clone() : null
         };
         MarkWorldDirty();
     }
@@ -1326,6 +2049,52 @@ public static class FlowFieldCrowdMovementSystem
     }
 #endif
 
+    public static void SetAuthoredNavigationSource(int width, int height, float cellSize, Vector3 origin, bool[] walkableMask)
+    {
+        SetAuthoredNavigationSource(AnyAgentTypeId, width, height, cellSize, origin, walkableMask, null);
+    }
+
+    public static void SetAuthoredNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors = null)
+    {
+        if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
+            throw new InvalidOperationException("SetAuthoredNavigationSource failed: explicit agentTypeId is Unknown.");
+        if (width <= 0 || height <= 0)
+            throw new InvalidOperationException($"SetAuthoredNavigationSource failed: invalid size {width}x{height}.");
+        if (cellSize <= 0.0001f)
+            throw new InvalidOperationException($"SetAuthoredNavigationSource failed: invalid cellSize={cellSize:F4}.");
+        if (walkableMask == null)
+            throw new InvalidOperationException("SetAuthoredNavigationSource failed: walkableMask is null.");
+        if (walkableMask.Length != width * height)
+            throw new InvalidOperationException(
+                $"SetAuthoredNavigationSource failed: mask length {walkableMask.Length} does not match {width}x{height}.");
+        if (cellNavAnchors != null && cellNavAnchors.Length != width * height)
+            throw new InvalidOperationException(
+                $"SetAuthoredNavigationSource failed: anchor length {cellNavAnchors.Length} does not match {width}x{height}.");
+
+        _testTerrainOverride = new TestTerrainOverride
+        {
+            AgentTypeId = agentTypeId,
+            Width = width,
+            Height = height,
+            CellSize = cellSize,
+            Origin = origin,
+            WalkableMask = (bool[])walkableMask.Clone(),
+            CellNavAnchors = cellNavAnchors != null ? (Vector3[])cellNavAnchors.Clone() : null
+        };
+        MarkWorldDirty("authored-navigation-source");
+    }
+
+    public static void ClearAuthoredNavigationSource()
+    {
+        _testTerrainOverride = null;
+        MarkWorldDirty("authored-navigation-source-cleared");
+    }
+
+    public static bool HasAuthoredNavigationSource()
+    {
+        return _testTerrainOverride != null;
+    }
+
     public static void SetConfig(GroupMoveConfig config)
     {
         if (config == null)
@@ -1333,6 +2102,7 @@ public static class FlowFieldCrowdMovementSystem
 
         bool requiresRebuild = Config.SectorSizeInCells != config.SectorSizeInCells
                                || Config.PortalNarrowWidthCells != config.PortalNarrowWidthCells
+                               || Config.PortalMaxWindowWidthCells != config.PortalMaxWindowWidthCells
                                || !Mathf.Approximately(Config.NavigationCellSize, config.NavigationCellSize)
                                || !Mathf.Approximately(Config.NavigationBoundsPadding, config.NavigationBoundsPadding);
 
@@ -1340,8 +2110,12 @@ public static class FlowFieldCrowdMovementSystem
         Config.NavigationBoundsPadding = Mathf.Max(0f, config.NavigationBoundsPadding);
         Config.SectorSizeInCells = Mathf.Max(4, config.SectorSizeInCells);
         Config.PortalNarrowWidthCells = Mathf.Max(1, config.PortalNarrowWidthCells);
+        Config.PortalMaxWindowWidthCells = Mathf.Max(2, config.PortalMaxWindowWidthCells);
         Config.FlowTileCacheLimit = Mathf.Max(16, config.FlowTileCacheLimit);
         Config.RuntimeRebuildBudgetMilliseconds = Mathf.Max(0.05f, config.RuntimeRebuildBudgetMilliseconds);
+        Config.RequireAuthoredNavigationSource = config.RequireAuthoredNavigationSource;
+        Config.UseNavMeshSlopeCost = config.UseNavMeshSlopeCost;
+        Config.SlopeCostPerCellHeight = Mathf.Max(0f, config.SlopeCostPerCellHeight);
         Config.CrowdPredictionTime = Mathf.Max(0.05f, config.CrowdPredictionTime);
         Config.LaneBiasStrength = Mathf.Max(0f, config.LaneBiasStrength);
         Config.BoundaryAvoidanceWeight = Mathf.Max(0f, config.BoundaryAvoidanceWeight);
@@ -1366,18 +2140,24 @@ public static class FlowFieldCrowdMovementSystem
         {
             state.IsDirty = true;
             state.DirtyRuntimeObstacleSectors.Clear();
+            ReturnRuntimeDirtyPortalTransitionIntegration(state.RuntimeDirtyJob);
+            ReturnWorldBuildPortalTransitionIntegration(state.BuildJob);
             state.RuntimeDirtyJob = null;
             state.BuildJob = null;
         }
 
-        FlowTileCache.Clear();
-        PendingTileBuildKeys.Clear();
+        ClearFlowTileCache();
+        ReturnPendingFlowTileBuildIntegrations();
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
         SectorPathCache.Clear();
         SectorPortalAccessCache.Clear();
         SharedGoalFields.Clear();
+        ReturnPendingSharedGoalFieldBuildIntegrations();
+        SharedGoalFieldBuildQueue.Clear();
+        PendingSharedGoalFieldBuildJobs.Clear();
         MovingTargetAnchors.Clear();
+        CombatTargetSlotCache.Clear();
         Bottlenecks.Clear();
         CorridorBottlenecks.Clear();
         AgentSpatialBuckets.Clear();
@@ -1410,7 +2190,7 @@ public static class FlowFieldCrowdMovementSystem
             bool hadWorld = WorldStates.TryGetValue(agentTypeId, out WorldRuntimeState existingState)
                             && existingState.World != null
                             && !existingState.IsDirty;
-            if (!TryEnsureWorldBuilt(agentTypeId))
+            if (!TryEnsureWorldBuilt(agentTypeId, allowSynchronousBuild: true))
             {
                 skippedCount++;
                 Debug.LogWarning($"[FlowWorld] Prewarm skipped agentType={agentTypeId}: terrain source unavailable.");
@@ -1427,10 +2207,43 @@ public static class FlowFieldCrowdMovementSystem
             $"worldStates={WorldStates.Count} activeWorld={(_world != null ? _world.Version.ToString() : "null")}");
     }
 
+    public static bool HasActiveNavigationAgents()
+    {
+        int frame = GetFrameCount();
+        foreach (AgentRuntimeData agent in Agents.Values)
+        {
+            if (agent == null || agent.IgnoreAgentCollision)
+                continue;
+            if (agent.HasNavigationIntent)
+                return true;
+            if (frame - agent.LastAvoidanceActiveFrame <= 2)
+                return true;
+        }
+
+        return false;
+    }
+
     private static List<int> CollectNavigationWorldAgentTypes()
     {
         List<int> agentTypeIds = new List<int>(8);
         HashSet<int> seen = new HashSet<int>();
+
+#if UNITY_EDITOR
+        if (_testTerrainOverride != null)
+        {
+            if (_testTerrainOverride.AgentTypeId != AnyAgentTypeId)
+            {
+                AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(_testTerrainOverride.AgentTypeId));
+                return agentTypeIds;
+            }
+
+            AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(0));
+            foreach (AgentRuntimeData agent in Agents.Values)
+                AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(agent.AgentTypeId));
+
+            return agentTypeIds;
+        }
+#endif
 
         AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(0));
         foreach (AgentRuntimeData agent in Agents.Values)
@@ -1466,6 +2279,7 @@ public static class FlowFieldCrowdMovementSystem
             WorldRuntimeState state = pair.Value;
             if (state.IsDirty)
             {
+                ReturnWorldBuildPortalTransitionIntegration(state.BuildJob);
                 state.BuildJob = null;
                 continue;
             }
@@ -1539,10 +2353,16 @@ public static class FlowFieldCrowdMovementSystem
         if (!CanProcessFlowTileBuildQueue())
             return;
 
+        EnqueueSharedGoalFieldsForActiveAgents();
         EnqueueFlowTileBuildsForActiveAgents();
+        RefreshFlowTileReferenceCounts();
         long budgetTicks = Math.Max(1L, (long)(Stopwatch.Frequency * Config.RuntimeRebuildBudgetMilliseconds / 1000.0));
         long deadlineTicks = Stopwatch.GetTimestamp() + budgetTicks;
         ProcessFlowTileBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
+        if (Stopwatch.GetTimestamp() >= deadlineTicks)
+            return;
+
+        ProcessSharedGoalFieldBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
     }
 
     private static bool CanProcessFlowTileBuildQueue()
@@ -1576,6 +2396,77 @@ public static class FlowFieldCrowdMovementSystem
         }
     }
 
+    private static void EnqueueSharedGoalFieldsForActiveAgents()
+    {
+        foreach (AgentRuntimeData agent in Agents.Values)
+        {
+            if (agent.NavState.StableGoalX < 0 || agent.NavState.StableGoalY < 0)
+                continue;
+            if (agent.NavState.CurrentSectorId < 0)
+                continue;
+            if (!_world.TryGetSectorId(agent.NavState.StableGoalX, agent.NavState.StableGoalY, out int goalSectorId))
+                continue;
+            if (goalSectorId == agent.NavState.CurrentSectorId)
+                continue;
+
+            EnqueueSharedGoalFieldBuild(goalSectorId, agent.NavState.StableGoalX, agent.NavState.StableGoalY, ResolvePreferredAgentTypeId(agent.AgentTypeId));
+        }
+    }
+
+    private static void ProcessSharedGoalFieldBuildQueue(long deadlineTicks, bool forceComplete, SharedGoalFieldKey? requiredKey)
+    {
+        int guard = 0;
+        while (SharedGoalFieldBuildQueue.Count > 0)
+        {
+            SharedGoalFieldBuildJob job = SharedGoalFieldBuildQueue.First.Value;
+            SharedGoalFieldBuildQueue.RemoveFirst();
+            PendingSharedGoalFieldBuildJobs.Remove(job.Key);
+
+            if (SharedGoalFields.ContainsKey(job.Key))
+            {
+                ReturnSharedGoalFieldBuildIntegration(job);
+                if (requiredKey.HasValue && SharedGoalFields.ContainsKey(requiredKey.Value))
+                    return;
+                continue;
+            }
+
+            if (IsSharedGoalFieldBuildJobStale(job))
+            {
+                ReturnSharedGoalFieldBuildIntegration(job);
+                if (requiredKey.HasValue && SharedGoalFields.ContainsKey(requiredKey.Value))
+                    return;
+                continue;
+            }
+
+            if (!AdvanceSharedGoalFieldBuildJob(job, deadlineTicks, forceComplete))
+            {
+                SharedGoalFieldBuildQueue.AddFirst(job);
+                PendingSharedGoalFieldBuildJobs.Add(job.Key);
+                return;
+            }
+
+            if (requiredKey.HasValue && SharedGoalFields.ContainsKey(requiredKey.Value))
+                return;
+            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                return;
+
+            guard++;
+            if (guard > Config.FlowTileCacheLimit * 4 + 1024)
+                throw new InvalidOperationException("ProcessSharedGoalFieldBuildQueue failed: queue processing exceeded guard.");
+        }
+    }
+
+    private static bool IsSharedGoalFieldBuildJobStale(SharedGoalFieldBuildJob job)
+    {
+        if (job == null || _world == null)
+            return true;
+        if (job.GoalSectorId < 0 || job.GoalSectorId >= _world.Sectors.Length)
+            return true;
+
+        SharedGoalFieldKey expectedKey = CreateSharedGoalFieldKey(job.GoalSectorId, job.GoalX, job.GoalY, job.AgentTypeId);
+        return !expectedKey.Equals(job.Key);
+    }
+
     private static void ProcessFlowTileBuildQueue(long deadlineTicks, bool forceComplete, FlowTileCacheKey? requiredKey)
     {
         int guard = 0;
@@ -1583,8 +2474,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             FlowTileBuildJob job = FlowTileBuildQueue.First.Value;
             FlowTileBuildQueue.RemoveFirst();
-            PendingFlowTileBuildJobs.Remove(job.BuildKey);
-            PendingTileBuildKeys.Remove(job.BuildKey.CacheKey);
+            PendingFlowTileBuildJobs.Remove(job.BuildKey.CacheKey);
 
             if (FlowTileCache.ContainsKey(job.BuildKey.CacheKey))
             {
@@ -1606,9 +2496,15 @@ public static class FlowFieldCrowdMovementSystem
                     FlowTileBuildQueue.AddLast(job);
                 else
                     FlowTileBuildQueue.AddFirst(job);
-                PendingFlowTileBuildJobs.Add(job.BuildKey);
-                PendingTileBuildKeys.Add(job.BuildKey.CacheKey);
-                return;
+                PendingFlowTileBuildJobs.Add(job.BuildKey.CacheKey);
+                if (!forceComplete)
+                    return;
+                if (requiredKey.HasValue && FlowTileCache.ContainsKey(requiredKey.Value))
+                    return;
+                guard++;
+                if (guard > Config.FlowTileCacheLimit * 8 + 1024)
+                    throw new InvalidOperationException("ProcessFlowTileBuildQueue failed: force-complete dependency processing exceeded guard.");
+                continue;
             }
 
             if (requiredKey.HasValue && FlowTileCache.ContainsKey(requiredKey.Value))
@@ -1635,8 +2531,6 @@ public static class FlowFieldCrowdMovementSystem
             return true;
         }
         if (PathReferencesMissingPortal(job.HandleSnapshot))
-            return true;
-        if (!IsPathHandleStillLive(job.HandleSnapshot.HandleId))
             return true;
 
         FlowTileCacheKey expectedKey = CreateTileCacheKeyForPathSegment(
@@ -1682,6 +2576,9 @@ public static class FlowFieldCrowdMovementSystem
                 default:
                     throw new InvalidOperationException($"AdvanceFlowTileBuildJob failed: unknown stage {job.Stage}.");
             }
+
+            if (job.Stage == FlowTileBuildStage.Complete)
+                break;
 
             if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
                 return false;
@@ -1732,12 +2629,11 @@ public static class FlowFieldCrowdMovementSystem
             StartY = job.Sector.StartY,
             Width = job.Sector.Width,
             Height = job.Sector.Height,
-            Integration = new float[job.Sector.Width * job.Sector.Height],
-            FlowDirections = new Vector2[job.Sector.Width * job.Sector.Height],
-            HasLineOfSight = new bool[job.Sector.Width * job.Sector.Height],
-            WaveFrontBlocked = new bool[job.Sector.Width * job.Sector.Height],
+            IntegrationPayload = new IntegrationPayload(job.Sector.Width * job.Sector.Height),
+            FlowFieldValues = new byte[job.Sector.Width * job.Sector.Height],
             PortalTargets = key.GoalKind == TileGoalKind.Portal ? new CachedPortalTarget[job.Sector.Width * job.Sector.Height] : null,
-            GoalCells = goalCells
+            GoalCells = goalCells,
+            UsesClearFlowDescriptor = job.Sector.IsClearFlowTile
         };
         InitializeIntegrationField(job.Tile.Integration);
         job.LineOfSightOpenQueue = new Queue<int>(job.Tile.Width * job.Tile.Height);
@@ -1757,6 +2653,7 @@ public static class FlowFieldCrowdMovementSystem
 
     private static bool AdvanceFlowTileLineOfSight(FlowTileBuildJob job, long deadlineTicks, bool forceComplete)
     {
+        int budgetWork = 0;
         while (job.LineOfSightOpenQueue.Count > 0)
         {
             int localIndex = job.LineOfSightOpenQueue.Dequeue();
@@ -1770,7 +2667,7 @@ public static class FlowFieldCrowdMovementSystem
                     continue;
 
                 int nextIndex = job.Tile.GetLocalIndex(nextX, nextY);
-                if (job.Tile.WaveFrontBlocked[nextIndex])
+                if (IsFlowWaveFrontBlocked(job.Tile, nextIndex))
                     continue;
                 if (!_world.IsWalkable(nextX, nextY) || !CanTraverseNeighborCells(_world, worldX, worldY, nextX, nextY))
                 {
@@ -1782,15 +2679,15 @@ public static class FlowFieldCrowdMovementSystem
                     MarkWaveFrontBlockedFromLosCorner(job.Tile, job.BuildKey.GoalX, job.BuildKey.GoalY, worldX, worldY, nextX, nextY);
                     continue;
                 }
-                if (job.Tile.HasLineOfSight[nextIndex])
+                if (HasFlowLineOfSight(job.Tile, nextIndex))
                     continue;
 
-                job.Tile.HasLineOfSight[nextIndex] = true;
+                SetFlowLineOfSight(job.Tile, nextIndex);
                 job.Tile.Integration[nextIndex] = job.Tile.Integration[localIndex] + 1f;
                 job.LineOfSightOpenQueue.Enqueue(nextIndex);
             }
 
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, ++budgetWork))
                 return false;
         }
 
@@ -1805,8 +2702,7 @@ public static class FlowFieldCrowdMovementSystem
         for (int i = 0; i < job.Tile.Integration.Length; i++)
         {
             if (!float.IsPositiveInfinity(job.Tile.Integration[i])
-                && job.Tile.WaveFrontBlocked != null
-                && job.Tile.WaveFrontBlocked[i])
+                && IsFlowWaveFrontBlocked(job.Tile, i))
             {
                 job.IntegrationOpenSet.Push(i, job.Tile.Integration[i]);
             }
@@ -1820,16 +2716,18 @@ public static class FlowFieldCrowdMovementSystem
 
             int localIndex = GetSectorLocalIndex(job.Sector, goalCell.x, goalCell.y);
             float seedCost = job.Seeds[i].Cost;
-            if (seedCost >= job.Tile.Integration[localIndex])
+            if (seedCost > job.Tile.Integration[localIndex] + 0.0001f)
                 continue;
 
-            job.Tile.Integration[localIndex] = seedCost;
+            if (seedCost < job.Tile.Integration[localIndex])
+                job.Tile.Integration[localIndex] = seedCost;
             job.IntegrationOpenSet.Push(localIndex, seedCost);
         }
     }
 
     private static bool AdvanceFlowTileIntegration(FlowTileBuildJob job, long deadlineTicks, bool forceComplete)
     {
+        int budgetWork = 0;
         while (job.IntegrationOpenSet.Count > 0)
         {
             QueueNode node = job.IntegrationOpenSet.Pop();
@@ -1852,18 +2750,18 @@ public static class FlowFieldCrowdMovementSystem
                     continue;
 
                 int nextLocalIndex = GetSectorLocalIndex(job.Sector, nextWorldX, nextWorldY);
-                if (job.Tile.HasLineOfSight != null && job.Tile.HasLineOfSight[nextLocalIndex])
+                if (HasFlowLineOfSight(job.Tile, nextLocalIndex))
                     continue;
 
                 float newCost = ResolveEikonalIntegrationCost(_world, job.Sector, job.Tile.Integration, nextWorldX, nextWorldY, reverseTraversal: true);
-                if (newCost >= job.Tile.Integration[nextLocalIndex])
+                if (!IsSignificantIntegrationImprovement(newCost, job.Tile.Integration[nextLocalIndex]))
                     continue;
 
                 job.Tile.Integration[nextLocalIndex] = newCost;
                 job.IntegrationOpenSet.Push(nextLocalIndex, newCost);
             }
 
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, ++budgetWork))
                 return false;
         }
 
@@ -1879,19 +2777,48 @@ public static class FlowFieldCrowdMovementSystem
             int localIndex = job.CellCursor++;
             int worldX = job.Tile.StartX + localIndex % job.Tile.Width;
             int worldY = job.Tile.StartY + localIndex / job.Tile.Width;
-            job.Tile.FlowDirections[localIndex] = _world.IsWalkable(worldX, worldY)
-                ? ResolveFlowDirectionFromIntegration(job.Tile, worldX, worldY)
-                : Vector2.zero;
+            bool pathable = _world.IsWalkable(worldX, worldY);
+            if (pathable)
+                SetFlowPathable(job.Tile, localIndex);
+            if (!float.IsPositiveInfinity(job.Tile.Integration[localIndex]))
+                SetFlowReachable(job.Tile, localIndex);
+
+            bool useDescriptorDirection = job.Tile.UsesClearFlowDescriptor && !IsTileGoalCell(job.Tile, worldX, worldY);
+            bool reachable = !float.IsPositiveInfinity(job.Tile.Integration[localIndex]);
+            if (pathable && reachable && !useDescriptorDirection && !IsTileGoalCell(job.Tile, worldX, worldY))
+            {
+                Vector2 integrationDirection = ResolveFlowDirectionFromIntegration(job.Tile, worldX, worldY);
+                if (integrationDirection.sqrMagnitude > 0.0001f || GetFlowDirectionIndex(job.Tile, localIndex) == 0)
+                    SetFlowDirectionIndex(job.Tile, localIndex, EncodeFlowDirectionIndex(integrationDirection));
+            }
+            else
+            {
+                SetFlowDirectionIndex(job.Tile, localIndex, 0);
+            }
             if (job.Tile.PortalTargets != null)
                 job.Tile.PortalTargets[localIndex] = ResolveCachedPortalTarget(job.Tile, worldX, worldY);
 
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, job.CellCursor))
                 return false;
         }
 
         job.PortalHandoffCursor = 0;
         job.Stage = FlowTileBuildStage.PortalHandoff;
         return true;
+    }
+
+    private static bool IsTileGoalCell(FlowTileCacheEntry tile, int worldX, int worldY)
+    {
+        if (tile?.GoalCells == null)
+            return false;
+
+        for (int i = 0; i < tile.GoalCells.Length; i++)
+        {
+            if (tile.GoalCells[i].x == worldX && tile.GoalCells[i].y == worldY)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool AdvanceFlowTilePortalHandoff(FlowTileBuildJob job, long deadlineTicks, bool forceComplete)
@@ -1929,11 +2856,11 @@ public static class FlowFieldCrowdMovementSystem
                 if (direction.sqrMagnitude > 0.0001f)
                 {
                     direction.Normalize();
-                    job.Tile.FlowDirections[job.Tile.GetLocalIndex(currentCell.x, currentCell.y)] = new Vector2(direction.x, direction.z);
+                    SetFlowDirectionIndex(job.Tile, job.Tile.GetLocalIndex(currentCell.x, currentCell.y), EncodeFlowDirectionIndex(new Vector2(direction.x, direction.z)));
                 }
             }
 
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, job.PortalHandoffCursor))
                 return false;
         }
 
@@ -1943,6 +2870,7 @@ public static class FlowFieldCrowdMovementSystem
 
     private static void CommitFlowTileBuildJob(FlowTileBuildJob job)
     {
+        FinalizeFlowTileIntegrationForRuntime(job.Tile);
         if (GameDebugSettings.IsEnabled(DebugCategory.Move))
         {
             GameDebugSettings.Log(DebugCategory.Move,
@@ -1952,19 +2880,153 @@ public static class FlowFieldCrowdMovementSystem
 
         FlowTileCache[job.BuildKey.CacheKey] = job.Tile;
         job.Tile.LastUsedFrame = GetFrameCount();
+        RefreshFlowTileReferenceCounts();
         TrimTileCache();
         job.Stage = FlowTileBuildStage.Complete;
     }
 
-    private static bool IsPathHandleStillLive(int handleId)
+    private static void FinalizeFlowTileIntegrationForRuntime(FlowTileCacheEntry tile)
     {
-        foreach (AgentRuntimeData agent in Agents.Values)
+        if (tile == null)
+            throw new InvalidOperationException("FinalizeFlowTileIntegrationForRuntime failed: tile is null.");
+
+        float[] integration = RequireTileIntegration(tile, nameof(FinalizeFlowTileIntegrationForRuntime));
+        ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease(tile, integration);
+        tile.GoalIntegrationSummary = BuildIntegrationCostSummary(tile, tile.GoalCells, integration);
+        BuildPortalSeamIntegrationSummaries(tile, integration);
+        if (!tile.UsesClearFlowDescriptor)
+            EnsureStoredFlowDirectionsBeforeIntegrationRelease(tile, integration);
+        ReturnTileIntegrationPayload(tile);
+    }
+
+    private static void ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease(FlowTileCacheEntry tile, float[] integration)
+    {
+        if (integration == null || integration.Length != tile.Width * tile.Height)
+            throw new InvalidOperationException($"ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease failed: invalid integration key={FormatTileKey(tile.Key)}.");
+
+        for (int localIndex = 0; localIndex < tile.Width * tile.Height; localIndex++)
         {
-            if (agent.NavState.PathHandle != null && agent.NavState.PathHandle.HandleId == handleId)
+            bool reachable = !float.IsPositiveInfinity(integration[localIndex]);
+            bool hasReachableFlag = IsFlowReachable(tile, localIndex);
+            if (reachable != hasReachableFlag)
+            {
+                int worldX = tile.StartX + localIndex % tile.Width;
+                int worldY = tile.StartY + localIndex / tile.Width;
+                throw new InvalidOperationException(
+                    $"ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease failed: reachable flag mismatch key={FormatTileKey(tile.Key)} " +
+                    $"cell=({worldX},{worldY}) cost={(reachable ? integration[localIndex].ToString("F3") : "INF")} flag={hasReachableFlag}.");
+            }
+
+            if (HasFlowLineOfSight(tile, localIndex) && !reachable)
+            {
+                int worldX = tile.StartX + localIndex % tile.Width;
+                int worldY = tile.StartY + localIndex / tile.Width;
+                throw new InvalidOperationException(
+                    $"ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease failed: LOS cell is unreachable key={FormatTileKey(tile.Key)} cell=({worldX},{worldY}).");
+            }
+
+            if (GetFlowDirectionIndex(tile, localIndex) != 0 && !reachable)
+            {
+                int worldX = tile.StartX + localIndex % tile.Width;
+                int worldY = tile.StartY + localIndex / tile.Width;
+                throw new InvalidOperationException(
+                    $"ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease failed: flow direction cell is unreachable key={FormatTileKey(tile.Key)} cell=({worldX},{worldY}).");
+            }
+
+            int cellX = tile.StartX + localIndex % tile.Width;
+            int cellY = tile.StartY + localIndex / tile.Width;
+            bool needsRuntimeDirection = reachable
+                                         && IsFlowPathable(tile, localIndex)
+                                         && !IsTileGoalCell(tile, cellX, cellY)
+                                         && !tile.UsesClearFlowDescriptor;
+            if (needsRuntimeDirection && GetFlowDirectionIndex(tile, localIndex) == 0)
+            {
+                throw new InvalidOperationException(
+                    $"ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease failed: reachable non-LOS cell has zero flow key={FormatTileKey(tile.Key)} " +
+                    $"cell=({cellX},{cellY}) waveBlocked={IsFlowWaveFrontBlocked(tile, localIndex)} cost={integration[localIndex]:F3}.");
+            }
+        }
+    }
+
+    private static void EnsureStoredFlowDirectionsBeforeIntegrationRelease(FlowTileCacheEntry tile, float[] integration)
+    {
+        if (!RequiresStoredFlowDirectionBackfill(tile))
+            return;
+
+        for (int localIndex = 0; localIndex < tile.Width * tile.Height; localIndex++)
+        {
+            if (!IsFlowPathable(tile, localIndex)
+                || !IsFlowReachable(tile, localIndex)
+                || GetFlowDirectionIndex(tile, localIndex) != 0)
+            {
+                continue;
+            }
+
+            int worldX = tile.StartX + localIndex % tile.Width;
+            int worldY = tile.StartY + localIndex / tile.Width;
+            if (IsTileGoalCell(tile, worldX, worldY))
+                continue;
+
+            SetFlowDirectionIndex(tile, localIndex, EncodeFlowDirectionIndex(ResolveFlowDirectionFromIntegration(tile, worldX, worldY)));
+        }
+    }
+
+    private static bool RequiresStoredFlowDirectionBackfill(FlowTileCacheEntry tile)
+    {
+        for (int localIndex = 0; localIndex < tile.Width * tile.Height; localIndex++)
+        {
+            if (!IsFlowPathable(tile, localIndex)
+                || !IsFlowReachable(tile, localIndex))
+            {
+                continue;
+            }
+
+            int worldX = tile.StartX + localIndex % tile.Width;
+            int worldY = tile.StartY + localIndex / tile.Width;
+            if (!IsTileGoalCell(tile, worldX, worldY) && GetFlowDirectionIndex(tile, localIndex) == 0)
                 return true;
         }
 
         return false;
+    }
+
+    private static IntegrationCostSummary BuildIntegrationCostSummary(FlowTileCacheEntry tile, Vector2Int[] cells, float[] integration)
+    {
+        if (cells == null || cells.Length == 0)
+            return new IntegrationCostSummary { Cells = Array.Empty<Vector2Int>(), Costs = Array.Empty<float>() };
+
+        IntegrationCostSummary summary = new IntegrationCostSummary
+        {
+            Cells = new Vector2Int[cells.Length],
+            Costs = new float[cells.Length]
+        };
+
+        for (int i = 0; i < cells.Length; i++)
+        {
+            Vector2Int cell = cells[i];
+            summary.Cells[i] = cell;
+            summary.Costs[i] = IsInsideSector(tile, cell.x, cell.y)
+                ? integration[tile.GetLocalIndex(cell.x, cell.y)]
+                : float.PositiveInfinity;
+        }
+
+        return summary;
+    }
+
+    private static void BuildPortalSeamIntegrationSummaries(FlowTileCacheEntry tile, float[] integration)
+    {
+        if (_world == null || tile.Key.SectorId < 0 || tile.Key.SectorId >= _world.Sectors.Length)
+            throw new InvalidOperationException($"BuildPortalSeamIntegrationSummaries failed: invalid world or sector key={FormatTileKey(tile.Key)}.");
+
+        SectorData sector = _world.Sectors[tile.Key.SectorId];
+        tile.PortalSeamIntegrationSummaries.Clear();
+        for (int i = 0; i < sector.PortalIds.Count; i++)
+        {
+            int portalId = sector.PortalIds[i];
+            PortalData portal = GetPortalById(_world, portalId);
+            Vector2Int[] cells = GetPortalCellsForSector(portal, sector.SectorId);
+            tile.PortalSeamIntegrationSummaries[portalId] = BuildIntegrationCostSummary(tile, cells, integration);
+        }
     }
 
     private static int ResolveWorldBuildPriority(WorldRuntimeState state)
@@ -2052,7 +3114,7 @@ public static class FlowFieldCrowdMovementSystem
         agent.Radius = Mathf.Max(0.05f, radius);
         agent.Side = entity.Side;
         agent.IsLeader = isLeader;
-        agent.AgentTypeId = entity is MAEntity maEntity ? maEntity.navAgentTypeID : 0;
+        agent.AgentTypeId = ResolveExplicitAgentTypeId(entity, nameof(RegisterAgent));
         agent.EntityTypeName = entity.GetType().Name;
         agent.MoveCompTypeName = entity.MoveComp?.GetType().Name ?? "null";
         agent.RegistrationSource = "RegisterAgent";
@@ -2088,7 +3150,7 @@ public static class FlowFieldCrowdMovementSystem
         agent.Position = entity.Position;
         agent.Radius = Mathf.Max(0.05f, radius);
         agent.Side = entity.Side;
-        agent.AgentTypeId = entity.navAgentTypeID;
+        agent.AgentTypeId = ResolveExplicitAgentTypeId(entity, nameof(UpdateAgent));
         agent.EntityTypeName = entity.GetType().Name;
         agent.MoveCompTypeName = entity.moveComp?.GetType().Name ?? "null";
         if (string.IsNullOrEmpty(agent.RegistrationSource))
@@ -2115,7 +3177,7 @@ public static class FlowFieldCrowdMovementSystem
             agent.GroupId = groupId;
     }
 
-    public static void SetAgentState(int agentId, GroupMoveCoordinator.AgentState state)
+    public static void SetAgentState(int agentId, FlowFieldAgentState state)
     {
         if (Agents.TryGetValue(agentId, out AgentRuntimeData agent))
             agent.State = state;
@@ -2142,15 +3204,88 @@ public static class FlowFieldCrowdMovementSystem
         return true;
     }
 
+    public static bool TryGetEditorTestLastSteeringSource(int agentId, out int source, out bool hasLineOfSight)
+    {
+        source = (int)DesiredDirectionSource.Zero;
+        hasLineOfSight = false;
+        if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent))
+            return false;
+
+        source = (int)agent.NavState.LastSteeringDesiredSource;
+        hasLineOfSight = agent.NavState.LastSteeringHasLineOfSight;
+        return agent.NavState.LastSteeringFrame >= 0;
+    }
+
     public static int GetEditorTestFlowTileCacheCount()
     {
         return FlowTileCache.Count;
     }
 
+    public static int GetEditorTestReleasedIntegrationTileCount()
+    {
+        int count = 0;
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+        {
+            if (tile.IntegrationReleased && tile.IntegrationPayload?.Values == null)
+                count++;
+        }
+
+        return count;
+    }
+
+    public static int GetEditorTestDebugIntegrationPayloadTileCount()
+    {
+        int count = 0;
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+        {
+            if (tile.DebugIntegrationPayload?.Values != null)
+                count++;
+        }
+
+        return count;
+    }
+
+    public static bool TryRebuildEditorDebugTileIntegration(int worldX, int worldY)
+    {
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+        {
+            if (!IsInsideSector(tile, worldX, worldY))
+                continue;
+
+            return TryRebuildTileDebugIntegration(tile);
+        }
+
+        return false;
+    }
+
+    public static bool TryGetEditorTestDebugIntegrationCost(int worldX, int worldY, out float cost)
+    {
+        cost = float.PositiveInfinity;
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+        {
+            if (!IsInsideSector(tile, worldX, worldY) || tile.DebugIntegrationPayload?.Values == null)
+                continue;
+
+            cost = tile.DebugIntegrationPayload.Values[tile.GetLocalIndex(worldX, worldY)];
+            return true;
+        }
+
+        return false;
+    }
+
+    public static int GetEditorTestIntegrationArrayPoolCount()
+    {
+        int count = 0;
+        foreach (Stack<float[]> stack in IntegrationArrayPool.Values)
+            count += stack.Count;
+
+        return count;
+    }
+
     public static void ClearEditorTestFlowTileCache()
     {
-        FlowTileCache.Clear();
-        PendingTileBuildKeys.Clear();
+        ClearFlowTileCache();
+        ReturnPendingFlowTileBuildIntegrations();
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
     }
@@ -2171,6 +3306,19 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    public static bool HasEditorTestPendingRuntimeDirty()
+    {
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state == null)
+                continue;
+            if (state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count > 0)
+                return true;
+        }
+
+        return false;
+    }
+
     public static int GetEditorTestPortalCount()
     {
         return _world != null && _world.Portals != null ? _world.Portals.Length : 0;
@@ -2181,23 +3329,152 @@ public static class FlowFieldCrowdMovementSystem
         return _perf.TileBuilds;
     }
 
+    public static int GetEditorTestFrameSynchronousSectorIntegrationCount()
+    {
+        return _perf.SynchronousSectorIntegrations;
+    }
+
+    public static int GetEditorTestFrameSharedGoalFieldBuildCount()
+    {
+        return _perf.SharedGoalFieldBuilds;
+    }
+
+    public static int GetEditorTestFramePortalGraphMergeHitCount()
+    {
+        return _perf.PortalGraphMergeHits;
+    }
+
+    public static bool TryGetEditorTestPathPortalIds(int entityId, out int[] portalIds)
+    {
+        portalIds = null;
+        if (!Agents.TryGetValue(entityId, out AgentRuntimeData agent))
+            return false;
+
+        PathHandle handle = agent.NavState.PathHandle;
+        if (handle?.PortalIds == null)
+            return false;
+
+        portalIds = (int[])handle.PortalIds.Clone();
+        return true;
+    }
+
     public static int GetEditorTestPendingFlowTileBuildCount()
     {
         return PendingFlowTileBuildJobs.Count;
     }
 
+    public static int GetEditorTestDuplicatePendingFlowTileBuildKeyCount()
+    {
+        HashSet<FlowTileCacheKey> seen = new HashSet<FlowTileCacheKey>();
+        int duplicateCount = 0;
+        LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First;
+        while (node != null)
+        {
+            FlowTileCacheKey key = node.Value.BuildKey.CacheKey;
+            if (!seen.Add(key))
+                duplicateCount++;
+
+            node = node.Next;
+        }
+
+        return duplicateCount;
+    }
+
+    public static int GetEditorTestPendingSharedGoalFieldBuildCount()
+    {
+        return PendingSharedGoalFieldBuildJobs.Count;
+    }
+
+    public static int GetEditorTestSectorPortalAccessCacheCount()
+    {
+        return SectorPortalAccessCache.Count;
+    }
+
+    public static bool HasEditorTestCommittedFullCostField()
+    {
+        return _world?.CostField != null;
+    }
+
+    public static int GetEditorTestCommittedSectorCostChunkCount()
+    {
+        if (_world?.SectorCostFields == null)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < _world.SectorCostFields.Length; i++)
+        {
+            if (_world.SectorCostFields[i] != null)
+                count++;
+        }
+
+        return count;
+    }
+
+    public static int GetEditorTestQuantizedSectorPortalAccessCacheCount()
+    {
+        int count = 0;
+        foreach (SectorPortalAccessEntry entry in SectorPortalAccessCache.Values)
+        {
+            if (entry?.QuantizedIntegration != null && entry.IntegrationScale > 0f)
+                count++;
+        }
+
+        return count;
+    }
+
+    public static bool TryGetEditorTestFirstPortalForSector(int sectorId, out int portalId, out int oppositeSectorId)
+    {
+        portalId = -1;
+        oppositeSectorId = -1;
+        if (_world == null || sectorId < 0 || sectorId >= _world.Sectors.Length)
+            return false;
+
+        SectorData sector = _world.Sectors[sectorId];
+        if (sector.PortalIds.Count == 0)
+            return false;
+
+        portalId = sector.PortalIds[0];
+        if (!TryGetPortalById(_world, portalId, out PortalData portal))
+            return false;
+
+        oppositeSectorId = GetOppositeSectorId(portal, sectorId);
+        return oppositeSectorId >= 0;
+    }
+
+    public static bool TryGetEditorTestSectorPortalAccessCost(int sectorId, int portalId, int worldX, int worldY, out float cost)
+    {
+        cost = float.PositiveInfinity;
+        if (_world == null || sectorId < 0 || sectorId >= _world.Sectors.Length)
+            return false;
+
+        SectorData sector = _world.Sectors[sectorId];
+        if (!IsInsideSector(sector, worldX, worldY))
+            return false;
+
+        SectorPortalAccessEntry entry = GetPrebuiltSectorPortalAccess(sector, sectorId, portalId);
+        cost = DecodePortalAccessIntegrationCost(entry, GetSectorLocalIndex(sector, worldX, worldY));
+        return true;
+    }
+
     public static bool TryGetEditorTestCachedTileCellLineOfSightState(int worldX, int worldY, out bool hasLineOfSight, out bool waveFrontBlocked)
+    {
+        return TryGetEditorTestCachedTileCellFlags(worldX, worldY, out hasLineOfSight, out waveFrontBlocked, out _);
+    }
+
+    public static bool TryGetEditorTestCachedTileCellFlags(int worldX, int worldY, out bool hasLineOfSight, out bool waveFrontBlocked, out bool pathable)
     {
         hasLineOfSight = false;
         waveFrontBlocked = false;
+        pathable = false;
         foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
         {
             if (!IsInsideSector(tile, worldX, worldY))
                 continue;
 
             int localIndex = tile.GetLocalIndex(worldX, worldY);
-            hasLineOfSight = tile.HasLineOfSight != null && tile.HasLineOfSight[localIndex];
-            waveFrontBlocked = tile.WaveFrontBlocked != null && tile.WaveFrontBlocked[localIndex];
+            hasLineOfSight = HasFlowLineOfSight(tile, localIndex);
+            waveFrontBlocked = IsFlowWaveFrontBlocked(tile, localIndex);
+            pathable = IsFlowPathable(tile, localIndex);
             return true;
         }
 
@@ -2209,14 +3486,55 @@ public static class FlowFieldCrowdMovementSystem
         direction = Vector2.zero;
         foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
         {
-            if (!IsInsideSector(tile, worldX, worldY) || tile.FlowDirections == null)
+            if (!IsInsideSector(tile, worldX, worldY) || tile.FlowFieldValues == null)
                 continue;
 
-            direction = tile.FlowDirections[tile.GetLocalIndex(worldX, worldY)];
+            int localIndex = tile.GetLocalIndex(worldX, worldY);
+            direction = ResolveRuntimeFlowDirection(tile, worldX, worldY, localIndex);
             return true;
         }
 
         return false;
+    }
+
+    public static bool TryGetEditorTestCachedTileCellStoredFlowDirection(int worldX, int worldY, out Vector2 direction)
+    {
+        direction = Vector2.zero;
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+        {
+            if (!IsInsideSector(tile, worldX, worldY) || tile.FlowFieldValues == null)
+                continue;
+
+            direction = GetFlowDirection(tile, tile.GetLocalIndex(worldX, worldY));
+            return true;
+        }
+
+        return false;
+    }
+
+    public static string GetEditorTestCachedTileCellDiagnostic(int worldX, int worldY)
+    {
+        if (_world == null)
+            return "world=null";
+
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+        {
+            if (!IsInsideSector(tile, worldX, worldY) || tile.FlowFieldValues == null)
+                continue;
+
+            int localIndex = tile.GetLocalIndex(worldX, worldY);
+            byte cost = TryGetCostFieldValue(_world, worldX, worldY, out byte resolvedCost) ? resolvedCost : (byte)0;
+            TryGetSectorForCell(_world, worldX, worldY, out SectorData sector);
+            float integration = GetTileIntegrationCostForDiagnostics(tile, worldX, worldY);
+            string integrationText = float.IsPositiveInfinity(integration) ? "INF/released" : integration.ToString("F3");
+            return $"cell=({worldX},{worldY}) cost={cost} integration={integrationText} " +
+                   $"pathable={IsFlowPathable(tile, localIndex)} los={HasFlowLineOfSight(tile, localIndex)} waveBlocked={IsFlowWaveFrontBlocked(tile, localIndex)} " +
+                   $"stored={GetFlowDirection(tile, localIndex)} runtime={ResolveRuntimeFlowDirection(tile, worldX, worldY, localIndex)} " +
+                   $"sectorClearCost={(sector != null && sector.IsClearCostField)} sectorClearFlow={(sector != null && sector.IsClearFlowTile)} " +
+                   $"tile={FormatTileKey(tile.Key)}";
+        }
+
+        return $"cell=({worldX},{worldY}) tile=missing";
     }
 
     public static bool TryGetEditorTestCachedPortalTarget(int worldX, int worldY, out Vector3 targetPosition, out int visibleCandidateCount, out int selectedPairIndex, out bool usedOppositeCenter)
@@ -2241,6 +3559,28 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    public static int GetEditorTestSharedGoalFieldCacheCount()
+    {
+        return SharedGoalFields.Count;
+    }
+
+    public static string GetEditorTestStartPortalChoiceDiagnostics(int startSectorId, int goalSectorId, int startX, int startY, int goalX, int goalY, int agentTypeId)
+    {
+        if (_world == null)
+            return "portalChoice=world-null";
+
+        return BuildStartPortalChoiceDiagnostics(
+            startSectorId,
+            goalSectorId,
+            startX,
+            startY,
+            goalX,
+            goalY,
+            agentTypeId,
+            _world.GridToWorldCenter(startX, startY),
+            _world.GridToWorldCenter(goalX, goalY));
+    }
+
     public static bool TryGetEditorTestCostFieldValue(int worldX, int worldY, out byte cost)
     {
         cost = 0;
@@ -2248,10 +3588,29 @@ public static class FlowFieldCrowdMovementSystem
             return false;
         if (worldX < 0 || worldX >= _world.Width || worldY < 0 || worldY >= _world.Height)
             return false;
-        if (_world.CostField == null || _world.CostField.Length != _world.Width * _world.Height)
+        if (!TryGetCostFieldValue(_world, worldX, worldY, out cost))
             return false;
 
-        cost = _world.CostField[_world.GetIndex(worldX, worldY)];
+        return true;
+    }
+
+    public static bool TryGetEditorTestSectorClearCostState(int worldX, int worldY, out bool isClearCostField)
+    {
+        isClearCostField = false;
+        if (_world == null || !TryGetSectorForCell(_world, worldX, worldY, out SectorData sector))
+            return false;
+
+        isClearCostField = sector.IsClearCostField;
+        return true;
+    }
+
+    public static bool TryGetEditorTestSectorClearFlowTileState(int worldX, int worldY, out bool isClearFlowTile)
+    {
+        isClearFlowTile = false;
+        if (_world == null || !TryGetSectorForCell(_world, worldX, worldY, out SectorData sector))
+            return false;
+
+        isClearFlowTile = sector.IsClearFlowTile;
         return true;
     }
 
@@ -2266,6 +3625,16 @@ public static class FlowFieldCrowdMovementSystem
 
         islandId = _world.IslandIds[_world.GetIndex(worldX, worldY)];
         islandCount = _world.IslandCount;
+        return true;
+    }
+
+    public static bool TryGetEditorTestSectorUniformIslandId(int worldX, int worldY, out int uniformIslandId)
+    {
+        uniformIslandId = -1;
+        if (_world == null || !TryGetSectorForCell(_world, worldX, worldY, out SectorData sector))
+            return false;
+
+        uniformIslandId = sector.UniformIslandId;
         return true;
     }
 #endif
@@ -2310,6 +3679,46 @@ public static class FlowFieldCrowdMovementSystem
             AgentTypeId = agentTypeId,
             Bounds = bounds,
             Cost = cost
+        };
+        MarkRuntimeObstacleDirty(bounds);
+    }
+
+    public static void RegisterGridCostStamp(int stampId, Vector3 origin, float cellSize, int width, int height, byte[] costs)
+    {
+        RegisterGridCostStamp(stampId, AnyAgentTypeId, origin, cellSize, width, height, costs);
+    }
+
+    public static void RegisterGridCostStamp(int stampId, int agentTypeId, Vector3 origin, float cellSize, int width, int height, byte[] costs)
+    {
+        if (cellSize <= 0.0001f)
+            throw new InvalidOperationException($"RegisterGridCostStamp failed: cellSize must be positive, cellSize={cellSize}.");
+        if (width <= 0 || height <= 0)
+            throw new InvalidOperationException($"RegisterGridCostStamp failed: invalid size {width}x{height}.");
+        if (costs == null)
+            throw new InvalidOperationException("RegisterGridCostStamp failed: costs is null.");
+        if (costs.Length != width * height)
+            throw new InvalidOperationException($"RegisterGridCostStamp failed: costs length {costs.Length} does not match {width}x{height}.");
+
+        for (int i = 0; i < costs.Length; i++)
+        {
+            byte cost = costs[i];
+            if (cost == 0 || cost >= 255)
+                throw new InvalidOperationException($"RegisterGridCostStamp failed: cost must be in 1..254 at index={i}, cost={cost}.");
+        }
+
+        Vector3 size = new Vector3(width * cellSize, 0f, height * cellSize);
+        Bounds bounds = new Bounds(origin + new Vector3(size.x * 0.5f, 0f, size.z * 0.5f), size);
+        CostStamps[stampId] = new CostStamp
+        {
+            Id = stampId,
+            AgentTypeId = agentTypeId,
+            Bounds = bounds,
+            Cost = 1,
+            Width = width,
+            Height = height,
+            CellSize = cellSize,
+            Origin = origin,
+            Costs = (byte[])costs.Clone()
         };
         MarkRuntimeObstacleDirty(bounds);
     }
@@ -2426,35 +3835,42 @@ public static class FlowFieldCrowdMovementSystem
             return false;
         }
 
-        if (!_world.WorldToGrid(self.Position, out int startX, out int startY))
+        if (HasPendingRuntimeDirty(_activeWorldState))
+        {
+            failureReason = $"runtime dirty pending agentType={agent.AgentTypeId}";
+            return false;
+        }
+
+        NavigationWorld queryWorld = _activeWorldState.World;
+        if (!queryWorld.WorldToGrid(self.Position, out int startX, out int startY))
         {
             failureReason = $"start not on grid pos={self.Position}";
             return false;
         }
 
-        if (!_world.IsWalkable(startX, startY)
-            && !TryFindNearestWalkable(_world, startX, startY, 3, out startX, out startY))
+        if (!queryWorld.IsWalkable(startX, startY)
+            && !TryResolveNearbyStartWalkable(queryWorld, self.Position, startX, startY, out startX, out startY))
         {
             failureReason = $"start blocked and no nearby walkable pos={self.Position}";
             return false;
         }
 
-        int startIsland = ResolveIslandIdForDiagnostics(_world, startX, startY);
+        int startIsland = ResolveIslandIdForDiagnostics(queryWorld, startX, startY);
         if (startIsland <= 0)
         {
             failureReason = $"start island invalid start=({startX},{startY}) island={startIsland}";
             return false;
         }
 
-        if (!_world.WorldToGrid(desiredGoal, out int goalX, out int goalY))
+        if (!queryWorld.WorldToGrid(desiredGoal, out int goalX, out int goalY))
         {
             failureReason = $"goal not on grid goal={desiredGoal}";
             return false;
         }
 
-        int maxRadiusCells = Mathf.Max(1, Mathf.CeilToInt(searchRadius / Mathf.Max(_world.CellSize, 0.001f)));
+        int maxRadiusCells = Mathf.Max(1, Mathf.CeilToInt(searchRadius / Mathf.Max(queryWorld.CellSize, 0.001f)));
         if (TryFindNearestWalkableInIslandByWorldDistance(
-                _world,
+                queryWorld,
                 goalX,
                 goalY,
                 desiredGoal,
@@ -2465,14 +3881,14 @@ public static class FlowFieldCrowdMovementSystem
                 out int resultY,
                 out float distance))
         {
-            reachableGoal = _world.GridToWorldCenter(resultX, resultY);
-            LogReachableGoalResolution(self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, maxRadiusCells, fullIsland: false);
-            LogReachableGoalTargetSnapDiagnostics(self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, fullIsland: false);
+            reachableGoal = queryWorld.GridToWorldCenter(resultX, resultY);
+            LogReachableGoalResolution(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, maxRadiusCells, fullIsland: false);
+            LogReachableGoalTargetSnapDiagnostics(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, fullIsland: false);
             return true;
         }
 
         bool fullIslandFound = TryFindNearestWalkableInIslandByWorldDistance(
-            _world,
+            queryWorld,
             goalX,
             goalY,
             desiredGoal,
@@ -2483,6 +3899,7 @@ public static class FlowFieldCrowdMovementSystem
             out int fullIslandY,
             out float fullIslandDistance);
         Debug.LogWarning(BuildGoalResolutionIslandDiagnostics(
+            queryWorld,
             self,
             desiredGoal,
             startX,
@@ -2497,9 +3914,9 @@ public static class FlowFieldCrowdMovementSystem
             fullIslandDistance));
         if (fullIslandFound)
         {
-            reachableGoal = _world.GridToWorldCenter(fullIslandX, fullIslandY);
-            LogReachableGoalResolution(self, desiredGoal, startX, startY, goalX, goalY, fullIslandX, fullIslandY, fullIslandDistance, maxRadiusCells, fullIsland: true);
-            LogReachableGoalTargetSnapDiagnostics(self, desiredGoal, startX, startY, goalX, goalY, fullIslandX, fullIslandY, fullIslandDistance, fullIsland: true);
+            reachableGoal = queryWorld.GridToWorldCenter(fullIslandX, fullIslandY);
+            LogReachableGoalResolution(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, fullIslandX, fullIslandY, fullIslandDistance, maxRadiusCells, fullIsland: true);
+            LogReachableGoalTargetSnapDiagnostics(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, fullIslandX, fullIslandY, fullIslandDistance, fullIsland: true);
             return true;
         }
 
@@ -2508,7 +3925,360 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    public static bool TryResolveCombatApproachPoint(
+        IEntityContext self,
+        IEntityContext target,
+        Vector3 targetPoint,
+        float standOff,
+        float ringSpacing,
+        int ringCount,
+        int candidateCount,
+        float requiredClearance,
+        out Vector3 approachPoint,
+        out string failureReason)
+    {
+        approachPoint = targetPoint;
+        failureReason = string.Empty;
+        if (self == null)
+            throw new InvalidOperationException("TryResolveCombatApproachPoint failed: self is null.");
+        if (target == null)
+            throw new InvalidOperationException("TryResolveCombatApproachPoint failed: target is null.");
+
+        int selfId = ResolveAgentId(self);
+        if (!Agents.TryGetValue(selfId, out AgentRuntimeData agent))
+        {
+            RegisterSyntheticAgent(self);
+            agent = Agents[selfId];
+        }
+        else
+        {
+            agent.Position = self.Position;
+            agent.Radius = ResolveCollisionRadius(self);
+            agent.AgentTypeId = self is MAEntity maEntity ? maEntity.navAgentTypeID : agent.AgentTypeId;
+        }
+
+        if (!TryEnsureWorldBuilt(agent.AgentTypeId))
+        {
+            failureReason = $"world unavailable agentType={agent.AgentTypeId}";
+            return false;
+        }
+
+        if (HasPendingRuntimeDirty(_activeWorldState))
+        {
+            failureReason = $"runtime dirty pending agentType={agent.AgentTypeId}";
+            return false;
+        }
+
+        if (!TryResolveStartCellForReachability(self, out int startX, out int startY, out int startIsland))
+        {
+            failureReason = $"start reachability failed pos={self.Position}";
+            return false;
+        }
+
+        if (!_world.WorldToGrid(targetPoint, out int targetX, out int targetY))
+        {
+            failureReason = $"target point outside grid targetPoint={targetPoint}";
+            return false;
+        }
+
+        CombatTargetSlotKey key = CreateCombatTargetSlotKey(
+            target,
+            agent.AgentTypeId,
+            targetPoint,
+            targetX,
+            targetY,
+            standOff,
+            ringSpacing,
+            ringCount,
+            candidateCount);
+        CombatTargetSlotEntry entry = GetOrBuildCombatTargetSlotEntry(key, targetPoint, standOff, ringSpacing, ringCount, candidateCount, targetX, targetY);
+        if (entry == null || entry.Points == null || entry.Points.Length == 0)
+        {
+            failureReason = $"no combat approach slots target={target.CharacterKey} targetPoint={targetPoint}";
+            return false;
+        }
+
+        Vector3 toTargetFromSelf = self.Position - targetPoint;
+        toTargetFromSelf.y = 0f;
+        if (toTargetFromSelf.sqrMagnitude <= 0.0001f)
+            toTargetFromSelf = Vector3.forward;
+        toTargetFromSelf.Normalize();
+
+        int ignoredTargetId = ResolveAgentId(target);
+        float bestScore = float.PositiveInfinity;
+        int bestIndex = -1;
+        bool bestOccupied = false;
+        for (int i = 0; i < entry.Points.Length; i++)
+        {
+            if (entry.IslandIds[i] != startIsland)
+                continue;
+
+            Vector3 candidate = entry.Points[i];
+            bool occupied = IsNavigationGoalOccupiedByOther(selfId, ignoredTargetId, candidate, requiredClearance, includeReservations: true, out _);
+            Vector3 candidateDirection = candidate - targetPoint;
+            candidateDirection.y = 0f;
+            float anglePenalty = 0f;
+            if (candidateDirection.sqrMagnitude > 0.0001f)
+            {
+                candidateDirection.Normalize();
+                anglePenalty = Vector3.Angle(candidateDirection, toTargetFromSelf) * 0.015f;
+            }
+
+            float distanceToSelf = HorizontalDistanceXZ(self.Position, candidate);
+            float distanceToTargetError = Mathf.Abs(HorizontalDistanceXZ(candidate, targetPoint) - standOff);
+            float score = distanceToSelf + distanceToTargetError * 3f + anglePenalty;
+            if (occupied)
+                score += 1000f;
+            if (score >= bestScore)
+                continue;
+
+            bestScore = score;
+            bestIndex = i;
+            bestOccupied = occupied;
+        }
+
+        if (bestIndex < 0)
+        {
+            failureReason =
+                $"no combat approach slot in start island target={target.CharacterKey} start=({startX},{startY}) startIsland={startIsland} " +
+                $"targetPoint={targetPoint} slots={entry.Points.Length} build={entry.BuildSummary}";
+            return false;
+        }
+
+        approachPoint = entry.Points[bestIndex];
+        RegisterNavigationGoalReservation(selfId, approachPoint, requiredClearance);
+        if (GameDebugSettings.IsEnabled(DebugCategory.Move)
+            && GameDebugSettings.ShouldLogMovementForCharacter(self.CharacterKey))
+        {
+            GameDebugSettings.Log(DebugCategory.Move,
+                $"[FlowCombatSlot] self={self.CharacterKey} target={target.CharacterKey} targetPoint={targetPoint} " +
+                $"approach={approachPoint} slotIndex={bestIndex} occupied={bestOccupied} score={bestScore:F3} " +
+                $"start=({startX},{startY}) startIsland={startIsland} keyTargetCell={key.TargetCellIndex} slots={entry.Points.Length}");
+        }
+
+        return true;
+    }
+
+    public static bool TryPrepareSharedGoalRequest(Vector3 goalPosition, IReadOnlyList<IEntityContext> sources, out string failureReason)
+    {
+        failureReason = string.Empty;
+        if (sources == null)
+            throw new InvalidOperationException("TryPrepareSharedGoalRequest failed: sources is null.");
+        if (sources.Count == 0)
+        {
+            failureReason = "sources is empty";
+            return false;
+        }
+
+        int preparedCount = 0;
+        for (int i = 0; i < sources.Count; i++)
+        {
+            IEntityContext source = sources[i];
+            if (source == null)
+            {
+                failureReason = $"source[{i}] is null";
+                return false;
+            }
+
+            int sourceId = ResolveAgentId(source);
+            if (!Agents.TryGetValue(sourceId, out AgentRuntimeData agent))
+            {
+                RegisterSyntheticAgent(source);
+                agent = Agents[sourceId];
+            }
+            else
+            {
+                agent.Position = source.Position;
+                agent.Radius = ResolveCollisionRadius(source);
+                agent.AgentTypeId = source is MAEntity maEntity ? maEntity.navAgentTypeID : agent.AgentTypeId;
+            }
+
+            if (!TryEnsureWorldBuilt(agent.AgentTypeId))
+            {
+                failureReason = $"world unavailable source={source.CharacterKey} agentType={agent.AgentTypeId}";
+                return false;
+            }
+
+            if (HasPendingRuntimeDirty(_activeWorldState))
+            {
+                failureReason = $"runtime dirty pending source={source.CharacterKey} agentType={agent.AgentTypeId}";
+                return false;
+            }
+
+            if (!_world.WorldToGrid(goalPosition, out int rawGoalX, out int rawGoalY))
+            {
+                failureReason = $"goal outside grid goal={goalPosition}";
+                return false;
+            }
+
+            if (!TryResolveStartCellForReachability(source, out int startX, out int startY, out int startIsland))
+            {
+                failureReason = $"start reachability failed source={source.CharacterKey} pos={source.Position}";
+                return false;
+            }
+
+            if (!TryResolveReachableGoalCell(
+                    source,
+                    goalPosition,
+                    rawGoalX,
+                    rawGoalY,
+                    startX,
+                    startY,
+                    startIsland,
+                    out int goalX,
+                    out int goalY,
+                    out _,
+                    out int goalSectorId))
+            {
+                failureReason = $"goal reachability failed source={source.CharacterKey} goal={goalPosition}";
+                return false;
+            }
+
+            if (!_world.TryGetSectorId(startX, startY, out int startSectorId))
+            {
+                failureReason = $"start sector failed source={source.CharacterKey} start=({startX},{startY})";
+                return false;
+            }
+
+            agent.NavState.CurrentCell = new Vector2Int(startX, startY);
+            agent.NavState.CurrentSectorId = startSectorId;
+            if (!EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY))
+            {
+                failureReason = $"path handle failed source={source.CharacterKey} startSector={startSectorId} goalSector={goalSectorId}";
+                return false;
+            }
+
+            EnqueueSharedGoalFieldBuild(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(agent.AgentTypeId));
+            EnqueueFlowTileBuildChain(agent.NavState.PathHandle, agent.NavState.PathHandle.CurrentSectorIndex, goalX, goalY, agent.AgentTypeId);
+            preparedCount++;
+        }
+
+        return preparedCount == sources.Count;
+    }
+
+    private static CombatTargetSlotKey CreateCombatTargetSlotKey(
+        IEntityContext target,
+        int agentTypeId,
+        Vector3 targetPoint,
+        int targetX,
+        int targetY,
+        float standOff,
+        float ringSpacing,
+        int ringCount,
+        int candidateCount)
+    {
+        int targetId = ResolveAgentId(target);
+        float quantize = Mathf.Max(0.1f, _world.CellSize * 0.25f);
+        return new CombatTargetSlotKey(
+            _world.Version,
+            ResolvePreferredAgentTypeId(agentTypeId),
+            targetId,
+            _world.GetIndex(targetX, targetY),
+            Mathf.RoundToInt(targetPoint.x / quantize),
+            Mathf.RoundToInt(targetPoint.z / quantize),
+            Mathf.RoundToInt(standOff / Mathf.Max(0.001f, _world.CellSize) * 16f),
+            Mathf.RoundToInt(ringSpacing / Mathf.Max(0.001f, _world.CellSize) * 16f),
+            Mathf.Max(1, ringCount),
+            Mathf.Max(4, candidateCount));
+    }
+
+    private static CombatTargetSlotEntry GetOrBuildCombatTargetSlotEntry(
+        CombatTargetSlotKey key,
+        Vector3 targetPoint,
+        float standOff,
+        float ringSpacing,
+        int ringCount,
+        int candidateCount,
+        int targetX,
+        int targetY)
+    {
+        if (CombatTargetSlotCache.TryGetValue(key, out CombatTargetSlotEntry cached)
+            && cached?.Points != null)
+        {
+            cached.LastUsedFrame = GetFrameCount();
+            return cached;
+        }
+
+        List<Vector3> points = new List<Vector3>(Mathf.Max(4, ringCount * candidateCount));
+        List<int> cellX = new List<int>(points.Capacity);
+        List<int> cellY = new List<int>(points.Capacity);
+        List<int> islandIds = new List<int>(points.Capacity);
+        int rejectedOutside = 0;
+        int rejectedBlocked = 0;
+        int rejectedNoLos = 0;
+        bool targetLineCellValid = _world.IsWalkable(targetX, targetY);
+
+        for (int ring = 0; ring < Mathf.Max(1, ringCount); ring++)
+        {
+            float radius = Mathf.Max(0.05f, standOff + ring * Mathf.Max(0.05f, ringSpacing));
+            for (int i = 0; i < Mathf.Max(4, candidateCount); i++)
+            {
+                float angle = i * 360f / Mathf.Max(4, candidateCount);
+                Vector3 direction = Quaternion.AngleAxis(angle, Vector3.up) * Vector3.forward;
+                Vector3 candidate = targetPoint + direction * radius;
+                if (!_world.WorldToGrid(candidate, out int x, out int y))
+                {
+                    rejectedOutside++;
+                    continue;
+                }
+
+                if (!_world.IsWalkable(x, y))
+                {
+                    rejectedBlocked++;
+                    continue;
+                }
+
+                int islandId = ResolveIslandIdForDiagnostics(_world, x, y);
+                if (islandId <= 0)
+                {
+                    rejectedBlocked++;
+                    continue;
+                }
+
+                if (targetLineCellValid
+                    && ResolveIslandIdForDiagnostics(_world, targetX, targetY) == islandId
+                    && !HasSoftCostTolerantGridLineOfSight(_world, x, y, targetX, targetY, maxAllowedCost: 15))
+                {
+                    rejectedNoLos++;
+                    continue;
+                }
+
+                Vector3 worldPoint = _world.GridToWorldCenter(x, y);
+                bool duplicate = false;
+                for (int existing = 0; existing < cellX.Count; existing++)
+                {
+                    if (cellX[existing] == x && cellY[existing] == y)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate)
+                    continue;
+
+                points.Add(worldPoint);
+                cellX.Add(x);
+                cellY.Add(y);
+                islandIds.Add(islandId);
+            }
+        }
+
+        CombatTargetSlotEntry entry = new CombatTargetSlotEntry
+        {
+            TargetPoint = targetPoint,
+            Points = points.ToArray(),
+            CellX = cellX.ToArray(),
+            CellY = cellY.ToArray(),
+            IslandIds = islandIds.ToArray(),
+            LastUsedFrame = GetFrameCount(),
+            BuildSummary = $"built={points.Count} rejectedOutside={rejectedOutside} rejectedBlocked={rejectedBlocked} rejectedNoLos={rejectedNoLos}"
+        };
+        CombatTargetSlotCache[key] = entry;
+        return entry;
+    }
+
     private static void LogReachableGoalTargetSnapDiagnostics(
+        NavigationWorld world,
         IEntityContext self,
         Vector3 desiredGoal,
         int startX,
@@ -2520,29 +4290,30 @@ public static class FlowFieldCrowdMovementSystem
         float distance,
         bool fullIsland)
     {
-        if (_world == null || self == null)
+        if (world == null || self == null)
             return;
 
         IEntityContext target = self.TargetComp?.CurrentTarget;
         if (target == null)
             return;
 
-        int desiredIsland = ResolveIslandIdForDiagnostics(_world, goalX, goalY);
-        bool targetInGrid = _world.WorldToGrid(target.Position, out int targetX, out int targetY);
-        int targetIsland = targetInGrid ? ResolveIslandIdForDiagnostics(_world, targetX, targetY) : -1;
-        if (desiredIsland == targetIsland && distance <= Mathf.Max(0.35f, _world.CellSize * 1.5f))
+        int desiredIsland = ResolveIslandIdForDiagnostics(world, goalX, goalY);
+        bool targetInGrid = world.WorldToGrid(target.Position, out int targetX, out int targetY);
+        int targetIsland = targetInGrid ? ResolveIslandIdForDiagnostics(world, targetX, targetY) : -1;
+        if (desiredIsland == targetIsland && distance <= Mathf.Max(0.35f, world.CellSize * 1.5f))
             return;
 
-        Vector3 resultWorld = _world.GridToWorldCenter(resultX, resultY);
+        Vector3 resultWorld = world.GridToWorldCenter(resultX, resultY);
         Debug.LogWarning(
             $"[FlowReachableTargetSnapDiag] self={self.CharacterKey} target={target.CharacterKey} fullIsland={fullIsland} " +
             $"selfPos={self.Position} targetPos={target.Position} desired={desiredGoal} desiredCell=({goalX},{goalY}) desiredIsland={desiredIsland} " +
             $"targetCell={(targetInGrid ? $"({targetX},{targetY})" : "out")} targetIsland={targetIsland} result=({resultX},{resultY}) resultWorld={resultWorld} " +
-            $"resultIsland={ResolveIslandIdForDiagnostics(_world, resultX, resultY)} snapDistance={distance:F3} start=({startX},{startY}) " +
-            $"startIsland={ResolveIslandIdForDiagnostics(_world, startX, startY)} worldVersion={_world.Version}");
+            $"resultIsland={ResolveIslandIdForDiagnostics(world, resultX, resultY)} snapDistance={distance:F3} start=({startX},{startY}) " +
+            $"startIsland={ResolveIslandIdForDiagnostics(world, startX, startY)} worldVersion={world.Version}");
     }
 
     private static void LogReachableGoalResolution(
+        NavigationWorld world,
         IEntityContext self,
         Vector3 desiredGoal,
         int startX,
@@ -2558,19 +4329,19 @@ public static class FlowFieldCrowdMovementSystem
         if (!GameDebugSettings.IsEnabled(DebugCategory.Move)
             || self == null
             || !GameDebugSettings.ShouldLogMovementForCharacter(self.CharacterKey)
-            || _world == null)
+            || world == null)
         {
             return;
         }
 
-        int startIsland = ResolveIslandIdForDiagnostics(_world, startX, startY);
-        int rawGoalIsland = ResolveIslandIdForDiagnostics(_world, rawGoalX, rawGoalY);
-        int resolvedIsland = ResolveIslandIdForDiagnostics(_world, resolvedX, resolvedY);
+        int startIsland = ResolveIslandIdForDiagnostics(world, startX, startY);
+        int rawGoalIsland = ResolveIslandIdForDiagnostics(world, rawGoalX, rawGoalY);
+        int resolvedIsland = ResolveIslandIdForDiagnostics(world, resolvedX, resolvedY);
         bool changed = rawGoalX != resolvedX || rawGoalY != resolvedY;
         if (!changed && !fullIsland)
             return;
 
-        Vector3 resolvedWorld = _world.GridToWorldCenter(resolvedX, resolvedY);
+        Vector3 resolvedWorld = world.GridToWorldCenter(resolvedX, resolvedY);
         GameDebugSettings.Log(DebugCategory.Move,
             $"[FlowReachableGoalResolve] key={self.CharacterKey} desired={desiredGoal} start=({startX},{startY}) startIsland={startIsland} " +
             $"raw=({rawGoalX},{rawGoalY}) rawIsland={rawGoalIsland} resolved=({resolvedX},{resolvedY}) resolvedIsland={resolvedIsland} " +
@@ -2616,7 +4387,10 @@ public static class FlowFieldCrowdMovementSystem
         }
         _perf.WorldTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
 
+        bool hasMovingTarget = self?.TargetComp?.CurrentTarget != null
+                               && !ReferenceEquals(self.TargetComp.CurrentTarget, self);
         Vector3 occupiedGoalPosition = ResolveNavigationGoalOccupancy(self, agent, goalPosition);
+        Vector3 navigationGoalPosition = hasMovingTarget ? goalPosition : occupiedGoalPosition;
 
         sectionStartTicks = Stopwatch.GetTimestamp();
         if (!_world.WorldToGrid(self.Position, out int startX, out int startY))
@@ -2625,14 +4399,14 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         if (!_world.IsWalkable(startX, startY)
-            && !TryFindNearestWalkable(_world, startX, startY, 3, out startX, out startY))
+            && !TryResolveNearbyStartWalkable(_world, self.Position, startX, startY, out startX, out startY))
         {
             return FailNoFallback(self, $"start blocked and no nearby walkable originalPos={self.Position} | {BuildStartCellDiagnostics(self, self.Position)}", occupiedGoalPosition, out velocity);
         }
 
-        if (!TryResolveStableGoalCell(agent, self, occupiedGoalPosition, out int goalX, out int goalY, out Vector3 stableGoalPosition))
+        if (!TryResolveStableGoalCell(agent, self, navigationGoalPosition, out int goalX, out int goalY, out Vector3 stableGoalPosition))
         {
-            return FailNoFallback(self, BuildGoalResolutionFailure(self, occupiedGoalPosition), occupiedGoalPosition, out velocity);
+            return FailNoFallback(self, BuildGoalResolutionFailure(self, navigationGoalPosition), occupiedGoalPosition, out velocity);
         }
 
         if (!_world.TryGetSectorId(startX, startY, out int startSectorId)
@@ -2672,37 +4446,75 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         sectionStartTicks = Stopwatch.GetTimestamp();
-        if (!TryBuildOrGetTileWithStrictRepath(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY, out FlowTileCacheEntry tile, out TileGoalKind goalKind, out int downstreamPortalId, out string tileFailureReason))
+        FlowTileCacheEntry tile = null;
+        TileGoalKind goalKind = TileGoalKind.FinalGoal;
+        int downstreamPortalId = -1;
+        if (!TryBuildOrGetTileWithStrictRepath(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY, out tile, out goalKind, out downstreamPortalId, out string tileFailureReason))
         {
             return FailNoFallback(self, tileFailureReason, occupiedGoalPosition, out velocity);
         }
         _perf.TileTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
 
-        if (!IsCellReachableInTile(tile, startX, startY))
+        if (tile != null && !IsCellReachableInTile(tile, startX, startY))
         {
             _perf.TileReachabilityFailures++;
             LogTileReachabilityFailure(agent, tile, startSectorId, goalSectorId, startX, startY, goalX, goalY, goalKind, downstreamPortalId);
             agent.NavState.PathHandle = null;
             sectionStartTicks = Stopwatch.GetTimestamp();
-            if (!EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY)
-                || !TryBuildOrGetTile(agent, goalX, goalY, out tile, out goalKind, out downstreamPortalId)
-                || !IsCellReachableInTile(tile, startX, startY))
+            bool rebuiltPathHandle = EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY);
+            if (!rebuiltPathHandle)
             {
-                return FailNoFallback(self, $"tile reachability failed start=({startX},{startY}) sector={startSectorId}", occupiedGoalPosition, out velocity);
+                return FailNoFallback(self, $"tile reachability failed and path handle rebuild failed start=({startX},{startY}) sector={startSectorId}", occupiedGoalPosition, out velocity);
             }
+
+            if (!TryBuildOrGetTileWithStrictRepath(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY, out tile, out goalKind, out downstreamPortalId, out tileFailureReason))
+                return FailNoFallback(self, $"tile reachability failed; rebuilt handle but tile unavailable: {tileFailureReason}", occupiedGoalPosition, out velocity);
+
             _perf.TileTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
         }
 
         sectionStartTicks = Stopwatch.GetTimestamp();
         DesiredDirectionResolution desiredResolution = ResolveDesiredDirection(self.CharacterKey, tile, startX, startY, stableGoalPosition, goalKind);
-        desiredResolution = ApplyPathDirectionBlend(agent, desiredResolution, startX, startY);
+        int pathDirectionContextHash = ComputePathDirectionContextHash(agent, tile, goalX, goalY, goalKind, downstreamPortalId);
+        desiredResolution = ApplyPathDirectionBlend(agent, desiredResolution, startX, startY, pathDirectionContextHash);
         Vector3 desiredDirection = desiredResolution.Direction;
+        LogFlowTileInvariantDiagnostic(
+            self,
+            agent,
+            startX,
+            startY,
+            goalX,
+            goalY,
+            startSectorId,
+            goalSectorId,
+            goalKind,
+            downstreamPortalId,
+            tile,
+            desiredResolution,
+            desiredDirection,
+            stableGoalPosition,
+            preferredAgentTypeId);
+        LogFlowWallProbeDiagnostic(
+            self,
+            agent,
+            startX,
+            startY,
+            goalX,
+            goalY,
+            startSectorId,
+            goalSectorId,
+            goalKind,
+            downstreamPortalId,
+            tile,
+            desiredResolution,
+            desiredDirection,
+            stableGoalPosition);
         if (desiredResolution.Source == DesiredDirectionSource.Zero
             && !(goalKind == TileGoalKind.FinalGoal && startX == goalX && startY == goalY))
         {
             return FailNoFallback(
                 self,
-                $"tile produced zero flow start=({startX},{startY}) sector={startSectorId} goalKind={goalKind} portal={downstreamPortalId} tileDiag={BuildCurrentTileSteeringDiagnostics(tile, startX, startY)}",
+                $"tile produced zero flow start=({startX},{startY}) sector={startSectorId} goalKind={goalKind} portal={downstreamPortalId} tileDiag={(tile != null ? BuildCurrentTileSteeringDiagnostics(tile, startX, startY) : "tile=pending")}",
                 occupiedGoalPosition,
                 out velocity);
         }
@@ -2738,7 +4550,7 @@ public static class FlowFieldCrowdMovementSystem
                 $"handle={FormatPathHandle(agent.NavState.PathHandle)} goalKind={goalKind} portal={downstreamPortalId} " +
                 $"desiredSrc={desiredResolution.Source} hasLOS={desiredResolution.HasLineOfSight} desiredDir={desiredDirection} desiredVel={desiredVelocity} " +
                 $"flow={desiredResolution.Flow} tileTarget={desiredResolution.TileTargetPosition} integration={desiredResolution.Integration:F3} " +
-                $"currentFlow={agent.NavState.CurrentFlowDirection} tileDiag={BuildCurrentTileSteeringDiagnostics(tile, startX, startY)} " +
+                $"currentFlow={agent.NavState.CurrentFlowDirection} tileDiag={(tile != null ? BuildCurrentTileSteeringDiagnostics(tile, startX, startY) : "tile=pending")} " +
                 $"navPathDiag={BuildNavPathDiagnostics(self.Position, stableGoalPosition, preferredAgentTypeId)}");
         }
 
@@ -2749,9 +4561,9 @@ public static class FlowFieldCrowdMovementSystem
         _perf.BottleneckTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
 
         sectionStartTicks = Stopwatch.GetTimestamp();
-        velocity = ResolveCrowdSteering(self, agent, stableGoalPosition, desiredVelocity, desiredResolution, tile, bottleneckDecision);
+        velocity = ResolveCrowdSteering(self, agent, occupiedGoalPosition, desiredVelocity, desiredResolution, tile, bottleneckDecision);
         _perf.SteeringTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
-        UpdateResolvedVelocity(selfId, stableGoalPosition, desiredVelocity, velocity);
+        UpdateResolvedVelocity(selfId, occupiedGoalPosition, desiredVelocity, velocity);
 
         if (debugMove)
         {
@@ -3117,7 +4929,7 @@ public static class FlowFieldCrowdMovementSystem
         int index = world.GetIndex(x, y);
         bool walkable = world.WalkableMask != null && world.WalkableMask.Length == world.Width * world.Height && world.WalkableMask[index];
         bool baseWalkable = world.BaseWalkableMask != null && world.BaseWalkableMask.Length == world.Width * world.Height && world.BaseWalkableMask[index];
-        int cost = world.CostField != null && world.CostField.Length == world.Width * world.Height ? world.CostField[index] : -1;
+        int cost = TryGetCostFieldValue(world, x, y, out byte resolvedCost) ? resolvedCost : -1;
         int island = world.IslandIds != null && world.IslandIds.Length == world.Width * world.Height ? world.IslandIds[index] : -1;
         string mask = world.NeighborTraversalMask != null && world.NeighborTraversalMask.Length == world.Width * world.Height
             ? world.NeighborTraversalMask[index].ToString("X2")
@@ -3270,6 +5082,11 @@ public static class FlowFieldCrowdMovementSystem
         return _hasTestTimeOverride ? _testTime : Time.time;
     }
 
+    private static bool IsBudgetExpired(long deadlineTicks, int workCursor)
+    {
+        return (workCursor & (BudgetTimeCheckInterval - 1)) == 0 && Stopwatch.GetTimestamp() >= deadlineTicks;
+    }
+
     private static void BeginPerfCall()
     {
         int frame = GetFrameCount();
@@ -3285,6 +5102,7 @@ public static class FlowFieldCrowdMovementSystem
 
         FlushPerfIfNeeded();
         TrimMovingTargetAnchors();
+        TrimCombatTargetSlotCache();
         _perf = new FlowPerfAccumulator { Frame = frame };
     }
 
@@ -3293,7 +5111,8 @@ public static class FlowFieldCrowdMovementSystem
         if (!_perfInitialized || _perf.Calls <= 0)
             return;
 
-        LogAgentOverlapDiagnostics(_perf.Frame);
+        if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+            LogAgentOverlapDiagnostics(_perf.Frame);
 
         long diagnosticTicks = _perf.TotalTicks
                                + _perf.WorldTicks
@@ -3306,8 +5125,7 @@ public static class FlowFieldCrowdMovementSystem
                                || _perf.RuntimeDirtyApplications > 0
                                || _perf.PathAdvanceFailures > 0
                                || _perf.TileReachabilityFailures > 0;
-        bool debugMove = GameDebugSettings.IsEnabled(DebugCategory.Move);
-        if (!debugMove && diagnosticTicks < FlowPerfLogThresholdTicks && !shouldAlwaysLog)
+        if (diagnosticTicks < FlowPerfLogThresholdTicks && !shouldAlwaysLog)
             return;
 
         Debug.Log(
@@ -3318,7 +5136,9 @@ public static class FlowFieldCrowdMovementSystem
             $"neighborCollect={TicksToMs(_perf.NeighborCollectTicks):F3}ms neighborAvoid={TicksToMs(_perf.NeighborAvoidTicks):F3}ms " +
             $"boundary={TicksToMs(_perf.BoundaryTicks):F3}ms agentUpdate={TicksToMs(_perf.AgentUpdateTicks):F3}ms neighborChecks={_perf.NeighborChecks} " +
             $"sectorPath(searches={_perf.SectorPathSearches},cacheHits={_perf.SectorPathCacheHits}) " +
+            $"portalGraphMergeHits={_perf.PortalGraphMergeHits} " +
             $"tileCache(hits={_perf.TileCacheHits},misses={_perf.TileCacheMisses}) " +
+            $"pending(sharedGoal={_perf.PathPendingSharedGoal},tile={_perf.TilePendingBuild}) " +
             $"stableGoal(raw={_perf.StableGoalRaw},reuse={_perf.StableGoalReuse},initial={_perf.StableGoalRefreshInitial},cell={_perf.StableGoalRefreshCellDelta}) " +
             $"pathReasons(noHandle={_perf.PathBuildNoHandle},worldMismatch={_perf.PathBuildWorldMismatch},goalSectorMismatch={_perf.PathBuildGoalSectorMismatch},goalCellMismatch={_perf.PathBuildGoalCellMismatch},invalid={_perf.PathBuildInvalidHandle}) " +
             $"advanceFail={_perf.PathAdvanceFailures} tileReachFail={_perf.TileReachabilityFailures} runtimeDirty(apply={_perf.RuntimeDirtyApplications},sectors={_perf.RuntimeDirtySectorCount})");
@@ -3327,6 +5147,8 @@ public static class FlowFieldCrowdMovementSystem
     private static void LogAgentOverlapDiagnostics(int frame)
     {
         if (Agents.Count < 2)
+            return;
+        if (_world == null)
             return;
         if (_lastOverlapDiagnosticsFrame >= 0 && frame - _lastOverlapDiagnosticsFrame < 20)
             return;
@@ -3342,8 +5164,13 @@ public static class FlowFieldCrowdMovementSystem
             if (self.IgnoreAgentCollision)
                 continue;
 
-            foreach (AgentRuntimeData other in Agents.Values)
+            List<AgentRuntimeData> nearbyAgents = CollectNearbyDynamicNeighbors(
+                self.Position,
+                self.Id,
+                Mathf.Max(self.Radius * 4f, _world.CellSize * 2f));
+            for (int nearbyIndex = 0; nearbyIndex < nearbyAgents.Count; nearbyIndex++)
             {
+                AgentRuntimeData other = nearbyAgents[nearbyIndex];
                 if (other.Id <= self.Id || other.IgnoreAgentCollision)
                     continue;
 
@@ -3596,13 +5423,14 @@ public static class FlowFieldCrowdMovementSystem
 
     private static void DrawTileIntegrationHeat(FlowTileCacheEntry tile)
     {
-        if (tile?.Integration == null)
+        float[] integration = tile?.IntegrationPayload?.Values ?? tile?.DebugIntegrationPayload?.Values;
+        if (integration == null)
             return;
 
         float maxReachableCost = 0f;
-        for (int i = 0; i < tile.Integration.Length; i++)
+        for (int i = 0; i < integration.Length; i++)
         {
-            float cost = tile.Integration[i];
+            float cost = integration[i];
             if (!float.IsPositiveInfinity(cost) && cost > maxReachableCost)
                 maxReachableCost = cost;
         }
@@ -3617,7 +5445,7 @@ public static class FlowFieldCrowdMovementSystem
                     continue;
 
                 int localIndex = tile.GetLocalIndex(worldX, worldY);
-                float cost = tile.Integration[localIndex];
+                float cost = integration[localIndex];
                 if (float.IsPositiveInfinity(cost))
                     continue;
 
@@ -3632,7 +5460,7 @@ public static class FlowFieldCrowdMovementSystem
 
     private static void DrawTileFlowArrows(FlowTileCacheEntry tile)
     {
-        if (tile?.FlowDirections == null)
+        if (tile?.FlowFieldValues == null)
             return;
 
         for (int worldY = tile.StartY; worldY < tile.StartY + tile.Height; worldY++)
@@ -3643,13 +5471,13 @@ public static class FlowFieldCrowdMovementSystem
                     continue;
 
                 int localIndex = tile.GetLocalIndex(worldX, worldY);
-                Vector2 flow2 = tile.FlowDirections[localIndex];
+                Vector2 flow2 = ResolveRuntimeFlowDirection(tile, worldX, worldY, localIndex);
                 if (flow2.sqrMagnitude <= 0.0001f)
                     continue;
 
                 Vector3 center = _world.GridToWorldCenter(worldX, worldY) + Vector3.up * 0.035f;
                 Vector3 dir = new Vector3(flow2.x, 0f, flow2.y).normalized;
-                Gizmos.color = tile.HasLineOfSight[localIndex]
+                Gizmos.color = HasFlowLineOfSight(tile, localIndex)
                     ? new Color(0.2f, 0.95f, 1f, 0.85f)
                     : new Color(1f, 0.95f, 0.2f, 0.7f);
                 DrawArrow(center, dir, _world.CellSize * 0.32f, _world.CellSize * 0.08f);
@@ -3836,7 +5664,7 @@ public static class FlowFieldCrowdMovementSystem
         if (agent.HasNavigationIntent)
             return true;
 
-        if (agent.State == GroupMoveCoordinator.AgentState.Combat)
+        if (agent.State == FlowFieldAgentState.Combat)
             return true;
 
         int activeAge = GetFrameCount() - agent.LastAvoidanceActiveFrame;
@@ -3980,6 +5808,44 @@ public static class FlowFieldCrowdMovementSystem
         return NearbyAgentScratch;
     }
 
+    private static List<AgentRuntimeData> CollectNearbyDynamicNeighbors(Vector3 center, int excludedAgentId, float radius)
+    {
+        if (_world == null)
+            throw new InvalidOperationException("CollectNearbyDynamicNeighbors failed: world is null.");
+
+        NearbyAgentScratch.Clear();
+        EnsureAgentSpatialBuckets();
+
+        ResolveSpatialBucketCell(center, out int centerCellX, out int centerCellY);
+        int searchRadiusInCells = Mathf.Max(1, Mathf.CeilToInt(radius / Mathf.Max(_world.CellSize, 0.001f)));
+        float radiusSq = radius * radius;
+        for (int y = centerCellY - searchRadiusInCells; y <= centerCellY + searchRadiusInCells; y++)
+        {
+            for (int x = centerCellX - searchRadiusInCells; x <= centerCellX + searchRadiusInCells; x++)
+            {
+                int bucketKey = BuildSpatialBucketKey(x, y);
+                if (!AgentSpatialBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
+                    continue;
+
+                for (int i = 0; i < bucket.Count; i++)
+                {
+                    AgentRuntimeData other = bucket[i];
+                    if (other.Id == excludedAgentId)
+                        continue;
+
+                    Vector3 delta = other.Position - center;
+                    delta.y = 0f;
+                    if (delta.sqrMagnitude > radiusSq)
+                        continue;
+
+                    NearbyAgentScratch.Add(other);
+                }
+            }
+        }
+
+        return NearbyAgentScratch;
+    }
+
     private static void EnsureNavigationGoalOccupancyBuckets()
     {
         if (_world == null)
@@ -4101,7 +5967,7 @@ public static class FlowFieldCrowdMovementSystem
         return other.NavState.ResolvedVelocity;
     }
 
-    private static bool TryEnsureWorldBuilt(int preferredAgentTypeId)
+    private static bool TryEnsureWorldBuilt(int preferredAgentTypeId, bool allowSynchronousBuild = false)
     {
         int agentTypeId = ResolvePreferredAgentTypeId(preferredAgentTypeId);
         WorldRuntimeState state = GetOrCreateWorldState(agentTypeId);
@@ -4110,14 +5976,14 @@ public static class FlowFieldCrowdMovementSystem
 
         if (!state.IsDirty && state.World != null)
         {
-            if (state.DirtyRuntimeObstacleSectors.Count > 0 || state.RuntimeDirtyJob != null)
-                DrainRuntimeDirtyJobForNavigationQuery(state);
-
             _world = state.World;
             return true;
         }
 
         if (!EnsureWorldBuildJob(state, agentTypeId))
+            return false;
+
+        if (!allowSynchronousBuild && !CanSynchronouslyBuildWorldForEditorTest(agentTypeId))
             return false;
 
         ProcessWorldBuildJob(state, long.MaxValue, forceComplete: true);
@@ -4126,6 +5992,155 @@ public static class FlowFieldCrowdMovementSystem
 
         _world = state.World;
         return true;
+    }
+
+    private static bool HasPendingRuntimeDirty(WorldRuntimeState state)
+    {
+        return state != null
+               && (state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count > 0);
+    }
+
+    private static NavigationWorld ResolveReachabilityQueryWorld(WorldRuntimeState state)
+    {
+        if (state == null)
+            throw new InvalidOperationException("ResolveReachabilityQueryWorld failed: state is null.");
+        if (state.World == null)
+            throw new InvalidOperationException("ResolveReachabilityQueryWorld failed: committed world is null.");
+
+        if (state.RuntimeDirtyJob != null)
+            return BuildRuntimeDirtyPreviewWorld(state.RuntimeDirtyJob);
+
+        if (state.DirtyRuntimeObstacleSectors.Count == 0)
+            return state.World;
+
+        return BuildRuntimeDirtyPreviewWorld(state, state.DirtyRuntimeObstacleSectors);
+    }
+
+    private static NavigationWorld BuildRuntimeDirtyPreviewWorld(RuntimeDirtyRebuildJob sourceJob)
+    {
+        if (sourceJob == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: source job is null.");
+        if (sourceJob.TargetWorld == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: source target world is null.");
+        if (sourceJob.DirtySectors == null || sourceJob.DirtySectors.Count == 0)
+            return sourceJob.TargetWorld;
+
+        return BuildRuntimeDirtyPreviewWorld(
+            sourceJob.TargetWorld,
+            sourceJob.DirtySectors,
+            sourceJob.CostDirtySectors,
+            sourceJob.CircleObstacles,
+            sourceJob.BoxObstacles,
+            sourceJob.CostStamps);
+    }
+
+    private static NavigationWorld BuildRuntimeDirtyPreviewWorld(WorldRuntimeState state, HashSet<int> dirtySectors)
+    {
+        if (state == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: state is null.");
+        if (state.World == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: state world is null.");
+        if (dirtySectors == null || dirtySectors.Count == 0)
+            return state.World;
+
+        HashSet<int> costDirtySectors = ExpandDirtySectorsByCellRadius(
+            state.World,
+            dirtySectors,
+            Mathf.CeilToInt(ResolveWallCostBlurRadiusCells(state.World)));
+        return BuildRuntimeDirtyPreviewWorld(
+            state.World,
+            dirtySectors,
+            costDirtySectors,
+            CircleObstacles.Values,
+            BoxObstacles.Values,
+            CostStamps.Values);
+    }
+
+    private static NavigationWorld BuildRuntimeDirtyPreviewWorld(
+        NavigationWorld targetWorld,
+        HashSet<int> dirtySectors,
+        HashSet<int> costDirtySectors,
+        IEnumerable<CircleObstacle> circleObstacles,
+        IEnumerable<BoxObstacle> boxObstacles,
+        IReadOnlyCollection<CostStamp> costStamps)
+    {
+        if (targetWorld == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: target world is null.");
+        if (dirtySectors == null || dirtySectors.Count == 0)
+            return targetWorld;
+        if (costDirtySectors == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: cost dirty sectors are null.");
+        if (circleObstacles == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: circle obstacles are null.");
+        if (boxObstacles == null)
+            throw new InvalidOperationException("BuildRuntimeDirtyPreviewWorld failed: box obstacles are null.");
+
+        NavigationWorld preview = CloneNavigationWorldForRuntimeDirty(targetWorld);
+        foreach (int sectorId in dirtySectors)
+        {
+            ResetSectorWalkableFromBase(preview, preview.Sectors[sectorId]);
+            preview.Sectors[sectorId].DirtyVersion++;
+        }
+
+        foreach (CircleObstacle circle in circleObstacles)
+            BlockCellsByCircleInSectors(preview, dirtySectors, circle.Position, circle.Radius);
+        foreach (BoxObstacle box in boxObstacles)
+            BlockCellsByBoundsInSectors(preview, dirtySectors, new Bounds(box.Center, box.HalfExtents * 2f));
+
+        RebuildNeighborTraversalMaskForSectors(preview, dirtySectors);
+        SymmetrizeNeighborTraversalMaskForSectors(preview, dirtySectors);
+        foreach (int sectorId in costDirtySectors)
+            RebuildCostFieldForSector(preview, sectorId, costStamps);
+
+        RebuildIslandFieldImmediate(preview);
+        return preview;
+    }
+
+    private static void RebuildIslandFieldImmediate(NavigationWorld world)
+    {
+        if (world == null)
+            throw new InvalidOperationException("RebuildIslandFieldImmediate failed: world is null.");
+
+        if (world.IslandIds == null || world.IslandIds.Length != world.Width * world.Height)
+            world.IslandIds = new int[world.Width * world.Height];
+
+        Array.Clear(world.IslandIds, 0, world.IslandIds.Length);
+        world.IslandCount = 0;
+        world.MainIslandId = 0;
+        world.MainIslandSize = 0;
+        Queue<int> openQueue = new Queue<int>(256);
+        int scanIndex = 0;
+        int currentId = 0;
+        int currentSize = 0;
+        int mainId = 0;
+        int mainSize = 0;
+        bool bfsActive = false;
+        AdvanceIslandFieldBuild(
+            world,
+            openQueue,
+            ref scanIndex,
+            ref currentId,
+            ref currentSize,
+            ref mainId,
+            ref mainSize,
+            ref bfsActive,
+            long.MaxValue,
+            forceComplete: true,
+            out bool complete);
+        if (!complete)
+            throw new InvalidOperationException("RebuildIslandFieldImmediate failed: island build did not complete.");
+
+        RebuildAllSectorLocalComponents(world);
+    }
+
+    private static bool CanSynchronouslyBuildWorldForEditorTest(int agentTypeId)
+    {
+#if UNITY_EDITOR
+        return _testTerrainOverride != null
+               && (_testTerrainOverride.AgentTypeId == AnyAgentTypeId || _testTerrainOverride.AgentTypeId == agentTypeId);
+#else
+        return false;
+#endif
     }
 
     private static bool EnsureWorldBuildJob(WorldRuntimeState state)
@@ -4168,6 +6183,7 @@ public static class FlowFieldCrowdMovementSystem
                 case WorldBuildStage.Initialize:
                     if (!InitializeWorldBuildJob(job))
                     {
+                        ReturnWorldBuildPortalTransitionIntegration(job);
                         state.BuildJob = null;
                         return;
                     }
@@ -4210,10 +6226,14 @@ public static class FlowFieldCrowdMovementSystem
                     throw new InvalidOperationException($"ProcessWorldBuildJob failed: unknown stage {job.Stage}.");
             }
 
+            if (job.Stage == WorldBuildStage.Complete)
+                break;
+
             if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
                 return;
         }
 
+        ReturnWorldBuildPortalTransitionIntegration(job);
         state.BuildJob = null;
     }
 
@@ -4236,9 +6256,13 @@ public static class FlowFieldCrowdMovementSystem
                 ? (Vector3[])_testTerrainOverride.CellNavAnchors.Clone()
                 : null;
             job.RequiresNavMeshAnchors = false;
+            job.HasProvidedCellNavAnchors = job.CellNavAnchors != null;
             job.Stage = WorldBuildStage.CreateWorldShell;
             return true;
         }
+
+        if (Config.RequireAuthoredNavigationSource)
+            throw new InvalidOperationException("InitializeWorldBuildJob failed: GroupMoveConfig requires authored navigation source, but no FlowNavigationGridSource has applied a FlowNavigationGridAsset.");
 
         NavMeshTriangulation triangulation = NavMesh.CalculateTriangulation();
         if (triangulation.indices == null || triangulation.indices.Length == 0)
@@ -4266,6 +6290,7 @@ public static class FlowFieldCrowdMovementSystem
         job.SampleRadius = ResolveWalkableRasterSampleRadius(job.CellSize, agentRadius);
         job.RasterCursor = 0;
         job.RequiresNavMeshAnchors = true;
+        job.HasProvidedCellNavAnchors = false;
         job.Stage = WorldBuildStage.Rasterize;
         return true;
     }
@@ -4333,7 +6358,7 @@ public static class FlowFieldCrowdMovementSystem
             {
                 CircleObstacle circle = job.CircleObstacles[job.ObstacleCursor++];
                 BlockCellsByCircle(world.WalkableMask, world.Width, world.Height, world.CellSize, world.Origin, circle.Position, circle.Radius);
-                if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                if (!forceComplete && IsBudgetExpired(deadlineTicks, job.ObstacleCursor))
                     return;
             }
 
@@ -4345,7 +6370,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             BoxObstacle box = job.BoxObstacles[job.ObstacleCursor++];
             BlockCellsByBounds(world.WalkableMask, world.Width, world.Height, world.CellSize, world.Origin, new Bounds(box.Center, box.HalfExtents * 2f));
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, job.ObstacleCursor))
                 return;
         }
 
@@ -4381,6 +6406,7 @@ public static class FlowFieldCrowdMovementSystem
                     Width = sectorWidth,
                     Height = sectorHeight,
                     DirtyVersion = 1,
+                    LocalComponentIds = new int[sectorWidth * sectorHeight],
                     Center = world.Origin + new Vector3(
                         (startX + sectorWidth * 0.5f) * world.CellSize,
                         0f,
@@ -4402,6 +6428,13 @@ public static class FlowFieldCrowdMovementSystem
         int cellCount = world.Width * world.Height;
         if (!world.RequiresNavMeshAnchors)
         {
+            if (job.HasProvidedCellNavAnchors)
+            {
+                job.CellCursor = 0;
+                job.Stage = WorldBuildStage.NeighborMask;
+                return;
+            }
+
             while (job.CellCursor < cellCount)
             {
                 int index = job.CellCursor++;
@@ -4411,7 +6444,7 @@ public static class FlowFieldCrowdMovementSystem
                 int x = index % world.Width;
                 int y = index / world.Width;
                 world.CellNavAnchors[index] = world.GridToWorldCenter(x, y);
-                if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                if (!forceComplete && IsBudgetExpired(deadlineTicks, job.CellCursor))
                     return;
             }
 
@@ -4439,7 +6472,7 @@ public static class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException($"ProcessWorldBuildCellNavAnchors failed: walkable cell ({x},{y}) missing NavMesh anchor.");
 
             world.CellNavAnchors[index] = navHit.position;
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, job.CellCursor))
                 return;
         }
 
@@ -4463,7 +6496,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             int index = job.CellCursor++;
             RebuildNeighborTraversalMaskCell(world, index % world.Width, index / world.Width, filter);
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, job.CellCursor))
                 return;
         }
 
@@ -4486,7 +6519,7 @@ public static class FlowFieldCrowdMovementSystem
             int x = index % world.Width;
             int y = index / world.Width;
             SymmetrizeNeighborTraversalMaskCell(world, x, y, "ProcessWorldBuildSymmetrizeNeighborMask");
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, job.CellCursor))
                 return;
         }
 
@@ -4504,7 +6537,7 @@ public static class FlowFieldCrowdMovementSystem
         while (job.SectorCursor < world.Sectors.Length)
         {
             RebuildCostFieldForSector(world, job.SectorCursor++, job.CostStamps);
-            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, job.SectorCursor))
                 return;
         }
 
@@ -4554,6 +6587,7 @@ public static class FlowFieldCrowdMovementSystem
         if (!complete)
             return;
 
+        RebuildAllSectorLocalComponents(world);
         LogIslandFieldDiagnostics(world, "world-build-pending");
         job.Stage = WorldBuildStage.PortalGraph;
     }
@@ -4601,7 +6635,7 @@ public static class FlowFieldCrowdMovementSystem
                         world.PortalsById.Add(portal.PortalId, portal);
                         world.Sectors[portal.SectorAId].PortalIds.Add(portal.PortalId);
                         world.Sectors[portal.SectorBId].PortalIds.Add(portal.PortalId);
-                        if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                        if (!forceComplete && IsBudgetExpired(deadlineTicks, job.PortalAddCursor))
                             return;
                     }
 
@@ -4635,7 +6669,7 @@ public static class FlowFieldCrowdMovementSystem
             if (job.PortalTransitionFromCursor == 0)
                 sector.PortalTransitions.Clear();
 
-            if (sector.PortalIds.Count <= 1)
+            if (sector.PortalIds.Count == 0)
             {
                 job.PortalTransitionCursor++;
                 job.PortalTransitionFromCursor = 0;
@@ -4660,6 +6694,7 @@ public static class FlowFieldCrowdMovementSystem
 
                 int fromPortalId = job.PortalTransitionFromPortalId;
                 float[] integration = job.PortalTransitionIntegration;
+                AddPendingSectorPortalAccess(job.PendingPortalAccessEntries ??= new List<PendingSectorPortalAccess>(), sector, fromPortalId, integration);
                 for (int toIndex = 0; toIndex < sector.PortalIds.Count; toIndex++)
                 {
                     int toPortalId = sector.PortalIds[toIndex];
@@ -4680,10 +6715,8 @@ public static class FlowFieldCrowdMovementSystem
                 }
 
                 job.PortalTransitionFromCursor++;
-                job.PortalTransitionIntegrationActive = false;
-                job.PortalTransitionIntegration = null;
-                job.PortalTransitionOpenSet = null;
-                if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                ReturnWorldBuildPortalTransitionIntegration(job);
+                if (!forceComplete && IsBudgetExpired(deadlineTicks, job.PortalTransitionFromCursor))
                     return;
             }
 
@@ -4702,18 +6735,19 @@ public static class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException($"BeginWorldBuildPortalTransitionIntegration failed: portal has no cells sector={sector.SectorId} portal={fromPortalId}.");
 
         job.PortalTransitionFromPortalId = fromPortalId;
-        job.PortalTransitionIntegration = new float[sector.Width * sector.Height];
+        job.PortalTransitionIntegration = RentIntegrationArray(sector.Width * sector.Height);
         InitializeIntegrationField(job.PortalTransitionIntegration);
         job.PortalTransitionOpenSet = new MinHeap();
         SeedPortalTransitionIntegration(sector, fromCells, job.PortalTransitionIntegration, job.PortalTransitionOpenSet);
         job.PortalTransitionIntegrationActive = true;
     }
 
-    private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob job)
+private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob job)
     {
         if (job.WorkingWorld == null)
             throw new InvalidOperationException("CommitWorldBuildJob failed: working world is null.");
 
+        int previousWorldVersion = state.World != null ? state.World.Version : 0;
         _perf.WorldBuilds++;
         state.World = job.WorkingWorld;
         state.World.Version = _nextWorldVersion++;
@@ -4721,13 +6755,20 @@ public static class FlowFieldCrowdMovementSystem
         state.IsDirty = false;
         state.DirtyRuntimeObstacleSectors.Clear();
         state.RuntimeDirtyJob = null;
-        FlowTileCache.Clear();
-        PendingTileBuildKeys.Clear();
+        ClearFlowTileCache();
+        ReturnPendingFlowTileBuildIntegrations();
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
         SectorPathCache.Clear();
-        SectorPortalAccessCache.Clear();
+        RemoveSectorPortalAccessCacheEntriesForWorldVersion(previousWorldVersion);
         SharedGoalFields.Clear();
+        ReturnPendingSharedGoalFieldBuildIntegrations();
+        SharedGoalFieldBuildQueue.Clear();
+        PendingSharedGoalFieldBuildJobs.Clear();
+        CommitPendingSectorPortalAccessEntries(state.World, job.PendingPortalAccessEntries);
+        ValidateAllSectorPortalAccessCoverage(state.World, "world-build-commit");
+        FinalizeWorldCostStorage(state.World);
+        CombatTargetSlotCache.Clear();
         Bottlenecks.Clear();
         CorridorBottlenecks.Clear();
         _world = state.World;
@@ -5037,37 +7078,6 @@ public static class FlowFieldCrowdMovementSystem
         return portals;
     }
 
-    private static void ApplyRuntimeObstacleDirty(WorldRuntimeState state)
-    {
-        if (state == null || state.World == null)
-            return;
-
-        if (!EnsureRuntimeDirtyJob(state))
-            return;
-
-        ProcessRuntimeDirtyJob(state, long.MaxValue, forceComplete: true);
-    }
-
-    private static void DrainRuntimeDirtyJobForNavigationQuery(WorldRuntimeState state)
-    {
-        if (state == null || state.World == null)
-            throw new InvalidOperationException("DrainRuntimeDirtyJobForNavigationQuery failed: state/world is null.");
-
-        if (!EnsureRuntimeDirtyJob(state))
-            return;
-
-        if (GameDebugSettings.IsEnabled(DebugCategory.Move))
-        {
-            Debug.Log(
-                $"[FlowRuntimeDirtyDrain] worldVersion={state.World.Version} dirtySectors={state.RuntimeDirtyJob.DirtySectors.Count} " +
-                $"stage={state.RuntimeDirtyJob.Stage} reason={state.RuntimeDirtyJob.Reason}");
-        }
-
-        ProcessRuntimeDirtyJob(state, long.MaxValue, forceComplete: true);
-        if (state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count > 0)
-            throw new InvalidOperationException("DrainRuntimeDirtyJobForNavigationQuery failed: runtime dirty job did not complete.");
-    }
-
     private static void InvalidateRuntimeDirtyJob(WorldRuntimeState state)
     {
         if (state == null)
@@ -5077,6 +7087,9 @@ public static class FlowFieldCrowdMovementSystem
         {
             foreach (int sectorId in state.RuntimeDirtyJob.DirtySectors)
                 state.DirtyRuntimeObstacleSectors.Add(sectorId);
+            foreach (int sectorId in state.RuntimeDirtyJob.CostDirtySectors)
+                state.DirtyRuntimeObstacleSectors.Add(sectorId);
+            ReturnRuntimeDirtyPortalTransitionIntegration(state.RuntimeDirtyJob);
         }
 
         state.RuntimeDirtyJob = null;
@@ -5160,10 +7173,14 @@ public static class FlowFieldCrowdMovementSystem
                     throw new InvalidOperationException($"ProcessRuntimeDirtyJob failed: unknown stage {job.Stage}.");
             }
 
+            if (job.Stage == RuntimeDirtyRebuildStage.Complete)
+                break;
+
             if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
                 return;
         }
 
+        ReturnRuntimeDirtyPortalTransitionIntegration(job);
         state.RuntimeDirtyJob = null;
     }
 
@@ -5285,8 +7302,122 @@ public static class FlowFieldCrowdMovementSystem
         if (!complete)
             return;
 
+        RebuildAllSectorLocalComponents(world);
         LogIslandFieldDiagnostics(world, "runtime-dirty");
         job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
+    }
+
+    private static void RebuildAllSectorLocalComponents(NavigationWorld world)
+    {
+        if (world == null)
+            throw new InvalidOperationException("RebuildAllSectorLocalComponents failed: world is null.");
+        if (world.Sectors == null)
+            throw new InvalidOperationException("RebuildAllSectorLocalComponents failed: sectors are null.");
+
+        for (int i = 0; i < world.Sectors.Length; i++)
+        {
+            RebuildSectorIslandMetadata(world, world.Sectors[i]);
+            RebuildSectorLocalComponents(world, world.Sectors[i]);
+        }
+    }
+
+    private static void RebuildSectorIslandMetadata(NavigationWorld world, SectorData sector)
+    {
+        if (world == null)
+            throw new InvalidOperationException("RebuildSectorIslandMetadata failed: world is null.");
+        if (sector == null)
+            throw new InvalidOperationException("RebuildSectorIslandMetadata failed: sector is null.");
+        if (world.IslandIds == null || world.IslandIds.Length != world.Width * world.Height)
+            throw new InvalidOperationException("RebuildSectorIslandMetadata failed: island field is missing or invalid.");
+
+        int uniformIslandId = 0;
+        bool mixed = false;
+        for (int y = sector.StartY; y < sector.StartY + sector.Height; y++)
+        {
+            int rowStart = y * world.Width;
+            for (int x = sector.StartX; x < sector.StartX + sector.Width; x++)
+            {
+                int index = rowStart + x;
+                if (!world.WalkableMask[index])
+                    continue;
+
+                int islandId = world.IslandIds[index];
+                if (islandId <= 0)
+                    throw new InvalidOperationException($"RebuildSectorIslandMetadata failed: walkable cell ({x},{y}) has invalid island {islandId}.");
+
+                if (uniformIslandId == 0)
+                {
+                    uniformIslandId = islandId;
+                    continue;
+                }
+
+                if (uniformIslandId == islandId)
+                    continue;
+
+                mixed = true;
+                break;
+            }
+
+            if (mixed)
+                break;
+        }
+
+        sector.UniformIslandId = mixed ? -1 : uniformIslandId;
+    }
+
+    private static void RebuildSectorLocalComponents(NavigationWorld world, SectorData sector)
+    {
+        if (sector == null)
+            throw new InvalidOperationException("RebuildSectorLocalComponents failed: sector is null.");
+
+        int cellCount = sector.Width * sector.Height;
+        if (sector.LocalComponentIds == null || sector.LocalComponentIds.Length != cellCount)
+            sector.LocalComponentIds = new int[cellCount];
+        else
+            Array.Clear(sector.LocalComponentIds, 0, sector.LocalComponentIds.Length);
+
+        int componentId = 0;
+        Queue<int> open = new Queue<int>(Mathf.Min(256, Mathf.Max(1, cellCount)));
+        for (int localIndex = 0; localIndex < cellCount; localIndex++)
+        {
+            if (sector.LocalComponentIds[localIndex] != 0)
+                continue;
+
+            int worldX = sector.StartX + localIndex % sector.Width;
+            int worldY = sector.StartY + localIndex / sector.Width;
+            if (!world.IsWalkable(worldX, worldY))
+                continue;
+
+            componentId++;
+            sector.LocalComponentIds[localIndex] = componentId;
+            open.Enqueue(localIndex);
+            while (open.Count > 0)
+            {
+                int currentLocal = open.Dequeue();
+                int currentX = sector.StartX + currentLocal % sector.Width;
+                int currentY = sector.StartY + currentLocal / sector.Width;
+                byte traversalMask = world.NeighborTraversalMask[world.GetIndex(currentX, currentY)];
+                for (int i = 0; i < NeighborOffsetX.Length; i++)
+                {
+                    if ((traversalMask & (1 << i)) == 0)
+                        continue;
+
+                    int nextX = currentX + NeighborOffsetX[i];
+                    int nextY = currentY + NeighborOffsetY[i];
+                    if (!IsInsideSector(sector, nextX, nextY) || !world.IsWalkable(nextX, nextY))
+                        continue;
+
+                    int nextLocal = GetSectorLocalIndex(sector, nextX, nextY);
+                    if (sector.LocalComponentIds[nextLocal] != 0)
+                        continue;
+
+                    sector.LocalComponentIds[nextLocal] = componentId;
+                    open.Enqueue(nextLocal);
+                }
+            }
+        }
+
+        sector.LocalComponentCount = componentId;
     }
 
     private static void AdvanceIslandFieldBuild(
@@ -5312,6 +7443,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             if (bfsActive)
             {
+                int budgetWork = 0;
                 while (openQueue.Count > 0)
                 {
                     int currentIndex = openQueue.Dequeue();
@@ -5337,7 +7469,7 @@ public static class FlowFieldCrowdMovementSystem
                         openQueue.Enqueue(nextIndex);
                     }
 
-                    if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                    if (!forceComplete && IsBudgetExpired(deadlineTicks, ++budgetWork))
                         return;
                 }
 
@@ -5386,6 +7518,9 @@ public static class FlowFieldCrowdMovementSystem
         if (!job.PortalInitialized)
         {
             job.PortalTransitionDirtySectors = new HashSet<int>(job.DirtySectors);
+            foreach (int sectorId in job.CostDirtySectors)
+                job.PortalTransitionDirtySectors.Add(sectorId);
+
             job.PortalRebuiltPortals = new List<PortalData>(32);
             job.PortalProcessedBoundaries = new HashSet<long>();
             job.PortalStage = RuntimeDirtyPortalStage.RemoveOldPortals;
@@ -5475,17 +7610,17 @@ public static class FlowFieldCrowdMovementSystem
             if (job.PortalTransitionFromCursor == 0)
                 sector.PortalTransitions.Clear();
 
-            if (sector.PortalIds.Count <= 1)
+            if (sector.PortalIds.Count == 0)
             {
                 job.PortalTransitionCursor++;
                 job.PortalTransitionFromCursor = 0;
                 continue;
             }
 
-        while (job.PortalTransitionFromCursor < sector.PortalIds.Count)
-        {
-            if (!job.PortalTransitionIntegrationActive)
-                BeginRuntimeDirtyPortalTransitionIntegration(job, world, sector, sector.PortalIds[job.PortalTransitionFromCursor]);
+            while (job.PortalTransitionFromCursor < sector.PortalIds.Count)
+            {
+                if (!job.PortalTransitionIntegrationActive)
+                    BeginRuntimeDirtyPortalTransitionIntegration(job, world, sector, sector.PortalIds[job.PortalTransitionFromCursor]);
 
                 if (!AdvancePortalTransitionIntegration(
                         world,
@@ -5498,6 +7633,7 @@ public static class FlowFieldCrowdMovementSystem
 
                 int fromPortalId = job.PortalTransitionFromPortalId;
                 float[] integration = job.PortalTransitionIntegration;
+                AddPendingSectorPortalAccess(job.PendingPortalAccessEntries ??= new List<PendingSectorPortalAccess>(), sector, fromPortalId, integration);
                 for (int toIndex = 0; toIndex < sector.PortalIds.Count; toIndex++)
                 {
                     int toPortalId = sector.PortalIds[toIndex];
@@ -5518,10 +7654,8 @@ public static class FlowFieldCrowdMovementSystem
                 }
 
                 job.PortalTransitionFromCursor++;
-                job.PortalTransitionIntegrationActive = false;
-                job.PortalTransitionIntegration = null;
-                job.PortalTransitionOpenSet = null;
-                if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                ReturnRuntimeDirtyPortalTransitionIntegration(job);
+                if (!forceComplete && IsBudgetExpired(deadlineTicks, job.PortalTransitionFromCursor))
                     return;
             }
 
@@ -5540,7 +7674,7 @@ public static class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException($"BeginRuntimeDirtyPortalTransitionIntegration failed: portal has no cells sector={sector.SectorId} portal={fromPortalId}.");
 
         job.PortalTransitionFromPortalId = fromPortalId;
-        job.PortalTransitionIntegration = new float[sector.Width * sector.Height];
+        job.PortalTransitionIntegration = RentIntegrationArray(sector.Width * sector.Height);
         InitializeIntegrationField(job.PortalTransitionIntegration);
         job.PortalTransitionOpenSet = new MinHeap();
         SeedPortalTransitionIntegration(sector, fromCells, job.PortalTransitionIntegration, job.PortalTransitionOpenSet);
@@ -5603,7 +7737,7 @@ public static class FlowFieldCrowdMovementSystem
 
                 int nextLocalIndex = GetSectorLocalIndex(sector, nextWorldX, nextWorldY);
                 float newCost = ResolveEikonalIntegrationCost(world, sector, integration, nextWorldX, nextWorldY, reverseTraversal: false);
-                if (newCost >= integration[nextLocalIndex])
+                if (!IsSignificantIntegrationImprovement(newCost, integration[nextLocalIndex]))
                     continue;
 
                 integration[nextLocalIndex] = newCost;
@@ -5642,8 +7776,12 @@ public static class FlowFieldCrowdMovementSystem
         foreach (int portalId in working.UsedPortalIds)
             target.UsedPortalIds.Add(portalId);
 
-        InvalidateCachesForDirtySectors(job.CostDirtySectors);
+        InvalidateCachesForDirtySectors(target, job.CostDirtySectors);
+        CommitPendingSectorPortalAccessEntries(target, job.PendingPortalAccessEntries);
+        ValidateSectorPortalAccessCoverage(target, job.CostDirtySectors, "runtime-dirty-commit");
+        FinalizeWorldCostStorage(target);
         MovingTargetAnchors.Clear();
+        CombatTargetSlotCache.Clear();
         Bottlenecks.Clear();
         CorridorBottlenecks.Clear();
         NavigationGoalOccupancyBuckets.Clear();
@@ -5652,7 +7790,7 @@ public static class FlowFieldCrowdMovementSystem
         foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
         {
             if (PathTouchesAnySector(pair.Value.NavState.PathHandle, job.CostDirtySectors)
-                || PathReferencesMissingPortal(pair.Value.NavState.PathHandle))
+                || PathReferencesMissingPortal(target, pair.Value.NavState.PathHandle))
             {
                 pair.Value.NavState.PathHandle = null;
             }
@@ -5682,7 +7820,8 @@ public static class FlowFieldCrowdMovementSystem
             Origin = source.Origin,
             BaseWalkableMask = source.BaseWalkableMask,
             WalkableMask = (bool[])source.WalkableMask.Clone(),
-            CostField = (byte[])source.CostField.Clone(),
+            CostField = MaterializeMutableCostField(source),
+            SectorCostFields = null,
             CellNavAnchors = source.CellNavAnchors,
             NeighborTraversalMask = (byte[])source.NeighborTraversalMask.Clone(),
             IslandIds = (int[])source.IslandIds.Clone(),
@@ -5723,7 +7862,12 @@ public static class FlowFieldCrowdMovementSystem
                 Width = sector.Width,
                 Height = sector.Height,
                 Center = sector.Center,
-                DirtyVersion = sector.DirtyVersion
+                DirtyVersion = sector.DirtyVersion,
+                IsClearCostField = sector.IsClearCostField,
+                IsClearFlowTile = sector.IsClearFlowTile,
+                UniformIslandId = sector.UniformIslandId,
+                LocalComponentIds = sector.LocalComponentIds != null ? (int[])sector.LocalComponentIds.Clone() : new int[sector.Width * sector.Height],
+                LocalComponentCount = sector.LocalComponentCount
             };
             copy.PortalIds.AddRange(sector.PortalIds);
             copy.PortalTransitions.AddRange(sector.PortalTransitions);
@@ -5920,15 +8064,17 @@ public static class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static void InvalidateCachesForDirtySectors(HashSet<int> dirtySectors)
+    private static void InvalidateCachesForDirtySectors(NavigationWorld world, HashSet<int> dirtySectors)
     {
+        if (world == null)
+            throw new InvalidOperationException("InvalidateCachesForDirtySectors failed: world is null.");
         if (dirtySectors == null || dirtySectors.Count == 0)
             return;
 
         List<FlowTileCacheKey> tileKeysToRemove = null;
         foreach (KeyValuePair<FlowTileCacheKey, FlowTileCacheEntry> pair in FlowTileCache)
         {
-            if (!dirtySectors.Contains(pair.Key.SectorId))
+            if (pair.Key.WorldVersion != world.Version || !dirtySectors.Contains(pair.Key.SectorId))
                 continue;
 
             tileKeysToRemove ??= new List<FlowTileCacheKey>();
@@ -5938,16 +8084,19 @@ public static class FlowFieldCrowdMovementSystem
         if (tileKeysToRemove != null)
         {
             for (int i = 0; i < tileKeysToRemove.Count; i++)
-                FlowTileCache.Remove(tileKeysToRemove[i]);
+                RemoveFlowTileCacheEntry(tileKeysToRemove[i]);
         }
 
         List<SectorPathCacheKey> pathKeysToRemove = null;
         foreach (KeyValuePair<SectorPathCacheKey, SectorPathCacheEntry> pair in SectorPathCache)
         {
+            if (pair.Key.WorldVersion != world.Version)
+                continue;
+
             if (!dirtySectors.Contains(pair.Key.StartSectorId)
                 && !dirtySectors.Contains(pair.Key.GoalSectorId)
                 && !SectorPathTouchesAnySector(pair.Value, dirtySectors)
-                && !SectorPathReferencesMissingPortal(pair.Value))
+                && !SectorPathReferencesMissingPortal(world, pair.Value))
             {
                 continue;
             }
@@ -5965,8 +8114,11 @@ public static class FlowFieldCrowdMovementSystem
         List<SectorPortalAccessKey> portalAccessKeysToRemove = null;
         foreach (KeyValuePair<SectorPortalAccessKey, SectorPortalAccessEntry> pair in SectorPortalAccessCache)
         {
+            if (pair.Key.WorldVersion != world.Version)
+                continue;
+
             if (!dirtySectors.Contains(pair.Key.SectorId)
-                && TryGetPortalById(_world, pair.Key.PortalId, out _))
+                && TryGetPortalById(world, pair.Key.PortalId, out _))
             {
                 continue;
             }
@@ -5984,9 +8136,12 @@ public static class FlowFieldCrowdMovementSystem
         List<SharedGoalFieldKey> sharedFieldKeysToRemove = null;
         foreach (KeyValuePair<SharedGoalFieldKey, SharedGoalField> pair in SharedGoalFields)
         {
+            if (pair.Key.WorldVersion != world.Version)
+                continue;
+
             if (!dirtySectors.Contains(pair.Key.GoalSectorId)
                 && !SharedGoalFieldTouchesAnySector(pair.Value, dirtySectors)
-                && !SharedGoalFieldReferencesMissingPortal(pair.Value))
+                && !SharedGoalFieldReferencesMissingPortal(world, pair.Value))
             {
                 continue;
             }
@@ -6000,12 +8155,113 @@ public static class FlowFieldCrowdMovementSystem
             for (int i = 0; i < sharedFieldKeysToRemove.Count; i++)
                 SharedGoalFields.Remove(sharedFieldKeysToRemove[i]);
         }
+
+        InvalidatePendingBuildJobsForDirtySectors(world, dirtySectors);
+    }
+
+    private static void InvalidatePendingBuildJobsForDirtySectors(NavigationWorld world, HashSet<int> dirtySectors)
+    {
+        if (world == null)
+            throw new InvalidOperationException("InvalidatePendingBuildJobsForDirtySectors failed: world is null.");
+        if (dirtySectors == null || dirtySectors.Count == 0)
+            return;
+
+        InvalidatePendingFlowTileBuildJobsForDirtySectors(world, dirtySectors);
+        InvalidatePendingSharedGoalFieldBuildJobsForDirtySectors(world, dirtySectors);
+    }
+
+    private static void InvalidatePendingFlowTileBuildJobsForDirtySectors(NavigationWorld world, HashSet<int> dirtySectors)
+    {
+        LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First;
+        while (node != null)
+        {
+            LinkedListNode<FlowTileBuildJob> next = node.Next;
+            FlowTileBuildJob job = node.Value;
+            if (job != null
+                && job.BuildKey.CacheKey.WorldVersion == world.Version
+                && (FlowTileBuildJobTouchesAnySector(job, dirtySectors) || FlowTileBuildJobReferencesMissingPortal(world, job)))
+            {
+                ReturnTileIntegrationPayload(job.Tile);
+                FlowTileBuildQueue.Remove(node);
+                PendingFlowTileBuildJobs.Remove(job.BuildKey.CacheKey);
+            }
+
+            node = next;
+        }
+    }
+
+    private static bool FlowTileBuildJobTouchesAnySector(FlowTileBuildJob job, HashSet<int> dirtySectors)
+    {
+        if (job == null || dirtySectors == null || dirtySectors.Count == 0)
+            return false;
+
+        if (dirtySectors.Contains(job.BuildKey.CacheKey.SectorId))
+            return true;
+
+        return PathTouchesAnySector(job.HandleSnapshot, dirtySectors);
+    }
+
+    private static bool FlowTileBuildJobReferencesMissingPortal(NavigationWorld world, FlowTileBuildJob job)
+    {
+        if (world == null)
+            throw new InvalidOperationException("FlowTileBuildJobReferencesMissingPortal failed: world is null.");
+        if (job == null)
+            return false;
+
+        FlowTileCacheKey key = job.BuildKey.CacheKey;
+        if (key.GoalKind == TileGoalKind.Portal && !TryGetPortalById(world, key.GoalId, out _))
+            return true;
+
+        return PathReferencesMissingPortal(world, job.HandleSnapshot);
+    }
+
+    private static void InvalidatePendingSharedGoalFieldBuildJobsForDirtySectors(NavigationWorld world, HashSet<int> dirtySectors)
+    {
+        LinkedListNode<SharedGoalFieldBuildJob> node = SharedGoalFieldBuildQueue.First;
+        while (node != null)
+        {
+            LinkedListNode<SharedGoalFieldBuildJob> next = node.Next;
+            SharedGoalFieldBuildJob job = node.Value;
+            if (job != null
+                && job.Key.WorldVersion == world.Version
+                && (SharedGoalFieldBuildJobTouchesAnySector(job, dirtySectors) || SharedGoalFieldBuildJobReferencesMissingPortal(world, job)))
+            {
+                ReturnSharedGoalFieldBuildIntegration(job);
+                SharedGoalFieldBuildQueue.Remove(node);
+                PendingSharedGoalFieldBuildJobs.Remove(job.Key);
+            }
+
+            node = next;
+        }
+    }
+
+    private static bool SharedGoalFieldBuildJobTouchesAnySector(SharedGoalFieldBuildJob job, HashSet<int> dirtySectors)
+    {
+        if (job == null || dirtySectors == null || dirtySectors.Count == 0)
+            return false;
+
+        if (dirtySectors.Contains(job.GoalSectorId))
+            return true;
+
+        return job.Field != null && SharedGoalFieldTouchesAnySector(job.Field, dirtySectors);
+    }
+
+    private static bool SharedGoalFieldBuildJobReferencesMissingPortal(NavigationWorld world, SharedGoalFieldBuildJob job)
+    {
+        return job?.Field != null && SharedGoalFieldReferencesMissingPortal(world, job.Field);
     }
 
     private static bool SharedGoalFieldTouchesAnySector(SharedGoalField field, HashSet<int> dirtySectors)
     {
         if (field == null || dirtySectors == null || dirtySectors.Count == 0)
             return false;
+
+        foreach (int node in field.NodeCosts.Keys)
+        {
+            DecodePortalNode(node, out int sectorId, out _);
+            if (dirtySectors.Contains(sectorId))
+                return true;
+        }
 
         foreach (KeyValuePair<int, int> pair in field.NextNodeTowardGoal)
         {
@@ -6018,16 +8274,25 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
-    private static bool SharedGoalFieldReferencesMissingPortal(SharedGoalField field)
+    private static bool SharedGoalFieldReferencesMissingPortal(NavigationWorld world, SharedGoalField field)
     {
+        if (world == null)
+            throw new InvalidOperationException("SharedGoalFieldReferencesMissingPortal failed: world is null.");
         if (field == null)
             return false;
+
+        foreach (int node in field.NodeCosts.Keys)
+        {
+            DecodePortalNode(node, out _, out int portalId);
+            if (!TryGetPortalById(world, portalId, out _))
+                return true;
+        }
 
         foreach (KeyValuePair<int, int> pair in field.NextNodeTowardGoal)
         {
             DecodePortalNode(pair.Key, out _, out int fromPortalId);
             DecodePortalNode(pair.Value, out _, out int toPortalId);
-            if (!TryGetPortalById(_world, fromPortalId, out _) || !TryGetPortalById(_world, toPortalId, out _))
+            if (!TryGetPortalById(world, fromPortalId, out _) || !TryGetPortalById(world, toPortalId, out _))
                 return true;
         }
 
@@ -6048,14 +8313,16 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
-    private static bool SectorPathReferencesMissingPortal(SectorPathCacheEntry entry)
+    private static bool SectorPathReferencesMissingPortal(NavigationWorld world, SectorPathCacheEntry entry)
     {
+        if (world == null)
+            throw new InvalidOperationException("SectorPathReferencesMissingPortal failed: world is null.");
         if (entry == null || entry.PortalIds == null)
             return false;
 
         for (int i = 0; i < entry.PortalIds.Length; i++)
         {
-            if (!TryGetPortalById(_world, entry.PortalIds[i], out _))
+            if (!TryGetPortalById(world, entry.PortalIds[i], out _))
                 return true;
         }
 
@@ -6078,12 +8345,19 @@ public static class FlowFieldCrowdMovementSystem
 
     private static bool PathReferencesMissingPortal(PathHandle handle)
     {
+        return PathReferencesMissingPortal(_world, handle);
+    }
+
+    private static bool PathReferencesMissingPortal(NavigationWorld world, PathHandle handle)
+    {
+        if (world == null)
+            throw new InvalidOperationException("PathReferencesMissingPortal failed: world is null.");
         if (handle == null || handle.PortalIds == null)
             return false;
 
         for (int i = 0; i < handle.PortalIds.Length; i++)
         {
-            if (!TryGetPortalById(_world, handle.PortalIds[i], out _))
+            if (!TryGetPortalById(world, handle.PortalIds[i], out _))
                 return true;
         }
 
@@ -6211,7 +8485,44 @@ public static class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException($"FlushPortalRun failed: side cell count mismatch A={cellsA.Count} B={cellsB.Count}.");
 
         bool runIsNarrow = IsPortalBottleneck(world, sectorAId, sectorBId, cellsA, cellsB, isVerticalBoundary);
-        AddPortalSegment(world, portals, sectorAId, sectorBId, cellsA, cellsB, 0, cellsA.Count, isVerticalBoundary, runIsNarrow);
+        int maxSegmentWidth = ResolvePortalMaxWindowWidthCells();
+        int segmentStart = 0;
+        for (int i = 1; i <= cellsA.Count; i++)
+        {
+            bool reachedEnd = i == cellsA.Count;
+            bool reachedMaxWidth = i - segmentStart >= maxSegmentWidth;
+            bool costSplit = !reachedEnd && ShouldSplitPortalRunBeforeIndex(world, cellsA, cellsB, i);
+            if (!reachedEnd && !reachedMaxWidth && !costSplit)
+                continue;
+
+            AddPortalSegment(world, portals, sectorAId, sectorBId, cellsA, cellsB, segmentStart, i - segmentStart, isVerticalBoundary, runIsNarrow);
+            segmentStart = i;
+        }
+    }
+
+    private static int ResolvePortalMaxWindowWidthCells()
+    {
+        return Mathf.Max(Config.PortalNarrowWidthCells, Config.PortalMaxWindowWidthCells);
+    }
+
+    private static bool ShouldSplitPortalRunBeforeIndex(NavigationWorld world, List<Vector2Int> cellsA, List<Vector2Int> cellsB, int index)
+    {
+        if (index <= 0 || index >= cellsA.Count || index >= cellsB.Count)
+            return false;
+
+        int previousCost = ResolvePortalPairCost(world, cellsA[index - 1], cellsB[index - 1]);
+        int currentCost = ResolvePortalPairCost(world, cellsA[index], cellsB[index]);
+        return Mathf.Abs(currentCost - previousCost) >= PortalWindowSplitCostDelta;
+    }
+
+    private static int ResolvePortalPairCost(NavigationWorld world, Vector2Int cellA, Vector2Int cellB)
+    {
+        int costA = GetCostFieldValueStrict(world, cellA.x, cellA.y);
+        int costB = GetCostFieldValueStrict(world, cellB.x, cellB.y);
+        if (costA >= 255 || costB >= 255)
+            return 255;
+
+        return Mathf.Max(1, (costA + costB) / 2);
     }
 
     private static void AddPortalSegment(
@@ -6410,13 +8721,14 @@ public static class FlowFieldCrowdMovementSystem
 
     private static float[] BuildSectorIntegrationField(NavigationWorld world, SectorData sector, IntegrationSeed[] seeds, bool reverseTraversal)
     {
+        _perf.SynchronousSectorIntegrations++;
         if (seeds == null || seeds.Length == 0)
             throw new InvalidOperationException($"BuildSectorIntegrationField failed: sector {sector.SectorId} has no seeds.");
 
+        MinHeap openSet = new MinHeap();
         float[] integration = new float[sector.Width * sector.Height];
         InitializeIntegrationField(integration);
 
-        OpenSet.Clear();
         for (int i = 0; i < seeds.Length; i++)
         {
             Vector2Int goalCell = seeds[i].Cell;
@@ -6429,12 +8741,12 @@ public static class FlowFieldCrowdMovementSystem
                 continue;
 
             integration[localIndex] = seedCost;
-            OpenSet.Push(localIndex, seedCost);
+            openSet.Push(localIndex, seedCost);
         }
 
-        while (OpenSet.Count > 0)
+        while (openSet.Count > 0)
         {
-            QueueNode node = OpenSet.Pop();
+            QueueNode node = openSet.Pop();
             if (node.Cost > integration[node.Index] + 0.0001f)
                 continue;
 
@@ -6460,11 +8772,11 @@ public static class FlowFieldCrowdMovementSystem
 
                 int nextLocalIndex = GetSectorLocalIndex(sector, nextWorldX, nextWorldY);
                 float newCost = ResolveEikonalIntegrationCost(world, sector, integration, nextWorldX, nextWorldY, reverseTraversal);
-                if (newCost >= integration[nextLocalIndex])
+                if (!IsSignificantIntegrationImprovement(newCost, integration[nextLocalIndex]))
                     continue;
 
                 integration[nextLocalIndex] = newCost;
-                OpenSet.Push(nextLocalIndex, newCost);
+                openSet.Push(nextLocalIndex, newCost);
             }
         }
 
@@ -6478,6 +8790,16 @@ public static class FlowFieldCrowdMovementSystem
 
         for (int i = 0; i < integration.Length; i++)
             integration[i] = float.PositiveInfinity;
+    }
+
+    private static bool IsSignificantIntegrationImprovement(float newCost, float existingCost)
+    {
+        if (float.IsPositiveInfinity(newCost))
+            return false;
+        if (float.IsPositiveInfinity(existingCost))
+            return true;
+
+        return newCost < existingCost - IntegrationSignificantImprovement;
     }
 
     private static float ResolveEikonalIntegrationCost(
@@ -6545,11 +8867,139 @@ public static class FlowFieldCrowdMovementSystem
 
     private static float ResolveCellIntegrationCost(NavigationWorld world, int worldX, int worldY)
     {
-        if (world.CostField == null || world.CostField.Length != world.Width * world.Height)
+        int cost = GetCostFieldValueStrict(world, worldX, worldY);
+        if (cost >= 255)
+            return float.PositiveInfinity;
+
+        if (cost <= 1)
             return 1f;
 
-        int cost = world.CostField[world.GetIndex(worldX, worldY)];
-        return cost >= 255 ? float.PositiveInfinity : Mathf.Max(1f, cost);
+        if (IsCellAffectedByCostStamp(world, worldX, worldY))
+            return Mathf.Max(1f, cost);
+
+        int slopePenalty = ResolveSlopeCostPenalty(world, worldX, worldY);
+        return Mathf.Max(1f, 1 + slopePenalty);
+    }
+
+    private static int GetCostFieldValueStrict(NavigationWorld world, int worldX, int worldY)
+    {
+        if (!TryGetCostFieldValue(world, worldX, worldY, out byte cost))
+            throw new InvalidOperationException($"GetCostFieldValueStrict failed: invalid cost field read cell=({worldX},{worldY}).");
+
+        return cost;
+    }
+
+    private static bool TryGetCostFieldValue(NavigationWorld world, int worldX, int worldY, out byte cost)
+    {
+        cost = 0;
+        if (world == null)
+            return false;
+        if (worldX < 0 || worldX >= world.Width || worldY < 0 || worldY >= world.Height)
+            return false;
+        if (world.WalkableMask == null || world.WalkableMask.Length != world.Width * world.Height)
+            return false;
+
+        int index = world.GetIndex(worldX, worldY);
+        if (TryGetSectorForCell(world, worldX, worldY, out SectorData sector) && sector.IsClearCostField)
+        {
+            cost = world.WalkableMask[index] ? (byte)1 : byte.MaxValue;
+            return true;
+        }
+
+        if (sector != null && world.SectorCostFields != null)
+        {
+            if (sector.SectorId < 0 || sector.SectorId >= world.SectorCostFields.Length)
+                return false;
+
+            byte[] sectorCost = world.SectorCostFields[sector.SectorId];
+            if (sectorCost == null || sectorCost.Length != sector.Width * sector.Height)
+                return false;
+
+            cost = sectorCost[GetSectorLocalIndex(sector, worldX, worldY)];
+            return true;
+        }
+
+        if (world.CostField == null || world.CostField.Length != world.Width * world.Height)
+            return false;
+
+        cost = world.CostField[index];
+        return true;
+    }
+
+    private static void FinalizeWorldCostStorage(NavigationWorld world)
+    {
+        if (world == null)
+            throw new InvalidOperationException("FinalizeWorldCostStorage failed: world is null.");
+        if (world.CostField == null || world.CostField.Length != world.Width * world.Height)
+            throw new InvalidOperationException("FinalizeWorldCostStorage failed: mutable cost field is missing.");
+        if (world.Sectors == null || world.Sectors.Length != world.SectorCountX * world.SectorCountY)
+            throw new InvalidOperationException("FinalizeWorldCostStorage failed: sectors are missing.");
+
+        byte[][] sectorCostFields = new byte[world.Sectors.Length][];
+        for (int i = 0; i < world.Sectors.Length; i++)
+        {
+            SectorData sector = world.Sectors[i];
+            if (sector.IsClearCostField)
+                continue;
+
+            byte[] chunk = new byte[sector.Width * sector.Height];
+            for (int y = 0; y < sector.Height; y++)
+            {
+                for (int x = 0; x < sector.Width; x++)
+                {
+                    int worldX = sector.StartX + x;
+                    int worldY = sector.StartY + y;
+                    chunk[x + y * sector.Width] = world.CostField[world.GetIndex(worldX, worldY)];
+                }
+            }
+
+            sectorCostFields[sector.SectorId] = chunk;
+        }
+
+        world.SectorCostFields = sectorCostFields;
+        world.CostField = null;
+    }
+
+    private static byte[] MaterializeMutableCostField(NavigationWorld world)
+    {
+        if (world == null)
+            throw new InvalidOperationException("MaterializeMutableCostField failed: world is null.");
+        if (world.WalkableMask == null || world.WalkableMask.Length != world.Width * world.Height)
+            throw new InvalidOperationException("MaterializeMutableCostField failed: walkable mask is missing.");
+        if (world.Sectors == null || world.Sectors.Length != world.SectorCountX * world.SectorCountY)
+            throw new InvalidOperationException("MaterializeMutableCostField failed: sectors are missing.");
+
+        byte[] costField = new byte[world.Width * world.Height];
+        for (int i = 0; i < costField.Length; i++)
+            costField[i] = world.WalkableMask[i] ? (byte)1 : byte.MaxValue;
+
+        for (int i = 0; i < world.Sectors.Length; i++)
+        {
+            SectorData sector = world.Sectors[i];
+            byte[] chunk = world.SectorCostFields != null && sector.SectorId >= 0 && sector.SectorId < world.SectorCostFields.Length
+                ? world.SectorCostFields[sector.SectorId]
+                : null;
+            if (chunk == null)
+            {
+                if (!sector.IsClearCostField)
+                    throw new InvalidOperationException($"MaterializeMutableCostField failed: missing non-clear cost chunk sector={sector.SectorId}.");
+                continue;
+            }
+            if (chunk.Length != sector.Width * sector.Height)
+                throw new InvalidOperationException($"MaterializeMutableCostField failed: invalid cost chunk sector={sector.SectorId} length={chunk.Length}.");
+
+            for (int y = 0; y < sector.Height; y++)
+            {
+                for (int x = 0; x < sector.Width; x++)
+                {
+                    int worldX = sector.StartX + x;
+                    int worldY = sector.StartY + y;
+                    costField[world.GetIndex(worldX, worldY)] = chunk[x + y * sector.Width];
+                }
+            }
+        }
+
+        return costField;
     }
 
     private static float ResolveMinimumIntegrationCost(SectorData sector, float[] integration, Vector2Int[] targetCells)
@@ -6574,14 +9024,66 @@ public static class FlowFieldCrowdMovementSystem
         if (!IsInsideSector(sector, worldX, worldY))
             return float.PositiveInfinity;
 
-        SectorPortalAccessEntry entry = GetOrBuildSectorPortalAccess(sector, sectorId, portalId);
-        if (entry == null || entry.Integration == null)
+        SectorPortalAccessEntry entry = GetPrebuiltSectorPortalAccess(sector, sectorId, portalId);
+        if (entry == null || entry.QuantizedIntegration == null)
             return float.PositiveInfinity;
 
-        return entry.Integration[GetSectorLocalIndex(sector, worldX, worldY)];
+        return DecodePortalAccessIntegrationCost(entry, GetSectorLocalIndex(sector, worldX, worldY));
     }
 
-    private static SectorPortalAccessEntry GetOrBuildSectorPortalAccess(SectorData sector, int sectorId, int portalId)
+    private static float DecodePortalAccessIntegrationCost(SectorPortalAccessEntry entry, int localIndex)
+    {
+        if (entry == null)
+            throw new InvalidOperationException("DecodePortalAccessIntegrationCost failed: entry is null.");
+        if (entry.QuantizedIntegration == null)
+            throw new InvalidOperationException("DecodePortalAccessIntegrationCost failed: quantized integration is null.");
+        if (localIndex < 0 || localIndex >= entry.QuantizedIntegration.Length)
+            throw new InvalidOperationException($"DecodePortalAccessIntegrationCost failed: local index out of range index={localIndex} length={entry.QuantizedIntegration.Length}.");
+        if (entry.IntegrationScale <= 0f || float.IsNaN(entry.IntegrationScale) || float.IsInfinity(entry.IntegrationScale))
+            throw new InvalidOperationException($"DecodePortalAccessIntegrationCost failed: invalid integration scale={entry.IntegrationScale}.");
+
+        ushort value = entry.QuantizedIntegration[localIndex];
+        return value == QuantizedIntegrationInfinity ? float.PositiveInfinity : value * entry.IntegrationScale;
+    }
+
+    private static ushort[] QuantizePortalAccessIntegration(SectorData sector, float[] integration, out float scale)
+    {
+        if (sector == null)
+            throw new InvalidOperationException("QuantizePortalAccessIntegration failed: sector is null.");
+        if (integration == null || integration.Length != sector.Width * sector.Height)
+            throw new InvalidOperationException($"QuantizePortalAccessIntegration failed: invalid integration sector={sector.SectorId}.");
+
+        float maxFinite = 0f;
+        for (int i = 0; i < integration.Length; i++)
+        {
+            float cost = integration[i];
+            if (float.IsPositiveInfinity(cost))
+                continue;
+            if (float.IsNaN(cost) || cost < 0f)
+                throw new InvalidOperationException($"QuantizePortalAccessIntegration failed: invalid cost sector={sector.SectorId} index={i} cost={cost}.");
+            if (cost > maxFinite)
+                maxFinite = cost;
+        }
+
+        scale = maxFinite > 0f ? maxFinite / QuantizedIntegrationMaxFinite : 1f;
+        ushort[] quantized = new ushort[integration.Length];
+        for (int i = 0; i < integration.Length; i++)
+        {
+            float cost = integration[i];
+            if (float.IsPositiveInfinity(cost))
+            {
+                quantized[i] = QuantizedIntegrationInfinity;
+                continue;
+            }
+
+            int encoded = Mathf.RoundToInt(cost / scale);
+            quantized[i] = (ushort)Mathf.Clamp(encoded, 0, QuantizedIntegrationMaxFinite);
+        }
+
+        return quantized;
+    }
+
+private static SectorPortalAccessEntry GetPrebuiltSectorPortalAccess(SectorData sector, int sectorId, int portalId)
     {
         SectorPortalAccessKey key = new SectorPortalAccessKey(
             _world.Version,
@@ -6589,49 +9091,249 @@ public static class FlowFieldCrowdMovementSystem
             portalId,
             sector.DirtyVersion);
         if (SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry cached)
-            && cached?.Integration != null)
+            && cached?.QuantizedIntegration != null)
         {
             cached.LastUsedFrame = GetFrameCount();
             return cached;
         }
 
-        PortalData portal = GetPortalById(_world, portalId);
-        Vector2Int[] portalCells = GetPortalCellsForSector(portal, sectorId);
-        if (portalCells == null || portalCells.Length == 0)
-            throw new InvalidOperationException($"GetOrBuildSectorPortalAccess failed: portal has no cells sector={sectorId} portal={portalId}.");
-
-        SectorPortalAccessEntry entry = new SectorPortalAccessEntry
-        {
-            Integration = BuildSectorIntegrationField(_world, sector, portalCells, reverseTraversal: true),
-            LastUsedFrame = GetFrameCount()
-        };
-        SectorPortalAccessCache[key] = entry;
-        TrimSectorPortalAccessCache();
-        return entry;
+        throw new InvalidOperationException(
+            $"GetPrebuiltSectorPortalAccess failed: missing prebuilt portal access field world={_world.Version} sector={sectorId} portal={portalId} dirty={sector.DirtyVersion}. " +
+            $"{BuildMissingPortalAccessDiagnostics(_world, sectorId, portalId, sector.DirtyVersion)} " +
+            "Portal access integration must be produced by world/runtime portal transition jobs, not synchronously in query/tile build.");
     }
+
+    private static void AddPendingSectorPortalAccess(List<PendingSectorPortalAccess> pendingEntries, SectorData sector, int portalId, float[] integration)
+    {
+        if (pendingEntries == null)
+            throw new InvalidOperationException("AddPendingSectorPortalAccess failed: pendingEntries is null.");
+        if (sector == null)
+            throw new InvalidOperationException("AddPendingSectorPortalAccess failed: sector is null.");
+        if (integration == null || integration.Length != sector.Width * sector.Height)
+            throw new InvalidOperationException($"AddPendingSectorPortalAccess failed: invalid integration sector={sector.SectorId} portal={portalId}.");
+
+        ushort[] quantized = QuantizePortalAccessIntegration(sector, integration, out float scale);
+        pendingEntries.Add(new PendingSectorPortalAccess(sector.SectorId, portalId, sector.DirtyVersion, quantized, scale));
+    }
+
+    private static void CommitPendingSectorPortalAccessEntries(NavigationWorld world, List<PendingSectorPortalAccess> pendingEntries)
+    {
+        if (pendingEntries == null || pendingEntries.Count == 0)
+            return;
+        if (world == null)
+            throw new InvalidOperationException("CommitPendingSectorPortalAccessEntries failed: world is null.");
+
+        for (int i = 0; i < pendingEntries.Count; i++)
+        {
+            PendingSectorPortalAccess pending = pendingEntries[i];
+            SectorPortalAccessKey key = new SectorPortalAccessKey(
+                world.Version,
+                pending.SectorId,
+                pending.PortalId,
+                pending.SectorDirtyVersion);
+            SectorPortalAccessCache[key] = new SectorPortalAccessEntry
+            {
+                QuantizedIntegration = pending.QuantizedIntegration,
+                IntegrationScale = pending.IntegrationScale,
+                LastUsedFrame = GetFrameCount()
+            };
+        }
+
+        TrimSectorPortalAccessCache();
+    }
+
+    private static void ValidateSectorPortalAccessCoverage(NavigationWorld world, HashSet<int> sectorIds, string stage)
+    {
+        if (world == null)
+            throw new InvalidOperationException("ValidateSectorPortalAccessCoverage failed: world is null.");
+        if (sectorIds == null || sectorIds.Count == 0)
+            return;
+
+        foreach (int sectorId in sectorIds)
+        {
+            if (sectorId < 0 || sectorId >= world.Sectors.Length)
+                throw new InvalidOperationException($"ValidateSectorPortalAccessCoverage failed: sector out of range sector={sectorId} stage={stage}.");
+
+            SectorData sector = world.Sectors[sectorId];
+            for (int i = 0; i < sector.PortalIds.Count; i++)
+            {
+                int portalId = sector.PortalIds[i];
+                SectorPortalAccessKey key = new SectorPortalAccessKey(world.Version, sectorId, portalId, sector.DirtyVersion);
+                if (!SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry entry) || entry?.QuantizedIntegration == null)
+                {
+                    throw new InvalidOperationException(
+                        $"ValidateSectorPortalAccessCoverage failed: missing portal access stage={stage} world={world.Version} sector={sectorId} portal={portalId} dirty={sector.DirtyVersion}.");
+                }
+            }
+        }
+    }
+
+private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world, string stage)
+    {
+        if (world == null)
+            throw new InvalidOperationException("ValidateAllSectorPortalAccessCoverage failed: world is null.");
+        if (world.Sectors == null)
+            throw new InvalidOperationException($"ValidateAllSectorPortalAccessCoverage failed: sectors are null stage={stage}.");
+
+        for (int sectorId = 0; sectorId < world.Sectors.Length; sectorId++)
+        {
+            SectorData sector = world.Sectors[sectorId];
+            if (sector == null)
+                throw new InvalidOperationException($"ValidateAllSectorPortalAccessCoverage failed: sector is null stage={stage} sector={sectorId}.");
+
+            for (int i = 0; i < sector.PortalIds.Count; i++)
+            {
+                int portalId = sector.PortalIds[i];
+                SectorPortalAccessKey key = new SectorPortalAccessKey(world.Version, sectorId, portalId, sector.DirtyVersion);
+                if (!SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry entry) || entry?.QuantizedIntegration == null)
+                {
+                    throw new InvalidOperationException(
+                        $"ValidateAllSectorPortalAccessCoverage failed: missing portal access stage={stage} world={world.Version} sector={sectorId} portal={portalId} dirty={sector.DirtyVersion}. " +
+                        BuildMissingPortalAccessDiagnostics(world, sectorId, portalId, sector.DirtyVersion));
+                }
+            }
+        }
+    }
+
+    private static void RemoveSectorPortalAccessCacheEntriesForWorldVersion(int worldVersion)
+    {
+        if (worldVersion <= 0 || SectorPortalAccessCache.Count == 0)
+            return;
+
+        List<SectorPortalAccessKey> keysToRemove = null;
+        foreach (SectorPortalAccessKey key in SectorPortalAccessCache.Keys)
+        {
+            if (key.WorldVersion != worldVersion)
+                continue;
+
+            keysToRemove ??= new List<SectorPortalAccessKey>();
+            keysToRemove.Add(key);
+        }
+
+        if (keysToRemove == null)
+            return;
+
+        for (int i = 0; i < keysToRemove.Count; i++)
+            SectorPortalAccessCache.Remove(keysToRemove[i]);
+    }
+
+    private static string BuildMissingPortalAccessDiagnostics(NavigationWorld world, int sectorId, int portalId, int dirtyVersion)
+    {
+        if (world == null)
+            return "diag=world-null";
+
+        int sameWorldSectorEntries = 0;
+        int sameWorldEntries = 0;
+        int samePortalAnyWorldEntries = 0;
+        string sampleSameWorldSector = "none";
+        string sampleSamePortal = "none";
+        foreach (SectorPortalAccessKey existingKey in SectorPortalAccessCache.Keys)
+        {
+            if (existingKey.WorldVersion == world.Version)
+            {
+                sameWorldEntries++;
+                if (existingKey.SectorId == sectorId)
+                {
+                    sameWorldSectorEntries++;
+                    if (sampleSameWorldSector == "none")
+                        sampleSameWorldSector = $"world={existingKey.WorldVersion},sector={existingKey.SectorId},portal={existingKey.PortalId},dirty={existingKey.SectorDirtyVersion}";
+                }
+            }
+
+            if (existingKey.PortalId == portalId)
+            {
+                samePortalAnyWorldEntries++;
+                if (sampleSamePortal == "none")
+                    sampleSamePortal = $"world={existingKey.WorldVersion},sector={existingKey.SectorId},portal={existingKey.PortalId},dirty={existingKey.SectorDirtyVersion}";
+            }
+        }
+
+        string sectorInfo = "sector=out-of-range";
+        if (world.Sectors != null && sectorId >= 0 && sectorId < world.Sectors.Length)
+        {
+            SectorData sector = world.Sectors[sectorId];
+            sectorInfo = sector == null
+                ? "sector=null"
+                : $"sectorPortalCount={sector.PortalIds.Count} sectorTransitionCount={sector.PortalTransitions.Count} sectorDirty={sector.DirtyVersion} sectorBounds=({sector.StartX},{sector.StartY},{sector.Width},{sector.Height}) sectorPortals=[{string.Join(",", sector.PortalIds)}]";
+        }
+
+        string portalInfo = "portal=missing";
+        if (TryGetPortalById(world, portalId, out PortalData portal))
+        {
+            portalInfo = $"portalSectors=({portal.SectorAId},{portal.SectorBId}) portalWidth={portal.WidthCells} portalNarrow={portal.IsNarrow} portalVertical={portal.IsVerticalBoundary} cellsA={FormatPortalCellsForDiagnostics(portal.CellsA, 4)} cellsB={FormatPortalCellsForDiagnostics(portal.CellsB, 4)}";
+        }
+
+        string states = BuildWorldStateDiagnosticsForPortalAccess();
+        return $"diag=cacheCount={SectorPortalAccessCache.Count} sameWorldEntries={sameWorldEntries} sameWorldSectorEntries={sameWorldSectorEntries} samePortalAnyWorldEntries={samePortalAnyWorldEntries} sampleSameWorldSector={sampleSameWorldSector} sampleSamePortal={sampleSamePortal} worldAgentType={world.AgentTypeId} worldDirtyExpected={dirtyVersion} sectors={(world.Sectors != null ? world.Sectors.Length : -1)} portals={(world.Portals != null ? world.Portals.Length : -1)} {sectorInfo} {portalInfo} {states}";
+    }
+
+    private static string FormatPortalCellsForDiagnostics(Vector2Int[] cells, int maxCells)
+    {
+        if (cells == null)
+            return "null";
+        if (cells.Length == 0)
+            return "empty";
+
+        int count = Mathf.Min(cells.Length, Mathf.Max(1, maxCells));
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(96);
+        builder.Append('[');
+        for (int i = 0; i < count; i++)
+        {
+            if (i > 0)
+                builder.Append(';');
+
+            builder.Append(cells[i].x);
+            builder.Append(',');
+            builder.Append(cells[i].y);
+        }
+
+        if (cells.Length > count)
+        {
+            builder.Append(";...");
+            builder.Append(cells.Length);
+        }
+
+        builder.Append(']');
+        return builder.ToString();
+    }
+
+    private static string BuildWorldStateDiagnosticsForPortalAccess()
+    {
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(256);
+        builder.Append("worldStates=[");
+        int appended = 0;
+        foreach (KeyValuePair<int, WorldRuntimeState> pair in WorldStates)
+        {
+            if (appended > 0)
+                builder.Append(" | ");
+
+            WorldRuntimeState state = pair.Value;
+            builder.Append("agentType=");
+            builder.Append(pair.Key);
+            builder.Append(",world=");
+            builder.Append(state?.World != null ? state.World.Version.ToString() : "null");
+            builder.Append(",dirty=");
+            builder.Append(state != null && state.IsDirty);
+            builder.Append(",build=");
+            builder.Append(state?.BuildJob != null ? state.BuildJob.Stage.ToString() : "null");
+            builder.Append(",runtime=");
+            builder.Append(state?.RuntimeDirtyJob != null ? state.RuntimeDirtyJob.Stage.ToString() : "null");
+            appended++;
+            if (appended >= 8)
+                break;
+        }
+
+        if (appended == 0)
+            builder.Append("none");
+        builder.Append(']');
+        return builder.ToString();
+    }
+
 
     private static void TrimSectorPortalAccessCache()
     {
-        int limit = Mathf.Max(64, Config.FlowTileCacheLimit * 4);
-        if (SectorPortalAccessCache.Count <= limit)
-            return;
-
-        SectorPortalAccessKey oldestKey = default;
-        int oldestFrame = int.MaxValue;
-        bool found = false;
-        foreach (KeyValuePair<SectorPortalAccessKey, SectorPortalAccessEntry> pair in SectorPortalAccessCache)
-        {
-            int frame = pair.Value?.LastUsedFrame ?? int.MinValue;
-            if (found && frame >= oldestFrame)
-                continue;
-
-            oldestKey = pair.Key;
-            oldestFrame = frame;
-            found = true;
-        }
-
-        if (found)
-            SectorPortalAccessCache.Remove(oldestKey);
+        // Sector portal access fields are required graph data for strict path building.
+        // Dirty-sector invalidation removes stale entries; LRU eviction would create missing-field failures.
     }
 
     private static bool IsInsideSector(SectorData sector, int worldX, int worldY)
@@ -6650,7 +9352,21 @@ public static class FlowFieldCrowdMovementSystem
     private static bool IsCellReachableInTile(FlowTileCacheEntry tile, int worldX, int worldY)
     {
         int localIndex = tile.GetLocalIndex(worldX, worldY);
-        return !float.IsPositiveInfinity(tile.Integration[localIndex]);
+        return IsFlowReachable(tile, localIndex);
+    }
+
+    private static bool AreCellsConnectedInsideSector(SectorData sector, int startX, int startY, int goalX, int goalY)
+    {
+        if (sector == null)
+            throw new InvalidOperationException("AreCellsConnectedInsideSector failed: sector is null.");
+        if (!IsInsideSector(sector, startX, startY) || !IsInsideSector(sector, goalX, goalY))
+            return false;
+        if (sector.LocalComponentIds == null || sector.LocalComponentIds.Length != sector.Width * sector.Height)
+            throw new InvalidOperationException($"AreCellsConnectedInsideSector failed: local components missing sector={sector.SectorId}.");
+
+        int startComponent = sector.LocalComponentIds[GetSectorLocalIndex(sector, startX, startY)];
+        int goalComponent = sector.LocalComponentIds[GetSectorLocalIndex(sector, goalX, goalY)];
+        return startComponent > 0 && startComponent == goalComponent;
     }
 
     private static void LogTileReachabilityFailure(
@@ -6676,9 +9392,9 @@ public static class FlowFieldCrowdMovementSystem
         if (tile != null && insideTile)
         {
             int localIndex = tile.GetLocalIndex(startX, startY);
-            float cost = tile.Integration[localIndex];
+            float cost = GetTileIntegrationCostForDiagnostics(tile, startX, startY);
             startCost = float.IsPositiveInfinity(cost) ? "INF" : cost.ToString("F3");
-            startFlow = tile.FlowDirections[localIndex].ToString();
+            startFlow = ResolveRuntimeFlowDirection(tile, startX, startY, localIndex).ToString();
         }
 
         Debug.LogError(
@@ -6727,6 +9443,30 @@ public static class FlowFieldCrowdMovementSystem
                 }
             }
 
+            if (ShouldRebuildPathHandleForCurrentStart(
+                    handle,
+                    startSectorId,
+                    goalSectorId,
+                    startX,
+                    startY,
+                    goalX,
+                    goalY,
+                    out string currentStartReason))
+            {
+                PathHandle previousHandle = handle;
+                IncrementPathHandleRebuildReason("startPortalMismatch");
+                handle = BuildPathHandle(startSectorId, goalSectorId, startX, startY, goalX, goalY);
+                agent.NavState.PathHandle = handle;
+                if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+                {
+                    GameDebugSettings.Log(DebugCategory.Move,
+                        $"[FlowPathRebuild] agent={agent.CharacterKey} reason={currentStartReason} startSector={startSectorId} goalSector={goalSectorId} " +
+                        $"start=({startX},{startY}) goal=({goalX},{goalY}) oldHandle={FormatPathHandle(previousHandle)} result={(handle != null ? "ok" : "null")} newHandle={FormatPathHandle(handle)}");
+                }
+
+                return handle != null;
+            }
+
             return true;
         }
 
@@ -6763,6 +9503,101 @@ public static class FlowFieldCrowdMovementSystem
         return "invalid";
     }
 
+    private static bool ShouldRebuildPathHandleForCurrentStart(
+        PathHandle handle,
+        int startSectorId,
+        int goalSectorId,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        out string reason)
+    {
+        reason = string.Empty;
+        if (handle == null
+            || handle.PortalIds == null
+            || handle.PortalIds.Length == 0
+            || handle.SectorIds == null
+            || handle.SectorIds.Length == 0)
+        {
+            return false;
+        }
+
+        int sectorIndex = FindSectorIndex(handle, startSectorId, Mathf.Max(0, handle.CurrentSectorIndex));
+        if (sectorIndex < 0 || sectorIndex >= handle.PortalIds.Length)
+            return false;
+
+        int selectedPortalId = handle.PortalIds[sectorIndex];
+        if (!TryResolveBestStartPortalForCurrentCell(
+                startSectorId,
+                goalSectorId,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                selectedPortalId,
+                out int bestPortalId,
+                out float selectedCost,
+                out float bestCost))
+        {
+            return false;
+        }
+
+        if (selectedPortalId == bestPortalId || selectedCost <= bestCost + IntegrationSignificantImprovement)
+            return false;
+
+        reason =
+            $"startPortalMismatch selected={selectedPortalId}:{FormatDiagnosticCost(selectedCost)} best={bestPortalId}:{FormatDiagnosticCost(bestCost)} sectorIndex={sectorIndex}";
+        return true;
+    }
+
+    private static bool TryResolveBestStartPortalForCurrentCell(
+        int startSectorId,
+        int goalSectorId,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        int selectedPortalId,
+        out int bestPortalId,
+        out float selectedCost,
+        out float bestCost)
+    {
+        bestPortalId = -1;
+        selectedCost = float.PositiveInfinity;
+        bestCost = float.PositiveInfinity;
+        if (_world == null || startSectorId < 0 || startSectorId >= _world.Sectors.Length)
+            return false;
+
+        int sharedAgentTypeId = ResolvePreferredAgentTypeId(_world.AgentTypeId);
+        if (!TryGetCachedSharedGoalField(goalSectorId, goalX, goalY, sharedAgentTypeId, out SharedGoalField sharedField))
+            return false;
+
+        SectorData startSector = _world.Sectors[startSectorId];
+        for (int i = 0; i < startSector.PortalIds.Count; i++)
+        {
+            int portalId = startSector.PortalIds[i];
+            int startNode = EncodePortalNode(startSectorId, portalId);
+            if (!sharedField.NodeCosts.TryGetValue(startNode, out float downstreamCost))
+                continue;
+
+            float accessCost = ResolvePortalAccessCost(startSector, startSectorId, portalId, startX, startY);
+            if (float.IsPositiveInfinity(accessCost))
+                continue;
+
+            float totalCost = accessCost + downstreamCost;
+            if (portalId == selectedPortalId)
+                selectedCost = totalCost;
+            if (totalCost >= bestCost)
+                continue;
+
+            bestCost = totalCost;
+            bestPortalId = portalId;
+        }
+
+        return bestPortalId >= 0;
+    }
+
     private static string BuildPathHandleFailure(IEntityContext self, Vector3 stableGoalPosition, int startSectorId, int goalSectorId, int startX, int startY, int goalX, int goalY)
     {
         if (_world != null
@@ -6782,36 +9617,189 @@ public static class FlowFieldCrowdMovementSystem
         return sectorId;
     }
 
-    private static SharedGoalField GetOrBuildSharedGoalField(int goalSectorId, int goalX, int goalY, int agentTypeId)
+    private static bool TryGetCachedSharedGoalField(int goalSectorId, int goalX, int goalY, int agentTypeId, out SharedGoalField field)
+    {
+        SharedGoalFieldKey key = CreateSharedGoalFieldKey(goalSectorId, goalX, goalY, agentTypeId);
+        if (SharedGoalFields.TryGetValue(key, out field)
+            && !SharedGoalFieldReferencesMissingPortal(_world, field))
+        {
+            field.LastUsedFrame = GetFrameCount();
+            return true;
+        }
+
+        field = null;
+        return false;
+    }
+
+    private static SharedGoalFieldKey CreateSharedGoalFieldKey(int goalSectorId, int goalX, int goalY, int agentTypeId)
     {
         SectorData goalSector = _world.Sectors[goalSectorId];
-        SharedGoalFieldKey key = new SharedGoalFieldKey(
+        return new SharedGoalFieldKey(
             _world.Version,
             agentTypeId,
             goalSectorId,
             _world.GetIndex(goalX, goalY),
             goalSector.DirtyVersion);
-
-        if (SharedGoalFields.TryGetValue(key, out SharedGoalField cached)
-            && !SharedGoalFieldReferencesMissingPortal(cached))
-        {
-            cached.LastUsedFrame = GetFrameCount();
-            _perf.SectorPathCacheHits++;
-            return cached;
-        }
-
-        _perf.SectorPathSearches++;
-        float[] goalIntegration = BuildSectorIntegrationField(_world, goalSector, new[] { new Vector2Int(goalX, goalY) }, reverseTraversal: true);
-        SharedGoalField field = BuildSharedGoalField(key, goalSectorId, goalX, goalY, goalIntegration);
-        if (field == null)
-            return null;
-
-        SharedGoalFields[key] = field;
-        TrimSharedGoalFields();
-        return field;
     }
 
-    private static SharedGoalField BuildSharedGoalField(SharedGoalFieldKey key, int goalSectorId, int goalX, int goalY, float[] goalIntegration)
+    private static void EnqueueSharedGoalFieldBuild(int goalSectorId, int goalX, int goalY, int agentTypeId)
+    {
+        SharedGoalFieldKey key = CreateSharedGoalFieldKey(goalSectorId, goalX, goalY, agentTypeId);
+        if (SharedGoalFields.ContainsKey(key))
+            return;
+        if (!PendingSharedGoalFieldBuildJobs.Add(key))
+            return;
+
+        _perf.PathPendingSharedGoal++;
+        SharedGoalFieldBuildQueue.AddLast(new SharedGoalFieldBuildJob
+        {
+            Key = key,
+            GoalSectorId = goalSectorId,
+            GoalX = goalX,
+            GoalY = goalY,
+            AgentTypeId = agentTypeId
+        });
+    }
+
+    private static bool AdvanceSharedGoalFieldBuildJob(SharedGoalFieldBuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        while (job.Stage != SharedGoalFieldBuildStage.Complete)
+        {
+            switch (job.Stage)
+            {
+                case SharedGoalFieldBuildStage.GoalIntegration:
+                    if (!AdvanceSharedGoalFieldGoalIntegration(job, deadlineTicks, forceComplete))
+                        return false;
+                    break;
+                case SharedGoalFieldBuildStage.PortalGraph:
+                    if (!AdvanceSharedGoalFieldPortalGraph(job, deadlineTicks, forceComplete))
+                        return false;
+                    break;
+                case SharedGoalFieldBuildStage.Commit:
+                    CommitSharedGoalFieldBuildJob(job);
+                    break;
+                default:
+                    throw new InvalidOperationException($"AdvanceSharedGoalFieldBuildJob failed: unknown stage {job.Stage}.");
+            }
+
+            if (job.Stage == SharedGoalFieldBuildStage.Complete)
+                break;
+
+            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool AdvanceSharedGoalFieldGoalIntegration(SharedGoalFieldBuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        if (job.GoalSector == null)
+        {
+            job.GoalSector = _world.Sectors[job.GoalSectorId];
+            job.GoalIntegration = RentIntegrationArray(job.GoalSector.Width * job.GoalSector.Height);
+            InitializeIntegrationField(job.GoalIntegration);
+            job.GoalIntegrationOpenSet = new MinHeap();
+            int localIndex = GetSectorLocalIndex(job.GoalSector, job.GoalX, job.GoalY);
+            job.GoalIntegration[localIndex] = 0f;
+            job.GoalIntegrationOpenSet.Push(localIndex, 0f);
+            _perf.SynchronousSectorIntegrations++;
+        }
+
+        int budgetWork = 0;
+        while (job.GoalIntegrationOpenSet.Count > 0)
+        {
+            QueueNode node = job.GoalIntegrationOpenSet.Pop();
+            if (node.Cost > job.GoalIntegration[node.Index] + 0.0001f)
+                continue;
+
+            int localX = node.Index % job.GoalSector.Width;
+            int localY = node.Index / job.GoalSector.Width;
+            int worldX = job.GoalSector.StartX + localX;
+            int worldY = job.GoalSector.StartY + localY;
+
+            for (int i = 0; i < CardinalOffsetX.Length; i++)
+            {
+                int nextWorldX = worldX + CardinalOffsetX[i];
+                int nextWorldY = worldY + CardinalOffsetY[i];
+                if (!IsInsideSector(job.GoalSector, nextWorldX, nextWorldY) || !_world.IsWalkable(nextWorldX, nextWorldY))
+                    continue;
+                if (!CanTraverseNeighborCells(_world, nextWorldX, nextWorldY, worldX, worldY))
+                    continue;
+
+                int nextLocalIndex = GetSectorLocalIndex(job.GoalSector, nextWorldX, nextWorldY);
+                float newCost = ResolveEikonalIntegrationCost(_world, job.GoalSector, job.GoalIntegration, nextWorldX, nextWorldY, reverseTraversal: true);
+                if (!IsSignificantIntegrationImprovement(newCost, job.GoalIntegration[nextLocalIndex]))
+                    continue;
+
+                job.GoalIntegration[nextLocalIndex] = newCost;
+                job.GoalIntegrationOpenSet.Push(nextLocalIndex, newCost);
+            }
+
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, ++budgetWork))
+                return false;
+        }
+
+        job.Field = BeginSharedGoalField(job.Key, job.GoalSectorId, job.GoalX, job.GoalY, job.GoalIntegration, out job.PortalOpenSet);
+        ReturnSharedGoalFieldBuildIntegration(job);
+        if (job.Field == null)
+        {
+            job.Stage = SharedGoalFieldBuildStage.Complete;
+            return true;
+        }
+
+        job.Stage = SharedGoalFieldBuildStage.PortalGraph;
+        return true;
+    }
+
+    private static bool AdvanceSharedGoalFieldPortalGraph(SharedGoalFieldBuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        int budgetWork = 0;
+        while (job.PortalOpenSet.Count > 0)
+        {
+            QueueNode node = job.PortalOpenSet.Pop();
+            int currentNode = node.Index;
+            if (!job.Field.NodeCosts.TryGetValue(currentNode, out float currentCost) || node.Cost > currentCost + 0.001f)
+                continue;
+
+            DecodePortalNode(currentNode, out int currentSectorId, out int currentPortalId);
+            PortalData currentPortal = GetPortalById(_world, currentPortalId);
+            int oppositeSectorId = GetOppositeSectorId(currentPortal, currentSectorId);
+            int oppositeNode = EncodePortalNode(oppositeSectorId, currentPortalId);
+            AddSharedGoalReverseEdge(job.Field, job.PortalOpenSet, oppositeNode, currentNode, currentCost + 1f);
+
+            SectorData sector = _world.Sectors[currentSectorId];
+            for (int i = 0; i < sector.PortalTransitions.Count; i++)
+            {
+                PortalTransition transition = sector.PortalTransitions[i];
+                if (transition.ToPortalId != currentPortalId)
+                    continue;
+
+                int predecessorNode = EncodePortalNode(currentSectorId, transition.FromPortalId);
+                AddSharedGoalReverseEdge(job.Field, job.PortalOpenSet, predecessorNode, currentNode, currentCost + transition.Cost);
+            }
+
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, ++budgetWork))
+                return false;
+        }
+
+        job.Stage = SharedGoalFieldBuildStage.Commit;
+        return true;
+    }
+
+    private static void CommitSharedGoalFieldBuildJob(SharedGoalFieldBuildJob job)
+    {
+        if (job.Field != null)
+        {
+            SharedGoalFields[job.Key] = job.Field;
+            _perf.SharedGoalFieldBuilds++;
+            TrimSharedGoalFields();
+        }
+
+        job.Stage = SharedGoalFieldBuildStage.Complete;
+    }
+
+    private static SharedGoalField BeginSharedGoalField(SharedGoalFieldKey key, int goalSectorId, int goalX, int goalY, float[] goalIntegration, out MinHeap openSet)
     {
         SectorData goalSector = _world.Sectors[goalSectorId];
         SharedGoalField field = new SharedGoalField
@@ -6823,7 +9811,7 @@ public static class FlowFieldCrowdMovementSystem
             LastUsedFrame = GetFrameCount()
         };
 
-        OpenSet.Clear();
+        openSet = new MinHeap();
         for (int i = 0; i < goalSector.PortalIds.Count; i++)
         {
             int portalId = goalSector.PortalIds[i];
@@ -6836,48 +9824,23 @@ public static class FlowFieldCrowdMovementSystem
 
             int goalNode = EncodePortalNode(goalSectorId, portalId);
             field.NodeCosts[goalNode] = goalCost;
-            OpenSet.Push(goalNode, goalCost);
+            openSet.Push(goalNode, goalCost);
         }
 
-        if (OpenSet.Count == 0)
+        if (openSet.Count == 0)
             return null;
-
-        while (OpenSet.Count > 0)
-        {
-            QueueNode node = OpenSet.Pop();
-            int currentNode = node.Index;
-            if (!field.NodeCosts.TryGetValue(currentNode, out float currentCost) || node.Cost > currentCost + 0.001f)
-                continue;
-
-            DecodePortalNode(currentNode, out int currentSectorId, out int currentPortalId);
-            PortalData currentPortal = GetPortalById(_world, currentPortalId);
-            int oppositeSectorId = GetOppositeSectorId(currentPortal, currentSectorId);
-            int oppositeNode = EncodePortalNode(oppositeSectorId, currentPortalId);
-            AddSharedGoalReverseEdge(field, oppositeNode, currentNode, currentCost + 1f);
-
-            SectorData sector = _world.Sectors[currentSectorId];
-            for (int i = 0; i < sector.PortalTransitions.Count; i++)
-            {
-                PortalTransition transition = sector.PortalTransitions[i];
-                if (transition.ToPortalId != currentPortalId)
-                    continue;
-
-                int predecessorNode = EncodePortalNode(currentSectorId, transition.FromPortalId);
-                AddSharedGoalReverseEdge(field, predecessorNode, currentNode, currentCost + transition.Cost);
-            }
-        }
 
         return field;
     }
 
-    private static void AddSharedGoalReverseEdge(SharedGoalField field, int predecessorNode, int nextNodeTowardGoal, float cost)
+    private static void AddSharedGoalReverseEdge(SharedGoalField field, MinHeap openSet, int predecessorNode, int nextNodeTowardGoal, float cost)
     {
         if (field.NodeCosts.TryGetValue(predecessorNode, out float existingCost) && cost >= existingCost)
             return;
 
         field.NodeCosts[predecessorNode] = cost;
         field.NextNodeTowardGoal[predecessorNode] = nextNodeTowardGoal;
-        OpenSet.Push(predecessorNode, cost);
+        openSet.Push(predecessorNode, cost);
     }
 
     private static void TrimSharedGoalFields()
@@ -6923,6 +9886,9 @@ public static class FlowFieldCrowdMovementSystem
             case "startSectorMismatch":
                 _perf.PathBuildInvalidHandle++;
                 break;
+            case "startPortalMismatch":
+                _perf.PathBuildInvalidHandle++;
+                break;
             default:
                 _perf.PathBuildInvalidHandle++;
                 break;
@@ -6937,8 +9903,7 @@ public static class FlowFieldCrowdMovementSystem
 
         if (startSectorId == goalSectorId)
         {
-            float[] sectorGoalIntegration = BuildSectorIntegrationField(_world, startSector, new[] { new Vector2Int(goalX, goalY) }, reverseTraversal: true);
-            if (!float.IsPositiveInfinity(sectorGoalIntegration[GetSectorLocalIndex(startSector, startX, startY)]))
+            if (AreCellsConnectedInsideSector(startSector, startX, startY, goalX, goalY))
             {
                 PathHandle sameSectorHandle = new PathHandle
                 {
@@ -6972,9 +9937,58 @@ public static class FlowFieldCrowdMovementSystem
         if (TryCreatePathHandleFromSectorPathCache(sectorPathKey, startSector, startSectorId, goalSectorId, startX, startY, goalX, goalY, out PathHandle cachedHandle))
             return cachedHandle;
 
-        SharedGoalField sharedField = GetOrBuildSharedGoalField(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(_world.AgentTypeId));
+        int sharedAgentTypeId = ResolvePreferredAgentTypeId(_world.AgentTypeId);
+        EnqueueSharedGoalFieldBuild(goalSectorId, goalX, goalY, sharedAgentTypeId);
+        if (TryGetCachedSharedGoalField(goalSectorId, goalX, goalY, sharedAgentTypeId, out SharedGoalField sharedField)
+            && TryBuildPathHandleFromSharedGoalField(
+                sectorPathKey,
+                sharedField,
+                startSector,
+                startSectorId,
+                goalSectorId,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                out PathHandle sharedHandle))
+        {
+            return sharedHandle;
+        }
+
+        _perf.SectorPathSearches++;
+        if (TryBuildPathHandleWithPortalGraphAStar(
+            sectorPathKey,
+            startSector,
+            goalSector,
+            startSectorId,
+            goalSectorId,
+            startX,
+            startY,
+            goalX,
+            goalY,
+            out PathHandle graphHandle))
+        {
+            return graphHandle;
+        }
+
+        return null;
+    }
+
+    private static bool TryBuildPathHandleFromSharedGoalField(
+        SectorPathCacheKey sectorPathKey,
+        SharedGoalField sharedField,
+        SectorData startSector,
+        int startSectorId,
+        int goalSectorId,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        out PathHandle handle)
+    {
+        handle = null;
         if (sharedField == null)
-            return null;
+            return false;
 
         int bestStartNode = int.MinValue;
         float bestStartCost = float.PositiveInfinity;
@@ -6998,7 +10012,7 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         if (bestStartNode == int.MinValue)
-            return null;
+            return false;
 
         List<int> sectorIds = new List<int>(8) { startSectorId };
         List<int> portalIds = new List<int>(8);
@@ -7026,12 +10040,329 @@ public static class FlowFieldCrowdMovementSystem
             if (GameDebugSettings.IsEnabled(DebugCategory.Move))
             {
                 GameDebugSettings.Log(DebugCategory.Move,
-                    $"[FlowPathHandleBuild] result=null sameSector=false startSector={startSectorId} goalSector={goalSectorId} " +
+                    $"[FlowPathHandleBuild] result=null source=sharedGoal startSector={startSectorId} goalSector={goalSectorId} " +
                     $"start=({startX},{startY}) goal=({goalX},{goalY}) bestStartNode={bestStartNode} bestStartCost={bestStartCost:F3} endSector={endSectorId} " +
                     $"sharedNodes={sharedField.NodeCosts.Count} sectorIdsPartial=[{string.Join(",", sectorIds)}] portalIdsPartial=[{string.Join(",", portalIds)}]");
             }
-            return null;
+            return false;
         }
+
+        handle = CreateAndCachePathHandle(sectorPathKey, sectorIds, portalIds, goalX, goalY);
+        if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+        {
+            GameDebugSettings.Log(DebugCategory.Move,
+                $"[FlowPathHandleBuild] result=ok source=sharedGoal startSector={startSectorId} goalSector={goalSectorId} " +
+                $"start=({startX},{startY}) goal=({goalX},{goalY}) handle={FormatPathHandle(handle)}");
+        }
+
+        return true;
+    }
+
+    private static bool TryBuildPathHandleWithPortalGraphAStar(
+        SectorPathCacheKey sectorPathKey,
+        SectorData startSector,
+        SectorData goalSector,
+        int startSectorId,
+        int goalSectorId,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        out PathHandle handle)
+    {
+        handle = null;
+        MinHeap openSet = new MinHeap();
+        Dictionary<int, float> nodeCosts = new Dictionary<int, float>(256);
+        Dictionary<int, int> cameFrom = new Dictionary<int, int>(256);
+        Dictionary<int, int> startPortalByNode = new Dictionary<int, int>(64);
+        HashSet<int> goalNodes = new HashSet<int>();
+        Dictionary<int, float> goalAccessCosts = new Dictionary<int, float>(64);
+        Dictionary<int, ExistingPathMergePoint> mergeNodes = BuildExistingPathMergeNodes(startSectorId, goalSectorId);
+
+        for (int i = 0; i < goalSector.PortalIds.Count; i++)
+        {
+            int portalId = goalSector.PortalIds[i];
+            float goalAccessCost = ResolvePortalAccessCost(goalSector, goalSectorId, portalId, goalX, goalY);
+            if (float.IsPositiveInfinity(goalAccessCost))
+                continue;
+
+            int goalNode = EncodePortalNode(goalSectorId, portalId);
+            goalNodes.Add(goalNode);
+            goalAccessCosts[goalNode] = goalAccessCost;
+        }
+
+        if (goalNodes.Count == 0)
+            return false;
+
+        for (int i = 0; i < startSector.PortalIds.Count; i++)
+        {
+            int portalId = startSector.PortalIds[i];
+            float startCost = ResolvePortalAccessCost(startSector, startSectorId, portalId, startX, startY);
+            if (float.IsPositiveInfinity(startCost))
+                continue;
+
+            int startNode = EncodePortalNode(startSectorId, portalId);
+            float priority = startCost + ResolvePortalGraphHeuristic(startNode, goalX, goalY);
+            nodeCosts[startNode] = startCost;
+            startPortalByNode[startNode] = portalId;
+            openSet.Push(startNode, priority);
+        }
+
+        int bestGoalNode = int.MinValue;
+        float bestGoalCost = float.PositiveInfinity;
+        int guard = 0;
+        while (openSet.Count > 0)
+        {
+            QueueNode node = openSet.Pop();
+            int currentNode = node.Index;
+            if (!nodeCosts.TryGetValue(currentNode, out float currentCost))
+                continue;
+            if (node.Cost > currentCost + ResolvePortalGraphHeuristic(currentNode, goalX, goalY) + 0.001f)
+                continue;
+
+            bool canFinishAtGoalNode = goalNodes.Contains(currentNode)
+                                       && (startSectorId != goalSectorId || cameFrom.ContainsKey(currentNode));
+            if (canFinishAtGoalNode)
+            {
+                float goalAccessCost = goalAccessCosts.TryGetValue(currentNode, out float foundGoalAccess)
+                    ? foundGoalAccess
+                    : 0f;
+                float totalGoalCost = currentCost + goalAccessCost;
+                if (totalGoalCost < bestGoalCost)
+                {
+                    bestGoalNode = currentNode;
+                    bestGoalCost = totalGoalCost;
+                }
+            }
+
+            if (currentCost >= bestGoalCost)
+                continue;
+
+            DecodePortalNode(currentNode, out int currentSectorId, out int currentPortalId);
+            PortalData currentPortal = GetPortalById(_world, currentPortalId);
+            int oppositeSectorId = GetOppositeSectorId(currentPortal, currentSectorId);
+            int oppositeNode = EncodePortalNode(oppositeSectorId, currentPortalId);
+            TryRelaxPortalGraphEdge(openSet, nodeCosts, cameFrom, mergeNodes, currentNode, oppositeNode, currentCost + 1f, goalX, goalY);
+
+            SectorData sector = _world.Sectors[currentSectorId];
+            for (int i = 0; i < sector.PortalTransitions.Count; i++)
+            {
+                PortalTransition transition = sector.PortalTransitions[i];
+                if (transition.FromPortalId != currentPortalId)
+                    continue;
+
+                int nextNode = EncodePortalNode(currentSectorId, transition.ToPortalId);
+                TryRelaxPortalGraphEdge(openSet, nodeCosts, cameFrom, mergeNodes, currentNode, nextNode, currentCost + transition.Cost, goalX, goalY);
+            }
+
+            guard++;
+            if (guard > _world.Sectors.Length * Mathf.Max(1, _world.PortalsById.Count + 1))
+                throw new InvalidOperationException("TryBuildPathHandleWithPortalGraphAStar failed: graph search exceeded guard.");
+        }
+
+        if (bestGoalNode == int.MinValue)
+            return false;
+
+        List<int> reversedNodes = new List<int>(16);
+        int cursor = bestGoalNode;
+        reversedNodes.Add(cursor);
+        guard = 0;
+        while (cameFrom.TryGetValue(cursor, out int previousNode))
+        {
+            cursor = previousNode;
+            reversedNodes.Add(cursor);
+            guard++;
+            if (guard > _world.Sectors.Length + _world.PortalsById.Count)
+                throw new InvalidOperationException("TryBuildPathHandleWithPortalGraphAStar failed: reconstruction exceeded guard.");
+        }
+
+        reversedNodes.Reverse();
+        if (!TryConvertPortalNodesToPath(reversedNodes, startSectorId, goalSectorId, out List<int> sectorIds, out List<int> portalIds))
+            return false;
+
+        handle = CreateAndCachePathHandle(sectorPathKey, sectorIds, portalIds, goalX, goalY);
+        if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+        {
+            int startPortalId = startPortalByNode.TryGetValue(reversedNodes[0], out int foundStartPortal) ? foundStartPortal : -1;
+            GameDebugSettings.Log(DebugCategory.Move,
+                $"[FlowPathHandleBuild] result=ok source=portalGraph startSector={startSectorId} goalSector={goalSectorId} " +
+                $"start=({startX},{startY}) goal=({goalX},{goalY}) startPortal={startPortalId} cost={bestGoalCost:F3} handle={FormatPathHandle(handle)}");
+        }
+
+        return true;
+    }
+
+    private readonly struct ExistingPathMergePoint
+    {
+        public readonly int[] SectorIds;
+        public readonly int[] PortalIds;
+        public readonly int SectorIndex;
+
+        public ExistingPathMergePoint(int[] sectorIds, int[] portalIds, int sectorIndex)
+        {
+            SectorIds = sectorIds;
+            PortalIds = portalIds;
+            SectorIndex = sectorIndex;
+        }
+    }
+
+    private static Dictionary<int, ExistingPathMergePoint> BuildExistingPathMergeNodes(int startSectorId, int goalSectorId)
+    {
+        Dictionary<int, ExistingPathMergePoint> mergeNodes = null;
+        foreach (AgentRuntimeData agent in Agents.Values)
+        {
+            PathHandle handle = agent.NavState.PathHandle;
+            if (handle == null
+                || handle.WorldVersion != _world.Version
+                || handle.SectorIds == null
+                || handle.PortalIds == null
+                || handle.SectorIds.Length <= 1
+                || handle.SectorIds[handle.SectorIds.Length - 1] != goalSectorId
+                || PathReferencesMissingPortal(handle))
+            {
+                continue;
+            }
+
+            for (int i = Mathf.Max(0, handle.CurrentSectorIndex); i < handle.PortalIds.Length; i++)
+            {
+                int sectorId = handle.SectorIds[i];
+                if (sectorId == startSectorId)
+                    continue;
+
+                int node = EncodePortalNode(sectorId, handle.PortalIds[i]);
+                mergeNodes ??= new Dictionary<int, ExistingPathMergePoint>(32);
+                if (!mergeNodes.ContainsKey(node))
+                {
+                    mergeNodes[node] = new ExistingPathMergePoint(
+                        (int[])handle.SectorIds.Clone(),
+                        (int[])handle.PortalIds.Clone(),
+                        i);
+                }
+            }
+        }
+
+        return mergeNodes ?? EmptyMergeNodes;
+    }
+
+    private static readonly Dictionary<int, ExistingPathMergePoint> EmptyMergeNodes = new Dictionary<int, ExistingPathMergePoint>(0);
+
+    private static bool TryConvertPortalNodesToMergedPath(
+        int mergeNode,
+        Dictionary<int, int> cameFrom,
+        ExistingPathMergePoint mergePoint,
+        int startSectorId,
+        int goalSectorId,
+        out List<int> sectorIds,
+        out List<int> portalIds)
+    {
+        sectorIds = null;
+        portalIds = null;
+        List<int> prefixNodes = new List<int>(16);
+        int cursor = mergeNode;
+        prefixNodes.Add(cursor);
+        int guard = 0;
+        while (cameFrom.TryGetValue(cursor, out int previousNode))
+        {
+            cursor = previousNode;
+            prefixNodes.Add(cursor);
+            guard++;
+            if (guard > _world.Sectors.Length + _world.PortalsById.Count)
+                throw new InvalidOperationException("TryConvertPortalNodesToMergedPath failed: prefix reconstruction exceeded guard.");
+        }
+
+        prefixNodes.Reverse();
+        if (!TryConvertPortalNodesToPathPrefix(prefixNodes, startSectorId, out sectorIds, out portalIds))
+            return false;
+
+        int mergeSector = mergePoint.SectorIds[mergePoint.SectorIndex];
+        if (sectorIds[sectorIds.Count - 1] != mergeSector)
+            return false;
+
+        for (int i = mergePoint.SectorIndex; i < mergePoint.PortalIds.Length; i++)
+        {
+            portalIds.Add(mergePoint.PortalIds[i]);
+            sectorIds.Add(mergePoint.SectorIds[i + 1]);
+        }
+
+        return portalIds.Count > 0 && sectorIds[sectorIds.Count - 1] == goalSectorId;
+    }
+
+    private static bool TryConvertPortalNodesToPathPrefix(List<int> nodes, int startSectorId, out List<int> sectorIds, out List<int> portalIds)
+    {
+        sectorIds = new List<int>(8) { startSectorId };
+        portalIds = new List<int>(8);
+        if (nodes == null || nodes.Count == 0)
+            return false;
+
+        for (int i = 0; i < nodes.Count - 1; i++)
+        {
+            DecodePortalNode(nodes[i], out int fromSectorId, out int fromPortalId);
+            DecodePortalNode(nodes[i + 1], out int toSectorId, out int toPortalId);
+            if (fromPortalId == toPortalId && fromSectorId != toSectorId)
+            {
+                portalIds.Add(fromPortalId);
+                sectorIds.Add(toSectorId);
+            }
+        }
+
+        return sectorIds.Count > 0;
+    }
+
+    private static void TryRelaxPortalGraphEdge(
+        MinHeap openSet,
+        Dictionary<int, float> nodeCosts,
+        Dictionary<int, int> cameFrom,
+        Dictionary<int, ExistingPathMergePoint> mergeNodes,
+        int fromNode,
+        int toNode,
+        float newCost,
+        int goalX,
+        int goalY)
+    {
+        if (nodeCosts.TryGetValue(toNode, out float existingCost) && newCost >= existingCost)
+            return;
+
+        nodeCosts[toNode] = newCost;
+        cameFrom[toNode] = fromNode;
+        float priority = newCost + ResolvePortalGraphHeuristic(toNode, goalX, goalY);
+        if (mergeNodes != null && mergeNodes.ContainsKey(toNode))
+            priority -= PortalGraphMergePriorityBias;
+        openSet.Push(toNode, priority);
+    }
+
+    private static float ResolvePortalGraphHeuristic(int node, int goalX, int goalY)
+    {
+        DecodePortalNode(node, out _, out int portalId);
+        PortalData portal = GetPortalById(_world, portalId);
+        Vector3 goalWorld = _world.GridToWorldCenter(goalX, goalY);
+        return HorizontalDistanceXZ(portal.WorldCenter, goalWorld) / Mathf.Max(_world.CellSize, 0.001f);
+    }
+
+    private static bool TryConvertPortalNodesToPath(List<int> nodes, int startSectorId, int goalSectorId, out List<int> sectorIds, out List<int> portalIds)
+    {
+        sectorIds = new List<int>(8) { startSectorId };
+        portalIds = new List<int>(8);
+        if (nodes == null || nodes.Count == 0)
+            return false;
+
+        for (int i = 0; i < nodes.Count - 1; i++)
+        {
+            DecodePortalNode(nodes[i], out int fromSectorId, out int fromPortalId);
+            DecodePortalNode(nodes[i + 1], out int toSectorId, out int toPortalId);
+            if (fromPortalId == toPortalId && fromSectorId != toSectorId)
+            {
+                portalIds.Add(fromPortalId);
+                sectorIds.Add(toSectorId);
+            }
+        }
+
+        return portalIds.Count > 0 && sectorIds[sectorIds.Count - 1] == goalSectorId;
+    }
+
+    private static PathHandle CreateAndCachePathHandle(SectorPathCacheKey sectorPathKey, List<int> sectorIds, List<int> portalIds, int goalX, int goalY)
+    {
+        if (sectorIds == null || sectorIds.Count == 0 || portalIds == null)
+            throw new InvalidOperationException("CreateAndCachePathHandle failed: invalid path lists.");
 
         PathHandle handle = new PathHandle
         {
@@ -7050,14 +10381,6 @@ public static class FlowFieldCrowdMovementSystem
             LastUsedFrame = GetFrameCount()
         };
         TrimSectorPathCache();
-
-        if (GameDebugSettings.IsEnabled(DebugCategory.Move))
-        {
-            GameDebugSettings.Log(DebugCategory.Move,
-                $"[FlowPathHandleBuild] result=ok sameSector=false startSector={startSectorId} goalSector={goalSectorId} " +
-                $"start=({startX},{startY}) goal=({goalX},{goalY}) handle={FormatPathHandle(handle)}");
-        }
-
         return handle;
     }
 
@@ -7131,6 +10454,32 @@ public static class FlowFieldCrowdMovementSystem
         if (float.IsPositiveInfinity(startCost))
             return false;
 
+        if (TryResolveBestStartPortalForCurrentCell(
+                startSectorId,
+                goalSectorId,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                firstPortalId,
+                out int bestPortalId,
+                out float selectedCost,
+                out float bestCost)
+            && firstPortalId != bestPortalId
+            && selectedCost > bestCost + IntegrationSignificantImprovement)
+        {
+            SectorPathCache.Remove(key);
+            if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+            {
+                GameDebugSettings.Log(DebugCategory.Move,
+                    $"[FlowPathCacheReject] reason=startPortalMismatch startSector={startSectorId} goalSector={goalSectorId} " +
+                    $"start=({startX},{startY}) goal=({goalX},{goalY}) selected={firstPortalId}:{FormatDiagnosticCost(selectedCost)} " +
+                    $"best={bestPortalId}:{FormatDiagnosticCost(bestCost)}");
+            }
+
+            return false;
+        }
+
         cached.LastUsedFrame = GetFrameCount();
         _perf.SectorPathCacheHits++;
         handle = new PathHandle
@@ -7180,6 +10529,351 @@ public static class FlowFieldCrowdMovementSystem
 
         return false;
     }
+
+    private static int ResolveCurrentDownstreamPortalId(PathHandle handle)
+    {
+        if (handle == null || handle.PortalIds == null || handle.SectorIds == null)
+            return -1;
+
+        int index = Mathf.Clamp(handle.CurrentSectorIndex, 0, Mathf.Max(0, handle.SectorIds.Length - 1));
+        return index >= 0 && index < handle.PortalIds.Length ? handle.PortalIds[index] : -1;
+    }
+
+    private static bool TryResolvePendingPortalDirection(
+        AgentRuntimeData agent,
+        int currentSectorId,
+        int currentX,
+        int currentY,
+        Vector3 finalGoalPosition,
+        out DesiredDirectionResolution resolution,
+        out string failureReason)
+    {
+        resolution = default;
+        failureReason = string.Empty;
+        PathHandle handle = agent?.NavState.PathHandle;
+        if (handle == null || handle.SectorIds == null || handle.SectorIds.Length == 0)
+        {
+            failureReason = $"invalid handle={FormatPathHandle(handle)}";
+            return false;
+        }
+
+        int finalGoalX = handle.GoalX;
+        int finalGoalY = handle.GoalY;
+        if (TryResolveGoalCell(_world, finalGoalPosition, out int resolvedFinalGoalX, out int resolvedFinalGoalY))
+        {
+            finalGoalX = resolvedFinalGoalX;
+            finalGoalY = resolvedFinalGoalY;
+        }
+
+        int currentIndex = Mathf.Clamp(handle.CurrentSectorIndex, 0, handle.SectorIds.Length - 1);
+        if (currentIndex >= handle.SectorIds.Length - 1)
+        {
+            Vector3 toFinalGoal = finalGoalPosition - _world.GridToWorldCenter(currentX, currentY);
+            toFinalGoal.y = 0f;
+            if (toFinalGoal.sqrMagnitude <= 0.0001f)
+            {
+                resolution = new DesiredDirectionResolution(
+                    Vector3.zero,
+                    DesiredDirectionSource.PendingPortal,
+                    finalGoalPosition,
+                    Vector2.zero,
+                    false,
+                    0f);
+                return true;
+            }
+
+            resolution = new DesiredDirectionResolution(
+                toFinalGoal.normalized,
+                DesiredDirectionSource.PendingPortal,
+                finalGoalPosition,
+                Vector2.zero,
+                false,
+                float.PositiveInfinity);
+            return true;
+        }
+
+        int portalId = ResolveCurrentDownstreamPortalId(handle);
+        if (portalId < 0 || !TryGetPortalById(_world, portalId, out PortalData portal))
+        {
+            failureReason = $"invalid downstream portal portal={portalId} currentIndex={currentIndex} handle={FormatPathHandle(handle)}";
+            return false;
+        }
+
+        if (_world.TryGetSectorId(finalGoalX, finalGoalY, out int finalGoalSectorId)
+            && AreSectorsSameOrAdjacent(_world, currentSectorId, finalGoalSectorId)
+            && HasPendingDirectLineOfSight(_world, currentX, currentY, finalGoalX, finalGoalY))
+        {
+            Vector3 toFinalGoal = finalGoalPosition - _world.GridToWorldCenter(currentX, currentY);
+            toFinalGoal.y = 0f;
+            if (toFinalGoal.sqrMagnitude > 0.0001f)
+            {
+                resolution = new DesiredDirectionResolution(
+                    toFinalGoal.normalized,
+                    DesiredDirectionSource.PendingPortal,
+                    finalGoalPosition,
+                    new Vector2(toFinalGoal.x, toFinalGoal.z).normalized,
+                    true,
+                    float.PositiveInfinity);
+                return true;
+            }
+        }
+
+        if (!TryResolvePendingPortalAccessDirection(currentSectorId, portal, currentX, currentY, finalGoalX, finalGoalY, out Vector3 direction, out Vector3 target))
+        {
+            failureReason = $"portal access direction unavailable portal={portalId} current=({currentX},{currentY}) finalGoal=({finalGoalX},{finalGoalY}) handle={FormatPathHandle(handle)}";
+            return false;
+        }
+
+        resolution = new DesiredDirectionResolution(
+            direction,
+            DesiredDirectionSource.PendingPortal,
+            target,
+            new Vector2(direction.x, direction.z),
+            false,
+            float.PositiveInfinity);
+        return true;
+    }
+
+    private static bool TryResolvePendingPortalAccessDirection(
+        int sectorId,
+        PortalData portal,
+        int currentX,
+        int currentY,
+        int finalGoalX,
+        int finalGoalY,
+        out Vector3 direction,
+        out Vector3 target)
+    {
+        direction = Vector3.zero;
+        target = Vector3.zero;
+        SectorData sector = _world.Sectors[sectorId];
+        SectorPortalAccessEntry entry = GetPrebuiltSectorPortalAccess(sector, sectorId, portal.PortalId);
+        int localIndex = GetSectorLocalIndex(sector, currentX, currentY);
+        float currentCost = DecodePortalAccessIntegrationCost(entry, localIndex);
+        if (float.IsPositiveInfinity(currentCost))
+            return false;
+
+        Vector2Int[] currentSideCells = GetPortalCellsForSector(portal, sectorId);
+        Vector2Int[] oppositeSideCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, sectorId));
+        if (currentSideCells.Length != oppositeSideCells.Length)
+            throw new InvalidOperationException(
+                $"TryResolvePendingPortalAccessDirection failed: portal {portal.PortalId} side cell count mismatch current={currentSideCells.Length} opposite={oppositeSideCells.Length}");
+
+        int selectedPairIndex = ResolveReachablePortalPairIndexForFinalGoal(portal, sector, entry, currentSideCells, oppositeSideCells, finalGoalX, finalGoalY);
+        if (selectedPairIndex < 0)
+            return false;
+
+        Vector2Int selectedCurrentCell = currentSideCells[selectedPairIndex];
+        Vector3 currentCenter = _world.GridToWorldCenter(currentX, currentY);
+
+        for (int i = 0; i < currentSideCells.Length; i++)
+        {
+            Vector2Int currentCell = currentSideCells[i];
+            if (currentCell.x != currentX || currentCell.y != currentY)
+                continue;
+
+            Vector2Int oppositeCell = oppositeSideCells[i];
+            if (!_world.IsWalkable(oppositeCell.x, oppositeCell.y)
+                || !CanTraverseNeighborCells(_world, currentX, currentY, oppositeCell.x, oppositeCell.y))
+            {
+                return false;
+            }
+
+            target = _world.GridToWorldCenter(oppositeCell.x, oppositeCell.y);
+            Vector3 toOpposite = target - currentCenter;
+            toOpposite.y = 0f;
+            if (toOpposite.sqrMagnitude <= 0.0001f)
+                return false;
+
+            direction = toOpposite.normalized;
+            return true;
+        }
+
+        if (HasGridLineOfSight(_world, currentX, currentY, selectedCurrentCell.x, selectedCurrentCell.y))
+        {
+            target = _world.GridToWorldCenter(selectedCurrentCell.x, selectedCurrentCell.y);
+            Vector3 toSelectedPortalLane = target - currentCenter;
+            toSelectedPortalLane.y = 0f;
+            if (toSelectedPortalLane.sqrMagnitude > 0.0001f)
+            {
+                direction = toSelectedPortalLane.normalized;
+                return true;
+            }
+        }
+
+        float bestCost = currentCost;
+        float bestLaneDistanceSq = float.MaxValue;
+        Vector2 bestDirection = Vector2.zero;
+        int bestStepDistanceSq = int.MaxValue;
+        for (int i = 0; i < NeighborOffsetX.Length; i++)
+        {
+            int nextX = currentX + NeighborOffsetX[i];
+            int nextY = currentY + NeighborOffsetY[i];
+            if (!IsInsideSector(sector, nextX, nextY) || !_world.IsWalkable(nextX, nextY))
+                continue;
+            if (!CanTraverseNeighborCells(_world, currentX, currentY, nextX, nextY))
+                continue;
+
+            float candidate = DecodePortalAccessIntegrationCost(entry, GetSectorLocalIndex(sector, nextX, nextY));
+            if (float.IsPositiveInfinity(candidate) || candidate >= currentCost - 0.001f)
+                continue;
+
+            float laneDistanceSq = SquaredCellDistance(nextX, nextY, selectedCurrentCell.x, selectedCurrentCell.y);
+            int stepDistanceSq = NeighborOffsetX[i] * NeighborOffsetX[i] + NeighborOffsetY[i] * NeighborOffsetY[i];
+            bool betterCost = candidate < bestCost - 0.001f;
+            bool sameCostBetterLane = Mathf.Abs(candidate - bestCost) <= 0.001f && laneDistanceSq < bestLaneDistanceSq - 0.001f;
+            bool sameCostSameLaneShorterStep = Mathf.Abs(candidate - bestCost) <= 0.001f
+                                              && Mathf.Abs(laneDistanceSq - bestLaneDistanceSq) <= 0.001f
+                                              && stepDistanceSq < bestStepDistanceSq;
+            if (!betterCost && !sameCostBetterLane && !sameCostSameLaneShorterStep)
+                continue;
+
+            bestCost = candidate;
+            bestLaneDistanceSq = laneDistanceSq;
+            bestStepDistanceSq = stepDistanceSq;
+            bestDirection = new Vector2(nextX - currentX, nextY - currentY).normalized;
+        }
+
+        if (bestDirection.sqrMagnitude <= 0.0001f)
+            return false;
+
+        direction = new Vector3(bestDirection.x, 0f, bestDirection.y);
+        target = _world.GridToWorldCenter(selectedCurrentCell.x, selectedCurrentCell.y);
+        return true;
+    }
+
+    private static Vector3 ResolvePortalApproachTarget(PortalData portal, int sectorId, int currentX, int currentY)
+    {
+        if (portal == null)
+            throw new InvalidOperationException("ResolvePortalApproachTarget failed: portal is null.");
+        if (_world == null)
+            throw new InvalidOperationException("ResolvePortalApproachTarget failed: world is null.");
+
+        Vector2Int[] currentSideCells = GetPortalCellsForSector(portal, sectorId);
+        Vector2Int[] oppositeSideCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, sectorId));
+        if (currentSideCells.Length != oppositeSideCells.Length)
+            throw new InvalidOperationException(
+                $"ResolvePortalApproachTarget failed: portal {portal.PortalId} side cell count mismatch current={currentSideCells.Length} opposite={oppositeSideCells.Length}");
+
+        Vector3 currentCenter = _world.GridToWorldCenter(currentX, currentY);
+        float bestDistanceSq = float.MaxValue;
+        Vector3 bestTarget = Vector3.zero;
+        bool found = false;
+        for (int i = 0; i < currentSideCells.Length; i++)
+        {
+            Vector2Int currentCell = currentSideCells[i];
+            if (!HasGridLineOfSight(_world, currentX, currentY, currentCell.x, currentCell.y))
+                continue;
+
+            Vector2Int oppositeCell = oppositeSideCells[i];
+            Vector3 candidate = _world.GridToWorldCenter(oppositeCell.x, oppositeCell.y);
+            float distanceSq = (candidate - currentCenter).sqrMagnitude;
+            if (found && distanceSq >= bestDistanceSq)
+                continue;
+
+            bestDistanceSq = distanceSq;
+            bestTarget = candidate;
+            found = true;
+        }
+
+        return found ? bestTarget : ResolveCellGroupCenter(oppositeSideCells);
+    }
+
+    private static int ResolvePortalPairIndexForFinalGoal(PortalData portal, int sectorId, int finalGoalX, int finalGoalY)
+    {
+        Vector2Int[] currentSideCells = GetPortalCellsForSector(portal, sectorId);
+        Vector2Int[] oppositeSideCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, sectorId));
+        if (currentSideCells.Length == 0 || currentSideCells.Length != oppositeSideCells.Length)
+            throw new InvalidOperationException(
+                $"ResolvePortalPairIndexForFinalGoal failed: portal {portal.PortalId} side cell count mismatch current={currentSideCells.Length} opposite={oppositeSideCells.Length}");
+
+        int bestIndex = 0;
+        float bestLaneDistanceSq = float.MaxValue;
+        float bestGoalDistanceSq = float.MaxValue;
+        for (int i = 0; i < oppositeSideCells.Length; i++)
+        {
+            Vector2Int oppositeCell = oppositeSideCells[i];
+            float laneDistanceSq = ResolvePortalLaneDistanceSq(portal, oppositeCell, finalGoalX, finalGoalY);
+            float goalDistanceSq = SquaredCellDistance(oppositeCell.x, oppositeCell.y, finalGoalX, finalGoalY);
+            if (laneDistanceSq > bestLaneDistanceSq + 0.001f)
+                continue;
+            if (Mathf.Abs(laneDistanceSq - bestLaneDistanceSq) <= 0.001f && goalDistanceSq >= bestGoalDistanceSq)
+                continue;
+
+            bestIndex = i;
+            bestLaneDistanceSq = laneDistanceSq;
+            bestGoalDistanceSq = goalDistanceSq;
+        }
+
+        return bestIndex;
+    }
+
+    private static int ResolveReachablePortalPairIndexForFinalGoal(
+        PortalData portal,
+        SectorData sector,
+        SectorPortalAccessEntry entry,
+        Vector2Int[] currentSideCells,
+        Vector2Int[] oppositeSideCells,
+        int finalGoalX,
+        int finalGoalY)
+    {
+        int bestIndex = -1;
+        float bestLaneDistanceSq = float.MaxValue;
+        float bestGoalDistanceSq = float.MaxValue;
+        for (int i = 0; i < currentSideCells.Length; i++)
+        {
+            Vector2Int currentCell = currentSideCells[i];
+            if (!IsInsideSector(sector, currentCell.x, currentCell.y))
+                continue;
+
+            float portalCost = DecodePortalAccessIntegrationCost(entry, GetSectorLocalIndex(sector, currentCell.x, currentCell.y));
+            if (float.IsPositiveInfinity(portalCost))
+                continue;
+
+            Vector2Int oppositeCell = oppositeSideCells[i];
+            float laneDistanceSq = ResolvePortalLaneDistanceSq(portal, oppositeCell, finalGoalX, finalGoalY);
+            float goalDistanceSq = SquaredCellDistance(oppositeCell.x, oppositeCell.y, finalGoalX, finalGoalY);
+            if (laneDistanceSq > bestLaneDistanceSq + 0.001f)
+                continue;
+            if (Mathf.Abs(laneDistanceSq - bestLaneDistanceSq) <= 0.001f && goalDistanceSq >= bestGoalDistanceSq)
+                continue;
+
+            bestIndex = i;
+            bestLaneDistanceSq = laneDistanceSq;
+            bestGoalDistanceSq = goalDistanceSq;
+        }
+
+        return bestIndex;
+    }
+
+
+    private static bool TryDecodeExactFinalGoalIndex(int finalGoalIndex, out int finalGoalX, out int finalGoalY)
+    {
+        finalGoalX = -1;
+        finalGoalY = -1;
+        if (_world == null || finalGoalIndex < 0)
+            return false;
+
+        finalGoalX = finalGoalIndex % _world.Width;
+        finalGoalY = finalGoalIndex / _world.Width;
+        return finalGoalX >= 0 && finalGoalX < _world.Width && finalGoalY >= 0 && finalGoalY < _world.Height;
+    }
+
+    private static float ResolvePortalLaneDistanceSq(PortalData portal, Vector2Int portalCell, int finalGoalX, int finalGoalY)
+    {
+        int portalAxis = portal.IsVerticalBoundary ? portalCell.y : portalCell.x;
+        int finalAxis = portal.IsVerticalBoundary ? finalGoalY : finalGoalX;
+        int delta = portalAxis - finalAxis;
+        return delta * delta;
+    }
+
+    private static float SquaredCellDistance(int ax, int ay, int bx, int by)
+    {
+        int dx = ax - bx;
+        int dy = ay - by;
+        return dx * dx + dy * dy;
+    }
+
 
     private static void LogPathAdvanceFailure(
         AgentRuntimeData agent,
@@ -7243,18 +10937,23 @@ public static class FlowFieldCrowdMovementSystem
         {
             _perf.TileCacheHits++;
             tile.LastUsedFrame = GetFrameCount();
+            agent.NavState.CurrentTileKeyHash = key.GetHashCode();
             return true;
         }
 
         _perf.TileCacheMisses++;
         EnqueueFlowTileBuildChain(handle, sectorPathIndex, goalX, goalY, agent.AgentTypeId);
         ProcessFlowTileBuildQueue(long.MaxValue, forceComplete: true, requiredKey: key);
-        if (!FlowTileCache.TryGetValue(key, out tile))
-            return false;
+        if (FlowTileCache.TryGetValue(key, out tile))
+        {
+            _perf.TileCacheHits++;
+            tile.LastUsedFrame = GetFrameCount();
+            agent.NavState.CurrentTileKeyHash = key.GetHashCode();
+            return true;
+        }
 
-        tile.LastUsedFrame = GetFrameCount();
-        agent.NavState.CurrentTileKeyHash = key.GetHashCode();
-        return true;
+        _perf.TilePendingBuild++;
+        return false;
     }
 
     private static bool TryBuildOrGetTileWithStrictRepath(
@@ -7277,7 +10976,10 @@ public static class FlowFieldCrowdMovementSystem
 
         try
         {
-            return TryBuildOrGetTile(agent, goalX, goalY, out tile, out goalKind, out downstreamPortalId);
+            bool builtOrCached = TryBuildOrGetTile(agent, goalX, goalY, out tile, out goalKind, out downstreamPortalId);
+            if (!builtOrCached)
+                failureReason = BuildTileBuildPendingFailure(agent, startSectorId, goalSectorId, goalX, goalY);
+            return builtOrCached;
         }
         catch (StrictPortalWindowUnreachableException firstException)
         {
@@ -7309,7 +11011,7 @@ public static class FlowFieldCrowdMovementSystem
                 }
 
                 if (!recovered)
-                    failureReason = $"tile build failed after strict repath sector={startSectorId} goal=({goalX},{goalY})";
+                    failureReason = $"tile build failed after strict repath sector={startSectorId} goal=({goalX},{goalY}); {BuildTileBuildPendingFailure(agent, startSectorId, goalSectorId, goalX, goalY)}";
                 return recovered;
             }
             catch (StrictPortalWindowUnreachableException secondException)
@@ -7321,6 +11023,57 @@ public static class FlowFieldCrowdMovementSystem
                 return false;
             }
         }
+    }
+
+    private static string BuildTileBuildPendingFailure(AgentRuntimeData agent, int startSectorId, int goalSectorId, int goalX, int goalY)
+    {
+        PathHandle handle = agent?.NavState.PathHandle;
+        if (handle == null || handle.SectorIds == null || handle.SectorIds.Length == 0)
+            return $"tile pending unavailable: invalid handle={FormatPathHandle(handle)}";
+
+        int sectorPathIndex = Mathf.Clamp(handle.CurrentSectorIndex, 0, handle.SectorIds.Length - 1);
+        FlowTileCacheKey key = CreateTileCacheKeyForPathSegment(
+            handle,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            agent.AgentTypeId,
+            out TileGoalKind goalKind,
+            out int downstreamPortalId);
+        bool cached = FlowTileCache.ContainsKey(key);
+        bool pending = PendingFlowTileBuildJobs.Contains(key);
+        bool pathMissingPortal = PathReferencesMissingPortal(handle);
+        return $"tile pending startSector={startSectorId} goalSector={goalSectorId} sectorPathIndex={sectorPathIndex} " +
+               $"goalKind={goalKind} downstreamPortal={downstreamPortalId} key={FormatTileKey(key)} cached={cached} pending={pending} " +
+               $"pendingJobs={FlowTileBuildQueue.Count} pendingDetails={BuildPendingFlowTileJobDiagnostics()} " +
+               $"cacheCount={FlowTileCache.Count} pathMissingPortal={pathMissingPortal} handle={FormatPathHandle(handle)}";
+    }
+
+    private static string BuildPendingFlowTileJobDiagnostics()
+    {
+        if (FlowTileBuildQueue.Count == 0)
+            return "[]";
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(512);
+        builder.Append('[');
+        int count = 0;
+        for (LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First; node != null && count < 8; node = node.Next, count++)
+        {
+            if (count > 0)
+                builder.Append(" | ");
+
+            FlowTileBuildJob job = node.Value;
+            builder.Append("{key=").Append(FormatTileKey(job.BuildKey.CacheKey))
+                .Append(",stage=").Append(job.Stage)
+                .Append(",waiting=").Append(job.WaitingForDependency)
+                .Append(",sectorPathIndex=").Append(job.BuildKey.SectorPathIndex)
+                .Append('}');
+        }
+
+        if (FlowTileBuildQueue.Count > count)
+            builder.Append(" | ...");
+        builder.Append(']');
+        return builder.ToString();
     }
 
     private static FlowTileCacheKey CreateTileCacheKeyForPathSegment(
@@ -7389,32 +11142,6 @@ public static class FlowFieldCrowdMovementSystem
         return handle.PortalIds[nextSectorIndex];
     }
 
-    private static bool TryGetOrBuildTileForPathSegment(
-        PathHandle handle,
-        int sectorPathIndex,
-        int goalX,
-        int goalY,
-        int agentTypeId,
-        out FlowTileCacheEntry tile)
-    {
-        FlowTileCacheKey key = CreateTileCacheKeyForPathSegment(handle, sectorPathIndex, goalX, goalY, agentTypeId, out _, out _);
-        if (FlowTileCache.TryGetValue(key, out tile))
-        {
-            _perf.TileCacheHits++;
-            tile.LastUsedFrame = GetFrameCount();
-            return true;
-        }
-
-        _perf.TileCacheMisses++;
-        EnqueueFlowTileBuildChain(handle, sectorPathIndex, goalX, goalY, agentTypeId);
-        ProcessFlowTileBuildQueue(long.MaxValue, forceComplete: true, requiredKey: key);
-        if (!FlowTileCache.TryGetValue(key, out tile))
-            return false;
-
-        tile.LastUsedFrame = GetFrameCount();
-        return true;
-    }
-
     private static void EnqueueFlowTileBuildChain(
         PathHandle handle,
         int sectorPathIndex,
@@ -7448,11 +11175,10 @@ public static class FlowFieldCrowdMovementSystem
         if (FlowTileCache.ContainsKey(key))
             return;
 
-        FlowTileBuildKey buildKey = new FlowTileBuildKey(key, snapshot.HandleId, sectorPathIndex, goalX, goalY, agentTypeId);
-        if (!PendingFlowTileBuildJobs.Add(buildKey))
+        FlowTileBuildKey buildKey = new FlowTileBuildKey(key, sectorPathIndex, goalX, goalY, agentTypeId);
+        if (!PendingFlowTileBuildJobs.Add(key))
             return;
 
-        PendingTileBuildKeys.Add(key);
         FlowTileBuildJob job = new FlowTileBuildJob
         {
             BuildKey = buildKey,
@@ -7566,9 +11292,20 @@ public static class FlowFieldCrowdMovementSystem
         for (int i = 0; i < goalCells.Length; i++)
         {
             Vector2Int downstreamCell = downstreamCells[i];
-            float downstreamCost = downstreamIsFinalSector
-                ? downstreamTile.Integration[downstreamTile.GetLocalIndex(downstreamCell.x, downstreamCell.y)]
-                : ResolvePortalAccessCost(downstreamSector, downstreamSectorId, nextPortalId, downstreamCell.x, downstreamCell.y);
+            float downstreamCost;
+            if (downstreamIsFinalSector)
+            {
+                if (!TryGetPortalSeamIntegrationCost(downstreamTile, portal.PortalId, downstreamCell.x, downstreamCell.y, out downstreamCost))
+                {
+                    throw new InvalidOperationException(
+                        $"BuildIntegrationSeedsForTile failed: downstream seam summary missing portal={portal.PortalId} downstreamCell={downstreamCell} " +
+                        $"downstreamKey={FormatTileKey(downstreamTile.Key)} upstreamKey={FormatTileKey(key)}.");
+                }
+            }
+            else
+            {
+                downstreamCost = ResolvePortalAccessCost(downstreamSector, downstreamSectorId, nextPortalId, downstreamCell.x, downstreamCell.y);
+            }
             if (float.IsPositiveInfinity(downstreamCost))
             {
                 skippedUnreachableCount++;
@@ -7628,17 +11365,16 @@ public static class FlowFieldCrowdMovementSystem
     private static Vector2 ResolveFlowDirectionFromIntegration(FlowTileCacheEntry tile, int worldX, int worldY)
     {
         int localIndex = tile.GetLocalIndex(worldX, worldY);
-        float currentCost = tile.Integration[localIndex];
-        if (float.IsPositiveInfinity(currentCost))
-            return Vector2.zero;
-
-        return ResolveLowestNeighborFlowDirection(tile, worldX, worldY, currentCost);
+        float[] integration = RequireTileIntegration(tile, nameof(ResolveFlowDirectionFromIntegration));
+        float currentCost = integration[localIndex];
+        return ResolveLowestNeighborFlowDirection(tile, integration, worldX, worldY, currentCost);
     }
 
-    private static Vector2 ResolveLowestNeighborFlowDirection(FlowTileCacheEntry tile, int worldX, int worldY, float currentCost)
+    private static Vector2 ResolveLowestNeighborFlowDirection(FlowTileCacheEntry tile, float[] integration, int worldX, int worldY, float currentCost)
     {
         float bestCost = currentCost;
         Vector2 bestDirection = Vector2.zero;
+        bool currentReachable = !float.IsPositiveInfinity(currentCost);
         for (int i = 0; i < NeighborOffsetX.Length; i++)
         {
             int nextWorldX = worldX + NeighborOffsetX[i];
@@ -7649,8 +11385,12 @@ public static class FlowFieldCrowdMovementSystem
             if (!CanTraverseNeighborCells(_world, worldX, worldY, nextWorldX, nextWorldY))
                 continue;
 
-            float candidate = tile.Integration[tile.GetLocalIndex(nextWorldX, nextWorldY)];
-            if (candidate >= bestCost)
+            float candidate = integration[tile.GetLocalIndex(nextWorldX, nextWorldY)];
+            if (float.IsPositiveInfinity(candidate))
+                continue;
+            if (currentReachable && candidate >= bestCost)
+                continue;
+            if (!currentReachable && candidate >= bestCost)
                 continue;
 
             bestCost = candidate;
@@ -7677,7 +11417,7 @@ public static class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException("SeedFinalGoalLineOfSightPass failed: final goal seeds are missing.");
 
             for (int i = 0; i < seeds.Length; i++)
-                TrySeedLineOfSightCell(tile, seeds[i].Cell, seeds[i].Cost, open);
+                TrySeedLineOfSightCell(tile, seeds[i].Cell, seeds[i].Cost, open, requireClearCost: false);
             return;
         }
 
@@ -7706,7 +11446,7 @@ public static class FlowFieldCrowdMovementSystem
                 continue;
 
             int downstreamIndex = downstreamTile.GetLocalIndex(downstreamCell.x, downstreamCell.y);
-            if (downstreamTile.WaveFrontBlocked != null && downstreamTile.WaveFrontBlocked[downstreamIndex])
+            if (IsFlowWaveFrontBlocked(downstreamTile, downstreamIndex))
             {
                 Vector2Int currentCell = currentCells[i];
                 if (IsInsideSector(tile, currentCell.x, currentCell.y))
@@ -7716,11 +11456,11 @@ public static class FlowFieldCrowdMovementSystem
                 }
             }
 
-            if (!downstreamTile.HasLineOfSight[downstreamIndex])
+            if (!HasFlowLineOfSight(downstreamTile, downstreamIndex))
                 continue;
 
             float seedCost = ResolveIntegrationSeedCost(seeds, currentCells[i]);
-            TrySeedLineOfSightCell(tile, currentCells[i], seedCost, open);
+            TrySeedLineOfSightCell(tile, currentCells[i], seedCost, open, requireClearCost: false);
         }
     }
 
@@ -7738,18 +11478,20 @@ public static class FlowFieldCrowdMovementSystem
         throw new InvalidOperationException($"ResolveIntegrationSeedCost failed: seed not found cell=({cell.x},{cell.y}).");
     }
 
-    private static void TrySeedLineOfSightCell(FlowTileCacheEntry tile, Vector2Int cell, float cost, Queue<int> open)
+    private static void TrySeedLineOfSightCell(FlowTileCacheEntry tile, Vector2Int cell, float cost, Queue<int> open, bool requireClearCost = true)
     {
+        if (float.IsNaN(cost) || float.IsPositiveInfinity(cost))
+            throw new InvalidOperationException($"TrySeedLineOfSightCell failed: invalid seed cost={cost} key={FormatTileKey(tile?.Key ?? default)} cell=({cell.x},{cell.y}).");
         if (!IsInsideSector(tile, cell.x, cell.y) || !_world.IsWalkable(cell.x, cell.y))
             return;
-        if (!IsClearLosCost(_world, cell.x, cell.y))
+        if (requireClearCost && !IsClearLosCost(_world, cell.x, cell.y))
             return;
 
         int localIndex = tile.GetLocalIndex(cell.x, cell.y);
-        if (tile.HasLineOfSight[localIndex])
+        if (HasFlowLineOfSight(tile, localIndex))
             return;
 
-        tile.HasLineOfSight[localIndex] = true;
+        SetFlowLineOfSight(tile, localIndex);
         if (cost < tile.Integration[localIndex])
             tile.Integration[localIndex] = cost;
         open.Enqueue(localIndex);
@@ -7757,10 +11499,7 @@ public static class FlowFieldCrowdMovementSystem
 
     private static bool IsClearLosCost(NavigationWorld world, int worldX, int worldY)
     {
-        if (world.CostField == null || world.CostField.Length != world.Width * world.Height)
-            return true;
-
-        return world.CostField[world.GetIndex(worldX, worldY)] == 1;
+        return GetCostFieldValueStrict(world, worldX, worldY) <= 1;
     }
 
     private static void MarkWaveFrontBlockedFromLosCorner(FlowTileCacheEntry tile, int goalX, int goalY, int visibleX, int visibleY, int blockedX, int blockedY)
@@ -7768,9 +11507,7 @@ public static class FlowFieldCrowdMovementSystem
         if (!IsLineOfSightCorner(tile, visibleX, visibleY, blockedX, blockedY))
             return;
 
-        if (!TryResolveLosBlockedLineStart(tile, goalX, goalY, visibleX, visibleY, blockedX, blockedY, out int startX, out int startY))
-            return;
-        if (!TryResolveLosBlockedLineEnd(tile, goalX, goalY, visibleX, visibleY, blockedX, blockedY, out int endX, out int endY))
+        if (!TryResolveLosBlockedRay(goalX, goalY, visibleX, visibleY, blockedX, blockedY, out Vector2 origin, out Vector2 direction))
             return;
 
         int visibleIndex = tile.GetLocalIndex(visibleX, visibleY);
@@ -7778,59 +11515,65 @@ public static class FlowFieldCrowdMovementSystem
         if (float.IsPositiveInfinity(visibleCost))
             return;
 
-        float startCost = visibleCost + Mathf.Max(1, Mathf.Max(Mathf.Abs(startX - visibleX), Mathf.Abs(startY - visibleY)));
-        MarkWaveFrontBlockedLine(tile, startX, startY, endX, endY, startCost);
+        MarkWaveFrontBlockedRay(tile, origin, direction, blockedX, blockedY, visibleX, visibleY, visibleCost);
     }
 
     private static void MarkCarriedWaveFrontBlockedLine(FlowTileCacheEntry tile, int goalX, int goalY, int portalX, int portalY, float startCost)
     {
-        if (!TryResolveCarriedLosBlockedLineEnd(tile, goalX, goalY, portalX, portalY, out int endX, out int endY))
+        if (!TryResolveCarriedLosBlockedRay(goalX, goalY, portalX, portalY, out Vector2 origin, out Vector2 direction))
             return;
 
-        MarkWaveFrontBlockedLine(tile, portalX, portalY, endX, endY, startCost);
+        MarkWaveFrontBlockedRay(tile, origin, direction, portalX, portalY, portalX, portalY, startCost);
     }
 
-    private static bool TryResolveLosBlockedLineStart(
-        FlowTileCacheEntry tile,
+    private static bool TryResolveLosBlockedRay(
         int goalX,
         int goalY,
         int visibleX,
         int visibleY,
         int blockedX,
         int blockedY,
-        out int startX,
-        out int startY)
+        out Vector2 origin,
+        out Vector2 direction)
     {
-        int directionX = blockedX - goalX;
-        int directionY = blockedY - goalY;
-        if (directionX == 0 && directionY == 0)
+        Vector2 goalCenter = new Vector2(goalX + 0.5f, goalY + 0.5f);
+        Vector2 blockedCenter = new Vector2(blockedX + 0.5f, blockedY + 0.5f);
+        direction = blockedCenter - goalCenter;
+        if (direction.sqrMagnitude <= 0.0001f)
+            direction = new Vector2(blockedX - visibleX, blockedY - visibleY);
+        if (direction.sqrMagnitude <= 0.0001f)
         {
-            directionX = blockedX - visibleX;
-            directionY = blockedY - visibleY;
-        }
-
-        if (directionX == 0 && directionY == 0)
-        {
-            startX = blockedX;
-            startY = blockedY;
+            origin = blockedCenter;
             return false;
         }
 
-        if (directionX > 0)
-            startX = Mathf.Clamp(blockedX + 1, tile.StartX, tile.StartX + tile.Width - 1);
-        else if (directionX < 0)
-            startX = Mathf.Clamp(blockedX - 1, tile.StartX, tile.StartX + tile.Width - 1);
-        else
-            startX = Mathf.Clamp(blockedX, tile.StartX, tile.StartX + tile.Width - 1);
+        origin = ResolveCellOuterEdgePoint(blockedX, blockedY, direction);
+        direction = (origin - goalCenter);
+        if (direction.sqrMagnitude <= 0.0001f)
+            direction = blockedCenter - goalCenter;
+        if (direction.sqrMagnitude <= 0.0001f)
+            return false;
 
-        if (directionY > 0)
-            startY = Mathf.Clamp(blockedY + 1, tile.StartY, tile.StartY + tile.Height - 1);
-        else if (directionY < 0)
-            startY = Mathf.Clamp(blockedY - 1, tile.StartY, tile.StartY + tile.Height - 1);
-        else
-            startY = Mathf.Clamp(blockedY, tile.StartY, tile.StartY + tile.Height - 1);
-
+        direction.Normalize();
         return true;
+    }
+
+    private static Vector2 ResolveCellOuterEdgePoint(int cellX, int cellY, Vector2 awayFromGoal)
+    {
+        const float epsilon = 0.0001f;
+        float x = cellX + 0.5f;
+        float y = cellY + 0.5f;
+        if (awayFromGoal.x > epsilon)
+            x = cellX + 1f;
+        else if (awayFromGoal.x < -epsilon)
+            x = cellX;
+
+        if (awayFromGoal.y > epsilon)
+            y = cellY + 1f;
+        else if (awayFromGoal.y < -epsilon)
+            y = cellY;
+
+        return new Vector2(x, y);
     }
 
     private static bool IsLineOfSightCorner(FlowTileCacheEntry tile, int visibleX, int visibleY, int blockedX, int blockedY)
@@ -7844,15 +11587,30 @@ public static class FlowFieldCrowdMovementSystem
         int perpendicularAY = dx != 0 ? 1 : 0;
         int perpendicularBX = -perpendicularAX;
         int perpendicularBY = -perpendicularAY;
+        bool hardBlockedCell = !IsInsideSector(tile, blockedX, blockedY) || !_world.IsWalkable(blockedX, blockedY);
 
-        bool blockedSideA = IsLosBlockedForCorner(tile, blockedX + perpendicularAX, blockedY + perpendicularAY);
-        bool blockedSideB = IsLosBlockedForCorner(tile, blockedX + perpendicularBX, blockedY + perpendicularBY);
+        bool blockedSideA = hardBlockedCell
+            ? IsLosHardBlockedForCorner(tile, blockedX + perpendicularAX, blockedY + perpendicularAY)
+            : IsLosBlockedForCorner(tile, blockedX + perpendicularAX, blockedY + perpendicularAY);
+        bool blockedSideB = hardBlockedCell
+            ? IsLosHardBlockedForCorner(tile, blockedX + perpendicularBX, blockedY + perpendicularBY)
+            : IsLosBlockedForCorner(tile, blockedX + perpendicularBX, blockedY + perpendicularBY);
         if (blockedSideA != blockedSideB)
             return true;
 
-        bool visibleSideA = IsLosBlockedForCorner(tile, visibleX + perpendicularAX, visibleY + perpendicularAY);
-        bool visibleSideB = IsLosBlockedForCorner(tile, visibleX + perpendicularBX, visibleY + perpendicularBY);
+        bool visibleSideA = hardBlockedCell
+            ? IsLosHardBlockedForCorner(tile, visibleX + perpendicularAX, visibleY + perpendicularAY)
+            : IsLosBlockedForCorner(tile, visibleX + perpendicularAX, visibleY + perpendicularAY);
+        bool visibleSideB = hardBlockedCell
+            ? IsLosHardBlockedForCorner(tile, visibleX + perpendicularBX, visibleY + perpendicularBY)
+            : IsLosBlockedForCorner(tile, visibleX + perpendicularBX, visibleY + perpendicularBY);
         return visibleSideA != visibleSideB;
+    }
+
+    private static bool IsLosHardBlockedForCorner(FlowTileCacheEntry tile, int worldX, int worldY)
+    {
+        return !IsInsideSector(tile, worldX, worldY)
+               || !_world.IsWalkable(worldX, worldY);
     }
 
     private static bool IsLosBlockedForCorner(FlowTileCacheEntry tile, int worldX, int worldY)
@@ -7862,129 +11620,117 @@ public static class FlowFieldCrowdMovementSystem
                || !IsClearLosCost(_world, worldX, worldY);
     }
 
-    private static bool TryResolveLosBlockedLineEnd(
-        FlowTileCacheEntry tile,
-        int goalX,
-        int goalY,
-        int visibleX,
-        int visibleY,
-        int blockedX,
-        int blockedY,
-        out int endX,
-        out int endY)
-    {
-        int directionX = blockedX - goalX;
-        int directionY = blockedY - goalY;
-        if (directionX == 0 && directionY == 0)
-        {
-            directionX = blockedX - visibleX;
-            directionY = blockedY - visibleY;
-        }
-
-        if (directionX == 0 && directionY == 0)
-        {
-            endX = blockedX;
-            endY = blockedY;
-            return false;
-        }
-
-        float maxScale = float.PositiveInfinity;
-        if (directionX > 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartX + tile.Width - 1 - blockedX) / (float)directionX);
-        else if (directionX < 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartX - blockedX) / (float)directionX);
-
-        if (directionY > 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartY + tile.Height - 1 - blockedY) / (float)directionY);
-        else if (directionY < 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartY - blockedY) / (float)directionY);
-
-        if (float.IsInfinity(maxScale) || maxScale < 0f)
-            maxScale = 0f;
-
-        endX = Mathf.Clamp(Mathf.RoundToInt(blockedX + directionX * maxScale), tile.StartX, tile.StartX + tile.Width - 1);
-        endY = Mathf.Clamp(Mathf.RoundToInt(blockedY + directionY * maxScale), tile.StartY, tile.StartY + tile.Height - 1);
-        return true;
-    }
-
-    private static bool TryResolveCarriedLosBlockedLineEnd(
-        FlowTileCacheEntry tile,
+    private static bool TryResolveCarriedLosBlockedRay(
         int goalX,
         int goalY,
         int startX,
         int startY,
-        out int endX,
-        out int endY)
+        out Vector2 origin,
+        out Vector2 direction)
     {
-        int directionX = startX - goalX;
-        int directionY = startY - goalY;
-        if (directionX == 0 && directionY == 0)
+        Vector2 goalCenter = new Vector2(goalX + 0.5f, goalY + 0.5f);
+        Vector2 startCenter = new Vector2(startX + 0.5f, startY + 0.5f);
+        direction = startCenter - goalCenter;
+        if (direction.sqrMagnitude <= 0.0001f)
         {
-            endX = startX;
-            endY = startY;
+            origin = startCenter;
             return false;
         }
 
-        float maxScale = float.PositiveInfinity;
-        if (directionX > 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartX + tile.Width - 1 - startX) / (float)directionX);
-        else if (directionX < 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartX - startX) / (float)directionX);
+        origin = ResolveCellOuterEdgePoint(startX, startY, direction);
+        direction = origin - goalCenter;
+        if (direction.sqrMagnitude <= 0.0001f)
+            direction = startCenter - goalCenter;
+        if (direction.sqrMagnitude <= 0.0001f)
+            return false;
 
-        if (directionY > 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartY + tile.Height - 1 - startY) / (float)directionY);
-        else if (directionY < 0)
-            maxScale = Mathf.Min(maxScale, (tile.StartY - startY) / (float)directionY);
-
-        if (float.IsInfinity(maxScale) || maxScale < 0f)
-            maxScale = 0f;
-
-        endX = Mathf.Clamp(Mathf.RoundToInt(startX + directionX * maxScale), tile.StartX, tile.StartX + tile.Width - 1);
-        endY = Mathf.Clamp(Mathf.RoundToInt(startY + directionY * maxScale), tile.StartY, tile.StartY + tile.Height - 1);
+        direction.Normalize();
         return true;
     }
 
-    private static void MarkWaveFrontBlockedLine(FlowTileCacheEntry tile, int startX, int startY, int endX, int endY, float startCost)
+    private static void MarkWaveFrontBlockedRay(
+        FlowTileCacheEntry tile,
+        Vector2 origin,
+        Vector2 direction,
+        int blockedX,
+        int blockedY,
+        int visibleX,
+        int visibleY,
+        float visibleCost)
     {
-        int x = startX;
-        int y = startY;
-        int dx = Mathf.Abs(endX - startX);
-        int dy = Mathf.Abs(endY - startY);
-        int sx = startX < endX ? 1 : -1;
-        int sy = startY < endY ? 1 : -1;
-        int err = dx - dy;
-        float cost = startCost;
+        if (direction.sqrMagnitude <= 0.0001f)
+            return;
 
-        while (true)
+        int x = Mathf.Clamp(blockedX, tile.StartX, tile.StartX + tile.Width - 1);
+        int y = Mathf.Clamp(blockedY, tile.StartY, tile.StartY + tile.Height - 1);
+        int stepX = direction.x > 0f ? 1 : direction.x < 0f ? -1 : 0;
+        int stepY = direction.y > 0f ? 1 : direction.y < 0f ? -1 : 0;
+        float tMaxX = stepX == 0 ? float.PositiveInfinity : ResolveRayGridBoundaryT(origin.x, direction.x, stepX > 0 ? x + 1f : x);
+        float tMaxY = stepY == 0 ? float.PositiveInfinity : ResolveRayGridBoundaryT(origin.y, direction.y, stepY > 0 ? y + 1f : y);
+        float tDeltaX = stepX == 0 ? float.PositiveInfinity : Mathf.Abs(1f / direction.x);
+        float tDeltaY = stepY == 0 ? float.PositiveInfinity : Mathf.Abs(1f / direction.y);
+        int guard = tile.Width * tile.Height * 2 + 8;
+        bool seededBoundary = false;
+
+        while (guard-- > 0 && IsInsideSector(tile, x, y))
         {
-            if (IsInsideSector(tile, x, y))
+            int localIndex = tile.GetLocalIndex(x, y);
+            SetFlowWaveFrontBlocked(tile, localIndex);
+            bool sameAsVisible = x == visibleX && y == visibleY;
+            bool canSeedBoundary = !seededBoundary
+                                   && _world.IsWalkable(x, y)
+                                   && (sameAsVisible || CanTraverseNeighborCells(_world, x, y, visibleX, visibleY));
+            if (canSeedBoundary)
             {
-                int localIndex = tile.GetLocalIndex(x, y);
-                tile.WaveFrontBlocked[localIndex] = true;
-                if (_world.IsWalkable(x, y) && cost < tile.Integration[localIndex])
+                float cost = sameAsVisible
+                    ? visibleCost
+                    : visibleCost + ResolveCellIntegrationCost(_world, x, y);
+                if (cost < tile.Integration[localIndex])
                     tile.Integration[localIndex] = cost;
+                if (!sameAsVisible)
+                    SetFlowDirectionIndex(tile, localIndex, EncodeFlowDirectionIndex(new Vector2(visibleX - x, visibleY - y)));
+                seededBoundary = true;
             }
 
-            if (x == endX && y == endY)
-                return;
-
-            int oldX = x;
-            int oldY = y;
-            int e2 = err * 2;
-            if (e2 > -dy)
+            if (tMaxX < tMaxY)
             {
-                err -= dy;
-                x += sx;
+                x += stepX;
+                tMaxX += tDeltaX;
             }
-
-            if (e2 < dx)
+            else if (tMaxY < tMaxX)
             {
-                err += dx;
-                y += sy;
+                y += stepY;
+                tMaxY += tDeltaY;
             }
-
-            cost += Mathf.Abs(x - oldX) + Mathf.Abs(y - oldY) == 2 ? 1.4142135f : 1f;
+            else
+            {
+                x += stepX;
+                y += stepY;
+                tMaxX += tDeltaX;
+                tMaxY += tDeltaY;
+            }
         }
+
+        if (guard <= 0)
+            throw new InvalidOperationException($"MarkWaveFrontBlockedRay failed: ray iteration exceeded guard sector={tile.Key.SectorId} origin={origin} direction={direction}.");
+    }
+
+    private static float ResolveRayGridBoundaryT(float origin, float direction, float boundary)
+    {
+        if (Mathf.Abs(direction) <= 0.0001f)
+            return float.PositiveInfinity;
+
+        float t = (boundary - origin) / direction;
+        return t < 0f ? 0f : t;
+    }
+
+    private static float HorizontalDistanceCells(int fromX, int fromY, int toX, int toY)
+    {
+        int dx = Mathf.Abs(toX - fromX);
+        int dy = Mathf.Abs(toY - fromY);
+        int diagonal = Mathf.Min(dx, dy);
+        int cardinal = Mathf.Max(dx, dy) - diagonal;
+        return diagonal * 1.4142135f + cardinal;
     }
 
     private static void TrimTileCache()
@@ -7992,25 +11738,80 @@ public static class FlowFieldCrowdMovementSystem
         if (FlowTileCache.Count <= Config.FlowTileCacheLimit)
             return;
 
+        RefreshFlowTileReferenceCounts();
         int threshold = GetFrameCount() - 120;
         List<FlowTileCacheKey> expiredKeys = new List<FlowTileCacheKey>();
         foreach (KeyValuePair<FlowTileCacheKey, FlowTileCacheEntry> pair in FlowTileCache)
         {
-            if (pair.Value.LastUsedFrame < threshold)
+            if (pair.Value.ActiveReferenceCount > 0)
+                continue;
+            if (pair.Value.LastUsedFrame < threshold && pair.Value.LastReferencedFrame < threshold)
                 expiredKeys.Add(pair.Key);
         }
 
         for (int i = 0; i < expiredKeys.Count; i++)
-            FlowTileCache.Remove(expiredKeys[i]);
+            RemoveFlowTileCacheEntry(expiredKeys[i]);
 
         if (FlowTileCache.Count <= Config.FlowTileCacheLimit)
             return;
 
         List<FlowTileCacheKey> keys = new List<FlowTileCacheKey>(FlowTileCache.Keys);
-        keys.Sort((a, b) => FlowTileCache[a].LastUsedFrame.CompareTo(FlowTileCache[b].LastUsedFrame));
+        keys.Sort((a, b) => ResolveFlowTileRetainFrame(FlowTileCache[a]).CompareTo(ResolveFlowTileRetainFrame(FlowTileCache[b])));
         int removeCount = FlowTileCache.Count - Config.FlowTileCacheLimit;
-        for (int i = 0; i < removeCount; i++)
-            FlowTileCache.Remove(keys[i]);
+        for (int i = 0; i < keys.Count && removeCount > 0; i++)
+        {
+            if (FlowTileCache[keys[i]].ActiveReferenceCount > 0)
+                continue;
+
+            RemoveFlowTileCacheEntry(keys[i]);
+            removeCount--;
+        }
+    }
+
+    private static void RefreshFlowTileReferenceCounts()
+    {
+        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
+            tile.ActiveReferenceCount = 0;
+
+        int frame = GetFrameCount();
+        foreach (AgentRuntimeData agent in Agents.Values)
+        {
+            PathHandle handle = agent.NavState.PathHandle;
+            if (handle == null
+                || handle.WorldVersion != _world.Version
+                || handle.SectorIds == null
+                || handle.SectorIds.Length == 0
+                || PathReferencesMissingPortal(handle))
+            {
+                continue;
+            }
+
+            int startIndex = Mathf.Clamp(handle.CurrentSectorIndex, 0, handle.SectorIds.Length - 1);
+            for (int i = startIndex; i < handle.SectorIds.Length; i++)
+            {
+                FlowTileCacheKey key = CreateTileCacheKeyForPathSegment(
+                    handle,
+                    i,
+                    handle.GoalX,
+                    handle.GoalY,
+                    agent.AgentTypeId,
+                    out _,
+                    out _);
+                if (!FlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile))
+                    continue;
+
+                tile.ActiveReferenceCount++;
+                tile.LastReferencedFrame = frame;
+            }
+        }
+    }
+
+    private static int ResolveFlowTileRetainFrame(FlowTileCacheEntry tile)
+    {
+        if (tile == null)
+            return int.MinValue;
+
+        return Mathf.Max(tile.LastUsedFrame, tile.LastReferencedFrame);
     }
 
     private static DesiredDirectionResolution ResolveDesiredDirection(string characterKey, FlowTileCacheEntry tile, int currentX, int currentY, Vector3 goalPosition, TileGoalKind goalKind)
@@ -8018,21 +11819,23 @@ public static class FlowFieldCrowdMovementSystem
         int localIndex = tile.GetLocalIndex(currentX, currentY);
         Vector3 currentCenter = _world.GridToWorldCenter(currentX, currentY);
         bool logPortalDiagnostics = ShouldLogPortalDiagnostics(characterKey, goalKind);
-        PortalTargetResolution portalTarget = goalKind == TileGoalKind.FinalGoal || logPortalDiagnostics
+        PortalTargetResolution portalTarget = goalKind == TileGoalKind.FinalGoal || goalKind == TileGoalKind.Portal
             ? ResolveTileTargetPosition(characterKey, tile, currentX, currentY, goalPosition, goalKind)
             : new PortalTargetResolution(Vector3.zero, 0, -1, false, string.Empty);
         Vector3 tileTargetPosition = portalTarget.TargetPosition;
-        Vector3 lineOfSightTargetPosition = goalPosition;
+        Vector3 lineOfSightTargetPosition = goalKind == TileGoalKind.Portal ? tileTargetPosition : goalPosition;
         Vector3 toLineOfSightTarget = lineOfSightTargetPosition - currentCenter;
         toLineOfSightTarget.y = 0f;
-        bool hasLineOfSight = tile.HasLineOfSight[localIndex];
-        Vector2 flow = tile.FlowDirections[localIndex];
-        float integration = tile.Integration[localIndex];
+        float integration = GetTileIntegrationCostForDiagnostics(tile, currentX, currentY);
+        bool hasLineOfSight = IsRuntimeLineOfSightCell(tile, localIndex)
+                              && _world.WorldToGrid(lineOfSightTargetPosition, out int lineOfSightTargetX, out int lineOfSightTargetY)
+                              && HasGridLineOfSight(_world, currentX, currentY, lineOfSightTargetX, lineOfSightTargetY);
+        Vector2 flow = ResolveRuntimeFlowDirection(tile, currentX, currentY, localIndex);
         Vector3 flowDirection = new Vector3(flow.x, 0f, flow.y);
         Vector3 lineOfSightDirection = toLineOfSightTarget.sqrMagnitude > 0.0001f ? toLineOfSightTarget.normalized : Vector3.zero;
         DesiredDirectionResolution resolution;
 
-        if (tile.HasLineOfSight[localIndex] && toLineOfSightTarget.sqrMagnitude > 0.0001f)
+        if (hasLineOfSight && toLineOfSightTarget.sqrMagnitude > 0.0001f)
         {
             resolution = new DesiredDirectionResolution(
                 lineOfSightDirection,
@@ -8097,29 +11900,43 @@ public static class FlowFieldCrowdMovementSystem
         return resolution;
     }
 
-    private static DesiredDirectionResolution ApplyPathDirectionBlend(AgentRuntimeData agent, DesiredDirectionResolution resolution, int currentX, int currentY)
+    private static DesiredDirectionResolution ApplyPathDirectionBlend(AgentRuntimeData agent, DesiredDirectionResolution resolution, int currentX, int currentY, int contextHash)
     {
         if (agent == null)
             throw new InvalidOperationException("ApplyPathDirectionBlend failed: agent is null.");
 
         AgentNavState navState = agent.NavState;
-        if (resolution.Source != DesiredDirectionSource.FlowField
+        if ((resolution.Source != DesiredDirectionSource.FlowField && resolution.Source != DesiredDirectionSource.PendingPortal)
             || resolution.Direction.sqrMagnitude <= 0.0001f
             || Config.PathDirectionBlend >= 0.999f)
         {
             navState.PathDirection = resolution.Direction;
             navState.PathDirectionCell = new Vector2Int(currentX, currentY);
+            navState.PathDirectionContextHash = contextHash;
             return resolution;
         }
 
         Vector2Int cell = new Vector2Int(currentX, currentY);
         Vector3 rawDirection = resolution.Direction.normalized;
-        if (navState.PathDirection.sqrMagnitude <= 0.0001f
-            || Vector3.Dot(navState.PathDirection, rawDirection) <= 0f)
+        if (navState.PathDirectionContextHash != contextHash
+            || navState.PathDirection.sqrMagnitude <= 0.0001f
+            || Vector3.Dot(navState.PathDirection, rawDirection) < -0.05f)
         {
             navState.PathDirection = rawDirection;
             navState.PathDirectionCell = cell;
+            navState.PathDirectionContextHash = contextHash;
             return resolution;
+        }
+
+        if (navState.PathDirectionCell == cell)
+        {
+            return new DesiredDirectionResolution(
+                navState.PathDirection.normalized,
+                resolution.Source,
+                resolution.TileTargetPosition,
+                resolution.Flow,
+                resolution.HasLineOfSight,
+                resolution.Integration);
         }
 
         float newDirectionWeight = Mathf.Clamp01(Config.PathDirectionBlend);
@@ -8130,6 +11947,7 @@ public static class FlowFieldCrowdMovementSystem
         blendedDirection.Normalize();
         navState.PathDirection = blendedDirection;
         navState.PathDirectionCell = cell;
+        navState.PathDirectionContextHash = contextHash;
         return new DesiredDirectionResolution(
             blendedDirection,
             resolution.Source,
@@ -8137,6 +11955,27 @@ public static class FlowFieldCrowdMovementSystem
             resolution.Flow,
             resolution.HasLineOfSight,
             resolution.Integration);
+    }
+
+    private static int ComputePathDirectionContextHash(
+        AgentRuntimeData agent,
+        FlowTileCacheEntry tile,
+        int goalX,
+        int goalY,
+        TileGoalKind goalKind,
+        int downstreamPortalId)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("ComputePathDirectionContextHash failed: agent is null.");
+
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 397 ^ (agent.NavState.PathHandle?.HandleId ?? 0);
+            hash = hash * 397 ^ goalX;
+            hash = hash * 397 ^ goalY;
+            return hash;
+        }
     }
 
     private static PortalTargetResolution ResolveTileTargetPosition(string characterKey, FlowTileCacheEntry tile, int currentX, int currentY, Vector3 goalPosition, TileGoalKind goalKind)
@@ -8207,8 +12046,11 @@ public static class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException(
                 $"ResolveCachedPortalTarget failed: portal {portal.PortalId} side cell count mismatch current={currentSideCells.Length} opposite={oppositeSideCells.Length}");
 
+        bool hasExactFinalGoal = TryDecodeExactFinalGoalIndex(tile.Key.FinalGoalIndex, out int finalGoalX, out int finalGoalY);
         Vector3 currentCenter = _world.GridToWorldCenter(currentX, currentY);
+        float[] integration = RequireTileIntegration(tile, nameof(ResolveCachedPortalTarget));
         float bestGoalCost = float.PositiveInfinity;
+        float bestLaneDistanceSq = float.MaxValue;
         float bestDistanceSq = float.MaxValue;
         Vector3 bestTarget = Vector3.zero;
         int visibleCandidateCount = 0;
@@ -8219,20 +12061,27 @@ public static class FlowFieldCrowdMovementSystem
             if (!HasGridLineOfSight(_world, currentX, currentY, goalCell.x, goalCell.y))
                 continue;
 
-            float goalCost = tile.Integration[tile.GetLocalIndex(goalCell.x, goalCell.y)];
+            float goalCost = integration[tile.GetLocalIndex(goalCell.x, goalCell.y)];
             if (float.IsPositiveInfinity(goalCost))
                 continue;
 
             Vector2Int oppositeCell = oppositeSideCells[i];
             Vector3 candidate = _world.GridToWorldCenter(oppositeCell.x, oppositeCell.y);
             float distanceSq = (candidate - currentCenter).sqrMagnitude;
+            float laneDistanceSq = hasExactFinalGoal
+                ? ResolvePortalLaneDistanceSq(portal, oppositeCell, finalGoalX, finalGoalY)
+                : 0f;
             visibleCandidateCount++;
             bool betterCost = goalCost < bestGoalCost - 0.001f;
-            bool sameCostCloser = Mathf.Abs(goalCost - bestGoalCost) <= 0.001f && distanceSq < bestDistanceSq;
-            if (!betterCost && !sameCostCloser)
+            bool sameCostBetterLane = Mathf.Abs(goalCost - bestGoalCost) <= 0.001f && laneDistanceSq < bestLaneDistanceSq - 0.001f;
+            bool sameCostSameLaneCloser = Mathf.Abs(goalCost - bestGoalCost) <= 0.001f
+                                          && Mathf.Abs(laneDistanceSq - bestLaneDistanceSq) <= 0.001f
+                                          && distanceSq < bestDistanceSq;
+            if (!betterCost && !sameCostBetterLane && !sameCostSameLaneCloser)
                 continue;
 
             bestGoalCost = goalCost;
+            bestLaneDistanceSq = laneDistanceSq;
             bestDistanceSq = distanceSq;
             bestTarget = candidate;
             selectedPairIndex = i;
@@ -8264,7 +12113,7 @@ public static class FlowFieldCrowdMovementSystem
             Vector2Int oppositeCell = oppositeSideCells[i];
             Vector3 candidate = _world.GridToWorldCenter(oppositeCell.x, oppositeCell.y);
             float distanceSq = (candidate - currentCenter).sqrMagnitude;
-            float goalCost = tile.Integration[tile.GetLocalIndex(goalCell.x, goalCell.y)];
+            float goalCost = GetTileIntegrationCostForDiagnostics(tile, goalCell.x, goalCell.y);
             builder.Append("i=").Append(i)
                 .Append(" goal=").Append('(').Append(goalCell.x).Append(',').Append(goalCell.y).Append(')')
                 .Append(" opp=").Append('(').Append(oppositeCell.x).Append(',').Append(oppositeCell.y).Append(')')
@@ -8353,10 +12202,13 @@ public static class FlowFieldCrowdMovementSystem
             return $"tileKey={FormatTileKey(tile.Key)} cell=outside rect=({tile.StartX},{tile.StartY},{tile.Width},{tile.Height})";
 
         int localIndex = tile.GetLocalIndex(currentX, currentY);
-        float currentCost = tile.Integration[localIndex];
-        Vector2 currentFlow = tile.FlowDirections[localIndex];
-        bool currentLos = tile.HasLineOfSight[localIndex];
-        bool currentWaveBlocked = tile.WaveFrontBlocked != null && tile.WaveFrontBlocked[localIndex];
+        TryGetTileIntegrationCostForDiagnostics(tile, currentX, currentY, out float currentCost, out string currentCostSource);
+        Vector2 currentFlow = ResolveRuntimeFlowDirection(tile, currentX, currentY, localIndex);
+        Vector2 storedFlow = GetFlowDirection(tile, localIndex);
+        bool currentLos = HasFlowLineOfSight(tile, localIndex);
+        bool currentWaveBlocked = IsFlowWaveFrontBlocked(tile, localIndex);
+        bool currentPathable = IsFlowPathable(tile, localIndex);
+        bool currentReachable = IsFlowReachable(tile, localIndex);
         string goalCellState = BuildTileGoalCellStateDiagnostics(tile, currentX, currentY);
 
         int bestNeighborX = currentX;
@@ -8378,15 +12230,20 @@ public static class FlowFieldCrowdMovementSystem
                 continue;
 
             int nextIndex = tile.GetLocalIndex(nextX, nextY);
-            float nextCost = tile.Integration[nextIndex];
-            Vector2 nextFlow = tile.FlowDirections[nextIndex];
+            TryGetTileIntegrationCostForDiagnostics(tile, nextX, nextY, out float nextCost, out string nextCostSource);
+            Vector2 nextFlow = ResolveRuntimeFlowDirection(tile, nextX, nextY, nextIndex);
+            Vector2 nextStoredFlow = GetFlowDirection(tile, nextIndex);
             if (neighborCount > 0)
                 neighborBuilder.Append(" | ");
             neighborBuilder.Append("(").Append(nextX).Append(',').Append(nextY).Append("){cost=")
                 .Append(float.IsPositiveInfinity(nextCost) ? "INF" : nextCost.ToString("F3"))
-                .Append(",flow=").Append(nextFlow)
-                .Append(",los=").Append(tile.HasLineOfSight[nextIndex])
-                .Append(",blocked=").Append(tile.WaveFrontBlocked != null && tile.WaveFrontBlocked[nextIndex])
+                .Append(",costSource=").Append(nextCostSource)
+                .Append(",stored=").Append(nextStoredFlow)
+                .Append(",runtime=").Append(nextFlow)
+                .Append(",los=").Append(HasFlowLineOfSight(tile, nextIndex))
+                .Append(",blocked=").Append(IsFlowWaveFrontBlocked(tile, nextIndex))
+                .Append(",pathable=").Append(IsFlowPathable(tile, nextIndex))
+                .Append(",reachable=").Append(IsFlowReachable(tile, nextIndex))
                 .Append("}");
             neighborCount++;
 
@@ -8407,8 +12264,9 @@ public static class FlowFieldCrowdMovementSystem
             neighborBuilder.Append("none");
         neighborBuilder.Append(']');
 
-        return $"tileKey={FormatTileKey(tile.Key)} cell=({currentX},{currentY}) cost={(float.IsPositiveInfinity(currentCost) ? "INF" : currentCost.ToString("F3"))} " +
-               $"flow={currentFlow} los={currentLos} waveBlocked={currentWaveBlocked} {goalCellState} " +
+        return $"tileKey={FormatTileKey(tile.Key)} cell=({currentX},{currentY}) cost={(float.IsPositiveInfinity(currentCost) ? "INF" : currentCost.ToString("F3"))} costSource={currentCostSource} " +
+               $"flow={currentFlow} stored={storedFlow} los={currentLos} waveBlocked={currentWaveBlocked} pathable={currentPathable} reachable={currentReachable} " +
+               $"{goalCellState} " +
                $"bestNeighbor=({bestNeighborX},{bestNeighborY}) bestNeighborCost={(float.IsPositiveInfinity(bestNeighborCost) ? "INF" : bestNeighborCost.ToString("F3"))} " +
                $"bestNeighborFlow={bestNeighborFlow} neighbors={neighborBuilder}";
     }
@@ -8473,6 +12331,87 @@ public static class FlowFieldCrowdMovementSystem
         return $"navPath={{found={found},status={path.status},corners={cornerCount},fromHit={fromHit.position},toHit={toHit.position},firstCorner={firstCorner},lastCorner={lastCorner},firstLeg={firstLeg}}}";
     }
 
+    private static void LogFlowTileInvariantDiagnostic(
+        IEntityContext self,
+        AgentRuntimeData agent,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        int startSectorId,
+        int goalSectorId,
+        TileGoalKind goalKind,
+        int downstreamPortalId,
+        FlowTileCacheEntry tile,
+        DesiredDirectionResolution desiredResolution,
+        Vector3 desiredDirection,
+        Vector3 stableGoalPosition,
+        int agentTypeId)
+    {
+        if (self == null || agent == null || _world == null || tile == null)
+            return;
+        if (!IsInsideSector(tile, startX, startY))
+            return;
+
+        int localIndex = tile.GetLocalIndex(startX, startY);
+        bool reachable = IsFlowReachable(tile, localIndex);
+        bool pathable = IsFlowPathable(tile, localIndex);
+        bool los = HasFlowLineOfSight(tile, localIndex);
+        bool isGoalCell = IsTileGoalCell(tile, startX, startY);
+        Vector2 runtimeFlow = ResolveRuntimeFlowDirection(tile, startX, startY, localIndex);
+        Vector2 storedFlow = GetFlowDirection(tile, localIndex);
+        TryGetTileIntegrationCostForDiagnostics(tile, startX, startY, out float diagnosticCost, out string diagnosticCostSource);
+
+        bool debugMove = GameDebugSettings.IsEnabled(DebugCategory.Move);
+        bool missingReachableCost = debugMove
+                                    && reachable
+                                    && (diagnosticCostSource == "missing" || float.IsPositiveInfinity(diagnosticCost));
+        bool zeroReachableFlow = reachable
+                                 && pathable
+                                 && !los
+                                 && !isGoalCell
+                                 && !tile.UsesClearFlowDescriptor
+                                 && runtimeFlow.sqrMagnitude <= 0.0001f;
+        bool flowNextBlocked = false;
+        int nextX = startX;
+        int nextY = startY;
+        if (runtimeFlow.sqrMagnitude > 0.0001f)
+        {
+            nextX += runtimeFlow.x > 0.35f ? 1 : runtimeFlow.x < -0.35f ? -1 : 0;
+            nextY += runtimeFlow.y > 0.35f ? 1 : runtimeFlow.y < -0.35f ? -1 : 0;
+            flowNextBlocked = nextX == startX && nextY == startY
+                              || !_world.IsWalkable(nextX, nextY)
+                              || !CanTraverseNeighborCells(_world, startX, startY, nextX, nextY);
+        }
+
+        bool zeroSource = desiredResolution.Source == DesiredDirectionSource.Zero
+                          && !(goalKind == TileGoalKind.FinalGoal && startX == goalX && startY == goalY);
+        if (!missingReachableCost && !zeroReachableFlow && !flowNextBlocked && !zeroSource)
+            return;
+
+        int frame = GetFrameCount();
+        if (agent.NavState.LastFlowTileInvariantDiagnosticFrame >= 0
+            && frame - agent.NavState.LastFlowTileInvariantDiagnosticFrame < FlowHeavyDiagnosticCooldownFrames)
+        {
+            return;
+        }
+
+        agent.NavState.LastFlowTileInvariantDiagnosticFrame = frame;
+        string trigger = $"missingReachableCost={missingReachableCost},zeroReachableFlow={zeroReachableFlow},flowNextBlocked={flowNextBlocked},zeroSource={zeroSource}";
+        Debug.LogWarning(
+            $"[FlowTileInvariantDiag] frame={frame} trigger={trigger} key={self.CharacterKey} id={agent.Id} pos={self.Position} " +
+            $"start=({startX},{startY}) next=({nextX},{nextY}) goal=({goalX},{goalY}) sector={startSectorId}->{goalSectorId} " +
+            $"goalKind={goalKind} portal={downstreamPortalId} handle={FormatPathHandle(agent.NavState.PathHandle)} " +
+            $"desiredSrc={desiredResolution.Source} desiredDir={desiredDirection} flow={runtimeFlow} stored={storedFlow} " +
+            $"cost={(float.IsPositiveInfinity(diagnosticCost) ? "INF" : diagnosticCost.ToString("F3"))} costSource={diagnosticCostSource} " +
+            $"reachable={reachable} pathable={pathable} los={los} waveBlocked={IsFlowWaveFrontBlocked(tile, localIndex)} isGoalCell={isGoalCell} " +
+            $"tileDiag={BuildCurrentTileSteeringDiagnostics(tile, startX, startY)} " +
+            $"flowCostDiag={BuildFlowDirectionCostDiagnostics(tile, startX, startY)} " +
+            $"portalTargetDiag={BuildPortalTargetSelectionDiagnostics(tile, startX, startY, goalX, goalY)} " +
+            $"flowProbe={BuildFlowDirectionProbeDiagnostics(self.Position, startX, startY, desiredDirection, runtimeFlow, agentTypeId)} " +
+            $"{BuildStartPortalRankDiagnostics(startSectorId, goalSectorId, startX, startY, goalX, goalY, agentTypeId, self.Position, stableGoalPosition, agent.NavState.PathHandle)}");
+    }
+
     private static void LogFlowExecutionMismatchDiagnostic(
         IEntityContext self,
         AgentRuntimeData agent,
@@ -8495,12 +12434,14 @@ public static class FlowFieldCrowdMovementSystem
     {
         if (self == null || agent == null || _world == null)
             return;
+        if (!GameDebugSettings.IsEnabled(DebugCategory.Move))
+            return;
         if (desiredDirection.sqrMagnitude <= 0.0001f)
             return;
 
         int frame = GetFrameCount();
         if (agent.NavState.LastFlowExecutionMismatchDiagnosticFrame >= 0
-            && frame - agent.NavState.LastFlowExecutionMismatchDiagnosticFrame < 10)
+            && frame - agent.NavState.LastFlowExecutionMismatchDiagnosticFrame < FlowHeavyDiagnosticCooldownFrames)
         {
             return;
         }
@@ -8551,6 +12492,17 @@ public static class FlowFieldCrowdMovementSystem
         bool tileRayBlocked = tileTargetSampled && NavMesh.Raycast(fromHit.position, tileTargetHit.position, out tileRayHit, filter);
         float tileTargetDistance = HorizontalDistanceXZ(self.Position, desiredResolution.TileTargetPosition);
         float goalDistance = HorizontalDistanceXZ(self.Position, stableGoalPosition);
+
+        Vector3 toStableGoal = stableGoalPosition - self.Position;
+        toStableGoal.y = 0f;
+        float desiredDotGoal = 0f;
+        if (toStableGoal.sqrMagnitude > 0.0001f)
+        {
+            toStableGoal.Normalize();
+            desiredDotGoal = Vector3.Dot(desiredDirection.normalized, toStableGoal);
+        }
+
+        bool gridGoalLineBlocked = !HasGridLineOfSight(_world, startX, startY, goalX, goalY);
         bool suspiciousPathDirection = pathFound
                                        && pathStatus == NavMeshPathStatus.PathComplete
                                        && cornerCount > 2
@@ -8561,10 +12513,17 @@ public static class FlowFieldCrowdMovementSystem
         bool suspiciousLos = desiredResolution.Source == DesiredDirectionSource.LineOfSight
                              && goalRayBlocked
                              && goalDistance > Mathf.Max(_world.CellSize * 4f, agent.Radius * 6f);
-        if (!suspiciousPathDirection && !suspiciousTileTarget && !suspiciousLos)
+        bool suspiciousDirectGoal = gridGoalLineBlocked
+                                    && desiredDotGoal > 0.65f
+                                    && goalDistance > Mathf.Max(_world.CellSize * 4f, agent.Radius * 6f);
+        if (!suspiciousPathDirection && !suspiciousTileTarget && !suspiciousLos && !suspiciousDirectGoal)
             return;
 
         agent.NavState.LastFlowExecutionMismatchDiagnosticFrame = frame;
+        string trigger = $"pathDir={suspiciousPathDirection},tileTarget={suspiciousTileTarget},los={suspiciousLos},directGoal={suspiciousDirectGoal}";
+        string goalGridTrace = suspiciousDirectGoal
+            ? BuildLineOfSightCellTrace(_world, startX, startY, goalX, goalY)
+            : "not-triggered";
         string startPortalChoiceDiagnostics = BuildStartPortalChoiceDiagnostics(
             startSectorId,
             goalSectorId,
@@ -8574,9 +12533,59 @@ public static class FlowFieldCrowdMovementSystem
             goalY,
             agentTypeId,
             self.Position,
-            stableGoalPosition);
+            stableGoalPosition,
+            agent.NavState.PathHandle);
+        string portalRankDiagnostics = BuildStartPortalRankDiagnostics(
+            startSectorId,
+            goalSectorId,
+            startX,
+            startY,
+            goalX,
+            goalY,
+            agentTypeId,
+            self.Position,
+            stableGoalPosition,
+            agent.NavState.PathHandle);
+        string losDecisionDiagnostics = BuildFlowLineOfSightDecisionDiagnostics(
+            self.Position,
+            stableGoalPosition,
+            desiredResolution.TileTargetPosition,
+            startX,
+            startY,
+            goalX,
+            goalY,
+            agentTypeId,
+            tile);
+
         Debug.LogWarning(
-            $"[FlowExecutionMismatchDiag] frame={frame} key={self.CharacterKey} id={agent.Id} pos={self.Position} " +
+            $"[FlowBridgeDiag] forced=True trigger={trigger} frame={frame} key={self.CharacterKey} id={agent.Id} pos={self.Position} " +
+            $"rawGoal={rawGoalPosition} occupiedGoal={occupiedGoalPosition} stableGoal={stableGoalPosition} " +
+            $"start=({startX},{startY}) goal=({goalX},{goalY}) sector={startSectorId}->{goalSectorId} " +
+            $"handle={FormatPathHandle(agent.NavState.PathHandle)} goalKind={goalKind} portal={downstreamPortalId} " +
+            $"desiredSrc={desiredResolution.Source} hasLOS={desiredResolution.HasLineOfSight} desiredDir={desiredDirection} desiredVel={desiredVelocity} " +
+            $"desiredDotGoal={desiredDotGoal:F3} desiredDotFirstLeg={desiredDotFirstLeg:F3} flow={desiredResolution.Flow} " +
+            $"tileTarget={desiredResolution.TileTargetPosition} tileTargetDistance={tileTargetDistance:F3} integration={desiredResolution.Integration:F3} " +
+            $"gridGoalBlocked={gridGoalLineBlocked} gridGoalTrace={goalGridTrace} " +
+            $"tileDiag={BuildCurrentTileSteeringDiagnostics(tile, startX, startY)} " +
+            $"flowCostDiag={BuildFlowDirectionCostDiagnostics(tile, startX, startY)} " +
+            $"portalTargetDiag={BuildPortalTargetSelectionDiagnostics(tile, startX, startY, goalX, goalY)} " +
+            $"{losDecisionDiagnostics} " +
+            $"{portalRankDiagnostics} " +
+            $"navPathDiag={BuildNavPathDiagnostics(self.Position, stableGoalPosition, agentTypeId)}");
+
+        if (goalKind == TileGoalKind.Portal && tile != null)
+        {
+            Debug.LogWarning(
+                $"[FlowPortalTarget] forced=True trigger={trigger} key={self.CharacterKey} sector={tile.Key.SectorId} goalId={tile.Key.GoalId} " +
+                $"currentCell=({startX},{startY}) currentCenter={_world.GridToWorldCenter(startX, startY)} " +
+                $"target={desiredResolution.TileTargetPosition} source={desiredResolution.Source} hasLOS={desiredResolution.HasLineOfSight} " +
+                $"flow={desiredResolution.Flow} tileDiag={BuildCurrentTileSteeringDiagnostics(tile, startX, startY)} " +
+                $"flowCostDiag={BuildFlowDirectionCostDiagnostics(tile, startX, startY)} " +
+                $"portalTargetDiag={BuildPortalTargetSelectionDiagnostics(tile, startX, startY, goalX, goalY)}");
+        }
+
+        Debug.LogWarning(
+            $"[FlowExecutionMismatchDiag] frame={frame} trigger={trigger} key={self.CharacterKey} id={agent.Id} pos={self.Position} " +
             $"rawGoal={rawGoalPosition} occupiedGoal={occupiedGoalPosition} stableGoal={stableGoalPosition} " +
             $"start=({startX},{startY}) goal=({goalX},{goalY}) sector={startSectorId}->{goalSectorId} " +
             $"goalKind={goalKind} portal={downstreamPortalId} handle={FormatPathHandle(agent.NavState.PathHandle)} " +
@@ -8587,12 +12596,986 @@ public static class FlowFieldCrowdMovementSystem
             $"tileRayNormal={(tileRayBlocked ? tileRayHit.normal.ToString() : "none")} " +
             $"goalRayBlocked={goalRayBlocked} goalRayHit={(goalRayBlocked ? goalRayHit.position.ToString() : "none")} " +
             $"goalRayNormal={(goalRayBlocked ? goalRayHit.normal.ToString() : "none")} " +
-            $"pathFound={pathFound} pathStatus={pathStatus} corners={cornerCount} firstCorner={firstCorner} lastCorner={lastCorner} " +
-            $"firstLegDir={firstLegDirection} desiredDotFirstLeg={desiredDotFirstLeg:F3} " +
+            $"gridGoalBlocked={gridGoalLineBlocked} pathFound={pathFound} pathStatus={pathStatus} corners={cornerCount} firstCorner={firstCorner} lastCorner={lastCorner} " +
+            $"firstLegDir={firstLegDirection} desiredDotFirstLeg={desiredDotFirstLeg:F3} desiredDotGoal={desiredDotGoal:F3} " +
             $"tileDiag={BuildCurrentTileSteeringDiagnostics(tile, startX, startY)} " +
+            $"flowCostDiag={BuildFlowDirectionCostDiagnostics(tile, startX, startY)} " +
+            $"portalTargetDiag={BuildPortalTargetSelectionDiagnostics(tile, startX, startY, goalX, goalY)} " +
+            $"{losDecisionDiagnostics} " +
+            $"{portalRankDiagnostics} " +
             $"{startPortalChoiceDiagnostics} " +
             $"navPathDiag={BuildNavPathDiagnostics(self.Position, stableGoalPosition, agentTypeId)}");
         Debug.LogWarning(startPortalChoiceDiagnostics);
+        Debug.LogWarning(portalRankDiagnostics);
+    }
+
+    private static void LogFlowWallProbeDiagnostic(
+        IEntityContext self,
+        AgentRuntimeData agent,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        int startSectorId,
+        int goalSectorId,
+        TileGoalKind goalKind,
+        int downstreamPortalId,
+        FlowTileCacheEntry tile,
+        DesiredDirectionResolution desiredResolution,
+        Vector3 desiredDirection,
+        Vector3 stableGoalPosition)
+    {
+        if (self == null || agent == null || _world == null)
+            return;
+        if (desiredDirection.sqrMagnitude <= 0.0001f)
+            return;
+
+        if (!TryResolveForwardBlockedProbe(startX, startY, desiredDirection, out string forwardProbe, out int blockedX, out int blockedY))
+            return;
+
+        int frame = GetFrameCount();
+        if (agent.NavState.LastFlowWallProbeDiagnosticFrame >= 0
+            && frame - agent.NavState.LastFlowWallProbeDiagnosticFrame < FlowHeavyDiagnosticCooldownFrames)
+        {
+            return;
+        }
+
+        agent.NavState.LastFlowWallProbeDiagnosticFrame = frame;
+        string goalTrace = _world.WorldToGrid(stableGoalPosition, out int stableGoalX, out int stableGoalY)
+            ? BuildLineOfSightCellTrace(_world, startX, startY, stableGoalX, stableGoalY)
+            : "stableGoal-out";
+        string tileTargetTrace = _world.WorldToGrid(desiredResolution.TileTargetPosition, out int tileTargetX, out int tileTargetY)
+            ? BuildLineOfSightCellTrace(_world, startX, startY, tileTargetX, tileTargetY)
+            : "tileTarget-out";
+
+        Debug.LogWarning(
+            $"[FlowWallProbeDiag] frame={frame} key={self.CharacterKey} id={agent.Id} pos={self.Position} " +
+            $"start=({startX},{startY}) goal=({goalX},{goalY}) stableGoal={stableGoalPosition} sector={startSectorId}->{goalSectorId} " +
+            $"goalKind={goalKind} portal={downstreamPortalId} handle={FormatPathHandle(agent.NavState.PathHandle)} " +
+            $"desiredSrc={desiredResolution.Source} desiredDir={desiredDirection} flow={desiredResolution.Flow} hasLOS={desiredResolution.HasLineOfSight} " +
+            $"tileTarget={desiredResolution.TileTargetPosition} integration={desiredResolution.Integration:F3} blocked=({blockedX},{blockedY}) " +
+            $"forwardProbe={forwardProbe} tileDiag={BuildCurrentTileSteeringDiagnostics(tile, startX, startY)} " +
+            $"flowPathTrace={BuildRuntimeFlowPathTrace(tile, startX, startY, maxSteps: 14)} " +
+            $"pathCompare={BuildFlowPathComparisonDiagnostics(tile, startSectorId, goalSectorId, startX, startY, goalX, goalY, downstreamPortalId, agent.NavState.PathHandle)} " +
+            $"goalTrace={goalTrace} tileTargetTrace={tileTargetTrace} " +
+            $"{BuildStartPortalRankDiagnostics(startSectorId, goalSectorId, startX, startY, goalX, goalY, agent.AgentTypeId, self.Position, stableGoalPosition, agent.NavState.PathHandle)}");
+    }
+
+    private static string BuildRuntimeFlowPathTrace(FlowTileCacheEntry tile, int startX, int startY, int maxSteps)
+    {
+        if (_world == null)
+            return "{world=null}";
+        if (tile == null)
+            return "{tile=null}";
+        if (!IsInsideSector(tile, startX, startY))
+            return "{start=outside}";
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(1536);
+        builder.Append('[');
+        int x = startX;
+        int y = startY;
+        int previousX = x;
+        int previousY = y;
+        for (int step = 0; step <= maxSteps; step++)
+        {
+            if (step > 0)
+                builder.Append(" -> ");
+
+            if (!IsInsideSector(tile, x, y))
+            {
+                builder.Append('(').Append(x).Append(',').Append(y).Append("){outside-sector}");
+                break;
+            }
+
+            int localIndex = tile.GetLocalIndex(x, y);
+            bool walkable = _world.IsWalkable(x, y);
+            bool traversable = step == 0 || CanTraverseNeighborCells(_world, previousX, previousY, x, y);
+            TryGetTileIntegrationCostForDiagnostics(tile, x, y, out float cost, out string costSource);
+            Vector2 flow = ResolveRuntimeFlowDirection(tile, x, y, localIndex);
+            Vector2 storedFlow = GetFlowDirection(tile, localIndex);
+            builder.Append('(').Append(x).Append(',').Append(y).Append("){cost=")
+                .Append(FormatDiagnosticCost(cost))
+                .Append(",source=").Append(costSource)
+                .Append(",walk=").Append(walkable)
+                .Append(",trav=").Append(traversable)
+                .Append(",los=").Append(HasFlowLineOfSight(tile, localIndex))
+                .Append(",blocked=").Append(IsFlowWaveFrontBlocked(tile, localIndex))
+                .Append(",stored=").Append(storedFlow)
+                .Append(",flow=").Append(flow)
+                .Append('}');
+
+            if (!walkable || !traversable || flow.sqrMagnitude <= 0.0001f)
+                break;
+
+            int stepX = flow.x > 0.35f ? 1 : flow.x < -0.35f ? -1 : 0;
+            int stepY = flow.y > 0.35f ? 1 : flow.y < -0.35f ? -1 : 0;
+            if (stepX == 0 && stepY == 0)
+                break;
+
+            previousX = x;
+            previousY = y;
+            x += stepX;
+            y += stepY;
+        }
+
+        builder.Append(']');
+        return builder.ToString();
+    }
+
+    private static string BuildFlowPathComparisonDiagnostics(
+        FlowTileCacheEntry tile,
+        int startSectorId,
+        int goalSectorId,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        int downstreamPortalId,
+        PathHandle handle)
+    {
+        if (_world == null)
+            return "{world=null}";
+
+        const int maxTraceSteps = 32;
+        string runtimeTrace = BuildRuntimeFlowCellTrace(tile, startX, startY, maxTraceSteps);
+        string globalGoalTrace = BuildGridShortestPathTraceToCell(startX, startY, goalX, goalY, maxTraceSteps);
+        string selectedPortalTrace = BuildSelectedPortalGridTrace(startSectorId, startX, startY, downstreamPortalId, maxTraceSteps);
+        string handleTrace = BuildHandlePortalRouteDiagnostics(handle, startSectorId, startX, startY, goalX, goalY, maxTraceSteps);
+
+        return "{runtime=" + runtimeTrace
+               + ",globalGoal=" + globalGoalTrace
+               + ",selectedPortal=" + selectedPortalTrace
+               + ",handleRoute=" + handleTrace
+               + ",sameSector=" + (startSectorId == goalSectorId)
+               + "}";
+    }
+
+    private static string BuildRuntimeFlowCellTrace(FlowTileCacheEntry tile, int startX, int startY, int maxSteps)
+    {
+        if (_world == null)
+            return "world-null";
+        if (tile == null)
+            return "tile-null";
+        if (!IsInsideSector(tile, startX, startY))
+            return "start-outside-tile";
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(maxSteps * 12);
+        int x = startX;
+        int y = startY;
+        int previousX = x;
+        int previousY = y;
+        for (int step = 0; step <= maxSteps; step++)
+        {
+            if (step > 0)
+                builder.Append("->");
+
+            if (!IsInsideSector(tile, x, y))
+            {
+                builder.Append('(').Append(x).Append(',').Append(y).Append(":outside)");
+                break;
+            }
+
+            int localIndex = tile.GetLocalIndex(x, y);
+            bool walkable = _world.IsWalkable(x, y);
+            bool traversable = step == 0 || CanTraverseNeighborCells(_world, previousX, previousY, x, y);
+            Vector2 flow = ResolveRuntimeFlowDirection(tile, x, y, localIndex);
+            builder.Append('(').Append(x).Append(',').Append(y).Append(')');
+
+            if (!walkable)
+            {
+                builder.Append(":blocked");
+                break;
+            }
+
+            if (!traversable)
+            {
+                builder.Append(":unlinked");
+                break;
+            }
+
+            int stepX = flow.x > 0.35f ? 1 : flow.x < -0.35f ? -1 : 0;
+            int stepY = flow.y > 0.35f ? 1 : flow.y < -0.35f ? -1 : 0;
+            if (stepX == 0 && stepY == 0)
+            {
+                builder.Append(":zero");
+                break;
+            }
+
+            previousX = x;
+            previousY = y;
+            x += stepX;
+            y += stepY;
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildSelectedPortalGridTrace(int startSectorId, int startX, int startY, int portalId, int maxSteps)
+    {
+        if (_world == null)
+            return "world-null";
+        if (portalId < 0)
+            return "none";
+        if (!TryGetPortalById(_world, portalId, out PortalData portal))
+            return "portal-missing:" + portalId;
+
+        Vector2Int[] currentCells = GetPortalCellsForSector(portal, startSectorId);
+        return "portal=" + FormatPortal(portal)
+               + ",cells=" + FormatGoalCells(currentCells)
+               + ",path=" + BuildGridShortestPathTraceToCells(startX, startY, currentCells, maxSteps);
+    }
+
+    private static string BuildHandlePortalRouteDiagnostics(PathHandle handle, int startSectorId, int startX, int startY, int goalX, int goalY, int maxSteps)
+    {
+        if (_world == null)
+            return "world-null";
+        if (handle == null || handle.SectorIds == null || handle.PortalIds == null)
+            return "handle-null";
+
+        int sectorIndex = FindSectorIndex(handle, startSectorId, Mathf.Max(0, handle.CurrentSectorIndex));
+        if (sectorIndex < 0)
+            return "start-sector-not-in-handle:" + FormatPathHandle(handle);
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(512);
+        builder.Append(FormatPathHandle(handle));
+        int cursorX = -1;
+        int cursorY = -1;
+        for (int i = sectorIndex; i < handle.PortalIds.Length; i++)
+        {
+            int sectorId = handle.SectorIds[i];
+            int portalId = handle.PortalIds[i];
+            if (!TryGetPortalById(_world, portalId, out PortalData portal))
+            {
+                builder.Append("|missingPortal=").Append(portalId);
+                continue;
+            }
+
+            Vector2Int[] currentCells = GetPortalCellsForSector(portal, sectorId);
+            Vector2Int[] oppositeCells = GetPortalCellsForSector(portal, handle.SectorIds[i + 1]);
+            builder.Append("|seg").Append(i)
+                .Append("{sector=").Append(sectorId)
+                .Append(",portal=").Append(portalId)
+                .Append(",cur=").Append(FormatGoalCells(currentCells))
+                .Append(",opp=").Append(FormatGoalCells(oppositeCells));
+            if (i == sectorIndex)
+                builder.Append(",fromStart=").Append(BuildGridShortestPathTraceToCells(startX, startY, currentCells, maxSteps));
+            if (oppositeCells != null && oppositeCells.Length > 0)
+            {
+                Vector2Int opposite = oppositeCells[oppositeCells.Length / 2];
+                cursorX = opposite.x;
+                cursorY = opposite.y;
+            }
+            builder.Append('}');
+        }
+
+        if (cursorX >= 0)
+            builder.Append("|lastOppToGoal=").Append(BuildGridShortestPathTraceToCell(cursorX, cursorY, goalX, goalY, maxSteps));
+        return builder.ToString();
+    }
+
+    private static string BuildGridShortestPathTraceToCell(int startX, int startY, int goalX, int goalY, int maxSteps)
+    {
+        if (_world == null)
+            return "world-null";
+        if (goalX < 0 || goalX >= _world.Width || goalY < 0 || goalY >= _world.Height || !_world.IsWalkable(goalX, goalY))
+            return "goal-invalid";
+
+        bool[] targets = new bool[_world.Width * _world.Height];
+        targets[_world.GetIndex(goalX, goalY)] = true;
+        return BuildGridShortestPathTraceToTargets(startX, startY, targets, maxSteps);
+    }
+
+    private static string BuildGridShortestPathTraceToCells(int startX, int startY, Vector2Int[] targetCells, int maxSteps)
+    {
+        if (_world == null)
+            return "world-null";
+        if (targetCells == null || targetCells.Length == 0)
+            return "no-targets";
+
+        bool[] targets = new bool[_world.Width * _world.Height];
+        bool hasTarget = false;
+        for (int i = 0; i < targetCells.Length; i++)
+        {
+            Vector2Int cell = targetCells[i];
+            if (cell.x < 0 || cell.x >= _world.Width || cell.y < 0 || cell.y >= _world.Height || !_world.IsWalkable(cell.x, cell.y))
+                continue;
+
+            targets[_world.GetIndex(cell.x, cell.y)] = true;
+            hasTarget = true;
+        }
+
+        return hasTarget ? BuildGridShortestPathTraceToTargets(startX, startY, targets, maxSteps) : "no-walkable-targets";
+    }
+
+    private static string BuildGridShortestPathTraceToTargets(int startX, int startY, bool[] targets, int maxSteps)
+    {
+        if (_world == null)
+            return "world-null";
+        int cellCount = _world.Width * _world.Height;
+        if (targets == null || targets.Length != cellCount)
+            return "invalid-targets";
+        if (startX < 0 || startX >= _world.Width || startY < 0 || startY >= _world.Height || !_world.IsWalkable(startX, startY))
+            return "start-invalid";
+
+        int startIndex = _world.GetIndex(startX, startY);
+        if (targets[startIndex])
+            return "(" + startX + "," + startY + "):target";
+
+        float[] costs = RentIntegrationArray(cellCount);
+        int[] cameFrom = new int[cellCount];
+        for (int i = 0; i < cameFrom.Length; i++)
+            cameFrom[i] = -1;
+
+        InitializeIntegrationField(costs);
+        MinHeap openSet = new MinHeap();
+        costs[startIndex] = 0f;
+        openSet.Push(startIndex, 0f);
+        int reachedIndex = -1;
+        int guard = cellCount * 4;
+        try
+        {
+            while (openSet.Count > 0 && guard-- > 0)
+            {
+                QueueNode node = openSet.Pop();
+                if (node.Cost > costs[node.Index] + 0.001f)
+                    continue;
+                if (targets[node.Index])
+                {
+                    reachedIndex = node.Index;
+                    break;
+                }
+
+                int worldX = node.Index % _world.Width;
+                int worldY = node.Index / _world.Width;
+                for (int i = 0; i < NeighborOffsetX.Length; i++)
+                {
+                    int nextX = worldX + NeighborOffsetX[i];
+                    int nextY = worldY + NeighborOffsetY[i];
+                    if (nextX < 0 || nextX >= _world.Width || nextY < 0 || nextY >= _world.Height)
+                        continue;
+                    if (!_world.IsWalkable(nextX, nextY) || !CanTraverseNeighborCells(_world, worldX, worldY, nextX, nextY))
+                        continue;
+
+                    int nextIndex = _world.GetIndex(nextX, nextY);
+                    float stepDistance = Mathf.Abs(NeighborOffsetX[i]) + Mathf.Abs(NeighborOffsetY[i]) == 2 ? 1.4142135f : 1f;
+                    float stepCost = Mathf.Max(ResolveCellIntegrationCost(_world, nextX, nextY), 0.001f) * stepDistance;
+                    float newCost = node.Cost + stepCost;
+                    if (!IsSignificantIntegrationImprovement(newCost, costs[nextIndex]))
+                        continue;
+
+                    costs[nextIndex] = newCost;
+                    cameFrom[nextIndex] = node.Index;
+                    openSet.Push(nextIndex, newCost);
+                }
+            }
+
+            if (reachedIndex < 0)
+                return guard <= 0 ? "guard-exceeded" : "unreachable";
+
+            return FormatReconstructedGridPath(cameFrom, startIndex, reachedIndex, maxSteps, costs[reachedIndex]);
+        }
+        finally
+        {
+            ReturnIntegrationArray(costs);
+        }
+    }
+
+    private static string FormatReconstructedGridPath(int[] cameFrom, int startIndex, int reachedIndex, int maxSteps, float totalCost)
+    {
+        if (_world == null || cameFrom == null)
+            return "invalid-reconstruct";
+
+        List<int> reversed = new List<int>(Mathf.Max(8, maxSteps + 1));
+        int cursor = reachedIndex;
+        int guard = cameFrom.Length + 1;
+        while (cursor >= 0 && guard-- > 0)
+        {
+            reversed.Add(cursor);
+            if (cursor == startIndex)
+                break;
+            cursor = cameFrom[cursor];
+        }
+
+        if (reversed[reversed.Count - 1] != startIndex)
+            return "reconstruct-failed";
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(maxSteps * 12 + 64);
+        builder.Append("cost=").Append(FormatDiagnosticCost(totalCost)).Append(",path=");
+        int emitted = 0;
+        for (int i = reversed.Count - 1; i >= 0 && emitted <= maxSteps; i--, emitted++)
+        {
+            if (emitted > 0)
+                builder.Append("->");
+            int index = reversed[i];
+            builder.Append('(').Append(index % _world.Width).Append(',').Append(index / _world.Width).Append(')');
+        }
+
+        if (emitted < reversed.Count)
+            builder.Append("->...");
+        return builder.ToString();
+    }
+
+    private static bool TryResolveForwardBlockedProbe(int startX, int startY, Vector3 desiredDirection, out string probe, out int blockedX, out int blockedY)
+    {
+        blockedX = startX;
+        blockedY = startY;
+        probe = "none";
+        if (_world == null)
+            return false;
+
+        Vector3 direction = desiredDirection;
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.0001f)
+            return false;
+        direction.Normalize();
+
+        int stepX = direction.x > 0.35f ? 1 : direction.x < -0.35f ? -1 : 0;
+        int stepY = direction.z > 0.35f ? 1 : direction.z < -0.35f ? -1 : 0;
+        if (stepX == 0 && stepY == 0)
+            return false;
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(256);
+        int previousX = startX;
+        int previousY = startY;
+        bool foundBlocked = false;
+        for (int step = 1; step <= 5; step++)
+        {
+            int x = startX + stepX * step;
+            int y = startY + stepY * step;
+            if (step > 1)
+                builder.Append(" -> ");
+
+            AppendForwardProbeCell(builder, previousX, previousY, x, y);
+            bool blocked = x < 0
+                           || x >= _world.Width
+                           || y < 0
+                           || y >= _world.Height
+                           || !_world.IsWalkable(x, y)
+                           || !CanTraverseNeighborCells(_world, previousX, previousY, x, y);
+            if (blocked)
+            {
+                blockedX = x;
+                blockedY = y;
+                foundBlocked = true;
+                break;
+            }
+
+            previousX = x;
+            previousY = y;
+        }
+
+        probe = builder.ToString();
+        return foundBlocked;
+    }
+
+    private static void AppendForwardProbeCell(System.Text.StringBuilder builder, int previousX, int previousY, int x, int y)
+    {
+        builder.Append('(').Append(x).Append(',').Append(y).Append("){");
+        if (_world == null || x < 0 || x >= _world.Width || y < 0 || y >= _world.Height)
+        {
+            builder.Append("out}");
+            return;
+        }
+
+        int index = _world.GetIndex(x, y);
+        bool walkable = _world.IsWalkable(x, y);
+        bool baseWalkable = _world.BaseWalkableMask != null
+                            && _world.BaseWalkableMask.Length == _world.Width * _world.Height
+                            && _world.BaseWalkableMask[index];
+        byte cost = 0;
+        TryGetCostFieldValue(_world, x, y, out cost);
+        int island = _world.IslandIds != null && _world.IslandIds.Length == _world.Width * _world.Height ? _world.IslandIds[index] : -1;
+        string mask = _world.NeighborTraversalMask != null && _world.NeighborTraversalMask.Length == _world.Width * _world.Height
+            ? _world.NeighborTraversalMask[index].ToString("X2")
+            : "null";
+        bool link = previousX == x && previousY == y || CanTraverseNeighborCells(_world, previousX, previousY, x, y);
+        builder.Append("walk=").Append(walkable)
+            .Append(",base=").Append(baseWalkable)
+            .Append(",cost=").Append(cost)
+            .Append(",island=").Append(island)
+            .Append(",mask=0x").Append(mask)
+            .Append(",link=").Append(link)
+            .Append('}');
+    }
+
+    private static string BuildFlowDirectionCostDiagnostics(FlowTileCacheEntry tile, int currentX, int currentY)
+    {
+        if (_world == null || tile == null)
+            return "{worldOrTile=null}";
+        if (!IsInsideSector(tile, currentX, currentY))
+            return "{cell=outside}";
+
+        bool rebuiltDebug = false;
+        if (tile.DebugIntegrationPayload?.Values == null && tile.IntegrationPayload?.Values == null)
+            rebuiltDebug = TryRebuildTileDebugIntegration(tile);
+
+        TryGetTileIntegrationCostForDiagnostics(tile, currentX, currentY, out float currentCost, out string currentCostSource);
+        int localIndex = tile.GetLocalIndex(currentX, currentY);
+        Vector2 runtimeFlow = ResolveRuntimeFlowDirection(tile, currentX, currentY, localIndex);
+        int flowStepX = runtimeFlow.x > 0.35f ? 1 : runtimeFlow.x < -0.35f ? -1 : 0;
+        int flowStepY = runtimeFlow.y > 0.35f ? 1 : runtimeFlow.y < -0.35f ? -1 : 0;
+        int flowNextX = currentX + flowStepX;
+        int flowNextY = currentY + flowStepY;
+        bool flowNextInside = flowStepX != 0 || flowStepY != 0;
+        flowNextInside = flowNextInside && IsInsideSector(tile, flowNextX, flowNextY);
+        bool flowNextWalkable = flowNextInside && _world.IsWalkable(flowNextX, flowNextY);
+        bool flowNextTraversable = flowNextWalkable && CanTraverseNeighborCells(_world, currentX, currentY, flowNextX, flowNextY);
+        float flowNextCost = float.PositiveInfinity;
+        string flowNextCostSource = "missing";
+        if (flowNextInside)
+            TryGetTileIntegrationCostForDiagnostics(tile, flowNextX, flowNextY, out flowNextCost, out flowNextCostSource);
+
+        int bestX = currentX;
+        int bestY = currentY;
+        float bestCost = currentCost;
+        string bestSource = currentCostSource;
+        bool foundBetterNeighbor = false;
+        System.Text.StringBuilder neighbors = new System.Text.StringBuilder(768);
+        neighbors.Append('[');
+        int neighborCount = 0;
+        for (int i = 0; i < NeighborOffsetX.Length; i++)
+        {
+            int nextX = currentX + NeighborOffsetX[i];
+            int nextY = currentY + NeighborOffsetY[i];
+            if (!IsInsideSector(tile, nextX, nextY))
+                continue;
+
+            bool walkable = _world.IsWalkable(nextX, nextY);
+            bool traversable = walkable && CanTraverseNeighborCells(_world, currentX, currentY, nextX, nextY);
+            TryGetTileIntegrationCostForDiagnostics(tile, nextX, nextY, out float nextCost, out string nextSource);
+            if (neighborCount > 0)
+                neighbors.Append(" | ");
+            neighbors.Append('(').Append(nextX).Append(',').Append(nextY).Append("){cost=")
+                .Append(FormatDiagnosticCost(nextCost))
+                .Append(",source=").Append(nextSource)
+                .Append(",walk=").Append(walkable)
+                .Append(",trav=").Append(traversable)
+                .Append(",flow=").Append(ResolveRuntimeFlowDirection(tile, nextX, nextY, tile.GetLocalIndex(nextX, nextY)))
+                .Append('}');
+            neighborCount++;
+
+            if (!traversable || float.IsPositiveInfinity(nextCost))
+                continue;
+            if (!foundBetterNeighbor || nextCost < bestCost - 0.001f)
+            {
+                foundBetterNeighbor = true;
+                bestX = nextX;
+                bestY = nextY;
+                bestCost = nextCost;
+                bestSource = nextSource;
+            }
+        }
+
+        if (neighborCount == 0)
+            neighbors.Append("none");
+        neighbors.Append(']');
+
+        bool flowDropsCost = flowNextTraversable
+                             && !float.IsPositiveInfinity(currentCost)
+                             && flowNextCost < currentCost - 0.001f;
+        bool flowMatchesBest = foundBetterNeighbor && flowNextX == bestX && flowNextY == bestY;
+        return "{rebuiltDebug=" + rebuiltDebug
+               + ",currentCost=" + FormatDiagnosticCost(currentCost)
+               + ",currentSource=" + currentCostSource
+               + ",runtimeFlow=" + runtimeFlow
+               + ",flowNext=(" + flowNextX + "," + flowNextY + ")"
+               + ",flowNextInside=" + flowNextInside
+               + ",flowNextWalkable=" + flowNextWalkable
+               + ",flowNextTraversable=" + flowNextTraversable
+               + ",flowNextCost=" + FormatDiagnosticCost(flowNextCost)
+               + ",flowNextSource=" + flowNextCostSource
+               + ",flowDropsCost=" + flowDropsCost
+               + ",best=(" + bestX + "," + bestY + ")"
+               + ",bestCost=" + FormatDiagnosticCost(bestCost)
+               + ",bestSource=" + bestSource
+               + ",flowMatchesBest=" + flowMatchesBest
+               + ",neighbors=" + neighbors
+               + "}";
+    }
+
+    private static string BuildPortalTargetSelectionDiagnostics(FlowTileCacheEntry tile, int currentX, int currentY, int finalGoalX, int finalGoalY)
+    {
+        if (_world == null || tile == null)
+            return "{worldOrTile=null}";
+        if (tile.Key.GoalKind != TileGoalKind.Portal)
+            return "{goalKind=" + tile.Key.GoalKind + "}";
+        if (!IsInsideSector(tile, currentX, currentY))
+            return "{cell=outside}";
+
+        if (tile.DebugIntegrationPayload?.Values == null && tile.IntegrationPayload?.Values == null)
+            TryRebuildTileDebugIntegration(tile);
+
+        PortalData portal = GetPortalById(_world, tile.Key.GoalId);
+        Vector2Int[] currentSideCells = GetPortalCellsForSector(portal, tile.Key.SectorId);
+        Vector2Int[] oppositeSideCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, tile.Key.SectorId));
+        CachedPortalTarget cached = tile.PortalTargets != null && tile.PortalTargets.Length == tile.Width * tile.Height
+            ? tile.PortalTargets[tile.GetLocalIndex(currentX, currentY)]
+            : default;
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(1536);
+        builder.Append("{portal=").Append(FormatPortal(portal))
+            .Append(",cachedUsedOpposite=").Append(cached.UsedOppositeCenter)
+            .Append(",cachedPair=").Append(cached.SelectedPairIndex)
+            .Append(",cachedVisible=").Append(cached.VisibleCandidateCount)
+            .Append(",candidates=[");
+
+        int count = Mathf.Min(currentSideCells.Length, oppositeSideCells.Length);
+        for (int i = 0; i < count; i++)
+        {
+            if (i > 0)
+                builder.Append(" | ");
+            Vector2Int currentCell = currentSideCells[i];
+            Vector2Int oppositeCell = oppositeSideCells[i];
+            bool currentInside = IsInsideSector(tile, currentCell.x, currentCell.y);
+            bool currentWalkable = currentInside && _world.IsWalkable(currentCell.x, currentCell.y);
+            bool oppositeWalkable = _world.IsWalkable(oppositeCell.x, oppositeCell.y);
+            bool portalTraversable = currentWalkable
+                                     && oppositeWalkable
+                                     && CanTraverseNeighborCells(_world, currentCell.x, currentCell.y, oppositeCell.x, oppositeCell.y);
+            bool startLos = currentWalkable && HasGridLineOfSight(_world, currentX, currentY, currentCell.x, currentCell.y);
+            bool oppositeGoalLos = oppositeWalkable && HasGridLineOfSight(_world, oppositeCell.x, oppositeCell.y, finalGoalX, finalGoalY);
+            TryGetTileIntegrationCostForDiagnostics(tile, currentCell.x, currentCell.y, out float currentCost, out string costSource);
+            float gridFromStart = ResolveGridPathCostOrInfinity(currentX, currentY, currentCell.x, currentCell.y);
+            float gridToGoal = ResolveGridPathCostOrInfinity(oppositeCell.x, oppositeCell.y, finalGoalX, finalGoalY);
+            builder.Append("i=").Append(i)
+                .Append("{cur=(").Append(currentCell.x).Append(',').Append(currentCell.y).Append(')')
+                .Append(",opp=(").Append(oppositeCell.x).Append(',').Append(oppositeCell.y).Append(')')
+                .Append(",selected=").Append(!cached.UsedOppositeCenter && cached.SelectedPairIndex == i)
+                .Append(",curWalk=").Append(currentWalkable)
+                .Append(",oppWalk=").Append(oppositeWalkable)
+                .Append(",portalTrav=").Append(portalTraversable)
+                .Append(",startLos=").Append(startLos)
+                .Append(",oppGoalLos=").Append(oppositeGoalLos)
+                .Append(",curCost=").Append(FormatDiagnosticCost(currentCost))
+                .Append(",costSource=").Append(costSource)
+                .Append(",gridStart=").Append(FormatDiagnosticCost(gridFromStart))
+                .Append(",gridGoal=").Append(FormatDiagnosticCost(gridToGoal))
+                .Append('}');
+        }
+
+        builder.Append("]}");
+        return builder.ToString();
+    }
+
+    private static string BuildFlowDirectionProbeDiagnostics(
+        Vector3 startPosition,
+        int startX,
+        int startY,
+        Vector3 desiredDirection,
+        Vector2 runtimeFlow,
+        int agentTypeId)
+    {
+        if (_world == null)
+            return "{world=null}";
+
+        Vector3 probeDirection = desiredDirection;
+        probeDirection.y = 0f;
+        if (probeDirection.sqrMagnitude <= 0.0001f && runtimeFlow.sqrMagnitude > 0.0001f)
+            probeDirection = new Vector3(runtimeFlow.x, 0f, runtimeFlow.y);
+        if (probeDirection.sqrMagnitude <= 0.0001f)
+            return "{direction=zero}";
+
+        probeDirection.Normalize();
+        float probeDistance = Mathf.Max(_world.CellSize * 8f, 4f);
+        Vector3 endPosition = startPosition + probeDirection * probeDistance;
+        bool endInGrid = _world.WorldToGrid(endPosition, out int endX, out int endY);
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(1536);
+        builder.Append("{dir=").Append(probeDirection)
+            .Append(",end=").Append(endPosition)
+            .Append(",endInGrid=").Append(endInGrid)
+            .Append(",segment=");
+        if (endInGrid)
+            builder.Append(BuildLineDecisionSegmentDiagnostics(startPosition, endPosition, startX, startY, endX, endY, agentTypeId));
+        else
+            builder.Append("end-out");
+
+        builder.Append(",flowSteps=[");
+        int stepX = runtimeFlow.x > 0.35f ? 1 : runtimeFlow.x < -0.35f ? -1 : 0;
+        int stepY = runtimeFlow.y > 0.35f ? 1 : runtimeFlow.y < -0.35f ? -1 : 0;
+        if (stepX == 0 && stepY == 0)
+        {
+            builder.Append("none");
+        }
+        else
+        {
+            int previousX = startX;
+            int previousY = startY;
+            for (int step = 1; step <= 6; step++)
+            {
+                if (step > 1)
+                    builder.Append(" -> ");
+                int x = startX + stepX * step;
+                int y = startY + stepY * step;
+                AppendLineDecisionCell(builder, _world, x, y, previousX, previousY, first: false);
+                previousX = x;
+                previousY = y;
+                if (x < 0 || x >= _world.Width || y < 0 || y >= _world.Height || !_world.IsWalkable(x, y))
+                    break;
+            }
+        }
+
+        builder.Append("]}");
+        return builder.ToString();
+    }
+
+    private static string BuildStartPortalRankDiagnostics(
+        int startSectorId,
+        int goalSectorId,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        int agentTypeId,
+        Vector3 startPosition,
+        Vector3 stableGoalPosition,
+        PathHandle handle = null)
+    {
+        if (_world == null)
+            return "[FlowPortalRankDiag world=null]";
+        if (startSectorId < 0 || startSectorId >= _world.Sectors.Length)
+            return $"[FlowPortalRankDiag invalid-start-sector startSector={startSectorId}]";
+        if (!TryGetCachedSharedGoalField(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(agentTypeId), out SharedGoalField sharedField))
+            return "[FlowPortalRankDiag shared-field-not-cached]";
+
+        SectorData startSector = _world.Sectors[startSectorId];
+        int selectedPortalId = ResolveSelectedPortalIdForDiagnostics(handle, startSectorId);
+        int bestFlowPortalId = -1;
+        float bestFlowTotal = float.PositiveInfinity;
+        int bestNavPortalId = -1;
+        float bestNavTotal = float.PositiveInfinity;
+        List<string> candidates = new List<string>(startSector.PortalIds.Count);
+
+        for (int i = 0; i < startSector.PortalIds.Count; i++)
+        {
+            int portalId = startSector.PortalIds[i];
+            int startNode = EncodePortalNode(startSectorId, portalId);
+            bool hasDownstream = sharedField.NodeCosts.TryGetValue(startNode, out float downstreamCost);
+            float accessCost = ResolvePortalAccessCost(startSector, startSectorId, portalId, startX, startY);
+            float flowTotal = hasDownstream && !float.IsPositiveInfinity(accessCost)
+                ? accessCost + downstreamCost
+                : float.PositiveInfinity;
+            if (flowTotal < bestFlowTotal)
+            {
+                bestFlowTotal = flowTotal;
+                bestFlowPortalId = portalId;
+            }
+
+            float navTotal = float.PositiveInfinity;
+            float gridAccess = float.PositiveInfinity;
+            float gridDownstream = float.PositiveInfinity;
+            float gridTotal = float.PositiveInfinity;
+            if (TryGetPortalById(_world, portalId, out PortalData portal))
+            {
+                Vector2Int[] currentCells = GetPortalCellsForSector(portal, startSectorId);
+                Vector2Int[] oppositeCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, startSectorId));
+                Vector3 currentCenter = ResolveCellGroupCenter(currentCells);
+                Vector3 oppositeCenter = ResolveCellGroupCenter(oppositeCells);
+                float currentNav = ResolveNavPathLengthOrInfinity(startPosition, currentCenter, agentTypeId)
+                                   + ResolveNavPathLengthOrInfinity(currentCenter, stableGoalPosition, agentTypeId);
+                float oppositeNav = ResolveNavPathLengthOrInfinity(startPosition, oppositeCenter, agentTypeId)
+                                    + ResolveNavPathLengthOrInfinity(oppositeCenter, stableGoalPosition, agentTypeId);
+                navTotal = Mathf.Min(currentNav, oppositeNav);
+                gridAccess = ResolveGridPathCostToAnyOrInfinity(startX, startY, currentCells);
+                gridDownstream = ResolveGridPathCostFromAnyToCellOrInfinity(oppositeCells, goalX, goalY);
+                bool hasTraversablePortalPair = false;
+                int pairCount = Mathf.Min(currentCells.Length, oppositeCells.Length);
+                for (int pairIndex = 0; pairIndex < pairCount; pairIndex++)
+                {
+                    Vector2Int currentCell = currentCells[pairIndex];
+                    Vector2Int oppositeCell = oppositeCells[pairIndex];
+                    if (CanTraverseNeighborCells(_world, currentCell.x, currentCell.y, oppositeCell.x, oppositeCell.y))
+                    {
+                        hasTraversablePortalPair = true;
+                        break;
+                    }
+                }
+
+                if (hasTraversablePortalPair
+                    && !float.IsPositiveInfinity(gridAccess)
+                    && !float.IsPositiveInfinity(gridDownstream))
+                {
+                    gridTotal = gridAccess + 1f + gridDownstream;
+                }
+            }
+
+            if (navTotal < bestNavTotal)
+            {
+                bestNavTotal = navTotal;
+                bestNavPortalId = portalId;
+            }
+
+            candidates.Add(
+                "{id=" + portalId
+                + ",selected=" + (portalId == selectedPortalId)
+                + ",flowAccess=" + FormatDiagnosticCost(accessCost)
+                + ",flowDownstream=" + (hasDownstream ? FormatDiagnosticCost(downstreamCost) : "missing")
+                + ",flowTotal=" + FormatDiagnosticCost(flowTotal)
+                + ",navTotal=" + FormatDiagnosticCost(navTotal)
+                + ",gridAccess=" + FormatDiagnosticCost(gridAccess)
+                + ",gridDownstream=" + FormatDiagnosticCost(gridDownstream)
+                + ",gridTotal=" + FormatDiagnosticCost(gridTotal)
+                + "}");
+        }
+
+        return "[FlowPortalRankDiag startSector=" + startSectorId
+               + " goalSector=" + goalSectorId
+               + " start=(" + startX + "," + startY + ")"
+               + " goal=(" + goalX + "," + goalY + ")"
+               + " selected=" + selectedPortalId
+               + " bestFlow=" + bestFlowPortalId + ":" + FormatDiagnosticCost(bestFlowTotal)
+               + " bestNav=" + bestNavPortalId + ":" + FormatDiagnosticCost(bestNavTotal)
+               + " handle=" + FormatPathHandle(handle)
+               + " candidates=" + string.Join(" | ", candidates)
+               + "]";
+    }
+
+    private static float ResolveGridPathCostToAnyOrInfinity(int startX, int startY, Vector2Int[] goalCells)
+    {
+        if (_world == null || goalCells == null || goalCells.Length == 0)
+            return float.PositiveInfinity;
+        if (startX < 0 || startX >= _world.Width || startY < 0 || startY >= _world.Height || !_world.IsWalkable(startX, startY))
+            return float.PositiveInfinity;
+
+        bool[] targets = new bool[_world.Width * _world.Height];
+        bool hasTarget = false;
+        for (int i = 0; i < goalCells.Length; i++)
+        {
+            Vector2Int cell = goalCells[i];
+            if (cell.x < 0 || cell.x >= _world.Width || cell.y < 0 || cell.y >= _world.Height || !_world.IsWalkable(cell.x, cell.y))
+                continue;
+
+            targets[_world.GetIndex(cell.x, cell.y)] = true;
+            hasTarget = true;
+        }
+
+        if (!hasTarget)
+            return float.PositiveInfinity;
+
+        return ResolveGridPathCostToTargetsOrInfinity(startX, startY, targets);
+    }
+
+    private static float ResolveGridPathCostFromAnyToCellOrInfinity(Vector2Int[] startCells, int goalX, int goalY)
+    {
+        if (_world == null || startCells == null || startCells.Length == 0)
+            return float.PositiveInfinity;
+
+        float best = float.PositiveInfinity;
+        for (int i = 0; i < startCells.Length; i++)
+        {
+            Vector2Int start = startCells[i];
+            float cost = ResolveGridPathCostOrInfinity(start.x, start.y, goalX, goalY);
+            if (cost < best)
+                best = cost;
+        }
+
+        return best;
+    }
+
+    private static float ResolveGridPathCostOrInfinity(int startX, int startY, int goalX, int goalY)
+    {
+        if (_world == null)
+            return float.PositiveInfinity;
+        if (goalX < 0 || goalX >= _world.Width || goalY < 0 || goalY >= _world.Height || !_world.IsWalkable(goalX, goalY))
+            return float.PositiveInfinity;
+
+        bool[] targets = new bool[_world.Width * _world.Height];
+        targets[_world.GetIndex(goalX, goalY)] = true;
+        return ResolveGridPathCostToTargetsOrInfinity(startX, startY, targets);
+    }
+
+    private static float ResolveGridPathCostToTargetsOrInfinity(int startX, int startY, bool[] targets)
+    {
+        if (_world == null || targets == null || targets.Length != _world.Width * _world.Height)
+            return float.PositiveInfinity;
+        if (startX < 0 || startX >= _world.Width || startY < 0 || startY >= _world.Height || !_world.IsWalkable(startX, startY))
+            return float.PositiveInfinity;
+
+        int startIndex = _world.GetIndex(startX, startY);
+        if (targets[startIndex])
+            return 0f;
+
+        float[] costs = RentIntegrationArray(_world.Width * _world.Height);
+        InitializeIntegrationField(costs);
+        MinHeap openSet = new MinHeap();
+        costs[startIndex] = 0f;
+        openSet.Push(startIndex, 0f);
+        int guard = _world.Width * _world.Height * 4;
+        try
+        {
+            while (openSet.Count > 0 && guard-- > 0)
+            {
+                QueueNode node = openSet.Pop();
+                if (node.Cost > costs[node.Index] + 0.001f)
+                    continue;
+                if (targets[node.Index])
+                    return node.Cost;
+
+                int worldX = node.Index % _world.Width;
+                int worldY = node.Index / _world.Width;
+                for (int i = 0; i < NeighborOffsetX.Length; i++)
+                {
+                    int nextX = worldX + NeighborOffsetX[i];
+                    int nextY = worldY + NeighborOffsetY[i];
+                    if (nextX < 0 || nextX >= _world.Width || nextY < 0 || nextY >= _world.Height)
+                        continue;
+                    if (!_world.IsWalkable(nextX, nextY) || !CanTraverseNeighborCells(_world, worldX, worldY, nextX, nextY))
+                        continue;
+
+                    int nextIndex = _world.GetIndex(nextX, nextY);
+                    float stepDistance = Mathf.Abs(NeighborOffsetX[i]) + Mathf.Abs(NeighborOffsetY[i]) == 2 ? 1.4142135f : 1f;
+                    float stepCost = Mathf.Max(ResolveCellIntegrationCost(_world, nextX, nextY), 0.001f) * stepDistance;
+                    float newCost = node.Cost + stepCost;
+                    if (!IsSignificantIntegrationImprovement(newCost, costs[nextIndex]))
+                        continue;
+
+                    costs[nextIndex] = newCost;
+                    openSet.Push(nextIndex, newCost);
+                }
+            }
+        }
+        finally
+        {
+            ReturnIntegrationArray(costs);
+        }
+
+        return float.PositiveInfinity;
+    }
+
+    private static float ResolveNavPathLengthOrInfinity(Vector3 fromPosition, Vector3 toPosition, int agentTypeId)
+    {
+        if (_world == null)
+            return float.PositiveInfinity;
+
+        NavMeshQueryFilter filter = new NavMeshQueryFilter
+        {
+            agentTypeID = agentTypeId >= 0 ? agentTypeId : _world.AgentTypeId,
+            areaMask = NavMesh.AllAreas
+        };
+        float sampleRadius = Mathf.Max(0.2f, _world.CellSize * 1.5f);
+        if (!NavMesh.SamplePosition(fromPosition, out NavMeshHit fromHit, sampleRadius, filter)
+            || !NavMesh.SamplePosition(toPosition, out NavMeshHit toHit, sampleRadius, filter))
+        {
+            return float.PositiveInfinity;
+        }
+
+        NavMeshPath path = new NavMeshPath();
+        if (!NavMesh.CalculatePath(fromHit.position, toHit.position, filter, path)
+            || path.status != NavMeshPathStatus.PathComplete
+            || path.corners == null
+            || path.corners.Length == 0)
+        {
+            return float.PositiveInfinity;
+        }
+
+        float length = 0f;
+        for (int i = 1; i < path.corners.Length; i++)
+            length += HorizontalDistanceXZ(path.corners[i - 1], path.corners[i]);
+        return length;
+    }
+
+    private static string FormatDiagnosticCost(float cost)
+    {
+        return float.IsPositiveInfinity(cost) ? "INF" : cost.ToString("F3");
     }
 
     private static string BuildStartPortalChoiceDiagnostics(
@@ -8604,23 +13587,26 @@ public static class FlowFieldCrowdMovementSystem
         int goalY,
         int agentTypeId,
         Vector3 startPosition,
-        Vector3 stableGoalPosition)
+        Vector3 stableGoalPosition,
+        PathHandle handle = null)
     {
         if (_world == null)
             return "portalChoice=world-null";
         if (startSectorId < 0 || startSectorId >= _world.Sectors.Length)
             return $"portalChoice=invalid-start-sector startSector={startSectorId}";
 
-        SharedGoalField sharedField = GetOrBuildSharedGoalField(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(agentTypeId));
-        if (sharedField == null)
-            return "portalChoice=shared-field-null";
+        if (!TryGetCachedSharedGoalField(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(agentTypeId), out SharedGoalField sharedField))
+            return "portalChoice=shared-field-not-cached";
 
         SectorData startSector = _world.Sectors[startSectorId];
         System.Text.StringBuilder builder = new System.Text.StringBuilder(1024);
+        int selectedPortalId = ResolveSelectedPortalIdForDiagnostics(handle, startSectorId);
         builder.Append("[FlowStartPortalChoiceDiag startSector=").Append(startSectorId)
             .Append(" goalSector=").Append(goalSectorId)
             .Append(" start=(").Append(startX).Append(',').Append(startY).Append(')')
             .Append(" goal=(").Append(goalX).Append(',').Append(goalY).Append(')')
+            .Append(" selectedPortal=").Append(selectedPortalId)
+            .Append(" handle=").Append(FormatPathHandle(handle))
             .Append(" portals=");
 
         if (startSector.PortalIds.Count == 0)
@@ -8649,6 +13635,7 @@ public static class FlowFieldCrowdMovementSystem
                 ? BuildPortalCandidateNavDiagnostics(startPosition, stableGoalPosition, portal, startSectorId, agentTypeId)
                 : "portal=null";
             builder.Append("{id=").Append(portalId)
+                .Append(",selected=").Append(portalId == selectedPortalId)
                 .Append(",opp=").Append(oppositeSector)
                 .Append(",access=").Append(float.IsPositiveInfinity(accessCost) ? "INF" : accessCost.ToString("F3"))
                 .Append(",downstream=").Append(hasDownstream ? downstreamCost.ToString("F3") : "missing")
@@ -8661,6 +13648,18 @@ public static class FlowFieldCrowdMovementSystem
 
         builder.Append("]");
         return builder.ToString();
+    }
+
+    private static int ResolveSelectedPortalIdForDiagnostics(PathHandle handle, int startSectorId)
+    {
+        if (handle == null || handle.SectorIds == null || handle.PortalIds == null)
+            return -1;
+
+        int index = FindSectorIndex(handle, startSectorId, Mathf.Max(0, handle.CurrentSectorIndex));
+        if (index < 0 || index >= handle.PortalIds.Length)
+            return -1;
+
+        return handle.PortalIds[index];
     }
 
     private static string BuildPortalCandidateNavDiagnostics(Vector3 startPosition, Vector3 stableGoalPosition, PortalData portal, int sectorId, int agentTypeId)
@@ -8689,6 +13688,393 @@ public static class FlowFieldCrowdMovementSystem
                + ",currentToGoal=" + currentToGoal
                + ",oppositeToGoal=" + oppositeToGoal
                + "}";
+    }
+
+    private static string BuildFlowLineOfSightDecisionDiagnostics(
+        Vector3 startPosition,
+        Vector3 stableGoalPosition,
+        Vector3 tileTargetPosition,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        int agentTypeId,
+        FlowTileCacheEntry tile)
+    {
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(2048);
+        builder.Append("[FlowLosDecision goal=")
+            .Append(BuildLineDecisionSegmentDiagnostics(startPosition, stableGoalPosition, startX, startY, goalX, goalY, agentTypeId))
+            .Append(" tileTarget=");
+
+        if (_world != null && _world.WorldToGrid(tileTargetPosition, out int tileTargetX, out int tileTargetY))
+        {
+            builder.Append(BuildLineDecisionSegmentDiagnostics(startPosition, tileTargetPosition, startX, startY, tileTargetX, tileTargetY, agentTypeId));
+        }
+        else
+        {
+            builder.Append("{targetInGrid=False targetPos=").Append(tileTargetPosition).Append('}');
+        }
+
+        if (tile != null && tile.Key.GoalKind == TileGoalKind.Portal)
+        {
+            PortalData portal = GetPortalById(_world, tile.Key.GoalId);
+            Vector2Int[] cells = GetPortalCellsForSector(portal, tile.Key.SectorId);
+            builder.Append(" portalCells=[");
+            for (int i = 0; i < cells.Length; i++)
+            {
+                if (i > 0)
+                    builder.Append(" | ");
+                Vector2Int cell = cells[i];
+                builder.Append('i').Append(i).Append('=')
+                    .Append(BuildLineDecisionSegmentDiagnostics(startPosition, _world.GridToWorldCenter(cell.x, cell.y), startX, startY, cell.x, cell.y, agentTypeId));
+            }
+            builder.Append(']');
+        }
+
+        builder.Append(']');
+        return builder.ToString();
+    }
+
+    private static string BuildLineDecisionSegmentDiagnostics(
+        Vector3 fromPosition,
+        Vector3 toPosition,
+        int fromX,
+        int fromY,
+        int toX,
+        int toY,
+        int agentTypeId)
+    {
+        if (_world == null)
+            return "{world=null}";
+
+        bool toInBounds = toX >= 0 && toX < _world.Width && toY >= 0 && toY < _world.Height;
+        bool strictGridLos = toInBounds && HasGridLineOfSight(_world, fromX, fromY, toX, toY);
+        bool pendingGridLos = toInBounds && HasPendingDirectLineOfSight(_world, fromX, fromY, toX, toY);
+        bool softGridLos = toInBounds && HasSoftCostTolerantGridLineOfSight(_world, fromX, fromY, toX, toY, maxAllowedCost: 15);
+        bool navAnchorLos = toInBounds && HasNavAnchorLineOfSight(_world, fromX, fromY, toX, toY);
+        return "{from=(" + fromX + "," + fromY + ")"
+               + ",to=(" + toX + "," + toY + ")"
+               + ",toInBounds=" + toInBounds
+               + ",strictGridLos=" + strictGridLos
+               + ",pendingGridLos=" + pendingGridLos
+               + ",softGridLos=" + softGridLos
+               + ",navAnchorLos=" + navAnchorLos
+               + ",trace=" + BuildLineOfSightDecisionCellTrace(_world, fromX, fromY, toX, toY)
+               + ",registeredObstacles=" + BuildRegisteredObstacleSegmentDiagnostics(fromPosition, toPosition)
+               + ",physics=" + BuildPhysicsSegmentDiagnostics(fromPosition, toPosition, agentTypeId)
+               + "}";
+    }
+
+    private static string BuildLineOfSightDecisionCellTrace(NavigationWorld world, int x0, int y0, int x1, int y1)
+    {
+        if (world == null)
+            return "world-null";
+        if (x0 < 0 || x0 >= world.Width || y0 < 0 || y0 >= world.Height)
+            return "start-out";
+        if (x1 < 0 || x1 >= world.Width || y1 < 0 || y1 >= world.Height)
+            return "target-out";
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(768);
+        builder.Append("[");
+        int dx = Mathf.Abs(x1 - x0);
+        int dy = Mathf.Abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sy = y0 < y1 ? 1 : -1;
+        int err = dx - dy;
+        int cx = x0;
+        int cy = y0;
+        int previousX = x0;
+        int previousY = y0;
+        bool first = true;
+        int count = 0;
+        const int maxCells = 96;
+
+        while (true)
+        {
+            if (count > 0)
+                builder.Append(" -> ");
+
+            AppendLineDecisionCell(builder, world, cx, cy, previousX, previousY, first);
+            count++;
+
+            if (cx == x1 && cy == y1)
+                break;
+            if (count >= maxCells)
+            {
+                builder.Append(" -> truncated");
+                break;
+            }
+
+            previousX = cx;
+            previousY = cy;
+            first = false;
+            int e2 = err * 2;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                cx += sx;
+            }
+
+            if (e2 < dx)
+            {
+                err += dx;
+                cy += sy;
+            }
+        }
+
+        builder.Append("]");
+        return builder.ToString();
+    }
+
+    private static void AppendLineDecisionCell(System.Text.StringBuilder builder, NavigationWorld world, int x, int y, int previousX, int previousY, bool first)
+    {
+        bool inBounds = x >= 0 && x < world.Width && y >= 0 && y < world.Height;
+        builder.Append("(").Append(x).Append(',').Append(y).Append(")");
+        if (!inBounds)
+        {
+            builder.Append("{out}");
+            return;
+        }
+
+        int index = world.GetIndex(x, y);
+        bool walkable = world.WalkableMask != null && world.WalkableMask.Length == world.Width * world.Height && world.WalkableMask[index];
+        bool baseWalkable = world.BaseWalkableMask != null && world.BaseWalkableMask.Length == world.Width * world.Height && world.BaseWalkableMask[index];
+        int cost = TryGetCostFieldValue(world, x, y, out byte resolvedCost) ? resolvedCost : -1;
+        int island = world.IslandIds != null && world.IslandIds.Length == world.Width * world.Height ? world.IslandIds[index] : -1;
+        bool link = first || CanTraverseNeighborCells(world, previousX, previousY, x, y);
+        bool softBoundary = walkable && cost > 1 && IsBoundaryOnlySoftCostCell(world, x, y);
+        bool costStamp = walkable && IsCellAffectedByCostStamp(world, x, y);
+        builder.Append("{walk=").Append(walkable)
+            .Append(",base=").Append(baseWalkable)
+            .Append(",cost=").Append(cost)
+            .Append(",softBoundary=").Append(softBoundary)
+            .Append(",costStamp=").Append(costStamp)
+            .Append(",island=").Append(island)
+            .Append(",link=").Append(link)
+            .Append("}");
+    }
+
+    private static string BuildRegisteredObstacleSegmentDiagnostics(Vector3 fromPosition, Vector3 toPosition)
+    {
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(512);
+        builder.Append("[boxes=");
+        int count = 0;
+        foreach (BoxObstacle box in BoxObstacles.Values)
+        {
+            Vector3 half = box.HalfExtents;
+            if (!TryMeasureSegmentBoxDistance(fromPosition, toPosition, box.Center, half, out float distance, out Vector3 closestPoint))
+                continue;
+            float inflatedDistance = distance - Mathf.Max(0f, half.x > half.z ? half.x : half.z);
+            if (distance > Mathf.Max(_world.CellSize * 4f, 2f))
+                continue;
+
+            if (count > 0)
+                builder.Append(" | ");
+            builder.Append("{id=").Append(box.Id)
+                .Append(",center=").Append(box.Center)
+                .Append(",half=").Append(box.HalfExtents)
+                .Append(",dist=").Append(distance.ToString("F3"))
+                .Append(",inflatedDist=").Append(inflatedDistance.ToString("F3"))
+                .Append(",closest=").Append(closestPoint)
+                .Append(",grid=").Append(FormatBoundsGridRange(new Bounds(box.Center, box.HalfExtents * 2f)))
+                .Append("}");
+            count++;
+            if (count >= 8)
+            {
+                builder.Append(" | truncated");
+                break;
+            }
+        }
+
+        if (count == 0)
+            builder.Append("none");
+        builder.Append(" circles=");
+        count = 0;
+        foreach (CircleObstacle circle in CircleObstacles.Values)
+        {
+            if (!TryMeasureSegmentCircleDistance(fromPosition, toPosition, circle.Position, circle.Radius, out float distance, out Vector3 closestPoint))
+                continue;
+            if (distance > Mathf.Max(_world.CellSize * 4f, 2f))
+                continue;
+
+            if (count > 0)
+                builder.Append(" | ");
+            builder.Append("{id=").Append(circle.Id)
+                .Append(",center=").Append(circle.Position)
+                .Append(",radius=").Append(circle.Radius.ToString("F3"))
+                .Append(",dist=").Append(distance.ToString("F3"))
+                .Append(",closest=").Append(closestPoint)
+                .Append("}");
+            count++;
+            if (count >= 8)
+            {
+                builder.Append(" | truncated");
+                break;
+            }
+        }
+
+        if (count == 0)
+            builder.Append("none");
+        builder.Append(" nearestBoxes=");
+        AppendNearestRegisteredBoxes(builder, fromPosition, toPosition);
+        builder.Append(']');
+        return builder.ToString();
+    }
+
+    private static void AppendNearestRegisteredBoxes(System.Text.StringBuilder builder, Vector3 fromPosition, Vector3 toPosition)
+    {
+        const int maxNearest = 5;
+        int[] nearestIds = new int[maxNearest];
+        float[] nearestDistances = new float[maxNearest];
+        Vector3[] nearestCenters = new Vector3[maxNearest];
+        Vector3[] nearestHalfExtents = new Vector3[maxNearest];
+        string[] nearestGrids = new string[maxNearest];
+        for (int i = 0; i < maxNearest; i++)
+        {
+            nearestIds[i] = 0;
+            nearestDistances[i] = float.PositiveInfinity;
+            nearestCenters[i] = Vector3.zero;
+            nearestHalfExtents[i] = Vector3.zero;
+            nearestGrids[i] = "none";
+        }
+
+        foreach (BoxObstacle box in BoxObstacles.Values)
+        {
+            if (!TryMeasureSegmentBoxDistance(fromPosition, toPosition, box.Center, box.HalfExtents, out float distance, out _))
+                continue;
+
+            for (int i = 0; i < maxNearest; i++)
+            {
+                if (distance >= nearestDistances[i])
+                    continue;
+
+                for (int j = maxNearest - 1; j > i; j--)
+                {
+                    nearestIds[j] = nearestIds[j - 1];
+                    nearestDistances[j] = nearestDistances[j - 1];
+                    nearestCenters[j] = nearestCenters[j - 1];
+                    nearestHalfExtents[j] = nearestHalfExtents[j - 1];
+                    nearestGrids[j] = nearestGrids[j - 1];
+                }
+
+                nearestIds[i] = box.Id;
+                nearestDistances[i] = distance;
+                nearestCenters[i] = box.Center;
+                nearestHalfExtents[i] = box.HalfExtents;
+                nearestGrids[i] = FormatBoundsGridRange(new Bounds(box.Center, box.HalfExtents * 2f));
+                break;
+            }
+        }
+
+        if (float.IsPositiveInfinity(nearestDistances[0]))
+        {
+            builder.Append("none");
+            return;
+        }
+
+        for (int i = 0; i < maxNearest; i++)
+        {
+            if (float.IsPositiveInfinity(nearestDistances[i]))
+                break;
+            if (i > 0)
+                builder.Append(" | ");
+            builder.Append("{id=").Append(nearestIds[i])
+                .Append(",center=").Append(nearestCenters[i])
+                .Append(",half=").Append(nearestHalfExtents[i])
+                .Append(",dist=").Append(nearestDistances[i].ToString("F3"))
+                .Append(",grid=").Append(nearestGrids[i])
+                .Append("}");
+        }
+    }
+
+    private static bool TryMeasureSegmentBoxDistance(Vector3 segmentStart, Vector3 segmentEnd, Vector3 center, Vector3 halfExtents, out float distance, out Vector3 closestPoint)
+    {
+        Vector3 segment = segmentEnd - segmentStart;
+        segment.y = 0f;
+        float lengthSq = segment.sqrMagnitude;
+        if (lengthSq <= 0.0001f)
+        {
+            distance = float.PositiveInfinity;
+            closestPoint = segmentStart;
+            return false;
+        }
+
+        Vector3 centerOffset = center - segmentStart;
+        centerOffset.y = 0f;
+        float t = Mathf.Clamp01(Vector3.Dot(centerOffset, segment) / lengthSq);
+        closestPoint = segmentStart + segment * t;
+        Vector3 closestOnBox = new Vector3(
+            Mathf.Clamp(closestPoint.x, center.x - halfExtents.x, center.x + halfExtents.x),
+            closestPoint.y,
+            Mathf.Clamp(closestPoint.z, center.z - halfExtents.z, center.z + halfExtents.z));
+        Vector3 delta = closestPoint - closestOnBox;
+        delta.y = 0f;
+        distance = delta.magnitude;
+        return true;
+    }
+
+    private static bool TryMeasureSegmentCircleDistance(Vector3 segmentStart, Vector3 segmentEnd, Vector3 center, float radius, out float distance, out Vector3 closestPoint)
+    {
+        Vector3 segment = segmentEnd - segmentStart;
+        segment.y = 0f;
+        float lengthSq = segment.sqrMagnitude;
+        if (lengthSq <= 0.0001f)
+        {
+            distance = float.PositiveInfinity;
+            closestPoint = segmentStart;
+            return false;
+        }
+
+        Vector3 centerOffset = center - segmentStart;
+        centerOffset.y = 0f;
+        float t = Mathf.Clamp01(Vector3.Dot(centerOffset, segment) / lengthSq);
+        closestPoint = segmentStart + segment * t;
+        Vector3 delta = closestPoint - center;
+        delta.y = 0f;
+        distance = Mathf.Max(0f, delta.magnitude - radius);
+        return true;
+    }
+
+    private static string BuildPhysicsSegmentDiagnostics(Vector3 fromPosition, Vector3 toPosition, int agentTypeId)
+    {
+        Vector3 start = fromPosition + Vector3.up * 0.5f;
+        Vector3 end = toPosition + Vector3.up * 0.5f;
+        Vector3 delta = end - start;
+        float distance = delta.magnitude;
+        if (distance <= 0.0001f)
+            return "{empty}";
+
+        Vector3 direction = delta / distance;
+        RaycastHit[] hits = Physics.RaycastAll(start, direction, distance, ~0, QueryTriggerInteraction.Ignore);
+        Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(512);
+        builder.Append("{agentType=").Append(agentTypeId).Append(",hits=");
+        int count = 0;
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider collider = hits[i].collider;
+            if (collider == null)
+                continue;
+            if (count > 0)
+                builder.Append(" | ");
+            builder.Append("{name=").Append(collider.name)
+                .Append(",layer=").Append(LayerMask.LayerToName(collider.gameObject.layer))
+                .Append(",dist=").Append(hits[i].distance.ToString("F3"))
+                .Append(",point=").Append(hits[i].point)
+                .Append(",normal=").Append(hits[i].normal)
+                .Append("}");
+            count++;
+            if (count >= 8)
+            {
+                builder.Append(" | truncated");
+                break;
+            }
+        }
+
+        if (count == 0)
+            builder.Append("none");
+        builder.Append('}');
+        return builder.ToString();
     }
 
     private static Vector3 ResolveCellGroupCenter(Vector2Int[] cells)
@@ -8737,7 +14123,7 @@ public static class FlowFieldCrowdMovementSystem
                 continue;
             }
 
-            float cost = tile.Integration[tile.GetLocalIndex(cell.x, cell.y)];
+            float cost = GetTileIntegrationCostForDiagnostics(tile, cell.x, cell.y);
             builder.Append(float.IsPositiveInfinity(cost) ? "INF" : cost.ToString("F3"));
         }
 
@@ -8754,7 +14140,7 @@ public static class FlowFieldCrowdMovementSystem
         if (cells == null || cells.Length == 0)
             return "[]";
 
-        SectorPortalAccessEntry entry = GetOrBuildSectorPortalAccess(sector, sectorId, portalId);
+        SectorPortalAccessEntry entry = GetPrebuiltSectorPortalAccess(sector, sectorId, portalId);
         System.Text.StringBuilder builder = new System.Text.StringBuilder(cells.Length * 24);
         builder.Append('[');
         for (int i = 0; i < cells.Length; i++)
@@ -8775,7 +14161,7 @@ public static class FlowFieldCrowdMovementSystem
                 continue;
             }
 
-            float cost = entry.Integration[GetSectorLocalIndex(sector, cell.x, cell.y)];
+            float cost = DecodePortalAccessIntegrationCost(entry, GetSectorLocalIndex(sector, cell.x, cell.y));
             builder.Append(float.IsPositiveInfinity(cost) ? "INF" : cost.ToString("F3"));
         }
 
@@ -8785,8 +14171,12 @@ public static class FlowFieldCrowdMovementSystem
 
     private static string DescribeTileIntegrationSummary(FlowTileCacheEntry tile)
     {
-        if (tile == null || tile.Integration == null || tile.Integration.Length == 0)
-            return "empty";
+        if (tile == null)
+            return "tile=null";
+        if (tile.Integration == null || tile.Integration.Length == 0)
+            return tile.IntegrationReleased
+                ? $"released reachableFlags={CountReachableFlowCells(tile)} goalSummary={FormatIntegrationCosts(tile, tile.GoalCells)} seamSummaries={tile.PortalSeamIntegrationSummaries.Count}"
+                : "empty";
 
         int reachableCount = 0;
         int unreachableCount = 0;
@@ -8809,6 +14199,21 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         return $"reachable={reachableCount} unreachable={unreachableCount} minCost={(reachableCount > 0 ? minCost.ToString("F3") : "n/a")} maxCost={(reachableCount > 0 ? maxCost.ToString("F3") : "n/a")}";
+    }
+
+    private static int CountReachableFlowCells(FlowTileCacheEntry tile)
+    {
+        if (tile?.FlowFieldValues == null)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < tile.FlowFieldValues.Length; i++)
+        {
+            if (IsFlowReachable(tile, i))
+                count++;
+        }
+
+        return count;
     }
 
     private static BottleneckDecision EvaluateBottleneck(AgentRuntimeData agent, CorridorBottleneckDescriptor descriptor)
@@ -8839,7 +14244,7 @@ public static class FlowFieldCrowdMovementSystem
         Vector3 anchor = ResolveBottleneckAnchor(state, descriptor);
         float distanceToAnchor = Vector3.Distance(agent.Position, anchor);
         bool shouldApplyLaneBias = HasBottleneckTrafficContext(agent, descriptor, anchor);
-        Vector3 laneBias = shouldApplyLaneBias ? ResolveStableLaneBias(descriptor.CorridorAxis) : Vector3.zero;
+        Vector3 laneBias = shouldApplyLaneBias ? ResolveStableLaneBias(agent.Position, descriptor.CorridorAxis) : Vector3.zero;
         bool nearBottleneck = distanceToAnchor <= descriptor.InfluenceRadius;
         if (!nearBottleneck)
         {
@@ -8902,7 +14307,7 @@ public static class FlowFieldCrowdMovementSystem
 
         state.WaitingStartTimes.Remove(agent.Id);
         RefreshBottleneckWaitingOrder(state);
-        if (distanceToAnchor <= descriptor.InfluenceRadius * 0.85f)
+        if (distanceToAnchor <= ResolveBottleneckOccupiedRadius(descriptor))
         {
             state.OccupiedCount++;
             state.LastOccupiedTime = time;
@@ -8920,6 +14325,15 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         return BuildBottleneckDecision(state, 1f, ApplyCommittedLaneBias(state, agent, laneBias, anchor), Vector3.zero, true);
+    }
+
+    private static float ResolveBottleneckOccupiedRadius(CorridorBottleneckDescriptor descriptor)
+    {
+        float criticalRadius = Mathf.Max(_world.CellSize * 1.25f, Config.BottleneckInfluenceDistance);
+        if (descriptor.IsLongCorridor)
+            return Mathf.Min(descriptor.InfluenceRadius * 0.85f, criticalRadius);
+
+        return Mathf.Min(descriptor.InfluenceRadius * 0.85f, criticalRadius * 1.35f);
     }
 
     private static Vector3 ResolvePortalCorridorAxis(PortalData portal, Vector3 desiredDirection)
@@ -9059,13 +14473,35 @@ public static class FlowFieldCrowdMovementSystem
         return true;
     }
 
-    private static Vector3 ResolveStableLaneBias(Vector3 corridorAxis)
+    private static Vector3 ResolveStableLaneBias(Vector3 position, Vector3 corridorAxis)
     {
         Vector3 sideAxis = Vector3.Cross(Vector3.up, corridorAxis);
         if (sideAxis.sqrMagnitude <= 0.0001f)
             return Vector3.zero;
 
-        return sideAxis.normalized * Config.LaneBiasStrength;
+        sideAxis.Normalize();
+        if (!HasWalkableLaneSide(position, sideAxis) && !HasWalkableLaneSide(position, -sideAxis))
+            return Vector3.zero;
+
+        return sideAxis * Config.LaneBiasStrength;
+    }
+
+    private static bool HasWalkableLaneSide(Vector3 position, Vector3 sideAxis)
+    {
+        if (_world == null)
+            throw new InvalidOperationException("HasWalkableLaneSide failed: world is null.");
+        if (!_world.WorldToGrid(position, out int fromX, out int fromY) || !_world.IsWalkable(fromX, fromY))
+            return false;
+
+        int sideX = Mathf.RoundToInt(sideAxis.x);
+        int sideY = Mathf.RoundToInt(sideAxis.z);
+        if (sideX == 0 && sideY == 0)
+            return false;
+
+        int toX = fromX + sideX;
+        int toY = fromY + sideY;
+        return _world.IsWalkable(toX, toY)
+               && CanTraverseNeighborCells(_world, fromX, fromY, toX, toY);
     }
 
     private static CorridorBottleneckDescriptor BuildPortalBottleneckDescriptor(int portalId, int sectorId, int direction, Vector3 corridorAxis)
@@ -9162,7 +14598,8 @@ public static class FlowFieldCrowdMovementSystem
     {
         if (tile != null)
         {
-            Vector2 flow = tile.FlowDirections[tile.GetLocalIndex(currentX, currentY)];
+            int localIndex = tile.GetLocalIndex(currentX, currentY);
+            Vector2 flow = ResolveRuntimeFlowDirection(tile, currentX, currentY, localIndex);
             Vector3 flow3 = new Vector3(flow.x, 0f, flow.y);
             if (flow3.sqrMagnitude > 0.0001f)
                 return flow3.normalized;
@@ -9294,7 +14731,7 @@ public static class FlowFieldCrowdMovementSystem
         int spanMax,
         Vector3 corridorAxis)
     {
-        if (tile == null || !tile.HasLineOfSight[tile.GetLocalIndex(currentX, currentY)])
+        if (tile == null || !HasFlowLineOfSight(tile, tile.GetLocalIndex(currentX, currentY)))
             return false;
 
         int lateralOpenCount = 0;
@@ -9397,10 +14834,10 @@ public static class FlowFieldCrowdMovementSystem
 
         switch (agent.State)
         {
-            case GroupMoveCoordinator.AgentState.Combat:
+            case FlowFieldAgentState.Combat:
                 score += 2;
                 break;
-            case GroupMoveCoordinator.AgentState.Follow:
+            case FlowFieldAgentState.Follow:
                 score += 1;
                 break;
         }
@@ -9464,10 +14901,11 @@ public static class FlowFieldCrowdMovementSystem
     {
         float contextRadius = descriptor.InfluenceRadius * 1.35f;
         float lateralTolerance = Mathf.Max(self.Radius * 4f, _world.CellSize * 1.25f);
-        foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
+        List<AgentRuntimeData> nearbyAgents = CollectNearbyDynamicNeighbors(self.Position, self.Id, contextRadius);
+        for (int i = 0; i < nearbyAgents.Count; i++)
         {
-            AgentRuntimeData other = pair.Value;
-            if (other.Id == self.Id || other.IgnoreAgentCollision)
+            AgentRuntimeData other = nearbyAgents[i];
+            if (other.IgnoreAgentCollision)
                 continue;
 
             Vector3 toOther = other.Position - self.Position;
@@ -9494,10 +14932,11 @@ public static class FlowFieldCrowdMovementSystem
     {
         float forwardWindow = descriptor.InfluenceRadius * 1.75f;
         float lateralTolerance = Mathf.Max(self.Radius * 3.5f, _world.CellSize * 1.15f);
-        foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
+        List<AgentRuntimeData> nearbyAgents = CollectNearbyDynamicNeighbors(anchor, self.Id, forwardWindow);
+        for (int i = 0; i < nearbyAgents.Count; i++)
         {
-            AgentRuntimeData other = pair.Value;
-            if (other.Id == self.Id || other.IgnoreAgentCollision)
+            AgentRuntimeData other = nearbyAgents[i];
+            if (other.IgnoreAgentCollision)
                 continue;
 
             Vector3 offset = other.Position - anchor;
@@ -9619,20 +15058,31 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         Vector3 clampedAgentAvoidance = ClampAgentAvoidance(agentAvoidance, desiredDirection, maxSpeed);
+        Vector3 runtimeObstacleAvoidance = ResolvePendingRuntimeObstacleAvoidance(
+            self,
+            desiredDirection,
+            desiredVelocity,
+            maxSpeed,
+            out string runtimeObstacleDebug);
 
         Vector3 baseVelocity = desiredVelocity * bottleneck.SpeedScale + bottleneck.QueueBias;
-        Vector3 avoidance = clampedAgentAvoidance + boundaryAvoidance;
-        Vector3 laneVelocity = bottleneck.LaneBias * maxSpeed;
+        Vector3 avoidance = clampedAgentAvoidance + boundaryAvoidance + runtimeObstacleAvoidance;
+        Vector3 laneVelocity = ResolveWalkableLaneVelocity(self.Position, baseVelocity + avoidance * 0.75f, bottleneck.LaneBias * maxSpeed);
         Vector3 result = baseVelocity + avoidance * 0.75f + laneVelocity;
         result = ApplyEdgeRecovery(result, desiredDirection, edgeNormal, edgeDistance, self.Radius, maxSpeed);
-        result = ApplyLaneCommitment(result, laneVelocity, bottleneck, edgeNormal, edgeDistance, self.Radius, maxSpeed);
+        result = ApplyLaneCommitment(self.Position, result, laneVelocity, bottleneck, edgeNormal, edgeDistance, self.Radius, maxSpeed);
+        result = ConstrainVelocityToWalkableSteeringStep(self.Position, result, desiredVelocity, maxSpeed);
 
         Vector3 toGoal = goalPosition - self.Position;
         toGoal.y = 0f;
         if (bottleneck.SpeedScale > 0f && toGoal.sqrMagnitude > 0.0001f && Vector3.Dot(result, toGoal) < 0f)
             result = desiredVelocity * 0.35f + avoidance * 0.25f;
 
-        Vector3 clampedResult = Vector3.ClampMagnitude(result, maxSpeed);
+        Vector3 clampedResult = ConstrainVelocityToWalkableSteeringStep(
+            self.Position,
+            Vector3.ClampMagnitude(result, maxSpeed),
+            desiredVelocity,
+            maxSpeed);
         StoreSteeringDiagnostic(
             self,
             goalPosition,
@@ -9653,10 +15103,10 @@ public static class FlowFieldCrowdMovementSystem
         if (debugMove)
         {
             Debug.Log(
-                $"[FlowSteeringBreakdown] key={self.CharacterKey} pos={self.Position} desiredVel={desiredVelocity} " +
-                $"baseVel={baseVelocity} queueBias={bottleneck.QueueBias} laneVel={laneVelocity} " +
-                $"agentAvoid={agentAvoidance} clampedAgentAvoid={clampedAgentAvoidance} boundaryAvoid={boundaryAvoidance} " +
-                $"combinedAvoid={avoidance} edgeNormal={edgeNormal} edgeDist={edgeDistance:F3} resultPreClamp={result} maxSpeed={maxSpeed:F3}");
+                    $"[FlowSteeringBreakdown] key={self.CharacterKey} pos={self.Position} desiredVel={desiredVelocity} " +
+                    $"baseVel={baseVelocity} queueBias={bottleneck.QueueBias} laneVel={laneVelocity} " +
+                    $"agentAvoid={agentAvoidance} clampedAgentAvoid={clampedAgentAvoidance} boundaryAvoid={boundaryAvoidance} runtimeObstacleAvoid={runtimeObstacleAvoidance} " +
+                    $"combinedAvoid={avoidance} edgeNormal={edgeNormal} edgeDist={edgeDistance:F3} resultPreClamp={result} maxSpeed={maxSpeed:F3}");
 
             float forwardSpeed = desiredDirection.sqrMagnitude > 0.0001f ? Vector3.Dot(result, desiredDirection) : 0f;
             float lateralSpeed = desiredDirection.sqrMagnitude > 0.0001f
@@ -9664,6 +15114,7 @@ public static class FlowFieldCrowdMovementSystem
                 : result.magnitude;
             bool anomalousSteering = agentAvoidance.magnitude > maxSpeed * 1.2f
                                      || boundaryAvoidance.magnitude > maxSpeed * 0.45f
+                                     || runtimeObstacleAvoidance.magnitude > maxSpeed * 0.45f
                                      || forwardSpeed < maxSpeed * 0.35f
                                      || lateralSpeed > maxSpeed * 0.65f;
             if (anomalousSteering)
@@ -9674,6 +15125,7 @@ public static class FlowFieldCrowdMovementSystem
                     $"tileTarget={desiredResolution.TileTargetPosition} integration={desiredResolution.Integration:F3} " +
                     $"forwardSpeed={forwardSpeed:F3} lateralSpeed={lateralSpeed:F3} maxSpeed={maxSpeed:F3} " +
                     $"agentAvoidMag={agentAvoidance.magnitude:F3} boundaryAvoidMag={boundaryAvoidance.magnitude:F3} " +
+                    $"runtimeObstacleAvoidMag={runtimeObstacleAvoidance.magnitude:F3} runtimeObstacle={runtimeObstacleDebug} " +
                     $"edgeNormal={edgeNormal} edgeDist={edgeDistance:F3} topAvoiders={FormatTopAvoidContributors(topAvoidLogs, topAvoidScores)}");
             }
 
@@ -9739,6 +15191,7 @@ public static class FlowFieldCrowdMovementSystem
     }
 
     private static Vector3 ApplyLaneCommitment(
+        Vector3 position,
         Vector3 velocity,
         Vector3 laneVelocity,
         BottleneckDecision bottleneck,
@@ -9766,8 +15219,8 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         Vector3 correction = laneAxis * (minLaneSpeed - currentLaneSpeed);
-        velocity += correction;
-        return Vector3.ClampMagnitude(velocity, maxSpeed);
+        Vector3 corrected = Vector3.ClampMagnitude(velocity + correction, maxSpeed);
+        return IsPredictedStepWalkable(position, corrected) ? corrected : velocity;
     }
 
     private static Vector3 ResolvePredictiveAvoidanceContribution(
@@ -10099,6 +15552,197 @@ public static class FlowFieldCrowdMovementSystem
         return builder.ToString();
     }
 
+    private static Vector3 ResolvePendingRuntimeObstacleAvoidance(
+        AgentRuntimeData self,
+        Vector3 desiredDirection,
+        Vector3 desiredVelocity,
+        float maxSpeed,
+        out string debugSummary)
+    {
+        debugSummary = "none";
+        if (self == null)
+            throw new InvalidOperationException("ResolvePendingRuntimeObstacleAvoidance failed: self is null.");
+        if (_activeWorldState == null || _activeWorldState.World == null)
+            return Vector3.zero;
+        if (_activeWorldState.RuntimeDirtyJob == null && _activeWorldState.DirtyRuntimeObstacleSectors.Count == 0)
+            return Vector3.zero;
+        if (desiredDirection.sqrMagnitude <= 0.0001f || desiredVelocity.sqrMagnitude <= 0.0001f || maxSpeed <= 0.0001f)
+            return Vector3.zero;
+
+        Vector3 segmentStart = self.Position;
+        Vector3 segmentEnd = segmentStart + desiredDirection * Mathf.Max(_activeWorldState.World.CellSize * 2.5f, maxSpeed * Config.CrowdPredictionTime * 2f);
+        float bestRisk = 0f;
+        Vector3 bestAvoidance = Vector3.zero;
+        string bestDebug = "none";
+
+        foreach (BoxObstacle box in BoxObstacles.Values)
+        {
+            Vector3 halfExtents = box.HalfExtents;
+            halfExtents.x += self.Radius;
+            halfExtents.z += self.Radius;
+            if (!TryResolveSegmentBoxAvoidance(
+                    segmentStart,
+                    segmentEnd,
+                    desiredDirection,
+                    maxSpeed,
+                    box.Center,
+                    halfExtents,
+                    out Vector3 contribution,
+                    out float risk,
+                    out float closestDistance,
+                    out Vector3 closestPoint))
+            {
+                continue;
+            }
+
+            if (risk <= bestRisk)
+                continue;
+
+            bestRisk = risk;
+            bestAvoidance = contribution;
+            bestDebug = $"box={box.Id} risk={risk:F3} dist={closestDistance:F3} closest={closestPoint}";
+        }
+
+        foreach (CircleObstacle circle in CircleObstacles.Values)
+        {
+            if (!TryResolveSegmentCircleAvoidance(
+                    segmentStart,
+                    segmentEnd,
+                    desiredDirection,
+                    maxSpeed,
+                    circle.Position,
+                    circle.Radius + self.Radius,
+                    out Vector3 contribution,
+                    out float risk,
+                    out float closestDistance,
+                    out Vector3 closestPoint))
+            {
+                continue;
+            }
+
+            if (risk <= bestRisk)
+                continue;
+
+            bestRisk = risk;
+            bestAvoidance = contribution;
+            bestDebug = $"circle={circle.Id} risk={risk:F3} dist={closestDistance:F3} closest={closestPoint}";
+        }
+
+        debugSummary = bestDebug;
+        return bestAvoidance;
+    }
+
+    private static bool TryResolveSegmentBoxAvoidance(
+        Vector3 segmentStart,
+        Vector3 segmentEnd,
+        Vector3 desiredDirection,
+        float maxSpeed,
+        Vector3 center,
+        Vector3 halfExtents,
+        out Vector3 contribution,
+        out float risk,
+        out float closestDistance,
+        out Vector3 closestPoint)
+    {
+        contribution = Vector3.zero;
+        risk = 0f;
+        closestDistance = float.MaxValue;
+        closestPoint = segmentStart;
+
+        Vector3 segment = segmentEnd - segmentStart;
+        segment.y = 0f;
+        float segmentLengthSq = segment.sqrMagnitude;
+        if (segmentLengthSq <= 0.0001f)
+            return false;
+
+        Vector3 centerOffset = center - segmentStart;
+        centerOffset.y = 0f;
+        float t = Mathf.Clamp01(Vector3.Dot(centerOffset, segment) / segmentLengthSq);
+        closestPoint = segmentStart + segment * t;
+        Vector3 closestOnBox = new Vector3(
+            Mathf.Clamp(closestPoint.x, center.x - halfExtents.x, center.x + halfExtents.x),
+            closestPoint.y,
+            Mathf.Clamp(closestPoint.z, center.z - halfExtents.z, center.z + halfExtents.z));
+        Vector3 away = closestPoint - closestOnBox;
+        away.y = 0f;
+        closestDistance = away.magnitude;
+
+        float influence = Mathf.Max(halfExtents.x, halfExtents.z) + Mathf.Max(0.25f, maxSpeed * Config.CrowdPredictionTime);
+        if (closestDistance >= influence)
+            return false;
+
+        if (away.sqrMagnitude <= 0.0001f)
+        {
+            Vector3 local = closestPoint - center;
+            local.y = 0f;
+            float dx = halfExtents.x - Mathf.Abs(local.x);
+            float dz = halfExtents.z - Mathf.Abs(local.z);
+            away = dx < dz
+                ? new Vector3(Mathf.Sign(local.x == 0f ? desiredDirection.x : local.x), 0f, 0f)
+                : new Vector3(0f, 0f, Mathf.Sign(local.z == 0f ? desiredDirection.z : local.z));
+            if (away.sqrMagnitude <= 0.0001f)
+                away = Vector3.Cross(Vector3.up, desiredDirection);
+        }
+
+        away.Normalize();
+        Vector3 tangent = Vector3.Cross(Vector3.up, away);
+        if (Vector3.Dot(tangent, desiredDirection) < 0f)
+            tangent = -tangent;
+
+        risk = Mathf.Clamp01(1f - closestDistance / Mathf.Max(influence, 0.001f));
+        contribution = (tangent * (0.9f * risk) - desiredDirection * (0.25f * risk)) * maxSpeed;
+        return contribution.sqrMagnitude > 0.0001f;
+    }
+
+    private static bool TryResolveSegmentCircleAvoidance(
+        Vector3 segmentStart,
+        Vector3 segmentEnd,
+        Vector3 desiredDirection,
+        float maxSpeed,
+        Vector3 center,
+        float radius,
+        out Vector3 contribution,
+        out float risk,
+        out float closestDistance,
+        out Vector3 closestPoint)
+    {
+        contribution = Vector3.zero;
+        risk = 0f;
+        closestDistance = float.MaxValue;
+        closestPoint = segmentStart;
+
+        Vector3 segment = segmentEnd - segmentStart;
+        segment.y = 0f;
+        float segmentLengthSq = segment.sqrMagnitude;
+        if (segmentLengthSq <= 0.0001f)
+            return false;
+
+        Vector3 centerOffset = center - segmentStart;
+        centerOffset.y = 0f;
+        float t = Mathf.Clamp01(Vector3.Dot(centerOffset, segment) / segmentLengthSq);
+        closestPoint = segmentStart + segment * t;
+        Vector3 away = closestPoint - center;
+        away.y = 0f;
+        closestDistance = Mathf.Max(0f, away.magnitude - radius);
+        float influence = radius + Mathf.Max(0.25f, maxSpeed * Config.CrowdPredictionTime);
+        if (closestDistance >= influence)
+            return false;
+
+        if (away.sqrMagnitude <= 0.0001f)
+            away = Vector3.Cross(Vector3.up, desiredDirection);
+        if (away.sqrMagnitude <= 0.0001f)
+            return false;
+
+        away.Normalize();
+        Vector3 tangent = Vector3.Cross(Vector3.up, away);
+        if (Vector3.Dot(tangent, desiredDirection) < 0f)
+            tangent = -tangent;
+
+        risk = Mathf.Clamp01(1f - closestDistance / Mathf.Max(influence, 0.001f));
+        contribution = (tangent * (0.85f * risk) - desiredDirection * (0.2f * risk)) * maxSpeed;
+        return contribution.sqrMagnitude > 0.0001f;
+    }
+
     private static Vector3 ClampAgentAvoidance(Vector3 avoidance, Vector3 desiredDirection, float maxSpeed)
     {
         if (avoidance.sqrMagnitude <= 0.0001f || desiredDirection.sqrMagnitude <= 0.0001f)
@@ -10116,6 +15760,127 @@ public static class FlowFieldCrowdMovementSystem
         return forwardComponent + lateralComponent;
     }
 
+    private static Vector3 ResolveWalkableLaneVelocity(Vector3 position, Vector3 baseVelocity, Vector3 laneVelocity)
+    {
+        if (laneVelocity.sqrMagnitude <= 0.0001f)
+            return laneVelocity;
+        if (IsPredictedStepWalkable(position, baseVelocity + laneVelocity))
+            return laneVelocity;
+        if (IsPredictedStepWalkable(position, baseVelocity))
+            return Vector3.zero;
+
+        Vector3 halfLane = laneVelocity * 0.5f;
+        return IsPredictedStepWalkable(position, baseVelocity + halfLane) ? halfLane : Vector3.zero;
+    }
+
+    private static Vector3 ConstrainVelocityToWalkableSteeringStep(Vector3 position, Vector3 velocity, Vector3 preferredVelocity, float maxSpeed)
+    {
+        if (velocity.sqrMagnitude <= 0.0001f || maxSpeed <= 0.0001f)
+            return velocity;
+        if (IsPredictedStepWalkable(position, velocity))
+            return velocity;
+
+        Vector3 boundaryLimited = ClampVelocityInsideCurrentWalkableCell(position, velocity);
+        if (boundaryLimited.sqrMagnitude > 0.0001f && IsPredictedStepWalkable(position, boundaryLimited))
+            return boundaryLimited;
+
+        Vector3 preferredDirection = preferredVelocity;
+        preferredDirection.y = 0f;
+        if (preferredDirection.sqrMagnitude <= 0.0001f)
+            preferredDirection = velocity;
+        preferredDirection.y = 0f;
+        if (preferredDirection.sqrMagnitude <= 0.0001f)
+            return Vector3.zero;
+
+        preferredDirection.Normalize();
+        Vector3 forward = preferredDirection * Mathf.Min(maxSpeed, Mathf.Max(Vector3.Dot(velocity, preferredDirection), maxSpeed * WalkableSteeringCandidateMinSpeedRatio));
+        if (IsPredictedStepWalkable(position, forward))
+            return forward;
+
+        Vector3 lateral = Vector3.ProjectOnPlane(velocity, preferredDirection);
+        lateral.y = 0f;
+        if (lateral.sqrMagnitude > 0.0001f)
+        {
+            Vector3 projected = Vector3.ClampMagnitude(lateral, maxSpeed);
+            if (IsPredictedStepWalkable(position, projected))
+                return projected;
+        }
+
+        Vector3 best = Vector3.zero;
+        float bestScore = float.NegativeInfinity;
+        TrySelectWalkableSteeringCandidate(position, preferredDirection * (maxSpeed * 0.5f), preferredDirection, velocity, ref best, ref bestScore);
+        TrySelectWalkableSteeringCandidate(position, preferredDirection * (maxSpeed * 0.25f), preferredDirection, velocity, ref best, ref bestScore);
+        TrySelectWalkableSteeringCandidate(position, Vector3.Cross(Vector3.up, preferredDirection) * (maxSpeed * 0.35f), preferredDirection, velocity, ref best, ref bestScore);
+        TrySelectWalkableSteeringCandidate(position, Vector3.Cross(preferredDirection, Vector3.up) * (maxSpeed * 0.35f), preferredDirection, velocity, ref best, ref bestScore);
+
+        return best;
+    }
+
+    private static Vector3 ClampVelocityInsideCurrentWalkableCell(Vector3 position, Vector3 velocity)
+    {
+        if (_world == null)
+            throw new InvalidOperationException("ClampVelocityInsideCurrentWalkableCell failed: world is null.");
+        if (!_world.WorldToGrid(position, out int cellX, out int cellY) || !_world.IsWalkable(cellX, cellY))
+            return velocity;
+
+        float dt = ResolveSteeringPredictionDeltaTime();
+        if (dt <= 0.0001f)
+            return velocity;
+
+        float epsilon = Mathf.Max(0.001f, _world.CellSize * 0.001f);
+        float minX = _world.Origin.x + cellX * _world.CellSize + epsilon;
+        float maxX = minX + _world.CellSize - epsilon * 2f;
+        float minZ = _world.Origin.z + cellY * _world.CellSize + epsilon;
+        float maxZ = minZ + _world.CellSize - epsilon * 2f;
+        Vector3 predicted = position + velocity * dt;
+        predicted.x = Mathf.Clamp(predicted.x, minX, maxX);
+        predicted.z = Mathf.Clamp(predicted.z, minZ, maxZ);
+        Vector3 clamped = (predicted - position) / dt;
+        clamped.y = velocity.y;
+        return clamped;
+    }
+
+    private static void TrySelectWalkableSteeringCandidate(
+        Vector3 position,
+        Vector3 candidate,
+        Vector3 preferredDirection,
+        Vector3 originalVelocity,
+        ref Vector3 best,
+        ref float bestScore)
+    {
+        if (candidate.sqrMagnitude <= 0.0001f || !IsPredictedStepWalkable(position, candidate))
+            return;
+
+        float score = Vector3.Dot(candidate, preferredDirection) + Vector3.Dot(candidate.normalized, originalVelocity.normalized) * 0.1f;
+        if (score <= bestScore)
+            return;
+
+        bestScore = score;
+        best = candidate;
+    }
+
+    private static bool IsPredictedStepWalkable(Vector3 position, Vector3 velocity)
+    {
+        Vector3 predicted = position + velocity * ResolveSteeringPredictionDeltaTime();
+        if (!_world.WorldToGrid(position, out int fromX, out int fromY))
+            return false;
+        if (!_world.WorldToGrid(predicted, out int toX, out int toY))
+            return false;
+        if (!_world.IsWalkable(fromX, fromY))
+            return false;
+        if (!_world.IsWalkable(toX, toY))
+            return false;
+        if (fromX == toX && fromY == toY)
+            return true;
+
+        return CanTraverseNeighborCells(_world, fromX, fromY, toX, toY);
+    }
+
+    private static float ResolveSteeringPredictionDeltaTime()
+    {
+        return _hasTestTimeOverride ? 0.2f : Mathf.Max(0.05f, Time.deltaTime > 0f ? Time.deltaTime : 0.1f);
+    }
+
     private static Vector3 ResolveBoundaryAvoidance(
         Vector3 position,
         Vector3 desiredDirection,
@@ -10130,8 +15895,8 @@ public static class FlowFieldCrowdMovementSystem
         if (_world == null)
             throw new InvalidOperationException("ResolveBoundaryAvoidance failed: world is null.");
 
-        if (!TryResolveNavEdgeData(position, agentTypeId, out edgeNormal, out edgeDistance)
-            && !TryResolveGridEdgeData(position, desiredDirection, out edgeNormal, out edgeDistance))
+        if (!TryResolveGridEdgeData(position, desiredDirection, out edgeNormal, out edgeDistance)
+            && !TryResolveNavEdgeData(position, agentTypeId, out edgeNormal, out edgeDistance))
         {
             return Vector3.zero;
         }
@@ -10357,7 +16122,7 @@ public static class FlowFieldCrowdMovementSystem
 
         int targetId = ResolveAgentId(currentTarget);
         int rawGoalCellIndex = _world.GetIndex(rawGoalX, rawGoalY);
-        MovingTargetAnchorKey anchorKey = new MovingTargetAnchorKey(targetId);
+        MovingTargetAnchorKey anchorKey = new MovingTargetAnchorKey(targetId, rawGoalCellIndex);
         if (!MovingTargetAnchors.TryGetValue(anchorKey, out MovingTargetAnchor anchor))
         {
             anchor = new MovingTargetAnchor { Key = anchorKey };
@@ -10446,7 +16211,7 @@ public static class FlowFieldCrowdMovementSystem
             return false;
 
         if (!_world.IsWalkable(startX, startY)
-            && !TryFindNearestWalkable(_world, startX, startY, 3, out startX, out startY))
+            && !TryResolveNearbyStartWalkable(_world, self.Position, startX, startY, out startX, out startY))
         {
             return false;
         }
@@ -10571,6 +16336,29 @@ public static class FlowFieldCrowdMovementSystem
             MovingTargetAnchors.Remove(expiredIds[i]);
     }
 
+    private static void TrimCombatTargetSlotCache()
+    {
+        if (CombatTargetSlotCache.Count == 0)
+            return;
+
+        int expireBeforeFrame = GetFrameCount() - CombatTargetSlotCacheFrameLifetime;
+        List<CombatTargetSlotKey> expiredKeys = null;
+        foreach (KeyValuePair<CombatTargetSlotKey, CombatTargetSlotEntry> pair in CombatTargetSlotCache)
+        {
+            if (pair.Value != null && pair.Value.LastUsedFrame >= expireBeforeFrame)
+                continue;
+
+            expiredKeys ??= new List<CombatTargetSlotKey>();
+            expiredKeys.Add(pair.Key);
+        }
+
+        if (expiredKeys == null)
+            return;
+
+        for (int i = 0; i < expiredKeys.Count; i++)
+            CombatTargetSlotCache.Remove(expiredKeys[i]);
+    }
+
     private static void ClearStableGoal(AgentRuntimeData agent)
     {
         if (agent == null)
@@ -10598,8 +16386,17 @@ public static class FlowFieldCrowdMovementSystem
         float selfRadius = Mathf.Max(ResolveCollisionRadius(self), agent.Radius);
         float requiredDistance = Mathf.Max(selfRadius * 2f + NavigationGoalOccupancyPadding, selfRadius + 0.2f);
         int ignoredTargetId = ResolveIgnoredGoalOccupancyTargetId(self, goalPosition);
+        float distanceToGoal = HorizontalDistanceXZ(self.Position, goalPosition);
+        float blockingActivationDistance = Mathf.Max(requiredDistance * 4f, (_world?.CellSize ?? 1f) * 5f);
+        float reservationActivationDistance = Mathf.Max(requiredDistance * 2f, (_world?.CellSize ?? 1f) * 2f);
+        bool useBlockingAgents = distanceToGoal <= blockingActivationDistance;
+        bool useReservations = distanceToGoal <= reservationActivationDistance;
+        if (!useBlockingAgents)
+        {
+            return goalPosition;
+        }
 
-        if (IsNavigationGoalOccupiedByOther(selfId, ignoredTargetId, goalPosition, requiredDistance, out int reservingAgentId))
+        if (IsNavigationGoalOccupiedByOther(selfId, ignoredTargetId, goalPosition, requiredDistance, useReservations, out int reservingAgentId))
         {
             Vector3 rotatedGoal = ResolveRotatedNearbyGoal(self, agent, goalPosition, ignoredTargetId, selfRadius, requiredDistance, preferLateral: true);
             if (GameDebugSettings.IsEnabled(DebugCategory.Move)
@@ -10679,7 +16476,7 @@ public static class FlowFieldCrowdMovementSystem
                 if (ResolveIslandIdForDiagnostics(_world, resolvedX, resolvedY) != goalIsland)
                     continue;
 
-                bool occupied = IsNavigationGoalOccupiedByOther(ResolveAgentId(self), targetId, resolvedWorld, requiredDistance, out _);
+                bool occupied = IsNavigationGoalOccupiedByOther(ResolveAgentId(self), targetId, resolvedWorld, requiredDistance, true, out _);
                 if (occupied)
                     continue;
 
@@ -10722,6 +16519,7 @@ public static class FlowFieldCrowdMovementSystem
         int targetId,
         Vector3 position,
         float requiredDistance,
+        bool includeReservations,
         out int reservingAgentId)
     {
         int frame = GetFrameCount();
@@ -10732,26 +16530,32 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         reservingAgentId = 0;
-        float requiredDistanceSq = requiredDistance * requiredDistance;
+        float reservationDistance = _world != null
+            ? Mathf.Min(requiredDistance, _world.CellSize * 0.9f)
+            : requiredDistance;
+        float reservationDistanceSq = reservationDistance * reservationDistance;
         float bestDistance = float.PositiveInfinity;
-        for (int i = 0; i < NavigationGoalReservations.Count; i++)
+        if (includeReservations)
         {
-            NavigationGoalReservation reservation = NavigationGoalReservations[i];
-            if (reservation.SelfId == selfId)
-                continue;
+            for (int i = 0; i < NavigationGoalReservations.Count; i++)
+            {
+                NavigationGoalReservation reservation = NavigationGoalReservations[i];
+                if (reservation.SelfId == selfId)
+                    continue;
 
-            Vector3 offset = reservation.Point - position;
-            offset.y = 0f;
-            float distanceSq = offset.sqrMagnitude;
-            if (distanceSq >= requiredDistanceSq)
-                continue;
+                Vector3 offset = reservation.Point - position;
+                offset.y = 0f;
+                float distanceSq = offset.sqrMagnitude;
+                if (distanceSq >= reservationDistanceSq)
+                    continue;
 
-            float distance = Mathf.Sqrt(distanceSq);
-            if (distance >= bestDistance)
-                continue;
+                float distance = Mathf.Sqrt(distanceSq);
+                if (distance >= bestDistance)
+                    continue;
 
-            bestDistance = distance;
-            reservingAgentId = reservation.SelfId;
+                bestDistance = distance;
+                reservingAgentId = reservation.SelfId;
+            }
         }
 
         if (TryFindBlockingAgentSpatial(selfId, targetId, position, requiredDistance, out int blockingAgentId, out float blockingDistance)
@@ -10803,8 +16607,8 @@ public static class FlowFieldCrowdMovementSystem
         if (!world.IsWalkable(startX, startY) || !world.IsWalkable(goalX, goalY))
             return false;
 
-        int startIsland = world.IslandIds[world.GetIndex(startX, startY)];
-        int goalIsland = world.IslandIds[world.GetIndex(goalX, goalY)];
+        int startIsland = ResolveIslandId(world, startX, startY);
+        int goalIsland = ResolveIslandId(world, goalX, goalY);
         return startIsland > 0 && startIsland == goalIsland;
     }
 
@@ -10844,9 +16648,18 @@ public static class FlowFieldCrowdMovementSystem
 
     private static int ResolveIslandIdForDiagnostics(NavigationWorld world, int x, int y)
     {
+        return ResolveIslandId(world, x, y);
+    }
+
+    private static int ResolveIslandId(NavigationWorld world, int x, int y)
+    {
         if (world == null || world.IslandIds == null || x < 0 || x >= world.Width || y < 0 || y >= world.Height)
             return -1;
+        if (TryGetSectorForCell(world, x, y, out SectorData sector) && sector.UniformIslandId > 0)
+            return sector.UniformIslandId;
 
+        if (world.IslandIds.Length != world.Width * world.Height)
+            return -1;
         return world.IslandIds[world.GetIndex(x, y)];
     }
 
@@ -10895,6 +16708,7 @@ public static class FlowFieldCrowdMovementSystem
     }
 
     private static string BuildGoalResolutionIslandDiagnostics(
+        NavigationWorld world,
         IEntityContext self,
         Vector3 desiredGoal,
         int startX,
@@ -10908,14 +16722,14 @@ public static class FlowFieldCrowdMovementSystem
         int fullIslandY,
         float fullIslandDistance)
     {
-        if (_world == null)
+        if (world == null)
             return $"[FlowGoalResolutionIslandDiag] world=null desired={desiredGoal}";
 
-        int goalIsland = ResolveIslandIdForDiagnostics(_world, goalX, goalY);
-        Vector3 startWorld = _world.GridToWorldCenter(startX, startY);
-        Vector3 goalWorld = _world.GridToWorldCenter(goalX, goalY);
+        int goalIsland = ResolveIslandIdForDiagnostics(world, goalX, goalY);
+        Vector3 startWorld = world.GridToWorldCenter(startX, startY);
+        Vector3 goalWorld = world.GridToWorldCenter(goalX, goalY);
         string fullIslandResult = fullIslandFound
-            ? $"fullIslandNearest=({fullIslandX},{fullIslandY}) world={_world.GridToWorldCenter(fullIslandX, fullIslandY)} dist={fullIslandDistance:F3}"
+            ? $"fullIslandNearest=({fullIslandX},{fullIslandY}) world={world.GridToWorldCenter(fullIslandX, fullIslandY)} dist={fullIslandDistance:F3}"
             : "fullIslandNearest=none";
         IEntityContext target = self?.TargetComp?.CurrentTarget;
         string selfInfo = self != null
@@ -10926,23 +16740,23 @@ public static class FlowFieldCrowdMovementSystem
             : "target=null";
         NavMeshQueryFilter filter = new NavMeshQueryFilter
         {
-            agentTypeID = _world.AgentTypeId,
+            agentTypeID = world.AgentTypeId,
             areaMask = NavMesh.AllAreas
         };
-        float navSampleRadius = Mathf.Max(0.2f, _world.CellSize * 0.75f);
-        string startNeighborhood = BuildWalkableNeighborhoodDiagnostics(_world, startX, startY, 2, filter, navSampleRadius);
-        string goalNeighborhood = BuildWalkableNeighborhoodDiagnostics(_world, goalX, goalY, 2, filter, navSampleRadius);
+        float navSampleRadius = Mathf.Max(0.2f, world.CellSize * 0.75f);
+        string startNeighborhood = BuildWalkableNeighborhoodDiagnostics(world, startX, startY, 2, filter, navSampleRadius);
+        string goalNeighborhood = BuildWalkableNeighborhoodDiagnostics(world, goalX, goalY, 2, filter, navSampleRadius);
 
         return $"[FlowGoalResolutionIslandDiag] local same-island goal resolution failed desired={desiredGoal} " +
                $"start=({startX},{startY}) island={startIsland} world={startWorld} " +
                $"goal=({goalX},{goalY}) island={goalIsland} world={goalWorld} radiusCells={radiusCells} " +
-               $"worldVersion={_world.Version} agentType={_world.AgentTypeId} islandCount={_world.IslandCount} " +
+               $"worldVersion={world.Version} agentType={world.AgentTypeId} islandCount={world.IslandCount} " +
                $"runtimeDirtySectors={(_activeWorldState != null ? _activeWorldState.DirtyRuntimeObstacleSectors.Count : -1)} " +
                $"runtimeDirtyReason={_lastRuntimeObstacleDirtyReason} circleObstacles={CircleObstacles.Count} boxObstacles={BoxObstacles.Count} " +
                $"{fullIslandResult} {selfInfo} {targetInfo} desiredNav={FormatNavSampleDiagnostics(desiredGoal)} " +
                $"startNav={FormatNavSampleDiagnostics(startWorld)} goalCellNav={FormatNavSampleDiagnostics(goalWorld)} " +
-               $"startNeighborhood={startNeighborhood} startLinks={BuildNeighborLinkDiagnostics(_world, startX, startY, 2)} " +
-               $"goalNeighborhood={goalNeighborhood} goalLinks={BuildNeighborLinkDiagnostics(_world, goalX, goalY, 2)}";
+               $"startNeighborhood={startNeighborhood} startLinks={BuildNeighborLinkDiagnostics(world, startX, startY, 2)} " +
+               $"goalNeighborhood={goalNeighborhood} goalLinks={BuildNeighborLinkDiagnostics(world, goalX, goalY, 2)}";
     }
 
     private static bool TryFindNearestCellInIsland(NavigationWorld world, int startX, int startY, int islandId, int radius, out int resultX, out int resultY, out int distance)
@@ -10961,8 +16775,7 @@ public static class FlowFieldCrowdMovementSystem
                 if (x < 0 || x >= world.Width || y < 0 || y >= world.Height)
                     continue;
 
-                int index = world.GetIndex(x, y);
-                if (world.IslandIds[index] != islandId)
+                if (ResolveIslandId(world, x, y) != islandId)
                     continue;
 
                 int candidateDistance = Mathf.Abs(x - startX) + Mathf.Abs(y - startY);
@@ -11042,8 +16855,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             for (int x = minX; x <= maxX; x++)
             {
-                int index = world.GetIndex(x, y);
-                if (!world.IsWalkable(x, y) || world.IslandIds[index] != islandId)
+                if (!world.IsWalkable(x, y) || ResolveIslandId(world, x, y) != islandId)
                     continue;
 
                 Vector3 worldCenter = world.GridToWorldCenter(x, y);
@@ -11164,6 +16976,43 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    private static bool TryResolveNearbyStartWalkable(NavigationWorld world, Vector3 position, int startX, int startY, out int resultX, out int resultY)
+    {
+        resultX = startX;
+        resultY = startY;
+        if (world == null)
+            throw new InvalidOperationException("TryResolveNearbyStartWalkable failed: world is null.");
+
+        float maxSnapDistance = Mathf.Max(world.CellSize * 0.45f, 0.25f);
+        float bestDistanceSq = maxSnapDistance * maxSnapDistance;
+        bool found = false;
+        for (int y = startY - 1; y <= startY + 1; y++)
+        {
+            for (int x = startX - 1; x <= startX + 1; x++)
+            {
+                if (!world.IsWalkable(x, y))
+                    continue;
+
+                float minX = world.Origin.x + x * world.CellSize;
+                float maxX = minX + world.CellSize;
+                float minZ = world.Origin.z + y * world.CellSize;
+                float maxZ = minZ + world.CellSize;
+                float dx = position.x < minX ? minX - position.x : position.x > maxX ? position.x - maxX : 0f;
+                float dz = position.z < minZ ? minZ - position.z : position.z > maxZ ? position.z - maxZ : 0f;
+                float distanceSq = dx * dx + dz * dz;
+                if (distanceSq > bestDistanceSq)
+                    continue;
+
+                bestDistanceSq = distanceSq;
+                resultX = x;
+                resultY = y;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
     private static bool HasGridLineOfSight(NavigationWorld world, int x0, int y0, int x1, int y1)
     {
         int startX = x0;
@@ -11186,9 +17035,108 @@ public static class FlowFieldCrowdMovementSystem
             if (!world.IsWalkable(cx, cy))
                 return false;
 
-            if (world.CostField != null
-                && world.CostField.Length == world.Width * world.Height
-                && world.CostField[world.GetIndex(cx, cy)] > 1)
+            if (GetCostFieldValueStrict(world, cx, cy) > 1)
+            {
+                return false;
+            }
+
+            if (!first && !CanTraverseNeighborCells(world, previousX, previousY, cx, cy))
+                return false;
+
+            if (cx == x1 && cy == y1)
+                return HasNavAnchorLineOfSight(world, startX, startY, goalX, goalY);
+
+            previousX = cx;
+            previousY = cy;
+            first = false;
+            int e2 = err * 2;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                cx += sx;
+            }
+
+            if (e2 < dx)
+            {
+                err += dx;
+                cy += sy;
+            }
+        }
+    }
+
+    private static bool HasPendingDirectLineOfSight(NavigationWorld world, int x0, int y0, int x1, int y1)
+    {
+        int startX = x0;
+        int startY = y0;
+        int goalX = x1;
+        int goalY = y1;
+        int dx = Mathf.Abs(x1 - x0);
+        int dy = Mathf.Abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sy = y0 < y1 ? 1 : -1;
+        int err = dx - dy;
+        int cx = x0;
+        int cy = y0;
+        int previousX = x0;
+        int previousY = y0;
+        bool first = true;
+
+        while (true)
+        {
+            if (!world.IsWalkable(cx, cy))
+                return false;
+
+            int cellCost = GetCostFieldValueStrict(world, cx, cy);
+            if (cellCost > 1 && !IsBoundaryOnlySoftCostCell(world, cx, cy))
+                return false;
+
+            if (!first && !CanTraverseNeighborCells(world, previousX, previousY, cx, cy))
+                return false;
+
+            if (cx == x1 && cy == y1)
+                return HasNavAnchorLineOfSight(world, startX, startY, goalX, goalY);
+
+            previousX = cx;
+            previousY = cy;
+            first = false;
+            int e2 = err * 2;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                cx += sx;
+            }
+
+            if (e2 < dx)
+            {
+                err += dx;
+                cy += sy;
+            }
+        }
+    }
+
+    private static bool HasSoftCostTolerantGridLineOfSight(NavigationWorld world, int x0, int y0, int x1, int y1, int maxAllowedCost)
+    {
+        int startX = x0;
+        int startY = y0;
+        int goalX = x1;
+        int goalY = y1;
+        int dx = Mathf.Abs(x1 - x0);
+        int dy = Mathf.Abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sy = y0 < y1 ? 1 : -1;
+        int err = dx - dy;
+        int cx = x0;
+        int cy = y0;
+        int previousX = x0;
+        int previousY = y0;
+        bool first = true;
+
+        while (true)
+        {
+            if (!world.IsWalkable(cx, cy))
+                return false;
+
+            if (GetCostFieldValueStrict(world, cx, cy) > maxAllowedCost)
             {
                 return false;
             }
@@ -11266,6 +17214,8 @@ public static class FlowFieldCrowdMovementSystem
         int sourceMaxX = Mathf.Min(world.Width - 1, sectorMaxX + padding);
         int sourceMaxY = Mathf.Min(world.Height - 1, sectorMaxY + padding);
         RebuildCostFieldInBounds(world, sourceMinX, sourceMinY, sourceMaxX, sourceMaxY, sectorMinX, sectorMinY, sectorMaxX, sectorMaxY, costStamps);
+        sector.IsClearCostField = IsSectorCostFieldClear(world, sector);
+        sector.IsClearFlowTile = IsSectorClearFlowTile(world, sector);
     }
 
     private static void RebuildCostFieldInBounds(
@@ -11283,7 +17233,7 @@ public static class FlowFieldCrowdMovementSystem
         float[] wallDistance = GetWallDistanceScratch(world.Width * world.Height);
         float wallCostBlurRadiusCells = ResolveWallCostBlurRadiusCells(world);
 
-        OpenSet.Clear();
+        MinHeap openSet = new MinHeap();
         for (int y = sourceMinY; y <= sourceMaxY; y++)
         {
             for (int x = sourceMinX; x <= sourceMaxX; x++)
@@ -11294,7 +17244,7 @@ public static class FlowFieldCrowdMovementSystem
                     if (IsInsideBounds(x, y, writeMinX, writeMinY, writeMaxX, writeMaxY))
                         world.CostField[index] = 255;
                     wallDistance[index] = 0f;
-                    OpenSet.Push(index, 0f);
+                    openSet.Push(index, 0f);
                     continue;
                 }
 
@@ -11304,13 +17254,13 @@ public static class FlowFieldCrowdMovementSystem
                     continue;
 
                 wallDistance[index] = 1f;
-                OpenSet.Push(index, 1f);
+                openSet.Push(index, 1f);
             }
         }
 
-        while (OpenSet.Count > 0)
+        while (openSet.Count > 0)
         {
-            QueueNode node = OpenSet.Pop();
+            QueueNode node = openSet.Pop();
             if (node.Cost > wallDistance[node.Index] + 0.0001f)
                 continue;
             if (node.Cost >= wallCostBlurRadiusCells)
@@ -11335,7 +17285,7 @@ public static class FlowFieldCrowdMovementSystem
                     continue;
 
                 wallDistance[nextIndex] = newDistance;
-                OpenSet.Push(nextIndex, newDistance);
+                openSet.Push(nextIndex, newDistance);
             }
         }
 
@@ -11350,15 +17300,14 @@ public static class FlowFieldCrowdMovementSystem
                     continue;
                 }
 
+                int penalty = ResolveSlopeCostPenalty(world, x, y);
                 float distance = wallDistance[index];
-                if (float.IsPositiveInfinity(distance) || distance > wallCostBlurRadiusCells)
+                if (!float.IsPositiveInfinity(distance) && distance <= wallCostBlurRadiusCells)
                 {
-                    world.CostField[index] = 1;
-                    continue;
+                    float t = Mathf.Clamp01((wallCostBlurRadiusCells - distance) / Mathf.Max(0.001f, wallCostBlurRadiusCells - 1f));
+                    penalty += Mathf.RoundToInt(Mathf.Lerp(WallCostOuterPenalty, WallCostAdjacentPenalty, t));
                 }
 
-                float t = Mathf.Clamp01((wallCostBlurRadiusCells - distance) / Mathf.Max(0.001f, wallCostBlurRadiusCells - 1f));
-                int penalty = Mathf.RoundToInt(Mathf.Lerp(WallCostOuterPenalty, WallCostAdjacentPenalty, t));
                 world.CostField[index] = (byte)Mathf.Clamp(1 + penalty, 1, 254);
             }
         }
@@ -11373,6 +17322,40 @@ public static class FlowFieldCrowdMovementSystem
 
         float extraRadiusCells = Mathf.Max(0f, (ResolveAgentTypeRadius(world.AgentTypeId) - 0.5f) / Mathf.Max(0.001f, world.CellSize));
         return WallCostBlurRadiusCells + extraRadiusCells;
+    }
+
+    private static int ResolveSlopeCostPenalty(NavigationWorld world, int worldX, int worldY)
+    {
+        if (!Config.UseNavMeshSlopeCost || Config.SlopeCostPerCellHeight <= 0f)
+            return 0;
+        if (world.CellNavAnchors == null || world.CellNavAnchors.Length != world.Width * world.Height)
+            return 0;
+
+        int index = world.GetIndex(worldX, worldY);
+        Vector3 centerAnchor = world.CellNavAnchors[index];
+        float maxHeightDelta = 0f;
+        for (int i = 0; i < CardinalOffsetX.Length; i++)
+        {
+            int nextX = worldX + CardinalOffsetX[i];
+            int nextY = worldY + CardinalOffsetY[i];
+            if (nextX < 0 || nextX >= world.Width || nextY < 0 || nextY >= world.Height)
+                continue;
+            int nextIndex = world.GetIndex(nextX, nextY);
+            if (!world.WalkableMask[nextIndex])
+                continue;
+            if (!CanTraverseNeighborCells(world, worldX, worldY, nextX, nextY))
+                continue;
+
+            float heightDelta = Mathf.Abs(centerAnchor.y - world.CellNavAnchors[nextIndex].y);
+            if (heightDelta > maxHeightDelta)
+                maxHeightDelta = heightDelta;
+        }
+
+        if (maxHeightDelta <= 0.0001f)
+            return 0;
+
+        float normalizedHeightDelta = maxHeightDelta / Mathf.Max(0.001f, world.CellSize);
+        return Mathf.Clamp(Mathf.RoundToInt(normalizedHeightDelta * Config.SlopeCostPerCellHeight), 0, 253);
     }
 
     private static void ApplyCostStampsInBounds(NavigationWorld world, int writeMinX, int writeMinY, int writeMaxX, int writeMaxY, IReadOnlyCollection<CostStamp> costStamps)
@@ -11408,10 +17391,60 @@ public static class FlowFieldCrowdMovementSystem
                     if (!world.WalkableMask[index] || world.CostField[index] >= 255)
                         continue;
 
-                    world.CostField[index] = stamp.Cost;
+                    if (!TryResolveCostStampCellCost(world, stamp, x, y, out byte stampCost))
+                        continue;
+
+                    world.CostField[index] = stampCost;
                 }
             }
         }
+    }
+
+    private static bool TryResolveCostStampCellCost(NavigationWorld world, CostStamp stamp, int worldX, int worldY, out byte cost)
+    {
+        cost = stamp.Cost;
+        if (stamp.Costs == null)
+            return true;
+        if (stamp.Width <= 0 || stamp.Height <= 0 || stamp.CellSize <= 0.0001f)
+            throw new InvalidOperationException($"TryResolveCostStampCellCost failed: invalid grid stamp id={stamp.Id} size={stamp.Width}x{stamp.Height} cellSize={stamp.CellSize}.");
+        if (stamp.Costs.Length != stamp.Width * stamp.Height)
+            throw new InvalidOperationException($"TryResolveCostStampCellCost failed: grid stamp costs length {stamp.Costs.Length} does not match {stamp.Width}x{stamp.Height} id={stamp.Id}.");
+
+        Vector3 center = world.GridToWorldCenter(worldX, worldY);
+        int stampX = Mathf.FloorToInt((center.x - stamp.Origin.x) / stamp.CellSize);
+        int stampY = Mathf.FloorToInt((center.z - stamp.Origin.z) / stamp.CellSize);
+        if (stampX < 0 || stampX >= stamp.Width || stampY < 0 || stampY >= stamp.Height)
+            return false;
+
+        cost = stamp.Costs[stampX + stampY * stamp.Width];
+        return true;
+    }
+
+    private static bool IsCellAffectedByCostStamp(NavigationWorld world, int worldX, int worldY)
+    {
+        if (CostStamps.Count == 0)
+            return false;
+
+        foreach (CostStamp stamp in CostStamps.Values)
+        {
+            if (stamp.AgentTypeId != AnyAgentTypeId && stamp.AgentTypeId != world.AgentTypeId)
+                continue;
+
+            int rawMinX = Mathf.FloorToInt((stamp.Bounds.min.x - world.Origin.x) / world.CellSize);
+            int rawMaxX = Mathf.FloorToInt((stamp.Bounds.max.x - world.Origin.x) / world.CellSize);
+            int rawMinY = Mathf.FloorToInt((stamp.Bounds.min.z - world.Origin.z) / world.CellSize);
+            int rawMaxY = Mathf.FloorToInt((stamp.Bounds.max.z - world.Origin.z) / world.CellSize);
+            if (worldX < rawMinX || worldX > rawMaxX || worldY < rawMinY || worldY > rawMaxY)
+                continue;
+
+            if (!world.WalkableMask[world.GetIndex(worldX, worldY)] || GetCostFieldValueStrict(world, worldX, worldY) >= 255)
+                continue;
+
+            if (TryResolveCostStampCellCost(world, stamp, worldX, worldY, out _))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsInsideBounds(int x, int y, int minX, int minY, int maxX, int maxY)
@@ -11498,17 +17531,146 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    private static bool HasInternalBlockedOrUntraversableNeighbor(NavigationWorld world, int centerX, int centerY)
+    {
+        for (int i = 0; i < NeighborOffsetX.Length; i++)
+        {
+            int nextX = centerX + NeighborOffsetX[i];
+            int nextY = centerY + NeighborOffsetY[i];
+            if (nextX < 0 || nextX >= world.Width || nextY < 0 || nextY >= world.Height)
+                continue;
+            if (!world.IsWalkable(nextX, nextY))
+                return true;
+            if (!CanTraverseNeighborCells(world, centerX, centerY, nextX, nextY))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsBoundaryOnlySoftCostCell(NavigationWorld world, int centerX, int centerY)
+    {
+        if (IsCellAffectedByCostStamp(world, centerX, centerY))
+            return false;
+
+        int radius = Mathf.CeilToInt(ResolveWallCostBlurRadiusCells(world));
+        bool hasOutsideWithinRadius = false;
+        for (int y = centerY - radius; y <= centerY + radius; y++)
+        {
+            for (int x = centerX - radius; x <= centerX + radius; x++)
+            {
+                int dx = x - centerX;
+                int dy = y - centerY;
+                if (dx * dx + dy * dy > radius * radius)
+                    continue;
+
+                if (x < 0 || x >= world.Width || y < 0 || y >= world.Height)
+                {
+                    hasOutsideWithinRadius = true;
+                    continue;
+                }
+
+                if (!world.IsWalkable(x, y))
+                    return false;
+            }
+        }
+
+        if (!hasOutsideWithinRadius)
+            return false;
+
+        return !HasInternalBlockedOrUntraversableNeighbor(world, centerX, centerY);
+    }
+
+
+
     private static float ResolveTraversalCost(NavigationWorld world, int fromX, int fromY, int toX, int toY)
     {
-        if (world.CostField == null || world.CostField.Length != world.Width * world.Height)
-            return 1f;
-
-        int fromCost = world.CostField[world.GetIndex(fromX, fromY)];
-        int toCost = world.CostField[world.GetIndex(toX, toY)];
+        int fromCost = GetCostFieldValueStrict(world, fromX, fromY);
+        int toCost = GetCostFieldValueStrict(world, toX, toY);
         if (fromCost >= 255 || toCost >= 255)
             return float.PositiveInfinity;
 
         return Mathf.Max(1f, (fromCost + toCost) * 0.5f);
+    }
+
+    private static bool IsSectorCostFieldClear(NavigationWorld world, SectorData sector)
+    {
+        if (world == null)
+            throw new InvalidOperationException("IsSectorCostFieldClear failed: world is null.");
+        if (sector == null)
+            throw new InvalidOperationException("IsSectorCostFieldClear failed: sector is null.");
+        if (world.CostField == null || world.CostField.Length != world.Width * world.Height)
+            return true;
+
+        for (int y = sector.StartY; y < sector.StartY + sector.Height; y++)
+        {
+            int rowStart = y * world.Width;
+            for (int x = sector.StartX; x < sector.StartX + sector.Width; x++)
+            {
+                int index = rowStart + x;
+                if (world.WalkableMask[index] && world.CostField[index] != 1)
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsSectorClearFlowTile(NavigationWorld world, SectorData sector)
+    {
+        if (!IsSectorCostFieldClear(world, sector))
+            return false;
+        if (world.NeighborTraversalMask == null || world.NeighborTraversalMask.Length != world.Width * world.Height)
+            return false;
+
+        for (int y = sector.StartY; y < sector.StartY + sector.Height; y++)
+        {
+            for (int x = sector.StartX; x < sector.StartX + sector.Width; x++)
+            {
+                if (!world.IsWalkable(x, y))
+                    return false;
+
+                for (int i = 0; i < NeighborOffsetX.Length; i++)
+                {
+                    int nextX = x + NeighborOffsetX[i];
+                    int nextY = y + NeighborOffsetY[i];
+                    if (!IsInsideSector(sector, nextX, nextY))
+                        continue;
+                    if (!CanTraverseNeighborCells(world, x, y, nextX, nextY))
+                        return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryGetSectorForCell(NavigationWorld world, int worldX, int worldY, out SectorData sector)
+    {
+        sector = null;
+        if (world == null || world.Sectors == null)
+            return false;
+        if (!world.TryGetSectorId(worldX, worldY, out int sectorId))
+            return false;
+
+        sector = world.Sectors[sectorId];
+        return sector != null;
+    }
+
+    private static bool AreSectorsSameOrAdjacent(NavigationWorld world, int sectorAId, int sectorBId)
+    {
+        if (world == null)
+            throw new InvalidOperationException("AreSectorsSameOrAdjacent failed: world is null.");
+        if (world.SectorCountX <= 0)
+            throw new InvalidOperationException($"AreSectorsSameOrAdjacent failed: invalid sector grid countX={world.SectorCountX}.");
+        if (sectorAId < 0 || sectorAId >= world.Sectors.Length || sectorBId < 0 || sectorBId >= world.Sectors.Length)
+            return false;
+
+        int ax = sectorAId % world.SectorCountX;
+        int ay = sectorAId / world.SectorCountX;
+        int bx = sectorBId % world.SectorCountX;
+        int by = sectorBId / world.SectorCountX;
+        return Mathf.Abs(ax - bx) <= 1 && Mathf.Abs(ay - by) <= 1;
     }
 
     private static bool AreNavAnchorsMutuallyTraversable(Vector3 fromAnchor, Vector3 toAnchor, NavMeshQueryFilter filter)
@@ -12106,27 +18268,30 @@ public static class FlowFieldCrowdMovementSystem
         return entity is MAEntity ma ? ma.GetInstanceID() : entity.GetHashCode();
     }
 
+    private static int ResolveExplicitAgentTypeId(IEntityContext entity, string caller)
+    {
+        if (entity == null)
+            throw new InvalidOperationException($"{caller} failed: entity is null.");
+        if (entity is MAEntity maEntity)
+        {
+            if (maEntity.navAgentTypeID == MAEntity.UnknownNavAgentTypeId)
+            {
+                throw new InvalidOperationException(
+                    $"{caller} failed: MAEntity '{entity.CharacterKey}' has Unknown navAgentTypeID. Runtime flow worlds require an explicit movement type.");
+            }
+
+            return maEntity.navAgentTypeID;
+        }
+
+        return 0;
+    }
+
     private static int ResolvePreferredAgentTypeId(int preferredAgentTypeId)
     {
         if (preferredAgentTypeId != MAEntity.UnknownNavAgentTypeId)
             return preferredAgentTypeId;
 
-        int firstAgentType = MAEntity.UnknownNavAgentTypeId;
-        foreach (AgentRuntimeData agent in Agents.Values)
-        {
-            if (firstAgentType == MAEntity.UnknownNavAgentTypeId)
-                firstAgentType = agent.AgentTypeId;
-
-            if (agent.AgentTypeId != MAEntity.UnknownNavAgentTypeId)
-                return agent.AgentTypeId;
-        }
-
-        int settingsCount = NavMesh.GetSettingsCount();
-        if (settingsCount <= 0)
-            return firstAgentType;
-
-        int fallbackAgentType = NavMesh.GetSettingsByIndex(0).agentTypeID;
-        return fallbackAgentType;
+        throw new InvalidOperationException("ResolvePreferredAgentTypeId failed: preferred agent type is Unknown. Runtime navigation must pass an explicit agent type.");
     }
 
     private static float ResolveAgentTypeRadius(int agentTypeId)

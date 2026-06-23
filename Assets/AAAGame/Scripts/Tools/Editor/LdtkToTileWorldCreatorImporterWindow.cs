@@ -11,7 +11,6 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using Unity.AI.Navigation;
 using UnityEngine;
-using UnityEngine.AI;
 
 namespace AAAGame.Tools.Editor
 {
@@ -25,7 +24,6 @@ namespace AAAGame.Tools.Editor
         private const string EntityLayerName = "Entities";
         private const string LevelPrefabTemplatePath = "Assets/AAAGame/Prefabs/Entity/Level/Level_2.prefab";
         private const string LevelPrefabFolderPath = "Assets/AAAGame/Prefabs/Entity/Level";
-        private const string TemplateTerrainPrefabPath = "Assets/AAAGame/Tilemap/Lv2.prefab";
         private const string TerrainPrefabFolderPath = "Assets/AAAGame/Tilemap";
         private const string EntityPresetPointPrefabPath = "Assets/AAAGame/Prefabs/Meiyou/EntityPresetPoint.prefab";
         private const string PresetUnitsRootName = "\u5173\u5361\u9884\u8BBE\u5355\u4F4D";
@@ -268,8 +266,10 @@ namespace AAAGame.Tools.Editor
                     () =>
                     {
                         TerrainPrefabResult delayedTerrainResult = SaveTerrainPrefabFromManager();
-                        EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath);
+                        FlowNavigationGridImportResult delayedFlowGridResult = GenerateFlowNavigationGrid(plan, delayedTerrainResult.targetPath);
+                        EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath, delayedFlowGridResult.asset);
                         delayedEntityImportResult.terrainResult = delayedTerrainResult;
+                        delayedEntityImportResult.flowNavigationGridResult = delayedFlowGridResult;
                         AssetDatabase.SaveAssets();
 
                         lastReport = BuildImportReport(ldtkPath, plan, strongholdLayers, true, clearedModifierCount, delayedEntityImportResult);
@@ -297,8 +297,10 @@ namespace AAAGame.Tools.Editor
                 terrainPrefabResult = TerrainPrefabResult.Existing(GetDefaultTerrainPrefabPath());
             }
 
-            EntityImportResult entityImportResult = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath);
+            FlowNavigationGridImportResult flowGridResult = GenerateFlowNavigationGrid(plan, terrainPrefabResult.targetPath);
+            EntityImportResult entityImportResult = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.asset);
             entityImportResult.terrainResult = terrainPrefabResult;
+            entityImportResult.flowNavigationGridResult = flowGridResult;
 
             if (!generateBuildLayers)
             {
@@ -364,6 +366,19 @@ namespace AAAGame.Tools.Editor
 
             string terrainName = Path.GetFileNameWithoutExtension(ldtkPath);
             return $"{TerrainPrefabFolderPath}/{terrainName}.prefab";
+        }
+
+        private string GetDefaultFlowNavigationGridAssetPath()
+        {
+            string terrainPrefabPath = GetDefaultTerrainPrefabPath();
+            if (string.IsNullOrEmpty(terrainPrefabPath))
+            {
+                return string.Empty;
+            }
+
+            string folder = Path.GetDirectoryName(terrainPrefabPath)?.Replace("\\", "/");
+            string name = Path.GetFileNameWithoutExtension(terrainPrefabPath);
+            return $"{folder}/{name}_FlowNavigationGrid.asset";
         }
 
         private Configuration GetTemplateConfiguration()
@@ -1539,7 +1554,6 @@ namespace AAAGame.Tools.Editor
             }
 
             string terrainName = Path.GetFileNameWithoutExtension(terrainPrefabPath);
-            NavMeshSurfaceTemplateData[] navMeshTemplates = CollectTerrainNavMeshSurfaceTemplates(terrainPrefabPath, GetTemplateConfigurationPath());
             GameObject terrainClone = Instantiate(manager.gameObject);
             terrainClone.name = terrainName;
             terrainClone.transform.position = manager.transform.position;
@@ -1551,8 +1565,8 @@ namespace AAAGame.Tools.Editor
                 SaveGeneratedMeshes(terrainClone, terrainPrefabPath);
                 PrefabUtility.SaveAsPrefabAsset(terrainClone, terrainPrefabPath);
                 AssetDatabase.ImportAsset(terrainPrefabPath);
-                int navMeshSurfaceCount = EnsureTerrainNavMeshSurfacesAndData(terrainPrefabPath, navMeshTemplates);
-                return TerrainPrefabResult.Saved(terrainPrefabPath, navMeshSurfaceCount);
+                RemoveTerrainNavMeshSurfaces(terrainPrefabPath);
+                return TerrainPrefabResult.Saved(terrainPrefabPath, CountTerrainNavMeshSurfaces(terrainPrefabPath));
             }
             finally
             {
@@ -1560,57 +1574,24 @@ namespace AAAGame.Tools.Editor
             }
         }
 
-        private static NavMeshSurfaceTemplateData[] CollectTerrainNavMeshSurfaceTemplates(string terrainPrefabPath, string templateConfigurationPath)
+        private static void RemoveTerrainNavMeshSurfaces(string terrainPrefabPath)
         {
-            foreach (string candidatePath in GetTerrainNavMeshTemplateCandidatePaths(terrainPrefabPath, templateConfigurationPath))
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(terrainPrefabPath);
+            try
             {
-                GameObject candidate = AssetDatabase.LoadAssetAtPath<GameObject>(candidatePath);
-                NavMeshSurface[] candidateSurfaces = candidate != null ? candidate.GetComponents<NavMeshSurface>() : Array.Empty<NavMeshSurface>();
-                if (candidateSurfaces.Length == 0)
+                NavMeshSurface[] surfaces = prefabRoot.GetComponents<NavMeshSurface>();
+                for (int i = 0; i < surfaces.Length; i++)
                 {
-                    continue;
+                    DestroyImmediate(surfaces[i]);
                 }
 
-                return candidateSurfaces.Select(ReadNavMeshSurfaceTemplateData).ToArray();
+                EditorUtility.SetDirty(prefabRoot);
+                PrefabUtility.SaveAsPrefabAsset(prefabRoot, terrainPrefabPath);
+                AssetDatabase.ImportAsset(terrainPrefabPath);
             }
-
-            Debug.LogWarning("[LDtk Import] No terrain prefab with NavMeshSurface was found. Using built-in surface defaults.");
-            return GetFallbackNavMeshSurfaceTemplates();
-        }
-
-        private static IEnumerable<string> GetTerrainNavMeshTemplateCandidatePaths(string terrainPrefabPath, string templateConfigurationPath)
-        {
-            if (!string.IsNullOrEmpty(terrainPrefabPath))
+            finally
             {
-                yield return terrainPrefabPath;
-            }
-
-            if (!PathsEqual(TemplateTerrainPrefabPath, terrainPrefabPath))
-            {
-                yield return TemplateTerrainPrefabPath;
-            }
-
-            string templateConfigurationTerrainPath = $"{TerrainPrefabFolderPath}/{Path.GetFileNameWithoutExtension(templateConfigurationPath)}.prefab";
-            if (!PathsEqual(templateConfigurationTerrainPath, terrainPrefabPath) &&
-                !PathsEqual(templateConfigurationTerrainPath, TemplateTerrainPrefabPath))
-            {
-                yield return templateConfigurationTerrainPath;
-            }
-
-            foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { TerrainPrefabFolderPath }))
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                string folder = Path.GetDirectoryName(path)?.Replace("\\", "/");
-                if (!string.Equals(folder, TerrainPrefabFolderPath, StringComparison.OrdinalIgnoreCase) ||
-                    !path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase) ||
-                    PathsEqual(path, terrainPrefabPath) ||
-                    PathsEqual(path, TemplateTerrainPrefabPath) ||
-                    PathsEqual(path, templateConfigurationTerrainPath))
-                {
-                    continue;
-                }
-
-                yield return path;
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
             }
         }
 
@@ -1619,176 +1600,10 @@ namespace AAAGame.Tools.Editor
             return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static int EnsureTerrainNavMeshSurfacesAndData(string terrainPrefabPath, NavMeshSurfaceTemplateData[] templateSurfaces)
-        {
-            if (templateSurfaces == null || templateSurfaces.Length == 0)
-            {
-                Debug.LogWarning("[LDtk Import] No NavMeshSurface template data is available.");
-                return 0;
-            }
-
-            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(terrainPrefabPath);
-            try
-            {
-                foreach (NavMeshSurface existingSurface in prefabRoot.GetComponents<NavMeshSurface>())
-                {
-                    DestroyImmediate(existingSurface);
-                }
-
-                for (int i = 0; i < templateSurfaces.Length; i++)
-                {
-                    NavMeshSurface surface = prefabRoot.AddComponent<NavMeshSurface>();
-                    ApplyNavMeshSurfaceSettings(templateSurfaces[i], surface);
-                    BuildAndSaveNavMeshData(surface, terrainPrefabPath, i);
-                    EditorUtility.SetDirty(surface);
-                }
-
-                EditorUtility.SetDirty(prefabRoot);
-                PrefabUtility.SaveAsPrefabAsset(prefabRoot, terrainPrefabPath);
-                AssetDatabase.ImportAsset(terrainPrefabPath);
-                return templateSurfaces.Length;
-            }
-            finally
-            {
-                PrefabUtility.UnloadPrefabContents(prefabRoot);
-            }
-        }
-
         private static int CountTerrainNavMeshSurfaces(string terrainPrefabPath)
         {
             GameObject terrainPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath);
             return terrainPrefab != null ? terrainPrefab.GetComponents<NavMeshSurface>().Length : 0;
-        }
-
-        private static NavMeshSurfaceTemplateData ReadNavMeshSurfaceTemplateData(NavMeshSurface source)
-        {
-            var data = new NavMeshSurfaceTemplateData
-            {
-                agentTypeID = source.agentTypeID,
-                collectObjects = source.collectObjects,
-                size = source.size,
-                center = source.center,
-                layerMask = source.layerMask,
-                useGeometry = source.useGeometry,
-                defaultArea = source.defaultArea,
-                ignoreNavMeshAgent = source.ignoreNavMeshAgent,
-                ignoreNavMeshObstacle = source.ignoreNavMeshObstacle,
-                overrideTileSize = source.overrideTileSize,
-                tileSize = source.tileSize,
-                overrideVoxelSize = source.overrideVoxelSize,
-                voxelSize = source.voxelSize,
-                minRegionArea = source.minRegionArea,
-                buildHeightMesh = source.buildHeightMesh
-            };
-
-            var sourceObject = new SerializedObject(source);
-            SerializedProperty sourceGenerateLinks = sourceObject.FindProperty("m_GenerateLinks");
-            if (sourceGenerateLinks != null)
-            {
-                data.hasGenerateLinks = true;
-                data.generateLinks = sourceGenerateLinks.boolValue;
-            }
-
-            return data;
-        }
-
-        private static NavMeshSurfaceTemplateData[] GetFallbackNavMeshSurfaceTemplates()
-        {
-            return new[]
-            {
-                CreateFallbackNavMeshSurfaceTemplate(0, 0.13666667f),
-                CreateFallbackNavMeshSurfaceTemplate(-1372625422, 0.20333333f),
-                CreateFallbackNavMeshSurfaceTemplate(-334000983, 0.27f)
-            };
-        }
-
-        private static NavMeshSurfaceTemplateData CreateFallbackNavMeshSurfaceTemplate(int agentTypeId, float voxelSize)
-        {
-            return new NavMeshSurfaceTemplateData
-            {
-                agentTypeID = agentTypeId,
-                collectObjects = CollectObjects.All,
-                size = new Vector3(10f, 10f, 10f),
-                center = new Vector3(0f, 2f, 0f),
-                layerMask = new LayerMask { value = 69632 },
-                useGeometry = NavMeshCollectGeometry.PhysicsColliders,
-                defaultArea = 0,
-                ignoreNavMeshAgent = true,
-                ignoreNavMeshObstacle = true,
-                overrideTileSize = false,
-                tileSize = 256,
-                overrideVoxelSize = false,
-                voxelSize = voxelSize,
-                minRegionArea = 10f,
-                buildHeightMesh = false,
-                hasGenerateLinks = true,
-                generateLinks = false
-            };
-        }
-
-        private static void ApplyNavMeshSurfaceSettings(NavMeshSurfaceTemplateData source, NavMeshSurface target)
-        {
-            target.agentTypeID = source.agentTypeID;
-            target.collectObjects = source.collectObjects;
-            target.size = source.size;
-            target.center = source.center;
-            target.layerMask = source.layerMask;
-            target.useGeometry = source.useGeometry;
-            target.defaultArea = source.defaultArea;
-            target.ignoreNavMeshAgent = source.ignoreNavMeshAgent;
-            target.ignoreNavMeshObstacle = source.ignoreNavMeshObstacle;
-            target.overrideTileSize = source.overrideTileSize;
-            target.tileSize = source.tileSize;
-            target.overrideVoxelSize = source.overrideVoxelSize;
-            target.voxelSize = source.voxelSize;
-            target.minRegionArea = source.minRegionArea;
-            target.buildHeightMesh = source.buildHeightMesh;
-            target.navMeshData = null;
-
-            var targetObject = new SerializedObject(target);
-            SerializedProperty targetGenerateLinks = targetObject.FindProperty("m_GenerateLinks");
-            if (source.hasGenerateLinks && targetGenerateLinks != null)
-            {
-                targetGenerateLinks.boolValue = source.generateLinks;
-                targetObject.ApplyModifiedPropertiesWithoutUndo();
-            }
-        }
-
-        private static void BuildAndSaveNavMeshData(NavMeshSurface surface, string terrainPrefabPath, int surfaceIndex)
-        {
-            surface.BuildNavMesh();
-            if (surface.navMeshData == null)
-            {
-                Debug.LogWarning($"[LDtk Import] NavMesh build produced no data for agent type {surface.agentTypeID}.");
-                return;
-            }
-
-            string navMeshPath = GetTerrainNavMeshDataPath(terrainPrefabPath, surfaceIndex, surface.agentTypeID);
-            NavMeshData data = surface.navMeshData;
-            data.name = Path.GetFileNameWithoutExtension(navMeshPath);
-
-            NavMeshData existingData = AssetDatabase.LoadAssetAtPath<NavMeshData>(navMeshPath);
-            if (existingData != null)
-            {
-                AssetDatabase.DeleteAsset(navMeshPath);
-            }
-
-            AssetDatabase.CreateAsset(data, navMeshPath);
-            AssetDatabase.ImportAsset(navMeshPath);
-            surface.navMeshData = AssetDatabase.LoadAssetAtPath<NavMeshData>(navMeshPath);
-        }
-
-        private static string GetTerrainNavMeshDataPath(string terrainPrefabPath, int surfaceIndex, int agentTypeId)
-        {
-            string prefabFolder = Path.GetDirectoryName(terrainPrefabPath)?.Replace("\\", "/");
-            if (string.IsNullOrEmpty(prefabFolder))
-            {
-                prefabFolder = TerrainPrefabFolderPath;
-            }
-
-            string terrainName = Path.GetFileNameWithoutExtension(terrainPrefabPath);
-            string agentSuffix = agentTypeId == 0 ? "Default" : agentTypeId.ToString();
-            return $"{prefabFolder}/NavMesh-{terrainName}-{surfaceIndex}-{agentSuffix}.asset";
         }
 
         private static void SaveGeneratedMeshes(GameObject root, string terrainPrefabPath)
@@ -1903,6 +1718,8 @@ namespace AAAGame.Tools.Editor
             float cellSize = GetTileWorldCellSize();
             var plan = new ImportPlan
             {
+                width = configuration != null ? configuration.width : 0,
+                height = configuration != null ? configuration.height : 0,
                 gridSize = gridSize,
                 cellSize = cellSize,
                 pixelHeight = level.pxHei,
@@ -1913,14 +1730,16 @@ namespace AAAGame.Tools.Editor
             TerrainPrefabResult terrainPrefabResult = AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath) != null
                 ? TerrainPrefabResult.Existing(terrainPrefabPath)
                 : TerrainPrefabResult.Skipped("Terrain prefab has not been generated.");
-            EntityImportResult result = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath);
+            FlowNavigationGridImportResult flowGridResult = GenerateFlowNavigationGrid(plan, terrainPrefabResult.targetPath);
+            EntityImportResult result = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.asset);
             result.terrainResult = terrainPrefabResult;
+            result.flowNavigationGridResult = flowGridResult;
 
             lastReport = BuildEntityImportReport(ldtkPath, result);
             Debug.Log(lastReport);
         }
 
-        private EntityImportResult ImportEntityPresetPointsIfRequested(ImportPlan plan, string terrainPrefabPath)
+        private EntityImportResult ImportEntityPresetPointsIfRequested(ImportPlan plan, string terrainPrefabPath, FlowNavigationGridAsset flowNavigationGrid)
         {
             if (!importEntityPresetPoints)
             {
@@ -1963,6 +1782,12 @@ namespace AAAGame.Tools.Editor
             {
                 prefabRoot.name = Path.GetFileNameWithoutExtension(targetPath);
                 EntityImportResult result = ImportEntityPresetPointsIntoRoot(prefabRoot.transform, plan.entityPoints, terrainPrefabPath, useUndo: false);
+                if (flowNavigationGrid != null)
+                {
+                    FlowNavigationGridPrefabBaker.AttachSourceToLevelPrefab(prefabRoot, flowNavigationGrid);
+                    result.flowNavigationSourceAttached = true;
+                }
+
                 result.targetPath = targetPath;
                 PrefabUtility.SaveAsPrefabAsset(prefabRoot, targetPath);
                 AssetDatabase.ImportAsset(targetPath);
@@ -2117,6 +1942,59 @@ namespace AAAGame.Tools.Editor
             {
                 PrefabUtility.UnloadPrefabContents(loadedRoot);
             }
+        }
+
+        private FlowNavigationGridImportResult GenerateFlowNavigationGrid(ImportPlan plan, string terrainPrefabPath)
+        {
+            if (plan == null || plan.width <= 0 || plan.height <= 0 || plan.cellSize <= 0.0001f)
+            {
+                return FlowNavigationGridImportResult.Skipped("Import plan has no valid grid size.");
+            }
+
+            if (string.IsNullOrEmpty(terrainPrefabPath) || AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath) == null)
+            {
+                return FlowNavigationGridImportResult.Skipped("Terrain prefab has not been generated.");
+            }
+
+            string assetPath = GetDefaultFlowNavigationGridAssetPath();
+            Vector3 gridOrigin = ResolveFlowNavigationGridOrigin(terrainPrefabPath);
+            FlowNavigationGridPrefabBaker.Result result = FlowNavigationGridPrefabBaker.BakeFromTerrainPrefab(
+                terrainPrefabPath,
+                assetPath,
+                plan.width,
+                plan.height,
+                plan.cellSize,
+                gridOrigin);
+
+            return FlowNavigationGridImportResult.From(result);
+        }
+
+        private Vector3 ResolveFlowNavigationGridOrigin(string terrainPrefabPath)
+        {
+            TransformData transformData = TransformData.Identity;
+            if (levelPrefabTarget != null)
+            {
+                string targetPath = AssetDatabase.GetAssetPath(levelPrefabTarget);
+                bool isPrefabAsset = !string.IsNullOrEmpty(targetPath) && PrefabUtility.GetPrefabAssetType(levelPrefabTarget) != PrefabAssetType.NotAPrefab;
+                if (isPrefabAsset)
+                {
+                    GameObject prefabRoot = PrefabUtility.LoadPrefabContents(targetPath);
+                    try
+                    {
+                        transformData = ResolveTerrainInstanceTransform(GetTerrainRoots(prefabRoot.transform).ToArray(), terrainPrefabPath);
+                    }
+                    finally
+                    {
+                        PrefabUtility.UnloadPrefabContents(prefabRoot);
+                    }
+                }
+            }
+            else if (TryReadTemplateTerrainTransform(out TransformData templateTransform))
+            {
+                transformData = templateTransform;
+            }
+
+            return new Vector3(transformData.localPosition.x, 0f, transformData.localPosition.z);
         }
 
         private static IEnumerable<Transform> GetTerrainRoots(Transform root)
@@ -2530,6 +2408,21 @@ namespace AAAGame.Tools.Editor
                 builder.AppendLine($"Terrain skipped reason: {result.terrainResult.skippedReason}");
             }
 
+            builder.AppendLine($"Flow navigation grid: {(result.flowNavigationGridResult.skipped ? "Skipped" : "Generated")}");
+            if (result.flowNavigationGridResult.skipped)
+            {
+                builder.AppendLine($"Flow navigation skipped reason: {result.flowNavigationGridResult.skippedReason}");
+            }
+            else
+            {
+                builder.AppendLine($"Flow navigation asset: {result.flowNavigationGridResult.assetPath}");
+                builder.AppendLine($"Flow navigation size: {result.flowNavigationGridResult.width} x {result.flowNavigationGridResult.height}");
+                builder.AppendLine($"Flow navigation walkable: {result.flowNavigationGridResult.walkableCount}");
+                builder.AppendLine($"Flow navigation blocked: {result.flowNavigationGridResult.blockedCount}");
+                builder.AppendLine($"Flow navigation ground colliders: {result.flowNavigationGridResult.groundColliderCount}");
+                builder.AppendLine($"Flow navigation obstacle colliders: {result.flowNavigationGridResult.obstacleColliderCount}");
+            }
+
             builder.AppendLine($"Entity import: {(result.skipped ? "Skipped" : "Completed")}");
             if (result.skipped)
             {
@@ -2538,6 +2431,7 @@ namespace AAAGame.Tools.Editor
             }
 
             builder.AppendLine($"Entity prefab: {result.targetPath}");
+            builder.AppendLine($"Entity flow source attached: {result.flowNavigationSourceAttached}");
             builder.AppendLine($"Entity removed old terrains: {result.removedTerrainCount}");
             builder.AppendLine($"Entity terrain instance: {result.terrainPrefabPath}");
             builder.AppendLine($"Entity removed old points: {result.removedCount}");
@@ -2659,25 +2553,42 @@ namespace AAAGame.Tools.Editor
             }
         }
 
-        private struct NavMeshSurfaceTemplateData
+        private struct FlowNavigationGridImportResult
         {
-            public int agentTypeID;
-            public CollectObjects collectObjects;
-            public Vector3 size;
-            public Vector3 center;
-            public LayerMask layerMask;
-            public NavMeshCollectGeometry useGeometry;
-            public int defaultArea;
-            public bool ignoreNavMeshAgent;
-            public bool ignoreNavMeshObstacle;
-            public bool overrideTileSize;
-            public int tileSize;
-            public bool overrideVoxelSize;
-            public float voxelSize;
-            public float minRegionArea;
-            public bool buildHeightMesh;
-            public bool hasGenerateLinks;
-            public bool generateLinks;
+            public bool skipped;
+            public string skippedReason;
+            public FlowNavigationGridAsset asset;
+            public string assetPath;
+            public int width;
+            public int height;
+            public int walkableCount;
+            public int blockedCount;
+            public int groundColliderCount;
+            public int obstacleColliderCount;
+
+            public static FlowNavigationGridImportResult Skipped(string reason)
+            {
+                return new FlowNavigationGridImportResult
+                {
+                    skipped = true,
+                    skippedReason = reason
+                };
+            }
+
+            public static FlowNavigationGridImportResult From(FlowNavigationGridPrefabBaker.Result result)
+            {
+                return new FlowNavigationGridImportResult
+                {
+                    asset = result.Asset,
+                    assetPath = result.AssetPath,
+                    width = result.Width,
+                    height = result.Height,
+                    walkableCount = result.WalkableCount,
+                    blockedCount = result.BlockedCount,
+                    groundColliderCount = result.GroundColliderCount,
+                    obstacleColliderCount = result.ObstacleColliderCount
+                };
+            }
         }
 
         private struct EntityImportResult
@@ -2687,6 +2598,8 @@ namespace AAAGame.Tools.Editor
             public string targetPath;
             public string terrainPrefabPath;
             public TerrainPrefabResult terrainResult;
+            public FlowNavigationGridImportResult flowNavigationGridResult;
+            public bool flowNavigationSourceAttached;
             public int removedTerrainCount;
             public int removedCount;
             public int heroCount;

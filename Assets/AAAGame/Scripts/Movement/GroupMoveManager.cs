@@ -24,80 +24,23 @@ public class GroupMoveManager : MonoBehaviour
     private void Update()
     {
         FlowFieldCrowdMovementSystem.SetConfig(_config);
+        if (_config != null
+            && _config.RequireAuthoredNavigationSource
+            && !FlowFieldCrowdMovementSystem.HasAuthoredNavigationSource())
+        {
+            if (FlowFieldCrowdMovementSystem.HasActiveNavigationAgents())
+            {
+                throw new System.InvalidOperationException(
+                    "GroupMoveManager.Update failed: active navigation agents exist before any FlowNavigationGridSource has applied a FlowNavigationGridAsset.");
+            }
+
+            return;
+        }
+
         FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
         FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
         FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
     }
-
-    /// <summary>
-    /// 一次性迁移工具：把旧版 PlayerPrefs 里的调参写到当前 Config SO 中，并清掉 PlayerPrefs。
-    /// 仅 Editor 使用，迁完即可移除。
-    /// </summary>
-    [ContextMenu("一次性迁移：旧 PlayerPrefs → Config SO")]
-    public void MigrateLegacyPrefsToConfig()
-    {
-#if UNITY_EDITOR
-        const string LEGACY_KEY = "GroupMoveManager_Params";
-        if (_config == null)
-        {
-            Debug.LogError("[GroupMoveManager] 迁移失败：先在 Inspector 拖入 Config 资产再点迁移。", this);
-            return;
-        }
-        if (!PlayerPrefs.HasKey(LEGACY_KEY))
-        {
-            Debug.Log("[GroupMoveManager] 没有旧 PlayerPrefs，无需迁移。", this);
-            return;
-        }
-
-        var json = PlayerPrefs.GetString(LEGACY_KEY);
-        var d = JsonUtility.FromJson<LegacySaveData>(json);
-        if (d.unitEqR > 0f) _config.UnitEquilibriumRadius = d.unitEqR;
-        if (d.unitMaxR > 0f) _config.UnitMaxInfluenceRange = d.unitMaxR;
-        if (d.unitRepStr > 0f) _config.UnitRepulsionStrength = d.unitRepStr;
-        if (d.unitAttStr > 0f) _config.UnitAttractionStrength = d.unitAttStr;
-
-        if (d.leaderEqR > 0f) _config.LeaderEquilibriumRadius = d.leaderEqR;
-        if (d.leaderMaxR > 0f) _config.LeaderMaxInfluenceRange = d.leaderMaxR;
-        if (d.leaderRepStr > 0f) _config.LeaderRepulsionStrength = d.leaderRepStr;
-        if (d.leaderAttStr > 0f) _config.LeaderAttractionStrength = d.leaderAttStr;
-
-        if (d.enemyEqR > 0f) _config.EnemyEquilibriumRadius = d.enemyEqR;
-        if (d.enemyMaxR > 0f) _config.EnemyMaxInfluenceRange = d.enemyMaxR;
-        if (d.enemyRepStr > 0f) _config.EnemyRepulsionStrength = d.enemyRepStr;
-        if (d.enemyAttStr > 0f) _config.EnemyAttractionStrength = d.enemyAttStr;
-
-        if (d.obsWeight > 0f) _config.ObstacleWeight = d.obsWeight;
-        if (d.moveThreshold > 0f) _config.MoveThreshold = d.moveThreshold;
-        if (d.moveThresholdSpeedRatio > 0f) _config.MoveThresholdSpeedRatio = d.moveThresholdSpeedRatio;
-        if (d.velocitySmoothing > 0f) _config.VelocitySmoothing = d.velocitySmoothing;
-        if (d.followDeadZoneRange > 0f) _config.FollowDeadZoneRange = d.followDeadZoneRange;
-        if (d.followInnerDeadZoneRange > 0f) _config.FollowInnerDeadZoneRange = d.followInnerDeadZoneRange;
-
-        UnityEditor.EditorUtility.SetDirty(_config);
-        UnityEditor.AssetDatabase.SaveAssets();
-        PlayerPrefs.DeleteKey(LEGACY_KEY);
-        PlayerPrefs.Save();
-        Debug.Log("[GroupMoveManager] 迁移完成，旧 PlayerPrefs 已清除。", _config);
-#else
-        Debug.LogWarning("[GroupMoveManager] 迁移工具仅 Editor 可用。");
-#endif
-    }
-
-#pragma warning disable 0649
-    [System.Serializable]
-    private struct LegacySaveData
-    {
-        public float unitRepStr, unitAttStr, unitEqR, unitMaxR;
-        public float leaderRepStr, leaderAttStr, leaderEqR, leaderMaxR;
-        public float enemyRepStr, enemyAttStr, enemyEqR, enemyMaxR;
-        public float obsWeight;
-        public float moveThreshold;
-        public float moveThresholdSpeedRatio;
-        public float velocitySmoothing;
-        public float followDeadZoneRange;
-        public float followInnerDeadZoneRange;
-    }
-#pragma warning restore 0649
 
     // ── Agent 注册 ──
 
@@ -161,8 +104,12 @@ public class GroupMoveManager : MonoBehaviour
 
     public void RegisterBoxObstacle(Collider collider)
     {
-        var bounds = collider.bounds;
+        if (collider == null)
+            throw new System.InvalidOperationException("GroupMoveManager.RegisterBoxObstacle failed: collider is null.");
+
+        Bounds bounds = ResolveColliderWorldBounds(collider);
         FlowFieldCrowdMovementSystem.RegisterBoxObstacle(collider.GetInstanceID(), bounds.center, bounds.extents);
+        LogColliderObstacleRegistration(collider, collider.GetInstanceID(), "box-direct", bounds);
     }
 
     public void RegisterBoxCostStamp(int id, Vector3 center, Vector3 halfExtents, byte cost)
@@ -173,6 +120,16 @@ public class GroupMoveManager : MonoBehaviour
     public void RegisterBoxCostStamp(int id, int agentTypeId, Vector3 center, Vector3 halfExtents, byte cost)
     {
         FlowFieldCrowdMovementSystem.RegisterBoxCostStamp(id, agentTypeId, center, halfExtents, cost);
+    }
+
+    public void RegisterGridCostStamp(int id, Vector3 origin, float cellSize, int width, int height, byte[] costs)
+    {
+        FlowFieldCrowdMovementSystem.RegisterGridCostStamp(id, origin, cellSize, width, height, costs);
+    }
+
+    public void RegisterGridCostStamp(int id, int agentTypeId, Vector3 origin, float cellSize, int width, int height, byte[] costs)
+    {
+        FlowFieldCrowdMovementSystem.RegisterGridCostStamp(id, agentTypeId, origin, cellSize, width, height, costs);
     }
 
     public void UnregisterCostStamp(int id)
@@ -186,7 +143,7 @@ public class GroupMoveManager : MonoBehaviour
             throw new System.InvalidOperationException("GroupMoveManager.RegisterColliderObstacle failed: collider is null.");
 
         int obstacleId = collider.GetInstanceID();
-        var bounds = collider.bounds;
+        Bounds bounds = ResolveColliderWorldBounds(collider);
         if (collider is BoxCollider)
         {
             FlowFieldCrowdMovementSystem.RegisterBoxObstacle(obstacleId, bounds.center, bounds.extents);
@@ -199,15 +156,49 @@ public class GroupMoveManager : MonoBehaviour
         return obstacleId;
     }
 
+    private static Bounds ResolveColliderWorldBounds(Collider collider)
+    {
+        if (collider == null)
+            throw new System.InvalidOperationException("GroupMoveManager.ResolveColliderWorldBounds failed: collider is null.");
+
+        if (collider is BoxCollider boxCollider)
+            return CalculateBoxColliderWorldBounds(boxCollider);
+
+        return collider.bounds;
+    }
+
+    private static Bounds CalculateBoxColliderWorldBounds(BoxCollider collider)
+    {
+        if (collider == null)
+            throw new System.InvalidOperationException("GroupMoveManager.CalculateBoxColliderWorldBounds failed: collider is null.");
+
+        Vector3 half = collider.size * 0.5f;
+        Matrix4x4 matrix = collider.transform.localToWorldMatrix;
+        Vector3 localCenter = collider.center;
+        Bounds bounds = new Bounds(matrix.MultiplyPoint3x4(localCenter + new Vector3(-half.x, -half.y, -half.z)), Vector3.zero);
+        bounds.Encapsulate(matrix.MultiplyPoint3x4(localCenter + new Vector3(-half.x, -half.y, half.z)));
+        bounds.Encapsulate(matrix.MultiplyPoint3x4(localCenter + new Vector3(-half.x, half.y, -half.z)));
+        bounds.Encapsulate(matrix.MultiplyPoint3x4(localCenter + new Vector3(-half.x, half.y, half.z)));
+        bounds.Encapsulate(matrix.MultiplyPoint3x4(localCenter + new Vector3(half.x, -half.y, -half.z)));
+        bounds.Encapsulate(matrix.MultiplyPoint3x4(localCenter + new Vector3(half.x, -half.y, half.z)));
+        bounds.Encapsulate(matrix.MultiplyPoint3x4(localCenter + new Vector3(half.x, half.y, -half.z)));
+        bounds.Encapsulate(matrix.MultiplyPoint3x4(localCenter + new Vector3(half.x, half.y, half.z)));
+        return bounds;
+    }
+
     private static void LogColliderObstacleRegistration(Collider collider, int obstacleId, string shape, Bounds bounds)
     {
-        if (!GameDebugSettings.IsEnabled(DebugCategory.Move))
+        bool isAutoBox = collider != null && collider.name.StartsWith("_AutoBox_", System.StringComparison.Ordinal);
+        if (!isAutoBox && !GameDebugSettings.IsEnabled(DebugCategory.Move))
             return;
 
         Debug.Log(
             $"[FlowColliderObstacle] register id={obstacleId} shape={shape} type={collider.GetType().Name} " +
             $"name={collider.gameObject.name} path={BuildHierarchyPath(collider.transform)} layer={collider.gameObject.layer} " +
-            $"tag={collider.tag} enabled={collider.enabled} trigger={collider.isTrigger} active={collider.gameObject.activeInHierarchy} " +
+            $"layerName={LayerMask.LayerToName(collider.gameObject.layer)} tag={collider.tag} enabled={collider.enabled} " +
+            $"trigger={collider.isTrigger} active={collider.gameObject.activeInHierarchy} " +
+            $"root={collider.transform.root.name} rootPos={collider.transform.root.position} " +
+            $"localPos={collider.transform.localPosition} worldPos={collider.transform.position} " +
             $"center={bounds.center} size={bounds.size}");
     }
 
@@ -247,7 +238,7 @@ public class GroupMoveManager : MonoBehaviour
         FlowFieldCrowdMovementSystem.SetAgentGroup(id, groupId);
     }
 
-    public void SetAgentState(int id, GroupMoveCoordinator.AgentState state)
+    public void SetAgentState(int id, FlowFieldAgentState state)
     {
         FlowFieldCrowdMovementSystem.SetAgentState(id, state);
     }
@@ -261,6 +252,12 @@ public class GroupMoveManager : MonoBehaviour
     {
         FlowFieldCrowdMovementSystem.PrewarmNavigationWorlds();
     }
+
+    public bool HasActiveNavigationAgents()
+    {
+        return FlowFieldCrowdMovementSystem.HasActiveNavigationAgents();
+    }
+
 
     public bool IsPositionOccupiedByAgent(Vector3 position, float requiredDistance)
     {

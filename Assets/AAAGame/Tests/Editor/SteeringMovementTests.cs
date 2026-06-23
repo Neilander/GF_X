@@ -201,7 +201,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void Follow状态_发现玩家后会以玩家为目标靠近()
+    public void Follow状态_进入领袖死区后停止主动靠近()
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(5, 0, 0));
@@ -224,7 +224,8 @@ public class SteeringMovementTests
         soldier.MoveExecutor.Execute(0.2f);
         soldier.SyncPositionFromExecutor();
 
-        Assert.Less(soldier.Position.x, before.x, $"应向玩家靠近，before={before}, after={soldier.Position}");
+        Assert.AreEqual(before.x, soldier.Position.x, 0.001f,
+            $"当前跟随规则下，单位进入领袖死区后应停止主动靠近，before={before}, after={soldier.Position}");
     }
 
     [Test]
@@ -251,7 +252,7 @@ public class SteeringMovementTests
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(2, 0, 0));
-        var enemy = MakeSoldier(new Vector3(5, 0, 0), SideType.EnemySide);
+        var enemy = MakeSoldier(new Vector3(3, 0, 0), SideType.EnemySide);
 
         EntityRegistry.RegisterAsPlayer(player);
         EntityRegistry.Register(soldier);
@@ -267,7 +268,12 @@ public class SteeringMovementTests
         brain.Tick(soldier, 1f / 60f);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State);
 
-        // 第二帧：Follow → Combat（敌人在 3 米内 < DetectEnemyRange 6）
+        var targeting = new SimTargetingComp(soldier, new List<IEntityContext> { player, soldier, enemy });
+        targeting.Init(soldier);
+        targeting.CurrentTarget = enemy;
+        soldier.TargetComp = targeting;
+
+        // 第二帧：Follow → Combat（敌人在攻击范围内，状态测试不触发寻路世界解析）
         brain.Tick(soldier, 1f / 60f);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
     }
@@ -277,7 +283,7 @@ public class SteeringMovementTests
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(2, 0, 0));
-        var enemy = MakeSoldier(new Vector3(4, 0, 0), SideType.EnemySide);
+        var enemy = MakeSoldier(new Vector3(3, 0, 0), SideType.EnemySide);
 
         EntityRegistry.RegisterAsPlayer(player);
         EntityRegistry.Register(soldier);
@@ -289,13 +295,19 @@ public class SteeringMovementTests
         brain.Inject();
         soldier.Brain = brain;
 
+        var targeting = new SimTargetingComp(soldier, new List<IEntityContext> { player, soldier, enemy });
+        targeting.Init(soldier);
+        targeting.CurrentTarget = enemy;
+        soldier.TargetComp = targeting;
+
         // Idle → Follow → Combat
-        brain.Tick(soldier, 1f / 60f);
         brain.Tick(soldier, 1f / 60f);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
 
         // 杀死敌人
         enemy.Alive = false;
+        brain.Tick(soldier, 1f / 60f);
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State, "敌人失效当帧应先清掉 Combat 和旧目标");
         brain.Tick(soldier, 1f / 60f);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "敌人死后回到 Follow");
     }
@@ -335,156 +347,4 @@ public class SteeringMovementTests
 
     #endregion
 
-    #region 流体移动核心场景
-
-    /// <summary>
-    /// 模拟多帧 tick：brain → moveComp → executor → sync position
-    /// </summary>
-    private void SimulateTicks(List<SimEntityContext> entities, List<SoldierAIBrain> brains, int frames, float dt = 1f / 60f)
-    {
-        for (int f = 0; f < frames; f++)
-        {
-            for (int i = 0; i < entities.Count; i++)
-            {
-                var ctx = entities[i];
-                if (!ctx.Alive) continue;
-
-                ctx.SyncPositionToExecutor();
-
-                if (brains[i] != null)
-                    brains[i].Tick(ctx, dt);
-
-                if (ctx.MoveComp != null)
-                    ctx.MoveComp.Move(dt);
-
-                ctx.MoveExecutor.Execute(dt);
-                ctx.SyncPositionFromExecutor();
-            }
-        }
-    }
-
-    [Test]
-    public void 三个小兵过窄道_不会永远卡住()
-    {
-        // 场景：三个小兵在 x=0 位置，目标（玩家）在 x=10
-        // 小兵间距很近，separation 应让他们自动散开通过
-        var player = MakeSoldier(new Vector3(10, 0, 0));
-        player.Brain = new ScriptedBrain(); // 玩家不动
-        EntityRegistry.RegisterAsPlayer(player);
-
-        var soldiers = new List<SimEntityContext>();
-        var brains = new List<SoldierAIBrain>();
-
-        for (int i = 0; i < 3; i++)
-        {
-            var s = MakeSoldier(new Vector3(0, 0, i * 0.3f - 0.3f)); // 密集排列
-            var brain = new SoldierAIBrain();
-            brain.RecruitRadius = 15f;
-            brain.SeparationRadius = 1.2f;
-            brain.SeparationWeight = 1.5f;
-            brain.Inject();
-            s.Brain = brain;
-            EntityRegistry.Register(s);
-            soldiers.Add(s);
-            brains.Add(brain);
-        }
-
-        // 用于 SimulateTicks 的平坦列表
-        var allCtx = new List<SimEntityContext> { player };
-        allCtx.AddRange(soldiers);
-        var allBrains = new List<SoldierAIBrain> { null }; // player 没有 SoldierAIBrain
-        allBrains.AddRange(brains);
-
-        SimulateTicks(allCtx, allBrains, 600); // 10秒
-
-        // 所有小兵应该朝玩家移动了（至少走了一半）
-        foreach (var s in soldiers)
-        {
-            Assert.Greater(s.Position.x, 3f,
-                $"小兵应朝玩家移动，当前位置 {s.Position}");
-        }
-    }
-
-    [Test]
-    public void 小兵不阻拦玩家_玩家朝小兵走时小兵让开()
-    {
-        // 小兵在玩家正前方
-        var player = MakeSoldier(new Vector3(0, 0, 0));
-        var scriptedPlayerBrain = new ScriptedBrain();
-        player.Brain = scriptedPlayerBrain;
-        EntityRegistry.RegisterAsPlayer(player);
-
-        var soldier = MakeSoldier(new Vector3(1.5f, 0, 0));
-        var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
-        brain.AvoidPlayerRadius = 1.8f;
-        brain.AvoidPlayerStrength = 3f;
-        brain.Inject();
-        soldier.Brain = brain;
-        EntityRegistry.Register(soldier);
-
-        // 玩家朝右移动（朝小兵方向）
-        scriptedPlayerBrain.Move = new Vector2(1f, 0f);
-
-        var allCtx = new List<SimEntityContext> { player, soldier };
-        var allBrains = new List<SoldierAIBrain> { null, brain };
-
-        SimulateTicks(allCtx, allBrains, 120); // 2秒
-
-        // 小兵应该不在玩家正前方了（Z方向偏移或X方向更远）
-        float distBetween = Vector3.Distance(player.Position, soldier.Position);
-        Assert.Greater(distBetween, 0.8f,
-            $"小兵应让开玩家，距离 {distBetween}，玩家 {player.Position}，小兵 {soldier.Position}");
-    }
-
-    [Test]
-    public void 五个小兵遇敌_散开而非堆叠()
-    {
-        var player = MakeSoldier(new Vector3(-5, 0, 0));
-        player.Brain = new ScriptedBrain();
-        EntityRegistry.RegisterAsPlayer(player);
-
-        var enemy = MakeSoldier(new Vector3(5, 0, 0), SideType.EnemySide);
-        enemy.Brain = new ScriptedBrain();
-        EntityRegistry.Register(enemy);
-
-        var soldiers = new List<SimEntityContext>();
-        var brains = new List<SoldierAIBrain>();
-
-        // 5个小兵初始位置几乎重叠
-        for (int i = 0; i < 5; i++)
-        {
-            var s = MakeSoldier(new Vector3(0, 0, 0));
-            var brain = new SoldierAIBrain();
-            brain.RecruitRadius = 20f;
-            brain.DetectEnemyRange = 10f;
-            brain.SeparationRadius = 1.2f;
-            brain.SeparationWeight = 1.5f;
-            brain.Inject();
-            s.Brain = brain;
-            EntityRegistry.Register(s);
-            soldiers.Add(s);
-            brains.Add(brain);
-        }
-
-        var allCtx = new List<SimEntityContext> { player, enemy };
-        allCtx.AddRange(soldiers);
-        var allBrains = new List<SoldierAIBrain> { null, null };
-        allBrains.AddRange(brains);
-
-        SimulateTicks(allCtx, allBrains, 300); // 5秒
-
-        // 检查：没有任何两个小兵距离 < 0.5（应该散开了）
-        for (int i = 0; i < soldiers.Count; i++)
-        {
-            for (int j = i + 1; j < soldiers.Count; j++)
-            {
-                float dist = Vector3.Distance(soldiers[i].Position, soldiers[j].Position);
-                Assert.Greater(dist, 0.3f,
-                    $"小兵 {i} 和 {j} 堆叠了，距离 {dist:F2}");
-            }
-        }
-    }
-
-    #endregion
 }

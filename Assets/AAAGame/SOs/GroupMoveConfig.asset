@@ -12,31 +12,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9e3e5c26ffc1844e981bb9d2d0e05a7e, type: 3}
   m_Name: GroupMoveConfig
   m_EditorClassIdentifier: 
-  UnitRepulsionStrength: 5
-  UnitAttractionStrength: 0.5
-  UnitEquilibriumRadius: 2
-  UnitMaxInfluenceRange: 5
-  LeaderRepulsionStrength: 20
-  LeaderAttractionStrength: 1
-  LeaderEquilibriumRadius: 1
-  LeaderMaxInfluenceRange: 20
-  EnemyRepulsionStrength: 5
-  EnemyAttractionStrength: 1
-  EnemyEquilibriumRadius: 0.5
-  EnemyMaxInfluenceRange: 7
-  ObstacleWeight: 100
-  MoveThreshold: 15
-  MoveThresholdSpeedRatio: 1.5
   VelocitySmoothing: 0.35
   FollowRecruitRadius: 15
   FollowLeashRange: 30
+  FollowBaseStopRadius: 1
   FollowDeadZoneRange: 5
   FollowInnerDeadZoneRange: 2
+  RequireAuthoredNavigationSource: 1
   NavigationCellSize: 0
   NavigationBoundsPadding: 0.6
   SectorSizeInCells: 12
   PortalNarrowWidthCells: 2
   FlowTileCacheLimit: 256
+  RuntimeRebuildBudgetMilliseconds: 1.5
+  UseNavMeshSlopeCost: 1
+  SlopeCostPerCellHeight: 8
   CrowdPredictionTime: 0.35
   LaneBiasStrength: 0.22
   BoundaryAvoidanceWeight: 1

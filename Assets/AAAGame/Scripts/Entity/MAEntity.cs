@@ -47,6 +47,7 @@ public class MAEntity : CompCreature, IEntityContext
     private Fix64 _lastAppliedCollisionRadius;
     public IControlBrain Brain { get; private set; }
     public void SetBrain(IControlBrain brain) => Brain = brain;
+    protected virtual bool UsesFlowNavigationAgent => true;
 
     public virtual void ChangeSide(SideType newSide)
     {
@@ -57,7 +58,7 @@ public class MAEntity : CompCreature, IEntityContext
 
         if (oldSide != newSide)
         {
-            if (GroupMoveManager.HasInstance)
+            if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
                 GroupMoveManager.Instance.UpdateAgentSide(this);
 
             if (Brain is IBrainSideChangeHandler sideChangeHandler)
@@ -236,7 +237,7 @@ public class MAEntity : CompCreature, IEntityContext
     /// </summary>
     protected void RegisterToGroupMove()
     {
-        if (GroupMoveManager.HasInstance)
+        if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.RegisterAgent(this);
     }
 
@@ -286,7 +287,7 @@ public class MAEntity : CompCreature, IEntityContext
             _buffComp = null;
         }
 
-        if (GroupMoveManager.HasInstance)
+        if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.UnregisterAgent(this);
         EntityRegistry.Unregister(this);
 
@@ -315,7 +316,7 @@ public class MAEntity : CompCreature, IEntityContext
             SyncScaleFromCollisionRadius();
 
         // 更新协调器中的位置（在 Brain.Tick 之前）
-        if (GroupMoveManager.HasInstance)
+        if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
             GroupMoveManager.Instance.UpdateAgentPosition(this);
 
         if (Brain is ITickBrain tickBrain)
