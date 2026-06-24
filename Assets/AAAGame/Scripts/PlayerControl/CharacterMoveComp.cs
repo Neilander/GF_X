@@ -21,11 +21,13 @@ public class CharacterMoveComp : IMoveComp
     public void SetNavTarget(Vector3 destination)
     {
         _targetPos = destination;
+        PrepareFlowNavigationRequest(destination);
     }
 
     public void MoveTo(Vector3 destination)
     {
         _targetPos = destination;
+        PrepareFlowNavigationRequest(destination);
     }
 
     public void StopMove()
@@ -120,6 +122,21 @@ public class CharacterMoveComp : IMoveComp
 
     public bool IsMoving => _isMoving;
     public bool HasNavigationTarget => _targetPos.HasValue;
+
+    private void PrepareFlowNavigationRequest(Vector3 destination)
+    {
+        if (_ctx == null)
+            return;
+
+        if (!FlowFieldCrowdMovementSystem.TryPrepareNavigationRequest(_ctx, destination, out string failureReason)
+            && GameDebugSettings.IsEnabled(DebugCategory.Move)
+            && GameDebugSettings.ShouldLogMovementForCharacter(_ctx.CharacterKey))
+        {
+            GameDebugSettings.Log(
+                DebugCategory.Move,
+                $"[{_ctx.CharacterKey}] Flow prepare pending target={destination} reason={failureReason}");
+        }
+    }
 
     private float ResolveArriveDistance()
     {

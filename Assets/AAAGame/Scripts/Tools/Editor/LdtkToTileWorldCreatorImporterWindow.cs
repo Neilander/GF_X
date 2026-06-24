@@ -267,7 +267,7 @@ namespace AAAGame.Tools.Editor
                     {
                         TerrainPrefabResult delayedTerrainResult = SaveTerrainPrefabFromManager();
                         FlowNavigationGridImportResult delayedFlowGridResult = GenerateFlowNavigationGrid(plan, delayedTerrainResult.targetPath);
-                        EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath, delayedFlowGridResult.asset);
+                        EntityImportResult delayedEntityImportResult = ImportEntityPresetPointsIfRequested(plan, delayedTerrainResult.targetPath, delayedFlowGridResult.assets);
                         delayedEntityImportResult.terrainResult = delayedTerrainResult;
                         delayedEntityImportResult.flowNavigationGridResult = delayedFlowGridResult;
                         AssetDatabase.SaveAssets();
@@ -298,7 +298,7 @@ namespace AAAGame.Tools.Editor
             }
 
             FlowNavigationGridImportResult flowGridResult = GenerateFlowNavigationGrid(plan, terrainPrefabResult.targetPath);
-            EntityImportResult entityImportResult = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.asset);
+            EntityImportResult entityImportResult = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.assets);
             entityImportResult.terrainResult = terrainPrefabResult;
             entityImportResult.flowNavigationGridResult = flowGridResult;
 
@@ -1731,7 +1731,7 @@ namespace AAAGame.Tools.Editor
                 ? TerrainPrefabResult.Existing(terrainPrefabPath)
                 : TerrainPrefabResult.Skipped("Terrain prefab has not been generated.");
             FlowNavigationGridImportResult flowGridResult = GenerateFlowNavigationGrid(plan, terrainPrefabResult.targetPath);
-            EntityImportResult result = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.asset);
+            EntityImportResult result = ImportEntityPresetPointsIfRequested(plan, terrainPrefabResult.targetPath, flowGridResult.assets);
             result.terrainResult = terrainPrefabResult;
             result.flowNavigationGridResult = flowGridResult;
 
@@ -1739,7 +1739,7 @@ namespace AAAGame.Tools.Editor
             Debug.Log(lastReport);
         }
 
-        private EntityImportResult ImportEntityPresetPointsIfRequested(ImportPlan plan, string terrainPrefabPath, FlowNavigationGridAsset flowNavigationGrid)
+        private EntityImportResult ImportEntityPresetPointsIfRequested(ImportPlan plan, string terrainPrefabPath, IReadOnlyList<FlowNavigationGridAsset> flowNavigationGrids)
         {
             if (!importEntityPresetPoints)
             {
@@ -1782,9 +1782,11 @@ namespace AAAGame.Tools.Editor
             {
                 prefabRoot.name = Path.GetFileNameWithoutExtension(targetPath);
                 EntityImportResult result = ImportEntityPresetPointsIntoRoot(prefabRoot.transform, plan.entityPoints, terrainPrefabPath, useUndo: false);
-                if (flowNavigationGrid != null)
+                if (flowNavigationGrids != null && flowNavigationGrids.Count > 0)
                 {
-                    FlowNavigationGridPrefabBaker.AttachSourceToLevelPrefab(prefabRoot, flowNavigationGrid);
+                    FlowNavigationGridAsset primaryGrid = flowNavigationGrids[0];
+                    FlowNavigationGridAsset[] movementTypeGrids = flowNavigationGrids.Skip(1).Where(x => x != null).ToArray();
+                    FlowNavigationGridPrefabBaker.AttachSourceToLevelPrefab(prefabRoot, primaryGrid, movementTypeGrids);
                     result.flowNavigationSourceAttached = true;
                 }
 
@@ -1958,15 +1960,33 @@ namespace AAAGame.Tools.Editor
 
             string assetPath = GetDefaultFlowNavigationGridAssetPath();
             Vector3 gridOrigin = ResolveFlowNavigationGridOrigin(terrainPrefabPath);
-            FlowNavigationGridPrefabBaker.Result result = FlowNavigationGridPrefabBaker.BakeFromTerrainPrefab(
+            FlowNavigationGridPrefabBaker.Result[] results = FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab(
                 terrainPrefabPath,
-                assetPath,
+                BuildDefaultFlowNavigationGridBakeRequests(assetPath),
                 plan.width,
                 plan.height,
                 plan.cellSize,
                 gridOrigin);
 
-            return FlowNavigationGridImportResult.From(result);
+            return FlowNavigationGridImportResult.From(results);
+        }
+
+        private static FlowNavigationGridPrefabBaker.MovementTypeBakeRequest[] BuildDefaultFlowNavigationGridBakeRequests(string primaryAssetPath)
+        {
+            if (string.IsNullOrWhiteSpace(primaryAssetPath))
+                throw new InvalidOperationException("BuildDefaultFlowNavigationGridBakeRequests failed: primaryAssetPath is empty.");
+
+            string folder = Path.GetDirectoryName(primaryAssetPath)?.Replace("\\", "/");
+            string name = Path.GetFileNameWithoutExtension(primaryAssetPath);
+            if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(name))
+                throw new InvalidOperationException($"BuildDefaultFlowNavigationGridBakeRequests failed: invalid primaryAssetPath={primaryAssetPath}.");
+
+            return new[]
+            {
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.MediumMovementTypeId, primaryAssetPath, 0.5f),
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.SmallMovementTypeId, $"{folder}/{name}_Small.asset", 0.35f),
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.LargeMovementTypeId, $"{folder}/{name}_Large.asset", 0.75f)
+            };
         }
 
         private Vector3 ResolveFlowNavigationGridOrigin(string terrainPrefabPath)
@@ -2416,6 +2436,12 @@ namespace AAAGame.Tools.Editor
             else
             {
                 builder.AppendLine($"Flow navigation asset: {result.flowNavigationGridResult.assetPath}");
+                builder.AppendLine($"Flow navigation movement type grids: {result.flowNavigationGridResult.assetCount}");
+                if (!string.IsNullOrEmpty(result.flowNavigationGridResult.assetPathsSummary))
+                {
+                    builder.AppendLine($"Flow navigation assets: {result.flowNavigationGridResult.assetPathsSummary}");
+                }
+
                 builder.AppendLine($"Flow navigation size: {result.flowNavigationGridResult.width} x {result.flowNavigationGridResult.height}");
                 builder.AppendLine($"Flow navigation walkable: {result.flowNavigationGridResult.walkableCount}");
                 builder.AppendLine($"Flow navigation blocked: {result.flowNavigationGridResult.blockedCount}");
@@ -2558,7 +2584,10 @@ namespace AAAGame.Tools.Editor
             public bool skipped;
             public string skippedReason;
             public FlowNavigationGridAsset asset;
+            public FlowNavigationGridAsset[] assets;
             public string assetPath;
+            public string assetPathsSummary;
+            public int assetCount;
             public int width;
             public int height;
             public int walkableCount;
@@ -2575,18 +2604,37 @@ namespace AAAGame.Tools.Editor
                 };
             }
 
-            public static FlowNavigationGridImportResult From(FlowNavigationGridPrefabBaker.Result result)
+            public static FlowNavigationGridImportResult From(FlowNavigationGridPrefabBaker.Result[] results)
             {
+                if (results == null || results.Length == 0)
+                    return Skipped("No flow navigation grids were generated.");
+
+                FlowNavigationGridPrefabBaker.Result primary = results[0];
+                FlowNavigationGridAsset[] assets = new FlowNavigationGridAsset[results.Length];
+                string[] paths = new string[results.Length];
+                int walkableCount = 0;
+                int blockedCount = 0;
+                for (int i = 0; i < results.Length; i++)
+                {
+                    assets[i] = results[i].Asset;
+                    paths[i] = $"{results[i].AgentTypeId}:{results[i].AssetPath}";
+                    walkableCount += results[i].WalkableCount;
+                    blockedCount += results[i].BlockedCount;
+                }
+
                 return new FlowNavigationGridImportResult
                 {
-                    asset = result.Asset,
-                    assetPath = result.AssetPath,
-                    width = result.Width,
-                    height = result.Height,
-                    walkableCount = result.WalkableCount,
-                    blockedCount = result.BlockedCount,
-                    groundColliderCount = result.GroundColliderCount,
-                    obstacleColliderCount = result.ObstacleColliderCount
+                    asset = primary.Asset,
+                    assets = assets,
+                    assetPath = primary.AssetPath,
+                    assetPathsSummary = string.Join(", ", paths),
+                    assetCount = assets.Length,
+                    width = primary.Width,
+                    height = primary.Height,
+                    walkableCount = walkableCount,
+                    blockedCount = blockedCount,
+                    groundColliderCount = primary.GroundColliderCount,
+                    obstacleColliderCount = primary.ObstacleColliderCount
                 };
             }
         }

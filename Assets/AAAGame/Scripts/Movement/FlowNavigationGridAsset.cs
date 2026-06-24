@@ -10,6 +10,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     [SerializeField] private float _cellSize = 1f;
     [SerializeField] private Vector3 _origin;
     [SerializeField] private bool[] _walkable = new bool[16 * 16];
+    [SerializeField] private byte[] _costs = new byte[16 * 16];
 
     public int AgentTypeId => _agentTypeId;
     public int Width => _width;
@@ -54,13 +55,17 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         _height = height;
         _cellSize = cellSize;
         _walkable = next;
+        _costs = CreateDefaultCosts(_walkable);
     }
 
     public void Fill(bool walkable)
     {
         EnsureValidStorage();
         for (int i = 0; i < _walkable.Length; i++)
+        {
             _walkable[i] = walkable;
+            _costs[i] = walkable ? (byte)1 : byte.MaxValue;
+        }
     }
 
     public bool IsCellWalkable(int x, int y)
@@ -76,7 +81,33 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         EnsureValidStorage();
         if (x < 0 || x >= _width || y < 0 || y >= _height)
             return;
-        _walkable[x + y * _width] = walkable;
+        int index = x + y * _width;
+        _walkable[index] = walkable;
+        _costs[index] = walkable ? (byte)1 : byte.MaxValue;
+    }
+
+    public byte GetCellCost(int x, int y)
+    {
+        EnsureValidStorage();
+        if (x < 0 || x >= _width || y < 0 || y >= _height)
+            return byte.MaxValue;
+        return _costs[x + y * _width];
+    }
+
+    public void SetCellCost(int x, int y, byte cost)
+    {
+        EnsureValidStorage();
+        if (x < 0 || x >= _width || y < 0 || y >= _height)
+            return;
+
+        int index = x + y * _width;
+        if (!_walkable[index])
+        {
+            _costs[index] = byte.MaxValue;
+            return;
+        }
+
+        _costs[index] = (byte)Mathf.Clamp(cost, 1, 254);
     }
 
     public bool WorldToCell(Vector3 position, out int x, out int y)
@@ -99,6 +130,12 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     {
         EnsureValidStorage();
         return (bool[])_walkable.Clone();
+    }
+
+    public byte[] CreateCostFieldCopy()
+    {
+        EnsureValidStorage();
+        return (byte[])_costs.Clone();
     }
 
     public Vector3[] CreateCellAnchors()
@@ -126,7 +163,12 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     {
         int expectedLength = Mathf.Max(1, _width) * Mathf.Max(1, _height);
         if (_walkable != null && _walkable.Length == expectedLength)
+        {
+            if (_costs == null || _costs.Length != expectedLength)
+                _costs = CreateDefaultCosts(_walkable);
+            NormalizeCosts();
             return;
+        }
 
         bool[] next = new bool[expectedLength];
         if (_walkable != null)
@@ -136,5 +178,32 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         }
 
         _walkable = next;
+        _costs = CreateDefaultCosts(_walkable);
+    }
+
+    private void NormalizeCosts()
+    {
+        for (int i = 0; i < _costs.Length; i++)
+        {
+            if (!_walkable[i])
+            {
+                _costs[i] = byte.MaxValue;
+                continue;
+            }
+
+            if (_costs[i] == 0 || _costs[i] == byte.MaxValue)
+                _costs[i] = 1;
+        }
+    }
+
+    private static byte[] CreateDefaultCosts(bool[] walkable)
+    {
+        if (walkable == null)
+            return Array.Empty<byte>();
+
+        byte[] costs = new byte[walkable.Length];
+        for (int i = 0; i < costs.Length; i++)
+            costs[i] = walkable[i] ? (byte)1 : byte.MaxValue;
+        return costs;
     }
 }

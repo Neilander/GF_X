@@ -16,6 +16,7 @@ namespace AAAGame.Tools.Editor
         {
             public FlowNavigationGridAsset Asset;
             public string AssetPath;
+            public int AgentTypeId;
             public int Width;
             public int Height;
             public int WalkableCount;
@@ -24,9 +25,44 @@ namespace AAAGame.Tools.Editor
             public int ObstacleColliderCount;
         }
 
+        public struct MovementTypeBakeRequest
+        {
+            public int AgentTypeId;
+            public string AssetPath;
+            public float HardClearanceRadius;
+
+            public MovementTypeBakeRequest(int agentTypeId, string assetPath, float hardClearanceRadius)
+            {
+                AgentTypeId = agentTypeId;
+                AssetPath = assetPath;
+                HardClearanceRadius = hardClearanceRadius;
+            }
+        }
+
         public static Result BakeFromTerrainPrefab(
             string terrainPrefabPath,
             string assetPath,
+            int width,
+            int height,
+            float cellSize,
+            Vector3 gridOrigin)
+        {
+            return BakeFromTerrainPrefab(
+                terrainPrefabPath,
+                assetPath,
+                int.MinValue + 1,
+                0f,
+                width,
+                height,
+                cellSize,
+                gridOrigin);
+        }
+
+        public static Result BakeFromTerrainPrefab(
+            string terrainPrefabPath,
+            string assetPath,
+            int agentTypeId,
+            float hardClearanceRadius,
             int width,
             int height,
             float cellSize,
@@ -60,21 +96,33 @@ namespace AAAGame.Tools.Editor
                 if (groundColliders.Length == 0)
                     throw new InvalidOperationException($"FlowNavigationGridPrefabBaker.BakeFromTerrainPrefab failed: no enabled non-trigger collider on layer '{GroundLayerName}' in {terrainPrefabPath}.");
 
+                bool[] baseWalkable = new bool[width * height];
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        Vector3 sample = new Vector3((x + 0.5f) * cellSize, 0f, (y + 0.5f) * cellSize);
+                        baseWalkable[x + y * width] = RaycastVertical(groundColliders, sample.x, sample.z)
+                                                       && !RaycastVertical(obstacleColliders, sample.x, sample.z);
+                    }
+                }
+
+                bool[] movementWalkable = BuildHardClearanceMask(baseWalkable, width, height, cellSize, hardClearanceRadius);
+                byte[] movementCosts = BuildSourceCostField(movementWalkable, width, height, hardClearanceRadius, cellSize);
+
                 FlowNavigationGridAsset asset = LoadOrCreateAsset(assetPath);
-                int preservedAgentTypeId = asset.AgentTypeId;
                 asset.Resize(width, height, cellSize, defaultWalkable: false);
                 asset.SetOrigin(gridOrigin);
-                asset.SetAgentTypeId(preservedAgentTypeId);
+                asset.SetAgentTypeId(agentTypeId);
 
                 int walkableCount = 0;
                 for (int y = 0; y < height; y++)
                 {
                     for (int x = 0; x < width; x++)
                     {
-                        Vector3 sample = new Vector3((x + 0.5f) * cellSize, 0f, (y + 0.5f) * cellSize);
-                        bool walkable = RaycastVertical(groundColliders, sample.x, sample.z)
-                                        && !RaycastVertical(obstacleColliders, sample.x, sample.z);
+                        bool walkable = movementWalkable[x + y * width];
                         asset.SetCellWalkable(x, y, walkable);
+                        asset.SetCellCost(x, y, movementCosts[x + y * width]);
                         if (walkable)
                             walkableCount++;
                     }
@@ -90,6 +138,7 @@ namespace AAAGame.Tools.Editor
                 {
                     Asset = asset,
                     AssetPath = assetPath,
+                    AgentTypeId = asset.AgentTypeId,
                     Width = width,
                     Height = height,
                     WalkableCount = walkableCount,
@@ -104,7 +153,47 @@ namespace AAAGame.Tools.Editor
             }
         }
 
+        public static Result[] BakeMovementTypesFromTerrainPrefab(
+            string terrainPrefabPath,
+            IReadOnlyList<MovementTypeBakeRequest> requests,
+            int width,
+            int height,
+            float cellSize,
+            Vector3 gridOrigin)
+        {
+            if (requests == null)
+                throw new InvalidOperationException("FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab failed: requests is null.");
+            if (requests.Count == 0)
+                throw new InvalidOperationException("FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab failed: requests is empty.");
+
+            Result[] results = new Result[requests.Count];
+            HashSet<int> agentTypeIds = new HashSet<int>();
+            for (int i = 0; i < requests.Count; i++)
+            {
+                MovementTypeBakeRequest request = requests[i];
+                if (!agentTypeIds.Add(request.AgentTypeId))
+                    throw new InvalidOperationException($"FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab failed: duplicate agentTypeId={request.AgentTypeId}.");
+
+                results[i] = BakeFromTerrainPrefab(
+                    terrainPrefabPath,
+                    request.AssetPath,
+                    request.AgentTypeId,
+                    request.HardClearanceRadius,
+                    width,
+                    height,
+                    cellSize,
+                    gridOrigin);
+            }
+
+            return results;
+        }
+
         public static void AttachSourceToLevelPrefab(GameObject prefabRoot, FlowNavigationGridAsset grid)
+        {
+            AttachSourceToLevelPrefab(prefabRoot, grid, Array.Empty<FlowNavigationGridAsset>());
+        }
+
+        public static void AttachSourceToLevelPrefab(GameObject prefabRoot, FlowNavigationGridAsset grid, IReadOnlyList<FlowNavigationGridAsset> movementTypeGrids)
         {
             if (prefabRoot == null)
                 throw new InvalidOperationException("FlowNavigationGridPrefabBaker.AttachSourceToLevelPrefab failed: prefabRoot is null.");
@@ -118,7 +207,7 @@ namespace AAAGame.Tools.Editor
             FlowNavigationGridSource source = sources.Length == 1
                 ? sources[0]
                 : prefabRoot.AddComponent<FlowNavigationGridSource>();
-            source.Configure(grid, applyOnEnable: true, applyInEditMode: false, clearOnDisable: true);
+            source.Configure(grid, movementTypeGrids, applyOnEnable: true, applyInEditMode: false, clearOnDisable: true);
             EditorUtility.SetDirty(source);
             EditorUtility.SetDirty(prefabRoot);
         }
@@ -171,6 +260,115 @@ namespace AAAGame.Tools.Editor
             }
 
             return false;
+        }
+
+        private static bool[] BuildHardClearanceMask(bool[] baseWalkable, int width, int height, float cellSize, float hardClearanceRadius)
+        {
+            if (baseWalkable == null || baseWalkable.Length != width * height)
+                throw new InvalidOperationException("FlowNavigationGridPrefabBaker.BuildHardClearanceMask failed: base mask is invalid.");
+
+            bool[] result = (bool[])baseWalkable.Clone();
+            if (hardClearanceRadius <= 0.0001f)
+                return result;
+
+            float clearanceSq = hardClearanceRadius * hardClearanceRadius;
+            int radiusCells = Mathf.CeilToInt(hardClearanceRadius / Mathf.Max(0.0001f, cellSize));
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int index = x + y * width;
+                    if (!baseWalkable[index])
+                        continue;
+
+                    bool blockedByClearance = false;
+                    for (int oy = -radiusCells; oy <= radiusCells && !blockedByClearance; oy++)
+                    {
+                        int ny = y + oy;
+                        if (ny < 0 || ny >= height)
+                            continue;
+
+                        for (int ox = -radiusCells; ox <= radiusCells; ox++)
+                        {
+                            int nx = x + ox;
+                            if (nx < 0 || nx >= width)
+                                continue;
+                            if (baseWalkable[nx + ny * width])
+                                continue;
+
+                            float dx = Mathf.Max(0f, Mathf.Abs(ox) - 0.5f) * cellSize;
+                            float dz = Mathf.Max(0f, Mathf.Abs(oy) - 0.5f) * cellSize;
+                            if (dx * dx + dz * dz > clearanceSq)
+                                continue;
+
+                            blockedByClearance = true;
+                            break;
+                        }
+                    }
+
+                    if (blockedByClearance)
+                        result[index] = false;
+                }
+            }
+
+            return result;
+        }
+
+        private static byte[] BuildSourceCostField(bool[] walkable, int width, int height, float hardClearanceRadius, float cellSize)
+        {
+            if (walkable == null || walkable.Length != width * height)
+                throw new InvalidOperationException("FlowNavigationGridPrefabBaker.BuildSourceCostField failed: walkable mask is invalid.");
+
+            byte[] costs = new byte[walkable.Length];
+            float blurRadiusCells = 2.25f + Mathf.Max(0f, (hardClearanceRadius - 0.5f) / Mathf.Max(0.001f, cellSize));
+            int adjacentPenalty = 1 + Mathf.CeilToInt(Mathf.Max(0f, (hardClearanceRadius - 0.5f) / Mathf.Max(0.001f, cellSize)));
+            int outerPenalty = adjacentPenalty > 1 ? 1 : 0;
+            int radiusCells = Mathf.CeilToInt(blurRadiusCells);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int index = x + y * width;
+                    if (!walkable[index])
+                    {
+                        costs[index] = byte.MaxValue;
+                        continue;
+                    }
+
+                    float nearestWallDistance = float.PositiveInfinity;
+                    for (int oy = -radiusCells; oy <= radiusCells; oy++)
+                    {
+                        int ny = y + oy;
+                        if (ny < 0 || ny >= height)
+                            continue;
+
+                        for (int ox = -radiusCells; ox <= radiusCells; ox++)
+                        {
+                            int nx = x + ox;
+                            if (nx < 0 || nx >= width)
+                                continue;
+                            if (walkable[nx + ny * width])
+                                continue;
+
+                            float distance = Mathf.Sqrt(ox * ox + oy * oy);
+                            if (distance < nearestWallDistance)
+                                nearestWallDistance = distance;
+                        }
+                    }
+
+                    int penalty = 0;
+                    if (!float.IsPositiveInfinity(nearestWallDistance) && nearestWallDistance <= blurRadiusCells)
+                    {
+                        float t = Mathf.Clamp01((blurRadiusCells - nearestWallDistance) / Mathf.Max(0.001f, blurRadiusCells - 1f));
+                        penalty = Mathf.RoundToInt(Mathf.Lerp(outerPenalty, adjacentPenalty, t));
+                    }
+
+                    costs[index] = (byte)Mathf.Clamp(1 + penalty, 1, 254);
+                }
+            }
+
+            return costs;
         }
 
         private static FlowNavigationGridAsset LoadOrCreateAsset(string assetPath)

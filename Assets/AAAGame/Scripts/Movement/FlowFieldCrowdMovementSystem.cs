@@ -12,10 +12,41 @@ public enum FlowFieldAgentState
     Combat
 }
 
+public readonly struct AuthoredNavigationSourceData
+{
+    public readonly int AgentTypeId;
+    public readonly int Width;
+    public readonly int Height;
+    public readonly float CellSize;
+    public readonly Vector3 Origin;
+    public readonly bool[] WalkableMask;
+    public readonly Vector3[] CellNavAnchors;
+    public readonly byte[] CostField;
+
+    public AuthoredNavigationSourceData(
+        int agentTypeId,
+        int width,
+        int height,
+        float cellSize,
+        Vector3 origin,
+        bool[] walkableMask,
+        Vector3[] cellNavAnchors,
+        byte[] costField = null)
+    {
+        AgentTypeId = agentTypeId;
+        Width = width;
+        Height = height;
+        CellSize = cellSize;
+        Origin = origin;
+        WalkableMask = walkableMask;
+        CellNavAnchors = cellNavAnchors;
+        CostField = costField;
+    }
+}
+
 public static class FlowFieldCrowdMovementSystem
 {
     private const int AnyAgentTypeId = int.MinValue + 1;
-    private const float PortalGraphMergePriorityBias = 0.35f;
     private const float MaxAgentAvoidBackwardSpeedRatio = 0.35f;
     private const float MaxAgentAvoidLateralSpeedRatio = 0.75f;
     private const float IdleOverlapRecoverySpeed = 0.65f;
@@ -73,6 +104,7 @@ public static class FlowFieldCrowdMovementSystem
         public float CellSize;
         public Vector3 Origin;
         public bool[] BaseWalkableMask;
+        public byte[] SourceCostField;
         public bool[] WalkableMask;
         public byte[] CostField;
         public byte[][] SectorCostFields;
@@ -515,7 +547,8 @@ public static class FlowFieldCrowdMovementSystem
         LineOfSight = 0,
         FlowField = 1,
         PendingPortal = 2,
-        Zero = 3
+        PendingFinalGoal = 3,
+        Zero = 4
     }
 
     private enum AvoidanceEncounterType
@@ -857,6 +890,22 @@ public static class FlowFieldCrowdMovementSystem
         public Vector3 Origin;
         public bool[] WalkableMask;
         public Vector3[] CellNavAnchors;
+        public byte[] CostField;
+
+        public TestTerrainOverride Clone()
+        {
+            return new TestTerrainOverride
+            {
+                AgentTypeId = AgentTypeId,
+                Width = Width,
+                Height = Height,
+                CellSize = CellSize,
+                Origin = Origin,
+                WalkableMask = WalkableMask != null ? (bool[])WalkableMask.Clone() : null,
+                CellNavAnchors = CellNavAnchors != null ? (Vector3[])CellNavAnchors.Clone() : null,
+                CostField = CostField != null ? (byte[])CostField.Clone() : null
+            };
+        }
     }
 
     private sealed class CircleObstacle
@@ -870,17 +919,23 @@ public static class FlowFieldCrowdMovementSystem
     {
         public readonly int TargetId;
         public readonly int RawGoalCellIndex;
+        public readonly int GoalPointX;
+        public readonly int GoalPointZ;
 
-        public MovingTargetAnchorKey(int targetId, int rawGoalCellIndex)
+        public MovingTargetAnchorKey(int targetId, int rawGoalCellIndex, int goalPointX, int goalPointZ)
         {
             TargetId = targetId;
             RawGoalCellIndex = rawGoalCellIndex;
+            GoalPointX = goalPointX;
+            GoalPointZ = goalPointZ;
         }
 
         public bool Equals(MovingTargetAnchorKey other)
         {
             return TargetId == other.TargetId
-                   && RawGoalCellIndex == other.RawGoalCellIndex;
+                   && RawGoalCellIndex == other.RawGoalCellIndex
+                   && GoalPointX == other.GoalPointX
+                   && GoalPointZ == other.GoalPointZ;
         }
 
         public override bool Equals(object obj)
@@ -892,7 +947,11 @@ public static class FlowFieldCrowdMovementSystem
         {
             unchecked
             {
-                return (TargetId * 397) ^ RawGoalCellIndex;
+                int hash = TargetId;
+                hash = (hash * 397) ^ RawGoalCellIndex;
+                hash = (hash * 397) ^ GoalPointX;
+                hash = (hash * 397) ^ GoalPointZ;
+                return hash;
             }
         }
     }
@@ -1027,6 +1086,8 @@ public static class FlowFieldCrowdMovementSystem
         private readonly List<QueueNode> _items = new List<QueueNode>(256);
 
         public int Count => _items.Count;
+
+        public float PeekCost => _items.Count > 0 ? _items[0].Cost : float.PositiveInfinity;
 
         public void Clear()
         {
@@ -1742,6 +1803,7 @@ public static class FlowFieldCrowdMovementSystem
         public float CellSize;
         public Vector3 Origin;
         public bool[] BaseWalkableMask;
+        public byte[] BaseCostField;
         public Vector3[] CellNavAnchors;
         public bool HasProvidedCellNavAnchors;
         public int RasterCursor;
@@ -1896,6 +1958,7 @@ public static class FlowFieldCrowdMovementSystem
     private static string _lastWorldDirtyReason = "initial";
     private static string _lastRuntimeObstacleDirtyReason = "none";
     private static TestTerrainOverride _testTerrainOverride;
+    private static readonly Dictionary<int, TestTerrainOverride> AuthoredTerrainSources = new Dictionary<int, TestTerrainOverride>();
 #if UNITY_EDITOR
     private static readonly Dictionary<int, float> TestAgentTypeRadii = new Dictionary<int, float>();
 #endif
@@ -1946,6 +2009,8 @@ public static class FlowFieldCrowdMovementSystem
         _lastNavigationGoalOccupancyBucketFrame = -1;
         _lastNavigationGoalOccupancyBucketWorldVersion = -1;
         _lastOverlapDiagnosticsFrame = -1;
+        _testTerrainOverride = null;
+        AuthoredTerrainSources.Clear();
 #if UNITY_EDITOR
         TestAgentTypeRadii.Clear();
 #endif
@@ -1988,6 +2053,11 @@ public static class FlowFieldCrowdMovementSystem
 
     public static void SetEditorTestNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors)
     {
+        SetEditorTestNavigationSource(agentTypeId, width, height, cellSize, origin, walkableMask, cellNavAnchors, null);
+    }
+
+    public static void SetEditorTestNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors, byte[] costField)
+    {
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
             throw new InvalidOperationException("SetEditorTestNavigationSource failed: explicit agentTypeId is Unknown. Use the overload without agentTypeId for Any test source.");
         if (walkableMask == null)
@@ -1998,23 +2068,19 @@ public static class FlowFieldCrowdMovementSystem
         if (cellNavAnchors != null && cellNavAnchors.Length != width * height)
             throw new InvalidOperationException(
                 $"SetEditorTestNavigationSource failed: anchor length {cellNavAnchors.Length} does not match {width}x{height}.");
+        if (costField != null && costField.Length != width * height)
+            throw new InvalidOperationException(
+                $"SetEditorTestNavigationSource failed: cost length {costField.Length} does not match {width}x{height}.");
 
-        _testTerrainOverride = new TestTerrainOverride
-        {
-            AgentTypeId = agentTypeId,
-            Width = width,
-            Height = height,
-            CellSize = cellSize,
-            Origin = origin,
-            WalkableMask = (bool[])walkableMask.Clone(),
-            CellNavAnchors = cellNavAnchors != null ? (Vector3[])cellNavAnchors.Clone() : null
-        };
+        _testTerrainOverride = CreateTerrainOverride(agentTypeId, width, height, cellSize, origin, walkableMask, cellNavAnchors, costField);
+        AuthoredTerrainSources.Clear();
         MarkWorldDirty();
     }
 
     public static void ClearEditorTestNavigationSource()
     {
         _testTerrainOverride = null;
+        AuthoredTerrainSources.Clear();
         MarkWorldDirty();
     }
 
@@ -2047,27 +2113,85 @@ public static class FlowFieldCrowdMovementSystem
 
     public static void SetAuthoredNavigationSource(int width, int height, float cellSize, Vector3 origin, bool[] walkableMask)
     {
-        SetAuthoredNavigationSource(AnyAgentTypeId, width, height, cellSize, origin, walkableMask, null);
+        SetAuthoredNavigationSource(AnyAgentTypeId, width, height, cellSize, origin, walkableMask, null, null);
     }
 
-    public static void SetAuthoredNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors = null)
+    public static void SetAuthoredNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors = null, byte[] costField = null)
+    {
+        TestTerrainOverride source = CreateTerrainOverride(agentTypeId, width, height, cellSize, origin, walkableMask, cellNavAnchors, costField);
+        _testTerrainOverride = source;
+        AuthoredTerrainSources.Clear();
+        AuthoredTerrainSources[source.AgentTypeId] = source;
+        MarkWorldDirty("authored-navigation-source");
+    }
+
+    public static void SetAuthoredNavigationSources(IReadOnlyList<AuthoredNavigationSourceData> sources)
+    {
+        if (sources == null)
+            throw new InvalidOperationException("SetAuthoredNavigationSources failed: sources is null.");
+        if (sources.Count == 0)
+            throw new InvalidOperationException("SetAuthoredNavigationSources failed: sources is empty.");
+
+        Dictionary<int, TestTerrainOverride> nextSources = new Dictionary<int, TestTerrainOverride>(sources.Count);
+        for (int i = 0; i < sources.Count; i++)
+        {
+            AuthoredNavigationSourceData source = sources[i];
+            TestTerrainOverride terrain = CreateTerrainOverride(
+                source.AgentTypeId,
+                source.Width,
+                source.Height,
+                source.CellSize,
+                source.Origin,
+                source.WalkableMask,
+                source.CellNavAnchors,
+                source.CostField);
+            if (nextSources.ContainsKey(terrain.AgentTypeId))
+                throw new InvalidOperationException($"SetAuthoredNavigationSources failed: duplicate agentTypeId={terrain.AgentTypeId}.");
+
+            nextSources.Add(terrain.AgentTypeId, terrain);
+        }
+
+        AuthoredTerrainSources.Clear();
+        foreach (KeyValuePair<int, TestTerrainOverride> pair in nextSources)
+            AuthoredTerrainSources.Add(pair.Key, pair.Value);
+
+        _testTerrainOverride = ResolveDefaultAuthoredTerrainSource();
+        MarkWorldDirty("authored-navigation-source");
+    }
+
+    public static void ClearAuthoredNavigationSource()
+    {
+        _testTerrainOverride = null;
+        AuthoredTerrainSources.Clear();
+        MarkWorldDirty("authored-navigation-source-cleared");
+    }
+
+    public static bool HasAuthoredNavigationSource()
+    {
+        return _testTerrainOverride != null || AuthoredTerrainSources.Count > 0;
+    }
+
+    private static TestTerrainOverride CreateTerrainOverride(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors, byte[] costField)
     {
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
-            throw new InvalidOperationException("SetAuthoredNavigationSource failed: explicit agentTypeId is Unknown.");
+            throw new InvalidOperationException("CreateTerrainOverride failed: explicit agentTypeId is Unknown.");
         if (width <= 0 || height <= 0)
-            throw new InvalidOperationException($"SetAuthoredNavigationSource failed: invalid size {width}x{height}.");
+            throw new InvalidOperationException($"CreateTerrainOverride failed: invalid size {width}x{height}.");
         if (cellSize <= 0.0001f)
-            throw new InvalidOperationException($"SetAuthoredNavigationSource failed: invalid cellSize={cellSize:F4}.");
+            throw new InvalidOperationException($"CreateTerrainOverride failed: invalid cellSize={cellSize:F4}.");
         if (walkableMask == null)
-            throw new InvalidOperationException("SetAuthoredNavigationSource failed: walkableMask is null.");
+            throw new InvalidOperationException("CreateTerrainOverride failed: walkableMask is null.");
         if (walkableMask.Length != width * height)
             throw new InvalidOperationException(
-                $"SetAuthoredNavigationSource failed: mask length {walkableMask.Length} does not match {width}x{height}.");
+                $"CreateTerrainOverride failed: mask length {walkableMask.Length} does not match {width}x{height}.");
         if (cellNavAnchors != null && cellNavAnchors.Length != width * height)
             throw new InvalidOperationException(
-                $"SetAuthoredNavigationSource failed: anchor length {cellNavAnchors.Length} does not match {width}x{height}.");
+                $"CreateTerrainOverride failed: anchor length {cellNavAnchors.Length} does not match {width}x{height}.");
+        if (costField != null && costField.Length != width * height)
+            throw new InvalidOperationException(
+                $"CreateTerrainOverride failed: cost length {costField.Length} does not match {width}x{height}.");
 
-        _testTerrainOverride = new TestTerrainOverride
+        return new TestTerrainOverride
         {
             AgentTypeId = agentTypeId,
             Width = width,
@@ -2075,20 +2199,22 @@ public static class FlowFieldCrowdMovementSystem
             CellSize = cellSize,
             Origin = origin,
             WalkableMask = (bool[])walkableMask.Clone(),
-            CellNavAnchors = cellNavAnchors != null ? (Vector3[])cellNavAnchors.Clone() : null
+            CellNavAnchors = cellNavAnchors != null ? (Vector3[])cellNavAnchors.Clone() : null,
+            CostField = costField != null ? (byte[])costField.Clone() : null
         };
-        MarkWorldDirty("authored-navigation-source");
     }
 
-    public static void ClearAuthoredNavigationSource()
+    private static TestTerrainOverride ResolveDefaultAuthoredTerrainSource()
     {
-        _testTerrainOverride = null;
-        MarkWorldDirty("authored-navigation-source-cleared");
-    }
+        if (AuthoredTerrainSources.TryGetValue(AnyAgentTypeId, out TestTerrainOverride anySource))
+            return anySource;
+        if (AuthoredTerrainSources.TryGetValue(ResolvePreferredAgentTypeId(0), out TestTerrainOverride defaultSource))
+            return defaultSource;
 
-    public static bool HasAuthoredNavigationSource()
-    {
-        return _testTerrainOverride != null;
+        foreach (TestTerrainOverride source in AuthoredTerrainSources.Values)
+            return source;
+
+        return null;
     }
 
     public static void SetConfig(GroupMoveConfig config)
@@ -2222,6 +2348,15 @@ public static class FlowFieldCrowdMovementSystem
         List<int> agentTypeIds = new List<int>(8);
         HashSet<int> seen = new HashSet<int>();
 
+        if (AuthoredTerrainSources.Count > 1
+            || (AuthoredTerrainSources.Count == 1 && !AuthoredTerrainSources.ContainsKey(AnyAgentTypeId)))
+        {
+            foreach (int agentTypeId in AuthoredTerrainSources.Keys)
+                AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(agentTypeId));
+
+            return agentTypeIds;
+        }
+
 #if UNITY_EDITOR
         if (_testTerrainOverride != null)
         {
@@ -2238,6 +2373,23 @@ public static class FlowFieldCrowdMovementSystem
             return agentTypeIds;
         }
 #endif
+
+        if (AuthoredTerrainSources.Count > 0)
+        {
+            if (!AuthoredTerrainSources.ContainsKey(AnyAgentTypeId))
+            {
+                foreach (int agentTypeId in AuthoredTerrainSources.Keys)
+                    AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(agentTypeId));
+            }
+            else
+            {
+                AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(0));
+                foreach (AgentRuntimeData agent in Agents.Values)
+                    AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(agent.AgentTypeId));
+            }
+
+            return agentTypeIds;
+        }
 
         AddNavigationWorldAgentType(agentTypeIds, seen, ResolvePreferredAgentTypeId(0));
         foreach (AgentRuntimeData agent in Agents.Values)
@@ -2784,7 +2936,7 @@ public static class FlowFieldCrowdMovementSystem
             bool reachable = !float.IsPositiveInfinity(job.Tile.Integration[localIndex]);
             if (pathable
                 && reachable
-                && !HasFlowLineOfSight(job.Tile, localIndex)
+                && RequiresStoredFlowDirection(job.Tile, localIndex, worldX, worldY)
                 && !useDescriptorDirection
                 && !IsTileGoalCell(job.Tile, worldX, worldY))
             {
@@ -2820,6 +2972,18 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         return false;
+    }
+
+    private static bool RequiresStoredFlowDirection(FlowTileCacheEntry tile, int localIndex, int worldX, int worldY)
+    {
+        if (tile == null)
+            throw new InvalidOperationException("RequiresStoredFlowDirection failed: tile is null.");
+        if (IsTileGoalCell(tile, worldX, worldY))
+            return false;
+        if (!HasFlowLineOfSight(tile, localIndex))
+            return true;
+
+        return tile.Key.GoalKind == TileGoalKind.Portal;
     }
 
     private static bool AdvanceFlowTilePortalHandoff(FlowTileBuildJob job, long deadlineTicks, bool forceComplete)
@@ -2951,7 +3115,7 @@ public static class FlowFieldCrowdMovementSystem
             int cellY = tile.StartY + localIndex / tile.Width;
             bool needsRuntimeDirection = reachable
                                          && IsFlowPathable(tile, localIndex)
-                                         && !HasFlowLineOfSight(tile, localIndex)
+                                         && RequiresStoredFlowDirection(tile, localIndex, cellX, cellY)
                                          && !IsTileGoalCell(tile, cellX, cellY)
                                          && !tile.UsesClearFlowDescriptor;
             if (needsRuntimeDirection
@@ -2959,8 +3123,8 @@ public static class FlowFieldCrowdMovementSystem
                 && ResolveFlowDirectionFromIntegration(tile, cellX, cellY).sqrMagnitude > 0.0001f)
             {
                 throw new InvalidOperationException(
-                    $"ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease failed: reachable non-LOS cell has zero flow key={FormatTileKey(tile.Key)} " +
-                    $"cell=({cellX},{cellY}) waveBlocked={IsFlowWaveFrontBlocked(tile, localIndex)} cost={integration[localIndex]:F3}.");
+                    $"ValidateFlowTileRuntimeFlagsBeforeIntegrationRelease failed: reachable cell requiring stored flow has zero flow key={FormatTileKey(tile.Key)} " +
+                    $"cell=({cellX},{cellY}) los={HasFlowLineOfSight(tile, localIndex)} waveBlocked={IsFlowWaveFrontBlocked(tile, localIndex)} cost={integration[localIndex]:F3}.");
             }
         }
     }
@@ -2974,7 +3138,6 @@ public static class FlowFieldCrowdMovementSystem
         {
             if (!IsFlowPathable(tile, localIndex)
                 || !IsFlowReachable(tile, localIndex)
-                || HasFlowLineOfSight(tile, localIndex)
                 || GetFlowDirectionIndex(tile, localIndex) != 0)
             {
                 continue;
@@ -2982,7 +3145,7 @@ public static class FlowFieldCrowdMovementSystem
 
             int worldX = tile.StartX + localIndex % tile.Width;
             int worldY = tile.StartY + localIndex / tile.Width;
-            if (IsTileGoalCell(tile, worldX, worldY))
+            if (!RequiresStoredFlowDirection(tile, localIndex, worldX, worldY))
                 continue;
 
             Vector2 direction = ResolveFlowDirectionFromIntegration(tile, worldX, worldY);
@@ -3003,7 +3166,7 @@ public static class FlowFieldCrowdMovementSystem
 
             int worldX = tile.StartX + localIndex % tile.Width;
             int worldY = tile.StartY + localIndex / tile.Width;
-            if (!IsTileGoalCell(tile, worldX, worldY) && GetFlowDirectionIndex(tile, localIndex) == 0)
+            if (RequiresStoredFlowDirection(tile, localIndex, worldX, worldY) && GetFlowDirectionIndex(tile, localIndex) == 0)
                 return true;
         }
 
@@ -3184,6 +3347,18 @@ public static class FlowFieldCrowdMovementSystem
 
     public static void RegisterAgent(IEntityContext entity, bool isLeader, float radius)
     {
+        RegisterAgentInternal(entity, isLeader, radius, ResolveExplicitAgentTypeId(entity, nameof(RegisterAgent)));
+    }
+
+#if UNITY_EDITOR
+    public static void RegisterAgentForEditorTest(IEntityContext entity, bool isLeader, float radius, int agentTypeId)
+    {
+        RegisterAgentInternal(entity, isLeader, radius, ResolvePreferredAgentTypeId(agentTypeId));
+    }
+#endif
+
+    private static void RegisterAgentInternal(IEntityContext entity, bool isLeader, float radius, int agentTypeId)
+    {
         if (entity == null)
             return;
 
@@ -3203,7 +3378,7 @@ public static class FlowFieldCrowdMovementSystem
         agent.Radius = Mathf.Max(0.05f, radius);
         agent.Side = entity.Side;
         agent.IsLeader = isLeader;
-        agent.AgentTypeId = ResolveExplicitAgentTypeId(entity, nameof(RegisterAgent));
+        agent.AgentTypeId = agentTypeId;
         agent.EntityTypeName = entity.GetType().Name;
         agent.MoveCompTypeName = entity.MoveComp?.GetType().Name ?? "null";
         agent.RegistrationSource = "RegisterAgent";
@@ -3303,6 +3478,40 @@ public static class FlowFieldCrowdMovementSystem
         source = (int)agent.NavState.LastSteeringDesiredSource;
         hasLineOfSight = agent.NavState.LastSteeringHasLineOfSight;
         return agent.NavState.LastSteeringFrame >= 0;
+    }
+
+    public static bool TryGetEditorTestLastSteeringDiagnostic(
+        int agentId,
+        out Vector3 desiredVelocity,
+        out Vector3 baseVelocity,
+        out Vector3 agentAvoidance,
+        out Vector3 clampedAgentAvoidance,
+        out Vector3 boundaryAvoidance,
+        out Vector3 laneVelocity,
+        out Vector3 resultPreClamp,
+        out Vector3 result)
+    {
+        desiredVelocity = Vector3.zero;
+        baseVelocity = Vector3.zero;
+        agentAvoidance = Vector3.zero;
+        clampedAgentAvoidance = Vector3.zero;
+        boundaryAvoidance = Vector3.zero;
+        laneVelocity = Vector3.zero;
+        resultPreClamp = Vector3.zero;
+        result = Vector3.zero;
+        if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent))
+            return false;
+
+        AgentNavState nav = agent.NavState;
+        desiredVelocity = nav.LastSteeringDesiredVelocity;
+        baseVelocity = nav.LastSteeringBaseVelocity;
+        agentAvoidance = nav.LastSteeringAgentAvoidance;
+        clampedAgentAvoidance = nav.LastSteeringClampedAgentAvoidance;
+        boundaryAvoidance = nav.LastSteeringBoundaryAvoidance;
+        laneVelocity = nav.LastSteeringLaneVelocity;
+        resultPreClamp = nav.LastSteeringResultPreClamp;
+        result = nav.LastSteeringResult;
+        return nav.LastSteeringFrame >= 0;
     }
 
     public static int GetEditorTestFlowTileCacheCount()
@@ -3444,6 +3653,20 @@ public static class FlowFieldCrowdMovementSystem
             return false;
 
         portalIds = (int[])handle.PortalIds.Clone();
+        return true;
+    }
+
+    public static bool TryGetEditorTestPathBuildSource(int entityId, out string buildSource)
+    {
+        buildSource = null;
+        if (!Agents.TryGetValue(entityId, out AgentRuntimeData agent))
+            return false;
+
+        PathHandle handle = agent.NavState.PathHandle;
+        if (handle == null)
+            return false;
+
+        buildSource = handle.BuildSource;
         return true;
     }
 
@@ -3661,10 +3884,10 @@ public static class FlowFieldCrowdMovementSystem
                 continue;
 
             PortalData portal = GetPortalById(_world, tile.Key.GoalId);
-            Vector2Int[] currentSideCells = GetPortalCellsForSector(portal, tile.Key.SectorId);
+            Vector2Int[] oppositeSideCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, tile.Key.SectorId));
             CachedPortalTarget cached = tile.PortalTargets[tile.GetLocalIndex(worldX, worldY)];
             handoffTarget = cached.TargetPosition;
-            lineOfSightTarget = ResolvePortalLineOfSightTarget(cached, currentSideCells);
+            lineOfSightTarget = ResolvePortalLineOfSightTarget(cached, oppositeSideCells);
             return true;
         }
 
@@ -4361,80 +4584,92 @@ public static class FlowFieldCrowdMovementSystem
                 return false;
             }
 
-            int sourceId = ResolveAgentId(source);
-            if (!Agents.TryGetValue(sourceId, out AgentRuntimeData agent))
-            {
-                RegisterSyntheticAgent(source);
-                agent = Agents[sourceId];
-            }
-            else
-            {
-                agent.Position = source.Position;
-                agent.Radius = ResolveCollisionRadius(source);
-                agent.AgentTypeId = source is MAEntity maEntity ? maEntity.navAgentTypeID : agent.AgentTypeId;
-            }
-
-            if (!TryEnsureWorldBuilt(agent.AgentTypeId))
-            {
-                failureReason = $"world unavailable source={source.CharacterKey} agentType={agent.AgentTypeId}";
+            if (!TryPrepareNavigationRequest(source, goalPosition, out failureReason))
                 return false;
-            }
 
-            if (HasPendingRuntimeDirty(_activeWorldState))
-            {
-                failureReason = $"runtime dirty pending source={source.CharacterKey} agentType={agent.AgentTypeId}";
-                return false;
-            }
-
-            if (!_world.WorldToGrid(goalPosition, out int rawGoalX, out int rawGoalY))
-            {
-                failureReason = $"goal outside grid goal={goalPosition}";
-                return false;
-            }
-
-            if (!TryResolveStartCellForReachability(source, out int startX, out int startY, out int startIsland))
-            {
-                failureReason = $"start reachability failed source={source.CharacterKey} pos={source.Position}";
-                return false;
-            }
-
-            if (!TryResolveReachableGoalCell(
-                    source,
-                    goalPosition,
-                    rawGoalX,
-                    rawGoalY,
-                    startX,
-                    startY,
-                    startIsland,
-                    out int goalX,
-                    out int goalY,
-                    out _,
-                    out int goalSectorId))
-            {
-                failureReason = $"goal reachability failed source={source.CharacterKey} goal={goalPosition}";
-                return false;
-            }
-
-            if (!_world.TryGetSectorId(startX, startY, out int startSectorId))
-            {
-                failureReason = $"start sector failed source={source.CharacterKey} start=({startX},{startY})";
-                return false;
-            }
-
-            agent.NavState.CurrentCell = new Vector2Int(startX, startY);
-            agent.NavState.CurrentSectorId = startSectorId;
-            if (!EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY))
-            {
-                failureReason = $"path handle failed source={source.CharacterKey} startSector={startSectorId} goalSector={goalSectorId}";
-                return false;
-            }
-
-            EnqueueSharedGoalFieldBuild(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(agent.AgentTypeId));
-            EnqueueFlowTileBuildChain(agent.NavState.PathHandle, agent.NavState.PathHandle.CurrentSectorIndex, goalX, goalY, agent.AgentTypeId);
             preparedCount++;
         }
 
         return preparedCount == sources.Count;
+    }
+
+    public static bool TryPrepareNavigationRequest(IEntityContext source, Vector3 goalPosition, out string failureReason)
+    {
+        failureReason = string.Empty;
+        if (source == null)
+            throw new InvalidOperationException("TryPrepareNavigationRequest failed: source is null.");
+
+        int sourceId = ResolveAgentId(source);
+        if (!Agents.TryGetValue(sourceId, out AgentRuntimeData agent))
+        {
+            RegisterSyntheticAgent(source);
+            agent = Agents[sourceId];
+        }
+        else
+        {
+            agent.Position = source.Position;
+            agent.Radius = ResolveCollisionRadius(source);
+            agent.AgentTypeId = source is MAEntity maEntity ? maEntity.navAgentTypeID : agent.AgentTypeId;
+        }
+
+        if (!TryEnsureWorldBuilt(agent.AgentTypeId))
+        {
+            failureReason = $"world unavailable source={source.CharacterKey} agentType={agent.AgentTypeId}";
+            return false;
+        }
+
+        if (HasPendingRuntimeDirty(_activeWorldState))
+        {
+            failureReason = $"runtime dirty pending source={source.CharacterKey} agentType={agent.AgentTypeId}";
+            return false;
+        }
+
+        if (!_world.WorldToGrid(goalPosition, out int rawGoalX, out int rawGoalY))
+        {
+            failureReason = $"goal outside grid goal={goalPosition}";
+            return false;
+        }
+
+        if (!TryResolveStartCellForReachability(source, out int startX, out int startY, out int startIsland))
+        {
+            failureReason = $"start reachability failed source={source.CharacterKey} pos={source.Position}";
+            return false;
+        }
+
+        if (!TryResolveReachableGoalCell(
+                source,
+                goalPosition,
+                rawGoalX,
+                rawGoalY,
+                startX,
+                startY,
+                startIsland,
+                out int goalX,
+                out int goalY,
+                out _,
+                out int goalSectorId))
+        {
+            failureReason = $"goal reachability failed source={source.CharacterKey} goal={goalPosition}";
+            return false;
+        }
+
+        if (!_world.TryGetSectorId(startX, startY, out int startSectorId))
+        {
+            failureReason = $"start sector failed source={source.CharacterKey} start=({startX},{startY})";
+            return false;
+        }
+
+        agent.NavState.CurrentCell = new Vector2Int(startX, startY);
+        agent.NavState.CurrentSectorId = startSectorId;
+        if (!EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY))
+        {
+            failureReason = $"path handle failed source={source.CharacterKey} startSector={startSectorId} goalSector={goalSectorId}";
+            return false;
+        }
+
+        EnqueueSharedGoalFieldBuild(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(agent.AgentTypeId));
+        EnqueueFlowTileBuildChain(agent.NavState.PathHandle, agent.NavState.PathHandle.CurrentSectorIndex, goalX, goalY, agent.AgentTypeId);
+        return true;
     }
 
     private static CombatTargetSlotKey CreateCombatTargetSlotKey(
@@ -4759,8 +4994,19 @@ public static class FlowFieldCrowdMovementSystem
         if (tile == null)
         {
             string pendingPortalFailure = string.Empty;
-            if (goalKind != TileGoalKind.Portal
-                || !TryResolvePendingPortalDirection(agent, startSectorId, startX, startY, stableGoalPosition, out desiredResolution, out pendingPortalFailure))
+            if (goalKind == TileGoalKind.FinalGoal && startSectorId == goalSectorId)
+            {
+                if (!TryResolvePendingFinalGoalDirection(startX, startY, stableGoalPosition, out desiredResolution, out pendingPortalFailure))
+                {
+                    return FailNoFallback(
+                        self,
+                        $"pending final goal direction failed reason={pendingPortalFailure} tileDiag=tile-pending",
+                        occupiedGoalPosition,
+                        out velocity);
+                }
+            }
+            else if (goalKind != TileGoalKind.Portal
+                     || !TryResolvePendingPortalDirection(agent, startSectorId, startX, startY, stableGoalPosition, out desiredResolution, out pendingPortalFailure))
             {
                 return FailNoFallback(
                     self,
@@ -6450,8 +6696,7 @@ public static class FlowFieldCrowdMovementSystem
     private static bool CanSynchronouslyBuildWorldForEditorTest(int agentTypeId)
     {
 #if UNITY_EDITOR
-        return _testTerrainOverride != null
-               && (_testTerrainOverride.AgentTypeId == AnyAgentTypeId || _testTerrainOverride.AgentTypeId == agentTypeId);
+        return TryResolveTerrainSourceForAgentType(agentTypeId, out _);
 #else
         return false;
 #endif
@@ -6553,18 +6798,18 @@ public static class FlowFieldCrowdMovementSystem
         if (job == null)
             throw new InvalidOperationException("InitializeWorldBuildJob failed: job is null.");
 
-        if (_testTerrainOverride != null)
+        if (TryResolveTerrainSourceForAgentType(job.AgentTypeId, out TestTerrainOverride terrainSource))
         {
-            if (_testTerrainOverride.AgentTypeId != AnyAgentTypeId && _testTerrainOverride.AgentTypeId != job.AgentTypeId)
-                return false;
-
-            job.Width = _testTerrainOverride.Width;
-            job.Height = _testTerrainOverride.Height;
-            job.CellSize = _testTerrainOverride.CellSize;
-            job.Origin = _testTerrainOverride.Origin;
-            job.BaseWalkableMask = (bool[])_testTerrainOverride.WalkableMask.Clone();
-            job.CellNavAnchors = _testTerrainOverride.CellNavAnchors != null
-                ? (Vector3[])_testTerrainOverride.CellNavAnchors.Clone()
+            job.Width = terrainSource.Width;
+            job.Height = terrainSource.Height;
+            job.CellSize = terrainSource.CellSize;
+            job.Origin = terrainSource.Origin;
+            job.BaseWalkableMask = (bool[])terrainSource.WalkableMask.Clone();
+            job.BaseCostField = terrainSource.CostField != null
+                ? (byte[])terrainSource.CostField.Clone()
+                : null;
+            job.CellNavAnchors = terrainSource.CellNavAnchors != null
+                ? (Vector3[])terrainSource.CellNavAnchors.Clone()
                 : null;
             job.HasProvidedCellNavAnchors = job.CellNavAnchors != null;
             job.Stage = WorldBuildStage.CreateWorldShell;
@@ -6574,6 +6819,27 @@ public static class FlowFieldCrowdMovementSystem
         throw new InvalidOperationException(
             "InitializeWorldBuildJob failed: FlowNavigationGridSource has not applied a FlowNavigationGridAsset. " +
             "Runtime navigation is strict authored-grid only and will not fall back to any legacy navigation source.");
+    }
+
+    private static bool TryResolveTerrainSourceForAgentType(int agentTypeId, out TestTerrainOverride terrainSource)
+    {
+        if (AuthoredTerrainSources.TryGetValue(agentTypeId, out terrainSource))
+            return true;
+
+        if (_testTerrainOverride != null)
+        {
+            if (_testTerrainOverride.AgentTypeId == AnyAgentTypeId || _testTerrainOverride.AgentTypeId == agentTypeId)
+            {
+                terrainSource = _testTerrainOverride;
+                return true;
+            }
+        }
+
+        if (AuthoredTerrainSources.TryGetValue(AnyAgentTypeId, out terrainSource))
+            return true;
+
+        terrainSource = null;
+        return false;
     }
 
     private static void CreateWorldBuildShell(WorldBuildJob job)
@@ -6587,8 +6853,13 @@ public static class FlowFieldCrowdMovementSystem
             CellSize = job.CellSize,
             Origin = job.Origin,
             BaseWalkableMask = job.BaseWalkableMask,
+            SourceCostField = job.BaseCostField != null && job.BaseCostField.Length == job.Width * job.Height
+                ? (byte[])job.BaseCostField.Clone()
+                : null,
             WalkableMask = runtimeWalkableMask,
-            CostField = new byte[job.Width * job.Height],
+            CostField = job.BaseCostField != null && job.BaseCostField.Length == job.Width * job.Height
+                ? (byte[])job.BaseCostField.Clone()
+                : new byte[job.Width * job.Height],
             CellNavAnchors = job.CellNavAnchors != null && job.CellNavAnchors.Length == job.Width * job.Height ? job.CellNavAnchors : new Vector3[job.Width * job.Height],
             NeighborTraversalMask = new byte[job.Width * job.Height],
             IslandIds = new int[job.Width * job.Height],
@@ -6757,7 +7028,12 @@ public static class FlowFieldCrowdMovementSystem
 
         while (job.SectorCursor < world.Sectors.Length)
         {
-            RebuildCostFieldForSector(world, job.SectorCursor++, job.CostStamps);
+            if (world.SourceCostField != null && world.SourceCostField.Length == world.Width * world.Height)
+                InitializeAuthoredCostFieldForSector(world, world.Sectors[job.SectorCursor], job.CostStamps);
+            else
+                RebuildCostFieldForSector(world, job.SectorCursor, job.CostStamps);
+
+            job.SectorCursor++;
             if (!forceComplete && IsBudgetExpired(deadlineTicks, job.SectorCursor))
                 return;
         }
@@ -6922,8 +7198,8 @@ public static class FlowFieldCrowdMovementSystem
                     if (toPortalId == fromPortalId)
                         continue;
 
-                    Vector2Int[] toCells = GetPortalCellsForSector(GetPortalById(world, toPortalId), sector.SectorId);
-                    float traversalCost = ResolveMinimumIntegrationCost(sector, integration, toCells);
+                    PortalData toPortal = GetPortalById(world, toPortalId);
+                    float traversalCost = ResolveMinimumPortalCenterIntegrationCost(world, sector, integration, toPortal);
                     if (float.IsPositiveInfinity(traversalCost))
                         continue;
 
@@ -6959,7 +7235,7 @@ public static class FlowFieldCrowdMovementSystem
         job.PortalTransitionIntegration = RentIntegrationArray(sector.Width * sector.Height);
         InitializeIntegrationField(job.PortalTransitionIntegration);
         job.PortalTransitionOpenSet = new MinHeap();
-        SeedPortalTransitionIntegration(sector, fromCells, job.PortalTransitionIntegration, job.PortalTransitionOpenSet);
+        SeedPortalTransitionIntegration(world, sector, portal, fromCells, job.PortalTransitionIntegration, job.PortalTransitionOpenSet);
         job.PortalTransitionIntegrationActive = true;
     }
 
@@ -7814,8 +8090,8 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
                     if (toPortalId == fromPortalId)
                         continue;
 
-                    Vector2Int[] toCells = GetPortalCellsForSector(GetPortalById(world, toPortalId), sector.SectorId);
-                    float traversalCost = ResolveMinimumIntegrationCost(sector, integration, toCells);
+                    PortalData toPortal = GetPortalById(world, toPortalId);
+                    float traversalCost = ResolveMinimumPortalCenterIntegrationCost(world, sector, integration, toPortal);
                     if (float.IsPositiveInfinity(traversalCost))
                         continue;
 
@@ -7851,12 +8127,17 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
         job.PortalTransitionIntegration = RentIntegrationArray(sector.Width * sector.Height);
         InitializeIntegrationField(job.PortalTransitionIntegration);
         job.PortalTransitionOpenSet = new MinHeap();
-        SeedPortalTransitionIntegration(sector, fromCells, job.PortalTransitionIntegration, job.PortalTransitionOpenSet);
+        SeedPortalTransitionIntegration(world, sector, portal, fromCells, job.PortalTransitionIntegration, job.PortalTransitionOpenSet);
         job.PortalTransitionIntegrationActive = true;
     }
 
-    private static void SeedPortalTransitionIntegration(SectorData sector, Vector2Int[] fromCells, float[] integration, MinHeap openSet)
+    private static void SeedPortalTransitionIntegration(NavigationWorld world, SectorData sector, PortalData portal, Vector2Int[] fromCells, float[] integration, MinHeap openSet)
     {
+        if (world == null)
+            throw new InvalidOperationException("SeedPortalTransitionIntegration failed: world is null.");
+        if (portal == null)
+            throw new InvalidOperationException("SeedPortalTransitionIntegration failed: portal is null.");
+
         for (int i = 0; i < fromCells.Length; i++)
         {
             Vector2Int cell = fromCells[i];
@@ -7864,15 +8145,55 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
                 continue;
 
             int localIndex = GetSectorLocalIndex(sector, cell.x, cell.y);
-            if (integration[localIndex] <= 0f)
+            float seedCost = ResolvePortalCenterSeedCost(world, portal, cell);
+            if (integration[localIndex] <= seedCost)
                 continue;
 
-            integration[localIndex] = 0f;
-            openSet.Push(localIndex, 0f);
+            integration[localIndex] = seedCost;
+            openSet.Push(localIndex, seedCost);
         }
 
         if (openSet.Count == 0)
             throw new InvalidOperationException($"SeedPortalTransitionIntegration failed: no valid seeds sector={sector.SectorId}.");
+    }
+
+    private static float ResolveMinimumPortalCenterIntegrationCost(NavigationWorld world, SectorData sector, float[] integration, PortalData targetPortal)
+    {
+        if (targetPortal == null)
+            throw new InvalidOperationException("ResolveMinimumPortalCenterIntegrationCost failed: target portal is null.");
+
+        Vector2Int[] targetCells = GetPortalCellsForSector(targetPortal, sector.SectorId);
+        float best = float.PositiveInfinity;
+        for (int i = 0; i < targetCells.Length; i++)
+        {
+            Vector2Int cell = targetCells[i];
+            if (!IsInsideSector(sector, cell.x, cell.y))
+                continue;
+
+            float cost = integration[GetSectorLocalIndex(sector, cell.x, cell.y)];
+            if (float.IsPositiveInfinity(cost))
+                continue;
+
+            cost += ResolvePortalCenterSeedCost(world, targetPortal, cell);
+            if (cost < best)
+                best = cost;
+        }
+
+        return best;
+    }
+
+    private static float ResolvePortalCenterSeedCost(NavigationWorld world, PortalData portal, Vector2Int cell)
+    {
+        if (world == null)
+            throw new InvalidOperationException("ResolvePortalCenterSeedCost failed: world is null.");
+        if (portal == null)
+            throw new InvalidOperationException("ResolvePortalCenterSeedCost failed: portal is null.");
+
+        Vector3 cellCenter = world.GridToWorldCenter(cell.x, cell.y);
+        float axisDistance = portal.IsVerticalBoundary
+            ? Mathf.Abs(cellCenter.z - portal.WorldCenter.z)
+            : Mathf.Abs(cellCenter.x - portal.WorldCenter.x);
+        return axisDistance / Mathf.Max(world.CellSize, 0.001f);
     }
 
     private static bool AdvancePortalTransitionIntegration(
@@ -7992,6 +8313,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
             CellSize = source.CellSize,
             Origin = source.Origin,
             BaseWalkableMask = source.BaseWalkableMask,
+            SourceCostField = source.SourceCostField,
             WalkableMask = (bool[])source.WalkableMask.Clone(),
             CostField = MaterializeMutableCostField(source),
             SectorCostFields = null,
@@ -9703,17 +10025,50 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             if (float.IsPositiveInfinity(accessCost))
                 continue;
 
+            if (!TryResolveFirstCrossingPortalFromSharedGoalField(sharedField, startNode, startSectorId, goalSectorId, out int firstCrossingPortalId))
+                continue;
+
             float totalCost = accessCost + downstreamCost;
-            if (portalId == selectedPortalId)
+            if (firstCrossingPortalId == selectedPortalId && totalCost < selectedCost)
                 selectedCost = totalCost;
             if (totalCost >= bestCost)
                 continue;
 
             bestCost = totalCost;
-            bestPortalId = portalId;
+            bestPortalId = firstCrossingPortalId;
         }
 
         return bestPortalId >= 0;
+    }
+
+    private static bool TryResolveFirstCrossingPortalFromSharedGoalField(
+        SharedGoalField sharedField,
+        int startNode,
+        int startSectorId,
+        int goalSectorId,
+        out int firstCrossingPortalId)
+    {
+        firstCrossingPortalId = -1;
+        if (sharedField == null)
+            return false;
+
+        int cursor = startNode;
+        int guard = 0;
+        while (sharedField.NextNodeTowardGoal.TryGetValue(cursor, out int nextNode))
+        {
+            DecodePortalNode(cursor, out int fromSectorId, out int fromPortalId);
+            DecodePortalNode(nextNode, out int toSectorId, out int toPortalId);
+            if (fromPortalId == toPortalId && fromSectorId != toSectorId && firstCrossingPortalId < 0)
+                firstCrossingPortalId = fromPortalId;
+
+            cursor = nextNode;
+            guard++;
+            if (guard > _world.Sectors.Length + _world.PortalsById.Count)
+                throw new InvalidOperationException("TryResolveFirstCrossingPortalFromSharedGoalField failed: reconstruction exceeded guard.");
+        }
+
+        int endSectorId = DecodePortalSector(cursor);
+        return firstCrossingPortalId >= 0 && endSectorId == goalSectorId;
     }
 
     private static string BuildPathHandleFailure(IEntityContext self, Vector3 stableGoalPosition, int startSectorId, int goalSectorId, int startX, int startY, int goalX, int goalY)
@@ -10197,7 +10552,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Dictionary<int, int> startPortalByNode = new Dictionary<int, int>(64);
         HashSet<int> goalNodes = new HashSet<int>();
         Dictionary<int, float> goalAccessCosts = new Dictionary<int, float>(64);
-        Dictionary<int, ExistingPathMergePoint> mergeNodes = BuildExistingPathMergeNodes(startSectorId, goalSectorId);
+        Dictionary<int, ExistingPathMergePoint> mergeNodes = BuildExistingPathMergeNodes(startSectorId, goalSectorId, goalX, goalY);
 
         for (int i = 0; i < goalSector.PortalIds.Count; i++)
         {
@@ -10230,6 +10585,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         int bestGoalNode = int.MinValue;
         float bestGoalCost = float.PositiveInfinity;
+        int bestMergeNode = int.MinValue;
+        float bestMergeCost = float.PositiveInfinity;
+        ExistingPathMergePoint bestMergePoint = default;
         int guard = 0;
         while (openSet.Count > 0)
         {
@@ -10255,14 +10613,24 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 }
             }
 
-            if (currentCost >= bestGoalCost)
-                continue;
+            if (mergeNodes.TryGetValue(currentNode, out ExistingPathMergePoint mergePoint)
+                && TryResolveExistingPathSuffixCost(mergePoint, goalSectorId, goalX, goalY, out float suffixCost))
+            {
+                float totalMergeCost = currentCost + suffixCost;
+                if (totalMergeCost <= bestMergeCost + 0.001f
+                    && totalMergeCost <= bestGoalCost + 0.001f)
+                {
+                    bestMergeNode = currentNode;
+                    bestMergeCost = totalMergeCost;
+                    bestMergePoint = mergePoint;
+                }
+            }
 
             DecodePortalNode(currentNode, out int currentSectorId, out int currentPortalId);
             PortalData currentPortal = GetPortalById(_world, currentPortalId);
             int oppositeSectorId = GetOppositeSectorId(currentPortal, currentSectorId);
             int oppositeNode = EncodePortalNode(oppositeSectorId, currentPortalId);
-            TryRelaxPortalGraphEdge(openSet, nodeCosts, cameFrom, mergeNodes, currentNode, oppositeNode, currentCost + 1f, goalX, goalY);
+            TryRelaxPortalGraphEdge(openSet, nodeCosts, cameFrom, currentNode, oppositeNode, currentCost + 1f, goalX, goalY);
 
             SectorData sector = _world.Sectors[currentSectorId];
             for (int i = 0; i < sector.PortalTransitions.Count; i++)
@@ -10272,42 +10640,65 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                     continue;
 
                 int nextNode = EncodePortalNode(currentSectorId, transition.ToPortalId);
-                TryRelaxPortalGraphEdge(openSet, nodeCosts, cameFrom, mergeNodes, currentNode, nextNode, currentCost + transition.Cost, goalX, goalY);
+                TryRelaxPortalGraphEdge(openSet, nodeCosts, cameFrom, currentNode, nextNode, currentCost + transition.Cost, goalX, goalY);
             }
+
+            float bestKnownFinishCost = Mathf.Min(bestGoalCost, bestMergeCost);
+            if (openSet.PeekCost >= bestKnownFinishCost)
+                break;
 
             guard++;
             if (guard > _world.Sectors.Length * Mathf.Max(1, _world.PortalsById.Count + 1))
                 throw new InvalidOperationException("TryBuildPathHandleWithPortalGraphAStar failed: graph search exceeded guard.");
         }
 
-        if (bestGoalNode == int.MinValue)
+        if (bestGoalNode == int.MinValue && bestMergeNode == int.MinValue)
             return false;
 
-        List<int> reversedNodes = new List<int>(16);
-        int cursor = bestGoalNode;
-        reversedNodes.Add(cursor);
-        guard = 0;
-        while (cameFrom.TryGetValue(cursor, out int previousNode))
+        bool useMergedPath = bestMergeNode != int.MinValue && bestMergeCost <= bestGoalCost + 0.001f;
+        float finalCost = useMergedPath ? bestMergeCost : bestGoalCost;
+        List<int> sectorIds;
+        List<int> portalIds;
+        int startPortalId;
+        if (useMergedPath)
         {
-            cursor = previousNode;
+            if (!TryConvertPortalNodesToMergedPath(bestMergeNode, cameFrom, bestMergePoint, startSectorId, goalSectorId, out sectorIds, out portalIds))
+                return false;
+
+            startPortalId = DecodePortalId(ResolveFirstPortalGraphNode(bestMergeNode, cameFrom));
+        }
+        else
+        {
+            List<int> reversedNodes = new List<int>(16);
+            int cursor = bestGoalNode;
             reversedNodes.Add(cursor);
-            guard++;
-            if (guard > _world.Sectors.Length + _world.PortalsById.Count)
-                throw new InvalidOperationException("TryBuildPathHandleWithPortalGraphAStar failed: reconstruction exceeded guard.");
+            guard = 0;
+            while (cameFrom.TryGetValue(cursor, out int previousNode))
+            {
+                cursor = previousNode;
+                reversedNodes.Add(cursor);
+                guard++;
+                if (guard > _world.Sectors.Length + _world.PortalsById.Count)
+                    throw new InvalidOperationException("TryBuildPathHandleWithPortalGraphAStar failed: reconstruction exceeded guard.");
+            }
+
+            reversedNodes.Reverse();
+            if (!TryConvertPortalNodesToPath(reversedNodes, startSectorId, goalSectorId, out sectorIds, out portalIds))
+                return false;
+
+            startPortalId = startPortalByNode.TryGetValue(reversedNodes[0], out int foundStartPortal) ? foundStartPortal : -1;
         }
 
-        reversedNodes.Reverse();
-        if (!TryConvertPortalNodesToPath(reversedNodes, startSectorId, goalSectorId, out List<int> sectorIds, out List<int> portalIds))
-            return false;
-
         handle = CreateAndCachePathHandle(sectorPathKey, sectorIds, portalIds, goalX, goalY);
-        handle.BuildSource = "portalGraph";
+        handle.BuildSource = useMergedPath ? "portalGraphMerged" : "portalGraph";
+        if (useMergedPath)
+            _perf.PortalGraphMergeHits++;
         if (GameDebugSettings.IsEnabled(DebugCategory.Move))
         {
-            int startPortalId = startPortalByNode.TryGetValue(reversedNodes[0], out int foundStartPortal) ? foundStartPortal : -1;
             GameDebugSettings.Log(DebugCategory.Move,
-                $"[FlowPathHandleBuild] result=ok source=portalGraph startSector={startSectorId} goalSector={goalSectorId} " +
-                $"start=({startX},{startY}) goal=({goalX},{goalY}) startPortal={startPortalId} cost={bestGoalCost:F3} handle={FormatPathHandle(handle)}");
+                $"[FlowPathHandleBuild] result=ok source={handle.BuildSource} startSector={startSectorId} goalSector={goalSectorId} " +
+                $"start=({startX},{startY}) goal=({goalX},{goalY}) startPortal={startPortalId} cost={finalCost:F3} " +
+                $"mergeNode={bestMergeNode} mergeCost={bestMergeCost:F3} goalCost={bestGoalCost:F3} handle={FormatPathHandle(handle)}");
         }
 
         return true;
@@ -10327,7 +10718,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         }
     }
 
-    private static Dictionary<int, ExistingPathMergePoint> BuildExistingPathMergeNodes(int startSectorId, int goalSectorId)
+    private static Dictionary<int, ExistingPathMergePoint> BuildExistingPathMergeNodes(int startSectorId, int goalSectorId, int goalX, int goalY)
     {
         Dictionary<int, ExistingPathMergePoint> mergeNodes = null;
         foreach (AgentRuntimeData agent in Agents.Values)
@@ -10339,6 +10730,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 || handle.PortalIds == null
                 || handle.SectorIds.Length <= 1
                 || handle.SectorIds[handle.SectorIds.Length - 1] != goalSectorId
+                || handle.GoalX != goalX
+                || handle.GoalY != goalY
                 || PathReferencesMissingPortal(handle))
             {
                 continue;
@@ -10366,6 +10759,94 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
     }
 
     private static readonly Dictionary<int, ExistingPathMergePoint> EmptyMergeNodes = new Dictionary<int, ExistingPathMergePoint>(0);
+
+    private static bool TryResolveExistingPathSuffixCost(ExistingPathMergePoint mergePoint, int goalSectorId, int goalX, int goalY, out float cost)
+    {
+        cost = 0f;
+        if (mergePoint.SectorIds == null
+            || mergePoint.PortalIds == null
+            || mergePoint.SectorIndex < 0
+            || mergePoint.SectorIndex >= mergePoint.PortalIds.Length
+            || mergePoint.PortalIds.Length + 1 != mergePoint.SectorIds.Length)
+        {
+            return false;
+        }
+
+        for (int i = mergePoint.SectorIndex; i < mergePoint.PortalIds.Length; i++)
+        {
+            int fromSectorId = mergePoint.SectorIds[i];
+            int portalId = mergePoint.PortalIds[i];
+            PortalData portal = GetPortalById(_world, portalId);
+            if (!PortalTouchesSector(portal, fromSectorId))
+                return false;
+
+            cost += 1f;
+            int nextSectorId = mergePoint.SectorIds[i + 1];
+            if (GetOppositeSectorId(portal, fromSectorId) != nextSectorId)
+                return false;
+
+            if (i + 1 < mergePoint.PortalIds.Length)
+            {
+                float transitionCost = ResolvePortalTransitionCost(nextSectorId, portalId, mergePoint.PortalIds[i + 1]);
+                if (float.IsPositiveInfinity(transitionCost))
+                    return false;
+
+                cost += transitionCost;
+            }
+            else
+            {
+                if (nextSectorId != goalSectorId)
+                    return false;
+
+                float goalAccessCost = ResolvePortalAccessCost(_world.Sectors[goalSectorId], goalSectorId, portalId, goalX, goalY);
+                if (float.IsPositiveInfinity(goalAccessCost))
+                    return false;
+
+                cost += goalAccessCost;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool PortalTouchesSector(PortalData portal, int sectorId)
+    {
+        return portal.SectorAId == sectorId || portal.SectorBId == sectorId;
+    }
+
+    private static float ResolvePortalTransitionCost(int sectorId, int fromPortalId, int toPortalId)
+    {
+        SectorData sector = _world.Sectors[sectorId];
+        for (int i = 0; i < sector.PortalTransitions.Count; i++)
+        {
+            PortalTransition transition = sector.PortalTransitions[i];
+            if (transition.FromPortalId == fromPortalId && transition.ToPortalId == toPortalId)
+                return transition.Cost;
+        }
+
+        return float.PositiveInfinity;
+    }
+
+    private static int ResolveFirstPortalGraphNode(int node, Dictionary<int, int> cameFrom)
+    {
+        int cursor = node;
+        int guard = 0;
+        while (cameFrom.TryGetValue(cursor, out int previousNode))
+        {
+            cursor = previousNode;
+            guard++;
+            if (guard > _world.Sectors.Length + _world.PortalsById.Count)
+                throw new InvalidOperationException("ResolveFirstPortalGraphNode failed: reconstruction exceeded guard.");
+        }
+
+        return cursor;
+    }
+
+    private static int DecodePortalId(int node)
+    {
+        DecodePortalNode(node, out _, out int portalId);
+        return portalId;
+    }
 
     private static bool TryConvertPortalNodesToMergedPath(
         int mergeNode,
@@ -10433,7 +10914,6 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         MinHeap openSet,
         Dictionary<int, float> nodeCosts,
         Dictionary<int, int> cameFrom,
-        Dictionary<int, ExistingPathMergePoint> mergeNodes,
         int fromNode,
         int toNode,
         float newCost,
@@ -10446,8 +10926,6 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         nodeCosts[toNode] = newCost;
         cameFrom[toNode] = fromNode;
         float priority = newCost + ResolvePortalGraphHeuristic(toNode, goalX, goalY);
-        if (mergeNodes != null && mergeNodes.ContainsKey(toNode))
-            priority -= PortalGraphMergePriorityBias;
         openSet.Push(toNode, priority);
     }
 
@@ -10662,6 +11140,47 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         return index >= 0 && index < handle.PortalIds.Length ? handle.PortalIds[index] : -1;
     }
 
+    private static bool TryResolvePendingFinalGoalDirection(
+        int currentX,
+        int currentY,
+        Vector3 finalGoalPosition,
+        out DesiredDirectionResolution resolution,
+        out string failureReason)
+    {
+        resolution = default;
+        failureReason = string.Empty;
+        if (_world == null)
+        {
+            failureReason = "world is null";
+            return false;
+        }
+
+        Vector3 currentCenter = _world.GridToWorldCenter(currentX, currentY);
+        Vector3 toFinalGoal = finalGoalPosition - currentCenter;
+        toFinalGoal.y = 0f;
+        if (toFinalGoal.sqrMagnitude <= 0.0001f)
+        {
+            resolution = new DesiredDirectionResolution(
+                Vector3.zero,
+                DesiredDirectionSource.PendingFinalGoal,
+                finalGoalPosition,
+                Vector2.zero,
+                false,
+                float.PositiveInfinity);
+            return true;
+        }
+
+        Vector3 direction = toFinalGoal.normalized;
+        resolution = new DesiredDirectionResolution(
+            direction,
+            DesiredDirectionSource.PendingFinalGoal,
+            finalGoalPosition,
+            new Vector2(direction.x, direction.z),
+            false,
+            float.PositiveInfinity);
+        return true;
+    }
+
     private static bool TryResolvePendingPortalDirection(
         AgentRuntimeData agent,
         int currentSectorId,
@@ -10768,6 +11287,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             return false;
 
         Vector2Int selectedCurrentCell = currentSideCells[selectedPairIndex];
+        Vector2Int selectedOppositeCell = oppositeSideCells[selectedPairIndex];
         Vector3 currentCenter = _world.GridToWorldCenter(currentX, currentY);
 
         for (int i = 0; i < currentSideCells.Length; i++)
@@ -10775,6 +11295,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             Vector2Int currentCell = currentSideCells[i];
             if (currentCell.x != currentX || currentCell.y != currentY)
                 continue;
+            if (i != selectedPairIndex)
+                break;
 
             Vector2Int oppositeCell = oppositeSideCells[i];
             if (!_world.IsWalkable(oppositeCell.x, oppositeCell.y)
@@ -10791,6 +11313,18 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
             direction = toOpposite.normalized;
             return true;
+        }
+
+        if (HasGridLineOfSight(_world, currentX, currentY, selectedOppositeCell.x, selectedOppositeCell.y))
+        {
+            target = _world.GridToWorldCenter(selectedOppositeCell.x, selectedOppositeCell.y);
+            Vector3 toSelectedOppositeLane = target - currentCenter;
+            toSelectedOppositeLane.y = 0f;
+            if (toSelectedOppositeLane.sqrMagnitude > 0.0001f)
+            {
+                direction = toSelectedOppositeLane.normalized;
+                return true;
+            }
         }
 
         if (HasGridLineOfSight(_world, currentX, currentY, selectedCurrentCell.x, selectedCurrentCell.y))
@@ -11047,8 +11581,6 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         _perf.TileCacheMisses++;
         EnqueueFlowTileBuildChain(handle, sectorPathIndex, goalX, goalY, agent.AgentTypeId);
-        if (goalKind == TileGoalKind.FinalGoal && sectorPathIndex == handle.SectorIds.Length - 1)
-            ProcessFlowTileBuildQueue(long.MaxValue, forceComplete: true, requiredKey: key);
         if (FlowTileCache.TryGetValue(key, out tile))
         {
             _perf.TileCacheHits++;
@@ -11086,6 +11618,11 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             {
                 goalKind = TileGoalKind.Portal;
                 downstreamPortalId = pendingPortalId;
+                return true;
+            }
+            if (!builtOrCached && goalKind == TileGoalKind.FinalGoal)
+            {
+                downstreamPortalId = -1;
                 return true;
             }
             if (!builtOrCached)
@@ -11127,6 +11664,11 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                     {
                         goalKind = TileGoalKind.Portal;
                         downstreamPortalId = pendingPortalId;
+                        return true;
+                    }
+                    if (goalKind == TileGoalKind.FinalGoal)
+                    {
+                        downstreamPortalId = -1;
                         return true;
                     }
                     failureReason = $"tile build failed after strict repath sector={startSectorId} goal=({goalX},{goalY}); {BuildTileBuildPendingFailure(agent, startSectorId, goalSectorId, goalX, goalY)}";
@@ -11983,8 +12525,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Vector3 toLineOfSightTarget = lineOfSightTargetPosition - currentCenter;
         toLineOfSightTarget.y = 0f;
         float integration = GetTileIntegrationCostForDiagnostics(tile, currentX, currentY);
-        bool hasLineOfSight = IsRuntimeLineOfSightCell(tile, localIndex)
-                              && _world.WorldToGrid(lineOfSightTargetPosition, out int lineOfSightTargetX, out int lineOfSightTargetY)
+        bool hasLineOfSight = _world.WorldToGrid(lineOfSightTargetPosition, out int lineOfSightTargetX, out int lineOfSightTargetY)
                               && HasGridLineOfSight(
                                   _world,
                                   currentX,
@@ -12068,7 +12609,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             throw new InvalidOperationException("ApplyPathDirectionBlend failed: agent is null.");
 
         AgentNavState navState = agent.NavState;
-        if ((resolution.Source != DesiredDirectionSource.FlowField && resolution.Source != DesiredDirectionSource.PendingPortal)
+        if ((resolution.Source != DesiredDirectionSource.FlowField
+             && resolution.Source != DesiredDirectionSource.PendingPortal
+             && resolution.Source != DesiredDirectionSource.PendingFinalGoal)
             || resolution.Direction.sqrMagnitude <= 0.0001f
             || Config.PathDirectionBlend >= 0.999f)
         {
@@ -12160,7 +12703,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         bool logPortal = ShouldLogPortalDiagnostics(characterKey, goalKind);
         int localIndex = tile.GetLocalIndex(currentX, currentY);
         CachedPortalTarget cached = tile.PortalTargets[localIndex];
-        Vector3 lineOfSightTarget = ResolvePortalLineOfSightTarget(cached, currentSideCells);
+        Vector3 lineOfSightTarget = ResolvePortalLineOfSightTarget(cached, oppositeSideCells);
         string candidateSummary = logPortal
             ? BuildCachedPortalTargetCandidateSummary(tile, currentX, currentY, currentSideCells, oppositeSideCells, cached)
             : string.Empty;
@@ -12193,17 +12736,17 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         return new PortalTargetResolution(cached.TargetPosition, lineOfSightTarget, cached.VisibleCandidateCount, cached.SelectedPairIndex, true, candidateSummary);
     }
 
-    private static Vector3 ResolvePortalLineOfSightTarget(CachedPortalTarget cached, Vector2Int[] currentSideCells)
+    private static Vector3 ResolvePortalLineOfSightTarget(CachedPortalTarget cached, Vector2Int[] lineOfSightCells)
     {
-        if (currentSideCells == null || currentSideCells.Length == 0)
-            throw new InvalidOperationException("ResolvePortalLineOfSightTarget failed: currentSideCells are empty.");
-        if (cached.SelectedPairIndex >= 0 && cached.SelectedPairIndex < currentSideCells.Length)
+        if (lineOfSightCells == null || lineOfSightCells.Length == 0)
+            throw new InvalidOperationException("ResolvePortalLineOfSightTarget failed: lineOfSightCells are empty.");
+        if (cached.SelectedPairIndex >= 0 && cached.SelectedPairIndex < lineOfSightCells.Length)
         {
-            Vector2Int selectedCell = currentSideCells[cached.SelectedPairIndex];
+            Vector2Int selectedCell = lineOfSightCells[cached.SelectedPairIndex];
             return _world.GridToWorldCenter(selectedCell.x, selectedCell.y);
         }
 
-        return ResolveCellGroupCenter(currentSideCells);
+        return ResolveCellGroupCenter(lineOfSightCells);
     }
 
     private static CachedPortalTarget ResolveCachedPortalTarget(FlowTileCacheEntry tile, int currentX, int currentY)
@@ -12266,8 +12809,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         if (selectedPairIndex >= 0)
             return new CachedPortalTarget(bestTarget, visibleCandidateCount, selectedPairIndex, false);
 
-        if (visibleCandidateCount > 0
-            && TryResolvePortalPairIndexFromIntegration(tile, currentX, currentY, currentSideCells, integration, out int integrationPairIndex))
+        if (TryResolvePortalPairIndexFromIntegration(tile, currentX, currentY, currentSideCells, integration, out int integrationPairIndex))
         {
             Vector2Int oppositeCell = oppositeSideCells[integrationPairIndex];
             return new CachedPortalTarget(_world.GridToWorldCenter(oppositeCell.x, oppositeCell.y), 0, integrationPairIndex, false);
@@ -13574,8 +14116,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         SectorData startSector = _world.Sectors[startSectorId];
         int selectedPortalId = ResolveSelectedPortalIdForDiagnostics(handle, startSectorId);
-        int bestFlowPortalId = -1;
-        float bestFlowTotal = float.PositiveInfinity;
+        int bestStartNodePortalId = -1;
+        int bestFlowCrossingPortalId = -1;
+        float bestFlowCrossingTotal = float.PositiveInfinity;
         int bestGridDistancePortalId = -1;
         float bestGridDistanceTotal = float.PositiveInfinity;
         List<string> candidates = new List<string>(startSector.PortalIds.Count);
@@ -13589,10 +14132,15 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             float flowTotal = hasDownstream && !float.IsPositiveInfinity(accessCost)
                 ? accessCost + downstreamCost
                 : float.PositiveInfinity;
-            if (flowTotal < bestFlowTotal)
+            int firstCrossingPortalId = -1;
+            bool hasCrossing = hasDownstream
+                               && !float.IsPositiveInfinity(accessCost)
+                               && TryResolveFirstCrossingPortalFromSharedGoalField(sharedField, startNode, startSectorId, goalSectorId, out firstCrossingPortalId);
+            if (hasCrossing && flowTotal < bestFlowCrossingTotal)
             {
-                bestFlowTotal = flowTotal;
-                bestFlowPortalId = portalId;
+                bestFlowCrossingTotal = flowTotal;
+                bestStartNodePortalId = portalId;
+                bestFlowCrossingPortalId = firstCrossingPortalId;
             }
 
             float gridDistanceTotal = float.PositiveInfinity;
@@ -13645,6 +14193,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 + ",flowAccess=" + FormatDiagnosticCost(accessCost)
                 + ",flowDownstream=" + (hasDownstream ? FormatDiagnosticCost(downstreamCost) : "missing")
                 + ",flowTotal=" + FormatDiagnosticCost(flowTotal)
+                + ",firstCrossing=" + (hasCrossing ? firstCrossingPortalId.ToString() : "missing")
                 + ",gridDistanceTotal=" + FormatDiagnosticCost(gridDistanceTotal)
                 + ",gridAccess=" + FormatDiagnosticCost(gridAccess)
                 + ",gridDownstream=" + FormatDiagnosticCost(gridDownstream)
@@ -13657,7 +14206,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                + " start=(" + startX + "," + startY + ")"
                + " goal=(" + goalX + "," + goalY + ")"
                + " selected=" + selectedPortalId
-               + " bestFlow=" + bestFlowPortalId + ":" + FormatDiagnosticCost(bestFlowTotal)
+               + " bestFlowCrossing=" + bestFlowCrossingPortalId + ":" + FormatDiagnosticCost(bestFlowCrossingTotal)
+               + " bestStartNode=" + bestStartNodePortalId
                + " bestGridDistance=" + bestGridDistancePortalId + ":" + FormatDiagnosticCost(bestGridDistanceTotal)
                + " handle=" + FormatPathHandle(handle)
                + " candidates=" + string.Join(" | ", candidates)
@@ -13820,6 +14370,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         SectorData startSector = _world.Sectors[startSectorId];
         int bestPortalId = -1;
+        int bestStartNodePortalId = -1;
         float selectedCost = float.PositiveInfinity;
         float bestCost = float.PositiveInfinity;
         System.Text.StringBuilder candidates = new System.Text.StringBuilder(256);
@@ -13832,12 +14383,17 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             float totalCost = hasDownstream && !float.IsPositiveInfinity(accessCost)
                 ? accessCost + downstreamCost
                 : float.PositiveInfinity;
-            if (portalId == selectedPortalId)
+            int firstCrossingPortalId = -1;
+            bool hasCrossing = hasDownstream
+                               && !float.IsPositiveInfinity(accessCost)
+                               && TryResolveFirstCrossingPortalFromSharedGoalField(sharedField, startNode, startSectorId, goalSectorId, out firstCrossingPortalId);
+            if (hasCrossing && firstCrossingPortalId == selectedPortalId && totalCost < selectedCost)
                 selectedCost = totalCost;
-            if (totalCost < bestCost)
+            if (hasCrossing && totalCost < bestCost)
             {
                 bestCost = totalCost;
-                bestPortalId = portalId;
+                bestPortalId = firstCrossingPortalId;
+                bestStartNodePortalId = portalId;
             }
 
             if (i > 0)
@@ -13845,13 +14401,15 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             candidates.Append(portalId)
                 .Append(":a=").Append(FormatDiagnosticCost(accessCost))
                 .Append(",d=").Append(hasDownstream ? FormatDiagnosticCost(downstreamCost) : "missing")
-                .Append(",t=").Append(FormatDiagnosticCost(totalCost));
+                .Append(",t=").Append(FormatDiagnosticCost(totalCost))
+                .Append(",firstCrossing=").Append(hasCrossing ? firstCrossingPortalId.ToString() : "missing");
         }
 
         bool shouldRebuild = selectedPortalId != bestPortalId
                              && selectedCost > bestCost + IntegrationSignificantImprovement;
         return "selected=" + selectedPortalId + ":" + FormatDiagnosticCost(selectedCost)
                + " best=" + bestPortalId + ":" + FormatDiagnosticCost(bestCost)
+               + " bestStartNode=" + bestStartNodePortalId
                + " threshold=" + IntegrationSignificantImprovement.ToString("F3")
                + " shouldRebuild=" + shouldRebuild
                + " sharedNodes=" + sharedField.NodeCosts.Count
@@ -14521,7 +15079,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         Vector3 anchor = ResolveBottleneckAnchor(state, descriptor);
         float distanceToAnchor = Vector3.Distance(agent.Position, anchor);
-        bool shouldApplyLaneBias = HasBottleneckTrafficContext(agent, descriptor, anchor);
+        bool shouldApplyLaneBias = HasBottleneckTrafficContext(agent, descriptor, anchor)
+                                   || HasCommittedBottleneckLane(state, agent);
         Vector3 laneBias = shouldApplyLaneBias ? ResolveStableLaneBias(agent.Position, descriptor.CorridorAxis) : Vector3.zero;
         bool nearBottleneck = distanceToAnchor <= descriptor.InfluenceRadius;
         if (!nearBottleneck)
@@ -14925,9 +15484,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             }
         }
 
-        Vector3 corridorAxis = Mathf.Abs(desiredDirection.x) >= Mathf.Abs(desiredDirection.z)
-            ? new Vector3(Mathf.Sign(desiredDirection.x == 0f ? 1f : desiredDirection.x), 0f, 0f)
-            : new Vector3(0f, 0f, Mathf.Sign(desiredDirection.z == 0f ? 1f : desiredDirection.z));
+        Vector3 corridorAxis = ResolveCorridorAxisForBottleneckProbe(agent, currentX, currentY, desiredDirection);
         int axisMode = ResolveCorridorAxisMode(corridorAxis);
         if (axisMode == 0)
             return false;
@@ -14971,6 +15528,34 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             influenceRadius);
         CorridorBottlenecks[bottleneckId] = descriptor;
         return true;
+    }
+
+    private static Vector3 ResolveCorridorAxisForBottleneckProbe(AgentRuntimeData agent, int currentX, int currentY, Vector3 desiredDirection)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("ResolveCorridorAxisForBottleneckProbe failed: agent is null.");
+
+        int committedAxisMode = agent.NavState.BottleneckLaneAxisMode;
+        if ((committedAxisMode == 1 || committedAxisMode == 2)
+            && TryMeasureCorridorSpan(currentX, currentY, committedAxisMode, out int laneMin, out int laneMax, out int spanWidth)
+            && spanWidth <= Config.PortalNarrowWidthCells
+            && TryMeasureCorridorRunLength(currentX, currentY, committedAxisMode, laneMin, laneMax, out int forwardRun, out int backwardRun)
+            && forwardRun + backwardRun >= 2)
+        {
+            float sign = committedAxisMode == 1 ? desiredDirection.x : desiredDirection.z;
+            if (Mathf.Abs(sign) <= 0.05f && agent.NavState.CurrentFlowDirection.sqrMagnitude > 0.0001f)
+                sign = committedAxisMode == 1 ? agent.NavState.CurrentFlowDirection.x : agent.NavState.CurrentFlowDirection.z;
+            if (Mathf.Abs(sign) <= 0.05f)
+                sign = 1f;
+
+            return committedAxisMode == 1
+                ? new Vector3(Mathf.Sign(sign), 0f, 0f)
+                : new Vector3(0f, 0f, Mathf.Sign(sign));
+        }
+
+        return Mathf.Abs(desiredDirection.x) >= Mathf.Abs(desiredDirection.z)
+            ? new Vector3(Mathf.Sign(desiredDirection.x == 0f ? 1f : desiredDirection.x), 0f, 0f)
+            : new Vector3(0f, 0f, Mathf.Sign(desiredDirection.z == 0f ? 1f : desiredDirection.z));
     }
 
     private static Vector3 agentFlowOrDesired(FlowTileCacheEntry tile, int currentX, int currentY, Vector3 desiredDirection)
@@ -15274,6 +15859,18 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         agent.NavState.BottleneckLaneAxisMode = state.CorridorAxisMode;
         agent.NavState.BottleneckLaneSign = sign;
         return laneAxis * (laneBias.magnitude * sign);
+    }
+
+    private static bool HasCommittedBottleneckLane(BottleneckRuntimeState state, AgentRuntimeData agent)
+    {
+        if (state == null)
+            throw new InvalidOperationException("HasCommittedBottleneckLane failed: state is null.");
+        if (agent == null)
+            throw new InvalidOperationException("HasCommittedBottleneckLane failed: agent is null.");
+
+        return state.AgentLaneSigns.ContainsKey(agent.Id)
+               || agent.NavState.BottleneckLaneAxisMode == state.CorridorAxisMode
+               && Mathf.Abs(agent.NavState.BottleneckLaneSign) > 0.5f;
     }
 
     private static bool HasBottleneckTrafficContext(AgentRuntimeData self, CorridorBottleneckDescriptor descriptor, Vector3 anchor)
@@ -16931,7 +17528,10 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         int targetId = ResolveAgentId(currentTarget);
         int rawGoalCellIndex = _world.GetIndex(rawGoalX, rawGoalY);
-        MovingTargetAnchorKey anchorKey = new MovingTargetAnchorKey(targetId, rawGoalCellIndex);
+        float goalQuantize = Mathf.Max(0.1f, _world.CellSize * 0.25f);
+        int rawGoalPointX = Mathf.RoundToInt(rawGoalPosition.x / goalQuantize);
+        int rawGoalPointZ = Mathf.RoundToInt(rawGoalPosition.z / goalQuantize);
+        MovingTargetAnchorKey anchorKey = new MovingTargetAnchorKey(targetId, rawGoalCellIndex, rawGoalPointX, rawGoalPointZ);
         if (!MovingTargetAnchors.TryGetValue(anchorKey, out MovingTargetAnchor anchor))
         {
             anchor = new MovingTargetAnchor { Key = anchorKey };
@@ -16970,7 +17570,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 $"rawGoal={rawGoalPosition} rawCell=({rawGoalX},{rawGoalY}) rawIsland={ResolveIslandIdForDiagnostics(_world, rawGoalX, rawGoalY)} " +
                 $"reachableCell=({reachableGoalX},{reachableGoalY}) reachableIsland={ResolveIslandIdForDiagnostics(_world, reachableGoalX, reachableGoalY)} " +
                 $"reachableWorld={reachableGoalWorld} start=({startX},{startY}) startIsland={startIsland} " +
-                $"anchorKey=target:{targetId} rawCellIndex={rawGoalCellIndex} refresh={shouldRefresh} hasStableGoal={hasStableGoal} " +
+                $"anchorKey=target:{targetId} rawCellIndex={rawGoalCellIndex} rawPoint=({rawGoalPointX},{rawGoalPointZ}) refresh={shouldRefresh} hasStableGoal={hasStableGoal} " +
                 $"stableCell=({anchor.ActiveGoalX},{anchor.ActiveGoalY}) stableWorld={anchor.ActiveGoalWorld} worldVersion={_world.Version}");
         }
 
@@ -17802,7 +18402,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             if (!world.IsWalkable(cx, cy))
                 return false;
 
-            if (GetCostFieldValueStrict(world, cx, cy) > 1
+            int cellCost = GetCostFieldValueStrict(world, cx, cy);
+            if (cellCost > 1
+                && !IsBoundaryOnlySoftCostCell(world, cx, cy)
                 && !(allowTargetSoftCost && cx == x1 && cy == y1))
             {
                 return false;
@@ -17953,6 +18555,12 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             world.CostField = new byte[world.Width * world.Height];
 
         SectorData sector = world.Sectors[sectorId];
+        if (world.SourceCostField != null && world.SourceCostField.Length == world.Width * world.Height)
+        {
+            InitializeAuthoredCostFieldForSector(world, sector, costStamps);
+            return;
+        }
+
         int sectorMinX = sector.StartX;
         int sectorMinY = sector.StartY;
         int sectorMaxX = sector.StartX + sector.Width - 1;
@@ -17965,6 +18573,161 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         RebuildCostFieldInBounds(world, sourceMinX, sourceMinY, sourceMaxX, sourceMaxY, sectorMinX, sectorMinY, sectorMaxX, sectorMaxY, costStamps);
         sector.IsClearCostField = IsSectorCostFieldClear(world, sector);
         sector.IsClearFlowTile = IsSectorClearFlowTile(world, sector);
+    }
+
+    private static void InitializeAuthoredCostFieldForSector(NavigationWorld world, SectorData sector, IReadOnlyCollection<CostStamp> costStamps)
+    {
+        if (world == null)
+            throw new InvalidOperationException("InitializeAuthoredCostFieldForSector failed: world is null.");
+        if (sector == null)
+            throw new InvalidOperationException("InitializeAuthoredCostFieldForSector failed: sector is null.");
+        if (world.CostField == null || world.CostField.Length != world.Width * world.Height)
+            throw new InvalidOperationException("InitializeAuthoredCostFieldForSector failed: authored cost field is missing.");
+
+        for (int y = sector.StartY; y < sector.StartY + sector.Height; y++)
+        {
+            for (int x = sector.StartX; x < sector.StartX + sector.Width; x++)
+            {
+                int index = world.GetIndex(x, y);
+                byte cost = world.SourceCostField != null && world.SourceCostField.Length == world.Width * world.Height
+                    ? world.SourceCostField[index]
+                    : world.CostField[index];
+                if (!world.WalkableMask[index])
+                {
+                    world.CostField[index] = byte.MaxValue;
+                    continue;
+                }
+
+                world.CostField[index] = cost == 0 || cost == byte.MaxValue ? (byte)1 : cost;
+            }
+        }
+
+        ApplyCostStampsInBounds(
+            world,
+            sector.StartX,
+            sector.StartY,
+            sector.StartX + sector.Width - 1,
+            sector.StartY + sector.Height - 1,
+            costStamps);
+        ApplyDynamicObstacleBlurToAuthoredCostSector(world, sector);
+        sector.IsClearCostField = IsSectorCostFieldClear(world, sector);
+        sector.IsClearFlowTile = IsSectorClearFlowTile(world, sector);
+    }
+
+    private static void ApplyDynamicObstacleBlurToAuthoredCostSector(NavigationWorld world, SectorData sector)
+    {
+        if (world.SourceCostField == null || world.SourceCostField.Length != world.Width * world.Height)
+            return;
+
+        int sectorMinX = sector.StartX;
+        int sectorMinY = sector.StartY;
+        int sectorMaxX = sector.StartX + sector.Width - 1;
+        int sectorMaxY = sector.StartY + sector.Height - 1;
+        int padding = Mathf.CeilToInt(ResolveWallCostBlurRadiusCells(world)) + 1;
+        int sourceMinX = Mathf.Max(0, sectorMinX - padding);
+        int sourceMinY = Mathf.Max(0, sectorMinY - padding);
+        int sourceMaxX = Mathf.Min(world.Width - 1, sectorMaxX + padding);
+        int sourceMaxY = Mathf.Min(world.Height - 1, sectorMaxY + padding);
+
+        float[] wallDistance = GetWallDistanceScratch(world.Width * world.Height);
+        float wallCostBlurRadiusCells = ResolveWallCostBlurRadiusCells(world);
+        MinHeap openSet = new MinHeap();
+        for (int y = sourceMinY; y <= sourceMaxY; y++)
+        {
+            for (int x = sourceMinX; x <= sourceMaxX; x++)
+            {
+                int index = world.GetIndex(x, y);
+                bool baseWalkable = world.BaseWalkableMask != null
+                                    && world.BaseWalkableMask.Length == world.Width * world.Height
+                                    && world.BaseWalkableMask[index];
+                if (!baseWalkable)
+                    continue;
+
+                if (!world.WalkableMask[index])
+                {
+                    wallDistance[index] = 0f;
+                    openSet.Push(index, 0f);
+                    continue;
+                }
+
+                if (TouchesDynamicBlockedOrUntraversableNeighbor(world, x, y))
+                {
+                    wallDistance[index] = 1f;
+                    openSet.Push(index, 1f);
+                }
+            }
+        }
+
+        while (openSet.Count > 0)
+        {
+            QueueNode node = openSet.Pop();
+            if (node.Cost > wallDistance[node.Index] + 0.0001f)
+                continue;
+            if (node.Cost >= wallCostBlurRadiusCells)
+                continue;
+
+            int worldX = node.Index % world.Width;
+            int worldY = node.Index / world.Width;
+            for (int i = 0; i < NeighborOffsetX.Length; i++)
+            {
+                int nextX = worldX + NeighborOffsetX[i];
+                int nextY = worldY + NeighborOffsetY[i];
+                if (nextX < sourceMinX || nextX > sourceMaxX || nextY < sourceMinY || nextY > sourceMaxY)
+                    continue;
+
+                int nextIndex = world.GetIndex(nextX, nextY);
+                if (!world.WalkableMask[nextIndex])
+                    continue;
+
+                float stepCost = NeighborOffsetX[i] != 0 && NeighborOffsetY[i] != 0 ? 1.4142135f : 1f;
+                float newDistance = node.Cost + stepCost;
+                if (newDistance >= wallDistance[nextIndex] || newDistance > wallCostBlurRadiusCells)
+                    continue;
+
+                wallDistance[nextIndex] = newDistance;
+                openSet.Push(nextIndex, newDistance);
+            }
+        }
+
+        int adjacentPenalty = ResolveWallCostAdjacentPenalty(world);
+        int outerPenalty = adjacentPenalty > WallCostAdjacentPenalty ? 1 : WallCostOuterPenalty;
+        for (int y = sectorMinY; y <= sectorMaxY; y++)
+        {
+            for (int x = sectorMinX; x <= sectorMaxX; x++)
+            {
+                int index = world.GetIndex(x, y);
+                if (!world.WalkableMask[index])
+                    continue;
+
+                float distance = wallDistance[index];
+                if (float.IsPositiveInfinity(distance) || distance > wallCostBlurRadiusCells)
+                    continue;
+
+                float t = Mathf.Clamp01((wallCostBlurRadiusCells - distance) / Mathf.Max(0.001f, wallCostBlurRadiusCells - 1f));
+                int penalty = Mathf.RoundToInt(Mathf.Lerp(outerPenalty, adjacentPenalty, t));
+                world.CostField[index] = (byte)Mathf.Clamp(Mathf.Max(world.CostField[index], 1 + penalty), 1, 254);
+            }
+        }
+    }
+
+    private static bool TouchesDynamicBlockedOrUntraversableNeighbor(NavigationWorld world, int x, int y)
+    {
+        for (int i = 0; i < NeighborOffsetX.Length; i++)
+        {
+            int nx = x + NeighborOffsetX[i];
+            int ny = y + NeighborOffsetY[i];
+            if (nx < 0 || nx >= world.Width || ny < 0 || ny >= world.Height)
+                continue;
+
+            int neighborIndex = world.GetIndex(nx, ny);
+            bool baseWalkable = world.BaseWalkableMask != null
+                                && world.BaseWalkableMask.Length == world.Width * world.Height
+                                && world.BaseWalkableMask[neighborIndex];
+            if (baseWalkable && !world.WalkableMask[neighborIndex])
+                return true;
+        }
+
+        return false;
     }
 
     private static void RebuildCostFieldInBounds(
@@ -18054,7 +18817,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 if (!float.IsPositiveInfinity(distance) && distance <= wallCostBlurRadiusCells)
                 {
                     float t = Mathf.Clamp01((wallCostBlurRadiusCells - distance) / Mathf.Max(0.001f, wallCostBlurRadiusCells - 1f));
-                    penalty += Mathf.RoundToInt(Mathf.Lerp(WallCostOuterPenalty, WallCostAdjacentPenalty, t));
+                    int adjacentPenalty = ResolveWallCostAdjacentPenalty(world);
+                    int outerPenalty = adjacentPenalty > WallCostAdjacentPenalty ? 1 : WallCostOuterPenalty;
+                    penalty += Mathf.RoundToInt(Mathf.Lerp(outerPenalty, adjacentPenalty, t));
                 }
 
                 world.CostField[index] = (byte)Mathf.Clamp(1 + penalty, 1, 254);
@@ -18071,6 +18836,15 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         float extraRadiusCells = Mathf.Max(0f, (ResolveAgentTypeRadius(world.AgentTypeId) - 0.5f) / Mathf.Max(0.001f, world.CellSize));
         return WallCostBlurRadiusCells + extraRadiusCells;
+    }
+
+    private static int ResolveWallCostAdjacentPenalty(NavigationWorld world)
+    {
+        if (world == null)
+            throw new InvalidOperationException("ResolveWallCostAdjacentPenalty failed: world is null.");
+
+        float extraRadiusCells = Mathf.Max(0f, (ResolveAgentTypeRadius(world.AgentTypeId) - 0.5f) / Mathf.Max(0.001f, world.CellSize));
+        return WallCostAdjacentPenalty + Mathf.CeilToInt(extraRadiusCells);
     }
 
     private static int ResolveSlopeCostPenalty(NavigationWorld world, int worldX, int worldY)
