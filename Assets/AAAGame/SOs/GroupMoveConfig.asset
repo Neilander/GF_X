@@ -25,8 +25,6 @@ MonoBehaviour:
   PortalNarrowWidthCells: 2
   FlowTileCacheLimit: 256
   RuntimeRebuildBudgetMilliseconds: 1.5
-  UseNavMeshSlopeCost: 1
-  SlopeCostPerCellHeight: 8
   CrowdPredictionTime: 0.35
   LaneBiasStrength: 0.22
   BoundaryAvoidanceWeight: 1

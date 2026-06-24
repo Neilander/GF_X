@@ -12,7 +12,7 @@ public class SimMoveExecutor : IMoveExecutor
     private Vector3 _externalVelocity;
     private Vector3 _overrideVelocity;
     private bool _hasOverride;
-    private bool _navMeshConstrained = true;
+    private bool _navigationConstrained = true;
     private bool _constraintBypassForNextFrame;
     private MovementMode _movementMode = MovementMode.Normal;
 
@@ -49,9 +49,9 @@ public class SimMoveExecutor : IMoveExecutor
         _movementMode = mode;
     }
 
-    public void SetNavMeshConstrained(bool constrained)
+    public void SetNavigationConstrained(bool constrained)
     {
-        _navMeshConstrained = constrained;
+        _navigationConstrained = constrained;
     }
 
     public void SetConstraintBypassForNextFrame(bool bypass = true)
@@ -59,9 +59,9 @@ public class SimMoveExecutor : IMoveExecutor
         _constraintBypassForNextFrame = bypass;
     }
 
-    public void EnableBypassUntilOnNavMesh()
+    public void EnableNavigationConstraintBypass()
     {
-        // 纯模拟执行器不做 NavMesh 约束，bypass 无意义，留空以满足接口。
+        // 纯模拟执行器不做导航约束，bypass 无意义，留空以满足接口。
     }
 
     public void Execute()
@@ -71,8 +71,8 @@ public class SimMoveExecutor : IMoveExecutor
 
     public void Execute(float deltaTime)
     {
-        // 纯模拟执行器不做 NavMesh 约束，仅保留接口语义以兼容真实实现。
-        _ = _navMeshConstrained;
+        // 纯模拟执行器不做导航约束，仅保留接口语义以兼容真实实现。
+        _ = _navigationConstrained;
 
         if (_hasOverride)
         {

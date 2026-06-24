@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.AI;
 
 /// <summary>
 /// 批量单位生成系统。
@@ -10,7 +9,6 @@ using UnityEngine.AI;
 /// </summary>
 public static class ClusterSpawnSystem
 {
-    private const float NavMeshSampleRadius = 12f;
     private const float MaxHorizontalSnapDistance = 1.2f;
     private const float FixedSpawnDistance = 0.7f;
     private const float FixedEdgeClearance = 0.2f;
@@ -51,12 +49,11 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < maxAttempts; i++)
         {
             Vector3 candidate = GenerateDeterministicPointInCircle(center, radius, i, maxAttempts);
-            if (!NavMesh.SamplePosition(candidate, out NavMeshHit hit, 3f, NavMesh.AllAreas))
+            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, out Vector3 spawnPos))
             {
                 continue;
             }
 
-            Vector3 spawnPos = hit.position;
             bool isOverlap = false;
             for (int j = 0; j < spawnPositions.Count; j++)
             {
@@ -209,7 +206,7 @@ public static class ClusterSpawnSystem
             return false;
         }
 
-        if (!TryFindLegalNavMeshPoint(center, FixedEdgeClearance, out Vector3 legalCenter))
+        if (!TryFindLegalNavigationPoint(center, FixedEdgeClearance, out Vector3 legalCenter))
         {
             return false;
         }
@@ -247,7 +244,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < totalCandidates; i++)
         {
             Vector3 candidate = GenerateNearbyCenterCandidate(preferredCenter, radius, i);
-            if (!TryFindLegalNavMeshPoint(candidate, FixedEdgeClearance, out Vector3 legalCenter))
+            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, out Vector3 legalCenter))
             {
                 continue;
             }
@@ -286,7 +283,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < maxAttempts && spawnPositions.Count < count; i++)
         {
             Vector3 candidate = GenerateDeterministicPointInCircle(legalCenter, radius, i, maxAttempts);
-            if (!TryFindLegalNavMeshPoint(candidate, FixedEdgeClearance, out Vector3 spawnPos))
+            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, out Vector3 spawnPos))
             {
                 continue;
             }
@@ -313,29 +310,14 @@ public static class ClusterSpawnSystem
         }
     }
 
-    private static bool TryFindLegalNavMeshPoint(Vector3 candidate, float edgeClearance, out Vector3 legalPoint)
+    private static bool TryFindLegalNavigationPoint(Vector3 candidate, float edgeClearance, out Vector3 legalPoint)
     {
-        legalPoint = Vector3.zero;
-
-        if (!NavMesh.SamplePosition(candidate, out NavMeshHit navHit, NavMeshSampleRadius, NavMesh.AllAreas))
-        {
-            return false;
-        }
-
-        Vector2 navXZ = new Vector2(navHit.position.x, navHit.position.z);
-        Vector2 candidateXZ = new Vector2(candidate.x, candidate.z);
-        if ((navXZ - candidateXZ).sqrMagnitude > MaxHorizontalSnapDistance * MaxHorizontalSnapDistance)
-        {
-            return false;
-        }
-
-        if (NavMesh.FindClosestEdge(navHit.position, out NavMeshHit edgeHit, NavMesh.AllAreas) && edgeHit.distance < edgeClearance)
-        {
-            return false;
-        }
-
-        legalPoint = navHit.position;
-        return true;
+        return FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            candidate,
+            0,
+            MaxHorizontalSnapDistance,
+            edgeClearance,
+            out legalPoint);
     }
 
     private static bool IsBlockedByExistingAgent(Vector3 position)

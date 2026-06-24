@@ -5,7 +5,6 @@ using GameFramework.Resource;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
-using UnityEngine.AI;
 
 public class MAEntity : CompCreature, IEntityContext
 {
@@ -23,7 +22,7 @@ public class MAEntity : CompCreature, IEntityContext
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
 
     /// <summary>
-    /// NavMesh Agent Type ID，用于导航和移动约束。
+    /// 导航 movement type ID，用于 FlowField world 和移动约束。
     /// 子类可在 OnShow/SetUpMAComp 之前设置。
     /// </summary>
     public const int UnknownNavAgentTypeId = int.MinValue;

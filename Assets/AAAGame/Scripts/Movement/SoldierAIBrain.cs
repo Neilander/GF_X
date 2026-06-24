@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.AI;
 
 /// <summary>
 /// 小兵 AI Brain：基于 Steering Behaviors 的流体移动。
@@ -8,7 +7,7 @@ using UnityEngine.AI;
 /// 状态：
 /// - Idle：站着不动，等待玩家靠近
 /// - Follow：跟随玩家，自然散开在不同距离
-/// - Combat：发现敌人后脱离跟随，散开交战（用 NavMesh 寻路到敌人）
+/// - Combat：发现敌人后脱离跟随，散开交战（用 FlowField 寻路到敌人）
 /// - Returning：敌方专属，被拉离出生点超过 ChaseRange 时强制返航。
 ///   挂 returning buff（移速 + 回血）；不可被打断；到家后清 buff 回 Idle。
 ///
@@ -267,7 +266,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 var enemy = self.TargetComp?.CurrentTarget;
                 if (!IsValidAttackTarget(self, enemy))
                 {
-                    // 立即清掉旧 NavMesh 目标，防止继续走向已死敌人
+                    // 立即清掉旧导航目标，防止继续走向已死敌人
                     self.MoveComp.StopMove();
                     GameDebugSettings.Log(DebugCategory.Brain,
                         $"[{self.CharacterKey}] Combat→Idle: enemy={(enemy == null ? "null" : "invalid")}" +
@@ -700,23 +699,26 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private static Vector3 PickRandomDeadZonePoint(IEntityContext self, Vector3 leaderPos, float innerR, float outerR)
     {
         int agentTypeId = self is MAEntity ma ? ma.navAgentTypeID : MAEntity.UnknownNavAgentTypeId;
-        NavMeshQueryFilter filter = new NavMeshQueryFilter
-        {
-            agentTypeID = agentTypeId == MAEntity.UnknownNavAgentTypeId ? 0 : agentTypeId,
-            areaMask = NavMesh.AllAreas
-        };
+        if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
+            agentTypeId = 0;
+
         float sampleRadius = Mathf.Max(0.5f, outerR * 0.25f);
         const int maxAttempts = 24;
 
         System.Text.StringBuilder failure = new System.Text.StringBuilder(512);
-        failure.Append($"[{self.CharacterKey}] 死区目标点生成失败 leaderPos={leaderPos} innerR={innerR:F2} outerR={outerR:F2} agentType={agentTypeId} sampleRadius={sampleRadius:F2} attempts=[");
+        failure.Append($"[{self.CharacterKey}] 死区目标点生成失败 leaderPos={leaderPos} innerR={innerR:F2} outerR={outerR:F2} agentType={agentTypeId} flowSnapRadius={sampleRadius:F2} attempts=[");
 
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             float angle = Random.Range(0f, Mathf.PI * 2f);
             float radius = Random.Range(innerR, outerR);
             Vector3 candidate = leaderPos + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
-            bool hit = NavMesh.SamplePosition(candidate, out NavMeshHit navHit, sampleRadius, filter);
+            bool hit = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+                candidate,
+                agentTypeId,
+                sampleRadius,
+                0f,
+                out Vector3 legalPoint);
 
             if (attempt > 0)
                 failure.Append("; ");
@@ -724,9 +726,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             failure.Append($"#{attempt}:candidate={candidate} hit={hit}");
             if (hit)
             {
-                failure.Append($" nav={navHit.position}");
+                failure.Append($" flow={legalPoint}");
                 failure.Append("]");
-                return navHit.position;
+                return legalPoint;
             }
         }
 

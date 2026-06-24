@@ -33,12 +33,12 @@ public class GroupMoveConfig : ScriptableObject
     public float FollowInnerDeadZoneRange = 2f;
 
     [Header("Flow Field")]
-    [Tooltip("启用后必须由 FlowNavigationGridSource 提供第一手导航格；缺失时明确报错，不回退到 Unity NavMesh。")]
-    public bool RequireAuthoredNavigationSource = false;
-    [Tooltip("导航底图格子大小。<= 0 时按 NavMesh Agent 半径自动推导。")]
+    [Tooltip("必须由 FlowNavigationGridSource 提供第一手导航格；缺失时明确报错，不回退到旧导航源。")]
+    public bool RequireAuthoredNavigationSource = true;
+    [Tooltip("导航底图格子大小。<= 0 时使用 FlowNavigationGridAsset 的格子大小。")]
     [Min(0f)]
     public float NavigationCellSize = 0f;
-    [Tooltip("从 NavMesh 边界向外额外扩展的导航包围盒边距。")]
+    [Tooltip("保留兼容的导航包围盒边距；authored grid 模式下不参与运行时构建。")]
     [Min(0f)]
     public float NavigationBoundsPadding = 0.6f;
     [Tooltip("每个 sector 包含的格子边长。")]
@@ -56,11 +56,6 @@ public class GroupMoveConfig : ScriptableObject
     [Tooltip("运行时障碍/CostStamp 脏数据每帧重建预算，单位毫秒。")]
     [Min(0.05f)]
     public float RuntimeRebuildBudgetMilliseconds = 1.5f;
-    [Tooltip("根据相邻 NavMesh 采样点高度差给 CostField 增加坡度成本。")]
-    public bool UseNavMeshSlopeCost = true;
-    [Tooltip("每 1 个格子尺寸的高度差转换成多少额外 cost。")]
-    [Min(0f)]
-    public float SlopeCostPerCellHeight = 8f;
 
     [Header("Crowd Steering")]
     [Tooltip("邻居预测时间，越大越会提前避让。")]

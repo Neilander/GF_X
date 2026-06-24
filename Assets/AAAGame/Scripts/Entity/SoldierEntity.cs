@@ -3,7 +3,6 @@ using AAAGame.MiniMap;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using GameFramework.Event;
-using UnityEngine.AI;
 
 /// <summary>
 /// 小兵实体：使用 DirectAtkComp（直接选定目标造成伤害，不走攻击盒）。
@@ -105,14 +104,14 @@ public partial class SoldierEntity : MAEntity
             m_MinimapReportComponent.Tick();
         }
 
-        // Debug: 绿线=NavMesh方向, 红线=到目标直线
+        // Debug: 绿线=导航方向, 红线=到目标直线
         if (targetComp?.CurrentTarget != null && targetComp.CurrentTarget.Alive)
         {
             var target = targetComp.CurrentTarget;
             Vector3 pos = Position + Vector3.up * 0.5f;
             // 红线：到目标的直线
             Debug.DrawLine(pos, target.Position + Vector3.up * 0.5f, Color.red);
-            // 绿线：NavMesh 计算的方向
+            // 绿线：当前导航计算的方向
             if (moveComp != null)
             {
                 Vector3 navDir = moveComp.GetNavDirection();
@@ -170,14 +169,14 @@ public partial class SoldierEntity : MAEntity
 
     private void LogSpawnDiagnostics(Vector3 requestedPosition)
     {
-        NavMeshQueryFilter filter = new NavMeshQueryFilter
-        {
-            agentTypeID = navAgentTypeID,
-            areaMask = NavMesh.AllAreas
-        };
-        bool navHit = NavMesh.SamplePosition(requestedPosition, out NavMeshHit hit, 2.5f, filter);
+        bool flowHit = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            requestedPosition,
+            navAgentTypeID,
+            2.5f,
+            0f,
+            out Vector3 legalPoint);
         Log.Info(
-            "[SoldierSpawn] key={0} brain={1} side={2} unitLevel={3} unitSize={4} navAgentType={5} requestedPos={6} actualPos={7} navHit={8} navPos={9}",
+            "[SoldierSpawn] key={0} brain={1} side={2} unitLevel={3} unitSize={4} navAgentType={5} requestedPos={6} actualPos={7} flowHit={8} flowPos={9}",
             CharacterKey,
             BrainType,
             Side,
@@ -186,8 +185,8 @@ public partial class SoldierEntity : MAEntity
             navAgentTypeID,
             requestedPosition,
             transform.position,
-            navHit,
-            navHit ? hit.position.ToString() : "none");
+            flowHit,
+            flowHit ? legalPoint.ToString() : "none");
     }
 
     private void ConfigureTargetingModeForSpawn()

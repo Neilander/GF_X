@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.AI;
 
 public static class ClusterCalculator
 {
@@ -35,20 +34,26 @@ public static class ClusterCalculator
         Vector3 offset = Quaternion.Euler(0, angleOffset, 0) * baseDir * currentRadius;
         Vector3 rawTargetPos = targetTrans.position + offset;
 
-        // ==========================================
-        // 【核心新增：防隔墙射线检测】
-        // 如果玩家和算出来的槽位之间有一堵墙阻挡，
-        // 就强行把槽位拉回到墙壁边缘，绝对不允许把目标定在墙对面！
-        // ==========================================
-        if (NavMesh.Raycast(targetTrans.position, rawTargetPos, out NavMeshHit rayHit, NavMesh.AllAreas))
+        int agentTypeId = self.navAgentTypeID == MAEntity.UnknownNavAgentTypeId ? 0 : self.navAgentTypeID;
+        Vector3 desiredDisplacement = rawTargetPos - targetTrans.position;
+        if (FlowFieldCrowdMovementSystem.TryConstrainNavigationDisplacement(
+                targetTrans.position,
+                desiredDisplacement,
+                agentTypeId,
+                out Vector3 constrainedDisplacement)
+            && constrainedDisplacement.sqrMagnitude < desiredDisplacement.sqrMagnitude)
         {
-            // hit.position 是碰到墙壁的交点，我们稍微往回缩一点作为目标点
-            rawTargetPos = rayHit.position;
+            rawTargetPos = targetTrans.position + constrainedDisplacement;
         }
 
-        if (NavMesh.SamplePosition(rawTargetPos, out NavMeshHit hit, 2.0f, NavMesh.AllAreas))
+        if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+                rawTargetPos,
+                agentTypeId,
+                2.0f,
+                0f,
+                out Vector3 legalPoint))
         {
-            return hit.position; 
+            return legalPoint;
         }
 
         return rawTargetPos; 

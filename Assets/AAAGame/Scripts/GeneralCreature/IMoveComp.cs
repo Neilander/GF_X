@@ -16,7 +16,7 @@ public interface IMoveComp : ICapability
     void SetNavTarget(Vector3 destination);
 
     /// <summary>
-    /// 获取当前 NavMesh 路径的下一步归一化方向，无路径时返回 Vector3.zero。
+    /// 获取当前导航目标的下一步归一化方向，无路径时返回 Vector3.zero。
     /// </summary>
     Vector3 GetNavDirection();
     

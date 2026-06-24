@@ -19,13 +19,13 @@ public interface IMoveExecutor
     void ClearOverride();
     void SetExternal(Vector3 velocity);
     void SetMovementMode(MovementMode mode);
-    void SetNavMeshConstrained(bool constrained);
+    void SetNavigationConstrained(bool constrained);
     void SetConstraintBypassForNextFrame(bool bypass = true);
     /// <summary>
-    /// 临时无视 NavMesh 约束，直到回到 NavMesh 上自动失效。
-    /// 用于：建造后玩家被障碍物围堵、需要走出去时。
+    /// 临时无视导航约束，调用方必须在合适时机重新启用约束。
+    /// 用于：位移/强制移动等不应主动寻路的阶段。
     /// </summary>
-    void EnableBypassUntilOnNavMesh();
+    void EnableNavigationConstraintBypass();
     void Execute();
     void Execute(float deltaTime);
 }

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using GameFramework.Event;
 using UnityEngine;
-using UnityEngine.AI;
 using UnityGameFramework.Runtime;
 
 public static class DefendPhaseRuntime
@@ -302,17 +301,10 @@ public static class DefendPhaseRuntime
 
     private static float CalculatePathDistance(Vector3 from, Vector3 to)
     {
-        NavMeshPath path = new NavMeshPath();
-        if (!NavMesh.CalculatePath(from, to, NavMesh.AllAreas, path) || path == null || path.corners == null || path.corners.Length < 2)
-            return Vector3.Distance(from, to);
-
-        float total = 0f;
-        for (int i = 1; i < path.corners.Length; i++)
-        {
-            total += Vector3.Distance(path.corners[i - 1], path.corners[i]);
-        }
-
-        return total > 0f ? total : Vector3.Distance(from, to);
+        int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
+        return FlowFieldCrowdMovementSystem.TryEstimateNavigationDistance(from, to, smallAgentTypeId, out float distance)
+            ? distance
+            : Vector3.Distance(from, to);
     }
 
     private static void LogSpawnPointDiagnostics(EntityPresetPoint point)
@@ -324,35 +316,39 @@ public static class DefendPhaseRuntime
         Vector3 position = point.Position;
         Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
 
-        bool navAny = NavMesh.SamplePosition(position, out NavMeshHit anyHit, SpawnPointNavProbeRadius, NavMesh.AllAreas);
-        string anyHitPos = navAny ? anyHit.position.ToString() : "none";
-
         int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
-        bool navSmall = TrySampleByAgentType(position, smallAgentTypeId, out NavMeshHit smallHit);
-        string smallHitPos = navSmall ? smallHit.position.ToString() : "none";
+        bool flowSmall = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            position,
+            smallAgentTypeId,
+            SpawnPointNavProbeRadius,
+            0f,
+            out Vector3 smallLegalPoint);
+        string smallLegalPos = flowSmall ? smallLegalPoint.ToString() : "none";
 
         Log.Info(
-            "[DefendPhase] SpawnPoint diag id={0} name={1} pos={2} weight={3} stronghold={4} navAny={5} navAnyPos={6} navSmall={7} navSmallPos={8} smallAgentType={9}",
+            "[DefendPhase] SpawnPoint diag id={0} name={1} pos={2} weight={3} stronghold={4} flowSmall={5} flowSmallPos={6} smallAgentType={7}",
             identifier,
             point.name,
             position,
             point.DefendSpawnWeight,
             stronghold != null ? stronghold.OwnerFactionId.ToString() : "null",
-            navAny,
-            anyHitPos,
-            navSmall,
-            smallHitPos,
+            flowSmall,
+            smallLegalPos,
             smallAgentTypeId);
     }
 
     private static void LogDefendSpawnEvent(PlannedSpawnEvent evt, int entityId)
     {
-        bool navAny = NavMesh.SamplePosition(evt.SpawnPosition, out NavMeshHit anyHit, SpawnPointNavProbeRadius, NavMesh.AllAreas);
         int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
-        bool navSmall = TrySampleByAgentType(evt.SpawnPosition, smallAgentTypeId, out NavMeshHit smallHit);
+        bool flowSmall = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            evt.SpawnPosition,
+            smallAgentTypeId,
+            SpawnPointNavProbeRadius,
+            0f,
+            out Vector3 smallLegalPoint);
 
         Log.Info(
-            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} point={5} stronghold={6} navAny={7} navAnyPos={8} navSmall={9} navSmallPos={10} smallAgentType={11}",
+            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} point={5} stronghold={6} flowSmall={7} flowSmallPos={8} smallAgentType={9}",
             entityId,
             evt.UnitType,
             evt.UnitLevel,
@@ -360,10 +356,8 @@ public static class DefendPhaseRuntime
             evt.SpeedProperty,
             evt.SpawnPointName,
             evt.SourceStrongholdId ?? "null",
-            navAny,
-            navAny ? anyHit.position.ToString() : "none",
-            navSmall,
-            navSmall ? smallHit.position.ToString() : "none",
+            flowSmall,
+            flowSmall ? smallLegalPoint.ToString() : "none",
             smallAgentTypeId);
     }
 
@@ -371,16 +365,6 @@ public static class DefendPhaseRuntime
     {
         AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
         return helper != null ? helper.GetNavAgentTypeID(unitSize) : 0;
-    }
-
-    private static bool TrySampleByAgentType(Vector3 position, int agentTypeId, out NavMeshHit hit)
-    {
-        NavMeshQueryFilter filter = new NavMeshQueryFilter
-        {
-            agentTypeID = agentTypeId,
-            areaMask = NavMesh.AllAreas
-        };
-        return NavMesh.SamplePosition(position, out hit, SpawnPointNavProbeRadius, filter);
     }
 
     private static void EnsureWaveConfigLoaded()

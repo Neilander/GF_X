@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 纯逻辑移动组件：直线移动到目标点，不依赖 NavMesh。
+/// 纯逻辑移动组件：直线移动到目标点，不依赖运行时导航。
 /// </summary>
 public class SimMoveComp : IMoveComp
 {

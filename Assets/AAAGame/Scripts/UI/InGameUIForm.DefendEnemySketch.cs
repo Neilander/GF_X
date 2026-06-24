@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.AI;
 using UnityGameFramework.Runtime;
 
 public partial class InGameUIForm
@@ -29,7 +28,6 @@ public partial class InGameUIForm
     private bool m_HasDefendMiniMapAvoidRectCache;
     private int m_DefendSketchLastDiagLogFrame = -9999;
 
-    private NavMeshPath m_DefendPreviewNavPath;
     private void InitializeDefendEnemySketch()
     {
         if (varDefendEnemySketchRoot != null)
@@ -876,20 +874,6 @@ public partial class InGameUIForm
     private void BuildPathCorners(Vector3 spawnPosition, Vector3 basePosition)
     {
         m_DefendPathCorners.Clear();
-
-        m_DefendPreviewNavPath ??= new NavMeshPath();
-        bool hasPath = NavMesh.CalculatePath(spawnPosition, basePosition, NavMesh.AllAreas, m_DefendPreviewNavPath);
-        Vector3[] corners = hasPath ? m_DefendPreviewNavPath.corners : null;
-        if (corners != null && corners.Length >= 2)
-        {
-            for (int i = 0; i < corners.Length; i++)
-            {
-                m_DefendPathCorners.Add(corners[i]);
-            }
-
-            return;
-        }
-
         m_DefendPathCorners.Add(spawnPosition);
         m_DefendPathCorners.Add(basePosition);
     }
