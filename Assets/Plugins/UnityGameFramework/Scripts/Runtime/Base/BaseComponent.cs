@@ -228,7 +228,18 @@ namespace UnityGameFramework.Runtime
 
         private void Update()
         {
-            GameFrameworkEntry.Update(Time.deltaTime, Time.unscaledDeltaTime);
+            MainThreadFrameProfiler.PulseFrame();
+            long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                GameFrameworkEntry.Update(Time.deltaTime, Time.unscaledDeltaTime);
+            }
+            finally
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.GameFrameworkUpdate,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
+            }
         }
 
         private void OnApplicationQuit()

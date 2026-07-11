@@ -15,7 +15,6 @@ public partial class SoldierEntity : MAEntity
     /// </summary>
     public BrainType BrainType { get; private set; }
     public string SourceStrongholdId { get; private set; }
-    public string SourceBuildingInstanceId { get; private set; }
     private MinimapReportComponent m_MinimapReportComponent;
 
     public override void ChangeSide(SideType newSide)
@@ -41,7 +40,6 @@ public partial class SoldierEntity : MAEntity
             Side = ep.Side;
             BrainType = ep.BrainType; // 设置AI类型
             SourceStrongholdId = ep.GetString(EntityParams.P_SourceStrongholdId);
-            SourceBuildingInstanceId = ep.GetString(EntityParams.P_SourceBuildingInstanceId);
 
             if (ep.position.HasValue)
             {
@@ -97,16 +95,21 @@ public partial class SoldierEntity : MAEntity
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
+        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         TickDefendPhaseSpeedControl();
+        RecordSoldierPerf(UnityGameFramework.Runtime.MainThreadPerfScope.SoldierPostUpdate, stageStartTicks);
 
         if (m_MinimapReportComponent != null)
         {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             m_MinimapReportComponent.Tick();
+            RecordSoldierPerf(UnityGameFramework.Runtime.MainThreadPerfScope.SoldierMinimap, stageStartTicks);
         }
 
         // Debug: 绿线=导航方向, 红线=到目标直线
         if (targetComp?.CurrentTarget != null && targetComp.CurrentTarget.Alive)
         {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             var target = targetComp.CurrentTarget;
             Vector3 pos = Position + Vector3.up * 0.5f;
             // 红线：到目标的直线
@@ -117,8 +120,16 @@ public partial class SoldierEntity : MAEntity
                 Vector3 navDir = moveComp.GetNavDirection();
                 Debug.DrawRay(pos, navDir * 3f, Color.green);
             }
+            RecordSoldierPerf(UnityGameFramework.Runtime.MainThreadPerfScope.SoldierDebugDraw, stageStartTicks);
         }
 
+    }
+
+    private static void RecordSoldierPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)
+    {
+        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+            scope,
+            System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
     }
 
     protected override void SetUpMAComp(object userData)

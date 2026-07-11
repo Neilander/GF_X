@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b431ca1a1ee4853bc9ab1b2242b4504, type: 3}
+  m_Name: FlowFieldNavigationConfig
+  m_EditorClassIdentifier: 
+  RequireAuthoredNavigationSource: 1
+  NavigationCellSize: 0
+  NavigationBoundsPadding: 0.6
+  SectorSizeInCells: 12
+  PortalNarrowWidthCells: 2
+  PortalMaxWindowWidthCells: 6
+  FlowTileCacheLimit: 256
+  RuntimeRebuildBudgetMilliseconds: 1.5
+  CrowdPredictionTime: 0.35
+  LaneBiasStrength: 0.22
+  BoundaryAvoidanceWeight: 1
+  PathDirectionBlend: 0.35
+  BottleneckSwitchCooldown: 0.35
+  BottleneckWaitTimeout: 1.25
+  BottleneckInfluenceDistance: 2.2
+  BottleneckClearanceHoldTime: 0.45
+  DrawNavigationDebug: 0
+  DrawFlowFieldDebug: 0

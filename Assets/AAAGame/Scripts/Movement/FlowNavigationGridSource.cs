@@ -5,6 +5,8 @@ using UnityEngine;
 [ExecuteAlways]
 public sealed class FlowNavigationGridSource : MonoBehaviour
 {
+    private static int s_AppliedSourceInstanceId;
+
     [SerializeField] private FlowNavigationGridAsset _grid;
     [SerializeField] private FlowNavigationGridAsset[] _movementTypeGrids = Array.Empty<FlowNavigationGridAsset>();
     [SerializeField] private bool _applyOnEnable = true;
@@ -43,7 +45,7 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
     private void OnDisable()
     {
         if (_clearOnDisable && (Application.isPlaying || _applyInEditMode))
-            FlowFieldCrowdMovementSystem.ClearAuthoredNavigationSource();
+            ClearAppliedSourceIfOwned();
     }
 
     private void OnValidate()
@@ -55,6 +57,7 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
     [ContextMenu("Apply To Flow Field")]
     public void ApplyToFlowField()
     {
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
         List<FlowNavigationGridAsset> grids = CollectConfiguredGrids();
         if (grids.Count == 0)
             throw new InvalidOperationException("FlowNavigationGridSource.ApplyToFlowField failed: no grid is configured.");
@@ -62,15 +65,29 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
         if (grids.Count == 1)
         {
             FlowNavigationGridAsset grid = grids[0];
+            FlowNavigationGridAsset.DerivedNavigationData derivedData = RequireDerivedNavigationData(grid);
             FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
                 grid.AgentTypeId,
                 grid.Width,
                 grid.Height,
                 grid.CellSize,
                 grid.Origin,
-                grid.CreateWalkableMaskCopy(),
-                grid.CreateCellAnchors(),
-                grid.CreateCostFieldCopy());
+                grid.GetWalkableMaskRuntimeReadOnlyReference(),
+                grid.GetCellAnchorsRuntimeReadOnlyReferenceOrNull(),
+                grid.GetCostFieldRuntimeReadOnlyReference(),
+                grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+                derivedData,
+                useRuntimeReadOnlyReferences: true);
+            s_AppliedSourceInstanceId = GetInstanceID();
+            LogSourceLifecycle("apply-single", grids);
+            stopwatch.Stop();
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                null,
+                "[FlowNavigationGridSourceTiming] action=apply-single elapsedMs={0:F3} grids={1}",
+                stopwatch.Elapsed.TotalMilliseconds,
+                FormatGridSummary(grids));
             return;
         }
 
@@ -88,18 +105,83 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
                 grid.Height,
                 grid.CellSize,
                 grid.Origin,
-                grid.CreateWalkableMaskCopy(),
-                grid.CreateCellAnchors(),
-                grid.CreateCostFieldCopy());
+                grid.GetWalkableMaskRuntimeReadOnlyReference(),
+                grid.GetCellAnchorsRuntimeReadOnlyReferenceOrNull(),
+                grid.GetCostFieldRuntimeReadOnlyReference(),
+                grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+                RequireDerivedNavigationData(grid),
+                useRuntimeReadOnlyReferences: true);
         }
 
         FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(sources);
+        s_AppliedSourceInstanceId = GetInstanceID();
+        LogSourceLifecycle("apply-multiple", grids);
+        stopwatch.Stop();
+        Debug.LogFormat(
+            LogType.Log,
+            LogOption.NoStacktrace,
+            null,
+            "[FlowNavigationGridSourceTiming] action=apply-multiple elapsedMs={0:F3} grids={1}",
+            stopwatch.Elapsed.TotalMilliseconds,
+            FormatGridSummary(grids));
     }
 
     [ContextMenu("Clear Flow Field Source")]
     public void ClearFlowFieldSource()
     {
+        ClearAppliedSourceIfOwned();
+    }
+
+    private void ClearAppliedSourceIfOwned()
+    {
+        if (s_AppliedSourceInstanceId != GetInstanceID())
+        {
+            LogSourceLifecycle("skip-clear-not-owner", CollectConfiguredGrids());
+            return;
+        }
+
+        s_AppliedSourceInstanceId = 0;
         FlowFieldCrowdMovementSystem.ClearAuthoredNavigationSource();
+        LogSourceLifecycle("clear-owned", CollectConfiguredGrids());
+    }
+
+    private void LogSourceLifecycle(string action, IReadOnlyList<FlowNavigationGridAsset> grids)
+    {
+        if (!Application.isPlaying || !GameDebugSettings.IsEnabled(DebugCategory.Move))
+            return;
+
+        string gridSummary = FormatGridSummary(grids);
+        GameDebugSettings.Log(
+            DebugCategory.Move,
+            $"[FlowNavigationGridSource] action={action} source={name} id={GetInstanceID()} owner={s_AppliedSourceInstanceId} active={isActiveAndEnabled} grids={gridSummary}");
+    }
+
+    private static string FormatGridSummary(IReadOnlyList<FlowNavigationGridAsset> grids)
+    {
+        if (grids == null || grids.Count == 0)
+            return "[]";
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(96);
+        builder.Append('[');
+        for (int i = 0; i < grids.Count; i++)
+        {
+            if (i > 0)
+                builder.Append(';');
+
+            FlowNavigationGridAsset grid = grids[i];
+            if (grid == null)
+            {
+                builder.Append("null");
+                continue;
+            }
+
+            builder.Append(grid.name)
+                .Append(":agent=").Append(grid.AgentTypeId)
+                .Append(":size=").Append(grid.Width).Append('x').Append(grid.Height);
+        }
+
+        builder.Append(']');
+        return builder.ToString();
     }
 
     private void OnDrawGizmosSelected()
@@ -148,6 +230,22 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
         }
 
         return grids;
+    }
+
+    private static FlowNavigationGridAsset.DerivedNavigationData RequireDerivedNavigationData(FlowNavigationGridAsset grid)
+    {
+        if (grid == null)
+            throw new InvalidOperationException("FlowNavigationGridSource.RequireDerivedNavigationData failed: grid is null.");
+
+        FlowNavigationGridAsset.DerivedNavigationData data = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        if (data == null || !data.IsValid)
+        {
+            throw new InvalidOperationException(
+                $"FlowNavigationGridSource.ApplyToFlowField failed: grid '{grid.name}' has no valid baked derived navigation data. " +
+                "Regenerate the level FlowNavigationGridAsset from the terrain prefab before entering play mode.");
+        }
+
+        return data;
     }
 
     private static FlowNavigationGridAsset[] CopyMovementTypeGrids(IReadOnlyList<FlowNavigationGridAsset> movementTypeGrids, FlowNavigationGridAsset primaryGrid)

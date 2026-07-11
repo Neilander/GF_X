@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -26,6 +27,7 @@ namespace AAAGame.Tools.Editor
         private const string LevelPrefabFolderPath = "Assets/AAAGame/Prefabs/Entity/Level";
         private const string TerrainPrefabFolderPath = "Assets/AAAGame/Tilemap";
         private const string EntityPresetPointPrefabPath = "Assets/AAAGame/Prefabs/Meiyou/EntityPresetPoint.prefab";
+        private const string GameConfigPath = "Assets/AAAGame/Config/GameConfig.txt";
         private const string PresetUnitsRootName = "\u5173\u5361\u9884\u8BBE\u5355\u4F4D";
         private const string PresetBuildingsRootName = "\u5173\u5361\u9884\u8BBE\u5EFA\u7B51";
         private const string DefaultHeroIdentifier = "Unit_Hero";
@@ -1960,15 +1962,239 @@ namespace AAAGame.Tools.Editor
 
             string assetPath = GetDefaultFlowNavigationGridAssetPath();
             Vector3 gridOrigin = ResolveFlowNavigationGridOrigin(terrainPrefabPath);
+            System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            Debug.Log(
+                $"[FlowNavigationGridImport] stage=start terrain={terrainPrefabPath} asset={assetPath} " +
+                $"plan={plan.width}x{plan.height} cellSize={plan.cellSize:F4} origin=({gridOrigin.x:F3},{gridOrigin.y:F3},{gridOrigin.z:F3})");
+            FlowNavigationGridPrefabBaker.MovementTypeBakeRequest[] requests = BuildDefaultFlowNavigationGridBakeRequests(assetPath);
+            Debug.Log(
+                $"[FlowNavigationGridImport] stage=requests-ready elapsedMs={stopwatch.ElapsedMilliseconds} " +
+                $"requests={FormatFlowNavigationBakeRequests(requests)}");
+            float navigationCellSize = ResolveFlowNavigationCellSize(requests);
+            FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance[] staticObstacleBakeInstances =
+                BuildStaticNavigationObstacleBakeInstances(plan.entityPoints);
+            Debug.Log(
+                $"[FlowNavigationGridImport] stage=static-obstacles-ready elapsedMs={stopwatch.ElapsedMilliseconds} " +
+                $"count={staticObstacleBakeInstances.Length}");
             FlowNavigationGridPrefabBaker.Result[] results = FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab(
                 terrainPrefabPath,
-                BuildDefaultFlowNavigationGridBakeRequests(assetPath),
-                plan.width,
-                plan.height,
-                plan.cellSize,
-                gridOrigin);
+                requests,
+                navigationCellSize,
+                staticObstacleBakeInstances);
+            Debug.Log(
+                $"[FlowNavigationGridImport] stage=complete elapsedMs={stopwatch.ElapsedMilliseconds} " +
+                $"results={FormatFlowNavigationBakeResults(results)}");
 
             return FlowNavigationGridImportResult.From(results);
+        }
+
+        private static FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance[] BuildStaticNavigationObstacleBakeInstances(IReadOnlyList<EntityPresetPointData> entityPoints)
+        {
+            if (entityPoints == null || entityPoints.Count == 0)
+                return Array.Empty<FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance>();
+
+            List<FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance> result = new List<FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance>();
+            for (int i = 0; i < entityPoints.Count; i++)
+            {
+                EntityPresetPointData point = entityPoints[i];
+                if (point.pointType != EntityPresetPointType.Building)
+                    continue;
+
+                string prefabPath = ResolveBuildingPrefabAssetPath(point.identifier);
+                result.Add(new FlowNavigationGridPrefabBaker.StaticObstacleBakeInstance(prefabPath, point.localPosition, point.identifier));
+            }
+
+            return result.ToArray();
+        }
+
+        private static string ResolveBuildingPrefabAssetPath(string identifier)
+        {
+            if (string.IsNullOrWhiteSpace(identifier))
+                throw new InvalidOperationException("ResolveBuildingPrefabAssetPath failed: identifier is empty.");
+
+            BuildingPrefabTableRow row = ResolveBuildingTableRow(identifier);
+            string prefabPath = ResolveBuildingPrefabPathFromRow(identifier, row);
+            if (string.IsNullOrWhiteSpace(prefabPath))
+                throw new InvalidOperationException($"ResolveBuildingPrefabAssetPath failed: building '{identifier}' has no prefab path in BuildingTable.");
+
+            string assetPath = UtilityBuiltin.AssetsPath.GetEntityPath(prefabPath);
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(assetPath) == null)
+                throw new InvalidOperationException($"ResolveBuildingPrefabAssetPath failed: prefab asset not found. building={identifier} path={assetPath}.");
+
+            return assetPath;
+        }
+
+        private static BuildingPrefabTableRow ResolveBuildingTableRow(string identifier)
+        {
+            foreach (BuildingPrefabTableRow row in EnumerateBuildingTableRows())
+            {
+                if (string.IsNullOrWhiteSpace(row.Identifier))
+                    continue;
+
+                if (string.Equals(identifier, row.Identifier, StringComparison.Ordinal)
+                    || string.Equals(identifier, row.Identifier + "_Lv1", StringComparison.Ordinal)
+                    || string.Equals(identifier, row.Identifier + "_Lv2", StringComparison.Ordinal)
+                    || string.Equals(identifier, row.Identifier + "_Lv3", StringComparison.Ordinal))
+                {
+                    return row;
+                }
+            }
+
+            throw new InvalidOperationException($"ResolveBuildingTableRow failed: building '{identifier}' was not found in BuildingTable.");
+        }
+
+        private static string ResolveBuildingPrefabPathFromRow(string identifier, BuildingPrefabTableRow row)
+        {
+            if (string.IsNullOrWhiteSpace(row.Identifier))
+                throw new InvalidOperationException($"ResolveBuildingPrefabPathFromRow failed: row is null for {identifier}.");
+
+            if (identifier.EndsWith("_Lv3", StringComparison.OrdinalIgnoreCase))
+                return PickString(row.Lv3PrefabPath, PickString(row.Lv2PrefabPath, row.Lv1PrefabPath));
+            if (identifier.EndsWith("_Lv2", StringComparison.OrdinalIgnoreCase))
+                return PickString(row.Lv2PrefabPath, row.Lv1PrefabPath);
+            if (identifier.EndsWith("_Lv1", StringComparison.OrdinalIgnoreCase))
+                return row.Lv1PrefabPath;
+            if (identifier.EndsWith("Lv0", StringComparison.Ordinal))
+                return row.Lv1PrefabPath;
+
+            return row.Lv1PrefabPath;
+        }
+
+        private readonly struct BuildingPrefabTableRow
+        {
+            public readonly string Identifier;
+            public readonly string Lv1PrefabPath;
+            public readonly string Lv2PrefabPath;
+            public readonly string Lv3PrefabPath;
+
+            public BuildingPrefabTableRow(string identifier, string lv1PrefabPath, string lv2PrefabPath, string lv3PrefabPath)
+            {
+                Identifier = identifier;
+                Lv1PrefabPath = lv1PrefabPath;
+                Lv2PrefabPath = lv2PrefabPath;
+                Lv3PrefabPath = lv3PrefabPath;
+            }
+        }
+
+        private static IEnumerable<BuildingPrefabTableRow> EnumerateBuildingTableRows()
+        {
+            string assetPath = ResolveBuildingTableAssetPath();
+            TextAsset textAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
+            if (textAsset == null)
+                throw new InvalidOperationException($"EnumerateBuildingTableRows failed: BuildingTable asset not found at {assetPath}.");
+
+            using var stringReader = new StringReader(textAsset.text);
+            string line;
+            while ((line = stringReader.ReadLine()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line) || line[0] == '#')
+                    continue;
+
+                string[] columns = line.Split('\t');
+                if (columns.Length <= 12)
+                    throw new InvalidOperationException($"EnumerateBuildingTableRows failed: BuildingTable row has too few columns: {line}");
+
+                yield return new BuildingPrefabTableRow(
+                    columns[2].Trim(),
+                    columns[10].Trim(),
+                    columns[11].Trim(),
+                    columns[12].Trim());
+            }
+        }
+
+        private static string ResolveBuildingTableAssetPath()
+        {
+            string textPath = UtilityBuiltin.AssetsPath.GetDataTablePath("BuildingTable", false);
+            if (AssetDatabase.LoadAssetAtPath<TextAsset>(textPath) != null)
+                return textPath;
+
+            string[] guids = AssetDatabase.FindAssets("BuildingTable t:TextAsset", new[] { "Assets/AAAGame/DataTable" });
+            for (int i = 0; i < guids.Length; i++)
+            {
+                string assetPath = AssetDatabase.GUIDToAssetPath(guids[i]);
+                if (!string.IsNullOrWhiteSpace(assetPath)
+                    && assetPath.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                {
+                    return assetPath;
+                }
+            }
+
+            throw new InvalidOperationException("ResolveBuildingTableAssetPath failed: BuildingTable TextAsset was not found.");
+        }
+
+        private static string PickString(string primary, string secondary)
+        {
+            return !string.IsNullOrWhiteSpace(primary) ? primary : secondary;
+        }
+
+        private static string FormatFlowNavigationBakeRequests(IReadOnlyList<FlowNavigationGridPrefabBaker.MovementTypeBakeRequest> requests)
+        {
+            if (requests == null)
+                return "<null>";
+
+            StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < requests.Count; i++)
+            {
+                if (i > 0)
+                    builder.Append("; ");
+                FlowNavigationGridPrefabBaker.MovementTypeBakeRequest request = requests[i];
+                builder.Append("agentType=");
+                builder.Append(request.AgentTypeId);
+                builder.Append(",radius=");
+                builder.Append(request.HardClearanceRadius.ToString("F4", CultureInfo.InvariantCulture));
+                builder.Append(",asset=");
+                builder.Append(request.AssetPath);
+            }
+
+            return builder.ToString();
+        }
+
+        private static string FormatFlowNavigationBakeResults(IReadOnlyList<FlowNavigationGridPrefabBaker.Result> results)
+        {
+            if (results == null)
+                return "<null>";
+
+            StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < results.Count; i++)
+            {
+                if (i > 0)
+                    builder.Append("; ");
+                FlowNavigationGridPrefabBaker.Result result = results[i];
+                builder.Append("agentType=");
+                builder.Append(result.AgentTypeId);
+                builder.Append(",size=");
+                builder.Append(result.Width);
+                builder.Append('x');
+                builder.Append(result.Height);
+                builder.Append(",walkable=");
+                builder.Append(result.WalkableCount);
+                builder.Append(",blocked=");
+                builder.Append(result.BlockedCount);
+                builder.Append(",groundColliders=");
+                builder.Append(result.GroundColliderCount);
+                builder.Append(",obstacleColliders=");
+                builder.Append(result.ObstacleColliderCount);
+            }
+
+            return builder.ToString();
+        }
+
+        private static float ResolveFlowNavigationCellSize(IReadOnlyList<FlowNavigationGridPrefabBaker.MovementTypeBakeRequest> requests)
+        {
+            if (requests == null || requests.Count == 0)
+                throw new InvalidOperationException("ResolveFlowNavigationCellSize failed: movement type requests are missing.");
+
+            float smallestRadius = float.PositiveInfinity;
+            for (int i = 0; i < requests.Count; i++)
+            {
+                float radius = requests[i].HardClearanceRadius;
+                if (radius <= 0f || float.IsNaN(radius) || float.IsInfinity(radius))
+                    throw new InvalidOperationException($"ResolveFlowNavigationCellSize failed: invalid radius={radius:F4} agentType={requests[i].AgentTypeId}.");
+                if (radius < smallestRadius)
+                    smallestRadius = radius;
+            }
+
+            return Mathf.Max(0.05f, smallestRadius * 0.5f);
         }
 
         private static FlowNavigationGridPrefabBaker.MovementTypeBakeRequest[] BuildDefaultFlowNavigationGridBakeRequests(string primaryAssetPath)
@@ -1983,10 +2209,58 @@ namespace AAAGame.Tools.Editor
 
             return new[]
             {
-                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.MediumMovementTypeId, primaryAssetPath, 0.5f),
-                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.SmallMovementTypeId, $"{folder}/{name}_Small.asset", 0.35f),
-                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.LargeMovementTypeId, $"{folder}/{name}_Large.asset", 0.75f)
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.MediumMovementTypeId, primaryAssetPath, ResolveDefaultMovementTypeRadius("MediumUnitCollisionRadius")),
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.SmallMovementTypeId, $"{folder}/{name}_Small.asset", ResolveDefaultMovementTypeRadius("SmallUnitCollisionRadius")),
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.LargeMovementTypeId, $"{folder}/{name}_Large.asset", ResolveDefaultMovementTypeRadius("LargeUnitCollisionRadius"))
             };
+        }
+
+        private static float ResolveDefaultMovementTypeRadius(string configKey)
+        {
+            float tableRadius = ResolveGameConfigFloat(configKey);
+            float conversionRate = ResolveGameConfigFloat(DistanceUnitConverter.DistanceConversionRateKey);
+            return tableRadius * conversionRate;
+        }
+
+        private static float ResolveGameConfigFloat(string configKey)
+        {
+            if (string.IsNullOrWhiteSpace(configKey))
+                throw new InvalidOperationException("ResolveGameConfigFloat failed: configKey is empty.");
+            if (!File.Exists(GameConfigPath))
+                throw new InvalidOperationException($"ResolveGameConfigFloat failed: config file not found at {GameConfigPath}.");
+
+            foreach (string line in File.ReadLines(GameConfigPath))
+            {
+                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#", StringComparison.Ordinal))
+                    continue;
+
+                string[] parts = line.Split('\t');
+                bool keyMatched = false;
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    if (string.Equals(parts[i].Trim(), configKey, StringComparison.Ordinal))
+                    {
+                        keyMatched = true;
+                        break;
+                    }
+                }
+
+                if (!keyMatched)
+                    continue;
+
+                for (int i = parts.Length - 1; i >= 0; i--)
+                {
+                    string value = parts[i].Trim();
+                    if (value.Length == 0)
+                        continue;
+                    if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
+                        return parsed;
+                }
+
+                throw new InvalidOperationException($"ResolveGameConfigFloat failed: key {configKey} has no parseable float value in {GameConfigPath}.");
+            }
+
+            throw new InvalidOperationException($"ResolveGameConfigFloat failed: key {configKey} was not found in {GameConfigPath}.");
         }
 
         private Vector3 ResolveFlowNavigationGridOrigin(string terrainPrefabPath)

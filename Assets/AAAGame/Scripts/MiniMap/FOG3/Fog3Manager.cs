@@ -327,38 +327,58 @@ namespace AAAGame.MiniMap.FOG3
 
         private void Update()
         {
-            TrySubscribeEvents();
-
-            if (isInitialized && (controller == null || controller.MapData == null))
-                isInitialized = false;
-
-            if (!CanInitializeForCurrentScene())
-                return;
-
-            if (!isInitialized && sceneRebuildCoroutine != null)
-                return;
-
-            if (!isInitialized)
+            long updateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
             {
-                if (Time.unscaledTime < nextInitializeRetryTime)
+                TrySubscribeEvents();
+
+                if (isInitialized && (controller == null || controller.MapData == null))
+                    isInitialized = false;
+
+                if (!CanInitializeForCurrentScene())
                     return;
 
-                Initialize();
-                RegisterExistingRevealers();
-                if (!isInitialized || controller == null || controller.MapData == null)
+                if (!isInitialized && sceneRebuildCoroutine != null)
                     return;
 
-                UpdateVisibilityImmediately();
-            }
+                if (!isInitialized)
+                {
+                    if (Time.unscaledTime < nextInitializeRetryTime)
+                        return;
 
-            updateTimer += Time.deltaTime;
-            if (updateInterval <= 0f || updateTimer >= updateInterval)
+                    Initialize();
+                    RegisterExistingRevealers();
+                    if (!isInitialized || controller == null || controller.MapData == null)
+                        return;
+
+                    UpdateVisibilityImmediately();
+                }
+
+                updateTimer += Time.deltaTime;
+                if (updateInterval <= 0f || updateTimer >= updateInterval)
+                {
+                    updateTimer = 0f;
+                    long visibilityStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    try
+                    {
+                        controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
+                    }
+                    finally
+                    {
+                        MainThreadFrameProfiler.Record(
+                            MainThreadPerfScope.Fog3Visibility,
+                            System.Diagnostics.Stopwatch.GetTimestamp() - visibilityStartTicks);
+                    }
+                }
+
+                RefreshCloudOverlayForCameraIfNeeded();
+            }
+            finally
             {
-                updateTimer = 0f;
-                controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.Fog3Update,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks);
             }
-
-            RefreshCloudOverlayForCameraIfNeeded();
         }
 
         public void Initialize()
@@ -971,8 +991,18 @@ namespace AAAGame.MiniMap.FOG3
 
         private void OnVisibilityUpdated(Fog3MapData mapData)
         {
-            if (overlayView != null)
-                overlayView.Render(mapData);
+            long overlayStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                if (overlayView != null)
+                    overlayView.Render(mapData);
+            }
+            finally
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.Fog3OverlayRender,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - overlayStartTicks);
+            }
 
             UpdateEnemyVisibilityByFog(mapData);
         }
@@ -983,7 +1013,17 @@ namespace AAAGame.MiniMap.FOG3
                 return;
 
             updateTimer = 0f;
-            controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
+            long visibilityStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
+            }
+            finally
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.Fog3Visibility,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - visibilityStartTicks);
+            }
         }
 
         private void TrySubscribeEvents()
@@ -1327,6 +1367,24 @@ namespace AAAGame.MiniMap.FOG3
 
         private void UpdateEnemyVisibilityByFog(Fog3MapData mapData)
         {
+            long enemyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            int allEntityCount = 0;
+            int enemyEntityCount = 0;
+            int lv0BuildingCount = 0;
+            int stateCreatedCount = 0;
+            int cellChangedCount = 0;
+            int applyCallCount = 0;
+            int applySkippedCount = 0;
+            int rendererWriteCount = 0;
+            int animatorWriteCount = 0;
+            int staleCount = 0;
+            long resolveTicks = 0L;
+            long eventTicks = 0L;
+            long applyTicks = 0L;
+            long staleTicks = 0L;
+            HealthBarComp.ResetFogVisibilityDiagnostics();
+            try
+            {
             if (mapData == null)
             {
                 ResetEnemyVisibilityStates();
@@ -1344,15 +1402,18 @@ namespace AAAGame.MiniMap.FOG3
 
             for (int i = 0; i < allEntities.Count; i++)
             {
+                allEntityCount++;
                 if (allEntities[i] is not MAEntity entity)
                     continue;
 
                 if (!entity.Alive || entity.Side == SideType.PlayerSide)
                     continue;
 
+                enemyEntityCount++;
                 int entityId = entity.Id;
                 if (entity is BuildingEntity building && building.buildingData != null && building.buildingData.Lv == 0)
                 {
+                    lv0BuildingCount++;
                     if (enemyVisibilityStates.ContainsKey(entityId))
                         enemyVisibilityStates.Remove(entityId);
 
@@ -1365,24 +1426,43 @@ namespace AAAGame.MiniMap.FOG3
                 {
                     visibilityState = new Fog3EntityVisibilityState(entity, entity is BuildingEntity);
                     enemyVisibilityStates[entityId] = visibilityState;
+                    stateCreatedCount++;
                 }
 
                 updatedEnemyVisibilityIds.Add(entityId);
 
+                long resolveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 Fog3CellState cellState = ResolveEntityFogCellState(mapData, entity.transform.position);
+                resolveTicks += System.Diagnostics.Stopwatch.GetTimestamp() - resolveStartTicks;
                 Fog3CellState previousCellState = visibilityState.LastCellState;
                 if (previousCellState != cellState)
                 {
                     visibilityState.LastCellState = cellState;
+                    cellChangedCount++;
+                    long eventStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                     FireEnemyVisibilityChanged(visibilityState, previousCellState, cellState);
+                    eventTicks += System.Diagnostics.Stopwatch.GetTimestamp() - eventStartTicks;
                 }
 
-                ApplyEntityVisibilityState(visibilityState, cellState);
+                long applyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                applyCallCount++;
+                if (ApplyEntityVisibilityState(visibilityState, cellState, out int rendererWrites, out int animatorWrites))
+                {
+                    rendererWriteCount += rendererWrites;
+                    animatorWriteCount += animatorWrites;
+                }
+                else
+                {
+                    applySkippedCount++;
+                }
+
+                applyTicks += System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
             }
 
             if (enemyVisibilityStates.Count == updatedEnemyVisibilityIds.Count)
                 return;
 
+            long staleStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             staleEnemyVisibilityIds.Clear();
             foreach (KeyValuePair<int, Fog3EntityVisibilityState> pair in enemyVisibilityStates)
             {
@@ -1404,37 +1484,99 @@ namespace AAAGame.MiniMap.FOG3
 
                 RestoreEntityVisibilityState(staleState);
                 enemyVisibilityStates.Remove(staleEntityId);
+                staleCount++;
+            }
+            staleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - staleStartTicks;
+            }
+            finally
+            {
+                long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - enemyStartTicks;
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyVisibility, elapsedTicks);
+                HealthBarComp.ConsumeFogVisibilityDiagnostics(
+                    out int healthCalls,
+                    out int healthCacheHits,
+                    out int healthMissing,
+                    out int healthNoOps,
+                    out int healthCanvasWrites,
+                    out long healthInternalTicks);
+
+                double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                if (elapsedMs >= 2.0)
+                {
+                    UnityEngine.Debug.LogFormat(
+                        LogType.Log,
+                        LogOption.NoStacktrace,
+                        null,
+                        "[FOG3Perf] enemy total={0:F3}ms all={1} enemies={2} lv0={3} states={4} created={5} cellChanged={6} applyCalls={7} applySkipped={8} rendererWrites={9} animatorWrites={10} stale={11} resolve={12:F3}ms event={13:F3}ms apply={14:F3}ms staleMs={15:F3} health(calls={16},hits={17},missing={18},noOps={19},canvasWrites={20},internal={21:F3}ms)",
+                        elapsedMs,
+                        allEntityCount,
+                        enemyEntityCount,
+                        lv0BuildingCount,
+                        enemyVisibilityStates.Count,
+                        stateCreatedCount,
+                        cellChangedCount,
+                        applyCallCount,
+                        applySkippedCount,
+                        rendererWriteCount,
+                        animatorWriteCount,
+                        staleCount,
+                        resolveTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                        eventTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                        applyTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                        staleTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                        healthCalls,
+                        healthCacheHits,
+                        healthMissing,
+                        healthNoOps,
+                        healthCanvasWrites,
+                        healthInternalTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+                }
             }
         }
 
-        private static void SetRenderersEnabled(Renderer[] renderers, bool enabled)
+        private static int SetRenderersEnabled(Renderer[] renderers, bool enabled)
         {
             if (renderers == null)
-                return;
+                return 0;
 
+            int changedCount = 0;
             for (int i = 0; i < renderers.Length; i++)
             {
                 Renderer renderer = renderers[i];
                 if (renderer != null && renderer.enabled != enabled)
+                {
                     renderer.enabled = enabled;
+                    changedCount++;
+                }
             }
+
+            return changedCount;
         }
 
-        private static void SetAnimatorsEnabled(Animator[] animators, bool enabled)
+        private static int SetAnimatorsEnabled(Animator[] animators, bool enabled)
         {
             if (animators == null)
-                return;
+                return 0;
 
+            int changedCount = 0;
             for (int i = 0; i < animators.Length; i++)
             {
                 Animator animator = animators[i];
                 if (animator != null && animator.enabled != enabled)
+                {
                     animator.enabled = enabled;
+                    changedCount++;
+                }
             }
+
+            return changedCount;
         }
 
-        private void ApplyEntityVisibilityState(Fog3EntityVisibilityState state, Fog3CellState cellState)
+        private bool ApplyEntityVisibilityState(Fog3EntityVisibilityState state, Fog3CellState cellState, out int rendererWrites, out int animatorWrites)
         {
+            rendererWrites = 0;
+            animatorWrites = 0;
+
             bool shouldRender;
             bool freezeAnimator = false;
             bool shouldShowHealthBar = cellState == Fog3CellState.Visible;
@@ -1461,11 +1603,25 @@ namespace AAAGame.MiniMap.FOG3
                 shouldRender = cellState == Fog3CellState.Visible;
             }
 
-            SetRenderersEnabled(state.Renderers, shouldRender);
+            bool shouldAnimate = state.IsBuilding && shouldRender && !freezeAnimator;
+            if (state.HasAppliedState
+                && state.LastShouldRender == shouldRender
+                && state.LastShouldAnimate == shouldAnimate
+                && state.LastShouldShowHealthBar == shouldShowHealthBar)
+            {
+                return false;
+            }
+
+            rendererWrites = SetRenderersEnabled(state.Renderers, shouldRender);
             if (state.IsBuilding)
-                SetAnimatorsEnabled(state.Animators, shouldRender && !freezeAnimator);
+                animatorWrites = SetAnimatorsEnabled(state.Animators, shouldAnimate);
 
             HealthBarComp.SetFogVisible(state.EntityId, shouldShowHealthBar);
+            state.HasAppliedState = true;
+            state.LastShouldRender = shouldRender;
+            state.LastShouldAnimate = shouldAnimate;
+            state.LastShouldShowHealthBar = shouldShowHealthBar;
+            return true;
         }
 
         private void FireEnemyVisibilityChanged(Fog3EntityVisibilityState state, Fog3CellState oldCellState, Fog3CellState newCellState)
@@ -1475,8 +1631,15 @@ namespace AAAGame.MiniMap.FOG3
 
             if (newCellState == Fog3CellState.Visible)
             {
-                Log.Info("[FOG3] Enemy became visible. entityId={0}, old={1}, new={2}, characterKey={3}.",
-                    state.EntityId, oldCellState, newCellState, state.Entity.CharacterKey);
+                UnityEngine.Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    null,
+                    "[FOG3] Enemy became visible. entityId={0}, old={1}, new={2}, characterKey={3}.",
+                    state.EntityId,
+                    oldCellState,
+                    newCellState,
+                    state.Entity.CharacterKey);
             }
 
             GF.Event.Fire(this, EnemyUnitVisibilityChangedEventArgs.Create(state.Entity, oldCellState, newCellState));
@@ -1566,6 +1729,10 @@ namespace AAAGame.MiniMap.FOG3
             public bool IsBuilding { get; }
             public bool HasBeenVisible { get; set; }
             public Fog3CellState LastCellState { get; set; }
+            public bool HasAppliedState { get; set; }
+            public bool LastShouldRender { get; set; }
+            public bool LastShouldAnimate { get; set; }
+            public bool LastShouldShowHealthBar { get; set; }
         }
 
         private void RemoveRevealerReferences(int revealerId)

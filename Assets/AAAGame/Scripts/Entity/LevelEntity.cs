@@ -2,6 +2,7 @@ using GameFramework;
 using GameFramework.Event;
 using System;
 using System.Collections.Generic;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using Cysharp.Threading.Tasks;
 using GiantGrey.TileWorldCreator;
 using UnityEngine;
@@ -10,7 +11,7 @@ using UnityGameFramework.Runtime;
 public partial class LevelEntity : EntityBase
 {
     private const string StrongholdLayerPrefix = "SH";
-    private const int RuntimeInitItemsPerFrame = 1;
+    private const int RuntimeInitItemsPerFrame = 8;
     private const float CaptureVfxBaseDiameter = 12f;
 
     private TileWorldCreatorManager tileWorldCreatorManager;
@@ -103,45 +104,60 @@ public partial class LevelEntity : EntityBase
 
     private async UniTaskVoid InitializeRuntimeAsync(int initVersion)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
+            LogRuntimeInitTiming("begin", stopwatch);
             await UniTask.Yield(PlayerLoopTiming.Update);
             if (!IsRuntimeInitializationActive(initVersion))
             {
                 return;
             }
+            LogRuntimeInitTiming("after-initial-yield", stopwatch);
 
             await ApplyStrongholdRuntimeLayerRulesAsync(initVersion);
             if (!IsRuntimeInitializationActive(initVersion))
             {
                 return;
             }
+            LogRuntimeInitTiming("after-stronghold-layer-rules", stopwatch);
 
             await SpawnPresetEntitiesAsync(initVersion);
             if (!IsRuntimeInitializationActive(initVersion))
             {
                 return;
             }
+            LogRuntimeInitTiming("after-spawn-presets", stopwatch);
 
             await UniTask.Yield(PlayerLoopTiming.Update);
             if (!IsRuntimeInitializationActive(initVersion))
             {
                 return;
             }
+            LogRuntimeInitTiming("after-post-spawn-yield", stopwatch);
 
             SyncEnemyStrongholdFogEffects();
+            LogRuntimeInitTiming("after-enemy-stronghold-fog", stopwatch);
 
             if (GroupMoveManager.HasInstance)
             {
                 GroupMoveManager.Instance.PrewarmNavigationWorlds();
             }
+            LogRuntimeInitTiming("after-navigation-prewarm", stopwatch);
             IsRuntimeInitializationCompleted = true;
             RuntimeInitializationCompleted?.Invoke(this);
+            LogRuntimeInitTiming("completed-event-invoked", stopwatch);
         }
         catch (Exception ex)
         {
             Log.Error("LevelEntity runtime initialization failed: {0}", ex);
         }
+    }
+
+    private static void LogRuntimeInitTiming(string stage, Stopwatch stopwatch)
+    {
+        double elapsedMs = stopwatch != null ? stopwatch.Elapsed.TotalMilliseconds : 0.0;
+        Log.Info("[LevelRuntimeInitTiming] stage={0} elapsedMs={1:F3}", stage, elapsedMs);
     }
 
     private bool IsRuntimeInitializationActive(int initVersion)
@@ -170,15 +186,16 @@ public partial class LevelEntity : EntityBase
 #endif
     }
 
-    private static void RefreshAllBuildingFlowFieldObstacles()
+    private static int RefreshAllBuildingFlowFieldObstacles()
     {
         if (!GroupMoveManager.HasInstance)
         {
             Log.Error("LevelEntity.RefreshAllBuildingFlowFieldObstacles failed: GroupMoveManager is not available.");
-            return;
+            return 0;
         }
 
         BuildingEntity[] buildings = FindObjectsByType<BuildingEntity>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        int refreshedCount = 0;
         for (int i = 0; i < buildings.Length; i++)
         {
             BuildingEntity building = buildings[i];
@@ -188,7 +205,10 @@ public partial class LevelEntity : EntityBase
             }
 
             building.RefreshFlowFieldObstacles();
+            refreshedCount++;
         }
+
+        return refreshedCount;
     }
 
     private void SubscribeRuntimeLayerRules()
@@ -396,7 +416,8 @@ public partial class LevelEntity : EntityBase
                             point.Position,
                             out var buildingInstanceId,
                             isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
-                            initialCoinReserves: initialCoinReserves))
+                            initialCoinReserves: initialCoinReserves,
+                            isNavigationStaticBaked: !point.IsTestSlot))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
                         break;
@@ -430,6 +451,7 @@ public partial class LevelEntity : EntityBase
 
     private async UniTask SpawnPresetEntitiesAsync(int initVersion)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         var buildManager = GameEntry.GetComponent<BuildManager>();
         var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
@@ -445,6 +467,10 @@ public partial class LevelEntity : EntityBase
 
         bool heroSpawned = false;
         int itemsThisFrame = 0;
+        int processedCount = 0;
+        int buildingCount = 0;
+        int skippedCount = 0;
+        int yieldCount = 0;
         foreach (var point in presetPoints)
         {
             if (!IsRuntimeInitializationActive(initVersion))
@@ -467,6 +493,7 @@ public partial class LevelEntity : EntityBase
                 if (string.IsNullOrWhiteSpace(slotId))
                 {
                     Debug.LogWarning($"[TestSlot] 槽位 {point.TestSlotIndex} 未配建筑，跳过 {point.name}");
+                    skippedCount++;
                     continue;
                 }
 
@@ -490,6 +517,7 @@ public partial class LevelEntity : EntityBase
                     Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", point.name, point.Position);
                     SoldierFactory.ShowSoldier(heroUnitType, point.Position, SideType.PlayerSide, BrainType.Player);
                     heroSpawned = true;
+                    processedCount++;
                     break;
 
                 case EntityPresetPointType.Building:
@@ -501,12 +529,16 @@ public partial class LevelEntity : EntityBase
                             point.Position,
                             out var buildingInstanceId,
                             isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
-                            initialCoinReserves: initialCoinReserves))
+                            initialCoinReserves: initialCoinReserves,
+                            isNavigationStaticBaked: !point.IsTestSlot))
                     {
                         Log.Error("LevelEntity.SpawnPresetEntities failed: cannot build preset building '{0}'.", effectiveIdentifier);
+                        skippedCount++;
                         break;
                     }
 
+                    buildingCount++;
+                    processedCount++;
                     if (point.IsGameEndConditionBuilding)
                     {
                         int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
@@ -530,11 +562,24 @@ public partial class LevelEntity : EntityBase
             if (itemsThisFrame >= RuntimeInitItemsPerFrame)
             {
                 itemsThisFrame = 0;
+                yieldCount++;
                 await UniTask.Yield(PlayerLoopTiming.Update);
             }
         }
 
-        RefreshAllBuildingFlowFieldObstacles();
+        Stopwatch refreshStopwatch = Stopwatch.StartNew();
+        int refreshedObstacles = RefreshAllBuildingFlowFieldObstacles();
+        Log.Info(
+            "[LevelRuntimeInitTiming] stage=spawn-presets-complete elapsedMs={0:F3} presetPoints={1} processed={2} buildings={3} heroSpawned={4} skipped={5} yields={6} obstacleRefreshMs={7:F3} refreshedObstacles={8}",
+            stopwatch.Elapsed.TotalMilliseconds,
+            presetPoints.Length,
+            processedCount,
+            buildingCount,
+            heroSpawned,
+            skippedCount,
+            yieldCount,
+            refreshStopwatch.Elapsed.TotalMilliseconds,
+            refreshedObstacles);
     }
 
     private int ResolveOwnerFactionIdByPosition(Vector3 position)

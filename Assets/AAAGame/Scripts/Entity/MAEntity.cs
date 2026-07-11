@@ -301,100 +301,162 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
-        float dt = realElapseSeconds;
-
-        _combatStateClock += dt;
-        RefreshOutOfCombatState();
-        OnOutOfCombatStateRefreshed();
-
-        if (CanRun(_buffComp))
-            _buffComp.UpdateBuff(dt);
-
-        if (Alive)
-            SyncScaleFromCollisionRadius();
-
-        // 更新协调器中的位置（在 Brain.Tick 之前）
-        if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
-            GroupMoveManager.Instance.UpdateAgentPosition(this);
-
-        if (Brain is ITickBrain tickBrain)
+        long updateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
         {
-            tickBrain.Tick(this, dt);
-        }
+            long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            base.OnUpdate(elapseSeconds, realElapseSeconds);
+            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityBase, stageStartTicks);
+            float dt = realElapseSeconds;
 
-        if (CanRun(targetComp))
-            targetComp.UpdateTargeting(dt);
-        RefreshOutOfCombatState();
-        OnOutOfCombatStateRefreshed();
+            _combatStateClock += dt;
+            RefreshOutOfCombatState();
+            OnOutOfCombatStateRefreshed();
 
-        if (CanRun(atkComp))
-            atkComp.Attack(dt);
-
-        RefreshOutOfCombatState();
-        OnOutOfCombatStateRefreshed();
-
-        if (Alive)
-        {
-            if (CanRun(durationMoveEffectComp))
-                durationMoveEffectComp.ApplyEffect(dt);
-
-            if (CanRun(moveComp))
-                moveComp.Move(dt);
-
-            moveExecutor.Execute();
-
-            if (animator != null)
+            if (CanRun(_buffComp))
             {
-                Vector2 brainMove = Vector2.zero;
-                if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
-                    brainMove = playerBrain.Move;
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                _buffComp.UpdateBuff(dt);
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityBuff, stageStartTicks);
+            }
 
-                // 动画由“主动移动意图”驱动，不受击退等被动位移影响。
-                bool isMoving = moveComp != null
-                    ? moveComp.IsMoving
-                    : brainMove.sqrMagnitude > 0.001f;
+            if (Alive)
+            {
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                SyncScaleFromCollisionRadius();
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityScale, stageStartTicks);
+            }
 
-                animator.SetBool("Moving", isMoving);
+            // 更新协调器中的位置（在 Brain.Tick 之前）
+            if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
+            {
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                GroupMoveManager.Instance.UpdateAgentPosition(this);
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAgentPosition, stageStartTicks);
+            }
 
-                if (moveComp != null && Brain != null)
+            if (Brain is ITickBrain tickBrain)
+            {
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                tickBrain.Tick(this, dt);
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityBrain, stageStartTicks);
+            }
+
+            if (CanRun(targetComp))
+            {
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                targetComp.UpdateTargeting(dt);
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityTargeting, stageStartTicks);
+            }
+            RefreshOutOfCombatState();
+            OnOutOfCombatStateRefreshed();
+
+            if (CanRun(atkComp))
+            {
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                atkComp.Attack(dt);
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAttack, stageStartTicks);
+            }
+
+            RefreshOutOfCombatState();
+            OnOutOfCombatStateRefreshed();
+
+            if (Alive)
+            {
+                if (CanRun(durationMoveEffectComp))
                 {
-                    if (!TryFaceAttackTarget())
-                    {
-                        Vector3 moveDirection = ResolveMoveFacingDirection(brainMove);
+                    stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    durationMoveEffectComp.ApplyEffect(dt);
+                    RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityDurationMove, stageStartTicks);
+                }
 
-                        if (moveDirection.sqrMagnitude > 0.001f)
+                if (CanRun(moveComp))
+                {
+                    stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    moveComp.Move(dt);
+                    RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityMoveComp, stageStartTicks);
+                }
+
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                moveExecutor.Execute();
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityMoveExecutor, stageStartTicks);
+
+                if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
+                {
+                    stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    GroupMoveManager.Instance.UpdateAgentPosition(this);
+                    RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAgentPosition, stageStartTicks);
+                }
+
+                if (animator != null)
+                {
+                    stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    Vector2 brainMove = Vector2.zero;
+                    if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                        brainMove = playerBrain.Move;
+
+                    // 动画由“主动移动意图”驱动，不受击退等被动位移影响。
+                    bool isMoving = moveComp != null
+                        ? moveComp.IsMoving
+                        : brainMove.sqrMagnitude > 0.001f;
+
+                    animator.SetBool("Moving", isMoving);
+
+                    if (moveComp != null && Brain != null)
+                    {
+                        if (!TryFaceAttackTarget())
                         {
-                            _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
-                        }
-                        else
-                        {
-                            // 没在主动移动时，如果有攻击目标 → 朝目标转向
-                            // （战斗状态进入攻击范围会停下，原逻辑保留最后移动方向，导致单位不看向敌人）
-                            TrySetTargetRotation(targetComp?.CurrentTarget);
+                            Vector3 moveDirection = ResolveMoveFacingDirection(brainMove);
+
+                            if (moveDirection.sqrMagnitude > 0.001f)
+                            {
+                                _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+                            }
+                            else
+                            {
+                                // 没在主动移动时，如果有攻击目标 → 朝目标转向
+                                // （战斗状态进入攻击范围会停下，原逻辑保留最后移动方向，导致单位不看向敌人）
+                                TrySetTargetRotation(targetComp?.CurrentTarget);
+                            }
                         }
                     }
+                    RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAnimator, stageStartTicks);
                 }
             }
+            if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
+            {
+                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                Transform rotateTarget = _modelTransform;
+                if (_modelTransform.childCount > 0)
+                {
+                    rotateTarget = _modelTransform.GetChild(0);
+                }
+
+                rotateTarget.rotation = Quaternion.RotateTowards(
+                    rotateTarget.rotation,
+                    _targetRotation.Value,
+                    RotationSpeed * dt);
+
+                if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
+                {
+                    _targetRotation = null;
+                }
+                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityRotation, stageStartTicks);
+            }
         }
-        if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
+        finally
         {
-            Transform rotateTarget = _modelTransform;
-            if (_modelTransform.childCount > 0)
-            {
-                rotateTarget = _modelTransform.GetChild(0);
-            }
-
-            rotateTarget.rotation = Quaternion.RotateTowards(
-                rotateTarget.rotation,
-                _targetRotation.Value,
-                RotationSpeed * dt);
-
-            if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
-            {
-                _targetRotation = null;
-            }
+            UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+                UnityGameFramework.Runtime.MainThreadPerfScope.EntityUpdate,
+                System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks);
         }
+    }
+
+    private static void RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)
+    {
+        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+            scope,
+            System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
     }
 
     private Vector3 ResolveMoveFacingDirection(Vector2 brainMove)

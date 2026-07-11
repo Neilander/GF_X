@@ -84,8 +84,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
     private bool _allowEnemyReturnToBirth = true;
     private Vector3 _combatApproachPoint;
+    private Vector3 _combatApproachTargetPoint;
     private int _combatApproachTargetId = int.MinValue;
     private int _combatApproachRefreshFrame = -1;
+    private int _combatApproachDiagnosticFrame = -1;
 
     /// <summary>
     /// 领袖通过 EntityRegistry.GetClosestLeader 惰性获取。
@@ -119,6 +121,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         _softReturning = false;
         _combatApproachTargetId = int.MinValue;
         _combatApproachRefreshFrame = -1;
+        _combatApproachTargetPoint = Vector3.zero;
         State = SoldierState.Idle;
         _lastSyncedState = SoldierState.Idle;
 
@@ -586,24 +589,64 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         float effectiveRange = GetEffectiveAttackRange(self);
         float selfRadius = DistanceUnitConverter.ConvertToWorldFloat(self.GetProperty(CreatureMainProperty.CollisionRadius));
         float arriveDistance = ResolveNavigationArriveDistance(selfRadius);
-        float standOff = Mathf.Max(selfRadius + 0.05f, effectiveRange - arriveDistance - CombatApproachRangeSlack);
+        float targetRadius = ResolveCombatTargetRadius(enemy);
+        bool useSurfacePoint = enemy is BuildingEntity;
+        float standOff = ResolveCombatApproachStandOff(selfRadius, targetRadius, effectiveRange, arriveDistance, useSurfacePoint);
         float requiredClearance = Mathf.Max(selfRadius * 2f + CombatApproachOccupancyPadding, 0.45f);
         Vector3 targetPoint = enemy.Position;
-        if (enemy.TryGetTargetClosestPoint(self.Position, out Vector3 surfacePoint))
+        if (useSurfacePoint && enemy.TryGetTargetClosestPoint(self.Position, out Vector3 surfacePoint))
             targetPoint = surfacePoint;
 
         int targetId = ResolveCombatEntityId(enemy);
         int frame = Time.frameCount;
         float minRefreshDistance = Mathf.Max(0.25f, selfRadius * 1.5f);
-        if (_combatApproachTargetId == targetId
-            && frame - _combatApproachRefreshFrame < 10
-            && HorizontalDist(_combatApproachPoint, enemy.Position) <= effectiveRange + CombatApproachRingSpacing
-            && HorizontalDist(self.Position, _combatApproachPoint) > minRefreshDistance
-            && !IsCombatApproachPointOccupiedByOther(self, _combatApproachPoint, selfRadius))
+        float targetPointMoveDistance = HorizontalDist(_combatApproachTargetPoint, targetPoint);
+        float targetPointRefreshDistance = Mathf.Max(0.12f, selfRadius * 0.5f);
+        bool targetMatchesCache = _combatApproachTargetId == targetId;
+        bool cacheFresh = frame - _combatApproachRefreshFrame < 10;
+        bool targetStable = targetPointMoveDistance <= targetPointRefreshDistance;
+        float cachedApproachToEnemy = HorizontalDist(_combatApproachPoint, enemy.Position);
+        bool cachedApproachInRange = cachedApproachToEnemy <= effectiveRange + CombatApproachRingSpacing;
+        float selfToCachedApproach = HorizontalDist(self.Position, _combatApproachPoint);
+        bool selfNeedsCachedApproach = selfToCachedApproach > minRefreshDistance;
+        bool cachedPointClear = IsCombatApproachPointNavigationClear(_combatApproachPoint, selfRadius);
+        bool canReuseCachedApproach = targetMatchesCache
+            && cacheFresh
+            && targetStable
+            && cachedApproachInRange
+            && selfNeedsCachedApproach
+            && cachedPointClear;
+        bool cachedReserved = false;
+        int cachedBlockingAgentId = 0;
+        if (canReuseCachedApproach)
+            cachedReserved = TryReserveCombatApproachPoint(self, targetId, _combatApproachPoint, selfRadius, out cachedBlockingAgentId);
+
+        if (canReuseCachedApproach && cachedReserved)
         {
             approachPoint = _combatApproachPoint;
             return true;
         }
+
+        LogCombatApproachCacheMiss(
+            self,
+            enemy,
+            frame,
+            targetId,
+            targetPoint,
+            targetPointMoveDistance,
+            targetPointRefreshDistance,
+            targetMatchesCache,
+            cacheFresh,
+            targetStable,
+            cachedApproachToEnemy,
+            cachedApproachInRange,
+            selfToCachedApproach,
+            minRefreshDistance,
+            selfNeedsCachedApproach,
+            cachedPointClear,
+            canReuseCachedApproach,
+            cachedReserved,
+            cachedBlockingAgentId);
 
         if (!FlowFieldCrowdMovementSystem.TryResolveCombatApproachPoint(
                 self,
@@ -622,6 +665,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         _combatApproachTargetId = targetId;
         _combatApproachRefreshFrame = frame;
+        _combatApproachTargetPoint = targetPoint;
         if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
         {
             GameDebugSettings.Log(DebugCategory.Brain,
@@ -632,36 +676,98 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         return true;
     }
 
-    private static bool IsCombatApproachPointOccupiedByOther(IEntityContext self, Vector3 approachPoint, float selfRadius)
+    private void LogCombatApproachCacheMiss(
+        IEntityContext self,
+        IEntityContext enemy,
+        int frame,
+        int targetId,
+        Vector3 targetPoint,
+        float targetPointMoveDistance,
+        float targetPointRefreshDistance,
+        bool targetMatchesCache,
+        bool cacheFresh,
+        bool targetStable,
+        float cachedApproachToEnemy,
+        bool cachedApproachInRange,
+        float selfToCachedApproach,
+        float minRefreshDistance,
+        bool selfNeedsCachedApproach,
+        bool cachedPointClear,
+        bool canReuseCachedApproach,
+        bool cachedReserved,
+        int cachedBlockingAgentId)
     {
-        float requiredClearance = Mathf.Max(selfRadius * 2f + CombatApproachOccupancyPadding, 0.45f);
-        return FlowFieldCrowdMovementSystem.IsPositionOccupiedByOtherAgent(
-            ResolveCombatEntityId(self),
-            0,
-            approachPoint,
-            requiredClearance,
-            out _,
-            out _);
+        if (!GameDebugSettings.IsEnabled(DebugCategory.Brain) && !GameDebugSettings.IsEnabled(DebugCategory.Move))
+            return;
+        if (_combatApproachDiagnosticFrame >= 0 && frame - _combatApproachDiagnosticFrame < 10)
+            return;
+
+        _combatApproachDiagnosticFrame = frame;
+        int selfId = ResolveCombatEntityId(self);
+        Debug.LogWarning(
+            $"[FlowCombatApproachCacheMiss] frame={frame} self={self.CharacterKey} selfId={selfId} target={enemy.CharacterKey} targetId={targetId} " +
+            $"selfPos={self.Position} targetPos={enemy.Position} targetPoint={targetPoint} cachedApproach={_combatApproachPoint} " +
+            $"cacheTargetId={_combatApproachTargetId} cacheFrame={_combatApproachRefreshFrame} targetMatches={targetMatchesCache} cacheFresh={cacheFresh} " +
+            $"targetMove={targetPointMoveDistance:F3}/{targetPointRefreshDistance:F3} targetStable={targetStable} " +
+            $"approachToEnemy={cachedApproachToEnemy:F3} inRange={cachedApproachInRange} selfToApproach={selfToCachedApproach:F3}/{minRefreshDistance:F3} " +
+            $"needsMove={selfNeedsCachedApproach} pointClear={cachedPointClear} canReuse={canReuseCachedApproach} reserved={cachedReserved} blockingId={cachedBlockingAgentId}");
     }
 
+    private static bool TryReserveCombatApproachPoint(
+        IEntityContext self,
+        int targetId,
+        Vector3 approachPoint,
+        float selfRadius,
+        out int blockingAgentId)
+    {
+        float requiredClearance = Mathf.Max(selfRadius * 2f + CombatApproachOccupancyPadding, 0.45f);
+        return FlowFieldCrowdMovementSystem.TryReserveNavigationGoalIfAvailable(
+            ResolveCombatEntityId(self),
+            targetId,
+            approachPoint,
+            requiredClearance,
+            out blockingAgentId);
+    }
 
+    private static bool IsCombatApproachPointNavigationClear(Vector3 approachPoint, float selfRadius)
+    {
+        return FlowFieldCrowdMovementSystem.TryGetNavigationPointClearance(
+                   approachPoint,
+                   Mathf.Max(selfRadius, 0.01f),
+                   out bool isClear,
+                   out _,
+                   out _,
+                   out _)
+               && isClear;
+    }
 
+    private static float ResolveCombatTargetRadius(IEntityContext entity)
+    {
+        if (entity == null)
+            return 0f;
 
+        float radius = DistanceUnitConverter.ConvertToWorldFloat(entity.GetProperty(CreatureMainProperty.CollisionRadius));
+        return Mathf.Max(0f, radius);
+    }
 
-
-
-
-
-
-
+    private static float ResolveCombatApproachStandOff(
+        float selfRadius,
+        float targetRadius,
+        float effectiveRange,
+        float arriveDistance,
+        bool targetPointOnSurface)
+    {
+        float surfaceDistance = Mathf.Max(
+            selfRadius + 0.05f,
+            effectiveRange - arriveDistance - CombatApproachRangeSlack);
+        return targetPointOnSurface ? surfaceDistance : targetRadius + surfaceDistance;
+    }
 
 
     private static int ResolveCombatEntityId(IEntityContext entity)
     {
         return entity is MAEntity maEntity ? maEntity.GetInstanceID() : entity.GetHashCode();
     }
-
-
 
     private static float ResolveNavigationArriveDistance(float collisionRadius)
     {

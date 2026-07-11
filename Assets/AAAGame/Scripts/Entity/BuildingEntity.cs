@@ -9,6 +9,7 @@ public partial class BuildingEntity : MAEntity
     public const string P_BuildingData = "BuildingData";
     public const string P_BuildingInstanceId = "BuildingInstanceId";
     public const string P_IsGameEndConditionBuilding = "IsGameEndConditionBuilding";
+    public const string P_IsNavigationStaticBaked = "IsNavigationStaticBaked";
 
     private static readonly Fix64 PlaceholderAttackInterval = (Fix64)1.6f;
     private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
@@ -24,6 +25,7 @@ public partial class BuildingEntity : MAEntity
     public string BuildingInstanceId { get; private set; }
     public Stronghold CurrentStronghold { get; private set; }
     public bool IsGameEndConditionBuilding { get; private set; }
+    public bool IsNavigationStaticBaked { get; private set; }
     public bool HasUpgrade
     {
         get
@@ -70,6 +72,9 @@ public partial class BuildingEntity : MAEntity
         IsGameEndConditionBuilding = entityParams != null
             && entityParams.TryGet<VarBoolean>(P_IsGameEndConditionBuilding, out var isGameEndConditionBuilding)
             && isGameEndConditionBuilding;
+        IsNavigationStaticBaked = entityParams != null
+            && entityParams.TryGet<VarBoolean>(P_IsNavigationStaticBaked, out var isNavigationStaticBaked)
+            && isNavigationStaticBaked;
 
         CharacterKey = buildingData != null ? buildingData.Identifier : string.Empty;
         SetBrain(new BuildingAIBrain());
@@ -220,6 +225,7 @@ public partial class BuildingEntity : MAEntity
         OwnerFactionID = 0;
         HasPermanentNoAttackCapability = false;
         IsGameEndConditionBuilding = false;
+        IsNavigationStaticBaked = false;
         _lv0InvincibleByBuff = false;
         _phaseProtectionByBuff = false;
         _healthBarSuppressedByBuff = false;
@@ -241,6 +247,11 @@ public partial class BuildingEntity : MAEntity
 
     private void RegisterFlowFieldObstacles()
     {
+        if (IsNavigationStaticBaked)
+        {
+            return;
+        }
+
         if (!GroupMoveManager.HasInstance)
         {
             Log.Error("BuildingEntity.RegisterFlowFieldObstacles failed: GroupMoveManager is not available. building={0} instance={1}", CharacterKey, BuildingInstanceId);
@@ -263,19 +274,39 @@ public partial class BuildingEntity : MAEntity
             if (GameDebugSettings.IsEnabled(DebugCategory.Move))
             {
                 Bounds bounds = collider.bounds;
-                Debug.Log(
-                    $"[BuildingFlowObstacle] collider building={CharacterKey} instance={BuildingInstanceId} " +
-                    $"name={collider.gameObject.name} path={BuildHierarchyPath(collider.transform)} type={collider.GetType().Name} " +
-                    $"id={obstacleId} layer={collider.gameObject.layer} tag={collider.tag} enabled={collider.enabled} trigger={collider.isTrigger} " +
-                    $"active={collider.gameObject.activeInHierarchy} center={bounds.center} size={bounds.size}");
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    null,
+                    "[BuildingFlowObstacle] collider building={0} instance={1} name={2} path={3} type={4} id={5} layer={6} tag={7} enabled={8} trigger={9} active={10} center={11} size={12}",
+                    CharacterKey,
+                    BuildingInstanceId,
+                    collider.gameObject.name,
+                    BuildHierarchyPath(collider.transform),
+                    collider.GetType().Name,
+                    obstacleId,
+                    collider.gameObject.layer,
+                    collider.tag,
+                    collider.enabled,
+                    collider.isTrigger,
+                    collider.gameObject.activeInHierarchy,
+                    bounds.center,
+                    bounds.size);
             }
         }
 
         if (GameDebugSettings.IsEnabled(DebugCategory.Move))
         {
-            Debug.Log(
-                $"[BuildingFlowObstacle] register building={CharacterKey} instance={BuildingInstanceId} " +
-                $"colliders={colliders.Length} registered={_registeredFlowObstacleIds.Count} pos={Position}");
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                null,
+                "[BuildingFlowObstacle] register building={0} instance={1} colliders={2} registered={3} pos={4}",
+                CharacterKey,
+                BuildingInstanceId,
+                colliders.Length,
+                _registeredFlowObstacleIds.Count,
+                Position);
         }
     }
 
@@ -308,9 +339,15 @@ public partial class BuildingEntity : MAEntity
 
         if (GameDebugSettings.IsEnabled(DebugCategory.Move))
         {
-            Debug.Log(
-                $"[BuildingFlowObstacle] unregister building={CharacterKey} instance={BuildingInstanceId} " +
-                $"registered={_registeredFlowObstacleIds.Count} pos={Position}");
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                null,
+                "[BuildingFlowObstacle] unregister building={0} instance={1} registered={2} pos={3}",
+                CharacterKey,
+                BuildingInstanceId,
+                _registeredFlowObstacleIds.Count,
+                Position);
         }
 
         _registeredFlowObstacleIds.Clear();

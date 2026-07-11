@@ -1,3 +1,5 @@
+using Stopwatch = System.Diagnostics.Stopwatch;
+using UnityGameFramework.Runtime;
 using UnityEngine;
 
 public class GroupMoveManager : MonoBehaviour
@@ -6,12 +8,14 @@ public class GroupMoveManager : MonoBehaviour
     public static bool HasInstance => Instance != null;
 
     [SerializeField] private GroupMoveConfig _config;
+    [SerializeField] private FlowFieldNavigationConfig _flowFieldConfig;
     public GroupMoveConfig Config => _config;
+    public FlowFieldNavigationConfig FlowFieldConfig => _flowFieldConfig;
 
     private void Awake()
     {
         Instance = this;
-        FlowFieldCrowdMovementSystem.SetConfig(_config);
+        ApplyFlowFieldConfig();
     }
 
     private void OnDestroy()
@@ -23,23 +27,62 @@ public class GroupMoveManager : MonoBehaviour
 
     private void Update()
     {
-        FlowFieldCrowdMovementSystem.SetConfig(_config);
-        if (_config != null
-            && _config.RequireAuthoredNavigationSource
-            && !FlowFieldCrowdMovementSystem.HasAuthoredNavigationSource())
+        FlowFieldCrowdMovementSystem.PulsePerformanceFrame();
+        long updateStartTicks = Stopwatch.GetTimestamp();
+        try
         {
-            if (FlowFieldCrowdMovementSystem.HasActiveNavigationAgents())
+            long sectionStartTicks = Stopwatch.GetTimestamp();
+            ApplyFlowFieldConfig();
+            long configTicks = Stopwatch.GetTimestamp() - sectionStartTicks;
+            FlowFieldCrowdMovementSystem.RecordManagerConfigTicks(configTicks);
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowConfig, configTicks);
+
+            sectionStartTicks = Stopwatch.GetTimestamp();
+            if (_flowFieldConfig.RequireAuthoredNavigationSource
+                && !FlowFieldCrowdMovementSystem.HasAuthoredNavigationSource())
             {
-                throw new System.InvalidOperationException(
-                    "GroupMoveManager.Update failed: active navigation agents exist before any FlowNavigationGridSource has applied a FlowNavigationGridAsset.");
+                if (FlowFieldCrowdMovementSystem.IsRuntimeNavigationTransitionActive())
+                {
+                    long transitionGateTicks = Stopwatch.GetTimestamp() - sectionStartTicks;
+                    FlowFieldCrowdMovementSystem.RecordManagerSourceGateTicks(transitionGateTicks);
+                    MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowSourceGate, transitionGateTicks);
+                    return;
+                }
+
+                if (FlowFieldCrowdMovementSystem.HasActiveNavigationAgents())
+                {
+                    throw new System.InvalidOperationException(
+                        "GroupMoveManager.Update failed: active navigation agents exist before any FlowNavigationGridSource has applied a FlowNavigationGridAsset.");
+                }
+
+                long sourceGateTicks = Stopwatch.GetTimestamp() - sectionStartTicks;
+                FlowFieldCrowdMovementSystem.RecordManagerSourceGateTicks(sourceGateTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowSourceGate, sourceGateTicks);
+                return;
             }
 
-            return;
-        }
+            long sourceCheckTicks = Stopwatch.GetTimestamp() - sectionStartTicks;
+            FlowFieldCrowdMovementSystem.RecordManagerSourceGateTicks(sourceCheckTicks);
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowSourceGate, sourceCheckTicks);
 
-        FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
-        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowGroupMove,
+                Stopwatch.GetTimestamp() - updateStartTicks);
+        }
+    }
+
+    private void ApplyFlowFieldConfig()
+    {
+        if (_flowFieldConfig == null)
+            throw new System.InvalidOperationException("GroupMoveManager.ApplyFlowFieldConfig failed: FlowFieldNavigationConfig is not assigned.");
+
+        FlowFieldCrowdMovementSystem.SetConfig(_flowFieldConfig);
     }
 
     // ── Agent 注册 ──
@@ -192,7 +235,7 @@ public class GroupMoveManager : MonoBehaviour
         if (!isAutoBox && !GameDebugSettings.IsEnabled(DebugCategory.Move))
             return;
 
-        Debug.Log(
+        UnityEngine.Debug.Log(
             $"[FlowColliderObstacle] register id={obstacleId} shape={shape} type={collider.GetType().Name} " +
             $"name={collider.gameObject.name} path={BuildHierarchyPath(collider.transform)} layer={collider.gameObject.layer} " +
             $"layerName={LayerMask.LayerToName(collider.gameObject.layer)} tag={collider.tag} enabled={collider.enabled} " +
@@ -257,7 +300,6 @@ public class GroupMoveManager : MonoBehaviour
     {
         return FlowFieldCrowdMovementSystem.HasActiveNavigationAgents();
     }
-
 
     public bool IsPositionOccupiedByAgent(Vector3 position, float requiredDistance)
     {

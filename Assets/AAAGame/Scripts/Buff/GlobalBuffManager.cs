@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using AAAGame.Scripts.BuffSystem;
-using GameFramework;
 using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -53,7 +52,6 @@ public class GlobalBuffManager : GameFrameworkComponent
     private TechScopeIndex m_TechScopeIndex;
     private TechScopeResolver m_TechScopeResolver;
     private bool m_IsSubscribed;
-    private bool m_IsSubscribedFactionChanged;
     private readonly Dictionary<int, Dictionary<UnitType, List<GlobalUnitBuffEntry>>> m_UnitBuffsByFaction = new();
     private readonly List<PersistentBuildingBuffRule> m_PersistentBuildingBuffRules = new();
     private readonly List<RuntimeArmyForceRule> m_RuntimeArmyForceRules = new();
@@ -68,14 +66,12 @@ public class GlobalBuffManager : GameFrameworkComponent
     {
         TryInitializeScopeResolver();
         TrySubscribeTechUnlockedEvent();
-        TrySubscribeEntityFactionChangedEvent();
     }
 
     public void PrepareRuntimeDependencies()
     {
         TryInitializeScopeResolver();
         TrySubscribeTechUnlockedEvent();
-        TrySubscribeEntityFactionChangedEvent();
     }
 
     private void OnEnable()
@@ -90,12 +86,11 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     private void Update()
     {
-        if (m_IsSubscribed && m_IsSubscribedFactionChanged)
+        if (m_IsSubscribed)
             return;
 
         TryInitializeScopeResolver();
         TrySubscribeTechUnlockedEvent();
-        TrySubscribeEntityFactionChangedEvent();
     }
 
     protected  void OnDestroy()
@@ -104,11 +99,6 @@ public class GlobalBuffManager : GameFrameworkComponent
             GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
 
         m_IsSubscribed = false;
-
-        if (m_IsSubscribedFactionChanged && GF.Event != null)
-            GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-
-        m_IsSubscribedFactionChanged = false;
     }
 
     private void OnLevelLoadStarted()
@@ -182,27 +172,6 @@ public class GlobalBuffManager : GameFrameworkComponent
         Debug.LogWarning($"[GlobalBuffManager] 缺少 BuildingTechRuntimeEffectSO 运行时规则，techId={args.TechId}, scopeType={techData.ScopeType}");
     }
 
-    private void OnEntityFactionChanged(object sender, GameEventArgs e)
-    {
-        if (e is not EntityFactionChangedEventArgs args)
-            return;
-
-        if (args.OldFactionId == args.NewFactionId)
-            return;
-
-        MAEntity entity = FindAliveEntity(args.EntityId);
-        if (entity == null)
-            return;
-
-        if (entity is BuildingEntity building)
-        {
-            RefreshBuildingFactionBuffs(building, args.OldFactionId, args.NewFactionId);
-            return;
-        }
-
-        RefreshUnitFactionBuffs(entity, args.OldFactionId, args.NewFactionId);
-    }
-
     private bool TryInitializeScopeResolver()
     {
         if (m_TechScopeResolver != null)
@@ -242,19 +211,6 @@ public class GlobalBuffManager : GameFrameworkComponent
 
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
         m_IsSubscribed = true;
-        return true;
-    }
-
-    private bool TrySubscribeEntityFactionChangedEvent()
-    {
-        if (m_IsSubscribedFactionChanged)
-            return true;
-
-        if (GF.Event == null)
-            return false;
-
-        GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        m_IsSubscribedFactionChanged = true;
         return true;
     }
 
@@ -489,20 +445,12 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (building == null)
             return null;
 
-        return GetRuntimeBuffsForBuildingEntity(building, building.OwnerFactionID);
-    }
-
-    private List<BuffData> GetRuntimeBuffsForBuildingEntity(BuildingEntity building, int ownerFactionId)
-    {
-        if (building == null)
-            return null;
-
-        var result = LevelTagRuntime.CreateBuildingBuffs(building, ownerFactionId) ?? new List<BuffData>();
-        AddPersistentBuildingUnitProviderBuffs(result, building, ownerFactionId);
+        var result = LevelTagRuntime.CreateBuildingBuffs(building) ?? new List<BuffData>();
+        AddPersistentBuildingUnitProviderBuffs(result, building);
         for (int i = 0; i < m_PersistentBuildingEntityBuffRules.Count; i++)
         {
             PersistentBuildingEntityBuffRule rule = m_PersistentBuildingEntityBuffRules[i];
-            if (rule == null || rule.OwnerFactionId != ownerFactionId || rule.Matches == null || !rule.Matches.Invoke(building))
+            if (rule == null || rule.OwnerFactionId != building.OwnerFactionID || rule.Matches == null || !rule.Matches.Invoke(building))
                 continue;
 
             List<BuffCallback> modules = rule.CreateModules?.Invoke(building);
@@ -522,18 +470,13 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     private void AddPersistentBuildingUnitProviderBuffs(List<BuffData> result, BuildingEntity building)
     {
-        AddPersistentBuildingUnitProviderBuffs(result, building, building != null ? building.OwnerFactionID : 0);
-    }
-
-    private void AddPersistentBuildingUnitProviderBuffs(List<BuffData> result, BuildingEntity building, int ownerFactionId)
-    {
         if (result == null || building == null || m_PersistentBuildingBuffRules.Count == 0)
             return;
 
         for (int i = 0; i < m_PersistentBuildingBuffRules.Count; i++)
         {
             PersistentBuildingBuffRule rule = m_PersistentBuildingBuffRules[i];
-            if (rule == null || rule.OwnerFactionId != ownerFactionId)
+            if (rule == null || rule.OwnerFactionId != building.OwnerFactionID)
                 continue;
 
             result.Add(BuffData.Create(
@@ -554,89 +497,6 @@ public class GlobalBuffManager : GameFrameworkComponent
         }
     }
 
-    private void RefreshUnitFactionBuffs(MAEntity entity, int oldFactionId, int newFactionId)
-    {
-        if (entity == null || entity.BuffComp == null)
-            return;
-
-        if (!UnitTypeHelper.TryParseUnitType(entity.CharacterKey, out UnitType unitType))
-        {
-            Debug.LogError($"[GlobalBuffManager] RefreshUnitFactionBuffs failed: cannot parse UnitType. entityId={entity.Id}, characterKey={entity.CharacterKey}");
-            return;
-        }
-
-        RemoveBuffsById(entity.BuffComp, GetBuffs(unitType, oldFactionId));
-        RemoveBuffsByPrefix(entity.BuffComp, "level_tag_unit_");
-        RemoveBuffsByPrefix(entity.BuffComp, "base_tech_");
-        RemoveSourceBuildingUnitBuffs(entity.BuffComp);
-        AddBuffs(entity, GetBuffs(unitType, newFactionId));
-
-        if (entity is SoldierEntity soldier && !string.IsNullOrWhiteSpace(soldier.SourceBuildingInstanceId))
-            AddBuffs(entity, GetBuffsForBuilding(soldier.SourceBuildingInstanceId, newFactionId));
-    }
-
-    private void RefreshBuildingFactionBuffs(BuildingEntity building, int oldFactionId, int newFactionId)
-    {
-        if (building == null || building.BuffComp == null)
-            return;
-
-        RemoveBuffsById(building.BuffComp, GetRuntimeBuffsForBuildingEntity(building, oldFactionId));
-        RemoveBuffsByPrefix(building.BuffComp, "level_tag_building_");
-        RemoveBuffsByPrefix(building.BuffComp, "building_runtime_tech_");
-        RemoveBuffsByPrefix(building.BuffComp, GetBuildingUnitProviderBuffPrefixForAnySource());
-        AddBuffs(building, GetRuntimeBuffsForBuildingEntity(building, newFactionId));
-    }
-
-    private static void AddBuffs(MAEntity entity, List<BuffData> buffs)
-    {
-        if (entity == null || entity.BuffComp == null || buffs == null)
-            return;
-
-        for (int i = 0; i < buffs.Count; i++)
-            entity.BuffComp.AddBuff(buffs[i], entity);
-    }
-
-    private static void RemoveBuffsById(IBuffComp buffComp, List<BuffData> buffs)
-    {
-        if (buffComp == null || buffs == null)
-            return;
-
-        for (int i = 0; i < buffs.Count; i++)
-        {
-            BuffData buff = buffs[i];
-            if (buff == null)
-                continue;
-
-            buffComp.RemoveBuff(buff.id);
-            ReferencePool.Release(buff);
-        }
-    }
-
-    private static void RemoveSourceBuildingUnitBuffs(IBuffComp buffComp)
-    {
-        RemoveBuffsByPrefix(buffComp, "level_tag_source_building_unit_");
-    }
-
-    private static void RemoveBuffsByPrefix(IBuffComp buffComp, string prefix)
-    {
-        if (buffComp is CharacterBuffComp characterBuffComp)
-            characterBuffComp.RemoveBuffsByPrefix(prefix);
-    }
-
-    private static MAEntity FindAliveEntity(int entityId)
-    {
-        if (entityId <= 0 || EntityRegistry.AllEntities == null)
-            return null;
-
-        for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
-        {
-            if (EntityRegistry.AllEntities[i] is MAEntity entity && entity.Id == entityId && entity.Alive)
-                return entity;
-        }
-
-        return null;
-    }
-
     private static string GetBuildingUnitProviderBuffId(string sourceBuildingInstanceId, string techId, string targetBuildingInstanceId)
     {
         return $"{GetBuildingUnitProviderBuffPrefix(sourceBuildingInstanceId)}{techId}_{targetBuildingInstanceId}";
@@ -645,11 +505,6 @@ public class GlobalBuffManager : GameFrameworkComponent
     private static string GetBuildingUnitProviderBuffPrefix(string sourceBuildingInstanceId)
     {
         return $"building_unit_provider_tech_{sourceBuildingInstanceId}_";
-    }
-
-    private static string GetBuildingUnitProviderBuffPrefixForAnySource()
-    {
-        return "building_unit_provider_tech_";
     }
 
     public List<BuffData> GetBuffsForBuilding(string buildingInstanceId, int ownerFactionId)

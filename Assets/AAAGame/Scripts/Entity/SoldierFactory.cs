@@ -70,9 +70,9 @@ public static class SoldierFactory
         // Buff setup occurs in existing show-success chain.
 
         if (unitType == UnitType.Unit_Hero)
-            return MAEntityFactory.ShowHero(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, sourceBuildingInstanceId, configureParams, unitLevel);
+            return MAEntityFactory.ShowHero(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
 
-        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, sourceBuildingInstanceId, configureParams, unitLevel);
+        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
     }
 
     public static async UniTask<bool> ShowSoldierAwait(
@@ -95,7 +95,7 @@ public static class SoldierFactory
         AddGlobalBuffs(startBuffs, unitType, side);
         AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
 
-        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, sourceBuildingInstanceId, unitLevel);
+        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
         var logic = unitType == UnitType.Unit_Hero
             ? await GF.Entity.ShowEntityAwait<HeroEntity>(prefabName, entityGroup, entityParams)
             : await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);

@@ -101,23 +101,18 @@ public static class LevelTagRuntime
 
     public static List<BuffData> CreateBuildingBuffs(BuildingEntity building)
     {
-        return CreateBuildingBuffs(building, building != null ? building.OwnerFactionID : 0);
-    }
-
-    public static List<BuffData> CreateBuildingBuffs(BuildingEntity building, int ownerFactionId)
-    {
         if (building?.buildingData == null)
             return null;
 
         var modules = new List<BuffCallback>();
         foreach (LevelTagTable tag in ResolveActiveTags())
-            AddBuildingModules(tag, building, ownerFactionId, modules);
+            AddBuildingModules(tag, building, modules);
 
         var result = new List<BuffData>();
         if (modules.Count > 0)
         {
             result.Add(BuffData.Create(
-                id: $"level_tag_building_{ownerFactionId}_{building.BuildingInstanceId}",
+                id: $"level_tag_building_{building.OwnerFactionID}_{building.BuildingInstanceId}",
                 duration: float.MaxValue,
                 isForever: true,
                 maxStack: 1,
@@ -674,13 +669,13 @@ public static class LevelTagRuntime
         }
     }
 
-    private static void AddBuildingModules(LevelTagTable tag, BuildingEntity building, int ownerFactionId, List<BuffCallback> modules)
+    private static void AddBuildingModules(LevelTagTable tag, BuildingEntity building, List<BuffCallback> modules)
     {
         if (tag == null || building?.buildingData == null || modules == null)
             return;
 
-        bool player = ownerFactionId == EntitySideHelper.PlayerFactionId;
-        bool enemy = ownerFactionId != EntitySideHelper.PlayerFactionId;
+        bool player = building.OwnerFactionID == EntitySideHelper.PlayerFactionId;
+        bool enemy = building.OwnerFactionID != EntitySideHelper.PlayerFactionId;
         switch (tag.Identifier)
         {
             case "LvTag_EntrenchedFirepower":

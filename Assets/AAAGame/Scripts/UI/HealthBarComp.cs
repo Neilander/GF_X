@@ -21,6 +21,12 @@ public class HealthBarComp : MonoBehaviour
     private static readonly Color AmmoFilledColor = new Color(1f, 0.28f, 0.08f, 0.95f);
     private static readonly Color AmmoEmptyColor = new Color(0.35f, 0.35f, 0.35f, 0.85f);
     private static readonly Dictionary<int, HealthBarComp> ActiveBars = new Dictionary<int, HealthBarComp>();
+    private static int s_fogVisibleCalls;
+    private static int s_fogVisibleCacheHits;
+    private static int s_fogVisibleMissing;
+    private static int s_fogVisibleNoOps;
+    private static int s_fogVisibleCanvasWrites;
+    private static long s_fogVisibleInternalTicks;
 
     [SerializeField] private RectTransform fillRect;
     [SerializeField] private Image fillImage;
@@ -305,22 +311,42 @@ public class HealthBarComp : MonoBehaviour
 
     public static void SetFogVisible(int entityId, bool visible)
     {
+        s_fogVisibleCalls++;
         if (ActiveBars.TryGetValue(entityId, out HealthBarComp cached) && cached != null)
         {
+            s_fogVisibleCacheHits++;
             cached.SetFogVisibleInternal(visible);
             return;
         }
 
-        GameObject healthBar = GameObject.Find($"HealthBar_{entityId}");
-        if (healthBar == null)
-            return;
+        s_fogVisibleMissing++;
+    }
 
-        HealthBarComp comp = healthBar.GetComponent<HealthBarComp>();
-        if (comp == null)
-            return;
+    public static void ResetFogVisibilityDiagnostics()
+    {
+        s_fogVisibleCalls = 0;
+        s_fogVisibleCacheHits = 0;
+        s_fogVisibleMissing = 0;
+        s_fogVisibleNoOps = 0;
+        s_fogVisibleCanvasWrites = 0;
+        s_fogVisibleInternalTicks = 0L;
+    }
 
-        ActiveBars[entityId] = comp;
-        comp.SetFogVisibleInternal(visible);
+    public static void ConsumeFogVisibilityDiagnostics(
+        out int calls,
+        out int cacheHits,
+        out int missing,
+        out int noOps,
+        out int canvasWrites,
+        out long internalTicks)
+    {
+        calls = s_fogVisibleCalls;
+        cacheHits = s_fogVisibleCacheHits;
+        missing = s_fogVisibleMissing;
+        noOps = s_fogVisibleNoOps;
+        canvasWrites = s_fogVisibleCanvasWrites;
+        internalTicks = s_fogVisibleInternalTicks;
+        ResetFogVisibilityDiagnostics();
     }
 
     public static void ForceUpdateSide(int entityId, bool isFriendly)
@@ -334,13 +360,34 @@ public class HealthBarComp : MonoBehaviour
 
     private void SetFogVisibleInternal(bool visible)
     {
-        _visibleByFog = visible;
+        long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            if (_visibleByFog == visible && ownerCanvas != null && ownerCanvas.enabled == visible)
+            {
+                s_fogVisibleNoOps++;
+                return;
+            }
 
-        if (ownerCanvas == null)
-            ownerCanvas = GetComponent<Canvas>();
+            _visibleByFog = visible;
 
-        if (ownerCanvas != null)
-            ownerCanvas.enabled = visible;
+            if (ownerCanvas == null)
+                ownerCanvas = GetComponent<Canvas>();
+
+            if (ownerCanvas != null && ownerCanvas.enabled != visible)
+            {
+                ownerCanvas.enabled = visible;
+                s_fogVisibleCanvasWrites++;
+            }
+            else
+            {
+                s_fogVisibleNoOps++;
+            }
+        }
+        finally
+        {
+            s_fogVisibleInternalTicks += System.Diagnostics.Stopwatch.GetTimestamp() - startTicks;
+        }
     }
 
     private void UpdateFillColor()

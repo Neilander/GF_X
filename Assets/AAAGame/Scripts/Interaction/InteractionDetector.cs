@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 [RequireComponent(typeof(Collider))]
 public class InteractionDetector : MonoBehaviour
@@ -33,73 +34,113 @@ public class InteractionDetector : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!IsInLayerMask(other.gameObject.layer))
-            return;
-
-        if (TryGetTarget(other, out var target))
+        long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
         {
-            if (_overlapCount.TryGetValue(target, out int count))
-                _overlapCount[target] = count + 1;
-            else
-                _overlapCount[target] = 1;
+            if (!IsInLayerMask(other.gameObject.layer))
+                return;
 
-            // 进入触发器时就记录 overlap；是否可交互由 IsValid 决定。
-            if (IsValid(target) && !_candidates.Contains(target))
-                _candidates.Add(target);
+            if (TryGetTarget(other, out var target))
+            {
+                if (_overlapCount.TryGetValue(target, out int count))
+                    _overlapCount[target] = count + 1;
+                else
+                    _overlapCount[target] = 1;
+
+                // 进入触发器时就记录 overlap；是否可交互由 IsValid 决定。
+                if (IsValid(target) && !_candidates.Contains(target))
+                    _candidates.Add(target);
+            }
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.InteractionTrigger,
+                System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
         }
     }
     private void OnTriggerStay(Collider other)
     {
-        if (TryGetTarget(other, out var target))
+        long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
         {
-            // 如果此前因为距离等原因被 CleanupInvalid 移除了 overlapCount，这里兜底恢复。
-            if (!_overlapCount.ContainsKey(target))
-                _overlapCount[target] = 1;
+            if (TryGetTarget(other, out var target))
+            {
+                // 如果此前因为距离等原因被 CleanupInvalid 移除了 overlapCount，这里兜底恢复。
+                if (!_overlapCount.ContainsKey(target))
+                    _overlapCount[target] = 1;
 
-            // 在同一个触发器体积内移动（比如走出 maxDistance 又走回来）时，需要能重新加入候选。
-            if (IsValid(target) && !_candidates.Contains(target))
-                _candidates.Add(target);
+                // 在同一个触发器体积内移动（比如走出 maxDistance 又走回来）时，需要能重新加入候选。
+                if (IsValid(target) && !_candidates.Contains(target))
+                    _candidates.Add(target);
+            }
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.InteractionTrigger,
+                System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
         }
     }
 
     private void OnTriggerExit(Collider other)
     {
-        if (TryGetTarget(other, out var target))
+        long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
         {
-            if (_overlapCount.TryGetValue(target, out int count))
+            if (TryGetTarget(other, out var target))
             {
-                count--;
-                if (count <= 0)
+                if (_overlapCount.TryGetValue(target, out int count))
                 {
-                    _overlapCount.Remove(target);
-                    _candidates.Remove(target);
-                }
-                else
-                {
-                    _overlapCount[target] = count;
+                    count--;
+                    if (count <= 0)
+                    {
+                        _overlapCount.Remove(target);
+                        _candidates.Remove(target);
+                    }
+                    else
+                    {
+                        _overlapCount[target] = count;
+                    }
                 }
             }
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.InteractionTrigger,
+                System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
         }
     }
 
     public void CleanupInvalid()
     {
-        for (int i = _candidates.Count - 1; i >= 0; i--)
+        long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
         {
-            var target = _candidates[i];
-            if (target == null)
+            for (int i = _candidates.Count - 1; i >= 0; i--)
             {
-                _candidates.RemoveAt(i);
-                _overlapCount.Remove(target);
-                continue;
-            }
+                var target = _candidates[i];
+                if (target == null)
+                {
+                    _candidates.RemoveAt(i);
+                    _overlapCount.Remove(target);
+                    continue;
+                }
 
-            // 距离/状态暂时不可交互时，只从候选移除，保留 overlapCount，
-            // 这样在仍处于触发器内时可以通过 OnTriggerStay 重新加入。
-            if (!IsValid(target))
-            {
-                _candidates.RemoveAt(i);
+                // 距离/状态暂时不可交互时，只从候选移除，保留 overlapCount，
+                // 这样在仍处于触发器内时可以通过 OnTriggerStay 重新加入。
+                if (!IsValid(target))
+                {
+                    _candidates.RemoveAt(i);
+                }
             }
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.InteractionCleanup,
+                System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
         }
     }
 

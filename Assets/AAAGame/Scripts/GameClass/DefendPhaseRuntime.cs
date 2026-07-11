@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using Cysharp.Threading.Tasks;
 using GameFramework.Event;
 using UnityEngine;
@@ -53,10 +54,21 @@ public static class DefendPhaseRuntime
 
     public static void PrepareForCurrentLevelIfNeeded()
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         EnsureSubscribedSoldierDead();
+        double subscribeMs = stopwatch.Elapsed.TotalMilliseconds;
         EnsureArchetypeCache();
+        double archetypeMs = stopwatch.Elapsed.TotalMilliseconds;
         EnsureSpawnPointCache();
+        double spawnPointMs = stopwatch.Elapsed.TotalMilliseconds;
         EnsureWaveConfigLoaded();
+        Log.Info(
+            "[DefendPhaseTiming] stage=prepare totalMs={0:F3} subscribeMs={1:F3} archetypeMs={2:F3} spawnPointMs={3:F3} waveMs={4:F3}",
+            stopwatch.Elapsed.TotalMilliseconds,
+            subscribeMs,
+            archetypeMs - subscribeMs,
+            spawnPointMs - archetypeMs,
+            stopwatch.Elapsed.TotalMilliseconds - spawnPointMs);
     }
 
     public static async UniTaskVoid EnterDefendPhaseAsync()
@@ -235,6 +247,7 @@ public static class DefendPhaseRuntime
 
     private static void EnsureSpawnPointCache()
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
         LevelEntity levelEntity = LevelEntity.ActiveLevelEntity;
         if (levelEntity == null)
             return;
@@ -251,14 +264,26 @@ public static class DefendPhaseRuntime
 
         Vector3 basePosition = ResolvePlayerBasePosition();
         EntityPresetPoint[] points = levelEntity.GetComponentsInChildren<EntityPresetPoint>(true);
+        int defendPointCount = 0;
+        double distanceMs = 0.0;
+        double diagnosticsMs = 0.0;
         for (int i = 0; i < points.Length; i++)
         {
             EntityPresetPoint point = points[i];
             if (point == null || point.PointType != EntityPresetPointType.DefendSpawn)
                 continue;
 
+            defendPointCount++;
+            Stopwatch distanceStopwatch = Stopwatch.StartNew();
             float distance = CalculatePathDistance(point.Position, basePosition);
-            LogSpawnPointDiagnostics(point);
+            distanceMs += distanceStopwatch.Elapsed.TotalMilliseconds;
+            if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+            {
+                Stopwatch diagnosticsStopwatch = Stopwatch.StartNew();
+                LogSpawnPointDiagnostics(point);
+                diagnosticsMs += diagnosticsStopwatch.Elapsed.TotalMilliseconds;
+            }
+
             s_DefendSpawnPoints.Add(new DefendSpawnPointRuntime
             {
                 Point = point,
@@ -266,7 +291,15 @@ public static class DefendPhaseRuntime
             });
         }
 
-        Log.Info("[DefendPhase] 已缓存防御出怪点。count={0}, base={1}", s_DefendSpawnPoints.Count, basePosition);
+        Log.Info(
+            "[DefendPhaseTiming] stage=spawn-point-cache totalMs={0:F3} presetPoints={1} defendPoints={2} cached={3} distanceMs={4:F3} diagnosticsMs={5:F3} base={6}",
+            stopwatch.Elapsed.TotalMilliseconds,
+            points.Length,
+            defendPointCount,
+            s_DefendSpawnPoints.Count,
+            distanceMs,
+            diagnosticsMs,
+            basePosition);
     }
 
     private static Vector3 ResolvePlayerBasePosition()

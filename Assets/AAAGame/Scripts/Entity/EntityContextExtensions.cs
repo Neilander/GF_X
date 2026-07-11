@@ -105,7 +105,7 @@ public static class EntityContextExtensions
         closestPoint = default;
 
         if (!(target is Component targetComponent) || targetComponent == null)
-            return false;
+            return TryGetClosestPointFromCollisionRadius(target, origin, out closestPoint);
 
         if (target is BuildingEntity && TryGetClosestPointFromNonTriggerCollider(targetComponent, origin, out closestPoint))
             return true;
@@ -138,7 +138,28 @@ public static class EntityContextExtensions
             return true;
         }
 
-        return false;
+        return TryGetClosestPointFromCollisionRadius(target, origin, out closestPoint);
+    }
+
+    private static bool TryGetClosestPointFromCollisionRadius(IEntityContext target, Vector3 origin, out Vector3 closestPoint)
+    {
+        closestPoint = default;
+        if (target == null)
+            return false;
+
+        float radius = DistanceUnitConverter.ConvertToWorldFloat(target.GetProperty(CreatureMainProperty.CollisionRadius));
+        if (radius <= 0.0001f)
+            return false;
+
+        Vector3 fromTarget = origin - target.Position;
+        fromTarget.y = 0f;
+        if (fromTarget.sqrMagnitude <= 0.0001f)
+            fromTarget = Vector3.forward;
+        else
+            fromTarget.Normalize();
+
+        closestPoint = target.Position + fromTarget * radius;
+        return true;
     }
 
     private static bool TryGetClosestPointFromNonTriggerCollider(Component targetComponent, Vector3 origin, out Vector3 closestPoint)

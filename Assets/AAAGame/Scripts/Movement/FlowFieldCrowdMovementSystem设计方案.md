@@ -29,7 +29,7 @@
 
 `LdtkToTileWorldCreatorImporterWindow` 调用 `FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab()`，根据 terrain prefab 的 `Ground` 层 collider 和 `LevelObstacle` 层 collider 生成 `FlowNavigationGridAsset`。
 
-当前导出会生成 Medium/Small/Large 三份 movement type grid。每份 asset 都保存 walkable mask、cell anchor 和 authored source cost field。baker 在编辑器阶段写入墙边 blur cost；Large/Small/Medium 通过 hard clearance 生成各自的可走区和墙边成本。这对应文献 23.10 source cost data 和 23.11 different movement types / wall cushioning。
+当前导出会生成 Medium/Small/Large 三份 movement type grid。每份 asset 都保存 walkable mask、cell anchor 和 authored source cost field。baker 在编辑器阶段直接用真实 `Ground`/`LevelObstacle` collider 检查单位圆盘 footprint：圆盘采样点必须都落在 Ground 上，且圆盘范围不能触碰障碍 collider；不是只看 cell center。Large/Small/Medium 通过各自 hard clearance 半径生成可走区和墙边成本。这对应文献 23.10 source cost data 和 23.11 different movement types / wall cushioning。
 
 `FlowNavigationGridPrefabBaker.AttachSourceToLevelPrefab()` 会把 `FlowNavigationGridSource` 挂到 level prefab。运行时 `FlowNavigationGridSource.ApplyToFlowField()` 会收集主 grid 和 movement type grids：单 grid 走 `SetAuthoredNavigationSource()`，多 grid 走 `SetAuthoredNavigationSources()`，并把 authored cost field 一并传入 `FlowFieldCrowdMovementSystem`。
 
@@ -126,12 +126,18 @@
 16. authored source 层已支持多个 movement type grid；同一场景可以为小/大单位提供不同 walkable mask，运行时不会让大单位复用小单位底图。
 17. authored source cost field 已进入主链路。`FlowNavigationGridAsset` 保存 cost；`FlowNavigationGridSource` 传入 cost；world build 直接使用 source cost；runtime dirty sector 从 source cost 局部重建后叠加动态障碍和 CostStamp。
 18. `FlowFieldCrowdMovementSystemTests` 标记为 `SingleThreaded`。该系统是静态全局状态，测试并行会互相污染，导致瓶颈/半径/movement type 用例出现假失败；这不是运行时 fallback，也不是业务逻辑补偿。
+19. FlowGrid 的 `WalkableMask` 语义是“单位中心可站空间”。authored grid 在 bake 阶段已经按 movement type hard clearance 过滤 footprint；runtime box obstacle 也会按当前 world agent radius 膨胀后写入 walkable mask。因此运行时查询 `IsNavigationPointClear`、`TryResolveLegalNavigationPoint`、`TryConstrainNavigationDisplacement`、steering predicted-step 等只能检查 residual clearance，不能再用完整单位半径对同一障碍二次膨胀。
+20. 即使 residual clearance 为 0，点查询也必须先检查所在 FlowGrid cell 是否 walkable。不能因为 clearance 为 0 就只看 runtime overlay；否则会出现 “targetClear=True 但 segment target blocked” 的矛盾，最终表现为英雄/单位贴建筑角停住。
+21. 位移约束不是 fallback。它的职责是把输入位移限制在 FlowGrid 中心空间内：direct segment 被 blocked cell 拦住时，应基于 blocked cell 边界求法线并沿切线滑动，而不是吞掉速度或用直线/随机候选替代。该修复覆盖英雄手动移动和自动单位最终 MoveExecutor 约束。
+22. 移动目标的 flow tile 队列必须只服务仍被活动 path 引用的 tile。旧目标位置留下的 pending tile job 会被剪掉，当前活动 path 的 tile chain 会提升到队列前部，避免单位长期停在 `PendingPortal` 且 required tile 被数千个旧 job 淹没。
+23. 非最终 portal tile 不能等待整条下游 tile 链。只要下游 sector 不是最终 sector，就用预构建的 sector portal access / transition 成本生成 seeds；只有“下一 sector 就是 final sector”时才需要下游 final tile 的 seam cost。这符合文献按 sector/portal 预计算连接成本的结构，也避免移动目标反复变更时 tile 依赖串行化。
+24. portal graph A* 选择目标 sector 入口 portal 时，不允许同步构建 final goal tile。目标 sector 内 portal 到 goal 的代价直接读取预构建 portal access cost；精确 shared goal field / final tile 由预算队列后续补齐。这样 `TryGetSteeringVelocity()` 热路径不会因为接敌或移动目标换格而卡主线程。
 
 ## 5. 仍与文献不同或未完成的点
 
 ### 当前主链路剩余风险
 
-1. `FlowNavigationGridPrefabBaker` 目前按格子中心竖直 raycast 生成 walkable。它满足零手工工作流，但比 NavMesh 烘焙更离散，窄边、斜边、角落可能受 cell size 和 collider 边界影响。若出现 island 被切碎或建筑对面错误直冲，先查 asset walkable、neighbor traversal、portal window，不要改 steering 补偿。
+1. `FlowNavigationGridPrefabBaker` 已按 movement type footprint 生成中心可站空间，但它仍是离散 grid raster。窄边、斜边、角落会受 cell size、footprint 采样密度、collider 边界和 neighbor traversal 影响。若出现 island 被切碎或建筑对面错误直冲，先查 asset walkable、neighbor traversal、portal window、portal access cost，不要改 steering 补偿。
 2. authored grid 已有 source cost field，但目前成本来源主要是墙边 blur、movement type hard clearance 和 runtime CostStamp。“道路偏好”“特殊地形成本”“设计师手工成本编辑”还不是完整编辑器数据源。
 3. 多单位攻击同一目标的站位分散依赖 combat slot/cache 和动态避让，还不是文献 multiple goals 或完善 formation。若再次扎点，优先查 slot 分配、目标可达点、攻击距离判定和 collision radius。
 
@@ -160,7 +166,9 @@
 5. `pending(sharedGoal/tile)`
 6. `stableGoal(raw/reuse/initial/cell)`
 7. `FlowFieldCrowdMovementSystem` 与 `SoldierAIBrain` 各自耗时
-8. 日志是否开启导致性能样本失真
+8. `[FlowTileQueueTrace]` 是否出现 required tile 长期排在队列深处
+9. 是否存在 `PendingPortal` 多帧但 `tileBuilds=0` 的队列饥饿
+10. 日志是否开启导致性能样本失真
 
 不再把 `NavMesh.CalculatePath`、`NavMesh.Raycast`、`NavMesh.SamplePosition` 列为运行时性能目标。若 Profiler 里又出现这些 API，说明旧链路回流，应当按 bug 处理。
 
@@ -192,4 +200,8 @@
 
 当前主链路目标是：严格 authored FlowGrid、无运行时 NavMesh、无静默 fallback。Portal graph path search 已包含真正的 merging A*，不是旧的合并优先级偏置。Portal transition/access 已按 portal center 节点语义计成本，portal handoff/LOS 已按选中对侧槽位推进，path request 会预提交 flow tile chain，flow tile 在预算队列构建，瓶颈车道会保留已承诺走廊轴。
 
-当前 `FlowFieldCrowdMovementSystemTests` 已覆盖 93 个 EditMode 用例。最新单跑验证 `PortalLos格必须保留IntegrationFlow` 通过，说明 portal LOS zero-flow 报错链路已被回归覆盖；但 `瓶颈等待排序会优先已标记Leader的单位` 仍稳定失败，表现为 leader 最终 x=6.91 未超过 7.0，属于同 sector 窄路 crowd scheduling 问题，不能用 portal/flow fallback 掩盖。若新测试仍出现“隔建筑直冲”“贴边慢移”“多单位扎点”“island 异常增多”，优先从 FlowGrid asset、source cost、neighbor traversal、portal window、goal resolve、combat slot 和日志采样查根因，不要先做表层速度补偿。
+最新验证：`dotnet build AAAGame.Tests.Editor.csproj --no-restore` 通过且 0 警告 0 错误；Unity EditMode 回归通过 `FlowTileBuildQueue低预算会保留未完成TileJob`、`FlowTileBuildQueue会在后续查询前预构建路径Tile链`、`查询热路径不应同步构建非末端PortalTile链`、`移动目标旧TileJob不会淹没当前活动Tile`、`Lv3研发中心右下边缘真实追击不应多人挤住`，测试后 Console 无 error/warning。
+
+最近一次实测卡墙角的根因不是 steering 方向补偿，而是队列调度和依赖模型：移动目标反复刷新留下大量旧 pending tile jobs，活动单位所需 tile 被压到队列数千位之后，导致长期 `PendingPortal`；同时非最终 portal tile 过度依赖下游 tile，会把本可由 portal access 解决的 tile 链串行化。已修复为活动 path 提升、非活动 job 剪枝、非最终 portal tile 使用预构建 portal access seeds、目标 sector portal access 不再同步构建 final tile。
+
+历史已确认并修复的两个位移/贴边根因仍保留为排查依据：一是 FlowGrid 中心空间被完整半径二次 clearance 压窄；二是 residual clearance 为 0 时点查询跳过 walkable cell，导致清晰度诊断和 segment 约束矛盾。若新测试仍出现“隔建筑直冲”“贴边慢移”“多单位扎点”“island 异常增多”，优先从 FlowGrid asset、source cost、neighbor traversal、portal window、portal access cost、goal resolve、combat slot、flow tile queue、位移约束 segment 诊断和日志采样查根因，不要先做表层速度补偿。

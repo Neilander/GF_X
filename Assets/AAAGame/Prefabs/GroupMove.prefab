@@ -45,3 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _config: {fileID: 11400000, guid: b48f17e75949a404195f56311d616d0d, type: 2}
+  _flowFieldConfig: {fileID: 11400000, guid: 5acd76fccff2463d8834e826d685e119, type: 2}

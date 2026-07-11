@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 using GameFramework.Event;
 using AAAGame.Scripts.Entity;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 public partial class GeneralSetup : GameFrameworkComponent
 {
@@ -20,6 +21,7 @@ public partial class GeneralSetup : GameFrameworkComponent
     private bool m_SetupInProgress;
     private bool m_ShowEntitySubscribed;
     private LevelEntity m_LevelEntity;
+    private Stopwatch m_SetupStopwatch;
 
     public void GeneralSystemSetup(string lvIdentifier = "Lv_1")
     {
@@ -34,25 +36,32 @@ public partial class GeneralSetup : GameFrameworkComponent
         m_LevelReady = false;
         m_PlayerReady = false;
         m_LevelEntity = null;
+        m_SetupStopwatch = Stopwatch.StartNew();
+        LogSetupTiming("begin");
 
         var lvRow = GetLvRow(lvIdentifier);
         if (lvRow == null)
         {
             Log.Error("[GeneralSetup] Level row not found. levelIdentifier={0}", lvIdentifier);
             m_SetupInProgress = false;
+            m_SetupStopwatch = null;
             return;
         }
+        LogSetupTiming("level-row-resolved");
 
         if (!m_ShowEntitySubscribed)
         {
             GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnGeneralShowEntitySuccess);
             m_ShowEntitySubscribed = true;
         }
+        LogSetupTiming("show-entity-subscribed");
 
         var lvData = LevelData.FromRow(lvRow);
         DataModelSetup(lvData);
         GameEntry.GetComponent<GameEndManager>().Init(lvData);
+        LogSetupTiming("data-model-ready");
         LevelEntityFactory.ShowLevel(lvRow.PrefabPath);
+        LogSetupTiming("show-level-requested");
 
         var inputManager = GameEntry.GetComponent<InputManager>();
         if (inputManager != null)
@@ -60,12 +69,15 @@ public partial class GeneralSetup : GameFrameworkComponent
             inputManager.FindModel();
             inputManager.ChangeState(InputState.UIForm);
         }
+        LogSetupTiming("input-ready");
 
         BootstrapSideTipsManager();
         GF.UI.OpenUIForm(UIViews.SideTipsUIForm);
         GF.UI.OpenUIForm(UIViews.GoalUIForm);
+        LogSetupTiming("setup-ui-requested");
 
         PlayBgm();
+        LogSetupTiming("setup-request-complete");
     }
 
     private void PlayBgm()
@@ -100,6 +112,7 @@ public partial class GeneralSetup : GameFrameworkComponent
         m_LevelReady = false;
         m_PlayerReady = false;
         m_SetupInProgress = false;
+        m_SetupStopwatch = null;
     }
 
     public void DataModelSetup(LevelData levelData)
@@ -151,13 +164,16 @@ public partial class GeneralSetup : GameFrameworkComponent
             }
 
             m_LevelEntity = (LevelEntity)args.Entity.Logic;
+            LogSetupTiming("level-entity-shown");
             if (m_LevelEntity.IsRuntimeInitializationCompleted)
             {
                 m_LevelReady = true;
+                LogSetupTiming("level-already-runtime-ready");
             }
             else
             {
                 m_LevelEntity.RuntimeInitializationCompleted += OnLevelRuntimeInitializationCompleted;
+                LogSetupTiming("level-runtime-waiting");
             }
 
             TryEnterInitialPhaseIfReady();
@@ -174,6 +190,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             {
                 EntityRegistry.RegisterAsPlayer(ma);
                 m_PlayerReady = true;
+                LogSetupTiming("player-ready");
 
                 // 设置摄像机跟随玩家
                 CameraController cameraController = Camera.main.GetComponent<CameraController>();
@@ -212,6 +229,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         m_LevelEntity.RuntimeInitializationCompleted -= OnLevelRuntimeInitializationCompleted;
         m_LevelReady = true;
+        LogSetupTiming("level-runtime-ready");
         TryEnterInitialPhaseIfReady();
     }
 
@@ -232,7 +250,20 @@ public partial class GeneralSetup : GameFrameworkComponent
         m_SetupInProgress = false;
         BootstrapSideTipsManager();
         Log.Info("[GeneralSetup] Core runtime systems are ready.");
+        LogSetupTiming("completed");
         OnGeneralSetupCompleted?.Invoke();
+    }
+
+    private void LogSetupTiming(string stage)
+    {
+        double elapsedMs = m_SetupStopwatch != null ? m_SetupStopwatch.Elapsed.TotalMilliseconds : 0.0;
+        Log.Info(
+            "[GeneralSetupTiming] stage={0} elapsedMs={1:F3} levelReady={2} playerReady={3} setupInProgress={4}",
+            stage,
+            elapsedMs,
+            m_LevelReady,
+            m_PlayerReady,
+            m_SetupInProgress);
     }
 
     private void BootstrapSideTipsManager()

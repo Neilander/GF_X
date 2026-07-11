@@ -50,7 +50,8 @@ public class LevelTestProcedure : ProcedureBase
                             point.Position,
                             out var buildingInstanceId,
                             isGameEndConditionBuilding: point.IsGameEndConditionBuilding,
-                            initialCoinReserves: initialCoinReserves))
+                            initialCoinReserves: initialCoinReserves,
+                            isNavigationStaticBaked: !point.IsTestSlot))
                     {
                         Log.Error("LevelTestProcedure.SpawnPresetEntities failed: cannot build preset building '{0}'.", point.Identifier);
                         break;

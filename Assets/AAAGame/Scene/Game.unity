@@ -906,6 +906,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _config: {fileID: 0}
+  _flowFieldConfig: {fileID: 11400000, guid: 5acd76fccff2463d8834e826d685e119, type: 2}
 --- !u!4 &711701150
 Transform:
   m_ObjectHideFlags: 0

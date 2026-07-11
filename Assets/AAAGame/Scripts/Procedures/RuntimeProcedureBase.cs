@@ -1,5 +1,6 @@
 ﻿using System;
 using AAAGame.MiniMap;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using Cysharp.Threading.Tasks;
 using GameFramework.Fsm;
 using GameFramework.Procedure;
@@ -68,6 +69,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
+        FlowFieldCrowdMovementSystem.ForceEndRuntimeNavigationTransition();
         OnRuntimeShutdown();
         m_RuntimeInitPipeline?.Shutdown();
         m_RuntimeInitPipeline = null;
@@ -165,9 +167,12 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private async UniTaskVoid EnterRuntimeLevelInPlaceAsync(string levelIdentifier)
     {
         LevelEntity previousLevel = LevelEntity.ActiveLevelEntity;
+        bool navigationTransitionStarted = false;
         try
         {
             ChangeSceneProcedure.SelectedLevelIdentifier = levelIdentifier;
+            FlowFieldCrowdMovementSystem.BeginRuntimeNavigationTransition();
+            navigationTransitionStarted = true;
 
             var inputManager = GameEntry.GetComponent<InputManager>();
             if (inputManager != null)
@@ -191,19 +196,35 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems, false);
             m_RuntimeInitPipeline.Start(() =>
             {
-                if (previousLevel != null && previousLevel.Available)
+                try
                 {
-                    GF.Entity.HideEntitySafe(previousLevel);
+                    if (previousLevel != null && previousLevel.Available)
+                    {
+                        GF.Entity.HideEntitySafe(previousLevel);
+                    }
+
+                    GF.Base.ResumeGame();
+                    m_InPlaceLevelSwitchInProgress = false;
+                }
+                finally
+                {
+                    if (navigationTransitionStarted)
+                    {
+                        FlowFieldCrowdMovementSystem.EndRuntimeNavigationTransition();
+                        navigationTransitionStarted = false;
+                    }
                 }
 
-                GF.Base.ResumeGame();
-                m_InPlaceLevelSwitchInProgress = false;
                 OnRuntimeInitialized();
             });
         }
         catch (Exception ex)
         {
             m_InPlaceLevelSwitchInProgress = false;
+            if (navigationTransitionStarted)
+            {
+                FlowFieldCrowdMovementSystem.EndRuntimeNavigationTransition();
+            }
             GF.Base.ResumeGame();
             LevelSelectionService.NotifyLevelLoadFailed(ex.Message);
             Log.Error("{0} Enter runtime level in place failed. level={1}, error={2}", RuntimeInitLogTag, levelIdentifier, ex);
@@ -271,6 +292,7 @@ internal sealed class RuntimeInitPipeline
     private float m_DisplayedProgress;
     private float m_TargetProgress;
     private bool m_FinishPending;
+    private Stopwatch m_StartupStopwatch;
 
     public bool IsCompleted { get; private set; }
 
@@ -298,7 +320,9 @@ internal sealed class RuntimeInitPipeline
         m_DisplayedProgress = RuntimeProgressStart;
         m_TargetProgress = RuntimeProgressStart;
         m_FinishPending = false;
+        m_StartupStopwatch = Stopwatch.StartNew();
         PhaseManager.CancelRuntimePhaseFlows();
+        LogRuntimeInitTiming("cancel-phase-flows");
         LevelSelectionService.NotifyLevelLoadStarted();
         NotifyLevelLoadProgress();
         if (m_ShowBuiltinProgress)
@@ -322,6 +346,7 @@ internal sealed class RuntimeInitPipeline
         SetTargetProgress(RuntimeProgressBeforeComplete);
 
         Log.Info("{0} Runtime startup begin. level={1}, systems={2}", m_LogTag, m_LevelIdentifier, m_RuntimeSystems);
+        LogRuntimeInitTiming("before-general-setup");
 
         if (m_GeneralSetup.IsGeneralSetupCompleted)
         {
@@ -330,6 +355,7 @@ internal sealed class RuntimeInitPipeline
         }
 
         m_GeneralSetup.GeneralSystemSetup(m_LevelIdentifier);
+        LogRuntimeInitTiming("general-setup-requested");
     }
 
     public void Update(float elapseSeconds)
@@ -384,6 +410,7 @@ internal sealed class RuntimeInitPipeline
         m_OnCompleted = null;
         m_GeneralSetup = null;
         m_FinishPending = false;
+        m_StartupStopwatch = null;
     }
 
     private void HandleGeneralSetupCompleted()
@@ -393,7 +420,9 @@ internal sealed class RuntimeInitPipeline
             return;
         }
 
+        LogRuntimeInitTiming("general-setup-completed");
         InitializeRuntimeManagers();
+        LogRuntimeInitTiming("runtime-managers-initialized");
         BeginCompleteStartup();
     }
 
@@ -563,9 +592,16 @@ internal sealed class RuntimeInitPipeline
             GF.BuiltinView.HideLoadingProgress();
         }
         LevelSelectionService.NotifyLevelLoadCompleted();
+        LogRuntimeInitTiming("startup-complete");
         Log.Info("{0} Runtime startup completed.", m_LogTag);
         ShowLevelObjectiveTips();
         EnablePlayerInput();
+    }
+
+    private void LogRuntimeInitTiming(string stage)
+    {
+        double elapsedMs = m_StartupStopwatch != null ? m_StartupStopwatch.Elapsed.TotalMilliseconds : 0.0;
+        Log.Info("{0} RuntimeInitTiming stage={1} elapsedMs={2:F3}", m_LogTag, stage, elapsedMs);
     }
 
     private static void ShowLevelObjectiveTips()

@@ -287,13 +287,26 @@ public class BuildManager : GameFrameworkComponent
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗。
-    public bool BuildBuildingForLevelInit(string buildingId, Vector3 position, string buildingInstanceId = null, bool isGameEndConditionBuilding = false, int? initialCoinReserves = null)
+    public bool BuildBuildingForLevelInit(
+        string buildingId,
+        Vector3 position,
+        string buildingInstanceId = null,
+        bool isGameEndConditionBuilding = false,
+        int? initialCoinReserves = null,
+        bool isNavigationStaticBaked = false)
     {
-        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId, isGameEndConditionBuilding, initialCoinReserves);
+        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId, isGameEndConditionBuilding, initialCoinReserves, isNavigationStaticBaked);
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗，并返回稳定 BuildingInstanceId。
-    public bool TryBuildBuildingForLevelInit(string buildingId, Vector3 position, out string resolvedBuildingInstanceId, string buildingInstanceId = null, bool isGameEndConditionBuilding = false, int? initialCoinReserves = null)
+    public bool TryBuildBuildingForLevelInit(
+        string buildingId,
+        Vector3 position,
+        out string resolvedBuildingInstanceId,
+        string buildingInstanceId = null,
+        bool isGameEndConditionBuilding = false,
+        int? initialCoinReserves = null,
+        bool isNavigationStaticBaked = false)
     {
         resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
             ? Guid.NewGuid().ToString("N")
@@ -306,7 +319,8 @@ public class BuildManager : GameFrameworkComponent
             checkCondition: false,
             consumeCoins: false,
             isGameEndConditionBuilding: isGameEndConditionBuilding,
-            initialCoinReserves: initialCoinReserves);
+            initialCoinReserves: initialCoinReserves,
+            isNavigationStaticBaked: isNavigationStaticBaked);
         if (entityId <= 0)
         {
             resolvedBuildingInstanceId = null;
@@ -316,7 +330,15 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    private int BuildBuildingInternal(string buildingId, Vector3 position, string buildingInstanceId, bool checkCondition, bool consumeCoins, bool isGameEndConditionBuilding = false, int? initialCoinReserves = null)
+    private int BuildBuildingInternal(
+        string buildingId,
+        Vector3 position,
+        string buildingInstanceId,
+        bool checkCondition,
+        bool consumeCoins,
+        bool isGameEndConditionBuilding = false,
+        int? initialCoinReserves = null,
+        bool isNavigationStaticBaked = false)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
@@ -352,7 +374,7 @@ public class BuildManager : GameFrameworkComponent
 
         int previousBaseLevel = ResolveExistingBaseLevel(buildingData, ownerFactionId, resolvedBuildingInstanceId);
 
-        int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId, isGameEndConditionBuilding);
+        int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId, isGameEndConditionBuilding, isNavigationStaticBaked);
 
         if (entityId > 0)
         {

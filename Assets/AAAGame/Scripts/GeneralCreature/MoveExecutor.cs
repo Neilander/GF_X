@@ -23,13 +23,28 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private const float GravityAcceleration = -28f;
     private const float GroundStickVelocity = -2f;
     private const float ConstraintMinStepDistance = 0.02f;
+    private const int VerboseMoveLogIntervalFrames = 60;
 
     private MovementMode _movementMode = MovementMode.Normal;
+    private int _lastVerboseMoveLogFrame = -100000;
+    private int _lastConstraintFailureLogFrame = -100000;
+    private int _lastHeroWallDiagnosticFrame = -100000;
+    private Vector3 _previousHeroActualHorizontal;
+    private Vector3 _previousHeroConstrainedHorizontal;
 
     public Vector3 DebugInputVelocity => _inputVelocity;
     public Vector3 DebugExternalVelocity => _externalVelocity;
     public Vector3 DebugOverrideVelocity => _overrideVelocity;
     public bool DebugHasOverride => _hasOverride;
+    public Vector3 DebugRequestedHorizontalDisplacement { get; private set; }
+    public Vector3 DebugConstrainedHorizontalDisplacement { get; private set; }
+    public Vector3 DebugActualHorizontalDisplacement { get; private set; }
+    public Vector3 DebugVerticalDisplacement { get; private set; }
+    public Vector3 DebugFinalDisplacement { get; private set; }
+    public bool DebugNavigationConstraintEnabled { get; private set; }
+    public string DebugLastControllerHitName { get; private set; }
+    public Vector3 DebugLastControllerHitNormal { get; private set; }
+    public Vector3 DebugLastControllerHitMoveDirection { get; private set; }
     public MovementMode MovementMode => _movementMode;
 
     public void Init(CharacterController controller) => Init(controller, 0);
@@ -142,41 +157,160 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             finalVelocity = _externalVelocity;
         }
 
-        if (GameDebugSettings.IsEnabled(DebugCategory.Move)
-            && (_ownerEntity == null || GameDebugSettings.ShouldLogMovementForCharacter(_ownerEntity.CharacterKey)))
+        if (ShouldLogVerboseMovement(finalVelocity))
         {
-            Debug.Log($"[Move] [{gameObject.name}] Execute mode={_movementMode} input={_inputVelocity} " +
-                      $"external={_externalVelocity} override={(_hasOverride ? _overrideVelocity.ToString() : "none")} " +
-                      $"finalVelocity={finalVelocity}");
+            GameDebugSettings.Log(DebugCategory.Move,
+                $"[Move] [{gameObject.name}] Execute mode={_movementMode} input={_inputVelocity} " +
+                $"external={_externalVelocity} override={(_hasOverride ? _overrideVelocity.ToString() : "none")} " +
+                $"finalVelocity={finalVelocity}");
         }
 
         Vector3 horizontalVelocity = new Vector3(finalVelocity.x, 0f, finalVelocity.z);
         Vector3 horizontalDisplacement = horizontalVelocity * deltaTime;
+        Vector3 requestedHorizontalDisplacement = horizontalDisplacement;
 
         bool shouldConstrain = _navigationConstrained && !_constraintBypassForNextFrame && !_navigationConstraintBypass;
+        DebugRequestedHorizontalDisplacement = requestedHorizontalDisplacement;
+        DebugNavigationConstraintEnabled = shouldConstrain;
         if (shouldConstrain)
         {
             horizontalDisplacement = ConstrainHorizontalDisplacement(horizontalDisplacement);
-            if (GameDebugSettings.IsEnabled(DebugCategory.Move)
-                && (_ownerEntity == null || GameDebugSettings.ShouldLogMovementForCharacter(_ownerEntity.CharacterKey)))
+            if (ShouldLogVerboseMovement(horizontalDisplacement))
             {
-                Debug.Log($"[Move] [{gameObject.name}] Constrained horizontalDisplacement={horizontalDisplacement}");
+                GameDebugSettings.Log(DebugCategory.Move, $"[Move] [{gameObject.name}] Constrained horizontalDisplacement={horizontalDisplacement}");
             }
         }
+        DebugConstrainedHorizontalDisplacement = horizontalDisplacement;
 
         UpdateGravity(deltaTime);
         float explicitVerticalSpeed = finalVelocity.y;
         Vector3 verticalDisplacement = Vector3.up * (_gravityVelocity + explicitVerticalSpeed) * deltaTime;
         Vector3 finalDisplacement = horizontalDisplacement + verticalDisplacement;
+        DebugVerticalDisplacement = verticalDisplacement;
+        DebugFinalDisplacement = finalDisplacement;
+        Vector3 beforeMovePosition = transform.position;
+        DebugLastControllerHitName = string.Empty;
+        DebugLastControllerHitNormal = Vector3.zero;
+        DebugLastControllerHitMoveDirection = Vector3.zero;
 
         if (finalDisplacement.sqrMagnitude > 0.000001f)
+        {
+            long controllerMoveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             _controller.Move(finalDisplacement);
+            UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+                UnityGameFramework.Runtime.MainThreadPerfScope.MoveExecutorControllerMove,
+                System.Diagnostics.Stopwatch.GetTimestamp() - controllerMoveStartTicks);
+        }
+        Vector3 afterMovePosition = transform.position;
+        DebugActualHorizontalDisplacement = afterMovePosition - beforeMovePosition;
+        DebugActualHorizontalDisplacement = new Vector3(DebugActualHorizontalDisplacement.x, 0f, DebugActualHorizontalDisplacement.z);
+        LogHeroWallMovementDiagnostic(
+            requestedHorizontalDisplacement,
+            horizontalDisplacement,
+            beforeMovePosition,
+            afterMovePosition,
+            finalVelocity,
+            deltaTime,
+            shouldConstrain);
 
         _isMovingThisFrame = horizontalDisplacement.sqrMagnitude > 0.0001f;
         _inputVelocity = Vector3.zero;
         _hasOverride = false;
         _externalVelocity = Vector3.zero;
         _constraintBypassForNextFrame = false;
+    }
+
+    private void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (hit == null || hit.collider == null)
+            return;
+
+        DebugLastControllerHitName = hit.collider.gameObject.name;
+        DebugLastControllerHitNormal = hit.normal;
+        DebugLastControllerHitMoveDirection = hit.moveDirection;
+    }
+
+    private bool ShouldLogVerboseMovement(Vector3 movementVector)
+    {
+        if (!GameDebugSettings.IsEnabled(DebugCategory.Move))
+            return false;
+        if (_ownerEntity != null && !GameDebugSettings.ShouldLogMovementForCharacter(_ownerEntity.CharacterKey))
+            return false;
+        if (movementVector.sqrMagnitude <= 0.0001f)
+            return false;
+
+        int frame = Time.frameCount;
+        if (frame - _lastVerboseMoveLogFrame < VerboseMoveLogIntervalFrames)
+            return false;
+
+        _lastVerboseMoveLogFrame = frame;
+        return true;
+    }
+
+    private void LogHeroWallMovementDiagnostic(
+        Vector3 requestedHorizontalDisplacement,
+        Vector3 constrainedHorizontalDisplacement,
+        Vector3 beforeMovePosition,
+        Vector3 afterMovePosition,
+        Vector3 finalVelocity,
+        float deltaTime,
+        bool constraintEnabled)
+    {
+        if (_ownerEntity == null || !string.Equals(_ownerEntity.CharacterKey, UnitType.Unit_Hero.ToString(), System.StringComparison.Ordinal))
+            return;
+
+        Vector3 actualHorizontal = afterMovePosition - beforeMovePosition;
+        actualHorizontal.y = 0f;
+        if (requestedHorizontalDisplacement.sqrMagnitude <= 0.000001f)
+            return;
+
+        float requestedMagnitude = requestedHorizontalDisplacement.magnitude;
+        float constrainedMagnitude = constrainedHorizontalDisplacement.magnitude;
+        float actualMagnitude = actualHorizontal.magnitude;
+        float constraintRatio = requestedMagnitude > 0.0001f ? constrainedMagnitude / requestedMagnitude : 1f;
+        float controllerRatio = constrainedMagnitude > 0.0001f ? actualMagnitude / constrainedMagnitude : 1f;
+        float constraintDot = requestedMagnitude > 0.0001f && constrainedMagnitude > 0.0001f
+            ? Vector3.Dot(requestedHorizontalDisplacement / requestedMagnitude, constrainedHorizontalDisplacement / constrainedMagnitude)
+            : 1f;
+        float controllerDot = constrainedMagnitude > 0.0001f && actualMagnitude > 0.0001f
+            ? Vector3.Dot(constrainedHorizontalDisplacement / constrainedMagnitude, actualHorizontal / actualMagnitude)
+            : 1f;
+        float previousActualDot = _previousHeroActualHorizontal.sqrMagnitude > 0.000001f && actualHorizontal.sqrMagnitude > 0.000001f
+            ? Vector3.Dot(_previousHeroActualHorizontal.normalized, actualHorizontal.normalized)
+            : 1f;
+        float previousConstrainedDot = _previousHeroConstrainedHorizontal.sqrMagnitude > 0.000001f && constrainedHorizontalDisplacement.sqrMagnitude > 0.000001f
+            ? Vector3.Dot(_previousHeroConstrainedHorizontal.normalized, constrainedHorizontalDisplacement.normalized)
+            : 1f;
+
+        bool suspiciousConstraint = constraintEnabled
+                                    && (constraintRatio < 0.75f || constraintDot < 0.85f || previousConstrainedDot < 0.35f);
+        bool suspiciousController = controllerRatio < 0.75f || controllerDot < 0.85f || previousActualDot < 0.35f;
+        if (!suspiciousConstraint && !suspiciousController)
+        {
+            _previousHeroActualHorizontal = actualHorizontal;
+            _previousHeroConstrainedHorizontal = constrainedHorizontalDisplacement;
+            return;
+        }
+
+        int frame = Time.frameCount;
+        if (frame - _lastHeroWallDiagnosticFrame < 12)
+        {
+            _previousHeroActualHorizontal = actualHorizontal;
+            _previousHeroConstrainedHorizontal = constrainedHorizontalDisplacement;
+            return;
+        }
+
+        _lastHeroWallDiagnosticFrame = frame;
+        Debug.LogWarning(
+            $"[HeroWallMoveDiag] frame={frame} mode={_movementMode} constraint={constraintEnabled} " +
+            $"posBefore={beforeMovePosition} posAfter={afterMovePosition} edgeBuffer={_edgeBuffer:F3} agentType={_agentTypeID} dt={deltaTime:F4} " +
+            $"velocity={finalVelocity} requested={requestedHorizontalDisplacement} constrained={constrainedHorizontalDisplacement} actual={actualHorizontal} " +
+            $"constraintRatio={constraintRatio:F3} controllerRatio={controllerRatio:F3} constraintDot={constraintDot:F3} controllerDot={controllerDot:F3} " +
+            $"prevConstrainedDot={previousConstrainedDot:F3} prevActualDot={previousActualDot:F3} " +
+            $"input={_inputVelocity} external={_externalVelocity} override={(_hasOverride ? _overrideVelocity.ToString() : "none")}");
+
+        _previousHeroActualHorizontal = actualHorizontal;
+        _previousHeroConstrainedHorizontal = constrainedHorizontalDisplacement;
     }
 
     private void UpdateGravity(float deltaTime)
@@ -194,15 +328,19 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 
         Vector3 currentPos = transform.position;
         Vector3 desiredPos = currentPos + desiredHorizontalDisplacement;
+        long constraintStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!FlowFieldCrowdMovementSystem.TryConstrainNavigationDisplacement(
                 currentPos,
                 desiredHorizontalDisplacement,
                 _agentTypeID,
+                _edgeBuffer,
                 out Vector3 constrainedDisplacement))
         {
+            RecordConstraintPerf(constraintStartTicks);
             LogConstraintFailure("Flow导航位移约束失败", currentPos, desiredPos, desiredHorizontalDisplacement);
             return Vector3.zero;
         }
+        RecordConstraintPerf(constraintStartTicks);
 
         Vector3 constrainedPos = currentPos + constrainedDisplacement;
         if (IsEnemyStrongholdBlocked(constrainedPos))
@@ -233,15 +371,29 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         return constrainedDisplacement;
     }
 
+    private static void RecordConstraintPerf(long startTicks)
+    {
+        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+            UnityGameFramework.Runtime.MainThreadPerfScope.MoveExecutorConstraint,
+            System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
+    }
+
     private void LogConstraintFailure(string reason, Vector3 currentPos, Vector3 desiredPos, Vector3 desiredHorizontalDisplacement)
     {
-        string ownerKey = _ownerEntity != null ? _ownerEntity.CharacterKey : "null";
-        Debug.LogWarning(
-            $"[MoveExecutor] {reason} gameObject={gameObject.name} owner={ownerKey} side={_ownerEntity?.Side.ToString() ?? "null"} " +
-            $"agentType={_agentTypeID} mode={_movementMode} edgeBuffer={_edgeBuffer:F2} currentPos={currentPos} " +
-            $"desiredPos={desiredPos} desiredHorizontalDisplacement={desiredHorizontalDisplacement}");
+        int frame = Time.frameCount;
+        bool shouldLog = GameDebugSettings.IsEnabled(DebugCategory.Move)
+                         && frame - _lastConstraintFailureLogFrame >= VerboseMoveLogIntervalFrames;
+        if (shouldLog)
+        {
+            _lastConstraintFailureLogFrame = frame;
+            string ownerKey = _ownerEntity != null ? _ownerEntity.CharacterKey : "null";
+            GameDebugSettings.Log(DebugCategory.Move,
+                $"[MoveExecutor] {reason} gameObject={gameObject.name} owner={ownerKey} side={_ownerEntity?.Side.ToString() ?? "null"} " +
+                $"agentType={_agentTypeID} mode={_movementMode} edgeBuffer={_edgeBuffer:F2} currentPos={currentPos} " +
+                $"desiredPos={desiredPos} desiredHorizontalDisplacement={desiredHorizontalDisplacement}");
+        }
 
-        if (_ownerEntity != null)
+        if (_ownerEntity != null && shouldLog)
         {
             FlowFieldCrowdMovementSystem.LogConstraintFailureDiagnostic(
                 _ownerEntity,

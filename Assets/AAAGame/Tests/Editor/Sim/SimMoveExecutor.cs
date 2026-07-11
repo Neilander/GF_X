@@ -6,7 +6,14 @@
 public class SimMoveExecutor : IMoveExecutor
 {
     public Vector3 Position;
+    public Vector3 LastInputVelocity;
     public Vector3 LastFrameVelocity;
+    public Vector3 LastDesiredDisplacement;
+    public Vector3 LastConstrainedDisplacement;
+    public bool ApplyNavigationConstraint;
+    public int AgentTypeId;
+    public float EdgeClearance;
+    public bool LastConstraintSucceeded = true;
 
     private Vector3 _inputVelocity;
     private Vector3 _externalVelocity;
@@ -21,6 +28,7 @@ public class SimMoveExecutor : IMoveExecutor
     public void SetInput(Vector3 velocity)
     {
         _inputVelocity = velocity;
+        LastInputVelocity = velocity;
     }
 
     public void AddExternal(Vector3 velocity)
@@ -61,7 +69,7 @@ public class SimMoveExecutor : IMoveExecutor
 
     public void EnableNavigationConstraintBypass()
     {
-        // 纯模拟执行器不做导航约束，bypass 无意义，留空以满足接口。
+        _constraintBypassForNextFrame = true;
     }
 
     public void Execute()
@@ -71,9 +79,6 @@ public class SimMoveExecutor : IMoveExecutor
 
     public void Execute(float deltaTime)
     {
-        // 纯模拟执行器不做导航约束，仅保留接口语义以兼容真实实现。
-        _ = _navigationConstrained;
-
         if (_hasOverride)
         {
             LastFrameVelocity = _overrideVelocity;
@@ -87,10 +92,36 @@ public class SimMoveExecutor : IMoveExecutor
             LastFrameVelocity = _externalVelocity;
         }
 
-        Position += LastFrameVelocity * deltaTime;
+        Vector3 desiredDisplacement = LastFrameVelocity * deltaTime;
+        LastDesiredDisplacement = desiredDisplacement;
+        LastConstrainedDisplacement = desiredDisplacement;
+        LastConstraintSucceeded = true;
+        if (ApplyNavigationConstraint && _navigationConstrained && !_constraintBypassForNextFrame)
+        {
+            Vector3 horizontal = new Vector3(desiredDisplacement.x, 0f, desiredDisplacement.z);
+            if (FlowFieldCrowdMovementSystem.TryConstrainNavigationDisplacement(
+                    Position,
+                    horizontal,
+                    AgentTypeId,
+                    EdgeClearance,
+                    out Vector3 constrainedHorizontal))
+            {
+                LastConstrainedDisplacement = new Vector3(constrainedHorizontal.x, desiredDisplacement.y, constrainedHorizontal.z);
+                LastFrameVelocity = deltaTime > 0.000001f ? LastConstrainedDisplacement / deltaTime : Vector3.zero;
+            }
+            else
+            {
+                LastConstraintSucceeded = false;
+                LastConstrainedDisplacement = Vector3.zero;
+                LastFrameVelocity = Vector3.zero;
+            }
+        }
+
+        Position += LastConstrainedDisplacement;
 
         // 每帧重置
         _inputVelocity = Vector3.zero;
+        LastInputVelocity = Vector3.zero;
         _hasOverride = false;
         _externalVelocity = Vector3.zero;
         _constraintBypassForNextFrame = false;

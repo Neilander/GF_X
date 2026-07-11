@@ -60,12 +60,28 @@ namespace AAAGame.MiniMap.FOG3
             if (MapData == null)
                 return;
 
+            long updateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            long strongholdTicks = 0L;
+            long clearTicks = 0L;
+            long revealTicks = 0L;
+            long eventTicks = 0L;
+            long markTicks = 0L;
+            int activeRevealers = 0;
+            int deadRevealerCount = 0;
             if (enableEnemyStrongholdHiddenVisionBlock)
+            {
+                long strongholdStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 RefreshEnemyStrongholdMask();
+                strongholdTicks = System.Diagnostics.Stopwatch.GetTimestamp() - strongholdStartTicks;
+            }
             else
+            {
                 hasEnemyStrongholdMask = false;
+            }
 
+            long clearStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             MapData.ClearCurrentVisibility();
+            clearTicks = System.Diagnostics.Stopwatch.GetTimestamp() - clearStartTicks;
 
             List<int> deadRevealers = null;
             foreach (KeyValuePair<int, Fog3RevealerData> pair in revealers)
@@ -81,17 +97,45 @@ namespace AAAGame.MiniMap.FOG3
                     continue;
                 }
 
+                activeRevealers++;
+                long revealStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 Reveal(revealer, occluderMask, eyeHeight, softEdgeWidth, globalLineOfSight || revealer.UseLineOfSight);
+                revealTicks += System.Diagnostics.Stopwatch.GetTimestamp() - revealStartTicks;
             }
 
             if (deadRevealers != null)
             {
+                deadRevealerCount = deadRevealers.Count;
                 for (int i = 0; i < deadRevealers.Count; i++)
                     revealers.Remove(deadRevealers[i]);
             }
 
+            long eventStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             VisibilityUpdated?.Invoke(MapData);
+            eventTicks = System.Diagnostics.Stopwatch.GetTimestamp() - eventStartTicks;
+            long markStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             MapData.MarkClean();
+            markTicks = System.Diagnostics.Stopwatch.GetTimestamp() - markStartTicks;
+
+            long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks;
+            double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (elapsedMs >= 2.0)
+            {
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    null,
+                    "[FOG3Perf] visibility total={0:F3}ms revealers={1} active={2} dead={3} stronghold={4:F3}ms clear={5:F3}ms reveal={6:F3}ms event={7:F3}ms mark={8:F3}ms",
+                    elapsedMs,
+                    revealers.Count,
+                    activeRevealers,
+                    deadRevealerCount,
+                    strongholdTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    clearTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    revealTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    eventTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    markTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+            }
         }
 
         public bool IsPositionVisible(Vector3 worldPos)

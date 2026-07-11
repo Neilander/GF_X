@@ -92,6 +92,8 @@ namespace AAAGame.MiniMap.FOG3
             if (mapData == null || fogTexture == null || pixels == null)
                 return;
 
+            long renderStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            long fillStartTicks = renderStartTicks;
             for (int y = 0; y < mapData.Height; y++)
             {
                 for (int x = 0; x < mapData.Width; x++)
@@ -101,8 +103,29 @@ namespace AAAGame.MiniMap.FOG3
                 }
             }
 
+            long fillTicks = System.Diagnostics.Stopwatch.GetTimestamp() - fillStartTicks;
+            long setStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             fogTexture.SetPixels32(pixels);
+            long setTicks = System.Diagnostics.Stopwatch.GetTimestamp() - setStartTicks;
+            long applyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             fogTexture.Apply(false);
+            long applyTicks = System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
+            long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
+            double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (elapsedMs >= 4.0)
+            {
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    null,
+                    "[FOG3Perf] overlay total={0:F3}ms size={1}x{2} fill={3:F3}ms setPixels={4:F3}ms apply={5:F3}ms",
+                    elapsedMs,
+                    mapData.Width,
+                    mapData.Height,
+                    fillTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    setTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    applyTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+            }
         }
 
         public void GetTextureDiagnostics(

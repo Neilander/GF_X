@@ -74,7 +74,7 @@ public class GameDebugSettings : MonoBehaviour
     public static void Log(DebugCategory category, string message)
     {
         if (!IsEnabled(category)) return;
-        Debug.Log($"[{category}] {message}");
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "[{0}] {1}", category, message);
     }
 
     public static bool ShouldLogMovementForCharacter(string characterKey)
