@@ -2575,8 +2575,10 @@ public static class FlowFieldCrowdMovementSystem
 
     private static readonly Dictionary<int, WorldRuntimeState> WorldStates = new Dictionary<int, WorldRuntimeState>();
     private static readonly List<WorldRuntimeState> RuntimeRebuildQueueScratch = new List<WorldRuntimeState>(8);
+    private static readonly List<WorldRuntimeState> FlowBuildQueueWorldScratch = new List<WorldRuntimeState>(8);
     private static NavigationWorld _world;
     private static WorldRuntimeState _activeWorldState;
+    private static int _flowBuildQueueWorldStartIndex;
     private static int _nextWorldVersion = 1;
     private static int _nextPathHandleId = 1;
     private static int _lastBottleneckFrame = -1;
@@ -2640,8 +2642,10 @@ public static class FlowFieldCrowdMovementSystem
 
         WorldStates.Clear();
         RuntimeRebuildQueueScratch.Clear();
+        FlowBuildQueueWorldScratch.Clear();
         _world = null;
         _activeWorldState = null;
+        _flowBuildQueueWorldStartIndex = 0;
         _nextWorldVersion = 1;
         _nextPathHandleId = 1;
         _lastBottleneckFrame = -1;
@@ -3555,6 +3559,7 @@ public static class FlowFieldCrowdMovementSystem
         foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
         {
             pair.Value.NavState.PathHandle = null;
+            ClearStableGoal(pair.Value);
         }
 
         if (GameDebugSettings.IsEnabled(DebugCategory.Move))
@@ -3788,6 +3793,8 @@ public static class FlowFieldCrowdMovementSystem
     {
         BeginPerfCall();
         long queueStartTicks = Stopwatch.GetTimestamp();
+        NavigationWorld previousWorld = _world;
+        WorldRuntimeState previousActiveWorldState = _activeWorldState;
         try
         {
             if (!CanProcessFlowTileBuildQueue())
@@ -3796,62 +3803,117 @@ public static class FlowFieldCrowdMovementSystem
             long budgetTicks = Math.Max(1L, (long)(Stopwatch.Frequency * Config.RuntimeRebuildBudgetMilliseconds / 1000.0));
             long deadlineTicks = Stopwatch.GetTimestamp() + budgetTicks;
 
-            long phaseTicks = Stopwatch.GetTimestamp();
-            EnqueueSharedGoalFieldsForActiveAgents();
-            _perf.SharedGoalActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
+            FlowBuildQueueWorldScratch.Clear();
+            foreach (WorldRuntimeState state in WorldStates.Values)
+                FlowBuildQueueWorldScratch.Add(state);
+            FlowBuildQueueWorldScratch.Sort((left, right) => left.AgentTypeId.CompareTo(right.AgentTypeId));
 
-            phaseTicks = Stopwatch.GetTimestamp();
-            PruneInactivePendingSharedGoalFieldBuildJobs();
-            _perf.SharedGoalPruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
+            int worldCount = FlowBuildQueueWorldScratch.Count;
+            int startIndex = worldCount > 0 ? _flowBuildQueueWorldStartIndex % worldCount : 0;
+            for (int reverseOffset = worldCount - 1; reverseOffset >= 0; reverseOffset--)
+            {
+                int worldIndex = (startIndex + reverseOffset) % worldCount;
+                ActivateFlowBuildQueueWorld(FlowBuildQueueWorldScratch[worldIndex]);
 
-            phaseTicks = Stopwatch.GetTimestamp();
-            EnqueueFlowTileBuildsForActiveAgents();
-            _perf.FlowTileActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                long phaseTicks = Stopwatch.GetTimestamp();
+                EnqueueSharedGoalFieldsForActiveAgents();
+                _perf.SharedGoalActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
-            phaseTicks = Stopwatch.GetTimestamp();
-            PruneInactivePendingFlowTileBuildJobs();
-            _perf.FlowTilePruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                phaseTicks = Stopwatch.GetTimestamp();
+                PruneInactivePendingSharedGoalFieldBuildJobs();
+                _perf.SharedGoalPruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
-            phaseTicks = Stopwatch.GetTimestamp();
-            RefreshFlowTileReferenceCounts();
-            _perf.FlowTileReferenceTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                phaseTicks = Stopwatch.GetTimestamp();
+                EnqueueFlowTileBuildsForActiveAgents();
+                _perf.FlowTileActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
-            phaseTicks = Stopwatch.GetTimestamp();
-            ProcessFlowTileBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
-            _perf.FlowTileProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
-            if (Stopwatch.GetTimestamp() >= deadlineTicks)
-                return;
+                phaseTicks = Stopwatch.GetTimestamp();
+                PruneInactivePendingFlowTileBuildJobs();
+                _perf.FlowTilePruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
-            phaseTicks = Stopwatch.GetTimestamp();
-            ProcessSharedGoalFieldBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
-            _perf.SharedGoalProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                phaseTicks = Stopwatch.GetTimestamp();
+                RefreshFlowTileReferenceCounts();
+                _perf.FlowTileReferenceTicks += Stopwatch.GetTimestamp() - phaseTicks;
+            }
+
+            for (int offset = 0; offset < worldCount; offset++)
+            {
+                int worldIndex = (startIndex + offset) % worldCount;
+                ActivateFlowBuildQueueWorld(FlowBuildQueueWorldScratch[worldIndex]);
+
+                long phaseTicks = Stopwatch.GetTimestamp();
+                ProcessFlowTileBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
+                _perf.FlowTileProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                if (Stopwatch.GetTimestamp() >= deadlineTicks)
+                    break;
+
+                phaseTicks = Stopwatch.GetTimestamp();
+                ProcessSharedGoalFieldBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
+                _perf.SharedGoalProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
+                if (Stopwatch.GetTimestamp() >= deadlineTicks)
+                    break;
+            }
+
+            if (worldCount > 0)
+                _flowBuildQueueWorldStartIndex = (startIndex + 1) % worldCount;
         }
         finally
         {
+            _world = previousWorld;
+            _activeWorldState = previousActiveWorldState;
             _perf.FlowTileQueueTicks += Stopwatch.GetTimestamp() - queueStartTicks;
         }
     }
 
     private static bool CanProcessFlowTileBuildQueue()
     {
-        if (_world == null)
+        if (WorldStates.Count == 0)
             return false;
 
         foreach (WorldRuntimeState state in WorldStates.Values)
         {
             if (state == null)
-                continue;
+                throw new InvalidOperationException("CanProcessFlowTileBuildQueue failed: world state is null.");
             if (state.IsDirty || state.BuildJob != null || state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count > 0)
                 return false;
+            if (state.World == null)
+                throw new InvalidOperationException($"CanProcessFlowTileBuildQueue failed: ready world is null agentType={state.AgentTypeId}.");
+            if (state.World.AgentTypeId != state.AgentTypeId)
+                throw new InvalidOperationException($"CanProcessFlowTileBuildQueue failed: world agent type mismatch state={state.AgentTypeId} world={state.World.AgentTypeId}.");
         }
 
         return true;
+    }
+
+    private static void ActivateFlowBuildQueueWorld(WorldRuntimeState state)
+    {
+        if (state == null || state.World == null)
+            throw new InvalidOperationException("ActivateFlowBuildQueueWorld failed: state or world is null.");
+        if (state.IsDirty || state.BuildJob != null || state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count > 0)
+            throw new InvalidOperationException($"ActivateFlowBuildQueueWorld failed: world is not ready agentType={state.AgentTypeId}.");
+
+        _activeWorldState = state;
+        _world = state.World;
+    }
+
+    private static bool IsAgentInActiveFlowBuildQueueWorld(AgentRuntimeData agent)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("IsAgentInActiveFlowBuildQueueWorld failed: agent is null.");
+        if (_activeWorldState == null || _world == null)
+            throw new InvalidOperationException("IsAgentInActiveFlowBuildQueueWorld failed: active world is null.");
+
+        return ResolvePreferredAgentTypeId(agent.AgentTypeId) == _activeWorldState.AgentTypeId
+               && _world.AgentTypeId == _activeWorldState.AgentTypeId;
     }
 
     private static void EnqueueFlowTileBuildsForActiveAgents()
     {
         foreach (AgentRuntimeData agent in Agents.Values)
         {
+            if (!IsAgentInActiveFlowBuildQueueWorld(agent))
+                continue;
+
             PathHandle handle = agent.NavState.PathHandle;
             if (handle == null || handle.WorldVersion != _world.Version || handle.SectorIds == null || handle.SectorIds.Length == 0)
                 continue;
@@ -3875,7 +3937,7 @@ public static class FlowFieldCrowdMovementSystem
             LinkedListNode<FlowTileBuildJob> next = node.Next;
             FlowTileBuildJob job = node.Value;
             FlowTileCacheKey key = job.BuildKey.CacheKey;
-            if (!ActiveFlowTileBuildKeys.Contains(key))
+            if (key.WorldVersion == _world.Version && !ActiveFlowTileBuildKeys.Contains(key))
             {
                 FlowTileBuildQueue.Remove(node);
                 PendingFlowTileBuildJobs.Remove(key);
@@ -3895,6 +3957,9 @@ public static class FlowFieldCrowdMovementSystem
 
         foreach (AgentRuntimeData agent in Agents.Values)
         {
+            if (!IsAgentInActiveFlowBuildQueueWorld(agent))
+                continue;
+
             PathHandle handle = agent.NavState.PathHandle;
             if (handle == null
                 || handle.WorldVersion != _world.Version
@@ -3934,6 +3999,9 @@ public static class FlowFieldCrowdMovementSystem
 
         foreach (AgentRuntimeData agent in Agents.Values)
         {
+            if (!IsAgentInActiveFlowBuildQueueWorld(agent))
+                continue;
+
             if (agent.NavState.StableGoalX < 0 || agent.NavState.StableGoalY < 0)
                 continue;
             if (agent.NavState.StableGoalTargetId != int.MinValue)
@@ -4065,7 +4133,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             LinkedListNode<SharedGoalFieldBuildJob> next = node.Next;
             SharedGoalFieldBuildJob job = node.Value;
-            if (job == null || !ActiveSharedGoalFieldBuildKeys.Contains(job.Key))
+            if (job == null || (job.Key.WorldVersion == _world.Version && !ActiveSharedGoalFieldBuildKeys.Contains(job.Key)))
             {
                 ReturnSharedGoalFieldBuildIntegration(job);
                 SharedGoalFieldBuildQueue.Remove(node);
@@ -4079,14 +4147,23 @@ public static class FlowFieldCrowdMovementSystem
 
     private static void ProcessSharedGoalFieldBuildQueue(long deadlineTicks, bool forceComplete, SharedGoalFieldKey? requiredKey)
     {
+        if (_world == null)
+            throw new InvalidOperationException("ProcessSharedGoalFieldBuildQueue failed: world is null.");
+        if (requiredKey.HasValue && requiredKey.Value.WorldVersion != _world.Version)
+            throw new InvalidOperationException($"ProcessSharedGoalFieldBuildQueue failed: required key world mismatch required={requiredKey.Value.WorldVersion} active={_world.Version}.");
+
         int guard = 0;
-        while (SharedGoalFieldBuildQueue.Count > 0)
+        while (true)
         {
             if (!forceComplete && IsDeadlineExpired(deadlineTicks))
                 return;
 
-            SharedGoalFieldBuildJob job = SharedGoalFieldBuildQueue.First.Value;
-            SharedGoalFieldBuildQueue.RemoveFirst();
+            LinkedListNode<SharedGoalFieldBuildJob> jobNode = FindSharedGoalFieldBuildJobForActiveWorld();
+            if (jobNode == null)
+                return;
+
+            SharedGoalFieldBuildJob job = jobNode.Value;
+            SharedGoalFieldBuildQueue.Remove(jobNode);
             PendingSharedGoalFieldBuildJobs.Remove(job.Key);
 
             if (SharedGoalFields.ContainsKey(job.Key))
@@ -4134,10 +4211,27 @@ public static class FlowFieldCrowdMovementSystem
         return !expectedKey.Equals(job.Key);
     }
 
+    private static LinkedListNode<SharedGoalFieldBuildJob> FindSharedGoalFieldBuildJobForActiveWorld()
+    {
+        for (LinkedListNode<SharedGoalFieldBuildJob> node = SharedGoalFieldBuildQueue.First; node != null; node = node.Next)
+        {
+            SharedGoalFieldBuildJob job = node.Value;
+            if (job != null && job.Key.WorldVersion == _world.Version)
+                return node;
+        }
+
+        return null;
+    }
+
     private static void ProcessFlowTileBuildQueue(long deadlineTicks, bool forceComplete, FlowTileCacheKey? requiredKey)
     {
+        if (_world == null)
+            throw new InvalidOperationException("ProcessFlowTileBuildQueue failed: world is null.");
+        if (requiredKey.HasValue && requiredKey.Value.WorldVersion != _world.Version)
+            throw new InvalidOperationException($"ProcessFlowTileBuildQueue failed: required key world mismatch required={requiredKey.Value.WorldVersion} active={_world.Version}.");
+
         int guard = 0;
-        while (FlowTileBuildQueue.Count > 0)
+        while (true)
         {
             if (!forceComplete && IsDeadlineExpired(deadlineTicks))
             {
@@ -4145,8 +4239,12 @@ public static class FlowFieldCrowdMovementSystem
                 return;
             }
 
-            FlowTileBuildJob job = FlowTileBuildQueue.First.Value;
-            FlowTileBuildQueue.RemoveFirst();
+            LinkedListNode<FlowTileBuildJob> jobNode = FindFlowTileBuildJobForActiveWorld();
+            if (jobNode == null)
+                return;
+
+            FlowTileBuildJob job = jobNode.Value;
+            FlowTileBuildQueue.Remove(jobNode);
             PendingFlowTileBuildJobs.Remove(job.BuildKey.CacheKey);
 
             if (FlowTileCache.ContainsKey(job.BuildKey.CacheKey))
@@ -4214,6 +4312,18 @@ public static class FlowFieldCrowdMovementSystem
             if (guard > Config.FlowTileCacheLimit * 8 + 1024)
                 throw new InvalidOperationException("ProcessFlowTileBuildQueue failed: queue processing exceeded guard.");
         }
+    }
+
+    private static LinkedListNode<FlowTileBuildJob> FindFlowTileBuildJobForActiveWorld()
+    {
+        for (LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First; node != null; node = node.Next)
+        {
+            FlowTileBuildJob job = node.Value;
+            if (job != null && job.BuildKey.CacheKey.WorldVersion == _world.Version)
+                return node;
+        }
+
+        return null;
     }
 
     private static bool IsFlowTileBuildJobStale(FlowTileBuildJob job)
@@ -6006,36 +6116,47 @@ public static class FlowFieldCrowdMovementSystem
 
     public static string GetEditorTestMovingTargetAnchorDiagnostics(int agentId)
     {
-        if (_world == null)
-            return "movingAnchor=world-null";
         if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent))
             return "movingAnchor=agent-missing";
 
-        AgentNavState nav = agent.NavState;
-        int targetId = nav.StableGoalTargetId;
-        if (targetId == int.MinValue)
-            return "movingAnchor=no-target";
+        NavigationWorld previousWorld = _world;
+        WorldRuntimeState previousActiveWorldState = _activeWorldState;
+        try
+        {
+            if (!TryEnsureWorldBuilt(agent.AgentTypeId, allowSynchronousBuild: true))
+                return "movingAnchor=world-unavailable";
 
-        int islandId = ResolveIslandIdForDiagnostics(_world, agent.NavState.CurrentCell.x, agent.NavState.CurrentCell.y);
-        MovingTargetAnchorKey key = new MovingTargetAnchorKey(targetId, ResolvePreferredAgentTypeId(agent.AgentTypeId), islandId);
-        if (!MovingTargetAnchors.TryGetValue(key, out MovingTargetAnchor anchor))
-            return $"movingAnchor=missing key=target:{targetId},agentType:{ResolvePreferredAgentTypeId(agent.AgentTypeId)},island:{islandId}";
+            AgentNavState nav = agent.NavState;
+            int targetId = nav.StableGoalTargetId;
+            if (targetId == int.MinValue)
+                return "movingAnchor=no-target";
 
-        string activeShared = BuildSharedGoalFieldStateDiagnostic(
-            anchor.ActiveGoalSectorId,
-            anchor.ActiveGoalX,
-            anchor.ActiveGoalY,
-            ResolvePreferredAgentTypeId(agent.AgentTypeId));
-        string pendingShared = BuildSharedGoalFieldStateDiagnostic(
-            anchor.PendingGoalSectorId,
-            anchor.PendingGoalX,
-            anchor.PendingGoalY,
-            ResolvePreferredAgentTypeId(agent.AgentTypeId));
+            int islandId = ResolveIslandIdForDiagnostics(_world, agent.NavState.CurrentCell.x, agent.NavState.CurrentCell.y);
+            MovingTargetAnchorKey key = new MovingTargetAnchorKey(targetId, ResolvePreferredAgentTypeId(agent.AgentTypeId), islandId);
+            if (!MovingTargetAnchors.TryGetValue(key, out MovingTargetAnchor anchor))
+                return $"movingAnchor=missing key=target:{targetId},agentType:{ResolvePreferredAgentTypeId(agent.AgentTypeId)},island:{islandId}";
 
-        return $"movingAnchor=key(target:{key.TargetId},agentType:{key.AgentTypeId},island:{key.IslandId}) " +
-               $"activeRaw=({anchor.RawGoalX},{anchor.RawGoalY}) active=({anchor.ActiveGoalX},{anchor.ActiveGoalY}) activeSector={anchor.ActiveGoalSectorId} activeWorld={anchor.ActiveGoalWorld} activeVersion={anchor.ActiveWorldVersion} activeShared={activeShared} " +
-               $"pendingRaw=({anchor.PendingRawGoalX},{anchor.PendingRawGoalY}) pending=({anchor.PendingGoalX},{anchor.PendingGoalY}) pendingSector={anchor.PendingGoalSectorId} pendingWorld={anchor.PendingGoalWorld} pendingVersion={anchor.PendingWorldVersion} pendingShared={pendingShared} " +
-               $"queue={SharedGoalFieldBuildQueue.Count} pendingKeys={PendingSharedGoalFieldBuildJobs.Count} sharedCache={SharedGoalFields.Count} sharedJobs={BuildPendingSharedGoalFieldJobDiagnostics()}";
+            string activeShared = BuildSharedGoalFieldStateDiagnostic(
+                anchor.ActiveGoalSectorId,
+                anchor.ActiveGoalX,
+                anchor.ActiveGoalY,
+                ResolvePreferredAgentTypeId(agent.AgentTypeId));
+            string pendingShared = BuildSharedGoalFieldStateDiagnostic(
+                anchor.PendingGoalSectorId,
+                anchor.PendingGoalX,
+                anchor.PendingGoalY,
+                ResolvePreferredAgentTypeId(agent.AgentTypeId));
+
+            return $"movingAnchor=key(target:{key.TargetId},agentType:{key.AgentTypeId},island:{key.IslandId}) " +
+                   $"activeRaw=({anchor.RawGoalX},{anchor.RawGoalY}) active=({anchor.ActiveGoalX},{anchor.ActiveGoalY}) activeSector={anchor.ActiveGoalSectorId} activeWorld={anchor.ActiveGoalWorld} activeVersion={anchor.ActiveWorldVersion} activeShared={activeShared} " +
+                   $"pendingRaw=({anchor.PendingRawGoalX},{anchor.PendingRawGoalY}) pending=({anchor.PendingGoalX},{anchor.PendingGoalY}) pendingSector={anchor.PendingGoalSectorId} pendingWorld={anchor.PendingGoalWorld} pendingVersion={anchor.PendingWorldVersion} pendingShared={pendingShared} " +
+                   $"queue={SharedGoalFieldBuildQueue.Count} pendingKeys={PendingSharedGoalFieldBuildJobs.Count} sharedCache={SharedGoalFields.Count} sharedJobs={BuildPendingSharedGoalFieldJobDiagnostics()}";
+        }
+        finally
+        {
+            _world = previousWorld;
+            _activeWorldState = previousActiveWorldState;
+        }
     }
 
     private static string BuildSharedGoalFieldStateDiagnostic(int goalSectorId, int goalX, int goalY, int agentTypeId)
@@ -18719,12 +18840,18 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
     private static void RefreshFlowTileReferenceCounts()
     {
         _perf.FlowTileReferenceRefreshCalls++;
-        foreach (FlowTileCacheEntry tile in FlowTileCache.Values)
-            tile.ActiveReferenceCount = 0;
+        foreach (KeyValuePair<FlowTileCacheKey, FlowTileCacheEntry> pair in FlowTileCache)
+        {
+            if (pair.Key.WorldVersion == _world.Version)
+                pair.Value.ActiveReferenceCount = 0;
+        }
 
         int frame = GetFrameCount();
         foreach (AgentRuntimeData agent in Agents.Values)
         {
+            if (!IsAgentInActiveFlowBuildQueueWorld(agent))
+                continue;
+
             PathHandle handle = agent.NavState.PathHandle;
             if (handle == null
                 || handle.WorldVersion != _world.Version

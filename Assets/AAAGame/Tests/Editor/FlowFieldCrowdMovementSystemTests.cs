@@ -2697,6 +2697,79 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void MarkWorldDirty清空Anchor时必须同步清空StableGoal引用()
+    {
+        const int width = 16;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        SimEntityContext target = CreateEntity(new Vector3(14.5f, 0f, 3.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(chaser.GetHashCode(), out _, out _, out _, out _, out _, out _));
+
+        FlowFieldCrowdMovementSystem.MarkWorldDirty("editor-test");
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(chaser.GetHashCode(), out _, out _, out _, out _, out _, out _));
+        StringAssert.Contains("movingAnchor=no-target", FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetAnchorDiagnostics(chaser.GetHashCode()));
+    }
+
+    [Test]
+    public void 多AgentType共享场预排必须在各自NavigationWorld解析Island()
+    {
+        const int width = 8;
+        const int height = 4;
+        bool[] smallWalkable = new bool[width * height];
+        bool[] largeWalkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+        {
+            SetWalkable(smallWalkable, width, x, 2);
+            SetWalkable(largeWalkable, width, x, 2);
+        }
+        SetWalkable(largeWalkable, width, 0, 0);
+        SetWalkable(largeWalkable, width, 1, 0);
+
+        int smallAgentType = AgentTypeHelper.SmallMovementTypeId;
+        int largeAgentType = AgentTypeHelper.LargeMovementTypeId;
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(new[]
+        {
+            new AuthoredNavigationSourceData(smallAgentType, width, height, 1f, Vector3.zero, smallWalkable, null),
+            new AuthoredNavigationSourceData(largeAgentType, width, height, 1f, Vector3.zero, largeWalkable, null)
+        });
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(smallAgentType, 0.35f);
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(largeAgentType, 0.75f);
+
+        SimEntityContext target = CreateEntity(new Vector3(7.5f, 0f, 2.5f), false, smallAgentType, 0.35f);
+        SimEntityContext largeChaser = CreateEntity(new Vector3(0.5f, 0f, 2.5f), false, largeAgentType, 0.75f);
+        SimEntityContext smallChaser = CreateEntity(new Vector3(1.5f, 0f, 2.5f), false, smallAgentType, 0.35f);
+        largeChaser.TargetComp = new SimTargetingComp(largeChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+        smallChaser.TargetComp = new SimTargetingComp(smallChaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(largeChaser, target.Position, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(smallChaser, target.Position, 2f, out _));
+
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue);
+        StringAssert.DoesNotContain("movingAnchor=missing", FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetAnchorDiagnostics(largeChaser.GetHashCode()));
+    }
+
+    [Test]
     public void 移动目标仍在同一Sector时不应重建整条SectorPath()
     {
         const int width = 16;
