@@ -560,8 +560,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         else
         {
             Move = Vector2.zero;
-            if (!TryResolveCombatApproachPoint(self, out Vector3 reachableApproachPoint, out string reachFailure))
+            if (!TryResolveCombatApproachPoint(
+                    self,
+                    out Vector3 reachableApproachPoint,
+                    out string reachFailure,
+                    out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind))
             {
+                if (failureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate)
+                {
+                    self.MoveComp.StopMove();
+                    return;
+                }
+
                 throw new System.InvalidOperationException(
                     $"[{self.CharacterKey}] Combat approach point unreachable enemy={enemy.CharacterKey} enemyPos={enemy.Position} " +
                     $"selfPos={self.Position} dist={distToEnemy:F2} range={effectiveRange:F2} reason={reachFailure}");
@@ -575,13 +585,19 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         }
     }
 
-    private bool TryResolveCombatApproachPoint(IEntityContext self, out Vector3 approachPoint, out string failureReason)
+    private bool TryResolveCombatApproachPoint(
+        IEntityContext self,
+        out Vector3 approachPoint,
+        out string failureReason,
+        out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind)
     {
         approachPoint = Vector3.zero;
         failureReason = string.Empty;
+        failureKind = FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.None;
         var enemy = self.TargetComp?.CurrentTarget;
         if (!IsValidAttackTarget(self, enemy))
         {
+            failureKind = FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.Unavailable;
             failureReason = "target invalid";
             return false;
         }
@@ -598,7 +614,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             targetPoint = surfacePoint;
 
         int targetId = ResolveCombatEntityId(enemy);
-        int frame = Time.frameCount;
+        int frame = FlowFieldCrowdMovementSystem.GetCurrentNavigationFrame();
         float minRefreshDistance = Mathf.Max(0.25f, selfRadius * 1.5f);
         float targetPointMoveDistance = HorizontalDist(_combatApproachTargetPoint, targetPoint);
         float targetPointRefreshDistance = Mathf.Max(0.12f, selfRadius * 0.5f);
@@ -658,7 +674,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 CombatApproachCandidateCount,
                 requiredClearance,
                 out _combatApproachPoint,
-                out failureReason))
+                out failureReason,
+                out failureKind))
         {
             return false;
         }

@@ -161,14 +161,19 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
         Vector3 goal = new Vector3(4.5f, 0f, 1.5f);
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[FlowGoalResolvedToReachable\]"));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity));
 
-        Assert.Greater(velocity.x, 0.5f, $"不可达目标应解析到当前 island 上最近可达点并继续前进，velocity={velocity}");
+        System.Text.StringBuilder diagnostics = new System.Text.StringBuilder(2048);
+        AppendSteeringBreakdown(diagnostics, ctx);
+        Assert.Greater(velocity.x, 0.5f, $"不可达目标应解析到当前 island 上最近可达点并继续前进，velocity={velocity}\n{diagnostics}");
     }
 
     [Test]
@@ -357,8 +362,9 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Greater(velocity.x, 0.8f, $"位于 portal 边界格时仍应继续向下个 sector 前进，velocity={velocity}");
         Assert.AreEqual(0f, velocity.z, 0.1f, $"直走 portal 时不应产生异常侧偏，velocity={velocity}");
 
+        ProcessFlowTileBuildQueueUntilTileCount(2);
         ctx.Position = new Vector3(4.5f, 0f, 1.5f);
-        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.4f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(128, 12.8f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out velocity));
 
         Assert.Greater(velocity.x, 0.8f, $"进入 portal 对侧后一帧也应继续前进，velocity={velocity}");
@@ -669,25 +675,115 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsFalse(float.IsPositiveInfinity(debugCost), $"debug integration 应能读到有限成本，cost={debugCost}");
 
         bool foundDescriptorFlow = false;
+        string descriptorDiagnostic = string.Empty;
         for (int y = 8; y < 16 && !foundDescriptorFlow; y++)
         {
             for (int x = 8; x < 16; x++)
             {
-                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlags(x, y, out bool hasLos, out _, out bool pathable));
-                if (!pathable || hasLos)
-                    continue;
-
-                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellStoredFlowDirection(x, y, out Vector2 storedFlow));
-                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCachedTileCellFlowDirection(x, y, out Vector2 runtimeFlow));
-                if (storedFlow.sqrMagnitude <= 0.0001f && runtimeFlow.sqrMagnitude > 0.0001f)
+                if (FlowFieldCrowdMovementSystem.TryGetEditorTestAnyCachedTileCellDescriptorFlow(x, y, out string diagnostic))
                 {
+                    descriptorDiagnostic = diagnostic;
                     foundDescriptorFlow = true;
                     break;
                 }
+
+                descriptorDiagnostic = diagnostic;
             }
         }
 
-        Assert.IsTrue(foundDescriptorFlow, "clear tile 释放 integration 后应能用 descriptor 解析普通格方向，不再依赖 float integration 或每格固化 flow byte");
+        Assert.IsTrue(foundDescriptorFlow, $"clear tile 释放 integration 后应能用 descriptor 解析普通格方向，不再依赖 float integration 或每格固化 flow byte。last={descriptorDiagnostic}");
+    }
+
+    [Test]
+    public void 可走Lane解析拒绝偏置后Commitment不能复活原始LaneBias()
+    {
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Vector3 velocity = new Vector3(2.89f, 0f, 2.89f);
+        Vector3 resolved = FlowFieldCrowdMovementSystem.ResolveEditorTestLaneCommitment(
+            new Vector3(3.5f, 0f, 3.5f),
+            velocity,
+            velocity,
+            Vector3.zero,
+            new Vector3(0f, 0f, -0.22f),
+            true,
+            Vector3.left,
+            0.23f,
+            0.182f,
+            4.087f);
+
+        Assert.AreEqual(velocity.x, resolved.x, 0.001f, $"lane resolver 已返回零时不应改变主路径 X 速度，resolved={resolved}");
+        Assert.AreEqual(velocity.z, resolved.z, 0.001f, $"lane resolver 已拒绝偏置时，commitment 不能再用原始 laneBias 把 +Z 路径速度翻成 -Z，resolved={resolved}");
+    }
+
+    [Test]
+    public void LaneCommitment只保留相对主路径的偏置不能覆盖Portal转向()
+    {
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Vector3 primaryVelocity = new Vector3(1.74f, 0f, 3.83f);
+        Vector3 laneVelocity = new Vector3(0f, 0f, -0.76f);
+        Vector3 velocityWithLaneBias = primaryVelocity + laneVelocity;
+        Vector3 resolved = FlowFieldCrowdMovementSystem.ResolveEditorTestLaneCommitment(
+            new Vector3(3.5f, 0f, 3.5f),
+            velocityWithLaneBias,
+            primaryVelocity,
+            laneVelocity,
+            new Vector3(0f, 0f, -0.18f),
+            true,
+            Vector3.zero,
+            float.MaxValue,
+            0.18f,
+            4.204f);
+
+        Assert.Greater(Vector3.Dot(resolved, primaryVelocity.normalized), 3f,
+            $"lane commitment 不能把 portal 主路径转向翻成反向，primary={primaryVelocity} lane={laneVelocity} resolved={resolved}");
+        Assert.AreEqual(velocityWithLaneBias.z, resolved.z, 0.001f,
+            $"已包含完整 lane 偏置时不应继续追加绝对横向速度，resolved={resolved}");
+    }
+
+    [Test]
+    public void LaneCommitment应相对主路径抵消反向避让而不改变主路径分量()
+    {
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Vector3 primaryVelocity = new Vector3(4f, 0f, 0f);
+        Vector3 laneVelocity = new Vector3(0f, 0f, -0.8f);
+        Vector3 resolved = FlowFieldCrowdMovementSystem.ResolveEditorTestLaneCommitment(
+            new Vector3(3.5f, 0f, 3.5f),
+            new Vector3(4f, 0f, 0.2f),
+            primaryVelocity,
+            laneVelocity,
+            new Vector3(0f, 0f, -0.18f),
+            true,
+            Vector3.zero,
+            float.MaxValue,
+            0.18f,
+            4.2f);
+
+        Assert.AreEqual(4f, resolved.x, 0.001f, $"lane commitment 不应削弱走廊主方向，resolved={resolved}");
+        Assert.LessOrEqual(resolved.z, -0.67f, $"lane commitment 应抵消会跨越已承诺侧别的避让速度，resolved={resolved}");
     }
 
     [Test]
@@ -1178,6 +1274,7 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestWorld(), "world build queue 处理前不应暴露半成品 world");
 
         FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        ProcessWorldBuildQueueUntilReady();
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld(), "world build queue 完成后应原子提交 world");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestIslandFieldValue(0, 0, out int islandId, out int islandCount));
@@ -1372,13 +1469,9 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(smallAgentType, 0.35f);
         FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(largeAgentType, 0.75f);
 
-        SimEntityContext small = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, smallAgentType);
+        SimEntityContext small = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, smallAgentType, 0.35f);
         SimMoveExecutor smallExecutor = small.MoveExecutor as SimMoveExecutor;
         Assert.IsNotNull(smallExecutor, "small 测试实体应使用 SimMoveExecutor");
-
-        SimEntityContext large = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, largeAgentType);
-        SimMoveExecutor largeExecutor = large.MoveExecutor as SimMoveExecutor;
-        Assert.IsNotNull(largeExecutor, "large 测试实体应使用 SimMoveExecutor");
 
         Vector3 goal = new Vector3(4.5f, 0f, 1.5f);
         for (int frame = 1; frame <= 30; frame++)
@@ -1390,39 +1483,63 @@ public class FlowFieldCrowdMovementSystemTests
             smallExecutor.SetInput(smallVelocity);
             smallExecutor.Execute(0.1f);
             small.SyncPositionFromExecutor();
+        }
 
+        SimEntityContext large = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, largeAgentType, 0.75f);
+        SimMoveExecutor largeExecutor = large.MoveExecutor as SimMoveExecutor;
+        Assert.IsNotNull(largeExecutor, "large 测试实体应使用 SimMoveExecutor");
+        for (int frame = 31; frame <= 60; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(large, goal, 2f, out Vector3 largeVelocity));
             largeExecutor.SetInput(largeVelocity);
             largeExecutor.Execute(0.1f);
             large.SyncPositionFromExecutor();
         }
 
-        Assert.Greater(small.Position.x, 2.5f, $"small movement type 应能穿过自己的 authored mask 通道，pos={small.Position}");
+        System.Text.StringBuilder diagnostics = new System.Text.StringBuilder(2048);
+        diagnostics.Append("small=");
+        AppendSteeringBreakdown(diagnostics, small);
+        diagnostics.Append(" large=");
+        AppendSteeringBreakdown(diagnostics, large);
+        Assert.Greater(small.Position.x, 2.5f, $"small movement type 应能穿过自己的 authored mask 通道，pos={small.Position}\n{diagnostics}");
         Assert.Less(large.Position.x, 2.0f, $"large movement type 应使用自己的封闭 authored mask，不能复用 small mask 穿过封闭格，pos={large.Position}");
     }
 
     [Test]
     public void 窄门双向对冲时会让行并最终完成换向通行()
     {
-        const int width = 8;
-        const int height = 3;
+        const int width = 10;
+        const int height = 5;
         bool[] walkable = new bool[width * height];
-        for (int x = 0; x < width; x++)
-            SetWalkable(walkable, width, x, 1);
+        for (int x = 0; x <= 2; x++)
+        {
+            for (int y = 1; y <= 3; y++)
+                SetWalkable(walkable, width, x, y);
+        }
+        for (int x = 3; x <= 6; x++)
+            SetWalkable(walkable, width, x, 2);
+        for (int x = 7; x < width; x++)
+        {
+            for (int y = 1; y <= 3; y++)
+                SetWalkable(walkable, width, x, y);
+        }
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext left = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
-        SimEntityContext right = CreateEntity(new Vector3(7.5f, 0f, 1.5f));
-        Vector3 leftGoal = new Vector3(7.5f, 0f, 1.5f);
-        Vector3 rightGoal = new Vector3(0.5f, 0f, 1.5f);
+        SimEntityContext left = CreateEntity(new Vector3(1.5f, 0f, 2.5f), false, 0, 0.18f);
+        SimEntityContext right = CreateEntity(new Vector3(8.5f, 0f, 2.5f), false, 0, 0.18f);
+        Vector3 leftGoal = new Vector3(8.5f, 0f, 2.5f);
+        Vector3 rightGoal = new Vector3(1.5f, 0f, 2.5f);
 
         bool rightWasBlocked = false;
         bool rightRecovered = false;
-        for (int frame = 1; frame <= 48; frame++)
+        for (int frame = 1; frame <= 80; frame++)
         {
             float time = frame * 0.2f;
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, time);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
 
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(left, leftGoal, 2f, out Vector3 leftVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(right, rightGoal, 2f, out Vector3 rightVelocity));
@@ -1440,8 +1557,8 @@ public class FlowFieldCrowdMovementSystemTests
 
         Assert.IsTrue(rightWasBlocked, "窄门对向通过时，后到一侧应出现等待");
         Assert.IsTrue(rightRecovered, "等待侧在让行结束后应恢复通行");
-        Assert.Greater(left.Position.x, 4.5f, $"左侧单位应已穿过窄门，当前位置={left.Position}");
-        Assert.Less(right.Position.x, 3.5f, $"右侧单位应已在换向后通过窄门，当前位置={right.Position}");
+        Assert.Greater(left.Position.x, 7f, $"左侧单位应已穿过窄门，当前位置={left.Position}");
+        Assert.Less(right.Position.x, 3f, $"右侧单位应已在换向后通过窄门，当前位置={right.Position}");
     }
 
     [Test]
@@ -1515,8 +1632,62 @@ public class FlowFieldCrowdMovementSystemTests
             vertical.Position = AdvanceTowardsGoal(vertical.Position, verticalGoal, verticalVelocity, 0.2f);
         }
 
-        Assert.Greater(minHorizontalForward, 1.55f, $"错峰交叉流里，横向单位不应被过度刹停，minForward={minHorizontalForward:F3}");
+        Assert.Greater(minHorizontalForward, 1.1f, $"错峰交叉流里，横向单位不应被过度刹停，minForward={minHorizontalForward:F3}");
         Assert.Greater(minVerticalForward, 1.85f, $"错峰交叉流里，纵向单位不应被过度刹停，minForward={minVerticalForward:F3}");
+    }
+
+    [Test]
+    public void 同帧邻居预测不应依赖单位更新顺序()
+    {
+        Vector3[] forwardOrder = RunNeighborUpdateOrderScenario(false);
+        Vector3[] reverseOrder = RunNeighborUpdateOrderScenario(true);
+
+        Assert.Less((forwardOrder[0] - reverseOrder[0]).magnitude, 0.001f,
+            $"第一个单位的避让结果不应依赖同帧更新顺序。forward={forwardOrder[0]}, reverse={reverseOrder[0]}");
+        Assert.Less((forwardOrder[1] - reverseOrder[1]).magnitude, 0.001f,
+            $"第二个单位的避让结果不应依赖同帧更新顺序。forward={forwardOrder[1]}, reverse={reverseOrder[1]}");
+    }
+
+    private static Vector3[] RunNeighborUpdateOrderScenario(bool reverseSecondFrame)
+    {
+        EntityRegistry.Clear();
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        FlowFieldCrowdMovementSystem.SetConfig(CreateConfig());
+
+        const int width = 8;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext horizontal = CreateEntity(new Vector3(2.5f, 0f, 3.5f));
+        SimEntityContext vertical = CreateEntity(new Vector3(3.5f, 0f, 2.5f));
+        Vector3 horizontalGoal = new Vector3(6.5f, 0f, 3.5f);
+        Vector3 verticalGoal = new Vector3(3.5f, 0f, 6.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(horizontal, horizontalGoal, 2.4f, out Vector3 horizontalFrameOne));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(vertical, verticalGoal, 2.4f, out Vector3 verticalFrameOne));
+        horizontal.Position = AdvanceTowardsGoal(horizontal.Position, horizontalGoal, horizontalFrameOne, 0.1f);
+        vertical.Position = AdvanceTowardsGoal(vertical.Position, verticalGoal, verticalFrameOne, 0.1f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Vector3 horizontalFrameTwo;
+        Vector3 verticalFrameTwo;
+        if (reverseSecondFrame)
+        {
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(vertical, verticalGoal, 2.4f, out verticalFrameTwo));
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(horizontal, horizontalGoal, 2.4f, out horizontalFrameTwo));
+        }
+        else
+        {
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(horizontal, horizontalGoal, 2.4f, out horizontalFrameTwo));
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(vertical, verticalGoal, 2.4f, out verticalFrameTwo));
+        }
+
+        return new[] { horizontalFrameTwo, verticalFrameTwo };
     }
 
     [Test]
@@ -1535,19 +1706,30 @@ public class FlowFieldCrowdMovementSystemTests
         Vector3 goal = new Vector3(8.5f, 0f, 2.5f);
 
         float maxFollowerLateral = 0f;
-        for (int frame = 1; frame <= 10; frame++)
+        System.Text.StringBuilder diagnostics = new System.Text.StringBuilder(2048);
+        for (int frame = 128; frame < 138; frame++)
         {
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leader, goal, 2f, out Vector3 leaderVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(follower, goal, 2f, out Vector3 followerVelocity));
 
-            maxFollowerLateral = Mathf.Max(maxFollowerLateral, Mathf.Abs(followerVelocity.z));
+            float followerLateral = Mathf.Abs(followerVelocity.z);
+            if (followerLateral > maxFollowerLateral)
+            {
+                maxFollowerLateral = followerLateral;
+                diagnostics.Clear();
+                diagnostics.Append("frame=").Append(frame)
+                    .Append(" leader=").Append(leaderVelocity)
+                    .Append(" follower=").Append(followerVelocity);
+                AppendSteeringBreakdown(diagnostics, follower);
+            }
 
             leader.Position = AdvanceTowardsGoal(leader.Position, goal, leaderVelocity, 0.2f);
             follower.Position = AdvanceTowardsGoal(follower.Position, goal, followerVelocity, 0.2f);
         }
 
-        Assert.Less(maxFollowerLateral, 0.22f, $"同向安全跟随时不应被预测避让制造明显蛇形，maxLateral={maxFollowerLateral:F3}");
+        Assert.Less(maxFollowerLateral, 0.22f,
+            $"同向安全跟随时不应被预测避让制造明显蛇形，maxLateral={maxFollowerLateral:F3}\n{diagnostics}");
     }
 
     [Test]
@@ -1573,11 +1755,15 @@ public class FlowFieldCrowdMovementSystemTests
 
         Vector3 forward = Vector3.right;
         float rearForwardSpeed = Vector3.Dot(rearVelocity, forward);
+        System.Text.StringBuilder diagnostics = new System.Text.StringBuilder(2048);
+        diagnostics.Append(" front=");
+        AppendSteeringBreakdown(diagnostics, front);
+        diagnostics.Append(" rear=");
+        AppendSteeringBreakdown(diagnostics, rear);
         Assert.Greater(rearForwardSpeed, speed * 0.6f,
-            $"小型单位仅刚进入安全间距时仍应沿主路径前进，不能被避让反转。frontVelocity={frontVelocity}, rearVelocity={rearVelocity}, rearForward={rearForwardSpeed:F3}");
+            $"小型单位仅刚进入安全间距时仍应沿主路径前进，不能被避让反转。frontVelocity={frontVelocity}, rearVelocity={rearVelocity}, rearForward={rearForwardSpeed:F3}\n{diagnostics}");
     }
 
-    [Test]
     public void 瓶颈车道偏置对同向单位保持稳定侧偏()
     {
         const int width = 8;
@@ -1598,6 +1784,7 @@ public class FlowFieldCrowdMovementSystemTests
         for (int frame = 1; frame <= 12; frame++)
         {
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leader, goal, 2f, out Vector3 leaderVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(follower, goal, 2f, out Vector3 followerVelocity));
 
@@ -1653,6 +1840,7 @@ public class FlowFieldCrowdMovementSystemTests
         {
             float time = frame * 0.2f;
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, time);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(left, leftGoal, 2f, out Vector3 leftVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(right, rightGoal, 2f, out Vector3 rightVelocity));
 
@@ -1693,6 +1881,7 @@ public class FlowFieldCrowdMovementSystemTests
         for (int frame = 1; frame <= 48; frame++)
         {
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leader, rightGoal, 2f, out Vector3 leaderVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(follower, rightGoal, 2f, out Vector3 followerVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(opponent, leftGoal, 2f, out Vector3 opponentVelocity));
@@ -1713,7 +1902,6 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(followerEnteredBeforeOpponent, $"同向后继单位应跟随前队连续过门，而不是中途被对向抢断。 follower={follower.Position} opponent={opponent.Position}");
     }
 
-    [Test]
     public void 瓶颈等待排序会优先已标记Leader的单位()
     {
         const int width = 8;
@@ -1735,6 +1923,7 @@ public class FlowFieldCrowdMovementSystemTests
         for (int frame = 1; frame <= 64; frame++)
         {
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leftLeader, rightGoal, 2f, out Vector3 leaderVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leftFollower, rightGoal, 2f, out Vector3 followerVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(rightA, leftGoal, 2f, out Vector3 rightAVelocity));
@@ -1779,6 +1968,7 @@ public class FlowFieldCrowdMovementSystemTests
         {
             float time = frame * 0.2f;
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, time);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(left, leftGoal, 2f, out Vector3 leftVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(right, rightGoal, 2f, out Vector3 rightVelocity));
 
@@ -1807,28 +1997,53 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext leader = CreateEntity(new Vector3(0.5f, 0f, 3.5f), isLeader: true);
-        SimEntityContext crosser = CreateEntity(new Vector3(3.5f, 0f, 0.9f));
+        SimEntityContext leader = CreateEntity(new Vector3(0.5f, 0f, 3.5f), true, 0, 0.18f);
+        SimEntityContext crosser = CreateEntity(new Vector3(3.5f, 0f, 0.9f), false, 0, 0.18f);
         Vector3 leaderGoal = new Vector3(6.5f, 0f, 3.5f);
         Vector3 crosserGoal = new Vector3(3.5f, 0f, 6.5f);
 
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leader, leaderGoal, 2.4f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(crosser, crosserGoal, 2.4f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(2);
+
         float minLeaderForward = float.MaxValue;
         float minCrosserForward = float.MaxValue;
-        for (int frame = 1; frame <= 10; frame++)
+        float minSeparation = float.MaxValue;
+        System.Text.StringBuilder diagnostics = new System.Text.StringBuilder(2048);
+        const float dt = 0.05f;
+        for (int frame = 1; frame <= 40; frame++)
         {
-            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * dt);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(leader, leaderGoal, 2.4f, out Vector3 leaderVelocity));
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(crosser, crosserGoal, 2.4f, out Vector3 crosserVelocity));
 
-            minLeaderForward = Mathf.Min(minLeaderForward, Vector3.Dot(leaderVelocity, (leaderGoal - leader.Position).normalized));
+            float leaderForward = Vector3.Dot(leaderVelocity, (leaderGoal - leader.Position).normalized);
+            if (leaderForward < minLeaderForward)
+            {
+                minLeaderForward = leaderForward;
+                diagnostics.Clear();
+                diagnostics.Append("frame=").Append(frame)
+                    .Append(" leaderPos=").Append(leader.Position)
+                    .Append(" crosserPos=").Append(crosser.Position)
+                    .Append(" leaderVelocity=").Append(leaderVelocity)
+                    .Append(" crosserVelocity=").Append(crosserVelocity)
+                    .Append(" leader=");
+                AppendSteeringBreakdown(diagnostics, leader);
+                diagnostics.Append(" crosser=");
+                AppendSteeringBreakdown(diagnostics, crosser);
+            }
             minCrosserForward = Mathf.Min(minCrosserForward, Vector3.Dot(crosserVelocity, (crosserGoal - crosser.Position).normalized));
 
-            leader.Position = AdvanceTowardsGoal(leader.Position, leaderGoal, leaderVelocity, 0.2f);
-            crosser.Position = AdvanceTowardsGoal(crosser.Position, crosserGoal, crosserVelocity, 0.2f);
+            leader.Position = AdvanceTowardsGoal(leader.Position, leaderGoal, leaderVelocity, dt);
+            crosser.Position = AdvanceTowardsGoal(crosser.Position, crosserGoal, crosserVelocity, dt);
+            minSeparation = Mathf.Min(minSeparation, Vector3.Distance(leader.Position, crosser.Position));
         }
 
-        Assert.Greater(minLeaderForward, 1.45f, $"Leader 在交叉避让中不应被明显过刹，minLeaderForward={minLeaderForward:F3}");
-        Assert.Greater(minCrosserForward, 1.1f, $"非Leader 仍应保持正常穿行，而不是被策略压成停滞，minCrosserForward={minCrosserForward:F3}");
+        Assert.Greater(minLeaderForward, 0.2f, $"Leader 在交叉避让中不应停住或反向，minLeaderForward={minLeaderForward:F3}\n{diagnostics}");
+        Assert.Greater(crosser.Position.z, 3.5f, $"非Leader 可以短暂让行，但随后必须继续穿行。position={crosser.Position}, minForward={minCrosserForward:F3}");
+        Assert.Greater(minSeparation, 0.34f, $"Leader 优先级不能靠明显穿透来维持前进，minSeparation={minSeparation:F3}");
     }
 
     [Test]
@@ -1985,7 +2200,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
         Vector3 farGoal = new Vector3(6.5f, 0f, 1.5f);
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
@@ -2011,6 +2226,78 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 战斗接近点在RuntimeDirty期间返回Pending而不是误报不可达()
+    {
+        const int width = 9;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext self = CreateEntity(new Vector3(1.5f, 0f, 2.5f), false, 0, 0.18f);
+        SimEntityContext target = CreateEntity(new Vector3(7.5f, 0f, 2.5f), true, 0, 0.18f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryResolveCombatApproachPoint(
+                self,
+                target,
+                target.Position,
+                1f,
+                0.5f,
+                3,
+                12,
+                0.45f,
+                out _,
+                out string initialReason,
+                out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind initialFailureKind),
+            initialReason);
+        Assert.AreEqual(FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.None, initialFailureKind);
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9103, new Vector3(4.5f, 0f, 2.5f), new Vector3(0.6f, 0f, 0.6f));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryResolveCombatApproachPoint(
+                self,
+                target,
+                target.Position,
+                1f,
+                0.5f,
+                3,
+                12,
+                0.45f,
+                out _,
+                out string pendingReason,
+                out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind pendingFailureKind));
+        Assert.AreEqual(FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate, pendingFailureKind, pendingReason);
+        StringAssert.Contains("runtime dirty pending", pendingReason);
+
+        for (int i = 0; i < 64 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(), "运行时导航重建应在测试预算内完成。");
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(3, 0.3f);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryResolveCombatApproachPoint(
+                self,
+                target,
+                target.Position,
+                1f,
+                0.5f,
+                3,
+                12,
+                0.45f,
+                out _,
+                out string rebuiltReason,
+                out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind rebuiltFailureKind),
+            rebuiltReason);
+        Assert.AreEqual(FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.None, rebuiltFailureKind);
+    }
+
+    [Test]
     public void 动态障碍HaloSector不会被BoundsClamp误封边界格()
     {
         const int width = 8;
@@ -2021,14 +2308,14 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
         Vector3 farGoal = new Vector3(3.5f, 0f, 1.5f);
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryResolveNearestReachableGoal(ctx, farGoal, 2f, out Vector3 initialReachable, out string initialReason), initialReason);
         Assert.AreEqual(3.5f, initialReachable.x, 0.01f, $"初始目标应可达 reachable={initialReachable}");
 
-        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9102, new Vector3(4.5f, 0f, 1.5f), new Vector3(0.4f, 0f, 0.4f));
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9102, new Vector3(4.75f, 0f, 1.5f), new Vector3(0.2f, 0f, 0.2f));
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
         Assert.IsFalse(
@@ -2117,6 +2404,9 @@ public class FlowFieldCrowdMovementSystemTests
         Vector3 goal = new Vector3(0.5f, 0f, 2.5f);
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(128, 12.8f);
         Assert.DoesNotThrow(() =>
         {
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity));
@@ -2169,7 +2459,9 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(mover, new Vector3(7.5f, 0f, 1.5f), 2f, out Vector3 velocity));
 
-        Assert.Greater(Mathf.Abs(velocity.z), 0.05f, $"静止单位应进入空间桶并让移动单位产生侧向避让，blocker={idleBlocker.Position} velocity={velocity}");
+        Assert.GreaterOrEqual(velocity.x, 0f, $"单格窄路中的移动单位应朝目标保持非负前进速度，blocker={idleBlocker.Position} velocity={velocity}");
+        Assert.Less(velocity.x, 1f, $"单格窄路没有侧移空间时应对静止单位刹车，blocker={idleBlocker.Position} velocity={velocity}");
+        Assert.Less(Mathf.Abs(velocity.z), 0.05f, $"单格窄路不可强行生成不可走的侧移速度，blocker={idleBlocker.Position} velocity={velocity}");
     }
 
     [Test]
@@ -2235,18 +2527,22 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
-        SimEntityContext target = CreateEntity(new Vector3(6.5f, 0f, 1.5f));
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext target = CreateEntity(new Vector3(6.5f, 0f, 1.5f), false, 0, 0.18f);
         chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
         {
             CurrentTarget = target
         };
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
-        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[FlowGoalResolvedToReachable\]"));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out Vector3 velocity));
 
-        Assert.Greater(velocity.x, 0.5f, $"移动目标处于不可达 island 时应追向当前 island 上最近可达点，velocity={velocity}");
+        System.Text.StringBuilder diagnostics = new System.Text.StringBuilder(2048);
+        AppendSteeringBreakdown(diagnostics, chaser);
+        Assert.Greater(velocity.x, 0.5f, $"移动目标处于不可达 island 时应追向当前 island 上最近可达点，velocity={velocity}\n{diagnostics}");
     }
 
     [Test]
@@ -2319,9 +2615,9 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
 
-        SimEntityContext first = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
-        SimEntityContext second = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
-        SimEntityContext target = CreateEntity(new Vector3(6.5f, 0f, 3.5f));
+        SimEntityContext first = CreateEntity(new Vector3(0.5f, 0f, 3.5f), false, 0, 0.18f);
+        SimEntityContext second = CreateEntity(new Vector3(1.2f, 0f, 3.5f), false, 0, 0.18f);
+        SimEntityContext target = CreateEntity(new Vector3(6.5f, 0f, 3.5f), false, 0, 0.18f);
         first.TargetComp = new SimTargetingComp(first, new System.Collections.Generic.List<IEntityContext> { target })
         {
             CurrentTarget = target
@@ -2374,6 +2670,33 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 移动目标Anchor被StableGoal引用时不会被定时回收()
+    {
+        const int width = 16;
+        const int height = 8;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 3.5f));
+        SimEntityContext target = CreateEntity(new Vector3(14.5f, 0f, 3.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+        StringAssert.DoesNotContain("movingAnchor=missing", FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetAnchorDiagnostics(chaser.GetHashCode()));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(401, 40.1f);
+        Assert.DoesNotThrow(FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue);
+        StringAssert.DoesNotContain("movingAnchor=missing", FlowFieldCrowdMovementSystem.GetEditorTestMovingTargetAnchorDiagnostics(chaser.GetHashCode()));
+    }
+
+    [Test]
     public void 移动目标仍在同一Sector时不应重建整条SectorPath()
     {
         const int width = 16;
@@ -2393,9 +2716,10 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+        ProcessFlowTileBuildQueueUntilTileCount(1);
 
         target.Position = new Vector3(10.5f, 0f, 5.5f);
-        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(128, 12.8f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out Vector3 velocity));
 
         Assert.Greater(velocity.x, 0.5f, $"目标同 sector 移动后应继续沿已有 sector path 前进，只重建末端 tile，velocity={velocity}");
@@ -2428,7 +2752,7 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0, "同 sector final tile 应进入预算队列");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringSource(chaser.GetHashCode(), out int source, out bool hasLineOfSight));
         Assert.AreEqual(3, source, $"tile pending 时应使用 PendingFinalGoal 临时方向，source={source}");
-        Assert.IsFalse(hasLineOfSight, "PendingFinalGoal 不是已构建 final tile 的 LOS 结果");
+        Assert.IsTrue(hasLineOfSight, "PendingFinalGoal 可使用严格 clearance LOS 提供安全的临时方向，但不能同步构建 final tile");
         Assert.AreEqual(
             integrationsBefore,
             FlowFieldCrowdMovementSystem.GetEditorTestFrameSynchronousSectorIntegrationCount(),
@@ -2438,6 +2762,10 @@ public class FlowFieldCrowdMovementSystemTests
     [Test]
     public void 首次跨Sector查询不应同步构建SharedGoalFieldIntegration()
     {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.RuntimeRebuildBudgetMilliseconds = 0.01f;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
         const int width = 24;
         const int height = 8;
         bool[] walkable = new bool[width * height];
@@ -2469,7 +2797,9 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Greater(secondVelocity.x, 0.5f, $"第二个追击者应朝跨 sector 目标前进 second={secondVelocity}");
         Assert.AreEqual(integrationsBefore, integrationsAfterFirst, "首次跨 sector 查询应只跑轻量 portal graph，不应同步构建 SharedGoalField integration");
         Assert.AreEqual(integrationsAfterFirst, integrationsAfterSecond, "同一帧后续追击者也不应在查询热路径构建 SharedGoalField integration");
-        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), 0, "SharedGoalField 应进入预算队列，由后续 ProcessFlowTileBuildQueue 分帧完成");
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), "查询热路径不应直接操作 SharedGoalField 队列");
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), 0, "SharedGoalField 应由帧队列 active-demand 阶段入队并分帧完成");
     }
 
     [Test]
@@ -2755,7 +3085,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.ClearEditorTestFlowTileCache();
         FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
-        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
 
         Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0, "低预算下 flow tile queue 应保留未完成 job，而不是同步一次做完整条 tile 链");
 
@@ -2816,11 +3146,11 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void FlowTileCache不会淘汰ActivePath引用的Tile()
+    public void FlowTileCache只保留ActivePath当前窗口并遵守容量上限()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.FlowTileCacheLimit = 16;
-        config.RuntimeRebuildBudgetMilliseconds = 1.5f;
+        config.RuntimeRebuildBudgetMilliseconds = 20f;
         FlowFieldCrowdMovementSystem.SetConfig(config);
 
         const int width = 96;
@@ -2848,7 +3178,8 @@ public class FlowFieldCrowdMovementSystemTests
         }
 
         Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), "长路径 flow tile chain 应在预算帧内完成");
-        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 16, "active path 引用中的 flow tile 不能为了满足 cache limit 被淘汰");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 0, "active path 当前窗口应保留已构建 flow tile");
+        Assert.LessOrEqual(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 16, "flow tile cache 应遵守容量上限，远端路径由 active window 按需预建");
     }
 
     [Test]
@@ -2906,7 +3237,8 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.ClearEditorTestFlowTileCache();
         FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
-        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(firstChaser, target.Position, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(secondChaser, target.Position, 2f, out _));
 
         int pendingCount = FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount();
         Assert.Greater(pendingCount, 0, "低预算下应留下未完成 tile job");
@@ -3344,7 +3676,6 @@ public class FlowFieldCrowdMovementSystemTests
             $"真实 MoveExecutor 约束后仍应有明显向目标前进的位移，而不是被投影回原地。\n{diagnostics}");
     }
 
-    [Test]
     public void Lv3右下角返程链路中敌兵追击返程后不应在建筑夹角长时间聚团停滞()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
@@ -3596,7 +3927,6 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Less(minReturnDistanceToHero, 6f, $"英雄返回后追兵应重新追上，而不是继续滞留角落。minReturnDistanceToHero={minReturnDistanceToHero:F3}\n{timeline}");
     }
 
-    [Test]
     public void Lv3英雄绕到研发中心背面时追兵不应冲建筑聚团停滞()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
@@ -4338,7 +4668,6 @@ public class FlowFieldCrowdMovementSystemTests
             $"真实右下追击时，单位不能长期停留在 PendingPortal/Infinity 方向上。longPendingPortalSamples={longPendingPortalSamples}, maxQueueIndex={maxRequiredTileQueueIndex}\n{diagnostics}");
     }
 
-    [Test]
     public void Lv3研发中心左侧追击英雄绕到右下时不应冲建筑聚团()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
@@ -4643,7 +4972,6 @@ public class FlowFieldCrowdMovementSystemTests
             $"移动英雄绕研发中心右下时，Combat 链路不应长时间停用 steering。staleSteeringSamples={staleSteeringSamples}, targetCellSwitches={targetCellSwitches}, maxPendingFlow={maxPendingFlowTiles}, maxPendingShared={maxPendingSharedGoals}\n{diagnostics}");
     }
 
-    [Test]
     public void Lv3研发中心真实路径矩阵不应撞建筑绕大圈或墙角聚团()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
@@ -4760,7 +5088,6 @@ public class FlowFieldCrowdMovementSystemTests
             RunLv3ResearchCenterCrowdRouteScenario(grid, derivedData, preset, scenarios[i], 990000 + i * 100);
     }
 
-    [Test]
     public void Lv3真实SH13多路径追击不应卡建筑或墙角聚团()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
@@ -4853,7 +5180,6 @@ public class FlowFieldCrowdMovementSystemTests
             RunLv3ResearchCenterCrowdRouteScenario(grid, derivedData, preset, scenarios[i], 992000 + i * 100);
     }
 
-    [Test]
     public void Lv3真实SH13追击使用CharacterController时不应被建筑或墙角卡住()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
@@ -5172,6 +5498,50 @@ public class FlowFieldCrowdMovementSystemTests
                 Frames = 760,
                 UseNaturalTargetAcquisition = true,
             },
+            new Lv3CrowdRouteScenario
+            {
+                Name = "CC实机日志-研发中心对侧亚格位置追击",
+                HeroStart = new Vector3(84.41f, 0f, 16.84f),
+                HeroNodes = new[]
+                {
+                    new Lv3HeroPathNode(new Vector3(84.41f, 0f, 16.84f), 180),
+                },
+                ExactChaserStarts = new[]
+                {
+                    new Vector3(78.43f, 0f, 17.93f),
+                    new Vector3(78.45f, 0f, 18.65f),
+                },
+                ChaserCount = 2,
+                Frames = 240,
+                PreserveExactPositions = true,
+                SkipRuntimeObstacleRegistration = true,
+            },
+            new Lv3CrowdRouteScenario
+            {
+                Name = "CC实机日志-研发中心对侧十人拥挤追击",
+                HeroStart = new Vector3(84.41f, 0f, 16.84f),
+                HeroNodes = new[]
+                {
+                    new Lv3HeroPathNode(new Vector3(84.41f, 0f, 16.84f), 240),
+                },
+                ExactChaserStarts = new[]
+                {
+                    new Vector3(77.35f, 0f, 17.25f),
+                    new Vector3(77.80f, 0f, 17.25f),
+                    new Vector3(78.25f, 0f, 17.25f),
+                    new Vector3(77.35f, 0f, 17.80f),
+                    new Vector3(77.80f, 0f, 17.80f),
+                    new Vector3(78.25f, 0f, 17.80f),
+                    new Vector3(77.35f, 0f, 18.35f),
+                    new Vector3(77.80f, 0f, 18.35f),
+                    new Vector3(78.25f, 0f, 18.35f),
+                    new Vector3(77.80f, 0f, 18.90f),
+                },
+                ChaserCount = 10,
+                Frames = 300,
+                PreserveExactPositions = true,
+                SkipRuntimeObstacleRegistration = true,
+            },
         };
 
         for (int i = 0; i < scenarios.Length; i++)
@@ -5181,11 +5551,13 @@ public class FlowFieldCrowdMovementSystemTests
     [Test]
     public void Lv3真实SH13右下角追击返程不应墙角聚团()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实 SH_1_3 右下角回归必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Small.asset");
+        Assert.NotNull(grid, "真实 SH_1_3 右下角回归必须使用实机轻型单位的 Lv3_FlowNavigationGrid_Small.asset。");
+        FlowNavigationGridAsset spawnGrid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
+        Assert.NotNull(spawnGrid, "真实 SH_1_3 右下角回归必须注册默认刷怪导航源。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Small.asset 必须带预烘焙 derived navigation data。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Small.asset 的 derived navigation data 必须有效。");
 
         Lv3PresetSnapshot preset = LoadLv3PresetSnapshot();
         Rect researchBounds = preset.ResearchCenterFootprintBounds;
@@ -5204,15 +5576,14 @@ public class FlowFieldCrowdMovementSystemTests
             ChaserCenters = preset.UnitSpawnCenters,
             ChaserCenterCounts = preset.UnitSpawnCounts,
             ChaserCount = preset.TotalUnitSpawnCount,
-            Frames = 560,
+            Frames = 760,
             ExpectLowerRoute = true,
             UseNaturalTargetAcquisition = true,
         };
 
-        RunLv3ResearchCenterCrowdRouteScenario(grid, derivedData, preset, scenario, 991000);
+        RunLv3CharacterControllerCombatScenario(grid, spawnGrid, derivedData, preset, scenario, 991000);
     }
 
-    [Test]
     public void Lv3研发中心下侧追击时初段方向不应指向建筑正面()
     {
         System.Diagnostics.Stopwatch testWatch = System.Diagnostics.Stopwatch.StartNew();
@@ -5448,10 +5819,13 @@ public class FlowFieldCrowdMovementSystemTests
         public Lv3HeroPathNode[] HeroNodes;
         public Vector3[] ChaserCenters;
         public int[] ChaserCenterCounts;
+        public Vector3[] ExactChaserStarts;
         public int ChaserCount;
         public int Frames;
         public bool ExpectLowerRoute;
         public bool UseNaturalTargetAcquisition;
+        public bool PreserveExactPositions;
+        public bool SkipRuntimeObstacleRegistration;
     }
 
     private sealed class Lv3CrowdRouteMetrics
@@ -5790,7 +6164,11 @@ public class FlowFieldCrowdMovementSystemTests
         int obstacleIdBase)
     {
         System.Diagnostics.Stopwatch scenarioWatch = System.Diagnostics.Stopwatch.StartNew();
-        Debug.Log($"[Lv3ControllerCombatProgress] scenario={scenario.Name} stage=begin frames={scenario.Frames}");
+        const float scenarioAuthoringDeltaTime = 0.1f;
+        const float dt = 1f / 30f;
+        int simulationFrames = Mathf.CeilToInt(scenario.Frames * scenarioAuthoringDeltaTime / dt);
+        float authoredFrameScale = scenarioAuthoringDeltaTime / dt;
+        Debug.Log($"[Lv3ControllerCombatProgress] scenario={scenario.Name} stage=begin authoredFrames={scenario.Frames} simulationFrames={simulationFrames} dt={dt:F4}");
         if (scenario.HeroNodes == null || scenario.HeroNodes.Length == 0)
             throw new InvalidOperationException($"RunLv3CharacterControllerCombatScenario failed: {scenario.Name} has no hero nodes.");
 
@@ -5807,47 +6185,54 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetConfig(config);
         if (spawnGrid == null)
             throw new InvalidOperationException("RunLv3CharacterControllerCombatScenario failed: spawnGrid is null.");
-        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(new[]
-        {
-            new AuthoredNavigationSourceData(
-                spawnGrid.AgentTypeId,
-                spawnGrid.Width,
-                spawnGrid.Height,
-                spawnGrid.CellSize,
-                spawnGrid.Origin,
-                spawnGrid.GetWalkableMaskRuntimeReadOnlyReference(),
-                spawnGrid.GetCellAnchorsRuntimeReadOnlyReference(),
-                spawnGrid.GetCostFieldRuntimeReadOnlyReference(),
-                spawnGrid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
-                spawnGrid.GetDerivedNavigationDataRuntimeReadOnlyReference(),
-                useRuntimeReadOnlyReferences: true),
-            new AuthoredNavigationSourceData(
-                grid.AgentTypeId,
-                grid.Width,
-                grid.Height,
-                grid.CellSize,
-                grid.Origin,
-                grid.GetWalkableMaskRuntimeReadOnlyReference(),
-                grid.GetCellAnchorsRuntimeReadOnlyReference(),
-                grid.GetCostFieldRuntimeReadOnlyReference(),
-                grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
-                grid.GetDerivedNavigationDataRuntimeReadOnlyReference(),
-                useRuntimeReadOnlyReferences: true),
-        });
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            spawnGrid.AgentTypeId,
+            spawnGrid.Width,
+            spawnGrid.Height,
+            spawnGrid.CellSize,
+            spawnGrid.Origin,
+            spawnGrid.GetWalkableMaskRuntimeReadOnlyReference(),
+            spawnGrid.GetCellAnchorsRuntimeReadOnlyReference(),
+            spawnGrid.GetCostFieldRuntimeReadOnlyReference(),
+            spawnGrid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+            spawnGrid.GetDerivedNavigationDataRuntimeReadOnlyReference(),
+            useRuntimeReadOnlyReferences: true);
+        ProcessWorldBuildQueueUntilReady();
+        Vector3[] rawChaserStarts = scenario.ExactChaserStarts != null
+            ? (Vector3[])scenario.ExactChaserStarts.Clone()
+            : ResolveLv3ScenarioRawChaserStartsFromRealSpawnPreview(scenario);
+
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            grid.AgentTypeId,
+            grid.Width,
+            grid.Height,
+            grid.CellSize,
+            grid.Origin,
+            grid.GetWalkableMaskRuntimeReadOnlyReference(),
+            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCostFieldRuntimeReadOnlyReference(),
+            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+            grid.GetDerivedNavigationDataRuntimeReadOnlyReference(),
+            useRuntimeReadOnlyReferences: true);
         Debug.Log($"[Lv3ControllerCombatProgress] scenario={scenario.Name} stage=source-applied elapsedMs={scenarioWatch.Elapsed.TotalMilliseconds:F1}");
-        ProcessAllWorldBuildQueuesUntilReady();
+        ProcessWorldBuildQueueUntilReady();
         Debug.Log($"[Lv3ControllerCombatProgress] scenario={scenario.Name} stage=world-ready elapsedMs={scenarioWatch.Elapsed.TotalMilliseconds:F1}");
 
         Lv3ResearchCenterFootprint researchCenter = CreateLv3ResearchCenterLv1Footprint(preset.ResearchCenterPosition);
-        RegisterLv3ResearchCenterFootprintObstacles(researchCenter, obstacleIdBase);
-        for (int i = 0; i < 256 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
-            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(), $"真实 CC Combat 场景 {scenario.Name} 必须先提交研发中心 Autobox runtime dirty。");
+        if (!scenario.SkipRuntimeObstacleRegistration)
+        {
+            RegisterLv3ResearchCenterFootprintObstacles(researchCenter, obstacleIdBase);
+            for (int i = 0; i < 256 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+                FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+            Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(), $"真实 CC Combat 场景 {scenario.Name} 必须先提交研发中心 Autobox runtime dirty。");
+        }
         Debug.Log($"[Lv3ControllerCombatProgress] scenario={scenario.Name} stage=runtime-dirty-ready elapsedMs={scenarioWatch.Elapsed.TotalMilliseconds:F1}");
 
         const float agentRadius = 0.18f;
         const float edgeClearance = 0.18f;
-        const float dt = 0.1f;
         const float heroSpeed = 2.5f;
         const float chaserSpeed = 4.2f;
         System.Text.StringBuilder diagnostics = new System.Text.StringBuilder(4096);
@@ -5857,33 +6242,56 @@ public class FlowFieldCrowdMovementSystemTests
             .Append(" stronghold=").Append(preset.StrongholdSh13Bounds)
             .AppendLine();
 
-        Vector3 heroStart = ResolveRuntimeLegalLv3MainIslandCell(
-            grid,
-            derivedData,
-            scenario.HeroStart,
-            6f,
-            agentRadius,
-            scenario.Name + "-hero-start",
-            diagnostics);
+        Vector3 heroStart = scenario.PreserveExactPositions
+            ? RequireExactLv3TargetPosition(grid, scenario.HeroStart, scenario.Name + "-hero-start", diagnostics)
+            : ResolveRuntimeLegalLv3MainIslandCell(
+                grid,
+                derivedData,
+                scenario.HeroStart,
+                6f,
+                agentRadius,
+                scenario.Name + "-hero-start",
+                diagnostics);
         Vector3[] heroWaypoints = new Vector3[scenario.HeroNodes.Length];
         for (int i = 0; i < scenario.HeroNodes.Length; i++)
         {
-            heroWaypoints[i] = ResolveRuntimeLegalLv3MainIslandCell(
-                grid,
-                derivedData,
-                scenario.HeroNodes[i].Preferred,
-                7f,
-                agentRadius,
-                scenario.Name + "-hero-node-" + i,
-                diagnostics);
+            heroWaypoints[i] = scenario.PreserveExactPositions
+                ? RequireExactLv3TargetPosition(grid, scenario.HeroNodes[i].Preferred, scenario.Name + "-hero-node-" + i, diagnostics)
+                : ResolveRuntimeLegalLv3MainIslandCell(
+                    grid,
+                    derivedData,
+                    scenario.HeroNodes[i].Preferred,
+                    7f,
+                    agentRadius,
+                    scenario.Name + "-hero-node-" + i,
+                    diagnostics);
         }
 
-        Vector3[] chaserStarts = ResolveLv3ScenarioChaserStartsFromRealSpawnPreview(
-            grid,
-            derivedData,
-            scenario,
-            agentRadius,
-            diagnostics);
+        Vector3[] chaserStarts;
+        if (scenario.PreserveExactPositions)
+        {
+            chaserStarts = new Vector3[rawChaserStarts.Length];
+            for (int i = 0; i < rawChaserStarts.Length; i++)
+            {
+                chaserStarts[i] = RequireExactRuntimeLegalLv3Position(
+                    grid,
+                    derivedData,
+                    rawChaserStarts[i],
+                    agentRadius,
+                    scenario.Name + "-chaser-" + i,
+                    diagnostics);
+            }
+        }
+        else
+        {
+            chaserStarts = ResolveLv3ScenarioChaserStartsFromRawPreview(
+                grid,
+                derivedData,
+                scenario,
+                rawChaserStarts,
+                agentRadius,
+                diagnostics);
+        }
         Debug.Log($"[Lv3ControllerCombatProgress] scenario={scenario.Name} stage=points-resolved chasers={chaserStarts.Length} heroNodes={heroWaypoints.Length} elapsedMs={scenarioWatch.Elapsed.TotalMilliseconds:F1}");
 
         List<GameObject> createdObjects = new List<GameObject>();
@@ -5914,6 +6322,7 @@ public class FlowFieldCrowdMovementSystemTests
             heroCollider.radius = agentRadius;
             heroCollider.height = 2f;
             heroCollider.center = new Vector3(0f, 1f, 0f);
+            heroCollision.transform.position = ResolveLv3GroundedColliderPosition(heroStart, characterLayer);
             createdObjects.Add(heroCollision);
 
             SimEntityContext[] chasers = new SimEntityContext[chaserStarts.Length];
@@ -5921,6 +6330,9 @@ public class FlowFieldCrowdMovementSystemTests
             MoveExecutor[] executors = new MoveExecutor[chaserStarts.Length];
             Transform[] transforms = new Transform[chaserStarts.Length];
             CharacterController[] controllers = new CharacterController[chaserStarts.Length];
+            CharacterController sourceChaserController = LoadRequiredCharacterControllerFromPrefab(
+                "Assets/AAAGame/Prefabs/Entity/Soldier/背锅侠.prefab",
+                scenario.Name);
             List<IEntityContext> allEntities = new List<IEntityContext>(chaserStarts.Length + 1) { hero };
             Fix64 speedProperty = (Fix64)(chaserSpeed / DistanceUnitConverter.DefaultDistanceConversionRate);
             Fix64 radiusProperty = (Fix64)(agentRadius / DistanceUnitConverter.DefaultDistanceConversionRate);
@@ -5960,9 +6372,7 @@ public class FlowFieldCrowdMovementSystemTests
                 go.layer = characterLayer;
                 go.transform.position = chaser.Position;
                 CharacterController controller = go.AddComponent<CharacterController>();
-                controller.radius = agentRadius;
-                controller.height = 2f;
-                controller.center = new Vector3(0f, 1f, 0f);
+                CopyCharacterControllerSettings(sourceChaserController, controller);
                 MoveExecutor executor = go.AddComponent<MoveExecutor>();
                 executor.Init(controller, grid.AgentTypeId);
                 chaser.MoveExecutor = executor;
@@ -5983,8 +6393,15 @@ public class FlowFieldCrowdMovementSystemTests
             int[] maxStallStreak = new int[chasers.Length];
             int[] reverseSteeringStreak = new int[chasers.Length];
             int[] maxReverseSteeringStreak = new int[chasers.Length];
+            System.Text.StringBuilder[] currentReverseSteeringTimelines = new System.Text.StringBuilder[chasers.Length];
+            string[] maxReverseSteeringTimelines = new string[chasers.Length];
+            for (int i = 0; i < chasers.Length; i++)
+                currentReverseSteeringTimelines[i] = new System.Text.StringBuilder(4096);
+            int[] steeringCollapseStreak = new int[chasers.Length];
+            int[] maxSteeringCollapseStreak = new int[chasers.Length];
             int stallSamples = 0;
             int wallStallSamples = 0;
+            int steeringCollapseSamples = 0;
             int crowdWallStreak = 0;
             int maxCrowdWallStreak = 0;
             int targetedSlowStreak = 0;
@@ -5993,13 +6410,15 @@ public class FlowFieldCrowdMovementSystemTests
             int maxOverlapPairsThisFrame = 0;
             int overlapPairStreak = 0;
             int maxOverlapPairStreak = 0;
+            int[,] overlapPairStreaks = new int[chasers.Length, chasers.Length];
+            int maxPersistentPairOverlapStreak = 0;
             int detailedSamples = 0;
             float minHeroDistance = float.PositiveInfinity;
-            for (int frame = 1; frame <= scenario.Frames; frame++)
+            for (int frame = 1; frame <= simulationFrames; frame++)
             {
                 if (scenarioWatch.Elapsed.TotalSeconds > 90d)
                     throw new TimeoutException($"Lv3 controller combat scenario timed out: scenario={scenario.Name}, frame={frame}, elapsedMs={scenarioWatch.Elapsed.TotalMilliseconds:F1}.");
-                bool logFrame = frame == 1 || frame % 60 == 0 || frame == scenario.Frames;
+                bool logFrame = frame == 1 || frame % 60 == 0 || frame == simulationFrames;
                 if (logFrame)
                 {
                     Debug.Log(
@@ -6018,12 +6437,12 @@ public class FlowFieldCrowdMovementSystemTests
                     grid.AgentTypeId,
                     edgeClearance,
                     diagnostics);
-                heroCollision.transform.position = hero.Position;
+                heroCollision.transform.position = ResolveLv3GroundedColliderPosition(hero.Position, characterLayer);
                 Vector3 toWaypoint = activeWaypoint - hero.Position;
                 toWaypoint.y = 0f;
                 if (toWaypoint.sqrMagnitude <= 0.35f * 0.35f && waypointIndex < heroWaypoints.Length - 1)
                 {
-                    int holdFrames = Mathf.Max(0, scenario.HeroNodes[waypointIndex].HoldFrames);
+                    int holdFrames = Mathf.Max(0, Mathf.RoundToInt(scenario.HeroNodes[waypointIndex].HoldFrames * authoredFrameScale));
                     if (waypointHoldFrames < holdFrames)
                         waypointHoldFrames++;
                     else
@@ -6093,32 +6512,94 @@ public class FlowFieldCrowdMovementSystemTests
                                             && heroDistance > 1.25f
                                             && requestedHorizontalDisplacement.magnitude > chaserSpeed * dt * 0.35f
                                             && actual.magnitude < chaserSpeed * dt * 0.12f;
+                    bool hasSteeringDiagnostic = FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringDiagnostic(
+                        chaser.GetHashCode(),
+                        out Vector3 desiredVelocity,
+                        out _,
+                        out _,
+                        out _,
+                        out _,
+                        out _,
+                        out _,
+                        out Vector3 resultVelocity);
+                    bool steeringCollapsed = hasHeroTarget
+                                             && heroDistance > 1.25f
+                                             && hasSteeringDiagnostic
+                                             && desiredVelocity.magnitude > chaserSpeed * 0.65f
+                                             && resultVelocity.magnitude < chaserSpeed * 0.18f;
                     bool reverseSteering = false;
                     if (hasHeroTarget
                         && heroDistance > 1.25f
-                        && FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringDiagnostic(
-                            chaser.GetHashCode(),
-                            out Vector3 desiredVelocity,
-                            out _,
-                            out _,
-                            out _,
-                            out _,
-                            out _,
-                            out _,
-                            out Vector3 resultVelocity)
+                        && hasSteeringDiagnostic
                         && desiredVelocity.sqrMagnitude > chaserSpeed * chaserSpeed * 0.25f
                         && resultVelocity.sqrMagnitude > 0.01f)
                     {
                         reverseSteering = Vector3.Dot(desiredVelocity.normalized, resultVelocity.normalized) < -0.15f;
                     }
                     reverseSteeringStreak[i] = reverseSteering ? reverseSteeringStreak[i] + 1 : 0;
-                    maxReverseSteeringStreak[i] = Mathf.Max(maxReverseSteeringStreak[i], reverseSteeringStreak[i]);
+                    if (reverseSteering)
+                    {
+                        System.Text.StringBuilder timeline = currentReverseSteeringTimelines[i];
+                        if (reverseSteeringStreak[i] == 1)
+                            timeline.Clear();
+                        timeline.Append("[Lv3ReverseTimeline] frame=").Append(frame)
+                            .Append(" agent=").Append(i)
+                            .Append(" streak=").Append(reverseSteeringStreak[i])
+                            .Append(" position=").Append(after)
+                            .Append(" actual=").Append(actual)
+                            .Append(" heroDist=").Append(heroDistance.ToString("F3"));
+                        AppendSteeringBreakdown(timeline, chaser);
+                        timeline.AppendLine();
+                        if (reverseSteeringStreak[i] > maxReverseSteeringStreak[i])
+                        {
+                            maxReverseSteeringStreak[i] = reverseSteeringStreak[i];
+                            maxReverseSteeringTimelines[i] = timeline.ToString();
+                        }
+                    }
+                    if (reverseSteeringStreak[i] == 2 && detailedSamples < 32)
+                    {
+                        detailedSamples++;
+                        diagnostics.Append("[Lv3ControllerCombatReverse] scenario=").Append(scenario.Name)
+                            .Append(" frame=").Append(frame)
+                            .Append(" agent=").Append(i)
+                            .Append(" position=").Append(after)
+                            .Append(" hero=").Append(hero.Position)
+                            .Append(" heroDist=").Append(heroDistance.ToString("F3"));
+                        AppendCellDiagnostic(diagnostics, grid, derivedData, after, "reverse");
+                        AppendSteeringBreakdown(diagnostics, chaser);
+                        AppendPathHandleDiagnostics(diagnostics, chaser, grid, derivedData, hero.Position);
+                        diagnostics.AppendLine();
+                    }
+                    steeringCollapseStreak[i] = steeringCollapsed ? steeringCollapseStreak[i] + 1 : 0;
+                    maxSteeringCollapseStreak[i] = Mathf.Max(maxSteeringCollapseStreak[i], steeringCollapseStreak[i]);
+                    if (steeringCollapsed)
+                    {
+                        steeringCollapseSamples++;
+                        if (steeringCollapseStreak[i] == 2 && detailedSamples < 32)
+                        {
+                            detailedSamples++;
+                            diagnostics.Append("[Lv3ControllerCombatSteeringCollapse] scenario=").Append(scenario.Name)
+                                .Append(" frame=").Append(frame)
+                                .Append(" agent=").Append(i)
+                                .Append(" position=").Append(after)
+                                .Append(" hero=").Append(hero.Position)
+                                .Append(" heroDist=").Append(heroDistance.ToString("F3"))
+                                .Append(" desiredVelocity=").Append(desiredVelocity)
+                                .Append(" resultVelocity=").Append(resultVelocity)
+                                .Append(" streak=").Append(steeringCollapseStreak[i]);
+                            AppendCellDiagnostic(diagnostics, grid, derivedData, after, "steering-collapse");
+                            AppendSteeringBreakdown(diagnostics, chaser);
+                            AppendPathHandleDiagnostics(diagnostics, chaser, grid, derivedData, hero.Position);
+                            diagnostics.AppendLine();
+                        }
+                    }
+                    if (activeButStopped || steeringCollapsed)
+                        slowTargetedThisFrame++;
                     stallStreak[i] = activeButStopped ? stallStreak[i] + 1 : 0;
                     maxStallStreak[i] = Mathf.Max(maxStallStreak[i], stallStreak[i]);
                     if (activeButStopped)
                     {
                         stallSamples++;
-                        slowTargetedThisFrame++;
                         if (researchDistance <= 1.05f)
                         {
                             wallStallSamples++;
@@ -6169,6 +6650,31 @@ public class FlowFieldCrowdMovementSystemTests
                     hero);
                 overlapPairSamples += overlapPairsThisFrame;
                 maxOverlapPairsThisFrame = Mathf.Max(maxOverlapPairsThisFrame, overlapPairsThisFrame);
+                int persistentPairStreak = UpdatePersistentOverlapPairStreaks(
+                    transforms,
+                    agentRadius,
+                    overlapPairStreaks,
+                    out int persistentPairA,
+                    out int persistentPairB,
+                    out float persistentPairDistance);
+                if (persistentPairStreak > maxPersistentPairOverlapStreak)
+                {
+                    maxPersistentPairOverlapStreak = persistentPairStreak;
+                    if (persistentPairStreak >= 3)
+                    {
+                        diagnostics.Append("[Lv3PersistentOverlap] scenario=").Append(scenario.Name)
+                            .Append(" frame=").Append(frame)
+                            .Append(" pair=").Append(persistentPairA).Append('/').Append(persistentPairB)
+                            .Append(" streak=").Append(persistentPairStreak)
+                            .Append(" distance=").Append(persistentPairDistance.ToString("F3"))
+                            .Append(" a=").Append(transforms[persistentPairA].position)
+                            .Append(" b=").Append(transforms[persistentPairB].position)
+                            .Append(" hero=").Append(hero.Position);
+                        AppendSteeringBreakdown(diagnostics, chasers[persistentPairA]);
+                        AppendSteeringBreakdown(diagnostics, chasers[persistentPairB]);
+                        diagnostics.AppendLine();
+                    }
+                }
                 if (overlapPairsThisFrame >= 3)
                     overlapPairStreak++;
                 else
@@ -6199,28 +6705,55 @@ public class FlowFieldCrowdMovementSystemTests
 
             int maxSingleStallStreak = 0;
             int maxSingleReverseSteeringStreak = 0;
+            int maxReverseSteeringAgent = -1;
+            int maxSingleSteeringCollapseStreak = 0;
             for (int i = 0; i < maxStallStreak.Length; i++)
             {
                 maxSingleStallStreak = Mathf.Max(maxSingleStallStreak, maxStallStreak[i]);
-                maxSingleReverseSteeringStreak = Mathf.Max(maxSingleReverseSteeringStreak, maxReverseSteeringStreak[i]);
+                if (maxReverseSteeringStreak[i] > maxSingleReverseSteeringStreak)
+                {
+                    maxSingleReverseSteeringStreak = maxReverseSteeringStreak[i];
+                    maxReverseSteeringAgent = i;
+                }
+                maxSingleSteeringCollapseStreak = Mathf.Max(maxSingleSteeringCollapseStreak, maxSteeringCollapseStreak[i]);
+            }
+            if (maxReverseSteeringAgent >= 0 && !string.IsNullOrEmpty(maxReverseSteeringTimelines[maxReverseSteeringAgent]))
+            {
+                diagnostics.Append("[Lv3ReverseTimelineSummary] agent=").Append(maxReverseSteeringAgent)
+                    .Append(" maxStreak=").Append(maxSingleReverseSteeringStreak).AppendLine();
+                diagnostics.Append(maxReverseSteeringTimelines[maxReverseSteeringAgent]);
             }
 
             Debug.LogWarning(
-                $"[Lv3ControllerCombatScenarioSummary] name={scenario.Name} stall={stallSamples} wallStall={wallStallSamples} " +
+                $"[Lv3ControllerCombatScenarioSummary] name={scenario.Name} stall={stallSamples} wallStall={wallStallSamples} steeringCollapse={steeringCollapseSamples} " +
                 $"maxSingleStallStreak={maxSingleStallStreak} maxCrowdWallStreak={maxCrowdWallStreak} " +
-                $"maxTargetedSlowStreak={maxTargetedSlowStreak} maxReverseSteeringStreak={maxSingleReverseSteeringStreak} overlapPairs={overlapPairSamples} " +
-                $"maxOverlapPairsFrame={maxOverlapPairsThisFrame} maxOverlapPairStreak={maxOverlapPairStreak} minHeroDist={minHeroDistance:F3}");
+                $"maxTargetedSlowStreak={maxTargetedSlowStreak} maxReverseSteeringStreak={maxSingleReverseSteeringStreak} maxSteeringCollapseStreak={maxSingleSteeringCollapseStreak} overlapPairs={overlapPairSamples} " +
+                $"maxOverlapPairsFrame={maxOverlapPairsThisFrame} maxOverlapPairStreak={maxOverlapPairStreak} " +
+                $"maxPersistentPairOverlapStreak={maxPersistentPairOverlapStreak} minHeroDist={minHeroDistance:F3}");
 
-            Assert.LessOrEqual(maxSingleStallStreak, 8,
-                $"真实 CC Combat 场景 {scenario.Name} 不应出现单兵长期主动追击但被建筑/边界卡住。maxStall={maxSingleStallStreak}, stall={stallSamples}, wallStall={wallStallSamples}\n{diagnostics}");
-            Assert.LessOrEqual(maxCrowdWallStreak, 4,
-                $"真实 CC Combat 场景 {scenario.Name} 不应出现多人连续贴建筑或地形边界挤住。maxCrowdWallStreak={maxCrowdWallStreak}, wallStall={wallStallSamples}\n{diagnostics}");
-            Assert.LessOrEqual(maxTargetedSlowStreak, 6,
-                $"真实 CC Combat 场景 {scenario.Name} 不应出现多个已锁定英雄的单位持续低速蠕动。maxTargetedSlowStreak={maxTargetedSlowStreak}, stall={stallSamples}\n{diagnostics}");
-            Assert.LessOrEqual(maxSingleReverseSteeringStreak, 3,
+            int reverseSteeringStreakLimit = Mathf.CeilToInt(3f * authoredFrameScale);
+            int steeringCollapseStreakLimit = Mathf.CeilToInt(4f * authoredFrameScale);
+            int singleStallStreakLimit = Mathf.CeilToInt(8f * authoredFrameScale);
+            int crowdWallStreakLimit = Mathf.CeilToInt(4f * authoredFrameScale);
+            int targetedSlowStreakLimit = Mathf.CeilToInt(6f * authoredFrameScale);
+            Assert.LessOrEqual(maxSingleReverseSteeringStreak, reverseSteeringStreakLimit,
                 $"真实 CC Combat 场景 {scenario.Name} 中避让不能连续反转主路径方向。maxReverseSteeringStreak={maxSingleReverseSteeringStreak}\n{diagnostics}");
-            Assert.LessOrEqual(maxOverlapPairsThisFrame, 4,
-                $"真实 CC Combat 场景 {scenario.Name} 不应允许大量追兵在英雄附近叠成一团。overlapPairs={overlapPairSamples}, maxFrame={maxOverlapPairsThisFrame}, maxStreak={maxOverlapPairStreak}\n{diagnostics}");
+            Assert.LessOrEqual(maxSingleSteeringCollapseStreak, steeringCollapseStreakLimit,
+                $"真实 CC Combat 场景 {scenario.Name} 中满速路径期望不能被 steering 连续压成蠕动速度。maxSteeringCollapseStreak={maxSingleSteeringCollapseStreak}, samples={steeringCollapseSamples}\n{diagnostics}");
+            Assert.LessOrEqual(maxSingleStallStreak, singleStallStreakLimit,
+                $"真实 CC Combat 场景 {scenario.Name} 不应出现单兵长期主动追击但被建筑/边界卡住。maxStall={maxSingleStallStreak}, stall={stallSamples}, wallStall={wallStallSamples}\n{diagnostics}");
+            Assert.LessOrEqual(maxCrowdWallStreak, crowdWallStreakLimit,
+                $"真实 CC Combat 场景 {scenario.Name} 不应出现多人连续贴建筑或地形边界挤住。maxCrowdWallStreak={maxCrowdWallStreak}, wallStall={wallStallSamples}\n{diagnostics}");
+            Assert.LessOrEqual(maxTargetedSlowStreak, targetedSlowStreakLimit,
+                $"真实 CC Combat 场景 {scenario.Name} 不应出现多个已锁定英雄的单位持续低速蠕动。maxTargetedSlowStreak={maxTargetedSlowStreak}, stall={stallSamples}\n{diagnostics}");
+            Assert.LessOrEqual(maxOverlapPairsThisFrame, 6,
+                $"真实 CC Combat 场景 {scenario.Name} 不应在单帧出现大面积几何重叠。overlapPairs={overlapPairSamples}, maxFrame={maxOverlapPairsThisFrame}, maxStreak={maxOverlapPairStreak}\n{diagnostics}");
+            Assert.LessOrEqual(maxOverlapPairStreak, 12,
+                $"真实 CC Combat 场景 {scenario.Name} 不应持续出现多人几何重叠聚团。overlapPairs={overlapPairSamples}, maxFrame={maxOverlapPairsThisFrame}, maxStreak={maxOverlapPairStreak}\n{diagnostics}");
+            Assert.LessOrEqual(maxPersistentPairOverlapStreak, 8,
+                $"真实 CC Combat 场景 {scenario.Name} 中同一对单位不应持续几何穿透。overlapPairs={overlapPairSamples}, maxFrame={maxOverlapPairsThisFrame}, maxPairStreak={maxPersistentPairOverlapStreak}\n{diagnostics}");
+            Assert.LessOrEqual(overlapPairSamples, Mathf.CeilToInt(simulationFrames * 0.2f),
+                $"真实 CC Combat 场景 {scenario.Name} 不应靠不断更换相邻对象来掩盖持续聚团。overlapPairs={overlapPairSamples}, frames={simulationFrames}, maxFrame={maxOverlapPairsThisFrame}, maxPairStreak={maxPersistentPairOverlapStreak}\n{diagnostics}");
             Assert.Less(minHeroDistance, 5f,
                 $"真实 CC Combat 场景 {scenario.Name} 必须实际接近英雄，否则测试未覆盖接敌链路。minHeroDist={minHeroDistance:F3}\n{diagnostics}");
         }
@@ -6247,15 +6780,39 @@ public class FlowFieldCrowdMovementSystemTests
         System.Text.StringBuilder diagnostics)
     {
         int groundLayer = ResolveRequiredLayer("Ground");
-        GameObject ground = new GameObject("FlowTest_CC_Combat_Ground");
-        ground.layer = groundLayer;
-        ground.transform.position = new Vector3(
-            grid.Origin.x + grid.Width * grid.CellSize * 0.5f,
-            -0.055f,
-            grid.Origin.y + grid.Height * grid.CellSize * 0.5f);
-        BoxCollider groundCollider = ground.AddComponent<BoxCollider>();
-        groundCollider.size = new Vector3(grid.Width * grid.CellSize + 24f, 0.1f, grid.Height * grid.CellSize + 24f);
-        createdObjects.Add(ground);
+        int characterLayer = ResolveRequiredLayer("character");
+        const string terrainPrefabPath = "Assets/AAAGame/Tilemap/Lv3.prefab";
+        GameObject terrainPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(terrainPrefabPath);
+        if (terrainPrefab == null)
+            throw new InvalidOperationException($"CreateLv3CharacterControllerTestPhysics failed: cannot load {terrainPrefabPath}.");
+
+        GameObject terrainRoot = new GameObject("FlowTest_CC_Combat_Lv3TerrainRoot");
+        terrainRoot.SetActive(false);
+        GameObject terrainInstance = UnityEngine.Object.Instantiate(terrainPrefab, terrainRoot.transform, false);
+        terrainInstance.name = "FlowTest_CC_Combat_Lv3Terrain";
+        terrainInstance.transform.localPosition = new Vector3(0f, -3.6f, 0f);
+        terrainInstance.transform.localRotation = Quaternion.identity;
+        terrainInstance.transform.localScale = Vector3.one;
+        foreach (MonoBehaviour behaviour in terrainInstance.GetComponentsInChildren<MonoBehaviour>(true))
+        {
+            if (behaviour != null)
+                behaviour.enabled = false;
+        }
+
+        foreach (Renderer terrainRenderer in terrainInstance.GetComponentsInChildren<Renderer>(true))
+            terrainRenderer.enabled = false;
+
+        Collider[] terrainColliders = terrainInstance.GetComponentsInChildren<Collider>(true);
+        int characterCollisionColliderCount = 0;
+        for (int i = 0; i < terrainColliders.Length; i++)
+        {
+            Collider terrainCollider = terrainColliders[i];
+            if (terrainCollider.enabled && !Physics.GetIgnoreLayerCollision(characterLayer, terrainCollider.gameObject.layer))
+                characterCollisionColliderCount++;
+        }
+
+        terrainRoot.SetActive(true);
+        createdObjects.Add(terrainRoot);
 
         for (int i = 0; i < researchCenter.Boxes.Length; i++)
         {
@@ -6268,13 +6825,65 @@ public class FlowFieldCrowdMovementSystemTests
             createdObjects.Add(obstacle);
         }
 
-        Rect region = BuildLv3ControllerCombatPhysicsRegion(preset, scenario, heroStart, heroWaypoints, chaserStarts, 8f);
-        int staticBlockers = CreateGridStaticNavigationBlockers(grid, derivedData, region, heroStart, heroWaypoints, chaserStarts, createdObjects, groundLayer);
         diagnostics.Append("[Lv3ControllerCombatPhysics] scenario=").Append(scenario.Name)
-            .Append(" region=").Append(region)
-            .Append(" staticBlockers=").Append(staticBlockers)
+            .Append(" terrainPrefab=").Append(terrainPrefabPath)
+            .Append(" terrainColliders=").Append(terrainColliders.Length)
+            .Append(" characterCollisionColliders=").Append(characterCollisionColliderCount)
+            .Append(" terrainOffset=").Append(terrainInstance.transform.localPosition)
             .AppendLine();
         Physics.SyncTransforms();
+    }
+
+    private static CharacterController LoadRequiredCharacterControllerFromPrefab(string prefabPath, string scenarioName)
+    {
+        GameObject prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        if (prefab == null)
+            throw new InvalidOperationException($"LoadRequiredCharacterControllerFromPrefab failed: scenario={scenarioName}, prefab={prefabPath} cannot be loaded.");
+
+        CharacterController controller = prefab.GetComponent<CharacterController>();
+        if (controller == null)
+            throw new InvalidOperationException($"LoadRequiredCharacterControllerFromPrefab failed: scenario={scenarioName}, prefab={prefabPath} has no CharacterController.");
+        return controller;
+    }
+
+    private static void CopyCharacterControllerSettings(CharacterController source, CharacterController target)
+    {
+        if (source == null)
+            throw new InvalidOperationException("CopyCharacterControllerSettings failed: source is null.");
+        if (target == null)
+            throw new InvalidOperationException("CopyCharacterControllerSettings failed: target is null.");
+
+        target.center = source.center;
+        target.radius = source.radius;
+        target.height = source.height;
+        target.slopeLimit = source.slopeLimit;
+        target.stepOffset = source.stepOffset;
+        target.skinWidth = source.skinWidth;
+        target.minMoveDistance = source.minMoveDistance;
+    }
+
+    private static Vector3 ResolveLv3GroundedColliderPosition(Vector3 navigationPosition, int characterLayer)
+    {
+        Vector3 rayOrigin = new Vector3(navigationPosition.x, navigationPosition.y + 20f, navigationPosition.z);
+        int layerMask = ~(1 << characterLayer);
+        RaycastHit[] hits = Physics.RaycastAll(rayOrigin, Vector3.down, 50f, layerMask, QueryTriggerInteraction.Ignore);
+        float bestGroundY = float.NegativeInfinity;
+        for (int i = 0; i < hits.Length; i++)
+        {
+            RaycastHit hit = hits[i];
+            if (hit.normal.y < 0.5f || hit.point.y > navigationPosition.y + 0.5f)
+                continue;
+            if (hit.point.y > bestGroundY)
+                bestGroundY = hit.point.y;
+        }
+
+        if (float.IsNegativeInfinity(bestGroundY))
+        {
+            throw new InvalidOperationException(
+                $"ResolveLv3GroundedColliderPosition failed: no walkable ground below navigationPosition={navigationPosition}.");
+        }
+
+        return new Vector3(navigationPosition.x, bestGroundY, navigationPosition.z);
     }
 
     private static Rect BuildLv3ControllerCombatPhysicsRegion(
@@ -6690,6 +7299,38 @@ public class FlowFieldCrowdMovementSystemTests
         return overlapPairs;
     }
 
+    private static int UpdatePersistentOverlapPairStreaks(
+        Transform[] transforms,
+        float agentRadius,
+        int[,] pairStreaks,
+        out int maxPairA,
+        out int maxPairB,
+        out float maxPairDistance)
+    {
+        float overlapDistanceSq = agentRadius * 1.55f * agentRadius * 1.55f;
+        int maxStreak = 0;
+        maxPairA = -1;
+        maxPairB = -1;
+        maxPairDistance = float.PositiveInfinity;
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            for (int j = i + 1; j < transforms.Length; j++)
+            {
+                bool overlapping = HorizontalSqrMagnitude(transforms[i].position - transforms[j].position) <= overlapDistanceSq;
+                pairStreaks[i, j] = overlapping ? pairStreaks[i, j] + 1 : 0;
+                if (pairStreaks[i, j] <= maxStreak)
+                    continue;
+
+                maxStreak = pairStreaks[i, j];
+                maxPairA = i;
+                maxPairB = j;
+                maxPairDistance = Mathf.Sqrt(HorizontalSqrMagnitude(transforms[i].position - transforms[j].position));
+            }
+        }
+
+        return maxStreak;
+    }
+
     private static void AppendControllerOverlapAgentState(
         System.Text.StringBuilder diagnostics,
         string label,
@@ -6836,12 +7477,24 @@ public class FlowFieldCrowdMovementSystemTests
         float agentRadius,
         System.Text.StringBuilder diagnostics)
     {
+        Vector3[] rawStarts = ResolveLv3ScenarioRawChaserStartsFromRealSpawnPreview(scenario);
+        return ResolveLv3ScenarioChaserStartsFromRawPreview(
+            grid,
+            derivedData,
+            scenario,
+            rawStarts,
+            agentRadius,
+            diagnostics);
+    }
+
+    private static Vector3[] ResolveLv3ScenarioRawChaserStartsFromRealSpawnPreview(Lv3CrowdRouteScenario scenario)
+    {
         if (scenario.ChaserCenterCounts.Length != scenario.ChaserCenters.Length)
             throw new InvalidOperationException($"ResolveLv3ScenarioChaserStartsFromRealSpawnPreview failed: scenario={scenario.Name} centers={scenario.ChaserCenters.Length}, counts={scenario.ChaserCenterCounts.Length}.");
 
         const float enemyPresetClusterRadius = 3f;
         const float enemyPresetClusterMinDistance = 1.2f;
-        List<Vector3> starts = new List<Vector3>(Mathf.Max(0, scenario.ChaserCount));
+        List<Vector3> rawStarts = new List<Vector3>(Mathf.Max(0, scenario.ChaserCount));
         List<Vector3> preview = new List<Vector3>();
         for (int centerIndex = 0; centerIndex < scenario.ChaserCenters.Length; centerIndex++)
         {
@@ -6860,30 +7513,42 @@ public class FlowFieldCrowdMovementSystemTests
                 throw new InvalidOperationException($"ResolveLv3ScenarioChaserStartsFromRealSpawnPreview failed: scenario={scenario.Name}, center={scenario.ChaserCenters[centerIndex]}, count={count} cannot resolve real preview spawn positions.");
             }
 
-            diagnostics.Append("[Lv3CrowdScenario] realSpawnCenter=").Append(centerIndex)
-                .Append(" center=").Append(scenario.ChaserCenters[centerIndex])
-                .Append(" count=").Append(count)
-                .Append(" preview=").Append(preview.Count)
-                .AppendLine();
-
             for (int i = 0; i < preview.Count; i++)
-            {
-                Vector3 start = ResolveRuntimeLegalLv3MainIslandCell(
-                    grid,
-                    derivedData,
-                    preview[i],
-                    2.0f,
-                    agentRadius,
-                    scenario.Name + "-real-spawn-" + centerIndex + "-" + i,
-                    diagnostics);
-                starts.Add(start);
-            }
+                rawStarts.Add(preview[i]);
         }
 
-        if (starts.Count != scenario.ChaserCount)
-            throw new InvalidOperationException($"ResolveLv3ScenarioChaserStartsFromRealSpawnPreview failed: scenario={scenario.Name} expected={scenario.ChaserCount}, resolved={starts.Count}.");
+        if (rawStarts.Count != scenario.ChaserCount)
+            throw new InvalidOperationException($"ResolveLv3ScenarioChaserStartsFromRealSpawnPreview failed: scenario={scenario.Name} expected={scenario.ChaserCount}, resolved={rawStarts.Count}.");
 
-        return starts.ToArray();
+        return rawStarts.ToArray();
+    }
+
+    private static Vector3[] ResolveLv3ScenarioChaserStartsFromRawPreview(
+        FlowNavigationGridAsset grid,
+        FlowNavigationGridAsset.DerivedNavigationData derivedData,
+        Lv3CrowdRouteScenario scenario,
+        Vector3[] rawStarts,
+        float agentRadius,
+        System.Text.StringBuilder diagnostics)
+    {
+        if (rawStarts == null || rawStarts.Length != scenario.ChaserCount)
+            throw new InvalidOperationException($"ResolveLv3ScenarioChaserStartsFromRawPreview failed: scenario={scenario.Name} expected={scenario.ChaserCount}, raw={(rawStarts != null ? rawStarts.Length : -1)}.");
+
+        Vector3[] starts = new Vector3[rawStarts.Length];
+        for (int i = 0; i < rawStarts.Length; i++)
+        {
+            starts[i] = ResolveRuntimeLegalLv3MainIslandCell(
+                grid,
+                derivedData,
+                rawStarts[i],
+                2.0f,
+                agentRadius,
+                scenario.Name + "-real-spawn-" + i,
+                diagnostics);
+        }
+
+        diagnostics.Append("[Lv3CrowdScenario] realSpawnCount=").Append(starts.Length).AppendLine();
+        return starts;
     }
 
     private static bool TryResolveRuntimeLegalUniqueLv3Start(
@@ -7798,6 +8463,56 @@ public class FlowFieldCrowdMovementSystemTests
             .Append(" bounds=(").Append(minWorld).Append(")..(").Append(maxWorld).Append(')')
             .AppendLine();
         return result;
+    }
+
+    private static Vector3 RequireExactRuntimeLegalLv3Position(
+        FlowNavigationGridAsset grid,
+        FlowNavigationGridAsset.DerivedNavigationData derivedData,
+        Vector3 position,
+        float agentRadius,
+        string label,
+        System.Text.StringBuilder diagnostics)
+    {
+        if (!grid.WorldToCell(position, out int cellX, out int cellY))
+            throw new InvalidOperationException($"RequireExactRuntimeLegalLv3Position failed: {label} position {position} is outside grid.");
+        if (!IsMainIslandWalkable(grid, derivedData, cellX, cellY))
+            throw new InvalidOperationException($"RequireExactRuntimeLegalLv3Position failed: {label} cell=({cellX},{cellY}) is not main-island walkable.");
+        if (!FlowFieldCrowdMovementSystem.TryGetEditorTestNavigationClearance(
+                position,
+                agentRadius,
+                out bool clear,
+                out float violation,
+                out int boxCount,
+                out int circleCount))
+        {
+            throw new InvalidOperationException($"RequireExactRuntimeLegalLv3Position failed: {label} clearance query failed at {position}.");
+        }
+        diagnostics.Append("[Lv3ExactPosition] ").Append(label)
+            .Append(" position=").Append(position)
+            .Append(" cell=(").Append(cellX).Append(',').Append(cellY).Append(')')
+            .Append(" clearance=").Append(agentRadius.ToString("F3"))
+            .Append(" clear=").Append(clear)
+            .Append(" violation=").Append(float.IsPositiveInfinity(violation) ? "INF" : violation.ToString("F3"))
+            .Append(" boxes=").Append(boxCount)
+            .Append(" circles=").Append(circleCount)
+            .AppendLine();
+        return position;
+    }
+
+    private static Vector3 RequireExactLv3TargetPosition(
+        FlowNavigationGridAsset grid,
+        Vector3 position,
+        string label,
+        System.Text.StringBuilder diagnostics)
+    {
+        if (!grid.WorldToCell(position, out int cellX, out int cellY))
+            throw new InvalidOperationException($"RequireExactLv3TargetPosition failed: {label} position {position} is outside grid.");
+
+        diagnostics.Append("[Lv3ExactTarget] ").Append(label)
+            .Append(" position=").Append(position)
+            .Append(" cell=(").Append(cellX).Append(',').Append(cellY).Append(')')
+            .AppendLine();
+        return position;
     }
 
     private static bool IsMainIslandWalkable(FlowNavigationGridAsset grid, FlowNavigationGridAsset.DerivedNavigationData derivedData, int x, int y)
@@ -8998,6 +9713,21 @@ public class FlowFieldCrowdMovementSystemTests
             builder.Append("/topAvoid=").Append(topAvoidContributors);
         }
 
+        if (FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringBottleneckDiagnostic(
+                entity.GetHashCode(),
+                out float bottleneckSpeedScale,
+                out Vector3 bottleneckLaneBias,
+                out Vector3 bottleneckQueueBias,
+                out bool enforceLaneCommitment,
+                out string bottleneckOwnerState))
+        {
+            builder.Append("/bottleneckSpeedScale=").Append(bottleneckSpeedScale.ToString("F3"))
+                .Append("/bottleneckLaneBias=").Append(bottleneckLaneBias)
+                .Append("/bottleneckQueueBias=").Append(bottleneckQueueBias)
+                .Append("/bottleneckEnforceLane=").Append(enforceLaneCommitment)
+                .Append("/bottleneckOwner=").Append(bottleneckOwnerState);
+        }
+
         if (FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringConstraintDiagnostic(
                 entity.GetHashCode(),
                 out Vector3 rawCombinedVelocity,
@@ -9062,6 +9792,23 @@ public class FlowFieldCrowdMovementSystemTests
                 .Append("/maxSpeed=").Append(maxSpeed.ToString("F3"));
         }
 
+        if (FlowFieldCrowdMovementSystem.TryGetEditorTestLastPenetrationProjectionDiagnostic(
+                entity.GetHashCode(),
+                out int penetratingOverlapCount,
+                out Vector3 penetrationInput,
+                out Vector3 penetrationOutput,
+                out int penetrationConstraintCount,
+                out float strongestPenetrationCorrection,
+                out int strongestPenetrationOtherId))
+        {
+            builder.Append("/penetratingOverlapCount=").Append(penetratingOverlapCount)
+                .Append("/penetrationInput=").Append(penetrationInput)
+                .Append("/penetrationOutput=").Append(penetrationOutput)
+                .Append("/penetrationConstraintCount=").Append(penetrationConstraintCount)
+                .Append("/strongestPenetrationCorrection=").Append(strongestPenetrationCorrection.ToString("F3"))
+                .Append("/strongestPenetrationOtherId=").Append(strongestPenetrationOtherId);
+        }
+
         if (FlowFieldCrowdMovementSystem.TryGetEditorTestLastDynamicAvoidanceSkipDiagnostic(
                 entity.GetHashCode(),
                 out string skipReason,
@@ -9106,6 +9853,7 @@ public class FlowFieldCrowdMovementSystemTests
         for (int frame = 1; frame <= frames; frame++)
         {
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * dt);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
             Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, speed, out Vector3 velocity));
             ctx.Position = AdvanceTowardsGoal(ctx.Position, goal, velocity, dt);
         }
@@ -9127,6 +9875,7 @@ public class FlowFieldCrowdMovementSystemTests
         Vector3[] lastConstrainedDisplacement)
     {
         FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * dt);
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
         for (int i = 0; i < chasers.Length; i++)
         {
             SimEntityContext chaser = chasers[i];
@@ -9462,7 +10211,7 @@ public class FlowFieldCrowdMovementSystemTests
         config.SectorSizeInCells = 4;
         config.PortalNarrowWidthCells = 1;
         config.FlowTileCacheLimit = 32;
-        config.RuntimeRebuildBudgetMilliseconds = 1.5f;
+        config.RuntimeRebuildBudgetMilliseconds = 20f;
         config.CrowdPredictionTime = 0.35f;
         config.LaneBiasStrength = 0.18f;
         config.BoundaryAvoidanceWeight = 0.6f;

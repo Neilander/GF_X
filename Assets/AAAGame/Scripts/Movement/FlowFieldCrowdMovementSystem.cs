@@ -55,6 +55,14 @@ public readonly struct AuthoredNavigationSourceData
 
 public static class FlowFieldCrowdMovementSystem
 {
+    public enum NavigationQueryFailureKind
+    {
+        None = 0,
+        PendingRuntimeUpdate = 1,
+        Unavailable = 2,
+        Unreachable = 3
+    }
+
     private const int AnyAgentTypeId = int.MinValue + 1;
     private const float MaxAgentAvoidBackwardSpeedRatio = 0.35f;
     private const float MaxAgentAvoidForwardSpeedRatio = 0f;
@@ -89,6 +97,7 @@ public static class FlowFieldCrowdMovementSystem
     private const int FlowTileQueueTraceCooldownFrames = 30;
     private const int MaxSuccessfulMoveDiagnosticsPerFrame = 3;
     private const int MaxHeavySteeringDiagnosticsPerFrame = 1;
+    private const int MaxNavigationStuckDiagnosticsPerFrame = 2;
     private static readonly bool EnableRouteAsymmetryPathDiagnostics = false;
     private static readonly bool EnableFlowWallProbePathDiagnostics = false;
     private static readonly bool EnableFlowExecutionMismatchPathDiagnostics = false;
@@ -715,6 +724,12 @@ public static class FlowFieldCrowdMovementSystem
         public Vector3 LastSteeringImmediateSeparation;
         public Vector3 LastSteeringStrongestImmediateSeparation;
         public int LastSteeringImmediateOverlapCount;
+        public int LastSteeringPenetratingOverlapCount;
+        public Vector3 LastSteeringPenetrationProjectionInput;
+        public Vector3 LastSteeringPenetrationProjectionOutput;
+        public int LastSteeringPenetrationConstraintCount;
+        public float LastSteeringStrongestPenetrationCorrection;
+        public int LastSteeringStrongestPenetrationOtherId = -1;
         public float LastSteeringClosestImmediateOverlapDistance = float.MaxValue;
         public float LastSteeringClosestImmediateOverlapClearance;
         public int LastSteeringCloseNeighborCount;
@@ -733,6 +748,11 @@ public static class FlowFieldCrowdMovementSystem
         public Vector3 LastSteeringBoundaryAvoidance;
         public Vector3 LastSteeringRuntimeObstacleAvoidance;
         public Vector3 LastSteeringLaneVelocity;
+        public float LastSteeringBottleneckSpeedScale = 1f;
+        public Vector3 LastSteeringBottleneckLaneBias;
+        public Vector3 LastSteeringBottleneckQueueBias;
+        public bool LastSteeringBottleneckEnforceLaneCommitment;
+        public BottleneckRuntimeState.OwnerState LastSteeringBottleneckOwnerState;
         public string LastSteeringTopAvoidContributors = string.Empty;
         public Vector3 LastSteeringRawCombinedVelocity;
         public Vector3 LastSteeringFirstConstrainedVelocity;
@@ -1505,6 +1525,7 @@ public static class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<int, BoxObstacle> BoxObstacles = new Dictionary<int, BoxObstacle>();
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
     private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>();
+    private static readonly HashSet<MovingTargetAnchorKey> ReferencedMovingTargetAnchorKeysScratch = new HashSet<MovingTargetAnchorKey>();
     private static readonly Dictionary<FlowTileCacheKey, FlowTileCacheEntry> FlowTileCache = new Dictionary<FlowTileCacheKey, FlowTileCacheEntry>();
     private static readonly LinkedList<FlowTileBuildJob> FlowTileBuildQueue = new LinkedList<FlowTileBuildJob>();
     private static readonly HashSet<FlowTileCacheKey> PendingFlowTileBuildJobs = new HashSet<FlowTileCacheKey>();
@@ -1529,9 +1550,9 @@ public static class FlowFieldCrowdMovementSystem
     private static readonly int[] CardinalOffsetX = { -1, 1, 0, 0 };
     private static readonly int[] CardinalOffsetY = { 0, 0, -1, 1 };
     private static readonly int[] CorridorAxisProbeOffsets = { -2, -1, 1, 2 };
-    private static readonly Dictionary<int, List<AgentRuntimeData>> AgentSpatialBuckets = new Dictionary<int, List<AgentRuntimeData>>();
-    private static readonly Dictionary<int, List<AgentRuntimeData>> NavigationGoalOccupancyBuckets = new Dictionary<int, List<AgentRuntimeData>>();
-    private static readonly Dictionary<int, List<AgentRuntimeData>> NavigationGoalIntentBuckets = new Dictionary<int, List<AgentRuntimeData>>();
+    private static readonly Dictionary<long, List<AgentRuntimeData>> AgentSpatialBuckets = new Dictionary<long, List<AgentRuntimeData>>();
+    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalOccupancyBuckets = new Dictionary<long, List<AgentRuntimeData>>();
+    private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalIntentBuckets = new Dictionary<long, List<AgentRuntimeData>>();
     private static readonly List<AgentRuntimeData> NearbyAgentScratch = new List<AgentRuntimeData>(32);
     private static readonly List<AgentRuntimeData> CombatClusterScratch = new List<AgentRuntimeData>(16);
     private static readonly List<NavigationGoalReservation> NavigationGoalReservations = new List<NavigationGoalReservation>(128);
@@ -1552,6 +1573,8 @@ public static class FlowFieldCrowdMovementSystem
     private static int _successfulMoveDiagnosticCountThisFrame;
     private static int _heavySteeringDiagnosticFrame = -1;
     private static int _heavySteeringDiagnosticCountThisFrame;
+    private static int _navigationStuckDiagnosticFrame = -1;
+    private static int _navigationStuckDiagnosticCountThisFrame;
     private static int _tilePendingWithoutBuildFrames;
     private static int _lastFlowTileQueueTraceFrame = -1;
 
@@ -1902,6 +1925,19 @@ public static class FlowFieldCrowdMovementSystem
         job.PortalTransitionTargetLinkNextIndices = null;
         job.PortalTransitionTargetLinkCount = 0;
         job.PortalTransitionIntegrationActive = false;
+    }
+
+    private static void ReturnRuntimeDirtyWorkingWorld(RuntimeDirtyRebuildJob job)
+    {
+        NavigationWorld working = job?.WorkingWorld;
+        if (working == null)
+            return;
+
+        ReturnWorldArrayIfOwned(working.WalkableMask, working.BaseWalkableMask, null);
+        ReturnWorldArrayIfOwned(working.NeighborTraversalMask, working.BaseNeighborTraversalMask, null);
+        ReturnWorldArrayIfOwned(working.IslandIds, null, null);
+        ReturnByteArray(working.CostField);
+        job.WorkingWorld = null;
     }
 
     private static bool TryGetIntegrationSummaryCost(IntegrationCostSummary summary, int worldX, int worldY, out float cost)
@@ -2316,15 +2352,17 @@ public static class FlowFieldCrowdMovementSystem
 
     private enum RuntimeDirtyRebuildStage
     {
-        ResetWalkable = 0,
-        ApplyObstacles = 1,
-        NeighborMask = 2,
-        SymmetrizeNeighborMask = 3,
-        CostField = 4,
-        IslandField = 5,
-        PortalGraph = 6,
-        Commit = 7,
-        Complete = 8
+        InitializeClone = 0,
+        ResetWalkable = 1,
+        ApplyObstacles = 2,
+        NeighborMask = 3,
+        SymmetrizeNeighborMask = 4,
+        CostField = 5,
+        IslandField = 6,
+        SectorComponents = 7,
+        PortalGraph = 8,
+        Commit = 9,
+        Complete = 10
     }
 
     private enum RuntimeDirtyPortalStage
@@ -2348,6 +2386,9 @@ public static class FlowFieldCrowdMovementSystem
         public List<BoxObstacle> BoxObstacles;
         public List<CostStamp> CostStamps;
         public RuntimeDirtyRebuildStage Stage;
+        public int CloneCellCursor;
+        public int CloneSectorCursor;
+        public bool CloneShellInitialized;
         public int SectorCursor;
         public int ObstacleCursor;
         public bool ApplyingCircleObstacles = true;
@@ -2553,9 +2594,13 @@ public static class FlowFieldCrowdMovementSystem
     private static bool _hasTestTimeOverride;
     private static int _testFrameCount;
     private static float _testTime;
+    private static float _testDeltaTime = 0.1f;
     private static FlowPerfAccumulator _perf;
     private static bool _perfInitialized;
     private static int _lastSlowFrameOnlyPerfLogFrame = -100000;
+    private static int _lastDiagnosticsEnabledFrame = -1;
+    private static bool _diagnosticsEnabledForFrame;
+    private static int _lastMaintenanceFrame = -1;
     private static int _runtimeNavigationTransitionDepth;
 
     public static void ResetAll()
@@ -2589,6 +2634,7 @@ public static class FlowFieldCrowdMovementSystem
         foreach (WorldRuntimeState state in WorldStates.Values)
         {
             ReturnRuntimeDirtyPortalTransitionIntegration(state.RuntimeDirtyJob);
+            ReturnRuntimeDirtyWorkingWorld(state.RuntimeDirtyJob);
             ReturnWorldBuildPortalTransitionIntegration(state.BuildJob);
         }
 
@@ -2608,6 +2654,8 @@ public static class FlowFieldCrowdMovementSystem
         _successfulMoveDiagnosticCountThisFrame = 0;
         _heavySteeringDiagnosticFrame = -1;
         _heavySteeringDiagnosticCountThisFrame = 0;
+        _navigationStuckDiagnosticFrame = -1;
+        _navigationStuckDiagnosticCountThisFrame = 0;
         _testTerrainOverride = null;
         AuthoredTerrainSources.Clear();
 #if UNITY_EDITOR
@@ -2615,6 +2663,9 @@ public static class FlowFieldCrowdMovementSystem
 #endif
         _perf = default;
         _perfInitialized = false;
+        _lastDiagnosticsEnabledFrame = -1;
+        _diagnosticsEnabledForFrame = false;
+        _lastMaintenanceFrame = -1;
         _lastSlowFrameOnlyPerfLogFrame = -100000;
         _runtimeNavigationTransitionDepth = 0;
     }
@@ -2764,6 +2815,11 @@ public static class FlowFieldCrowdMovementSystem
 
     public static void SetEditorTestClock(int frameCount, float time)
     {
+        if (_hasTestTimeOverride && frameCount > _testFrameCount)
+            _testDeltaTime = Mathf.Max(0f, (time - _testTime) / (frameCount - _testFrameCount));
+        else if (frameCount > 0 && time > 0f)
+            _testDeltaTime = time / frameCount;
+
         _hasTestTimeOverride = true;
         _testFrameCount = frameCount;
         _testTime = time;
@@ -2774,6 +2830,7 @@ public static class FlowFieldCrowdMovementSystem
         _hasTestTimeOverride = false;
         _testFrameCount = 0;
         _testTime = 0f;
+        _testDeltaTime = 0.1f;
     }
 #endif
 
@@ -3382,6 +3439,9 @@ public static class FlowFieldCrowdMovementSystem
                     case RuntimeDirtyRebuildStage.IslandField:
                         ProcessRuntimeDirtyIslandField(job, long.MaxValue, forceComplete: true);
                         break;
+                    case RuntimeDirtyRebuildStage.SectorComponents:
+                        ProcessRuntimeDirtySectorComponents(job, long.MaxValue, forceComplete: true);
+                        break;
                     case RuntimeDirtyRebuildStage.PortalGraph:
                         ProcessRuntimeDirtyPortalGraph(job, long.MaxValue, forceComplete: true);
                         break;
@@ -3460,6 +3520,7 @@ public static class FlowFieldCrowdMovementSystem
             state.IsDirty = true;
             state.DirtyRuntimeObstacleSectors.Clear();
             ReturnRuntimeDirtyPortalTransitionIntegration(state.RuntimeDirtyJob);
+            ReturnRuntimeDirtyWorkingWorld(state.RuntimeDirtyJob);
             ReturnWorldBuildPortalTransitionIntegration(state.BuildJob);
             state.RuntimeDirtyJob = null;
             state.BuildJob = null;
@@ -3744,12 +3805,6 @@ public static class FlowFieldCrowdMovementSystem
             _perf.SharedGoalPruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
             phaseTicks = Stopwatch.GetTimestamp();
-            ProcessSharedGoalFieldBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
-            _perf.SharedGoalProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
-            if (Stopwatch.GetTimestamp() >= deadlineTicks)
-                return;
-
-            phaseTicks = Stopwatch.GetTimestamp();
             EnqueueFlowTileBuildsForActiveAgents();
             _perf.FlowTileActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
@@ -3764,6 +3819,12 @@ public static class FlowFieldCrowdMovementSystem
             phaseTicks = Stopwatch.GetTimestamp();
             ProcessFlowTileBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
             _perf.FlowTileProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
+            if (Stopwatch.GetTimestamp() >= deadlineTicks)
+                return;
+
+            phaseTicks = Stopwatch.GetTimestamp();
+            ProcessSharedGoalFieldBuildQueue(deadlineTicks, forceComplete: false, requiredKey: null);
+            _perf.SharedGoalProcessTicks += Stopwatch.GetTimestamp() - phaseTicks;
         }
         finally
         {
@@ -4935,7 +4996,7 @@ public static class FlowFieldCrowdMovementSystem
     public static void UpdateAgent(MAEntity entity, float radius)
     {
         BeginPerfCall();
-        long startTicks = Stopwatch.GetTimestamp();
+        long startTicks = GetDiagnosticTimestamp();
         if (entity == null)
             return;
         if (IsRuntimeNavigationTransitionActive())
@@ -4959,12 +5020,13 @@ public static class FlowFieldCrowdMovementSystem
         if (string.IsNullOrEmpty(agent.RegistrationSource))
             agent.RegistrationSource = "UpdateAgent";
         UpdateAgentNavigationIntent(agent, entity.moveComp);
-        TrackAndLogNavigationStuckTrace(agent, entity.Position);
+        if (IsMovementDiagnosticsEnabled())
+            TrackAndLogNavigationStuckTrace(agent, entity.Position);
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentRegistrySyncFrame = -1;
         _lastNavigationGoalOccupancyBucketFrame = -1;
         _lastNavigationGoalOccupancyBucketWorldVersion = -1;
-        _perf.AgentUpdateTicks += Stopwatch.GetTimestamp() - startTicks;
+        _perf.AgentUpdateTicks += GetDiagnosticTimestamp() - startTicks;
     }
 
     public static void SetAgentSide(int agentId, SideType side)
@@ -5040,6 +5102,8 @@ public static class FlowFieldCrowdMovementSystem
         {
             return;
         }
+        if (!TryConsumeNavigationStuckDiagnosticBudget())
+            return;
 
         nav.LastStuckTraceDiagnosticFrame = frame;
         Debug.LogWarning(BuildNavigationStuckTraceDiagnosticForAgentWorld(agent, currentPosition, movedDistance, goalDistance));
@@ -5103,6 +5167,18 @@ public static class FlowFieldCrowdMovementSystem
                $"desired={nav.DesiredVelocity} resolved={nav.ResolvedVelocity} resolvedFrame={nav.ResolvedVelocityFrame} " +
                $"lastSteerFrame={nav.LastSteeringFrame} desiredSrc={nav.LastSteeringDesiredSource} desiredDir={nav.LastSteeringDesiredDirection} " +
                $"desiredVel={nav.LastSteeringDesiredVelocity} result={nav.LastSteeringResult} flow={nav.LastSteeringFlow} " +
+               $"steering=(base={nav.LastSteeringBaseVelocity},rawAgent={nav.LastSteeringRawAgentAvoidance},immediate={nav.LastSteeringImmediateSeparation}," +
+               $"strongestImmediate={nav.LastSteeringStrongestImmediateSeparation},overlaps={nav.LastSteeringImmediateOverlapCount}," +
+               $"agent={nav.LastSteeringAgentAvoidance},clampedAgent={nav.LastSteeringClampedAgentAvoidance},boundary={nav.LastSteeringBoundaryAvoidance}," +
+               $"runtimeObstacle={nav.LastSteeringRuntimeObstacleAvoidance},lane={nav.LastSteeringLaneVelocity},rawCombined={nav.LastSteeringRawCombinedVelocity}," +
+               $"bottleneck=(speedScale={nav.LastSteeringBottleneckSpeedScale:F3},laneBias={nav.LastSteeringBottleneckLaneBias}," +
+               $"queueBias={nav.LastSteeringBottleneckQueueBias},enforceLane={nav.LastSteeringBottleneckEnforceLaneCommitment},owner={nav.LastSteeringBottleneckOwnerState})," +
+               $"first={nav.LastSteeringFirstConstrainedVelocity},firstKind={nav.LastSteeringFirstConstraintKind},firstScore={nav.LastSteeringFirstConstraintScore:F3}," +
+               $"firstMasks={nav.LastSteeringFirstConstraintTestedMask:X}/{nav.LastSteeringFirstConstraintWalkableMask:X},firstOriginal={nav.LastSteeringFirstConstraintOriginalWalkable}," +
+               $"finalInput={nav.LastSteeringFinalConstraintInputVelocity},finalKind={nav.LastSteeringFinalConstraintKind},finalScore={nav.LastSteeringFinalConstraintScore:F3}," +
+               $"finalMasks={nav.LastSteeringFinalConstraintTestedMask:X}/{nav.LastSteeringFinalConstraintWalkableMask:X},finalOriginal={nav.LastSteeringFinalConstraintOriginalWalkable}," +
+               $"preClamp={nav.LastSteeringResultPreClamp},edgeNormal={nav.LastSteeringEdgeNormal},edgeDistance={nav.LastSteeringEdgeDistance:F3}," +
+               $"topAvoid={nav.LastSteeringTopAvoidContributors}) " +
                $"los={nav.LastSteeringHasLineOfSight} tileTarget={nav.LastSteeringTileTarget} integration={nav.LastSteeringIntegration:F3} " +
                $"stableGoal=({nav.StableGoalX},{nav.StableGoalY}) stableWorld={nav.StableGoalWorld} raw=({nav.StableGoalRawX},{nav.StableGoalRawY}) " +
                $"currentCell={nav.CurrentCell} currentSector={nav.CurrentSectorId} handle={FormatPathHandle(nav.PathHandle)} " +
@@ -5151,6 +5227,10 @@ public static class FlowFieldCrowdMovementSystem
         return $"[FlowPendingPortalTrace] frame={GetFrameCount()} key={agent.CharacterKey} id={agent.Id} pos={agent.Position} " +
                $"frames={nav.PendingPortalTraceFrames} goal={nav.LastGoalWorld} currentCell={nav.CurrentCell} currentSector={nav.CurrentSectorId} " +
                $"desiredDir={nav.LastSteeringDesiredDirection} desiredVel={nav.LastSteeringDesiredVelocity} resolved={nav.ResolvedVelocity} " +
+               $"avoidRaw={nav.LastSteeringRawAgentAvoidance} avoidClamped={nav.LastSteeringClampedAgentAvoidance} immediate={nav.LastSteeringImmediateSeparation} " +
+               $"boundary={nav.LastSteeringBoundaryAvoidance} lane={nav.LastSteeringLaneVelocity} combined={nav.LastSteeringRawCombinedVelocity} " +
+               $"firstConstrained={nav.LastSteeringFirstConstrainedVelocity}/{nav.LastSteeringFirstConstraintKind} " +
+               $"finalInput={nav.LastSteeringFinalConstraintInputVelocity} finalKind={nav.LastSteeringFinalConstraintKind} topAvoid={nav.LastSteeringTopAvoidContributors} " +
                $"tileTarget={resolution.TileTargetPosition} flow={resolution.Flow} los={resolution.HasLineOfSight} integration={resolution.Integration:F3} " +
                $"handle={FormatPathHandle(nav.PathHandle)} {cell} tileState={tileState} neighbors={neighbors}";
     }
@@ -5427,6 +5507,31 @@ public static class FlowFieldCrowdMovementSystem
         return nav.LastSteeringFrame >= 0;
     }
 
+    public static bool TryGetEditorTestLastSteeringBottleneckDiagnostic(
+        int agentId,
+        out float speedScale,
+        out Vector3 laneBias,
+        out Vector3 queueBias,
+        out bool enforceLaneCommitment,
+        out string ownerState)
+    {
+        speedScale = 1f;
+        laneBias = Vector3.zero;
+        queueBias = Vector3.zero;
+        enforceLaneCommitment = false;
+        ownerState = BottleneckRuntimeState.OwnerState.Idle.ToString();
+        if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent))
+            return false;
+
+        AgentNavState nav = agent.NavState;
+        speedScale = nav.LastSteeringBottleneckSpeedScale;
+        laneBias = nav.LastSteeringBottleneckLaneBias;
+        queueBias = nav.LastSteeringBottleneckQueueBias;
+        enforceLaneCommitment = nav.LastSteeringBottleneckEnforceLaneCommitment;
+        ownerState = nav.LastSteeringBottleneckOwnerState.ToString();
+        return nav.LastSteeringFrame >= 0;
+    }
+
     public static bool TryGetEditorTestLastSteeringSeparationDiagnostic(
         int agentId,
         out Vector3 rawAgentAvoidance,
@@ -5525,6 +5630,34 @@ public static class FlowFieldCrowdMovementSystem
         finalTestedCandidateMask = nav.LastSteeringFinalConstraintTestedMask;
         finalWalkableCandidateMask = nav.LastSteeringFinalConstraintWalkableMask;
         finalOriginalWalkable = nav.LastSteeringFinalConstraintOriginalWalkable;
+        return nav.LastSteeringFrame >= 0;
+    }
+
+    public static bool TryGetEditorTestLastPenetrationProjectionDiagnostic(
+        int agentId,
+        out int penetratingOverlapCount,
+        out Vector3 inputVelocity,
+        out Vector3 outputVelocity,
+        out int constraintCount,
+        out float strongestCorrection,
+        out int strongestOtherId)
+    {
+        penetratingOverlapCount = 0;
+        inputVelocity = Vector3.zero;
+        outputVelocity = Vector3.zero;
+        constraintCount = 0;
+        strongestCorrection = 0f;
+        strongestOtherId = -1;
+        if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent))
+            return false;
+
+        AgentNavState nav = agent.NavState;
+        penetratingOverlapCount = nav.LastSteeringPenetratingOverlapCount;
+        inputVelocity = nav.LastSteeringPenetrationProjectionInput;
+        outputVelocity = nav.LastSteeringPenetrationProjectionOutput;
+        constraintCount = nav.LastSteeringPenetrationConstraintCount;
+        strongestCorrection = nav.LastSteeringStrongestPenetrationCorrection;
+        strongestOtherId = nav.LastSteeringStrongestPenetrationOtherId;
         return nav.LastSteeringFrame >= 0;
     }
 
@@ -6227,6 +6360,29 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
+    public static Vector3 ResolveEditorTestLaneCommitment(
+        Vector3 position,
+        Vector3 velocity,
+        Vector3 primaryVelocity,
+        Vector3 laneVelocity,
+        Vector3 laneBias,
+        bool enforceLaneCommitment,
+        Vector3 edgeNormal,
+        float edgeDistance,
+        float radius,
+        float maxSpeed)
+    {
+        BottleneckDecision bottleneck = new BottleneckDecision(
+            1f,
+            laneBias,
+            Vector3.zero,
+            enforceLaneCommitment,
+            -1,
+            -1,
+            BottleneckRuntimeState.OwnerState.Passing);
+        return ApplyLaneCommitment(position, velocity, primaryVelocity, laneVelocity, bottleneck, edgeNormal, edgeDistance, radius, maxSpeed);
+    }
+
     public static string GetEditorTestCachedTileCellDiagnostic(int worldX, int worldY)
     {
         if (_world == null)
@@ -6589,7 +6745,7 @@ public static class FlowFieldCrowdMovementSystem
         out Vector3 constrainedDisplacement)
     {
         BeginPerfCall();
-        long constraintStartTicks = Stopwatch.GetTimestamp();
+        long constraintStartTicks = GetDiagnosticTimestamp();
         _perf.NavigationConstraintCalls++;
         constrainedDisplacement = Vector3.zero;
         Vector3 horizontal = desiredDisplacement;
@@ -6597,30 +6753,30 @@ public static class FlowFieldCrowdMovementSystem
         if (horizontal.sqrMagnitude <= 0.000001f)
         {
             constrainedDisplacement = desiredDisplacement;
-            _perf.NavigationConstraintTicks += Stopwatch.GetTimestamp() - constraintStartTicks;
+            _perf.NavigationConstraintTicks += GetDiagnosticTimestamp() - constraintStartTicks;
             return true;
         }
 
-        long sectionStartTicks = Stopwatch.GetTimestamp();
+        long sectionStartTicks = GetDiagnosticTimestamp();
         if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
         {
-            _perf.NavigationConstraintWorldTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
-            _perf.NavigationConstraintTicks += Stopwatch.GetTimestamp() - constraintStartTicks;
+            _perf.NavigationConstraintWorldTicks += GetDiagnosticTimestamp() - sectionStartTicks;
+            _perf.NavigationConstraintTicks += GetDiagnosticTimestamp() - constraintStartTicks;
             return false;
         }
-        _perf.NavigationConstraintWorldTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.NavigationConstraintWorldTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
         bool includeRuntimeObstacleOverlay = HasPendingRuntimeDirty(_activeWorldState);
         edgeClearance = ResolveNavigationExecutionClearance(world, Mathf.Max(0f, edgeClearance));
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         if (IsNavigationSegmentWalkable(world, position, horizontal, edgeClearance, includeRuntimeObstacleOverlay: includeRuntimeObstacleOverlay))
         {
             constrainedDisplacement = desiredDisplacement;
-            _perf.NavigationConstraintDirectTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
-            _perf.NavigationConstraintTicks += Stopwatch.GetTimestamp() - constraintStartTicks;
+            _perf.NavigationConstraintDirectTicks += GetDiagnosticTimestamp() - sectionStartTicks;
+            _perf.NavigationConstraintTicks += GetDiagnosticTimestamp() - constraintStartTicks;
             return true;
         }
-        _perf.NavigationConstraintDirectTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.NavigationConstraintDirectTicks += GetDiagnosticTimestamp() - sectionStartTicks;
         _perf.NavigationConstraintBlocked++;
 
         bool startIsClear = IsNavigationPointClear(world, position, edgeClearance, includeRuntimeObstacleOverlay);
@@ -6628,7 +6784,7 @@ public static class FlowFieldCrowdMovementSystem
         Vector3 best = Vector3.zero;
         float bestScore = float.NegativeInfinity;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         TrySelectNavigationDirectionalFanCandidate(world, position, horizontal, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
         TrySelectNavigationDisplacementCandidate(world, position, new Vector3(horizontal.x, 0f, 0f), horizontal, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
         TrySelectNavigationDisplacementCandidate(world, position, new Vector3(0f, 0f, horizontal.z), horizontal, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
@@ -6637,11 +6793,11 @@ public static class FlowFieldCrowdMovementSystem
         Vector3 tangentB = -tangentA;
         TrySelectNavigationDisplacementCandidate(world, position, tangentA, horizontal, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
         TrySelectNavigationDisplacementCandidate(world, position, tangentB, horizontal, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
-        _perf.NavigationConstraintCandidateTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.NavigationConstraintCandidateTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
         Vector3 slideCandidate = Vector3.zero;
         bool hasSlideCandidate = false;
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         if (startIsClear && TryResolveNavigationSegmentBoundaryNormal(world, position, horizontal, edgeClearance, out Vector3 clearanceNormal))
         {
             Vector3 slide = Vector3.ProjectOnPlane(horizontal, clearanceNormal);
@@ -6679,12 +6835,12 @@ public static class FlowFieldCrowdMovementSystem
                 }
             }
         }
-        _perf.NavigationConstraintBoundaryTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.NavigationConstraintBoundaryTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         Vector3 limited = FindLongestWalkablePrefix(world, position, horizontal, edgeClearance, startIsClear, includeRuntimeObstacleOverlay);
         TrySelectNavigationDisplacementCandidate(world, position, limited, horizontal, limited.magnitude, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore, preserveDistance: false);
-        _perf.NavigationConstraintPrefixTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.NavigationConstraintPrefixTicks += GetDiagnosticTimestamp() - sectionStartTicks;
         float minimumUsefulDistance = Mathf.Min(desiredDistance, 0.02f);
         if (hasSlideCandidate
             && best.magnitude < minimumUsefulDistance)
@@ -6693,7 +6849,7 @@ public static class FlowFieldCrowdMovementSystem
             bestScore = Mathf.Max(bestScore, 0f);
         }
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         if (!startIsClear && TryResolveNavigationClearanceRecoveryDirection(world, position, edgeClearance, out Vector3 recoveryDirection))
         {
             TrySelectNavigationDisplacementCandidate(world, position, recoveryDirection, recoveryDirection, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
@@ -6702,9 +6858,9 @@ public static class FlowFieldCrowdMovementSystem
             TrySelectNavigationDisplacementCandidate(world, position, (recoveryDirection + recoveryTangentA).normalized, recoveryDirection, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
             TrySelectNavigationDisplacementCandidate(world, position, (recoveryDirection + recoveryTangentB).normalized, recoveryDirection, desiredDistance, edgeClearance, startIsClear, includeRuntimeObstacleOverlay, ref best, ref bestScore);
         }
-        _perf.NavigationConstraintRecoveryTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.NavigationConstraintRecoveryTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
-        _perf.NavigationConstraintTicks += Stopwatch.GetTimestamp() - constraintStartTicks;
+        _perf.NavigationConstraintTicks += GetDiagnosticTimestamp() - constraintStartTicks;
         if (bestScore <= float.NegativeInfinity * 0.5f)
             return false;
 
@@ -7087,8 +7243,11 @@ public static class FlowFieldCrowdMovementSystem
                 out float distance))
         {
             reachableGoal = queryWorld.GridToWorldCenter(resultX, resultY);
-            LogReachableGoalResolution(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, maxRadiusCells, fullIsland: false);
-            LogReachableGoalTargetSnapDiagnostics(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, fullIsland: false);
+            if (IsMovementDiagnosticsEnabled())
+            {
+                LogReachableGoalResolution(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, maxRadiusCells, fullIsland: false);
+                LogReachableGoalTargetSnapDiagnostics(queryWorld, self, desiredGoal, startX, startY, goalX, goalY, resultX, resultY, distance, fullIsland: false);
+            }
             return true;
         }
 
@@ -7103,20 +7262,23 @@ public static class FlowFieldCrowdMovementSystem
             out int fullIslandX,
             out int fullIslandY,
             out float fullIslandDistance);
-        Debug.LogWarning(BuildGoalResolutionIslandDiagnostics(
-            queryWorld,
-            self,
-            desiredGoal,
-            startX,
-            startY,
-            goalX,
-            goalY,
-            startIsland,
-            maxRadiusCells,
-            fullIslandFound,
-            fullIslandX,
-            fullIslandY,
-            fullIslandDistance));
+        if (IsMovementDiagnosticsEnabled())
+        {
+            Debug.LogWarning(BuildGoalResolutionIslandDiagnostics(
+                queryWorld,
+                self,
+                desiredGoal,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                startIsland,
+                maxRadiusCells,
+                fullIslandFound,
+                fullIslandX,
+                fullIslandY,
+                fullIslandDistance));
+        }
         if (fullIslandFound)
         {
             reachableGoal = queryWorld.GridToWorldCenter(fullIslandX, fullIslandY);
@@ -7142,8 +7304,36 @@ public static class FlowFieldCrowdMovementSystem
         out Vector3 approachPoint,
         out string failureReason)
     {
+        return TryResolveCombatApproachPoint(
+            self,
+            target,
+            targetPoint,
+            standOff,
+            ringSpacing,
+            ringCount,
+            candidateCount,
+            requiredClearance,
+            out approachPoint,
+            out failureReason,
+            out _);
+    }
+
+    public static bool TryResolveCombatApproachPoint(
+        IEntityContext self,
+        IEntityContext target,
+        Vector3 targetPoint,
+        float standOff,
+        float ringSpacing,
+        int ringCount,
+        int candidateCount,
+        float requiredClearance,
+        out Vector3 approachPoint,
+        out string failureReason,
+        out NavigationQueryFailureKind failureKind)
+    {
         approachPoint = targetPoint;
         failureReason = string.Empty;
+        failureKind = NavigationQueryFailureKind.None;
         if (self == null)
             throw new InvalidOperationException("TryResolveCombatApproachPoint failed: self is null.");
         if (target == null)
@@ -7164,24 +7354,28 @@ public static class FlowFieldCrowdMovementSystem
 
         if (!TryEnsureWorldBuilt(agent.AgentTypeId))
         {
+            failureKind = NavigationQueryFailureKind.Unavailable;
             failureReason = $"world unavailable agentType={agent.AgentTypeId}";
             return false;
         }
 
         if (HasPendingRuntimeDirty(_activeWorldState))
         {
+            failureKind = NavigationQueryFailureKind.PendingRuntimeUpdate;
             failureReason = $"runtime dirty pending agentType={agent.AgentTypeId}";
             return false;
         }
 
         if (!TryResolveStartCellForReachability(self, out int startX, out int startY, out int startIsland))
         {
+            failureKind = NavigationQueryFailureKind.Unreachable;
             failureReason = $"start reachability failed {BuildReachabilityStartDiagnostics(self)}";
             return false;
         }
 
         if (!_world.WorldToGrid(targetPoint, out int targetX, out int targetY))
         {
+            failureKind = NavigationQueryFailureKind.Unreachable;
             failureReason = $"target point outside grid targetPoint={targetPoint}";
             return false;
         }
@@ -7201,6 +7395,7 @@ public static class FlowFieldCrowdMovementSystem
         CombatTargetSlotEntry entry = GetOrBuildCombatTargetSlotEntry(key, targetPoint, standOff, ringSpacing, ringCount, candidateCount, targetX, targetY, navigationClearance);
         if (entry == null || entry.Points == null || entry.Points.Length == 0)
         {
+            failureKind = NavigationQueryFailureKind.Unreachable;
             failureReason = $"no combat approach slots target={target.CharacterKey} targetPoint={targetPoint}";
             return false;
         }
@@ -7279,6 +7474,7 @@ public static class FlowFieldCrowdMovementSystem
                 $"no combat approach slot in start island target={target.CharacterKey} start=({startX},{startY}) startIsland={startIsland} " +
                 $"targetPoint={targetPoint} slots={entry.Points.Length} build={entry.BuildSummary} " +
                 $"candidateIslands={BuildCombatApproachIslandSummary(entry, startIsland)} expandedFailed=True";
+            failureKind = NavigationQueryFailureKind.Unreachable;
             return false;
         }
 
@@ -7686,6 +7882,8 @@ public static class FlowFieldCrowdMovementSystem
         float distance,
         bool fullIsland)
     {
+        if (!IsMovementDiagnosticsEnabled())
+            return;
         if (world == null || self == null)
             return;
 
@@ -7748,7 +7946,7 @@ public static class FlowFieldCrowdMovementSystem
     public static bool TryGetSteeringVelocity(IEntityContext self, Vector3 goalPosition, float maxSpeed, out Vector3 velocity)
     {
         BeginPerfCall();
-        long totalStartTicks = Stopwatch.GetTimestamp();
+        long totalStartTicks = GetDiagnosticTimestamp();
         if (self == null)
             throw new InvalidOperationException("FlowFieldCrowdMovementSystem.TryGetSteeringVelocity failed: self is null.");
 
@@ -7756,7 +7954,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             velocity = Vector3.zero;
             _perf.Calls++;
-            _perf.TotalTicks += Stopwatch.GetTimestamp() - totalStartTicks;
+            _perf.TotalTicks += GetDiagnosticTimestamp() - totalStartTicks;
             return true;
         }
 
@@ -7776,12 +7974,12 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         int preferredAgentTypeId = agent.AgentTypeId;
-        long sectionStartTicks = Stopwatch.GetTimestamp();
+        long sectionStartTicks = GetDiagnosticTimestamp();
         if (!TryEnsureWorldBuilt(preferredAgentTypeId))
         {
             return FailNoFallback(self, "world unavailable", goalPosition, out velocity);
         }
-        _perf.WorldTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.WorldTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
         bool hasMovingTarget = self?.TargetComp?.CurrentTarget != null
                                && !ReferenceEquals(self.TargetComp.CurrentTarget, self)
@@ -7789,7 +7987,7 @@ public static class FlowFieldCrowdMovementSystem
         Vector3 occupiedGoalPosition = ResolveNavigationGoalOccupancy(self, agent, goalPosition);
         Vector3 navigationGoalPosition = hasMovingTarget ? goalPosition : occupiedGoalPosition;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         if (!_world.WorldToGrid(self.Position, out int startX, out int startY))
         {
             return FailNoFallback(self, $"start not on grid pos={self.Position}", occupiedGoalPosition, out velocity);
@@ -7811,39 +8009,39 @@ public static class FlowFieldCrowdMovementSystem
         {
             return FailNoFallback(self, $"sector resolve failed start=({startX},{startY}) goal=({goalX},{goalY})", occupiedGoalPosition, out velocity);
         }
-        _perf.ResolveCellsTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.ResolveCellsTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
         agent.NavState.CurrentCell = new Vector2Int(startX, startY);
         agent.NavState.CurrentSectorId = startSectorId;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         if (!EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY))
         {
             return FailNoFallback(self, BuildPathHandleFailure(self, stableGoalPosition, startSectorId, goalSectorId, startX, startY, goalX, goalY), occupiedGoalPosition, out velocity);
         }
-        _perf.PathTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.PathTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         if (!TryAdvancePathToCurrentSector(agent, startSectorId))
         {
             _perf.PathAdvanceFailures++;
             LogPathAdvanceFailure(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY);
             agent.NavState.PathHandle = null;
             ClearAgentFromBottlenecks(agent.Id);
-            _perf.AdvanceTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
-            sectionStartTicks = Stopwatch.GetTimestamp();
+            _perf.AdvanceTicks += GetDiagnosticTimestamp() - sectionStartTicks;
+            sectionStartTicks = GetDiagnosticTimestamp();
             if (!EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY))
             {
                 return FailNoFallback(self, $"path handle rebuild failed startSector={startSectorId} goalSector={goalSectorId}", occupiedGoalPosition, out velocity);
             }
-            _perf.PathTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+            _perf.PathTicks += GetDiagnosticTimestamp() - sectionStartTicks;
         }
         else
         {
-            _perf.AdvanceTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+            _perf.AdvanceTicks += GetDiagnosticTimestamp() - sectionStartTicks;
         }
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         FlowTileCacheEntry tile = null;
         TileGoalKind goalKind = TileGoalKind.FinalGoal;
         int downstreamPortalId = -1;
@@ -7851,7 +8049,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             return FailNoFallback(self, tileFailureReason, occupiedGoalPosition, out velocity);
         }
-        _perf.TileTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.TileTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
         if (tile != null && !IsCellReachableInTile(tile, startX, startY))
         {
@@ -7859,7 +8057,7 @@ public static class FlowFieldCrowdMovementSystem
             LogTileReachabilityFailure(agent, tile, startSectorId, goalSectorId, startX, startY, goalX, goalY, goalKind, downstreamPortalId);
             agent.NavState.PathHandle = null;
             ClearAgentFromBottlenecks(agent.Id);
-            sectionStartTicks = Stopwatch.GetTimestamp();
+            sectionStartTicks = GetDiagnosticTimestamp();
             bool rebuiltPathHandle = EnsurePathHandle(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY);
             if (!rebuiltPathHandle)
             {
@@ -7869,10 +8067,10 @@ public static class FlowFieldCrowdMovementSystem
             if (!TryBuildOrGetTileWithStrictRepath(agent, startSectorId, goalSectorId, startX, startY, goalX, goalY, out tile, out goalKind, out downstreamPortalId, out tileFailureReason))
                 return FailNoFallback(self, $"tile reachability failed; rebuilt handle but tile unavailable: {tileFailureReason}", occupiedGoalPosition, out velocity);
 
-            _perf.TileTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+            _perf.TileTicks += GetDiagnosticTimestamp() - sectionStartTicks;
         }
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         long desiredTotalStartTicks = sectionStartTicks;
         DesiredDirectionResolution desiredResolution;
         if (tile == null)
@@ -7910,9 +8108,35 @@ public static class FlowFieldCrowdMovementSystem
         {
             desiredResolution = ResolveDesiredDirection(self.CharacterKey, tile, startX, startY, self.Position, stableGoalPosition, goalKind, agent.Radius);
         }
-        _perf.DesiredResolveTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        if (hasMovingTarget
+            && _world.WorldToGrid(occupiedGoalPosition, out int occupiedGoalX, out int occupiedGoalY)
+            && _world.IsWalkable(occupiedGoalX, occupiedGoalY)
+            && ResolveIslandIdForDiagnostics(_world, occupiedGoalX, occupiedGoalY) == ResolveIslandIdForDiagnostics(_world, startX, startY)
+            && IsNavigationSegmentWalkable(
+                _world,
+                self.Position,
+                occupiedGoalPosition - self.Position,
+                ResolveNavigationExecutionClearance(_world, agent.Radius),
+                requireClearStart: true,
+                includeRuntimeObstacleOverlay: true))
+        {
+            Vector3 toOccupiedGoal = occupiedGoalPosition - self.Position;
+            toOccupiedGoal.y = 0f;
+            if (toOccupiedGoal.sqrMagnitude > 0.0001f)
+            {
+                desiredResolution = new DesiredDirectionResolution(
+                    toOccupiedGoal.normalized,
+                    DesiredDirectionSource.LineOfSight,
+                    occupiedGoalPosition,
+                    Vector2.zero,
+                    true,
+                    0f);
+            }
+        }
+        _perf.DesiredResolveTicks += GetDiagnosticTimestamp() - sectionStartTicks;
+
+        sectionStartTicks = GetDiagnosticTimestamp();
         int pathDirectionContextHash = ComputePathDirectionContextHash(agent, tile, goalX, goalY, goalKind, downstreamPortalId);
         if (desiredResolution.Source == DesiredDirectionSource.Zero
             && goalKind == TileGoalKind.FinalGoal
@@ -7934,44 +8158,50 @@ public static class FlowFieldCrowdMovementSystem
         }
         desiredResolution = ApplyPathDirectionBlend(agent, desiredResolution, startX, startY, pathDirectionContextHash);
         Vector3 desiredDirection = desiredResolution.Direction;
-        _perf.DesiredBlendTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.DesiredBlendTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
-        LogFlowTileInvariantDiagnostic(
-            self,
-            agent,
-            startX,
-            startY,
-            goalX,
-            goalY,
-            startSectorId,
-            goalSectorId,
-            goalKind,
-            downstreamPortalId,
-            tile,
-            desiredResolution,
-            desiredDirection,
-            stableGoalPosition,
-            preferredAgentTypeId);
-        _perf.DesiredInvariantDiagnosticTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        sectionStartTicks = GetDiagnosticTimestamp();
+        if (debugMove)
+        {
+            LogFlowTileInvariantDiagnostic(
+                self,
+                agent,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                startSectorId,
+                goalSectorId,
+                goalKind,
+                downstreamPortalId,
+                tile,
+                desiredResolution,
+                desiredDirection,
+                stableGoalPosition,
+                preferredAgentTypeId);
+        }
+        _perf.DesiredInvariantDiagnosticTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
-        LogFlowWallProbeDiagnostic(
-            self,
-            agent,
-            startX,
-            startY,
-            goalX,
-            goalY,
-            startSectorId,
-            goalSectorId,
-            goalKind,
-            downstreamPortalId,
-            tile,
-            desiredResolution,
-            desiredDirection,
-            stableGoalPosition);
-        _perf.DesiredWallProbeDiagnosticTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        sectionStartTicks = GetDiagnosticTimestamp();
+        if (debugMove)
+        {
+            LogFlowWallProbeDiagnostic(
+                self,
+                agent,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                startSectorId,
+                goalSectorId,
+                goalKind,
+                downstreamPortalId,
+                tile,
+                desiredResolution,
+                desiredDirection,
+                stableGoalPosition);
+        }
+        _perf.DesiredWallProbeDiagnosticTicks += GetDiagnosticTimestamp() - sectionStartTicks;
         if (desiredResolution.Source == DesiredDirectionSource.Zero
             && !(goalKind == TileGoalKind.FinalGoal && startX == goalX && startY == goalY))
         {
@@ -7986,33 +8216,36 @@ public static class FlowFieldCrowdMovementSystem
 
         Vector3 desiredVelocity = desiredDirection * maxSpeed;
         SetCurrentFrameNavigationIntent(agent, occupiedGoalPosition, desiredVelocity);
-        _perf.DesiredTicks += Stopwatch.GetTimestamp() - desiredTotalStartTicks;
-        sectionStartTicks = Stopwatch.GetTimestamp();
-        LogFlowExecutionMismatchDiagnostic(
-            self,
-            agent,
-            startX,
-            startY,
-            goalX,
-            goalY,
-            startSectorId,
-            goalSectorId,
-            goalPosition,
-            occupiedGoalPosition,
-            stableGoalPosition,
-            goalKind,
-            downstreamPortalId,
-            tile,
-            desiredResolution,
-            desiredDirection,
-            desiredVelocity,
-            preferredAgentTypeId);
-        _perf.ExecutionMismatchDiagnosticTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.DesiredTicks += GetDiagnosticTimestamp() - desiredTotalStartTicks;
+        sectionStartTicks = GetDiagnosticTimestamp();
+        if (debugMove)
+        {
+            LogFlowExecutionMismatchDiagnostic(
+                self,
+                agent,
+                startX,
+                startY,
+                goalX,
+                goalY,
+                startSectorId,
+                goalSectorId,
+                goalPosition,
+                occupiedGoalPosition,
+                stableGoalPosition,
+                goalKind,
+                downstreamPortalId,
+                tile,
+                desiredResolution,
+                desiredDirection,
+                desiredVelocity,
+                preferredAgentTypeId);
+        }
+        _perf.ExecutionMismatchDiagnosticTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
         bool logSuccessfulMoveDiagnostic = ShouldLogSuccessfulMoveDiagnostic(agent, self);
         if (logSuccessfulMoveDiagnostic)
         {
-            long successDiagStartTicks = Stopwatch.GetTimestamp();
+            long successDiagStartTicks = GetDiagnosticTimestamp();
             GameDebugSettings.Log(DebugCategory.Move,
                 $"[FlowBridgeDiag] key={self.CharacterKey} pos={self.Position} rawGoal={goalPosition} occupiedGoal={occupiedGoalPosition} " +
                 $"stableGoal={stableGoalPosition} start=({startX},{startY}) goal=({goalX},{goalY}) sector={startSectorId}->{goalSectorId} " +
@@ -8021,23 +8254,23 @@ public static class FlowFieldCrowdMovementSystem
                 $"flow={desiredResolution.Flow} tileTarget={desiredResolution.TileTargetPosition} integration={desiredResolution.Integration:F3} " +
                 $"currentFlow={agent.NavState.CurrentFlowDirection} tileDiag={(tile != null ? BuildCurrentTileSteeringDiagnostics(tile, startX, startY) : "tile=pending")} " +
                 $"gridPathDiag={BuildGridPathDiagnostics(self.Position, stableGoalPosition, preferredAgentTypeId)}");
-            _perf.SuccessfulMoveDiagnosticTicks += Stopwatch.GetTimestamp() - successDiagStartTicks;
+            _perf.SuccessfulMoveDiagnosticTicks += GetDiagnosticTimestamp() - successDiagStartTicks;
         }
 
         BottleneckDecision bottleneckDecision = FreeMoveDecision;
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         if (TryResolveActiveBottleneck(agent, tile, goalKind, downstreamPortalId, startSectorId, startX, startY, desiredDirection, out CorridorBottleneckDescriptor bottleneck))
             bottleneckDecision = EvaluateBottleneck(agent, bottleneck);
-        _perf.BottleneckTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.BottleneckTicks += GetDiagnosticTimestamp() - sectionStartTicks;
 
-        sectionStartTicks = Stopwatch.GetTimestamp();
+        sectionStartTicks = GetDiagnosticTimestamp();
         velocity = ResolveCrowdSteering(self, agent, occupiedGoalPosition, desiredVelocity, desiredResolution, tile, bottleneckDecision);
-        _perf.SteeringTicks += Stopwatch.GetTimestamp() - sectionStartTicks;
+        _perf.SteeringTicks += GetDiagnosticTimestamp() - sectionStartTicks;
         UpdateResolvedVelocity(selfId, occupiedGoalPosition, desiredVelocity, velocity);
 
         if (logSuccessfulMoveDiagnostic)
         {
-            long successDiagStartTicks = Stopwatch.GetTimestamp();
+            long successDiagStartTicks = GetDiagnosticTimestamp();
             GameDebugSettings.Log(DebugCategory.Move,
                 $"[{self.CharacterKey}] Flow steer start=({startX},{startY}) goal=({goalX},{goalY}) rawGoal={goalPosition} occupiedGoal={occupiedGoalPosition} stableGoal={stableGoalPosition} " +
                 $"sector={startSectorId}->{goalSectorId} goalKind={goalKind} portal={downstreamPortalId} " +
@@ -8045,10 +8278,10 @@ public static class FlowFieldCrowdMovementSystem
                 $"los={desiredResolution.HasLineOfSight} tileTarget={desiredResolution.TileTargetPosition} " +
                 $"desiredVel={desiredVelocity} resolvedVel={velocity} " +
                 $"pathSectorIndex={agent.NavState.PathHandle?.CurrentSectorIndex ?? -1}");
-            _perf.SuccessfulMoveDiagnosticTicks += Stopwatch.GetTimestamp() - successDiagStartTicks;
+            _perf.SuccessfulMoveDiagnosticTicks += GetDiagnosticTimestamp() - successDiagStartTicks;
         }
         _perf.Calls++;
-        _perf.TotalTicks += Stopwatch.GetTimestamp() - totalStartTicks;
+        _perf.TotalTicks += GetDiagnosticTimestamp() - totalStartTicks;
         return true;
     }
 
@@ -8087,6 +8320,7 @@ public static class FlowFieldCrowdMovementSystem
         int overlapCount = 0;
         int skippedDynamicCount = 0;
         float maxPenetration = 0f;
+        float maxPenetrationRatio = 0f;
         string topOverlap = "none";
         for (int i = 0; i < nearbyAgents.Count; i++)
         {
@@ -8104,6 +8338,10 @@ public static class FlowFieldCrowdMovementSystem
             float penetration = combinedRadius - distance;
             if (penetration <= Mathf.Max(0.02f, combinedRadius * 0.08f))
                 continue;
+
+            maxPenetrationRatio = Mathf.Max(
+                maxPenetrationRatio,
+                Mathf.Clamp01(penetration / Mathf.Max(combinedRadius, 0.001f)));
 
             Vector3 direction = distance > 0.0001f
                 ? away / distance
@@ -8126,7 +8364,10 @@ public static class FlowFieldCrowdMovementSystem
             return false;
         }
 
-        float speed = Mathf.Min(Mathf.Max(0.05f, maxSpeed), IdleOverlapRecoverySpeed);
+        float availableSpeed = Mathf.Max(0.05f, maxSpeed);
+        float speed = Mathf.Min(
+            availableSpeed,
+            Mathf.Lerp(IdleOverlapRecoverySpeed, availableSpeed, Mathf.Sqrt(maxPenetrationRatio)));
         velocity = recovery.normalized * speed;
         UpdateResolvedVelocity(selfId, self.Position, Vector3.zero, velocity);
         LogIdleOverlapRecoveryDiagnostic(agent, true, recoveryRadius, nearbyAgents.Count, skippedDynamicCount, overlapCount, maxPenetration, topOverlap, velocity);
@@ -8265,6 +8506,8 @@ public static class FlowFieldCrowdMovementSystem
         Vector3 inputVelocity,
         string executorReason)
     {
+        if (!IsMovementDiagnosticsEnabled())
+            return;
         if (self == null)
             throw new InvalidOperationException("FlowFieldCrowdMovementSystem.LogConstraintFailureDiagnostic failed: self is null.");
 
@@ -8630,6 +8873,22 @@ public static class FlowFieldCrowdMovementSystem
         return true;
     }
 
+    private static bool TryConsumeNavigationStuckDiagnosticBudget()
+    {
+        int frame = GetFrameCount();
+        if (_navigationStuckDiagnosticFrame != frame)
+        {
+            _navigationStuckDiagnosticFrame = frame;
+            _navigationStuckDiagnosticCountThisFrame = 0;
+        }
+
+        if (_navigationStuckDiagnosticCountThisFrame >= MaxNavigationStuckDiagnosticsPerFrame)
+            return false;
+
+        _navigationStuckDiagnosticCountThisFrame++;
+        return true;
+    }
+
     public static void DrawGizmos()
     {
         if (!GameDebugSettings.IsEnabled(DebugCategory.Move))
@@ -8651,6 +8910,11 @@ public static class FlowFieldCrowdMovementSystem
         return _hasTestTimeOverride ? _testFrameCount : Time.frameCount;
     }
 
+    public static int GetCurrentNavigationFrame()
+    {
+        return GetFrameCount();
+    }
+
     private static float GetTime()
     {
         return _hasTestTimeOverride ? _testTime : Time.time;
@@ -8666,9 +8930,41 @@ public static class FlowFieldCrowdMovementSystem
         return Stopwatch.GetTimestamp() >= deadlineTicks;
     }
 
+    private static bool IsMovementDiagnosticsEnabled()
+    {
+        if (_hasTestTimeOverride)
+            return true;
+
+        int frame = Time.frameCount;
+        if (_lastDiagnosticsEnabledFrame == frame)
+            return _diagnosticsEnabledForFrame;
+
+        _lastDiagnosticsEnabledFrame = frame;
+        _diagnosticsEnabledForFrame = GameDebugSettings.IsEnabled(DebugCategory.Move);
+        return _diagnosticsEnabledForFrame;
+    }
+
+    private static long GetDiagnosticTimestamp()
+    {
+        return IsMovementDiagnosticsEnabled() ? Stopwatch.GetTimestamp() : 0L;
+    }
+
     private static void BeginPerfCall()
     {
         int frame = GetFrameCount();
+        if (!IsMovementDiagnosticsEnabled())
+        {
+            if (_lastMaintenanceFrame != frame)
+            {
+                _lastMaintenanceFrame = frame;
+                TrimMovingTargetAnchors();
+                TrimCombatTargetSlotCache();
+                _perf = new FlowPerfAccumulator { Frame = frame };
+            }
+            _perfInitialized = false;
+            return;
+        }
+
         long nowTicks = Stopwatch.GetTimestamp();
         if (!_perfInitialized)
         {
@@ -8689,6 +8985,8 @@ public static class FlowFieldCrowdMovementSystem
 
     private static void FlushPerfIfNeeded()
     {
+        if (!IsMovementDiagnosticsEnabled())
+            return;
         if (!_perfInitialized)
             return;
 
@@ -9291,6 +9589,8 @@ public static class FlowFieldCrowdMovementSystem
     {
         if (agent == null)
             throw new InvalidOperationException("UpdateAgentNavigationIntent failed: agent is null.");
+        if (moveComp == null)
+            return;
 
         bool hasIntent = false;
         bool moving = false;
@@ -9305,8 +9605,23 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         agent.HasNavigationIntent = hasIntent;
+        if (!hasIntent)
+            ClearInactiveNavigationDemand(agent);
         if (hasIntent || moving)
             agent.LastAvoidanceActiveFrame = GetFrameCount();
+    }
+
+    private static void ClearInactiveNavigationDemand(AgentRuntimeData agent)
+    {
+        AgentNavState nav = agent.NavState;
+        nav.HasGoal = false;
+        nav.PathHandle = null;
+        nav.DesiredVelocity = Vector3.zero;
+        nav.PreviousResolvedVelocity = Vector3.zero;
+        nav.ResolvedVelocity = Vector3.zero;
+        nav.ResolvedVelocityFrame = -1;
+        nav.CurrentFlowDirection = Vector3.zero;
+        ClearStableGoal(agent);
     }
 
     private static bool ShouldParticipateInDynamicAvoidance(AgentRuntimeData agent)
@@ -9391,11 +9706,11 @@ public static class FlowFieldCrowdMovementSystem
         return false;
     }
 
-    private static int BuildSpatialBucketKey(int cellX, int cellY)
+    private static long BuildSpatialBucketKey(int cellX, int cellY)
     {
         unchecked
         {
-            return (cellX * 73856093) ^ (cellY * 19349663);
+            return ((long)cellX << 32) | (uint)cellY;
         }
     }
 
@@ -9441,7 +9756,7 @@ public static class FlowFieldCrowdMovementSystem
                 continue;
 
             ResolveSpatialBucketCell(agent.Position, out int cellX, out int cellY);
-            int bucketKey = BuildSpatialBucketKey(cellX, cellY);
+            long bucketKey = BuildSpatialBucketKey(cellX, cellY);
             if (!AgentSpatialBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
             {
                 bucket = new List<AgentRuntimeData>(4);
@@ -9498,7 +9813,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             for (int x = selfCellX - searchRadiusInCells; x <= selfCellX + searchRadiusInCells; x++)
             {
-                int bucketKey = BuildSpatialBucketKey(x, y);
+                long bucketKey = BuildSpatialBucketKey(x, y);
                 if (!AgentSpatialBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
                     continue;
 
@@ -9536,7 +9851,7 @@ public static class FlowFieldCrowdMovementSystem
         {
             for (int x = centerCellX - searchRadiusInCells; x <= centerCellX + searchRadiusInCells; x++)
             {
-                int bucketKey = BuildSpatialBucketKey(x, y);
+                long bucketKey = BuildSpatialBucketKey(x, y);
                 if (!AgentSpatialBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
                     continue;
 
@@ -9585,7 +9900,7 @@ public static class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static void AddAgentToNavigationGoalBucket(Dictionary<int, List<AgentRuntimeData>> buckets, AgentRuntimeData agent, Vector3 position)
+    private static void AddAgentToNavigationGoalBucket(Dictionary<long, List<AgentRuntimeData>> buckets, AgentRuntimeData agent, Vector3 position)
     {
         if (buckets == null)
             throw new InvalidOperationException("AddAgentToNavigationGoalBucket failed: buckets is null.");
@@ -9593,7 +9908,7 @@ public static class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("AddAgentToNavigationGoalBucket failed: agent is null.");
 
         ResolveSpatialBucketCell(position, out int cellX, out int cellY);
-        int bucketKey = BuildSpatialBucketKey(cellX, cellY);
+        long bucketKey = BuildSpatialBucketKey(cellX, cellY);
         if (!buckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
         {
             bucket = new List<AgentRuntimeData>(4);
@@ -9626,13 +9941,13 @@ public static class FlowFieldCrowdMovementSystem
         EnsureNavigationGoalOccupancyBuckets();
 
         ResolveSpatialBucketCell(position, out int centerCellX, out int centerCellY);
-        int searchRadiusInCells = Mathf.Max(1, Mathf.CeilToInt(requiredDistance / Mathf.Max(_world.CellSize, 0.001f)));
+        int searchRadiusInCells = Mathf.Max(1, Mathf.CeilToInt(requiredDistance / ResolveAgentSpatialBucketSize()));
         float requiredDistanceSq = requiredDistance * requiredDistance;
         for (int y = centerCellY - searchRadiusInCells; y <= centerCellY + searchRadiusInCells; y++)
         {
             for (int x = centerCellX - searchRadiusInCells; x <= centerCellX + searchRadiusInCells; x++)
             {
-                int bucketKey = BuildSpatialBucketKey(x, y);
+                long bucketKey = BuildSpatialBucketKey(x, y);
                 if (!NavigationGoalOccupancyBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
                     continue;
 
@@ -9663,13 +9978,13 @@ public static class FlowFieldCrowdMovementSystem
         EnsureNavigationGoalOccupancyBuckets();
 
         ResolveSpatialBucketCell(position, out int centerCellX, out int centerCellY);
-        int searchRadiusInCells = Mathf.Max(1, Mathf.CeilToInt(requiredDistance / Mathf.Max(_world.CellSize, 0.001f)));
+        int searchRadiusInCells = Mathf.Max(1, Mathf.CeilToInt(requiredDistance / ResolveAgentSpatialBucketSize()));
         float requiredDistanceSq = requiredDistance * requiredDistance;
         for (int y = centerCellY - searchRadiusInCells; y <= centerCellY + searchRadiusInCells; y++)
         {
             for (int x = centerCellX - searchRadiusInCells; x <= centerCellX + searchRadiusInCells; x++)
             {
-                int bucketKey = BuildSpatialBucketKey(x, y);
+                long bucketKey = BuildSpatialBucketKey(x, y);
                 if (!NavigationGoalOccupancyBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
                     continue;
 
@@ -9703,13 +10018,9 @@ public static class FlowFieldCrowdMovementSystem
         if (other == null)
             throw new InvalidOperationException("ResolveNeighborPredictedVelocity failed: other is null.");
 
-        if (other.NavState.ResolvedVelocityFrame == GetFrameCount())
-            return other.NavState.ResolvedVelocity;
-
-        if (other.NavState.DesiredVelocity.sqrMagnitude > 0.0001f)
-            return other.NavState.DesiredVelocity;
-
-        return other.NavState.ResolvedVelocity;
+        return other.NavState.ResolvedVelocityFrame == GetFrameCount()
+            ? other.NavState.PreviousResolvedVelocity
+            : other.NavState.ResolvedVelocity;
     }
 
     private static bool TryEnsureWorldBuilt(int preferredAgentTypeId, bool allowSynchronousBuild = false)
@@ -10641,11 +10952,15 @@ public static class FlowFieldCrowdMovementSystem
 
     private static void LogNoStacktrace(string message)
     {
+        if (!IsMovementDiagnosticsEnabled())
+            return;
         Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", message);
     }
 
     private static void LogWarningNoStacktrace(string message)
     {
+        if (!IsMovementDiagnosticsEnabled())
+            return;
         Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, "{0}", message);
     }
 
@@ -11517,6 +11832,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
             foreach (int sectorId in state.RuntimeDirtyJob.CostDirtySectors)
                 state.DirtyRuntimeObstacleSectors.Add(sectorId);
             ReturnRuntimeDirtyPortalTransitionIntegration(state.RuntimeDirtyJob);
+            ReturnRuntimeDirtyWorkingWorld(state.RuntimeDirtyJob);
         }
 
         state.RuntimeDirtyJob = null;
@@ -11537,7 +11853,6 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
         RuntimeDirtyRebuildJob job = new RuntimeDirtyRebuildJob
         {
             TargetWorld = world,
-            WorkingWorld = CloneNavigationWorldForRuntimeDirty(world, dirtySectors),
             DirtySectors = dirtySectors,
             CostDirtySectors = costDirtySectors,
             DirtySectorIds = new List<int>(dirtySectors),
@@ -11545,7 +11860,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
             CircleObstacles = new List<CircleObstacle>(CircleObstacles.Values),
             BoxObstacles = new List<BoxObstacle>(BoxObstacles.Values),
             CostStamps = new List<CostStamp>(CostStamps.Values),
-            Stage = RuntimeDirtyRebuildStage.ResetWalkable,
+            Stage = RuntimeDirtyRebuildStage.InitializeClone,
             Reason = _lastRuntimeObstacleDirtyReason
         };
 
@@ -11553,7 +11868,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
         state.DirtyRuntimeObstacleSectors.Clear();
         _perf.RuntimeDirtyApplications++;
         _perf.RuntimeDirtySectorCount += dirtySectors.Count;
-        Debug.Log(
+        LogNoStacktrace(
             $"[FlowRuntimeDirtyQueued] worldVersion={world.Version} dirtySectors={dirtySectors.Count} costSectors={costDirtySectors.Count} " +
             $"reason={job.Reason} circleCount={job.CircleObstacles.Count} boxCount={job.BoxObstacles.Count} costStampCount={CostStamps.Count}");
         return true;
@@ -11572,6 +11887,9 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
             long stageStartTimestamp = Stopwatch.GetTimestamp();
             switch (job.Stage)
             {
+                case RuntimeDirtyRebuildStage.InitializeClone:
+                    ProcessRuntimeDirtyClone(job, deadlineTicks, forceComplete);
+                    break;
                 case RuntimeDirtyRebuildStage.ResetWalkable:
                     ProcessRuntimeDirtyResetWalkable(job, deadlineTicks, forceComplete);
                     break;
@@ -11592,6 +11910,9 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
                     break;
                 case RuntimeDirtyRebuildStage.IslandField:
                     ProcessRuntimeDirtyIslandField(job, deadlineTicks, forceComplete);
+                    break;
+                case RuntimeDirtyRebuildStage.SectorComponents:
+                    ProcessRuntimeDirtySectorComponents(job, deadlineTicks, forceComplete);
                     break;
                 case RuntimeDirtyRebuildStage.PortalGraph:
                     ProcessRuntimeDirtyPortalGraph(job, deadlineTicks, forceComplete);
@@ -11693,6 +12014,114 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
             $"island={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.IslandField]):F3}ms," +
             $"portal={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.PortalGraph]):F3}ms," +
             $"commit={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.Commit]):F3}ms)";
+    }
+
+    private static void ProcessRuntimeDirtyClone(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
+    {
+        NavigationWorld source = job.TargetWorld;
+        if (source == null)
+            throw new InvalidOperationException("ProcessRuntimeDirtyClone failed: target world is null.");
+
+        if (!job.CloneShellInitialized)
+        {
+            NavigationWorld clone = new NavigationWorld
+            {
+                Version = source.Version,
+                AgentTypeId = source.AgentTypeId,
+                Width = source.Width,
+                Height = source.Height,
+                CellSize = source.CellSize,
+                Origin = source.Origin,
+                BaseWalkableMask = source.BaseWalkableMask,
+                BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
+                SourceCostField = source.SourceCostField,
+                WalkableMask = RentBoolArray(source.Width * source.Height, clear: false),
+                CostField = RentByteArray(source.Width * source.Height, clear: false),
+                SectorCostFields = null,
+                CellNavAnchors = source.CellNavAnchors,
+                NeighborTraversalMask = RentByteArray(source.Width * source.Height, clear: false),
+                IslandIds = RentIntArray(source.Width * source.Height, clear: false),
+                IslandCount = source.IslandCount,
+                MainIslandId = source.MainIslandId,
+                MainIslandSize = source.MainIslandSize,
+                SectorSizeInCells = source.SectorSizeInCells,
+                SectorCountX = source.SectorCountX,
+                SectorCountY = source.SectorCountY,
+                Sectors = new SectorData[source.Sectors.Length],
+                Portals = source.Portals != null ? (PortalData[])source.Portals.Clone() : Array.Empty<PortalData>(),
+                PortalsById = new Dictionary<int, PortalData>(source.PortalsById),
+                NextPortalId = source.NextPortalId
+            };
+            foreach (KeyValuePair<PortalSignature, int> pair in source.PortalIdsBySignature)
+                clone.PortalIdsBySignature.Add(pair.Key, pair.Value);
+            foreach (int portalId in source.UsedPortalIds)
+                clone.UsedPortalIds.Add(portalId);
+
+            job.WorkingWorld = clone;
+            job.CloneCellCursor = 0;
+            job.CloneSectorCursor = 0;
+            job.CloneShellInitialized = true;
+        }
+
+        NavigationWorld working = job.WorkingWorld;
+        int cellCount = source.Width * source.Height;
+        while (job.CloneCellCursor < cellCount)
+        {
+            int end = Mathf.Min(cellCount, job.CloneCellCursor + 4096);
+            int copyCount = end - job.CloneCellCursor;
+            Array.Copy(source.WalkableMask, job.CloneCellCursor, working.WalkableMask, job.CloneCellCursor, copyCount);
+            Array.Copy(source.NeighborTraversalMask, job.CloneCellCursor, working.NeighborTraversalMask, job.CloneCellCursor, copyCount);
+            if (source.CostField != null)
+            {
+                Array.Copy(source.CostField, job.CloneCellCursor, working.CostField, job.CloneCellCursor, copyCount);
+            }
+            else
+            {
+                for (int index = job.CloneCellCursor; index < end; index++)
+                    working.CostField[index] = source.WalkableMask[index] ? (byte)1 : byte.MaxValue;
+            }
+
+            job.CloneCellCursor = end;
+            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                return;
+        }
+
+        while (job.CloneSectorCursor < source.Sectors.Length)
+        {
+            int sectorIndex = job.CloneSectorCursor++;
+            SectorData sourceSector = source.Sectors[sectorIndex];
+            working.Sectors[sectorIndex] = CloneSectorData(sourceSector, job.DirtySectors);
+            if (source.CostField == null)
+                CopyRuntimeDirtySectorCost(source, working, sourceSector);
+            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                return;
+        }
+
+        job.SectorCursor = 0;
+        job.Stage = RuntimeDirtyRebuildStage.ResetWalkable;
+    }
+
+    private static void CopyRuntimeDirtySectorCost(NavigationWorld source, NavigationWorld working, SectorData sector)
+    {
+        if (sector == null)
+            throw new InvalidOperationException("CopyRuntimeDirtySectorCost failed: sector is null.");
+
+        byte[] chunk = source.SectorCostFields != null ? source.SectorCostFields[sector.SectorId] : null;
+        if (chunk == null)
+        {
+            if (!sector.IsClearCostField)
+                throw new InvalidOperationException($"CopyRuntimeDirtySectorCost failed: missing non-clear cost chunk sector={sector.SectorId}.");
+            return;
+        }
+        if (chunk.Length != sector.Width * sector.Height)
+            throw new InvalidOperationException($"CopyRuntimeDirtySectorCost failed: invalid cost chunk sector={sector.SectorId} length={chunk.Length}.");
+
+        for (int localY = 0; localY < sector.Height; localY++)
+        {
+            int sourceOffset = localY * sector.Width;
+            int targetOffset = (sector.StartY + localY) * working.Width + sector.StartX;
+            Array.Copy(chunk, sourceOffset, working.CostField, targetOffset, sector.Width);
+        }
     }
 
     private static void ProcessRuntimeDirtyResetWalkable(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
@@ -11807,27 +12236,34 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
         if (!complete)
             return;
 
-        RebuildRuntimeDirtySectorComponents(world, job.DirtySectors);
-        LogIslandFieldDiagnostics(world, "runtime-dirty");
-        job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
+        job.SectorCursor = 0;
+        job.Stage = RuntimeDirtyRebuildStage.SectorComponents;
     }
 
-    private static void RebuildRuntimeDirtySectorComponents(NavigationWorld world, HashSet<int> dirtySectors)
+    private static void ProcessRuntimeDirtySectorComponents(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
     {
+        NavigationWorld world = job.WorkingWorld;
+        HashSet<int> dirtySectors = job.DirtySectors;
         if (world == null)
-            throw new InvalidOperationException("RebuildRuntimeDirtySectorComponents failed: world is null.");
+            throw new InvalidOperationException("ProcessRuntimeDirtySectorComponents failed: world is null.");
         if (world.Sectors == null)
-            throw new InvalidOperationException("RebuildRuntimeDirtySectorComponents failed: sectors are null.");
+            throw new InvalidOperationException("ProcessRuntimeDirtySectorComponents failed: sectors are null.");
         if (dirtySectors == null)
-            throw new InvalidOperationException("RebuildRuntimeDirtySectorComponents failed: dirty sectors are null.");
+            throw new InvalidOperationException("ProcessRuntimeDirtySectorComponents failed: dirty sectors are null.");
 
-        for (int i = 0; i < world.Sectors.Length; i++)
+        while (job.SectorCursor < world.Sectors.Length)
         {
-            SectorData sector = world.Sectors[i];
+            SectorData sector = world.Sectors[job.SectorCursor++];
             RebuildSectorIslandMetadata(world, sector);
             if (dirtySectors.Contains(sector.SectorId))
                 RebuildSectorLocalComponents(world, sector);
+            if (!forceComplete && Stopwatch.GetTimestamp() >= deadlineTicks)
+                return;
         }
+
+        LogIslandFieldDiagnostics(world, "runtime-dirty");
+        job.SectorCursor = 0;
+        job.Stage = RuntimeDirtyRebuildStage.PortalGraph;
     }
 
     private static void RebuildAllSectorLocalComponents(NavigationWorld world)
@@ -12803,32 +13239,37 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
 
         SectorData[] clone = new SectorData[source.Length];
         for (int i = 0; i < source.Length; i++)
-        {
-            SectorData sector = source[i];
-            SectorData copy = new SectorData
-            {
-                SectorId = sector.SectorId,
-                StartX = sector.StartX,
-                StartY = sector.StartY,
-                Width = sector.Width,
-                Height = sector.Height,
-                Center = sector.Center,
-                DirtyVersion = sector.DirtyVersion,
-                IsClearCostField = sector.IsClearCostField,
-                IsClearFlowTile = sector.IsClearFlowTile,
-                UniformIslandId = sector.UniformIslandId,
-                LocalComponentIds = dirtySectors == null || dirtySectors.Contains(sector.SectorId) || sector.LocalComponentIds == null
-                    ? new int[sector.Width * sector.Height]
-                    : sector.LocalComponentIds,
-                LocalComponentCount = sector.LocalComponentCount
-            };
-            copy.PortalIds.AddRange(sector.PortalIds);
-            copy.PortalTransitions.AddRange(sector.PortalTransitions);
-            RebuildIncomingPortalTransitionIndex(copy);
-            clone[i] = copy;
-        }
+            clone[i] = CloneSectorData(source[i], dirtySectors);
 
         return clone;
+    }
+
+    private static SectorData CloneSectorData(SectorData sector, HashSet<int> dirtySectors)
+    {
+        if (sector == null)
+            throw new InvalidOperationException("CloneSectorData failed: sector is null.");
+
+        SectorData copy = new SectorData
+        {
+            SectorId = sector.SectorId,
+            StartX = sector.StartX,
+            StartY = sector.StartY,
+            Width = sector.Width,
+            Height = sector.Height,
+            Center = sector.Center,
+            DirtyVersion = sector.DirtyVersion,
+            IsClearCostField = sector.IsClearCostField,
+            IsClearFlowTile = sector.IsClearFlowTile,
+            UniformIslandId = sector.UniformIslandId,
+            LocalComponentIds = dirtySectors == null || dirtySectors.Contains(sector.SectorId) || sector.LocalComponentIds == null
+                ? new int[sector.Width * sector.Height]
+                : sector.LocalComponentIds,
+            LocalComponentCount = sector.LocalComponentCount
+        };
+        copy.PortalIds.AddRange(sector.PortalIds);
+        copy.PortalTransitions.AddRange(sector.PortalTransitions);
+        RebuildIncomingPortalTransitionIndex(copy);
+        return copy;
     }
 
     private static void ResetSectorWalkableFromBase(NavigationWorld world, SectorData sector)
@@ -16934,7 +17375,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             ? handle.SectorIds[handle.CurrentSectorIndex]
             : -1;
 
-        Debug.Log(
+        LogNoStacktrace(
             $"[FlowPathAdvanceFail] agent={agent?.CharacterKey ?? "null"} currentSector={currentSectorId} goalSector={goalSectorId} " +
             $"start=({startX},{startY}) goal=({goalX},{goalY}) currentIndexSector={currentIndexSector} " +
             $"firstIndex={firstIndex} forwardIndex={forwardIndex} handle={FormatPathHandle(handle)}");
@@ -21983,6 +22424,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Vector3 strongestImmediateSeparation = Vector3.zero;
         float strongestImmediateSeparationMagnitudeSq = 0f;
         int immediateOverlapCount = 0;
+        int penetratingOverlapCount = 0;
         float closestImmediateOverlapDistance = float.MaxValue;
         float closestImmediateOverlapClearance = 0f;
         int closeNeighborCount = 0;
@@ -21996,9 +22438,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         bool skippedCloseNeighborOtherHasIntent = false;
         string skippedCloseNeighborOtherMoveCompType = string.Empty;
         MovementMode skippedCloseNeighborOtherMoveMode = MovementMode.Normal;
-        long steeringSectionTicks = Stopwatch.GetTimestamp();
+        long steeringSectionTicks = GetDiagnosticTimestamp();
         List<AgentRuntimeData> nearbyAgents = CollectNearbyDynamicNeighbors(self, avoidRadius);
-        _perf.NeighborCollectTicks += Stopwatch.GetTimestamp() - steeringSectionTicks;
+        _perf.NeighborCollectTicks += GetDiagnosticTimestamp() - steeringSectionTicks;
         _perf.NeighborChecks += nearbyAgents.Count;
         for (int i = 0; i < nearbyAgents.Count; i++)
         {
@@ -22059,9 +22501,11 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                     closestImmediateOverlapDistance = pairDistance;
                     closestImmediateOverlapClearance = ResolveImmediateSeparationClearance(self, other);
                 }
+                if (pairDistance < self.Radius + other.Radius)
+                    penetratingOverlapCount++;
             }
 
-            long avoidStartTicks = Stopwatch.GetTimestamp();
+            long avoidStartTicks = GetDiagnosticTimestamp();
             Vector3 awayContribution = ResolvePredictiveAvoidanceContribution(
                 self,
                 other,
@@ -22079,7 +22523,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 out float riskScore,
                 out float crossingScore,
                 out float imminenceScore);
-            _perf.NeighborAvoidTicks += Stopwatch.GetTimestamp() - avoidStartTicks;
+            _perf.NeighborAvoidTicks += GetDiagnosticTimestamp() - avoidStartTicks;
             Vector3 totalContribution = awayContribution + tangentContribution + brakeContribution;
             agentAvoidance += totalContribution;
 
@@ -22104,6 +22548,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             immediateSeparation,
             strongestImmediateSeparation,
             immediateOverlapCount,
+            penetratingOverlapCount,
             closestImmediateOverlapDistance,
             closestImmediateOverlapClearance,
             maxSpeed);
@@ -22118,7 +22563,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         float edgeDistance = float.MaxValue;
         if (tile != null)
         {
-            long boundaryStartTicks = Stopwatch.GetTimestamp();
+            long boundaryStartTicks = GetDiagnosticTimestamp();
             boundaryAvoidance = ResolveBoundaryAvoidance(
                 self.Position,
                 boundaryProbeDirection,
@@ -22127,7 +22572,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 self.AgentTypeId,
                 out edgeNormal,
                 out edgeDistance);
-            _perf.BoundaryTicks += Stopwatch.GetTimestamp() - boundaryStartTicks;
+            _perf.BoundaryTicks += GetDiagnosticTimestamp() - boundaryStartTicks;
         }
         immediateSeparation = ConstrainImmediateSeparationByEdge(
             immediateSeparation,
@@ -22137,36 +22582,66 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             self.Radius,
             maxSpeed);
 
-        steeringSectionTicks = Stopwatch.GetTimestamp();
+        steeringSectionTicks = GetDiagnosticTimestamp();
         Vector3 runtimeObstacleAvoidance = ResolvePendingRuntimeObstacleAvoidance(
             self,
             desiredDirection,
             desiredVelocity,
             maxSpeed,
             out string runtimeObstacleDebug);
-        _perf.RuntimeObstacleAvoidTicks += Stopwatch.GetTimestamp() - steeringSectionTicks;
+        _perf.RuntimeObstacleAvoidTicks += GetDiagnosticTimestamp() - steeringSectionTicks;
 
-        float immediateOverlapDepth = immediateOverlapCount > 0 && closestImmediateOverlapClearance > 0.0001f
-            ? Mathf.Clamp01((closestImmediateOverlapClearance - closestImmediateOverlapDistance) / closestImmediateOverlapClearance)
-            : 0f;
-        float activeSeekScale = immediateOverlapCount > 0 ? 1f - immediateOverlapDepth : 1f;
-        float dynamicAvoidanceScale = immediateOverlapCount > 0 ? 0.75f * (1f - immediateOverlapDepth) : 0.75f;
         Vector3 dynamicAvoidance = clampedAgentAvoidance + runtimeObstacleAvoidance;
         Vector3 avoidance = dynamicAvoidance + boundaryAvoidance;
-        steeringSectionTicks = Stopwatch.GetTimestamp();
-        Vector3 steeringBase = baseVelocity * activeSeekScale + dynamicAvoidance * dynamicAvoidanceScale + boundaryAvoidance + immediateSeparation;
+        steeringSectionTicks = GetDiagnosticTimestamp();
+        Vector3 secondarySteering = baseVelocity + dynamicAvoidance * 0.75f + boundaryAvoidance;
+        Vector3 steeringBase = penetratingOverlapCount > 0
+            ? ComposePrioritizedImmediateSeparation(secondarySteering, immediateSeparation, penetratingOverlapCount, maxSpeed)
+            : ComposeSoftSeparationBraking(secondarySteering, immediateSeparation, desiredDirection, maxSpeed);
+        Vector3 penetrationProjectionInput = steeringBase;
+        int penetrationConstraintCount = 0;
+        float strongestPenetrationCorrection = 0f;
+        int strongestPenetrationOtherId = -1;
+        if (penetratingOverlapCount > 0)
+        {
+            steeringBase = ProjectPenetrationVelocityConstraints(
+                selfContext,
+                self,
+                nearbyAgents,
+                steeringBase,
+                maxSpeed,
+                out penetrationConstraintCount,
+                out strongestPenetrationCorrection,
+                out strongestPenetrationOtherId);
+        }
+        Vector3 penetrationProjectionOutput = steeringBase;
         Vector3 laneVelocity = ResolveWalkableLaneVelocity(self.Position, steeringBase, bottleneck.LaneBias * maxSpeed, self.Radius);
         Vector3 result = steeringBase + laneVelocity;
         result = ApplyEdgeRecovery(self.Position, result, desiredDirection, edgeNormal, edgeDistance, self.Radius, maxSpeed);
-        result = ApplyLaneCommitment(self.Position, result, laneVelocity, bottleneck, edgeNormal, edgeDistance, self.Radius, maxSpeed);
+        if (penetratingOverlapCount == 0)
+        {
+            result = ApplyLaneCommitment(
+                self.Position,
+                result,
+                baseVelocity,
+                laneVelocity,
+                bottleneck,
+                edgeNormal,
+                edgeDistance,
+                self.Radius,
+                maxSpeed);
+        }
         Vector3 rawCombinedResult = result;
-        _perf.SteeringLaneTicks += Stopwatch.GetTimestamp() - steeringSectionTicks;
+        _perf.SteeringLaneTicks += GetDiagnosticTimestamp() - steeringSectionTicks;
 
-        steeringSectionTicks = Stopwatch.GetTimestamp();
+        steeringSectionTicks = GetDiagnosticTimestamp();
+        Vector3 constraintPreferredVelocity = penetratingOverlapCount > 0 && immediateSeparation.sqrMagnitude > 0.0001f
+            ? immediateSeparation
+            : desiredVelocity;
         result = ConstrainVelocityToWalkableSteeringStep(
             self.Position,
             result,
-            desiredVelocity,
+            constraintPreferredVelocity,
             maxSpeed,
             self.Radius,
             out WalkableSteeringConstraintDiagnostics firstConstraintDiagnostic);
@@ -22175,14 +22650,16 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Vector3 clampedResult = ConstrainVelocityToWalkableSteeringStep(
             self.Position,
             finalConstraintInput,
-            desiredVelocity,
+            constraintPreferredVelocity,
             maxSpeed,
             self.Radius,
             out WalkableSteeringConstraintDiagnostics finalConstraintDiagnostic);
-        _perf.SteeringConstrainTicks += Stopwatch.GetTimestamp() - steeringSectionTicks;
+        _perf.SteeringConstrainTicks += GetDiagnosticTimestamp() - steeringSectionTicks;
 
-        steeringSectionTicks = Stopwatch.GetTimestamp();
-        StoreSteeringDiagnostic(
+        steeringSectionTicks = GetDiagnosticTimestamp();
+        if (IsMovementDiagnosticsEnabled())
+        {
+            StoreSteeringDiagnostic(
             self,
             goalPosition,
             desiredDirection,
@@ -22193,6 +22670,12 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             immediateSeparation,
             strongestImmediateSeparation,
             immediateOverlapCount,
+            penetratingOverlapCount,
+            penetrationProjectionInput,
+            penetrationProjectionOutput,
+            penetrationConstraintCount,
+            strongestPenetrationCorrection,
+            strongestPenetrationOtherId,
             closestImmediateOverlapDistance,
             closestImmediateOverlapClearance,
             closeNeighborCount,
@@ -22211,6 +22694,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             boundaryAvoidance,
             runtimeObstacleAvoidance,
             laneVelocity,
+            bottleneck,
             FormatTopAvoidContributors(topAvoidLogs, topAvoidScores),
             rawCombinedResult,
             firstConstraintDiagnostic,
@@ -22219,14 +22703,15 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             result,
             clampedResult,
             edgeNormal,
-            edgeDistance,
-            maxSpeed);
-        long storeDiagnosticTicks = Stopwatch.GetTimestamp() - steeringSectionTicks;
+                edgeDistance,
+                maxSpeed);
+        }
+        long storeDiagnosticTicks = GetDiagnosticTimestamp() - steeringSectionTicks;
         _perf.SteeringStoreDiagnosticTicks += storeDiagnosticTicks;
         _perf.SteeringDiagnosticTicks += storeDiagnosticTicks;
         if (debugMove)
         {
-            steeringSectionTicks = Stopwatch.GetTimestamp();
+            steeringSectionTicks = GetDiagnosticTimestamp();
             if (ShouldRunRouteAsymmetryDiagnostic(
                     self,
                     desiredVelocity,
@@ -22260,7 +22745,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                     edgeDistance,
                     maxSpeed);
             }
-            long routeDiagnosticTicks = Stopwatch.GetTimestamp() - steeringSectionTicks;
+            long routeDiagnosticTicks = GetDiagnosticTimestamp() - steeringSectionTicks;
             _perf.SteeringRouteDiagnosticTicks += routeDiagnosticTicks;
             _perf.SteeringDiagnosticTicks += routeDiagnosticTicks;
         }
@@ -22347,8 +22832,20 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             away /= distance;
         }
 
-        float penetration = Mathf.Clamp01((desiredClearance - distance) / Mathf.Max(desiredClearance, 0.001f));
-        float separationSpeed = maxSpeed * Mathf.Lerp(0.35f, 1f, Mathf.Sqrt(penetration));
+        float physicalContactDistance = self.Radius + other.Radius;
+        float separationSpeed;
+        if (distance >= physicalContactDistance)
+        {
+            float softBand = Mathf.Max(desiredClearance - physicalContactDistance, 0.001f);
+            float softDepth = Mathf.Clamp01((desiredClearance - distance) / softBand);
+            separationSpeed = maxSpeed * 0.35f * softDepth * softDepth;
+        }
+        else
+        {
+            float penetration = Mathf.Clamp01(
+                (physicalContactDistance - distance) / Mathf.Max(physicalContactDistance, 0.001f));
+            separationSpeed = maxSpeed * Mathf.Lerp(0.35f, 1f, Mathf.Sqrt(penetration));
+        }
         return away * separationSpeed;
     }
 
@@ -22356,6 +22853,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Vector3 accumulatedSeparation,
         Vector3 strongestSeparation,
         int immediateOverlapCount,
+        int penetratingOverlapCount,
         float closestImmediateOverlapDistance,
         float closestImmediateOverlapClearance,
         float maxSpeed)
@@ -22371,23 +22869,16 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         if (strongestSeparation.sqrMagnitude > 0.0001f)
         {
             if (resolved.sqrMagnitude <= 0.0001f)
-            {
                 resolved = strongestSeparation;
-            }
-            else
-            {
-                float strongestAlignment = Vector3.Dot(resolved.normalized, strongestSeparation.normalized);
-                if (strongestAlignment < 0.25f)
-                    resolved = strongestSeparation;
-                else
-                    resolved = Vector3.ClampMagnitude(resolved + strongestSeparation * Mathf.Lerp(0.25f, 0.75f, overlapDepth), maxSpeed);
-            }
         }
 
         if (resolved.sqrMagnitude <= 0.0001f)
             return Vector3.zero;
 
         resolved = Vector3.ClampMagnitude(resolved, maxSpeed);
+        if (penetratingOverlapCount <= 0)
+            return resolved;
+
         float minSeparationSpeed = maxSpeed * Mathf.Lerp(0.55f, 1f, overlapDepth);
         float resolvedMagnitude = resolved.magnitude;
         if (resolvedMagnitude < minSeparationSpeed)
@@ -22426,6 +22917,114 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         return Vector3.ClampMagnitude(separation, maxSpeed);
     }
 
+    private static Vector3 ComposePrioritizedImmediateSeparation(
+        Vector3 secondarySteering,
+        Vector3 separation,
+        int immediateOverlapCount,
+        float maxSpeed)
+    {
+        if (immediateOverlapCount <= 0)
+            return secondarySteering;
+        if (maxSpeed <= 0.0001f)
+            return Vector3.zero;
+        if (separation.sqrMagnitude <= 0.0001f)
+            throw new InvalidOperationException("ComposePrioritizedImmediateSeparation failed: overlap exists but separation is zero.");
+
+        Vector3 separationAxis = separation.normalized;
+        float secondaryNormalSpeed = Vector3.Dot(secondarySteering, separationAxis);
+        float requiredNormalSpeed = Mathf.Min(separation.magnitude, maxSpeed);
+        float resolvedNormalSpeed = Mathf.Min(maxSpeed, Mathf.Max(requiredNormalSpeed, secondaryNormalSpeed));
+        Vector3 tangent = secondarySteering - separationAxis * secondaryNormalSpeed;
+        tangent.y = 0f;
+        float tangentBudgetSq = Mathf.Max(0f, maxSpeed * maxSpeed - resolvedNormalSpeed * resolvedNormalSpeed);
+        tangent = Vector3.ClampMagnitude(tangent, Mathf.Sqrt(tangentBudgetSq));
+        return separationAxis * resolvedNormalSpeed + tangent;
+    }
+
+    private static Vector3 ComposeSoftSeparationBraking(
+        Vector3 secondarySteering,
+        Vector3 separation,
+        Vector3 desiredDirection,
+        float maxSpeed)
+    {
+        Vector3 combined = secondarySteering + separation;
+        combined.y = 0f;
+        if (separation.sqrMagnitude <= 0.0001f || desiredDirection.sqrMagnitude <= 0.0001f || maxSpeed <= 0.0001f)
+            return Vector3.ClampMagnitude(combined, maxSpeed);
+
+        desiredDirection.Normalize();
+        float combinedForwardSpeed = Vector3.Dot(combined, desiredDirection);
+        if (combinedForwardSpeed < 0f)
+            combined -= desiredDirection * combinedForwardSpeed;
+        return Vector3.ClampMagnitude(combined, maxSpeed);
+    }
+
+    private static Vector3 ProjectPenetrationVelocityConstraints(
+        IEntityContext selfContext,
+        AgentRuntimeData self,
+        List<AgentRuntimeData> nearbyAgents,
+        Vector3 velocity,
+        float maxSpeed,
+        out int constraintCount,
+        out float strongestCorrection,
+        out int strongestOtherId)
+    {
+        constraintCount = 0;
+        strongestCorrection = 0f;
+        strongestOtherId = -1;
+        if (self == null)
+            throw new InvalidOperationException("ProjectPenetrationVelocityConstraints failed: self is null.");
+        if (nearbyAgents == null)
+            throw new InvalidOperationException("ProjectPenetrationVelocityConstraints failed: nearbyAgents is null.");
+        if (maxSpeed <= 0.0001f)
+            return Vector3.zero;
+
+        Vector3 resolved = Vector3.ClampMagnitude(velocity, maxSpeed);
+        for (int pass = 0; pass < 4; pass++)
+        {
+            for (int i = 0; i < nearbyAgents.Count; i++)
+            {
+                AgentRuntimeData other = nearbyAgents[i];
+                if (TryResolveDynamicAvoidanceSkipReason(selfContext, self, other, out _))
+                    continue;
+
+                Vector3 away = self.Position - other.Position;
+                away.y = 0f;
+                float distance = away.magnitude;
+                float contactDistance = self.Radius + other.Radius;
+                if (distance >= contactDistance)
+                    continue;
+                if (distance <= 0.0001f)
+                    away = ResolveStablePairSeparationDirection(self, other);
+                else
+                    away /= distance;
+
+                float penetrationRatio = Mathf.Clamp01(
+                    (contactDistance - distance) / Mathf.Max(contactDistance, 0.001f));
+                float responsibility = self.IsLeader && !other.IsLeader
+                    ? 0.35f
+                    : !self.IsLeader && other.IsLeader ? 0.65f : 0.5f;
+                float requiredRelativeSpeed = maxSpeed * Mathf.Sqrt(penetrationRatio) * responsibility;
+                Vector3 otherVelocity = ResolveNeighborPredictedVelocity(other);
+                float relativeSeparatingSpeed = Vector3.Dot(resolved - otherVelocity, away);
+                if (relativeSeparatingSpeed >= requiredRelativeSpeed)
+                    continue;
+
+                float correction = requiredRelativeSpeed - relativeSeparatingSpeed;
+                constraintCount++;
+                if (correction > strongestCorrection)
+                {
+                    strongestCorrection = correction;
+                    strongestOtherId = other.Id;
+                }
+                resolved += away * correction;
+                resolved = Vector3.ClampMagnitude(resolved, maxSpeed);
+            }
+        }
+
+        return resolved;
+    }
+
     private static float ResolveImmediateSeparationClearance(AgentRuntimeData self, AgentRuntimeData other)
     {
         if (self == null)
@@ -22435,7 +23034,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         if (_world == null)
             throw new InvalidOperationException("ResolveImmediateSeparationClearance failed: world is null.");
 
-        return Mathf.Max((self.Radius + other.Radius) * 1.05f, _world.CellSize * 2f);
+        return (self.Radius + other.Radius) * 1.05f;
     }
 
     private static void StoreSteeringDiagnostic(
@@ -22449,6 +23048,12 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Vector3 immediateSeparation,
         Vector3 strongestImmediateSeparation,
         int immediateOverlapCount,
+        int penetratingOverlapCount,
+        Vector3 penetrationProjectionInput,
+        Vector3 penetrationProjectionOutput,
+        int penetrationConstraintCount,
+        float strongestPenetrationCorrection,
+        int strongestPenetrationOtherId,
         float closestImmediateOverlapDistance,
         float closestImmediateOverlapClearance,
         int closeNeighborCount,
@@ -22467,6 +23072,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Vector3 boundaryAvoidance,
         Vector3 runtimeObstacleAvoidance,
         Vector3 laneVelocity,
+        BottleneckDecision bottleneck,
         string topAvoidContributors,
         Vector3 rawCombinedResult,
         WalkableSteeringConstraintDiagnostics firstConstraintDiagnostic,
@@ -22491,6 +23097,12 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         navState.LastSteeringImmediateSeparation = immediateSeparation;
         navState.LastSteeringStrongestImmediateSeparation = strongestImmediateSeparation;
         navState.LastSteeringImmediateOverlapCount = immediateOverlapCount;
+        navState.LastSteeringPenetratingOverlapCount = penetratingOverlapCount;
+        navState.LastSteeringPenetrationProjectionInput = penetrationProjectionInput;
+        navState.LastSteeringPenetrationProjectionOutput = penetrationProjectionOutput;
+        navState.LastSteeringPenetrationConstraintCount = penetrationConstraintCount;
+        navState.LastSteeringStrongestPenetrationCorrection = strongestPenetrationCorrection;
+        navState.LastSteeringStrongestPenetrationOtherId = strongestPenetrationOtherId;
         navState.LastSteeringClosestImmediateOverlapDistance = closestImmediateOverlapDistance;
         navState.LastSteeringClosestImmediateOverlapClearance = closestImmediateOverlapClearance;
         navState.LastSteeringCloseNeighborCount = closeNeighborCount;
@@ -22509,6 +23121,11 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         navState.LastSteeringBoundaryAvoidance = boundaryAvoidance;
         navState.LastSteeringRuntimeObstacleAvoidance = runtimeObstacleAvoidance;
         navState.LastSteeringLaneVelocity = laneVelocity;
+        navState.LastSteeringBottleneckSpeedScale = bottleneck.SpeedScale;
+        navState.LastSteeringBottleneckLaneBias = bottleneck.LaneBias;
+        navState.LastSteeringBottleneckQueueBias = bottleneck.QueueBias;
+        navState.LastSteeringBottleneckEnforceLaneCommitment = bottleneck.EnforceLaneCommitment;
+        navState.LastSteeringBottleneckOwnerState = bottleneck.OwnerState;
         navState.LastSteeringTopAvoidContributors = topAvoidContributors ?? string.Empty;
         navState.LastSteeringRawCombinedVelocity = rawCombinedResult;
         navState.LastSteeringFirstConstrainedVelocity = firstConstraintDiagnostic.SelectedVelocity;
@@ -23017,6 +23634,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
     private static Vector3 ApplyLaneCommitment(
         Vector3 position,
         Vector3 velocity,
+        Vector3 primaryVelocity,
         Vector3 laneVelocity,
         BottleneckDecision bottleneck,
         Vector3 edgeNormal,
@@ -23027,14 +23645,15 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         if (!bottleneck.EnforceLaneCommitment || maxSpeed <= 0.0001f)
             return velocity;
 
-        Vector3 laneReference = laneVelocity.sqrMagnitude > 0.0001f ? laneVelocity : bottleneck.LaneBias;
-        if (laneReference.sqrMagnitude <= 0.0001f)
+        if (laneVelocity.sqrMagnitude <= 0.0001f)
             return velocity;
 
+        Vector3 laneReference = laneVelocity;
         Vector3 laneAxis = laneReference.normalized;
         float currentLaneSpeed = Vector3.Dot(velocity, laneAxis);
+        float primaryLaneSpeed = Vector3.Dot(primaryVelocity, laneAxis);
         float desiredLaneSpeed = Vector3.Dot(laneReference, laneAxis);
-        float minLaneSpeed = desiredLaneSpeed * 0.85f;
+        float minLaneSpeed = primaryLaneSpeed + desiredLaneSpeed * 0.85f;
         if (desiredLaneSpeed >= 0f)
         {
             if (currentLaneSpeed >= minLaneSpeed)
@@ -23858,7 +24477,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
     private static float ResolveSteeringPredictionDeltaTime()
     {
-        return _hasTestTimeOverride ? 0.2f : Mathf.Max(0.05f, Time.deltaTime > 0f ? Time.deltaTime : 0.1f);
+        float deltaTime = _hasTestTimeOverride ? _testDeltaTime : Time.deltaTime;
+        return Mathf.Max(0.05f, deltaTime > 0f ? deltaTime : 0.1f);
     }
 
     private static Vector3 ResolveBoundaryAvoidance(
@@ -24529,13 +25149,16 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         if (!_world.TryGetSectorId(goalX, goalY, out goalSectorId))
             return false;
 
-        string targetDiagnostics = BuildReachabilityTargetDiagnostics(self, rawGoalPosition, startX, startY);
-        Debug.LogWarning(
-            $"[FlowGoalResolvedToReachable] agent={self?.CharacterKey ?? "null"} rawGoal={rawGoalPosition} " +
-            $"rawCell=({rawGoalX},{rawGoalY}) rawIsland={rawGoalIsland} start=({startX},{startY}) startIsland={startIsland} " +
-            $"resolved=({goalX},{goalY}) resolvedWorld={goalWorld} resolvedDistance={distance:F3} " +
-            $"worldVersion={_world.Version} islandCount={_world.IslandCount} mainIsland={_world.MainIslandId}:{_world.MainIslandSize} {targetDiagnostics} rawGrid={FormatGridSampleDiagnostics(rawGoalPosition)} " +
-            $"rawNeighborhood={BuildIslandNeighborhoodDiagnostics(_world, rawGoalX, rawGoalY, 2)} resolvedNeighborhood={BuildIslandNeighborhoodDiagnostics(_world, goalX, goalY, 2)}");
+        if (IsMovementDiagnosticsEnabled())
+        {
+            string targetDiagnostics = BuildReachabilityTargetDiagnostics(self, rawGoalPosition, startX, startY);
+            Debug.LogWarning(
+                $"[FlowGoalResolvedToReachable] agent={self?.CharacterKey ?? "null"} rawGoal={rawGoalPosition} " +
+                $"rawCell=({rawGoalX},{rawGoalY}) rawIsland={rawGoalIsland} start=({startX},{startY}) startIsland={startIsland} " +
+                $"resolved=({goalX},{goalY}) resolvedWorld={goalWorld} resolvedDistance={distance:F3} " +
+                $"worldVersion={_world.Version} islandCount={_world.IslandCount} mainIsland={_world.MainIslandId}:{_world.MainIslandSize} {targetDiagnostics} rawGrid={FormatGridSampleDiagnostics(rawGoalPosition)} " +
+                $"rawNeighborhood={BuildIslandNeighborhoodDiagnostics(_world, rawGoalX, rawGoalY, 2)} resolvedNeighborhood={BuildIslandNeighborhoodDiagnostics(_world, goalX, goalY, 2)}");
+        }
         return true;
     }
 
@@ -24563,20 +25186,52 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         int expireBeforeFrame = GetFrameCount() - 300;
         List<MovingTargetAnchorKey> expiredIds = null;
+        bool referencedKeysBuilt = false;
         foreach (KeyValuePair<MovingTargetAnchorKey, MovingTargetAnchor> pair in MovingTargetAnchors)
         {
             if (pair.Value.LastUsedFrame >= expireBeforeFrame)
+                continue;
+
+            if (!referencedKeysBuilt)
+            {
+                BuildReferencedMovingTargetAnchorKeySet();
+                referencedKeysBuilt = true;
+            }
+            if (ReferencedMovingTargetAnchorKeysScratch.Contains(pair.Key))
                 continue;
 
             expiredIds ??= new List<MovingTargetAnchorKey>();
             expiredIds.Add(pair.Key);
         }
 
+        ReferencedMovingTargetAnchorKeysScratch.Clear();
         if (expiredIds == null)
             return;
 
         for (int i = 0; i < expiredIds.Count; i++)
             MovingTargetAnchors.Remove(expiredIds[i]);
+    }
+
+    private static void BuildReferencedMovingTargetAnchorKeySet()
+    {
+        ReferencedMovingTargetAnchorKeysScratch.Clear();
+        if (_world == null)
+            return;
+
+        foreach (AgentRuntimeData agent in Agents.Values)
+        {
+            if (agent == null || agent.NavState.StableGoalTargetId == int.MinValue)
+                continue;
+
+            int islandId = ResolveIslandIdForDiagnostics(_world, agent.NavState.CurrentCell.x, agent.NavState.CurrentCell.y);
+            if (islandId <= 0)
+                continue;
+
+            ReferencedMovingTargetAnchorKeysScratch.Add(new MovingTargetAnchorKey(
+                agent.NavState.StableGoalTargetId,
+                ResolvePreferredAgentTypeId(agent.AgentTypeId),
+                islandId));
+        }
     }
 
     private static void TrimCombatTargetSlotCache()
@@ -24858,13 +25513,13 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         EnsureNavigationGoalOccupancyBuckets();
 
         ResolveSpatialBucketCell(position, out int centerCellX, out int centerCellY);
-        int searchRadiusInCells = Mathf.Max(1, Mathf.CeilToInt(requiredDistance / Mathf.Max(_world.CellSize, 0.001f)));
+        int searchRadiusInCells = Mathf.Max(1, Mathf.CeilToInt(requiredDistance / ResolveAgentSpatialBucketSize()));
         float requiredDistanceSq = requiredDistance * requiredDistance;
         for (int y = centerCellY - searchRadiusInCells; y <= centerCellY + searchRadiusInCells; y++)
         {
             for (int x = centerCellX - searchRadiusInCells; x <= centerCellX + searchRadiusInCells; x++)
             {
-                int bucketKey = BuildSpatialBucketKey(x, y);
+                long bucketKey = BuildSpatialBucketKey(x, y);
                 if (!NavigationGoalIntentBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket))
                     continue;
 
@@ -27243,6 +27898,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         Vector3 inputVelocity,
         string executorReason)
     {
+        if (!IsMovementDiagnosticsEnabled())
+            return;
         string candidates = BuildConstraintAgentCandidateDiagnostic(self, currentPosition, 6);
         string executorGrid = BuildExecutorGridSegmentDiagnostic(
             currentPosition,
