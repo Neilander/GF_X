@@ -939,16 +939,15 @@ namespace UnityGameFramework.Runtime
         public HasAssetResult HasAsset(string assetName)
         {
 #if UNITY_EDITOR
-            UnityEngine.Object obj = UnityEditor.AssetDatabase.LoadMainAssetAtPath(assetName);
-            if (obj == null)
+            Type assetType = UnityEditor.AssetDatabase.GetMainAssetTypeAtPath(assetName);
+            if (assetType == null)
             {
                 return HasAssetResult.NotExist;
             }
 
-            HasAssetResult result = obj.GetType() == typeof(UnityEditor.DefaultAsset) ? HasAssetResult.BinaryOnDisk : HasAssetResult.AssetOnDisk;
-            obj = null;
-            UnityEditor.EditorUtility.UnloadUnusedAssetsImmediate();
-            return result;
+            return assetType == typeof(UnityEditor.DefaultAsset)
+                ? HasAssetResult.BinaryOnDisk
+                : HasAssetResult.AssetOnDisk;
 #else
             return HasAssetResult.NotExist;
 #endif

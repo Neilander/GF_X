@@ -70,13 +70,31 @@ public partial class BuildingBuildTips : UIFormBase
 
     protected override void OnOpen(object userData)
     {
+        long openStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        long openStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
+        long baseTicks;
+        long applyTargetTicks;
+        long subscribeTicks;
+
+        long phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         base.OnOpen(userData);
+        baseTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
 
+        phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         ApplyTarget(Params != null ? Params.Get(P_TargetHost) as InteractionHost : null);
+        applyTargetTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
 
+        phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnResourceChanged);
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnResourceChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        subscribeTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
+
+        LogBuildPanelPerf(
+            "OnOpen",
+            openStartTicks,
+            openStartAllocatedBytes,
+            $"base={TicksToMilliseconds(baseTicks):F3}ms applyTarget={TicksToMilliseconds(applyTargetTicks):F3}ms subscribe={TicksToMilliseconds(subscribeTicks):F3}ms");
     }
 
     protected override void OnClose(bool isShutdown, object userData)
@@ -100,15 +118,39 @@ public partial class BuildingBuildTips : UIFormBase
 
     private void RefreshView()
     {
+        long refreshStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        long refreshStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
+
+        long phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         CacheTemplates();
         ClearAllSpawnedItems();
         ClearRuntimeState();
+        long clearTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
 
-        if (!BuildIndustryCandidates())
-            return;
+        phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool hasCandidates = BuildIndustryCandidates();
+        long candidateTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
 
-        SpawnIndustryOptions();
-        SelectDefaultIndustry();
+        long industryTicks = 0L;
+        long defaultTicks = 0L;
+        if (hasCandidates)
+        {
+            phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            SpawnIndustryOptions();
+            industryTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
+
+            phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            SelectDefaultIndustry();
+            defaultTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
+        }
+
+        LogBuildPanelPerf(
+            "RefreshView",
+            refreshStartTicks,
+            refreshStartAllocatedBytes,
+            $"clear={TicksToMilliseconds(clearTicks):F3}ms candidates={TicksToMilliseconds(candidateTicks):F3}ms " +
+            $"industry={TicksToMilliseconds(industryTicks):F3}ms default={TicksToMilliseconds(defaultTicks):F3}ms " +
+            $"archetypes={m_BuildingCandidatesByArchetype.Count} industryOptions={m_IndustryBindings.Count} buildOptions={m_BuildOptionBindings.Count} stars={CountSpawnedStars()}");
     }
 
     private bool BuildIndustryCandidates()
@@ -244,6 +286,9 @@ public partial class BuildingBuildTips : UIFormBase
 
     private void SpawnBuildOptionsForSelectedIndustry()
     {
+        long buildOptionsStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        long buildOptionsStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
+        long phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         ClearBuildOptionPreviewImages();
         UnspawnItemTemplate(m_IconNumTemplate);
         UnspawnItemTemplate(m_StarTemplate);
@@ -251,13 +296,21 @@ public partial class BuildingBuildTips : UIFormBase
         UnspawnItemTemplate(varBuildingInfoItem);
         m_BuildOptionBindings.Clear();
         ResetHoldState();
+        long clearTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
 
         if (m_SelectedArchetype == Archetype.None)
+        {
+            LogBuildPanelPerf("BuildOptions", buildOptionsStartTicks, buildOptionsStartAllocatedBytes, $"clear={TicksToMilliseconds(clearTicks):F3}ms selected=None");
             return;
+        }
 
         if (!m_BuildingCandidatesByArchetype.TryGetValue(m_SelectedArchetype, out List<BuildingData> candidates))
+        {
+            LogBuildPanelPerf("BuildOptions", buildOptionsStartTicks, buildOptionsStartAllocatedBytes, $"clear={TicksToMilliseconds(clearTicks):F3}ms selected={m_SelectedArchetype} candidates=missing");
             return;
+        }
 
+        phaseStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         int optionCount = Mathf.Min(4, candidates.Count);
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         Transform buildOptionRoot = varBg != null ? varBg.transform : transform;
@@ -300,6 +353,47 @@ public partial class BuildingBuildTips : UIFormBase
             SpawnProgressStars(binding);
             m_BuildOptionBindings.Add(binding);
         }
+
+        long spawnTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
+        LogBuildPanelPerf(
+            "BuildOptions",
+            buildOptionsStartTicks,
+            buildOptionsStartAllocatedBytes,
+            $"clear={TicksToMilliseconds(clearTicks):F3}ms spawn={TicksToMilliseconds(spawnTicks):F3}ms selected={m_SelectedArchetype} " +
+            $"candidates={candidates.Count} options={m_BuildOptionBindings.Count} stars={CountSpawnedStars()}");
+    }
+
+    private int CountSpawnedStars()
+    {
+        int count = 0;
+        for (int i = 0; i < m_BuildOptionBindings.Count; i++)
+        {
+            BuildOptionBinding binding = m_BuildOptionBindings[i];
+            if (binding != null && binding.Stars != null)
+                count += binding.Stars.Count;
+        }
+
+        return count;
+    }
+
+    private static void LogBuildPanelPerf(string operation, long startTicks, long startAllocatedBytes, string details)
+    {
+        long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - startTicks;
+        long allocatedBytes = Math.Max(0L, GC.GetAllocatedBytesForCurrentThread() - startAllocatedBytes);
+        Debug.LogFormat(
+            LogType.Log,
+            LogOption.NoStacktrace,
+            null,
+            "[BuildPanelPerf] operation={0} total={1:F3}ms alloc={2:F1}KB {3}",
+            operation,
+            TicksToMilliseconds(elapsedTicks),
+            allocatedBytes / 1024.0,
+            details);
+    }
+
+    private static double TicksToMilliseconds(long ticks)
+    {
+        return ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
     private void PopulatePrice(BuildingInfoItem infoItem, BuildingData data)

@@ -17,30 +17,36 @@ namespace UnityGameFramework.Runtime
         Fog3EnemyVisibility = 7,
         InteractionTrigger = 8,
         InteractionCleanup = 9,
-        EntityUpdate = 10,
-        EntityBase = 11,
-        EntityBuff = 12,
-        EntityScale = 13,
-        EntityAgentPosition = 14,
-        EntityBrain = 15,
-        EntityTargeting = 16,
-        EntityAttack = 17,
-        EntityDurationMove = 18,
-        EntityMoveComp = 19,
-        EntityMoveExecutor = 20,
-        EntityAnimator = 21,
-        EntityRotation = 22,
-        SoldierPostUpdate = 23,
-        SoldierMinimap = 24,
-        SoldierDebugDraw = 25,
-        MoveExecutorConstraint = 26,
-        MoveExecutorControllerMove = 27,
-        CharacterMoveSteering = 28,
-        CharacterMoveIdleRecovery = 29,
-        CharacterMoveSetInput = 30,
-        CharacterMoveDebugLog = 31,
-        CharacterMovePrepare = 32,
-        Count = 33
+        InteractionManagerUpdate = 10,
+        InteractionResolveTarget = 11,
+        InteractionFocusEvent = 12,
+        InteractionFocusLog = 13,
+        InteractionFocusPresenter = 14,
+        InteractionBuildTipsRequest = 15,
+        EntityUpdate = 16,
+        EntityBase = 17,
+        EntityBuff = 18,
+        EntityScale = 19,
+        EntityAgentPosition = 20,
+        EntityBrain = 21,
+        EntityTargeting = 22,
+        EntityAttack = 23,
+        EntityDurationMove = 24,
+        EntityMoveComp = 25,
+        EntityMoveExecutor = 26,
+        EntityAnimator = 27,
+        EntityRotation = 28,
+        SoldierPostUpdate = 29,
+        SoldierMinimap = 30,
+        SoldierDebugDraw = 31,
+        MoveExecutorConstraint = 32,
+        MoveExecutorControllerMove = 33,
+        CharacterMoveSteering = 34,
+        CharacterMoveIdleRecovery = 35,
+        CharacterMoveSetInput = 36,
+        CharacterMoveDebugLog = 37,
+        CharacterMovePrepare = 38,
+        Count = 39
     }
 
     public static class MainThreadFrameProfiler
@@ -50,12 +56,15 @@ namespace UnityGameFramework.Runtime
         private const int ForceLogFrameMilliseconds = 200;
         private const int ForceTrackedLogMilliseconds = 50;
         private const int MinLogFrameInterval = 30;
+        private const long HighAllocationBytes = 512 * 1024;
+        private const long ForceAllocationLogBytes = 4 * 1024 * 1024;
         private static readonly long SlowFrameTicks = Stopwatch.Frequency * SlowFrameMilliseconds / 1000;
         private static readonly long TrackedLogTicks = Stopwatch.Frequency * TrackedLogMilliseconds / 1000;
         private static readonly long ForceLogFrameTicks = Stopwatch.Frequency * ForceLogFrameMilliseconds / 1000;
         private static readonly long ForceTrackedLogTicks = Stopwatch.Frequency * ForceTrackedLogMilliseconds / 1000;
         private static readonly long[] ScopeTicks = new long[(int)MainThreadPerfScope.Count];
         private static readonly int[] ScopeCalls = new int[(int)MainThreadPerfScope.Count];
+        private static readonly long[] ScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly ProfilerMarkerSampler[] MarkerSamplers =
         {
             new ProfilerMarkerSampler(ProfilerCategory.Internal, "PlayerLoop"),
@@ -85,6 +94,8 @@ namespace UnityGameFramework.Runtime
         private static int _frame;
         private static int _lastLogFrame = -100000;
         private static long _frameStartTicks;
+        private static long _frameStartAllocatedBytes;
+        private static int _frameStartCollectionCount;
 
         public static void PulseFrame()
         {
@@ -93,7 +104,12 @@ namespace UnityGameFramework.Runtime
 
         public static void Record(MainThreadPerfScope scope, long ticks)
         {
-            if (ticks <= 0)
+            Record(scope, ticks, 0L);
+        }
+
+        public static void Record(MainThreadPerfScope scope, long ticks, long allocatedBytes)
+        {
+            if (ticks <= 0 && allocatedBytes <= 0)
                 return;
 
             EnsureFrame();
@@ -103,6 +119,8 @@ namespace UnityGameFramework.Runtime
 
             ScopeTicks[index] += ticks;
             ScopeCalls[index]++;
+            if (allocatedBytes > 0)
+                ScopeAllocatedBytes[index] += allocatedBytes;
         }
 
         private static void EnsureFrame()
@@ -114,6 +132,8 @@ namespace UnityGameFramework.Runtime
                 _initialized = true;
                 _frame = frame;
                 _frameStartTicks = now;
+                _frameStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
+                _frameStartCollectionCount = GetCollectionCount();
                 return;
             }
 
@@ -121,14 +141,19 @@ namespace UnityGameFramework.Runtime
                 return;
 
             long frameTicks = now - _frameStartTicks;
-            Flush(frameTicks);
+            long allocatedBytes = Math.Max(0L, GC.GetAllocatedBytesForCurrentThread() - _frameStartAllocatedBytes);
+            int collectionCount = GetCollectionCount();
+            Flush(frameTicks, allocatedBytes, Math.Max(0, collectionCount - _frameStartCollectionCount));
             Array.Clear(ScopeTicks, 0, ScopeTicks.Length);
             Array.Clear(ScopeCalls, 0, ScopeCalls.Length);
+            Array.Clear(ScopeAllocatedBytes, 0, ScopeAllocatedBytes.Length);
             _frame = frame;
             _frameStartTicks = now;
+            _frameStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
+            _frameStartCollectionCount = collectionCount;
         }
 
-        private static void Flush(long frameTicks)
+        private static void Flush(long frameTicks, long allocatedBytes, int collectionCount)
         {
             long trackedTicks = 0;
             for (int i = 0; i <= (int)MainThreadPerfScope.EntityUpdate; i++)
@@ -138,10 +163,15 @@ namespace UnityGameFramework.Runtime
 
             bool slowFrame = frameTicks >= SlowFrameTicks;
             bool enoughTracked = trackedTicks >= TrackedLogTicks;
-            bool forceLog = frameTicks >= ForceLogFrameTicks || trackedTicks >= ForceTrackedLogTicks;
-            if (!slowFrame && !enoughTracked)
+            bool highAllocation = allocatedBytes >= HighAllocationBytes;
+            bool forceLog = frameTicks >= ForceLogFrameTicks
+                            || trackedTicks >= ForceTrackedLogTicks
+                            || allocatedBytes >= ForceAllocationLogBytes
+                            || collectionCount > 0;
+            if (!slowFrame && !enoughTracked && !highAllocation && collectionCount <= 0)
                 return;
-            if (!forceLog && _frame - _lastLogFrame < MinLogFrameInterval)
+            int minLogFrameInterval = highAllocation ? 10 : MinLogFrameInterval;
+            if (!forceLog && _frame - _lastLogFrame < minLogFrameInterval)
                 return;
             _lastLogFrame = _frame;
 
@@ -155,8 +185,9 @@ namespace UnityGameFramework.Runtime
                 "[MainPerf] frame={0} frameDt={1:F3}ms tracked={2:F3}ms untracked={3:F3}ms " +
                 "gf={4:F3}ms/{5} flow={6:F3}ms/{7} flowConfig={8:F3}ms/{9} flowSource={10:F3}ms/{11} " +
                 "fogUpdate={12:F3}ms/{13} fogVisibility={14:F3}ms/{15} fogOverlay={16:F3}ms/{17} fogEnemy={18:F3}ms/{19} " +
-                "interactionTrigger={20:F3}ms/{21} interactionCleanup={22:F3}ms/{23} entity={24:F3}ms/{25} " +
-                "entityDetail({26}) moveExecDetail({27}) characterMoveDetail({28}) env(targetFps={29},vSync={30},screen={31}x{32},focused={33}) markers({34})",
+                "interactionTrigger={20:F3}ms/{21} interactionCleanup={22:F3}ms/{23} interactionDetail({24}) entity={25:F3}ms/{26} " +
+                "entityDetail({27}) moveExecDetail({28}) characterMoveDetail({29}) env(targetFps={30},vSync={31},screen={32}x{33},focused={34},gcIncremental={35}) markers({36}) " +
+                "alloc(frame={37:F1}KB,gcCollections={38},scopes={39})",
                 _frame,
                 frameMs,
                 trackedMs,
@@ -171,6 +202,7 @@ namespace UnityGameFramework.Runtime
                 TicksToMs(ScopeTicks[(int)MainThreadPerfScope.Fog3EnemyVisibility]), ScopeCalls[(int)MainThreadPerfScope.Fog3EnemyVisibility],
                 TicksToMs(ScopeTicks[(int)MainThreadPerfScope.InteractionTrigger]), ScopeCalls[(int)MainThreadPerfScope.InteractionTrigger],
                 TicksToMs(ScopeTicks[(int)MainThreadPerfScope.InteractionCleanup]), ScopeCalls[(int)MainThreadPerfScope.InteractionCleanup],
+                BuildScopeSummary(MainThreadPerfScope.InteractionManagerUpdate, MainThreadPerfScope.InteractionBuildTipsRequest),
                 TicksToMs(ScopeTicks[(int)MainThreadPerfScope.EntityUpdate]), ScopeCalls[(int)MainThreadPerfScope.EntityUpdate],
                 BuildScopeSummary(MainThreadPerfScope.EntityBase, MainThreadPerfScope.SoldierDebugDraw),
                 BuildScopeSummary(MainThreadPerfScope.MoveExecutorConstraint, MainThreadPerfScope.MoveExecutorControllerMove),
@@ -180,7 +212,16 @@ namespace UnityGameFramework.Runtime
                 Screen.width,
                 Screen.height,
                 Application.isFocused,
-                BuildMarkerSummary());
+                UnityEngine.Scripting.GarbageCollector.isIncremental,
+                BuildMarkerSummary(),
+                allocatedBytes / 1024.0,
+                collectionCount,
+                BuildAllocationScopeSummary());
+        }
+
+        private static int GetCollectionCount()
+        {
+            return GC.CollectionCount(0) + GC.CollectionCount(1) + GC.CollectionCount(2);
         }
 
         private static double TicksToMs(long ticks)
@@ -227,6 +268,22 @@ namespace UnityGameFramework.Runtime
                 if (result.Length > 0)
                     result += ",";
                 result += ((MainThreadPerfScope)i).ToString() + "=" + TicksToMs(ScopeTicks[i]).ToString("F3") + "ms/" + ScopeCalls[i];
+            }
+
+            return result.Length > 0 ? result : "none";
+        }
+
+        private static string BuildAllocationScopeSummary()
+        {
+            string result = string.Empty;
+            for (int i = 0; i < ScopeAllocatedBytes.Length; i++)
+            {
+                if (ScopeAllocatedBytes[i] <= 0)
+                    continue;
+
+                if (result.Length > 0)
+                    result += ",";
+                result += ((MainThreadPerfScope)i).ToString() + "=" + (ScopeAllocatedBytes[i] / 1024.0).ToString("F1") + "KB";
             }
 
             return result.Length > 0 ? result : "none";

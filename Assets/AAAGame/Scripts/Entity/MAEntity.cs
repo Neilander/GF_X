@@ -302,6 +302,7 @@ public class MAEntity : CompCreature, IEntityContext
     protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
     {
         long updateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        long updateStartAllocatedBytes = System.GC.GetAllocatedBytesForCurrentThread();
         try
         {
             long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -448,7 +449,8 @@ public class MAEntity : CompCreature, IEntityContext
         {
             UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
                 UnityGameFramework.Runtime.MainThreadPerfScope.EntityUpdate,
-                System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks);
+                System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks,
+                System.Math.Max(0L, System.GC.GetAllocatedBytesForCurrentThread() - updateStartAllocatedBytes));
         }
     }
 

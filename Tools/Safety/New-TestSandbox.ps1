@@ -14,7 +14,13 @@ $sentinelVersion = 'AvengeTestSandbox:v1'
 function Get-CanonicalPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    return [System.IO.Path]::GetFullPath($Path).TrimEnd(
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $pathRoot = [System.IO.Path]::GetPathRoot($fullPath)
+    if ($fullPath.Equals($pathRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $pathRoot
+    }
+
+    return $fullPath.TrimEnd(
         [System.IO.Path]::DirectorySeparatorChar,
         [System.IO.Path]::AltDirectorySeparatorChar)
 }
@@ -25,7 +31,8 @@ function Test-PathInsideRoot {
         [Parameter(Mandatory = $true)][string]$Root
     )
 
-    $prefix = $Root + [System.IO.Path]::DirectorySeparatorChar
+    $separator = [System.IO.Path]::DirectorySeparatorChar
+    $prefix = if ($Root.EndsWith($separator)) { $Root } else { $Root + $separator }
     return $Path.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
 }
 

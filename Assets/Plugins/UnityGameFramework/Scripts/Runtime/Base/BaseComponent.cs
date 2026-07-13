@@ -230,6 +230,7 @@ namespace UnityGameFramework.Runtime
         {
             MainThreadFrameProfiler.PulseFrame();
             long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            long startAllocatedBytes = System.GC.GetAllocatedBytesForCurrentThread();
             try
             {
                 GameFrameworkEntry.Update(Time.deltaTime, Time.unscaledDeltaTime);
@@ -238,7 +239,8 @@ namespace UnityGameFramework.Runtime
             {
                 MainThreadFrameProfiler.Record(
                     MainThreadPerfScope.GameFrameworkUpdate,
-                    System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
+                    System.Diagnostics.Stopwatch.GetTimestamp() - startTicks,
+                    System.Math.Max(0L, System.GC.GetAllocatedBytesForCurrentThread() - startAllocatedBytes));
             }
         }
 

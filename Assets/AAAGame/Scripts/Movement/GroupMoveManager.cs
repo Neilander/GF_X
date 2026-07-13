@@ -29,6 +29,7 @@ public class GroupMoveManager : MonoBehaviour
     {
         FlowFieldCrowdMovementSystem.PulsePerformanceFrame();
         long updateStartTicks = Stopwatch.GetTimestamp();
+        long updateStartAllocatedBytes = System.GC.GetAllocatedBytesForCurrentThread();
         try
         {
             long sectionStartTicks = Stopwatch.GetTimestamp();
@@ -73,7 +74,8 @@ public class GroupMoveManager : MonoBehaviour
         {
             MainThreadFrameProfiler.Record(
                 MainThreadPerfScope.FlowGroupMove,
-                Stopwatch.GetTimestamp() - updateStartTicks);
+                Stopwatch.GetTimestamp() - updateStartTicks,
+                System.Math.Max(0L, System.GC.GetAllocatedBytesForCurrentThread() - updateStartAllocatedBytes));
         }
     }
 

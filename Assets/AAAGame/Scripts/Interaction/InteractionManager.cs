@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityGameFramework.Runtime;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 public class InteractionManager : MonoBehaviour
 {
@@ -87,26 +89,41 @@ public class InteractionManager : MonoBehaviour
 
     private void Update()
     {
-        EnsureDetectorReference();
-        if (detector == null)
-            return;
-
-        if (!EnsureInputModel())
-            return;
-
-        detector.CleanupInvalid();
-        var target = ResolveBestTarget(detector.Candidates, _currentTarget);
-
-        bool targetChanged = target != _currentTarget;
-        _currentTarget = target;
-
-        if (targetChanged)
+        long updateStartTicks = Stopwatch.GetTimestamp();
+        try
         {
-            GF.Event.Fire(this, InteractionFocusChangedEventArgs.Create(_currentTarget));
-            Debug.Log($"[Interaction] Focus changed to {_currentTarget?.name ?? "<null>"}");
-        }
+            EnsureDetectorReference();
+            if (detector == null)
+                return;
 
-        HandleInput();
+            if (!EnsureInputModel())
+                return;
+
+            detector.CleanupInvalid();
+            long resolveStartTicks = Stopwatch.GetTimestamp();
+            var target = ResolveBestTarget(detector.Candidates, _currentTarget);
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.InteractionResolveTarget, Stopwatch.GetTimestamp() - resolveStartTicks);
+
+            bool targetChanged = target != _currentTarget;
+            _currentTarget = target;
+
+            if (targetChanged)
+            {
+                long eventStartTicks = Stopwatch.GetTimestamp();
+                GF.Event.Fire(this, InteractionFocusChangedEventArgs.Create(_currentTarget));
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.InteractionFocusEvent, Stopwatch.GetTimestamp() - eventStartTicks);
+
+                long logStartTicks = Stopwatch.GetTimestamp();
+                Debug.Log($"[Interaction] Focus changed to {_currentTarget?.name ?? "<null>"}");
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.InteractionFocusLog, Stopwatch.GetTimestamp() - logStartTicks);
+            }
+
+            HandleInput();
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.InteractionManagerUpdate, Stopwatch.GetTimestamp() - updateStartTicks);
+        }
     }
 
     private void HandleInput()

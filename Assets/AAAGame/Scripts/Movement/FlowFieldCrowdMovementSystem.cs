@@ -1523,6 +1523,12 @@ public static class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<int, AgentRuntimeData> Agents = new Dictionary<int, AgentRuntimeData>();
     private static readonly Dictionary<int, CircleObstacle> CircleObstacles = new Dictionary<int, CircleObstacle>();
     private static readonly Dictionary<int, BoxObstacle> BoxObstacles = new Dictionary<int, BoxObstacle>();
+    private struct IdleOverlapRecoveryData
+    {
+        public Vector3 Recovery;
+        public float MaxPenetrationRatio;
+    }
+
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
     private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>();
     private static readonly HashSet<MovingTargetAnchorKey> ReferencedMovingTargetAnchorKeysScratch = new HashSet<MovingTargetAnchorKey>();
@@ -1553,6 +1559,7 @@ public static class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<long, List<AgentRuntimeData>> AgentSpatialBuckets = new Dictionary<long, List<AgentRuntimeData>>();
     private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalOccupancyBuckets = new Dictionary<long, List<AgentRuntimeData>>();
     private static readonly Dictionary<long, List<AgentRuntimeData>> NavigationGoalIntentBuckets = new Dictionary<long, List<AgentRuntimeData>>();
+    private static readonly Dictionary<int, IdleOverlapRecoveryData> IdleOverlapRecoveryCache = new Dictionary<int, IdleOverlapRecoveryData>();
     private static readonly List<AgentRuntimeData> NearbyAgentScratch = new List<AgentRuntimeData>(32);
     private static readonly List<AgentRuntimeData> CombatClusterScratch = new List<AgentRuntimeData>(16);
     private static readonly List<NavigationGoalReservation> NavigationGoalReservations = new List<NavigationGoalReservation>(128);
@@ -2584,6 +2591,9 @@ public static class FlowFieldCrowdMovementSystem
     private static int _lastBottleneckFrame = -1;
     private static int _lastAgentSpatialBucketFrame = -1;
     private static int _lastAgentSpatialBucketWorldVersion = -1;
+    private static int _idleOverlapRecoveryCacheFrame = -1;
+    private static int _idleOverlapRecoveryCacheWorldVersion = -1;
+    private static int _idleOverlapRecoveryCacheBuildCount;
     private static int _lastAgentRegistrySyncFrame = -1;
     private static int _lastOverlapDiagnosticsFrame = -1;
     private static string _lastWorldDirtyReason = "initial";
@@ -2610,6 +2620,7 @@ public static class FlowFieldCrowdMovementSystem
         Agents.Clear();
         AgentSpatialBuckets.Clear();
         NavigationGoalOccupancyBuckets.Clear();
+        IdleOverlapRecoveryCache.Clear();
         NearbyAgentScratch.Clear();
         CircleObstacles.Clear();
         BoxObstacles.Clear();
@@ -2651,6 +2662,9 @@ public static class FlowFieldCrowdMovementSystem
         _lastBottleneckFrame = -1;
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;
+        _idleOverlapRecoveryCacheFrame = -1;
+        _idleOverlapRecoveryCacheWorldVersion = -1;
+        _idleOverlapRecoveryCacheBuildCount = 0;
         _lastNavigationGoalOccupancyBucketFrame = -1;
         _lastNavigationGoalOccupancyBucketWorldVersion = -1;
         _lastOverlapDiagnosticsFrame = -1;
@@ -2727,6 +2741,7 @@ public static class FlowFieldCrowdMovementSystem
         Agents.Clear();
         AgentSpatialBuckets.Clear();
         NavigationGoalOccupancyBuckets.Clear();
+        IdleOverlapRecoveryCache.Clear();
         NearbyAgentScratch.Clear();
         MovingTargetAnchors.Clear();
         CombatTargetSlotCache.Clear();
@@ -2734,6 +2749,8 @@ public static class FlowFieldCrowdMovementSystem
         CorridorBottlenecks.Clear();
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;
+        _idleOverlapRecoveryCacheFrame = -1;
+        _idleOverlapRecoveryCacheWorldVersion = -1;
         _lastNavigationGoalOccupancyBucketFrame = -1;
         _lastNavigationGoalOccupancyBucketWorldVersion = -1;
     }
@@ -5908,6 +5925,27 @@ public static class FlowFieldCrowdMovementSystem
         return count;
     }
 
+    public static int GetEditorTestAgentSpatialBucketIdentity(int agentId)
+    {
+        if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent) || agent == null)
+            throw new InvalidOperationException($"GetEditorTestAgentSpatialBucketIdentity failed: agent missing id={agentId}.");
+        if (!TryEnsureWorldBuilt(agent.AgentTypeId, allowSynchronousBuild: true))
+            throw new InvalidOperationException($"GetEditorTestAgentSpatialBucketIdentity failed: world unavailable agentType={agent.AgentTypeId}.");
+
+        EnsureAgentSpatialBuckets();
+        ResolveSpatialBucketCell(agent.Position, out int cellX, out int cellY);
+        long bucketKey = BuildSpatialBucketKey(cellX, cellY);
+        if (!AgentSpatialBuckets.TryGetValue(bucketKey, out List<AgentRuntimeData> bucket) || bucket == null)
+            throw new InvalidOperationException($"GetEditorTestAgentSpatialBucketIdentity failed: bucket missing key={bucketKey}.");
+
+        return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(bucket);
+    }
+
+    public static int GetEditorTestIdleOverlapRecoveryCacheBuildCount()
+    {
+        return _idleOverlapRecoveryCacheBuildCount;
+    }
+
     public static void ClearEditorTestFlowTileCache()
     {
         ClearFlowTileCache();
@@ -8435,6 +8473,25 @@ public static class FlowFieldCrowdMovementSystem
         if (!TryEnsureWorldBuilt(preferredAgentTypeId))
             return false;
 
+        bool captureDiagnostics = GameDebugSettings.IsEnabled(DebugCategory.Move);
+        if (!captureDiagnostics)
+        {
+            EnsureIdleOverlapRecoveryCache();
+            if (!IdleOverlapRecoveryCache.TryGetValue(selfId, out IdleOverlapRecoveryData recoveryData)
+                || recoveryData.Recovery.sqrMagnitude <= 0.0001f)
+            {
+                return false;
+            }
+
+            float cachedAvailableSpeed = Mathf.Max(0.05f, maxSpeed);
+            float cachedSpeed = Mathf.Min(
+                cachedAvailableSpeed,
+                Mathf.Lerp(IdleOverlapRecoverySpeed, cachedAvailableSpeed, Mathf.Sqrt(recoveryData.MaxPenetrationRatio)));
+            velocity = recoveryData.Recovery.normalized * cachedSpeed;
+            UpdateResolvedVelocity(selfId, self.Position, Vector3.zero, velocity);
+            return true;
+        }
+
         float recoveryRadius = Mathf.Max(agent.Radius * 2.5f, _world.CellSize * 2f);
         List<AgentRuntimeData> nearbyAgents = CollectNearbyDynamicNeighbors(agent, recoveryRadius);
         Vector3 recovery = Vector3.zero;
@@ -9867,10 +9924,12 @@ public static class FlowFieldCrowdMovementSystem
         if (_lastAgentSpatialBucketFrame == frameCount && _lastAgentSpatialBucketWorldVersion == worldVersion)
             return;
 
+        _idleOverlapRecoveryCacheFrame = -1;
+        _idleOverlapRecoveryCacheWorldVersion = -1;
         SyncRegisteredAgentPositionsForSpatialQuery(frameCount);
         _lastAgentSpatialBucketFrame = frameCount;
         _lastAgentSpatialBucketWorldVersion = worldVersion;
-        AgentSpatialBuckets.Clear();
+        ClearAgentBucketContents(AgentSpatialBuckets);
         foreach (AgentRuntimeData agent in Agents.Values)
         {
             if (!CanUseDynamicAvoidance(agent))
@@ -9886,6 +9945,123 @@ public static class FlowFieldCrowdMovementSystem
 
             bucket.Add(agent);
         }
+    }
+
+    private static void EnsureIdleOverlapRecoveryCache()
+    {
+        if (_world == null)
+            throw new InvalidOperationException("EnsureIdleOverlapRecoveryCache failed: world is null.");
+
+        EnsureAgentSpatialBuckets();
+        int frameCount = GetFrameCount();
+        int worldVersion = _world.Version;
+        if (_idleOverlapRecoveryCacheFrame == frameCount && _idleOverlapRecoveryCacheWorldVersion == worldVersion)
+            return;
+
+        _idleOverlapRecoveryCacheFrame = frameCount;
+        _idleOverlapRecoveryCacheWorldVersion = worldVersion;
+        _idleOverlapRecoveryCacheBuildCount++;
+        IdleOverlapRecoveryCache.Clear();
+
+        float bucketSize = ResolveAgentSpatialBucketSize();
+        int searchRadiusInCells = 1;
+        foreach (AgentRuntimeData agent in Agents.Values)
+        {
+            if (!CanUseDynamicAvoidance(agent))
+                continue;
+
+            float recoveryRadius = Mathf.Max(agent.Radius * 2.5f, _world.CellSize * 2f);
+            searchRadiusInCells = Mathf.Max(searchRadiusInCells, Mathf.CeilToInt(recoveryRadius / bucketSize));
+        }
+
+        foreach (KeyValuePair<long, List<AgentRuntimeData>> bucketPair in AgentSpatialBuckets)
+        {
+            List<AgentRuntimeData> bucket = bucketPair.Value;
+            if (bucket == null)
+                throw new InvalidOperationException("EnsureIdleOverlapRecoveryCache failed: bucket is null.");
+            if (bucket.Count == 0)
+                continue;
+
+            int bucketX = (int)(bucketPair.Key >> 32);
+            int bucketY = unchecked((int)(uint)bucketPair.Key);
+            for (int offsetY = -searchRadiusInCells; offsetY <= searchRadiusInCells; offsetY++)
+            {
+                for (int offsetX = -searchRadiusInCells; offsetX <= searchRadiusInCells; offsetX++)
+                {
+                    long nearbyBucketKey = BuildSpatialBucketKey(bucketX + offsetX, bucketY + offsetY);
+                    if (nearbyBucketKey < bucketPair.Key)
+                        continue;
+                    if (!AgentSpatialBuckets.TryGetValue(nearbyBucketKey, out List<AgentRuntimeData> nearbyBucket))
+                        continue;
+                    if (nearbyBucket == null)
+                        throw new InvalidOperationException("EnsureIdleOverlapRecoveryCache failed: nearby bucket is null.");
+                    if (nearbyBucket.Count == 0)
+                        continue;
+
+                    if (nearbyBucketKey == bucketPair.Key)
+                    {
+                        for (int i = 0; i < bucket.Count; i++)
+                        {
+                            for (int j = i + 1; j < bucket.Count; j++)
+                                AccumulateIdleOverlapRecoveryPair(bucket[i], bucket[j]);
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < bucket.Count; i++)
+                        {
+                            for (int j = 0; j < nearbyBucket.Count; j++)
+                                AccumulateIdleOverlapRecoveryPair(bucket[i], nearbyBucket[j]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static void AccumulateIdleOverlapRecoveryPair(AgentRuntimeData first, AgentRuntimeData second)
+    {
+        if (first == null || second == null)
+            throw new InvalidOperationException("AccumulateIdleOverlapRecoveryPair failed: agent is null.");
+        if (first.Id == second.Id)
+            return;
+
+        float firstRecoveryRadius = Mathf.Max(first.Radius * 2.5f, _world.CellSize * 2f);
+        float secondRecoveryRadius = Mathf.Max(second.Radius * 2.5f, _world.CellSize * 2f);
+        Vector3 firstAway = first.Position - second.Position;
+        firstAway.y = 0f;
+        float distanceSquared = firstAway.sqrMagnitude;
+        float maxRecoveryRadius = Mathf.Max(firstRecoveryRadius, secondRecoveryRadius);
+        if (distanceSquared > maxRecoveryRadius * maxRecoveryRadius)
+            return;
+
+        float distance = Mathf.Sqrt(distanceSquared);
+        float combinedRadius = first.Radius + second.Radius;
+        float penetration = combinedRadius - distance;
+        if (penetration <= Mathf.Max(0.02f, combinedRadius * 0.08f))
+            return;
+
+        float penetrationRatio = Mathf.Clamp01(penetration / Mathf.Max(combinedRadius, 0.001f));
+        if (distance <= firstRecoveryRadius)
+            AccumulateIdleOverlapRecovery(first, second, firstAway, distance, penetrationRatio);
+        if (distance <= secondRecoveryRadius)
+            AccumulateIdleOverlapRecovery(second, first, -firstAway, distance, penetrationRatio);
+    }
+
+    private static void AccumulateIdleOverlapRecovery(
+        AgentRuntimeData self,
+        AgentRuntimeData other,
+        Vector3 away,
+        float distance,
+        float penetrationRatio)
+    {
+        Vector3 direction = distance > 0.0001f
+            ? away / distance
+            : ResolveStableIdleSeparationDirection(self, other);
+        IdleOverlapRecoveryCache.TryGetValue(self.Id, out IdleOverlapRecoveryData recoveryData);
+        recoveryData.Recovery += direction * penetrationRatio;
+        recoveryData.MaxPenetrationRatio = Mathf.Max(recoveryData.MaxPenetrationRatio, penetrationRatio);
+        IdleOverlapRecoveryCache[self.Id] = recoveryData;
     }
 
     private static void SyncRegisteredAgentPositionsForSpatialQuery(int frameCount)
@@ -10008,8 +10184,8 @@ public static class FlowFieldCrowdMovementSystem
 
         _lastNavigationGoalOccupancyBucketFrame = frameCount;
         _lastNavigationGoalOccupancyBucketWorldVersion = worldVersion;
-        NavigationGoalOccupancyBuckets.Clear();
-        NavigationGoalIntentBuckets.Clear();
+        ClearAgentBucketContents(NavigationGoalOccupancyBuckets);
+        ClearAgentBucketContents(NavigationGoalIntentBuckets);
         foreach (AgentRuntimeData agent in Agents.Values)
         {
             if (agent.IgnoreAgentCollision)
@@ -10037,6 +10213,20 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         bucket.Add(agent);
+    }
+
+    private static void ClearAgentBucketContents(Dictionary<long, List<AgentRuntimeData>> buckets)
+    {
+        if (buckets == null)
+            throw new InvalidOperationException("ClearAgentBucketContents failed: buckets is null.");
+
+        foreach (List<AgentRuntimeData> bucket in buckets.Values)
+        {
+            if (bucket == null)
+                throw new InvalidOperationException("ClearAgentBucketContents failed: bucket is null.");
+
+            bucket.Clear();
+        }
     }
 
     private static bool ShouldUseAgentNavigationGoalAsOccupancy(AgentRuntimeData agent)

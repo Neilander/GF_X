@@ -4,6 +4,7 @@ using UnityGameFramework.Runtime;
 using GameFramework;
 using System;
 using System.Collections.Generic;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 /// <summary>
 /// 监听交互焦点变化，打开/关闭交互提示UI（InteractOptionTips）。
@@ -46,6 +47,19 @@ public class InteractOptionTipsPresenter : MonoBehaviour
 
     private void OnFocusChanged(object sender, GameEventArgs e)
     {
+        long startTicks = Stopwatch.GetTimestamp();
+        try
+        {
+            HandleFocusChanged(sender, e);
+        }
+        finally
+        {
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.InteractionFocusPresenter, Stopwatch.GetTimestamp() - startTicks);
+        }
+    }
+
+    private void HandleFocusChanged(object sender, GameEventArgs e)
+    {
         var args = e as InteractionFocusChangedEventArgs;
         if (args == null)
             return;
@@ -69,7 +83,9 @@ public class InteractOptionTipsPresenter : MonoBehaviour
             CloseInteractTips();
             CloseUpgradeTips();
             CloseInfoTips();
+            long buildTipsStartTicks = Stopwatch.GetTimestamp();
             OpenOrUpdateBuildTips(args.Target);
+            MainThreadFrameProfiler.Record(MainThreadPerfScope.InteractionBuildTipsRequest, Stopwatch.GetTimestamp() - buildTipsStartTicks);
             return;
         }
 

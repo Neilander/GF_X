@@ -2487,6 +2487,54 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 同帧多个静止单位共享一次重叠恢复缓存构建()
+    {
+        const int width = 8;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+            SetWalkable(walkable, width, x, 1);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext left = CreateEntity(new Vector3(3.8f, 0f, 1.5f));
+        SimEntityContext right = CreateEntity(new Vector3(4.2f, 0f, 1.5f));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetIdleOverlapRecoveryVelocity(left, 2f, out Vector3 leftVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetIdleOverlapRecoveryVelocity(right, 2f, out Vector3 rightVelocity));
+
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestIdleOverlapRecoveryCacheBuildCount());
+        Assert.Less(leftVelocity.x, -0.05f, $"跨空间桶的左侧单位应向左恢复分离，leftVelocity={leftVelocity}");
+        Assert.Greater(rightVelocity.x, 0.05f, $"跨空间桶的右侧单位应向右恢复分离，rightVelocity={rightVelocity}");
+    }
+
+    [Test]
+    public void 动态邻居空间桶跨帧复用List而不是每帧重建()
+    {
+        const int width = 4;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+            SetWalkable(walkable, width, x, 1);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext left = CreateEntity(new Vector3(1.0f, 0f, 1.5f));
+        CreateEntity(new Vector3(1.45f, 0f, 1.5f));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetIdleOverlapRecoveryVelocity(left, 2f, out _));
+        int firstBucketIdentity = FlowFieldCrowdMovementSystem.GetEditorTestAgentSpatialBucketIdentity(left.GetHashCode());
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetIdleOverlapRecoveryVelocity(left, 2f, out _));
+        int secondBucketIdentity = FlowFieldCrowdMovementSystem.GetEditorTestAgentSpatialBucketIdentity(left.GetHashCode());
+
+        Assert.AreEqual(firstBucketIdentity, secondBucketIdentity, "动态邻居空间桶应清空并复用已有 List，不能每帧重新分配。");
+    }
+
+    [Test]
     public void 同一移动目标换格时会立即刷新导航目标()
     {
         const int width = 16;

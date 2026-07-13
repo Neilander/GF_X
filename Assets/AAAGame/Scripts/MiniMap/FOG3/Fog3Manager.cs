@@ -328,6 +328,7 @@ namespace AAAGame.MiniMap.FOG3
         private void Update()
         {
             long updateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            long updateStartAllocatedBytes = System.GC.GetAllocatedBytesForCurrentThread();
             try
             {
                 TrySubscribeEvents();
@@ -377,7 +378,8 @@ namespace AAAGame.MiniMap.FOG3
             {
                 MainThreadFrameProfiler.Record(
                     MainThreadPerfScope.Fog3Update,
-                    System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks);
+                    System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks,
+                    System.Math.Max(0L, System.GC.GetAllocatedBytesForCurrentThread() - updateStartAllocatedBytes));
             }
         }
 
