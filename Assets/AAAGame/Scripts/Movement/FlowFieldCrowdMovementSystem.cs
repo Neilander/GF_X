@@ -1148,6 +1148,76 @@ public static class FlowFieldCrowdMovementSystem
         Complete = 3
     }
 
+    private readonly struct BottleneckRuntimeKey : IEquatable<BottleneckRuntimeKey>
+    {
+        public readonly int WorldVersion;
+        public readonly int AgentTypeId;
+        public readonly int LocalBottleneckId;
+        public readonly int Kind;
+        public readonly int AxisMode;
+        public readonly int SpanMin;
+        public readonly int SpanMax;
+        public readonly int RunMin;
+        public readonly int RunMax;
+
+        public BottleneckRuntimeKey(
+            int worldVersion,
+            int agentTypeId,
+            int localBottleneckId,
+            int kind,
+            int axisMode,
+            int spanMin,
+            int spanMax,
+            int runMin,
+            int runMax)
+        {
+            WorldVersion = worldVersion;
+            AgentTypeId = agentTypeId;
+            LocalBottleneckId = localBottleneckId;
+            Kind = kind;
+            AxisMode = axisMode;
+            SpanMin = spanMin;
+            SpanMax = spanMax;
+            RunMin = runMin;
+            RunMax = runMax;
+        }
+
+        public bool Equals(BottleneckRuntimeKey other)
+        {
+            return WorldVersion == other.WorldVersion
+                   && AgentTypeId == other.AgentTypeId
+                   && LocalBottleneckId == other.LocalBottleneckId
+                   && Kind == other.Kind
+                   && AxisMode == other.AxisMode
+                   && SpanMin == other.SpanMin
+                   && SpanMax == other.SpanMax
+                   && RunMin == other.RunMin
+                   && RunMax == other.RunMax;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is BottleneckRuntimeKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = WorldVersion;
+                hash = (hash * 397) ^ AgentTypeId;
+                hash = (hash * 397) ^ LocalBottleneckId;
+                hash = (hash * 397) ^ Kind;
+                hash = (hash * 397) ^ AxisMode;
+                hash = (hash * 397) ^ SpanMin;
+                hash = (hash * 397) ^ SpanMax;
+                hash = (hash * 397) ^ RunMin;
+                hash = (hash * 397) ^ RunMax;
+                return hash;
+            }
+        }
+    }
+
     private sealed class BottleneckRuntimeState
     {
         public enum OwnerState
@@ -1159,6 +1229,7 @@ public static class FlowFieldCrowdMovementSystem
             Switching = 4
         }
 
+        public BottleneckRuntimeKey RuntimeKey;
         public int BottleneckId;
         public int PortalId = -1;
         public int CorridorAxisMode;
@@ -1281,6 +1352,7 @@ public static class FlowFieldCrowdMovementSystem
         public readonly int TargetXBand;
         public readonly int TargetYBand;
         public readonly int StandOffBand;
+        public readonly int MinimumStandOffBand;
         public readonly int RingSpacingBand;
         public readonly int ClearanceBand;
         public readonly int RingCount;
@@ -1294,6 +1366,7 @@ public static class FlowFieldCrowdMovementSystem
             int targetXBand,
             int targetYBand,
             int standOffBand,
+            int minimumStandOffBand,
             int ringSpacingBand,
             int clearanceBand,
             int ringCount,
@@ -1306,6 +1379,7 @@ public static class FlowFieldCrowdMovementSystem
             TargetXBand = targetXBand;
             TargetYBand = targetYBand;
             StandOffBand = standOffBand;
+            MinimumStandOffBand = minimumStandOffBand;
             RingSpacingBand = ringSpacingBand;
             ClearanceBand = clearanceBand;
             RingCount = ringCount;
@@ -1321,6 +1395,7 @@ public static class FlowFieldCrowdMovementSystem
                    && TargetXBand == other.TargetXBand
                    && TargetYBand == other.TargetYBand
                    && StandOffBand == other.StandOffBand
+                   && MinimumStandOffBand == other.MinimumStandOffBand
                    && RingSpacingBand == other.RingSpacingBand
                    && ClearanceBand == other.ClearanceBand
                    && RingCount == other.RingCount
@@ -1343,6 +1418,7 @@ public static class FlowFieldCrowdMovementSystem
                 hash = (hash * 397) ^ TargetXBand;
                 hash = (hash * 397) ^ TargetYBand;
                 hash = (hash * 397) ^ StandOffBand;
+                hash = (hash * 397) ^ MinimumStandOffBand;
                 hash = (hash * 397) ^ RingSpacingBand;
                 hash = (hash * 397) ^ ClearanceBand;
                 hash = (hash * 397) ^ RingCount;
@@ -1492,6 +1568,11 @@ public static class FlowFieldCrowdMovementSystem
         public readonly bool IsLongCorridor;
         public readonly bool IsCornerExit;
         public readonly float InfluenceRadius;
+        public readonly int IdentityAxisMode;
+        public readonly int IdentitySpanMin;
+        public readonly int IdentitySpanMax;
+        public readonly int IdentityRunMin;
+        public readonly int IdentityRunMax;
 
         public CorridorBottleneckDescriptor(
             int bottleneckId,
@@ -1502,7 +1583,12 @@ public static class FlowFieldCrowdMovementSystem
             Vector3 anchorWorld,
             bool isLongCorridor,
             bool isCornerExit,
-            float influenceRadius)
+            float influenceRadius,
+            int identityAxisMode = 0,
+            int identitySpanMin = 0,
+            int identitySpanMax = 0,
+            int identityRunMin = 0,
+            int identityRunMax = 0)
         {
             BottleneckId = bottleneckId;
             SeedPortalId = seedPortalId;
@@ -1513,6 +1599,11 @@ public static class FlowFieldCrowdMovementSystem
             IsLongCorridor = isLongCorridor;
             IsCornerExit = isCornerExit;
             InfluenceRadius = influenceRadius;
+            IdentityAxisMode = identityAxisMode;
+            IdentitySpanMin = identitySpanMin;
+            IdentitySpanMax = identitySpanMax;
+            IdentityRunMin = identityRunMin;
+            IdentityRunMax = identityRunMax;
         }
     }
 
@@ -1548,8 +1639,8 @@ public static class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<SharedGoalFieldKey, Dictionary<int, int>> ActiveSharedGoalFieldDemandStartCells = new Dictionary<SharedGoalFieldKey, Dictionary<int, int>>();
     private static readonly List<int> SharedGoalPruneScratch = new List<int>(256);
     private static readonly Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry> CombatTargetSlotCache = new Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry>();
-    private static readonly Dictionary<int, BottleneckRuntimeState> Bottlenecks = new Dictionary<int, BottleneckRuntimeState>();
-    private static readonly Dictionary<int, CorridorBottleneckDescriptor> CorridorBottlenecks = new Dictionary<int, CorridorBottleneckDescriptor>();
+    private static readonly Dictionary<BottleneckRuntimeKey, BottleneckRuntimeState> Bottlenecks = new Dictionary<BottleneckRuntimeKey, BottleneckRuntimeState>();
+    private static readonly Dictionary<BottleneckRuntimeKey, CorridorBottleneckDescriptor> CorridorBottlenecks = new Dictionary<BottleneckRuntimeKey, CorridorBottleneckDescriptor>();
 
     private static readonly int[] NeighborOffsetX = { -1, 0, 1, -1, 1, -1, 0, 1 };
     private static readonly int[] NeighborOffsetY = { -1, -1, -1, 0, 0, 1, 1, 1 };
@@ -3936,6 +4027,23 @@ public static class FlowFieldCrowdMovementSystem
                && _world.AgentTypeId == _activeWorldState.AgentTypeId;
     }
 
+    private static bool IsAgentInCurrentNavigationWorld(AgentRuntimeData agent)
+    {
+        if (agent == null)
+            throw new InvalidOperationException("IsAgentInCurrentNavigationWorld failed: agent is null.");
+        if (_world == null)
+            throw new InvalidOperationException("IsAgentInCurrentNavigationWorld failed: world is null.");
+
+        return ResolvePreferredAgentTypeId(agent.AgentTypeId) == _world.AgentTypeId;
+    }
+
+    private static bool IsAgentPathInCurrentNavigationWorld(AgentRuntimeData agent)
+    {
+        return IsAgentInCurrentNavigationWorld(agent)
+               && agent.NavState.PathHandle != null
+               && agent.NavState.PathHandle.WorldVersion == _world.Version;
+    }
+
     private static void EnqueueFlowTileBuildsForActiveAgents()
     {
         foreach (AgentRuntimeData agent in Agents.Values)
@@ -6013,10 +6121,16 @@ public static class FlowFieldCrowdMovementSystem
         waitingAgentIds = null;
         foreach (BottleneckRuntimeState state in Bottlenecks.Values)
         {
+            if (_world == null
+                || state.RuntimeKey.WorldVersion != _world.Version
+                || state.RuntimeKey.AgentTypeId != _world.AgentTypeId)
+            {
+                continue;
+            }
             if (state.PortalId != portalId)
                 continue;
 
-            if (CorridorBottlenecks.TryGetValue(state.BottleneckId, out CorridorBottleneckDescriptor descriptor))
+            if (CorridorBottlenecks.TryGetValue(state.RuntimeKey, out CorridorBottleneckDescriptor descriptor))
                 RefreshBottleneckWaitingOrder(state, descriptor);
 
             currentDirection = state.CurrentDirection;
@@ -6027,6 +6141,24 @@ public static class FlowFieldCrowdMovementSystem
         }
 
         return false;
+    }
+
+    public static bool TryGetEditorTestAgentPortalTravelDirection(int agentId, int portalId, out int direction)
+    {
+        direction = 0;
+        return Agents.TryGetValue(agentId, out AgentRuntimeData agent)
+               && TryResolveAgentPortalTravelDirection(agent, portalId, out direction);
+    }
+
+    public static bool SetEditorTestPathCurrentSectorIndex(int agentId, int currentSectorIndex)
+    {
+        if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent) || agent.NavState.PathHandle == null)
+            return false;
+        if (currentSectorIndex < 0 || currentSectorIndex >= agent.NavState.PathHandle.SectorIds.Length)
+            throw new ArgumentOutOfRangeException(nameof(currentSectorIndex));
+
+        agent.NavState.PathHandle.CurrentSectorIndex = currentSectorIndex;
+        return true;
     }
 
     public static int GetEditorTestFrameTileBuildCount()
@@ -7480,6 +7612,7 @@ public static class FlowFieldCrowdMovementSystem
             target,
             targetPoint,
             standOff,
+            Mathf.Max(0.05f, requiredClearance),
             ringSpacing,
             ringCount,
             candidateCount,
@@ -7494,6 +7627,35 @@ public static class FlowFieldCrowdMovementSystem
         IEntityContext target,
         Vector3 targetPoint,
         float standOff,
+        float ringSpacing,
+        int ringCount,
+        int candidateCount,
+        float requiredClearance,
+        out Vector3 approachPoint,
+        out string failureReason,
+        out NavigationQueryFailureKind failureKind)
+    {
+        return TryResolveCombatApproachPoint(
+            self,
+            target,
+            targetPoint,
+            standOff,
+            Mathf.Max(0.05f, requiredClearance),
+            ringSpacing,
+            ringCount,
+            candidateCount,
+            requiredClearance,
+            out approachPoint,
+            out failureReason,
+            out failureKind);
+    }
+
+    public static bool TryResolveCombatApproachPoint(
+        IEntityContext self,
+        IEntityContext target,
+        Vector3 targetPoint,
+        float standOff,
+        float minimumStandOff,
         float ringSpacing,
         int ringCount,
         int candidateCount,
@@ -7559,17 +7721,24 @@ public static class FlowFieldCrowdMovementSystem
             targetX,
             targetY,
             standOff,
+            minimumStandOff,
             ringSpacing,
             navigationClearance,
             ringCount,
             candidateCount);
-        CombatTargetSlotEntry entry = GetOrBuildCombatTargetSlotEntry(key, targetPoint, standOff, ringSpacing, ringCount, candidateCount, targetX, targetY, navigationClearance);
-        if (entry == null || entry.Points == null || entry.Points.Length == 0)
-        {
-            failureKind = NavigationQueryFailureKind.Unreachable;
-            failureReason = $"no combat approach slots target={target.CharacterKey} targetPoint={targetPoint}";
-            return false;
-        }
+        CombatTargetSlotEntry entry = GetOrBuildCombatTargetSlotEntry(
+            key,
+            targetPoint,
+            standOff,
+            minimumStandOff,
+            ringSpacing,
+            ringCount,
+            candidateCount,
+            targetX,
+            targetY,
+            navigationClearance);
+        if (entry == null || entry.Points == null)
+            throw new InvalidOperationException("TryResolveCombatApproachPoint failed: combat target slot entry is invalid.");
 
         Vector3 toTargetFromSelf = self.Position - targetPoint;
         toTargetFromSelf.y = 0f;
@@ -7618,6 +7787,8 @@ public static class FlowFieldCrowdMovementSystem
             bestBlockingAgentId = blockingAgentId;
         }
 
+        bool usedExpandedSlot = false;
+        int expandedRing = -1;
         if (bestIndex < 0)
         {
             if (TryResolveExpandedCombatApproachPoint(
@@ -7628,6 +7799,7 @@ public static class FlowFieldCrowdMovementSystem
                     targetX,
                     targetY,
                     standOff,
+                    minimumStandOff,
                     ringSpacing,
                     ringCount,
                     candidateCount,
@@ -7635,24 +7807,31 @@ public static class FlowFieldCrowdMovementSystem
                     toTargetFromSelf,
                     self.Position,
                     out approachPoint,
-                    out int fallbackExpandedRing,
-                    out float fallbackExpandedScore))
+                    out expandedRing,
+                    out float expandedScore))
             {
-                return true;
+                bestScore = expandedScore;
+                bestOccupied = false;
+                bestBlockingAgentId = 0;
+                usedExpandedSlot = true;
             }
-
-            failureReason =
-                $"no combat approach slot in start island target={target.CharacterKey} start=({startX},{startY}) startIsland={startIsland} " +
-                $"targetPoint={targetPoint} slots={entry.Points.Length} build={entry.BuildSummary} " +
-                $"candidateIslands={BuildCombatApproachIslandSummary(entry, startIsland)} expandedFailed=True";
-            failureKind = NavigationQueryFailureKind.Unreachable;
-            return false;
+            else
+            {
+                failureReason =
+                    $"no combat approach slot in start island target={target.CharacterKey} start=({startX},{startY}) startIsland={startIsland} " +
+                    $"targetPoint={targetPoint} standOff=[{minimumStandOff:F3},{standOff:F3}] slots={entry.Points.Length} build={entry.BuildSummary} " +
+                    $"candidateIslands={BuildCombatApproachIslandSummary(entry, startIsland)} expandedFailed=True";
+                failureKind = NavigationQueryFailureKind.Unreachable;
+                return false;
+            }
+        }
+        else
+        {
+            approachPoint = entry.Points[bestIndex];
         }
 
-        approachPoint = entry.Points[bestIndex];
-        bool usedExpandedSlot = false;
-        int expandedRing = -1;
-        if (bestOccupied
+        if (!usedExpandedSlot
+            && bestOccupied
             && TryResolveExpandedCombatApproachPoint(
                 selfId,
                 ignoredTargetId,
@@ -7661,6 +7840,7 @@ public static class FlowFieldCrowdMovementSystem
                 targetX,
                 targetY,
                 standOff,
+                minimumStandOff,
                 ringSpacing,
                 ringCount,
                 candidateCount,
@@ -7669,10 +7849,10 @@ public static class FlowFieldCrowdMovementSystem
                 self.Position,
                 out Vector3 expandedApproachPoint,
                 out expandedRing,
-                out float expandedScore))
+                out float occupiedExpandedScore))
         {
             approachPoint = expandedApproachPoint;
-            bestScore = expandedScore;
+            bestScore = occupiedExpandedScore;
             bestOccupied = false;
             bestBlockingAgentId = 0;
             usedExpandedSlot = true;
@@ -7688,7 +7868,8 @@ public static class FlowFieldCrowdMovementSystem
                 $"selfPos={self.Position} targetPoint={targetPoint} previousGoal={agent.NavState.LastGoalWorld} " +
                 $"approach={approachPoint} slotIndex={bestIndex} occupied={bestOccupied} blocker={bestBlockingAgentId} score={bestScore:F3} " +
                 $"start=({startX},{startY}) startIsland={startIsland} keyTargetCell={key.TargetCellIndex} slots={entry.Points.Length} " +
-                $"availableSlots={availableSlotCount} occupiedSlots={occupiedSlotCount} expanded={usedExpandedSlot} expandedRing={expandedRing}");
+                $"standOff=[{minimumStandOff:F3},{standOff:F3}] availableSlots={availableSlotCount} occupiedSlots={occupiedSlotCount} " +
+                $"expanded={usedExpandedSlot} expandedRing={expandedRing}");
         }
 
         return true;
@@ -7734,6 +7915,7 @@ public static class FlowFieldCrowdMovementSystem
         int targetX,
         int targetY,
         float standOff,
+        float minimumStandOff,
         float ringSpacing,
         int baseRingCount,
         int candidateCount,
@@ -7752,16 +7934,17 @@ public static class FlowFieldCrowdMovementSystem
 
         bool targetLineCellValid = _world.IsWalkable(targetX, targetY);
         int targetIsland = targetLineCellValid ? ResolveIslandIdForDiagnostics(_world, targetX, targetY) : 0;
-        int firstRing = Mathf.Max(1, baseRingCount);
-        int extraRings = Mathf.Clamp(Mathf.CeilToInt(Mathf.Sqrt(Mathf.Max(Agents.Count, 1))), 4, 12);
-        int maxRing = firstRing + extraRings;
-        int samplesPerRing = Mathf.Max(8, candidateCount);
-        for (int ring = firstRing; ring < maxRing; ring++)
+        float spacing = Mathf.Max(0.05f, ringSpacing);
+        float minimumRadius = Mathf.Clamp(minimumStandOff, 0.05f, Mathf.Max(0.05f, standOff));
+        int inwardSteps = Mathf.CeilToInt(Mathf.Max(0f, standOff - minimumRadius) / spacing);
+        int generatedRingCount = Mathf.Max(Mathf.Max(1, baseRingCount), inwardSteps + 1);
+        int samplesPerRing = Mathf.Max(16, candidateCount * 2);
+        for (int ring = 0; ring < generatedRingCount; ring++)
         {
-            float radius = Mathf.Max(0.05f, standOff + ring * Mathf.Max(0.05f, ringSpacing));
+            float radius = Mathf.Max(minimumRadius, standOff - ring * spacing);
             for (int i = 0; i < samplesPerRing; i++)
             {
-                float angle = i * 360f / samplesPerRing;
+                float angle = (i + 0.5f) * 360f / samplesPerRing;
                 Vector3 direction = Quaternion.AngleAxis(angle, Vector3.up) * Vector3.forward;
                 Vector3 candidate = targetPoint + direction * radius;
                 if (!_world.WorldToGrid(candidate, out int x, out int y))
@@ -7793,8 +7976,8 @@ public static class FlowFieldCrowdMovementSystem
                 }
 
                 float distanceToSelf = HorizontalDistanceXZ(selfPosition, worldPoint);
-                float ringPenalty = (ring - firstRing + 1) * 0.35f;
-                float score = distanceToSelf + anglePenalty + ringPenalty;
+                float distanceToPreferredRadius = Mathf.Abs(HorizontalDistanceXZ(worldPoint, targetPoint) - standOff);
+                float score = distanceToSelf + anglePenalty + distanceToPreferredRadius * 3f;
                 if (score >= selectedScore)
                     continue;
 
@@ -7916,6 +8099,7 @@ public static class FlowFieldCrowdMovementSystem
         int targetX,
         int targetY,
         float standOff,
+        float minimumStandOff,
         float ringSpacing,
         float requiredClearance,
         int ringCount,
@@ -7931,6 +8115,7 @@ public static class FlowFieldCrowdMovementSystem
             Mathf.RoundToInt(targetPoint.x / quantize),
             Mathf.RoundToInt(targetPoint.z / quantize),
             Mathf.RoundToInt(standOff / Mathf.Max(0.001f, _world.CellSize) * 16f),
+            Mathf.RoundToInt(minimumStandOff / Mathf.Max(0.001f, _world.CellSize) * 16f),
             Mathf.RoundToInt(ringSpacing / Mathf.Max(0.001f, _world.CellSize) * 16f),
             Mathf.RoundToInt(Mathf.Max(0f, requiredClearance) / Mathf.Max(0.001f, _world.CellSize) * 16f),
             Mathf.Max(1, ringCount),
@@ -7941,6 +8126,7 @@ public static class FlowFieldCrowdMovementSystem
         CombatTargetSlotKey key,
         Vector3 targetPoint,
         float standOff,
+        float minimumStandOff,
         float ringSpacing,
         int ringCount,
         int candidateCount,
@@ -7965,9 +8151,13 @@ public static class FlowFieldCrowdMovementSystem
         int rejectedNoLos = 0;
         bool targetLineCellValid = _world.IsWalkable(targetX, targetY);
 
-        for (int ring = 0; ring < Mathf.Max(1, ringCount); ring++)
+        float spacing = Mathf.Max(0.05f, ringSpacing);
+        float minimumRadius = Mathf.Clamp(minimumStandOff, 0.05f, Mathf.Max(0.05f, standOff));
+        int inwardSteps = Mathf.CeilToInt(Mathf.Max(0f, standOff - minimumRadius) / spacing);
+        int generatedRingCount = Mathf.Max(Mathf.Max(1, ringCount), inwardSteps + 1);
+        for (int ring = 0; ring < generatedRingCount; ring++)
         {
-            float radius = Mathf.Max(0.05f, standOff + ring * Mathf.Max(0.05f, ringSpacing));
+            float radius = Mathf.Max(minimumRadius, standOff - ring * spacing);
             for (int i = 0; i < Mathf.Max(4, candidateCount); i++)
             {
                 float angle = i * 360f / Mathf.Max(4, candidateCount);
@@ -8034,7 +8224,9 @@ public static class FlowFieldCrowdMovementSystem
             CellY = cellY.ToArray(),
             IslandIds = islandIds.ToArray(),
             LastUsedFrame = GetFrameCount(),
-            BuildSummary = $"built={points.Count} rejectedOutside={rejectedOutside} rejectedBlocked={rejectedBlocked} rejectedClearance={rejectedClearance} rejectedNoLos={rejectedNoLos}"
+            BuildSummary =
+                $"built={points.Count} rings={generatedRingCount} radius=[{minimumRadius:F3},{standOff:F3}] " +
+                $"rejectedOutside={rejectedOutside} rejectedBlocked={rejectedBlocked} rejectedClearance={rejectedClearance} rejectedNoLos={rejectedNoLos}"
         };
         CombatTargetSlotCache[key] = entry;
         return entry;
@@ -9631,12 +9823,19 @@ public static class FlowFieldCrowdMovementSystem
 
     private static void DrawBottleneckDebug()
     {
-        foreach (KeyValuePair<int, CorridorBottleneckDescriptor> pair in CorridorBottlenecks)
+        foreach (KeyValuePair<BottleneckRuntimeKey, CorridorBottleneckDescriptor> pair in CorridorBottlenecks)
         {
+            if (_world == null
+                || pair.Key.WorldVersion != _world.Version
+                || pair.Key.AgentTypeId != _world.AgentTypeId)
+            {
+                continue;
+            }
+
             CorridorBottleneckDescriptor descriptor = pair.Value;
             Vector3 anchor = descriptor.AnchorWorld + Vector3.up * 0.08f;
             int ownerDirection = descriptor.Direction;
-            bool hasRuntimeState = Bottlenecks.TryGetValue(descriptor.BottleneckId, out BottleneckRuntimeState state);
+            bool hasRuntimeState = Bottlenecks.TryGetValue(pair.Key, out BottleneckRuntimeState state);
             if (hasRuntimeState && state.CurrentDirection != 0)
                 ownerDirection = state.CurrentDirection;
 
@@ -9691,6 +9890,9 @@ public static class FlowFieldCrowdMovementSystem
         foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
         {
             AgentRuntimeData agent = pair.Value;
+            if (!IsAgentInCurrentNavigationWorld(agent))
+                continue;
+
             Vector3 origin = agent.Position + Vector3.up * 0.1f;
 
             Gizmos.color = agent.IgnoreAgentCollision ? Color.gray : Color.white;
@@ -21799,16 +22001,18 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
     private static BottleneckDecision EvaluateBottleneck(AgentRuntimeData agent, CorridorBottleneckDescriptor descriptor)
     {
-        if (!Bottlenecks.TryGetValue(descriptor.BottleneckId, out BottleneckRuntimeState state))
+        BottleneckRuntimeKey runtimeKey = BuildBottleneckRuntimeKey(descriptor);
+        if (!Bottlenecks.TryGetValue(runtimeKey, out BottleneckRuntimeState state))
         {
             state = new BottleneckRuntimeState
             {
+                RuntimeKey = runtimeKey,
                 BottleneckId = descriptor.BottleneckId,
                 PortalId = descriptor.SeedPortalId,
                 CorridorAxis = descriptor.CorridorAxis,
                 CorridorAxisMode = ResolveCorridorAxisMode(descriptor.CorridorAxis)
             };
-            Bottlenecks.Add(descriptor.BottleneckId, state);
+            Bottlenecks.Add(runtimeKey, state);
         }
 
         int frameCount = GetFrameCount();
@@ -21913,6 +22117,23 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             ? Vector3.zero
             : ApplyCommittedLaneBias(state, agent, laneBias, anchor);
         return BuildBottleneckDecision(state, 1f, finalLaneBias, Vector3.zero, state.CurrentOwnerState != BottleneckRuntimeState.OwnerState.Idle);
+    }
+
+    private static BottleneckRuntimeKey BuildBottleneckRuntimeKey(CorridorBottleneckDescriptor descriptor)
+    {
+        if (_world == null)
+            throw new InvalidOperationException("BuildBottleneckRuntimeKey failed: world is null.");
+
+        return new BottleneckRuntimeKey(
+            _world.Version,
+            _world.AgentTypeId,
+            descriptor.BottleneckId,
+            descriptor.SeedPortalId >= 0 ? 1 : 2,
+            descriptor.IdentityAxisMode,
+            descriptor.IdentitySpanMin,
+            descriptor.IdentitySpanMax,
+            descriptor.IdentityRunMin,
+            descriptor.IdentityRunMax);
     }
 
     private static float ResolveBottleneckOccupiedRadius(CorridorBottleneckDescriptor descriptor)
@@ -22276,8 +22497,13 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             _world.GridToWorldCenter(anchorX, anchorY),
             isLongCorridor,
             isCornerExit,
-            influenceRadius);
-        CorridorBottlenecks[bottleneckId] = descriptor;
+            influenceRadius,
+            axisMode,
+            laneMin,
+            laneMax,
+            runMin,
+            runMax);
+        CorridorBottlenecks[BuildBottleneckRuntimeKey(descriptor)] = descriptor;
         return true;
     }
 
@@ -22634,7 +22860,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         for (int i = 0; i < nearbyAgents.Count; i++)
         {
             AgentRuntimeData other = nearbyAgents[i];
-            if (other.IgnoreAgentCollision)
+            if (other.IgnoreAgentCollision || !IsAgentInCurrentNavigationWorld(other))
                 continue;
 
             Vector3 toOther = other.Position - self.Position;
@@ -22665,7 +22891,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         for (int i = 0; i < nearbyAgents.Count; i++)
         {
             AgentRuntimeData other = nearbyAgents[i];
-            if (other.IgnoreAgentCollision)
+            if (other.IgnoreAgentCollision || !IsAgentPathInCurrentNavigationWorld(other))
                 continue;
 
             Vector3 offset = other.Position - anchor;
@@ -22705,6 +22931,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         direction = 0;
         if (agent == null || portalId < 0)
             return false;
+        if (!IsAgentPathInCurrentNavigationWorld(agent))
+            return false;
         if (!TryGetPortalById(_world, portalId, out PortalData portal))
             return false;
 
@@ -22718,6 +22946,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         for (int i = 0; i < handle.PortalIds.Length; i++)
         {
             if (handle.PortalIds[i] != portalId)
+                continue;
+            if (i < handle.CurrentSectorIndex)
                 continue;
 
             int fromSectorId = handle.SectorIds[i];
@@ -24344,7 +24574,14 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             return false;
 
         if (descriptor.SeedPortalId >= 0)
-            return TryResolveAgentPortalTravelDirection(agent, descriptor.SeedPortalId, out _);
+        {
+            if (!TryResolveAgentPortalTravelDirection(agent, descriptor.SeedPortalId, out _))
+                return false;
+
+            Vector3 portalOffset = agent.Position - descriptor.AnchorWorld;
+            portalOffset.y = 0f;
+            return portalOffset.sqrMagnitude <= descriptor.InfluenceRadius * descriptor.InfluenceRadius;
+        }
 
         if (descriptor.CorridorAxis.sqrMagnitude <= 0.0001f)
             return false;
@@ -25575,6 +25812,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         foreach (AgentRuntimeData agent in Agents.Values)
         {
             if (agent == null || agent.NavState.StableGoalTargetId == int.MinValue)
+                continue;
+            if (!IsAgentInCurrentNavigationWorld(agent))
                 continue;
 
             int islandId = ResolveIslandIdForDiagnostics(_world, agent.NavState.CurrentCell.x, agent.NavState.CurrentCell.y);

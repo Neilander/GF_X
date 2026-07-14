@@ -492,6 +492,7 @@ MonoBehaviour:
     VisionRadius: 5
   waterLayerColor: {r: 0.09411766, g: 0.13333334, b: 0.18823531, a: 1}
   planeLayerColor: {r: 0.4431373, g: 0.4431373, b: 0.4431373, a: 1}
+  enableUnitLifecycleLogs: 0
 --- !u!4 &144036988
 Transform:
   m_ObjectHideFlags: 0
@@ -2727,7 +2728,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b8787c489ed8be478f4ad1f372311f0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  sfxPoolSize: 16
 --- !u!114 &990003003
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3863,7 +3863,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetDebug: 0
   atkDebug: 0
-  moveDebug: 0
+  moveDebug: 1
   brainDebug: 0
   groupMoveDebug: 0
   runtimeResourceModifyEnabled: 1

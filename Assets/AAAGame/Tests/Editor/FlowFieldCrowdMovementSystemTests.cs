@@ -1860,6 +1860,103 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 多AgentType相同PortalId不得共享瓶颈方向状态()
+    {
+        const int firstAgentType = 101;
+        const int secondAgentType = 202;
+        const int width = 8;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+            SetWalkable(walkable, width, x, 1);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(firstAgentType, 0.18f);
+        FlowFieldCrowdMovementSystem.SetEditorTestAgentTypeRadius(secondAgentType, 0.18f);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(new[]
+        {
+            new AuthoredNavigationSourceData(firstAgentType, width, height, 1f, Vector3.zero, walkable, null),
+            new AuthoredNavigationSourceData(secondAgentType, width, height, 1f, Vector3.zero, walkable, null)
+        });
+
+        SimEntityContext first = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, firstAgentType, 0.18f);
+        SimEntityContext second = CreateEntity(new Vector3(7.5f, 0f, 1.5f), false, secondAgentType, 0.18f);
+        Vector3 firstGoal = new Vector3(7.5f, 0f, 1.5f);
+        Vector3 secondGoal = new Vector3(0.5f, 0f, 1.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(first, firstGoal, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(second, secondGoal, 2f, out _));
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.4f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(first, firstGoal, 2f, out Vector3 firstVelocity));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(second, secondGoal, 2f, out Vector3 secondVelocity));
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(first.GetHashCode(), out int[] firstPortalIds));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(second.GetHashCode(), out int[] secondPortalIds));
+        Assert.IsNotEmpty(firstPortalIds);
+        Assert.IsNotEmpty(secondPortalIds);
+        Assert.AreEqual(firstPortalIds[0], secondPortalIds[0], "测试前提要求两个导航世界生成相同的本地 portalId。");
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryGetEditorTestAgentPortalTravelDirection(first.GetHashCode(), secondPortalIds[0], out _),
+            "当前导航世界不得用同号 portal 解析其他 AgentType 世界的 PathHandle。");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestBottleneckSnapshotForPortal(
+            secondPortalIds[0],
+            out int secondWorldDirection,
+            out _,
+            out _,
+            out _));
+
+        Assert.Greater(Vector3.Dot(firstVelocity, Vector3.right), 0.2f, $"第一套导航世界应正常向右通行，velocity={firstVelocity}");
+        Assert.AreEqual(-1, secondWorldDirection, "第二套导航世界的同号 portal 应持有自己的反向瓶颈状态。");
+        Assert.Greater(Vector3.Dot(secondVelocity, Vector3.left), 0.2f, $"第二套导航世界不能继承第一套世界的瓶颈方向，velocity={secondVelocity}");
+    }
+
+    [Test]
+    public void 已走过窄门的单位不得继续占据瓶颈等待队首()
+    {
+        const int width = 8;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+            SetWalkable(walkable, width, x, 1);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext first = CreateEntity(new Vector3(0.5f, 0f, 1.5f), false, 0, 0.18f);
+        SimEntityContext staleWaiter = CreateEntity(new Vector3(7.5f, 0f, 1.5f), false, 0, 0.18f);
+        Vector3 firstGoal = new Vector3(7.5f, 0f, 1.5f);
+        Vector3 staleGoal = new Vector3(0.5f, 0f, 1.5f);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(first, firstGoal, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(staleWaiter, staleGoal, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(staleWaiter.GetHashCode(), out int[] portalIds));
+        Assert.AreEqual(1, portalIds.Length, "测试通道应只包含一个窄门 portal。");
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.4f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(staleWaiter, staleGoal, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestBottleneckSnapshotForPortal(
+            portalIds[0],
+            out _,
+            out _,
+            out _,
+            out int[] waitingBefore));
+        Assert.AreNotEqual(-1, Array.IndexOf(waitingBefore, staleWaiter.GetHashCode()), "反向单位应先进入等待队列。");
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.SetEditorTestPathCurrentSectorIndex(staleWaiter.GetHashCode(), 1));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(3, 0.6f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(first, firstGoal, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestBottleneckSnapshotForPortal(
+            portalIds[0],
+            out _,
+            out _,
+            out _,
+            out int[] waitingAfter));
+
+        Assert.AreEqual(-1, Array.IndexOf(waitingAfter, staleWaiter.GetHashCode()), "portal 已位于 CurrentSectorIndex 之后时必须清理过期等待者。");
+    }
+
+    [Test]
     public void 窄门同向连续流会优先整批出清而不是中途来回换向()
     {
         const int width = 8;
@@ -2295,6 +2392,90 @@ public class FlowFieldCrowdMovementSystemTests
                 out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind rebuiltFailureKind),
             rebuiltReason);
         Assert.AreEqual(FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.None, rebuiltFailureKind);
+    }
+
+    [Test]
+    public void Lv2真实导航英雄靠近阻挡区时多个远程兵仍能取得攻击范围内接近点()
+    {
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(
+            "Assets/AAAGame/Tilemap/Lv2_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "本回归必须直接使用报错场景的 Lv2 Medium 导航源。");
+        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        Assert.NotNull(derivedData);
+        Assert.IsTrue(derivedData.IsValid);
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
+        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
+        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            grid.AgentTypeId,
+            grid.Width,
+            grid.Height,
+            grid.CellSize,
+            grid.Origin,
+            grid.GetWalkableMaskRuntimeReadOnlyReference(),
+            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCostFieldRuntimeReadOnlyReference(),
+            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+            derivedData,
+            useRuntimeReadOnlyReferences: true);
+        ProcessWorldBuildQueueUntilReady();
+
+        Vector3 targetPosition = new Vector3(41.64f, 0.10f, 49.90f);
+        SimEntityContext target = CreateEntity(targetPosition, true, grid.AgentTypeId, 0.18f);
+        Vector3[] starts =
+        {
+            new Vector3(25.61f, 0.09f, 37.15f),
+            new Vector3(25.62f, 0.09f, 36.17f),
+            new Vector3(26.57f, 0.09f, 36.85f),
+            new Vector3(26.41f, 0.09f, 34.49f),
+            new Vector3(26.82f, 0.09f, 33.72f),
+            new Vector3(24.97f, 0.09f, 34.90f),
+            new Vector3(26.59f, 0.09f, 32.99f),
+            new Vector3(22.81f, 0.09f, 38.47f),
+            new Vector3(24.31f, 0.09f, 38.30f),
+            new Vector3(23.08f, 0.09f, 36.74f),
+            new Vector3(22.11f, 0.09f, 36.97f)
+        };
+
+        const float targetRadius = 0.18f;
+        const float attackRange = 10.60f;
+        const float preferredStandOff = 10.592f;
+        const float minimumStandOff = 0.41f;
+        const float requiredClearance = 0.71f;
+        HashSet<Vector2Int> selectedCells = new HashSet<Vector2Int>();
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(628, 10.0f);
+        for (int i = 0; i < starts.Length; i++)
+        {
+            SimEntityContext self = CreateEntity(starts[i], false, grid.AgentTypeId, 0.18f);
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryResolveCombatApproachPoint(
+                    self,
+                    target,
+                    targetPosition,
+                    preferredStandOff,
+                    minimumStandOff,
+                    0.55f,
+                    3,
+                    16,
+                    requiredClearance,
+                    out Vector3 approach,
+                    out string failureReason,
+                    out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind),
+                $"第 {i} 个单位不应重现 no combat approach slots。failureKind={failureKind} reason={failureReason}");
+
+            float distanceToTargetSurface = Mathf.Max(0f, HorizontalDistance(approach, targetPosition) - targetRadius);
+            Assert.LessOrEqual(
+                distanceToTargetSurface,
+                attackRange + grid.CellSize,
+                $"接近点必须位于真实攻击范围内，而不是旧实现向范围外扩圈。index={i} approach={approach}");
+            Assert.IsTrue(grid.WorldToCell(approach, out int x, out int y));
+            selectedCells.Add(new Vector2Int(x, y));
+        }
+
+        Assert.GreaterOrEqual(selectedCells.Count, 8, "11 个追兵应在攻击环带内分散到多个导航槽位。");
     }
 
     [Test]

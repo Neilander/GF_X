@@ -14,6 +14,12 @@ public class SteeringMovementTests
     public void SetUp()
     {
         EntityRegistry.Clear();
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        bool[] walkable = new bool[64 * 64];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(64, 64, 1f, new Vector3(-32f, 0f, -32f), walkable);
         SetupCombatPhaseForTests();
     }
 
@@ -21,6 +27,8 @@ public class SteeringMovementTests
     public void TearDown()
     {
         EntityRegistry.Clear();
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
     }
 
     private static void SetupCombatPhaseForTests()

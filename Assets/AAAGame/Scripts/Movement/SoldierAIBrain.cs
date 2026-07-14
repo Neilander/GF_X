@@ -609,6 +609,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         float targetRadius = ResolveCombatTargetRadius(enemy);
         bool useSurfacePoint = enemy is BuildingEntity;
         float standOff = ResolveCombatApproachStandOff(selfRadius, targetRadius, effectiveRange, arriveDistance, useSurfacePoint);
+        float minimumStandOff = ResolveCombatApproachMinimumStandOff(selfRadius, targetRadius, useSurfacePoint);
         float requiredClearance = Mathf.Max(selfRadius * 2f + CombatApproachOccupancyPadding, 0.45f);
         Vector3 targetPoint = enemy.Position;
         if (useSurfacePoint && enemy.TryGetTargetClosestPoint(self.Position, out Vector3 surfacePoint))
@@ -622,14 +623,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         bool targetMatchesCache = _combatApproachTargetId == targetId;
         bool cacheFresh = frame - _combatApproachRefreshFrame < 10;
         bool targetStable = targetPointMoveDistance <= targetPointRefreshDistance;
-        float cachedApproachToEnemy = HorizontalDist(_combatApproachPoint, enemy.Position);
-        bool cachedApproachInRange = cachedApproachToEnemy <= effectiveRange + CombatApproachRingSpacing;
+        float cachedApproachToEnemy = ResolveCombatApproachDistanceToTargetSurface(enemy, _combatApproachPoint);
+        bool cachedApproachInRange = cachedApproachToEnemy <= effectiveRange;
         float selfToCachedApproach = HorizontalDist(self.Position, _combatApproachPoint);
         bool selfNeedsCachedApproach = selfToCachedApproach > minRefreshDistance;
         bool cachedPointClear = IsCombatApproachPointNavigationClear(_combatApproachPoint, selfRadius);
         bool canReuseCachedApproach = targetMatchesCache
             && cacheFresh
-            && targetStable
             && cachedApproachInRange
             && selfNeedsCachedApproach
             && cachedPointClear;
@@ -670,6 +670,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 enemy,
                 targetPoint,
                 standOff,
+                minimumStandOff,
                 CombatApproachRingSpacing,
                 CombatApproachRingCount,
                 CombatApproachCandidateCount,
@@ -779,6 +780,26 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             selfRadius + 0.05f,
             effectiveRange - arriveDistance - CombatApproachRangeSlack);
         return targetPointOnSurface ? surfaceDistance : targetRadius + surfaceDistance;
+    }
+
+    private static float ResolveCombatApproachMinimumStandOff(
+        float selfRadius,
+        float targetRadius,
+        bool targetPointOnSurface)
+    {
+        float surfaceSeparation = Mathf.Max(0.05f, selfRadius + 0.05f);
+        return targetPointOnSurface ? surfaceSeparation : targetRadius + surfaceSeparation;
+    }
+
+    private static float ResolveCombatApproachDistanceToTargetSurface(IEntityContext target, Vector3 point)
+    {
+        if (target == null)
+            throw new System.InvalidOperationException("ResolveCombatApproachDistanceToTargetSurface failed: target is null.");
+
+        if (target.TryGetTargetClosestPoint(point, out Vector3 closestPoint))
+            return HorizontalDist(point, closestPoint);
+
+        return Mathf.Max(0f, HorizontalDist(point, target.Position) - ResolveCombatTargetRadius(target));
     }
 
 
