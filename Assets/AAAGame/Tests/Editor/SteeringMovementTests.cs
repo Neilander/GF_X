@@ -229,7 +229,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void 小兵Idle状态_玩家太远保持Idle()
+    public void 小兵Idle状态_玩家再远也转为Follow()
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));
         var soldier = MakeSoldier(new Vector3(20, 0, 0));
@@ -244,7 +244,31 @@ public class SteeringMovementTests
 
         brain.Tick(soldier, 1f / 60f);
 
-        Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State);
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "玩家超过招募距离时仍应转为 Follow");
+    }
+
+    [Test]
+    public void Follow状态_玩家超过旧脱离距离仍保持Follow()
+    {
+        var player = MakeSoldier(new Vector3(0, 0, 0));
+        var soldier = MakeSoldier(new Vector3(5, 0, 0));
+
+        EntityRegistry.RegisterAsPlayer(player);
+        EntityRegistry.Register(soldier);
+
+        var brain = new SoldierAIBrain();
+        brain.RecruitRadius = 8f;
+        brain.LeashRange = 10f;
+        brain.Inject();
+        soldier.Brain = brain;
+
+        brain.Tick(soldier, 1f / 60f);
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State);
+
+        soldier.Position = new Vector3(20, 0, 0);
+        brain.Tick(soldier, 1f / 60f);
+
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "玩家超过旧脱离距离后仍应持续追踪");
     }
 
     [Test]

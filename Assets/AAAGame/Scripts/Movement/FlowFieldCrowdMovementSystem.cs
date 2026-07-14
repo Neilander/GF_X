@@ -3220,6 +3220,18 @@ public static class FlowFieldCrowdMovementSystem
             NextPortalId = data.NextPortalId
         };
 
+        for (int index = 0; index < cellCount; index++)
+        {
+            SymmetrizeNeighborTraversalMaskCell(
+                world,
+                index % world.Width,
+                index / world.Width,
+                "ImportDerivedNavigationWorld");
+        }
+        PruneIsolatedWalkableCells(world, "prebaked-import");
+        world.BaseWalkableMask = (bool[])world.WalkableMask.Clone();
+        world.BaseNeighborTraversalMask = (byte[])world.NeighborTraversalMask.Clone();
+
         for (int i = 0; i < world.Portals.Length; i++)
         {
             PortalData portal = world.Portals[i];
@@ -15552,7 +15564,32 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             return BuildIslandMismatchFailure(self, stableGoalPosition, startX, startY, goalX, goalY);
         }
 
-        return $"path handle build failed startSector={startSectorId} goalSector={goalSectorId}";
+        SectorData startSector = _world.Sectors[startSectorId];
+        SectorData goalSector = _world.Sectors[goalSectorId];
+        int accessibleStartPortals = 0;
+        for (int i = 0; i < startSector.PortalIds.Count; i++)
+        {
+            int portalId = startSector.PortalIds[i];
+            if (!float.IsPositiveInfinity(ResolvePortalAccessCost(startSector, startSectorId, portalId, startX, startY)))
+                accessibleStartPortals++;
+        }
+
+        int accessibleGoalPortals = 0;
+        for (int i = 0; i < goalSector.PortalIds.Count; i++)
+        {
+            int portalId = goalSector.PortalIds[i];
+            if (!float.IsPositiveInfinity(ResolveGoalSectorPortalAccessCost(goalSector, goalSectorId, portalId, goalX, goalY)))
+                accessibleGoalPortals++;
+        }
+
+        return $"path handle build failed selfPos={self.Position} stableGoal={stableGoalPosition} " +
+               $"startCell=({startX},{startY}) startSector={startSectorId} startIsland={ResolveIslandIdForDiagnostics(_world, startX, startY)} " +
+               $"startPortals={startSector.PortalIds.Count} accessibleStartPortals={accessibleStartPortals} " +
+               $"goalCell=({goalX},{goalY}) goalSector={goalSectorId} goalIsland={ResolveIslandIdForDiagnostics(_world, goalX, goalY)} " +
+               $"goalPortals={goalSector.PortalIds.Count} accessibleGoalPortals={accessibleGoalPortals} " +
+               $"worldVersion={_world.Version} pendingRuntimeDirty={HasPendingRuntimeDirty(_activeWorldState)} " +
+               $"boxObstacles={BoxObstacles.Count} circleObstacles={CircleObstacles.Count} " +
+               $"gridPathDiag={BuildGridPathDiagnostics(self.Position, stableGoalPosition, _world.AgentTypeId)}";
     }
 
     private static int DecodePortalSector(int node)

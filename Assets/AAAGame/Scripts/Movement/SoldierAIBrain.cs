@@ -233,11 +233,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 {
                     State = SoldierState.Combat;
                 }
-                // 同阵营领袖在附近 → Follow（敌方单位不跟随玩家）
+                // 有同阵营领袖 → Follow（敌方单位不跟随玩家）
                 else if (IsValidFollowLeader(self, _leader))
                 {
-                    if (HorizontalDist(self.Position, _leader.Position) <= GetRecruitRadius())
-                        State = SoldierState.Follow;
+                    State = SoldierState.Follow;
                 }
                 break;
 
@@ -246,9 +245,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 {
                     State = SoldierState.Combat;
                 }
-                // 领袖丢失或太远 → 回 Idle，忘掉领袖和组
-                else if (!IsValidFollowLeader(self, _leader) ||
-                         HorizontalDist(self.Position, _leader.Position) > GetLeashRange())
+                // 领袖失效 → 回 Idle，忘掉领袖和组
+                else if (!IsValidFollowLeader(self, _leader))
                 {
                     self.MoveComp.StopMove(); // 清掉残留目标，防止被斥力推远
                     if (GroupMoveManager.HasInstance)
@@ -256,7 +254,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                         int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();
                         GroupMoveManager.Instance.SetAgentGroup(selfId, -1);
                         GameDebugSettings.Log(DebugCategory.Brain,
-                            $"[{self.CharacterKey}] 离开组, leader丢失或超距");
+                            $"[{self.CharacterKey}] 离开组, leader失效");
                     }
                     _leader = null;
                     _joinedGroup = false;
@@ -350,7 +348,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     {
         if (!GroupMoveManager.HasInstance || State == _lastSyncedState) return;
         GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.CharacterKey}] 状态切换 {_lastSyncedState} → {State}");
+            $"[{self.CharacterKey}] 状态切换 {_lastSyncedState} → {State}, " +
+            $"leader={_leader?.CharacterKey ?? "null"}, " +
+            $"leaderDist={(_leader != null ? HorizontalDist(self.Position, _leader.Position).ToString("F2") : "n/a")}, " +
+            $"target={self.TargetComp?.CurrentTarget?.CharacterKey ?? "null"}");
         _lastSyncedState = State;
 
         int selfId = (self as MAEntity)?.GetInstanceID() ?? self.GetHashCode();

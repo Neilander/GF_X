@@ -11,6 +11,7 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public class HealthBarComp : MonoBehaviour
 {
+    private const string HealthBarShaderName = "AAAGame/UI/HealthBarAlwaysVisible";
     private const float UnitBarWidth = 120f;
     private const float UnitBarHeight = 20f;
     private const float BuildingMinBarWidth = 170f;
@@ -21,6 +22,7 @@ public class HealthBarComp : MonoBehaviour
     private static readonly Color AmmoFilledColor = new Color(1f, 0.28f, 0.08f, 0.95f);
     private static readonly Color AmmoEmptyColor = new Color(0.35f, 0.35f, 0.35f, 0.85f);
     private static readonly Dictionary<int, HealthBarComp> ActiveBars = new Dictionary<int, HealthBarComp>();
+    private static Material s_healthBarMaterial;
     private static int s_fogVisibleCalls;
     private static int s_fogVisibleCacheHits;
     private static int s_fogVisibleMissing;
@@ -198,6 +200,10 @@ public class HealthBarComp : MonoBehaviour
             return null;
         }
 
+        Material healthBarMaterial = GetHealthBarMaterial();
+        if (healthBarMaterial == null)
+            return null;
+
         bool isBuilding = followTarget != null && followTarget.GetComponent<BuildingEntity>() != null;
         ResolveVisualBounds(followTarget, out bool hasBounds, out Bounds bounds);
 
@@ -228,6 +234,7 @@ public class HealthBarComp : MonoBehaviour
         var bgGo = new GameObject("BG");
         bgGo.transform.SetParent(go.transform, false);
         var bgImg = bgGo.AddComponent<Image>();
+        bgImg.material = healthBarMaterial;
         bgImg.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
         var bgRt = bgGo.GetComponent<RectTransform>();
         bgRt.anchorMin = Vector2.zero;
@@ -239,6 +246,7 @@ public class HealthBarComp : MonoBehaviour
         var fillGo = new GameObject("Fill");
         fillGo.transform.SetParent(go.transform, false);
         var fillImg = fillGo.AddComponent<Image>();
+        fillImg.material = healthBarMaterial;
         // 根据阵营设置颜色：己方绿色，敌方红色
         fillImg.color = isFriendly ? Color.green : Color.red;
         var fillRt = fillGo.GetComponent<RectTransform>();
@@ -258,6 +266,26 @@ public class HealthBarComp : MonoBehaviour
         ActiveBars[entityId] = comp;
 
         return comp;
+    }
+
+    private static Material GetHealthBarMaterial()
+    {
+        if (s_healthBarMaterial != null)
+            return s_healthBarMaterial;
+
+        Shader shader = Shader.Find(HealthBarShaderName);
+        if (shader == null)
+        {
+            Debug.LogError($"[HealthBar] Required shader not found: {HealthBarShaderName}");
+            return null;
+        }
+
+        s_healthBarMaterial = new Material(shader)
+        {
+            name = "HealthBarAlwaysVisible (Runtime)",
+            hideFlags = HideFlags.HideAndDontSave
+        };
+        return s_healthBarMaterial;
     }
 
     private void Remove()
@@ -422,6 +450,7 @@ public class HealthBarComp : MonoBehaviour
             var segmentGo = new GameObject($"Ammo_{i + 1}");
             segmentGo.transform.SetParent(rootGo.transform, false);
             var image = segmentGo.AddComponent<Image>();
+            image.material = GetHealthBarMaterial();
             image.color = AmmoFilledColor;
             var segmentRt = segmentGo.GetComponent<RectTransform>();
             segmentRt.anchorMin = new Vector2(0f, 0f);

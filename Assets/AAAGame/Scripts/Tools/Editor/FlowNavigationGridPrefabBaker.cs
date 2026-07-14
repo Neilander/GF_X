@@ -566,6 +566,7 @@ namespace AAAGame.Tools.Editor
                 throw new InvalidOperationException($"FlowNavigationGridPrefabBaker.BakeFromTerrainPrefab failed: generated zero walkable cells from {terrainPrefabPath}.");
 
             BuildNeighborTraversalMasks(raster, groundIndex, obstacleIndex, movementWalkable, movementAnchors, movementNeighborMasks, hardClearanceRadius, agentTypeId, stopwatch);
+            SymmetrizeNeighborTraversalMasks(raster, movementWalkable, movementNeighborMasks);
             Debug.Log($"[FlowNavigationGridBake] stage=neighbor-masks-complete elapsedMs={stopwatch.ElapsedMilliseconds} agentType={agentTypeId}");
 
             FlowNavigationGridAsset asset = LoadOrCreateAsset(assetPath);
@@ -909,6 +910,67 @@ namespace AAAGame.Tools.Editor
                     neighborMasks[index] = mask;
                 }
             }
+        }
+
+        private static void SymmetrizeNeighborTraversalMasks(TerrainRaster raster, bool[] walkable, byte[] neighborMasks)
+        {
+            if (raster == null)
+                throw new InvalidOperationException("SymmetrizeNeighborTraversalMasks failed: raster is null.");
+            if (walkable == null || walkable.Length != raster.CellCount)
+                throw new InvalidOperationException("SymmetrizeNeighborTraversalMasks failed: walkable mask has invalid length.");
+            if (neighborMasks == null || neighborMasks.Length != raster.CellCount)
+                throw new InvalidOperationException("SymmetrizeNeighborTraversalMasks failed: neighbor mask has invalid length.");
+
+            for (int y = 0; y < raster.Height; y++)
+            {
+                for (int x = 0; x < raster.Width; x++)
+                {
+                    int fromIndex = raster.ToIndex(x, y);
+                    if (!walkable[fromIndex])
+                    {
+                        neighborMasks[fromIndex] = 0;
+                        continue;
+                    }
+
+                    for (int i = 0; i < NeighborOffsetX.Length; i++)
+                    {
+                        int toX = x + NeighborOffsetX[i];
+                        int toY = y + NeighborOffsetY[i];
+                        if (toX < 0 || toX >= raster.Width || toY < 0 || toY >= raster.Height)
+                            continue;
+
+                        int toIndex = raster.ToIndex(toX, toY);
+                        if (!walkable[toIndex])
+                        {
+                            neighborMasks[fromIndex] &= (byte)~(1 << i);
+                            continue;
+                        }
+
+                        int oppositeIndex = ResolveNeighborOffsetIndex(-NeighborOffsetX[i], -NeighborOffsetY[i]);
+                        if (oppositeIndex < 0)
+                            throw new InvalidOperationException($"SymmetrizeNeighborTraversalMasks failed: missing opposite offset for {NeighborOffsetX[i]},{NeighborOffsetY[i]}.");
+
+                        bool forward = (neighborMasks[fromIndex] & (1 << i)) != 0;
+                        bool backward = (neighborMasks[toIndex] & (1 << oppositeIndex)) != 0;
+                        if (!forward && !backward)
+                            continue;
+
+                        neighborMasks[fromIndex] |= (byte)(1 << i);
+                        neighborMasks[toIndex] |= (byte)(1 << oppositeIndex);
+                    }
+                }
+            }
+        }
+
+        private static int ResolveNeighborOffsetIndex(int dx, int dy)
+        {
+            for (int i = 0; i < NeighborOffsetX.Length; i++)
+            {
+                if (NeighborOffsetX[i] == dx && NeighborOffsetY[i] == dy)
+                    return i;
+            }
+
+            return -1;
         }
 
         private static bool ShouldLogBakeRow(int row, int height)

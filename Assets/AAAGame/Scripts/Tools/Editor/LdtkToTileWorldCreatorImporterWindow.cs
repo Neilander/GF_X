@@ -380,7 +380,7 @@ namespace AAAGame.Tools.Editor
 
             string folder = Path.GetDirectoryName(terrainPrefabPath)?.Replace("\\", "/");
             string name = Path.GetFileNameWithoutExtension(terrainPrefabPath);
-            return $"{folder}/{name}_FlowNavigationGrid.asset";
+            return $"{folder}/{name}_FlowNavigationGrid_Medium.asset";
         }
 
         private Configuration GetTemplateConfiguration()
@@ -2206,12 +2206,16 @@ namespace AAAGame.Tools.Editor
             string name = Path.GetFileNameWithoutExtension(primaryAssetPath);
             if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(name))
                 throw new InvalidOperationException($"BuildDefaultFlowNavigationGridBakeRequests failed: invalid primaryAssetPath={primaryAssetPath}.");
+            const string mediumSuffix = "_Medium";
+            if (!name.EndsWith(mediumSuffix, StringComparison.Ordinal))
+                throw new InvalidOperationException($"BuildDefaultFlowNavigationGridBakeRequests failed: medium asset path must end with '{mediumSuffix}'. path={primaryAssetPath}.");
+            string familyName = name.Substring(0, name.Length - mediumSuffix.Length);
 
             return new[]
             {
                 new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.MediumMovementTypeId, primaryAssetPath, ResolveDefaultMovementTypeRadius("MediumUnitCollisionRadius")),
-                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.SmallMovementTypeId, $"{folder}/{name}_Small.asset", ResolveDefaultMovementTypeRadius("SmallUnitCollisionRadius")),
-                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.LargeMovementTypeId, $"{folder}/{name}_Large.asset", ResolveDefaultMovementTypeRadius("LargeUnitCollisionRadius"))
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.SmallMovementTypeId, $"{folder}/{familyName}_Small.asset", ResolveDefaultMovementTypeRadius("SmallUnitCollisionRadius")),
+                new FlowNavigationGridPrefabBaker.MovementTypeBakeRequest(AgentTypeHelper.LargeMovementTypeId, $"{folder}/{familyName}_Large.asset", ResolveDefaultMovementTypeRadius("LargeUnitCollisionRadius"))
             };
         }
 

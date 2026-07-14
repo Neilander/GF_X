@@ -45,6 +45,7 @@ namespace AAAGame.Card
         private Func<Vector3, float, bool> m_AdditionalForbiddenChecker;
         private readonly Collider[] m_ForbiddenOverlapBuffer = new Collider[OverlapBufferSize];
         private readonly Collider[] m_GroundOverlapBuffer = new Collider[OverlapBufferSize];
+        private readonly RaycastHit[] m_GroundRaycastBuffer = new RaycastHit[OverlapBufferSize];
 
         public event Action<CardModel> OnPlacementStarted;
         public event Action<Vector3, bool> OnPositionUpdated;
@@ -409,13 +410,29 @@ namespace AAAGame.Card
             }
 
             Ray ray = m_MainCamera.ScreenPointToRay(screenPosition);
-            if (Physics.Raycast(ray, out RaycastHit hit, 1000f, m_GroundLayer))
+            int hitCount = Physics.RaycastNonAlloc(ray, m_GroundRaycastBuffer, 1000f, m_GroundLayer);
+            if (hitCount >= m_GroundRaycastBuffer.Length)
             {
-                groundPosition = hit.point;
-                return true;
+                throw new InvalidOperationException("Card placement ground raycast buffer is full.");
             }
 
-            return false;
+            float nearestGroundDistance = float.PositiveInfinity;
+            for (int i = 0; i < hitCount; i++)
+            {
+                RaycastHit hit = m_GroundRaycastBuffer[i];
+                if (hit.collider.GetComponentInParent<MAEntity>() != null)
+                {
+                    continue;
+                }
+
+                if (hit.distance < nearestGroundDistance)
+                {
+                    nearestGroundDistance = hit.distance;
+                    groundPosition = hit.point;
+                }
+            }
+
+            return !float.IsPositiveInfinity(nearestGroundDistance);
         }
 
         private bool CheckPlacementValidity(Vector3 position)

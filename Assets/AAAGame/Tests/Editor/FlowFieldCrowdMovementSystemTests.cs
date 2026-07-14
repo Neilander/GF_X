@@ -3799,11 +3799,11 @@ public class FlowFieldCrowdMovementSystemTests
 
     public void Lv3右下角返程链路中敌兵追击返程后不应在建筑夹角长时间聚团停滞()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
 
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
@@ -4050,11 +4050,11 @@ public class FlowFieldCrowdMovementSystemTests
 
     public void Lv3英雄绕到研发中心背面时追兵不应冲建筑聚团停滞()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
 
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
@@ -4377,11 +4377,11 @@ public class FlowFieldCrowdMovementSystemTests
     [UnityTest]
     public IEnumerator Lv3研发中心右下边缘真实追击不应多人挤住()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
 
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
@@ -4791,11 +4791,11 @@ public class FlowFieldCrowdMovementSystemTests
 
     public void Lv3研发中心左侧追击英雄绕到右下时不应冲建筑聚团()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
 
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
@@ -5095,11 +5095,11 @@ public class FlowFieldCrowdMovementSystemTests
 
     public void Lv3研发中心真实路径矩阵不应撞建筑绕大圈或墙角聚团()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实路径矩阵必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "真实路径矩阵必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
 
         Lv3PresetSnapshot preset = LoadLv3PresetSnapshot();
         Rect bounds = preset.ResearchCenterFootprintBounds;
@@ -5211,11 +5211,11 @@ public class FlowFieldCrowdMovementSystemTests
 
     public void Lv3真实SH13多路径追击不应卡建筑或墙角聚团()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实 SH_1_3 多路径压力测试必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "真实 SH_1_3 多路径压力测试必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
 
         Lv3PresetSnapshot preset = LoadLv3PresetSnapshot();
         Rect researchBounds = preset.ResearchCenterFootprintBounds;
@@ -5303,11 +5303,11 @@ public class FlowFieldCrowdMovementSystemTests
 
     public void Lv3真实SH13追击使用CharacterController时不应被建筑或墙角卡住()
     {
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "CharacterController 真实追击测试必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "CharacterController 真实追击测试必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
 
         EntityRegistry.Clear();
         FlowFieldCrowdMovementSystem.ResetAll();
@@ -5557,7 +5557,7 @@ public class FlowFieldCrowdMovementSystemTests
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Small.asset");
         Assert.NotNull(grid, "Combat + CharacterController 真实追击测试必须直接使用 Lv3_FlowNavigationGrid_Small.asset。");
-        FlowNavigationGridAsset spawnGrid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
+        FlowNavigationGridAsset spawnGrid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
         Assert.NotNull(spawnGrid, "Combat + CharacterController 真实追击测试必须同时注册默认刷怪导航源。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
         Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Small.asset 必须带预烘焙 derived navigation data。");
@@ -5674,7 +5674,7 @@ public class FlowFieldCrowdMovementSystemTests
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Small.asset");
         Assert.NotNull(grid, "真实 SH_1_3 右下角回归必须使用实机轻型单位的 Lv3_FlowNavigationGrid_Small.asset。");
-        FlowNavigationGridAsset spawnGrid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
+        FlowNavigationGridAsset spawnGrid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
         Assert.NotNull(spawnGrid, "真实 SH_1_3 右下角回归必须注册默认刷怪导航源。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
         Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Small.asset 必须带预烘焙 derived navigation data。");
@@ -5705,15 +5705,80 @@ public class FlowFieldCrowdMovementSystemTests
         RunLv3CharacterControllerCombatScenario(grid, spawnGrid, derivedData, preset, scenario, 991000);
     }
 
+    [TestCase(1937, 2861)]
+    [TestCase(2334, 2863)]
+    public void Lv3占领SH13后同主岛Follow应能构建Sector路径(int startSectorId, int goalSectorId)
+    {
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Small.asset");
+        Assert.NotNull(grid);
+        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        Assert.NotNull(derivedData);
+        Assert.IsTrue(derivedData.IsValid);
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
+        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
+        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            grid.AgentTypeId,
+            grid.Width,
+            grid.Height,
+            grid.CellSize,
+            grid.Origin,
+            grid.GetWalkableMaskRuntimeReadOnlyReference(),
+            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCostFieldRuntimeReadOnlyReference(),
+            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+            derivedData,
+            useRuntimeReadOnlyReferences: true);
+        ProcessWorldBuildQueueUntilReady();
+
+        List<Vector3> starts = ResolveMainIslandCellsInSector(grid, derivedData, startSectorId);
+        List<Vector3> goals = ResolveMainIslandCellsInSector(grid, derivedData, goalSectorId);
+        Vector3 representativeStart = starts[starts.Count / 2];
+        Vector3 representativeGoal = goals[goals.Count / 2];
+        SimEntityContext warmup = CreateEntity(representativeStart, false, grid.AgentTypeId, 0.18f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(warmup, representativeGoal, 2f, out _));
+
+        Lv3PresetSnapshot preset = LoadLv3PresetSnapshot();
+        Lv3ResearchCenterFootprint researchCenter = CreateLv3ResearchCenterLv1Footprint(preset.ResearchCenterPosition);
+        RegisterLv3ResearchCenterFootprintObstacles(researchCenter, 997000);
+        for (int i = 0; i < 4096 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+
+        int frame = 2;
+
+        for (int i = 0; i < starts.Count; i++)
+        {
+            SimEntityContext ctx = CreateEntity(starts[i], false, grid.AgentTypeId, 0.18f);
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame++, frame * 0.1f);
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, representativeGoal, 2f, out _),
+                $"同主岛 Follow 路径必须可构建。start={starts[i]} startSector={startSectorId} goal={representativeGoal} goalSector={goalSectorId}");
+        }
+
+        for (int i = 0; i < goals.Count; i++)
+        {
+            SimEntityContext ctx = CreateEntity(representativeStart, false, grid.AgentTypeId, 0.18f);
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame++, frame * 0.1f);
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goals[i], 2f, out _),
+                $"同主岛 Follow 路径必须可构建。start={representativeStart} startSector={startSectorId} goal={goals[i]} goalSector={goalSectorId}");
+        }
+    }
+
     public void Lv3研发中心下侧追击时初段方向不应指向建筑正面()
     {
         System.Diagnostics.Stopwatch testWatch = System.Diagnostics.Stopwatch.StartNew();
         Debug.Log("[Lv3ResearchCenterChaseTest] stage=begin");
-        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid.asset");
-        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid.asset。");
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv3_FlowNavigationGrid_Medium.asset");
+        Assert.NotNull(grid, "真实场景回归必须直接使用 Lv3_FlowNavigationGrid_Medium.asset。");
         FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
-        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
-        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid.asset 的 derived navigation data 必须有效。");
+        Assert.NotNull(derivedData, "Lv3_FlowNavigationGrid_Medium.asset 必须带预烘焙 derived navigation data，测试才与实机链路一致。");
+        Assert.IsTrue(derivedData.IsValid, "Lv3_FlowNavigationGrid_Medium.asset 的 derived navigation data 必须有效。");
         Debug.Log($"[Lv3ResearchCenterChaseTest] stage=grid-loaded elapsedMs={testWatch.Elapsed.TotalMilliseconds:F1} size={grid.Width}x{grid.Height} cell={grid.CellSize:F3} agentType={grid.AgentTypeId}");
 
         FlowFieldNavigationConfig config = CreateConfig();
@@ -5984,6 +6049,35 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowNavigationGridAsset.SectorDerivedData sector = derivedData.Sectors[sectorX + sectorY * derivedData.SectorCountX];
         return sector.SectorId;
+    }
+
+    private static List<Vector3> ResolveMainIslandCellsInSector(
+        FlowNavigationGridAsset grid,
+        FlowNavigationGridAsset.DerivedNavigationData derivedData,
+        int sectorId)
+    {
+        if (sectorId < 0 || sectorId >= derivedData.Sectors.Length)
+            throw new InvalidOperationException($"ResolveMainIslandCellsInSector failed: sectorId={sectorId} is outside 0..{derivedData.Sectors.Length - 1}.");
+
+        FlowNavigationGridAsset.SectorDerivedData sector = derivedData.Sectors[sectorId];
+        bool[] walkable = grid.GetWalkableMaskRuntimeReadOnlyReference();
+        List<Vector3> result = new List<Vector3>(sector.Width * sector.Height);
+        for (int y = sector.StartY; y < sector.StartY + sector.Height; y++)
+        {
+            for (int x = sector.StartX; x < sector.StartX + sector.Width; x++)
+            {
+                int index = x + y * grid.Width;
+                if (walkable[index] && derivedData.IslandIds[index] == derivedData.MainIslandId)
+                    result.Add(new Vector3(
+                        grid.Origin.x + (x + 0.5f) * grid.CellSize,
+                        grid.Origin.y,
+                        grid.Origin.z + (y + 0.5f) * grid.CellSize));
+            }
+        }
+
+        if (result.Count == 0)
+            throw new InvalidOperationException($"ResolveMainIslandCellsInSector failed: sector={sectorId} has no main-island walkable cell.");
+        return result;
     }
 
     private static void RunLv3ResearchCenterCrowdRouteScenario(

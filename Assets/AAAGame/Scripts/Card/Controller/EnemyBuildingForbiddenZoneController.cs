@@ -179,6 +179,8 @@ namespace AAAGame.Card
         {
             if (building == null || !building.Alive)
                 return false;
+            if (building.buildingData != null && building.buildingData.Lv == 0)
+                return false;
 
             IEntityContext player = EntityRegistry.Player;
             if (player != null)
