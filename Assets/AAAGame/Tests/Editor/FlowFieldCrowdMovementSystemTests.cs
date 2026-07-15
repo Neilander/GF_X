@@ -2215,6 +2215,99 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 同一窄走廊全队掉头后瓶颈不得用旧执行速度阻止换向()
+    {
+        const int width = 12;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+            SetWalkable(walkable, width, x, 1);
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 16;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext[] agents =
+        {
+            CreateEntity(new Vector3(3.5f, 0f, 1.5f), false, 0, 0.18f),
+            CreateEntity(new Vector3(6.5f, 0f, 1.5f), false, 0, 0.18f),
+            CreateEntity(new Vector3(9.5f, 0f, 1.5f), false, 0, 0.18f),
+        };
+        Vector3 rightGoal = new Vector3(11.5f, 0f, 1.5f);
+        Vector3 leftGoal = new Vector3(0.5f, 0f, 1.5f);
+
+        Vector3[] initialVelocities = new Vector3[agents.Length];
+        int establishedFrame = -1;
+        for (int frame = 1; frame <= 8; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            bool allMovingRight = true;
+            for (int i = 0; i < agents.Length; i++)
+            {
+                Assert.IsTrue(
+                    FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(agents[i], rightGoal, 2f, out initialVelocities[i]),
+                    $"建立向右流时导航调用必须成功，frame={frame} agent={i}");
+                allMovingRight &= initialVelocities[i].x > 0.2f;
+            }
+
+            if (allMovingRight)
+            {
+                establishedFrame = frame;
+                break;
+            }
+        }
+
+        System.Text.StringBuilder initialDiagnostics = new System.Text.StringBuilder();
+        for (int i = 0; i < agents.Length; i++)
+        {
+            initialDiagnostics.Append(" agent=").Append(i).Append(" velocity=").Append(initialVelocities[i]);
+            AppendSteeringBreakdown(initialDiagnostics, agents[i]);
+        }
+
+        Assert.Greater(
+            establishedFrame,
+            0,
+            $"掉头测试必须先建立向右的瓶颈方向。pendingTiles={FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount()} " +
+            $"cachedTiles={FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount()}{initialDiagnostics}");
+
+        bool switchedToReturnFlow = false;
+        System.Text.StringBuilder returnDiagnostics = new System.Text.StringBuilder();
+        for (int frame = establishedFrame + 1; frame <= establishedFrame + 16; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.2f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            for (int i = 0; i < agents.Length; i++)
+            {
+                Assert.IsTrue(
+                    FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(agents[i], leftGoal, 2f, out Vector3 returnVelocity),
+                    $"掉头阶段导航调用必须成功，frame={frame} agent={i}");
+                Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringBottleneckDiagnostic(
+                    agents[i].GetHashCode(),
+                    out float speedScale,
+                    out _,
+                    out _,
+                    out _,
+                    out string ownerState),
+                    $"掉头阶段必须写入瓶颈诊断，frame={frame} agent={i}");
+                returnDiagnostics.Append(" frame=").Append(frame)
+                    .Append(" agent=").Append(i)
+                    .Append(" velocity=").Append(returnVelocity)
+                    .Append(" speedScale=").Append(speedScale.ToString("F3"))
+                    .Append(" owner=").Append(ownerState);
+                if (speedScale > 0.9f && returnVelocity.x < -0.2f)
+                    switchedToReturnFlow = true;
+            }
+        }
+
+        Assert.IsTrue(
+            switchedToReturnFlow,
+            $"全队目标已反向且旧方向无人继续通行时，瓶颈必须在超时前切换方向，不能用受自身压制的旧执行速度形成永久来流判断。{returnDiagnostics}");
+    }
+
+    [Test]
     public void 同Sector拐角出口抢出时应出现让行而不是拐角互顶()
     {
         const int width = 7;
@@ -3888,6 +3981,76 @@ public class FlowFieldCrowdMovementSystemTests
             constrained.z,
             0.001f,
             $"贴下侧墙输入右下时，约束不应翻成右上。desired={desired} constrained={constrained}");
+    }
+
+    [Test]
+    public void Lv2已按兵种半径侵蚀的合法边缘格不应被执行层重复收缩()
+    {
+        FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>("Assets/AAAGame/Tilemap/Lv2_FlowNavigationGrid_Small.asset");
+        Assert.NotNull(grid, "真实净空回归必须直接使用 Lv2_FlowNavigationGrid_Small.asset。");
+        FlowNavigationGridAsset.DerivedNavigationData derivedData = grid.GetDerivedNavigationDataRuntimeReadOnlyReference();
+        Assert.NotNull(derivedData, "Lv2_FlowNavigationGrid_Small.asset 必须带预烘焙 derived navigation data。");
+        Assert.IsTrue(derivedData.IsValid, "Lv2_FlowNavigationGrid_Small.asset 的 derived navigation data 必须有效。");
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = derivedData.ConfigSectorSizeInCells;
+        config.PortalNarrowWidthCells = derivedData.ConfigPortalNarrowWidthCells;
+        config.PortalMaxWindowWidthCells = derivedData.ConfigPortalMaxWindowWidthCells;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            grid.AgentTypeId,
+            grid.Width,
+            grid.Height,
+            grid.CellSize,
+            grid.Origin,
+            grid.GetWalkableMaskRuntimeReadOnlyReference(),
+            grid.GetCellAnchorsRuntimeReadOnlyReference(),
+            grid.GetCostFieldRuntimeReadOnlyReference(),
+            grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
+            derivedData,
+            useRuntimeReadOnlyReferences: true);
+        ProcessWorldBuildQueueUntilReady();
+        bool[] walkableMask = grid.GetWalkableMaskRuntimeReadOnlyReference();
+
+        const float agentRadius = 0.182f;
+        Vector3 loggedPosition = new Vector3(24.53f, 1.5f, 41.74f);
+        Vector3 legalDisplacement = new Vector3(3.94f, 0f, 0f) * 0.05f;
+        Assert.IsTrue(grid.WorldToCell(loggedPosition, out int startX, out int startY));
+        Assert.IsTrue(grid.WorldToCell(loggedPosition + legalDisplacement, out int endX, out int endY));
+        Assert.IsTrue(walkableMask[startX + startY * grid.Width], $"实机日志起点必须仍是可走格，cell=({startX},{startY})。");
+        Assert.IsTrue(walkableMask[endX + endY * grid.Width], $"实机日志预测终点必须仍是可走格，cell=({endX},{endY})。");
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryConstrainNavigationDisplacement(
+                loggedPosition,
+                legalDisplacement,
+                grid.AgentTypeId,
+                agentRadius,
+                out Vector3 constrained),
+            "已按兵种半径侵蚀的合法格内位移约束应成功。");
+        Assert.GreaterOrEqual(
+            constrained.x,
+            legalDisplacement.x * 0.9f,
+            $"合法边缘格内位移不应被执行层再次按完整单位半径截短。desired={legalDisplacement} constrained={constrained} start=({startX},{startY}) end=({endX},{endY})");
+        Assert.AreEqual(0f, constrained.z, 0.01f, $"合法直行不应产生额外侧移。desired={legalDisplacement} constrained={constrained}");
+
+        Vector3 boundaryPosition = grid.GetCellAnchor(endX, endY);
+        Vector3 outwardDisplacement = Vector3.right * (grid.CellSize * 1.25f);
+        Assert.IsTrue(grid.WorldToCell(boundaryPosition + outwardDisplacement, out int blockedX, out int blockedY));
+        Assert.IsFalse(walkableMask[blockedX + blockedY * grid.Width], $"边界回归终点必须是不可走格，cell=({blockedX},{blockedY})。");
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryConstrainNavigationDisplacement(
+                boundaryPosition,
+                outwardDisplacement,
+                grid.AgentTypeId,
+                agentRadius,
+                out Vector3 boundaryConstrained),
+            "朝不可走格的边界位移应被成功约束。");
+        Vector3 boundaryResult = boundaryPosition + boundaryConstrained;
+        Assert.IsTrue(grid.WorldToCell(boundaryResult, out int resultX, out int resultY));
+        Assert.IsTrue(
+            walkableMask[resultX + resultY * grid.Width],
+            $"扣除资产已编码净空后仍必须阻止中心进入不可走格。desired={outwardDisplacement} constrained={boundaryConstrained} result=({resultX},{resultY})");
     }
 
     [Test]

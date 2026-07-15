@@ -136,6 +136,7 @@ public static class FlowFieldCrowdMovementSystem
         public int Width;
         public int Height;
         public float CellSize;
+        public float EncodedCenterClearance;
         public Vector3 Origin;
         public bool[] BaseWalkableMask;
         public byte[] BaseNeighborTraversalMask;
@@ -1254,6 +1255,7 @@ public static class FlowFieldCrowdMovementSystem
         public int Width;
         public int Height;
         public float CellSize;
+        public float EncodedCenterClearance;
         public Vector3 Origin;
         public bool[] WalkableMask;
         public Vector3[] CellNavAnchors;
@@ -1269,6 +1271,7 @@ public static class FlowFieldCrowdMovementSystem
                 Width = Width,
                 Height = Height,
                 CellSize = CellSize,
+                EncodedCenterClearance = EncodedCenterClearance,
                 Origin = Origin,
                 WalkableMask = WalkableMask != null ? (bool[])WalkableMask.Clone() : null,
                 CellNavAnchors = CellNavAnchors != null ? (Vector3[])CellNavAnchors.Clone() : null,
@@ -2361,6 +2364,7 @@ public static class FlowFieldCrowdMovementSystem
         public int Width;
         public int Height;
         public float CellSize;
+        public float EncodedCenterClearance;
         public Vector3 Origin;
         public bool[] BaseWalkableMask;
         public byte[] BaseNeighborTraversalMask;
@@ -3095,12 +3099,17 @@ public static class FlowFieldCrowdMovementSystem
         if (derivedNavigationData != null)
             ValidateDerivedNavigationDataMetadata(derivedNavigationData, agentTypeId, width, height, cellSize, origin, "CreateTerrainOverride");
 
+        float encodedCenterClearance = derivedNavigationData != null
+            ? Mathf.Max(0f, ResolveAgentTypeRadius(agentTypeId) - cellSize * 0.2f)
+            : 0f;
+
         return new TestTerrainOverride
         {
             AgentTypeId = agentTypeId,
             Width = width,
             Height = height,
             CellSize = cellSize,
+            EncodedCenterClearance = encodedCenterClearance,
             Origin = origin,
             WalkableMask = useRuntimeReadOnlyReferences ? walkableMask : (bool[])walkableMask.Clone(),
             CellNavAnchors = cellNavAnchors != null
@@ -3289,6 +3298,7 @@ public static class FlowFieldCrowdMovementSystem
             Width = source.Width,
             Height = source.Height,
             CellSize = source.CellSize,
+            EncodedCenterClearance = source.EncodedCenterClearance,
             Origin = source.Origin,
             BaseWalkableMask = (bool[])source.WalkableMask.Clone(),
             BaseNeighborTraversalMask = (byte[])source.NeighborTraversalMask.Clone(),
@@ -11499,6 +11509,7 @@ public static class FlowFieldCrowdMovementSystem
             job.Width = terrainSource.Width;
             job.Height = terrainSource.Height;
             job.CellSize = terrainSource.CellSize;
+            job.EncodedCenterClearance = terrainSource.EncodedCenterClearance;
             job.Origin = terrainSource.Origin;
             if (terrainSource.DerivedNavigationData != null)
             {
@@ -11559,6 +11570,7 @@ public static class FlowFieldCrowdMovementSystem
             Width = job.Width,
             Height = job.Height,
             CellSize = job.CellSize,
+            EncodedCenterClearance = job.EncodedCenterClearance,
             Origin = job.Origin,
             BaseWalkableMask = job.BaseWalkableMask,
             BaseNeighborTraversalMask = job.BaseNeighborTraversalMask != null && job.BaseNeighborTraversalMask.Length == job.Width * job.Height
@@ -12556,6 +12568,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
                 Width = source.Width,
                 Height = source.Height,
                 CellSize = source.CellSize,
+                EncodedCenterClearance = source.EncodedCenterClearance,
                 Origin = source.Origin,
                 BaseWalkableMask = source.BaseWalkableMask,
                 BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
@@ -13722,6 +13735,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
             Width = source.Width,
             Height = source.Height,
             CellSize = source.CellSize,
+            EncodedCenterClearance = source.EncodedCenterClearance,
             Origin = source.Origin,
             BaseWalkableMask = source.BaseWalkableMask,
             BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
@@ -22145,12 +22159,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         return Mathf.Min(descriptor.InfluenceRadius * 0.85f, criticalRadius * 1.35f);
     }
 
-    private static Vector3 ResolvePortalCorridorAxis(PortalData portal, Vector3 desiredDirection)
+    private static Vector3 ResolvePortalCorridorAxis(PortalData portal)
     {
-        if (portal.IsVerticalBoundary)
-            return new Vector3(desiredDirection.x >= 0f ? 1f : -1f, 0f, 0f);
-
-        return new Vector3(0f, 0f, desiredDirection.z >= 0f ? 1f : -1f);
+        return portal.IsVerticalBoundary ? Vector3.right : Vector3.forward;
     }
 
     private static bool TryResolveActiveBottleneck(
@@ -22204,11 +22215,11 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             if (toPortal.magnitude > _world.CellSize * _world.SectorSizeInCells + Config.BottleneckInfluenceDistance)
                 continue;
 
-            Vector3 corridorAxis = ResolvePortalCorridorAxis(portal, desiredDirection);
-            if (Vector3.Dot(desiredDirection.normalized, corridorAxis) <= 0.05f)
+            int direction = portal.SectorAId == currentSectorId ? 1 : -1;
+            Vector3 corridorAxis = ResolvePortalCorridorAxis(portal);
+            if (Vector3.Dot(desiredDirection.normalized, corridorAxis * direction) <= 0.05f)
                 continue;
 
-            int direction = portal.SectorAId == currentSectorId ? 1 : -1;
             descriptor = BuildPortalBottleneckDescriptor(portalId, currentSectorId, direction, corridorAxis);
             return true;
         }
@@ -22244,7 +22255,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             }
 
             int direction = currentPortal.SectorAId == currentSectorId ? 1 : -1;
-            Vector3 corridorAxis = ResolvePortalCorridorAxis(currentPortal, desiredDirection);
+            Vector3 corridorAxis = ResolvePortalCorridorAxis(currentPortal);
             descriptor = BuildPortalBottleneckDescriptor(downstreamPortalId, currentSectorId, direction, corridorAxis);
             return true;
         }
@@ -22277,9 +22288,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         if (agent.NavState.CurrentFlowDirection.sqrMagnitude > 0.0001f)
         {
-            Vector3 corridorAxis = previousPortal.IsVerticalBoundary
-                ? new Vector3(travelDirection >= 0 ? 1f : -1f, 0f, 0f)
-                : new Vector3(0f, 0f, travelDirection >= 0 ? 1f : -1f);
+            Vector3 corridorAxis = ResolvePortalCorridorAxis(previousPortal);
             if (Vector3.Dot(agent.NavState.CurrentFlowDirection, corridorAxis * travelDirection) <= 0.05f)
                 return false;
         }
@@ -22288,9 +22297,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             previousPortalId,
             currentSectorId,
             travelDirection,
-            previousPortal.IsVerticalBoundary
-                ? new Vector3(travelDirection >= 0 ? 1f : -1f, 0f, 0f)
-                : new Vector3(0f, 0f, travelDirection >= 0 ? 1f : -1f));
+            ResolvePortalCorridorAxis(previousPortal));
         return true;
     }
 
@@ -22345,9 +22352,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         else
             return false;
 
-        Vector3 corridorAxis = nextPortal.IsVerticalBoundary
-            ? new Vector3(travelDirection >= 0 ? 1f : -1f, 0f, 0f)
-            : new Vector3(0f, 0f, travelDirection >= 0 ? 1f : -1f);
+        Vector3 corridorAxis = ResolvePortalCorridorAxis(nextPortal);
         float influenceRadius = Mathf.Max(
             Config.BottleneckInfluenceDistance,
             portalDistance + Config.BottleneckInfluenceDistance);
@@ -22469,7 +22474,18 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             return false;
 
         bool isLongCorridor = TryMeasureCorridorRunLength(currentX, currentY, axisMode, laneMin, laneMax, out int forwardRun, out int backwardRun);
-        bool isCornerExit = !isLongCorridor && IsCornerExitBottleneck(tile, currentX, currentY, axisMode, laneMin, laneMax, corridorAxis);
+        Vector3 flow = agentFlowOrDesired(tile, currentX, currentY, desiredDirection);
+        int direction = axisMode == 1
+            ? (flow.x >= 0f ? 1 : -1)
+            : (flow.z >= 0f ? 1 : -1);
+        bool isCornerExit = !isLongCorridor && IsCornerExitBottleneck(
+            tile,
+            currentX,
+            currentY,
+            axisMode,
+            laneMin,
+            laneMax,
+            corridorAxis * direction);
         if (!isLongCorridor && !isCornerExit)
             return false;
 
@@ -22479,10 +22495,6 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
         int runCenter = (runMin + runMax) / 2;
         int anchorX = axisMode == 1 ? runCenter : laneCenter;
         int anchorY = axisMode == 1 ? laneCenter : runCenter;
-        Vector3 flow = agentFlowOrDesired(tile, currentX, currentY, desiredDirection);
-        int direction = axisMode == 1
-            ? (flow.x >= 0f ? 1 : -1)
-            : (flow.z >= 0f ? 1 : -1);
         int bottleneckId = BuildCorridorBottleneckId(axisMode, laneMin, laneMax, runMin, runMax, isCornerExit);
         int runLength = runMax - runMin + 1;
         float influenceRadius = isLongCorridor
@@ -22519,20 +22531,12 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             && TryMeasureCorridorRunLength(currentX, currentY, committedAxisMode, laneMin, laneMax, out int forwardRun, out int backwardRun)
             && forwardRun + backwardRun >= 2)
         {
-            float sign = committedAxisMode == 1 ? desiredDirection.x : desiredDirection.z;
-            if (Mathf.Abs(sign) <= 0.05f && agent.NavState.CurrentFlowDirection.sqrMagnitude > 0.0001f)
-                sign = committedAxisMode == 1 ? agent.NavState.CurrentFlowDirection.x : agent.NavState.CurrentFlowDirection.z;
-            if (Mathf.Abs(sign) <= 0.05f)
-                sign = 1f;
-
-            return committedAxisMode == 1
-                ? new Vector3(Mathf.Sign(sign), 0f, 0f)
-                : new Vector3(0f, 0f, Mathf.Sign(sign));
+            return committedAxisMode == 1 ? Vector3.right : Vector3.forward;
         }
 
         return Mathf.Abs(desiredDirection.x) >= Mathf.Abs(desiredDirection.z)
-            ? new Vector3(Mathf.Sign(desiredDirection.x == 0f ? 1f : desiredDirection.x), 0f, 0f)
-            : new Vector3(0f, 0f, Mathf.Sign(desiredDirection.z == 0f ? 1f : desiredDirection.z));
+            ? Vector3.right
+            : Vector3.forward;
     }
 
     private static Vector3 agentFlowOrDesired(FlowTileCacheEntry tile, int currentX, int currentY, Vector3 desiredDirection)
@@ -22800,8 +22804,9 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
         float slotSpacing = Mathf.Max(agent.Radius * 2.2f, _world.CellSize * 0.9f);
         float bottleneckClearance = Mathf.Max(agent.Radius * 1.35f, _world.CellSize * 0.75f);
+        Vector3 travelAxis = descriptor.CorridorAxis * descriptor.Direction;
         Vector3 queueTarget = anchor
-                              - descriptor.CorridorAxis * (bottleneckClearance + queueRank * slotSpacing)
+                              - travelAxis * (bottleneckClearance + queueRank * slotSpacing)
                               + laneBias.normalized * Mathf.Max(agent.Radius * 0.6f, _world.CellSize * 0.15f);
         Vector3 toSlot = queueTarget - agent.Position;
         toSlot.y = 0f;
@@ -22911,9 +22916,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
                 continue;
             }
 
-            Vector3 flowDirection = other.NavState.CurrentFlowDirection;
-            if (flowDirection.sqrMagnitude <= 0.0001f)
-                flowDirection = other.NavState.DesiredVelocity.normalized;
+            Vector3 flowDirection = other.NavState.DesiredVelocity.normalized;
             if (flowDirection.sqrMagnitude <= 0.0001f)
                 continue;
 
@@ -26652,7 +26655,11 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
     private static float ResolveNavigationExecutionClearance(NavigationWorld world, float requestedClearance)
     {
-        return Mathf.Max(0f, requestedClearance);
+        requestedClearance = Mathf.Max(0f, requestedClearance);
+        if (world == null || requestedClearance <= 0.0001f)
+            return requestedClearance;
+
+        return Mathf.Max(0f, requestedClearance - world.EncodedCenterClearance);
     }
 
     private static bool HasPendingDirectLineOfSight(NavigationWorld world, int x0, int y0, int x1, int y1)
