@@ -12,6 +12,7 @@ public partial class InGameUIForm
     private const float DefendEnemySketchRotateSmoothSpeed = 4f;
     private const float DefendEnemySketchAvoidEpsilon = 0.5f;
     private const int DefendEnemySketchDiagLogIntervalFrames = 10;
+    private const int DefendEnemySketchPathErrorLogIntervalFrames = 60;
     [SerializeField] private bool enableDefendSketchDiagnostics;
 
     private readonly List<DefendPhaseRuntime.DefendPreviewSpawnEntry> m_DefendPreviewSpawnEntries = new();
@@ -27,6 +28,7 @@ public partial class InGameUIForm
     private Rect m_DefendMiniMapAvoidRectCache;
     private bool m_HasDefendMiniMapAvoidRectCache;
     private int m_DefendSketchLastDiagLogFrame = -9999;
+    private int m_DefendSketchPathLastErrorFrame = -9999;
 
     private void InitializeDefendEnemySketch()
     {
@@ -105,7 +107,14 @@ public partial class InGameUIForm
             }
             else
             {
-                hasBorderPoint = TryGetPathScreenBorderIntersection(entry.SpawnPosition, basePosition, worldCamera, screenRect, screenCenter, out borderPoint);
+                hasBorderPoint = TryGetPathScreenBorderIntersection(
+                    entry.UnitType,
+                    entry.SpawnPosition,
+                    basePosition,
+                    worldCamera,
+                    screenRect,
+                    screenCenter,
+                    out borderPoint);
             }
 
             if (!hasBorderPoint)
@@ -802,6 +811,7 @@ public partial class InGameUIForm
     }
 
     private bool TryGetPathScreenBorderIntersection(
+        UnitType unitType,
         Vector3 spawnPosition,
         Vector3 basePosition,
         Camera worldCamera,
@@ -814,8 +824,7 @@ public partial class InGameUIForm
         if (worldCamera == null)
             return false;
 
-        BuildPathCorners(spawnPosition, basePosition);
-        if (m_DefendPathCorners.Count < 2)
+        if (!BuildPathCorners(unitType, spawnPosition, basePosition))
             return false;
 
         for (int i = 0; i < m_DefendPathCorners.Count - 1; i++)
@@ -871,11 +880,31 @@ public partial class InGameUIForm
         return false;
     }
 
-    private void BuildPathCorners(Vector3 spawnPosition, Vector3 basePosition)
+    private bool BuildPathCorners(UnitType unitType, Vector3 spawnPosition, Vector3 basePosition)
     {
-        m_DefendPathCorners.Clear();
-        m_DefendPathCorners.Add(spawnPosition);
-        m_DefendPathCorners.Add(basePosition);
+        if (DefendPhaseRuntime.TryGetNavigationPathCorners(
+                unitType,
+                spawnPosition,
+                basePosition,
+                m_DefendPathCorners,
+                out string failureReason))
+        {
+            return true;
+        }
+
+        int frame = Time.frameCount;
+        if (frame - m_DefendSketchPathLastErrorFrame >= DefendEnemySketchPathErrorLogIntervalFrames)
+        {
+            m_DefendSketchPathLastErrorFrame = frame;
+            Log.Error(
+                "[DefendSketchPath] FlowField path unavailable. unit={0} spawn={1} base={2} reason={3}",
+                unitType,
+                spawnPosition,
+                basePosition,
+                failureReason);
+        }
+
+        return false;
     }
 
     private static bool TryIntersectRayWithScreenRect(Vector2 origin, Vector2 direction, Rect rect, out Vector2 hitPoint)

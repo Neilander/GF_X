@@ -18,7 +18,8 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
 
         float radius = ClusterSpawnSystem.CalculateAutoSpawnRadius(count);
         List<Vector3> spawnPositions = new List<Vector3>(count);
-        if (!ClusterSpawnSystem.TryGetPreviewSpawnPositions(position, count, radius, SpawnMinDistance, spawnPositions, true))
+        int agentTypeId = ClusterSpawnSystem.ResolveAgentTypeId(UnitType.Unit_Intern);
+        if (!ClusterSpawnSystem.TryGetPreviewSpawnPositions(position, count, radius, SpawnMinDistance, spawnPositions, true, agentTypeId))
             throw new InvalidOperationException($"UrgentRequest spawn failed. skillId={skillId}, count={count}, position={position}");
 
         for (int i = 0; i < spawnPositions.Count; i++)

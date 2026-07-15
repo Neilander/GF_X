@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 /// <summary>
 /// 批量单位生成系统。
@@ -18,6 +19,15 @@ public static class ClusterSpawnSystem
     private const int NearbyCenterSamplesPerRing = 12;
 
     public delegate bool SpawnCenterValidator(Vector3 center, float radius);
+
+    public static int ResolveAgentTypeId(UnitType unitType)
+    {
+        AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
+        if (helper == null)
+            throw new System.InvalidOperationException("ClusterSpawnSystem.ResolveAgentTypeId failed: AgentTypeHelper is not available.");
+
+        return helper.GetNavAgentTypeID(unitType);
+    }
 
     /// <summary>
     /// 根据单位数量推导编队半径，避免卡牌资源各自配置生成半径。
@@ -49,7 +59,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < maxAttempts; i++)
         {
             Vector3 candidate = GenerateDeterministicPointInCircle(center, radius, i, maxAttempts);
-            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, out Vector3 spawnPos))
+            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, 0, out Vector3 spawnPos))
             {
                 continue;
             }
@@ -103,7 +113,8 @@ public static class ClusterSpawnSystem
         Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
 
         List<Vector3> spawnPositions = new List<Vector3>(count);
-        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents))
+        int agentTypeId = ResolveAgentTypeId(unitIndex);
+        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId))
         {
             Debug.LogWarning(
                 $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
@@ -143,7 +154,8 @@ public static class ClusterSpawnSystem
         }
 
         List<Vector3> spawnPositions = new List<Vector3>(count);
-        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents))
+        int agentTypeId = ResolveAgentTypeId(unitIndex);
+        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId))
         {
             Debug.LogWarning(
                 $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
@@ -195,6 +207,25 @@ public static class ClusterSpawnSystem
         List<Vector3> previewPositions,
         bool avoidExistingAgents = false)
     {
+        return TryGetPreviewSpawnPositions(
+            center,
+            count,
+            radius,
+            minDistance,
+            previewPositions,
+            avoidExistingAgents,
+            0);
+    }
+
+    public static bool TryGetPreviewSpawnPositions(
+        Vector3 center,
+        int count,
+        float radius,
+        float minDistance,
+        List<Vector3> previewPositions,
+        bool avoidExistingAgents,
+        int agentTypeId)
+    {
         if (previewPositions == null)
         {
             return false;
@@ -206,12 +237,12 @@ public static class ClusterSpawnSystem
             return false;
         }
 
-        if (!TryFindLegalNavigationPoint(center, FixedEdgeClearance, out Vector3 legalCenter))
+        if (!TryFindLegalNavigationPoint(center, FixedEdgeClearance, agentTypeId, out Vector3 legalCenter))
         {
             return false;
         }
 
-        CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, avoidExistingAgents);
+        CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, avoidExistingAgents, agentTypeId);
         return previewPositions.Count >= count;
     }
 
@@ -226,6 +257,27 @@ public static class ClusterSpawnSystem
         SpawnCenterValidator centerValidator,
         List<Vector3> previewPositions,
         out Vector3 resolvedCenter)
+    {
+        return TryResolvePreviewSpawnPositions(
+            preferredCenter,
+            count,
+            radius,
+            minDistance,
+            centerValidator,
+            previewPositions,
+            out resolvedCenter,
+            0);
+    }
+
+    public static bool TryResolvePreviewSpawnPositions(
+        Vector3 preferredCenter,
+        int count,
+        float radius,
+        float minDistance,
+        SpawnCenterValidator centerValidator,
+        List<Vector3> previewPositions,
+        out Vector3 resolvedCenter,
+        int agentTypeId)
     {
         resolvedCenter = preferredCenter;
 
@@ -244,7 +296,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < totalCandidates; i++)
         {
             Vector3 candidate = GenerateNearbyCenterCandidate(preferredCenter, radius, i);
-            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, out Vector3 legalCenter))
+            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, agentTypeId, out Vector3 legalCenter))
             {
                 continue;
             }
@@ -254,7 +306,7 @@ public static class ClusterSpawnSystem
                 continue;
             }
 
-            CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, true);
+            CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, true, agentTypeId);
             if (previewPositions.Count >= count)
             {
                 resolvedCenter = legalCenter;
@@ -271,11 +323,22 @@ public static class ClusterSpawnSystem
     /// </summary>
     public static bool CanSpawnCluster(Vector3 center, int count, float radius, float minDistance, bool avoidExistingAgents = false)
     {
-        List<Vector3> spawnPositions = new List<Vector3>(count);
-        return TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents);
+        return CanSpawnCluster(center, count, radius, minDistance, avoidExistingAgents, 0);
     }
 
-    private static void CollectLegalSpawnPositions(Vector3 legalCenter, int count, float radius, List<Vector3> spawnPositions, bool avoidExistingAgents)
+    public static bool CanSpawnCluster(
+        Vector3 center,
+        int count,
+        float radius,
+        float minDistance,
+        bool avoidExistingAgents,
+        int agentTypeId)
+    {
+        List<Vector3> spawnPositions = new List<Vector3>(count);
+        return TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId);
+    }
+
+    private static void CollectLegalSpawnPositions(Vector3 legalCenter, int count, float radius, List<Vector3> spawnPositions, bool avoidExistingAgents, int agentTypeId)
     {
         spawnPositions.Clear();
 
@@ -283,7 +346,7 @@ public static class ClusterSpawnSystem
         for (int i = 0; i < maxAttempts && spawnPositions.Count < count; i++)
         {
             Vector3 candidate = GenerateDeterministicPointInCircle(legalCenter, radius, i, maxAttempts);
-            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, out Vector3 spawnPos))
+            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, agentTypeId, out Vector3 spawnPos))
             {
                 continue;
             }
@@ -310,11 +373,11 @@ public static class ClusterSpawnSystem
         }
     }
 
-    private static bool TryFindLegalNavigationPoint(Vector3 candidate, float edgeClearance, out Vector3 legalPoint)
+    private static bool TryFindLegalNavigationPoint(Vector3 candidate, float edgeClearance, int agentTypeId, out Vector3 legalPoint)
     {
         return FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
             candidate,
-            0,
+            agentTypeId,
             MaxHorizontalSnapDistance,
             edgeClearance,
             out legalPoint);

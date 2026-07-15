@@ -30,6 +30,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     private readonly Dictionary<Renderer, Material[]> _originalMaterials = new Dictionary<Renderer, Material[]>();
     private readonly Dictionary<Renderer, Material[]> _ghostMaterials = new Dictionary<Renderer, Material[]>();
     private readonly Dictionary<int, CharacterController> _ghostIgnoredUnitControllers = new Dictionary<int, CharacterController>();
+    private readonly Dictionary<int, Collider> _constructionEscapeIgnoredColliders = new Dictionary<int, Collider>();
     private bool _heroOutOfCombatSpeedFirstApplyPending;
     private bool _heroOutOfCombatSpeedInitialGraceActive;
     private bool _isHidingOrShuttingDown;
@@ -69,6 +70,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         CancelRunningSkills();
         skillComp?.ShutDown();
         skillComp = null;
+        ClearConstructionEscapeRuntimeState();
         ClearGhostRuntimeState();
         base.OnHide(isShutdown, userData);
     }
@@ -78,6 +80,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         base.OnUpdate(elapseSeconds, realElapseSeconds);
         SyncHeroOutOfCombatSpeedBuff();
         TickGhostCollisionRuntime();
+        TickConstructionEscapeRuntime();
 
         if (CanRun(skillComp))
             skillComp.Skill();
@@ -606,6 +609,137 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
             return;
 
         GroupMoveManager.Instance.SetAgentIgnoreCollision(GetInstanceID(), ignore);
+    }
+
+    public bool TryBeginConstructionEscape(BuildingEntity building)
+    {
+        if (building == null)
+            throw new System.InvalidOperationException("HeroEntity.TryBeginConstructionEscape failed: building is null.");
+
+        CharacterController selfController = GetComponent<CharacterController>();
+        if (selfController == null)
+            throw new System.InvalidOperationException($"HeroEntity.TryBeginConstructionEscape failed: hero has no CharacterController. entityId={Id}.");
+
+        Collider[] buildingColliders = building.GetComponentsInChildren<Collider>(true);
+        int solidColliderCount = 0;
+        int overlapCount = 0;
+        Bounds heroBounds = selfController.bounds;
+        for (int i = 0; i < buildingColliders.Length; i++)
+        {
+            Collider buildingCollider = buildingColliders[i];
+            if (buildingCollider == null || !buildingCollider.enabled || buildingCollider.isTrigger)
+                continue;
+
+            solidColliderCount++;
+            if (heroBounds.Intersects(GroupMoveManager.ResolveColliderWorldBounds(buildingCollider)))
+                overlapCount++;
+        }
+
+        if (overlapCount == 0)
+        {
+            System.Text.StringBuilder colliderDiagnostics = new System.Text.StringBuilder();
+            for (int i = 0; i < buildingColliders.Length; i++)
+            {
+                Collider buildingCollider = buildingColliders[i];
+                if (buildingCollider == null || !buildingCollider.enabled || buildingCollider.isTrigger)
+                    continue;
+
+                colliderDiagnostics.Append(" [").Append(buildingCollider.name)
+                    .Append(" bounds=").Append(GroupMoveManager.ResolveColliderWorldBounds(buildingCollider)).Append(']');
+            }
+
+            Debug.Log(
+                $"[HeroConstructionEscape] skip no-overlap heroId={Id} heroPos={Position} heroBounds={heroBounds} " +
+                $"buildingId={building.Id} building={building.CharacterKey} instance={building.BuildingInstanceId} " +
+                $"buildingPos={building.Position} solidColliders={solidColliderCount} colliders={colliderDiagnostics}");
+            return false;
+        }
+
+        int ignoredCount = 0;
+        for (int i = 0; i < buildingColliders.Length; i++)
+        {
+            Collider buildingCollider = buildingColliders[i];
+            if (buildingCollider == null || !buildingCollider.enabled || buildingCollider.isTrigger)
+                continue;
+
+            int colliderId = buildingCollider.GetInstanceID();
+            if (_constructionEscapeIgnoredColliders.ContainsKey(colliderId))
+                continue;
+
+            Physics.IgnoreCollision(selfController, buildingCollider, true);
+            _constructionEscapeIgnoredColliders.Add(colliderId, buildingCollider);
+            ignoredCount++;
+        }
+
+        MoveExecutor executor = GetComponent<MoveExecutor>();
+        if (executor == null)
+            throw new System.InvalidOperationException($"HeroEntity.TryBeginConstructionEscape failed: hero has no MoveExecutor. entityId={Id}.");
+
+        executor.EnableNavigationConstraintBypassUntilLegalPoint();
+        bool legalBeforeEscape = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            Position,
+            navAgentTypeID,
+            0f,
+            0f,
+            out _);
+        Debug.Log(
+            $"[HeroConstructionEscape] begin heroId={Id} heroPos={Position} heroBounds={heroBounds} " +
+            $"buildingId={building.Id} building={building.CharacterKey} instance={building.BuildingInstanceId} buildingPos={building.Position} " +
+            $"solidColliders={solidColliderCount} overlaps={overlapCount} ignoredAdded={ignoredCount} ignoredTotal={_constructionEscapeIgnoredColliders.Count} " +
+            $"legalBeforeEscape={legalBeforeEscape}");
+        return true;
+    }
+
+    private void TickConstructionEscapeRuntime()
+    {
+        if (_constructionEscapeIgnoredColliders.Count == 0)
+            return;
+
+        CharacterController selfController = GetComponent<CharacterController>();
+        if (selfController == null)
+            throw new System.InvalidOperationException($"HeroEntity.TickConstructionEscapeRuntime failed: hero has no CharacterController. entityId={Id}.");
+
+        Bounds heroBounds = selfController.bounds;
+        foreach (Collider buildingCollider in _constructionEscapeIgnoredColliders.Values)
+        {
+            if (buildingCollider != null
+                && buildingCollider.enabled
+                && heroBounds.Intersects(GroupMoveManager.ResolveColliderWorldBounds(buildingCollider)))
+                return;
+        }
+
+        int restored = RestoreConstructionEscapeCollisions(selfController);
+        Debug.Log(
+            $"[HeroConstructionEscape] physical escape complete heroId={Id} heroPos={Position} " +
+            $"heroBounds={heroBounds} restored={restored}");
+    }
+
+    private void ClearConstructionEscapeRuntimeState()
+    {
+        if (_constructionEscapeIgnoredColliders.Count == 0)
+            return;
+
+        CharacterController selfController = GetComponent<CharacterController>();
+        if (selfController == null)
+            throw new System.InvalidOperationException($"HeroEntity.ClearConstructionEscapeRuntimeState failed: hero has no CharacterController. entityId={Id}.");
+
+        RestoreConstructionEscapeCollisions(selfController);
+    }
+
+    private int RestoreConstructionEscapeCollisions(CharacterController selfController)
+    {
+        int restored = 0;
+        foreach (Collider buildingCollider in _constructionEscapeIgnoredColliders.Values)
+        {
+            if (buildingCollider == null)
+                continue;
+
+            Physics.IgnoreCollision(selfController, buildingCollider, false);
+            restored++;
+        }
+
+        _constructionEscapeIgnoredColliders.Clear();
+        return restored;
     }
 
     private void TickGhostCollisionRuntime()

@@ -16,6 +16,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private bool _navigationConstrained = true;
     private bool _constraintBypassForNextFrame;
     private bool _navigationConstraintBypass;
+    private bool _navigationConstraintBypassUntilLegalPoint;
     private float _gravityVelocity;
     private float _edgeBuffer = 0.45f;
     private int _agentTypeID;
@@ -54,6 +55,9 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _controller = controller;
         _ownerEntity = GetComponent<MAEntity>();
         _agentTypeID = agentTypeID;
+        _constraintBypassForNextFrame = false;
+        _navigationConstraintBypass = false;
+        _navigationConstraintBypassUntilLegalPoint = false;
 
         if (_controller == null)
             return;
@@ -128,6 +132,20 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _navigationConstraintBypass = true;
     }
 
+    /// <summary>
+    /// 建造/障碍替换导致角色暂时处于不可走区域时，允许角色先离开障碍。
+    /// 角色回到合法导航点后自动恢复约束。
+    /// </summary>
+    public void EnableNavigationConstraintBypassUntilLegalPoint()
+    {
+        _navigationConstraintBypass = true;
+        _navigationConstraintBypassUntilLegalPoint = true;
+
+        Debug.Log(
+            $"[MoveExecutor] Enable navigation escape. gameObject={gameObject.name} " +
+            $"position={transform.position} agentTypeID={_agentTypeID}");
+    }
+
     public void Execute()
     {
         Execute(Time.deltaTime);
@@ -169,6 +187,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         Vector3 horizontalDisplacement = horizontalVelocity * deltaTime;
         Vector3 requestedHorizontalDisplacement = horizontalDisplacement;
 
+        UpdateNavigationConstraintBypassState();
         bool shouldConstrain = _navigationConstrained && !_constraintBypassForNextFrame && !_navigationConstraintBypass;
         DebugRequestedHorizontalDisplacement = requestedHorizontalDisplacement;
         DebugNavigationConstraintEnabled = shouldConstrain;
@@ -218,6 +237,26 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _hasOverride = false;
         _externalVelocity = Vector3.zero;
         _constraintBypassForNextFrame = false;
+    }
+
+    private void UpdateNavigationConstraintBypassState()
+    {
+        if (!_navigationConstraintBypassUntilLegalPoint)
+            return;
+
+        if (!FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+                transform.position,
+                _agentTypeID,
+                0f,
+                0f,
+                out _))
+            return;
+
+        _navigationConstraintBypassUntilLegalPoint = false;
+        _navigationConstraintBypass = false;
+        Debug.Log(
+            $"[MoveExecutor] Navigation escape complete. gameObject={gameObject.name} " +
+            $"position={transform.position} agentTypeID={_agentTypeID}");
     }
 
     private void OnControllerColliderHit(ControllerColliderHit hit)

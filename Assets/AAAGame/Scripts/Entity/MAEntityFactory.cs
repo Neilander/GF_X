@@ -79,7 +79,8 @@ public static class MAEntityFactory
         Vector3 position,
         string buildingInstanceId,
         bool isGameEndConditionBuilding = false,
-        bool isNavigationStaticBaked = false)
+        bool isNavigationStaticBaked = false,
+        bool enableConstructionEscape = false)
     {
         EntityParams entityParams = EntityParams.Create(position);
         entityParams.Set(BuildingEntity.P_BuildingData, buildingData);
@@ -91,6 +92,10 @@ public static class MAEntityFactory
         if (isNavigationStaticBaked)
         {
             entityParams.Set<VarBoolean>(BuildingEntity.P_IsNavigationStaticBaked, true);
+        }
+        if (enableConstructionEscape)
+        {
+            entityParams.Set<VarBoolean>(BuildingEntity.P_EnableConstructionEscape, true);
         }
 
         return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);

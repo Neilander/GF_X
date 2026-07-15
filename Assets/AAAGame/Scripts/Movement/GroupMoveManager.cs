@@ -201,7 +201,7 @@ public class GroupMoveManager : MonoBehaviour
         return obstacleId;
     }
 
-    private static Bounds ResolveColliderWorldBounds(Collider collider)
+    public static Bounds ResolveColliderWorldBounds(Collider collider)
     {
         if (collider == null)
             throw new System.InvalidOperationException("GroupMoveManager.ResolveColliderWorldBounds failed: collider is null.");

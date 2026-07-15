@@ -125,7 +125,15 @@ public class BuildManager : GameFrameworkComponent
         if (owner == null || !IsConstructOptionExecutable(owner, buildBuildingId))
             return false;
 
-        bool built = BuildBuilding(buildBuildingId, owner.CachedTransform.position, owner.BuildingInstanceId);
+        bool built = BuildBuildingInternal(
+            buildBuildingId,
+            owner.CachedTransform.position,
+            owner.BuildingInstanceId,
+            checkCondition: true,
+            consumeCoins: true,
+            enableConstructionEscape: true) > 0;
+        if (built && AudioManager.Instance != null)
+            AudioManager.Instance.Play("buildNormal");
         if (built)
             GF.Entity.HideEntity(owner.Entity);
 
@@ -256,7 +264,8 @@ public class BuildManager : GameFrameworkComponent
             position,
             buildingInstanceId,
             checkCondition: false,
-            consumeCoins: false);
+            consumeCoins: false,
+            enableConstructionEscape: true);
         if (entityId <= 0)
             return false;
 
@@ -272,7 +281,13 @@ public class BuildManager : GameFrameworkComponent
 
     public bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
     {
-        bool ok = BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: true) > 0;
+        bool ok = BuildBuildingInternal(
+            buildingId,
+            position,
+            buildingInstanceId,
+            checkCondition: true,
+            consumeCoins: true,
+            enableConstructionEscape: true) > 0;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
         return ok;
@@ -280,7 +295,13 @@ public class BuildManager : GameFrameworkComponent
 
     public bool BuildBuildingForTechUpgrade(string buildingId, Vector3 position, string buildingInstanceId)
     {
-        bool ok = BuildBuildingInternal(buildingId, position, buildingInstanceId, checkCondition: true, consumeCoins: false) > 0;
+        bool ok = BuildBuildingInternal(
+            buildingId,
+            position,
+            buildingInstanceId,
+            checkCondition: true,
+            consumeCoins: false,
+            enableConstructionEscape: true) > 0;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildImportant");
         return ok;
@@ -338,7 +359,8 @@ public class BuildManager : GameFrameworkComponent
         bool consumeCoins,
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
-        bool isNavigationStaticBaked = false)
+        bool isNavigationStaticBaked = false,
+        bool enableConstructionEscape = false)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
@@ -374,7 +396,13 @@ public class BuildManager : GameFrameworkComponent
 
         int previousBaseLevel = ResolveExistingBaseLevel(buildingData, ownerFactionId, resolvedBuildingInstanceId);
 
-        int entityId = MAEntityFactory.ShowBuilding(buildingData, position, resolvedBuildingInstanceId, isGameEndConditionBuilding, isNavigationStaticBaked);
+        int entityId = MAEntityFactory.ShowBuilding(
+            buildingData,
+            position,
+            resolvedBuildingInstanceId,
+            isGameEndConditionBuilding,
+            isNavigationStaticBaked,
+            enableConstructionEscape);
 
         if (entityId > 0)
         {

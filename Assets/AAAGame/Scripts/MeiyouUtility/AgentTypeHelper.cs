@@ -23,4 +23,17 @@ public class AgentTypeHelper : GameFrameworkComponent
             ? agentTypeId
             : throw new InvalidOperationException($"未配置 UnitSize={unitSize} 对应的 Flow movement type。");
     }
+
+    public int GetNavAgentTypeID(UnitType unitType)
+    {
+        if (GF.DataTable == null)
+            throw new InvalidOperationException($"无法解析 UnitType={unitType} 的 Flow movement type：DataTable 未初始化。");
+
+        CharacterDataDetail row = GF.DataTable.GetDataTable<CharacterDataDetail>()?.GetDataRow(
+            candidate => candidate.CharacterKey == unitType.ToString());
+        if (row == null)
+            throw new InvalidOperationException($"无法解析 UnitType={unitType} 的 Flow movement type：CharacterDataDetail 行不存在。");
+
+        return GetNavAgentTypeID(row.Size);
+    }
 }

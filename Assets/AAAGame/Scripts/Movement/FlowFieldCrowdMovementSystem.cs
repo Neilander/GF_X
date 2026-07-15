@@ -1659,12 +1659,14 @@ public static class FlowFieldCrowdMovementSystem
     private static readonly List<NavigationGoalReservation> NavigationGoalReservations = new List<NavigationGoalReservation>(128);
     private static readonly List<int> BottleneckWaitingRemovalScratch = new List<int>(16);
     private static readonly MinHeap DistanceEstimateOpenSet = new MinHeap();
+    private static readonly List<int> DistanceEstimatePathIndices = new List<int>(256);
     private static readonly Dictionary<int, Stack<bool[]>> BoolArrayPool = new Dictionary<int, Stack<bool[]>>();
     private static readonly Dictionary<int, Stack<byte[]>> ByteArrayPool = new Dictionary<int, Stack<byte[]>>();
     private static readonly Dictionary<int, Stack<int[]>> IntArrayPool = new Dictionary<int, Stack<int[]>>();
     private static float[] DistanceEstimateCosts = Array.Empty<float>();
     private static int[] DistanceEstimateVisitedMarks = Array.Empty<int>();
     private static int[] DistanceEstimateClosedMarks = Array.Empty<int>();
+    private static int[] DistanceEstimateParents = Array.Empty<int>();
     private static int DistanceEstimateSearchId;
     private static int _lastRuntimeDirtyPreviewTimingFrame = -100000;
     private static int _navigationGoalReservationFrame = -1;
@@ -7411,19 +7413,102 @@ public static class FlowFieldCrowdMovementSystem
         int agentTypeId,
         out float distance)
     {
+        return TryEstimateNavigationDistance(from, to, agentTypeId, out distance, out _);
+    }
+
+    public static bool TryEstimateNavigationDistance(
+        Vector3 from,
+        Vector3 to,
+        int agentTypeId,
+        out float distance,
+        out string failureReason)
+    {
         distance = 0f;
-        if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
+        failureReason = string.Empty;
+        if (!TryGetNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
+        {
+            failureReason = $"navigation world unavailable agentType={agentTypeId}";
             return false;
-        if (HasPendingRuntimeDirty(_activeWorldState))
+        }
+        if (!world.WorldToGrid(from, out int startX, out int startY))
+        {
+            failureReason = $"start is outside authored grid position={from}";
             return false;
-        if (!world.WorldToGrid(from, out int startX, out int startY) || !world.WorldToGrid(to, out int goalX, out int goalY))
+        }
+        if (!world.WorldToGrid(to, out int goalX, out int goalY))
+        {
+            failureReason = $"goal is outside authored grid position={to}";
             return false;
-        if (!world.IsWalkable(startX, startY) || !world.IsWalkable(goalX, goalY))
+        }
+        if (!world.IsWalkable(startX, startY))
+        {
+            failureReason = $"start cell is blocked cell=({startX},{startY}) position={from}";
             return false;
+        }
+        if (!world.IsWalkable(goalX, goalY))
+        {
+            failureReason = $"goal cell is blocked cell=({goalX},{goalY}) position={to}";
+            return false;
+        }
         if (startX == goalX && startY == goalY)
             return true;
 
-        return TryEstimateGridPathDistance(world, startX, startY, goalX, goalY, out distance);
+        if (TryFindGridPath(world, startX, startY, goalX, goalY, null, from, to, out distance))
+            return true;
+
+        failureReason = $"no traversable grid path start=({startX},{startY}) goal=({goalX},{goalY}) agentType={agentTypeId}";
+        return false;
+    }
+
+    public static bool TryGetNavigationPathCorners(
+        Vector3 from,
+        Vector3 to,
+        int agentTypeId,
+        List<Vector3> pathCorners,
+        out string failureReason)
+    {
+        if (pathCorners == null)
+            throw new ArgumentNullException(nameof(pathCorners));
+
+        pathCorners.Clear();
+        failureReason = string.Empty;
+        if (!TryGetNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
+        {
+            failureReason = $"navigation world unavailable agentType={agentTypeId}";
+            return false;
+        }
+        if (!world.WorldToGrid(from, out int startX, out int startY))
+        {
+            failureReason = $"start is outside authored grid position={from}";
+            return false;
+        }
+        if (!world.WorldToGrid(to, out int goalX, out int goalY))
+        {
+            failureReason = $"goal is outside authored grid position={to}";
+            return false;
+        }
+        if (!world.IsWalkable(startX, startY))
+        {
+            failureReason = $"start cell is blocked cell=({startX},{startY}) position={from}";
+            return false;
+        }
+        if (!world.IsWalkable(goalX, goalY))
+        {
+            failureReason = $"goal cell is blocked cell=({goalX},{goalY}) position={to}";
+            return false;
+        }
+        if (startX == goalX && startY == goalY)
+        {
+            pathCorners.Add(from);
+            pathCorners.Add(to);
+            return true;
+        }
+
+        if (TryFindGridPath(world, startX, startY, goalX, goalY, pathCorners, from, to, out _))
+            return true;
+
+        failureReason = $"no traversable grid path start=({startX},{startY}) goal=({goalX},{goalY}) agentType={agentTypeId}";
+        return false;
     }
 
     public static bool IsPositionOccupiedByOtherAgent(int selfId, Vector3 position, float requiredDistance, out int blockingAgentId, out float blockingDistance)
@@ -28305,12 +28390,28 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
     private static bool TryEstimateGridPathDistance(NavigationWorld world, int startX, int startY, int goalX, int goalY, out float distance)
     {
+        return TryFindGridPath(world, startX, startY, goalX, goalY, null, default, default, out distance);
+    }
+
+    private static bool TryFindGridPath(
+        NavigationWorld world,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        List<Vector3> pathCorners,
+        Vector3 from,
+        Vector3 to,
+        out float distance)
+    {
         distance = 0f;
         int searchId = BeginDistanceEstimateSearch(world.Width * world.Height);
         int startIndex = world.GetIndex(startX, startY);
         int goalIndex = world.GetIndex(goalX, goalY);
         DistanceEstimateCosts[startIndex] = 0f;
         DistanceEstimateVisitedMarks[startIndex] = searchId;
+        if (pathCorners != null)
+            DistanceEstimateParents[startIndex] = -1;
         DistanceEstimateOpenSet.Push(startIndex, EstimateGridHeuristicCost(startX, startY, goalX, goalY, world.CellSize));
 
         while (DistanceEstimateOpenSet.Count > 0)
@@ -28322,6 +28423,8 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             if (currentIndex == goalIndex)
             {
                 distance = DistanceEstimateCosts[currentIndex];
+                if (pathCorners != null)
+                    BuildGridPathCorners(world, startIndex, goalIndex, from, to, pathCorners);
                 return true;
             }
 
@@ -28347,12 +28450,66 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
                 DistanceEstimateVisitedMarks[nextIndex] = searchId;
                 DistanceEstimateCosts[nextIndex] = nextCost;
+                if (pathCorners != null)
+                    DistanceEstimateParents[nextIndex] = currentIndex;
                 float priority = nextCost + EstimateGridHeuristicCost(nextX, nextY, goalX, goalY, world.CellSize);
                 DistanceEstimateOpenSet.Push(nextIndex, priority);
             }
         }
 
         return false;
+    }
+
+    private static void BuildGridPathCorners(
+        NavigationWorld world,
+        int startIndex,
+        int goalIndex,
+        Vector3 from,
+        Vector3 to,
+        List<Vector3> pathCorners)
+    {
+        DistanceEstimatePathIndices.Clear();
+        int currentIndex = goalIndex;
+        int remaining = world.Width * world.Height;
+        while (currentIndex >= 0 && remaining-- > 0)
+        {
+            DistanceEstimatePathIndices.Add(currentIndex);
+            if (currentIndex == startIndex)
+                break;
+
+            currentIndex = DistanceEstimateParents[currentIndex];
+        }
+
+        if (DistanceEstimatePathIndices.Count == 0
+            || DistanceEstimatePathIndices[DistanceEstimatePathIndices.Count - 1] != startIndex)
+        {
+            throw new InvalidOperationException(
+                $"BuildGridPathCorners failed: parent chain did not reach start startIndex={startIndex} goalIndex={goalIndex}.");
+        }
+
+        DistanceEstimatePathIndices.Reverse();
+        pathCorners.Clear();
+        pathCorners.Add(from);
+
+        int previousDx = 0;
+        int previousDy = 0;
+        for (int i = 1; i < DistanceEstimatePathIndices.Count; i++)
+        {
+            int previousIndex = DistanceEstimatePathIndices[i - 1];
+            int nextIndex = DistanceEstimatePathIndices[i];
+            int dx = nextIndex % world.Width - previousIndex % world.Width;
+            int dy = nextIndex / world.Width - previousIndex / world.Width;
+            if (i > 1 && (dx != previousDx || dy != previousDy))
+            {
+                int cornerIndex = DistanceEstimatePathIndices[i - 1];
+                pathCorners.Add(world.GridToWorldCenter(cornerIndex % world.Width, cornerIndex / world.Width));
+            }
+
+            previousDx = dx;
+            previousDy = dy;
+        }
+
+        pathCorners.Add(to);
     }
 
     private static int BeginDistanceEstimateSearch(int cellCount)
@@ -28365,6 +28522,7 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
             DistanceEstimateCosts = new float[cellCount];
             DistanceEstimateVisitedMarks = new int[cellCount];
             DistanceEstimateClosedMarks = new int[cellCount];
+            DistanceEstimateParents = new int[cellCount];
             DistanceEstimateSearchId = 0;
         }
 

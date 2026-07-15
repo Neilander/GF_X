@@ -113,6 +113,105 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 建筑障碍内启用逃离后应走出并自动恢复导航约束()
+    {
+        const int width = 8;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9001, new Vector3(1.5f, 0f, 1.5f), new Vector3(0.5f, 1f, 0.5f));
+
+        GameObject go = new GameObject("FlowTest_ConstructionEscape");
+        go.transform.position = new Vector3(1.5f, 0f, 1.5f);
+        CharacterController controller = go.AddComponent<CharacterController>();
+        controller.radius = 0.25f;
+        controller.height = 2f;
+        controller.center = new Vector3(0f, 1f, 0f);
+        MoveExecutor executor = go.AddComponent<MoveExecutor>();
+        executor.Init(controller, 0);
+
+        Assert.IsFalse(
+            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(go.transform.position, 0, 0f, 0f, out _),
+            "建筑注册为运行时障碍后，建筑内的英雄位置必须被识别为非法导航点");
+
+        executor.EnableNavigationConstraintBypassUntilLegalPoint();
+        bool restoredConstraint = false;
+        for (int frame = 0; frame < 8; frame++)
+        {
+            executor.SetInput(Vector3.right * 2f);
+            executor.Execute(0.2f);
+            if (frame == 0)
+                Assert.IsFalse(executor.DebugNavigationConstraintEnabled, "仍在建筑障碍内时必须保持导航约束 bypass");
+            restoredConstraint |= executor.DebugNavigationConstraintEnabled;
+        }
+
+        Assert.Greater(go.transform.position.x, 2.1f, "开启逃离后英雄应能穿出建造后的建筑障碍");
+        Assert.IsTrue(restoredConstraint, "英雄离开障碍并回到合法导航点后应自动恢复导航约束");
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(go.transform.position, 0, 0f, 0f, out _),
+            "逃离结束时英雄必须位于合法导航点");
+        UnityEngine.Object.DestroyImmediate(go);
+    }
+
+    [Test]
+    public void 导航预览路径应绕过障碍并输出拐点()
+    {
+        const int width = 5;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height - 1; y++)
+            walkable[y * width + 2] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        Vector3 start = new Vector3(0.5f, 0f, 0.5f);
+        Vector3 goal = new Vector3(4.5f, 0f, 0.5f);
+        List<Vector3> corners = new List<Vector3>();
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryGetNavigationPathCorners(start, goal, 0, corners, out string failureReason),
+            failureReason);
+        Assert.Greater(corners.Count, 2, "绕开墙体的路径必须包含中间拐点，不能退化为起终点直线");
+
+        float maxZ = float.NegativeInfinity;
+        for (int i = 0; i < corners.Count; i++)
+            maxZ = Mathf.Max(maxZ, corners[i].z);
+        Assert.Greater(maxZ, 3.5f, $"路径应经过墙体上方缺口，corners=[{string.Join(", ", corners)}]");
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryEstimateNavigationDistance(start, goal, 0, out float distance, out failureReason), failureReason);
+        Assert.Greater(distance, Vector3.Distance(start, goal), "导航距离必须反映绕路长度，不能回退成直线距离");
+    }
+
+    [Test]
+    public void 不可达目标的路径和距离查询都应明确失败()
+    {
+        const int width = 5;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height; y++)
+            walkable[y * width + 2] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        Vector3 start = new Vector3(0.5f, 0f, 0.5f);
+        Vector3 goal = new Vector3(4.5f, 0f, 0.5f);
+        List<Vector3> corners = new List<Vector3>();
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.TryGetNavigationPathCorners(start, goal, 0, corners, out string pathFailure));
+        StringAssert.Contains("no traversable grid path", pathFailure);
+        Assert.IsEmpty(corners);
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.TryEstimateNavigationDistance(start, goal, 0, out _, out string distanceFailure));
+        StringAssert.Contains("no traversable grid path", distanceFailure);
+    }
+
+    [Test]
     public void 非瓶颈普通寻路会输出正常速度()
     {
         const int width = 4;
@@ -1106,7 +1205,12 @@ public class FlowFieldCrowdMovementSystemTests
             autoBox.transform.SetParent(root.transform, false);
             autoBox.transform.localPosition = new Vector3(0.5f, 0f, 0.5f);
             BoxCollider collider = autoBox.AddComponent<BoxCollider>();
+            collider.center = Vector3.up * 0.5f;
             collider.size = Vector3.one;
+
+            Bounds resolvedBounds = GroupMoveManager.ResolveColliderWorldBounds(collider);
+            Assert.AreEqual(new Vector3(5.5f, 0.5f, 1.5f), resolvedBounds.center, "重叠检测必须拿到当前 Transform 对应的世界 Bounds");
+            Assert.AreEqual(Vector3.one, resolvedBounds.size, "世界 Bounds 尺寸应与未缩放 BoxCollider 一致");
 
             manager.RegisterColliderObstacle(collider);
 

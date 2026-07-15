@@ -10,6 +10,7 @@ public partial class BuildingEntity : MAEntity
     public const string P_BuildingInstanceId = "BuildingInstanceId";
     public const string P_IsGameEndConditionBuilding = "IsGameEndConditionBuilding";
     public const string P_IsNavigationStaticBaked = "IsNavigationStaticBaked";
+    public const string P_EnableConstructionEscape = "EnableConstructionEscape";
 
     private static readonly Fix64 PlaceholderAttackInterval = (Fix64)1.6f;
     private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
@@ -26,6 +27,7 @@ public partial class BuildingEntity : MAEntity
     public Stronghold CurrentStronghold { get; private set; }
     public bool IsGameEndConditionBuilding { get; private set; }
     public bool IsNavigationStaticBaked { get; private set; }
+    public bool EnableConstructionEscape { get; private set; }
     public bool HasUpgrade
     {
         get
@@ -75,6 +77,9 @@ public partial class BuildingEntity : MAEntity
         IsNavigationStaticBaked = entityParams != null
             && entityParams.TryGet<VarBoolean>(P_IsNavigationStaticBaked, out var isNavigationStaticBaked)
             && isNavigationStaticBaked;
+        EnableConstructionEscape = entityParams != null
+            && entityParams.TryGet<VarBoolean>(P_EnableConstructionEscape, out var enableConstructionEscape)
+            && enableConstructionEscape;
 
         CharacterKey = buildingData != null ? buildingData.Identifier : string.Empty;
         SetBrain(new BuildingAIBrain());
@@ -119,6 +124,8 @@ public partial class BuildingEntity : MAEntity
         }
 
         RegisterFlowFieldObstacles();
+        if (EnableConstructionEscape)
+            BeginConstructionEscapeForOverlappingHeroes();
     }
 
     protected override CreaturePropertyManager CreateCreaturePropertyManager()
@@ -226,6 +233,7 @@ public partial class BuildingEntity : MAEntity
         HasPermanentNoAttackCapability = false;
         IsGameEndConditionBuilding = false;
         IsNavigationStaticBaked = false;
+        EnableConstructionEscape = false;
         _lv0InvincibleByBuff = false;
         _phaseProtectionByBuff = false;
         _healthBarSuppressedByBuff = false;
@@ -273,7 +281,7 @@ public partial class BuildingEntity : MAEntity
 
             if (GameDebugSettings.IsEnabled(DebugCategory.Move))
             {
-                Bounds bounds = collider.bounds;
+                Bounds bounds = GroupMoveManager.ResolveColliderWorldBounds(collider);
                 Debug.LogFormat(
                     LogType.Log,
                     LogOption.NoStacktrace,
@@ -308,6 +316,29 @@ public partial class BuildingEntity : MAEntity
                 _registeredFlowObstacleIds.Count,
                 Position);
         }
+    }
+
+    private void BeginConstructionEscapeForOverlappingHeroes()
+    {
+        IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
+        if (allEntities == null)
+            throw new System.InvalidOperationException($"BuildingEntity.BeginConstructionEscapeForOverlappingHeroes failed: EntityRegistry.AllEntities is null. building={CharacterKey} instance={BuildingInstanceId}.");
+
+        int playerHeroCount = 0;
+        int activatedCount = 0;
+        for (int i = 0; i < allEntities.Count; i++)
+        {
+            if (allEntities[i] is not HeroEntity hero || hero.Side != SideType.PlayerSide)
+                continue;
+
+            playerHeroCount++;
+            if (hero.TryBeginConstructionEscape(this))
+                activatedCount++;
+        }
+
+        Debug.Log(
+            $"[BuildingConstructionEscape] evaluate building={CharacterKey} instance={BuildingInstanceId} " +
+            $"position={Position} playerHeroes={playerHeroCount} activated={activatedCount}");
     }
 
     private static string BuildHierarchyPath(Transform transform)

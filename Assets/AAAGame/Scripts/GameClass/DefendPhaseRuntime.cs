@@ -13,7 +13,7 @@ public static class DefendPhaseRuntime
     private const string DefendEndlessGrowthRateConfigKey = "DefendPhaseEnemyEndlessGrowthRate";
     private const float MinArriveIntervalSeconds = 0.01f;
     private const float MinWorldSpeed = 0.001f;
-    private const float SpawnPointNavProbeRadius = 2.5f;
+    private const float NavigationPointProbeRadius = 2.5f;
 
     private static readonly ArchetypeUnitTypeMapper s_ArchetypeUnitTypeMapper = new();
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
@@ -188,6 +188,29 @@ public static class DefendPhaseRuntime
         return results.Count > 0;
     }
 
+    public static bool TryGetNavigationPathCorners(
+        UnitType unitType,
+        Vector3 spawnPosition,
+        Vector3 basePosition,
+        List<Vector3> pathCorners,
+        out string failureReason)
+    {
+        if (pathCorners == null)
+            throw new ArgumentNullException(nameof(pathCorners));
+
+        pathCorners.Clear();
+        int agentTypeId = ResolveAgentTypeId(unitType);
+        if (!TryResolveBaseNavigationPoint(basePosition, agentTypeId, out Vector3 navigationBase, out failureReason))
+            return false;
+
+        return FlowFieldCrowdMovementSystem.TryGetNavigationPathCorners(
+            spawnPosition,
+            navigationBase,
+            agentTypeId,
+            pathCorners,
+            out failureReason);
+    }
+
     private static void EnsureSubscribedSoldierDead()
     {
         if (s_SubscribedSoldierDead || GF.Event == null)
@@ -262,10 +285,8 @@ public static class DefendPhaseRuntime
         s_DefendWaves.Clear();
         s_DefendSpawnPoints.Clear();
 
-        Vector3 basePosition = ResolvePlayerBasePosition();
         EntityPresetPoint[] points = levelEntity.GetComponentsInChildren<EntityPresetPoint>(true);
         int defendPointCount = 0;
-        double distanceMs = 0.0;
         double diagnosticsMs = 0.0;
         for (int i = 0; i < points.Length; i++)
         {
@@ -274,9 +295,6 @@ public static class DefendPhaseRuntime
                 continue;
 
             defendPointCount++;
-            Stopwatch distanceStopwatch = Stopwatch.StartNew();
-            float distance = CalculatePathDistance(point.Position, basePosition);
-            distanceMs += distanceStopwatch.Elapsed.TotalMilliseconds;
             if (GameDebugSettings.IsEnabled(DebugCategory.Move))
             {
                 Stopwatch diagnosticsStopwatch = Stopwatch.StartNew();
@@ -286,20 +304,17 @@ public static class DefendPhaseRuntime
 
             s_DefendSpawnPoints.Add(new DefendSpawnPointRuntime
             {
-                Point = point,
-                DistanceToPlayerBase = Mathf.Max(0f, distance)
+                Point = point
             });
         }
 
         Log.Info(
-            "[DefendPhaseTiming] stage=spawn-point-cache totalMs={0:F3} presetPoints={1} defendPoints={2} cached={3} distanceMs={4:F3} diagnosticsMs={5:F3} base={6}",
+            "[DefendPhaseTiming] stage=spawn-point-cache totalMs={0:F3} presetPoints={1} defendPoints={2} cached={3} diagnosticsMs={4:F3}",
             stopwatch.Elapsed.TotalMilliseconds,
             points.Length,
             defendPointCount,
             s_DefendSpawnPoints.Count,
-            distanceMs,
-            diagnosticsMs,
-            basePosition);
+            diagnosticsMs);
     }
 
     private static Vector3 ResolvePlayerBasePosition()
@@ -332,12 +347,49 @@ public static class DefendPhaseRuntime
         return Vector3.zero;
     }
 
-    private static float CalculatePathDistance(Vector3 from, Vector3 to)
+    private static float CalculatePathDistance(Vector3 from, Vector3 to, UnitType unitType)
     {
-        int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
-        return FlowFieldCrowdMovementSystem.TryEstimateNavigationDistance(from, to, smallAgentTypeId, out float distance)
-            ? distance
-            : Vector3.Distance(from, to);
+        int agentTypeId = ResolveAgentTypeId(unitType);
+        if (!TryResolveBaseNavigationPoint(to, agentTypeId, out Vector3 navigationBase, out string failureReason))
+        {
+            throw new InvalidOperationException(
+                $"DefendPhaseRuntime.CalculatePathDistance failed: unit={unitType} from={from} to={to} agentType={agentTypeId} reason={failureReason}");
+        }
+
+        if (FlowFieldCrowdMovementSystem.TryEstimateNavigationDistance(
+                from,
+                navigationBase,
+                agentTypeId,
+                out float distance,
+                out failureReason))
+        {
+            return distance;
+        }
+
+        throw new InvalidOperationException(
+            $"DefendPhaseRuntime.CalculatePathDistance failed: unit={unitType} from={from} to={to} agentType={agentTypeId} reason={failureReason}");
+    }
+
+    private static bool TryResolveBaseNavigationPoint(
+        Vector3 basePosition,
+        int agentTypeId,
+        out Vector3 navigationBase,
+        out string failureReason)
+    {
+        if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+                basePosition,
+                agentTypeId,
+                NavigationPointProbeRadius,
+                0f,
+                out navigationBase))
+        {
+            failureReason = string.Empty;
+            return true;
+        }
+
+        failureReason =
+            $"no legal navigation point near player base position={basePosition} agentType={agentTypeId} maxSnapDistance={NavigationPointProbeRadius:F2}";
+        return false;
     }
 
     private static void LogSpawnPointDiagnostics(EntityPresetPoint point)
@@ -353,7 +405,7 @@ public static class DefendPhaseRuntime
         bool flowSmall = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
             position,
             smallAgentTypeId,
-            SpawnPointNavProbeRadius,
+            NavigationPointProbeRadius,
             0f,
             out Vector3 smallLegalPoint);
         string smallLegalPos = flowSmall ? smallLegalPoint.ToString() : "none";
@@ -372,16 +424,16 @@ public static class DefendPhaseRuntime
 
     private static void LogDefendSpawnEvent(PlannedSpawnEvent evt, int entityId)
     {
-        int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
-        bool flowSmall = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+        int agentTypeId = ResolveAgentTypeId(evt.UnitType);
+        bool flowHit = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
             evt.SpawnPosition,
-            smallAgentTypeId,
-            SpawnPointNavProbeRadius,
+            agentTypeId,
+            NavigationPointProbeRadius,
             0f,
-            out Vector3 smallLegalPoint);
+            out Vector3 legalPoint);
 
         Log.Info(
-            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} point={5} stronghold={6} flowSmall={7} flowSmallPos={8} smallAgentType={9}",
+            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} point={5} stronghold={6} flowHit={7} flowPos={8} agentType={9}",
             entityId,
             evt.UnitType,
             evt.UnitLevel,
@@ -389,15 +441,27 @@ public static class DefendPhaseRuntime
             evt.SpeedProperty,
             evt.SpawnPointName,
             evt.SourceStrongholdId ?? "null",
-            flowSmall,
-            flowSmall ? smallLegalPoint.ToString() : "none",
-            smallAgentTypeId);
+            flowHit,
+            flowHit ? legalPoint.ToString() : "none",
+            agentTypeId);
     }
 
     private static int ResolveAgentTypeId(UnitSize unitSize)
     {
         AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
-        return helper != null ? helper.GetNavAgentTypeID(unitSize) : 0;
+        if (helper == null)
+            throw new InvalidOperationException("DefendPhaseRuntime.ResolveAgentTypeId failed: AgentTypeHelper is not available.");
+
+        return helper.GetNavAgentTypeID(unitSize);
+    }
+
+    private static int ResolveAgentTypeId(UnitType unitType)
+    {
+        AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
+        if (helper == null)
+            throw new InvalidOperationException("DefendPhaseRuntime.ResolveAgentTypeId failed: AgentTypeHelper is not available.");
+
+        return helper.GetNavAgentTypeID(unitType);
     }
 
     private static void EnsureWaveConfigLoaded()
@@ -522,6 +586,7 @@ public static class DefendPhaseRuntime
             : 500f;
         float minSpeedWorld = Mathf.Max(MinWorldSpeed, DistanceUnitConverter.ConvertToWorldFloat((Fix64)minSpeedProperty));
         float conversionRate = Mathf.Max(0.0001f, DistanceUnitConverter.DistanceConversionRate);
+        Vector3 basePosition = ResolvePlayerBasePosition();
 
         for (int i = 0; i < wave.Entries.Count; i++)
         {
@@ -532,6 +597,18 @@ public static class DefendPhaseRuntime
             List<PointSpawnCount> pointCounts = AllocatePointCountsForUnit(entry.UnitType, EnemyArmyForceModifierService.CalculateSpawnCount(entry.Count));
             if (pointCounts.Count == 0)
                 continue;
+
+            for (int pointIndex = 0; pointIndex < pointCounts.Count; pointIndex++)
+            {
+                PointSpawnCount pointCount = pointCounts[pointIndex];
+                if (pointCount?.Point?.Point == null)
+                    throw new InvalidOperationException($"DefendPhaseRuntime.BuildSpawnEvents failed: spawn point is null. unit={entry.UnitType} index={pointIndex}.");
+
+                pointCount.DistanceToBase = CalculatePathDistance(
+                    pointCount.Point.Point.Position,
+                    basePosition,
+                    entry.UnitType);
+            }
 
             pointCounts.Sort((a, b) => a.DistanceToBase.CompareTo(b.DistanceToBase));
 
@@ -665,8 +742,7 @@ public static class DefendPhaseRuntime
             {
                 Point = runtimePoint,
                 PointStronghold = stronghold,
-                Count = count,
-                DistanceToBase = runtimePoint.DistanceToPlayerBase
+                Count = count
             });
         }
 
@@ -750,7 +826,6 @@ public static class DefendPhaseRuntime
     private sealed class DefendSpawnPointRuntime
     {
         public EntityPresetPoint Point;
-        public float DistanceToPlayerBase;
     }
 
     private sealed class DefendWaveDefinition

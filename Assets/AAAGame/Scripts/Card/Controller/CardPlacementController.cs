@@ -498,7 +498,8 @@ namespace AAAGame.Card
                 return false;
             }
 
-            return ClusterSpawnSystem.CanSpawnCluster(centerPosition, soldierCount, GetCardFormationRadius(cardModel), 2f, true);
+            int agentTypeId = ClusterSpawnSystem.ResolveAgentTypeId(dataProvider.SoldierIndex);
+            return ClusterSpawnSystem.CanSpawnCluster(centerPosition, soldierCount, GetCardFormationRadius(cardModel), 2f, true, agentTypeId);
         }
 
         private bool TryResolveCardPlacement(
@@ -526,6 +527,7 @@ namespace AAAGame.Card
             }
 
             List<Vector3> targetPositions = spawnPositions ?? m_CachedPreviewSpawnPositions;
+            int agentTypeId = ClusterSpawnSystem.ResolveAgentTypeId(cardModel.DataProvider.SoldierIndex);
             bool resolved = ClusterSpawnSystem.TryResolvePreviewSpawnPositions(
                 requestedCenter,
                 soldierCount,
@@ -533,7 +535,8 @@ namespace AAAGame.Card
                 2f,
                 IsPlacementCenterAllowed,
                 targetPositions,
-                out resolvedCenter);
+                out resolvedCenter,
+                agentTypeId);
 
             if (resolved)
             {
