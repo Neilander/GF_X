@@ -101,6 +101,25 @@ namespace AAAGame.Tools.Editor
             }
         }
 
+        public readonly struct TerrainBakeTransform
+        {
+            public readonly Vector3 Position;
+            public readonly Quaternion Rotation;
+            public readonly Vector3 Scale;
+
+            public TerrainBakeTransform(Vector3 position, Quaternion rotation, Vector3 scale)
+            {
+                Position = position;
+                Rotation = rotation;
+                Scale = scale;
+            }
+
+            public static TerrainBakeTransform Identity => new TerrainBakeTransform(
+                Vector3.zero,
+                Quaternion.identity,
+                Vector3.one);
+        }
+
         public static Result BakeFromTerrainPrefab(
             string terrainPrefabPath,
             string assetPath,
@@ -209,6 +228,21 @@ namespace AAAGame.Tools.Editor
             float cellSize,
             IReadOnlyList<StaticObstacleBakeInstance> staticObstacleBakeInstances)
         {
+            return BakeMovementTypesFromTerrainPrefab(
+                terrainPrefabPath,
+                requests,
+                cellSize,
+                staticObstacleBakeInstances,
+                TerrainBakeTransform.Identity);
+        }
+
+        public static Result[] BakeMovementTypesFromTerrainPrefab(
+            string terrainPrefabPath,
+            IReadOnlyList<MovementTypeBakeRequest> requests,
+            float cellSize,
+            IReadOnlyList<StaticObstacleBakeInstance> staticObstacleBakeInstances,
+            TerrainBakeTransform terrainTransform)
+        {
             if (requests == null)
                 throw new InvalidOperationException("FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab failed: requests is null.");
             if (requests.Count == 0)
@@ -223,6 +257,7 @@ namespace AAAGame.Tools.Editor
             GameObject terrainRoot = PrefabUtility.LoadPrefabContents(terrainPrefabPath);
             try
             {
+                ApplyTerrainBakeTransform(terrainRoot, terrainTransform);
                 int groundLayer = RequireLayer(GroundLayerName);
                 Collider[] groundColliders = CollectColliders(terrainRoot, groundLayer);
                 if (groundColliders.Length == 0)
@@ -236,7 +271,7 @@ namespace AAAGame.Tools.Editor
                 float maxZ = Mathf.Ceil((bounds.max.z + padding) / cellSize) * cellSize;
                 int width = Mathf.CeilToInt((maxX - minX) / cellSize);
                 int height = Mathf.CeilToInt((maxZ - minZ) / cellSize);
-                Vector3 origin = new Vector3(minX, bounds.center.y, minZ);
+                Vector3 origin = new Vector3(minX, 0f, minZ);
                 if (width <= 0 || height <= 0)
                     throw new InvalidOperationException($"FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab failed: invalid collider-derived grid size {width}x{height} bounds={bounds} cellSize={cellSize:F4}.");
 
@@ -244,7 +279,15 @@ namespace AAAGame.Tools.Editor
                     $"[FlowNavigationGridBake] stage=terrain-bounds terrain={terrainPrefabPath} boundsMin=({bounds.min.x:F3},{bounds.min.z:F3}) " +
                     $"boundsMax=({bounds.max.x:F3},{bounds.max.z:F3}) grid={width}x{height} cellSize={cellSize:F4} origin=({origin.x:F3},{origin.y:F3},{origin.z:F3})");
 
-                return BakeMovementTypesFromTerrainPrefab(terrainPrefabPath, requests, width, height, cellSize, origin, staticObstacleBakeInstances);
+                return BakeMovementTypesFromTerrainPrefab(
+                    terrainPrefabPath,
+                    requests,
+                    width,
+                    height,
+                    cellSize,
+                    origin,
+                    staticObstacleBakeInstances,
+                    terrainTransform);
             }
             finally
             {
@@ -279,6 +322,27 @@ namespace AAAGame.Tools.Editor
             Vector3 gridOrigin,
             IReadOnlyList<StaticObstacleBakeInstance> staticObstacleBakeInstances)
         {
+            return BakeMovementTypesFromTerrainPrefab(
+                terrainPrefabPath,
+                requests,
+                width,
+                height,
+                cellSize,
+                gridOrigin,
+                staticObstacleBakeInstances,
+                TerrainBakeTransform.Identity);
+        }
+
+        private static Result[] BakeMovementTypesFromTerrainPrefab(
+            string terrainPrefabPath,
+            IReadOnlyList<MovementTypeBakeRequest> requests,
+            int width,
+            int height,
+            float cellSize,
+            Vector3 gridOrigin,
+            IReadOnlyList<StaticObstacleBakeInstance> staticObstacleBakeInstances,
+            TerrainBakeTransform terrainTransform)
+        {
             if (requests == null)
                 throw new InvalidOperationException("FlowNavigationGridPrefabBaker.BakeMovementTypesFromTerrainPrefab failed: requests is null.");
             if (requests.Count == 0)
@@ -292,6 +356,7 @@ namespace AAAGame.Tools.Editor
             GameObject terrainRoot = PrefabUtility.LoadPrefabContents(terrainPrefabPath);
             try
             {
+                ApplyTerrainBakeTransform(terrainRoot, terrainTransform);
                 int groundLayer = RequireLayer(GroundLayerName);
                 int obstacleLayer = LayerMask.NameToLayer(LevelObstacleLayerName);
                 Collider[] groundColliders = CollectColliders(terrainRoot, groundLayer);
@@ -458,6 +523,17 @@ namespace AAAGame.Tools.Editor
             }
 
             return roots.ToArray();
+        }
+
+        private static void ApplyTerrainBakeTransform(GameObject terrainRoot, TerrainBakeTransform terrainTransform)
+        {
+            if (terrainRoot == null)
+                throw new InvalidOperationException("ApplyTerrainBakeTransform failed: terrain root is null.");
+
+            Transform transform = terrainRoot.transform;
+            transform.SetPositionAndRotation(terrainTransform.Position, terrainTransform.Rotation);
+            transform.localScale = terrainTransform.Scale;
+            Physics.SyncTransforms();
         }
 
         private static Bounds ResolveColliderBounds(IReadOnlyList<Collider> colliders)
@@ -798,6 +874,10 @@ namespace AAAGame.Tools.Editor
             int cellIndex = raster.ToIndex(cellX, cellY);
             if (raster.IsWalkableForRadius(cellIndex, hardClearanceRadius))
             {
+                if (!groundIndex.TryRaycastVertical(center.x, center.z, out Vector3 groundPoint))
+                    throw new InvalidOperationException($"TryResolveWalkableCellAnchor failed: walkable cell ({cellX},{cellY}) has no ground hit at {center}.");
+
+                localAnchor = groundPoint;
                 sourceCost = ResolveSourceCost(raster, cellIndex, hardClearanceRadius);
                 return true;
             }
@@ -815,6 +895,10 @@ namespace AAAGame.Tools.Editor
                 Vector3 candidate = new Vector3(center.x + offset.x, 0f, center.z + offset.y);
                 if (!IsFootprintWalkable(groundIndex, obstacleIndex, candidate.x, candidate.z, hardClearanceRadius))
                     continue;
+                if (!groundIndex.TryRaycastVertical(candidate.x, candidate.z, out Vector3 groundPoint))
+                    throw new InvalidOperationException($"TryResolveWalkableCellAnchor failed: valid refined anchor has no ground hit at {candidate}.");
+
+                candidate.y = groundPoint.y;
 
                 float distanceSq = offset.sqrMagnitude;
                 float wallDistance = raster.TryGetClearanceAtWorld(candidate.x, candidate.z, out float candidateClearance)
@@ -1274,6 +1358,12 @@ namespace AAAGame.Tools.Editor
 
             public bool RaycastVertical(float x, float z)
             {
+                return TryRaycastVertical(x, z, out _);
+            }
+
+            public bool TryRaycastVertical(float x, float z, out Vector3 hitPoint)
+            {
+                hitPoint = Vector3.zero;
                 if (!TryGetBucket(x, z, out List<Collider> bucket))
                     return false;
 
@@ -1294,6 +1384,8 @@ namespace AAAGame.Tools.Editor
 
                 Ray ray = new Ray(new Vector3(x, maxY + 8f, z), Vector3.down);
                 float distance = Mathf.Max(0.1f, maxY - minY + 16f);
+                bool found = false;
+                float nearestDistance = float.PositiveInfinity;
                 for (int i = 0; i < bucket.Count; i++)
                 {
                     Collider collider = bucket[i];
@@ -1301,11 +1393,15 @@ namespace AAAGame.Tools.Editor
                     if (!ContainsXZ(bounds, x, z))
                         continue;
 
-                    if (collider.Raycast(ray, out _, distance))
-                        return true;
+                    if (!collider.Raycast(ray, out RaycastHit hit, distance) || hit.distance >= nearestDistance)
+                        continue;
+
+                    found = true;
+                    nearestDistance = hit.distance;
+                    hitPoint = hit.point;
                 }
 
-                return false;
+                return found;
             }
 
             public bool OverlapsAabb(float minX, float minZ, float maxX, float maxZ)

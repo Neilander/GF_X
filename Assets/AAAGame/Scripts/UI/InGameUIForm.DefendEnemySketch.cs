@@ -18,11 +18,11 @@ public partial class InGameUIForm
     private readonly List<DefendPhaseRuntime.DefendPreviewSpawnEntry> m_DefendPreviewSpawnEntries = new();
     private readonly Dictionary<int, List<SketchEntryRenderData>> m_DefendBucketEntries = new();
     private readonly Dictionary<SketchPreviewEntryKey, Vector2> m_DefendEntryBorderPointCache = new();
+    private readonly Dictionary<SketchPreviewEntryKey, DefendPathCacheEntry> m_DefendPathCache = new();
     private readonly List<SketchRenderItem> m_DefendRenderItems = new();
     private readonly Dictionary<SketchBucketKey, SketchItemHandle> m_DefendSketchItemHandles = new();
     private readonly Dictionary<SketchBucketKey, SketchItemHandle> m_DefendNextSketchItemHandles = new();
     private readonly List<SketchItemHandle> m_DefendReusableSketchItemHandles = new();
-    private readonly List<Vector3> m_DefendPathCorners = new();
     private readonly Dictionary<UnitType, string> m_DefendUnitDisplayNameCache = new();
     private readonly Vector3[] m_DefendUiRectCorners = new Vector3[4];
     private Rect m_DefendMiniMapAvoidRectCache;
@@ -39,6 +39,7 @@ public partial class InGameUIForm
     private void ShutdownDefendEnemySketch()
     {
         ClearDefendEnemySketchItems();
+        InvalidateDefendEnemySketchPathCache();
         if (varDefendEnemySketchRoot != null)
             varDefendEnemySketchRoot.SetActive(false);
     }
@@ -108,6 +109,7 @@ public partial class InGameUIForm
             else
             {
                 hasBorderPoint = TryGetPathScreenBorderIntersection(
+                    previewCacheKey,
                     entry.UnitType,
                     entry.SpawnPosition,
                     basePosition,
@@ -258,6 +260,12 @@ public partial class InGameUIForm
         m_DefendSketchItemHandles.Clear();
         m_DefendNextSketchItemHandles.Clear();
         m_DefendReusableSketchItemHandles.Clear();
+    }
+
+    private void InvalidateDefendEnemySketchPathCache()
+    {
+        m_DefendPathCache.Clear();
+        m_DefendEntryBorderPointCache.Clear();
     }
 
     private void EnsureDefendEnemySketchRenderOrder()
@@ -811,6 +819,7 @@ public partial class InGameUIForm
     }
 
     private bool TryGetPathScreenBorderIntersection(
+        SketchPreviewEntryKey cacheKey,
         UnitType unitType,
         Vector3 spawnPosition,
         Vector3 basePosition,
@@ -824,13 +833,13 @@ public partial class InGameUIForm
         if (worldCamera == null)
             return false;
 
-        if (!BuildPathCorners(unitType, spawnPosition, basePosition))
+        if (!BuildPathCorners(cacheKey, unitType, spawnPosition, basePosition, out List<Vector3> pathCorners))
             return false;
 
-        for (int i = 0; i < m_DefendPathCorners.Count - 1; i++)
+        for (int i = 0; i < pathCorners.Count - 1; i++)
         {
-            Vector3 screenA3 = worldCamera.WorldToScreenPoint(m_DefendPathCorners[i]);
-            Vector3 screenB3 = worldCamera.WorldToScreenPoint(m_DefendPathCorners[i + 1]);
+            Vector3 screenA3 = worldCamera.WorldToScreenPoint(pathCorners[i]);
+            Vector3 screenB3 = worldCamera.WorldToScreenPoint(pathCorners[i + 1]);
             if (screenA3.z <= 0f && screenB3.z <= 0f)
                 continue;
 
@@ -847,10 +856,10 @@ public partial class InGameUIForm
             }
         }
 
-        for (int i = 0; i < m_DefendPathCorners.Count - 1; i++)
+        for (int i = 0; i < pathCorners.Count - 1; i++)
         {
-            Vector3 screenA3 = worldCamera.WorldToScreenPoint(m_DefendPathCorners[i]);
-            Vector3 screenB3 = worldCamera.WorldToScreenPoint(m_DefendPathCorners[i + 1]);
+            Vector3 screenA3 = worldCamera.WorldToScreenPoint(pathCorners[i]);
+            Vector3 screenB3 = worldCamera.WorldToScreenPoint(pathCorners[i + 1]);
             if (screenA3.z <= 0f && screenB3.z <= 0f)
                 continue;
 
@@ -880,17 +889,42 @@ public partial class InGameUIForm
         return false;
     }
 
-    private bool BuildPathCorners(UnitType unitType, Vector3 spawnPosition, Vector3 basePosition)
+    private bool BuildPathCorners(
+        SketchPreviewEntryKey cacheKey,
+        UnitType unitType,
+        Vector3 spawnPosition,
+        Vector3 basePosition,
+        out List<Vector3> pathCorners)
     {
-        if (DefendPhaseRuntime.TryGetNavigationPathCorners(
-                unitType,
-                spawnPosition,
-                basePosition,
-                m_DefendPathCorners,
-                out string failureReason))
+        int navigationVersion = DefendPhaseRuntime.NavigationPathVersion;
+        if (m_DefendPathCache.TryGetValue(cacheKey, out DefendPathCacheEntry cached)
+            && cached.SpawnPosition == spawnPosition
+            && cached.BasePosition == basePosition
+            && cached.NavigationVersion == navigationVersion)
         {
-            return true;
+            pathCorners = cached.Corners;
+            return cached.HasPath;
         }
+
+        cached = new DefendPathCacheEntry
+        {
+            SpawnPosition = spawnPosition,
+            BasePosition = basePosition
+        };
+
+        bool hasPath = DefendPhaseRuntime.TryGetNavigationPathCorners(
+            unitType,
+            spawnPosition,
+            basePosition,
+            cached.Corners,
+            out string failureReason);
+        cached.HasPath = hasPath;
+        cached.NavigationVersion = DefendPhaseRuntime.NavigationPathVersion;
+        m_DefendPathCache[cacheKey] = cached;
+
+        pathCorners = cached.Corners;
+        if (hasPath)
+            return true;
 
         int frame = Time.frameCount;
         if (frame - m_DefendSketchPathLastErrorFrame >= DefendEnemySketchPathErrorLogIntervalFrames)
@@ -905,6 +939,15 @@ public partial class InGameUIForm
         }
 
         return false;
+    }
+
+    private sealed class DefendPathCacheEntry
+    {
+        public Vector3 SpawnPosition;
+        public Vector3 BasePosition;
+        public int NavigationVersion;
+        public bool HasPath;
+        public readonly List<Vector3> Corners = new();
     }
 
     private static bool TryIntersectRayWithScreenRect(Vector2 origin, Vector2 direction, Rect rect, out Vector2 hitPoint)

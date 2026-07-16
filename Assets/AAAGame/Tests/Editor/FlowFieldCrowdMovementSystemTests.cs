@@ -1182,6 +1182,56 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void RuntimeDirty建筑障碍重建后保留地面锚点高度()
+    {
+        const int width = 8;
+        const int height = 3;
+        const float groundHeight = 2.75f;
+        bool[] walkable = new bool[width * height];
+        Vector3[] anchors = new Vector3[walkable.Length];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int index = x + y * width;
+                walkable[index] = true;
+                anchors[index] = new Vector3(x + 0.5f, groundHeight, y + 0.5f);
+            }
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable, anchors);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            new Vector3(1.5f, 0f, 1.5f),
+            0,
+            0f,
+            0f,
+            out Vector3 before));
+        Assert.AreEqual(groundHeight, before.y, 0.0001f);
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            9002,
+            new Vector3(4.5f, 0f, 1.5f),
+            new Vector3(0.49f, 1f, 0.49f));
+        for (int i = 0; i < 16 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            new Vector3(1.5f, 0f, 1.5f),
+            0,
+            0f,
+            0f,
+            out Vector3 after));
+        Assert.AreEqual(groundHeight, after.y, 0.0001f, "建筑障碍动态重建不得丢失未阻塞格的真实地面锚点高度");
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+            new Vector3(4.5f, 0f, 1.5f),
+            0,
+            0f,
+            0f,
+            out _), "建筑占用格在动态重建后必须保持不可部署、不可通行");
+    }
+
+    [Test]
     public void ColliderObstacle注册使用Transform世界几何而非滞后PhysicsBounds()
     {
         const int width = 8;

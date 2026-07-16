@@ -23,6 +23,10 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     private static readonly ICapability GhostCapabilityLocker = new GhostStateCapabilityLocker();
     private const int GhostCollisionSyncIntervalFrames = 6;
     private const int CastRangeSegments = 96;
+    private const string AttackRangePreviewNodeName = "AttackRangePreview";
+    private const int AttackRangePreviewSegments = 96;
+    private const float AttackRangePreviewHeight = 0.04f;
+    private const float AttackRangePreviewWidth = 0.04f;
     private const string PlayerInteractionNodeName = "InteractCollider";
     private const float PlayerInteractionRange = 2.7f;
     private const float PlayerInteractionPadding = 0.7f;
@@ -37,6 +41,11 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     private int _nextGhostCollisionSyncFrame;
     private Transform _rangeTrans;
     private LineRenderer _rangeLineRenderer;
+    private Transform _attackRangePreviewTrans;
+    private LineRenderer _attackRangePreviewRenderer;
+    private Fix64 _renderedAttackRange;
+    private Vector3 _attackRangePreviewParentScale;
+    private bool _hasRenderedAttackRange;
 
     public ISkillComp skillComp { get; private set; }
     public bool IsGhostState { get; private set; }
@@ -59,6 +68,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         GF.Event.Subscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         EnsurePlayerInteractionRuntime();
         EnsureHeroSkillRuntime();
+        SyncAttackRangePreview(true);
         SyncHeroOutOfCombatSpeedBuff();
     }
 
@@ -72,6 +82,9 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         skillComp = null;
         ClearConstructionEscapeRuntimeState();
         ClearGhostRuntimeState();
+        if (_attackRangePreviewTrans != null)
+            _attackRangePreviewTrans.gameObject.SetActive(false);
+        _hasRenderedAttackRange = false;
         base.OnHide(isShutdown, userData);
     }
 
@@ -81,6 +94,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         SyncHeroOutOfCombatSpeedBuff();
         TickGhostCollisionRuntime();
         TickConstructionEscapeRuntime();
+        SyncAttackRangePreview(false);
 
         if (CanRun(skillComp))
             skillComp.Skill();
@@ -427,6 +441,100 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         _rangeLineRenderer.endColor = _rangeLineRenderer.startColor;
     }
 
+    private void SyncAttackRangePreview(bool logState)
+    {
+        if (weaponComp == null || weaponComp.Data == null)
+            throw new System.InvalidOperationException($"Hero attack range preview requires weapon data. entityId={Id}, characterKey={CharacterKey}.");
+
+        Fix64 attackRange = weaponComp.AttackRange;
+        if (attackRange <= Fix64.Zero)
+            throw new System.InvalidOperationException($"Hero attack range preview requires a positive range. entityId={Id}, characterKey={CharacterKey}, range={attackRange}.");
+
+        EnsureAttackRangePreview();
+
+        Vector3 parentScale = transform.lossyScale;
+        if (Mathf.Abs(parentScale.x) <= 0.0001f || Mathf.Abs(parentScale.y) <= 0.0001f || Mathf.Abs(parentScale.z) <= 0.0001f)
+            throw new System.InvalidOperationException($"Hero attack range preview cannot compensate a zero transform scale. entityId={Id}, characterKey={CharacterKey}, scale={parentScale}.");
+
+        bool scaleChanged = (_attackRangePreviewParentScale - parentScale).sqrMagnitude > 0.000001f;
+        if (!_hasRenderedAttackRange || _renderedAttackRange != attackRange || scaleChanged)
+        {
+            _attackRangePreviewTrans.localScale = new Vector3(
+                1f / parentScale.x,
+                1f / parentScale.y,
+                1f / parentScale.z);
+            UpdateAttackRangePreviewCircle((float)attackRange);
+            _renderedAttackRange = attackRange;
+            _attackRangePreviewParentScale = parentScale;
+            _hasRenderedAttackRange = true;
+        }
+
+        if (!_attackRangePreviewTrans.gameObject.activeSelf)
+            _attackRangePreviewTrans.gameObject.SetActive(true);
+
+        if (logState)
+        {
+            Vector3 previewCenter = _attackRangePreviewTrans.TransformPoint(
+                new Vector3(0f, AttackRangePreviewHeight, 0f));
+            Vector3 previewEdge = _attackRangePreviewTrans.TransformPoint(
+                _attackRangePreviewRenderer.GetPosition(0));
+            float renderedRadius = Vector2.Distance(
+                new Vector2(previewCenter.x, previewCenter.z),
+                new Vector2(previewEdge.x, previewEdge.z));
+            float centerOffset = Vector2.Distance(
+                new Vector2(transform.position.x, transform.position.z),
+                new Vector2(previewCenter.x, previewCenter.z));
+            Debug.Log(
+                $"[HeroAttackRangePreview] entityId={Id}, characterKey={CharacterKey}, " +
+                $"rangeWorld={(float)attackRange:F3}, renderedRadius={renderedRadius:F3}, " +
+                $"centerOffset={centerOffset:F4}, center={transform.position}, parentScale={parentScale}.");
+        }
+    }
+
+    private void EnsureAttackRangePreview()
+    {
+        if (_attackRangePreviewRenderer != null)
+            return;
+
+        GameObject previewObject = new GameObject(AttackRangePreviewNodeName);
+        _attackRangePreviewTrans = previewObject.transform;
+        _attackRangePreviewTrans.SetParent(transform, false);
+        _attackRangePreviewTrans.localPosition = Vector3.zero;
+        _attackRangePreviewTrans.localRotation = Quaternion.identity;
+
+        Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            throw new System.InvalidOperationException("Hero attack range preview shader 'Sprites/Default' was not found.");
+
+        _attackRangePreviewRenderer = previewObject.AddComponent<LineRenderer>();
+        _attackRangePreviewRenderer.useWorldSpace = false;
+        _attackRangePreviewRenderer.loop = true;
+        _attackRangePreviewRenderer.positionCount = AttackRangePreviewSegments;
+        _attackRangePreviewRenderer.widthMultiplier = AttackRangePreviewWidth;
+        _attackRangePreviewRenderer.alignment = LineAlignment.View;
+        _attackRangePreviewRenderer.numCornerVertices = 4;
+        _attackRangePreviewRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        _attackRangePreviewRenderer.receiveShadows = false;
+        _attackRangePreviewRenderer.sortingOrder = 6;
+        _attackRangePreviewRenderer.material = new Material(shader)
+        {
+            name = "HeroAttackRangePreview_Material"
+        };
+        _attackRangePreviewRenderer.startColor = new Color(1f, 1f, 1f, 0.75f);
+        _attackRangePreviewRenderer.endColor = _attackRangePreviewRenderer.startColor;
+    }
+
+    private void UpdateAttackRangePreviewCircle(float radius)
+    {
+        for (int i = 0; i < AttackRangePreviewSegments; i++)
+        {
+            float angle = Mathf.PI * 2f * i / AttackRangePreviewSegments;
+            _attackRangePreviewRenderer.SetPosition(
+                i,
+                new Vector3(Mathf.Cos(angle) * radius, AttackRangePreviewHeight, Mathf.Sin(angle) * radius));
+        }
+    }
+
     private void UpdateCastRangeCircle(float radius)
     {
         if (_rangeLineRenderer == null)
@@ -452,7 +560,11 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
-            if (renderer == null || renderer is ParticleSystemRenderer || renderer is TrailRenderer)
+            if (renderer == null
+                || renderer is ParticleSystemRenderer
+                || renderer is TrailRenderer
+                || renderer == _attackRangePreviewRenderer
+                || renderer == _rangeLineRenderer)
                 continue;
 
             if (enabled)

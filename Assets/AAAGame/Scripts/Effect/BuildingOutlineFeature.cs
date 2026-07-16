@@ -69,7 +69,7 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
             _outlineMaterial = CoreUtils.CreateEngineMaterial(settings.outlineShader);
 
         _maskPass = new MaskPass(settings.renderPassEvent, _maskMaterial);
-        _outlinePass = new OutlinePass(settings.renderPassEvent + 1, _outlineMaterial, settings);
+        _outlinePass = new OutlinePass(settings.renderPassEvent + 1, _outlineMaterial, settings, _maskPass);
     }
 
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
@@ -91,7 +91,7 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
     {
         if (_maskPass == null || _outlinePass == null) return;
         if (s_Renderers.Count == 0) return;
-        _outlinePass.Setup(renderer.cameraColorTargetHandle, _maskPass.MaskHandle);
+        _outlinePass.Setup(renderer.cameraColorTargetHandle);
     }
 
     protected override void Dispose(bool disposing)
@@ -173,23 +173,23 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
 
         private readonly Material _material;
         private readonly Settings _settings;
+        private readonly MaskPass _maskPass;
         private RTHandle _cameraColor;
-        private RTHandle _maskRT;
         private RTHandle _tempRT;
 
-        public OutlinePass(RenderPassEvent ev, Material material, Settings settings)
+        public OutlinePass(RenderPassEvent ev, Material material, Settings settings, MaskPass maskPass)
         {
             renderPassEvent = ev;
             _material = material;
             _settings = settings;
+            _maskPass = maskPass;
             // 让 URP 暴露 _CameraDepthTexture 给 fragment shader 做"前景遮挡"判断
             ConfigureInput(ScriptableRenderPassInput.Depth);
         }
 
-        public void Setup(RTHandle cameraColor, RTHandle mask)
+        public void Setup(RTHandle cameraColor)
         {
             _cameraColor = cameraColor;
-            _maskRT = mask;
         }
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
@@ -203,11 +203,18 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
-            if (_material == null || _cameraColor == null || _maskRT == null) return;
+            RTHandle maskRT = _maskPass.MaskHandle;
+            if (_material == null || _cameraColor == null || maskRT == null || maskRT.rt == null)
+            {
+                throw new System.InvalidOperationException(
+                    $"BuildingOutlineFeature.OutlinePass.Execute failed: invalid render resource. " +
+                    $"material={_material != null}, cameraColor={_cameraColor != null}, maskHandle={maskRT != null}, maskTexture={maskRT?.rt != null}.");
+            }
+
             var cmd = CommandBufferPool.Get();
             using (new ProfilingScope(cmd, s_Sampler))
             {
-                _material.SetTexture(s_MaskTexId, _maskRT);
+                _material.SetTexture(s_MaskTexId, maskRT);
                 _material.SetColor(s_ColorId, _settings.outlineColor);
                 _material.SetFloat(s_ThicknessId, _settings.thickness);
 

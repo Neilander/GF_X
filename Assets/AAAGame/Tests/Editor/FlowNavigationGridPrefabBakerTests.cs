@@ -107,6 +107,63 @@ public sealed class FlowNavigationGridPrefabBakerTests
     }
 
     [Test]
+    public void BakeUsesGroundHitHeightForNavigationAnchor()
+    {
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        Assert.GreaterOrEqual(groundLayer, 0, "Project must define Ground layer.");
+
+        CreateRaisedGroundPrefab(groundLayer, 2.75f);
+
+        object result = InvokeBakeFromTerrainPrefab(
+            TempPrefabPath,
+            TempAssetPath,
+            agentTypeId: 1005,
+            hardClearanceRadius: 0.1f,
+            width: 2,
+            height: 2,
+            cellSize: 1f,
+            gridOrigin: new Vector3(0f, 11f, 0f));
+
+        FlowNavigationGridAsset asset = (FlowNavigationGridAsset)result.GetType().GetField("Asset").GetValue(result);
+        Assert.IsNotNull(asset);
+        Assert.IsTrue(asset.IsCellWalkable(0, 0));
+        Assert.AreEqual(2.75f, asset.GetCellAnchor(0, 0).y, 0.0001f);
+    }
+
+    [Test]
+    public void MovementTypeBakeAppliesLevelTerrainTransformBeforeResolvingGroundHeight()
+    {
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        Assert.GreaterOrEqual(groundLayer, 0, "Project must define Ground layer.");
+
+        CreateRaisedGroundPrefab(groundLayer, 3.7f);
+
+        FlowNavigationGridAsset asset = InvokeMovementTypeBakeWithTerrainTransform(
+            TempPrefabPath,
+            TempAssetPath,
+            agentTypeId: 1006,
+            hardClearanceRadius: 0.1f,
+            cellSize: 1f,
+            terrainPosition: new Vector3(0f, -3.7f, 0f));
+
+        Assert.IsNotNull(asset);
+        bool foundWalkable = false;
+        for (int y = 0; y < asset.Height; y++)
+        {
+            for (int x = 0; x < asset.Width; x++)
+            {
+                if (!asset.IsCellWalkable(x, y))
+                    continue;
+
+                foundWalkable = true;
+                Assert.AreEqual(0f, asset.GetCellAnchor(x, y).y, 0.0001f);
+            }
+        }
+
+        Assert.IsTrue(foundWalkable);
+    }
+
+    [Test]
     public void BakeCutsNeighborTraversalWhenAnchorsAreSeparatedByObstacle()
     {
         int groundLayer = LayerMask.NameToLayer("Ground");
@@ -158,6 +215,48 @@ public sealed class FlowNavigationGridPrefabBakerTests
         Assert.IsNotNull(method, "Expected BakeFromTerrainPrefab overload was not found.");
 
         return method.Invoke(null, new object[] { terrainPrefabPath, assetPath, agentTypeId, hardClearanceRadius, width, height, cellSize, gridOrigin });
+    }
+
+    private static FlowNavigationGridAsset InvokeMovementTypeBakeWithTerrainTransform(
+        string terrainPrefabPath,
+        string assetPath,
+        int agentTypeId,
+        float hardClearanceRadius,
+        float cellSize,
+        Vector3 terrainPosition)
+    {
+        Type bakerType = Type.GetType("AAAGame.Tools.Editor.FlowNavigationGridPrefabBaker, AAAGame.Tools.Editor");
+        Assert.IsNotNull(bakerType, "AAAGame.Tools.Editor.FlowNavigationGridPrefabBaker must be available in the editor.");
+
+        Type requestType = bakerType.GetNestedType("MovementTypeBakeRequest", BindingFlags.Public);
+        Type obstacleType = bakerType.GetNestedType("StaticObstacleBakeInstance", BindingFlags.Public);
+        Type transformType = bakerType.GetNestedType("TerrainBakeTransform", BindingFlags.Public);
+        Assert.IsNotNull(requestType);
+        Assert.IsNotNull(obstacleType);
+        Assert.IsNotNull(transformType);
+
+        Array requests = Array.CreateInstance(requestType, 1);
+        requests.SetValue(Activator.CreateInstance(requestType, agentTypeId, assetPath, hardClearanceRadius), 0);
+        Array obstacles = Array.CreateInstance(obstacleType, 0);
+        object terrainTransform = Activator.CreateInstance(
+            transformType,
+            terrainPosition,
+            Quaternion.identity,
+            Vector3.one);
+        Type requestListType = typeof(System.Collections.Generic.IReadOnlyList<>).MakeGenericType(requestType);
+        Type obstacleListType = typeof(System.Collections.Generic.IReadOnlyList<>).MakeGenericType(obstacleType);
+        MethodInfo method = bakerType.GetMethod(
+            "BakeMovementTypesFromTerrainPrefab",
+            BindingFlags.Public | BindingFlags.Static,
+            null,
+            new[] { typeof(string), requestListType, typeof(float), obstacleListType, transformType },
+            null);
+        Assert.IsNotNull(method, "Expected transformed BakeMovementTypesFromTerrainPrefab overload was not found.");
+
+        Array results = (Array)method.Invoke(null, new[] { terrainPrefabPath, requests, (object)cellSize, obstacles, terrainTransform });
+        Assert.AreEqual(1, results.Length);
+        object result = results.GetValue(0);
+        return (FlowNavigationGridAsset)result.GetType().GetField("Asset").GetValue(result);
     }
 
     private static void CreateTerrainPrefab(int groundLayer, int obstacleLayer)
@@ -259,6 +358,26 @@ public sealed class FlowNavigationGridPrefabBakerTests
             wall.transform.SetParent(root.transform, false);
             wall.transform.position = new Vector3(1f, 0.5f, 0.5f);
             wall.transform.localScale = new Vector3(0.1f, 1f, 1f);
+
+            PrefabUtility.SaveAsPrefabAsset(root, TempPrefabPath);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(root);
+        }
+    }
+
+    private static void CreateRaisedGroundPrefab(int groundLayer, float surfaceHeight)
+    {
+        GameObject root = new GameObject("RaisedGroundRoot");
+        try
+        {
+            GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ground.name = "RaisedGround";
+            ground.layer = groundLayer;
+            ground.transform.SetParent(root.transform, false);
+            ground.transform.position = new Vector3(1f, surfaceHeight - 0.05f, 1f);
+            ground.transform.localScale = new Vector3(2f, 0.1f, 2f);
 
             PrefabUtility.SaveAsPrefabAsset(root, TempPrefabPath);
         }

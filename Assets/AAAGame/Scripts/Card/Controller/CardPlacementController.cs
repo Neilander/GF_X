@@ -589,6 +589,12 @@ namespace AAAGame.Card
 
         private void LogInvalidPlacementReason(Vector3 position, CardPlacementInvalidReason invalidReason)
         {
+            if (invalidReason == CardPlacementInvalidReason.SpawnFailed)
+            {
+                LogSpawnFailureDiagnostics(position);
+                return;
+            }
+
             if (invalidReason == CardPlacementInvalidReason.NotInVisibleArea)
             {
                 Fog3CellState fogState = ResolveFogCellState(position);
@@ -622,6 +628,48 @@ namespace AAAGame.Card
             {
                 Debug.Log($"[Card] Cannot confirm placement: Ground 检测失败. pos={position}, radius={m_DetectionRadius:F2}");
             }
+        }
+
+        private void LogSpawnFailureDiagnostics(Vector3 position)
+        {
+            if (m_CurrentCardModel == null || m_CurrentCardModel.DataProvider == null)
+            {
+                throw new InvalidOperationException("Cannot diagnose card spawn failure: current card data is missing.");
+            }
+
+            UnitType unitType = m_CurrentCardModel.DataProvider.SoldierIndex;
+            int soldierCount = m_CurrentCardModel.GetTroopCount();
+            float formationRadius = GetCardFormationRadius(m_CurrentCardModel);
+            int agentTypeId = ClusterSpawnSystem.ResolveAgentTypeId(unitType);
+            bool canSpawnIgnoringAgents = ClusterSpawnSystem.CanSpawnCluster(
+                position,
+                soldierCount,
+                formationRadius,
+                2f,
+                false,
+                agentTypeId);
+            bool canSpawnAvoidingAgents = ClusterSpawnSystem.CanSpawnCluster(
+                position,
+                soldierCount,
+                formationRadius,
+                2f,
+                true,
+                agentTypeId);
+            bool mediumGridCanSpawnIgnoringAgents = ClusterSpawnSystem.CanSpawnCluster(
+                position,
+                soldierCount,
+                formationRadius,
+                2f,
+                false,
+                AgentTypeHelper.MediumMovementTypeId);
+            CardPlacementInvalidReason centerReason = GetPlacementInvalidReason(position, formationRadius);
+
+            Debug.LogWarning(
+                $"[CardPlacementDiagnostics] result=SpawnFailed unit={unitType} count={soldierCount} " +
+                $"position={position} formationRadius={formationRadius:F2} agentType={agentTypeId} " +
+                $"centerReason={centerReason} canSpawnIgnoringAgents={canSpawnIgnoringAgents} " +
+                $"canSpawnAvoidingAgents={canSpawnAvoidingAgents} " +
+                $"mediumGridCanSpawnIgnoringAgents={mediumGridCanSpawnIgnoringAgents}");
         }
 
         private Fog3CellState ResolveFogCellState(Vector3 position)

@@ -1961,11 +1961,12 @@ namespace AAAGame.Tools.Editor
             }
 
             string assetPath = GetDefaultFlowNavigationGridAssetPath();
-            Vector3 gridOrigin = ResolveFlowNavigationGridOrigin(terrainPrefabPath);
+            TransformData terrainTransform = ResolveFlowNavigationTerrainTransform(terrainPrefabPath);
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
             Debug.Log(
                 $"[FlowNavigationGridImport] stage=start terrain={terrainPrefabPath} asset={assetPath} " +
-                $"plan={plan.width}x{plan.height} cellSize={plan.cellSize:F4} origin=({gridOrigin.x:F3},{gridOrigin.y:F3},{gridOrigin.z:F3})");
+                $"plan={plan.width}x{plan.height} cellSize={plan.cellSize:F4} " +
+                $"terrainPosition={terrainTransform.localPosition} terrainRotation={terrainTransform.localRotation.eulerAngles} terrainScale={terrainTransform.localScale}");
             FlowNavigationGridPrefabBaker.MovementTypeBakeRequest[] requests = BuildDefaultFlowNavigationGridBakeRequests(assetPath);
             Debug.Log(
                 $"[FlowNavigationGridImport] stage=requests-ready elapsedMs={stopwatch.ElapsedMilliseconds} " +
@@ -1980,7 +1981,11 @@ namespace AAAGame.Tools.Editor
                 terrainPrefabPath,
                 requests,
                 navigationCellSize,
-                staticObstacleBakeInstances);
+                staticObstacleBakeInstances,
+                new FlowNavigationGridPrefabBaker.TerrainBakeTransform(
+                    terrainTransform.localPosition,
+                    terrainTransform.localRotation,
+                    terrainTransform.localScale));
             Debug.Log(
                 $"[FlowNavigationGridImport] stage=complete elapsedMs={stopwatch.ElapsedMilliseconds} " +
                 $"results={FormatFlowNavigationBakeResults(results)}");
@@ -2267,7 +2272,7 @@ namespace AAAGame.Tools.Editor
             throw new InvalidOperationException($"ResolveGameConfigFloat failed: key {configKey} was not found in {GameConfigPath}.");
         }
 
-        private Vector3 ResolveFlowNavigationGridOrigin(string terrainPrefabPath)
+        private TransformData ResolveFlowNavigationTerrainTransform(string terrainPrefabPath)
         {
             TransformData transformData = TransformData.Identity;
             if (levelPrefabTarget != null)
@@ -2292,7 +2297,7 @@ namespace AAAGame.Tools.Editor
                 transformData = templateTransform;
             }
 
-            return new Vector3(transformData.localPosition.x, 0f, transformData.localPosition.z);
+            return transformData;
         }
 
         private static IEnumerable<Transform> GetTerrainRoots(Transform root)

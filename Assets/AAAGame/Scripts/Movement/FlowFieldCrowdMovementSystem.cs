@@ -2683,6 +2683,7 @@ public static class FlowFieldCrowdMovementSystem
     private static NavigationWorld _world;
     private static WorldRuntimeState _activeWorldState;
     private static int _flowBuildQueueWorldStartIndex;
+    private static int _navigationTopologyVersion;
     private static int _nextWorldVersion = 1;
     private static int _nextPathHandleId = 1;
     private static int _lastBottleneckFrame = -1;
@@ -2711,6 +2712,8 @@ public static class FlowFieldCrowdMovementSystem
     private static bool _diagnosticsEnabledForFrame;
     private static int _lastMaintenanceFrame = -1;
     private static int _runtimeNavigationTransitionDepth;
+
+    public static int NavigationTopologyVersion => _navigationTopologyVersion;
 
     public static void ResetAll()
     {
@@ -2753,6 +2756,7 @@ public static class FlowFieldCrowdMovementSystem
         FlowBuildQueueWorldScratch.Clear();
         _world = null;
         _activeWorldState = null;
+        _navigationTopologyVersion++;
         _flowBuildQueueWorldStartIndex = 0;
         _nextWorldVersion = 1;
         _nextPathHandleId = 1;
@@ -7467,15 +7471,58 @@ public static class FlowFieldCrowdMovementSystem
         List<Vector3> pathCorners,
         out string failureReason)
     {
+        return TryGetNavigationPathCorners(
+            from,
+            to,
+            agentTypeId,
+            true,
+            pathCorners,
+            out failureReason);
+    }
+
+    public static bool TryGetNavigationPathCornersNonBlocking(
+        Vector3 from,
+        Vector3 to,
+        int agentTypeId,
+        List<Vector3> pathCorners,
+        out string failureReason)
+    {
+        return TryGetNavigationPathCorners(
+            from,
+            to,
+            agentTypeId,
+            false,
+            pathCorners,
+            out failureReason);
+    }
+
+    private static bool TryGetNavigationPathCorners(
+        Vector3 from,
+        Vector3 to,
+        int agentTypeId,
+        bool allowSynchronousBuild,
+        List<Vector3> pathCorners,
+        out string failureReason)
+    {
         if (pathCorners == null)
             throw new ArgumentNullException(nameof(pathCorners));
 
         pathCorners.Clear();
         failureReason = string.Empty;
-        if (!TryGetNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
+        if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild, out NavigationWorld world))
         {
             failureReason = $"navigation world unavailable agentType={agentTypeId}";
             return false;
+        }
+        if (HasPendingRuntimeDirty(_activeWorldState))
+        {
+            if (!allowSynchronousBuild)
+            {
+                failureReason = $"navigation update pending agentType={agentTypeId}";
+                return false;
+            }
+
+            world = ResolveReachabilityQueryWorld(_activeWorldState);
         }
         if (!world.WorldToGrid(from, out int startX, out int startY))
         {
@@ -7502,6 +7549,22 @@ public static class FlowFieldCrowdMovementSystem
             pathCorners.Add(from);
             pathCorners.Add(to);
             return true;
+        }
+
+        if (ReferenceEquals(world, _world)
+            && world.TryGetSectorId(startX, startY, out int startSectorId)
+            && world.TryGetSectorId(goalX, goalY, out int goalSectorId)
+            && startSectorId != goalSectorId)
+        {
+            PathHandle handle = BuildPathHandle(startSectorId, goalSectorId, startX, startY, goalX, goalY);
+            if (handle != null && handle.PortalIds != null && handle.PortalIds.Length > 0)
+            {
+                pathCorners.Add(from);
+                for (int i = 0; i < handle.PortalIds.Length; i++)
+                    pathCorners.Add(GetPortalById(world, handle.PortalIds[i]).WorldCenter);
+                pathCorners.Add(to);
+                return true;
+            }
         }
 
         if (TryFindGridPath(world, startX, startY, goalX, goalY, pathCorners, from, to, out _))
@@ -12146,6 +12209,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
         _perf.WorldBuilds++;
         state.World = job.WorkingWorld;
         state.World.Version = _nextWorldVersion++;
+        _navigationTopologyVersion++;
         LogIslandFieldDiagnostics(state.World, "world-build");
         state.IsDirty = false;
         state.DirtyRuntimeObstacleSectors.Clear();
@@ -13801,6 +13865,7 @@ private static void CommitWorldBuildJob(WorldRuntimeState state, WorldBuildJob j
         }
 
         _world = target;
+        _navigationTopologyVersion++;
         LogNoStacktrace(
             $"[FlowRuntimeDirtyCommit] worldVersion={target.Version} dirtySectors={job.DirtySectors.Count} costSectors={job.CostDirtySectors.Count} " +
             $"reason={job.Reason}");

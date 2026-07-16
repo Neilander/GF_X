@@ -188,6 +188,8 @@ public static class DefendPhaseRuntime
         return results.Count > 0;
     }
 
+    public static int NavigationPathVersion => FlowFieldCrowdMovementSystem.NavigationTopologyVersion;
+
     public static bool TryGetNavigationPathCorners(
         UnitType unitType,
         Vector3 spawnPosition,
@@ -203,7 +205,7 @@ public static class DefendPhaseRuntime
         if (!TryResolveBaseNavigationPoint(basePosition, agentTypeId, out Vector3 navigationBase, out failureReason))
             return false;
 
-        return FlowFieldCrowdMovementSystem.TryGetNavigationPathCorners(
+        return FlowFieldCrowdMovementSystem.TryGetNavigationPathCornersNonBlocking(
             spawnPosition,
             navigationBase,
             agentTypeId,
