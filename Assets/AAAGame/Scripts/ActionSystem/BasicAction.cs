@@ -18,12 +18,7 @@ public abstract class BasicAction : ScriptableObject
 
     [Header("Config")] [SerializeField] protected bool ifUseDuration = true;
     [SerializeField] protected float duration = 0f;
-    [SerializeField] protected float acceptInputFromPercent = 1f;
     public string relatedTriggerString;
-
-    public const string HAS_HITBOX = "HAS_HITBOX";
-    public const string HITBOX_PREFAB_NAME = "HitBox";
-    public const string ACCEPTED_INPUT = "Accepted_Input";
     
     // ===== runtime creation =====
     protected virtual ActionInfo CreateInfo(GeneralCreature body)
@@ -49,9 +44,6 @@ public abstract class BasicAction : ScriptableObject
         info.isRunning = true;
         info.isInterrupted = false;
         info.isFinished = false;
-        
-        info.bools[HAS_HITBOX] = false;
-        info.bools[ACCEPTED_INPUT] = false;
 
         info.RaiseStarted();
         OnStart(info);
@@ -94,17 +86,6 @@ public abstract class BasicAction : ScriptableObject
         info.RaiseFinished();
     }
 
-    public virtual bool AcceptInput(ActionInfo info)
-    {
-        if (!ifUseDuration)
-        {
-            GF.LogWarning("警告，行为没有启用duration，却在用duration检查是否允许输入");
-            return false;
-        }
-        
-        return info.elapsed / duration >= acceptInputFromPercent && !info.bools[ACCEPTED_INPUT];
-    }
-
     // ===== hooks =====
     protected virtual void OnStart(ActionInfo info) { }
     protected virtual void OnUpdate(ActionInfo info, float deltaTime) { }
@@ -122,8 +103,6 @@ public class ActionInfo
     
     // ===== 伤害相关 ====
     public GeneralCreature selfBody;
-    public HitBox hitbox;
-    public int hitboxID;
     public Damage damageInfo;
     
     // ===== 继承数值 ====

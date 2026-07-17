@@ -36,12 +36,12 @@ public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
         base.OnHide(isShutdown, userData);
     }
     
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnLogicFrameUpdate(deltaTime);
         
         if(CanRun(skillComp))
-            skillComp.Skill();
+            skillComp.Skill(deltaTime);
     }
 
     protected  virtual void SetUpSkillComp()

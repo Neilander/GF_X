@@ -14,6 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ifUseDuration: 0
   duration: 0
-  acceptInputFromPercent: 1
   relatedTriggerString: 
   posSelectPrefabName: CylinderSkillSelector

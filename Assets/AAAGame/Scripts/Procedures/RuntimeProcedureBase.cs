@@ -4,6 +4,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 using Cysharp.Threading.Tasks;
 using GameFramework.Fsm;
 using GameFramework.Procedure;
+using UnityEngine;
 using UnityGameFramework.Runtime;
 
 [Flags]
@@ -23,6 +24,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private RuntimeInitPipeline m_RuntimeInitPipeline;
     private IFsm<IProcedureManager> m_ProcedureOwner;
     private bool m_InPlaceLevelSwitchInProgress;
+    private readonly LogicFrameClock m_LogicFrameClock = new LogicFrameClock();
+    private bool m_LogicFrameClockStarted;
+    private ulong m_NextLogicFrameStatusLogFrame;
 
     protected virtual string RuntimeLevelIdentifier =>
         string.IsNullOrWhiteSpace(ChangeSceneProcedure.SelectedLevelIdentifier)
@@ -37,6 +41,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         m_ProcedureOwner = procedureOwner;
+        LogicFrameRuntime.Begin();
+        m_LogicFrameClockStarted = false;
+        m_NextLogicFrameStatusLogFrame = 300;
 
         if (LevelSelectionService.ShouldShowStartupLevelSwitch)
         {
@@ -64,6 +71,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             return;
         }
 
+        UpdateLogicFrames();
         OnRuntimeUpdate(elapseSeconds, realElapseSeconds);
     }
 
@@ -75,6 +83,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         m_RuntimeInitPipeline = null;
         m_ProcedureOwner = null;
         m_InPlaceLevelSwitchInProgress = false;
+        m_LogicFrameClockStarted = false;
+        LogicFrameRuntime.End();
         base.OnLeave(procedureOwner, isShutdown);
     }
 
@@ -189,6 +199,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             PhaseManager.CancelRuntimePhaseFlows();
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;
+            m_LogicFrameClockStarted = false;
 
             HideRuntimeEntitiesExceptLevel();
             await UniTask.Yield(PlayerLoopTiming.Update);
@@ -233,8 +244,56 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
     private void StartRuntimeInitPipeline(string levelIdentifier, bool showBuiltinProgress)
     {
+        m_LogicFrameClockStarted = false;
         m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, levelIdentifier, RequiredRuntimeSystems, showBuiltinProgress);
         m_RuntimeInitPipeline.Start(OnRuntimeInitialized);
+    }
+
+    private void UpdateLogicFrames()
+    {
+        double realtime = Time.realtimeSinceStartupAsDouble;
+        if (!m_LogicFrameClockStarted)
+        {
+            LogicFrameRuntime.ResetTimeline();
+            m_LogicFrameClock.Start(realtime);
+            LogicFrameRuntime.StartTimeline();
+            m_LogicFrameClockStarted = true;
+            m_NextLogicFrameStatusLogFrame = 300;
+            Log.Info("[LogicFrame] Clock started. runtime={0}, realtime={1:R}.", GetType().Name, realtime);
+        }
+
+        if (GF.Base == null)
+            throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: GF.Base is null.");
+
+        int tickCount = m_LogicFrameClock.Advance(realtime, GF.Base.GameSpeed, LogicFrameRuntime.Tick);
+        LogicFrameRuntime.CompleteRenderFrame(
+            tickCount,
+            m_LogicFrameClock.AccumulatorSeconds,
+            m_LogicFrameClock.Interpolation);
+
+        if (tickCount >= 3)
+        {
+            Log.Warning(
+                "[LogicFrame] Catch-up executed. runtime={0}, ticks={1}, frame={2}, backlogSeconds={3:F6}, interpolation={4:F4}.",
+                GetType().Name,
+                tickCount,
+                m_LogicFrameClock.Frame,
+                m_LogicFrameClock.AccumulatorSeconds,
+                m_LogicFrameClock.Interpolation);
+        }
+
+        if (m_LogicFrameClock.Frame >= m_NextLogicFrameStatusLogFrame)
+        {
+            Log.Info(
+                "[LogicFrame] Status. runtime={0}, frame={1}, ticksThisRenderFrame={2}, backlogSeconds={3:F6}, interpolation={4:F4}, listeners={5}.",
+                GetType().Name,
+                m_LogicFrameClock.Frame,
+                tickCount,
+                m_LogicFrameClock.AccumulatorSeconds,
+                m_LogicFrameClock.Interpolation,
+                LogicFrameRuntime.ListenerCount);
+            m_NextLogicFrameStatusLogFrame = m_LogicFrameClock.Frame + 300;
+        }
     }
 
     private static void HideRuntimeEntitiesExceptLevel()

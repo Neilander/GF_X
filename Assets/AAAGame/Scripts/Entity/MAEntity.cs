@@ -8,6 +8,8 @@ using AAAGame.Scripts.BuffSystem;
 
 public class MAEntity : CompCreature, IEntityContext
 {
+    protected override bool InterpolateRenderRotation => false;
+
     public CharacterDataDetail CharacterData { get; protected set; }
     public int UnitLevel { get; protected set; } = 1;
     public IMoveComp moveComp { get; protected set; }
@@ -299,16 +301,16 @@ public class MAEntity : CompCreature, IEntityContext
         base.OnHide(isShutdown, userData);
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
     {
         long updateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         long updateStartAllocatedBytes = System.GC.GetAllocatedBytesForCurrentThread();
         try
         {
             long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            base.OnUpdate(elapseSeconds, realElapseSeconds);
+            base.OnLogicFrameUpdate(deltaTime);
             RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityBase, stageStartTicks);
-            float dt = realElapseSeconds;
+            float dt = (float)deltaTime;
 
             _combatStateClock += dt;
             RefreshOutOfCombatState();
@@ -379,7 +381,7 @@ public class MAEntity : CompCreature, IEntityContext
                 }
 
                 stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                moveExecutor.Execute();
+                moveExecutor.Execute(dt);
                 RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityMoveExecutor, stageStartTicks);
 
                 if (UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
@@ -389,60 +391,6 @@ public class MAEntity : CompCreature, IEntityContext
                     RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAgentPosition, stageStartTicks);
                 }
 
-                if (animator != null)
-                {
-                    stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                    Vector2 brainMove = Vector2.zero;
-                    if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
-                        brainMove = playerBrain.Move;
-
-                    // 动画由“主动移动意图”驱动，不受击退等被动位移影响。
-                    bool isMoving = moveComp != null
-                        ? moveComp.IsMoving
-                        : brainMove.sqrMagnitude > 0.001f;
-
-                    animator.SetBool("Moving", isMoving);
-
-                    if (moveComp != null && Brain != null)
-                    {
-                        if (!TryFaceAttackTarget())
-                        {
-                            Vector3 moveDirection = ResolveMoveFacingDirection(brainMove);
-
-                            if (moveDirection.sqrMagnitude > 0.001f)
-                            {
-                                _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
-                            }
-                            else
-                            {
-                                // 没在主动移动时，如果有攻击目标 → 朝目标转向
-                                // （战斗状态进入攻击范围会停下，原逻辑保留最后移动方向，导致单位不看向敌人）
-                                TrySetTargetRotation(targetComp?.CurrentTarget);
-                            }
-                        }
-                    }
-                    RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAnimator, stageStartTicks);
-                }
-            }
-            if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
-            {
-                stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                Transform rotateTarget = _modelTransform;
-                if (_modelTransform.childCount > 0)
-                {
-                    rotateTarget = _modelTransform.GetChild(0);
-                }
-
-                rotateTarget.rotation = Quaternion.RotateTowards(
-                    rotateTarget.rotation,
-                    _targetRotation.Value,
-                    RotationSpeed * dt);
-
-                if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
-                {
-                    _targetRotation = null;
-                }
-                RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityRotation, stageStartTicks);
             }
         }
         finally
@@ -451,6 +399,52 @@ public class MAEntity : CompCreature, IEntityContext
                 UnityGameFramework.Runtime.MainThreadPerfScope.EntityUpdate,
                 System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks,
                 System.Math.Max(0L, System.GC.GetAllocatedBytesForCurrentThread() - updateStartAllocatedBytes));
+        }
+    }
+
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
+    {
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+
+        long stageStartTicks;
+        if (Alive && animator != null)
+        {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            Vector2 brainMove = Vector2.zero;
+            if (Brain is AAAGame.Scripts.Entity.PlayerBrain playerBrain)
+                brainMove = playerBrain.Move;
+
+            bool isMoving = moveComp != null
+                ? moveComp.IsMoving
+                : brainMove.sqrMagnitude > 0.001f;
+
+            animator.SetBool("Moving", isMoving);
+
+            if (moveComp != null && Brain != null && !TryFaceAttackTarget())
+            {
+                Vector3 moveDirection = ResolveMoveFacingDirection(brainMove);
+                if (moveDirection.sqrMagnitude > 0.001f)
+                    _targetRotation = Quaternion.LookRotation(new Vector3(moveDirection.x, 0f, moveDirection.z));
+                else
+                    TrySetTargetRotation(targetComp?.CurrentTarget);
+            }
+
+            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAnimator, stageStartTicks);
+        }
+
+        if (_targetRotation.HasValue && Brain != null && _modelTransform != null)
+        {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            Transform rotateTarget = _modelTransform.childCount > 0 ? _modelTransform.GetChild(0) : _modelTransform;
+            rotateTarget.rotation = Quaternion.RotateTowards(
+                rotateTarget.rotation,
+                _targetRotation.Value,
+                RotationSpeed * realElapseSeconds);
+
+            if (Quaternion.Angle(rotateTarget.rotation, _targetRotation.Value) < 0.5f)
+                _targetRotation = null;
+
+            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityRotation, stageStartTicks);
         }
     }
 

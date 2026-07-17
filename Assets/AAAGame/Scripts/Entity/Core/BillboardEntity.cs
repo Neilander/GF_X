@@ -27,9 +27,9 @@ public class BillboardEntity : SampleEntity
             PivotAxis = PivotAxis.Free;
         }
     }
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
         Vector3 forward;
         Vector3 up;
 

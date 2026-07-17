@@ -10,7 +10,7 @@ public class HitBox : EntityBase
     public ITargetable Owner { get; private set; }
 
     // 记录：碰撞到的生物 + 碰撞时间
-    public Dictionary<ITargetable, float> HitRecords { get; private set; }
+    public Dictionary<ITargetable, ulong> HitRecords { get; private set; }
 
     public Damage DamageInfo { get; private set; }
 
@@ -19,7 +19,7 @@ public class HitBox : EntityBase
     {
         IsActive = false;
         Owner = null;
-        HitRecords = new Dictionary<ITargetable, float>();
+        HitRecords = new Dictionary<ITargetable, ulong>();
         DamageInfo = null;
         base.OnShow(userData);
 
@@ -32,7 +32,7 @@ public class HitBox : EntityBase
     {
         Owner = owner;
         IsActive = true;
-        HitRecords = new Dictionary<ITargetable, float>();
+        HitRecords = new Dictionary<ITargetable, ulong>();
         DamageInfo = damageInfo;
     }
 
@@ -62,7 +62,7 @@ public class HitBox : EntityBase
         // 如果是第一次碰到，记录时间
         if (!HitRecords.ContainsKey(targetOwner))
         {
-            HitRecords.Add(targetOwner, Time.time);
+            HitRecords.Add(targetOwner, LogicFrameRuntime.CurrentFrame);
             GF.Log("攻击到了");
             DamageHelper.DoDamage(targetOwner, DamageInfo);
         }

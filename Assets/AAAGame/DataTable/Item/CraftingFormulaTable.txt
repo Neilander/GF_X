@@ -1,8 +1,0 @@
-#	装备表					
-#	ID		CraftingPlace	ProducedItems	RequiredItems	Workload
-#	int		string	StringIntPair[]	StringIntPair[]	Fix64
-#		备注	制造地	产品	原材料	工作量
-	1		Device_Aaa	[Material_Ccc, 1]	[Material_Aaa, 2],[Material_Bbb, 3]	10
-	2		Device_Bbb	[Material_Ccc, 2]	[Material_Aaa, 2],[Material_Bbb, 4]	20
-	3		Device_Aaa	[Material_Ccc, 1],[Material_Ddd, 1]	[Material_Aaa, 2],[Material_Bbb, 5]	15
-	4		Device_Aaa	[Material_Eee, 1]	[Material_Aaa, 2],[Material_Bbb, 6],[Material_Ddd, 3]	30

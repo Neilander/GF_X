@@ -38,7 +38,6 @@
       <Asset Guid="04670027b69f8462ab06135a72b6c4af" ResourceName="SharedAssets" />
       <Asset Guid="0486dfb902edd4a81beadbe12783a91c" ResourceName="SharedAssets" />
       <Asset Guid="0490ca070c7b48b43a2658ff5738940b" ResourceName="Audio" />
-      <Asset Guid="0490f29de48c3b244b33025ca6f38086" ResourceName="UI" />
       <Asset Guid="04a38ad1f1b07444b8cfe993358992b2" ResourceName="UI" />
       <Asset Guid="04b593f8b0cdc4bf096877cd95ccf0e5" ResourceName="SharedAssets" />
       <Asset Guid="05fe90255f7898b4f94d0d3b962d8c8b" ResourceName="SharedAssets" />
@@ -88,7 +87,6 @@
       <Asset Guid="13b0b1255d7d6cf44a4d1987723460ef" ResourceName="ScriptableAssets" />
       <Asset Guid="140953ac3f9b8468198f28e4b31858b9" ResourceName="SharedAssets" />
       <Asset Guid="1416ac13fa36f46bfac20ac748b1bd30" ResourceName="SharedAssets" />
-      <Asset Guid="14221fbc414ccd840a506298acf440d7" ResourceName="Scene" />
       <Asset Guid="150df7b48cf673142bcaaeb5a35414de" ResourceName="SharedAssets" />
       <Asset Guid="15ab911cdaacb084da25f8ca10b43766" ResourceName="Entity" />
       <Asset Guid="15d6e39529f384ebab22c9c927e9c201" ResourceName="SOs" />
@@ -151,9 +149,7 @@
       <Asset Guid="23c6863a6c8b1443fa704de6f372007c" ResourceName="SharedAssets" />
       <Asset Guid="24d0ebfb12ab24fd485c0259855a29f0" ResourceName="SharedAssets" />
       <Asset Guid="24de5b1ee01322f4faf7b80569d851b7" ResourceName="Sprites" />
-      <Asset Guid="251b4b871e064417e85b71b64058c97f" ResourceName="SOs" />
       <Asset Guid="253059d6b8a534ecf8a726f31341adb7" ResourceName="SharedAssets" />
-      <Asset Guid="2531774ee7a955945883b0c7c48e10d2" ResourceName="UI" />
       <Asset Guid="25831a2e37dce2b46bec1933726e096c" ResourceName="Sprites" />
       <Asset Guid="25b56fb2c7edd4e86b11879f243f4550" ResourceName="Entity" />
       <Asset Guid="266923fe815e1469aba5ba3026286417" ResourceName="SharedAssets" />
@@ -209,21 +205,18 @@
       <Asset Guid="32c3fb02db7b1435986eaa0e49618f99" ResourceName="SharedAssets" />
       <Asset Guid="32c73d9c9140e479a95fbf2df3b0802c" ResourceName="SharedAssets" />
       <Asset Guid="32db566303c97bf4dbb5e265b8ab6e7f" ResourceName="Sprites" />
-      <Asset Guid="32f9663f9dcea224183ef40cd9bbeaeb" ResourceName="UI" />
       <Asset Guid="3361e117df544bc468ca1a7c580f896f" ResourceName="SharedAssets" />
       <Asset Guid="33ec428f8a98cca4b9363f2062d9355e" ResourceName="Sprites" />
       <Asset Guid="343fd8b3b2198874f922a4b1704471aa" ResourceName="Sprites" />
       <Asset Guid="3472559bf97164788b66d4e1d2e7e2c3" ResourceName="Scene" />
       <Asset Guid="349d7f36c5b7b4eb19cf85f0826f3b9f" ResourceName="SharedAssets" />
       <Asset Guid="35219378123e3894aafb119582ea96ec" ResourceName="Entity" />
-      <Asset Guid="354e0796075a14a33a4a6ce4e7a13e90" ResourceName="SOs" />
       <Asset Guid="35e3b86242f0bef478a6dabfe1049a5c" ResourceName="SharedAssets" />
       <Asset Guid="35ed2b267923847d9892f1cc6daf88ec" ResourceName="Sprites" />
       <Asset Guid="36206ac001576469ea4447433ce647a1" ResourceName="SharedAssets" />
       <Asset Guid="36404950316934822ac402195c3228dd" ResourceName="SharedAssets" />
       <Asset Guid="36b02c3d2fc6e4cb7a2b11006ac901e2" ResourceName="SharedAssets" />
       <Asset Guid="36f6cf710ff4dd44f80a08168f773846" ResourceName="Entity" />
-      <Asset Guid="3711102e511044517b590f72e20711c3" ResourceName="SOs" />
       <Asset Guid="3714069d8c75e9e48b0d19865f38f0e1" ResourceName="Entity" />
       <Asset Guid="375158f163b664b149d54dfae673fc91" ResourceName="Sprites" />
       <Asset Guid="376335f73ad5f31429ccfa74a535cc0b" ResourceName="SharedAssets" />
@@ -323,11 +316,9 @@
       <Asset Guid="50424fd4804c54da095fa5c099b859d1" ResourceName="SharedAssets" />
       <Asset Guid="505a0aca0eac24ab0b90c8f2ad0978c0" ResourceName="SharedAssets" />
       <Asset Guid="50630740d7266e14da9a3faf2de8ee69" ResourceName="Sprites" />
-      <Asset Guid="50ba5b986a5f34a4891b9b396b6e2b54" ResourceName="UI" />
       <Asset Guid="51a485558cd9a5e4a8228bfd8c12fdf1" ResourceName="SharedAssets" />
       <Asset Guid="51ac10553018445fb93be3d87eb8f9bf" ResourceName="SharedAssets" />
       <Asset Guid="525bcb493340340a08d27d43c6cf6e9f" ResourceName="SharedAssets" />
-      <Asset Guid="5278e988f41bfe9498fdd90137519484" ResourceName="UI" />
       <Asset Guid="52804f99722d0415cba83626e98259b9" ResourceName="Entity" />
       <Asset Guid="536d3968e75ee45eda2e1abc9c8470bc" ResourceName="SOs" />
       <Asset Guid="53bc0bd266422475d8ec28359c79e610" ResourceName="SharedAssets" />
@@ -356,7 +347,6 @@
       <Asset Guid="5a3da3c248e191b408b493471661526b" ResourceName="SharedAssets" />
       <Asset Guid="5ae88b723c5384098a869cfe5eeec947" ResourceName="SharedAssets" />
       <Asset Guid="5b0540c7bb5c0483e8a6c761f67b1004" ResourceName="SharedAssets" />
-      <Asset Guid="5b5e03bf2875baa469c1578733bf6245" ResourceName="Scene" />
       <Asset Guid="5b60076006129bd4991b1587935a9c21" ResourceName="Sprites" />
       <Asset Guid="5b778de81cbdf4c779edc838f9d4bf27" ResourceName="SharedAssets" />
       <Asset Guid="5b78a96e01d7a4c42893eb80c6669978" ResourceName="Entity" />
@@ -379,7 +369,6 @@
       <Asset Guid="60088dd3b0214654ba9150c7fdda1a8d" ResourceName="DataTable" />
       <Asset Guid="60bf4aa33c57140c3b878ad8b8b74164" ResourceName="SharedAssets" />
       <Asset Guid="61101f30075e0423c9ccb60ee5e931a4" ResourceName="SharedAssets" />
-      <Asset Guid="611627aa165364895bbe1fb9e57cdcd5" ResourceName="SOs" />
       <Asset Guid="611f62ff1338f4f30b2ac222c41d8311" ResourceName="SharedAssets" />
       <Asset Guid="6141a0d9f020f4b72ac1eeb46a20b606" ResourceName="SharedAssets" />
       <Asset Guid="617657b553865fa48ac75d28e64eb7ba" ResourceName="UI" />
@@ -404,7 +393,6 @@
       <Asset Guid="6709dfbcc57530648bc68ed521c268d6" ResourceName="UI" />
       <Asset Guid="670caf9d9d5b24b0682b313b3131ce32" ResourceName="Sprites" />
       <Asset Guid="6760b24ba16d6fc4db5ecceae9eebca9" ResourceName="Sprites" />
-      <Asset Guid="678d7f433e2094a56a9c8c269d015566" ResourceName="SOs" />
       <Asset Guid="6792e8ab386017841ab27626b9753bec" ResourceName="UI" />
       <Asset Guid="67ad6592d427a4c419aa9680b6269a1e" ResourceName="SharedAssets" />
       <Asset Guid="67e1042a23315d54296edec468ea68d9" ResourceName="SOs" />
@@ -563,7 +551,6 @@
       <Asset Guid="8c7d6e1d4339c024a8177890750d6ca6" ResourceName="Audio" />
       <Asset Guid="8ccd22aab54624b39875870f861c123f" ResourceName="SharedAssets" />
       <Asset Guid="8d039a3adb822804b8b7198df487fb8a" ResourceName="Sprites" />
-      <Asset Guid="8d5a5bd83d8216e4895fef51970813a7" ResourceName="DataTable" />
       <Asset Guid="8ddce5735ee053a4cabedd5191ad36f6" ResourceName="Sprites" />
       <Asset Guid="8de23701105634098bd703e31242f0d7" ResourceName="Audio" />
       <Asset Guid="8e143c72c82400e45b54514cf8f49d21" ResourceName="SharedAssets" />
@@ -587,7 +574,6 @@
       <Asset Guid="918a8b678454640809386ca9d8303702" ResourceName="SharedAssets" />
       <Asset Guid="919ffcb897623ee41915809f6a1817bd" ResourceName="SharedAssets" />
       <Asset Guid="91b2eac60839b2f4b81779675159a7aa" ResourceName="Sprites" />
-      <Asset Guid="9233d72ca4483dc4ca7f57f218f24ce2" ResourceName="UI" />
       <Asset Guid="92431e7d184804da6949291322af437f" ResourceName="Sprites" />
       <Asset Guid="926314a9993454f799db4da1c310282b" ResourceName="Entity" />
       <Asset Guid="92cb04501693359419a839b8d33aace7" ResourceName="UI" />
@@ -611,7 +597,6 @@
       <Asset Guid="964d6a94b664f481d82b735c22b20af8" ResourceName="SharedAssets" />
       <Asset Guid="966e91c2e019e914ea1ffd4ccb1f87e7" ResourceName="SharedAssets" />
       <Asset Guid="9742cd670906740c5a44957209ac0c71" ResourceName="SharedAssets" />
-      <Asset Guid="975100e27870b124e994e6d5bf05b433" ResourceName="UI" />
       <Asset Guid="97581ebc9fc14862a7fdbb27770e6c71" ResourceName="SharedAssets" />
       <Asset Guid="9815a73fa05187c4c97fd403688c6cbc" ResourceName="Sprites" />
       <Asset Guid="98662c21c0b96bc48a6440a4fe486556" ResourceName="DataTable" />
@@ -718,7 +703,6 @@
       <Asset Guid="b4e2e934159cfe44681a7992b24ce9af" ResourceName="Sprites" />
       <Asset Guid="b5177192261254ebf880c0bdd76e1f5c" ResourceName="SharedAssets" />
       <Asset Guid="b643a4dd2ad8c8547978e076f3feb4fd" ResourceName="Audio" />
-      <Asset Guid="b65a917dee253124889bf8cfde01ca71" ResourceName="DataTable" />
       <Asset Guid="b68201fa6a55a4deab5d35bb5df26107" ResourceName="SharedAssets" />
       <Asset Guid="b69570303b4c949e5a34530c41028727" ResourceName="SharedAssets" />
       <Asset Guid="b6c2d9a61fe8f40eba0815e54c6bbf16" ResourceName="SharedAssets" />
@@ -781,7 +765,6 @@
       <Asset Guid="c3b4332a3899d4ffd866806b31f3a78a" ResourceName="SharedAssets" />
       <Asset Guid="c3cc46e9f67e5484884d947c172de579" ResourceName="SharedAssets" />
       <Asset Guid="c489749dbad73418195796724736ba2c" ResourceName="SharedAssets" />
-      <Asset Guid="c48e6b25dae157044a970218704c940d" ResourceName="DataTable" />
       <Asset Guid="c4a29e3233b4e4fbd879ac7169c51ae0" ResourceName="SharedAssets" />
       <Asset Guid="c4d2c43ce968d40478c8ff6560e1e154" ResourceName="SharedAssets" />
       <Asset Guid="c4e839cf3d001e0499336fb7f53c0310" ResourceName="DataTable" />
@@ -798,7 +781,6 @@
       <Asset Guid="c8a7a6c4e2641406a8c0d08fe14fa178" ResourceName="Sprites" />
       <Asset Guid="c8e5343099d064a5b9fbe086976b4073" ResourceName="Entity" />
       <Asset Guid="c91ca866fcc7d434fa577eafcfba1e0a" ResourceName="Audio" />
-      <Asset Guid="c9970452ec4aa744aa888aef1bad5515" ResourceName="UI" />
       <Asset Guid="c9f672d976cc9452487c1e02407cc824" ResourceName="SharedAssets" />
       <Asset Guid="c9f9735dbccc1de4b8717dd5ee8376e8" ResourceName="Audio" />
       <Asset Guid="ca4765c7a3113644e9f87e202a7ff91d" ResourceName="Scene" />
@@ -862,7 +844,6 @@
       <Asset Guid="da6062bc261dc4cc1b615e9b293e0138" ResourceName="SharedAssets" />
       <Asset Guid="da7ea1c9077e848fb8fb08d984767fde" ResourceName="Sprites" />
       <Asset Guid="da88bad5b7fda429eaf3ce1e57500ca0" ResourceName="SharedAssets" />
-      <Asset Guid="da9ed1871f99f48878e737bca01745e4" ResourceName="SOs" />
       <Asset Guid="daa8123c77c9d4b37843d4ece1afa10e" ResourceName="SharedAssets" />
       <Asset Guid="dadf6f2427807de4888dd4347baca150" ResourceName="Entity" />
       <Asset Guid="dae0981bb33db46a78b732124c003bdd" ResourceName="SharedAssets" />
@@ -924,7 +905,6 @@
       <Asset Guid="ebce373a8b5dc4040991b6ff7e9f425e" ResourceName="SharedAssets" />
       <Asset Guid="ec02afa871b572c428577638f4c690cb" ResourceName="SharedAssets" />
       <Asset Guid="ec14db159ab5a45e990e2d2c75d4fd49" ResourceName="SharedAssets" />
-      <Asset Guid="ec164c46d73c9ac4887aaf4e96d79bfe" ResourceName="UI" />
       <Asset Guid="ec406d7b31bec40cebcdc2fb72af51bd" ResourceName="SharedAssets" />
       <Asset Guid="ec71b20a6dd90844b84ad443a388f315" ResourceName="UI" />
       <Asset Guid="ec835c8e8455a4e3eab94be7baf9c04a" ResourceName="UI" />

@@ -88,16 +88,21 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         base.OnHide(isShutdown, userData);
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnLogicFrameUpdate(deltaTime);
         SyncHeroOutOfCombatSpeedBuff();
         TickGhostCollisionRuntime();
         TickConstructionEscapeRuntime();
-        SyncAttackRangePreview(false);
 
         if (CanRun(skillComp))
-            skillComp.Skill();
+            skillComp.Skill(deltaTime);
+    }
+
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
+    {
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+        SyncAttackRangePreview(false);
     }
 
     protected override void OnOutOfCombatStateRefreshed()

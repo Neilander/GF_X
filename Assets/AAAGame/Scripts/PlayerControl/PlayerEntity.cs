@@ -12,7 +12,6 @@ public class PlayerEntity : SkillEntity
         string atkFacPath = "PlayerAtkFactory";
         //设置组件
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
-        //PlayerAttackComp.CreateAtkComp(this);
         FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath),MoveCompFactory.MoveFactoryCallBack,this );
         //GF.Resource.LoadAsset(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath),AtkCompFactory.AtkFactoryCallBack,this );
@@ -33,9 +32,9 @@ public class PlayerEntity : SkillEntity
         FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath(skillFacPath), this);
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
 #if UNITY_EDITOR
         if (Input.GetKeyDown(KeyCode.T))
         {

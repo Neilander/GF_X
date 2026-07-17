@@ -2,7 +2,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityGameFramework.Runtime;
 using UnityEngine;
 
-public class GroupMoveManager : MonoBehaviour
+public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
 {
     public static GroupMoveManager Instance { get; private set; }
     public static bool HasInstance => Instance != null;
@@ -11,21 +11,35 @@ public class GroupMoveManager : MonoBehaviour
     [SerializeField] private FlowFieldNavigationConfig _flowFieldConfig;
     public GroupMoveConfig Config => _config;
     public FlowFieldNavigationConfig FlowFieldConfig => _flowFieldConfig;
+    public int LogicFrameOrder => -1000;
 
     private void Awake()
     {
         Instance = this;
         ApplyFlowFieldConfig();
+        LogicFrameRuntime.Register(this);
     }
 
     private void OnDestroy()
     {
+        LogicFrameRuntime.Unregister(this);
         if (Instance == this)
             FlowFieldCrowdMovementSystem.ResetAll();
         if (Instance == this) Instance = null;
     }
 
     private void Update()
+    {
+        if (!LogicFrameRuntime.IsActive || !LogicFrameRuntime.IsTimelineRunning)
+            UpdateNavigationRuntime();
+    }
+
+    public void OnLogicFrameUpdate(Fix64 deltaTime)
+    {
+        UpdateNavigationRuntime();
+    }
+
+    private void UpdateNavigationRuntime()
     {
         FlowFieldCrowdMovementSystem.PulsePerformanceFrame();
         long updateStartTicks = Stopwatch.GetTimestamp();
@@ -53,7 +67,7 @@ public class GroupMoveManager : MonoBehaviour
                 if (FlowFieldCrowdMovementSystem.HasActiveNavigationAgents())
                 {
                     throw new System.InvalidOperationException(
-                        "GroupMoveManager.Update failed: active navigation agents exist before any FlowNavigationGridSource has applied a FlowNavigationGridAsset.");
+                        "GroupMoveManager.UpdateNavigationRuntime failed: active navigation agents exist before any FlowNavigationGridSource has applied a FlowNavigationGridAsset.");
                 }
 
                 long sourceGateTicks = Stopwatch.GetTimestamp() - sectionStartTicks;

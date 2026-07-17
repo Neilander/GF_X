@@ -9447,7 +9447,11 @@ public static class FlowFieldCrowdMovementSystem
 
     private static int GetFrameCount()
     {
-        return _hasTestTimeOverride ? _testFrameCount : Time.frameCount;
+        if (_hasTestTimeOverride)
+            return _testFrameCount;
+        if (LogicFrameRuntime.IsTimelineRunning)
+            return checked((int)LogicFrameRuntime.CurrentFrame);
+        return Time.frameCount;
     }
 
     public static int GetCurrentNavigationFrame()
@@ -9457,7 +9461,11 @@ public static class FlowFieldCrowdMovementSystem
 
     private static float GetTime()
     {
-        return _hasTestTimeOverride ? _testTime : Time.time;
+        if (_hasTestTimeOverride)
+            return _testTime;
+        if (LogicFrameRuntime.IsTimelineRunning)
+            return (float)LogicFrameRuntime.ElapsedTime;
+        return Time.time;
     }
 
     private static bool IsBudgetExpired(long deadlineTicks, int workCursor)
@@ -25221,7 +25229,11 @@ private static void ValidateAllSectorPortalAccessCoverage(NavigationWorld world,
 
     private static float ResolveSteeringPredictionDeltaTime()
     {
-        float deltaTime = _hasTestTimeOverride ? _testDeltaTime : Time.deltaTime;
+        float deltaTime = _hasTestTimeOverride
+            ? _testDeltaTime
+            : LogicFrameRuntime.IsTimelineRunning
+                ? (float)LogicFrameRuntime.FixedDeltaTime
+                : Time.deltaTime;
         return Mathf.Max(0.05f, deltaTime > 0f ? deltaTime : 0.1f);
     }
 

@@ -380,32 +380,32 @@ public sealed class StationaryAttackPercentBuff : BuffCallback
 
 public sealed class IdleNextAttackCriticalBuff : BuffCallback
 {
-    private readonly float m_RequiredSeconds;
-    private float m_LastAttackTime;
+    private readonly Fix64 m_RequiredSeconds;
+    private Fix64 m_LastAttackTime;
 
     public IdleNextAttackCriticalBuff(float requiredSeconds)
     {
-        m_RequiredSeconds = Mathf.Max(0f, requiredSeconds);
+        m_RequiredSeconds = (Fix64)Mathf.Max(0f, requiredSeconds);
     }
 
     public override void OnAdd()
     {
-        m_LastAttackTime = Time.time;
+        m_LastAttackTime = LogicFrameRuntime.ElapsedTime;
     }
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (Time.time - m_LastAttackTime < m_RequiredSeconds)
+        if (LogicFrameRuntime.ElapsedTime - m_LastAttackTime < m_RequiredSeconds)
             return baseDamage;
 
-        m_LastAttackTime = Time.time;
+        m_LastAttackTime = LogicFrameRuntime.ElapsedTime;
         return CriticalDamageUtility.ApplyCriticalDamage(hostEntity, baseDamage);
     }
 
     public override void OnAttackCompleted(IEntityContext target)
     {
-        if (Time.time - m_LastAttackTime < m_RequiredSeconds)
-            m_LastAttackTime = Time.time;
+        if (LogicFrameRuntime.ElapsedTime - m_LastAttackTime < m_RequiredSeconds)
+            m_LastAttackTime = LogicFrameRuntime.ElapsedTime;
     }
 }
 

@@ -14,7 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ifUseDuration: 1
   duration: 1
-  acceptInputFromPercent: 1
   relatedTriggerString: Attack
   projectileNamePercentPairs:
   - key: TestProjectile

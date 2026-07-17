@@ -6,14 +6,12 @@
 	1	主菜单	1	MenuUIForm	True	1	False	False
 	2	游戏界面	1	GameUIForm	True	1	False	False
 	4	顶部资源栏	2	Topbar	False	1	False	False
-	13	材料编辑栏	2	ResourceModifyBar	False	1	False	False
 	19	人口栏	3	SupplyUIForm	False	1	False	False
 	21	侧边提示	4	SideTipsUIForm	False	1	False	False
 	22	局内顶部界面	1	InGameUIForm	False	1	False	False
 	23	行动目标	3	GoalUIForm	False	1	False	False
 	16	卡牌面板	3	CardUIForm	False	1	False	False
 	17	小地图	2	MinimapUI	False	1	False	False
-	18	阶段切换按钮	3	PhaseSwitchUIForm	False	1	False	False
 	20	迷雾UI	2	FogUI	False	1	False	False
 #	对话框(中层)							
 	5	设置	1	SettingDialog	True	2	True	True
@@ -21,9 +19,6 @@
 	7	服务条款	2	TermsOfServiceDialog	True	2	True	True
 	8	通用提示对话框	3	CommonDialog	True	2	False	True
 	9	语言设置	2	LanguagesDialog	False	2	True	True
-	11	合成面板	1	CraftingDialog	False	2	True	True
-	14	科技树	1	TechTreeDialog	False	2	True	True
-	15	科技节点详情	2	TechNodeDetailTips	False	2	False	True
 	3	游戏结算	3	GameOverUIForm	True	2	False	True
 	27	选关面板	4	LevelSwitchUIForm	True	2	True	True
 	28	关卡tag面板	5	LvEnterDialog	True	2	True	True

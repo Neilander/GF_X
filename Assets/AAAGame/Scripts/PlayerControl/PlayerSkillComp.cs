@@ -77,14 +77,14 @@ public class PlayerSkillComp : ISkillComp
         RefreshPassiveSkills();
     }
 
-    public void Skill()
+    public void Skill(Fix64 deltaTime)
     {
         //检测正在执行的技能，运行
-        UpdateTickingSkill();
+        UpdateTickingSkill(deltaTime);
 
 
         //技能冷却
-        CoolDown();
+        CoolDown(deltaTime);
         UpdateSkillRuntime();
 
         //检测输入
@@ -150,14 +150,14 @@ public class PlayerSkillComp : ISkillComp
             UnlockCompWhenEnd();
     }
 
-    private void UpdateTickingSkill()
+    private void UpdateTickingSkill(Fix64 deltaTime)
     {
         foreach (var slot in _skillSlots)
         {
             if (slot.isTicking)
             {
                 //触发技能的tick
-                slot.skill.TickSkill(slot.runInfo,Time.deltaTime);
+                slot.skill.TickSkill(slot.runInfo, (float)deltaTime);
                 if (slot.runInfo.isFinished)
                 {
                     slot.isTicking = false;
@@ -202,14 +202,14 @@ public class PlayerSkillComp : ISkillComp
         SkillRuntimeDataModel.ConsumeUsageAt(slotIndex);
     }
 
-    private void CoolDown()
+    private void CoolDown(Fix64 deltaTime)
     {
         if (_cooldownsBySkillId == null)
             return;
 
         foreach (var cooldown in _cooldownsBySkillId.Values)
         {
-            cooldown.Tick((Fix64)Time.deltaTime);
+            cooldown.Tick(deltaTime);
         }
     }
 

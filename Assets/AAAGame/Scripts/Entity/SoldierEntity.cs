@@ -92,12 +92,18 @@ public partial class SoldierEntity : MAEntity
         OnPhaseChangedForDefendPhaseSpeed(args);
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnLogicFrameUpdate(deltaTime);
         long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         TickDefendPhaseSpeedControl();
         RecordSoldierPerf(UnityGameFramework.Runtime.MainThreadPerfScope.SoldierPostUpdate, stageStartTicks);
+    }
+
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
+    {
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+        long stageStartTicks;
 
         if (m_MinimapReportComponent != null)
         {
@@ -139,8 +145,9 @@ public partial class SoldierEntity : MAEntity
 
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
 
-        // 直接创建 DirectAtkComp，不再走 Factory
-        var atkComp = new DirectAtkComp();
+        IAtkComp atkComp = userData is EntityParams ep && ep.BrainType == BrainType.Player
+            ? new MoveAtkComp()
+            : new DirectAtkComp();
         this.SetAtkComp(atkComp);    // 先让 Entity 持有引用
         atkComp.Init(this);          // Init 内部会创建 WeaponComp 并通过 SetWeaponComp 挂载
 

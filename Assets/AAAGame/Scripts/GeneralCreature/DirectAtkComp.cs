@@ -557,10 +557,9 @@ public class DirectAtkComp : IAtkComp
         InterruptAttack(AttackInterruptReason.CapabilityLocked);
     }
 
-    private bool ShouldLockMoveDuringAttack()
+    protected virtual bool ShouldLockMoveDuringAttack()
     {
-        // 玩家脑控下允许边移动边攻击。
-        return !(_ctx?.Brain is AAAGame.Scripts.Entity.PlayerBrain);
+        return true;
     }
 
     private void NotifyAttackStarted(IEntityContext target)

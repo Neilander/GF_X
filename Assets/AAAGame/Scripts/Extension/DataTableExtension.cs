@@ -597,54 +597,6 @@ public static class DataTableExtension
         return result;
     }
 
-    public static UnlockCondition[] ParseUnlockConditionArray(string value)
-    {
-        string[] arr = ParseArrayElements(value);
-        if (arr.Length == 0) return Array.Empty<UnlockCondition>();
-
-        UnlockCondition[] result = new UnlockCondition[arr.Length];
-        for (int i = 0; i < arr.Length; i++)
-        {
-            var parts = arr[i].Split(',', 2);
-            var typeStr = parts.Length > 0 ? parts[0].Trim() : string.Empty;
-            var args = parts.Length > 1 ? parts[1].Trim() : string.Empty;
-
-            if (!Enum.TryParse(typeStr, true, out UnlockConditionType type))
-            {
-                throw new GameFrameworkException(Utility.Text.Format("Invalid UnlockConditionType '{0}'.", typeStr));
-            }
-
-            result[i] = new UnlockCondition(type, args);
-        }
-
-        return result;
-    }
-
-    public static UnlockCondition ParseUnlockCondition(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var s = value.Trim();
-        // 兼容可能的单元素数组写法：[Tech,TechNode_Map_1]
-        if (s.Length >= 2 && s[0] == '[' && s[^1] == ']')
-        {
-            s = s.Substring(1, s.Length - 2).Trim();
-        }
-
-        var parts = s.Split(',', 2);
-        var typeStr = parts.Length > 0 ? parts[0].Trim() : string.Empty;
-        var id = parts.Length > 1 ? parts[1].Trim() : string.Empty;
-
-        if (!Enum.TryParse(typeStr, true, out UnlockConditionType type))
-        {
-            throw new GameFrameworkException(Utility.Text.Format("Invalid UnlockConditionType '{0}'.", typeStr));
-        }
-
-        return new UnlockCondition(type, id);
-    }
     public static StringIntPair[] ReadStringIntPairArray(this BinaryReader binaryReader)
     {
         int length = binaryReader.Read7BitEncodedInt32();
@@ -658,25 +610,6 @@ public static class DataTableExtension
         return result;
     }
 
-    public static UnlockCondition[] ReadUnlockConditionArray(this BinaryReader binaryReader)
-    {
-        int length = binaryReader.Read7BitEncodedInt32();
-        UnlockCondition[] result = new UnlockCondition[length];
-        for (int i = 0; i < length; i++)
-        {
-            int typeValue = binaryReader.Read7BitEncodedInt32();
-            string args = binaryReader.ReadString();
-            result[i] = new UnlockCondition((UnlockConditionType)typeValue, args);
-        }
-        return result;
-    }
-
-    public static UnlockCondition ReadUnlockCondition(this BinaryReader binaryReader)
-    {
-        int typeValue = binaryReader.Read7BitEncodedInt32();
-        string id = binaryReader.ReadString();
-        return new UnlockCondition((UnlockConditionType)typeValue, id);
-    }
     public static T[] ReadArray<T>(this BinaryReader binaryReader)
     {
         int length = binaryReader.Read7BitEncodedInt32();

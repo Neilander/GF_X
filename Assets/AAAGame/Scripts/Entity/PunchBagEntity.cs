@@ -11,9 +11,9 @@ public class PunchBagEntity : GeneralCreature
         Side = SideType.EnemySide;
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnLogicFrameUpdate(deltaTime);
 
         //if(Input.GetKeyDown(KeyCode.T))
         //animator.SetTrigger( "GetHit");

@@ -112,7 +112,15 @@ public static class DefendPhaseRuntime
             lastTime = evt.Time;
             if (waitTime > 0f)
             {
-                await UniTask.Delay(TimeSpan.FromSeconds(waitTime), DelayType.DeltaTime, PlayerLoopTiming.Update);
+                if (!LogicFrameRuntime.IsTimelineRunning)
+                    throw new InvalidOperationException("DefendPhaseRuntime spawn wait failed: logic frame timeline is not running.");
+
+                Fix64 resumeTime = LogicFrameRuntime.ElapsedTime + (Fix64)waitTime;
+                await UniTask.WaitUntil(
+                    () => flowToken != s_FlowToken
+                          || PhaseManager.CurrentPhase != GamePhase.Defend
+                          || (LogicFrameRuntime.IsTimelineRunning && LogicFrameRuntime.ElapsedTime >= resumeTime),
+                    PlayerLoopTiming.Update);
                 if (flowToken != s_FlowToken || PhaseManager.CurrentPhase != GamePhase.Defend)
                     return;
             }

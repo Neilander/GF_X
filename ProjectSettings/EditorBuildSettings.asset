@@ -12,12 +12,6 @@ EditorBuildSettings:
     path: Assets/AAAGame/Scene/Game.unity
     guid: ca4765c7a3113644e9f87e202a7ff91d
   - enabled: 0
-    path: Assets/AAAGame/Scene/CharacterAndSkillTestScene.unity
-    guid: 5b5e03bf2875baa469c1578733bf6245
-  - enabled: 0
-    path: Assets/AAAGame/Scene/LevelTestScene.unity
-    guid: 14221fbc414ccd840a506298acf440d7
-  - enabled: 0
     path: Assets/AAAGame/Scene/Arena.unity
     guid: 41ab55cd586da4b799affc5541e2d774
   - enabled: 1

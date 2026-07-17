@@ -44,11 +44,16 @@ public class CharacterEntity : SkillEntity
     protected override void SetUpMAComp(object userData)
     {
         string moveFacPath = "CharacterMoveFactory";
-        string atkFacPath = "CharacterAtkFactory";
         string targetFacPath = "CharacterTargetingFactory";
 
         FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
-        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
+
+        IAtkComp attackComp = userData is EntityParams ep && ep.BrainType == BrainType.Player
+            ? new MoveAtkComp()
+            : new DirectAtkComp();
+        SetAtkComp(attackComp);
+        attackComp.Init(this);
+
         FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
     }
     

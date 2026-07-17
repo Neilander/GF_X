@@ -165,9 +165,9 @@ public partial class LevelEntity : EntityBase
         return m_RuntimeInitializationVersion == initVersion && activeLevelEntity == this;
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
 
 #if UNITY_EDITOR
         if (Input.GetKeyDown(KeyCode.T))

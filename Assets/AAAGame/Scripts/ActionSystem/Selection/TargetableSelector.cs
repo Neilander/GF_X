@@ -9,13 +9,13 @@ public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
     private List<ITargetable> _excludedCreatures;
     private SideType _selfSide;
 
-    public Dictionary<ISelectable, float> SelectRecords { get; private set; }
+    public Dictionary<ISelectable, ulong> SelectRecords { get; private set; }
     public bool IsActive { get; private set; }
 
     protected override void OnShow(object userData)
     {
         IsActive = false;
-        SelectRecords = new Dictionary<ISelectable, float>();
+        SelectRecords = new Dictionary<ISelectable, ulong>();
         base.OnShow(userData);
         //初始化
     }
@@ -24,7 +24,7 @@ public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
     {
         //开始检测可选项
         IsActive = true;
-        SelectRecords = new Dictionary<ISelectable, float>();
+        SelectRecords = new Dictionary<ISelectable, ulong>();
     }
 
     public void Activate(List<ISelectable> excludedCreatures)
@@ -100,7 +100,7 @@ public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
     {
         //清理所有选择项
         ReleaseSelection();
-        SelectRecords = new Dictionary<ISelectable, float>();
+        SelectRecords = new Dictionary<ISelectable, ulong>();
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
         if (!Validate(other.gameObject))
             return;
 
-        SelectRecords.Add(owner, Time.time);
+        SelectRecords.Add(owner, LogicFrameRuntime.CurrentFrame);
         owner.InSelection(this);
     }
 

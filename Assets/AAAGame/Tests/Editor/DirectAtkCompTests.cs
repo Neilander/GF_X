@@ -210,6 +210,42 @@ public class DirectAtkCompTests
     }
 
     [Test]
+    public void 移动攻击组件在前摇和后摇期间不锁移动()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRange = 10f
+        };
+        targeting.Init(attacker);
+        attacker.TargetComp = targeting;
+        attacker.Brain = new ScriptedBrain { Attack = true };
+
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+
+        var weapon = MeleeWeapon(windUp: 0.3f, windDown: 0.3f, interval: 1f);
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("TestWeapon"));
+        var atkComp = new MoveAtkComp();
+        atkComp.Init(attacker);
+        attacker.AtkComp = atkComp;
+
+        targeting.UpdateTargeting(1f);
+        atkComp.Attack(0.01f);
+
+        Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State);
+        Assert.IsTrue(attacker.CanRun(moveComp), "移动攻击组件在前摇期间不应锁移动");
+
+        atkComp.Attack(0.3f + AttackStepEpsilon);
+
+        Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State);
+        Assert.IsTrue(attacker.CanRun(moveComp), "移动攻击组件在后摇期间不应锁移动");
+    }
+
+    [Test]
     public void 目标超出范围时不攻击()
     {
         var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);

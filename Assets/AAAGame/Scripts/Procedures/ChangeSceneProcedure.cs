@@ -37,8 +37,6 @@ public class ChangeSceneProcedure : ProcedureBase
     private static readonly Dictionary<string, string> SceneDefaultProcedure = new Dictionary<string, string>
     {
         { "Game", "MenuProcedure" },
-        { "LevelTestScene", "LevelTestProcedure" },
-        { "CharacterAndSkillTestScene", "CharacterTestProcedure" },
         {"Arena", "ArenaProcedure"}
     };
 
@@ -47,9 +45,7 @@ public class ChangeSceneProcedure : ProcedureBase
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> SceneCompatibleProcedures = new Dictionary<string, HashSet<string>>
     {
-        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CharacterTestProcedure" , "SampleProcedure", "RangedWeaponTestProcedure", "BuffTestProcedure","CardGameProcedure"} }, // 新增：远程武器测试流程和Buff测试流程
-        { "LevelTestScene", new HashSet<string> { "LevelTestProcedure", "CharacterTestProcedure", "BuffTestProcedure" } },
-        { "CharacterAndSkillTestScene", new HashSet<string> { "CharacterTestProcedure", "BuffTestProcedure" } },
+        { "Game", new HashSet<string> { "MenuProcedure", "GameProcedure", "CardGameProcedure" } },
         {"Arena", new HashSet<string>{"ArenaProcedure"}}
     };
 
@@ -59,9 +55,6 @@ public class ChangeSceneProcedure : ProcedureBase
     public static readonly HashSet<string> ValidProcedureNames = new HashSet<string>();
 
     private static Dictionary<string, Type> s_ProcedureTypes;
-
-    // 确保BuffTestProcedure被编译到程序集中
-    private static System.Type _buffTestProcedureType = typeof(BuffTestProcedure);
 
     static ChangeSceneProcedure()
     {
@@ -73,7 +66,7 @@ public class ChangeSceneProcedure : ProcedureBase
         var settings = AppSettings.Instance;
         return settings != null && !string.IsNullOrWhiteSpace(settings.StartProcedureName)
             ? settings.StartProcedureName
-            : "CharacterTestProcedure";
+            : "RealProcedure";
     }
 
     private static string GetDefaultSceneName()
@@ -252,7 +245,7 @@ public class ChangeSceneProcedure : ProcedureBase
             {
                 string fallback = SceneDefaultProcedure.ContainsKey(nextScene)
                     ? SceneDefaultProcedure[nextScene]
-                    : "CharacterTestProcedure";
+                    : "RealProcedure";
                 Log.Warning("Procedure '{0}' 与场景 '{1}' 不兼容，回退到 '{2}'",
                     targetProcedure, nextScene, fallback);
                 targetProcedure = fallback;
@@ -263,9 +256,9 @@ public class ChangeSceneProcedure : ProcedureBase
         keepLoadingForRuntimeInit = IsRuntimeProcedure(targetProcedure);
         if (!TryChangeStateByName(procedureOwner, targetProcedure))
         {
-            Log.Warning("Procedure '{0}' 不存在，回退到 CharacterTestProcedure", targetProcedure);
-            keepLoadingForRuntimeInit = IsRuntimeProcedure("CharacterTestProcedure");
-            ChangeState<CharacterTestProcedure>(procedureOwner);
+            Log.Warning("Procedure '{0}' 不存在，回退到 RealProcedure", targetProcedure);
+            keepLoadingForRuntimeInit = IsRuntimeProcedure("RealProcedure");
+            ChangeState<RealProcedure>(procedureOwner);
         }
     }
 
@@ -360,7 +353,7 @@ public class ChangeSceneProcedure : ProcedureBase
         {
             targetProcedure = SceneDefaultProcedure.TryGetValue(sceneName, out var fallback)
                 ? fallback
-                : "CharacterTestProcedure";
+                : "RealProcedure";
         }
 
         return IsRuntimeProcedure(targetProcedure);

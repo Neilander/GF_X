@@ -148,7 +148,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
 
     public void Execute()
     {
-        Execute(Time.deltaTime);
+        throw new System.InvalidOperationException("MoveExecutor.Execute failed: deltaTime must be supplied by the logic frame.");
     }
 
     public void Execute(float deltaTime)

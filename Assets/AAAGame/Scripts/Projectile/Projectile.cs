@@ -53,9 +53,9 @@ public class Projectile : EntityBase
         _hasHit = false;
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnLogicFrameUpdate(deltaTime);
 
         if (_hasHit)
         {
@@ -83,7 +83,7 @@ public class Projectile : EntityBase
         // 计算到目标的距离
         float distance = Vector3.Distance(transform.position, _targetPosition);
         float projectileSpeed = DistanceUnitConverter.ConvertToWorldFloat(_weaponData.ProjectileSpeed);
-        float moveDistance = projectileSpeed * elapseSeconds;
+        float moveDistance = projectileSpeed * (float)deltaTime;
 
         if (distance <= moveDistance)
         {

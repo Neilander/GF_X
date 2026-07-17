@@ -467,9 +467,9 @@ public partial class BuildingEntity : MAEntity
         };
     }
 
-    protected override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+    protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
     {
-        base.OnUpdate(elapseSeconds, realElapseSeconds);
+        base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
         _minimapReportComponent?.Tick();
     }
 
