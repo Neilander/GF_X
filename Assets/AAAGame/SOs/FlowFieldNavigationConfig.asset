@@ -19,7 +19,9 @@ MonoBehaviour:
   PortalNarrowWidthCells: 2
   PortalMaxWindowWidthCells: 6
   FlowTileCacheLimit: 256
-  RuntimeRebuildBudgetMilliseconds: 1.5
+  WorldBuildOperationQuota: 32768
+  RuntimeRebuildOperationQuota: 4096
+  FlowBuildOperationQuota: 2048
   CrowdPredictionTime: 0.35
   LaneBiasStrength: 0.22
   BoundaryAvoidanceWeight: 1
@@ -28,5 +30,8 @@ MonoBehaviour:
   BottleneckWaitTimeout: 1.25
   BottleneckInfluenceDistance: 2.2
   BottleneckClearanceHoldTime: 0.45
+  EnableDeterministicStaticCollisionShadow: 1
+  StaticCollisionShadowMismatchTolerance: 0.03
+  StaticCollisionShadowLogIntervalTicks: 300
   DrawNavigationDebug: 0
   DrawFlowFieldDebug: 0

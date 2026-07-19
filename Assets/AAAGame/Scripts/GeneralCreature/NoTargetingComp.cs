@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class NoTargetingComp : ITargetingComp
 {
@@ -15,7 +15,7 @@ public class NoTargetingComp : ITargetingComp
     // 接口方法留空
     public void Init(IEntityContext ctx) { }
 
-    public void UpdateTargeting(float deltaTime) { }
+    public void UpdateTargeting(Fix64 deltaTime) { }
 
     public void ShutDown() { }
 

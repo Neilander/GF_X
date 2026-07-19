@@ -49,6 +49,18 @@ public class WeaponComp : ICapability
         CurrentAmmo = MaxAmmo;
     }
 
+    public void RestoreAmmo(int currentAmmo, int maxAmmo)
+    {
+        int expectedMax = ResolveAmmoCapacity(Data);
+        if (maxAmmo != expectedMax)
+            throw new System.InvalidOperationException($"WeaponComp.RestoreAmmo failed: max ammo mismatch. expected={expectedMax}, snapshot={maxAmmo}.");
+        if (currentAmmo < 0 || currentAmmo > maxAmmo)
+            throw new System.InvalidOperationException($"WeaponComp.RestoreAmmo failed: current ammo is invalid. current={currentAmmo}, max={maxAmmo}.");
+
+        MaxAmmo = maxAmmo;
+        CurrentAmmo = currentAmmo;
+    }
+
     private static int ResolveAmmoCapacity(Weapon weapon)
     {
         if (weapon == null || weapon.AmmunitionCapacity <= Fix64.Zero)

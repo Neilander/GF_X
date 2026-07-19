@@ -7,6 +7,10 @@ public class SimMoveExecutor : IMoveExecutor
 {
     public Vector3 Position;
     public Vector3 LastInputVelocity;
+    public FixVector2 LastFixedInput;
+    public bool HasFixedInput;
+    public FixVector2 LastFixedExternal;
+    public FixVector2 LastFixedOverride;
     public Vector3 LastFrameVelocity;
     public Vector3 LastDesiredDisplacement;
     public Vector3 LastConstrainedDisplacement;
@@ -29,17 +33,38 @@ public class SimMoveExecutor : IMoveExecutor
     {
         _inputVelocity = velocity;
         LastInputVelocity = velocity;
+        HasFixedInput = false;
+    }
+
+    public void SetInputFixed(FixVector2 velocity)
+    {
+        LastFixedInput = velocity;
+        HasFixedInput = true;
+        _inputVelocity = new Vector3((float)velocity.x, 0f, (float)velocity.y);
+        LastInputVelocity = _inputVelocity;
     }
 
     public void AddExternal(Vector3 velocity)
     {
-        _externalVelocity += velocity;
+        AddExternalFixed(new FixVector2((Fix64)velocity.x, (Fix64)velocity.z));
+    }
+
+    public void AddExternalFixed(FixVector2 velocity)
+    {
+        LastFixedExternal += velocity;
+        _externalVelocity = new Vector3((float)LastFixedExternal.x, 0f, (float)LastFixedExternal.y);
     }
 
     public void SetOverride(Vector3 velocity)
     {
         _overrideVelocity = velocity;
         _hasOverride = true;
+    }
+
+    public void SetOverrideFixed(FixVector2 velocity)
+    {
+        LastFixedOverride = velocity;
+        SetOverride(new Vector3((float)velocity.x, 0f, (float)velocity.y));
     }
 
     public void ClearOverride()
@@ -49,7 +74,13 @@ public class SimMoveExecutor : IMoveExecutor
 
     public void SetExternal(Vector3 velocity)
     {
-        _externalVelocity = velocity;
+        SetExternalFixed(new FixVector2((Fix64)velocity.x, (Fix64)velocity.z));
+    }
+
+    public void SetExternalFixed(FixVector2 velocity)
+    {
+        LastFixedExternal = velocity;
+        _externalVelocity = new Vector3((float)velocity.x, 0f, (float)velocity.y);
     }
 
     public void SetMovementMode(MovementMode mode)
@@ -124,6 +155,8 @@ public class SimMoveExecutor : IMoveExecutor
         LastInputVelocity = Vector3.zero;
         _hasOverride = false;
         _externalVelocity = Vector3.zero;
+        LastFixedExternal = FixVector2.Zero;
+        LastFixedOverride = FixVector2.Zero;
         _constraintBypassForNextFrame = false;
     }
 }

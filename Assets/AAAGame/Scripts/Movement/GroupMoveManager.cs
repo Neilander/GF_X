@@ -1,4 +1,4 @@
-using Stopwatch = System.Diagnostics.Stopwatch;
+﻿using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityGameFramework.Runtime;
 using UnityEngine;
 
@@ -111,20 +111,25 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
 
     public void UnregisterAgent(MAEntity entity)
     {
-        FlowFieldCrowdMovementSystem.UnregisterAgent(entity.GetInstanceID());
+        if (entity == null)
+            throw new System.ArgumentNullException(nameof(entity));
+
+        FlowFieldCrowdMovementSystem.UnregisterAgent(entity.LogicEntityId.Value);
     }
 
     public void UpdateAgentSide(MAEntity entity)
     {
         if (entity == null)
-            return;
+            throw new System.ArgumentNullException(nameof(entity));
 
-        FlowFieldCrowdMovementSystem.SetAgentSide(entity.GetInstanceID(), entity.Side);
+        FlowFieldCrowdMovementSystem.SetAgentSide(entity.LogicEntityId.Value, entity.Side);
     }
 
     public void UpdateAgentPosition(MAEntity entity)
     {
-        int id = entity.GetInstanceID();
+        if (entity == null)
+            throw new System.ArgumentNullException(nameof(entity));
+
         float radius = ResolveAgentRadius(entity);
         FlowFieldCrowdMovementSystem.UpdateAgent(entity, radius);
     }
@@ -161,14 +166,24 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.RegisterCircleObstacle(id, position, radius);
     }
 
-    public void RegisterBoxObstacle(Collider collider)
+    public void RegisterBoxObstacle(int obstacleId, Collider collider)
     {
         if (collider == null)
             throw new System.InvalidOperationException("GroupMoveManager.RegisterBoxObstacle failed: collider is null.");
 
+        ValidateObstacleId(obstacleId);
         Bounds bounds = ResolveColliderWorldBounds(collider);
-        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(collider.GetInstanceID(), bounds.center, bounds.extents);
-        LogColliderObstacleRegistration(collider, collider.GetInstanceID(), "box-direct", bounds);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(obstacleId, bounds.center, bounds.extents);
+        LogColliderObstacleRegistration(collider, obstacleId, "box-direct", bounds);
+    }
+
+    public void RegisterBoxObstacle(int obstacleId, Vector3 center, Vector3 halfExtents)
+    {
+        ValidateObstacleId(obstacleId);
+        if (halfExtents.x <= 0f || halfExtents.z <= 0f)
+            throw new System.ArgumentOutOfRangeException(nameof(halfExtents), halfExtents, "Box half extents must be positive on XZ.");
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(obstacleId, center, halfExtents);
     }
 
     public void RegisterBoxCostStamp(int id, Vector3 center, Vector3 halfExtents, byte cost)
@@ -196,12 +211,12 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.UnregisterCostStamp(id);
     }
 
-    public int RegisterColliderObstacle(Collider collider)
+    public int RegisterColliderObstacle(int obstacleId, Collider collider)
     {
         if (collider == null)
             throw new System.InvalidOperationException("GroupMoveManager.RegisterColliderObstacle failed: collider is null.");
 
-        int obstacleId = collider.GetInstanceID();
+        ValidateObstacleId(obstacleId);
         Bounds bounds = ResolveColliderWorldBounds(collider);
         if (collider is BoxCollider)
         {
@@ -213,6 +228,12 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.RegisterCircleObstacle(obstacleId, bounds.center, bounds.extents.magnitude);
         LogColliderObstacleRegistration(collider, obstacleId, "circle", bounds);
         return obstacleId;
+    }
+
+    private static void ValidateObstacleId(int obstacleId)
+    {
+        if (obstacleId == 0)
+            throw new System.ArgumentOutOfRangeException(nameof(obstacleId), "Obstacle id must be non-zero.");
     }
 
     public static Bounds ResolveColliderWorldBounds(Collider collider)

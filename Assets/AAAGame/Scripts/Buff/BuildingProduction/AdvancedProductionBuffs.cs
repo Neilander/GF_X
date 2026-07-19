@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityGameFramework.Runtime;
 
 public sealed class ServiceDeskProductionBuff : BuffCallback
@@ -150,7 +150,7 @@ public sealed class NurseryProductionBuff : BuffCallback
         UpdateProduction();
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         var building = hostEntity as BuildingEntity;
         int day = ProductionTraitUtility.GetCurrentDay();
@@ -344,7 +344,7 @@ public sealed class TicketBoothProductionBuff : BuffCallback
         UpdateProduction();
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         var building = hostEntity as BuildingEntity;
         int day = ProductionTraitUtility.GetCurrentDay();

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using AAAGame.Scripts.BuffSystem;
 using UnityEngine;
@@ -170,12 +170,12 @@ public sealed class SkillDisarmDebuff : BuffCallback
 
 public sealed class SkillCheerSquadBuff : BuffCallback
 {
-    private const float ScanIntervalSeconds = 0.25f;
+    private static readonly Fix64 ScanIntervalSeconds = (Fix64)0.25f;
 
     private readonly int m_UnitsPerStep;
     private readonly Fix64 m_AttackPerStep;
     private readonly Fix64 m_AttackSpeedPercentPerStep;
-    private float m_Timer;
+    private Fix64 m_Timer;
     private int m_AppliedSteps;
     private Fix64 m_AppliedAttackSpeedFactor = Fix64.One;
 
@@ -191,13 +191,13 @@ public sealed class SkillCheerSquadBuff : BuffCallback
         Recalculate();
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += deltaTime;
         if (m_Timer < ScanIntervalSeconds)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         Recalculate();
     }
 

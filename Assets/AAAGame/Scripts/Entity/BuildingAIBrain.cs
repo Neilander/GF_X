@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 建筑 AI：不移动，仅在目标进入射程后触发攻击输入。
@@ -6,6 +6,7 @@ using UnityEngine;
 public class BuildingAIBrain : IControlBrain, ITickBrain
 {
     public Vector2 Move => Vector2.zero;
+    public FixVector2 MoveFixed => FixVector2.Zero;
     public bool Attack { get; private set; }
     public bool Skill1 => false;
     public bool Skill2 => false;
@@ -13,7 +14,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
     public bool Skill4 => false;
     public bool Skill5 => false;
 
-    public void Tick(IEntityContext self, float dt)
+    public void Tick(IEntityContext self, Fix64 dt)
     {
         Attack = false;
 
@@ -34,14 +35,14 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
             return;
         }
 
-        float distance = self.DistanceToTargetSurface(target);
-        float attackRange = GetEffectiveAttackRange(self);
+        Fix64 distance = LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(self, target);
+        Fix64 attackRange = GetEffectiveAttackRange(self);
         Attack = distance <= attackRange;
     }
 
-    private float GetEffectiveAttackRange(IEntityContext self)
+    private Fix64 GetEffectiveAttackRange(IEntityContext self)
     {
-        float weaponRange = self.WeaponComp != null ? (float)self.WeaponComp.AttackRange : 1.5f;
+        Fix64 weaponRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : (Fix64)1.5f;
         return weaponRange;
     }
 }

@@ -18,8 +18,8 @@ public class SimTargetingComp : ITargetingComp
     public float FollowSearchRange { get; set; } = 30f;
     public float AlertRadius { get; set; } = 0f;
 
-    private float _scanTimer = 0f;
-    private const float SCAN_INTERVAL = 0.2f;
+    private Fix64 _scanTimer = Fix64.Zero;
+    private static readonly Fix64 SCAN_INTERVAL = (Fix64)0.2f;
 
     public SimTargetingComp(IEntityContext self, List<IEntityContext> allEntities)
     {
@@ -32,7 +32,7 @@ public class SimTargetingComp : ITargetingComp
         _self = ctx;
         CurrentTarget = null;
         FollowTarget = null;
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
     }
 
     /// <summary>
@@ -43,7 +43,7 @@ public class SimTargetingComp : ITargetingComp
         _allEntities = entities;
     }
 
-    public void UpdateTargeting(float deltaTime)
+    public void UpdateTargeting(Fix64 deltaTime)
     {
         if (_self == null || _allEntities == null) return;
 
@@ -67,7 +67,7 @@ public class SimTargetingComp : ITargetingComp
         _scanTimer += deltaTime;
         if (_scanTimer >= SCAN_INTERVAL)
         {
-            _scanTimer = 0f;
+            _scanTimer = Fix64.Zero;
 
             if (CurrentTarget == null)
             {

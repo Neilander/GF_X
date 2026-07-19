@@ -1,4 +1,4 @@
-using GameFramework;
+﻿using GameFramework;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -135,7 +135,7 @@ public class BuildManager : GameFrameworkComponent
         if (built && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
         if (built)
-            GF.Entity.HideEntity(owner.Entity);
+            owner.RequestDespawn();
 
         return built;
     }
@@ -270,7 +270,7 @@ public class BuildManager : GameFrameworkComponent
             return false;
 
         InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
-        GF.Entity.HideEntity(owner.Entity);
+        owner.RequestDespawn();
         RewardManager.HandleBuildingRecycleReward(position, refund);
 
         if (AudioManager.Instance != null)
@@ -330,7 +330,7 @@ public class BuildManager : GameFrameworkComponent
         bool isNavigationStaticBaked = false)
     {
         resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
-            ? Guid.NewGuid().ToString("N")
+            ? LogicPersistentIdAllocator.AllocateBuildingInstanceId()
             : buildingInstanceId;
 
         int entityId = BuildBuildingInternal(
@@ -386,7 +386,7 @@ public class BuildManager : GameFrameworkComponent
         }
 
         string resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
-            ? Guid.NewGuid().ToString("N")
+            ? LogicPersistentIdAllocator.AllocateBuildingInstanceId()
             : buildingInstanceId;
 
         if (buildingData.Type == BuilType.Prod)

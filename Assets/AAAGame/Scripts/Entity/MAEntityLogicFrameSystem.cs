@@ -1,0 +1,184 @@
+﻿using System;
+using System.Collections.Generic;
+
+public enum MAEntityLogicFramePhase
+{
+    BaseAndBuffs = 0,
+    NavigationSync = 1,
+    Brain = 2,
+    Targeting = 3,
+    Projectile = 4,
+    Attack = 5,
+    DamageResolve = 6,
+    MoveIntent = 7,
+    MoveResolve = 8,
+    MoveCommit = 9,
+    PostUpdate = 10,
+    Count = 11,
+}
+
+public static class MAEntityLogicFrameSystem
+{
+    private sealed class PhaseListener : ILogicFrameUpdate, ILogicFrameStableOrder
+    {
+        public int LogicFrameOrder => 0;
+        public long LogicFrameStableKey => long.MinValue;
+
+        public void OnLogicFrameUpdate(Fix64 deltaTime)
+        {
+            ExecuteFrame(deltaTime);
+        }
+    }
+
+    private static readonly PhaseListener s_Listener = new PhaseListener();
+    private static readonly List<MAEntity> s_FrameEntities = new List<MAEntity>();
+
+    public static bool IsActive { get; private set; }
+    public static ulong LastCompletedFrame { get; private set; }
+    public static int LastFrameEntityCount { get; private set; }
+    public static MAEntityLogicFramePhase LastCompletedPhase { get; private set; }
+    public static int LastFramePhaseExecutionCount { get; private set; }
+
+    public static void BeginTimeline()
+    {
+        if (IsActive)
+            throw new InvalidOperationException("MAEntityLogicFrameSystem.BeginTimeline failed: system is already active.");
+        if (!LogicFrameRuntime.IsActive)
+            throw new InvalidOperationException("MAEntityLogicFrameSystem.BeginTimeline failed: logic frame runtime is not active.");
+        if (!LogicEntityFrameSnapshotService.IsActive)
+            throw new InvalidOperationException("MAEntityLogicFrameSystem.BeginTimeline failed: frame snapshot service is not active.");
+
+        ClearFrameState();
+        LogicAgentCollisionShadowService.Clear();
+        LogicDamageEventService.BeginTimeline();
+        LogicProjectileService.BeginTimeline();
+        LogicFrameRuntime.Register(s_Listener);
+        IsActive = true;
+    }
+
+    public static void ResetForWorldTransition()
+    {
+        EnsureActive();
+        if (LogicFrameRuntime.IsTicking)
+            throw new InvalidOperationException("MAEntityLogicFrameSystem.ResetForWorldTransition failed: a logic frame is running.");
+        ClearFrameState();
+        LogicAgentCollisionShadowService.Clear();
+        LogicDamageEventService.ResetForWorldTransition();
+        LogicProjectileService.ResetForWorldTransition();
+    }
+
+    public static void EndTimeline()
+    {
+        EnsureActive();
+        if (LogicFrameRuntime.IsTicking)
+            throw new InvalidOperationException("MAEntityLogicFrameSystem.EndTimeline failed: a logic frame is running.");
+
+        LogicFrameRuntime.Unregister(s_Listener);
+        ClearFrameState();
+        LogicAgentCollisionShadowService.Clear();
+        LogicProjectileService.EndTimeline();
+        LogicDamageEventService.EndTimeline();
+        IsActive = false;
+    }
+
+    private static void ExecuteFrame(Fix64 deltaTime)
+    {
+        EnsureActive();
+        ulong frame = LogicFrameRuntime.CurrentFrame;
+        LogicEntityFrameSnapshot snapshot = LogicEntityFrameSnapshotService.Current;
+        if (snapshot == null || snapshot.FrameId != frame)
+        {
+            throw new InvalidOperationException(
+                $"MAEntityLogicFrameSystem.ExecuteFrame failed: frame snapshot mismatch. logicFrame={frame}, snapshot={snapshot?.FrameId ?? 0}.");
+        }
+
+        CollectFrameEntities(snapshot);
+        for (int i = 0; i < s_FrameEntities.Count; i++)
+            s_FrameEntities[i].BeginCoordinatedLogicFrame(deltaTime);
+
+        int phaseExecutionCount = 0;
+        LogicDamageEventService.BeginFrame(frame);
+        for (int phaseValue = 0; phaseValue < (int)MAEntityLogicFramePhase.Count; phaseValue++)
+        {
+            MAEntityLogicFramePhase phase = (MAEntityLogicFramePhase)phaseValue;
+            for (int entityIndex = 0; entityIndex < s_FrameEntities.Count; entityIndex++)
+            {
+                s_FrameEntities[entityIndex].ExecuteCoordinatedLogicFramePhase(phase, deltaTime);
+                phaseExecutionCount++;
+            }
+            if (phase == MAEntityLogicFramePhase.Projectile)
+                LogicProjectileService.AdvanceFrame(frame, deltaTime);
+            if (phase == MAEntityLogicFramePhase.DamageResolve)
+                LogicDamageEventService.ApplyFrame(frame);
+            if (phase == MAEntityLogicFramePhase.MoveResolve)
+                LogicAgentCollisionShadowService.SolveFrame(frame, snapshot, s_FrameEntities);
+            LastCompletedPhase = phase;
+        }
+
+        for (int i = 0; i < s_FrameEntities.Count; i++)
+            s_FrameEntities[i].CompleteCoordinatedLogicFrame(deltaTime);
+
+        LastFrameEntityCount = s_FrameEntities.Count;
+        LastFramePhaseExecutionCount = phaseExecutionCount;
+        LastCompletedFrame = frame;
+    }
+
+    private static void CollectFrameEntities(LogicEntityFrameSnapshot snapshot)
+    {
+        s_FrameEntities.Clear();
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        if (snapshot.States.Count != entities.Count)
+        {
+            throw new InvalidOperationException(
+                $"MAEntityLogicFrameSystem.CollectFrameEntities failed: snapshot/registry count mismatch. snapshot={snapshot.States.Count}, registry={entities.Count}.");
+        }
+
+        int previousEntityId = 0;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (!(entities[i] is MAEntity entity))
+            {
+                throw new InvalidOperationException(
+                    $"MAEntityLogicFrameSystem.CollectFrameEntities failed: registry entity {entities[i].LogicEntityId.Value} is not an MAEntity.");
+            }
+            if (!entity.IsLogicActive)
+            {
+                throw new InvalidOperationException(
+                    $"MAEntityLogicFrameSystem.CollectFrameEntities failed: entity {entity.LogicEntityId.Value} is not logic-active.");
+            }
+            if (entity.LogicEntityId.Value <= previousEntityId)
+            {
+                throw new InvalidOperationException(
+                    $"MAEntityLogicFrameSystem.CollectFrameEntities failed: registry order is not strictly increasing at entity {entity.LogicEntityId.Value}.");
+            }
+
+            LogicEntityFrameState frameState = snapshot.States[i];
+            if (frameState.EntityId != entity.LogicEntityId)
+            {
+                throw new InvalidOperationException(
+                    $"MAEntityLogicFrameSystem.CollectFrameEntities failed: snapshot/registry identity mismatch at index {i}. " +
+                    $"snapshot={frameState.EntityId.Value}, registry={entity.LogicEntityId.Value}.");
+            }
+
+            previousEntityId = entity.LogicEntityId.Value;
+            s_FrameEntities.Add(entity);
+        }
+    }
+
+    private static void ClearFrameState()
+    {
+        s_FrameEntities.Clear();
+        LastCompletedFrame = 0;
+        LastFrameEntityCount = 0;
+        LastCompletedPhase = default;
+        LastFramePhaseExecutionCount = 0;
+    }
+
+    private static void EnsureActive()
+    {
+        if (!IsActive)
+            throw new InvalidOperationException("MAEntityLogicFrameSystem operation failed: system is not active.");
+        if (!LogicFrameRuntime.IsActive)
+            throw new InvalidOperationException("MAEntityLogicFrameSystem operation failed: logic frame runtime is not active.");
+    }
+}

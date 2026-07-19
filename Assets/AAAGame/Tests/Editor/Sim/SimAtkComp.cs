@@ -11,17 +11,17 @@ public class SimAtkComp : IAtkComp
     public bool IsAttacking { get; private set; }
     public float AttackDuration = 0.5f;
 
-    private float _attackTimer;
+    private Fix64 _attackTimer;
 
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
         AttackCount = 0;
         IsAttacking = false;
-        _attackTimer = 0f;
+        _attackTimer = Fix64.Zero;
     }
 
-    public void Attack(float deltaTime)
+    public void Attack(Fix64 deltaTime)
     {
         if (_ctx == null) return;
         if (_ctx.Brain == null) return;
@@ -29,10 +29,10 @@ public class SimAtkComp : IAtkComp
         if (IsAttacking)
         {
             _attackTimer += deltaTime;
-            if (_attackTimer >= AttackDuration)
+            if (_attackTimer >= (Fix64)AttackDuration)
             {
                 IsAttacking = false;
-                _attackTimer = 0f;
+                _attackTimer = Fix64.Zero;
                 _ctx.ResumeComp(_ctx.MoveComp, this);
             }
             return;
@@ -42,7 +42,7 @@ public class SimAtkComp : IAtkComp
         {
             IsAttacking = true;
             AttackCount++;
-            _attackTimer = 0f;
+            _attackTimer = Fix64.Zero;
             _ctx.LockComp(_ctx.MoveComp, this);
         }
     }
@@ -55,7 +55,7 @@ public class SimAtkComp : IAtkComp
         }
 
         IsAttacking = false;
-        _attackTimer = 0f;
+        _attackTimer = Fix64.Zero;
     }
 
     public void ShutDown()

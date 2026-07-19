@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using AAAGame.MiniMap;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -92,9 +92,9 @@ public partial class SoldierEntity : MAEntity
         OnPhaseChangedForDefendPhaseSpeed(args);
     }
 
-    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
+    protected override void OnPostLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnLogicFrameUpdate(deltaTime);
+        base.OnPostLogicFrameUpdate(deltaTime);
         long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         TickDefendPhaseSpeedControl();
         RecordSoldierPerf(UnityGameFramework.Runtime.MainThreadPerfScope.SoldierPostUpdate, stageStartTicks);

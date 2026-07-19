@@ -24,7 +24,7 @@ public class DurationMoveEffectTests
 
         // 击飞效果：向后 20m/s，持续 0.5s
         effectComp.StartDurationOverrideMove(0.5f, Vector3.back * 20f);
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
 
         // 应该向后，被 Override 覆盖了
@@ -43,7 +43,7 @@ public class DurationMoveEffectTests
 
         // 附加风力：向右 3m/s
         effectComp.StartDurationAdditionalMove(1f, Vector3.right * 3f);
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
 
         // 位移期间不能主动寻路移动，只保留外力方向
@@ -63,17 +63,17 @@ public class DurationMoveEffectTests
         effectComp.StartDurationAdditionalMove(0.2f, Vector3.right * 10f);
 
         // 第一帧：有效果
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
         float posAfterFrame1 = executor.Position.x;
 
         // 第二帧：效果还在
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
         float posAfterFrame2 = executor.Position.x;
 
         // 第三帧：效果应已过期
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
         float posAfterFrame3 = executor.Position.x;
 
@@ -93,7 +93,7 @@ public class DurationMoveEffectTests
         int id = effectComp.StartDurationAdditionalMove(10f, Vector3.right * 10f);
 
         // 第一帧有效果
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
         Assert.Greater(executor.Position.x, 0f);
 
@@ -103,7 +103,7 @@ public class DurationMoveEffectTests
         effectComp.StopAddtionalMove(id);
 
         // 下一帧不应再有效果
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
 
         Assert.AreEqual(posBeforeStop, executor.Position.x, 0.01f);
@@ -118,13 +118,13 @@ public class DurationMoveEffectTests
         effectComp.Init(ctx);
 
         effectComp.StartDurationAdditionalMove(0.1f, Vector3.right * 5f);
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.SetInput(Vector3.forward * 4f);
         executor.Execute(0.1f);
 
         Assert.AreEqual(0f, executor.Position.z, 0.01f, "位移生效帧不应保留主动移动");
 
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         executor.SetInput(Vector3.forward * 4f);
         executor.Execute(0.1f);
 
@@ -142,17 +142,36 @@ public class DurationMoveEffectTests
         effectComp.StartDurationAdditionalMove(0.1f, Vector3.right * 3f);
         effectComp.StartDurationOverrideMove(0.1f, Vector3.back * 6f);
 
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         Assert.AreEqual(MovementMode.Displaced, executor.MovementMode, "位移生效期间应切入 Displaced");
         executor.SetInput(Vector3.forward * 5f);
         executor.Execute(0.1f);
         Assert.Less(executor.Position.z, 0f, "Override 生效帧应优先执行位移");
 
-        effectComp.ApplyEffect(0.1f);
+        effectComp.ApplyEffect((Fix64)0.1f);
         Assert.AreEqual(MovementMode.Normal, executor.MovementMode, "所有位移效果结束后应恢复 Normal");
         executor.SetInput(Vector3.forward * 5f);
         executor.Execute(0.1f);
 
         Assert.Greater(executor.Position.z, -0.6f, "恢复 Normal 后主动移动应重新生效");
+    }
+
+    [Test]
+    public void 多个持续位移在FixVector2中按Raw精确累加()
+    {
+        var ctx = CreateContext();
+        var executor = (SimMoveExecutor)ctx.MoveExecutor;
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(ctx);
+
+        FixVector2 first = new FixVector2(Fix64.FromRaw(1235), Fix64.FromRaw(-678));
+        FixVector2 second = new FixVector2(Fix64.FromRaw(-234), Fix64.FromRaw(901));
+        effectComp.StartDurationAdditionalMove(Fix64.One, first);
+        effectComp.StartDurationAdditionalMove(Fix64.One, second);
+
+        effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual(first.x.RawValue + second.x.RawValue, executor.LastFixedExternal.x.RawValue);
+        Assert.AreEqual(first.y.RawValue + second.y.RawValue, executor.LastFixedExternal.y.RawValue);
     }
 }

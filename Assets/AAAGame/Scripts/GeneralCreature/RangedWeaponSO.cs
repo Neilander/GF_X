@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 远程武器SO：实现弹道攻击逻辑
@@ -20,18 +20,30 @@ public class RangedWeaponSO : BaseWeaponSO
 
     public override void Execute(IEntityContext attacker, IEntityContext target, WeaponData weaponData)
     {
-        if (target == null || !target.Alive)
-        {
+        if (attacker == null)
+            throw new System.ArgumentNullException(nameof(attacker));
+        if (target == null)
+            throw new System.ArgumentNullException(nameof(target));
+        if (weaponData == null)
+            throw new System.ArgumentNullException(nameof(weaponData));
+        if (!target.Alive)
             return;
-        }
+        if (!LogicProjectileService.IsActive || !LogicDamageEventService.IsCollecting)
+            throw new System.InvalidOperationException("RangedWeaponSO.Execute failed: no logic projectile collection window is active.");
+
+        ulong logicProjectileId = LogicProjectileService.Submit(attacker, target, weaponData);
+        FixVector2 logicStart = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker);
 
         // 创建弹道参数
-        EntityParams projectileParams = EntityParams.Create();
-        projectileParams.position = attacker.Position + Vector3.up * 0.5f;
+        EntityParams projectileParams = EntityParams.Create(new Vector3(
+            (float)logicStart.x,
+            attacker.Position.y + 0.5f,
+            (float)logicStart.y));
         projectileParams.Attacker = attacker;
         projectileParams.Target = target;
         projectileParams.WeaponData = weaponData;
         projectileParams.WeaponSO = this;
+        projectileParams.LogicProjectileId = logicProjectileId;
 
         // 使用对象池显示弹道
         GF.Entity.ShowEntity<Projectile>(_projectileName, Const.EntityGroup.Bullet, projectileParams);

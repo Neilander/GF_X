@@ -24,16 +24,16 @@ public class SimEntityIntegrationTests
         ctx.SyncPositionToExecutor();
 
         if (ctx.Brain is ITickBrain tickBrain)
-            tickBrain.Tick(ctx, dt);
+            tickBrain.Tick(ctx, (Fix64)dt);
 
         if (ctx.CanRun(ctx.TargetComp))
-            ctx.TargetComp?.UpdateTargeting(dt);
+            ctx.TargetComp?.UpdateTargeting((Fix64)dt);
 
         if (ctx.CanRun(ctx.MoveComp))
-            ctx.MoveComp?.Move(dt);
+            ctx.MoveComp?.Move((Fix64)dt);
 
         if (ctx.CanRun(ctx.AtkComp))
-            ctx.AtkComp?.Attack(dt);
+ctx.AtkComp?.Attack((Fix64)dt);
 
         ctx.MoveExecutor.Execute(dt);
         ctx.SyncPositionFromExecutor();
@@ -101,7 +101,7 @@ public class SimEntityIntegrationTests
         // 模拟：手动让敌人追击
         for (int i = 0; i < 120; i++)
         {
-            targeting.UpdateTargeting(1f / 60f);
+            targeting.UpdateTargeting(Fix64.One / (Fix64)60);
 
             // 如果发现目标，向目标移动
             if (targeting.CurrentTarget != null)

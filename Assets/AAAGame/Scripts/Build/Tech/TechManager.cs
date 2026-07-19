@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityGameFramework.Runtime;
 
@@ -158,7 +158,7 @@ public class TechManager : GameFrameworkComponent
 
         InGameDataModel.RecordBuildingCostSpent(owner.BuildingInstanceId, upgradeCost);
         InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
-        GF.Entity.HideEntity(owner.Entity);
+        owner.RequestDespawn();
         return true;
     }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -9,12 +9,19 @@ public interface ILogicFrameUpdate
     void OnLogicFrameUpdate(Fix64 deltaTime);
 }
 
+public interface ILogicFrameStableOrder
+{
+    long LogicFrameStableKey { get; }
+}
+
 public static class LogicFrameRuntime
 {
     private sealed class ListenerEntry
     {
         public ILogicFrameUpdate Listener;
         public int Order;
+        public bool HasStableKey;
+        public long StableKey;
         public long Sequence;
     }
 
@@ -46,10 +53,16 @@ public static class LogicFrameRuntime
         if (s_ListenerLookup.ContainsKey(listener))
             throw new InvalidOperationException($"LogicFrameRuntime.Register failed: listener is already registered. type={listener.GetType().FullName}.");
 
+        bool hasStableKey = listener is ILogicFrameStableOrder;
+        long stableKey = hasStableKey
+            ? ((ILogicFrameStableOrder)listener).LogicFrameStableKey
+            : 0;
         var entry = new ListenerEntry
         {
             Listener = listener,
             Order = listener.LogicFrameOrder,
+            HasStableKey = hasStableKey,
+            StableKey = stableKey,
             Sequence = s_NextSequence++,
         };
 
@@ -57,7 +70,14 @@ public static class LogicFrameRuntime
         for (int i = 0; i < s_Listeners.Count; i++)
         {
             ListenerEntry existing = s_Listeners[i];
-            if (entry.Order < existing.Order || (entry.Order == existing.Order && entry.Sequence < existing.Sequence))
+            int comparison = CompareEntries(entry, existing);
+            if (comparison == 0)
+            {
+                throw new InvalidOperationException(
+                    $"LogicFrameRuntime.Register failed: duplicate stable order key. order={entry.Order}, stableKey={entry.StableKey}, " +
+                    $"existing={existing.Listener.GetType().FullName}, incoming={listener.GetType().FullName}.");
+            }
+            if (comparison < 0)
             {
                 insertIndex = i;
                 break;
@@ -66,6 +86,19 @@ public static class LogicFrameRuntime
 
         s_Listeners.Insert(insertIndex, entry);
         s_ListenerLookup.Add(listener, entry);
+    }
+
+    private static int CompareEntries(ListenerEntry left, ListenerEntry right)
+    {
+        int orderComparison = left.Order.CompareTo(right.Order);
+        if (orderComparison != 0)
+            return orderComparison;
+
+        if (left.HasStableKey && right.HasStableKey)
+            return left.StableKey.CompareTo(right.StableKey);
+        if (left.HasStableKey != right.HasStableKey)
+            return left.HasStableKey ? -1 : 1;
+        return left.Sequence.CompareTo(right.Sequence);
     }
 
     public static void Unregister(ILogicFrameUpdate listener)

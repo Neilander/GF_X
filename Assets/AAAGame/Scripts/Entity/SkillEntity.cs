@@ -9,7 +9,7 @@ public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
     private Transform _rangeTrans;
     private LineRenderer _rangeLineRenderer;
     private const int CastRangeSegments = 96;
-    
+
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
@@ -35,11 +35,11 @@ public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
         skillComp?.ShutDown();
         base.OnHide(isShutdown, userData);
     }
-    
-    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
+
+    protected override void OnPostLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnLogicFrameUpdate(deltaTime);
-        
+        base.OnPostLogicFrameUpdate(deltaTime);
+
         if(CanRun(skillComp))
             skillComp.Skill(deltaTime);
     }

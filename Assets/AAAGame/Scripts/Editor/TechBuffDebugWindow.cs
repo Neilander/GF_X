@@ -188,7 +188,7 @@ public sealed class TechBuffDebugWindow : EditorWindow
 
         string modStr = modNames.Count == 0 ? "(空)" : string.Join(" + ", modNames);
         string shortId = ShortenBuffId(buff.id);
-        string extra = (!buff.isForever) ? $" [{buff.duration:F1}s]" : "";
+        string extra = (!buff.isForever) ? $" [{(float)buff.duration:F1}s]" : "";
         return $"  • {modStr}{extra}    ({shortId})";
     }
 

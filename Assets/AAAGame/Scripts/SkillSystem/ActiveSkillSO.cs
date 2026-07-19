@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -127,9 +127,6 @@ public class ActiveSkillSO : SkillEffectSO
                     info.tempInfoRecords.Add(posInfo, typeof(PositionSelectActionInfo));
                     break;
 
-                case ProjectileSpawnActionInfo projInfo:
-                    info.tempInfoRecords.Add(projInfo, typeof(ProjectileSpawnActionInfo));
-                    break;
             }
         }
         //数据记录完毕，进入下个部分
@@ -153,9 +150,6 @@ public class ActiveSkillSO : SkillEffectSO
                 posSelectInfo.selectScale = GetSelectionScaleOrFallback();
                 break;
 
-            case ProjectileSpawnActionInfo projectSpawnInfo:
-                //特殊信息自己获取
-                break;
         }
     }
 

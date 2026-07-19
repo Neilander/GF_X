@@ -78,7 +78,7 @@ public sealed class DayScalingHeroStatsBuff : BuffCallback
 
     private readonly Fix64 m_AttackPercentPerDay;
     private readonly Fix64 m_HealthPercentPerDay;
-    private float m_Timer;
+    private Fix64 m_Timer;
     private int m_AppliedDays = -1;
     private Fix64 m_AppliedAttackPercent;
     private Fix64 m_AppliedHealthPercent;
@@ -95,13 +95,13 @@ public sealed class DayScalingHeroStatsBuff : BuffCallback
         Refresh(true);
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < RefreshInterval)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)RefreshInterval)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         Refresh(false);
     }
 

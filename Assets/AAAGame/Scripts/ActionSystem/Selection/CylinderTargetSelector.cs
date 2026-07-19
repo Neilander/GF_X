@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class CylinderTargetSelector:TargetableSelector
 {
@@ -21,6 +21,7 @@ public class CylinderTargetSelector:TargetableSelector
     /// <param name="ratio">X是半径，Y是高度</param>
     public override void ChangeRange(Vector3 ratio)
     {
+        SetLogicQueryRadius(ratio.x);
         _collider.radius = ratio.x;
         _collider.height = ratio.y+2*ratio.x;
 

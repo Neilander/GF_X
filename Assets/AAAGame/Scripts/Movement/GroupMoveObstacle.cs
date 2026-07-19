@@ -6,18 +6,19 @@
 /// </summary>
 public class GroupMoveObstacle : MonoBehaviour
 {
-    private int _obstacleId;
+    [SerializeField] private int _obstacleId;
 
     private void Start()
     {
         var col = GetComponent<Collider>();
         if (col == null)
         {
-            Debug.LogWarning($"[GroupMoveObstacle] {name} 没有 Collider，跳过注册");
-            return;
+            throw new System.InvalidOperationException($"GroupMoveObstacle.Start failed: {name} has no Collider.");
         }
+        if (_obstacleId <= 0)
+            throw new System.InvalidOperationException($"GroupMoveObstacle.Start failed: {name} requires a positive authored obstacle id.");
 
-        _obstacleId = GroupMoveManager.Instance.RegisterColliderObstacle(col);
+        GroupMoveManager.Instance.RegisterColliderObstacle(_obstacleId, col);
     }
 
     private void OnDestroy()

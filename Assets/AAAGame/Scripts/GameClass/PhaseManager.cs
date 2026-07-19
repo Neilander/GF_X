@@ -288,7 +288,7 @@ public class PhaseManager : GameFrameworkComponent
     {
         if (AudioManager.Instance == null) return;
         int token = ++s_PhaseSoundToken;
-        if (GF.Base != null && GF.Base.IsGamePaused)
+        if (LogicTimeControlService.IsPaused)
         {
             PlayPhaseEnterSoundWhenUnpausedAsync(cueKey, token).Forget();
             return;
@@ -299,7 +299,7 @@ public class PhaseManager : GameFrameworkComponent
 
     private static async UniTaskVoid PlayPhaseEnterSoundWhenUnpausedAsync(string cueKey, int token)
     {
-        await UniTask.WaitUntil(() => GF.Base == null || !GF.Base.IsGamePaused, PlayerLoopTiming.Update);
+        await UniTask.WaitUntil(() => !LogicTimeControlService.IsPaused, PlayerLoopTiming.Update);
 
         if (token == s_PhaseSoundToken && AudioManager.Instance != null)
         {

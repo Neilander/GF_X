@@ -88,9 +88,9 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         base.OnHide(isShutdown, userData);
     }
 
-    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
+    protected override void OnPostLogicFrameUpdate(Fix64 deltaTime)
     {
-        base.OnLogicFrameUpdate(deltaTime);
+        base.OnPostLogicFrameUpdate(deltaTime);
         SyncHeroOutOfCombatSpeedBuff();
         TickGhostCollisionRuntime();
         TickConstructionEscapeRuntime();
@@ -335,7 +335,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         bool canEnableBuff = Alive
                              && (isFirstApply
                                  || keepInitialGraceBuff
-                                 || (IsOutOfCombat && OutOfCombatElapsedSeconds >= HeroOutOfCombatSpeedDelay));
+                                 || (IsOutOfCombat && OutOfCombatElapsedLogicTime >= (Fix64)HeroOutOfCombatSpeedDelay));
         bool hasBuff = BuffComp.HasBuff(HeroOutOfCombatSpeedBuffId);
 
         if (canEnableBuff)
@@ -724,8 +724,10 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     {
         if (!GroupMoveManager.HasInstance)
             return;
+        if (!LogicEntityId.IsValid)
+            throw new System.InvalidOperationException("HeroEntity.SetGhostGroupMoveCollisionIgnore failed: logic entity id is invalid.");
 
-        GroupMoveManager.Instance.SetAgentIgnoreCollision(GetInstanceID(), ignore);
+        GroupMoveManager.Instance.SetAgentIgnoreCollision(LogicEntityId.Value, ignore);
     }
 
     public bool TryBeginConstructionEscape(BuildingEntity building)
@@ -737,41 +739,31 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         if (selfController == null)
             throw new System.InvalidOperationException($"HeroEntity.TryBeginConstructionEscape failed: hero has no CharacterController. entityId={Id}.");
 
-        Collider[] buildingColliders = building.GetComponentsInChildren<Collider>(true);
-        int solidColliderCount = 0;
+        IReadOnlyList<LogicCombatShape> obstacleShapes = building.GetRequiredWorldObstacleShapes();
+        FixVector2 heroPosition = this.LogicFramePositionFixed();
+        Fix64 heroRadius = DistanceUnitConverter.ConvertToWorld(GetProperty(CreatureMainProperty.CollisionRadius));
         int overlapCount = 0;
-        Bounds heroBounds = selfController.bounds;
-        for (int i = 0; i < buildingColliders.Length; i++)
+        for (int i = 0; i < obstacleShapes.Count; i++)
         {
-            Collider buildingCollider = buildingColliders[i];
-            if (buildingCollider == null || !buildingCollider.enabled || buildingCollider.isTrigger)
-                continue;
-
-            solidColliderCount++;
-            if (heroBounds.Intersects(GroupMoveManager.ResolveColliderWorldBounds(buildingCollider)))
+            LogicCombatShape shape = obstacleShapes[i];
+            if (shape.Kind != LogicCombatShapeKind.AxisAlignedBox)
+                throw new System.InvalidOperationException($"HeroEntity.TryBeginConstructionEscape failed: obstacle shape {i} is not an axis-aligned box.");
+            FixVector2 closest = shape.ClosestPoint(heroPosition);
+            if (FixVector2.SqrMagnitude(heroPosition - closest) < heroRadius * heroRadius)
                 overlapCount++;
         }
 
         if (overlapCount == 0)
         {
-            System.Text.StringBuilder colliderDiagnostics = new System.Text.StringBuilder();
-            for (int i = 0; i < buildingColliders.Length; i++)
-            {
-                Collider buildingCollider = buildingColliders[i];
-                if (buildingCollider == null || !buildingCollider.enabled || buildingCollider.isTrigger)
-                    continue;
-
-                colliderDiagnostics.Append(" [").Append(buildingCollider.name)
-                    .Append(" bounds=").Append(GroupMoveManager.ResolveColliderWorldBounds(buildingCollider)).Append(']');
-            }
-
             Debug.Log(
-                $"[HeroConstructionEscape] skip no-overlap heroId={Id} heroPos={Position} heroBounds={heroBounds} " +
+                $"[HeroConstructionEscape] skip no-overlap heroId={Id} heroPos={Position} " +
                 $"buildingId={building.Id} building={building.CharacterKey} instance={building.BuildingInstanceId} " +
-                $"buildingPos={building.Position} solidColliders={solidColliderCount} colliders={colliderDiagnostics}");
+                $"buildingPos={building.Position} authoredShapes={obstacleShapes.Count}");
             return false;
         }
 
+        Collider[] buildingColliders = building.GetComponentsInChildren<Collider>(true);
+        int solidColliderCount = 0;
         int ignoredCount = 0;
         for (int i = 0; i < buildingColliders.Length; i++)
         {
@@ -779,6 +771,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
             if (buildingCollider == null || !buildingCollider.enabled || buildingCollider.isTrigger)
                 continue;
 
+            solidColliderCount++;
             int colliderId = buildingCollider.GetInstanceID();
             if (_constructionEscapeIgnoredColliders.ContainsKey(colliderId))
                 continue;
@@ -800,9 +793,9 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
             0f,
             out _);
         Debug.Log(
-            $"[HeroConstructionEscape] begin heroId={Id} heroPos={Position} heroBounds={heroBounds} " +
+            $"[HeroConstructionEscape] begin heroId={Id} heroPos={Position} " +
             $"buildingId={building.Id} building={building.CharacterKey} instance={building.BuildingInstanceId} buildingPos={building.Position} " +
-            $"solidColliders={solidColliderCount} overlaps={overlapCount} ignoredAdded={ignoredCount} ignoredTotal={_constructionEscapeIgnoredColliders.Count} " +
+            $"authoredShapes={obstacleShapes.Count} solidColliders={solidColliderCount} overlaps={overlapCount} ignoredAdded={ignoredCount} ignoredTotal={_constructionEscapeIgnoredColliders.Count} " +
             $"legalBeforeEscape={legalBeforeEscape}");
         return true;
     }
@@ -915,7 +908,9 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
                 if (otherController == null)
                     continue;
 
-                int otherId = other.GetInstanceID();
+                if (!other.LogicEntityId.IsValid)
+                    throw new System.InvalidOperationException("HeroEntity.SyncGhostUnitCollisionIgnores failed: other logic entity id is invalid.");
+                int otherId = other.LogicEntityId.Value;
                 if (_ghostIgnoredUnitControllers.ContainsKey(otherId))
                     continue;
 

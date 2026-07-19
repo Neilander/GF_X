@@ -1,16 +1,39 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
 public class DirectAtkCompTests
 {
-    private const float AttackStepEpsilon = 0.02f;
-
     [SetUp]
     public void SetUp()
     {
         SetupCombatPhaseForTests();
+        if (LogicFrameRuntime.IsActive)
+            LogicFrameRuntime.End();
+        LogicFrameRuntime.Begin();
+        LogicFrameRuntime.StartTimeline();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        if (LogicFrameRuntime.IsActive)
+            LogicFrameRuntime.End();
+    }
+
+    private static void StartAttack(DirectAtkComp atkComp)
+    {
+atkComp.Attack(Fix64.Zero);
+    }
+
+    private static void AdvanceFrames(DirectAtkComp atkComp, int frameCount)
+    {
+        for (int i = 0; i < frameCount; i++)
+        {
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+atkComp.Attack(Fix64.Zero);
+        }
     }
 
     private static void SetupCombatPhaseForTests()
@@ -112,11 +135,11 @@ public class DirectAtkCompTests
         attacker.AtkComp = atkComp;
 
         // 先让 targeting 找到目标
-        targeting.UpdateTargeting(1f);
+        targeting.UpdateTargeting(Fix64.One);
         Assert.IsNotNull(targeting.CurrentTarget, "应该找到目标");
 
         // 发起攻击
-        atkComp.Attack(0.01f);
+        StartAttack(atkComp);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "应进入前摇");
         Assert.AreEqual(1, atkComp.AttackCount);
     }
@@ -144,11 +167,14 @@ public class DirectAtkCompTests
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
 
-        targeting.UpdateTargeting(1f);
-        atkComp.Attack(0.01f); // 进入 WindUp
+        targeting.UpdateTargeting(Fix64.One);
+        StartAttack(atkComp);
 
-        // 推进到前摇结束
-        atkComp.Attack(0.2f + AttackStepEpsilon);
+atkComp.Attack((Fix64)999);
+        Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "同一逻辑帧内 deltaTime 再大也不能推进前摇");
+        Assert.AreEqual(100f, (float)target.Health.currentHealth, 0.01f);
+
+        AdvanceFrames(atkComp, 6);
 
         Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State, "前摇结束应进入后摇");
         Assert.AreEqual(70f, (float)target.Health.currentHealth, 0.01f, "目标应受到30点伤害");
@@ -178,35 +204,106 @@ public class DirectAtkCompTests
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
 
-        targeting.UpdateTargeting(1f);
+        targeting.UpdateTargeting(Fix64.One);
 
         // 第一次攻击
-        atkComp.Attack(0.01f);
+        StartAttack(atkComp);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State);
         Assert.IsFalse(attacker.CanRun(moveComp), "前摇时移动应被锁定");
 
-        // 前摇结束
-        atkComp.Attack(0.3f + AttackStepEpsilon);
+        // 0.3 秒按 30Hz 内容规则映射为 9 Tick。
+        AdvanceFrames(atkComp, 9);
         Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State);
         Assert.AreEqual(80f, (float)target.Health.currentHealth, 0.01f);
 
-        // 后摇结束
-        atkComp.Attack(0.3f + AttackStepEpsilon);
+        AdvanceFrames(atkComp, 9);
         Assert.AreEqual(DirectAtkComp.AtkState.Cooldown, atkComp.State);
         Assert.IsTrue(attacker.CanRun(moveComp), "后摇结束后移动应恢复");
 
-        // 冷却中不能再次攻击
-        atkComp.Attack(0.2f);
+        AdvanceFrames(atkComp, 11);
         Assert.AreEqual(DirectAtkComp.AtkState.Cooldown, atkComp.State);
+        Assert.AreEqual(1, atkComp.AttackCount);
 
-        // 冷却结束
-        atkComp.Attack(0.3f + AttackStepEpsilon);
-        Assert.AreEqual(DirectAtkComp.AtkState.Idle, atkComp.State);
-
-        // 可以发起第二次攻击
-        atkComp.Attack(0.01f);
+        // ReadyFrame 到达的同一 Tick 自动起手，完整周期严格为 30 Tick。
+        AdvanceFrames(atkComp, 1);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State);
         Assert.AreEqual(2, atkComp.AttackCount);
+    }
+
+    [Test]
+    public void 零前摇和零后摇在起手帧完成且不残留移动锁()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRange = 10f
+        };
+        targeting.Init(attacker);
+        attacker.TargetComp = targeting;
+        attacker.Brain = new ScriptedBrain { Attack = true };
+
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+
+        var weapon = MeleeWeapon(damage: 20f, windUp: 0f, windDown: 0f, interval: 0f);
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("TestWeapon"));
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+
+        targeting.CurrentTarget = target;
+        StartAttack(atkComp);
+
+        Assert.AreEqual(80f, (float)target.Health.currentHealth, 0.01f);
+        Assert.AreEqual(DirectAtkComp.AtkState.Idle, atkComp.State);
+        Assert.IsFalse(atkComp.IsAttacking);
+        Assert.IsTrue(attacker.CanRun(moveComp), "零后摇必须在起手帧释放移动锁");
+
+        atkComp.Attack((Fix64)999);
+        Assert.AreEqual(1, atkComp.AttackCount, "同一逻辑帧最多只能起手一次");
+        Assert.AreEqual(80f, (float)target.Health.currentHealth, 0.01f);
+
+        AdvanceFrames(atkComp, 1);
+        Assert.AreEqual(2, atkComp.AttackCount, "零间隔攻击应在下一逻辑帧继续自动起手");
+        Assert.AreEqual(60f, (float)target.Health.currentHealth, 0.01f);
+    }
+
+    [Test]
+    public void 前摇中打断会取消命中且重复打断不会残留移动锁()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRange = 10f
+        };
+        targeting.Init(attacker);
+        attacker.TargetComp = targeting;
+        var brain = new ScriptedBrain { Attack = true };
+        attacker.Brain = brain;
+
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+
+        var weapon = MeleeWeapon(damage: 20f, windUp: 0.3f, windDown: 0.3f, interval: 1f);
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("TestWeapon"));
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+
+        targeting.CurrentTarget = target;
+        StartAttack(atkComp);
+        Assert.IsFalse(attacker.CanRun(moveComp));
+
+        brain.Attack = false;
+        atkComp.InterruptAttack(AttackInterruptReason.Forced);
+        atkComp.InterruptAttack(AttackInterruptReason.Forced);
+        AdvanceFrames(atkComp, 9);
+
+        Assert.AreEqual(100f, (float)target.Health.currentHealth, 0.01f, "已打断 schedule 的 HitFrame 不得提交伤害");
+        Assert.AreEqual(DirectAtkComp.AtkState.Idle, atkComp.State);
+        Assert.IsTrue(attacker.CanRun(moveComp));
     }
 
     [Test]
@@ -233,13 +330,13 @@ public class DirectAtkCompTests
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
 
-        targeting.UpdateTargeting(1f);
-        atkComp.Attack(0.01f);
+        targeting.UpdateTargeting(Fix64.One);
+        StartAttack(atkComp);
 
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State);
         Assert.IsTrue(attacker.CanRun(moveComp), "移动攻击组件在前摇期间不应锁移动");
 
-        atkComp.Attack(0.3f + AttackStepEpsilon);
+        AdvanceFrames(atkComp, 9);
 
         Assert.AreEqual(DirectAtkComp.AtkState.WindDown, atkComp.State);
         Assert.IsTrue(attacker.CanRun(moveComp), "移动攻击组件在后摇期间不应锁移动");
@@ -269,10 +366,10 @@ public class DirectAtkCompTests
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
 
-        targeting.UpdateTargeting(1f);
+        targeting.UpdateTargeting(Fix64.One);
         Assert.IsNotNull(targeting.CurrentTarget);
 
-        atkComp.Attack(0.01f);
+        StartAttack(atkComp);
         Assert.AreEqual(DirectAtkComp.AtkState.Idle, atkComp.State, "目标超出攻击范围不应攻击");
     }
 
@@ -299,11 +396,11 @@ public class DirectAtkCompTests
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
 
-        targeting.UpdateTargeting(1f);
+        targeting.UpdateTargeting(Fix64.One);
 
         // 第一次攻击，杀死目标
-        atkComp.Attack(0.01f); // WindUp
-        atkComp.Attack(0.1f + AttackStepEpsilon);  // 造成伤害 → hp: 5 - 10 = 0 → 死亡
+        StartAttack(atkComp);
+        AdvanceFrames(atkComp, 3);
 
         Assert.AreEqual(0f, (float)target.Health.currentHealth, 0.01f);
         Assert.IsFalse(target.Alive, "目标应该死亡");
@@ -333,12 +430,12 @@ public class DirectAtkCompTests
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
 
-        // 模拟 5 秒战斗
-        float dt = 1f / 60f;
-        for (int i = 0; i < 300; i++)
+        // 模拟 5 秒、150 个逻辑帧的战斗。
+        for (int i = 0; i < 150; i++)
         {
-            targeting.UpdateTargeting(dt);
-            atkComp.Attack(dt);
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+            targeting.UpdateTargeting(LogicFrameRuntime.FixedDeltaTime);
+            atkComp.Attack(Fix64.Zero);
         }
 
         Assert.GreaterOrEqual(atkComp.AttackCount, 3, "应至少攻击3次");
@@ -382,9 +479,9 @@ public class DirectAtkCompTests
         atkComp.Init(attacker);
         attacker.AtkComp = atkComp;
 
-        targeting.UpdateTargeting(1f);
+        targeting.UpdateTargeting(Fix64.One);
 
-        atkComp.Attack(0.01f);
+        StartAttack(atkComp);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "远程单位应能在射程内攻击");
         Assert.AreEqual(1, atkComp.AttackCount);
     }

@@ -1,7 +1,7 @@
-public interface IAtkComp : ICapability
+﻿public interface IAtkComp : ICapability
 {
     void Init(IEntityContext ctx);
-    void Attack(float deltaTime);
+void Attack(Fix64 deltaTime);
     void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced);
     
     /// <summary>

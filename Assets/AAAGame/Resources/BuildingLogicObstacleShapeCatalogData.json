@@ -1,0 +1,1238 @@
+[
+  {
+    "PrefabPath": "Building/Buil_Army_Lv0",
+    "Boxes": []
+  },
+  {
+    "PrefabPath": "Building/Buil_BallPit_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -210,
+        "CenterZRaw": 683,
+        "HalfExtentXRaw": 1049,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -3414,
+        "HalfExtentXRaw": 420,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -1366,
+        "HalfExtentXRaw": 839,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 839,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_BallPit_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": -315,
+        "CenterZRaw": 1025,
+        "HalfExtentXRaw": 1573,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -5120,
+        "HalfExtentXRaw": 630,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -2048,
+        "HalfExtentXRaw": 1259,
+        "HalfExtentZRaw": 2048
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": 4097,
+        "HalfExtentXRaw": 1259,
+        "HalfExtentZRaw": 2048
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_BallPit_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -420,
+        "CenterZRaw": 1366,
+        "HalfExtentXRaw": 2097,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -6827,
+        "HalfExtentXRaw": 839,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -2731,
+        "HalfExtentXRaw": 1678,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": 5462,
+        "HalfExtentXRaw": 1678,
+        "HalfExtentZRaw": 2731
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_Base_Lv0",
+    "Boxes": []
+  },
+  {
+    "PrefabPath": "Building/Buil_ColdMeatStorage_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -683,
+        "HalfExtentXRaw": 1156,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": 193,
+        "CenterZRaw": 2048,
+        "HalfExtentXRaw": 963,
+        "HalfExtentZRaw": 2048
+      },
+      {
+        "CenterXRaw": 386,
+        "CenterZRaw": -2731,
+        "HalfExtentXRaw": 771,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ColdMeatStorage_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1024,
+        "HalfExtentXRaw": 1734,
+        "HalfExtentZRaw": 1025
+      },
+      {
+        "CenterXRaw": 289,
+        "CenterZRaw": 3073,
+        "HalfExtentXRaw": 1445,
+        "HalfExtentZRaw": 3073
+      },
+      {
+        "CenterXRaw": 578,
+        "CenterZRaw": -4096,
+        "HalfExtentXRaw": 1156,
+        "HalfExtentZRaw": 2049
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ColdMeatStorage_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -1366,
+        "HalfExtentXRaw": 2312,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 386,
+        "CenterZRaw": 4096,
+        "HalfExtentXRaw": 1926,
+        "HalfExtentZRaw": 4096
+      },
+      {
+        "CenterXRaw": 771,
+        "CenterZRaw": -5462,
+        "HalfExtentXRaw": 1541,
+        "HalfExtentZRaw": 2731
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DeliveryHub_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 1,
+        "HalfExtentXRaw": 4096,
+        "HalfExtentZRaw": 3483
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DeliveryHub_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 5505,
+        "HalfExtentZRaw": 6144
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DeliveryHub_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -3382,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 677,
+        "HalfExtentZRaw": 8192
+      },
+      {
+        "CenterXRaw": 677,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 3382,
+        "HalfExtentZRaw": 5462
+      },
+      {
+        "CenterXRaw": 3382,
+        "CenterZRaw": -6827,
+        "HalfExtentXRaw": 677,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 3382,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 677,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DreamPark_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -8015,
+        "CenterZRaw": -2731,
+        "HalfExtentXRaw": 1603,
+        "HalfExtentZRaw": 13654
+      },
+      {
+        "CenterXRaw": -4809,
+        "CenterZRaw": 13654,
+        "HalfExtentXRaw": 1603,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": -3206,
+        "CenterZRaw": -2731,
+        "HalfExtentXRaw": 3206,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": -1603,
+        "CenterZRaw": -13654,
+        "HalfExtentXRaw": 1603,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": -1603,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 1603,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": -1603,
+        "CenterZRaw": 8192,
+        "HalfExtentXRaw": 4809,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 1603,
+        "CenterZRaw": -8192,
+        "HalfExtentXRaw": 8015,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 6412,
+        "CenterZRaw": -2731,
+        "HalfExtentXRaw": 3206,
+        "HalfExtentZRaw": 2731
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DreamPark_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": -9017,
+        "CenterZRaw": -3072,
+        "HalfExtentXRaw": 1804,
+        "HalfExtentZRaw": 15360
+      },
+      {
+        "CenterXRaw": -5410,
+        "CenterZRaw": 15361,
+        "HalfExtentXRaw": 1804,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": -3607,
+        "CenterZRaw": -3072,
+        "HalfExtentXRaw": 3607,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": -1804,
+        "CenterZRaw": -15360,
+        "HalfExtentXRaw": 1804,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": -1804,
+        "CenterZRaw": 3073,
+        "HalfExtentXRaw": 1804,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": -1804,
+        "CenterZRaw": 9217,
+        "HalfExtentXRaw": 5410,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": 1804,
+        "CenterZRaw": -9216,
+        "HalfExtentXRaw": 9017,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": 7213,
+        "CenterZRaw": -3072,
+        "HalfExtentXRaw": 3607,
+        "HalfExtentZRaw": 3072
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DreamPark_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -10018,
+        "CenterZRaw": -3414,
+        "HalfExtentXRaw": 2004,
+        "HalfExtentZRaw": 17067
+      },
+      {
+        "CenterXRaw": -6011,
+        "CenterZRaw": 17067,
+        "HalfExtentXRaw": 2004,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": -4008,
+        "CenterZRaw": -3414,
+        "HalfExtentXRaw": 4008,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": -2004,
+        "CenterZRaw": -17067,
+        "HalfExtentXRaw": 2004,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": -2004,
+        "CenterZRaw": 3414,
+        "HalfExtentXRaw": 2004,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": -2004,
+        "CenterZRaw": 10241,
+        "HalfExtentXRaw": 6011,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": 2004,
+        "CenterZRaw": -10240,
+        "HalfExtentXRaw": 10018,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": 8015,
+        "CenterZRaw": -3414,
+        "HalfExtentXRaw": 4008,
+        "HalfExtentZRaw": 3414
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DrinkStand_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -261,
+        "CenterZRaw": 3414,
+        "HalfExtentXRaw": 782,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -683,
+        "HalfExtentXRaw": 1043,
+        "HalfExtentZRaw": 3414
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DrinkStand_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": -391,
+        "CenterZRaw": 5121,
+        "HalfExtentXRaw": 1173,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1024,
+        "HalfExtentXRaw": 1564,
+        "HalfExtentZRaw": 5121
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_DrinkStand_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -522,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 1564,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -1366,
+        "HalfExtentXRaw": 2085,
+        "HalfExtentZRaw": 6827
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_FarmBase_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 15807,
+        "HalfExtentZRaw": 10923
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -13654,
+        "HalfExtentXRaw": 10538,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 7904,
+        "CenterZRaw": 13654,
+        "HalfExtentXRaw": 2635,
+        "HalfExtentZRaw": 2731
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_FarmBase_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 17783,
+        "HalfExtentZRaw": 12288
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -15360,
+        "HalfExtentXRaw": 11856,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": 8892,
+        "CenterZRaw": 15360,
+        "HalfExtentXRaw": 2964,
+        "HalfExtentZRaw": 3072
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_FarmBase_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1,
+        "HalfExtentXRaw": 19759,
+        "HalfExtentZRaw": 13654
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -17067,
+        "HalfExtentXRaw": 13173,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": 9880,
+        "CenterZRaw": 17067,
+        "HalfExtentXRaw": 3294,
+        "HalfExtentZRaw": 3414
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_GiantMascot_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -6827,
+        "HalfExtentXRaw": 3091,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 3091,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 1,
+        "HalfExtentXRaw": 4636,
+        "HalfExtentZRaw": 5462
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_InterviewRoom_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -2549,
+        "CenterZRaw": 3414,
+        "HalfExtentXRaw": 510,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -683,
+        "HalfExtentXRaw": 3058,
+        "HalfExtentZRaw": 3414
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_InterviewRoom_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": -3823,
+        "CenterZRaw": 5120,
+        "HalfExtentXRaw": 765,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1024,
+        "HalfExtentXRaw": 4587,
+        "HalfExtentZRaw": 5120
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_InterviewRoom_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -5097,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 1020,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -1366,
+        "HalfExtentXRaw": 6116,
+        "HalfExtentZRaw": 6827
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_MeatStall_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -1767,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 884,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 1,
+        "HalfExtentXRaw": 2651,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 884,
+        "CenterZRaw": -2731,
+        "HalfExtentXRaw": 1767,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_MeatStall_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": -2651,
+        "CenterZRaw": 4097,
+        "HalfExtentXRaw": 1326,
+        "HalfExtentZRaw": 2048
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 1,
+        "HalfExtentXRaw": 3976,
+        "HalfExtentZRaw": 2048
+      },
+      {
+        "CenterXRaw": 1326,
+        "CenterZRaw": -4096,
+        "HalfExtentXRaw": 2651,
+        "HalfExtentZRaw": 2048
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_MeatStall_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -3534,
+        "CenterZRaw": 5462,
+        "HalfExtentXRaw": 1767,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 1,
+        "HalfExtentXRaw": 5301,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 1767,
+        "CenterZRaw": -5462,
+        "HalfExtentXRaw": 3534,
+        "HalfExtentZRaw": 2731
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_MiningRig_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1,
+        "HalfExtentXRaw": 3335,
+        "HalfExtentZRaw": 4096
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_MiningRig_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1,
+        "HalfExtentXRaw": 5002,
+        "HalfExtentZRaw": 6144
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_MiningRig_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1,
+        "HalfExtentXRaw": 6670,
+        "HalfExtentZRaw": 8192
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_NavStation_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -748,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 3738,
+        "HalfExtentZRaw": 5462
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -5462,
+        "HalfExtentXRaw": 4486,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 3738,
+        "CenterZRaw": 4097,
+        "HalfExtentXRaw": 748,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_OtakuDesk_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 3595,
+        "HalfExtentZRaw": 4096
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_OtakuDesk_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 5392,
+        "HalfExtentZRaw": 6145
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_OtakuDesk_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 7189,
+        "HalfExtentZRaw": 8192
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ParcelLocker_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 4096,
+        "HalfExtentZRaw": 2940
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ParcelLocker_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -2048,
+        "HalfExtentXRaw": 4400,
+        "HalfExtentZRaw": 4096
+      },
+      {
+        "CenterXRaw": 734,
+        "CenterZRaw": 3072,
+        "HalfExtentXRaw": 3667,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 3667,
+        "CenterZRaw": 5120,
+        "HalfExtentXRaw": 734,
+        "HalfExtentZRaw": 1024
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ParcelLocker_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": -5462,
+        "HalfExtentXRaw": 5649,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 942,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 4707,
+        "HalfExtentZRaw": 5462
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_PickupPoint_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 0,
+        "HalfExtentXRaw": 4096,
+        "HalfExtentZRaw": 2601
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_PickupPoint_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -2045,
+        "HalfExtentXRaw": 6145,
+        "HalfExtentZRaw": 4089
+      },
+      {
+        "CenterXRaw": 1024,
+        "CenterZRaw": 4089,
+        "HalfExtentXRaw": 5121,
+        "HalfExtentZRaw": 2045
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_PickupPoint_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1,
+        "HalfExtentXRaw": 8192,
+        "HalfExtentZRaw": 7975
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_Prod_Lv0",
+    "Boxes": []
+  },
+  {
+    "PrefabPath": "Building/Buil_QualityCheck_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -3239,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 648,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": -648,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 648,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -1366,
+        "HalfExtentXRaw": 3887,
+        "HalfExtentZRaw": 6827
+      },
+      {
+        "CenterXRaw": 3239,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 648,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ResearchCenter_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -2107,
+        "CenterZRaw": 8192,
+        "HalfExtentXRaw": 10535,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": -2107,
+        "CenterZRaw": 13654,
+        "HalfExtentXRaw": 2107,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 8428,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 2107,
+        "CenterZRaw": -8192,
+        "HalfExtentXRaw": 10535,
+        "HalfExtentZRaw": 8192
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ResearchCenter_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": -2371,
+        "CenterZRaw": 9216,
+        "HalfExtentXRaw": 11852,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": -2371,
+        "CenterZRaw": 15360,
+        "HalfExtentXRaw": 2371,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": 3072,
+        "HalfExtentXRaw": 9481,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": 2371,
+        "CenterZRaw": -9216,
+        "HalfExtentXRaw": 11852,
+        "HalfExtentZRaw": 9216
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ResearchCenter_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": -2634,
+        "CenterZRaw": 10240,
+        "HalfExtentXRaw": 13168,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": -2634,
+        "CenterZRaw": 17067,
+        "HalfExtentXRaw": 2634,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": -1,
+        "CenterZRaw": 3414,
+        "HalfExtentXRaw": 10535,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": 2634,
+        "CenterZRaw": -10240,
+        "HalfExtentXRaw": 13168,
+        "HalfExtentZRaw": 10240
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_ServerRoom_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": -3990,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 798,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 1,
+        "HalfExtentXRaw": 4787,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 798,
+        "CenterZRaw": -4096,
+        "HalfExtentXRaw": 3990,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 798,
+        "CenterZRaw": 4097,
+        "HalfExtentXRaw": 3990,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 1596,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 3192,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_Slaughterhouse_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": 1366,
+        "HalfExtentXRaw": 3082,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 514,
+        "CenterZRaw": -2048,
+        "HalfExtentXRaw": 2568,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": 1028,
+        "CenterZRaw": -3414,
+        "HalfExtentXRaw": 2055,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": 1028,
+        "CenterZRaw": -683,
+        "HalfExtentXRaw": 2055,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": 1028,
+        "CenterZRaw": 3414,
+        "HalfExtentXRaw": 2055,
+        "HalfExtentZRaw": 683
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_Slaughterhouse_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 2048,
+        "HalfExtentXRaw": 4622,
+        "HalfExtentZRaw": 2048
+      },
+      {
+        "CenterXRaw": 771,
+        "CenterZRaw": -3072,
+        "HalfExtentXRaw": 3852,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 1541,
+        "CenterZRaw": -5120,
+        "HalfExtentXRaw": 3082,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 1541,
+        "CenterZRaw": -1024,
+        "HalfExtentXRaw": 3082,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 1541,
+        "CenterZRaw": 5120,
+        "HalfExtentXRaw": 3082,
+        "HalfExtentZRaw": 1024
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_Slaughterhouse_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 6163,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 1028,
+        "CenterZRaw": -4096,
+        "HalfExtentXRaw": 5136,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 2055,
+        "CenterZRaw": -6827,
+        "HalfExtentXRaw": 4109,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 2055,
+        "CenterZRaw": -1366,
+        "HalfExtentXRaw": 4109,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 2055,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 4109,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_SortingCenter_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": -8192,
+        "HalfExtentXRaw": 8926,
+        "HalfExtentZRaw": 8192
+      },
+      {
+        "CenterXRaw": 1488,
+        "CenterZRaw": 2731,
+        "HalfExtentXRaw": 7439,
+        "HalfExtentZRaw": 2731
+      },
+      {
+        "CenterXRaw": 5951,
+        "CenterZRaw": 10923,
+        "HalfExtentXRaw": 2976,
+        "HalfExtentZRaw": 5462
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_SortingCenter_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -9216,
+        "HalfExtentXRaw": 10042,
+        "HalfExtentZRaw": 9216
+      },
+      {
+        "CenterXRaw": 1674,
+        "CenterZRaw": 3073,
+        "HalfExtentXRaw": 8368,
+        "HalfExtentZRaw": 3072
+      },
+      {
+        "CenterXRaw": 6695,
+        "CenterZRaw": 12288,
+        "HalfExtentXRaw": 3348,
+        "HalfExtentZRaw": 6144
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_SortingCenter_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 1,
+        "CenterZRaw": -10240,
+        "HalfExtentXRaw": 11158,
+        "HalfExtentZRaw": 10240
+      },
+      {
+        "CenterXRaw": 1860,
+        "CenterZRaw": 3414,
+        "HalfExtentXRaw": 9298,
+        "HalfExtentZRaw": 3414
+      },
+      {
+        "CenterXRaw": 7439,
+        "CenterZRaw": 13654,
+        "HalfExtentXRaw": 3720,
+        "HalfExtentZRaw": 6827
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_SouvenirStand_Lv1",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 2049,
+        "HalfExtentXRaw": 1600,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": 267,
+        "CenterZRaw": -2048,
+        "HalfExtentXRaw": 1333,
+        "HalfExtentZRaw": 2049
+      },
+      {
+        "CenterXRaw": 267,
+        "CenterZRaw": 3414,
+        "HalfExtentXRaw": 1333,
+        "HalfExtentZRaw": 683
+      },
+      {
+        "CenterXRaw": 534,
+        "CenterZRaw": 683,
+        "HalfExtentXRaw": 1067,
+        "HalfExtentZRaw": 683
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_SouvenirStand_Lv2",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 3073,
+        "HalfExtentXRaw": 2400,
+        "HalfExtentZRaw": 1025
+      },
+      {
+        "CenterXRaw": 400,
+        "CenterZRaw": -3072,
+        "HalfExtentXRaw": 2000,
+        "HalfExtentZRaw": 3073
+      },
+      {
+        "CenterXRaw": 400,
+        "CenterZRaw": 5121,
+        "HalfExtentXRaw": 2000,
+        "HalfExtentZRaw": 1024
+      },
+      {
+        "CenterXRaw": 800,
+        "CenterZRaw": 1025,
+        "HalfExtentXRaw": 1600,
+        "HalfExtentZRaw": 1025
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_SouvenirStand_Lv3",
+    "Boxes": [
+      {
+        "CenterXRaw": 0,
+        "CenterZRaw": 4097,
+        "HalfExtentXRaw": 3199,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 534,
+        "CenterZRaw": -4096,
+        "HalfExtentXRaw": 2666,
+        "HalfExtentZRaw": 4097
+      },
+      {
+        "CenterXRaw": 534,
+        "CenterZRaw": 6827,
+        "HalfExtentXRaw": 2666,
+        "HalfExtentZRaw": 1366
+      },
+      {
+        "CenterXRaw": 1067,
+        "CenterZRaw": 1366,
+        "HalfExtentXRaw": 2133,
+        "HalfExtentZRaw": 1366
+      }
+    ]
+  },
+  {
+    "PrefabPath": "Building/Buil_Tech_Lv0",
+    "Boxes": []
+  }
+]

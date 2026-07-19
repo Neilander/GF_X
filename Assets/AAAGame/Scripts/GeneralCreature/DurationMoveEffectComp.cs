@@ -1,5 +1,4 @@
-using UnityEngine;
-using System;
+﻿using UnityEngine;
 using System.Collections.Generic;
 
 public class DurationMoveEffectComp : IDurationMoveEffectComp
@@ -20,17 +19,31 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
         _timedOverrideEffects = new Dictionary<int, TimedMoveEffect>();
     }
 
-    public int StartDurationAdditionalMove(float duration, Vector3 speed, Func<Vector3, Vector3> speedModifier = null)
+    public int StartDurationAdditionalMove(float duration, Vector3 speed)
+    {
+        return StartDurationAdditionalMove(
+            (Fix64)duration,
+            new FixVector2((Fix64)speed.x, (Fix64)speed.z));
+    }
+
+    public int StartDurationAdditionalMove(Fix64 duration, FixVector2 speed)
     {
         _additionalIndex++;
-        _timedAdditionalEffects.Add(_additionalIndex, new TimedMoveEffect(duration, speed, speedModifier));
+        _timedAdditionalEffects.Add(_additionalIndex, new TimedMoveEffect(duration, speed));
         return _additionalIndex;
     }
 
-    public int StartDurationOverrideMove(float duration, Vector3 speed, Func<Vector3, Vector3> speedModifier = null)
+    public int StartDurationOverrideMove(float duration, Vector3 speed)
+    {
+        return StartDurationOverrideMove(
+            (Fix64)duration,
+            new FixVector2((Fix64)speed.x, (Fix64)speed.z));
+    }
+
+    public int StartDurationOverrideMove(Fix64 duration, FixVector2 speed)
     {
         _overrideIndex++;
-        _timedOverrideEffects.Add(_overrideIndex, new TimedMoveEffect(duration, speed, speedModifier));
+        _timedOverrideEffects.Add(_overrideIndex, new TimedMoveEffect(duration, speed));
         return _overrideIndex;
     }
 
@@ -57,12 +70,13 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
         _ctx?.MoveExecutor?.SetMovementMode(MovementMode.Normal);
     }
 
-    public void ApplyEffect(float deltaTime)
+    public void ApplyEffect(Fix64 deltaTime)
     {
-        Vector3 finalAdditionalVelocity = Vector3.zero;
-        Vector3 finalOverrideVelocity = Vector3.zero;
+        FixVector2 finalAdditionalVelocity = FixVector2.Zero;
+        FixVector2 finalOverrideVelocity = FixVector2.Zero;
         // -------- 计算 Additional --------
         var additionalKeys = new List<int>(_timedAdditionalEffects.Keys);
+        additionalKeys.Sort();
         bool hadAdditionalEffectThisFrame = additionalKeys.Count > 0;
 
         foreach (var key in additionalKeys)
@@ -81,6 +95,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
 
         // -------- 计算 Override --------
         var overrideKeys = new List<int>(_timedOverrideEffects.Keys);
+        overrideKeys.Sort();
         bool hasOverride = overrideKeys.Count > 0;
         bool hadOverrideEffectThisFrame = hasOverride;
         foreach (var key in overrideKeys)
@@ -99,9 +114,9 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
 
         if (hasOverride)
         {
-            executor.SetOverride(finalOverrideVelocity);
+            executor.SetOverrideFixed(finalOverrideVelocity);
         }
-        executor.AddExternal(finalAdditionalVelocity);
+        executor.AddExternalFixed(finalAdditionalVelocity);
 
         bool hasMotionEffect = hadAdditionalEffectThisFrame
                                || hadOverrideEffectThisFrame
@@ -129,21 +144,11 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
 
     class TimedMoveEffect : TimedEffect
     {
-        public Vector3 speed;
-        public Func<Vector3, Vector3> speedModifier;
-        public TimedMoveEffect(float duration, Vector3 speed, Func<Vector3, Vector3> speedModifier) : base(duration)
+        public FixVector2 speed;
+
+        public TimedMoveEffect(Fix64 duration, FixVector2 speed) : base(duration)
         {
             this.speed = speed;
-            this.speedModifier = speedModifier;
-        }
-
-        public override bool UpdateAndCheck(float deltaTime)
-        {
-            if (speedModifier != null)
-            {
-                speed = speedModifier(speed);
-            }
-            return base.UpdateAndCheck(deltaTime);
         }
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -61,18 +61,17 @@ public sealed class FearMoveAwayBuff : BuffCallback, ICapability
         m_MoveLocked = true;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         if (hostEntity == null || m_Source == null || hostEntity.durationMoveEffectComp == null)
             return;
 
-        Vector3 direction = hostEntity.Position - m_Source.Position;
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f)
-            direction = hostEntity.Rotation * Vector3.forward;
+        FixVector2 direction = hostEntity.LogicFramePositionFixed() - m_Source.LogicFramePositionFixed();
+        if (FixVector2.SqrMagnitude(direction) == Fix64.Zero)
+            direction = LogicEntityFrameSnapshotService.GetRequiredForward(hostEntity);
 
-        direction.Normalize();
-        hostEntity.durationMoveEffectComp.StartDurationAdditionalMove(0.1f, direction * 3f);
+        direction = direction.GetNormalized();
+        hostEntity.durationMoveEffectComp.StartDurationAdditionalMove((Fix64)0.1f, direction * (Fix64)3);
     }
 
     public override void OnRemove()

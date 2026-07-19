@@ -1,15 +1,16 @@
-using UnityEngine;
-using System;
+﻿using UnityEngine;
 
 public interface IDurationMoveEffectComp : ICapability
 {
     void Init(IEntityContext ctx);
-    int StartDurationAdditionalMove(float duration,Vector3 speed, Func<Vector3,Vector3>speedModifier = null);
-    int StartDurationOverrideMove(float duration,Vector3 speed, Func<Vector3,Vector3>speedModifier = null);
+    int StartDurationAdditionalMove(float duration, Vector3 speed);
+    int StartDurationAdditionalMove(Fix64 duration, FixVector2 speed);
+    int StartDurationOverrideMove(float duration, Vector3 speed);
+    int StartDurationOverrideMove(Fix64 duration, FixVector2 speed);
     
     void StopAddtionalMove(int index);
     void StopOverrideMove(int index);
     
     void StopAllMove();
-    void ApplyEffect(float deltaTime);
+    void ApplyEffect(Fix64 deltaTime);
 }

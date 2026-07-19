@@ -26,6 +26,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private bool m_InPlaceLevelSwitchInProgress;
     private readonly LogicFrameClock m_LogicFrameClock = new LogicFrameClock();
     private bool m_LogicFrameClockStarted;
+    private bool m_LogicTimelineRestartPending;
     private ulong m_NextLogicFrameStatusLogFrame;
 
     protected virtual string RuntimeLevelIdentifier =>
@@ -42,7 +43,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         base.OnEnter(procedureOwner);
         m_ProcedureOwner = procedureOwner;
         LogicFrameRuntime.Begin();
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        LogicObstacleCommandService.BeginTimeline();
+        LogicEntityFrameSnapshotService.BeginTimeline();
+        MAEntityLogicFrameSystem.BeginTimeline();
         m_LogicFrameClockStarted = false;
+        m_LogicTimelineRestartPending = false;
         m_NextLogicFrameStatusLogFrame = 300;
 
         if (LevelSelectionService.ShouldShowStartupLevelSwitch)
@@ -84,6 +91,19 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         m_ProcedureOwner = null;
         m_InPlaceLevelSwitchInProgress = false;
         m_LogicFrameClockStarted = false;
+        m_LogicTimelineRestartPending = false;
+        if (LogicReplayRuntime.IsRecording)
+        {
+            LogicReplayRuntime.EndRecording();
+        }
+        LogicEntityLifecycleService.DeactivateAllForShutdown();
+        GF.Entity.HideAllLoadingEntities();
+        GF.Entity.HideAllLoadedEntities();
+        LogicObstacleCommandService.EndTimeline();
+        LogicEntityLifecycleService.EndTimeline();
+        MAEntityLogicFrameSystem.EndTimeline();
+        LogicEntityFrameSnapshotService.EndTimeline();
+        LogicTimeControlService.EndTimeline();
         LogicFrameRuntime.End();
         base.OnLeave(procedureOwner, isShutdown);
     }
@@ -178,6 +198,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     {
         LevelEntity previousLevel = LevelEntity.ActiveLevelEntity;
         bool navigationTransitionStarted = false;
+        bool runtimePauseHeld = false;
         try
         {
             ChangeSceneProcedure.SelectedLevelIdentifier = levelIdentifier;
@@ -185,12 +206,12 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             navigationTransitionStarted = true;
 
             var inputManager = GameEntry.GetComponent<InputManager>();
-            if (inputManager != null)
-            {
-                inputManager.ChangeState(InputState.UIForm);
-            }
+            if (inputManager == null)
+                throw new InvalidOperationException("RuntimeProcedureBase.EnterRuntimeLevelInPlaceAsync failed: InputManager is null.");
+            inputManager.ChangeState(InputState.UIForm);
 
-            GF.Base.PauseGame();
+            LogicTimeControlService.AcquirePause(LogicTimeControlSources.RuntimeLevelSwitchPause);
+            runtimePauseHeld = true;
             if (AudioManager.Instance != null)
             {
                 AudioManager.Instance.StopAllSfx();
@@ -200,8 +221,36 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;
             m_LogicFrameClockStarted = false;
+            m_LogicTimelineRestartPending = true;
 
+            Log.Info(
+                "[LogicEntityWorldTransition] Begin. level={0}, frame={1}, requested={2}, bound={3}, active={4}, lastAllocated={5}.",
+                levelIdentifier,
+                LogicTimeControlService.CurrentFrame,
+                LogicEntityLifecycleService.RequestedEntityCount,
+                LogicEntityLifecycleService.BoundViewCount,
+                LogicEntityLifecycleService.ActiveEntityCount,
+                LogicEntityIdAllocator.LastAllocatedValue);
+            LogicObstacleCommandService.ResetForWorldTransition();
+            GF.Entity.HideAllLoadingEntities();
             HideRuntimeEntitiesExceptLevel();
+            Log.Info(
+                "[LogicEntityWorldTransition] Old world hidden. level={0}, requested={1}, bound={2}, active={3}, listeners={4}.",
+                levelIdentifier,
+                LogicEntityLifecycleService.RequestedEntityCount,
+                LogicEntityLifecycleService.BoundViewCount,
+                LogicEntityLifecycleService.ActiveEntityCount,
+                LogicFrameRuntime.ListenerCount);
+            LogicEntityLifecycleService.ResetForWorldTransition();
+            LogicEntityFrameSnapshotService.ResetForWorldTransition();
+            MAEntityLogicFrameSystem.ResetForWorldTransition();
+            Log.Info(
+                "[LogicEntityWorldTransition] Identity timeline reset. level={0}, requested={1}, bound={2}, active={3}, lastAllocated={4}.",
+                levelIdentifier,
+                LogicEntityLifecycleService.RequestedEntityCount,
+                LogicEntityLifecycleService.BoundViewCount,
+                LogicEntityLifecycleService.ActiveEntityCount,
+                LogicEntityIdAllocator.LastAllocatedValue);
             await UniTask.Yield(PlayerLoopTiming.Update);
 
             m_RuntimeInitPipeline = new RuntimeInitPipeline(RuntimeInitLogTag, RuntimeLevelIdentifier, RequiredRuntimeSystems, false);
@@ -214,8 +263,16 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                         GF.Entity.HideEntitySafe(previousLevel);
                     }
 
-                    GF.Base.ResumeGame();
+                    LogicTimeControlService.ReleasePause(LogicTimeControlSources.RuntimeLevelSwitchPause);
+                    runtimePauseHeld = false;
                     m_InPlaceLevelSwitchInProgress = false;
+                    Log.Info(
+                        "[LogicEntityWorldTransition] New world ready. level={0}, requested={1}, bound={2}, active={3}, lastAllocated={4}.",
+                        levelIdentifier,
+                        LogicEntityLifecycleService.RequestedEntityCount,
+                        LogicEntityLifecycleService.BoundViewCount,
+                        LogicEntityLifecycleService.ActiveEntityCount,
+                        LogicEntityIdAllocator.LastAllocatedValue);
                 }
                 finally
                 {
@@ -236,7 +293,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             {
                 FlowFieldCrowdMovementSystem.EndRuntimeNavigationTransition();
             }
-            GF.Base.ResumeGame();
+            if (runtimePauseHeld)
+            {
+                LogicTimeControlService.ReleasePause(LogicTimeControlSources.RuntimeLevelSwitchPause);
+            }
             LevelSelectionService.NotifyLevelLoadFailed(ex.Message);
             Log.Error("{0} Enter runtime level in place failed. level={1}, error={2}", RuntimeInitLogTag, levelIdentifier, ex);
         }
@@ -254,18 +314,54 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         double realtime = Time.realtimeSinceStartupAsDouble;
         if (!m_LogicFrameClockStarted)
         {
+            if (m_LogicTimelineRestartPending)
+            {
+                if (LogicReplayRuntime.IsRecording)
+                {
+                    LogicReplayRuntime.EndRecording();
+                }
+                LogicTimeControlService.ResetFrameTimelinePreservingPauses();
+                LogicEntityLifecycleService.ResetFrameTimelinePreservingEntities();
+                LogicObstacleCommandService.ResetFrameTimelinePreservingCommands();
+                m_LogicTimelineRestartPending = false;
+            }
+
             LogicFrameRuntime.ResetTimeline();
             m_LogicFrameClock.Start(realtime);
+            InputManager inputManager = GameEntry.GetComponent<InputManager>();
+            if (inputManager == null)
+                throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: InputManager is null.");
+            inputManager.BeginLogicInputTimeline(realtime);
             LogicFrameRuntime.StartTimeline();
+            if (!LogicReplayRuntime.IsRecording)
+            {
+                LogicReplayRuntime.BeginRecording();
+            }
             m_LogicFrameClockStarted = true;
             m_NextLogicFrameStatusLogFrame = 300;
             Log.Info("[LogicFrame] Clock started. runtime={0}, realtime={1:R}.", GetType().Name, realtime);
         }
 
-        if (GF.Base == null)
-            throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: GF.Base is null.");
+        InputManager logicInputManager = GameEntry.GetComponent<InputManager>();
+        if (logicInputManager == null)
+            throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: InputManager is null.");
 
-        int tickCount = m_LogicFrameClock.Advance(realtime, GF.Base.GameSpeed, LogicFrameRuntime.Tick);
+        int tickCount = m_LogicFrameClock.Advance(
+            realtime,
+            () =>
+            {
+                LogicTimeControlService.PrepareFrame(checked(m_LogicFrameClock.Frame + 1));
+                return LogicTimeControlService.SchedulerScale;
+            },
+            (frame, cutoffRealtime) =>
+            {
+                LogicTimeControlService.BeginFrame(frame);
+                LogicInputFrame inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
+                LogicEntityLifecycleService.ApplyFrame(frame);
+                LogicObstacleCommandService.ApplyFrame(frame);
+                LogicFrameRuntime.Tick(frame);
+                LogicReplayRuntime.RecordFrame(inputFrame, LogicGameplayStateHasher.ComputeCurrentFrame());
+            });
         LogicFrameRuntime.CompleteRenderFrame(
             tickCount,
             m_LogicFrameClock.AccumulatorSeconds,

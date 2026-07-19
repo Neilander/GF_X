@@ -124,17 +124,17 @@ public sealed class BuildingPermanentStealthBuff : BuffCallback
     }
 }
 
-public sealed class AmmoReloadBuff : BuffCallback
+public sealed class AmmoReloadBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private readonly float _delaySeconds;
-    private float _timer;
+    private readonly Fix64 _delaySeconds;
+    private Fix64 _timer;
 
     public AmmoReloadBuff(float delaySeconds)
     {
-        _delaySeconds = Mathf.Max(0f, delaySeconds);
+        _delaySeconds = Fix64.Max(Fix64.Zero, (Fix64)delaySeconds);
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         if (hostEntity == null || !hostEntity.Alive)
             return;
@@ -142,16 +142,21 @@ public sealed class AmmoReloadBuff : BuffCallback
         WeaponComp weaponComp = hostEntity.weaponComp;
         if (weaponComp == null || !weaponComp.HasAmmunition || weaponComp.CurrentAmmo > 0)
         {
-            _timer = 0f;
+            _timer = Fix64.Zero;
             return;
         }
 
-        _timer += deltaTime;
-        if (_timer < BuildingCombatModifierUtility.ResolveAmmoReloadDelay(hostEntity, _delaySeconds))
+        _timer += (Fix64)deltaTime;
+        if (_timer < (Fix64)BuildingCombatModifierUtility.ResolveAmmoReloadDelay(hostEntity, (float)_delaySeconds))
             return;
 
         weaponComp.ReloadFull();
-        _timer = 0f;
+        _timer = Fix64.Zero;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_timer.RawValue);
     }
 }
 
@@ -209,24 +214,23 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
         if (hostEntity == null || target is not MAEntity targetEntity || targetEntity.durationMoveEffectComp == null)
             return baseDamage;
 
-        Vector3 direction = hostEntity.Position - targetEntity.Position;
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f)
+        FixVector2 direction = LogicEntityFrameSnapshotService.GetRequiredPosition(hostEntity)
+                               - LogicEntityFrameSnapshotService.GetRequiredPosition(targetEntity);
+        if (FixVector2.SqrMagnitude(direction) == Fix64.Zero)
             return baseDamage;
-
-        direction.Normalize();
+        direction = direction.GetNormalized();
 
         Fix64 distance = (Fix64)(GF.Config != null
             ? GF.Config.GetFloat(PullDistancePerLevelKey, DefaultPullDistancePerLevel)
             : DefaultPullDistancePerLevel) * _pullLevel;
-        float duration = Mathf.Max(0.01f, GF.Config != null
+        Fix64 duration = Fix64.Max((Fix64)0.01f, (Fix64)(GF.Config != null
             ? GF.Config.GetFloat(PullDurationKey, DefaultPullDuration)
-            : DefaultPullDuration);
-        float worldDistance = DistanceUnitConverter.ConvertToWorldFloat(distance);
-        Vector3 speed = direction * (worldDistance / duration);
+            : DefaultPullDuration));
+        Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
+        FixVector2 speedFixed = direction * (worldDistance / duration);
 
         targetEntity.atkComp?.InterruptAttack(AttackInterruptReason.Displacement);
-        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speed);
+        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
         return baseDamage;
     }
 }
@@ -349,7 +353,7 @@ public sealed class PhaseAmmoResetBuff : BuffCallback
     }
 }
 
-public sealed class RestroomQueueBuff : BuffCallback, ICapability
+public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDeterministicStateContributor
 {
     private const string ActiveControlBuffId = "restroom_queue_control_active";
     private const string HandledBuffPrefix = "restroom_queue_handled";
@@ -359,18 +363,18 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
     private const float ScanInterval = 0.1f;
 
     private readonly int _queueLimit;
-    private readonly float _releaseInterval;
+    private readonly Fix64 _releaseInterval;
     private readonly List<QueueEntry> _queue = new List<QueueEntry>();
-    private float _releaseTimer;
-    private float _scanTimer;
+    private Fix64 _releaseTimer;
+    private Fix64 _scanTimer;
 
     public RestroomQueueBuff(int queueLimit, float releaseInterval)
     {
         _queueLimit = Mathf.Max(1, queueLimit);
-        _releaseInterval = Mathf.Max(0.1f, releaseInterval);
+        _releaseInterval = Fix64.Max((Fix64)0.1f, (Fix64)releaseInterval);
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         if (!(hostEntity is BuildingEntity building) || !building.Alive || building.IsDisabled)
         {
@@ -394,11 +398,11 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
         ReleaseAll();
     }
 
-    private void UpdateRelease(float deltaTime)
+    private void UpdateRelease(Fix64 deltaTime)
     {
         if (_queue.Count == 0)
         {
-            _releaseTimer = 0f;
+            _releaseTimer = Fix64.Zero;
             return;
         }
 
@@ -406,20 +410,20 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
         if (_releaseTimer < GetReleaseInterval())
             return;
 
-        _releaseTimer = 0f;
+        _releaseTimer = Fix64.Zero;
         ReleaseAt(0);
     }
 
-    private void TryAcquireTargets(float deltaTime)
+    private void TryAcquireTargets(Fix64 deltaTime)
     {
         if (_queue.Count >= GetQueueLimit())
             return;
 
         _scanTimer += deltaTime;
-        if (_scanTimer < ScanInterval)
+        if (_scanTimer < (Fix64)ScanInterval)
             return;
 
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
         while (_queue.Count < GetQueueLimit())
         {
             MAEntity target = FindNearestEligibleTarget();
@@ -433,13 +437,13 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
     private MAEntity FindNearestEligibleTarget()
     {
         BuildingEntity building = GetBuilding();
-        float range = GetWorldRange(building);
+        Fix64 range = GetWorldRange(building);
         var all = EntityRegistry.AllEntities;
         if (all == null)
             throw new InvalidOperationException("RestroomQueueBuff.FindNearestEligibleTarget failed: EntityRegistry.AllEntities is null.");
 
         MAEntity best = null;
-        float bestDistance = range;
+        Fix64 bestDistance = range;
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext candidate = all[i];
@@ -448,11 +452,12 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
             if (!IsEligibleTarget(building, candidate))
                 continue;
 
-            float distance = building.DistanceToTargetSurface(candidate);
+            Fix64 distance = LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(building, candidate);
             if (distance > range)
                 continue;
 
-            if (distance < bestDistance)
+            if (distance < bestDistance
+                || (distance == bestDistance && (best == null || candidate.LogicEntityId < best.LogicEntityId)))
             {
                 bestDistance = distance;
                 best = (MAEntity)candidate;
@@ -504,47 +509,41 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
         _queue.Add(new QueueEntry(target));
     }
 
-    private void DriveQueuedTargets(float deltaTime)
+    private void DriveQueuedTargets(Fix64 deltaTime)
     {
-        if (deltaTime <= 0f)
+        if (deltaTime <= Fix64.Zero)
             return;
 
         BuildingEntity building = GetBuilding();
         for (int i = 0; i < _queue.Count; i++)
         {
             MAEntity target = _queue[i].Target;
-            Vector3 slot = GetQueueSlot(building, i);
-            target.moveComp.SetNavTarget(slot);
+            FixVector2 slot = GetQueueSlot(building, i);
+            target.moveComp.SetNavTarget(new Vector3((float)slot.x, target.Position.y, (float)slot.y));
 
-            Vector3 offset = slot - target.Position;
-            offset.y = 0f;
-            float distance = offset.magnitude;
-            if (distance <= ArriveDistance)
+            FixVector2 offset = slot - LogicEntityFrameSnapshotService.GetRequiredPosition(target);
+            Fix64 distance = FixVector2.Magnitude(offset);
+            if (distance <= (Fix64)ArriveDistance)
             {
-                target.moveExecutor.SetOverride(Vector3.zero);
+                target.moveExecutor.SetOverrideFixed(FixVector2.Zero);
                 continue;
             }
 
-            float speed = DistanceUnitConverter.ConvertToWorldFloat(target.GetProperty(CreatureMainProperty.Speed));
-            if (speed <= 0f)
+            Fix64 speed = DistanceUnitConverter.ConvertToWorld(target.GetProperty(CreatureMainProperty.Speed));
+            if (speed <= Fix64.Zero)
                 throw new InvalidOperationException($"RestroomQueueBuff.DriveQueuedTargets failed: target speed <= 0. target={target.CharacterKey}.");
 
-            Vector3 velocity = offset.normalized * Mathf.Min(speed, distance / deltaTime);
-            target.moveExecutor.SetOverride(velocity);
+            Fix64 maximumSpeed = Fix64.Min(speed, distance / deltaTime);
+            target.moveExecutor.SetOverrideFixed(offset.GetNormalized() * maximumSpeed);
         }
     }
 
-    private Vector3 GetQueueSlot(BuildingEntity building, int index)
+    private FixVector2 GetQueueSlot(BuildingEntity building, int index)
     {
-        Vector3 forward = building.transform.forward;
-        forward.y = 0f;
-        if (forward.sqrMagnitude <= 0.0001f)
-            forward = Vector3.forward;
-        forward.Normalize();
-
-        float buildingRadius = AreaWeaponDamageQuery.GetCollisionRadiusWorld(building);
-        float distance = buildingRadius + DoorOffset + SlotSpacing * index;
-        return building.Position + forward * distance;
+        FixVector2 forward = LogicEntityFrameSnapshotService.GetRequiredForward(building);
+        Fix64 buildingRadius = AreaWeaponDamageQuery.GetRequiredRadialExtent(building);
+        Fix64 distance = buildingRadius + (Fix64)DoorOffset + (Fix64)SlotSpacing * index;
+        return LogicEntityFrameSnapshotService.GetRequiredPosition(building) + forward * distance;
     }
 
     private void RemoveInvalidEntries()
@@ -573,8 +572,8 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
             ReleaseTarget(_queue[i].Target);
 
         _queue.Clear();
-        _releaseTimer = 0f;
-        _scanTimer = 0f;
+        _releaseTimer = Fix64.Zero;
+        _scanTimer = Fix64.Zero;
     }
 
     private void ReleaseTarget(MAEntity target)
@@ -608,18 +607,18 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
         return BuildingCombatModifierUtility.ResolveRestroomQueueLimit(hostEntity, _queueLimit);
     }
 
-    private float GetReleaseInterval()
+    private Fix64 GetReleaseInterval()
     {
-        return BuildingCombatModifierUtility.ResolveRestroomReleaseInterval(hostEntity, _releaseInterval);
+        return (Fix64)BuildingCombatModifierUtility.ResolveRestroomReleaseInterval(hostEntity, (float)_releaseInterval);
     }
 
-    private static float GetWorldRange(BuildingEntity building)
+    private static Fix64 GetWorldRange(BuildingEntity building)
     {
         WeaponData weaponData = building.buildingData?.Weapon;
         if (weaponData == null || weaponData.Range <= Fix64.Zero)
             throw new InvalidOperationException($"RestroomQueueBuff.GetWorldRange failed: missing restroom range. building={building.CharacterKey}.");
 
-        return DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range);
+        return DistanceUnitConverter.ConvertToWorld(weaponData.Range);
     }
 
     private static string GetHandledBuffId(BuildingEntity building)
@@ -654,6 +653,20 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
     {
     }
 
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_releaseTimer.RawValue);
+        hasher.Add(_scanTimer.RawValue);
+        hasher.Add(_queue.Count);
+        for (int i = 0; i < _queue.Count; i++)
+        {
+            MAEntity target = _queue[i].Target;
+            if (target == null || !target.LogicEntityId.IsValid)
+                throw new InvalidOperationException($"RestroomQueueBuff contains an invalid target at index {i}.");
+            hasher.Add(target.LogicEntityId.Value);
+        }
+    }
+
     private readonly struct QueueEntry
     {
         public readonly MAEntity Target;
@@ -665,10 +678,10 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability
     }
 }
 
-public sealed class BlindAttackMissBuff : BuffCallback
+public sealed class BlindAttackMissBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     public Fix64 ChancePercent { get; }
-    private Fix64 _progress;
+    private readonly DeterministicProgressAccumulator _missProgress = new DeterministicProgressAccumulator();
     public override bool IsNegativeStatus => true;
 
     public BlindAttackMissBuff(Fix64 chancePercent)
@@ -681,12 +694,23 @@ public sealed class BlindAttackMissBuff : BuffCallback
         if (ChancePercent <= Fix64.Zero)
             return false;
 
-        _progress += ChancePercent / (Fix64)100;
-        if (_progress < Fix64.One)
-            return false;
+        return _missProgress.AdvanceAndConsume(ChancePercent / (Fix64)100);
+    }
 
-        _progress -= Fix64.One;
-        return true;
+    public DeterministicProgressSnapshot CaptureProgressSnapshot()
+    {
+        return _missProgress.CaptureSnapshot();
+    }
+
+    public void RestoreProgressSnapshot(DeterministicProgressSnapshot snapshot)
+    {
+        _missProgress.RestoreSnapshot(snapshot);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(ChancePercent.RawValue);
+        hasher.Add(_missProgress.CaptureSnapshot().ProgressRaw);
     }
 }
 
@@ -725,8 +749,8 @@ public static class MonitorWeaponEffect
             throw new InvalidOperationException($"MonitorWeaponEffect.Execute failed: weaponData is null. attacker={attacker.CharacterKey}.");
 
         Fix64 blindPercent = ResolveBlindPercent(attacker);
-        float facingConeAngle = ResolveFacingConeAngle(attacker);
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range);
+        Fix64 facingConeAngle = ResolveFacingConeAngle(attacker);
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(weaponData.Range);
         var damagedTargets = new HashSet<IEntityContext>();
 
         TryDamageAndBlind(attacker, mainTarget, weaponData, blindPercent, facingConeAngle, damagedTargets);
@@ -745,8 +769,7 @@ public static class MonitorWeaponEffect
             if (!EntityCombatTeamHelper.IsEnemy(attacker, candidate))
                 continue;
 
-            float reach = radius + AreaWeaponDamageQuery.GetCollisionRadiusWorld(candidate);
-            if (AreaWeaponDamageQuery.HorizontalDistance(attacker.Position, candidate.Position) > reach)
+            if (!AreaWeaponDamageQuery.IsWithinCircle(attacker, candidate, radius))
                 continue;
 
             TryDamageAndBlind(attacker, candidate, weaponData, blindPercent, facingConeAngle, damagedTargets);
@@ -758,7 +781,7 @@ public static class MonitorWeaponEffect
         IEntityContext target,
         WeaponData weaponData,
         Fix64 blindPercent,
-        float facingConeAngle,
+        Fix64 facingConeAngle,
         HashSet<IEntityContext> damagedTargets)
     {
         if (target == null || damagedTargets.Contains(target))
@@ -806,11 +829,11 @@ public static class MonitorWeaponEffect
         return BuildingCombatModifierUtility.ResolveBlindPercent(attacker, baseBlindPercent);
     }
 
-    public static float ResolveFacingConeAngle(IEntityContext attacker)
+    public static Fix64 ResolveFacingConeAngle(IEntityContext attacker)
     {
         if (attacker is BuildingEntity building && building.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 1)
-            return (float)building.buildingData.UniqueValues[1];
+            return building.buildingData.UniqueValues[1];
 
-        return 45f;
+        return (Fix64)45;
     }
 }

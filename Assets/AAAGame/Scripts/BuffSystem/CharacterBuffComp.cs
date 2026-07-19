@@ -1,13 +1,45 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using GameFramework;
 using UnityEngine;
 
 namespace AAAGame.Scripts.BuffSystem
 {
+    public readonly struct CharacterBuffDeterministicState
+    {
+        public CharacterBuffDeterministicState(
+            string id,
+            Fix64 duration,
+            Fix64 remainingTime,
+            bool isForever,
+            int currentStack,
+            int maxStack,
+            string[] moduleTypeNames,
+            long blindProgressRaw)
+        {
+            Id = id;
+            Duration = duration;
+            RemainingTime = remainingTime;
+            IsForever = isForever;
+            CurrentStack = currentStack;
+            MaxStack = maxStack;
+            ModuleTypeNames = moduleTypeNames;
+            BlindProgressRaw = blindProgressRaw;
+        }
+
+        public string Id { get; }
+        public Fix64 Duration { get; }
+        public Fix64 RemainingTime { get; }
+        public bool IsForever { get; }
+        public int CurrentStack { get; }
+        public int MaxStack { get; }
+        public string[] ModuleTypeNames { get; }
+        public long BlindProgressRaw { get; }
+    }
+
     /// <summary>
     /// Buff组件实现类（纯C#类，不依赖MonoBehaviour）
     /// </summary>
-    public class CharacterBuffComp : IBuffComp
+    public class CharacterBuffComp : IBuffComp, ILogicDeterministicStateContributor
     {
         /// <summary>
         /// Buff字典
@@ -61,7 +93,7 @@ namespace AAAGame.Scripts.BuffSystem
                 if (existingBuff.currentStack >= existingBuff.maxStack && existingBuff.maxStack <= 1)
                 {
                     if (!existingBuff.isForever && !buffData.isForever)
-                        existingBuff.remainingTime = Mathf.Max(existingBuff.remainingTime, buffData.remainingTime);
+                        existingBuff.remainingTime = Fix64.Max(existingBuff.remainingTime, buffData.remainingTime);
 
                     ReferencePool.Release(buffData);
                     return true;
@@ -116,7 +148,7 @@ namespace AAAGame.Scripts.BuffSystem
 
         private void ApplyStatusResistanceToNegativeBuff(BuffData buffData)
         {
-            if (buffData == null || buffData.isForever || buffData.duration <= 0f || !HasNegativeStatusModule(buffData))
+            if (buffData == null || buffData.isForever || buffData.duration <= Fix64.Zero || !HasNegativeStatusModule(buffData))
                 return;
 
             Fix64 resistance = _propertyManager != null
@@ -126,7 +158,7 @@ namespace AAAGame.Scripts.BuffSystem
             if (multiplier < Fix64.Zero)
                 multiplier = Fix64.Zero;
 
-            buffData.duration = Mathf.Max(0f, (float)((Fix64)buffData.duration * multiplier));
+            buffData.duration = Fix64.Max(Fix64.Zero, buffData.duration * multiplier);
             buffData.remainingTime = buffData.duration;
         }
 
@@ -147,7 +179,7 @@ namespace AAAGame.Scripts.BuffSystem
         /// <summary>
         /// 更新Buff
         /// </summary>
-        public void UpdateBuff(float deltaTime)
+        public void UpdateBuff(Fix64 deltaTime)
         {
             List<string> expiredBuffs = new List<string>();
             List<string> buffIds = new List<string>(_buffDict.Keys);
@@ -168,10 +200,7 @@ namespace AAAGame.Scripts.BuffSystem
                 // 永久Buff不更新时间
                 if (!buffData.isForever)
                 {
-                    buffData.remainingTime -= deltaTime;
-
-                    // 检查是否过期
-                    if (buffData.remainingTime <= 0f)
+                    if (buffData.AdvanceLogicTime(deltaTime))
                     {
                         expiredBuffs.Add(buffId);
                         continue;
@@ -303,6 +332,72 @@ namespace AAAGame.Scripts.BuffSystem
                 {
                     var m = data.modules[i];
                     if (m != null) yield return m;
+                }
+            }
+        }
+
+        public IReadOnlyList<CharacterBuffDeterministicState> CaptureDeterministicStates()
+        {
+            var ids = new List<string>(_buffDict.Keys);
+            ids.Sort(System.StringComparer.Ordinal);
+            var states = new CharacterBuffDeterministicState[ids.Count];
+            for (int buffIndex = 0; buffIndex < ids.Count; buffIndex++)
+            {
+                BuffData data = _buffDict[ids[buffIndex]];
+                if (data == null)
+                    throw new System.InvalidOperationException($"CharacterBuffComp contains a null buff. id={ids[buffIndex]}.");
+
+                int moduleCount = data.modules?.Count ?? 0;
+                var moduleTypeNames = new string[moduleCount];
+                long blindProgressRaw = 0;
+                for (int moduleIndex = 0; moduleIndex < moduleCount; moduleIndex++)
+                {
+                    BuffCallback module = data.modules[moduleIndex];
+                    if (module == null)
+                        throw new System.InvalidOperationException($"CharacterBuffComp buff contains a null module. id={data.id}, index={moduleIndex}.");
+                    moduleTypeNames[moduleIndex] = module.GetType().FullName;
+                    if (module is BlindAttackMissBuff blind)
+                        blindProgressRaw = blind.CaptureProgressSnapshot().ProgressRaw;
+                }
+
+                states[buffIndex] = new CharacterBuffDeterministicState(
+                    data.id,
+                    data.duration,
+                    data.remainingTime,
+                    data.isForever,
+                    data.currentStack,
+                    data.maxStack,
+                    moduleTypeNames,
+                    blindProgressRaw);
+            }
+            return states;
+        }
+
+        public void WriteDeterministicState(LogicStateHasher hasher)
+        {
+            if (hasher == null)
+                throw new System.ArgumentNullException(nameof(hasher));
+
+            var ids = new List<string>(_buffDict.Keys);
+            ids.Sort(System.StringComparer.Ordinal);
+            hasher.Add(ids.Count);
+            for (int buffIndex = 0; buffIndex < ids.Count; buffIndex++)
+            {
+                BuffData data = _buffDict[ids[buffIndex]];
+                if (data == null || data.modules == null)
+                    throw new System.InvalidOperationException($"CharacterBuffComp deterministic state is invalid. id={ids[buffIndex]}.");
+                hasher.Add(data.id);
+                hasher.Add(data.modules.Count);
+                for (int moduleIndex = 0; moduleIndex < data.modules.Count; moduleIndex++)
+                {
+                    BuffCallback module = data.modules[moduleIndex];
+                    if (module == null)
+                        throw new System.InvalidOperationException($"CharacterBuffComp contains a null module. id={data.id}, index={moduleIndex}.");
+                    hasher.Add(module.GetType().FullName);
+                    bool contributes = module is ILogicDeterministicStateContributor;
+                    hasher.Add(contributes);
+                    if (contributes)
+                        ((ILogicDeterministicStateContributor)module).WriteDeterministicState(hasher);
                 }
             }
         }

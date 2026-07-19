@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 持续回血 Buff：每帧按"最大血量 × percentPerSec × dt"加到 HealthCurrent。
@@ -25,11 +25,11 @@ public sealed class HealOverTimeBuff : BuffCallback
                   $"percentPerSec={(float)m_PercentPerSec}");
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         base.OnUpdate(deltaTime);
 
-        m_LogAccum += deltaTime;
+        m_LogAccum += (float)deltaTime;
         bool shouldLog = !m_LoggedFirstTick || m_LogAccum >= 1f;
         if (shouldLog)
         {
@@ -37,7 +37,7 @@ public sealed class HealOverTimeBuff : BuffCallback
             m_LoggedFirstTick = true;
         }
 
-        if (deltaTime <= 0f || m_PercentPerSec == Fix64.Zero)
+        if (deltaTime <= Fix64.Zero || m_PercentPerSec == Fix64.Zero)
         {
             if (shouldLog) Debug.LogWarning($"[HoT] early-exit dt={deltaTime} pct={(float)m_PercentPerSec}");
             return;
@@ -62,7 +62,7 @@ public sealed class HealOverTimeBuff : BuffCallback
             return;
         }
 
-        Fix64 healThisFrame = maxHp * m_PercentPerSec * (Fix64)deltaTime;
+        Fix64 healThisFrame = maxHp * m_PercentPerSec * deltaTime;
         if (healThisFrame <= Fix64.Zero)
         {
             if (shouldLog)

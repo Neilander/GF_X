@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
@@ -8,6 +8,7 @@ using AAAGame.Scripts.BuffSystem;
 /// </summary>
 public interface IEntityContext
 {
+    LogicEntityId LogicEntityId { get; }
     Vector3 Position { get; set; }
     Quaternion Rotation { get; set; }
     SideType Side { get; }

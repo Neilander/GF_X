@@ -14,10 +14,14 @@ public interface IMoveExecutor
 {
     MovementMode MovementMode { get; }
     void SetInput(Vector3 velocity);
+    void SetInputFixed(FixVector2 velocity);
     void AddExternal(Vector3 velocity);
+    void AddExternalFixed(FixVector2 velocity);
     void SetOverride(Vector3 velocity);
+    void SetOverrideFixed(FixVector2 velocity);
     void ClearOverride();
     void SetExternal(Vector3 velocity);
+    void SetExternalFixed(FixVector2 velocity);
     void SetMovementMode(MovementMode mode);
     void SetNavigationConstrained(bool constrained);
     void SetConstraintBypassForNextFrame(bool bypass = true);

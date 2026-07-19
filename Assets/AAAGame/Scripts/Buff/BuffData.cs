@@ -16,7 +16,7 @@ public class BuffData : IReference
     /// <summary>
     /// Buff持续时间（秒）
     /// </summary>
-    public float duration;
+    public Fix64 duration;
     
     /// <summary>
     /// 是否永久
@@ -41,18 +41,29 @@ public class BuffData : IReference
     /// <summary>
     /// 剩余时间
     /// </summary>
-    public float remainingTime;
+    public Fix64 remainingTime;
+
+    public bool AdvanceLogicTime(Fix64 deltaTime)
+    {
+        if (deltaTime <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(deltaTime), "Buff logic delta must be positive.");
+        if (isForever)
+            return false;
+
+        remainingTime -= deltaTime;
+        return remainingTime <= Fix64.Zero;
+    }
     
     public void Clear()
     {
         id = null;
-        duration = 0f;
+        duration = Fix64.Zero;
         isForever = false;
         maxStack = 1;
         currentStack = 1;
         modules?.Clear();
         modules = null;
-        remainingTime = 0f;
+        remainingTime = Fix64.Zero;
     }
     
     public static BuffData Create()
@@ -64,12 +75,12 @@ public class BuffData : IReference
     {
         BuffData buffData = Create();
         buffData.id = id;
-        buffData.duration = duration;
+        buffData.duration = (Fix64)duration;
         buffData.isForever = isForever;
         buffData.maxStack = maxStack;
         buffData.currentStack = 1;
         buffData.modules = modules;
-        buffData.remainingTime = duration;
+        buffData.remainingTime = (Fix64)duration;
         return buffData;
     }
 }

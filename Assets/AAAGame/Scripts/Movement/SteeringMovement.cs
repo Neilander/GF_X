@@ -121,17 +121,18 @@ public static class SteeringMovement
         float radius)
     {
         var positions = new List<Vector3>();
-        Vector3 myPos = self.Position;
+        Vector3 myPos = self.LogicFramePosition();
 
         for (int i = 0; i < allEntities.Count; i++)
         {
             var other = allEntities[i];
             if (other == self || !other.Alive) continue;
 
-            float dist = Vector3.Distance(myPos, other.Position);
+            Vector3 otherPosition = other.LogicFramePosition();
+            float dist = Vector3.Distance(myPos, otherPosition);
             if (dist <= radius)
             {
-                positions.Add(other.Position);
+                positions.Add(otherPosition);
             }
         }
 
@@ -147,7 +148,7 @@ public static class SteeringMovement
         float radius)
     {
         var positions = new List<Vector3>();
-        Vector3 myPos = self.Position;
+        Vector3 myPos = self.LogicFramePosition();
 
         for (int i = 0; i < allEntities.Count; i++)
         {
@@ -155,10 +156,11 @@ public static class SteeringMovement
             if (other == self || !other.Alive) continue;
             if (other.Side != self.Side) continue;
 
-            float dist = Vector3.Distance(myPos, other.Position);
+            Vector3 otherPosition = other.LogicFramePosition();
+            float dist = Vector3.Distance(myPos, otherPosition);
             if (dist <= radius)
             {
-                positions.Add(other.Position);
+                positions.Add(otherPosition);
             }
         }
 

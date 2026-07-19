@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class NoMoveComp : IMoveComp
 {
@@ -6,7 +6,7 @@ public class NoMoveComp : IMoveComp
     {
     }
 
-    public void Move(float deltaTime)
+    public void Move(Fix64 deltaTime)
     {
         //这是空行为，什么都不做
     }

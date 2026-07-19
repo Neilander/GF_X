@@ -1024,12 +1024,12 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
     }
 }
 
-public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback
+public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.1f;
     private readonly int m_CoinThreshold;
     private readonly Fix64 m_AttackSpeedPercent;
-    private float m_Timer;
+    private Fix64 m_Timer;
     private bool m_Applied;
     private Fix64 m_Factor = Fix64.One;
 
@@ -1039,13 +1039,13 @@ public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback
         m_AttackSpeedPercent = attackSpeedPercent;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         if (InGameDataModel.GetValue(IngameValueType.Coin) <= m_CoinThreshold)
             Apply();
         else
@@ -1083,16 +1083,23 @@ public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback
         m_Applied = false;
         m_Factor = Fix64.One;
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        hasher.Add(m_Applied);
+        hasher.Add(m_Factor.RawValue);
+    }
 }
 
-public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback
+public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.1f;
     private readonly Fix64 m_Radius;
     private readonly UnitSize m_TargetSize;
     private readonly Fix64 m_AttackSpeedPercent;
     private readonly HashSet<int> m_Affected = new();
-    private float m_Timer;
+    private Fix64 m_Timer;
 
     public EnemySizeAttackSpeedAuraBuff(Fix64 radius, UnitSize targetSize, Fix64 attackSpeedPercent)
     {
@@ -1101,13 +1108,13 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback
         m_AttackSpeedPercent = attackSpeedPercent;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval || hostEntity == null)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval || hostEntity == null)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         Refresh();
     }
 
@@ -1119,7 +1126,7 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback
     private void Refresh()
     {
         var current = new HashSet<int>();
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(m_Radius);
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
@@ -1127,7 +1134,7 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback
                 continue;
             if (enemy.CharacterData == null || enemy.CharacterData.Size != m_TargetSize)
                 continue;
-            if (hostEntity.DistanceToTargetSurface(enemy) > radius)
+            if (hostEntity.LogicFrameDistanceToTargetSurfaceFixed(enemy) > radius)
                 continue;
 
             current.Add(enemy.Id);
@@ -1184,6 +1191,12 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback
     }
 
     private string GetBuffId(int entityId) => $"tech_enemy_size_aura_{buffData?.id}_{entityId}";
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        LogicDeterministicStateWriter.AddSortedIds(hasher, m_Affected);
+    }
 }
 
 public sealed class MeleeVsRangedDamageBonusBuff : BuffCallback
@@ -1219,46 +1232,46 @@ public sealed class MeleeVsRangedDamageBonusBuff : BuffCallback
     }
 }
 
-public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback
+public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.1f;
-    private readonly float m_RequiredOutOfCombatSeconds;
+    private readonly Fix64 m_RequiredOutOfCombatSeconds;
     private readonly Fix64 m_MoveSpeedPercent;
-    private readonly float m_StickySeconds;
-    private float m_Timer;
-    private float m_StickyTimer;
+    private readonly Fix64 m_StickySeconds;
+    private Fix64 m_Timer;
+    private Fix64 m_StickyTimer;
     private bool m_Applied;
     private IPropertyModifier m_Modifier;
 
     public OutOfCombatStickyMoveSpeedBuff(float requiredOutOfCombatSeconds, Fix64 moveSpeedPercent, float stickySeconds)
     {
-        m_RequiredOutOfCombatSeconds = Mathf.Max(0f, requiredOutOfCombatSeconds);
+        m_RequiredOutOfCombatSeconds = Fix64.Max(Fix64.Zero, (Fix64)requiredOutOfCombatSeconds);
         m_MoveSpeedPercent = moveSpeedPercent;
-        m_StickySeconds = Mathf.Max(0f, stickySeconds);
+        m_StickySeconds = Fix64.Max(Fix64.Zero, (Fix64)stickySeconds);
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval)
             return;
 
-        float elapsed = m_Timer;
-        m_Timer = 0f;
+        Fix64 elapsed = m_Timer;
+        m_Timer = Fix64.Zero;
         var ma = hostEntity;
         if (ma == null)
             return;
 
-        if (ma.IsOutOfCombat && ma.OutOfCombatElapsedSeconds >= m_RequiredOutOfCombatSeconds)
+        if (ma.IsOutOfCombat && ma.OutOfCombatElapsedLogicTime >= m_RequiredOutOfCombatSeconds)
         {
             m_StickyTimer = m_StickySeconds;
             Apply();
             return;
         }
 
-        if (m_StickyTimer > 0f)
+        if (m_StickyTimer > Fix64.Zero)
         {
-            m_StickyTimer = Mathf.Max(0f, m_StickyTimer - elapsed);
+            m_StickyTimer = Fix64.Max(Fix64.Zero, m_StickyTimer - elapsed);
             Apply();
         }
         else
@@ -1300,38 +1313,45 @@ public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback
         m_Modifier = null;
         m_Applied = false;
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        hasher.Add(m_StickyTimer.RawValue);
+        hasher.Add(m_Applied);
+    }
 }
 
-public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback
+public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.1f;
-    private readonly float m_RequiredOutOfCombatSeconds;
+    private readonly Fix64 m_RequiredOutOfCombatSeconds;
     private readonly Fix64 m_HealthThresholdPercent;
     private readonly Fix64 m_AttackSpeedPenaltyPercent;
-    private float m_Timer;
+    private Fix64 m_Timer;
     private bool m_Triggered;
     private bool m_PenaltyApplied;
     private Fix64 m_AppliedAttackIntervalFactor;
 
     public OutOfCombatHealToThresholdOnceBuff(float requiredOutOfCombatSeconds, Fix64 healthThresholdPercent, Fix64 attackSpeedPenaltyPercent)
     {
-        m_RequiredOutOfCombatSeconds = Mathf.Max(0f, requiredOutOfCombatSeconds);
+        m_RequiredOutOfCombatSeconds = Fix64.Max(Fix64.Zero, (Fix64)requiredOutOfCombatSeconds);
         m_HealthThresholdPercent = healthThresholdPercent;
         m_AttackSpeedPenaltyPercent = attackSpeedPenaltyPercent;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         if (m_Triggered)
             return;
 
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         var ma = hostEntity;
-        if (ma == null || !ma.Alive || !ma.IsOutOfCombat || ma.OutOfCombatElapsedSeconds < m_RequiredOutOfCombatSeconds)
+        if (ma == null || !ma.Alive || !ma.IsOutOfCombat || ma.OutOfCombatElapsedLogicTime < m_RequiredOutOfCombatSeconds)
             return;
 
         Trigger(ma);
@@ -1388,6 +1408,14 @@ public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback
         m_PenaltyApplied = false;
         m_AppliedAttackIntervalFactor = Fix64.Zero;
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        hasher.Add(m_Triggered);
+        hasher.Add(m_PenaltyApplied);
+        hasher.Add(m_AppliedAttackIntervalFactor.RawValue);
+    }
 }
 
 public sealed class ExtraHitFlatDamageBuff : BuffCallback
@@ -1433,19 +1461,19 @@ public sealed class LightMeleeReflectDamageBuff : BuffCallback
             return baseDamage;
 
         m_Reflecting = true;
-        attacker.TakeDamage(reflect, HealthModifyType.reduce, hostEntity);
+        DamageHelper.DoDirectDamage(attacker, reflect, HealthModifyType.reduce, hostEntity);
         m_Reflecting = false;
         return baseDamage;
     }
 }
 
-public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback
+public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.15f;
     private readonly Fix64 m_AttackBonus;
     private readonly float m_ConeAngle;
     private readonly Fix64 m_Distance;
-    private float m_Timer;
+    private Fix64 m_Timer;
     private bool m_Applied;
     private string BuffId => $"tech_security_behind_attack_{buffData?.id}_{hostEntity?.Id}";
 
@@ -1456,13 +1484,13 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback
         m_Distance = distance;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         if (ShouldApply())
             Apply();
         else
@@ -1479,8 +1507,8 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback
         if (hostEntity == null || hostEntity.CharacterData == null || !BuildingTechRuntimeEffectSO.HasTag(hostEntity.CharacterData.UnitTags, UnitTag.Ranged))
             return false;
 
-        float maxDistance = DistanceUnitConverter.ConvertToWorldFloat(m_Distance);
-        float halfAngle = m_ConeAngle * 0.5f;
+        Fix64 maxDistance = DistanceUnitConverter.ConvertToWorld(m_Distance);
+        Fix64 coneAngle = (Fix64)m_ConeAngle;
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
@@ -1491,17 +1519,13 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback
             if (security.CharacterData == null || security.CharacterData.Archetype != Archetype.Security)
                 continue;
 
-            Vector3 offset = hostEntity.Position - security.Position;
-            offset.y = 0f;
-            if (offset.sqrMagnitude > maxDistance * maxDistance)
+            FixVector2 offset = LogicEntityFrameSnapshotService.GetRequiredPosition(hostEntity)
+                                - LogicEntityFrameSnapshotService.GetRequiredPosition(security);
+            if (FixVector2.SqrMagnitude(offset) > maxDistance * maxDistance)
                 continue;
 
-            Vector3 back = -(security.Rotation * Vector3.forward);
-            back.y = 0f;
-            if (back.sqrMagnitude <= 0.0001f)
-                continue;
-
-            if (Vector3.Angle(back.normalized, offset.normalized) <= halfAngle)
+            FixVector2 back = -LogicEntityFrameSnapshotService.GetRequiredForward(security);
+            if (MonitorFacingUtility.IsDirectionWithinCone(back, offset, coneAngle))
                 return true;
         }
 
@@ -1525,27 +1549,33 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback
         hostEntity?.BuffComp?.RemoveBuff(BuffId);
         m_Applied = false;
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        hasher.Add(m_Applied);
+    }
 }
 
-public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback
+public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.2f;
     private readonly Fix64 m_Damage;
     private readonly Dictionary<int, string> m_LastStrongholdIdByEntity = new();
-    private float m_Timer;
+    private Fix64 m_Timer;
 
     public EnemyEnterFriendlyStrongholdDamageWatcherBuff(Fix64 damage)
     {
         m_Damage = damage;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval || m_Damage <= Fix64.Zero)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval || m_Damage <= Fix64.Zero)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
@@ -1563,32 +1593,38 @@ public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback
             }
 
             if (!string.Equals(previousId, strongholdId, StringComparison.Ordinal))
-                enemy.TakeDamage(m_Damage, HealthModifyType.reduce, hostEntity);
+                DamageHelper.DoDirectDamage(enemy, m_Damage, HealthModifyType.reduce, hostEntity);
 
             m_LastStrongholdIdByEntity[enemy.Id] = strongholdId;
         }
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        LogicDeterministicStateWriter.AddSortedStringsById(hasher, m_LastStrongholdIdByEntity);
+    }
 }
 
-public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback
+public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.2f;
     private readonly Fix64 m_DefPenalty;
     private readonly HashSet<int> m_Affected = new();
-    private float m_Timer;
+    private Fix64 m_Timer;
 
     public EnemyInFriendlyStrongholdDefAuraWatcherBuff(Fix64 defPenalty)
     {
         m_DefPenalty = defPenalty;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         Refresh();
     }
 
@@ -1650,16 +1686,22 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback
     }
 
     private string GetBuffId(int entityId) => $"tech_enemy_stronghold_def_{buffData?.id}_{entityId}";
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        LogicDeterministicStateWriter.AddSortedIds(hasher, m_Affected);
+    }
 }
 
-public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback
+public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float UpdateInterval = 0.15f;
     private readonly Fix64 m_Radius;
     private readonly Fix64 m_DelayPercent;
     private readonly float m_Duration;
     private readonly HashSet<int> m_Affected = new();
-    private float m_Timer;
+    private Fix64 m_Timer;
 
     public NearbyMedicalDelayedDamageBuff(Fix64 radius, Fix64 delayPercent, float duration)
     {
@@ -1668,13 +1710,13 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback
         m_Duration = Mathf.Max(0.01f, duration);
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        m_Timer += deltaTime;
-        if (m_Timer < UpdateInterval)
+        m_Timer += (Fix64)deltaTime;
+        if (m_Timer < (Fix64)UpdateInterval)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         Refresh();
     }
 
@@ -1687,13 +1729,13 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback
     private void Refresh()
     {
         var current = new HashSet<int>();
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(m_Radius);
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
             if (all[i] is not MAEntity ally || !ally.Alive || !EntityCombatTeamHelper.IsAlly(hostEntity, ally))
                 continue;
-            if (hostEntity.DistanceToTargetSurface(ally) > radius)
+            if (hostEntity.LogicFrameDistanceToTargetSurfaceFixed(ally) > radius)
                 continue;
 
             current.Add(ally.Id);
@@ -1734,9 +1776,15 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback
     }
 
     private string GetBuffId(int entityId) => $"tech_medical_delayed_damage_{buffData?.id}_{entityId}";
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        LogicDeterministicStateWriter.AddSortedIds(hasher, m_Affected);
+    }
 }
 
-public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback
+public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_DelayPercent;
     private readonly float m_Duration;
@@ -1762,18 +1810,18 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback
         return baseDamage - delayed;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
-        if (hostEntity == null || !hostEntity.Alive || deltaTime <= 0f)
+        if (hostEntity == null || !hostEntity.Alive || deltaTime <= Fix64.Zero)
             return;
 
         for (int i = m_DeferredDamages.Count - 1; i >= 0; i--)
         {
             DeferredDamage item = m_DeferredDamages[i];
-            Fix64 tick = item.TotalDamage * (Fix64)(deltaTime / item.TotalDuration);
+            Fix64 tick = item.TotalDamage * deltaTime / item.TotalDuration;
             item.RemainingDamage -= tick;
             item.RemainingDuration -= deltaTime;
-            if (item.RemainingDuration <= 0f || item.RemainingDamage <= Fix64.Zero)
+            if (item.RemainingDuration <= Fix64.Zero || item.RemainingDamage <= Fix64.Zero)
             {
                 tick += item.RemainingDamage > Fix64.Zero ? item.RemainingDamage : Fix64.Zero;
                 m_DeferredDamages.RemoveAt(i);
@@ -1786,7 +1834,7 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback
             if (tick > Fix64.Zero)
             {
                 m_ApplyingDeferred = true;
-                hostEntity.TakeDamage(tick, HealthModifyType.reduce);
+                DamageHelper.DoDirectDamage(hostEntity, tick, HealthModifyType.reduce);
                 m_ApplyingDeferred = false;
             }
         }
@@ -1796,15 +1844,29 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback
     {
         public Fix64 TotalDamage;
         public Fix64 RemainingDamage;
-        public float TotalDuration;
-        public float RemainingDuration;
+        public Fix64 TotalDuration;
+        public Fix64 RemainingDuration;
 
         public DeferredDamage(Fix64 damage, float duration)
         {
             TotalDamage = damage;
             RemainingDamage = damage;
-            TotalDuration = duration;
-            RemainingDuration = duration;
+            TotalDuration = (Fix64)duration;
+            RemainingDuration = (Fix64)duration;
+        }
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_ApplyingDeferred);
+        hasher.Add(m_DeferredDamages.Count);
+        for (int i = 0; i < m_DeferredDamages.Count; i++)
+        {
+            DeferredDamage item = m_DeferredDamages[i];
+            hasher.Add(item.TotalDamage.RawValue);
+            hasher.Add(item.RemainingDamage.RawValue);
+            hasher.Add(item.TotalDuration.RawValue);
+            hasher.Add(item.RemainingDuration.RawValue);
         }
     }
 }

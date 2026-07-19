@@ -1,17 +1,22 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 public class TimedEffect
 {
-     public float duration;
+     public Fix64 duration;
 
      public TimedEffect(float duration)
+         : this((Fix64)duration)
+     {
+     }
+
+     public TimedEffect(Fix64 duration)
      {
           this.duration = duration;
      }
 
-     public virtual bool UpdateAndCheck(float deltaTime)
+     public virtual bool UpdateAndCheck(Fix64 deltaTime)
      {
           duration -= deltaTime;
-          return duration <= 0;
+          return duration <= Fix64.Zero;
      }
 }

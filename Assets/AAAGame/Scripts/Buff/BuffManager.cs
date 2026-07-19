@@ -153,7 +153,7 @@ public class BuffManager : MonoBehaviour
     /// <summary>
     /// 更新所有Buff
     /// </summary>
-    public void UpdateBuffs(float deltaTime)
+    public void UpdateBuffs(Fix64 deltaTime)
     {
         // 添加调试日志
 
@@ -168,10 +168,7 @@ public class BuffManager : MonoBehaviour
             if (!buffData.isForever)
             {
                 // 添加调试日志
-                buffData.remainingTime -= deltaTime;
-                
-                // 检查是否过期
-                if (buffData.remainingTime<= 0f)
+                if (buffData.AdvanceLogicTime(deltaTime))
                 {
                     expiredBuffs.Add(kvp.Key);
                     continue;

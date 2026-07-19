@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 纯逻辑移动组件：直线移动到目标点，不依赖运行时导航。
@@ -24,7 +24,7 @@ public class SimMoveComp : IMoveComp
         _targetPos = null;
     }
 
-    public void Move(float deltaTime)
+    public void Move(Fix64 deltaTime)
     {
         if (_ctx == null) return;
 

@@ -1,26 +1,29 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System;
 using UnityEngine;
-using UnityEngine.UIElements;
 
-public class InputDirTranslator
+public static class InputDirTranslator
 {
+    public static FixVector2 TranslateAndQuantize(Vector2 inputData, Camera camera)
+    {
+        if (!float.IsFinite(inputData.x) || !float.IsFinite(inputData.y))
+            throw new ArgumentOutOfRangeException(nameof(inputData), inputData, "Move input must be finite.");
+
+        if (inputData.sqrMagnitude <= 0.0001f)
+            return FixVector2.Zero;
+
+        Vector3 worldDirection = new Vector3(inputData.x, 0f, inputData.y);
+        if (camera != null)
+        {
+            float yaw = camera.transform.eulerAngles.y;
+            worldDirection = Quaternion.Euler(0f, yaw, 0f) * worldDirection;
+        }
+
+        worldDirection = Vector3.ClampMagnitude(worldDirection, 1f);
+        return new FixVector2((Fix64)worldDirection.x, (Fix64)worldDirection.z);
+    }
+
     public static Vector2 Translate(Vector2 inputData)
     {
-        if (inputData.sqrMagnitude <= 0.0001f)
-        {
-            return Vector2.zero;
-        }
-
-        Camera cam = Camera.main;
-        if (cam == null)
-        {
-            return inputData;
-        }
-
-        float yaw = cam.transform.eulerAngles.y;
-        Vector3 worldDir = Quaternion.Euler(0f, yaw, 0f) * new Vector3(inputData.x, 0f, inputData.y);
-        worldDir = Vector3.ClampMagnitude(worldDir, 1f);
-        return new Vector2(worldDir.x, worldDir.z);
+        return TranslateAndQuantize(inputData, Camera.main);
     }
 }

@@ -1,3 +1,4 @@
+﻿using System.Threading;
 using System.Collections.Generic;
 using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
@@ -7,6 +8,14 @@ using AAAGame.Scripts.BuffSystem;
 /// </summary>
 public class SimEntityContext : IEntityContext, ITargetable
 {
+    private static int s_NextTestEntityId;
+
+    public SimEntityContext()
+    {
+        LogicEntityId = new LogicEntityId(Interlocked.Increment(ref s_NextTestEntityId));
+    }
+
+    public LogicEntityId LogicEntityId { get; set; }
     public Vector3 Position { get; set; }
     public Quaternion Rotation { get; set; } = Quaternion.identity;
     public SideType Side { get; set; }

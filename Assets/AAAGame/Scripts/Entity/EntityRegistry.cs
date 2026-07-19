@@ -15,8 +15,33 @@ public static class EntityRegistry
 
     public static void Register(IEntityContext entity)
     {
-        if (!_entities.Contains(entity))
-            _entities.Add(entity);
+        if (entity == null)
+            throw new System.ArgumentNullException(nameof(entity));
+        if (!entity.LogicEntityId.IsValid)
+            throw new System.InvalidOperationException("EntityRegistry.Register failed: entity has an invalid logic id.");
+
+        int low = 0;
+        int high = _entities.Count - 1;
+        while (low <= high)
+        {
+            int middle = low + ((high - low) >> 1);
+            IEntityContext current = _entities[middle];
+            int comparison = current.LogicEntityId.CompareTo(entity.LogicEntityId);
+            if (comparison == 0)
+            {
+                if (ReferenceEquals(current, entity))
+                    return;
+
+                throw new System.InvalidOperationException($"EntityRegistry.Register failed: duplicate logic entity id {entity.LogicEntityId.Value}.");
+            }
+
+            if (comparison < 0)
+                low = middle + 1;
+            else
+                high = middle - 1;
+        }
+
+        _entities.Insert(low, entity);
     }
 
     public static void RegisterAsPlayer(IEntityContext entity)

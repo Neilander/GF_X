@@ -1,4 +1,4 @@
-using Cysharp.Threading.Tasks;
+﻿using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityGameFramework.Runtime;
@@ -10,7 +10,7 @@ public partial class LevelSwitchUIForm : UIFormBase
 
     private bool m_IsStartup;
     private bool m_IsLoading;
-    private bool m_PausedGameOnOpen;
+    private bool m_HoldsLogicPause;
 
     public static bool Open(bool isStartup)
     {
@@ -96,28 +96,24 @@ public partial class LevelSwitchUIForm : UIFormBase
 
     private void PauseGameIfNeeded()
     {
-        m_PausedGameOnOpen = false;
-        if (GF.Base == null || GF.Base.IsGamePaused)
+        if (m_HoldsLogicPause || !LogicTimeControlService.IsActive)
         {
             return;
         }
 
-        GF.Base.PauseGame();
-        m_PausedGameOnOpen = true;
+        LogicTimeControlService.AcquirePause(LogicTimeControlSources.LevelSwitchUiPause);
+        m_HoldsLogicPause = true;
     }
 
     private void ResumeGameIfNeeded()
     {
-        if (!m_PausedGameOnOpen)
+        if (!m_HoldsLogicPause)
         {
             return;
         }
 
-        m_PausedGameOnOpen = false;
-        if (GF.Base != null && GF.Base.IsGamePaused)
-        {
-            GF.Base.ResumeGame();
-        }
+        LogicTimeControlService.ReleasePause(LogicTimeControlSources.LevelSwitchUiPause);
+        m_HoldsLogicPause = false;
     }
 
     private void BindButtons()

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -14,7 +14,7 @@ public static class MAEntityFactory
         string sourceStrongholdId = null,
         int unitLevel = 1)
     {
-        EntityParams entityParams = EntityParams.Create(position: position);
+        EntityParams entityParams = CreateLogicEntityParams(position);
         entityParams.Side = side;
         entityParams.BrainType = brainType;
         entityParams.UnitLevel = Mathf.Clamp(unitLevel, 1, 3);
@@ -82,7 +82,10 @@ public static class MAEntityFactory
         bool isNavigationStaticBaked = false,
         bool enableConstructionEscape = false)
     {
-        EntityParams entityParams = EntityParams.Create(position);
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            throw new System.ArgumentException("MAEntityFactory.ShowBuilding failed: buildingInstanceId is empty.", nameof(buildingInstanceId));
+
+        EntityParams entityParams = CreateLogicEntityParams(position);
         entityParams.Set(BuildingEntity.P_BuildingData, buildingData);
         entityParams.SetString(BuildingEntity.P_BuildingInstanceId, buildingInstanceId);
         if (isGameEndConditionBuilding)
@@ -99,6 +102,13 @@ public static class MAEntityFactory
         }
 
         return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
+    }
+
+    private static EntityParams CreateLogicEntityParams(Vector3 position)
+    {
+        EntityParams entityParams = EntityParams.Create(position: position);
+        entityParams.LogicEntityId = LogicEntityLifecycleService.RequestSpawn();
+        return entityParams;
     }
 }
 

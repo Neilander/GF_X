@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -198,12 +198,16 @@ public class GeneralCreature : EntityBase, ITargetable
                 }
             }
 
-            // 检查实体是否存在再隐藏
-            if (GF.Entity.GetEntity(Id) != null)
-            {
-                GF.Entity.HideEntity(Id);
-            }
+            RemoveAfterDeath();
         }
+    }
+
+    protected virtual void RemoveAfterDeath()
+    {
+        if (GF.Entity.GetEntity(Id) == null)
+            throw new System.InvalidOperationException($"GeneralCreature.RemoveAfterDeath failed: entity {Id} is not loaded.");
+
+        GF.Entity.HideEntity(Id);
     }
 
     /// <summary>

@@ -3,6 +3,7 @@
 public interface IControlBrain
 {
     Vector2 Move { get; }
+    FixVector2 MoveFixed { get; }
     bool Attack { get; }
     bool Skill1 { get; }
     bool Skill2 { get; }
@@ -16,7 +17,7 @@ public interface IControlBrain
 /// </summary>
 public interface ITickBrain
 {
-    void Tick(IEntityContext self, float dt);
+    void Tick(IEntityContext self, Fix64 dt);
 }
 
 public interface IBrainSideChangeHandler

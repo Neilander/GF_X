@@ -1,4 +1,4 @@
-//
+﻿//
 // @brief: 定点数
 // @version: 1.0.0
 // @author helin
@@ -151,7 +151,7 @@ public partial struct Fix64 : IEquatable<Fix64>, IComparable<Fix64>
 
     public static Fix64 operator -(float x, Fix64 y)
     {
-        return (Fix64)x + y;
+        return (Fix64)x - y;
     }
 
     public static Fix64 operator -(Fix64 x, double y)
@@ -705,7 +705,7 @@ public struct FixVector3
             else if (index == 1)
                 y = value;
             else
-                y = value;
+                z = value;
         }
     }
 
@@ -812,7 +812,7 @@ public struct FixVector3
 
     public override bool Equals(object obj)
     {
-        return obj is FixVector2 && ((FixVector3)obj) == this;
+        return obj is FixVector3 && ((FixVector3)obj) == this;
     }
 
     public override int GetHashCode()

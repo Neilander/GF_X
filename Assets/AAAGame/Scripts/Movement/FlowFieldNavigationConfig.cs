@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 [CreateAssetMenu(fileName = "FlowFieldNavigationConfig", menuName = "Movement/Flow Field Navigation Config")]
 public class FlowFieldNavigationConfig : ScriptableObject
@@ -24,9 +24,15 @@ public class FlowFieldNavigationConfig : ScriptableObject
     [Tooltip("Maximum cached flow tiles.")]
     [Min(16)]
     public int FlowTileCacheLimit = 256;
-    [Tooltip("Runtime dirty navigation rebuild budget in milliseconds per frame.")]
-    [Min(0.05f)]
-    public float RuntimeRebuildBudgetMilliseconds = 1.5f;
+    [Tooltip("Maximum world-build operations processed per logic Tick.")]
+    [Min(1)]
+    public int WorldBuildOperationQuota = 32768;
+    [Tooltip("Maximum runtime-dirty rebuild operations processed per logic Tick.")]
+    [Min(1)]
+    public int RuntimeRebuildOperationQuota = 4096;
+    [Tooltip("Maximum flow-field build operations processed per logic Tick.")]
+    [Min(1)]
+    public int FlowBuildOperationQuota = 2048;
 
     [Header("Crowd Steering")]
     [Tooltip("Neighbor prediction time.")]
@@ -57,6 +63,14 @@ public class FlowFieldNavigationConfig : ScriptableObject
     public float BottleneckClearanceHoldTime = 0.45f;
 
     [Header("Debug")]
+    [Tooltip("Run the fixed-point static collision solver in shadow mode without changing authoritative movement.")]
+    public bool EnableDeterministicStaticCollisionShadow = true;
+    [Tooltip("World-space displacement difference that counts as a static collision shadow mismatch.")]
+    [Min(0f)]
+    public float StaticCollisionShadowMismatchTolerance = 0.03f;
+    [Tooltip("Minimum logic Tick interval between static collision shadow mismatch logs.")]
+    [Min(1)]
+    public int StaticCollisionShadowLogIntervalTicks = 300;
     public bool DrawNavigationDebug = false;
     public bool DrawFlowFieldDebug = false;
 }

@@ -1,11 +1,14 @@
-using System;
+﻿using System;
 
 public sealed class LogicFrameClock
 {
     public const int FrameRate = 30;
     public const double FrameDurationSeconds = 1d / FrameRate;
 
-    private const double BoundaryEpsilon = 1e-10d;
+    // Repeated 1/30 additions accumulate a few nanoseconds over long sessions.
+    // Treat values within 10 ns as the same real-time boundary so an exact Tick deadline
+    // cannot slip to the next render pump after a long run.
+    private const double BoundaryEpsilon = 1e-8d;
 
     private double m_LastRealtime;
     private double m_Accumulator;
@@ -28,33 +31,67 @@ public sealed class LogicFrameClock
 
     public int Advance(double realtime, double timeScale, Action<ulong> tick)
     {
+        if (tick == null)
+            throw new ArgumentNullException(nameof(tick));
+
+        return Advance(realtime, () => timeScale, (frame, _) => tick(frame));
+    }
+
+    public int Advance(double realtime, Func<double> getTimeScale, Action<ulong, double> tick)
+    {
         if (!m_IsStarted)
             throw new InvalidOperationException("LogicFrameClock.Advance failed: clock is not started.");
+        if (getTimeScale == null)
+            throw new ArgumentNullException(nameof(getTimeScale));
         if (tick == null)
             throw new ArgumentNullException(nameof(tick));
         if (double.IsNaN(realtime) || double.IsInfinity(realtime))
             throw new ArgumentOutOfRangeException(nameof(realtime), realtime, "Realtime must be finite.");
-        if (double.IsNaN(timeScale) || double.IsInfinity(timeScale) || timeScale < 0d)
-            throw new ArgumentOutOfRangeException(nameof(timeScale), timeScale, "Time scale must be finite and non-negative.");
         if (realtime < m_LastRealtime)
             throw new InvalidOperationException($"LogicFrameClock.Advance failed: realtime moved backwards. previous={m_LastRealtime:R}, current={realtime:R}.");
 
-        double elapsed = realtime - m_LastRealtime;
-        m_LastRealtime = realtime;
-        m_Accumulator += elapsed * timeScale;
-
+        double realtimeCursor = m_LastRealtime;
         int tickCount = 0;
-        while (m_Accumulator + BoundaryEpsilon >= FrameDurationSeconds)
+        while (realtimeCursor < realtime)
         {
-            m_Accumulator -= FrameDurationSeconds;
-            if (m_Accumulator < 0d && m_Accumulator > -BoundaryEpsilon)
-                m_Accumulator = 0d;
+            double timeScale = getTimeScale();
+            ValidateTimeScale(timeScale);
+            if (timeScale <= 0d)
+            {
+                realtimeCursor = realtime;
+                break;
+            }
 
+            double scaledUntilTick = FrameDurationSeconds - m_Accumulator;
+            if (scaledUntilTick < 0d && scaledUntilTick > -BoundaryEpsilon)
+                scaledUntilTick = 0d;
+
+            double realUntilTick = scaledUntilTick / timeScale;
+            double realRemaining = realtime - realtimeCursor;
+            if (realUntilTick > realRemaining + BoundaryEpsilon)
+            {
+                m_Accumulator += realRemaining * timeScale;
+                realtimeCursor = realtime;
+                break;
+            }
+
+            realtimeCursor += Math.Max(0d, realUntilTick);
+            m_Accumulator = 0d;
             Frame++;
-            tick(Frame);
+            tick(Frame, Math.Min(realtimeCursor, realtime));
             tickCount = checked(tickCount + 1);
         }
 
+        if (m_Accumulator > 0d && m_Accumulator <= BoundaryEpsilon)
+            m_Accumulator = 0d;
+
+        m_LastRealtime = realtime;
         return tickCount;
+    }
+
+    private static void ValidateTimeScale(double timeScale)
+    {
+        if (double.IsNaN(timeScale) || double.IsInfinity(timeScale) || timeScale < 0d)
+            throw new ArgumentOutOfRangeException(nameof(timeScale), timeScale, "Time scale must be finite and non-negative.");
     }
 }

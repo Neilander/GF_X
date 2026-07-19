@@ -1,23 +1,25 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-
+﻿using UnityEngine;
 
 namespace AAAGame.Scripts.Entity
 {
     public class PlayerBrain : IControlBrain
     {
-        private InputModel _input;
-        public PlayerBrain() => _input = GF.DataModel.GetDataModel<InputModel>();
+        private readonly InputModel _input;
 
-        public Vector2 Move =>  InputDirTranslator.Translate(
-        new FixVector2(_input.MoveX, _input.MoveY)
-            );
-        public bool Attack => _input.PlayerAttack;
-        public bool Skill1 => _input.Skill1Pressed;
-        public bool Skill2 => _input.Skill2Pressed;
-        public bool Skill3 => _input.Skill3Pressed;
-        public bool Skill4 => _input.Skill4Pressed;
-        public bool Skill5 => _input.Skill5Pressed;
+        public PlayerBrain()
+        {
+            _input = GF.DataModel.GetDataModel<InputModel>();
+        }
+
+        private LogicInputFrame CurrentInput => _input.CurrentLogicFrame;
+
+        public Vector2 Move => CurrentInput.WorldMove;
+        public FixVector2 MoveFixed => CurrentInput.WorldMove;
+        public bool Attack => CurrentInput.WasPressed(LogicInputButton.PlayerAttack);
+        public bool Skill1 => CurrentInput.WasPressed(LogicInputButton.Skill1);
+        public bool Skill2 => CurrentInput.WasPressed(LogicInputButton.Skill2);
+        public bool Skill3 => CurrentInput.WasPressed(LogicInputButton.Skill3);
+        public bool Skill4 => CurrentInput.WasPressed(LogicInputButton.Skill4);
+        public bool Skill5 => CurrentInput.WasPressed(LogicInputButton.Skill5);
     }
 }

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class NoAtkComp : IAtkComp
 {
@@ -6,7 +6,7 @@ public class NoAtkComp : IAtkComp
     {
     }
 
-    public void Attack(float deltaTime)
+public void Attack(Fix64 deltaTime)
     {
         //这是空行为，什么都不做
     }

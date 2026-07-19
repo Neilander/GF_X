@@ -1,4 +1,4 @@
-using GameFramework;
+﻿using GameFramework;
 using System.Collections.Generic;
 using AAAGame.MiniMap;
 using UnityEngine;
@@ -64,7 +64,20 @@ public partial class BuildingEntity : MAEntity
     private MinimapReportComponent _minimapReportComponent;
     private BuildingExtraProps _extraProps; // 引用自 GlobalBuffManager 的中央字典，升级场景同 id 共享同对象
     private readonly List<int> _registeredFlowObstacleIds = new List<int>();
+    private BuildingCombatShapeCatalog _combatShapeCatalog;
+    private BuildingLogicObstacleShapeCatalog _logicObstacleShapeCatalog;
     protected override bool UsesFlowNavigationAgent => false;
+
+    public LogicCombatShape GetRequiredWorldCombatShape()
+    {
+        if (_combatShapeCatalog == null || buildingData == null)
+            throw new System.InvalidOperationException($"BuildingEntity combat shape is not initialized. building={CharacterKey}.");
+        EnsureAuthoredShapeTransform();
+        return _combatShapeCatalog.ResolveRequired(
+            buildingData.PrefabPath,
+            transform.position,
+            transform.eulerAngles.y);
+    }
 
     protected override void RefreshCharacterData(object userData)
     {
@@ -82,10 +95,14 @@ public partial class BuildingEntity : MAEntity
             && enableConstructionEscape;
 
         CharacterKey = buildingData != null ? buildingData.Identifier : string.Empty;
+        if (buildingData == null)
+            throw new System.InvalidOperationException("BuildingEntity.RefreshCharacterData failed: BuildingData is missing.");
+        _combatShapeCatalog = BuildingCombatShapeCatalog.LoadRequired();
+        _logicObstacleShapeCatalog = BuildingLogicObstacleShapeCatalog.LoadRequired();
         SetBrain(new BuildingAIBrain());
 
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
-            BuildingInstanceId = System.Guid.NewGuid().ToString("N");
+            throw new System.InvalidOperationException($"BuildingEntity.RefreshCharacterData failed: BuildingInstanceId is empty. character={CharacterKey}.");
     }
 
     /// <summary>当前注册到 BuildingOutlineFeature 的 Renderer 缓存，OnHide 反注册用。</summary>
@@ -123,9 +140,27 @@ public partial class BuildingEntity : MAEntity
             EnsureInteractionHost();
         }
 
-        RegisterFlowFieldObstacles();
+    }
+
+    protected override void OnLogicActivated()
+    {
+        base.OnLogicActivated();
+        if (_registeredFlowObstacleIds.Count == 0)
+            ScheduleFlowFieldObstacleAdds(true, false);
         if (EnableConstructionEscape)
             BeginConstructionEscapeForOverlappingHeroes();
+    }
+
+    protected override void OnLogicDeactivating()
+    {
+        if (_registeredFlowObstacleIds.Count > 0)
+        {
+            if (LogicEntityLifecycleService.IsApplyingFrame)
+                ScheduleFlowFieldObstacleRemovals(true, false);
+            else
+                UnregisterFlowFieldObstaclesImmediately();
+        }
+        base.OnLogicDeactivating();
     }
 
     protected override CreaturePropertyManager CreateCreaturePropertyManager()
@@ -218,7 +253,6 @@ public partial class BuildingEntity : MAEntity
         RestorePhaseVisibility();
         SetStealthVisualState(false, false, 1f);
         UnregisterOutlineRenderers();
-        UnregisterFlowFieldObstacles();
         InGameDataModel.UnregisterBuilding(this);
 
         // 对象池安全：清理运行时引用，避免下次复用时指向旧数据
@@ -242,6 +276,8 @@ public partial class BuildingEntity : MAEntity
         _permanentStealthVisibility = false;
         ClearArmyCardProperties();
         _extraProps = null; // 仅清字段引用，中央字典里的对象保留给同 id 的下次 Show
+        _combatShapeCatalog = null;
+        _logicObstacleShapeCatalog = null;
         buildingData = null;
         BuildingInstanceId = null;
         base.OnHide(isShutdown, userData);
@@ -249,11 +285,24 @@ public partial class BuildingEntity : MAEntity
 
     internal void RefreshFlowFieldObstacles()
     {
-        UnregisterFlowFieldObstacles();
-        RegisterFlowFieldObstacles();
+        bool isPrewarmingFrameOneWorld = !IsLogicActive
+                                         && ((LogicTimeControlService.CurrentFrame == 0 && !LogicFrameRuntime.IsTimelineRunning)
+                                             || LogicObstacleCommandService.IsWorldTransitionActive);
+        if (!IsLogicActive && !isPrewarmingFrameOneWorld)
+            throw new System.InvalidOperationException($"BuildingEntity.RefreshFlowFieldObstacles failed: logic entity is not active. entity={LogicEntityId.Value}.");
+
+        if (isPrewarmingFrameOneWorld)
+        {
+            ScheduleFlowFieldObstacleRemovals(false, true);
+            ScheduleFlowFieldObstacleAdds(false, true);
+            return;
+        }
+
+        ScheduleFlowFieldObstacleRemovals(false, false);
+        ScheduleFlowFieldObstacleAdds(false, false);
     }
 
-    private void RegisterFlowFieldObstacles()
+    private void ScheduleFlowFieldObstacleAdds(bool currentLifecycleFrame, bool applyImmediatelyForPrewarm)
     {
         if (IsNavigationStaticBaked)
         {
@@ -261,46 +310,37 @@ public partial class BuildingEntity : MAEntity
         }
 
         if (!GroupMoveManager.HasInstance)
-        {
-            Log.Error("BuildingEntity.RegisterFlowFieldObstacles failed: GroupMoveManager is not available. building={0} instance={1}", CharacterKey, BuildingInstanceId);
-            return;
-        }
+            throw new System.InvalidOperationException($"BuildingEntity.ScheduleFlowFieldObstacleAdds failed: GroupMoveManager is unavailable. building={CharacterKey} instance={BuildingInstanceId}.");
 
         if (_registeredFlowObstacleIds.Count > 0)
             throw new System.InvalidOperationException($"BuildingEntity.RegisterFlowFieldObstacles failed: stale obstacle ids. building={CharacterKey} count={_registeredFlowObstacleIds.Count}.");
 
-        Collider[] colliders = GetComponentsInChildren<Collider>(true);
-        for (int i = 0; i < colliders.Length; i++)
+        if (_logicObstacleShapeCatalog == null || buildingData == null)
+            throw new System.InvalidOperationException($"BuildingEntity logic obstacle shapes are not initialized. building={CharacterKey}.");
+        EnsureAuthoredShapeTransform();
+        IReadOnlyList<LogicCombatShape> authoredBoxes = _logicObstacleShapeCatalog.ResolveRequired(
+            buildingData.PrefabPath,
+            transform.position,
+            transform.eulerAngles.y);
+        for (int i = 0; i < authoredBoxes.Count; i++)
         {
-            Collider collider = colliders[i];
-            if (collider == null || !collider.enabled || collider.isTrigger)
-                continue;
+            LogicCombatShape box = authoredBoxes[i];
+            if (box.Kind != LogicCombatShapeKind.AxisAlignedBox)
+                throw new System.InvalidOperationException($"BuildingEntity authored obstacle {i} is not a box. building={CharacterKey}.");
+            int obstacleId = LogicEntityObstacleId.FromBuildingCollider(LogicEntityId, i);
+            if (currentLifecycleFrame)
+                LogicObstacleCommandService.ScheduleBoxForCurrentLifecycleFrame(obstacleId, box.Center, box.HalfExtents);
+            else
+                LogicObstacleCommandService.ScheduleBoxForNextFrame(obstacleId, box.Center, box.HalfExtents);
 
-            int obstacleId = GroupMoveManager.Instance.RegisterColliderObstacle(collider);
-            _registeredFlowObstacleIds.Add(obstacleId);
-
-            if (GameDebugSettings.IsEnabled(DebugCategory.Move))
+            if (applyImmediatelyForPrewarm)
             {
-                Bounds bounds = GroupMoveManager.ResolveColliderWorldBounds(collider);
-                Debug.LogFormat(
-                    LogType.Log,
-                    LogOption.NoStacktrace,
-                    null,
-                    "[BuildingFlowObstacle] collider building={0} instance={1} name={2} path={3} type={4} id={5} layer={6} tag={7} enabled={8} trigger={9} active={10} center={11} size={12}",
-                    CharacterKey,
-                    BuildingInstanceId,
-                    collider.gameObject.name,
-                    BuildHierarchyPath(collider.transform),
-                    collider.GetType().Name,
+                GroupMoveManager.Instance.RegisterBoxObstacle(
                     obstacleId,
-                    collider.gameObject.layer,
-                    collider.tag,
-                    collider.enabled,
-                    collider.isTrigger,
-                    collider.gameObject.activeInHierarchy,
-                    bounds.center,
-                    bounds.size);
+                    new Vector3((float)box.Center.x, transform.position.y, (float)box.Center.y),
+                    new Vector3((float)box.HalfExtents.x, 0f, (float)box.HalfExtents.y));
             }
+            _registeredFlowObstacleIds.Add(obstacleId);
         }
 
         if (GameDebugSettings.IsEnabled(DebugCategory.Move))
@@ -309,13 +349,36 @@ public partial class BuildingEntity : MAEntity
                 LogType.Log,
                 LogOption.NoStacktrace,
                 null,
-                "[BuildingFlowObstacle] register building={0} instance={1} colliders={2} registered={3} pos={4}",
+                "[BuildingFlowObstacle] register authored building={0} instance={1} boxes={2} registered={3} pos={4}",
                 CharacterKey,
                 BuildingInstanceId,
-                colliders.Length,
+                authoredBoxes.Count,
                 _registeredFlowObstacleIds.Count,
                 Position);
         }
+    }
+
+    private void EnsureAuthoredShapeTransform()
+    {
+        Vector3 scale = transform.lossyScale;
+        const float tolerance = 0.001f;
+        if (Mathf.Abs(scale.x - 1f) > tolerance || Mathf.Abs(scale.z - 1f) > tolerance)
+        {
+            throw new System.InvalidOperationException(
+                $"BuildingEntity authored shapes require unit XZ scale. building={CharacterKey}, scale={scale}.");
+        }
+    }
+
+    internal IReadOnlyList<LogicCombatShape> GetRequiredWorldObstacleShapes()
+    {
+        if (_logicObstacleShapeCatalog == null || buildingData == null)
+            throw new System.InvalidOperationException($"BuildingEntity logic obstacle shapes are not initialized. building={CharacterKey}.");
+
+        EnsureAuthoredShapeTransform();
+        return _logicObstacleShapeCatalog.ResolveRequired(
+            buildingData.PrefabPath,
+            transform.position,
+            transform.eulerAngles.y);
     }
 
     private void BeginConstructionEscapeForOverlappingHeroes()
@@ -341,23 +404,31 @@ public partial class BuildingEntity : MAEntity
             $"position={Position} playerHeroes={playerHeroCount} activated={activatedCount}");
     }
 
-    private static string BuildHierarchyPath(Transform transform)
+    private void ScheduleFlowFieldObstacleRemovals(bool currentLifecycleFrame, bool applyImmediatelyForPrewarm)
     {
-        if (transform == null)
-            return "null";
+        if (_registeredFlowObstacleIds.Count == 0)
+            return;
 
-        Stack<string> parts = new Stack<string>();
-        Transform current = transform;
-        while (current != null)
+        if (applyImmediatelyForPrewarm && !GroupMoveManager.HasInstance)
+            throw new System.InvalidOperationException("BuildingEntity.ScheduleFlowFieldObstacleRemovals failed: GroupMoveManager is unavailable during prewarm.");
+
+        for (int i = 0; i < _registeredFlowObstacleIds.Count; i++)
         {
-            parts.Push(current.name);
-            current = current.parent;
+            int obstacleId = _registeredFlowObstacleIds[i];
+            if (currentLifecycleFrame)
+                LogicObstacleCommandService.ScheduleRemoveForCurrentLifecycleFrame(obstacleId);
+            else
+                LogicObstacleCommandService.ScheduleRemoveForNextFrame(obstacleId);
+
+            if (applyImmediatelyForPrewarm)
+                GroupMoveManager.Instance.UnregisterObstacle(obstacleId);
         }
 
-        return string.Join("/", parts);
+        LogFlowFieldObstacleUnregistration("scheduled");
+        _registeredFlowObstacleIds.Clear();
     }
 
-    private void UnregisterFlowFieldObstacles()
+    private void UnregisterFlowFieldObstaclesImmediately()
     {
         if (_registeredFlowObstacleIds.Count == 0)
             return;
@@ -368,20 +439,25 @@ public partial class BuildingEntity : MAEntity
                 GroupMoveManager.Instance.UnregisterObstacle(_registeredFlowObstacleIds[i]);
         }
 
+        LogFlowFieldObstacleUnregistration("immediate-reset");
+        _registeredFlowObstacleIds.Clear();
+    }
+
+    private void LogFlowFieldObstacleUnregistration(string mode)
+    {
         if (GameDebugSettings.IsEnabled(DebugCategory.Move))
         {
             Debug.LogFormat(
                 LogType.Log,
                 LogOption.NoStacktrace,
                 null,
-                "[BuildingFlowObstacle] unregister building={0} instance={1} registered={2} pos={3}",
+                "[BuildingFlowObstacle] unregister building={0} instance={1} registered={2} pos={3} mode={4}",
                 CharacterKey,
                 BuildingInstanceId,
                 _registeredFlowObstacleIds.Count,
-                Position);
+                Position,
+                mode);
         }
-
-        _registeredFlowObstacleIds.Clear();
     }
 
     public void SetStronghold(Stronghold stronghold, bool triggerFactionChangedEvent = true)

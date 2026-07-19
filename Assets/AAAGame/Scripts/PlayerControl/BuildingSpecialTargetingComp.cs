@@ -1,12 +1,12 @@
 ﻿using UnityEngine;
 
-public sealed class MeatRackTargetingComp : ITargetingComp
+public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
 {
-    private const float ScanInterval = 0.2f;
-    private const float TauntScoreScale = 100000f;
+    private static readonly Fix64 ScanInterval = (Fix64)0.2f;
+    private static readonly Fix64 TauntScoreScale = (Fix64)100000;
 
     private IEntityContext _ctx;
-    private float _scanTimer;
+    private Fix64 _scanTimer;
 
     public IEntityContext CurrentTarget { get; set; }
     public IEntityContext FollowTarget => null;
@@ -19,18 +19,18 @@ public sealed class MeatRackTargetingComp : ITargetingComp
     {
         _ctx = ctx;
         CurrentTarget = null;
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
     }
 
-    public void UpdateTargeting(float deltaTime)
+    public void UpdateTargeting(Fix64 deltaTime)
     {
         if (_ctx == null)
             return;
 
-        float attackRange = GetEffectiveAttackRange();
+        Fix64 attackRange = GetEffectiveAttackRange();
         if (CurrentTarget != null)
         {
-            float distance = _ctx.DistanceToTargetSurface(CurrentTarget);
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
             if (distance > attackRange || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
                 CurrentTarget = null;
         }
@@ -39,18 +39,18 @@ public sealed class MeatRackTargetingComp : ITargetingComp
         if (_scanTimer < ScanInterval)
             return;
 
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
         CurrentTarget = FindBestTarget(attackRange);
     }
 
-    private IEntityContext FindBestTarget(float scanRange)
+    private IEntityContext FindBestTarget(Fix64 scanRange)
     {
         var all = EntityRegistry.AllEntities;
         if (all == null)
             throw new System.InvalidOperationException("MeatRackTargetingComp.FindBestTarget failed: EntityRegistry.AllEntities is null.");
 
         IEntityContext best = null;
-        float bestScore = float.NegativeInfinity;
+        Fix64 bestScore = -Fix64.FromRaw(long.MaxValue);
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext candidate = all[i];
@@ -61,12 +61,14 @@ public sealed class MeatRackTargetingComp : ITargetingComp
             if (!EntityCombatTeamHelper.IsEnemy(_ctx, candidate))
                 continue;
 
-            float distance = _ctx.DistanceToTargetSurface(candidate);
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
             if (distance > scanRange)
                 continue;
 
-            float score = GetTauntLevel(candidate) * TauntScoreScale + distance;
-            if (score > bestScore)
+            Fix64 score = (Fix64)GetTauntLevel(candidate) * TauntScoreScale + distance;
+            if (score > bestScore
+                || (score == bestScore
+                    && (best == null || candidate.LogicEntityId < best.LogicEntityId)))
             {
                 bestScore = score;
                 best = candidate;
@@ -76,15 +78,24 @@ public sealed class MeatRackTargetingComp : ITargetingComp
         return best;
     }
 
-    private float GetEffectiveAttackRange()
+    private Fix64 GetEffectiveAttackRange()
     {
         Fix64 weaponRange = _ctx?.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
-        return (float)weaponRange;
+        return weaponRange;
     }
 
     private static int GetTauntLevel(IEntityContext entity)
     {
         return entity is GeneralCreature creature ? creature.TauntLevel : 0;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new System.ArgumentNullException(nameof(hasher));
+        hasher.Add(_scanTimer.RawValue);
+        hasher.Add(((Fix64)AggroRange).RawValue);
+        hasher.Add(((Fix64)ForgetRange).RawValue);
     }
 
     public void NotifyDamageTaken(IEntityContext attacker) { }
@@ -94,15 +105,15 @@ public sealed class MeatRackTargetingComp : ITargetingComp
     public void Resume() { }
 }
 
-public sealed class MonitorTargetingComp : ITargetingComp
+public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
 {
-    private const float ScanInterval = 0.1f;
+    private static readonly Fix64 ScanInterval = (Fix64)0.1f;
 
-    private readonly float _facingConeAngle;
+    private readonly Fix64 _facingConeAngle;
     private IEntityContext _ctx;
-    private float _scanTimer;
+    private Fix64 _scanTimer;
 
-    public MonitorTargetingComp(float facingConeAngle)
+    public MonitorTargetingComp(Fix64 facingConeAngle)
     {
         _facingConeAngle = facingConeAngle;
     }
@@ -118,18 +129,18 @@ public sealed class MonitorTargetingComp : ITargetingComp
     {
         _ctx = ctx;
         CurrentTarget = null;
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
     }
 
-    public void UpdateTargeting(float deltaTime)
+    public void UpdateTargeting(Fix64 deltaTime)
     {
         if (_ctx == null)
             return;
 
-        float attackRange = GetEffectiveAttackRange();
+        Fix64 attackRange = GetEffectiveAttackRange();
         if (CurrentTarget != null)
         {
-            float distance = _ctx.DistanceToTargetSurface(CurrentTarget);
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
             if (distance > attackRange
                 || !CurrentTarget.IsAttackTargetable()
                 || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget)
@@ -143,18 +154,18 @@ public sealed class MonitorTargetingComp : ITargetingComp
         if (_scanTimer < ScanInterval)
             return;
 
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
         CurrentTarget = FindFacingTarget(attackRange);
     }
 
-    private IEntityContext FindFacingTarget(float scanRange)
+    private IEntityContext FindFacingTarget(Fix64 scanRange)
     {
         var all = EntityRegistry.AllEntities;
         if (all == null)
             throw new System.InvalidOperationException("MonitorTargetingComp.FindFacingTarget failed: EntityRegistry.AllEntities is null.");
 
         IEntityContext best = null;
-        float bestDistance = scanRange;
+        Fix64 bestDistance = scanRange;
         int bestTaunt = -1;
         for (int i = 0; i < all.Count; i++)
         {
@@ -168,12 +179,15 @@ public sealed class MonitorTargetingComp : ITargetingComp
             if (!MonitorFacingUtility.IsFacingMonitor(candidate, _ctx, _facingConeAngle))
                 continue;
 
-            float distance = _ctx.DistanceToTargetSurface(candidate);
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
             if (distance > scanRange)
                 continue;
 
             int taunt = candidate is GeneralCreature creature ? creature.TauntLevel : 0;
-            if (taunt > bestTaunt || (taunt == bestTaunt && distance < bestDistance))
+            if (taunt > bestTaunt
+                || (taunt == bestTaunt && (distance < bestDistance
+                    || (distance == bestDistance
+                        && (best == null || candidate.LogicEntityId < best.LogicEntityId)))))
             {
                 bestTaunt = taunt;
                 bestDistance = distance;
@@ -184,10 +198,20 @@ public sealed class MonitorTargetingComp : ITargetingComp
         return best;
     }
 
-    private float GetEffectiveAttackRange()
+    private Fix64 GetEffectiveAttackRange()
     {
         Fix64 weaponRange = _ctx?.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
-        return (float)weaponRange;
+        return weaponRange;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new System.ArgumentNullException(nameof(hasher));
+        hasher.Add(_scanTimer.RawValue);
+        hasher.Add(_facingConeAngle.RawValue);
+        hasher.Add(((Fix64)AggroRange).RawValue);
+        hasher.Add(((Fix64)ForgetRange).RawValue);
     }
 
     public void NotifyDamageTaken(IEntityContext attacker) { }
@@ -199,35 +223,39 @@ public sealed class MonitorTargetingComp : ITargetingComp
 
 public static class MonitorFacingUtility
 {
-    public static bool IsFacingMonitor(IEntityContext candidate, IEntityContext monitor, float coneAngle)
+    public static bool IsFacingMonitor(IEntityContext candidate, IEntityContext monitor, Fix64 coneAngle)
     {
         if (candidate == null || monitor == null)
             return false;
+        if (!LogicFrameRuntime.IsTicking)
+            throw new System.InvalidOperationException("MonitorFacingUtility requires an active logic frame.");
+        if (coneAngle < Fix64.Zero || coneAngle > (Fix64)360)
+            throw new System.ArgumentOutOfRangeException(nameof(coneAngle));
 
-        Vector3 toMonitor = monitor.Position - candidate.Position;
-        toMonitor.y = 0f;
-        if (toMonitor.sqrMagnitude <= 0.0001f)
+        FixVector2 toMonitor = LogicEntityFrameSnapshotService.GetRequiredPosition(monitor)
+                               - LogicEntityFrameSnapshotService.GetRequiredPosition(candidate);
+        Fix64 distance = FixVector2.Magnitude(toMonitor);
+        if (distance == Fix64.Zero)
+            return true;
+        if (coneAngle >= (Fix64)360)
             return true;
 
-        Vector3 forward = ResolveForward(candidate);
-        forward.y = 0f;
-        if (forward.sqrMagnitude <= 0.0001f)
-            return false;
-
-        float angle = Vector3.Angle(forward.normalized, toMonitor.normalized);
-        return angle <= Mathf.Max(0f, coneAngle) * 0.5f;
+        FixVector2 forward = LogicEntityFrameSnapshotService.GetRequiredForward(candidate);
+        return IsDirectionWithinCone(forward, toMonitor, coneAngle);
     }
 
-    private static Vector3 ResolveForward(IEntityContext entity)
+    public static bool IsDirectionWithinCone(FixVector2 forward, FixVector2 toMonitor, Fix64 coneAngle)
     {
-        if (entity is GeneralCreature creature)
-        {
-            if (creature.animator != null)
-                return creature.animator.transform.forward;
-            if (creature.display != null)
-                return creature.display.forward;
-        }
-
-        return entity.Rotation * Vector3.forward;
+        if (coneAngle < Fix64.Zero || coneAngle > (Fix64)360)
+            throw new System.ArgumentOutOfRangeException(nameof(coneAngle));
+        FixVector2 normalizedForward = forward.GetNormalized();
+        if (FixVector2.SqrMagnitude(normalizedForward) == Fix64.Zero)
+            throw new System.ArgumentException("Monitor forward must be non-zero.", nameof(forward));
+        Fix64 distance = FixVector2.Magnitude(toMonitor);
+        if (distance == Fix64.Zero || coneAngle >= (Fix64)360)
+            return true;
+        Fix64 halfAngleRadians = coneAngle * (Fix64)0.5f * Fix64.PIOver180;
+        Fix64 minimumDot = Fix64.Cos(halfAngleRadians) * distance;
+        return FixVector2.Dot(normalizedForward, toMonitor) >= minimumDot;
     }
 }

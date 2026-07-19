@@ -22,7 +22,15 @@ public static class DistanceUnitConverter
 
     public static Fix64 ConvertToWorld(Fix64 tableValue)
     {
-        return tableValue * (Fix64)DistanceConversionRate;
+        float conversionRate = DistanceConversionRate;
+        if (float.IsNaN(conversionRate) || float.IsInfinity(conversionRate))
+            throw new System.InvalidOperationException($"Distance conversion rate must be finite, actual={conversionRate}.");
+
+        decimal scaledRaw = tableValue.RawValue * (decimal)conversionRate;
+        decimal quantizedRaw = scaledRaw >= decimal.Zero
+            ? decimal.Ceiling(scaledRaw)
+            : decimal.Floor(scaledRaw);
+        return Fix64.FromRaw(decimal.ToInt64(quantizedRaw));
     }
 
     public static float ConvertToWorldFloat(Fix64 tableValue)

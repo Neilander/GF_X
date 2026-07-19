@@ -5,11 +5,11 @@ using UnityEngine;
 
 public abstract class PositionAreaRefreshBuff : BuffCallback
 {
-    private const float ScanIntervalSeconds = 0.2f;
+    private static readonly Fix64 ScanIntervalSeconds = (Fix64)0.2f;
 
     private readonly Vector3 m_Center;
     private readonly float m_Radius;
-    private float m_Timer;
+    private Fix64 m_Timer;
 
     protected PositionAreaRefreshBuff(Vector3 center, float radius)
     {
@@ -22,13 +22,13 @@ public abstract class PositionAreaRefreshBuff : BuffCallback
         RefreshTargets();
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         m_Timer += deltaTime;
         if (m_Timer < ScanIntervalSeconds)
             return;
 
-        m_Timer = 0f;
+        m_Timer = Fix64.Zero;
         RefreshTargets();
     }
 

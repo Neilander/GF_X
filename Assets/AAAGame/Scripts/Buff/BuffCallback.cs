@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using GameFramework;
 using AAAGame.Scripts.BuffSystem;
@@ -30,7 +30,7 @@ public abstract class BuffCallback
     public virtual void OnAdd() { }
     public virtual void OnRemove() { }
     public virtual void OnAddStack(int oldStack, int newStack) { }
-    public virtual void OnUpdate(float deltaTime) { }
+    public virtual void OnUpdate(Fix64 deltaTime) { }
     public virtual void OnDurationEnd() { }
     public virtual void OnHostDead() { }
     public virtual void OnKill(MAEntity target) { }
@@ -154,28 +154,23 @@ public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
         if (hostEntity == null || target is not MAEntity targetEntity || targetEntity.durationMoveEffectComp == null)
             return baseDamage;
 
-        UnityEngine.Vector3 direction = targetEntity.Position - hostEntity.Position;
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f)
-            direction = hostEntity.Rotation * UnityEngine.Vector3.forward;
-
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.0001f)
-            return baseDamage;
-
-        direction.Normalize();
+        FixVector2 direction = LogicEntityFrameSnapshotService.GetRequiredPosition(targetEntity)
+                               - LogicEntityFrameSnapshotService.GetRequiredPosition(hostEntity);
+        if (FixVector2.SqrMagnitude(direction) == Fix64.Zero)
+            direction = LogicEntityFrameSnapshotService.GetRequiredForward(hostEntity);
+        direction = direction.GetNormalized();
 
         Fix64 distance = (Fix64)(GF.Config != null
             ? GF.Config.GetFloat(PushDistancePerLevelKey, DefaultPushDistancePerLevel)
             : DefaultPushDistancePerLevel) * m_PushLevel;
-        float duration = UnityEngine.Mathf.Max(0.01f, GF.Config != null
+        Fix64 duration = Fix64.Max((Fix64)0.01f, (Fix64)(GF.Config != null
             ? GF.Config.GetFloat(PushDurationKey, DefaultPushDuration)
-            : DefaultPushDuration);
-        float worldDistance = DistanceUnitConverter.ConvertToWorldFloat(distance);
-        UnityEngine.Vector3 speed = direction * (worldDistance / duration);
+            : DefaultPushDuration));
+        Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
+        FixVector2 speedFixed = direction * (worldDistance / duration);
 
         targetEntity.atkComp?.InterruptAttack(AttackInterruptReason.Displacement);
-        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speed);
+        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
         return baseDamage;
     }
 }
@@ -306,7 +301,7 @@ public sealed class AlwaysCriticalDamageBuff : BuffCallback
     }
 }
 
-public sealed class FirstHitPerTargetCriticalBuff : BuffCallback
+public sealed class FirstHitPerTargetCriticalBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly HashSet<int> m_HitTargetIds = new HashSet<int>();
 
@@ -319,6 +314,15 @@ public sealed class FirstHitPerTargetCriticalBuff : BuffCallback
             return baseDamage;
 
         return CriticalDamageUtility.ApplyCriticalDamage(hostEntity, baseDamage);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        var ids = new List<int>(m_HitTargetIds);
+        ids.Sort();
+        hasher.Add(ids.Count);
+        for (int i = 0; i < ids.Count; i++)
+            hasher.Add(ids[i]);
     }
 }
 
@@ -348,42 +352,47 @@ public sealed class HighHealthTargetCriticalBuff : BuffCallback
     }
 }
 
-public sealed class HealthDrainOverTimeBuff : BuffCallback
+public sealed class HealthDrainOverTimeBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_DamagePerSecond;
-    private float m_ElapsedSeconds;
+    private Fix64 m_ElapsedSeconds;
 
     public HealthDrainOverTimeBuff(Fix64 damagePerSecond)
     {
         m_DamagePerSecond = damagePerSecond;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         base.OnUpdate(deltaTime);
-        if (hostEntity == null || !hostEntity.Alive || m_DamagePerSecond <= Fix64.Zero || deltaTime <= 0f)
+        if (hostEntity == null || !hostEntity.Alive || m_DamagePerSecond <= Fix64.Zero || deltaTime <= Fix64.Zero)
             return;
 
-        m_ElapsedSeconds += deltaTime;
-        while (m_ElapsedSeconds >= 1f && hostEntity != null && hostEntity.Alive)
+        m_ElapsedSeconds += (Fix64)deltaTime;
+        while (m_ElapsedSeconds >= Fix64.One && hostEntity != null && hostEntity.Alive)
         {
-            m_ElapsedSeconds -= 1f;
-            hostEntity.TakeDamage(m_DamagePerSecond, HealthModifyType.reduce);
+            m_ElapsedSeconds -= Fix64.One;
+            DamageHelper.DoDirectDamage(hostEntity, m_DamagePerSecond, HealthModifyType.reduce);
         }
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_ElapsedSeconds.RawValue);
     }
 }
 
-public sealed class AmmoDepletedDeathBuff : BuffCallback
+public sealed class AmmoDepletedDeathBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private readonly float m_DelaySeconds;
-    private float m_Timer;
+    private readonly Fix64 m_DelaySeconds;
+    private Fix64 m_Timer;
 
     public AmmoDepletedDeathBuff(float delaySeconds)
     {
-        m_DelaySeconds = delaySeconds;
+        m_DelaySeconds = (Fix64)delaySeconds;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         base.OnUpdate(deltaTime);
         if (hostEntity == null || !hostEntity.Alive)
@@ -392,24 +401,29 @@ public sealed class AmmoDepletedDeathBuff : BuffCallback
         var weaponComp = hostEntity.weaponComp;
         if (weaponComp == null || !weaponComp.HasAmmunition || weaponComp.CurrentAmmo > 0)
         {
-            m_Timer = 0f;
+            m_Timer = Fix64.Zero;
             return;
         }
 
-        m_Timer += deltaTime;
+        m_Timer += (Fix64)deltaTime;
         if (m_Timer < m_DelaySeconds)
             return;
 
-        hostEntity.TakeDamage(hostEntity.HealthValue, HealthModifyType.reduce);
+        DamageHelper.DoDirectDamage(hostEntity, hostEntity.HealthValue, HealthModifyType.reduce);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
     }
 }
 
-public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability
+public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogicDeterministicStateContributor
 {
     private const float ScanIntervalSeconds = 0.1f;
 
     private readonly Fix64 m_Radius;
-    private float m_ScanTimer;
+    private Fix64 m_ScanTimer;
     private bool m_AttackLocked;
 
     public NearbyEnemyAttackLockBuff(Fix64 radius)
@@ -417,17 +431,17 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability
         m_Radius = radius;
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         base.OnUpdate(deltaTime);
-        if (deltaTime <= 0f)
+        if (deltaTime <= Fix64.Zero)
             return;
 
-        m_ScanTimer += deltaTime;
-        if (m_ScanTimer < ScanIntervalSeconds)
+        m_ScanTimer += (Fix64)deltaTime;
+        if (m_ScanTimer < (Fix64)ScanIntervalSeconds)
             return;
 
-        m_ScanTimer = 0f;
+        m_ScanTimer = Fix64.Zero;
         bool hasNearbyEnemy = HasNearbyEnemy();
         if (hasNearbyEnemy)
             LockAttack();
@@ -456,7 +470,7 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability
         if (all == null)
             throw new InvalidOperationException("NearbyEnemyAttackLockBuff.HasNearbyEnemy failed: EntityRegistry.AllEntities is null.");
 
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(m_Radius);
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext candidate = all[i];
@@ -467,7 +481,7 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability
             if (!EntityCombatTeamHelper.IsEnemy(hostEntity, candidate))
                 continue;
 
-            if (hostEntity.DistanceToTargetSurface(candidate) <= radius)
+            if (LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(hostEntity, candidate) <= radius)
                 return true;
         }
 
@@ -500,9 +514,15 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability
 
     public void ShutDown() { }
     public void Resume() { }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_ScanTimer.RawValue);
+        hasher.Add(m_AttackLocked);
+    }
 }
 
-public sealed class LateRiderChargeBuff : BuffCallback
+public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float ScanIntervalSeconds = 0.1f;
 
@@ -510,10 +530,10 @@ public sealed class LateRiderChargeBuff : BuffCallback
     private readonly Fix64 m_MaxDistance;
     private readonly Fix64 m_MoveSpeedBonus;
     private readonly Fix64 m_AttackBonus;
-    private readonly float m_CooldownSeconds;
+    private readonly Fix64 m_CooldownSeconds;
 
-    private float m_ScanTimer;
-    private float m_CooldownTimer;
+    private Fix64 m_ScanTimer;
+    private Fix64 m_CooldownTimer;
     private bool m_Charging;
     private bool m_MoveApplied;
     private bool m_AttackApplied;
@@ -531,17 +551,17 @@ public sealed class LateRiderChargeBuff : BuffCallback
         m_MaxDistance = maxDistance;
         m_MoveSpeedBonus = moveSpeedBonus;
         m_AttackBonus = attackBonus;
-        m_CooldownSeconds = cooldownSeconds;
+        m_CooldownSeconds = Fix64.Max(Fix64.Zero, (Fix64)cooldownSeconds);
     }
 
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         base.OnUpdate(deltaTime);
-        if (deltaTime <= 0f)
+        if (deltaTime <= Fix64.Zero)
             return;
 
-        if (m_CooldownTimer > 0f)
-            m_CooldownTimer = UnityEngine.Mathf.Max(0f, m_CooldownTimer - deltaTime);
+        if (m_CooldownTimer > Fix64.Zero)
+            m_CooldownTimer = Fix64.Max(Fix64.Zero, m_CooldownTimer - (Fix64)deltaTime);
 
         if (m_Charging)
         {
@@ -549,11 +569,11 @@ public sealed class LateRiderChargeBuff : BuffCallback
             return;
         }
 
-        m_ScanTimer += deltaTime;
-        if (m_ScanTimer < ScanIntervalSeconds || m_CooldownTimer > 0f)
+        m_ScanTimer += (Fix64)deltaTime;
+        if (m_ScanTimer < (Fix64)ScanIntervalSeconds || m_CooldownTimer > Fix64.Zero)
             return;
 
-        m_ScanTimer = 0f;
+        m_ScanTimer = Fix64.Zero;
         TryEnterCharge();
     }
 
@@ -585,6 +605,18 @@ public sealed class LateRiderChargeBuff : BuffCallback
             ExitCharge(false);
     }
 
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_ScanTimer.RawValue);
+        hasher.Add(m_CooldownTimer.RawValue);
+        hasher.Add(m_Charging);
+        hasher.Add(m_MoveApplied);
+        hasher.Add(m_AttackApplied);
+        hasher.Add(m_ChargeTarget != null && m_ChargeTarget.LogicEntityId.IsValid
+            ? m_ChargeTarget.LogicEntityId.Value
+            : 0);
+    }
+
     private void TryEnterCharge()
     {
         if (hostEntity == null)
@@ -594,9 +626,9 @@ public sealed class LateRiderChargeBuff : BuffCallback
         if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(hostEntity, target))
             return;
 
-        float minDistance = DistanceUnitConverter.ConvertToWorldFloat(m_MinDistance);
-        float maxDistance = DistanceUnitConverter.ConvertToWorldFloat(m_MaxDistance);
-        float distance = hostEntity.DistanceToTargetSurface(target);
+        Fix64 minDistance = DistanceUnitConverter.ConvertToWorld(m_MinDistance);
+        Fix64 maxDistance = DistanceUnitConverter.ConvertToWorld(m_MaxDistance);
+        Fix64 distance = LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(hostEntity, target);
         if (distance < minDistance || distance > maxDistance)
             return;
 
@@ -641,7 +673,7 @@ public sealed class LateRiderChargeBuff : BuffCallback
         RemoveMoveBonus();
         m_ChargeTarget = null;
         m_Charging = false;
-        m_ScanTimer = 0f;
+        m_ScanTimer = Fix64.Zero;
         if (startCooldown)
             m_CooldownTimer = m_CooldownSeconds;
     }

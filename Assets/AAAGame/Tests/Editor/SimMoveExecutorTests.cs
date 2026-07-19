@@ -4,6 +4,19 @@ using UnityEngine;
 public class SimMoveExecutorTests
 {
     [Test]
+    public void SetInputFixed_保留原始定点输入()
+    {
+        var executor = new SimMoveExecutor();
+        FixVector2 input = new FixVector2(Fix64.FromRaw(1235), Fix64.FromRaw(-678));
+
+        executor.SetInputFixed(input);
+
+        Assert.IsTrue(executor.HasFixedInput);
+        Assert.AreEqual(input.x.RawValue, executor.LastFixedInput.x.RawValue);
+        Assert.AreEqual(input.y.RawValue, executor.LastFixedInput.y.RawValue);
+    }
+
+    [Test]
     public void 向前移动10帧_位置正确()
     {
         var executor = new SimMoveExecutor();

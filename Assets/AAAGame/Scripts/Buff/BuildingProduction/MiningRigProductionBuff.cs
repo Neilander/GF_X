@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// 矿卡阵列产出Buff
@@ -22,7 +22,7 @@ public class MiningRigProductionBuff : BuffCallback
         }
     }
     
-    public override void OnUpdate(float deltaTime)
+    public override void OnUpdate(Fix64 deltaTime)
     {
         var building = hostEntity as BuildingEntity;
         int newDay = ProductionTraitUtility.GetCurrentDay();

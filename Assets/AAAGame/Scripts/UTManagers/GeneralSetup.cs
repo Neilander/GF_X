@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -188,7 +188,7 @@ public partial class GeneralSetup : GameFrameworkComponent
             // 玩家注册为 Player
             if (ma.Brain is PlayerBrain)
             {
-                EntityRegistry.RegisterAsPlayer(ma);
+                ma.RequestPlayerRegistration();
                 m_PlayerReady = true;
                 LogSetupTiming("player-ready");
 

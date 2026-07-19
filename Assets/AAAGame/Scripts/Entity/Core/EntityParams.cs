@@ -1,4 +1,4 @@
-#pragma warning disable IDE1006 // 命名样式
+﻿#pragma warning disable IDE1006 // 命名样式
 using System.Collections.Generic;
 using GameFramework;
 using UnityEngine;
@@ -17,6 +17,7 @@ public class EntityParams : RefParams
 
     public Vector3? localScale { get; set; } = null;
     public int gameObjectLayer { get; set; } = -1;
+    public LogicEntityId LogicEntityId { get; internal set; }
 
 
     public SideType Side
@@ -74,6 +75,7 @@ public class EntityParams : RefParams
     public IEntityContext Attacker { get; set; } = null; // 攻击者
     public WeaponData WeaponData { get; set; } = null;
     public BaseWeaponSO WeaponSO { get; set; } = null;
+    public ulong LogicProjectileId { get; set; }
 
     /// <summary>
     /// 创建一个实例(必须使用该接口创建)
@@ -100,6 +102,7 @@ public class EntityParams : RefParams
         this.localEulerAngles = null;
         this.localScale = null;
         this.gameObjectLayer = -1;
+        LogicEntityId = default;
         this.AttchToEntity = null;
         this.ParentTransform = null;
         OnShowCallback = null;
@@ -110,6 +113,7 @@ public class EntityParams : RefParams
         Attacker = null;
         WeaponData = null;
         WeaponSO = null;
+        LogicProjectileId = 0;
 
         _side = SideType.NoSide;
         _factionId = -1;

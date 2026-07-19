@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
 
@@ -49,13 +49,96 @@ public static class DamageHelper
     /// </summary>
     public static void DoDamage(ITargetable target, Damage damage, IEntityContext attacker = null)
     {
-        if (target == null || !target.Alive)
+        if (target == null)
+            throw new System.ArgumentNullException(nameof(target));
+        if (damage == null)
+            throw new System.ArgumentNullException(nameof(damage));
+        if (!target.Alive)
             return;
 
         AdvanceHitIndex(attacker);
 
-        Fix64 finalAmount = damage != null ? damage.amount : Fix64.Zero;
-        HealthModifyType modType = damage != null ? damage.modType : HealthModifyType.reduce;
+        int hitIndex = GetCurrentAttackHitIndex(attacker);
+        int totalHits = GetCurrentAttackTotalHits(attacker);
+        if (LogicDamageEventService.IsCollecting)
+        {
+            LogicDamageEventService.SubmitDamage(target, damage, attacker, hitIndex, totalHits);
+            return;
+        }
+
+        ApplyDamage(target, damage.amount, damage.modType, attacker);
+    }
+
+    public static void DoDirectDamage(
+        IEntityContext target,
+        Fix64 amount,
+        HealthModifyType modifyType,
+        IEntityContext attacker = null)
+    {
+        if (target == null)
+            throw new System.ArgumentNullException(nameof(target));
+        if (amount < Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(amount));
+        if (!target.Alive || amount == Fix64.Zero)
+            return;
+
+        if (LogicDamageEventService.IsCollecting)
+        {
+            LogicDamageEventService.SubmitDirectDamage(target, amount, modifyType, attacker);
+            return;
+        }
+
+        target.TakeDamage(amount, modifyType, attacker);
+    }
+
+    internal static void ApplyQueuedDamage(
+        ITargetable target,
+        Fix64 amount,
+        HealthModifyType modType,
+        IEntityContext attacker,
+        int hitIndex,
+        int totalHits)
+    {
+        if (target == null)
+            throw new System.ArgumentNullException(nameof(target));
+        if (hitIndex <= 0 || totalHits <= 0 || hitIndex > totalHits)
+            throw new System.ArgumentOutOfRangeException(nameof(hitIndex));
+        if (!target.Alive)
+            return;
+
+        if (totalHits <= 1)
+        {
+            ApplyDamage(target, amount, modType, attacker);
+            return;
+        }
+
+        s_HitSequences ??= new Stack<AttackHitSequence>();
+        s_HitSequences.Push(new AttackHitSequence
+        {
+            Attacker = attacker,
+            TotalHits = totalHits,
+            CurrentHitIndex = hitIndex,
+        });
+        try
+        {
+            ApplyDamage(target, amount, modType, attacker);
+        }
+        finally
+        {
+            s_HitSequences.Pop();
+        }
+    }
+
+    private static void ApplyDamage(
+        ITargetable target,
+        Fix64 amount,
+        HealthModifyType modType,
+        IEntityContext attacker)
+    {
+        if (!target.Alive)
+            return;
+
+        Fix64 finalAmount = amount;
 
         // Buff 钩子：允许 attacker 身上的 buff 修改最终伤害
         if (attacker != null)
@@ -117,7 +200,7 @@ public static class DamageHelper
         public void Dispose()
         {
             if (s_HitSequences == null || s_HitSequences.Count == 0)
-                return;
+                throw new System.InvalidOperationException("DamageHelper attack hit sequence stack is empty.");
 
             s_HitSequences.Pop();
         }
@@ -148,8 +231,9 @@ public static class AreaWeaponDamage
         }
 
         var targets = new List<IEntityContext> { mainTarget };
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(weaponData.SplashRadius);
-        foreach (var target in CollectEnemiesInCircle(attacker, mainTarget.Position, radius, mainTarget))
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(weaponData.SplashRadius);
+        FixVector2 center = LogicEntityFrameSnapshotService.GetRequiredPosition(mainTarget);
+        foreach (var target in CollectEnemiesInCircle(attacker, center, radius, mainTarget))
             targets.Add(target);
 
         using (DamageHelper.BeginAttackHitSequence(attacker, targets.Count))
@@ -169,8 +253,9 @@ public static class AreaWeaponDamage
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealSelfAoE failed: weaponData is null. attacker={attacker.CharacterKey}.");
 
         var targets = new List<IEntityContext> { mainTarget };
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range);
-        foreach (var target in CollectEnemiesInCircle(attacker, attacker.Position, radius, mainTarget))
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(weaponData.Range);
+        FixVector2 center = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker);
+        foreach (var target in CollectEnemiesInCircle(attacker, center, radius, mainTarget))
             targets.Add(target);
 
         using (DamageHelper.BeginAttackHitSequence(attacker, targets.Count))
@@ -189,20 +274,22 @@ public static class AreaWeaponDamage
         if (weaponData == null)
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealCleave failed: weaponData is null. attacker={attacker.CharacterKey}.");
 
-        Vector3 forward = mainTarget.Position - attacker.Position;
-        forward.y = 0f;
-        if (forward.sqrMagnitude <= 0.0001f)
-            forward = attacker.Rotation * Vector3.forward;
-        forward.y = 0f;
-        forward.Normalize();
+        FixVector2 origin = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker);
+        FixVector2 forward = LogicEntityFrameSnapshotService.GetRequiredPosition(mainTarget) - origin;
+        if (FixVector2.SqrMagnitude(forward) == Fix64.Zero)
+            forward = LogicEntityFrameSnapshotService.GetRequiredForward(attacker);
+        forward = forward.GetNormalized();
 
-        float range = DistanceUnitConverter.ConvertToWorldFloat(weaponData.SplitDist > Fix64.Zero ? weaponData.SplitDist : weaponData.Range);
-        float halfAngle = Mathf.Max(0f, (float)weaponData.SplitAngle) * 0.5f * Mathf.Deg2Rad;
-        float tanHalfAngle = Mathf.Tan(halfAngle);
-        float baseRadius = GetCollisionRadiusWorld(attacker);
+        Fix64 range = DistanceUnitConverter.ConvertToWorld(
+            weaponData.SplitDist > Fix64.Zero ? weaponData.SplitDist : weaponData.Range);
+        if (weaponData.SplitAngle < Fix64.Zero || weaponData.SplitAngle >= (Fix64)180)
+            throw new System.InvalidOperationException($"AreaWeaponDamage.DealCleave requires SplitAngle in [0, 180). actual={weaponData.SplitAngle}.");
+        Fix64 halfAngle = weaponData.SplitAngle * (Fix64)0.5f * Fix64.PIOver180;
+        Fix64 tanHalfAngle = Fix64.Tan(halfAngle);
+        Fix64 baseRadius = AreaWeaponDamageQuery.GetRequiredRadialExtent(attacker);
 
         var targets = new List<IEntityContext> { mainTarget };
-        foreach (var target in CollectEnemiesInRoundedCone(attacker, forward, range, tanHalfAngle, baseRadius, mainTarget))
+        foreach (var target in CollectEnemiesInRoundedCone(attacker, origin, forward, range, tanHalfAngle, baseRadius, mainTarget))
             targets.Add(target);
 
         using (DamageHelper.BeginAttackHitSequence(attacker, targets.Count))
@@ -221,7 +308,7 @@ public static class AreaWeaponDamage
         DamageHelper.DoDamage(target as ITargetable, damage, attacker);
     }
 
-    private static IEnumerable<IEntityContext> CollectEnemiesInCircle(IEntityContext attacker, Vector3 center, float radius, IEntityContext excludedTarget)
+    private static IEnumerable<IEntityContext> CollectEnemiesInCircle(IEntityContext attacker, FixVector2 center, Fix64 radius, IEntityContext excludedTarget)
     {
         var all = EntityRegistry.AllEntities;
         if (all == null)
@@ -237,26 +324,23 @@ public static class AreaWeaponDamage
             if (!EntityCombatTeamHelper.IsEnemy(attacker, candidate))
                 continue;
 
-            float reach = radius + GetCollisionRadiusWorld(candidate);
-            if (HorizontalDistance(center, candidate.Position) <= reach)
+            if (AreaWeaponDamageQuery.IsWithinCircle(center, candidate, radius))
                 yield return candidate;
         }
     }
 
     private static IEnumerable<IEntityContext> CollectEnemiesInRoundedCone(
         IEntityContext attacker,
-        Vector3 forward,
-        float range,
-        float tanHalfAngle,
-        float baseRadius,
+        FixVector2 origin,
+        FixVector2 forward,
+        Fix64 range,
+        Fix64 tanHalfAngle,
+        Fix64 baseRadius,
         IEntityContext excludedTarget)
     {
         var all = EntityRegistry.AllEntities;
         if (all == null)
             throw new System.InvalidOperationException("AreaWeaponDamage.CollectEnemiesInRoundedCone failed: EntityRegistry.AllEntities is null.");
-
-        Vector3 right = new Vector3(forward.z, 0f, -forward.x);
-        Vector3 origin = attacker.Position;
 
         for (int i = 0; i < all.Count; i++)
         {
@@ -268,70 +352,15 @@ public static class AreaWeaponDamage
             if (!EntityCombatTeamHelper.IsEnemy(attacker, candidate))
                 continue;
 
-            Vector3 offset = candidate.Position - origin;
-            offset.y = 0f;
-            float candidateRadius = GetCollisionRadiusWorld(candidate);
-            float forwardDist = Vector3.Dot(offset, forward);
-            if (forwardDist + candidateRadius < 0f || forwardDist - candidateRadius > range)
-                continue;
-
-            float sideDist = Mathf.Abs(Vector3.Dot(offset, right));
-            float halfWidth = baseRadius + Mathf.Max(0f, forwardDist) * tanHalfAngle + candidateRadius;
-            if (sideDist <= halfWidth)
+            if (AreaWeaponDamageQuery.IsWithinRoundedCone(
+                    origin,
+                    forward,
+                    range,
+                    tanHalfAngle,
+                    baseRadius,
+                    candidate))
                 yield return candidate;
         }
-    }
-
-    private static float GetCollisionRadiusWorld(IEntityContext entity)
-    {
-        if (entity == null)
-            return 0f;
-
-        Fix64 tableRadius = entity.GetProperty(CreatureMainProperty.CollisionRadius);
-        if (tableRadius > Fix64.Zero)
-            return DistanceUnitConverter.ConvertToWorldFloat(tableRadius);
-
-        if (entity is Component component && TryGetBoundsRadius(component, out float boundsRadius))
-            return boundsRadius;
-
-        return 0f;
-    }
-
-    private static bool TryGetBoundsRadius(Component component, out float radius)
-    {
-        radius = 0f;
-        var colliders = component.GetComponentsInChildren<Collider>(true);
-        bool hasBounds = false;
-        Bounds bounds = default;
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            var collider = colliders[i];
-            if (collider == null || !collider.enabled || collider.isTrigger)
-                continue;
-
-            if (!hasBounds)
-            {
-                bounds = collider.bounds;
-                hasBounds = true;
-            }
-            else
-            {
-                bounds.Encapsulate(collider.bounds);
-            }
-        }
-
-        if (!hasBounds)
-            return false;
-
-        radius = Mathf.Max(bounds.extents.x, bounds.extents.z);
-        return radius > 0f;
-    }
-
-    private static float HorizontalDistance(Vector3 a, Vector3 b)
-    {
-        float dx = a.x - b.x;
-        float dz = a.z - b.z;
-        return Mathf.Sqrt(dx * dx + dz * dz);
     }
 }
 
@@ -349,8 +378,9 @@ public static class HealingWeaponEffect
         if (weaponData.Type == WeaponType.HealProjectile && weaponData.SplashRadius > Fix64.Zero)
         {
             HealSingle(healer, target, weaponData.Atk);
-            float radius = DistanceUnitConverter.ConvertToWorldFloat(weaponData.SplashRadius);
-            foreach (var ally in CollectAlliesInCircle(healer, target.Position, radius, target))
+            Fix64 radius = DistanceUnitConverter.ConvertToWorld(weaponData.SplashRadius);
+            FixVector2 center = LogicEntityFrameSnapshotService.GetRequiredPosition(target);
+            foreach (var ally in CollectAlliesInCircle(healer, center, radius, target))
             {
                 HealSingle(healer, ally, weaponData.Atk);
             }
@@ -370,10 +400,13 @@ public static class HealingWeaponEffect
         if (!(target is GeneralCreature creature))
             throw new System.InvalidOperationException($"HealingWeaponEffect.HealSingle failed: target is not GeneralCreature. healer={healer.CharacterKey}, target={target.CharacterKey}.");
 
-        creature.Heal(amount);
+        if (LogicDamageEventService.IsCollecting)
+            LogicDamageEventService.SubmitHeal(healer, target, amount);
+        else
+            creature.Heal(amount);
     }
 
-    private static IEnumerable<IEntityContext> CollectAlliesInCircle(IEntityContext healer, Vector3 center, float radius, IEntityContext excludedTarget)
+    private static IEnumerable<IEntityContext> CollectAlliesInCircle(IEntityContext healer, FixVector2 center, Fix64 radius, IEntityContext excludedTarget)
     {
         var all = EntityRegistry.AllEntities;
         if (all == null)
@@ -387,8 +420,7 @@ public static class HealingWeaponEffect
             if (!WeaponTargetRules.IsValidHealTarget(healer, candidate, requireDamaged: false))
                 continue;
 
-            float reach = radius + AreaWeaponDamageQuery.GetCollisionRadiusWorld(candidate);
-            if (AreaWeaponDamageQuery.HorizontalDistance(center, candidate.Position) <= reach)
+            if (AreaWeaponDamageQuery.IsWithinCircle(center, candidate, radius))
                 yield return candidate;
         }
     }
@@ -445,55 +477,101 @@ public static class WeaponTargetRules
 
 public static class AreaWeaponDamageQuery
 {
-    public static float GetCollisionRadiusWorld(IEntityContext entity)
+    public static bool IsWithinCircle(IEntityContext centerEntity, IEntityContext candidate, Fix64 radius)
+    {
+        if (centerEntity == null)
+            throw new System.ArgumentNullException(nameof(centerEntity));
+        return IsWithinCircle(LogicEntityFrameSnapshotService.GetRequiredPosition(centerEntity), candidate, radius);
+    }
+
+    public static bool IsWithinCircle(FixVector2 center, IEntityContext candidate, Fix64 radius)
+    {
+        if (candidate == null)
+            throw new System.ArgumentNullException(nameof(candidate));
+        if (radius < Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(radius));
+        LogicCombatShape shape = LogicEntityFrameSnapshotService.GetRequiredCurrent(candidate).CombatShape;
+        return IsWithinCircle(center, shape, radius);
+    }
+
+    public static bool IsWithinCircle(FixVector2 center, LogicCombatShape shape, Fix64 radius)
+    {
+        if (radius < Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(radius));
+        return shape.DistanceToSurface(center) <= radius;
+    }
+
+    public static Fix64 GetRequiredRadialExtent(IEntityContext entity)
     {
         if (entity == null)
-            return 0f;
-
-        Fix64 tableRadius = entity.GetProperty(CreatureMainProperty.CollisionRadius);
-        if (tableRadius > Fix64.Zero)
-            return DistanceUnitConverter.ConvertToWorldFloat(tableRadius);
-
-        if (entity is Component component && TryGetBoundsRadius(component, out float boundsRadius))
-            return boundsRadius;
-
-        return 0f;
-    }
-
-    public static float HorizontalDistance(Vector3 a, Vector3 b)
-    {
-        float dx = a.x - b.x;
-        float dz = a.z - b.z;
-        return Mathf.Sqrt(dx * dx + dz * dz);
-    }
-
-    private static bool TryGetBoundsRadius(Component component, out float radius)
-    {
-        radius = 0f;
-        var colliders = component.GetComponentsInChildren<Collider>(true);
-        bool hasBounds = false;
-        Bounds bounds = default;
-        for (int i = 0; i < colliders.Length; i++)
+            throw new System.ArgumentNullException(nameof(entity));
+        LogicCombatShape shape = LogicEntityFrameSnapshotService.GetRequiredCurrent(entity).CombatShape;
+        switch (shape.Kind)
         {
-            var collider = colliders[i];
-            if (collider == null || !collider.enabled || collider.isTrigger)
-                continue;
-
-            if (!hasBounds)
-            {
-                bounds = collider.bounds;
-                hasBounds = true;
-            }
-            else
-            {
-                bounds.Encapsulate(collider.bounds);
-            }
+            case LogicCombatShapeKind.Circle:
+                return shape.Radius;
+            case LogicCombatShapeKind.AxisAlignedBox:
+                return Fix64.Max(shape.HalfExtents.x, shape.HalfExtents.y);
+            default:
+                throw new System.ArgumentOutOfRangeException(nameof(shape.Kind), shape.Kind, "Unknown combat shape kind.");
         }
+    }
 
-        if (!hasBounds)
+    public static bool IsWithinRoundedCone(
+        FixVector2 origin,
+        FixVector2 forward,
+        Fix64 range,
+        Fix64 tanHalfAngle,
+        Fix64 baseRadius,
+        IEntityContext candidate)
+    {
+        if (candidate == null)
+            throw new System.ArgumentNullException(nameof(candidate));
+        LogicCombatShape shape = LogicEntityFrameSnapshotService.GetRequiredCurrent(candidate).CombatShape;
+        return IsWithinRoundedCone(origin, forward, range, tanHalfAngle, baseRadius, shape);
+    }
+
+    public static bool IsWithinRoundedCone(
+        FixVector2 origin,
+        FixVector2 forward,
+        Fix64 range,
+        Fix64 tanHalfAngle,
+        Fix64 baseRadius,
+        LogicCombatShape shape)
+    {
+        if (range < Fix64.Zero || tanHalfAngle < Fix64.Zero || baseRadius < Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(range), "Rounded cone values must be non-negative.");
+        FixVector2 normalizedForward = forward.GetNormalized();
+        if (FixVector2.SqrMagnitude(normalizedForward) == Fix64.Zero)
+            throw new System.ArgumentException("Rounded cone forward must be non-zero.", nameof(forward));
+        FixVector2 right = new FixVector2(normalizedForward.y, -normalizedForward.x);
+        FixVector2 offset = shape.Center - origin;
+        Fix64 forwardDistance = FixVector2.Dot(offset, normalizedForward);
+        Fix64 forwardExtent = GetSupportExtent(shape, normalizedForward);
+        if (forwardDistance + forwardExtent < Fix64.Zero || forwardDistance - forwardExtent > range)
             return false;
 
-        radius = Mathf.Max(bounds.extents.x, bounds.extents.z);
-        return radius > 0f;
+        Fix64 sideDistance = Fix64.Abs(FixVector2.Dot(offset, right));
+        Fix64 sideExtent = GetSupportExtent(shape, right);
+        Fix64 coneDistance = Fix64.Max(Fix64.Zero, forwardDistance);
+        Fix64 halfWidth = baseRadius
+                          + coneDistance * tanHalfAngle
+                          + sideExtent
+                          + forwardExtent * tanHalfAngle;
+        return sideDistance <= halfWidth;
+    }
+
+    private static Fix64 GetSupportExtent(LogicCombatShape shape, FixVector2 axis)
+    {
+        switch (shape.Kind)
+        {
+            case LogicCombatShapeKind.Circle:
+                return shape.Radius;
+            case LogicCombatShapeKind.AxisAlignedBox:
+                return Fix64.Abs(axis.x) * shape.HalfExtents.x
+                       + Fix64.Abs(axis.y) * shape.HalfExtents.y;
+            default:
+                throw new System.ArgumentOutOfRangeException(nameof(shape.Kind), shape.Kind, "Unknown combat shape kind.");
+        }
     }
 }

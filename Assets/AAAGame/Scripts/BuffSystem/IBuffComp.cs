@@ -18,7 +18,7 @@
         /// <summary>
         /// 更新Buff
         /// </summary>
-        void UpdateBuff(float deltaTime);
+        void UpdateBuff(Fix64 deltaTime);
 
         /// <summary>
         /// 移除指定 Buff。

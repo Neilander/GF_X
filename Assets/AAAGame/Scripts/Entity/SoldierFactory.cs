@@ -14,11 +14,14 @@ public static class SoldierFactory
     private static readonly HashSet<string> LoggedPrefabSourceCharacterKeys = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Unified soldier remove entry via HideEntity.
+    /// Unified soldier remove entry via the authoritative lifecycle timeline.
     /// </summary>
     public static bool RemoveSoldier(SoldierEntity soldier)
     {
-        GF.Entity.HideEntity(soldier.Entity);
+        if (soldier == null)
+            throw new ArgumentNullException(nameof(soldier));
+
+        soldier.RequestDespawn();
         return true;
     }
 

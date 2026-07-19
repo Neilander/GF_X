@@ -1,7 +1,7 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
-public class CharacterTargetingComp : ITargetingComp
+public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
 {
     private enum TargetingMode
     {
@@ -33,8 +33,8 @@ public class CharacterTargetingComp : ITargetingComp
     /// <summary>视线外仇恨：scan 找不到目标时 fallback 到这个 attacker。第一次受击锁定，nearest 切到别的目标后清掉。</summary>
     private IEntityContext _lastAttacker;
 
-    private float _scanTimer = 0f;
-    private const float SCAN_INTERVAL = 0.2f;
+    private Fix64 _scanTimer = Fix64.Zero;
+    private static readonly Fix64 SCAN_INTERVAL = (Fix64)0.2f;
 
     public void UseDefaultMode()
     {
@@ -55,7 +55,7 @@ public class CharacterTargetingComp : ITargetingComp
         CurrentTarget = null;
         FollowTarget = null;
         _lastAttacker = null;
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
         _targetingMode = TargetingMode.Default;
         _defendFallbackTarget = null;
     }
@@ -110,7 +110,7 @@ public class CharacterTargetingComp : ITargetingComp
             if (ally == null || ReferenceEquals(ally, _ctx)) continue;
             if (ally.Side != _ctx.Side) continue;
             if (!ally.Alive) continue;
-            Vector3 d = ally.Position - _ctx.Position;
+            Vector3 d = ally.LogicFramePosition() - _ctx.LogicFramePosition();
             d.y = 0f;
             if (d.sqrMagnitude > r2) continue;
             ally.TargetComp?.NotifyAllyFoundEnemy(enemy);
@@ -128,7 +128,7 @@ public class CharacterTargetingComp : ITargetingComp
         return true;
     }
 
-    public void UpdateTargeting(float deltaTime)
+    public void UpdateTargeting(Fix64 deltaTime)
     {
         if (_ctx == null) return;
         if (_targetingMode == TargetingMode.DefendEnemy)
@@ -138,18 +138,18 @@ public class CharacterTargetingComp : ITargetingComp
         }
 
         bool useAttackRangeOnlyForThisUnit = ShouldUseAttackRangeOnly(_ctx);
-        float effectiveAttackRange = GetEffectiveAttackRange();
+        Fix64 effectiveAttackRange = GetEffectiveAttackRange();
 
-        float currentTargetDist = float.PositiveInfinity;
+        Fix64 currentTargetDist = Fix64.FromRaw(long.MaxValue);
         int currentTargetTaunt = -1;
 
         // 1. 维护当前敌人目标
         if (CurrentTarget != null)
         {
-            float dist = _ctx.DistanceToTargetSurface(CurrentTarget);
+            Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
             currentTargetDist = dist;
             currentTargetTaunt = GetTauntLevel(CurrentTarget);
-            float targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : ForgetRange;
+            Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : (Fix64)ForgetRange;
             // 视线外仇恨特例：CurrentTarget 是 fallback 来的 attacker → 跳过距离过滤，让单位一路追上去
             bool isAggroFallback = !useAttackRangeOnlyForThisUnit && (CurrentTarget == _lastAttacker);
             bool dropByDistance = !isAggroFallback && dist > targetRetentionRange;
@@ -158,7 +158,7 @@ public class CharacterTargetingComp : ITargetingComp
                 GameDebugSettings.Log(DebugCategory.Targeting,
                     $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} retentionRange={targetRetentionRange:F1} alive={CurrentTarget.Alive}");
                 CurrentTarget = null;
-                currentTargetDist = float.PositiveInfinity;
+                currentTargetDist = Fix64.FromRaw(long.MaxValue);
                 currentTargetTaunt = -1;
                 if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
                     ClearAggro();
@@ -168,8 +168,8 @@ public class CharacterTargetingComp : ITargetingComp
         // 2. 维护跟随目标
         if (FollowTarget != null)
         {
-            float dist = Vector3.Distance(_ctx.Position, FollowTarget.Position);
-            if (dist > FollowSearchRange || !FollowTarget.Alive)
+            Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
+            if (dist > (Fix64)FollowSearchRange || !FollowTarget.Alive)
             {
                 GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | dist={dist:F1} followRange={FollowSearchRange} alive={FollowTarget.Alive}");
                 FollowTarget = null;
@@ -180,19 +180,19 @@ public class CharacterTargetingComp : ITargetingComp
         _scanTimer += deltaTime;
         if (_scanTimer >= SCAN_INTERVAL)
         {
-            _scanTimer = 0f;
+            _scanTimer = Fix64.Zero;
 
             // 找敌人：遍历 EntityRegistry，嘲讽等级优先，同等级选最近
             IEntityContext nearest = null;
-            float scanRange = useAttackRangeOnlyForThisUnit
+            Fix64 scanRange = useAttackRangeOnlyForThisUnit
                 ? effectiveAttackRange
-                : Mathf.Max(AggroRange, effectiveAttackRange);
-            float nearestDist = scanRange;
+                : Fix64.Max((Fix64)AggroRange, effectiveAttackRange);
+            Fix64 nearestDist = scanRange;
             int nearestTaunt = -1;
 
             // 攻击中抢目标：额外记录攻击范围内“嘲讽最高、同嘲讽最近”的候选
             IEntityContext inAttackRangeCandidate = null;
-            float inAttackRangeDist = effectiveAttackRange;
+            Fix64 inAttackRangeDist = effectiveAttackRange;
             int inAttackRangeTaunt = -1;
 
             var all = EntityRegistry.AllEntities;
@@ -203,7 +203,7 @@ public class CharacterTargetingComp : ITargetingComp
                 if (!other.IsAttackTargetable()) continue;
                 if (!EntityCombatTeamHelper.IsEnemy(_ctx, other)) continue;
 
-                float dist = _ctx.DistanceToTargetSurface(other);
+                Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(other);
                 if (dist >= scanRange) continue;
 
                 // 读嘲讽等级
@@ -211,7 +211,9 @@ public class CharacterTargetingComp : ITargetingComp
 
                 // 嘲讽等级更高 → 无条件替换
                 // 嘲讽等级相同 → 选更近的
-                if (taunt > nearestTaunt || (taunt == nearestTaunt && dist < nearestDist))
+                if (taunt > nearestTaunt
+                    || (taunt == nearestTaunt && (dist < nearestDist
+                        || (dist == nearestDist && HasLowerLogicId(other, nearest)))))
                 {
                     nearestTaunt = taunt;
                     nearestDist = dist;
@@ -219,7 +221,9 @@ public class CharacterTargetingComp : ITargetingComp
                 }
 
                 if (dist <= effectiveAttackRange
-                    && (taunt > inAttackRangeTaunt || (taunt == inAttackRangeTaunt && dist < inAttackRangeDist)))
+                    && (taunt > inAttackRangeTaunt
+                        || (taunt == inAttackRangeTaunt && (dist < inAttackRangeDist
+                            || (dist == inAttackRangeDist && HasLowerLogicId(other, inAttackRangeCandidate))))))
                 {
                     inAttackRangeTaunt = taunt;
                     inAttackRangeDist = dist;
@@ -241,7 +245,7 @@ public class CharacterTargetingComp : ITargetingComp
                     // 视线外仇恨 fallback：scan 范围空，回去打打过自己的人
                     CurrentTarget = _lastAttacker;
                     GameDebugSettings.Log(DebugCategory.Targeting,
-                        $"{_ctx} fallback 到受击 attacker {_lastAttacker} | dist={_ctx.DistanceToTargetSurface(_lastAttacker):F1}");
+                        $"{_ctx} fallback 到受击 attacker {_lastAttacker} | dist={_ctx.LogicFrameDistanceToTargetSurface(_lastAttacker):F1}");
                 }
             }
             else if (nearest != null && nearest != CurrentTarget)
@@ -253,7 +257,7 @@ public class CharacterTargetingComp : ITargetingComp
                 // 规则：
                 // 1) 攻击前：同嘲讽仅切更近；不同嘲讽可在大范围内切更高嘲讽。
                 // 2) 攻击中：只允许在攻击范围内切到更高嘲讽目标。
-                bool switchByCloserBeforeAttack = !isAttacking && sameTaunt && (nearestDist + 0.1f < currentTargetDist);
+                bool switchByCloserBeforeAttack = !isAttacking && sameTaunt && (nearestDist + (Fix64)0.1f < currentTargetDist);
                 bool switchByHigherTauntBeforeAttack = !isAttacking && higherTaunt;
                 bool switchByHigherTauntInAttackRange = isAttacking
                                                        && inAttackRangeCandidate != null
@@ -261,7 +265,7 @@ public class CharacterTargetingComp : ITargetingComp
                                                        && inAttackRangeTaunt > currentTargetTaunt;
 
                 IEntityContext switchTarget = null;
-                float switchDist = 0f;
+                Fix64 switchDist = Fix64.Zero;
                 int switchTaunt = 0;
                 string switchReason = null;
 
@@ -298,8 +302,8 @@ public class CharacterTargetingComp : ITargetingComp
                 var player = EntityRegistry.Player;
                 if (player != null && player.Alive && player.Side == _ctx.Side)
                 {
-                    float dist = Vector3.Distance(_ctx.Position, player.Position);
-                    if (dist <= FollowSearchRange)
+                    Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(player);
+                    if (dist <= (Fix64)FollowSearchRange)
                     {
                         GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定跟随目标 {player} | dist={dist:F1} followRange={FollowSearchRange}");
                         FollowTarget = player;
@@ -325,19 +329,19 @@ public class CharacterTargetingComp : ITargetingComp
     }
     public void Resume() { }
 
-    private void UpdateDefendEnemyTargeting(float deltaTime)
+    private void UpdateDefendEnemyTargeting(Fix64 deltaTime)
     {
-        float effectiveAttackRange = GetEffectiveAttackRange();
-        float scanRange = Mathf.Max(AggroRange, effectiveAttackRange);
+        Fix64 effectiveAttackRange = GetEffectiveAttackRange();
+        Fix64 scanRange = Fix64.Max((Fix64)AggroRange, effectiveAttackRange);
 
         _scanTimer += deltaTime;
         if (_scanTimer < SCAN_INTERVAL)
             return;
 
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
 
         IEntityContext bestTarget = null;
-        float bestDistance = float.PositiveInfinity;
+        Fix64 bestDistance = Fix64.FromRaw(long.MaxValue);
         int bestPriority = int.MaxValue;
 
         var all = EntityRegistry.AllEntities;
@@ -351,7 +355,7 @@ public class CharacterTargetingComp : ITargetingComp
             if (!EntityCombatTeamHelper.IsEnemy(_ctx, other))
                 continue;
 
-            float distance = _ctx.DistanceToTargetSurface(other);
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(other);
             if (distance > scanRange)
                 continue;
 
@@ -359,7 +363,9 @@ public class CharacterTargetingComp : ITargetingComp
             if (priority < 0)
                 continue;
 
-            if (priority < bestPriority || (priority == bestPriority && distance < bestDistance))
+            if (priority < bestPriority
+                || (priority == bestPriority && (distance < bestDistance
+                    || (distance == bestDistance && HasLowerLogicId(other, bestTarget)))))
             {
                 bestPriority = priority;
                 bestDistance = distance;
@@ -378,7 +384,7 @@ public class CharacterTargetingComp : ITargetingComp
             CurrentTarget = desiredTarget;
     }
 
-    private bool IsCurrentDefendTargetStillValid(IEntityContext target, float scanRange)
+    private bool IsCurrentDefendTargetStillValid(IEntityContext target, Fix64 scanRange)
     {
         if (target == null || !target.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, target))
             return false;
@@ -390,8 +396,8 @@ public class CharacterTargetingComp : ITargetingComp
         if (priority < 0)
             return false;
 
-        float distance = _ctx.DistanceToTargetSurface(target);
-        return distance <= Mathf.Max(ForgetRange, scanRange);
+        Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(target);
+        return distance <= Fix64.Max((Fix64)ForgetRange, scanRange);
     }
 
     private bool IsDefendFallbackTargetValid()
@@ -429,10 +435,10 @@ public class CharacterTargetingComp : ITargetingComp
         return unitTaunt > 1 ? 0 : 2;
     }
 
-    private float GetEffectiveAttackRange()
+    private Fix64 GetEffectiveAttackRange()
     {
         Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
-        return (float)weaponRange;
+        return weaponRange;
     }
 
     private static int GetTauntLevel(IEntityContext entity)
@@ -463,16 +469,42 @@ public class CharacterTargetingComp : ITargetingComp
         return entity != null && entity.CharacterKey == UnitType.Unit_Hero.ToString();
     }
 
+    private static bool HasLowerLogicId(IEntityContext candidate, IEntityContext current)
+    {
+        return current == null || candidate.LogicEntityId < current.LogicEntityId;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new System.ArgumentNullException(nameof(hasher));
+        hasher.Add((int)_targetingMode);
+        hasher.Add(_scanTimer.RawValue);
+        hasher.Add(GetLogicId(FollowTarget));
+        hasher.Add(GetLogicId(_lastAttacker));
+        hasher.Add(GetLogicId(_defendFallbackTarget));
+        hasher.Add(EnableAggroFallback);
+        hasher.Add(((Fix64)AggroRange).RawValue);
+        hasher.Add(((Fix64)ForgetRange).RawValue);
+        hasher.Add(((Fix64)FollowSearchRange).RawValue);
+        hasher.Add(((Fix64)AlertRadius).RawValue);
+    }
+
+    private static int GetLogicId(IEntityContext entity)
+    {
+        return entity != null && entity.LogicEntityId.IsValid ? entity.LogicEntityId.Value : 0;
+    }
+
 }
 
-public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
+public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILogicDeterministicStateContributor
 {
-    private const float ScanInterval = 0.2f;
+    private static readonly Fix64 ScanInterval = (Fix64)0.2f;
 
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
     private readonly List<IEntityContext> _currentTargets = new List<IEntityContext>();
-    private float _scanTimer;
+    private Fix64 _scanTimer;
 
     public IEntityContext CurrentTarget
     {
@@ -492,10 +524,10 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
         _ctx = ctx;
         CurrentTarget = null;
         FollowTarget = null;
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
     }
 
-    public void UpdateTargeting(float deltaTime)
+    public void UpdateTargeting(Fix64 deltaTime)
     {
         if (_ctx == null)
             return;
@@ -508,7 +540,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
         if (_scanTimer < ScanInterval)
             return;
 
-        _scanTimer = 0f;
+        _scanTimer = Fix64.Zero;
 
         RebuildHealTargetsByRangePriority();
 
@@ -541,8 +573,8 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
         if (FollowTarget == null)
             return;
 
-        float dist = Vector3.Distance(_ctx.Position, FollowTarget.Position);
-        if (dist > FollowSearchRange || !FollowTarget.Alive)
+        Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
+        if (dist > (Fix64)FollowSearchRange || !FollowTarget.Alive)
             FollowTarget = null;
     }
 
@@ -552,8 +584,8 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
         if (all == null)
             throw new System.InvalidOperationException("HealTargetingComp.FindHealTargetByRangePriority failed: EntityRegistry.AllEntities is null.");
 
-        float attackRange = GetEffectiveAttackRange();
-        float scanRange = Mathf.Max(AggroRange, attackRange);
+        Fix64 attackRange = GetEffectiveAttackRange();
+        Fix64 scanRange = Fix64.Max((Fix64)AggroRange, attackRange);
         int targetCount = ResolveTargetCount();
         var inAttackRange = new List<HealCandidate>(targetCount);
         var outsideAttackRange = new List<HealCandidate>(targetCount);
@@ -568,11 +600,11 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
             if (!HealingTargetFilterService.IsValidHealTargetForHealer(_ctx, candidate))
                 continue;
 
-            float distance = _ctx.DistanceToTargetSurface(candidate);
+            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(candidate);
             if (distance > scanRange)
                 continue;
 
-            float hpRatio = candidate.HealthRatio();
+            Fix64 hpRatio = candidate.HealthRatioFixed();
             if (distance <= attackRange)
             {
                 InsertHealCandidate(inAttackRange, new HealCandidate(candidate, hpRatio, distance), targetCount);
@@ -608,7 +640,10 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
     private static bool IsBetterHealTarget(HealCandidate candidate, HealCandidate current)
     {
         return candidate.HpRatio < current.HpRatio
-               || (Mathf.Approximately(candidate.HpRatio, current.HpRatio) && candidate.Distance < current.Distance);
+               || (candidate.HpRatio == current.HpRatio
+                   && (candidate.Distance < current.Distance
+                       || (candidate.Distance == current.Distance
+                           && candidate.Target.LogicEntityId < current.Target.LogicEntityId)));
     }
 
     private int ResolveTargetCount()
@@ -624,15 +659,15 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
         if (player == null || !player.Alive || player.Side != _ctx.Side)
             return;
 
-        float dist = Vector3.Distance(_ctx.Position, player.Position);
-        if (dist <= FollowSearchRange)
+        Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(player);
+        if (dist <= (Fix64)FollowSearchRange)
             FollowTarget = player;
     }
 
-    private float GetEffectiveAttackRange()
+    private Fix64 GetEffectiveAttackRange()
     {
         Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
-        return (float)weaponRange;
+        return weaponRange;
     }
 
     public void NotifyDamageTaken(IEntityContext attacker)
@@ -658,13 +693,32 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp
     {
     }
 
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new System.ArgumentNullException(nameof(hasher));
+        hasher.Add(_scanTimer.RawValue);
+        hasher.Add(FollowTarget != null && FollowTarget.LogicEntityId.IsValid ? FollowTarget.LogicEntityId.Value : 0);
+        hasher.Add(((Fix64)AggroRange).RawValue);
+        hasher.Add(((Fix64)ForgetRange).RawValue);
+        hasher.Add(((Fix64)FollowSearchRange).RawValue);
+        hasher.Add(_currentTargets.Count);
+        for (int i = 0; i < _currentTargets.Count; i++)
+        {
+            IEntityContext target = _currentTargets[i];
+            if (target == null || !target.LogicEntityId.IsValid)
+                throw new System.InvalidOperationException($"HealTargetingComp contains an invalid target at index {i}.");
+            hasher.Add(target.LogicEntityId.Value);
+        }
+    }
+
     private readonly struct HealCandidate
     {
         public readonly IEntityContext Target;
-        public readonly float HpRatio;
-        public readonly float Distance;
+        public readonly Fix64 HpRatio;
+        public readonly Fix64 Distance;
 
-        public HealCandidate(IEntityContext target, float hpRatio, float distance)
+        public HealCandidate(IEntityContext target, Fix64 hpRatio, Fix64 distance)
         {
             Target = target;
             HpRatio = hpRatio;

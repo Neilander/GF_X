@@ -25,11 +25,14 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
     private Vector3 m_CurrentLogicPosition;
     private Quaternion m_PreviousLogicRotation;
     private Quaternion m_CurrentLogicRotation;
+    private bool m_CoordinatedLogicFrameActive;
 
     public int Id { get; private set; }
     public EntityParams Params { get; private set; }
     public virtual int LogicFrameOrder => 0;
+    protected virtual bool UsesCoordinatedLogicFrameUpdate => false;
     protected virtual bool InterpolateRenderRotation => true;
+    protected virtual bool ShouldRunLogicFrameUpdate => true;
 
     protected override void OnInit(object userData)
     {
@@ -74,19 +77,37 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
             //gameObject.SetLayerRecursively(Params.gameObjectLayer);
         }
 
-        LogicFrameRuntime.Register(this);
-        m_LogicFrameRegistered = true;
+        if (UsesCoordinatedLogicFrameUpdate)
+        {
+            if (m_LogicFrameRegistered)
+                throw new GameFrameworkException($"EntityBase.OnShow failed: coordinated entity is registered as a standalone listener. entityId={Id}, type={GetType().FullName}.");
+        }
+        else
+        {
+            LogicFrameRuntime.Register(this);
+            m_LogicFrameRegistered = true;
+        }
         InitializeRenderInterpolation();
         Params.OnShowCallback?.Invoke(this);
     }
 
     protected override void OnHide(bool isShutdown, object userData)
     {
-        if (!m_LogicFrameRegistered)
-            throw new GameFrameworkException($"EntityBase.OnHide failed: logic frame listener is not registered. entityId={Id}, type={GetType().FullName}.");
+        if (UsesCoordinatedLogicFrameUpdate)
+        {
+            if (m_LogicFrameRegistered)
+                throw new GameFrameworkException($"EntityBase.OnHide failed: coordinated entity has a standalone listener. entityId={Id}, type={GetType().FullName}.");
+            if (m_CoordinatedLogicFrameActive)
+                throw new GameFrameworkException($"EntityBase.OnHide failed: coordinated logic frame is still active. entityId={Id}, type={GetType().FullName}.");
+        }
+        else
+        {
+            if (!m_LogicFrameRegistered)
+                throw new GameFrameworkException($"EntityBase.OnHide failed: logic frame listener is not registered. entityId={Id}, type={GetType().FullName}.");
 
-        LogicFrameRuntime.Unregister(this);
-        m_LogicFrameRegistered = false;
+            LogicFrameRuntime.Unregister(this);
+            m_LogicFrameRegistered = false;
+        }
         RestoreRenderTransform();
         m_InterpolatedRenderTransform = null;
         Params.OnHideCallback?.Invoke(this);
@@ -101,7 +122,7 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
 
-        if (!LogicFrameRuntime.IsActive)
+        if (!LogicFrameRuntime.IsActive && ShouldRunLogicFrameUpdate)
         {
             RestoreRenderTransform();
             OnLogicFrameUpdate((Fix64)elapseSeconds);
@@ -113,14 +134,42 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
 
     void ILogicFrameUpdate.OnLogicFrameUpdate(Fix64 deltaTime)
     {
+        if (UsesCoordinatedLogicFrameUpdate)
+            throw new GameFrameworkException($"EntityBase logic tick failed: coordinated entity was invoked as a standalone listener. entityId={Id}, type={GetType().FullName}.");
         if (!m_LogicFrameRegistered)
             throw new GameFrameworkException($"EntityBase logic tick failed: entity is not registered. entityId={Id}, type={GetType().FullName}.");
+        if (!ShouldRunLogicFrameUpdate)
+            return;
 
         RestoreRenderTransform();
         m_PreviousLogicPosition = m_CurrentLogicPosition;
         m_PreviousLogicRotation = m_CurrentLogicRotation;
         OnLogicFrameUpdate(deltaTime);
         CaptureCurrentLogicPose();
+    }
+
+    internal void BeginCoordinatedLogicFrameUpdate()
+    {
+        if (!UsesCoordinatedLogicFrameUpdate)
+            throw new GameFrameworkException($"EntityBase.BeginCoordinatedLogicFrameUpdate failed: entity does not use coordinated updates. entityId={Id}, type={GetType().FullName}.");
+        if (m_CoordinatedLogicFrameActive)
+            throw new GameFrameworkException($"EntityBase.BeginCoordinatedLogicFrameUpdate failed: a coordinated frame is already active. entityId={Id}, type={GetType().FullName}.");
+        if (!ShouldRunLogicFrameUpdate)
+            throw new GameFrameworkException($"EntityBase.BeginCoordinatedLogicFrameUpdate failed: entity is not logic-active. entityId={Id}, type={GetType().FullName}.");
+
+        RestoreRenderTransform();
+        m_PreviousLogicPosition = m_CurrentLogicPosition;
+        m_PreviousLogicRotation = m_CurrentLogicRotation;
+        m_CoordinatedLogicFrameActive = true;
+    }
+
+    internal void CompleteCoordinatedLogicFrameUpdate()
+    {
+        if (!m_CoordinatedLogicFrameActive)
+            throw new GameFrameworkException($"EntityBase.CompleteCoordinatedLogicFrameUpdate failed: no coordinated frame is active. entityId={Id}, type={GetType().FullName}.");
+
+        CaptureCurrentLogicPose();
+        m_CoordinatedLogicFrameActive = false;
     }
 
     protected virtual void OnLogicFrameUpdate(Fix64 deltaTime)

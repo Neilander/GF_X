@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Reflection;
@@ -203,9 +203,35 @@ public class SteeringMovementTests
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State);
 
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "玩家在 8 范围内应转为 Follow");
+    }
+
+    [Test]
+    public void 等距索敌使用较小LogicEntityId打破平局()
+    {
+        var self = MakeSoldier(Vector3.zero);
+        self.LogicEntityId = new LogicEntityId(100);
+        self.Side = SideType.PlayerSide;
+
+        var higherIdEnemy = MakeSoldier(new Vector3(1f, 0f, 0f));
+        higherIdEnemy.LogicEntityId = new LogicEntityId(20);
+        higherIdEnemy.Side = SideType.EnemySide;
+
+        var lowerIdEnemy = MakeSoldier(new Vector3(-1f, 0f, 0f));
+        lowerIdEnemy.LogicEntityId = new LogicEntityId(10);
+        lowerIdEnemy.Side = SideType.EnemySide;
+
+        EntityRegistry.Register(higherIdEnemy);
+        EntityRegistry.Register(self);
+        EntityRegistry.Register(lowerIdEnemy);
+
+        var targeting = new CharacterTargetingComp { AggroRange = 2f };
+        targeting.Init(self);
+        targeting.UpdateTargeting((Fix64)0.2f);
+
+        Assert.AreSame(lowerIdEnemy, targeting.CurrentTarget);
     }
 
     [Test]
@@ -224,11 +250,11 @@ public class SteeringMovementTests
         brain.Inject();
         soldier.Brain = brain;
 
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State);
 
         Vector3 before = soldier.Position;
-        soldier.MoveComp.Move(0.2f);
+        soldier.MoveComp.Move((Fix64)0.2f);
         soldier.MoveExecutor.Execute(0.2f);
         soldier.SyncPositionFromExecutor();
 
@@ -250,7 +276,7 @@ public class SteeringMovementTests
         brain.Inject();
         soldier.Brain = brain;
 
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "玩家超过招募距离时仍应转为 Follow");
     }
@@ -270,11 +296,11 @@ public class SteeringMovementTests
         brain.Inject();
         soldier.Brain = brain;
 
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State);
 
         soldier.Position = new Vector3(20, 0, 0);
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "玩家超过旧脱离距离后仍应持续追踪");
     }
@@ -297,7 +323,7 @@ public class SteeringMovementTests
         soldier.Brain = brain;
 
         // 第一帧：Idle → Follow
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State);
 
         var targeting = new SimTargetingComp(soldier, new List<IEntityContext> { player, soldier, enemy });
@@ -306,7 +332,7 @@ public class SteeringMovementTests
         soldier.TargetComp = targeting;
 
         // 第二帧：Follow → Combat（敌人在攻击范围内，状态测试不触发寻路世界解析）
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
     }
 
@@ -333,14 +359,14 @@ public class SteeringMovementTests
         soldier.TargetComp = targeting;
 
         // Idle → Follow → Combat
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
 
         // 杀死敌人
         enemy.Alive = false;
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State, "敌人失效当帧应先清掉 Combat 和旧目标");
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "敌人死后回到 Follow");
     }
 
@@ -370,8 +396,8 @@ public class SteeringMovementTests
         brain.Inject();
         soldier.Brain = brain;
 
-        brain.Tick(soldier, 1f / 60f);
-        brain.Tick(soldier, 1f / 60f);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
         Assert.IsTrue(brain.Attack, "已经在武器射程内时应直接进入攻击态，而不是继续等到站位点");

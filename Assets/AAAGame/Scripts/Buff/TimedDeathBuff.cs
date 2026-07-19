@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -26,7 +26,7 @@ public class TimedDeathBuff : BuffCallback
         base.OnAdd();
         if (buffData != null)
         {
-            m_BaseDuration = (Fix64)buffData.duration;
+            m_BaseDuration = buffData.duration;
             Debug.Log($"[TimedDeathBuff.OnAdd] host={hostEntity?.CharacterKey} id={hostEntity?.Id} BaseDuration 锁定为 {(float)m_BaseDuration}s, remainingTime={buffData.remainingTime}s");
         }
         else
@@ -56,16 +56,16 @@ public class TimedDeathBuff : BuffCallback
         }
 
         Fix64 oldFinal = EffectiveDuration;
-        float oldDuration = buffData.duration;
-        float oldRemaining = buffData.remainingTime;
+        Fix64 oldDuration = buffData.duration;
+        Fix64 oldRemaining = buffData.remainingTime;
 
         modify();
 
         Fix64 newFinal = EffectiveDuration;
         Fix64 delta = newFinal - oldFinal;
 
-        buffData.duration = (float)newFinal;
-        buffData.remainingTime = Mathf.Max(0f, oldRemaining + (float)delta);
+        buffData.duration = newFinal;
+        buffData.remainingTime = Fix64.Max(Fix64.Zero, oldRemaining + delta);
 
         Debug.Log($"[TimedDeathBuff.ApplyDelta] Base={(float)m_BaseDuration} Additive={(float)m_AdditiveDuration} Pct={(float)m_PercentSum} " +
                   $"| EffectiveDuration {(float)oldFinal} -> {(float)newFinal} (delta={(float)delta}) " +
@@ -77,36 +77,19 @@ public class TimedDeathBuff : BuffCallback
     {
         base.OnDurationEnd();
 
-        // 保存宿主引用，防止在调用OnDead()时被清空
+        // 保存宿主引用，供本次到期结算完整使用。
         MAEntity currentHost = hostEntity;
 
         if (currentHost != null && currentHost.Alive)
         {
             GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 定时死亡Buff生效，单位即将死亡");
 
-            Entity entity = GF.Entity.GetEntity(currentHost.Id);
-            if (entity != null && entity.gameObject != null)
-            {
-                SoldierEntity soldier = entity.gameObject.GetComponent<SoldierEntity>();
-                if (soldier != null)
-                {
-                    GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位类型: {soldier.CharacterKey}, 当前生命值: {(float)soldier.HealthValue}");
+            if (currentHost is not SoldierEntity soldier)
+                throw new System.InvalidOperationException($"TimedDeathBuff.OnDurationEnd failed: host {currentHost.Id} is not a SoldierEntity.");
 
-                    soldier.TakeDamage(soldier.HealthValue, HealthModifyType.reduce);
-                    soldier.OnDead();
-
-                    float maxHealth = (float)soldier.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-                    GF.Event.Fire(soldier, CreatureHealthChangedEventArgs.Create(currentHost.Id, 0f, maxHealth, -maxHealth));
-
-                    GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位已死亡并隐藏");
-                }
-            }
-
-            Entity targetEntity = GF.Entity.GetEntity(currentHost.Id);
-            if (targetEntity != null)
-            {
-                GF.Entity.HideEntity(targetEntity.Id);
-            }
+            GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位类型: {soldier.CharacterKey}, 当前生命值: {(float)soldier.HealthValue}");
+            DamageHelper.DoDirectDamage(soldier, soldier.HealthValue, HealthModifyType.reduce);
+            GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位已死亡并提交销毁命令");
         }
     }
 

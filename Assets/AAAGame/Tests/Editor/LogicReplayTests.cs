@@ -1,0 +1,160 @@
+﻿using NUnit.Framework;
+
+public sealed class LogicReplayTests
+{
+    [SetUp]
+    public void SetUp()
+    {
+        if (LogicReplayRuntime.IsRecording)
+            LogicReplayRuntime.EndRecording();
+        if (LogicObstacleCommandService.IsActive)
+            LogicObstacleCommandService.EndTimeline();
+        if (LogicEntityLifecycleService.IsActive)
+            LogicEntityLifecycleService.EndTimeline();
+        if (LogicTimeControlService.IsActive)
+            LogicTimeControlService.EndTimeline();
+
+        LogicTimeControlService.BeginTimeline();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        if (LogicReplayRuntime.IsRecording)
+            LogicReplayRuntime.EndRecording();
+        if (LogicObstacleCommandService.IsActive)
+            LogicObstacleCommandService.EndTimeline();
+        if (LogicEntityLifecycleService.IsActive)
+            LogicEntityLifecycleService.EndTimeline();
+        if (LogicTimeControlService.IsActive)
+            LogicTimeControlService.EndTimeline();
+    }
+
+    [Test]
+    public void Recorder_CapturesInputTimeCommandsPauseCommandsAndHashes()
+    {
+        var timeline = CreateTimeline();
+        var recorder = new LogicReplayRecorder();
+        recorder.Begin();
+
+        LogicTimeControlService.SetBulletTimeScale(10, 2000);
+        LogicTimeControlService.BeginFrame(1);
+        timeline.EnqueueButtonPulse(0.01d, LogicInputButton.Skill1);
+        LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
+        LogicReplayFrameRecord record = recorder.RecordFrame(inputFrame, 123ul);
+        LogicTimeControlService.AcquirePause(20);
+        LogicTimeControlService.ReleasePause(20);
+        LogicReplayLog log = recorder.End();
+
+        Assert.AreEqual(1, log.Frames.Count);
+        Assert.AreEqual(1, log.TimeScaleCommands.Count);
+        Assert.AreEqual(2, log.PauseControlCommands.Count);
+        Assert.AreEqual(LogicReplayLog.CurrentProtocolVersion, log.ProtocolVersion);
+        Assert.AreEqual(LogicReplayLog.CurrentContentVersion, log.ContentVersion);
+        Assert.AreEqual(30, log.LogicFrameRate);
+        Assert.AreEqual(0ul, log.InitialRandomSeed);
+        Assert.AreEqual(LogicStateHasher.ComputeInputHash(inputFrame), record.InputHash);
+        Assert.AreNotEqual(0ul, record.TimeControlHash);
+        Assert.AreNotEqual(0ul, record.FullHash);
+
+        var replayInput = new LogicReplayInputSource(log);
+        Assert.AreSame(inputFrame, replayInput.ReadFrame(1));
+        Assert.Throws<System.InvalidOperationException>(() => replayInput.ReadFrame(2));
+    }
+
+    [Test]
+    public void InputHash_IgnoresRealtimeTimestampAfterEventsAreSealed()
+    {
+        LogicInputFrame early = CreatePulseFrame(0.01d);
+        LogicInputFrame late = CreatePulseFrame(0.03d);
+
+        Assert.AreEqual(
+            LogicStateHasher.ComputeInputHash(early),
+            LogicStateHasher.ComputeInputHash(late));
+    }
+
+    [Test]
+    public void Comparer_ReportsFirstGameplayHashDivergence()
+    {
+        LogicReplayLog expected = RecordSingleFrame(100ul);
+
+        LogicTimeControlService.EndTimeline();
+        LogicTimeControlService.BeginTimeline();
+        LogicReplayLog actual = RecordSingleFrame(200ul);
+
+        LogicReplayDivergence divergence = LogicReplayComparer.FindFirstDivergence(expected, actual);
+
+        Assert.IsTrue(divergence.HasDivergence);
+        Assert.AreEqual(1ul, divergence.FrameId);
+        Assert.AreEqual("GameplayStateHash", divergence.Field);
+    }
+
+    [Test]
+    public void SnapshotHash_IsIndependentOfCommandSubmissionInsertionLayout()
+    {
+        LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+            2,
+            1,
+            TimeScaleCommandKind.SetBulletTimeScale,
+            20,
+            5000));
+        LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+            1,
+            2,
+            TimeScaleCommandKind.SetBulletTimeScale,
+            10,
+            2000));
+        LogicTimeControlSnapshot snapshot = LogicTimeControlService.CaptureSnapshot();
+
+        Assert.AreEqual(1ul, snapshot.PendingTimeScaleCommands[0].EffectiveFrame);
+        Assert.AreEqual(2ul, snapshot.PendingTimeScaleCommands[1].EffectiveFrame);
+        Assert.AreNotEqual(0ul, LogicStateHasher.ComputeTimeControlHash(snapshot));
+    }
+
+    [Test]
+    public void Recorder_CapturesInitialLifecycleAndObstacleCommandHistory()
+    {
+        LogicEntityLifecycleService.BeginTimeline();
+        LogicObstacleCommandService.BeginTimeline();
+        LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn();
+        LogicObstacleCommandService.ScheduleBoxForNextFrame(
+            101,
+            new FixVector2((Fix64)2, (Fix64)3),
+            new FixVector2((Fix64)1, (Fix64)1));
+
+        var recorder = new LogicReplayRecorder();
+        recorder.Begin();
+        LogicReplayLog log = recorder.End();
+
+        Assert.AreEqual(1, log.LifecycleCommands.Count);
+        Assert.AreEqual(entityId, log.LifecycleCommands[0].EntityId);
+        Assert.AreEqual(1, log.ObstacleCommands.Count);
+        Assert.AreEqual(101, log.ObstacleCommands[0].StableObstacleId);
+    }
+
+    private static LogicReplayLog RecordSingleFrame(ulong gameplayStateHash)
+    {
+        var recorder = new LogicReplayRecorder();
+        recorder.Begin();
+        LogicTimeControlService.BeginFrame(1);
+
+        var timeline = CreateTimeline();
+        LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
+        recorder.RecordFrame(inputFrame, gameplayStateHash);
+        return recorder.End();
+    }
+
+    private static LogicInputFrame CreatePulseFrame(double timestamp)
+    {
+        var timeline = CreateTimeline();
+        timeline.EnqueueButtonPulse(timestamp, LogicInputButton.Skill2);
+        return timeline.Seal(1, 1d / 30d);
+    }
+
+    private static LogicInputTimeline CreateTimeline()
+    {
+        var timeline = new LogicInputTimeline();
+        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero);
+        return timeline;
+    }
+}

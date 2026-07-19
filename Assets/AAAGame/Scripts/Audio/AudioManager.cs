@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using AAAGame.Audio;
 using GameFramework;
@@ -51,7 +51,7 @@ public class AudioManager : GameFrameworkComponent
 
     private void Update()
     {
-        bool isGamePaused = GF.Base != null && GF.Base.IsGamePaused;
+        bool isGamePaused = LogicTimeControlService.IsPaused;
         if (isGamePaused == wasGamePaused)
         {
             return;
@@ -373,7 +373,7 @@ public class AudioManager : GameFrameworkComponent
 
     private void PauseNewSfxIfGamePaused(int serialId)
     {
-        if (GF.Base == null || !GF.Base.IsGamePaused)
+        if (!LogicTimeControlService.IsPaused)
         {
             return;
         }
@@ -389,7 +389,7 @@ public class AudioManager : GameFrameworkComponent
             yield return null;
         }
 
-        if (GF.Base != null && GF.Base.IsGamePaused && activeSfx.ContainsKey(serialId))
+        if (LogicTimeControlService.IsPaused && activeSfx.ContainsKey(serialId))
         {
             PauseSoundSafe(serialId);
         }

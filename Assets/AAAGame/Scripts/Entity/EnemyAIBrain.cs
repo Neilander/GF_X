@@ -1,8 +1,9 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class EnemyAIBrain : IControlBrain, ITickBrain
 {
-    public Vector2 Move { get; private set; }
+    public Vector2 Move => MoveFixed;
+    public FixVector2 MoveFixed { get; private set; }
     public bool Attack { get; private set; }
     public bool Skill1 { get; private set; }
     public bool Skill2 { get; private set; }
@@ -20,40 +21,79 @@ public class EnemyAIBrain : IControlBrain, ITickBrain
 
     private IEntityContext _target;
 
-    public void Tick(IEntityContext self, float dt)
+    public void Tick(IEntityContext self, Fix64 dt)
     {
         Attack = false;
         Skill1 = Skill2 = Skill3 = Skill4 = Skill5 = false;
 
         _target = self.TargetComp?.CurrentTarget;
 
-        Vector3 desiredMove = Vector3.zero;
+        FixVector2 desiredMove = FixVector2.Zero;
 
         if (_target != null)
         {
-            Vector3 to = _target.Position - self.Position;
-            float d2 = to.sqrMagnitude;
+            FixVector2 to = LogicEntityFrameSnapshotService.GetRequiredPosition(_target)
+                            - LogicEntityFrameSnapshotService.GetRequiredPosition(self);
+            Fix64 d2 = FixVector2.SqrMagnitude(to);
+            Fix64 attackRange = (Fix64)AttackRange;
 
-            if (d2 > AttackRange * AttackRange)
-                desiredMove = new Vector3(to.x, 0, to.z).normalized;
+            if (d2 > attackRange * attackRange)
+                desiredMove = to.GetNormalized();
             else
                 Attack = true;
         }
 
-        // 获取排斥力并混合（仅真实实体使用 SimpleTargeting）
-        Vector3 separation = Vector3.zero;
-        if (self is MAEntity ma)
-            separation = SimpleTargeting.GetSeparationForce(ma, SeparationRadius);
+        FixVector2 separation = ResolveSeparation(self, (Fix64)SeparationRadius);
+        FixVector2 finalMove = desiredMove + separation * (Fix64)SeparationWeight;
 
-        Vector3 finalMove = desiredMove + separation * SeparationWeight;
+        MoveFixed = FixVector2.SqrMagnitude(finalMove) > (Fix64)0.01f && !Attack
+            ? finalMove.GetNormalized()
+            : FixVector2.Zero;
+    }
 
-        if (finalMove.sqrMagnitude > 0.01f && !Attack)
+    private static FixVector2 ResolveSeparation(IEntityContext self, Fix64 radius)
+    {
+        if (radius <= Fix64.Zero)
+            return FixVector2.Zero;
+
+        FixVector2 selfPosition = LogicEntityFrameSnapshotService.GetRequiredPosition(self);
+        FixVector2 force = FixVector2.Zero;
+        int count = 0;
+        for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
         {
-            Move = new Vector2(finalMove.x, finalMove.z).normalized;
+            IEntityContext other = EntityRegistry.AllEntities[i];
+            if (other == self || !other.Alive || other.Side != self.Side)
+                continue;
+
+            FixVector2 difference = selfPosition - LogicEntityFrameSnapshotService.GetRequiredPosition(other);
+            Fix64 distanceSquared = FixVector2.SqrMagnitude(difference);
+            if (distanceSquared > radius * radius)
+                continue;
+
+            if (distanceSquared == Fix64.Zero)
+            {
+                force += ResolveStableOverlapDirection(self.LogicEntityId.Value, other.LogicEntityId.Value);
+            }
+            else
+            {
+                Fix64 distance = Fix64.Sqrt(distanceSquared);
+                force += difference / distance * (Fix64.One - distance / radius);
+            }
+            count++;
         }
-        else
+
+        return count > 0 ? force / (Fix64)count : FixVector2.Zero;
+    }
+
+    private static FixVector2 ResolveStableOverlapDirection(int selfId, int otherId)
+    {
+        int key = unchecked(selfId * 397) ^ otherId;
+        switch (key & 3)
         {
-            Move = Vector2.zero;
+            case 0: return new FixVector2(Fix64.One, Fix64.Zero);
+            case 1: return new FixVector2(Fix64.Zero, Fix64.One);
+            case 2: return new FixVector2(-Fix64.One, Fix64.Zero);
+            default: return new FixVector2(Fix64.Zero, -Fix64.One);
         }
     }
 }

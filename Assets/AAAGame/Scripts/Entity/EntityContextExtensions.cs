@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public static class EntityContextExtensions
 {
@@ -63,14 +63,19 @@ public static class EntityContextExtensions
 
     public static float HealthRatio(this IEntityContext ctx)
     {
+        return (float)HealthRatioFixed(ctx);
+    }
+
+    public static Fix64 HealthRatioFixed(this IEntityContext ctx)
+    {
         if (!(ctx is GeneralCreature creature) || creature.CreaturePropertyManager == null)
-            return 1f;
+            return Fix64.One;
 
         Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
         if (max <= Fix64.Zero)
-            return 1f;
+            return Fix64.One;
 
-        return Mathf.Clamp01((float)(creature.HealthValue / max));
+        return Fix64.Clamp(creature.HealthValue / max, Fix64.Zero, Fix64.One);
     }
 
     public static bool HasInvincibleBuff(this IEntityContext ctx)
@@ -87,6 +92,11 @@ public static class EntityContextExtensions
             return float.PositiveInfinity;
 
         Vector3 from = self.Position;
+        if (target is BuildingEntity building)
+        {
+            FixVector2 point = new FixVector2((Fix64)from.x, (Fix64)from.z);
+            return (float)building.GetRequiredWorldCombatShape().DistanceToSurface(point);
+        }
         if (target.TryGetTargetClosestPoint(from, out Vector3 closestPoint))
             return HorizontalDistance(from, closestPoint);
 
@@ -107,8 +117,13 @@ public static class EntityContextExtensions
         if (!(target is Component targetComponent) || targetComponent == null)
             return TryGetClosestPointFromCollisionRadius(target, origin, out closestPoint);
 
-        if (target is BuildingEntity && TryGetClosestPointFromNonTriggerCollider(targetComponent, origin, out closestPoint))
+        if (target is BuildingEntity building)
+        {
+            FixVector2 point = new FixVector2((Fix64)origin.x, (Fix64)origin.z);
+            FixVector2 closest = building.GetRequiredWorldCombatShape().ClosestPoint(point);
+            closestPoint = new Vector3((float)closest.x, origin.y, (float)closest.y);
             return true;
+        }
 
         var hurtBox = targetComponent.GetComponentInChildren<HurtBox>();
         if (hurtBox != null && hurtBox.TryGetComponent<Collider>(out var hurtCollider) && hurtCollider.enabled)
@@ -162,35 +177,4 @@ public static class EntityContextExtensions
         return true;
     }
 
-    private static bool TryGetClosestPointFromNonTriggerCollider(Component targetComponent, Vector3 origin, out Vector3 closestPoint)
-    {
-        closestPoint = default;
-
-        var colliders = targetComponent.GetComponentsInChildren<Collider>(true);
-        if (colliders == null || colliders.Length == 0)
-            return false;
-
-        // 攻击射程按 XZ 平面比较，这里也按 XZ 选最近点，避免高低面导致“看似贴脸却超距”。
-        float bestDistanceSqr = float.PositiveInfinity;
-        bool hasResult = false;
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            var collider = colliders[i];
-            if (collider == null || !collider.enabled || collider.isTrigger)
-                continue;
-
-            Vector3 point = collider.ClosestPoint(origin);
-            float dx = point.x - origin.x;
-            float dz = point.z - origin.z;
-            float d2 = dx * dx + dz * dz;
-            if (d2 < bestDistanceSqr)
-            {
-                bestDistanceSqr = d2;
-                closestPoint = point;
-                hasResult = true;
-            }
-        }
-
-        return hasResult;
-    }
 }
