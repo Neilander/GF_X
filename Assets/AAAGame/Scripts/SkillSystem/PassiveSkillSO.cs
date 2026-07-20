@@ -5,18 +5,18 @@ using UnityEngine;
 
 public abstract class PassiveSkillSO : SkillEffectSO
 {
-    public abstract void Apply(MAEntity owner);
-    public abstract void Remove(MAEntity owner);
+    public abstract void Apply(IEntityContext owner);
+    public abstract void Remove(IEntityContext owner);
 
     protected string BuffId => $"skill_passive_{skillId}";
 
-    protected void ReplaceBuff(MAEntity owner, BuffCallback module)
+    protected void ReplaceBuff(IEntityContext owner, BuffCallback module)
     {
         if (owner == null)
             throw new ArgumentNullException(nameof(owner));
 
         if (owner.BuffComp == null)
-            throw new InvalidOperationException($"Passive skill requires BuffComp. skillId={skillId}, owner={owner.name}");
+            throw new InvalidOperationException($"Passive skill requires BuffComp. skillId={skillId}, owner={owner.CharacterKey}");
 
         owner.BuffComp.RemoveBuff(BuffId);
         var buffData = BuffData.Create(
@@ -28,7 +28,7 @@ public abstract class PassiveSkillSO : SkillEffectSO
         owner.BuffComp.AddBuff(buffData, owner);
     }
 
-    protected void RemoveBuff(MAEntity owner)
+    protected void RemoveBuff(IEntityContext owner)
     {
         if (owner == null || owner.BuffComp == null)
             return;
@@ -49,8 +49,7 @@ public sealed class SkillMoveSpeedPercentBuff : BuffCallback
 
     public override void OnAdd()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null)
             throw new InvalidOperationException($"SkillMoveSpeedPercentBuff requires property manager. host={hostEntity?.CharacterKey}");
 
@@ -60,8 +59,7 @@ public sealed class SkillMoveSpeedPercentBuff : BuffCallback
 
     public override void OnRemove()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Modifier == null)
             return;
 
@@ -81,10 +79,10 @@ public sealed class SkillCurrentHealthDamageBuff : BuffCallback
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (target is not GeneralCreature creature || m_Percent <= Fix64.Zero)
+        if (target is not IEntityContext entity || m_Percent <= Fix64.Zero)
             return baseDamage;
 
-        return baseDamage + creature.HealthValue * m_Percent / (Fix64)100;
+        return baseDamage + entity.HealthValue * m_Percent / (Fix64)100;
     }
 }
 
@@ -105,10 +103,10 @@ public sealed class SkillDisarmOnHitBuff : BuffCallback
 
     public override void OnAttackCompleted(IEntityContext target)
     {
-        if (target is not MAEntity targetEntity || targetEntity.BuffComp == null || m_Duration <= 0f)
+        if (target is not IEntityContext targetEntity || targetEntity.BuffComp == null || m_Duration <= 0f)
             return;
 
-        string buffId = $"{m_BuffPrefix}_{targetEntity.Id}";
+        string buffId = $"{m_BuffPrefix}_{targetEntity.LogicEntityId.Value}";
         targetEntity.BuffComp.RemoveBuff(buffId);
         var buffData = BuffData.Create(
             buffId,
@@ -140,28 +138,26 @@ public sealed class SkillDisarmDebuff : BuffCallback
         if (hostEntity == null)
             throw new InvalidOperationException("SkillDisarmDebuff requires hostEntity.");
 
-        if (hostEntity.weaponComp?.Data != null && m_AttackReduce != Fix64.Zero)
+        if (hostEntity.WeaponComp?.Data != null && m_AttackReduce != Fix64.Zero)
         {
-            hostEntity.weaponComp.Data.ApplyAdditive(WeaponStatId.Atk, -m_AttackReduce);
+            hostEntity.WeaponComp.Data.ApplyAdditive(WeaponStatId.Atk, -m_AttackReduce);
             m_AttackApplied = true;
         }
 
-        var creature = hostEntity as GeneralCreature;
-        if (creature?.CreaturePropertyManager != null && m_DefReduce != Fix64.Zero)
+        if (hostEntity?.CreatureProperties != null && m_DefReduce != Fix64.Zero)
         {
             m_DefModifier = PropertyDirectAdditiveModifier.Create(-m_DefReduce);
-            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_DefModifier, true);
+            hostEntity.CreatureProperties.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_DefModifier, true);
         }
     }
 
     public override void OnRemove()
     {
-        if (m_AttackApplied && hostEntity?.weaponComp?.Data != null)
-            hostEntity.weaponComp.Data.ApplyAdditive(WeaponStatId.Atk, m_AttackReduce);
+        if (m_AttackApplied && hostEntity?.WeaponComp?.Data != null)
+            hostEntity.WeaponComp.Data.ApplyAdditive(WeaponStatId.Atk, m_AttackReduce);
 
-        var creature = hostEntity as GeneralCreature;
-        if (creature?.CreaturePropertyManager != null && m_DefModifier != null)
-            creature.CreaturePropertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_DefModifier, false);
+        if (hostEntity?.CreatureProperties != null && m_DefModifier != null)
+            hostEntity.CreatureProperties.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_DefModifier, false);
 
         m_AttackApplied = false;
         m_DefModifier = null;
@@ -222,10 +218,10 @@ public sealed class SkillCheerSquadBuff : BuffCallback
 
     private void ApplySteps(int steps)
     {
-        if (steps == m_AppliedSteps || hostEntity?.weaponComp?.Data == null)
+        if (steps == m_AppliedSteps || hostEntity?.WeaponComp?.Data == null)
             return;
 
-        Weapon weapon = hostEntity.weaponComp.Data;
+        Weapon weapon = hostEntity.WeaponComp.Data;
         int delta = steps - m_AppliedSteps;
         weapon.ApplyAdditive(WeaponStatId.Atk, m_AttackPerStep * delta);
 
@@ -258,10 +254,10 @@ public sealed class SkillHigherHealthSplashBuff : BuffCallback
 
     public override void OnAttackCompleted(IEntityContext target)
     {
-        if (m_ApplyingSplash || hostEntity == null || target is not MAEntity mainTarget)
+        if (m_ApplyingSplash || hostEntity == null || target is not IEntityContext mainTarget)
             return;
 
-        Fix64 mainMax = mainTarget.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 mainMax = mainTarget.CreatureProperties.GetProperty(CreatureMainProperty.Health);
         if (mainMax <= Fix64.Zero)
             return;
 
@@ -273,18 +269,19 @@ public sealed class SkillHigherHealthSplashBuff : BuffCallback
         {
             for (int i = 0; i < all.Count; i++)
             {
-                if (all[i] is not MAEntity candidate || ReferenceEquals(candidate, target))
+                IEntityContext candidate = all[i];
+                if (candidate == null || ReferenceEquals(candidate, target))
                     continue;
                 if (!candidate.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(hostEntity, candidate))
                     continue;
-                if (Vector3.Distance(candidate.Position, target.Position) > radius)
+                if (FixVector2.Distance(candidate.PositionFixed, mainTarget.PositionFixed) > (Fix64)radius)
                     continue;
 
-                Fix64 candidateMax = candidate.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+                Fix64 candidateMax = candidate.CreatureProperties.GetProperty(CreatureMainProperty.Health);
                 if (candidateMax <= Fix64.Zero || candidate.HealthValue / candidateMax <= mainRatio)
                     continue;
 
-                Fix64 damage = hostEntity.weaponComp.Data.Atk * m_DamagePercent / (Fix64)100;
+                Fix64 damage = hostEntity.WeaponComp.Data.Atk * m_DamagePercent / (Fix64)100;
                 DamageHelper.DoDamage(candidate, new Damage(hostEntity, damage, HealthModifyType.reduce), hostEntity);
             }
         }

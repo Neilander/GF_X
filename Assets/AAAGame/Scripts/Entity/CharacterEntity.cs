@@ -28,9 +28,6 @@ public class CharacterEntity : SkillEntity
             //暂时测试用，应该把相机绑定的权力交还给生成实体的那个人。真正知道“当前这一局游戏，谁才是主角，相机该拍谁”的，是 Procedure（流程） 或者专门的 LevelManager（关卡管理器）
         }
 
-        // 4. 注入对应的 Brain
-        SetBrain(BrainFactory.Create(brainType, this, userData as EntityParams));
-
         RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 

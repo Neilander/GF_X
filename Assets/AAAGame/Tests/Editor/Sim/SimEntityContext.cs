@@ -16,16 +16,54 @@ public class SimEntityContext : IEntityContext, ITargetable
     }
 
     public LogicEntityId LogicEntityId { get; set; }
-    public Vector3 Position { get; set; }
+    private Vector3 _position;
+    private FixVector2 _positionFixed;
+    public FixVector2 PositionFixed
+    {
+        get => _positionFixed;
+        set
+        {
+            _positionFixed = value;
+            _position = new Vector3((float)value.x, _position.y, (float)value.y);
+        }
+    }
+    public FixVector2 ForwardFixed
+    {
+        get
+        {
+            Vector3 forward = Rotation * Vector3.forward;
+            return new FixVector2((Fix64)forward.x, (Fix64)forward.z).GetNormalized();
+        }
+    }
+    public LogicCombatShape CombatShape => LogicCombatShape.Circle(
+        PositionFixed,
+        DistanceUnitConverter.ConvertToWorld(GetProperty(CreatureMainProperty.CollisionRadius)));
+    public Vector3 Position
+    {
+        get => _position;
+        set
+        {
+            if (float.IsNaN(value.x) || float.IsInfinity(value.x)
+                || float.IsNaN(value.z) || float.IsInfinity(value.z))
+            {
+                throw new System.ArgumentOutOfRangeException(nameof(value), value, "Sim logic position must have finite XZ components.");
+            }
+
+            _position = value;
+            _positionFixed = new FixVector2((Fix64)value.x, (Fix64)value.z);
+        }
+    }
     public Quaternion Rotation { get; set; } = Quaternion.identity;
     public SideType Side { get; set; }
     public bool Alive { get; set; } = true;
     public string CharacterKey { get; protected set; } = "TestUnit";
     public CharacterDataDetail CharacterData { get; protected set; }
+    public CreaturePropertyManager CreatureProperties { get; set; }
     public GameObject Gmo => null;
 
     public HealthContainer Health { get; private set; } = new HealthContainer();
     public Fix64 HealthValue => Health.currentHealth;
+    public int TauntLevel { get; set; } = 1;
 
     public IControlBrain Brain { get; set; }
 
@@ -47,7 +85,27 @@ public class SimEntityContext : IEntityContext, ITargetable
     public ITargetingComp TargetComp { get; set; }
     public IBuffComp BuffComp { get; set; }
     public WeaponComp WeaponComp { get; set; }
+    public IDurationMoveEffectComp DurationMoveEffectComp { get; set; }
+    public void SetWeaponComp(WeaponComp weaponComp)
+    {
+        WeaponComp = weaponComp ?? throw new System.ArgumentNullException(nameof(weaponComp));
+    }
+    public void SetMoveComp(IMoveComp moveComp)
+    {
+        MoveComp = moveComp ?? throw new System.ArgumentNullException(nameof(moveComp));
+    }
+    public void SetAtkComp(IAtkComp atkComp)
+    {
+        AtkComp = atkComp ?? throw new System.ArgumentNullException(nameof(atkComp));
+    }
+    public void SetTargetingComp(ITargetingComp targetingComp)
+    {
+        TargetComp = targetingComp ?? throw new System.ArgumentNullException(nameof(targetingComp));
+    }
     public bool IsOutOfCombat { get; private set; } = true;
+    public Fix64 OutOfCombatElapsedLogicTime => IsOutOfCombat
+        ? (Fix64)(_combatStateClock - _outOfCombatStartTime)
+        : Fix64.Zero;
     public float OutOfCombatElapsedSeconds => IsOutOfCombat ? _combatStateClock - _outOfCombatStartTime : 0f;
 
     private float _combatStateClock;
@@ -75,6 +133,13 @@ public class SimEntityContext : IEntityContext, ITargetable
         ResetOutOfCombatTimer();
         if (Health.currentHealth <= Fix64.Zero)
             Alive = false;
+    }
+
+    public void Heal(Fix64 amount)
+    {
+        if (amount <= Fix64.Zero || !Alive)
+            return;
+        Health.ModifyHealth(HealthModifyType.set, Health.currentHealth + amount, false);
     }
 
     public void TickOutOfCombatState(float deltaTime)
@@ -119,6 +184,21 @@ public class SimEntityContext : IEntityContext, ITargetable
 
     // 组件锁定（复用 CompCreature 的纯逻辑）
     private Dictionary<ICapability, List<ICapability>> _compLockers = new Dictionary<ICapability, List<ICapability>>();
+    private readonly HashSet<string> _invincibleSources = new HashSet<string>();
+
+    public bool RegisterInvincibleSource(string sourceId)
+    {
+        if (string.IsNullOrEmpty(sourceId))
+            throw new System.ArgumentException("Invincible source id is empty.", nameof(sourceId));
+        return _invincibleSources.Add(sourceId);
+    }
+
+    public bool UnregisterInvincibleSource(string sourceId)
+    {
+        if (string.IsNullOrEmpty(sourceId))
+            throw new System.ArgumentException("Invincible source id is empty.", nameof(sourceId));
+        return _invincibleSources.Remove(sourceId);
+    }
 
     public bool CanRun(ICapability cap)
     {

@@ -59,9 +59,11 @@ public class TechManager : GameFrameworkComponent
             return false;
 
         if (techData.IsStackable)
-            return !InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId);
+            return !InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId)
+                   && !LogicTechEffectCommandService.HasPending(techId, owner.BuildingInstanceId);
 
-        return !InGameDataModel.HasUnlockedTech(techId);
+        return !InGameDataModel.HasUnlockedTech(techId)
+               && !LogicTechEffectCommandService.HasPending(techId);
     }
 
     public bool IsResearchOptionVisible(BuildingEntity owner, string techId)
@@ -80,13 +82,17 @@ public class TechManager : GameFrameworkComponent
             return false;
 
         if (techData.IsStackable)
-            return !InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId);
+            return !InGameDataModel.HasUnlockedTech(techId, owner.BuildingInstanceId)
+                   && !LogicTechEffectCommandService.HasPending(techId, owner.BuildingInstanceId);
 
-        return !InGameDataModel.HasUnlockedTech(techId);
+        return !InGameDataModel.HasUnlockedTech(techId)
+               && !LogicTechEffectCommandService.HasPending(techId);
     }
 
     public bool IsUpgradeOptionExecutable(BuildingEntity owner, string upgradeBuildingId, string techId)
     {
+        if (HasPendingInteraction(owner))
+            return false;
         var buildManager = RequireBuildManager();
         return IsUpgradeOptionVisible(owner, upgradeBuildingId, techId)
             && SatisfyUpgradeCondition(owner, upgradeBuildingId, techId)
@@ -95,6 +101,8 @@ public class TechManager : GameFrameworkComponent
 
     public bool IsResearchOptionExecutable(BuildingEntity owner, string techId)
     {
+        if (HasPendingInteraction(owner))
+            return false;
         return IsResearchOptionVisible(owner, techId)
             && SatisfyTechCondition(techId)
             && HasTechCost(techId);
@@ -139,6 +147,21 @@ public class TechManager : GameFrameworkComponent
         if (!IsUpgradeOptionExecutable(owner, upgradeBuildingId, techId))
             return false;
 
+        LogicInteractionCommandService.ScheduleForNextFrame(
+            LogicInteractionActionKind.UpgradeBuilding,
+            owner.LogicEntityId,
+            owner.BuildingInstanceId,
+            upgradeBuildingId,
+            techId);
+        return true;
+    }
+
+    internal bool ApplyScheduledUpgradeBuilding(BuildingEntity owner, string upgradeBuildingId, string techId)
+    {
+        EnsureInteractionApplyWindow();
+        if (!IsUpgradeOptionExecutableForApply(owner, upgradeBuildingId, techId))
+            return false;
+
         var techData = TechDataModel.GetTechData(techId);
         if (techData == null)
             return false;
@@ -149,15 +172,22 @@ public class TechManager : GameFrameworkComponent
 
         var buildManager = RequireBuildManager();
         int upgradeCost = buildManager.GetBuildingCost(upgradeBuildingData, owner.CurrentStronghold);
-        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -upgradeCost, true))
-            return false;
-
         bool built = buildManager.BuildBuildingForTechUpgrade(upgradeBuildingId, owner.CachedTransform.position, owner.BuildingInstanceId);
         if (!built)
             return false;
 
+        if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -upgradeCost, true))
+            throw new InvalidOperationException("Upgrade transaction lost its validated coin balance before commit.");
+
         InGameDataModel.RecordBuildingCostSpent(owner.BuildingInstanceId, upgradeCost);
-        InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
+        if (!InGameDataModel.UnlockTechInCurrentInteractionFrame(
+                techId,
+                techData.IsStackable,
+                owner.BuildingInstanceId,
+                owner.OwnerFactionID))
+        {
+            throw new InvalidOperationException($"Upgrade transaction failed to schedule tech '{techId}'.");
+        }
         owner.RequestDespawn();
         return true;
     }
@@ -165,6 +195,20 @@ public class TechManager : GameFrameworkComponent
     public bool ResearchTech(BuildingEntity owner, string techId)
     {
         if (!IsResearchOptionExecutable(owner, techId))
+            return false;
+
+        LogicInteractionCommandService.ScheduleForNextFrame(
+            LogicInteractionActionKind.ResearchTech,
+            owner.LogicEntityId,
+            owner.BuildingInstanceId,
+            techId);
+        return true;
+    }
+
+    internal bool ApplyScheduledResearchTech(BuildingEntity owner, string techId)
+    {
+        EnsureInteractionApplyWindow();
+        if (!IsResearchOptionExecutableForApply(owner, techId))
             return false;
 
         var techData = TechDataModel.GetTechData(techId);
@@ -175,7 +219,44 @@ public class TechManager : GameFrameworkComponent
         if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -techCost, true))
             return false;
 
-        return InGameDataModel.UnlockTech(techId, techData.IsStackable, owner.BuildingInstanceId, owner.OwnerFactionID);
+        if (!InGameDataModel.UnlockTechInCurrentInteractionFrame(
+                techId,
+                techData.IsStackable,
+                owner.BuildingInstanceId,
+                owner.OwnerFactionID))
+        {
+            throw new InvalidOperationException($"Research transaction failed to schedule tech '{techId}'.");
+        }
+
+        return true;
+    }
+
+    private bool IsUpgradeOptionExecutableForApply(BuildingEntity owner, string upgradeBuildingId, string techId)
+    {
+        var buildManager = RequireBuildManager();
+        return IsUpgradeOptionVisible(owner, upgradeBuildingId, techId)
+               && SatisfyUpgradeCondition(owner, upgradeBuildingId, techId)
+               && buildManager.HasBuildCost(upgradeBuildingId, owner);
+    }
+
+    private bool IsResearchOptionExecutableForApply(BuildingEntity owner, string techId)
+    {
+        return IsResearchOptionVisible(owner, techId)
+               && SatisfyTechCondition(techId)
+               && HasTechCost(techId);
+    }
+
+    private static bool HasPendingInteraction(BuildingEntity owner)
+    {
+        return owner != null
+               && LogicInteractionCommandService.IsActive
+               && LogicInteractionCommandService.HasPendingForTarget(owner.LogicEntityId);
+    }
+
+    private static void EnsureInteractionApplyWindow()
+    {
+        if (!LogicInteractionCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("Tech interaction mutation requires the logic interaction command apply window.");
     }
 
     public int RollbackTechsForBuilding(BuildingEntity owner)

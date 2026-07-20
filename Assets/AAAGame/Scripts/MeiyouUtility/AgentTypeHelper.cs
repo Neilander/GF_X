@@ -9,7 +9,7 @@ public class AgentTypeHelper : GameFrameworkComponent
     public const int SmallMovementTypeId = -1372625422;
     public const int LargeMovementTypeId = -334000983;
 
-    private readonly Dictionary<UnitSize, int> s_navAgentTypeIds = new Dictionary<UnitSize, int>(4)
+    private static readonly Dictionary<UnitSize, int> s_navAgentTypeIds = new Dictionary<UnitSize, int>(4)
     {
         { UnitSize.Small, SmallMovementTypeId },
         { UnitSize.Medium, MediumMovementTypeId },
@@ -18,6 +18,11 @@ public class AgentTypeHelper : GameFrameworkComponent
     };
 
     public int GetNavAgentTypeID(UnitSize unitSize)
+    {
+        return ResolveNavAgentTypeId(unitSize);
+    }
+
+    public static int ResolveNavAgentTypeId(UnitSize unitSize)
     {
         return s_navAgentTypeIds.TryGetValue(unitSize, out int agentTypeId)
             ? agentTypeId

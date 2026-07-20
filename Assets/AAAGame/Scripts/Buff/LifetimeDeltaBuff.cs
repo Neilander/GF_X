@@ -18,7 +18,7 @@ public sealed class LifetimeDeltaBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        Debug.Log($"[LifetimeDeltaBuff.OnAdd] 开始 host={hostEntity?.CharacterKey} id={hostEntity?.Id} delta={(float)m_Seconds}s");
+        Debug.Log($"[LifetimeDeltaBuff.OnAdd] 开始 host={hostEntity?.CharacterKey} id={hostEntity?.LogicEntityId.Value} delta={(float)m_Seconds}s");
 
         if (hostEntity == null)
         {

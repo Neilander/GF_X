@@ -27,7 +27,7 @@ public class TimedDeathBuff : BuffCallback
         if (buffData != null)
         {
             m_BaseDuration = buffData.duration;
-            Debug.Log($"[TimedDeathBuff.OnAdd] host={hostEntity?.CharacterKey} id={hostEntity?.Id} BaseDuration 锁定为 {(float)m_BaseDuration}s, remainingTime={buffData.remainingTime}s");
+            Debug.Log($"[TimedDeathBuff.OnAdd] host={hostEntity?.CharacterKey} id={hostEntity?.LogicEntityId.Value} BaseDuration 锁定为 {(float)m_BaseDuration}s, remainingTime={buffData.remainingTime}s");
         }
         else
         {
@@ -78,18 +78,18 @@ public class TimedDeathBuff : BuffCallback
         base.OnDurationEnd();
 
         // 保存宿主引用，供本次到期结算完整使用。
-        MAEntity currentHost = hostEntity;
+        IEntityContext currentHost = hostEntity;
 
         if (currentHost != null && currentHost.Alive)
         {
-            GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 定时死亡Buff生效，单位即将死亡");
+            GF.Log($"TimedDeathBuff[宿主ID={currentHost.LogicEntityId.Value}]: 定时死亡Buff生效，单位即将死亡");
 
-            if (currentHost is not SoldierEntity soldier)
-                throw new System.InvalidOperationException($"TimedDeathBuff.OnDurationEnd failed: host {currentHost.Id} is not a SoldierEntity.");
+            if (currentHost is IBuildingLogicContext)
+                throw new System.InvalidOperationException($"TimedDeathBuff.OnDurationEnd failed: host {currentHost.LogicEntityId.Value} is a building.");
 
-            GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位类型: {soldier.CharacterKey}, 当前生命值: {(float)soldier.HealthValue}");
-            DamageHelper.DoDirectDamage(soldier, soldier.HealthValue, HealthModifyType.reduce);
-            GF.Log($"TimedDeathBuff[宿主ID={currentHost.Id}]: 单位已死亡并提交销毁命令");
+            GF.Log($"TimedDeathBuff[宿主ID={currentHost.LogicEntityId.Value}]: 单位类型: {currentHost.CharacterKey}, 当前生命值: {(float)currentHost.HealthValue}");
+            DamageHelper.DoDirectDamage(currentHost, currentHost.HealthValue, HealthModifyType.reduce);
+            GF.Log($"TimedDeathBuff[宿主ID={currentHost.LogicEntityId.Value}]: 单位已死亡并提交销毁命令");
         }
     }
 

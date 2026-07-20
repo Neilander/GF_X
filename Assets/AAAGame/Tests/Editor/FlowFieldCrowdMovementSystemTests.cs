@@ -90,25 +90,25 @@ public class FlowFieldCrowdMovementSystemTests
 
         int refreshCountAfterBuild = FlowFieldCrowdMovementSystem.DeterministicWorldHashRefreshCount;
         Assert.Greater(refreshCountAfterBuild, 0);
-        ulong baseline = FlowFieldCrowdMovementSystem.CaptureDeterministicHash();
-        Assert.AreEqual(baseline, FlowFieldCrowdMovementSystem.CaptureDeterministicHash());
+        ulong baseline = FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash();
+        Assert.AreEqual(baseline, FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash());
         Assert.AreEqual(
             refreshCountAfterBuild,
             FlowFieldCrowdMovementSystem.DeterministicWorldHashRefreshCount,
             "Per-frame NavigationHash capture must reuse the committed world fingerprint.");
 
         FlowFieldCrowdMovementSystem.RegisterCircleObstacle(81001, new Vector3(2.5f, 0f, 1.5f), 0.4f);
-        ulong obstaclePending = FlowFieldCrowdMovementSystem.CaptureDeterministicHash();
+        ulong obstaclePending = FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash();
         Assert.AreNotEqual(baseline, obstaclePending, "Pending runtime obstacle state must affect NavigationHash.");
 
         FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
-        ulong rebuildProgress = FlowFieldCrowdMovementSystem.CaptureDeterministicHash();
+        ulong rebuildProgress = FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash();
         Assert.AreNotEqual(obstaclePending, rebuildProgress, "Runtime rebuild progress must affect NavigationHash.");
-        Assert.AreEqual(rebuildProgress, FlowFieldCrowdMovementSystem.CaptureDeterministicHash());
+        Assert.AreEqual(rebuildProgress, FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash());
     }
 
     [Test]
-    public void NavigationDeterministicCheckpoint_RefreshesOnlyAtFixedLogicFrameCadence()
+    public void NavigationDiagnosticCheckpoint_RefreshesOnlyAtFixedLogicFrameCadence()
     {
         const int width = 8;
         const int height = 4;
@@ -119,15 +119,15 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
         ProcessWorldBuildQueueUntilReady();
 
-        FlowFieldCrowdMovementSystem.WriteDeterministicCheckpointState(new LogicStateHasher(), 1);
-        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.DeterministicCheckpointRefreshCount);
+        FlowFieldCrowdMovementSystem.WriteDiagnosticCheckpointState(new LogicStateHasher(), 1);
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.DiagnosticCheckpointRefreshCount);
 
         for (ulong frame = 2; frame <= 30; frame++)
-            FlowFieldCrowdMovementSystem.WriteDeterministicCheckpointState(new LogicStateHasher(), frame);
-        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.DeterministicCheckpointRefreshCount);
+            FlowFieldCrowdMovementSystem.WriteDiagnosticCheckpointState(new LogicStateHasher(), frame);
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.DiagnosticCheckpointRefreshCount);
 
-        FlowFieldCrowdMovementSystem.WriteDeterministicCheckpointState(new LogicStateHasher(), 31);
-        Assert.AreEqual(2, FlowFieldCrowdMovementSystem.DeterministicCheckpointRefreshCount);
+        FlowFieldCrowdMovementSystem.WriteDiagnosticCheckpointState(new LogicStateHasher(), 31);
+        Assert.AreEqual(2, FlowFieldCrowdMovementSystem.DiagnosticCheckpointRefreshCount);
     }
 
     [Test]
@@ -147,13 +147,35 @@ public class FlowFieldCrowdMovementSystemTests
         var repeatedHasher = new LogicStateHasher();
         FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(repeatedHasher);
         Assert.AreEqual(baselineHasher.Hash, repeatedHasher.Hash);
-        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.DeterministicCheckpointRefreshCount);
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.DiagnosticCheckpointRefreshCount);
 
         FlowFieldCrowdMovementSystem.RegisterCircleObstacle(81002, new Vector3(2.5f, 0f, 1.5f), 0.4f);
         var changedHasher = new LogicStateHasher();
         FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(changedHasher);
         Assert.AreNotEqual(baselineHasher.Hash, changedHasher.Hash);
-        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.DeterministicCheckpointRefreshCount);
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.DiagnosticCheckpointRefreshCount);
+    }
+
+    [Test]
+    public void NavigationFrameDigest_TracksFixedObstaclePayloadWhenCountIsUnchanged()
+    {
+        const int width = 8;
+        const int height = 4;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacle(81003, new Vector3(2.5f, 0f, 1.5f), 0.4f);
+        var first = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(first);
+
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacle(81003, new Vector3(3.5f, 0f, 1.5f), 0.4f);
+        var second = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(second);
+
+        Assert.AreNotEqual(first.Hash, second.Hash);
     }
 
     [Test]
@@ -219,6 +241,114 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.LessOrEqual(
             FixVector2.SqrMagnitude(first).RawValue,
             (maxSpeed * maxSpeed).RawValue);
+    }
+
+    [Test]
+    public void FixedPrepare_大坐标目标落格不经过Float舍入()
+    {
+        const int worldOrigin = 16777216;
+        bool[] walkable = { true, true, true, true };
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            walkable.Length,
+            1,
+            1f,
+            new Vector3(worldOrigin, 0f, 0f),
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext ctx = CreateEntity(new Vector3(worldOrigin, 0f, 0f));
+        FixVector2 goal = new FixVector2((Fix64)worldOrigin + (Fix64)1.25f, (Fix64)0.5f);
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(ctx, goal, out string failureReason),
+            failureReason);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(ctx.LogicEntityId.Value, out int goalX, out int goalY));
+        Assert.AreEqual(1, goalX);
+        Assert.AreEqual(0, goalY);
+        Assert.AreNotEqual(
+            goal.x.RawValue,
+            ((Fix64)(float)goal.x).RawValue,
+            "测试前提失效：目标必须发生 float 精度丢失。 ");
+    }
+
+    [Test]
+    public void FixedSteering_同Tick同目标使用稳定预约分流()
+    {
+        const int width = 8;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext first = CreateEntity(new Vector3(1.5f, 0f, 1.5f));
+        SimEntityContext second = CreateEntity(new Vector3(1.5f, 0f, 2.5f));
+        FixVector2 sharedGoal = new FixVector2((Fix64)4.5f, (Fix64)2.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(10, 1f);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(first, sharedGoal, Fix64.One, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(second, sharedGoal, Fix64.One, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastFixedNavigationGoal(first.LogicEntityId.Value, out FixVector2 firstGoal));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastFixedNavigationGoal(second.LogicEntityId.Value, out FixVector2 secondGoal));
+
+        Assert.AreEqual(sharedGoal.x.RawValue, firstGoal.x.RawValue);
+        Assert.AreEqual(sharedGoal.y.RawValue, firstGoal.y.RawValue);
+        Assert.AreNotEqual(firstGoal, secondGoal);
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_同Cell不同FixedGoal必须不同()
+    {
+        bool[] walkable = { true, true, true, true, true, true };
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(6, 1, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 0.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+            ctx,
+            new FixVector2((Fix64)4.25f, (Fix64)0.5f),
+            Fix64.One,
+            out _));
+        var first = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(first);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+            ctx,
+            new FixVector2((Fix64)4.75f, (Fix64)0.5f),
+            Fix64.One,
+            out _));
+        var second = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(second);
+
+        Assert.AreNotEqual(first.Hash, second.Hash);
+    }
+
+    [Test]
+    public void DeterministicTile_不等待FloatShadow完成即可按固定队列提交()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        bool[] walkable = new bool[8 * 4];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(8, 4, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        FixVector2 goal = new FixVector2((Fix64)7.5f, (Fix64)1.5f);
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(ctx, goal, out string failureReason), failureReason);
+
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestDeterministicFlowTileCacheCount());
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(),
+            "低 quota 首次队列步骤只能提交整数权威 payload，float shadow 尚未完成。 ");
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0);
     }
 
     [Test]
@@ -3916,7 +4046,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 移动目标旧TileJob不会淹没当前活动Tile()
+    public void 移动目标切换不会制造旧TileJob洪峰且当前Tile保持前排()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 4;
@@ -3938,27 +4068,39 @@ public class FlowFieldCrowdMovementSystemTests
             CurrentTarget = target
         };
 
+        int initialQueueCount = -1;
+        int peakQueueCount = 0;
         for (int frame = 1; frame <= 24; frame++)
         {
             target.Position = new Vector3(79.5f - frame * 0.5f, 0f, 4.5f + frame % 7);
             FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
-            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+                chaser,
+                target.LogicFramePositionFixed(),
+                (Fix64)2,
+                out _));
+            int queueCount = FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount();
+            if (initialQueueCount < 0)
+                initialQueueCount = queueCount;
+            peakQueueCount = Mathf.Max(peakQueueCount, queueCount);
         }
 
-        int staleQueueCount = FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount();
-        Assert.Greater(staleQueueCount, 16, "测试必须先制造足够多的旧移动目标 pending tile jobs，才能覆盖真实日志里的队列淹没根因。");
+        Assert.Greater(initialQueueCount, 0, "长路径预提交必须生成活动 tile chain。 ");
+        Assert.AreEqual(initialQueueCount, peakQueueCount,
+            $"移动目标 pending SharedGoalField 未完成前不得同步晋升并在活动 tile chain 之外累积旧 job。initial={initialQueueCount}, peak={peakQueueCount}");
 
         target.Position = new Vector3(79.5f, 0f, 7.5f);
         FlowFieldCrowdMovementSystem.SetEditorTestClock(32, 3.2f);
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+            chaser,
+            target.LogicFramePositionFixed(),
+            (Fix64)2,
+            out _));
         FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
 
         int currentQueueIndex = FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildQueueIndex(chaser.LogicEntityId.Value);
-        int prunedQueueCount = FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount();
         Assert.LessOrEqual(currentQueueIndex, 8,
-            $"当前活动单位所需 tile 必须被提升到队列前部，不能被旧移动目标 tile jobs 淹没。index={currentQueueIndex}, before={staleQueueCount}, after={prunedQueueCount}");
-        Assert.Less(prunedQueueCount, staleQueueCount,
-            $"处理活动队列时应剪掉不再被任何活动 path 引用的旧移动目标 tile jobs。before={staleQueueCount}, after={prunedQueueCount}");
+            $"当前活动单位所需 tile 必须保持在有界队列前部。index={currentQueueIndex}, peak={peakQueueCount}");
     }
 
     [Test]

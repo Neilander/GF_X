@@ -16,7 +16,7 @@ public sealed class PercentRangeBonusBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || m_Percent == Fix64.Zero) return;
 
         Fix64 before = weapon.Range;
@@ -28,7 +28,7 @@ public sealed class PercentRangeBonusBuff : BuffCallback
     public override void OnRemove()
     {
         base.OnRemove();
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || m_Percent == Fix64.Zero) return;
 
         weapon.ApplyPercentAdd(WeaponStatId.Range, -m_Percent);

@@ -96,7 +96,7 @@ public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
         if (!targetOwner.CanBeSelected())
             return false;
 
-        if (targetOwner is BuildingEntity building && building.IsDisabled)
+        if (targetOwner is IBuildingLogicContext building && building.IsDisabled)
             return false;
 
         if (targetOwner is IEntityContext context && context.HasInvincibleBuff())
@@ -193,7 +193,7 @@ public static class LogicTargetSelectionQuery
                 continue;
             if (!target.CanBeSelected())
                 continue;
-            if (target is BuildingEntity building && building.IsDisabled)
+            if (target is IBuildingLogicContext building && building.IsDisabled)
                 continue;
             if (entity.HasInvincibleBuff())
                 continue;

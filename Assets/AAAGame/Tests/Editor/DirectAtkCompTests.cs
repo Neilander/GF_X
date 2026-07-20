@@ -307,6 +307,49 @@ atkComp.Attack((Fix64)999);
     }
 
     [Test]
+    public void 攻击表现通知只在起手和实际打断时各触发一次()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRange = 10f
+        };
+        targeting.Init(attacker);
+        attacker.TargetComp = targeting;
+        attacker.Brain = new ScriptedBrain { Attack = true };
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+        var weapon = MeleeWeapon(windUp: 0.3f, windDown: 0.3f, interval: 1f);
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("TestWeapon"));
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+        targeting.CurrentTarget = target;
+
+        int startedCount = 0;
+        int interruptedCount = 0;
+        Fix64 presentedWindUp = Fix64.Zero;
+        bool presentedTrail = false;
+        atkComp.AttackPresentationStarted += (windUp, playTrail) =>
+        {
+            startedCount++;
+            presentedWindUp = windUp;
+            presentedTrail = playTrail;
+        };
+        atkComp.AttackPresentationInterrupted += () => interruptedCount++;
+
+        StartAttack(atkComp);
+        atkComp.InterruptAttack(AttackInterruptReason.Forced);
+        atkComp.InterruptAttack(AttackInterruptReason.Forced);
+
+        Assert.AreEqual(1, startedCount);
+        Assert.AreEqual((Fix64)0.3f, presentedWindUp);
+        Assert.IsTrue(presentedTrail);
+        Assert.AreEqual(1, interruptedCount);
+    }
+
+    [Test]
     public void 移动攻击组件在前摇和后摇期间不锁移动()
     {
         var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);

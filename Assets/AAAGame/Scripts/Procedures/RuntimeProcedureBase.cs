@@ -44,6 +44,11 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         m_ProcedureOwner = procedureOwner;
         LogicFrameRuntime.Begin();
         LogicTimeControlService.BeginTimeline();
+        LogicInteractionHoldService.BeginTimeline();
+        LogicInteractionTargetStateService.BeginTimeline();
+        LogicInteractionCommandService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
         LogicObstacleCommandService.BeginTimeline();
         LogicEntityFrameSnapshotService.BeginTimeline();
@@ -101,8 +106,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         GF.Entity.HideAllLoadedEntities();
         LogicObstacleCommandService.EndTimeline();
         LogicEntityLifecycleService.EndTimeline();
+        LogicTechEffectCommandService.EndTimeline();
+        LogicInteractionCommandService.EndTimeline();
+        LogicInteractionTargetStateService.EndTimeline();
         MAEntityLogicFrameSystem.EndTimeline();
         LogicEntityFrameSnapshotService.EndTimeline();
+        LogicPhaseCommandService.EndTimeline();
+        LogicInteractionHoldService.EndTimeline();
         LogicTimeControlService.EndTimeline();
         LogicFrameRuntime.End();
         base.OnLeave(procedureOwner, isShutdown);
@@ -231,6 +241,12 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicEntityLifecycleService.BoundViewCount,
                 LogicEntityLifecycleService.ActiveEntityCount,
                 LogicEntityIdAllocator.LastAllocatedValue);
+            LogicEntityLifecycleService.DeactivateAllForShutdown();
+            LogicInteractionHoldService.ResetForWorldTransition();
+            LogicInteractionTargetStateService.ResetForWorldTransition();
+            LogicInteractionCommandService.ResetForWorldTransition();
+            LogicPhaseCommandService.ResetForWorldTransition();
+            LogicTechEffectCommandService.ResetForWorldTransition();
             LogicObstacleCommandService.ResetForWorldTransition();
             GF.Entity.HideAllLoadingEntities();
             HideRuntimeEntitiesExceptLevel();
@@ -321,6 +337,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                     LogicReplayRuntime.EndRecording();
                 }
                 LogicTimeControlService.ResetFrameTimelinePreservingPauses();
+                LogicInteractionHoldService.ResetFrameTimeline();
+                LogicInteractionCommandService.ResetFrameTimeline();
+                LogicPhaseCommandService.ResetFrameTimeline();
+                LogicTechEffectCommandService.ResetFrameTimeline();
                 LogicEntityLifecycleService.ResetFrameTimelinePreservingEntities();
                 LogicObstacleCommandService.ResetFrameTimelinePreservingCommands();
                 m_LogicTimelineRestartPending = false;
@@ -357,6 +377,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             {
                 LogicTimeControlService.BeginFrame(frame);
                 LogicInputFrame inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
+                LogicInteractionHoldService.ProcessFrame(inputFrame);
+                LogicPhaseCommandService.ApplyFrame(frame);
+                LogicInteractionCommandService.ApplyFrame(frame);
+                LogicTechEffectCommandService.ApplyFrame(frame);
                 LogicEntityLifecycleService.ApplyFrame(frame);
                 LogicObstacleCommandService.ApplyFrame(frame);
                 LogicFrameRuntime.Tick(frame);

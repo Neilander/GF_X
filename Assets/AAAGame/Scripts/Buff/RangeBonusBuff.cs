@@ -14,7 +14,7 @@ public sealed class RangeBonusBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || m_Bonus == Fix64.Zero)
             return;
 
@@ -27,7 +27,7 @@ public sealed class RangeBonusBuff : BuffCallback
     public override void OnRemove()
     {
         base.OnRemove();
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || m_Bonus == Fix64.Zero)
             return;
 

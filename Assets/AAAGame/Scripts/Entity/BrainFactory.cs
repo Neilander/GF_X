@@ -4,7 +4,7 @@ using UnityGameFramework.Runtime;
 
 public static class BrainFactory
 {
-    public static IControlBrain Create(BrainType tp, MAEntity entity, EntityParams p)
+    public static IControlBrain Create(BrainType tp, IEntityContext entity, EntityParams p)
     {
         switch (tp)
         {

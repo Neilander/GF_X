@@ -16,12 +16,12 @@ public abstract class BuffCallback
     /// <summary>
     /// 宿主实体
     /// </summary>
-    protected MAEntity hostEntity;
+    protected IEntityContext hostEntity;
     
     /// <summary>
     /// 初始化
     /// </summary>
-    public virtual void Initialize(BuffData data, MAEntity entity)
+    public virtual void Initialize(BuffData data, IEntityContext entity)
     {
         buffData = data;
         hostEntity = entity;
@@ -33,7 +33,8 @@ public abstract class BuffCallback
     public virtual void OnUpdate(Fix64 deltaTime) { }
     public virtual void OnDurationEnd() { }
     public virtual void OnHostDead() { }
-    public virtual void OnKill(MAEntity target) { }
+    public virtual void OnKill(IEntityContext target) { }
+    public virtual void OnHealed(Fix64 amount) { }
     public virtual void OnAttackStarted(IEntityContext target) { }
     public virtual void OnAttackCompleted(IEntityContext target) { }
     public virtual void OnAttackInterrupted(AttackInterruptReason reason, IEntityContext target) { }
@@ -78,7 +79,7 @@ public static class CriticalDamageUtility
     private const string BaseCriticalDamageRateKey = "BaseCriticalDamageRate";
     private const float DefaultBaseCriticalDamageRate = 50f;
 
-    public static Fix64 ApplyCriticalDamage(MAEntity attacker, Fix64 baseDamage)
+    public static Fix64 ApplyCriticalDamage(IEntityContext attacker, Fix64 baseDamage)
     {
         if (attacker == null)
             throw new InvalidOperationException("CriticalDamageUtility.ApplyCriticalDamage failed: attacker is null.");
@@ -125,8 +126,7 @@ public sealed class HealOnOutgoingDamageBuff : BuffCallback
         if (m_HealPerHit <= Fix64.Zero)
             return baseDamage;
 
-        if (hostEntity is GeneralCreature creature)
-            creature.Heal(m_HealPerHit);
+        hostEntity?.Heal(m_HealPerHit);
 
         return baseDamage;
     }
@@ -151,7 +151,7 @@ public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
         if (m_PushLevel <= Fix64.Zero)
             return baseDamage;
 
-        if (hostEntity == null || target is not MAEntity targetEntity || targetEntity.durationMoveEffectComp == null)
+        if (hostEntity == null || target is not IEntityContext targetEntity || targetEntity.DurationMoveEffectComp == null)
             return baseDamage;
 
         FixVector2 direction = LogicEntityFrameSnapshotService.GetRequiredPosition(targetEntity)
@@ -169,8 +169,8 @@ public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
         Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
         FixVector2 speedFixed = direction * (worldDistance / duration);
 
-        targetEntity.atkComp?.InterruptAttack(AttackInterruptReason.Displacement);
-        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
+        targetEntity.AtkComp?.InterruptAttack(AttackInterruptReason.Displacement);
+        targetEntity.DurationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
         return baseDamage;
     }
 }
@@ -189,7 +189,7 @@ public sealed class PercentAttackBonusBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || m_Percent == Fix64.Zero)
             return;
 
@@ -204,7 +204,7 @@ public sealed class PercentAttackBonusBuff : BuffCallback
         if (!m_Applied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon != null)
             weapon.ApplyPercentAdd(WeaponStatId.Atk, -m_AppliedPercentAdd);
 
@@ -225,8 +225,7 @@ public sealed class RevertibleMoveSpeedBonusBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Bonus == Fix64.Zero)
             return;
 
@@ -237,8 +236,7 @@ public sealed class RevertibleMoveSpeedBonusBuff : BuffCallback
     public override void OnRemove()
     {
         base.OnRemove();
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Modifier == null)
             return;
 
@@ -337,10 +335,10 @@ public sealed class HighHealthTargetCriticalBuff : BuffCallback
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (!(target is GeneralCreature creature) || creature.CreaturePropertyManager == null)
+        if (target is not IEntityContext creature || creature.CreatureProperties == null)
             return baseDamage;
 
-        Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 max = creature.CreatureProperties.GetProperty(CreatureMainProperty.Health);
         if (max <= Fix64.Zero)
             return baseDamage;
 
@@ -398,7 +396,7 @@ public sealed class AmmoDepletedDeathBuff : BuffCallback, ILogicDeterministicSta
         if (hostEntity == null || !hostEntity.Alive)
             return;
 
-        var weaponComp = hostEntity.weaponComp;
+        var weaponComp = hostEntity.WeaponComp;
         if (weaponComp == null || !weaponComp.HasAmmunition || weaponComp.CurrentAmmo > 0)
         {
             m_Timer = Fix64.Zero;
@@ -493,10 +491,10 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogi
         if (m_AttackLocked)
             return;
 
-        if (hostEntity == null || hostEntity.atkComp == null)
+        if (hostEntity == null || hostEntity.AtkComp == null)
             throw new InvalidOperationException($"NearbyEnemyAttackLockBuff.LockAttack failed: missing atkComp. host={hostEntity?.CharacterKey}.");
 
-        hostEntity.LockComp(hostEntity.atkComp, this);
+        hostEntity.LockComp(hostEntity.AtkComp, this);
         m_AttackLocked = true;
     }
 
@@ -505,10 +503,10 @@ public sealed class NearbyEnemyAttackLockBuff : BuffCallback, ICapability, ILogi
         if (!m_AttackLocked)
             return;
 
-        if (hostEntity == null || hostEntity.atkComp == null)
+        if (hostEntity == null || hostEntity.AtkComp == null)
             throw new InvalidOperationException("NearbyEnemyAttackLockBuff.UnlockAttack failed: hostEntity or atkComp is null.");
 
-        hostEntity.ResumeComp(hostEntity.atkComp, this);
+        hostEntity.ResumeComp(hostEntity.AtkComp, this);
         m_AttackLocked = false;
     }
 
@@ -622,7 +620,7 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         if (hostEntity == null)
             throw new InvalidOperationException("LateRiderChargeBuff.TryEnterCharge failed: hostEntity is null.");
 
-        IEntityContext target = hostEntity.targetComp?.CurrentTarget;
+        IEntityContext target = hostEntity.TargetComp?.CurrentTarget;
         if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(hostEntity, target))
             return;
 
@@ -640,7 +638,7 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         if (hostEntity == null)
             throw new InvalidOperationException("LateRiderChargeBuff.UpdateActiveCharge failed: hostEntity is null.");
 
-        if (hostEntity.atkComp != null && hostEntity.atkComp.IsAttacking)
+        if (hostEntity.AtkComp != null && hostEntity.AtkComp.IsAttacking)
             return;
 
         if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(hostEntity, m_ChargeTarget))
@@ -649,13 +647,13 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
             return;
         }
 
-        if (hostEntity.targetComp?.CurrentTarget != m_ChargeTarget)
+        if (hostEntity.TargetComp?.CurrentTarget != m_ChargeTarget)
         {
             ExitCharge(true);
             return;
         }
 
-        if (!hostEntity.CanRun(hostEntity.moveComp) || !hostEntity.CanRun(hostEntity.atkComp))
+        if (!hostEntity.CanRun(hostEntity.MoveComp) || !hostEntity.CanRun(hostEntity.AtkComp))
             ExitCharge(true);
     }
 
@@ -683,8 +681,7 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         if (m_MoveSpeedBonus == Fix64.Zero)
             return;
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null)
             throw new InvalidOperationException($"LateRiderChargeBuff.ApplyMoveBonus failed: missing property manager. host={hostEntity?.CharacterKey}.");
 
@@ -698,8 +695,7 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         if (!m_MoveApplied)
             return;
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_MoveModifier == null)
             throw new InvalidOperationException($"LateRiderChargeBuff.RemoveMoveBonus failed: missing property manager or modifier. host={hostEntity?.CharacterKey}.");
 
@@ -713,7 +709,7 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         if (m_AttackBonus == Fix64.Zero)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null)
             throw new InvalidOperationException($"LateRiderChargeBuff.ApplyAttackBonus failed: missing weapon. host={hostEntity?.CharacterKey}.");
 
@@ -726,7 +722,7 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         if (!m_AttackApplied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null)
             throw new InvalidOperationException($"LateRiderChargeBuff.RemoveAttackBonus failed: missing weapon. host={hostEntity?.CharacterKey}.");
 

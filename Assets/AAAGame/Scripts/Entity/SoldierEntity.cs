@@ -16,6 +16,7 @@ public partial class SoldierEntity : MAEntity
     public BrainType BrainType { get; private set; }
     public string SourceStrongholdId { get; private set; }
     private MinimapReportComponent m_MinimapReportComponent;
+    private bool m_PhaseEventsSubscribed;
 
     public override void ChangeSide(SideType newSide)
     {
@@ -49,7 +50,6 @@ public partial class SoldierEntity : MAEntity
             else if (ep.BrainType == BrainType.Player)
                 Log.Error("Player SoldierEntity missing spawn position in EntityParams. CharacterKey={0}", CharacterKey);
 
-            SetBrain(BrainFactory.Create(ep.BrainType, this, ep));
             ConfigureTargetingModeForSpawn();
             ApplyDefendPhaseSpawnParams(ep);
         }
@@ -73,12 +73,18 @@ public partial class SoldierEntity : MAEntity
 
     private void SubscribePhaseEvents()
     {
+        if (m_PhaseEventsSubscribed)
+            throw new System.InvalidOperationException($"SoldierEntity.SubscribePhaseEvents failed: entity {LogicEntityId.Value} is already subscribed.");
         GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
+        m_PhaseEventsSubscribed = true;
     }
 
     private void UnsubscribePhaseEvents()
     {
+        if (!m_PhaseEventsSubscribed)
+            return;
         GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
+        m_PhaseEventsSubscribed = false;
     }
 
     private void OnPhaseChanged(object sender, GameEventArgs e)

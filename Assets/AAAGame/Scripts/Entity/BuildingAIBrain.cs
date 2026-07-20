@@ -21,7 +21,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
         if (self == null || !self.Alive)
             return;
 
-        if (self is BuildingEntity building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
+        if (self is IBuildingLogicContext building && (building.HasPermanentNoAttackCapability || building.IsPhaseProtected))
             return;
 
         if (self.WeaponComp == null || self.WeaponComp.Data == null || self.WeaponComp.Data.Atk <= Fix64.Zero)

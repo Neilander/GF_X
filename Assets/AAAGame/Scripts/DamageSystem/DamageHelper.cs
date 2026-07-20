@@ -397,13 +397,10 @@ public static class HealingWeaponEffect
             return;
         if (!WeaponTargetRules.IsValidHealTarget(healer, target, requireDamaged: false))
             return;
-        if (!(target is GeneralCreature creature))
-            throw new System.InvalidOperationException($"HealingWeaponEffect.HealSingle failed: target is not GeneralCreature. healer={healer.CharacterKey}, target={target.CharacterKey}.");
-
         if (LogicDamageEventService.IsCollecting)
             LogicDamageEventService.SubmitHeal(healer, target, amount);
         else
-            creature.Heal(amount);
+            target.Heal(amount);
     }
 
     private static IEnumerable<IEntityContext> CollectAlliesInCircle(IEntityContext healer, FixVector2 center, Fix64 radius, IEntityContext excludedTarget)
@@ -467,7 +464,7 @@ public static class WeaponTargetRules
         {
             if (target.IsDestroyed() || !target.Alive)
                 return false;
-            if (target is HeroEntity se && se.IsGhostState)
+            if (target is IHeroLogicContext se && se.IsGhostState)
                 return false;
         }
 

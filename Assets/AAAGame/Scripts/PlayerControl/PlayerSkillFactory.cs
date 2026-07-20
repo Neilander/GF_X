@@ -10,7 +10,7 @@ public class PlayerSkillFactory : SkillCompFactory
     public List<ActiveSkillSO> skills;
     [Header("被动技能")]
     public List<PassiveSkillSO> passiveSkills;
-    public override ISkillComp CreateSkillComp(MAEntity gmo)
+    public override ISkillComp CreateSkillComp(IEntityContext gmo)
     {
         if (gmo is not ISkillCompHost host)
             throw new System.InvalidOperationException($"PlayerSkillFactory requires ISkillCompHost. entity={gmo?.GetType().Name}");
@@ -27,7 +27,7 @@ public class PlayerSkillFactory : SkillCompFactory
 
 public abstract class SkillCompFactory : ScriptableObject
 {
-    public abstract ISkillComp CreateSkillComp(MAEntity gmo);
+    public abstract ISkillComp CreateSkillComp(IEntityContext gmo);
     public static LoadAssetCallbacks SkillFactoryCallBack = new LoadAssetCallbacks(
-        (assetName,  asset, duration,  userData)=> (asset as SkillCompFactory)?.CreateSkillComp(userData as MAEntity));
+        (assetName,  asset, duration,  userData)=> (asset as SkillCompFactory)?.CreateSkillComp(userData as IEntityContext));
 }

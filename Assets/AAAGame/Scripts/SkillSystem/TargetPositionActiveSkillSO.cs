@@ -4,7 +4,7 @@ using UnityEngine;
 
 public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
 {
-    protected override SkillInfo CreateSkillInfo(MAEntity body)
+    protected override SkillInfo CreateSkillInfo(IEntityContext body)
     {
         return new TargetPositionSkillInfo
         {
@@ -12,7 +12,7 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
             currentIndex = 0,
             isFinished = false,
             selectTargets = new List<ISelectable>(),
-            selectPos = body.transform.position
+            selectPos = body.Position
         };
     }
 
@@ -33,7 +33,9 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
         base.SetupNewAction(info, actionIndex);
         if (info.currentInfo is PositionSelectActionInfo posSelectInfo)
         {
-            posSelectInfo.centerTrans = info.entity.transform;
+            if (info.entity is not MAEntity positionSelectionView)
+                throw new InvalidOperationException($"TargetPositionActiveSkillSO requires a bound MAEntity presenter. entity={info.entity.LogicEntityId.Value}.");
+            posSelectInfo.centerTrans = positionSelectionView.transform;
             posSelectInfo.radius = GetCastDistanceWorldOrFallback();
             posSelectInfo.selectScale = GetSelectionScaleOrFallback();
         }
@@ -59,7 +61,7 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
         }
     }
 
-    protected abstract void ApplyAtPosition(MAEntity caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets);
+    protected abstract void ApplyAtPosition(IEntityContext caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets);
 
     private static void CapturePositionSelection(SkillInfo info)
     {

@@ -394,33 +394,81 @@ public class InGameDataModel : DataModelBase
 
     public static bool UnlockTech(string techId, bool isStackable, string buildingContextKey, int ownerFactionId = EntitySideHelper.PlayerFactionId)
     {
+        return TryScheduleTechUnlock(techId, isStackable, buildingContextKey, ownerFactionId, false);
+    }
+
+    public static bool UnlockTechInCurrentInteractionFrame(
+        string techId,
+        bool isStackable,
+        string buildingContextKey,
+        int ownerFactionId = EntitySideHelper.PlayerFactionId)
+    {
+        if (!LogicInteractionCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("Current-frame tech unlock requires the interaction command apply window.");
+
+        return TryScheduleTechUnlock(techId, isStackable, buildingContextKey, ownerFactionId, true);
+    }
+
+    private static bool TryScheduleTechUnlock(
+        string techId,
+        bool isStackable,
+        string buildingContextKey,
+        int ownerFactionId,
+        bool currentInteractionFrame)
+    {
         if (string.IsNullOrWhiteSpace(techId) || string.IsNullOrWhiteSpace(buildingContextKey))
             return false;
 
         var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
-        if (!dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) || owners == null)
-        {
-            owners = new HashSet<string>();
-            dataModel.m_TechOwnerContextsById[techId] = owners;
-        }
+        dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners);
 
-        if (owners.Contains(buildingContextKey))
+        if (owners != null && owners.Contains(buildingContextKey))
+            return false;
+        if (LogicTechEffectCommandService.HasPending(techId, buildingContextKey))
             return false;
 
         // stackable 表示全局可叠加（可由多个建筑实例同时拥有同一 tech）。
-        if (owners.Count > 0 && !isStackable)
+        if (!isStackable && ((owners != null && owners.Count > 0) || LogicTechEffectCommandService.HasPending(techId)))
             return false;
 
-        owners.Add(buildingContextKey);
-
-        dataModel.EnsureUnlockedTechIdCached(techId);
-
-        var techData = TechDataModel.GetTechData(techId);
-        if (techData != null && techData.ScopeType == TechScopeType.Skill)
-            SkillRuntimeDataModel.LearnOrUpgradeFromTech(techData);
-
-        GF.Event.Fire(dataModel, TechUnlockedEventArgs.Create(techId, ownerFactionId, buildingContextKey));
+        if (currentInteractionFrame)
+        {
+            LogicTechEffectCommandService.ScheduleForCurrentInteractionFrame(
+                techId,
+                isStackable,
+                ownerFactionId,
+                buildingContextKey);
+        }
+        else
+        {
+            LogicTechEffectCommandService.ScheduleForNextFrame(
+                techId,
+                isStackable,
+                ownerFactionId,
+                buildingContextKey);
+        }
         return true;
+    }
+
+    public static void ApplyScheduledTechUnlock(LogicTechEffectCommand command)
+    {
+        if (!LogicTechEffectCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("InGameDataModel.ApplyScheduledTechUnlock requires the logic tech command apply window.");
+
+        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        if (!dataModel.m_TechOwnerContextsById.TryGetValue(command.TechId, out var owners) || owners == null)
+        {
+            owners = new HashSet<string>();
+            dataModel.m_TechOwnerContextsById[command.TechId] = owners;
+        }
+        if (owners.Contains(command.SourceBuildingInstanceId))
+            throw new InvalidOperationException($"Tech '{command.TechId}' is already owned by '{command.SourceBuildingInstanceId}'.");
+        if (owners.Count > 0 && !command.IsStackable)
+            throw new InvalidOperationException($"Non-stackable tech '{command.TechId}' already has an owner.");
+
+        owners.Add(command.SourceBuildingInstanceId);
+
+        dataModel.EnsureUnlockedTechIdCached(command.TechId);
     }
 
     public static bool ReduceTechStack(string techId, string buildingContextKey, int amount = 1)
@@ -471,6 +519,54 @@ public class InGameDataModel : DataModelBase
             var techIds = new List<string>(UnlockedTechIds);
             if (techIds.Remove(techId))
                 UnlockedTechIds = techIds.ToArray();
+        }
+    }
+
+    public static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        InGameDataModel dataModel = GetModel()
+                                    ?? throw new InvalidOperationException("InGameDataModel deterministic state requires an active model.");
+        hasher.Add(0x494E47414D454441UL);
+        for (int type = 0; type <= (int)IngameValueType.MaxSupply; type++)
+        {
+            var valueType = (IngameValueType)type;
+            hasher.Add(type);
+            hasher.Add(dataModel.m_IngameValue != null && dataModel.m_IngameValue.TryGetValue(valueType, out int value) ? value : 0);
+        }
+
+        var techIds = new List<string>(dataModel.m_TechOwnerContextsById.Keys);
+        techIds.Sort(StringComparer.Ordinal);
+        hasher.Add(techIds.Count);
+        for (int i = 0; i < techIds.Count; i++)
+        {
+            string techId = techIds[i];
+            hasher.Add(techId);
+            HashSet<string> ownerSet = dataModel.m_TechOwnerContextsById[techId];
+            if (ownerSet == null)
+                throw new InvalidOperationException($"Tech owner set is null. techId='{techId}'.");
+            var owners = new List<string>(ownerSet);
+            owners.Sort(StringComparer.Ordinal);
+            hasher.Add(owners.Count);
+            for (int ownerIndex = 0; ownerIndex < owners.Count; ownerIndex++)
+                hasher.Add(owners[ownerIndex]);
+        }
+
+        AddSortedStringIntDictionary(hasher, dataModel.m_ProductionBuildingCoinReservesByInstanceId);
+        AddSortedStringIntDictionary(hasher, dataModel.m_BuildingCostSpentByInstanceId);
+    }
+
+    private static void AddSortedStringIntDictionary(LogicStateHasher hasher, Dictionary<string, int> values)
+    {
+        var keys = new List<string>(values.Keys);
+        keys.Sort(StringComparer.Ordinal);
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            hasher.Add(keys[i]);
+            hasher.Add(values[keys[i]]);
         }
     }
 
@@ -593,34 +689,23 @@ public class InGameDataModel : DataModelBase
 
     private void SubscribeSupplyTrackingEvents()
     {
-        if (m_SupplyEventsSubscribed || GF.Event == null)
+        if (m_SupplyEventsSubscribed)
             return;
 
-        GF.Event.Subscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccessForSupply);
-        GF.Event.Subscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityCompleteForSupply);
+        EntityRegistry.Changed += OnLogicEntityRegistryChangedForSupply;
         m_SupplyEventsSubscribed = true;
     }
 
     private void UnsubscribeSupplyTrackingEvents()
     {
-        if (!m_SupplyEventsSubscribed || GF.Event == null)
+        if (!m_SupplyEventsSubscribed)
             return;
 
-        GF.Event.Unsubscribe(ShowEntitySuccessEventArgs.EventId, OnShowEntitySuccessForSupply);
-        GF.Event.Unsubscribe(HideEntityCompleteEventArgs.EventId, OnHideEntityCompleteForSupply);
+        EntityRegistry.Changed -= OnLogicEntityRegistryChangedForSupply;
         m_SupplyEventsSubscribed = false;
     }
 
-    private void OnShowEntitySuccessForSupply(object sender, GameEventArgs e)
-    {
-        var args = e as ShowEntitySuccessEventArgs;
-        if (args?.Entity?.Logic is not MAEntity)
-            return;
-
-        RefreshCurrentSupplyFromFriendlyUnitsInternal(true);
-    }
-
-    private void OnHideEntityCompleteForSupply(object sender, GameEventArgs e)
+    private void OnLogicEntityRegistryChangedForSupply()
     {
         RefreshCurrentSupplyFromFriendlyUnitsInternal(true);
     }
@@ -639,10 +724,8 @@ public class InGameDataModel : DataModelBase
         long total = 0;
         for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
         {
-            if (EntityRegistry.AllEntities[i] is not MAEntity entity)
-                continue;
-
-            if (entity is BuildingEntity)
+            IEntityContext entity = EntityRegistry.AllEntities[i];
+            if (entity == null || entity is IBuildingLogicContext)
                 continue;
 
             if (!entity.Alive || entity.Side != SideType.PlayerSide)
@@ -659,7 +742,7 @@ public class InGameDataModel : DataModelBase
         return (int)total;
     }
 
-    private static bool TryGetEntitySupply(MAEntity entity, out int supply)
+    private static bool TryGetEntitySupply(IEntityContext entity, out int supply)
     {
         supply = 0;
         if (entity == null || entity.CharacterData == null)

@@ -13,6 +13,7 @@ public class BuildManager : GameFrameworkComponent
     private HashSet<Archetype> m_PlayerUnlockedBaseArchesCache;
     private bool m_IsSubscribedTechUnlocked;
     private bool m_IsSubscribedEntityFactionChanged;
+    private bool m_IsSubscribedInteractionCommands;
 
     // 默认给前 3 个选项分配交互按键；更多选项仍走鼠标长按触发。
     private readonly InputKey[] OptionalOptionKeys =
@@ -113,6 +114,12 @@ public class BuildManager : GameFrameworkComponent
 
     public bool IsConstructOptionExecutable(BuildingEntity owner, string buildBuildingId)
     {
+        if (owner != null
+            && LogicInteractionCommandService.IsActive
+            && LogicInteractionCommandService.HasPendingForTarget(owner.LogicEntityId))
+        {
+            return false;
+        }
         if (!IsConstructOptionVisible(owner, buildBuildingId))
             return false;
 
@@ -125,6 +132,17 @@ public class BuildManager : GameFrameworkComponent
         if (owner == null || !IsConstructOptionExecutable(owner, buildBuildingId))
             return false;
 
+        LogicInteractionCommandService.ScheduleForNextFrame(
+            LogicInteractionActionKind.ConstructBuilding,
+            owner.LogicEntityId,
+            owner.BuildingInstanceId,
+            buildBuildingId);
+        return true;
+    }
+
+    private bool ApplyScheduledConstructBuilding(BuildingEntity owner, string buildBuildingId)
+    {
+        EnsureInteractionApplyWindow();
         bool built = BuildBuildingInternal(
             buildBuildingId,
             owner.CachedTransform.position,
@@ -217,6 +235,12 @@ public class BuildManager : GameFrameworkComponent
         if (owner.buildingData.Type == BuilType.Base)
             return false;
 
+        if (LogicInteractionCommandService.IsActive
+            && LogicInteractionCommandService.HasPendingForTarget(owner.LogicEntityId))
+        {
+            return false;
+        }
+
         return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
     }
 
@@ -247,6 +271,19 @@ public class BuildManager : GameFrameworkComponent
         if (!CanRecycleBuilding(owner))
             return false;
 
+        LogicInteractionCommandService.ScheduleForNextFrame(
+            LogicInteractionActionKind.RecycleBuilding,
+            owner.LogicEntityId,
+            owner.BuildingInstanceId);
+        return true;
+    }
+
+    private bool ApplyScheduledRecycleBuilding(BuildingEntity owner)
+    {
+        EnsureInteractionApplyWindow();
+        if (!CanRecycleBuildingForApply(owner))
+            return false;
+
         string lv0BuildingId = ResolveLv0BuildingId(owner.buildingData.Type);
         if (string.IsNullOrWhiteSpace(lv0BuildingId))
             return false;
@@ -254,10 +291,6 @@ public class BuildManager : GameFrameworkComponent
         Vector3 position = owner.CachedTransform.position;
         string buildingInstanceId = owner.BuildingInstanceId;
         int refund = CalculateRecycleRefund(owner);
-
-        GameEntry.GetComponent<TechManager>()?.RollbackTechsForBuilding(owner);
-        GameEntry.GetComponent<GlobalBuffManager>()?.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionID);
-        OnBuildingDemolished(owner);
 
         int entityId = BuildBuildingInternal(
             lv0BuildingId,
@@ -269,6 +302,9 @@ public class BuildManager : GameFrameworkComponent
         if (entityId <= 0)
             return false;
 
+        GameEntry.GetComponent<TechManager>()?.RollbackTechsForBuilding(owner);
+        GameEntry.GetComponent<GlobalBuffManager>()?.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionID);
+        OnBuildingDemolished(owner);
         InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
         owner.RequestDespawn();
         RewardManager.HandleBuildingRecycleReward(position, refund);
@@ -378,10 +414,6 @@ public class BuildManager : GameFrameworkComponent
             int actualCost = GetBuildingCost(buildingData, stronghold);
             if (!HasBuildCost(buildingData, stronghold))
                 return 0;
-
-            if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, -actualCost, true))
-                return 0;
-
             consumedCost = actualCost;
         }
 
@@ -389,30 +421,34 @@ public class BuildManager : GameFrameworkComponent
             ? LogicPersistentIdAllocator.AllocateBuildingInstanceId()
             : buildingInstanceId;
 
-        if (buildingData.Type == BuilType.Prod)
-        {
-            InGameDataModel.EnsureProductionBuildingCoinReserves(resolvedBuildingInstanceId, initialCoinReserves);
-        }
-
         int previousBaseLevel = ResolveExistingBaseLevel(buildingData, ownerFactionId, resolvedBuildingInstanceId);
 
         int entityId = MAEntityFactory.ShowBuilding(
             buildingData,
             position,
             resolvedBuildingInstanceId,
+            ownerFactionId,
+            0,
             isGameEndConditionBuilding,
             isNavigationStaticBaked,
             enableConstructionEscape);
 
         if (entityId > 0)
         {
+            if (consumeCoins && !InGameDataModel.TryModifyValue(IngameValueType.Coin, -consumedCost, true))
+                throw new InvalidOperationException("Build transaction lost its validated coin balance before commit.");
+
+            if (buildingData.Type == BuilType.Prod)
+                InGameDataModel.EnsureProductionBuildingCoinReserves(resolvedBuildingInstanceId, initialCoinReserves);
+
             if (consumeCoins)
                 InGameDataModel.RecordBuildingCostSpent(resolvedBuildingInstanceId, consumedCost);
 
             TryGrantBaseSupplyCapacity(buildingData, ownerFactionId, previousBaseLevel);
         }
 
-        m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId, ownerFactionId);
+        if (entityId > 0)
+            m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId, ownerFactionId);
         return entityId;
     }
 
@@ -630,18 +666,22 @@ public class BuildManager : GameFrameworkComponent
     protected override void Awake()
     {
         base.Awake();
+        TrySubscribeInteractionCommands();
         TrySubscribeTechUnlockedEvent();
         TrySubscribeEntityFactionChangedEvent();
     }
 
     private void Start()
     {
+        TrySubscribeInteractionCommands();
         TrySubscribeTechUnlockedEvent();
         TrySubscribeEntityFactionChangedEvent();
     }
 
     private void Update()
     {
+        if (!m_IsSubscribedInteractionCommands)
+            TrySubscribeInteractionCommands();
         if (!m_IsSubscribedTechUnlocked)
             TrySubscribeTechUnlockedEvent();
         if (!m_IsSubscribedEntityFactionChanged)
@@ -650,13 +690,93 @@ public class BuildManager : GameFrameworkComponent
 
     private void OnDestroy()
     {
+        if (m_IsSubscribedInteractionCommands)
+            LogicInteractionCommandService.CommandApplying -= OnInteractionCommandApplying;
         if (m_IsSubscribedTechUnlocked && GF.Event != null)
             GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
         if (m_IsSubscribedEntityFactionChanged && GF.Event != null)
             GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
 
+        m_IsSubscribedInteractionCommands = false;
         m_IsSubscribedTechUnlocked = false;
         m_IsSubscribedEntityFactionChanged = false;
+    }
+
+    private void TrySubscribeInteractionCommands()
+    {
+        if (m_IsSubscribedInteractionCommands)
+            return;
+
+        LogicInteractionCommandService.CommandApplying += OnInteractionCommandApplying;
+        m_IsSubscribedInteractionCommands = true;
+    }
+
+    private void OnInteractionCommandApplying(LogicInteractionCommand command)
+    {
+        EnsureInteractionApplyWindow();
+        if (!EntityRegistry.TryGet(command.TargetEntityId, out IEntityContext context))
+        {
+            throw new InvalidOperationException(
+                $"Interaction command target is not registered. entity={command.TargetEntityId.Value}, sequence={command.Sequence}.");
+        }
+
+        BuildingEntity owner = context as BuildingEntity
+                               ?? throw new InvalidOperationException($"Interaction command target is not a building. entity={command.TargetEntityId.Value}.");
+        if (!string.Equals(owner.BuildingInstanceId, command.TargetBuildingInstanceId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Interaction command target identity mismatch. entity={command.TargetEntityId.Value}, expected={command.TargetBuildingInstanceId}, actual={owner.BuildingInstanceId}.");
+        }
+
+        bool applied;
+        switch (command.ActionKind)
+        {
+            case LogicInteractionActionKind.ConstructBuilding:
+                applied = ApplyScheduledConstructBuilding(owner, command.PrimaryId);
+                break;
+            case LogicInteractionActionKind.UpgradeBuilding:
+            {
+                TechManager techManager = GameEntry.GetComponent<TechManager>()
+                                          ?? throw new InvalidOperationException("TechManager is unavailable while applying an upgrade interaction.");
+                applied = techManager.ApplyScheduledUpgradeBuilding(owner, command.PrimaryId, command.SecondaryId);
+                break;
+            }
+            case LogicInteractionActionKind.ResearchTech:
+            {
+                TechManager techManager = GameEntry.GetComponent<TechManager>()
+                                          ?? throw new InvalidOperationException("TechManager is unavailable while applying a research interaction.");
+                applied = techManager.ApplyScheduledResearchTech(owner, command.PrimaryId);
+                break;
+            }
+            case LogicInteractionActionKind.RecycleBuilding:
+                applied = ApplyScheduledRecycleBuilding(owner);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(command.ActionKind), command.ActionKind, "Unknown interaction action kind.");
+        }
+
+        if (!applied)
+        {
+            throw new InvalidOperationException(
+                $"Interaction command failed during its effective frame. sequence={command.Sequence}, action={command.ActionKind}, entity={command.TargetEntityId.Value}.");
+        }
+    }
+
+    private static bool CanRecycleBuildingForApply(BuildingEntity owner)
+    {
+        if (owner == null || owner.buildingData == null)
+            return false;
+        if (owner.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+            return false;
+        if (owner.buildingData.Lv <= 0 || owner.buildingData.Type == BuilType.Base)
+            return false;
+        return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
+    }
+
+    private static void EnsureInteractionApplyWindow()
+    {
+        if (!LogicInteractionCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("Building interaction mutation requires the logic interaction command apply window.");
     }
 
     private void OnTechUnlocked(object sender, GameFramework.Event.GameEventArgs e)

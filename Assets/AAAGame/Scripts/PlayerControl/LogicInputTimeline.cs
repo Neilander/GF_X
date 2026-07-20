@@ -16,6 +16,9 @@ public enum LogicInputButton
     Skill4 = 8,
     Skill5 = 9,
     SkillConfirm = 10,
+    Build1 = 11,
+    Build2 = 12,
+    Build3 = 13,
 }
 
 public enum RawInputEventKind
@@ -138,7 +141,7 @@ public sealed class LogicInputFrame
 
 public sealed class LogicInputTimeline
 {
-    public const int ButtonCount = (int)LogicInputButton.SkillConfirm + 1;
+    public const int ButtonCount = (int)LogicInputButton.Build3 + 1;
 
     private readonly uint m_PlayerId;
     private readonly List<RawInputEvent> m_PendingEvents = new List<RawInputEvent>();

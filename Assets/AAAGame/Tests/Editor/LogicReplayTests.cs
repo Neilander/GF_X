@@ -11,6 +11,12 @@ public sealed class LogicReplayTests
             LogicObstacleCommandService.EndTimeline();
         if (LogicEntityLifecycleService.IsActive)
             LogicEntityLifecycleService.EndTimeline();
+        if (LogicInteractionCommandService.IsActive)
+            LogicInteractionCommandService.EndTimeline();
+        if (LogicTechEffectCommandService.IsActive)
+            LogicTechEffectCommandService.EndTimeline();
+        if (LogicPhaseCommandService.IsActive)
+            LogicPhaseCommandService.EndTimeline();
         if (LogicTimeControlService.IsActive)
             LogicTimeControlService.EndTimeline();
 
@@ -26,6 +32,12 @@ public sealed class LogicReplayTests
             LogicObstacleCommandService.EndTimeline();
         if (LogicEntityLifecycleService.IsActive)
             LogicEntityLifecycleService.EndTimeline();
+        if (LogicInteractionCommandService.IsActive)
+            LogicInteractionCommandService.EndTimeline();
+        if (LogicTechEffectCommandService.IsActive)
+            LogicTechEffectCommandService.EndTimeline();
+        if (LogicPhaseCommandService.IsActive)
+            LogicPhaseCommandService.EndTimeline();
         if (LogicTimeControlService.IsActive)
             LogicTimeControlService.EndTimeline();
     }
@@ -112,10 +124,22 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void Recorder_CapturesInitialLifecycleAndObstacleCommandHistory()
+    public void Recorder_CapturesInitialPhaseTechLifecycleAndObstacleCommandHistory()
     {
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
+        LogicInteractionCommandService.BeginTimeline();
+        LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
         LogicObstacleCommandService.BeginTimeline();
+        LogicPhaseCommand phaseCommand = LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.BuildBeforeInvade);
+        LogicTechEffectCommand techCommand = LogicTechEffectCommandService.ScheduleForNextFrame("Tech_Test", false, 0, "building-1");
+        LogicInteractionCommand interactionCommand = LogicInteractionCommandService.ScheduleForNextFrame(
+            LogicInteractionActionKind.UpgradeBuilding,
+            new LogicEntityId(10),
+            "building-1",
+            "Building_Test_Lv2",
+            "Tech_Test");
         LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn();
         LogicObstacleCommandService.ScheduleBoxForNextFrame(
             101,
@@ -126,6 +150,15 @@ public sealed class LogicReplayTests
         recorder.Begin();
         LogicReplayLog log = recorder.End();
 
+        Assert.AreEqual(1, log.PhaseCommands.Count);
+        Assert.AreEqual(phaseCommand.Sequence, log.PhaseCommands[0].Sequence);
+        Assert.AreEqual(GamePhase.BuildBeforeInvade, log.PhaseCommands[0].Phase);
+        Assert.AreEqual(1, log.TechEffectCommands.Count);
+        Assert.AreEqual(techCommand.Sequence, log.TechEffectCommands[0].Sequence);
+        Assert.AreEqual("Tech_Test", log.TechEffectCommands[0].TechId);
+        Assert.AreEqual(1, log.InteractionCommands.Count);
+        Assert.AreEqual(interactionCommand.Sequence, log.InteractionCommands[0].Sequence);
+        Assert.AreEqual(LogicInteractionActionKind.UpgradeBuilding, log.InteractionCommands[0].ActionKind);
         Assert.AreEqual(1, log.LifecycleCommands.Count);
         Assert.AreEqual(entityId, log.LifecycleCommands[0].EntityId);
         Assert.AreEqual(1, log.ObstacleCommands.Count);

@@ -10,7 +10,7 @@ public class OnKillHealBuff : BuffCallback
     /// <summary>当前生命值回复百分比（例如 50 表示回复 50% 最大生命值）</summary>
     private float _curHpPercent = 3f;
 
-    public override void Initialize(BuffData data, MAEntity entity)
+    public override void Initialize(BuffData data, IEntityContext entity)
     {
         base.Initialize(data, entity);
     }
@@ -72,41 +72,40 @@ public class OnKillHealBuff : BuffCallback
     /// <summary>
     /// 宿主击杀目标时调用
     /// </summary>
-    public override void OnKill(MAEntity target)
+    public override void OnKill(IEntityContext target)
     {
         base.OnKill(target);
         
-        GF.Log($"OnKillHealBuff[宿主ID={hostEntity?.Id}]: 开始处理击杀回复，目标ID={target?.Id}");
+        GF.Log($"OnKillHealBuff[宿主ID={hostEntity?.LogicEntityId.Value}]: 开始处理击杀回复，目标ID={target?.LogicEntityId.Value}");
         
         // 获取属性管理器（通过转换为GeneralCreature获取）
-        GeneralCreature creature = hostEntity as GeneralCreature;
-        if (creature == null)
+        if (hostEntity == null)
         {
-            GF.LogError($"OnKillHealBuff[宿主ID={hostEntity?.Id}]: 宿主不是GeneralCreature类型");
+            GF.LogError("OnKillHealBuff: 宿主为空");
             return;
         }
-        
-        CreaturePropertyManager propertyManager = creature.CreaturePropertyManager;
+
+        CreaturePropertyManager propertyManager = hostEntity.CreatureProperties;
         if (propertyManager == null)
         {
-            GF.LogError($"OnKillHealBuff[宿主ID={hostEntity?.Id}]: 找不到属性管理器");
+            GF.LogError($"OnKillHealBuff[宿主ID={hostEntity.LogicEntityId.Value}]: 找不到属性管理器");
             return;
         }
         
         // 获取最大生命值
         Fix64 maxHealth = propertyManager.GetProperty(CreatureMainProperty.Health);
-        GF.Log($"OnKillHealBuff[宿主ID={hostEntity?.Id}]: 当前最大生命值: {maxHealth}");
+        GF.Log($"OnKillHealBuff[宿主ID={hostEntity.LogicEntityId.Value}]: 当前最大生命值: {maxHealth}");
 
         float curPct = ResolveCurHealPercent();
         Fix64 healAmount = maxHealth * (curPct / 100f);
-        GF.Log($"OnKillHealBuff[宿主ID={hostEntity?.Id}]: 回复生命值 +{healAmount} ({curPct}% 最大生命值)");
+        GF.Log($"OnKillHealBuff[宿主ID={hostEntity.LogicEntityId.Value}]: 回复生命值 +{healAmount} ({curPct}% 最大生命值)");
 
         // 回复当前生命值（统一走 Heal，自带 Fire 事件，UI 自动刷新）
-        creature.Heal(healAmount);
+        hostEntity.Heal(healAmount);
 
-        Fix64 currentHealth = creature.HealthValue;
+        Fix64 currentHealth = hostEntity.HealthValue;
         Fix64 afterMaxHealth = propertyManager.GetProperty(CreatureMainProperty.Health);
-        GF.Log($"OnKillHealBuff[宿主ID={hostEntity?.Id}]: 击杀回复完成，最大生命值: {afterMaxHealth}, 当前生命值: {currentHealth}");
+        GF.Log($"OnKillHealBuff[宿主ID={hostEntity.LogicEntityId.Value}]: 击杀回复完成，最大生命值: {afterMaxHealth}, 当前生命值: {currentHealth}");
     }
     
     /// <summary>

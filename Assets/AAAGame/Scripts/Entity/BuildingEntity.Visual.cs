@@ -74,7 +74,7 @@ public partial class BuildingEntity
 
     private void SubscribeLv0PhaseVisibilityEvents()
     {
-        if (_lv0PhaseVisibilityEventSubscribed || !IsLv0Building())
+        if (_lv0PhaseVisibilityEventSubscribed)
             return;
 
         GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChangedForVisibility);
@@ -106,6 +106,7 @@ public partial class BuildingEntity
 
     internal void RefreshLv0PhaseVisibility()
     {
+        RefreshPhaseHealthBarPresentation();
         if (!IsLv0Building())
         {
             UpdateMinimapReportVisibility();
@@ -114,6 +115,28 @@ public partial class BuildingEntity
 
         SetPhaseVisibility(IsVisibleInCurrentPhase());
         UpdateMinimapReportVisibility();
+    }
+
+    private void RefreshPhaseHealthBarPresentation()
+    {
+        bool suppress = InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase))
+                        || IsLv0Building();
+        SetHealthBarSuppressedByBuff(suppress);
+        if (suppress)
+        {
+            HealthBarComp.Remove(Id);
+            return;
+        }
+        if (IsHealthBarSuppressedByBuff || GameObject.Find($"HealthBar_{Id}") != null)
+            return;
+
+        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        HealthBarComp.Create(
+            Id,
+            transform,
+            (float)HealthValue,
+            (float)max,
+            OwnerFactionID == EntitySideHelper.PlayerFactionId);
     }
 
     private bool IsVisibleInCurrentPhase()

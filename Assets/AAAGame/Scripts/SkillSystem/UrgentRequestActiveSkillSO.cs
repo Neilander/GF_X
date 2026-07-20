@@ -7,7 +7,7 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
 {
     private const float SpawnMinDistance = 0.7f;
 
-    protected override void ApplyAtPosition(MAEntity caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets)
+    protected override void ApplyAtPosition(IEntityContext caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets)
     {
         if (caster == null)
             throw new InvalidOperationException($"UrgentRequest caster missing. skillId={skillId}");

@@ -58,6 +58,28 @@ public class LogicDamageEventServiceTests
     }
 
     [Test]
+    public void HealTargetUsingPureLogicContext_IsQueuedUntilDamageResolve()
+    {
+        var healer = CreateEntity(1, 10);
+        var target = CreateEntity(2, 10);
+        target.TakeDamage((Fix64)6, HealthModifyType.reduce);
+
+        m_FrameAction.Action = () =>
+        {
+            LogicDamageEventService.BeginFrame(LogicFrameRuntime.CurrentFrame);
+            LogicDamageEventService.SubmitHeal(healer, target, (Fix64)3);
+            Assert.AreEqual((Fix64)4, target.HealthValue);
+            LogicDamageEventService.ApplyFrame(LogicFrameRuntime.CurrentFrame);
+        };
+
+        LogicFrameRuntime.Tick(1);
+
+        Assert.AreEqual((Fix64)7, target.HealthValue);
+        Assert.AreEqual(LogicHealthEventKind.Heal, LogicDamageEventService.LastOrderedEvents[0].Kind);
+        Assert.AreEqual(1, LogicDamageEventService.LastAppliedCount);
+    }
+
+    [Test]
     public void SameFrameDamage_IsSortedByStableIdentity_AndDeadTargetIsSkipped()
     {
         var firstAttacker = CreateEntity(1, 100);

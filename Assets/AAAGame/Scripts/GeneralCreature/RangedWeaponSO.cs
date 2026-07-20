@@ -32,6 +32,24 @@ public class RangedWeaponSO : BaseWeaponSO
             throw new System.InvalidOperationException("RangedWeaponSO.Execute failed: no logic projectile collection window is active.");
 
         ulong logicProjectileId = LogicProjectileService.Submit(attacker, target, weaponData);
+        Present(attacker, target, weaponData, logicProjectileId);
+    }
+
+    public void Present(
+        IEntityContext attacker,
+        IEntityContext target,
+        WeaponData weaponData,
+        ulong logicProjectileId)
+    {
+        if (attacker == null)
+            throw new System.ArgumentNullException(nameof(attacker));
+        if (target == null)
+            throw new System.ArgumentNullException(nameof(target));
+        if (weaponData == null)
+            throw new System.ArgumentNullException(nameof(weaponData));
+        if (logicProjectileId == 0)
+            throw new System.ArgumentOutOfRangeException(nameof(logicProjectileId));
+
         FixVector2 logicStart = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker);
 
         // 创建弹道参数

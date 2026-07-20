@@ -222,15 +222,21 @@ public class InteractionHost : MonoBehaviour
 
     public bool TryExecute(InputKey key)
     {
-        if (!_optionsByKey.TryGetValue(key, out var option) || option == null)
+        if (!CanExecute(key))
             return false;
 
-        if (!option.IsVisible() || !option.IsExecutable())
-            return false;
-
+        IInteractionOption option = _optionsByKey[key];
         option.Execute();
         GF.Event.Fire(this, InteractionOptionTriggeredEventArgs.Create(this, option));
         return true;
+    }
+
+    public bool CanExecute(InputKey key)
+    {
+        return _optionsByKey.TryGetValue(key, out IInteractionOption option)
+               && option != null
+               && option.IsVisible()
+               && option.IsExecutable();
     }
 
     public bool TryExecute(IInteractionOption option)

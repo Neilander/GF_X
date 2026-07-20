@@ -65,6 +65,7 @@ public static class LogicEntityLifecycleService
 
         LogicEntityIdAllocator.BeginTimeline();
         LogicPersistentIdAllocator.BeginTimeline();
+        LogicEntityStateStore.BeginTimeline();
         IsActive = true;
         IsApplyingFrame = false;
         s_LastSequence = 0;
@@ -97,11 +98,17 @@ public static class LogicEntityLifecycleService
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
         s_LastSequence = 0;
+        LogicEntityStateStore.EndTimeline();
         LogicEntityIdAllocator.EndTimeline();
         LogicPersistentIdAllocator.EndTimeline();
     }
 
     public static LogicEntityId RequestSpawn()
+    {
+        return RequestSpawn(LogicEntitySpawnDescriptor.CreateUnspecified());
+    }
+
+    public static LogicEntityId RequestSpawn(LogicEntitySpawnDescriptor descriptor)
     {
         EnsureActive();
         LogicEntityId entityId = LogicEntityIdAllocator.Allocate();
@@ -109,6 +116,7 @@ public static class LogicEntityLifecycleService
             throw new InvalidOperationException($"LogicEntityLifecycleService.RequestSpawn failed: duplicate entity id {entityId.Value}.");
 
         ulong effectiveFrame = checked(LogicTimeControlService.CurrentFrame + 1);
+        LogicEntityStateStore.Create(entityId, descriptor);
         s_SpawnFramesByEntityId.Add(entityId.Value, effectiveFrame);
         Record(LogicEntityLifecycleCommandKind.SpawnRequested, entityId, 0, effectiveFrame);
         return entityId;
@@ -136,6 +144,7 @@ public static class LogicEntityLifecycleService
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
         s_LastSequence = 0;
+        LogicEntityStateStore.ResetForWorldTransition();
 
         LogicEntityIdAllocator.EndTimeline();
         LogicPersistentIdAllocator.EndTimeline();
@@ -154,17 +163,24 @@ public static class LogicEntityLifecycleService
         if (viewEntityId <= 0)
             throw new ArgumentOutOfRangeException(nameof(viewEntityId), viewEntityId, "View entity id must be positive.");
 
-        ulong spawnFrame = s_SpawnFramesByEntityId[entityId.Value];
-        if (LogicTimeControlService.CurrentFrame >= spawnFrame)
-        {
-            throw new InvalidOperationException(
-                $"LogicEntityLifecycleService.BindView failed: view arrived after the spawn frame. entity={entityId.Value}, spawnFrame={spawnFrame}, currentFrame={LogicTimeControlService.CurrentFrame}.");
-        }
-
         if (!s_BoundViewIdsByEntityId.TryAdd(entityId.Value, viewEntityId))
             throw new InvalidOperationException($"LogicEntityLifecycleService.BindView failed: entity {entityId.Value} is already bound.");
+        LogicEntityStateStore.BindView(entityId, viewEntityId);
         if (view != null)
             s_BoundViewsByEntityId.Add(entityId.Value, view);
+
+        try
+        {
+            if (s_ActivatedEntityIds.Contains(entityId.Value))
+                view?.ActivateLogicParticipation(LogicTimeControlService.CurrentFrame);
+        }
+        catch
+        {
+            s_BoundViewIdsByEntityId.Remove(entityId.Value);
+            s_BoundViewsByEntityId.Remove(entityId.Value);
+            LogicEntityStateStore.UnbindView(entityId, viewEntityId);
+            throw;
+        }
 
         Record(LogicEntityLifecycleCommandKind.ViewBound, entityId, viewEntityId);
     }
@@ -181,11 +197,14 @@ public static class LogicEntityLifecycleService
             throw new InvalidOperationException(
                 $"LogicEntityLifecycleService.RequestDespawn failed: bound view mismatch. entity={entityId.Value}.");
         }
+        RequestDespawn(entityId);
+    }
+
+    public static void RequestDespawn(LogicEntityId entityId)
+    {
+        EnsureKnownEntity(entityId, nameof(RequestDespawn));
         if (!s_ActivatedEntityIds.Contains(entityId.Value))
-        {
-            throw new InvalidOperationException(
-                $"LogicEntityLifecycleService.RequestDespawn failed: entity {entityId.Value} is not active.");
-        }
+            throw new InvalidOperationException($"LogicEntityLifecycleService.RequestDespawn failed: entity {entityId.Value} is not active.");
         if (s_DespawnFramesByEntityId.ContainsKey(entityId.Value))
         {
             throw new InvalidOperationException(
@@ -194,7 +213,8 @@ public static class LogicEntityLifecycleService
 
         ulong effectiveFrame = checked(LogicTimeControlService.CurrentFrame + 1);
         s_DespawnFramesByEntityId.Add(entityId.Value, effectiveFrame);
-        Record(LogicEntityLifecycleCommandKind.DespawnRequested, entityId, view.Id, effectiveFrame);
+        int viewEntityId = s_BoundViewIdsByEntityId.TryGetValue(entityId.Value, out int boundId) ? boundId : 0;
+        Record(LogicEntityLifecycleCommandKind.DespawnRequested, entityId, viewEntityId, effectiveFrame);
     }
 
     public static void UnbindView(LogicEntityId entityId, int viewEntityId)
@@ -207,15 +227,15 @@ public static class LogicEntityLifecycleService
 
         s_BoundViewIdsByEntityId.Remove(entityId.Value);
         s_BoundViewsByEntityId.Remove(entityId.Value);
-        s_ActivatedEntityIds.Remove(entityId.Value);
-        s_SpawnFramesByEntityId.Remove(entityId.Value);
-        s_DespawnFramesByEntityId.Remove(entityId.Value);
-        s_RequestedEntityIds.Remove(entityId.Value);
+        LogicEntityStateStore.UnbindView(entityId, viewEntityId);
         Record(
             LogicEntityLifecycleCommandKind.ViewUnbound,
             entityId,
             viewEntityId,
             LogicTimeControlService.CurrentFrame);
+
+        if (!s_ActivatedEntityIds.Contains(entityId.Value))
+            RemoveDespawnedEntity(entityId);
     }
 
     public static void ApplyFrame(ulong frameId)
@@ -265,34 +285,31 @@ public static class LogicEntityLifecycleService
                 throw new InvalidOperationException(
                     $"LogicEntityLifecycleService.ApplyFrame failed: despawn entity is not active. entity={entityId}, effective={frameId}.");
             }
-            if (!s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) || view == null)
-            {
-                throw new InvalidOperationException(
-                    $"LogicEntityLifecycleService.ApplyFrame failed: despawn view is not ready. entity={entityId}, effective={frameId}.");
-            }
         }
 
         for (int i = 0; i < s_DueDespawnEntityIds.Count; i++)
         {
             int entityId = s_DueDespawnEntityIds[i];
-            MAEntity view = s_BoundViewsByEntityId[entityId];
-            view.DeactivateLogicParticipation();
+            var logicEntityId = new LogicEntityId(entityId);
+            LogicEntityState state = LogicEntityStateStore.GetRequired(logicEntityId);
+            state.DeactivateRuntime();
+            LogicEntityStateStore.CommitDespawn(logicEntityId);
             if (!s_ActivatedEntityIds.Remove(entityId))
             {
                 throw new InvalidOperationException(
                     $"LogicEntityLifecycleService.ApplyFrame failed: despawn activation state changed unexpectedly. entity={entityId}.");
             }
-            if (GF.Entity == null)
-                throw new InvalidOperationException("LogicEntityLifecycleService.ApplyFrame failed: GF.Entity is null while applying despawn commands.");
-            if (view.Entity == null)
-                throw new InvalidOperationException($"LogicEntityLifecycleService.ApplyFrame failed: despawn view has no framework entity. entity={entityId}.");
-
-            GF.Entity.HideEntity(view.Entity);
-            if (s_BoundViewIdsByEntityId.ContainsKey(entityId))
+            if (s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) && view != null)
             {
-                throw new InvalidOperationException(
-                    $"LogicEntityLifecycleService.ApplyFrame failed: hiding the despawn view did not unbind it. entity={entityId}.");
+                view.DeactivateLogicParticipation();
+                if (GF.Entity == null)
+                    throw new InvalidOperationException("LogicEntityLifecycleService.ApplyFrame failed: GF.Entity is null while applying despawn commands.");
+                if (view.Entity == null)
+                    throw new InvalidOperationException($"LogicEntityLifecycleService.ApplyFrame failed: despawn view has no framework entity. entity={entityId}.");
+                GF.Entity.HideEntity(view.Entity);
             }
+            else
+                RemoveDespawnedEntity(logicEntityId);
         }
 
         s_DueSpawnEntityIds.Clear();
@@ -313,18 +330,12 @@ public static class LogicEntityLifecycleService
         for (int i = 0; i < s_DueSpawnEntityIds.Count; i++)
         {
             int entityId = s_DueSpawnEntityIds[i];
-            if (!s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) || view == null)
-            {
-                throw new InvalidOperationException(
-                    $"LogicEntityLifecycleService.ApplyFrame failed: spawn view is not ready. entity={entityId}, effective={frameId}.");
-            }
-        }
-
-        for (int i = 0; i < s_DueSpawnEntityIds.Count; i++)
-        {
-            int entityId = s_DueSpawnEntityIds[i];
-            MAEntity view = s_BoundViewsByEntityId[entityId];
-            view.ActivateLogicParticipation(frameId);
+            var logicEntityId = new LogicEntityId(entityId);
+            LogicEntityStateStore.CommitSpawn(logicEntityId);
+            LogicEntityState state = LogicEntityStateStore.GetRequired(logicEntityId);
+            state.ActivateRuntime();
+            if (s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) && view != null)
+                view.ActivateLogicParticipation(frameId);
             s_ActivatedEntityIds.Add(entityId);
         }
     }
@@ -391,6 +402,10 @@ public static class LogicEntityLifecycleService
         entityIds.Sort();
         for (int i = entityIds.Count - 1; i >= 0; i--)
         {
+            var entityId = new LogicEntityId(entityIds[i]);
+            LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+            state.DeactivateRuntime(true);
+            LogicEntityStateStore.CommitDespawn(entityId);
             if (s_BoundViewsByEntityId.TryGetValue(entityIds[i], out MAEntity view) && view != null)
                 view.DeactivateLogicParticipation(true);
         }
@@ -409,6 +424,19 @@ public static class LogicEntityLifecycleService
         s_LastSequence = sequence;
         s_Commands.Add(command);
         CommandRecorded?.Invoke(command);
+    }
+
+    private static void RemoveDespawnedEntity(LogicEntityId entityId)
+    {
+        if (s_ActivatedEntityIds.Contains(entityId.Value))
+            throw new InvalidOperationException($"LogicEntityLifecycleService.RemoveDespawnedEntity failed: entity {entityId.Value} is still active.");
+        if (s_BoundViewIdsByEntityId.ContainsKey(entityId.Value))
+            throw new InvalidOperationException($"LogicEntityLifecycleService.RemoveDespawnedEntity failed: entity {entityId.Value} still has a bound view.");
+
+        s_SpawnFramesByEntityId.Remove(entityId.Value);
+        s_DespawnFramesByEntityId.Remove(entityId.Value);
+        s_RequestedEntityIds.Remove(entityId.Value);
+        LogicEntityStateStore.RemoveDespawned(entityId);
     }
 
     private static void EnsureKnownEntity(LogicEntityId entityId, string caller)

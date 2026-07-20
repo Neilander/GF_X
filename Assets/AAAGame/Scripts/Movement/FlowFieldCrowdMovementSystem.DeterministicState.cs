@@ -9,16 +9,18 @@ public static partial class FlowFieldCrowdMovementSystem
     private static ulong _deterministicHashCheckpointValue;
     private static ulong _committedWorldSetHash;
 
-    public static int DeterministicCheckpointRefreshCount { get; private set; }
+    public static int DiagnosticCheckpointRefreshCount { get; private set; }
 
-    public static ulong CaptureDeterministicHash()
+    // Full navigation diagnostics include authored Unity boundary and float shadow fields.
+    // This hash is useful for same-runtime investigation, but is not an authority replay hash.
+    public static ulong CaptureDiagnosticStateHash()
     {
         var hasher = new LogicStateHasher();
-        WriteDeterministicState(hasher);
+        WriteDiagnosticState(hasher);
         return hasher.Hash;
     }
 
-    public static void WriteDeterministicState(LogicStateHasher hasher)
+    public static void WriteDiagnosticState(LogicStateHasher hasher)
     {
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
@@ -40,7 +42,7 @@ public static partial class FlowFieldCrowdMovementSystem
         AddBottlenecks(hasher);
     }
 
-    public static void WriteDeterministicCheckpointState(LogicStateHasher hasher, ulong frame)
+    public static void WriteDiagnosticCheckpointState(LogicStateHasher hasher, ulong frame)
     {
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
@@ -51,9 +53,9 @@ public static partial class FlowFieldCrowdMovementSystem
             || frame < _deterministicHashCheckpointFrame
             || frame - _deterministicHashCheckpointFrame >= DeterministicHashCheckpointIntervalFrames)
         {
-            _deterministicHashCheckpointValue = CaptureDeterministicHash();
+            _deterministicHashCheckpointValue = CaptureDiagnosticStateHash();
             _deterministicHashCheckpointFrame = frame;
-            DeterministicCheckpointRefreshCount++;
+            DiagnosticCheckpointRefreshCount++;
         }
 
         hasher.Add(0x4E415643484B5054UL);
@@ -71,6 +73,11 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(0x4E41564652414D45UL);
         hasher.Add(_committedWorldSetHash);
         AddDeterministicCheckpointLiveState(hasher);
+        AddAuthorityWorldProgress(hasher);
+        AddAuthorityRuntimeObstacles(hasher);
+        AddAuthorityAgents(hasher);
+        AddAuthorityMovingTargetAnchors(hasher);
+        AddGoalReservations(hasher);
     }
 
     private static void ResetDeterministicHashCheckpoint()
@@ -78,7 +85,7 @@ public static partial class FlowFieldCrowdMovementSystem
         _deterministicHashCheckpointFrame = 0;
         _deterministicHashCheckpointValue = 0;
         _committedWorldSetHash = 0;
-        DeterministicCheckpointRefreshCount = 0;
+        DiagnosticCheckpointRefreshCount = 0;
     }
 
     private static void AddDeterministicCheckpointLiveState(LogicStateHasher hasher)
@@ -97,7 +104,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(CostStamps.Count);
         hasher.Add(SectorPathCache.Count);
         hasher.Add(SectorPortalAccessCache.Count);
-        hasher.Add(FlowTileCache.Count);
+        hasher.Add(DeterministicFlowTileCache.Count);
         hasher.Add(SharedGoalFields.Count);
         hasher.Add(FlowTileBuildQueue.Count);
         hasher.Add(SharedGoalFieldBuildQueue.Count);
@@ -122,6 +129,212 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(dirtyWorldCount);
         hasher.Add(worldBuildJobCount);
         hasher.Add(runtimeDirtyJobCount);
+    }
+
+    private static void AddAuthorityWorldProgress(LogicStateHasher hasher)
+    {
+        var keys = new List<int>(WorldStates.Keys);
+        keys.Sort();
+        hasher.Add(0x4E41564155544857UL);
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            WorldRuntimeState state = WorldStates[keys[i]];
+            if (state == null)
+                throw new InvalidOperationException($"Navigation authority digest encountered a null world state. agentType={keys[i]}.");
+
+            hasher.Add(keys[i]);
+            hasher.Add(state.IsDirty);
+            AddSortedInts(hasher, state.DirtyRuntimeObstacleSectors);
+            AddAuthorityWorldBuildProgress(hasher, state.BuildJob);
+            AddAuthorityRuntimeDirtyProgress(hasher, state.RuntimeDirtyJob);
+        }
+    }
+
+    private static void AddAuthorityWorldBuildProgress(LogicStateHasher hasher, WorldBuildJob job)
+    {
+        hasher.Add(job != null);
+        if (job == null)
+            return;
+
+        hasher.Add(job.AgentTypeId);
+        hasher.Add((int)job.Stage);
+        hasher.Add(job.RasterCursor);
+        hasher.Add(job.ObstacleCursor);
+        hasher.Add(job.ApplyingCircleObstacles);
+        hasher.Add(job.SectorCursor);
+        hasher.Add(job.CellCursor);
+        hasher.Add(job.IslandScanIndex);
+        hasher.Add(job.IslandCurrentId);
+        hasher.Add(job.IslandCurrentSize);
+        hasher.Add(job.IslandMainId);
+        hasher.Add(job.IslandMainSize);
+        hasher.Add(job.IslandBfsActive);
+        hasher.Add(job.IslandInitialized);
+        hasher.Add((int)job.PortalStage);
+        hasher.Add(job.PortalInitialized);
+        hasher.Add(job.PortalAddCursor);
+        hasher.Add(job.PortalTransitionCursor);
+        hasher.Add(job.PortalTransitionFromCursor);
+        hasher.Add(job.PortalTransitionIntegrationActive);
+        hasher.Add(job.PortalTransitionFromPortalId);
+        hasher.Add(job.PortalTransitionTargetLinkCount);
+        hasher.Add(job.WorkingWorld != null ? job.WorkingWorld.Version : 0);
+    }
+
+    private static void AddAuthorityRuntimeDirtyProgress(LogicStateHasher hasher, RuntimeDirtyRebuildJob job)
+    {
+        hasher.Add(job != null);
+        if (job == null)
+            return;
+
+        hasher.Add((int)job.Stage);
+        hasher.Add(job.CloneCellCursor);
+        hasher.Add(job.CloneSectorCursor);
+        hasher.Add(job.CloneShellInitialized);
+        hasher.Add(job.SectorCursor);
+        hasher.Add(job.ObstacleCursor);
+        hasher.Add(job.ApplyingCircleObstacles);
+        hasher.Add(job.IslandScanIndex);
+        hasher.Add(job.IslandCurrentId);
+        hasher.Add(job.IslandCurrentSize);
+        hasher.Add(job.IslandMainId);
+        hasher.Add(job.IslandMainSize);
+        hasher.Add(job.IslandBfsActive);
+        hasher.Add(job.IslandInitialized);
+        hasher.Add((int)job.PortalStage);
+        hasher.Add(job.PortalInitialized);
+        hasher.Add(job.PortalSectorCursor);
+        hasher.Add(job.PortalAddCursor);
+        hasher.Add(job.PortalTransitionCursor);
+        hasher.Add(job.PortalTransitionFromCursor);
+        hasher.Add(job.PortalTransitionIntegrationActive);
+        hasher.Add(job.PortalTransitionFromPortalId);
+        hasher.Add(job.PortalTransitionTargetLinkCount);
+        AddSortedInts(hasher, job.DirtySectors);
+        AddSortedInts(hasher, job.CostDirtySectors);
+        AddSortedInts(hasher, job.PortalTransitionDirtySectors);
+        hasher.Add(job.WorkingWorld != null ? job.WorkingWorld.Version : 0);
+    }
+
+    private static void AddAuthorityRuntimeObstacles(LogicStateHasher hasher)
+    {
+        var circleIds = new List<int>(CircleObstacles.Keys);
+        circleIds.Sort();
+        hasher.Add(0x4E4156415554484FUL);
+        hasher.Add(circleIds.Count);
+        for (int i = 0; i < circleIds.Count; i++)
+        {
+            CircleObstacle obstacle = CircleObstacles[circleIds[i]];
+            if (obstacle == null)
+                throw new InvalidOperationException($"Navigation authority digest encountered a null circle obstacle. id={circleIds[i]}.");
+            hasher.Add(obstacle.Id);
+            hasher.Add(obstacle.PositionFixed.x.RawValue);
+            hasher.Add(obstacle.PositionFixed.y.RawValue);
+            hasher.Add(obstacle.RadiusFixed.RawValue);
+        }
+
+        var boxIds = new List<int>(BoxObstacles.Keys);
+        boxIds.Sort();
+        hasher.Add(boxIds.Count);
+        for (int i = 0; i < boxIds.Count; i++)
+        {
+            BoxObstacle obstacle = BoxObstacles[boxIds[i]];
+            if (obstacle == null)
+                throw new InvalidOperationException($"Navigation authority digest encountered a null box obstacle. id={boxIds[i]}.");
+            hasher.Add(obstacle.Id);
+            hasher.Add(obstacle.CenterFixed.x.RawValue);
+            hasher.Add(obstacle.CenterFixed.y.RawValue);
+            hasher.Add(obstacle.HalfExtentsFixed.x.RawValue);
+            hasher.Add(obstacle.HalfExtentsFixed.y.RawValue);
+        }
+    }
+
+    private static void AddAuthorityAgents(LogicStateHasher hasher)
+    {
+        var ids = new List<int>(Agents.Keys);
+        ids.Sort();
+        hasher.Add(0x4E41564155544841UL);
+        hasher.Add(ids.Count);
+        for (int i = 0; i < ids.Count; i++)
+        {
+            AgentRuntimeData agent = Agents[ids[i]];
+            if (agent == null || agent.NavState == null)
+                throw new InvalidOperationException($"Navigation authority digest encountered an invalid agent. id={ids[i]}.");
+
+            AgentNavState nav = agent.NavState;
+            hasher.Add(agent.Id);
+            hasher.Add(agent.CharacterKey);
+            hasher.Add((int)agent.Side);
+            hasher.Add(agent.IgnoreAgentCollision);
+            hasher.Add(agent.IsLeader);
+            hasher.Add(agent.GroupId);
+            hasher.Add((int)agent.State);
+            hasher.Add(agent.AgentTypeId);
+            hasher.Add(agent.HasNavigationIntent);
+            hasher.Add(agent.PositionFixed.x.RawValue);
+            hasher.Add(agent.PositionFixed.y.RawValue);
+            hasher.Add(agent.RadiusFixed.RawValue);
+            hasher.Add(nav.CurrentSectorId);
+            AddVector2Int(hasher, nav.CurrentCell);
+            AddPathHandle(hasher, nav.PathHandle);
+            hasher.Add(nav.CurrentTileKeyHash);
+            hasher.Add(nav.ResolvedVelocityFrame);
+            hasher.Add((int)nav.LastMovementMode);
+            hasher.Add(nav.HasGoal);
+            hasher.Add(nav.LastGoalWorldFixed.x.RawValue);
+            hasher.Add(nav.LastGoalWorldFixed.y.RawValue);
+            hasher.Add(nav.StableGoalX);
+            hasher.Add(nav.StableGoalY);
+            hasher.Add(nav.StableGoalRawX);
+            hasher.Add(nav.StableGoalRawY);
+            hasher.Add(nav.StableGoalTargetId);
+            hasher.Add(nav.StableGoalWorldFixed.x.RawValue);
+            hasher.Add(nav.StableGoalWorldFixed.y.RawValue);
+            hasher.Add(nav.LastFixedFlowFrame);
+            hasher.Add(nav.LastFixedFlowVelocity.x.RawValue);
+            hasher.Add(nav.LastFixedFlowVelocity.y.RawValue);
+        }
+    }
+
+    private static void AddAuthorityMovingTargetAnchors(LogicStateHasher hasher)
+    {
+        var keys = new List<MovingTargetAnchorKey>(MovingTargetAnchors.Keys);
+        keys.Sort((left, right) =>
+        {
+            int result = left.TargetId.CompareTo(right.TargetId);
+            if (result != 0) return result;
+            result = left.AgentTypeId.CompareTo(right.AgentTypeId);
+            return result != 0 ? result : left.IslandId.CompareTo(right.IslandId);
+        });
+        hasher.Add(0x4E4156415554484DUL);
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            MovingTargetAnchor anchor = MovingTargetAnchors[keys[i]];
+            if (anchor == null)
+                throw new InvalidOperationException("Navigation authority digest encountered a null moving-target anchor.");
+            hasher.Add(anchor.Key.TargetId);
+            hasher.Add(anchor.Key.AgentTypeId);
+            hasher.Add(anchor.Key.IslandId);
+            hasher.Add(anchor.RawGoalX);
+            hasher.Add(anchor.RawGoalY);
+            hasher.Add(anchor.ActiveGoalX);
+            hasher.Add(anchor.ActiveGoalY);
+            hasher.Add(anchor.ActiveGoalSectorId);
+            hasher.Add(anchor.ActiveWorldVersion);
+            hasher.Add(anchor.ActiveGoalWorldFixed.x.RawValue);
+            hasher.Add(anchor.ActiveGoalWorldFixed.y.RawValue);
+            hasher.Add(anchor.PendingRawGoalX);
+            hasher.Add(anchor.PendingRawGoalY);
+            hasher.Add(anchor.PendingGoalX);
+            hasher.Add(anchor.PendingGoalY);
+            hasher.Add(anchor.PendingGoalSectorId);
+            hasher.Add(anchor.PendingWorldVersion);
+            hasher.Add(anchor.PendingGoalWorldFixed.x.RawValue);
+            hasher.Add(anchor.PendingGoalWorldFixed.y.RawValue);
+            hasher.Add(anchor.LastUsedFrame);
+        }
     }
 
     private static void AddWorldStates(LogicStateHasher hasher)

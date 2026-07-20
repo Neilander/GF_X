@@ -14,9 +14,9 @@ public class CharacterTargetingFactory : TargetingCompFactory
     [Tooltip("自己扫描到敌人时，把敌人广播给此半径内的同阵营友军。0 = 关掉广播。")]
     public float defaultAlertRadius = 5f;
 
-    public override ITargetingComp CreateTargetingComp(MAEntity gmo)
+    public override ITargetingComp CreateTargetingComp(IEntityContext gmo)
     {
-        ITargetingComp comp = WeaponTargetRules.IsHealingWeapon(gmo?.weaponComp?.Data?.Type ?? WeaponType.None)
+        ITargetingComp comp = WeaponTargetRules.IsHealingWeapon(gmo?.WeaponComp?.Data?.Type ?? WeaponType.None)
             ? new HealTargetingComp()
             : new CharacterTargetingComp();
 

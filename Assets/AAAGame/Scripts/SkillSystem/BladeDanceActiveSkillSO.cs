@@ -5,7 +5,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "BladeDanceActiveSkillSO", menuName = "Skills/Active/Blade Dance")]
 public sealed class BladeDanceActiveSkillSO : InstantActiveSkillSO
 {
-    protected override void ApplyInstant(MAEntity caster)
+    protected override void ApplyInstant(IEntityContext caster)
     {
         float duration = GetDurationSeconds();
         Fix64 attackSpeedPercent = GetValue(0);
@@ -15,7 +15,7 @@ public sealed class BladeDanceActiveSkillSO : InstantActiveSkillSO
         AddTimedBuff(caster, new AttackSpeedBonusBuff(attackSpeedPercent), duration);
     }
 
-    private void AddTimedBuff(MAEntity caster, BuffCallback module, float duration)
+    private void AddTimedBuff(IEntityContext caster, BuffCallback module, float duration)
     {
         if (caster == null || caster.BuffComp == null)
             throw new InvalidOperationException($"Active skill requires BuffComp. skillId={skillId}");

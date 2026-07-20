@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using AAAGame.Scripts.BuffSystem;
-using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -65,13 +64,13 @@ public class GlobalBuffManager : GameFrameworkComponent
     protected void Start()
     {
         TryInitializeScopeResolver();
-        TrySubscribeTechUnlockedEvent();
+        SubscribeTechEffectCommands();
     }
 
     public void PrepareRuntimeDependencies()
     {
         TryInitializeScopeResolver();
-        TrySubscribeTechUnlockedEvent();
+        SubscribeTechEffectCommands();
     }
 
     private void OnEnable()
@@ -90,13 +89,13 @@ public class GlobalBuffManager : GameFrameworkComponent
             return;
 
         TryInitializeScopeResolver();
-        TrySubscribeTechUnlockedEvent();
+        SubscribeTechEffectCommands();
     }
 
     protected  void OnDestroy()
     {
-        if (m_IsSubscribed && GF.Event != null)
-            GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+        if (m_IsSubscribed)
+            LogicTechEffectCommandService.EffectApplying -= OnTechEffectApplying;
 
         m_IsSubscribed = false;
     }
@@ -118,58 +117,60 @@ public class GlobalBuffManager : GameFrameworkComponent
         m_BuildingTechRuntimeEffect?.ClearRuntimeState();
     }
 
-    private void OnTechUnlocked(object sender, GameEventArgs e)
+    private void OnTechEffectApplying(LogicTechEffectCommand command)
     {
         if (!TryInitializeScopeResolver())
-            return;
+            throw new InvalidOperationException("GlobalBuffManager cannot apply a logic tech effect before TechScopeResolver is ready.");
+        if (!LogicTechEffectCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("GlobalBuffManager received a tech effect outside the logic command apply window.");
 
-        var args = (TechUnlockedEventArgs)e;
-        var techData = TechDataModel.GetTechData(args.TechId);
+        var techData = TechDataModel.GetTechData(command.TechId);
         if (techData == null)
         {
-            if (IsSyntheticRuntimeTechId(args.TechId))
+            if (IsSyntheticRuntimeTechId(command.TechId))
                 return;
 
-            Debug.LogWarning($"[GlobalBuffManager] 找不到 TechData, techId={args.TechId}");
-            return;
+            throw new InvalidOperationException($"GlobalBuffManager cannot find TechData for '{command.TechId}'.");
         }
 
         if (IsProductionBuildingLevelTech(techData))
         {
-            DebugLog($"忽略 Prod 建筑等级科技事件，效果由建筑生产 buff 按等级读取。techId={args.TechId}");
+            DebugLog($"忽略 Prod 建筑等级科技事件，效果由建筑生产 buff 按等级读取。techId={command.TechId}");
             return;
         }
 
         if (techData.ScopeType == TechScopeType.Skill)
         {
-            DebugLog($"忽略技能科技事件，效果由 SkillRuntimeDataModel 处理。techId={args.TechId}");
+            SkillRuntimeDataModel.LearnOrUpgradeFromTech(techData);
+            DebugLog($"忽略技能科技事件，效果由 SkillRuntimeDataModel 处理。techId={command.TechId}");
             return;
         }
 
-        var resolvedScope = m_TechScopeResolver.Resolve(techData, args.SourceBuildingInstanceId);
+        var resolvedScope = m_TechScopeResolver.Resolve(techData, command.SourceBuildingInstanceId);
         var runtimeEffect = GetBuildingTechRuntimeEffect();
         if (runtimeEffect.CanHandle(techData))
         {
             runtimeEffect.Activate(new TechEffectContext
             {
-                TechId = args.TechId,
-                OwnerFactionId = args.OwnerFactionId,
-                SourceBuildingInstanceId = args.SourceBuildingInstanceId,
+                TechId = command.TechId,
+                OwnerFactionId = command.OwnerFactionId,
+                SourceBuildingInstanceId = command.SourceBuildingInstanceId,
                 TechData = techData,
                 ResolvedScope = resolvedScope,
                 GlobalBuffManager = this,
             });
 
             DebugLog(
-                $"[GlobalBuffManager] 建筑科技运行时规则解锁: techId={args.TechId}, " +
-                $"ownerFactionId={args.OwnerFactionId}, " +
+                $"[GlobalBuffManager] 建筑科技运行时规则解锁: techId={command.TechId}, " +
+                $"ownerFactionId={command.OwnerFactionId}, " +
                 $"scopeType={techData.ScopeType}, " +
                 $"characterKeys=[{string.Join(",", resolvedScope.CharacterKeys)}], " +
                 $"unitTypes=[{string.Join(",", resolvedScope.UnitTypes)}]");
             return;
         }
 
-        Debug.LogWarning($"[GlobalBuffManager] 缺少 BuildingTechRuntimeEffectSO 运行时规则，techId={args.TechId}, scopeType={techData.ScopeType}");
+        throw new InvalidOperationException(
+            $"GlobalBuffManager has no runtime rule for tech '{command.TechId}', scopeType={techData.ScopeType}.");
     }
 
     private bool TryInitializeScopeResolver()
@@ -201,17 +202,13 @@ public class GlobalBuffManager : GameFrameworkComponent
         }
     }
 
-    private bool TrySubscribeTechUnlockedEvent()
+    private void SubscribeTechEffectCommands()
     {
         if (m_IsSubscribed)
-            return true;
+            return;
 
-        if (GF.Event == null)
-            return false;
-
-        GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+        LogicTechEffectCommandService.EffectApplying += OnTechEffectApplying;
         m_IsSubscribed = true;
-        return true;
     }
 
     public void RegisterUnitBuff(UnitType unitType, int ownerFactionId, string techId, TechEffectSO effect, TechData techData)

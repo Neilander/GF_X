@@ -7,7 +7,7 @@ public sealed class JustPassingByActiveSkillSO : TargetPositionActiveSkillSO
 {
     private const float RefreshDurationPaddingSeconds = 0.2f;
 
-    protected override void ApplyAtPosition(MAEntity caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets)
+    protected override void ApplyAtPosition(IEntityContext caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets)
     {
         float radius = GetAreaRangeWorld();
         Fix64 attackSpeedPercent = GetValue(0);
@@ -21,7 +21,7 @@ public sealed class JustPassingByActiveSkillSO : TargetPositionActiveSkillSO
             duration);
     }
 
-    private void AddCasterAreaBuff(MAEntity caster, BuffCallback module, float duration)
+    private void AddCasterAreaBuff(IEntityContext caster, BuffCallback module, float duration)
     {
         if (caster == null || caster.BuffComp == null)
             throw new InvalidOperationException($"Active area skill requires caster BuffComp. skillId={skillId}");

@@ -103,13 +103,16 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
 
     // ── Agent 注册 ──
 
-    public void RegisterAgent(MAEntity entity)
+    public void RegisterAgent(IEntityContext entity)
     {
+        if (entity == null)
+            throw new System.ArgumentNullException(nameof(entity));
+
         float radius = ResolveAgentRadius(entity);
         FlowFieldCrowdMovementSystem.RegisterAgent(entity, false, radius);
     }
 
-    public void UnregisterAgent(MAEntity entity)
+    public void UnregisterAgent(IEntityContext entity)
     {
         if (entity == null)
             throw new System.ArgumentNullException(nameof(entity));
@@ -117,7 +120,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.UnregisterAgent(entity.LogicEntityId.Value);
     }
 
-    public void UpdateAgentSide(MAEntity entity)
+    public void UpdateAgentSide(IEntityContext entity)
     {
         if (entity == null)
             throw new System.ArgumentNullException(nameof(entity));
@@ -125,7 +128,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.SetAgentSide(entity.LogicEntityId.Value, entity.Side);
     }
 
-    public void UpdateAgentPosition(MAEntity entity)
+    public void UpdateAgentPosition(IEntityContext entity)
     {
         if (entity == null)
             throw new System.ArgumentNullException(nameof(entity));
@@ -134,29 +137,25 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.UpdateAgent(entity, radius);
     }
 
-    private static float ResolveAgentRadius(MAEntity entity)
+    private static float ResolveAgentRadius(IEntityContext entity)
     {
         if (entity == null)
-            return 0.5f;
-
-        if (entity.CreaturePropertyManager != null)
+            throw new System.ArgumentNullException(nameof(entity));
+        if (entity.CreatureProperties == null)
         {
-            float configuredRadius = DistanceUnitConverter.ConvertToWorldFloat(
-                entity.GetProperty(CreatureMainProperty.CollisionRadius));
-            if (configuredRadius > 0.0001f)
-                return configuredRadius;
+            throw new System.InvalidOperationException(
+                $"GroupMoveManager.ResolveAgentRadius failed: entity {entity.LogicEntityId.Value} has no creature properties.");
         }
 
-        var cc = entity.GetComponent<CharacterController>();
-        if (cc != null)
+        float configuredRadius = DistanceUnitConverter.ConvertToWorldFloat(
+            entity.GetProperty(CreatureMainProperty.CollisionRadius));
+        if (configuredRadius <= 0.0001f)
         {
-            float scaleXZ = Mathf.Max(Mathf.Abs(entity.transform.lossyScale.x), Mathf.Abs(entity.transform.lossyScale.z));
-            float worldRadius = cc.radius * scaleXZ;
-            if (worldRadius > 0.0001f)
-                return worldRadius;
+            throw new System.InvalidOperationException(
+                $"GroupMoveManager.ResolveAgentRadius failed: entity {entity.LogicEntityId.Value} has invalid collision radius {configuredRadius}.");
         }
 
-        return 0.5f;
+        return configuredRadius;
     }
 
     // ── 障碍物注册 ──

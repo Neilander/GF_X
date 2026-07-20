@@ -14,8 +14,7 @@ public sealed class FixedMoveSpeedOverrideBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_TargetSpeed <= Fix64.Zero)
             return;
 
@@ -26,8 +25,7 @@ public sealed class FixedMoveSpeedOverrideBuff : BuffCallback
     public override void OnRemove()
     {
         base.OnRemove();
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Modifier == null)
             return;
 

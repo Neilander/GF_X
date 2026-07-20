@@ -18,7 +18,7 @@ public sealed class AttackSpeedBonusBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || m_Percent == Fix64.Zero)
             return;
 
@@ -38,7 +38,7 @@ public sealed class AttackSpeedBonusBuff : BuffCallback
         if (!m_Applied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || m_AppliedFactor == Fix64.Zero)
             return;
 

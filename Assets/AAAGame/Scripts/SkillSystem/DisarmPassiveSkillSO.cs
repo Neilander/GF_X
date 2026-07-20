@@ -3,12 +3,12 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "DisarmPassiveSkillSO", menuName = "Skills/Passive/Disarm")]
 public sealed class DisarmPassiveSkillSO : PassiveSkillSO
 {
-    public override void Apply(MAEntity owner)
+    public override void Apply(IEntityContext owner)
     {
         ReplaceBuff(owner, new SkillDisarmOnHitBuff(BuffId, GetValue(0), GetValue(1), GetDurationSeconds()));
     }
 
-    public override void Remove(MAEntity owner)
+    public override void Remove(IEntityContext owner)
     {
         RemoveBuff(owner);
     }

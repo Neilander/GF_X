@@ -30,6 +30,9 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _uiCancelAction;
     private InputAction _selectPositionAction;
     private InputAction _skillConfirmAction;
+    private InputAction _build1Action;
+    private InputAction _build2Action;
+    private InputAction _build3Action;
     private bool _gameplayCallbacksBound;
     private bool _inputTimestampCalibrated;
     private double _inputTimeToLogicRealtimeOffset;
@@ -64,6 +67,9 @@ public partial class InputManager : GameFrameworkComponent
         _uiCancelAction = actions.FindAction("UI/Cancel");
         _selectPositionAction = actions.FindAction("Player/SelectPosition");
         _skillConfirmAction = actions.FindAction("Player/SkillConfirm");
+        _build1Action = actions.FindAction("Player/Build1");
+        _build2Action = actions.FindAction("Player/Build2");
+        _build3Action = actions.FindAction("Player/Build3");
 
         if (_moveAction == null)
             throw new InvalidOperationException("InputManager.Start failed: Player/Move action is required.");
@@ -215,6 +221,9 @@ public partial class InputManager : GameFrameworkComponent
         BindAction(_skill5Action);
         BindAction(_selectPositionAction);
         BindAction(_skillConfirmAction);
+        BindAction(_build1Action);
+        BindAction(_build2Action);
+        BindAction(_build3Action);
         _gameplayCallbacksBound = true;
     }
 
@@ -236,6 +245,9 @@ public partial class InputManager : GameFrameworkComponent
         UnbindAction(_skill5Action);
         UnbindAction(_selectPositionAction);
         UnbindAction(_skillConfirmAction);
+        UnbindAction(_build1Action);
+        UnbindAction(_build2Action);
+        UnbindAction(_build3Action);
         _gameplayCallbacksBound = false;
     }
 
@@ -370,6 +382,9 @@ public partial class InputManager : GameFrameworkComponent
         AddHeldBit(_skill4Action, LogicInputButton.Skill4, ref heldBits);
         AddHeldBit(_skill5Action, LogicInputButton.Skill5, ref heldBits);
         AddHeldBit(_skillConfirmAction, LogicInputButton.SkillConfirm, ref heldBits);
+        AddHeldBit(_build1Action, LogicInputButton.Build1, ref heldBits);
+        AddHeldBit(_build2Action, LogicInputButton.Build2, ref heldBits);
+        AddHeldBit(_build3Action, LogicInputButton.Build3, ref heldBits);
         return heldBits;
     }
 
@@ -392,6 +407,9 @@ public partial class InputManager : GameFrameworkComponent
         else if (action == _skill4Action) button = LogicInputButton.Skill4;
         else if (action == _skill5Action) button = LogicInputButton.Skill5;
         else if (action == _skillConfirmAction) button = LogicInputButton.SkillConfirm;
+        else if (action == _build1Action) button = LogicInputButton.Build1;
+        else if (action == _build2Action) button = LogicInputButton.Build2;
+        else if (action == _build3Action) button = LogicInputButton.Build3;
         else
         {
             button = default;

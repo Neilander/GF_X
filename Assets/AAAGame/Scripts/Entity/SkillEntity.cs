@@ -13,15 +13,14 @@ public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
-        //初始化移动和攻击组件
-
-        SetUpSkillComp();
         _rangeTrans = transform.Find("CastRange");
     }
 
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
+        skillComp = LogicState.SkillComp
+                    ?? throw new System.InvalidOperationException($"SkillEntity.OnShow failed: logic SkillComp is missing. entity={LogicEntityId.Value}.");
         GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
         GF.Event.Subscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         skillComp?.OnSkillChanged();
@@ -32,7 +31,7 @@ public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
         GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
         GF.Event.Unsubscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         CancelRunningSkills();
-        skillComp?.ShutDown();
+        skillComp = null;
         base.OnHide(isShutdown, userData);
     }
 

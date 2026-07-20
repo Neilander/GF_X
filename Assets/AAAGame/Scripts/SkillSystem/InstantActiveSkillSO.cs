@@ -1,8 +1,8 @@
 public abstract class InstantActiveSkillSO : ActiveSkillSO
 {
-    protected abstract void ApplyInstant(MAEntity caster);
+    protected abstract void ApplyInstant(IEntityContext caster);
 
-    public override void StartSkill(MAEntity body, out SkillInfo info)
+    public override void StartSkill(IEntityContext body, out SkillInfo info)
     {
         ApplyInstant(body);
         info = new SkillInfo

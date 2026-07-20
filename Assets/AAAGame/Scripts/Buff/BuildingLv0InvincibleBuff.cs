@@ -17,20 +17,16 @@ public class BuildingLv0InvincibleBuff : BuffCallback
 
     public override void OnRemove()
     {
-        if (hostEntity is BuildingEntity building)
-        {
-            building.SetLv0InvincibleByBuff(false);
+        if (hostEntity is IBuildingLogicContext building)
             building.UnregisterInvincibleSource(_invincibleSourceId);
-        }
     }
 
     private void RefreshInvincibleState()
     {
-        if (!(hostEntity is BuildingEntity building))
-            return;
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new System.InvalidOperationException("BuildingLv0InvincibleBuff requires a building logic context.");
 
-        bool shouldInvincible = building.buildingData != null && building.buildingData.Lv == 0;
-        building.SetLv0InvincibleByBuff(shouldInvincible);
+        bool shouldInvincible = building.BuildingData != null && building.BuildingData.Lv == 0;
         if (shouldInvincible)
             building.RegisterInvincibleSource(_invincibleSourceId);
         else

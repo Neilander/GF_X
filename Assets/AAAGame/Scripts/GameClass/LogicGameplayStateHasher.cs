@@ -33,6 +33,12 @@ public static class LogicGameplayStateHasher
         var hasher = new LogicStateHasher();
         hasher.Add(0x47414D4553544154UL);
         hasher.Add(frame);
+        InGameDataModel.WriteDeterministicState(hasher);
+        LogicInteractionHoldService.WriteDeterministicState(hasher);
+        LogicInteractionTargetStateService.WriteDeterministicState(hasher);
+        LogicInteractionCommandService.WriteDeterministicState(hasher);
+        LogicPhaseCommandService.WriteDeterministicState(hasher);
+        LogicTechEffectCommandService.WriteDeterministicState(hasher);
         AddEntities(hasher, frame);
         AddLifecycle(hasher, frame);
         AddObstacles(hasher, frame);
@@ -75,15 +81,25 @@ public static class LogicGameplayStateHasher
             hasher.Add(state.CombatShape.HalfExtents.y.RawValue);
             hasher.Add((int)entity.Side);
             hasher.Add(entity.Alive);
-            if (entity is MAEntity maEntity)
+            hasher.Add(entity.TauntLevel);
+            hasher.Add(entity.IsOutOfCombat);
+            hasher.Add(entity.OutOfCombatElapsedLogicTime.RawValue);
+            if (entity is IHeroLogicContext hero)
+                hasher.Add(hero.IsGhostState);
+            else
+                hasher.Add(false);
+            if (entity is IBuildingLogicContext building)
             {
-                hasher.Add(maEntity.IsOutOfCombat);
-                hasher.Add(maEntity.OutOfCombatElapsedLogicTime.RawValue);
+                hasher.Add(true);
+                hasher.Add(building.BuildingInstanceId);
+                hasher.Add(building.OwnerFactionId);
+                hasher.Add(building.IsDisabled);
+                hasher.Add(building.IsPhaseProtected);
+                hasher.Add(building.BlocksLogicMovement);
             }
             else
             {
                 hasher.Add(false);
-                hasher.Add(0L);
             }
             if (!(entity is ITargetable targetable))
                 throw new InvalidOperationException($"LogicGameplayStateHasher entity {entity.LogicEntityId.Value} is not targetable.");
@@ -183,6 +199,7 @@ public static class LogicGameplayStateHasher
 
     private static void AddLifecycle(LogicStateHasher hasher, ulong frame)
     {
+        LogicEntityStateStore.WriteDeterministicState(hasher);
         hasher.Add(LogicEntityLifecycleService.RequestedEntityCount);
         hasher.Add(LogicEntityLifecycleService.BoundViewCount);
         hasher.Add(LogicEntityLifecycleService.ActiveEntityCount);

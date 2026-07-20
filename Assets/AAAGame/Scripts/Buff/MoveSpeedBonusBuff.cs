@@ -16,8 +16,8 @@ public sealed class MoveSpeedBonusBuff : BuffCallback
     {
         base.OnAdd();
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var creature = hostEntity;
+        var propertyManager = creature?.CreatureProperties;
         if (propertyManager == null || m_Bonus == Fix64.Zero)
             return;
 

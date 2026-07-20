@@ -40,8 +40,8 @@ public static class EntityCombatTeamHelper
         if (entity == null)
             return UnknownTeamId;
 
-        if (entity is BuildingEntity building)
-            return ResolveTeamIdByFaction(building.OwnerFactionID);
+        if (entity is IBuildingLogicContext building)
+            return ResolveTeamIdByFaction(building.OwnerFactionId);
 
         return ResolveTeamIdByFaction(EntitySideHelper.ToFactionId(entity.Side));
     }

@@ -1,6 +1,5 @@
 using UnityGameFramework.Runtime;
 using System.Collections.Generic;
-using UnityEngine.InputSystem;
 using GameFramework.Event;
 using UnityEngine;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
@@ -45,6 +44,7 @@ public partial class InteractOptionTips : UIFormBase
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        LogicInteractionHoldService.RegisterConsumer(CanExecuteLogicInteraction, ExecuteLogicInteraction);
 
         RefreshList();
     }
@@ -56,6 +56,8 @@ public partial class InteractOptionTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        if (LogicInteractionHoldService.IsActive)
+            LogicInteractionHoldService.UnregisterConsumer(CanExecuteLogicInteraction, ExecuteLogicInteraction);
         base.OnClose(isShutdown, userData);
     }
 
@@ -106,13 +108,20 @@ public partial class InteractOptionTips : UIFormBase
             return;
 
         bool enabled = option.IsExecutable();
-        interactOptionUnit.SetData(option.DisplayName, option.DisplayDesc, keyText, enabled, () =>
-        {
-            if (_target != null)
-            {
-                _target.TryExecute(option);
-            }
-        });
+        bool logicTimedHold = key.HasValue;
+        interactOptionUnit.SetData(
+            option.DisplayName,
+            option.DisplayDesc,
+            keyText,
+            enabled,
+            logicTimedHold
+                ? null
+                : () =>
+                {
+                    if (_target != null)
+                        _target.TryExecute(option);
+                },
+            logicTimedHold);
 
         _optionBindings.Add(new OptionUnitBinding
         {
@@ -193,26 +202,27 @@ public partial class InteractOptionTips : UIFormBase
                 continue;
 
             bool allowHold = binding.Option.IsVisible() && binding.Option.IsExecutable();
-            bool keyHolding = allowHold && binding.Key.HasValue && IsInteractionKeyPressed(binding.Key.Value);
-            binding.Unit.SetHoldState(allowHold, keyHolding);
+            if (binding.Key.HasValue)
+            {
+                Fix64 progress = LogicInteractionHoldService.IsActive
+                    ? LogicInteractionHoldService.GetProgress(binding.Key.Value)
+                    : Fix64.Zero;
+                binding.Unit.SetLogicHoldProgress(allowHold, progress);
+            }
+            else
+            {
+                binding.Unit.SetHoldState(allowHold, false);
+            }
         }
     }
 
-    private static bool IsInteractionKeyPressed(InputKey key)
+    private bool CanExecuteLogicInteraction(InputKey key)
     {
-        var inputManager = GameEntry.GetComponent<InputManager>();
-        if (inputManager == null || inputManager.playerInput == null || inputManager.playerInput.actions == null)
-            return false;
+        return _target != null && _target.CanExecute(key);
+    }
 
-        string actionName = key switch
-        {
-            InputKey.InteractionPrimary => "Player/Interact",
-            InputKey.InteractionSecondary => "Player/Interact2",
-            InputKey.InteractionTertiary => "Player/Interact3",
-            _ => "Player/Interact"
-        };
-
-        var action = inputManager.playerInput.actions.FindAction(actionName);
-        return action != null && action.IsPressed();
+    private bool ExecuteLogicInteraction(InputKey key)
+    {
+        return _target != null && _target.TryExecute(key);
     }
 }

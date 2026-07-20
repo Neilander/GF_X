@@ -216,12 +216,7 @@ public static class LogicDamageEventService
                         }
                         break;
                     case LogicHealthEventKind.Heal:
-                        if (!(healthEvent.Target is GeneralCreature creature))
-                        {
-                            throw new InvalidOperationException(
-                                $"LogicDamageEventService.ApplyFrame failed: heal target {healthEvent.TargetId.Value} is not a GeneralCreature.");
-                        }
-                        creature.Heal(healthEvent.Amount);
+                        healthEvent.Target.Heal(healthEvent.Amount);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(healthEvent.Kind), healthEvent.Kind, "Unknown health event kind.");

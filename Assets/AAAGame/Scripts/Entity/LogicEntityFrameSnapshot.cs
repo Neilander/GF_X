@@ -99,12 +99,7 @@ public static class LogicEntityFrameSnapshotBuilder
             if (!entity.LogicEntityId.IsValid)
                 throw new InvalidOperationException($"LogicEntityFrameSnapshotBuilder.Build failed: entity at index {i} has an invalid logic id.");
 
-            Vector3 position = entity.Position;
-            if (!IsFinite(position.x) || !IsFinite(position.z))
-            {
-                throw new InvalidOperationException(
-                    $"LogicEntityFrameSnapshotBuilder.Build failed: entity {entity.LogicEntityId.Value} has a non-finite position {position}.");
-            }
+            FixVector2 position = entity.PositionFixed;
 
             Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(
                 entity.GetProperty(CreatureMainProperty.CollisionRadius));
@@ -114,24 +109,18 @@ public static class LogicEntityFrameSnapshotBuilder
                     $"LogicEntityFrameSnapshotBuilder.Build failed: entity {entity.LogicEntityId.Value} has a negative collision radius.");
             }
 
-            FixVector2 forward = entity is MAEntity maEntity
-                ? maEntity.LogicForward
-                : ResolveForward(entity);
+            FixVector2 forward = entity.ForwardFixed;
             if (FixVector2.SqrMagnitude(forward) == Fix64.Zero)
             {
                 throw new InvalidOperationException(
                     $"LogicEntityFrameSnapshotBuilder.Build failed: entity {entity.LogicEntityId.Value} has a zero forward vector.");
             }
 
-            LogicCombatShape combatShape = entity is BuildingEntity building
-                ? building.GetRequiredWorldCombatShape()
-                : LogicCombatShape.Circle(
-                    new FixVector2((Fix64)position.x, (Fix64)position.z),
-                    collisionRadius);
+            LogicCombatShape combatShape = entity.CombatShape;
 
             states.Add(new LogicEntityFrameState(
                 entity.LogicEntityId,
-                new FixVector2((Fix64)position.x, (Fix64)position.z),
+                position,
                 forward,
                 collisionRadius,
                 combatShape,
@@ -152,19 +141,6 @@ public static class LogicEntityFrameSnapshotBuilder
         return new LogicEntityFrameSnapshot(frameId, states);
     }
 
-    private static bool IsFinite(float value)
-    {
-        return !float.IsNaN(value) && !float.IsInfinity(value);
-    }
-
-    private static FixVector2 ResolveForward(IEntityContext entity)
-    {
-        Vector3 worldForward = entity.Rotation * Vector3.forward;
-        if (!IsFinite(worldForward.x) || !IsFinite(worldForward.z))
-            throw new InvalidOperationException($"Entity {entity.LogicEntityId.Value} has a non-finite forward vector.");
-        FixVector2 forward = new FixVector2((Fix64)worldForward.x, (Fix64)worldForward.z);
-        return forward.GetNormalized();
-    }
 }
 
 public static class LogicEntityFrameSnapshotService
@@ -296,7 +272,7 @@ public static class LogicEntityFrameReadExtensions
         if (entity == null)
             throw new ArgumentNullException(nameof(entity));
         if (!LogicFrameRuntime.IsTicking)
-            return new FixVector2((Fix64)entity.Position.x, (Fix64)entity.Position.z);
+            return entity.PositionFixed;
 
         return LogicEntityFrameSnapshotService.GetRequiredPosition(entity);
     }
@@ -322,19 +298,7 @@ public static class LogicEntityFrameReadExtensions
             return LogicEntityFrameSnapshotService.GetRequiredTargetClosestPoint(self, target);
 
         FixVector2 origin = self.LogicFramePositionFixed();
-        if (target is BuildingEntity building)
-            return building.GetRequiredWorldCombatShape().ClosestPoint(origin);
-
-        FixVector2 center = target.LogicFramePositionFixed();
-        Fix64 radius = Fix64.Max(
-            Fix64.Zero,
-            DistanceUnitConverter.ConvertToWorld(target.GetProperty(CreatureMainProperty.CollisionRadius)));
-        FixVector2 offset = origin - center;
-        Fix64 distanceSquared = FixVector2.SqrMagnitude(offset);
-        if (distanceSquared == Fix64.Zero || distanceSquared <= radius * radius)
-            return origin;
-
-        return center + offset / Fix64.Sqrt(distanceSquared) * radius;
+        return target.CombatShape.ClosestPoint(origin);
     }
 
     public static Fix64 LogicFrameDistanceFromPointToSurfaceFixed(this IEntityContext target, FixVector2 point)
@@ -344,13 +308,7 @@ public static class LogicEntityFrameReadExtensions
         if (LogicFrameRuntime.IsTicking)
             return LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistanceFromPoint(target, point);
 
-        if (target is BuildingEntity building)
-            return building.GetRequiredWorldCombatShape().DistanceToSurface(point);
-
-        Fix64 radius = Fix64.Max(
-            Fix64.Zero,
-            DistanceUnitConverter.ConvertToWorld(target.GetProperty(CreatureMainProperty.CollisionRadius)));
-        return Fix64.Max(Fix64.Zero, FixVector2.Distance(point, target.LogicFramePositionFixed()) - radius);
+        return target.CombatShape.DistanceToSurface(point);
     }
 
     public static float LogicFrameCenterDistance(this IEntityContext self, IEntityContext target)
@@ -364,8 +322,7 @@ public static class LogicEntityFrameReadExtensions
             return Fix64.FromRaw(long.MaxValue);
         if (!LogicFrameRuntime.IsTicking)
         {
-            Vector3 delta = self.Position - target.Position;
-            return FixVector2.Magnitude(new FixVector2((Fix64)delta.x, (Fix64)delta.z));
+            return FixVector2.Distance(self.PositionFixed, target.PositionFixed);
         }
         return LogicEntityFrameSnapshotService.GetRequiredCenterDistance(self, target);
     }

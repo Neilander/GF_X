@@ -18,7 +18,7 @@ public class GeneralCreature : EntityBase, ITargetable
     /// <summary>
     /// 嘲讽等级：目标选择时优先攻击等级高的。可被 Buff 加减。
     /// </summary>
-    public int TauntLevel;
+    public virtual int TauntLevel { get; set; }
 
     public CreaturePropertyManager CreaturePropertyManager { get; private set; }
 

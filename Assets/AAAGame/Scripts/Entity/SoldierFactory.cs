@@ -98,7 +98,15 @@ public static class SoldierFactory
         AddGlobalBuffs(startBuffs, unitType, side);
         AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
 
-        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
+        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(
+            position,
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            sourceStrongholdId,
+            unitLevel,
+            unitType == UnitType.Unit_Hero ? LogicSkillFactoryKind.Player : LogicSkillFactoryKind.None);
         var logic = unitType == UnitType.Unit_Hero
             ? await GF.Entity.ShowEntityAwait<HeroEntity>(prefabName, entityGroup, entityParams)
             : await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);

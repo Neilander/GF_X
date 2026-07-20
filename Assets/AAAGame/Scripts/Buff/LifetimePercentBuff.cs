@@ -18,7 +18,7 @@ public sealed class LifetimePercentBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        Debug.Log($"[LifetimePercentBuff.OnAdd] 开始 host={hostEntity?.CharacterKey} id={hostEntity?.Id} percent={(float)m_Percent * 100f}%");
+        Debug.Log($"[LifetimePercentBuff.OnAdd] 开始 host={hostEntity?.CharacterKey} id={hostEntity?.LogicEntityId.Value} percent={(float)m_Percent * 100f}%");
 
         if (hostEntity == null)
         {

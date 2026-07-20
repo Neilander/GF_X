@@ -149,8 +149,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         State = SoldierState.Idle;
         _lastSyncedState = SoldierState.Idle;
 
-        if (self is MAEntity ma)
-            ma.BuffComp?.RemoveBuff(ReturningBuffId);
+        self.BuffComp?.RemoveBuff(ReturningBuffId);
 
         if (self.TargetComp != null)
         {
@@ -352,7 +351,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         self.MoveComp?.StopMove();
 
         // 挂复合 buff：百分比移速 + 持续回血
-        if (self is MAEntity ma && ma.BuffComp != null)
+        if (self.BuffComp != null)
         {
             var modules = new List<BuffCallback>
             {
@@ -360,15 +359,15 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
             };
             var buff = BuffData.Create(ReturningBuffId, 0f, true, 1, modules);
-            bool added = ma.BuffComp.AddBuff(buff, ma);
+            bool added = self.BuffComp.AddBuff(buff, self);
             UnityEngine.Debug.Log($"[Returning.AddBuff] host={self.CharacterKey} added={added} " +
-                                  $"buffCompType={ma.BuffComp.GetType().Name} " +
+                                  $"buffCompType={self.BuffComp.GetType().Name} " +
                                   $"speedPct={(float)ReturnSpeedBonusPercent} hpPct={(float)ReturnHpRegenPercentPerSec}");
         }
         else
         {
             UnityEngine.Debug.LogWarning($"[Returning] host={self.CharacterKey} buff 未挂载: " +
-                                         $"isMA={(self is MAEntity)} buffComp={(self as MAEntity)?.BuffComp?.GetType().Name ?? "null"}");
+                                         $"buffComp={self.BuffComp?.GetType().Name ?? "null"}");
         }
 
         State = SoldierState.Returning;
@@ -378,8 +377,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private void ExitReturning(IEntityContext self)
     {
-        if (self is MAEntity ma)
-            ma.BuffComp?.RemoveBuff(ReturningBuffId);
+        self.BuffComp?.RemoveBuff(ReturningBuffId);
 
         self.MoveComp?.StopMove();
         // 返航途中可能被打 / scan 设了 CurrentTarget，回到家也清掉，避免刚到家又被拉走
@@ -666,7 +664,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         Fix64 selfRadius = ResolveCombatTargetRadius(self);
         Fix64 arriveDistance = ResolveNavigationArriveDistance(selfRadius);
         Fix64 targetRadius = ResolveCombatTargetRadius(enemy);
-        bool useSurfacePoint = enemy is BuildingEntity;
+        bool useSurfacePoint = enemy is IBuildingLogicContext;
         Fix64 standOff = ResolveCombatApproachStandOff(selfRadius, targetRadius, effectiveRange, arriveDistance, useSurfacePoint);
         Fix64 minimumStandOff = ResolveCombatApproachMinimumStandOff(selfRadius, targetRadius, useSurfacePoint);
         Fix64 requiredClearance = Fix64.Max(selfRadius * (Fix64)2 + CombatApproachOccupancyPaddingFixed, (Fix64)0.45f);
@@ -916,7 +914,9 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private static Vector3 PickStableDeadZonePoint(IEntityContext self, Vector3 leaderPos, float innerR, float outerR)
     {
-        int agentTypeId = self is MAEntity ma ? ma.navAgentTypeID : MAEntity.UnknownNavAgentTypeId;
+        int agentTypeId = self is ILogicFrameEntity logicEntity
+            ? logicEntity.NavigationAgentTypeId
+            : MAEntity.UnknownNavAgentTypeId;
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
             agentTypeId = 0;
 

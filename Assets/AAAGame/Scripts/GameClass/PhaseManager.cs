@@ -29,6 +29,7 @@ public class PhaseManager : GameFrameworkComponent
     {
         DefendPhaseRuntime.PrepareForCurrentLevelIfNeeded();
         GamePhase currentPhase = CurrentPhase;
+        LogicPhaseCommandService.SetInitialPhase(currentPhase);
         switch (currentPhase)
         {
             case GamePhase.BuildBeforeInvade:
@@ -75,6 +76,14 @@ public class PhaseManager : GameFrameworkComponent
 
     public static void SwitchToPhase(GamePhase phase)
     {
+        LogicPhaseCommandService.ScheduleForNextFrame(phase);
+    }
+
+    internal static void ApplyScheduledPhase(GamePhase phase)
+    {
+        if (!LogicPhaseCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("PhaseManager.ApplyScheduledPhase is only valid while applying a logic phase command.");
+
         GamePhase oldPhase = CurrentPhase;
         if (oldPhase == phase)
         {
@@ -146,43 +155,15 @@ public class PhaseManager : GameFrameworkComponent
         removeSoldiersWatch.Stop();
         LogPhaseStep("build.remove-soldiers", removeSoldiersWatch.ElapsedMilliseconds);
 
+        InputModel inputModel = GF.DataModel?.GetDataModel<InputModel>()
+                                ?? throw new InvalidOperationException("PhaseManager.HandleEnterBuildPhase failed: InputModel is unavailable.");
+        inputModel.ClearSkillRequests();
+
         var rewardWatch = Stopwatch.StartNew();
         ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter();
         RewardManager.HandleEnterBuildPhaseReward(isFirstPhase, previousPhase);
         rewardWatch.Stop();
         LogPhaseStep("build.reward", rewardWatch.ElapsedMilliseconds);
-
-        try
-        {
-            var restoreWatch = Stopwatch.StartNew();
-            int restoredBuildingCount = 0;
-
-            var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
-            if (ingameData != null)
-            {
-                foreach (var building in ingameData.Buildings)
-                {
-                    if (building == null)
-                    {
-                        continue;
-                    }
-
-                    var stronghold = building.CurrentStronghold;
-                    if (stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
-                    {
-                        building.RestoreToFullHealthAndEnable();
-                        restoredBuildingCount++;
-                    }
-                }
-            }
-
-            restoreWatch.Stop();
-            LogPhaseStep($"build.restore-buildings count={restoredBuildingCount}", restoreWatch.ElapsedMilliseconds);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning($"[PhaseManager] Restore buildings on enter build phase failed: {ex}");
-        }
 
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
         if (cardSetup != null)

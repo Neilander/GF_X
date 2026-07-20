@@ -1,8 +1,3 @@
-using GameFramework;
-using GameFramework.Event;
-using UnityEngine;
-using UnityGameFramework.Runtime;
-
 /// <summary>
 /// 建筑阶段保护 Buff：
 /// - 战斗保护：非 Invade 阶段给敌方建筑提供“无敌/不可被索敌/不攻击”保护。
@@ -27,9 +22,8 @@ public class BuildingPhaseGuardBuff : BuffCallback
     {
         UnsubscribeEvents();
 
-        if (hostEntity is BuildingEntity building)
+        if (hostEntity is IBuildingLogicContext building)
         {
-            building.SetHealthBarSuppressedByBuff(false);
             building.SetPhaseProtectionByBuff(false);
             building.UnregisterInvincibleSource(_invincibleSourceId);
         }
@@ -40,8 +34,10 @@ public class BuildingPhaseGuardBuff : BuffCallback
         if (_subscribed)
             return;
 
-        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
-        GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        LogicPhaseCommandService.PhaseApplied += OnPhaseChanged;
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new System.InvalidOperationException("BuildingPhaseGuardBuff requires a building logic context.");
+        building.OwnerFactionChanged += OnOwnerFactionChanged;
         _subscribed = true;
     }
 
@@ -50,52 +46,33 @@ public class BuildingPhaseGuardBuff : BuffCallback
         if (!_subscribed)
             return;
 
-        try
-        {
-            GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
-            GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        }
-        catch (GameFrameworkException)
-        {
-            // 生命周期收尾时 EventPool 可能先释放，忽略退订异常。
-        }
-        finally
-        {
-            _subscribed = false;
-        }
+        LogicPhaseCommandService.PhaseApplied -= OnPhaseChanged;
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new System.InvalidOperationException("BuildingPhaseGuardBuff requires a building logic context.");
+        building.OwnerFactionChanged -= OnOwnerFactionChanged;
+        _subscribed = false;
     }
 
-    private void OnPhaseChanged(object sender, GameEventArgs e)
+    private void OnPhaseChanged(GamePhase oldPhase, GamePhase newPhase)
     {
-        if (e is not IngamePhaseChangedEventArgs)
-            return;
-
         RefreshProtectionState();
     }
 
-    private void OnEntityFactionChanged(object sender, GameEventArgs e)
+    private void OnOwnerFactionChanged(int oldFactionId, int newFactionId)
     {
-        if (!(hostEntity is BuildingEntity building))
-            return;
-
-        if (e is not EntityFactionChangedEventArgs args)
-            return;
-
-        if (args.EntityId != building.Id)
-            return;
-
         RefreshProtectionState();
     }
 
     private void RefreshProtectionState()
     {
-        if (!(hostEntity is BuildingEntity building))
-            return;
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new System.InvalidOperationException("BuildingPhaseGuardBuff requires a building logic context.");
 
-        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
-        int day = InGameDataModel.GetValue(IngameValueType.Day);
+        GamePhase phase = LogicPhaseCommandService.IsInitialized
+            ? LogicPhaseCommandService.CurrentPhase
+            : PhaseManager.CurrentPhase;
 
-        bool isEnemyBuilding = building.OwnerFactionID == EntitySideHelper.EnemyFactionId;
+        bool isEnemyBuilding = building.OwnerFactionId == EntitySideHelper.EnemyFactionId;
         bool shouldProtect = isEnemyBuilding && phase != GamePhase.Invade;
 
         building.SetPhaseProtectionByBuff(shouldProtect);
@@ -104,38 +81,5 @@ public class BuildingPhaseGuardBuff : BuffCallback
         else
             building.UnregisterInvincibleSource(_invincibleSourceId);
 
-        bool isLv0Building = building.buildingData != null && building.buildingData.Lv == 0;
-        bool shouldSuppressHealthBar = InGameDataModel.IsBuildPhase(phase) || isLv0Building;
-        if (building.IsHealthBarSuppressedByPhaseBuff == shouldSuppressHealthBar)
-            return;
-
-        building.SetHealthBarSuppressedByBuff(shouldSuppressHealthBar);
-        if (shouldSuppressHealthBar)
-        {
-            HealthBarComp.Remove(building.Id);
-            return;
-        }
-
-        if (building.IsHealthBarSuppressedByBuff)
-            return;
-
-        if (GameObject.Find($"HealthBar_{building.Id}") != null)
-            return;
-
-        Fix64 max = building.CreaturePropertyManager != null
-            ? building.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)
-            : building.HealthValue;
-        bool isFriendly = building.OwnerFactionID == EntitySideHelper.PlayerFactionId;
-        var created = HealthBarComp.Create(building.Id, building.transform, (float)building.HealthValue, (float)max, isFriendly);
-        if (created == null)
-        {
-            Log.Warning(
-                "[BuildingPhaseGuardBuff] Failed to restore building health bar. id={0}, phase={1}, day={2}, ownerFaction={3}, lv0Invincible={4}",
-                building.Id,
-                phase,
-                day,
-                building.OwnerFactionID,
-                building.IsLv0Invincible);
-        }
     }
 }

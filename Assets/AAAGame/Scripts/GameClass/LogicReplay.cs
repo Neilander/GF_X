@@ -195,14 +195,17 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 1;
-    public const string CurrentContentVersion = "Avenge-30Hz-v1";
+    public const int CurrentProtocolVersion = 4;
+    public const string CurrentContentVersion = "Avenge-30Hz-v4";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
         LogicReplayFrameRecord[] frames,
         TimeScaleCommand[] timeScaleCommands,
         PauseControlCommand[] pauseControlCommands,
+        LogicPhaseCommand[] phaseCommands,
+        LogicTechEffectCommand[] techEffectCommands,
+        LogicInteractionCommand[] interactionCommands,
         LogicEntityLifecycleCommand[] lifecycleCommands,
         LogicObstacleCommand[] obstacleCommands)
     {
@@ -214,6 +217,9 @@ public sealed class LogicReplayLog
         Frames = Array.AsReadOnly((LogicReplayFrameRecord[])frames.Clone());
         TimeScaleCommands = Array.AsReadOnly((TimeScaleCommand[])timeScaleCommands.Clone());
         PauseControlCommands = Array.AsReadOnly((PauseControlCommand[])pauseControlCommands.Clone());
+        PhaseCommands = Array.AsReadOnly((LogicPhaseCommand[])phaseCommands.Clone());
+        TechEffectCommands = Array.AsReadOnly((LogicTechEffectCommand[])techEffectCommands.Clone());
+        InteractionCommands = Array.AsReadOnly((LogicInteractionCommand[])interactionCommands.Clone());
         LifecycleCommands = Array.AsReadOnly((LogicEntityLifecycleCommand[])lifecycleCommands.Clone());
         ObstacleCommands = Array.AsReadOnly((LogicObstacleCommand[])obstacleCommands.Clone());
     }
@@ -226,6 +232,9 @@ public sealed class LogicReplayLog
     public ReadOnlyCollection<LogicReplayFrameRecord> Frames { get; }
     public ReadOnlyCollection<TimeScaleCommand> TimeScaleCommands { get; }
     public ReadOnlyCollection<PauseControlCommand> PauseControlCommands { get; }
+    public ReadOnlyCollection<LogicPhaseCommand> PhaseCommands { get; }
+    public ReadOnlyCollection<LogicTechEffectCommand> TechEffectCommands { get; }
+    public ReadOnlyCollection<LogicInteractionCommand> InteractionCommands { get; }
     public ReadOnlyCollection<LogicEntityLifecycleCommand> LifecycleCommands { get; }
     public ReadOnlyCollection<LogicObstacleCommand> ObstacleCommands { get; }
 }
@@ -235,11 +244,17 @@ public sealed class LogicReplayRecorder
     private readonly List<LogicReplayFrameRecord> m_Frames = new List<LogicReplayFrameRecord>();
     private readonly List<TimeScaleCommand> m_TimeScaleCommands = new List<TimeScaleCommand>();
     private readonly List<PauseControlCommand> m_PauseControlCommands = new List<PauseControlCommand>();
+    private readonly List<LogicPhaseCommand> m_PhaseCommands = new List<LogicPhaseCommand>();
+    private readonly List<LogicTechEffectCommand> m_TechEffectCommands = new List<LogicTechEffectCommand>();
+    private readonly List<LogicInteractionCommand> m_InteractionCommands = new List<LogicInteractionCommand>();
     private readonly List<LogicEntityLifecycleCommand> m_LifecycleCommands = new List<LogicEntityLifecycleCommand>();
     private readonly List<LogicObstacleCommand> m_ObstacleCommands = new List<LogicObstacleCommand>();
 
     private LogicTimeControlSnapshot m_InitialTimeControlSnapshot;
     private ulong m_NextFrame;
+    private bool m_TracksPhases;
+    private bool m_TracksTechEffects;
+    private bool m_TracksInteractions;
     private bool m_TracksLifecycle;
     private bool m_TracksObstacles;
 
@@ -255,14 +270,38 @@ public sealed class LogicReplayRecorder
         m_Frames.Clear();
         m_TimeScaleCommands.Clear();
         m_PauseControlCommands.Clear();
+        m_PhaseCommands.Clear();
+        m_TechEffectCommands.Clear();
+        m_InteractionCommands.Clear();
         m_LifecycleCommands.Clear();
         m_ObstacleCommands.Clear();
         m_InitialTimeControlSnapshot = LogicTimeControlService.CaptureSnapshot();
         m_NextFrame = checked(m_InitialTimeControlSnapshot.CurrentFrame + 1);
         LogicTimeControlService.TimeScaleCommandAccepted += OnTimeScaleCommandAccepted;
         LogicTimeControlService.PauseControlCommandApplied += OnPauseControlCommandApplied;
+        m_TracksPhases = LogicPhaseCommandService.IsActive;
+        m_TracksTechEffects = LogicTechEffectCommandService.IsActive;
+        m_TracksInteractions = LogicInteractionCommandService.IsActive;
         m_TracksLifecycle = LogicEntityLifecycleService.IsActive;
         m_TracksObstacles = LogicObstacleCommandService.IsActive;
+        if (m_TracksPhases)
+        {
+            for (int i = 0; i < LogicPhaseCommandService.History.Count; i++)
+                m_PhaseCommands.Add(LogicPhaseCommandService.History[i]);
+            LogicPhaseCommandService.CommandRecorded += OnPhaseCommandRecorded;
+        }
+        if (m_TracksTechEffects)
+        {
+            for (int i = 0; i < LogicTechEffectCommandService.History.Count; i++)
+                m_TechEffectCommands.Add(LogicTechEffectCommandService.History[i]);
+            LogicTechEffectCommandService.CommandRecorded += OnTechEffectCommandRecorded;
+        }
+        if (m_TracksInteractions)
+        {
+            for (int i = 0; i < LogicInteractionCommandService.History.Count; i++)
+                m_InteractionCommands.Add(LogicInteractionCommandService.History[i]);
+            LogicInteractionCommandService.CommandRecorded += OnInteractionCommandRecorded;
+        }
         if (m_TracksLifecycle)
         {
             for (int i = 0; i < LogicEntityLifecycleService.Commands.Count; i++)
@@ -322,10 +361,19 @@ public sealed class LogicReplayRecorder
 
         LogicTimeControlService.TimeScaleCommandAccepted -= OnTimeScaleCommandAccepted;
         LogicTimeControlService.PauseControlCommandApplied -= OnPauseControlCommandApplied;
+        if (m_TracksPhases)
+            LogicPhaseCommandService.CommandRecorded -= OnPhaseCommandRecorded;
+        if (m_TracksTechEffects)
+            LogicTechEffectCommandService.CommandRecorded -= OnTechEffectCommandRecorded;
+        if (m_TracksInteractions)
+            LogicInteractionCommandService.CommandRecorded -= OnInteractionCommandRecorded;
         if (m_TracksLifecycle)
             LogicEntityLifecycleService.CommandRecorded -= OnLifecycleCommandRecorded;
         if (m_TracksObstacles)
             LogicObstacleCommandService.CommandRecorded -= OnObstacleCommandRecorded;
+        m_TracksPhases = false;
+        m_TracksTechEffects = false;
+        m_TracksInteractions = false;
         m_TracksLifecycle = false;
         m_TracksObstacles = false;
         IsRecording = false;
@@ -334,6 +382,9 @@ public sealed class LogicReplayRecorder
             m_Frames.ToArray(),
             m_TimeScaleCommands.ToArray(),
             m_PauseControlCommands.ToArray(),
+            m_PhaseCommands.ToArray(),
+            m_TechEffectCommands.ToArray(),
+            m_InteractionCommands.ToArray(),
             m_LifecycleCommands.ToArray(),
             m_ObstacleCommands.ToArray());
     }
@@ -346,6 +397,21 @@ public sealed class LogicReplayRecorder
     private void OnPauseControlCommandApplied(PauseControlCommand command)
     {
         m_PauseControlCommands.Add(command);
+    }
+
+    private void OnPhaseCommandRecorded(LogicPhaseCommand command)
+    {
+        m_PhaseCommands.Add(command);
+    }
+
+    private void OnTechEffectCommandRecorded(LogicTechEffectCommand command)
+    {
+        m_TechEffectCommands.Add(command);
+    }
+
+    private void OnInteractionCommandRecorded(LogicInteractionCommand command)
+    {
+        m_InteractionCommands.Add(command);
     }
 
     private void OnLifecycleCommandRecorded(LogicEntityLifecycleCommand command)
@@ -529,6 +595,55 @@ public static class LogicReplayComparer
 
         if (expected.PauseControlCommands.Count != actual.PauseControlCommands.Count)
             return new LogicReplayDivergence(true, 0, "PauseControlCommandCount");
+
+        if (expected.PhaseCommands.Count != actual.PhaseCommands.Count)
+            return new LogicReplayDivergence(true, 0, "PhaseCommandCount");
+        for (int i = 0; i < expected.PhaseCommands.Count; i++)
+        {
+            LogicPhaseCommand left = expected.PhaseCommands[i];
+            LogicPhaseCommand right = actual.PhaseCommands[i];
+            if (left.EffectiveFrame != right.EffectiveFrame
+                || left.Sequence != right.Sequence
+                || left.Phase != right.Phase)
+            {
+                return new LogicReplayDivergence(true, Math.Min(left.EffectiveFrame, right.EffectiveFrame), "PhaseCommand");
+            }
+        }
+
+        if (expected.TechEffectCommands.Count != actual.TechEffectCommands.Count)
+            return new LogicReplayDivergence(true, 0, "TechEffectCommandCount");
+        for (int i = 0; i < expected.TechEffectCommands.Count; i++)
+        {
+            LogicTechEffectCommand left = expected.TechEffectCommands[i];
+            LogicTechEffectCommand right = actual.TechEffectCommands[i];
+            if (left.EffectiveFrame != right.EffectiveFrame
+                || left.Sequence != right.Sequence
+                || !string.Equals(left.TechId, right.TechId, StringComparison.Ordinal)
+                || left.IsStackable != right.IsStackable
+                || left.OwnerFactionId != right.OwnerFactionId
+                || !string.Equals(left.SourceBuildingInstanceId, right.SourceBuildingInstanceId, StringComparison.Ordinal))
+            {
+                return new LogicReplayDivergence(true, Math.Min(left.EffectiveFrame, right.EffectiveFrame), "TechEffectCommand");
+            }
+        }
+
+        if (expected.InteractionCommands.Count != actual.InteractionCommands.Count)
+            return new LogicReplayDivergence(true, 0, "InteractionCommandCount");
+        for (int i = 0; i < expected.InteractionCommands.Count; i++)
+        {
+            LogicInteractionCommand left = expected.InteractionCommands[i];
+            LogicInteractionCommand right = actual.InteractionCommands[i];
+            if (left.EffectiveFrame != right.EffectiveFrame
+                || left.Sequence != right.Sequence
+                || left.ActionKind != right.ActionKind
+                || left.TargetEntityId != right.TargetEntityId
+                || !string.Equals(left.TargetBuildingInstanceId, right.TargetBuildingInstanceId, StringComparison.Ordinal)
+                || !string.Equals(left.PrimaryId, right.PrimaryId, StringComparison.Ordinal)
+                || !string.Equals(left.SecondaryId, right.SecondaryId, StringComparison.Ordinal))
+            {
+                return new LogicReplayDivergence(true, Math.Min(left.EffectiveFrame, right.EffectiveFrame), "InteractionCommand");
+            }
+        }
 
         if (expected.LifecycleCommands.Count != actual.LifecycleCommands.Count)
             return new LogicReplayDivergence(true, 0, "LifecycleCommandCount");

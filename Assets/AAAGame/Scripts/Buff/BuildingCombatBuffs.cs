@@ -50,30 +50,18 @@ public sealed class BuildingInvincibleSourceBuff : BuffCallback
 
 public sealed class BuildingCollisionBlockingBuff : BuffCallback
 {
-    private readonly List<ColliderState> _states = new List<ColliderState>();
     private bool _applied;
 
     public override void OnAdd()
     {
-        if (!(hostEntity is BuildingEntity building))
-            throw new InvalidOperationException($"BuildingCollisionBlockingBuff.OnAdd failed: host is not BuildingEntity. host={hostEntity?.CharacterKey}.");
+        if (!(hostEntity is IBuildingLogicContext building))
+            throw new InvalidOperationException($"BuildingCollisionBlockingBuff.OnAdd failed: host is not a building logic context. host={hostEntity?.CharacterKey}.");
 
         if (_applied)
             return;
 
-        Collider[] colliders = building.GetComponentsInChildren<Collider>(true);
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            Collider collider = colliders[i];
-            if (collider == null || collider.isTrigger)
-                continue;
-
-            _states.Add(new ColliderState(collider, collider.enabled));
-            collider.enabled = false;
-        }
-
+        building.SetCollisionBlockingByBuff(false);
         _applied = true;
-        building.RefreshFlowFieldObstacles();
     }
 
     public override void OnRemove()
@@ -81,29 +69,9 @@ public sealed class BuildingCollisionBlockingBuff : BuffCallback
         if (!_applied)
             return;
 
-        for (int i = 0; i < _states.Count; i++)
-        {
-            ColliderState state = _states[i];
-            if (state.Collider != null)
-                state.Collider.enabled = state.Enabled;
-        }
-
-        _states.Clear();
         _applied = false;
-        if (hostEntity is BuildingEntity building)
-            building.RefreshFlowFieldObstacles();
-    }
-
-    private readonly struct ColliderState
-    {
-        public readonly Collider Collider;
-        public readonly bool Enabled;
-
-        public ColliderState(Collider collider, bool enabled)
-        {
-            Collider = collider;
-            Enabled = enabled;
-        }
+        if (hostEntity is IBuildingLogicContext building)
+            building.SetCollisionBlockingByBuff(true);
     }
 }
 
@@ -111,16 +79,16 @@ public sealed class BuildingPermanentStealthBuff : BuffCallback
 {
     public override void OnAdd()
     {
-        if (!(hostEntity is BuildingEntity building))
-            throw new InvalidOperationException($"BuildingPermanentStealthBuff.OnAdd failed: host is not BuildingEntity. host={hostEntity?.CharacterKey}.");
+        if (!(hostEntity is IBuildingLogicContext building))
+            throw new InvalidOperationException($"BuildingPermanentStealthBuff.OnAdd failed: host is not a building logic context. host={hostEntity?.CharacterKey}.");
 
-        building.SetPermanentStealthVisibility(true);
+        building.SetPermanentStealthByBuff(true);
     }
 
     public override void OnRemove()
     {
-        if (hostEntity is BuildingEntity building)
-            building.SetPermanentStealthVisibility(false);
+        if (hostEntity is IBuildingLogicContext building)
+            building.SetPermanentStealthByBuff(false);
     }
 }
 
@@ -139,7 +107,7 @@ public sealed class AmmoReloadBuff : BuffCallback, ILogicDeterministicStateContr
         if (hostEntity == null || !hostEntity.Alive)
             return;
 
-        WeaponComp weaponComp = hostEntity.weaponComp;
+        WeaponComp weaponComp = hostEntity.WeaponComp;
         if (weaponComp == null || !weaponComp.HasAmmunition || weaponComp.CurrentAmmo > 0)
         {
             _timer = Fix64.Zero;
@@ -211,7 +179,7 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
         if (_pullLevel <= Fix64.Zero)
             return baseDamage;
 
-        if (hostEntity == null || target is not MAEntity targetEntity || targetEntity.durationMoveEffectComp == null)
+        if (hostEntity == null || target is not IEntityContext targetEntity || targetEntity.DurationMoveEffectComp == null)
             return baseDamage;
 
         FixVector2 direction = LogicEntityFrameSnapshotService.GetRequiredPosition(hostEntity)
@@ -229,15 +197,15 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
         Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
         FixVector2 speedFixed = direction * (worldDistance / duration);
 
-        targetEntity.atkComp?.InterruptAttack(AttackInterruptReason.Displacement);
-        targetEntity.durationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
+        targetEntity.AtkComp?.InterruptAttack(AttackInterruptReason.Displacement);
+        targetEntity.DurationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
         return baseDamage;
     }
 }
 
 public static class BuildingCombatModifierUtility
 {
-    public static float ResolveAmmoReloadDelay(MAEntity host, float baseDelaySeconds)
+    public static float ResolveAmmoReloadDelay(IEntityContext host, float baseDelaySeconds)
     {
         float result = baseDelaySeconds;
         var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
@@ -253,7 +221,7 @@ public static class BuildingCombatModifierUtility
         return Mathf.Max(0f, result);
     }
 
-    public static int ResolveRestroomQueueLimit(MAEntity host, int baseQueueLimit)
+    public static int ResolveRestroomQueueLimit(IEntityContext host, int baseQueueLimit)
     {
         int result = baseQueueLimit;
         var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
@@ -269,7 +237,7 @@ public static class BuildingCombatModifierUtility
         return Mathf.Max(1, result);
     }
 
-    public static float ResolveRestroomReleaseInterval(MAEntity host, float baseReleaseInterval)
+    public static float ResolveRestroomReleaseInterval(IEntityContext host, float baseReleaseInterval)
     {
         float result = baseReleaseInterval;
         var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
@@ -349,7 +317,7 @@ public sealed class PhaseAmmoResetBuff : BuffCallback
 
     private void ReloadAmmo()
     {
-        hostEntity?.weaponComp?.ReloadFull();
+        hostEntity?.WeaponComp?.ReloadFull();
     }
 }
 
@@ -376,7 +344,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
 
     public override void OnUpdate(Fix64 deltaTime)
     {
-        if (!(hostEntity is BuildingEntity building) || !building.Alive || building.IsDisabled)
+        if (!(hostEntity is IBuildingLogicContext building) || !building.Alive || building.IsDisabled)
         {
             ReleaseAll();
             return;
@@ -426,7 +394,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         _scanTimer = Fix64.Zero;
         while (_queue.Count < GetQueueLimit())
         {
-            MAEntity target = FindNearestEligibleTarget();
+            IEntityContext target = FindNearestEligibleTarget();
             if (target == null)
                 return;
 
@@ -434,15 +402,15 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         }
     }
 
-    private MAEntity FindNearestEligibleTarget()
+    private IEntityContext FindNearestEligibleTarget()
     {
-        BuildingEntity building = GetBuilding();
+        IBuildingLogicContext building = GetBuilding();
         Fix64 range = GetWorldRange(building);
         var all = EntityRegistry.AllEntities;
         if (all == null)
             throw new InvalidOperationException("RestroomQueueBuff.FindNearestEligibleTarget failed: EntityRegistry.AllEntities is null.");
 
-        MAEntity best = null;
+        IEntityContext best = null;
         Fix64 bestDistance = range;
         for (int i = 0; i < all.Count; i++)
         {
@@ -460,51 +428,51 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
                 || (distance == bestDistance && (best == null || candidate.LogicEntityId < best.LogicEntityId)))
             {
                 bestDistance = distance;
-                best = (MAEntity)candidate;
+                best = candidate;
             }
         }
 
         return best;
     }
 
-    private bool IsEligibleTarget(BuildingEntity building, IEntityContext candidate)
+    private bool IsEligibleTarget(IBuildingLogicContext building, IEntityContext candidate)
     {
-        if (!(candidate is MAEntity entity) || candidate is BuildingEntity)
+        if (candidate is IBuildingLogicContext)
             return false;
         if (!candidate.IsAttackTargetable())
             return false;
         if (!EntityCombatTeamHelper.IsEnemy(building, candidate))
             return false;
-        if (entity.BuffComp == null)
-            throw new InvalidOperationException($"RestroomQueueBuff.IsEligibleTarget failed: target BuffComp is null. target={entity.CharacterKey}.");
-        if (entity.BuffComp.HasBuff(ActiveControlBuffId))
+        if (candidate.BuffComp == null)
+            throw new InvalidOperationException($"RestroomQueueBuff.IsEligibleTarget failed: target BuffComp is null. target={candidate.CharacterKey}.");
+        if (candidate.BuffComp.HasBuff(ActiveControlBuffId))
             return false;
 
         string handledBuffId = GetHandledBuffId(building);
-        if (entity.BuffComp.HasBuff(handledBuffId))
+        if (candidate.BuffComp.HasBuff(handledBuffId))
             return false;
 
         return true;
     }
 
-    private void AcquireTarget(MAEntity target)
+    private void AcquireTarget(IEntityContext target)
     {
         if (target == null)
             throw new InvalidOperationException("RestroomQueueBuff.AcquireTarget failed: target is null.");
-        if (target.moveComp == null || target.atkComp == null || target.moveExecutor == null)
+        if (target.MoveComp == null || target.AtkComp == null || target.MoveExecutor == null)
             throw new InvalidOperationException($"RestroomQueueBuff.AcquireTarget failed: missing movement or attack comp. target={target.CharacterKey}.");
         if (target.BuffComp == null)
             throw new InvalidOperationException($"RestroomQueueBuff.AcquireTarget failed: target BuffComp is null. target={target.CharacterKey}.");
 
-        BuildingEntity building = GetBuilding();
+        IBuildingLogicContext building = GetBuilding();
         AddMarkerBuff(target, GetHandledBuffId(building));
         AddMarkerBuff(target, ActiveControlBuffId);
 
-        target.atkComp.InterruptAttack(AttackInterruptReason.Control);
-        target.LockComp(target.atkComp, this);
-        target.LockComp(target.moveComp, this);
-        target.moveComp.StopMove();
-        target.targetComp?.ClearAggro();
+        target.AtkComp.InterruptAttack(AttackInterruptReason.Control);
+        target.LockComp(target.AtkComp, this);
+        target.LockComp(target.MoveComp, this);
+        target.MoveComp.StopMove();
+        target.TargetComp?.ClearAggro();
 
         _queue.Add(new QueueEntry(target));
     }
@@ -514,18 +482,18 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         if (deltaTime <= Fix64.Zero)
             return;
 
-        BuildingEntity building = GetBuilding();
+        IBuildingLogicContext building = GetBuilding();
         for (int i = 0; i < _queue.Count; i++)
         {
-            MAEntity target = _queue[i].Target;
+            IEntityContext target = _queue[i].Target;
             FixVector2 slot = GetQueueSlot(building, i);
-            target.moveComp.SetNavTarget(new Vector3((float)slot.x, target.Position.y, (float)slot.y));
+            target.MoveComp.SetNavTarget(new Vector3((float)slot.x, target.Position.y, (float)slot.y));
 
             FixVector2 offset = slot - LogicEntityFrameSnapshotService.GetRequiredPosition(target);
             Fix64 distance = FixVector2.Magnitude(offset);
             if (distance <= (Fix64)ArriveDistance)
             {
-                target.moveExecutor.SetOverrideFixed(FixVector2.Zero);
+                target.MoveExecutor.SetOverrideFixed(FixVector2.Zero);
                 continue;
             }
 
@@ -534,11 +502,11 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
                 throw new InvalidOperationException($"RestroomQueueBuff.DriveQueuedTargets failed: target speed <= 0. target={target.CharacterKey}.");
 
             Fix64 maximumSpeed = Fix64.Min(speed, distance / deltaTime);
-            target.moveExecutor.SetOverrideFixed(offset.GetNormalized() * maximumSpeed);
+            target.MoveExecutor.SetOverrideFixed(offset.GetNormalized() * maximumSpeed);
         }
     }
 
-    private FixVector2 GetQueueSlot(BuildingEntity building, int index)
+    private FixVector2 GetQueueSlot(IBuildingLogicContext building, int index)
     {
         FixVector2 forward = LogicEntityFrameSnapshotService.GetRequiredForward(building);
         Fix64 buildingRadius = AreaWeaponDamageQuery.GetRequiredRadialExtent(building);
@@ -550,7 +518,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
     {
         for (int i = _queue.Count - 1; i >= 0; i--)
         {
-            MAEntity target = _queue[i].Target;
+            IEntityContext target = _queue[i].Target;
             if (target == null || !target.Alive || target.IsDestroyed())
                 ReleaseAt(i);
         }
@@ -576,28 +544,28 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         _scanTimer = Fix64.Zero;
     }
 
-    private void ReleaseTarget(MAEntity target)
+    private void ReleaseTarget(IEntityContext target)
     {
         if (target == null)
             return;
 
         target.BuffComp?.RemoveBuff(ActiveControlBuffId);
-        if (target.atkComp != null)
-            target.ResumeComp(target.atkComp, this);
-        if (target.moveComp != null)
+        if (target.AtkComp != null)
+            target.ResumeComp(target.AtkComp, this);
+        if (target.MoveComp != null)
         {
-            target.ResumeComp(target.moveComp, this);
-            target.moveComp.StopMove();
+            target.ResumeComp(target.MoveComp, this);
+            target.MoveComp.StopMove();
         }
-        target.moveExecutor?.ClearOverride();
+        target.MoveExecutor?.ClearOverride();
     }
 
-    private BuildingEntity GetBuilding()
+    private IBuildingLogicContext GetBuilding()
     {
-        if (!(hostEntity is BuildingEntity building))
-            throw new InvalidOperationException($"RestroomQueueBuff.GetBuilding failed: host is not BuildingEntity. host={hostEntity?.CharacterKey}.");
-        if (building.buildingData == null)
-            throw new InvalidOperationException("RestroomQueueBuff.GetBuilding failed: buildingData is null.");
+        if (!(hostEntity is IBuildingLogicContext building))
+            throw new InvalidOperationException($"RestroomQueueBuff.GetBuilding failed: host is not a building logic context. host={hostEntity?.CharacterKey}.");
+        if (building.BuildingData == null)
+            throw new InvalidOperationException("RestroomQueueBuff.GetBuilding failed: BuildingData is null.");
 
         return building;
     }
@@ -612,16 +580,16 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         return (Fix64)BuildingCombatModifierUtility.ResolveRestroomReleaseInterval(hostEntity, (float)_releaseInterval);
     }
 
-    private static Fix64 GetWorldRange(BuildingEntity building)
+    private static Fix64 GetWorldRange(IBuildingLogicContext building)
     {
-        WeaponData weaponData = building.buildingData?.Weapon;
+        WeaponData weaponData = building.BuildingData?.Weapon;
         if (weaponData == null || weaponData.Range <= Fix64.Zero)
             throw new InvalidOperationException($"RestroomQueueBuff.GetWorldRange failed: missing restroom range. building={building.CharacterKey}.");
 
         return DistanceUnitConverter.ConvertToWorld(weaponData.Range);
     }
 
-    private static string GetHandledBuffId(BuildingEntity building)
+    private static string GetHandledBuffId(IBuildingLogicContext building)
     {
         if (building == null)
             throw new InvalidOperationException("RestroomQueueBuff.GetHandledBuffId failed: building is null.");
@@ -632,7 +600,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         return $"{HandledBuffPrefix}_{phase}_{building.BuildingInstanceId}";
     }
 
-    private static void AddMarkerBuff(MAEntity target, string buffId)
+    private static void AddMarkerBuff(IEntityContext target, string buffId)
     {
         BuffData buffData = BuffData.Create(
             id: buffId,
@@ -660,7 +628,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         hasher.Add(_queue.Count);
         for (int i = 0; i < _queue.Count; i++)
         {
-            MAEntity target = _queue[i].Target;
+            IEntityContext target = _queue[i].Target;
             if (target == null || !target.LogicEntityId.IsValid)
                 throw new InvalidOperationException($"RestroomQueueBuff contains an invalid target at index {i}.");
             hasher.Add(target.LogicEntityId.Value);
@@ -669,9 +637,9 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
 
     private readonly struct QueueEntry
     {
-        public readonly MAEntity Target;
+        public readonly IEntityContext Target;
 
-        public QueueEntry(MAEntity target)
+        public QueueEntry(IEntityContext target)
         {
             Target = target;
         }
@@ -718,7 +686,7 @@ public static class AttackMissUtility
 {
     public static bool ShouldMissAttack(IEntityContext attacker)
     {
-        if (!(attacker is MAEntity entity) || !(entity.BuffComp is AAAGame.Scripts.BuffSystem.CharacterBuffComp buffComp))
+        if (!(attacker?.BuffComp is AAAGame.Scripts.BuffSystem.CharacterBuffComp buffComp))
             return false;
 
         BlindAttackMissBuff strongest = null;
@@ -804,9 +772,9 @@ public static class MonitorWeaponEffect
         if (blindPercent <= Fix64.Zero)
             return;
 
-        if (!(target is MAEntity targetEntity))
-            throw new InvalidOperationException($"MonitorWeaponEffect.ApplyBlind failed: target is not MAEntity. target={target?.CharacterKey}.");
-        if (targetEntity.BuffComp == null)
+        if (target == null)
+            throw new InvalidOperationException("MonitorWeaponEffect.ApplyBlind failed: target is null.");
+        if (target.BuffComp == null)
             throw new InvalidOperationException($"MonitorWeaponEffect.ApplyBlind failed: target BuffComp is null. target={target.CharacterKey}.");
 
         int idValue = Mathf.RoundToInt((float)(blindPercent * (Fix64)1000));
@@ -817,22 +785,22 @@ public static class MonitorWeaponEffect
             maxStack: 1,
             modules: new List<BuffCallback> { new BlindAttackMissBuff(blindPercent) });
 
-        targetEntity.BuffComp.AddBuff(buffData, targetEntity);
+        target.BuffComp.AddBuff(buffData, target);
     }
 
     private static Fix64 ResolveBlindPercent(IEntityContext attacker)
     {
         Fix64 baseBlindPercent = Fix64.Zero;
-        if (attacker is BuildingEntity building && building.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 0)
-            baseBlindPercent = building.buildingData.UniqueValues[0];
+        if (attacker is IBuildingLogicContext building && building.BuildingData?.UniqueValues != null && building.BuildingData.UniqueValues.Length > 0)
+            baseBlindPercent = building.BuildingData.UniqueValues[0];
 
         return BuildingCombatModifierUtility.ResolveBlindPercent(attacker, baseBlindPercent);
     }
 
     public static Fix64 ResolveFacingConeAngle(IEntityContext attacker)
     {
-        if (attacker is BuildingEntity building && building.buildingData?.UniqueValues != null && building.buildingData.UniqueValues.Length > 1)
-            return building.buildingData.UniqueValues[1];
+        if (attacker is IBuildingLogicContext building && building.BuildingData?.UniqueValues != null && building.BuildingData.UniqueValues.Length > 1)
+            return building.BuildingData.UniqueValues[1];
 
         return (Fix64)45;
     }

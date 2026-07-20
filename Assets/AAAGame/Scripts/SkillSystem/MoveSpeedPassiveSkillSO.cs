@@ -3,12 +3,12 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "MoveSpeedPassiveSkillSO", menuName = "Skills/Passive/Move Speed")]
 public sealed class MoveSpeedPassiveSkillSO : PassiveSkillSO
 {
-    public override void Apply(MAEntity owner)
+    public override void Apply(IEntityContext owner)
     {
         ReplaceBuff(owner, new SkillMoveSpeedPercentBuff(GetValue(0)));
     }
 
-    public override void Remove(MAEntity owner)
+    public override void Remove(IEntityContext owner)
     {
         RemoveBuff(owner);
     }

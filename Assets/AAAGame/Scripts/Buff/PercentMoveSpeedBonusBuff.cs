@@ -17,8 +17,8 @@ public sealed class PercentMoveSpeedBonusBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var creature = hostEntity as GeneralCreature;
-        var pm = creature?.CreaturePropertyManager;
+        var creature = hostEntity;
+        var pm = creature?.CreatureProperties;
         if (pm == null || m_Percent == Fix64.Zero) return;
 
         Fix64 before = pm.GetProperty(CreatureMainProperty.Speed);
@@ -31,8 +31,7 @@ public sealed class PercentMoveSpeedBonusBuff : BuffCallback
     public override void OnRemove()
     {
         base.OnRemove();
-        var creature = hostEntity as GeneralCreature;
-        var pm = creature?.CreaturePropertyManager;
+        var pm = hostEntity?.CreatureProperties;
         if (pm == null || m_Modifier == null) return;
 
         pm.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, false);
@@ -60,8 +59,7 @@ public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback
     {
         base.OnAdd();
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_TargetPercent == Fix64.Zero)
             return;
 
@@ -94,8 +92,7 @@ public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback
     {
         base.OnRemove();
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Modifier == null)
             return;
 
@@ -111,5 +108,77 @@ public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback
 
         m_CurrentPercent = value;
         m_MulBuffProperty?.MakeDirty();
+    }
+}
+
+public sealed class HeroOutOfCombatMoveSpeedBuff : BuffCallback, ILogicDeterministicStateContributor
+{
+    private static readonly Fix64 Delay = (Fix64)2;
+    private static readonly Fix64 RampDuration = (Fix64)1;
+    private static readonly Fix64 TargetPercent = Fix64.One;
+    private bool m_InitialGrace = true;
+    private Fix64 m_CurrentPercent;
+    private IPropertyModifier m_Modifier;
+    private ValueProperty m_MulBuffProperty;
+
+    public override void OnAdd()
+    {
+        CreaturePropertyManager properties = hostEntity?.CreatureProperties
+            ?? throw new System.InvalidOperationException("HeroOutOfCombatMoveSpeedBuff requires creature properties.");
+        string propertyId = PropertyHelper.ModName(
+            CreatureMainProperty.Speed.ToString(),
+            nameof(NormalComputeTp.Mul),
+            nameof(NormalBaseValueTp.Buff));
+        m_MulBuffProperty = properties.propertyManager.GetValueProperty(propertyId);
+        m_CurrentPercent = TargetPercent;
+        m_Modifier = PropertyDirectAdditiveModifier.Create(() => m_CurrentPercent);
+        properties.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, true);
+    }
+
+    public override void OnUpdate(Fix64 deltaTime)
+    {
+        if (!hostEntity.Alive || !hostEntity.IsOutOfCombat)
+        {
+            m_InitialGrace = false;
+            SetPercent(Fix64.Zero);
+            return;
+        }
+        if (m_InitialGrace)
+        {
+            SetPercent(TargetPercent);
+            return;
+        }
+
+        Fix64 elapsed = hostEntity.OutOfCombatElapsedLogicTime;
+        Fix64 ramp = Fix64.Clamp((elapsed - Delay) / RampDuration, Fix64.Zero, Fix64.One);
+        SetPercent(TargetPercent * ramp);
+    }
+
+    public override void OnRemove()
+    {
+        if (m_Modifier != null && hostEntity?.CreatureProperties != null)
+        {
+            hostEntity.CreatureProperties.ModifyMainPropertyMul(
+                CreatureMainProperty.Speed,
+                NormalBaseValueTp.Buff,
+                m_Modifier,
+                false);
+        }
+        m_Modifier = null;
+        m_MulBuffProperty = null;
+    }
+
+    private void SetPercent(Fix64 value)
+    {
+        if (m_CurrentPercent == value)
+            return;
+        m_CurrentPercent = value;
+        m_MulBuffProperty.MakeDirty();
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_InitialGrace);
+        hasher.Add(m_CurrentPercent.RawValue);
     }
 }

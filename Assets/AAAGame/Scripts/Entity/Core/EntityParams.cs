@@ -18,6 +18,7 @@ public class EntityParams : RefParams
     public Vector3? localScale { get; set; } = null;
     public int gameObjectLayer { get; set; } = -1;
     public LogicEntityId LogicEntityId { get; internal set; }
+    public LogicEntityState LogicEntityState { get; internal set; }
 
 
     public SideType Side
@@ -43,6 +44,7 @@ public class EntityParams : RefParams
     public BrainType BrainType { get; set; } = BrainType.Player;
     public int UnitLevel { get; set; } = 1;
     public int FollowEntityId { get; set; } = -1;
+    public LogicSkillFactoryKind LogicSkillFactoryKind { get; set; }
     public const string P_CharacterKey = "CharacterKey";
     public const string P_SourceStrongholdId = "SourceStrongholdId";
 
@@ -103,6 +105,7 @@ public class EntityParams : RefParams
         this.localScale = null;
         this.gameObjectLayer = -1;
         LogicEntityId = default;
+        LogicEntityState = null;
         this.AttchToEntity = null;
         this.ParentTransform = null;
         OnShowCallback = null;
@@ -121,6 +124,7 @@ public class EntityParams : RefParams
         UnitLevel = 1;
         FollowEntityId = -1;
         StartBuffs = null;
+        LogicSkillFactoryKind = LogicSkillFactoryKind.None;
     }
 }
 #pragma warning restore IDE1006 // 命名样式

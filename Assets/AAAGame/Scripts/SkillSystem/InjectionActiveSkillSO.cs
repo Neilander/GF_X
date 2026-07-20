@@ -5,7 +5,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "InjectionActiveSkillSO", menuName = "Skills/Active/Injection")]
 public sealed class InjectionActiveSkillSO : InstantActiveSkillSO
 {
-    protected override void ApplyInstant(MAEntity caster)
+    protected override void ApplyInstant(IEntityContext caster)
     {
         if (caster == null)
             throw new InvalidOperationException($"Injection caster missing. skillId={skillId}");
@@ -18,7 +18,8 @@ public sealed class InjectionActiveSkillSO : InstantActiveSkillSO
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity target)
+            IEntityContext target = all[i];
+            if (target == null)
                 continue;
             if (!target.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(caster, target))
                 continue;
@@ -27,9 +28,9 @@ public sealed class InjectionActiveSkillSO : InstantActiveSkillSO
             if (target.BuffComp == null)
                 throw new InvalidOperationException($"Injection target missing BuffComp. target={target.CharacterKey}");
 
-            target.BuffComp.RemoveBuff(GetFearBuffId(target.Id));
+            target.BuffComp.RemoveBuff(GetFearBuffId(target.LogicEntityId.Value));
             target.BuffComp.AddBuff(
-                BuffData.Create(GetFearBuffId(target.Id), duration, false, 1, new List<BuffCallback> { new FearMoveAwayBuff(caster) }),
+                BuffData.Create(GetFearBuffId(target.LogicEntityId.Value), duration, false, 1, new List<BuffCallback> { new FearMoveAwayBuff(caster) }),
                 target);
         }
     }
@@ -54,16 +55,16 @@ public sealed class FearMoveAwayBuff : BuffCallback, ICapability
 
     public override void OnAdd()
     {
-        if (hostEntity == null || hostEntity.moveComp == null)
+        if (hostEntity == null || hostEntity.MoveComp == null)
             throw new InvalidOperationException("FearMoveAwayBuff requires host moveComp.");
 
-        hostEntity.LockComp(hostEntity.moveComp, this);
+        hostEntity.LockComp(hostEntity.MoveComp, this);
         m_MoveLocked = true;
     }
 
     public override void OnUpdate(Fix64 deltaTime)
     {
-        if (hostEntity == null || m_Source == null || hostEntity.durationMoveEffectComp == null)
+        if (hostEntity == null || m_Source == null || hostEntity.DurationMoveEffectComp == null)
             return;
 
         FixVector2 direction = hostEntity.LogicFramePositionFixed() - m_Source.LogicFramePositionFixed();
@@ -71,15 +72,15 @@ public sealed class FearMoveAwayBuff : BuffCallback, ICapability
             direction = LogicEntityFrameSnapshotService.GetRequiredForward(hostEntity);
 
         direction = direction.GetNormalized();
-        hostEntity.durationMoveEffectComp.StartDurationAdditionalMove((Fix64)0.1f, direction * (Fix64)3);
+        hostEntity.DurationMoveEffectComp.StartDurationAdditionalMove((Fix64)0.1f, direction * (Fix64)3);
     }
 
     public override void OnRemove()
     {
-        if (!m_MoveLocked || hostEntity == null || hostEntity.moveComp == null)
+        if (!m_MoveLocked || hostEntity == null || hostEntity.MoveComp == null)
             return;
 
-        hostEntity.ResumeComp(hostEntity.moveComp, this);
+        hostEntity.ResumeComp(hostEntity.MoveComp, this);
         m_MoveLocked = false;
     }
 

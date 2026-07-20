@@ -157,7 +157,7 @@ public static class LevelTagRuntime
             building.BuffComp?.AddBuff(buff, building);
     }
 
-    public static bool TryConsumeHeroRevive(SoldierEntity hero)
+    public static bool TryConsumeHeroRevive(IEntityContext hero)
     {
         if (hero == null || EntitySideHelper.ToFactionId(hero.Side) != EntitySideHelper.PlayerFactionId)
             return false;
@@ -167,7 +167,10 @@ public static class LevelTagRuntime
             return false;
 
         int day = Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day));
-        s_HeroReviveStatesByEntityId.TryGetValue(hero.Id, out HeroReviveState state);
+        if (!hero.LogicEntityId.IsValid)
+            throw new InvalidOperationException("LevelTagRuntime.TryConsumeHeroRevive failed: hero logic id is invalid.");
+        int entityId = hero.LogicEntityId.Value;
+        s_HeroReviveStatesByEntityId.TryGetValue(entityId, out HeroReviveState state);
         if (state.Day != day)
             state = new HeroReviveState { Day = day, Count = 0 };
 
@@ -175,7 +178,7 @@ public static class LevelTagRuntime
             return false;
 
         state.Count++;
-        s_HeroReviveStatesByEntityId[hero.Id] = state;
+        s_HeroReviveStatesByEntityId[entityId] = state;
         return true;
     }
 

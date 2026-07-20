@@ -12,18 +12,22 @@ public static class MAEntityFactory
         BrainType brainType,
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
-        int unitLevel = 1)
+        int unitLevel = 1,
+        LogicSkillFactoryKind skillFactoryKind = LogicSkillFactoryKind.None)
     {
         EntityParams entityParams = CreateLogicEntityParams(position);
         entityParams.Side = side;
         entityParams.BrainType = brainType;
         entityParams.UnitLevel = Mathf.Clamp(unitLevel, 1, 3);
+        entityParams.LogicSkillFactoryKind = skillFactoryKind;
         entityParams.SetString(EntityParams.P_CharacterKey, characterKey);
         if (!string.IsNullOrEmpty(sourceStrongholdId))
         {
             entityParams.SetString(EntityParams.P_SourceStrongholdId, sourceStrongholdId);
         }
         entityParams.StartBuffs = startBuffs;
+        AssignLogicState(entityParams, position, side, characterKey);
+        LogicUnitConfigurator.Configure(entityParams.LogicEntityState, entityParams);
         return entityParams;
     }
 
@@ -39,7 +43,14 @@ public static class MAEntityFactory
         System.Action<EntityParams> configureParams = null,
         int unitLevel = 1)
     {
-        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
+        EntityParams entityParams = CreateMAEntityParams(
+            position,
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            sourceStrongholdId,
+            unitLevel);
         configureParams?.Invoke(entityParams);
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
     }
@@ -56,7 +67,15 @@ public static class MAEntityFactory
         System.Action<EntityParams> configureParams = null,
         int unitLevel = 1)
     {
-        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs, sourceStrongholdId, unitLevel);
+        EntityParams entityParams = CreateMAEntityParams(
+            position,
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            sourceStrongholdId,
+            unitLevel,
+            LogicSkillFactoryKind.Player);
         configureParams?.Invoke(entityParams);
         return GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
     }
@@ -70,7 +89,13 @@ public static class MAEntityFactory
         Const.EntityGroup entityGroup,
         List<BuffData> startBuffs = null)
     {
-        EntityParams entityParams = CreateMAEntityParams(position, characterKey, side, brainType, startBuffs);
+        EntityParams entityParams = CreateMAEntityParams(
+            position,
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            skillFactoryKind: LogicSkillFactoryKind.Character);
         return GF.Entity.ShowEntity<CharacterEntity>(prefabName, entityGroup, entityParams);
     }
 
@@ -78,14 +103,24 @@ public static class MAEntityFactory
         BuildingData buildingData,
         Vector3 position,
         string buildingInstanceId,
+        int ownerFactionId,
+        int logicQuarterTurns = 0,
         bool isGameEndConditionBuilding = false,
         bool isNavigationStaticBaked = false,
         bool enableConstructionEscape = false)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             throw new System.ArgumentException("MAEntityFactory.ShowBuilding failed: buildingInstanceId is empty.", nameof(buildingInstanceId));
+        if (buildingData == null)
+            throw new System.ArgumentNullException(nameof(buildingData));
+        if (ownerFactionId < 0)
+            throw new System.ArgumentOutOfRangeException(nameof(ownerFactionId));
+        if (logicQuarterTurns < 0 || logicQuarterTurns > 3)
+            throw new System.ArgumentOutOfRangeException(nameof(logicQuarterTurns));
 
         EntityParams entityParams = CreateLogicEntityParams(position);
+        entityParams.FactionId = ownerFactionId;
+        entityParams.eulerAngles = new Vector3(0f, logicQuarterTurns * 90f, 0f);
         entityParams.Set(BuildingEntity.P_BuildingData, buildingData);
         entityParams.SetString(BuildingEntity.P_BuildingInstanceId, buildingInstanceId);
         if (isGameEndConditionBuilding)
@@ -100,20 +135,60 @@ public static class MAEntityFactory
         {
             entityParams.Set<VarBoolean>(BuildingEntity.P_EnableConstructionEscape, true);
         }
+        SideType side = EntitySideHelper.ToSide(EntityCombatTeamHelper.ResolveTeamIdByFaction(ownerFactionId));
+        AssignLogicState(entityParams, position, side, buildingData.Identifier);
+        LogicBuildingConfigurator.Configure(
+            entityParams.LogicEntityState,
+            buildingData,
+            buildingInstanceId,
+            ownerFactionId,
+            logicQuarterTurns);
 
         return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
     }
 
     private static EntityParams CreateLogicEntityParams(Vector3 position)
     {
-        EntityParams entityParams = EntityParams.Create(position: position);
-        entityParams.LogicEntityId = LogicEntityLifecycleService.RequestSpawn();
-        return entityParams;
+        return EntityParams.Create(position: position);
+    }
+
+    private static void AssignLogicState(
+        EntityParams entityParams,
+        Vector3 position,
+        SideType side,
+        string characterKey)
+    {
+        if (entityParams == null)
+            throw new System.ArgumentNullException(nameof(entityParams));
+        if (entityParams.LogicEntityId.IsValid || entityParams.LogicEntityState != null)
+            throw new System.InvalidOperationException("MAEntityFactory.AssignLogicState failed: params already have logic identity.");
+
+        var descriptor = new LogicEntitySpawnDescriptor(
+            new FixVector2((Fix64)position.x, (Fix64)position.z),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            side,
+            characterKey);
+        entityParams.LogicEntityId = LogicEntityLifecycleService.RequestSpawn(descriptor);
+        entityParams.LogicEntityState = LogicEntityStateStore.GetRequired(entityParams.LogicEntityId);
     }
 }
 
 public static class BuildingInitialBuffFactory
 {
+    public static List<BuffData> CreateProductionBuffs(BuildingData buildingData)
+    {
+        var buffs = new List<BuffData>();
+        AddProductionBuff(buffs, buildingData);
+        return buffs.Count > 0 ? buffs : null;
+    }
+
+    public static List<BuffData> CreateCombatInitialBuffs(BuildingData buildingData)
+    {
+        var buffs = new List<BuffData>();
+        AddDefenseUtilityBuff(buffs, buildingData);
+        return buffs.Count > 0 ? buffs : null;
+    }
+
     public static List<BuffData> CreateInitialBuffs(BuildingData buildingData)
     {
         var buffs = new List<BuffData>();

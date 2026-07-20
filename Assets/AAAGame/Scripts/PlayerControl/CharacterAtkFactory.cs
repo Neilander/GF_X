@@ -5,7 +5,7 @@
     [CreateAssetMenu(fileName = "CharacterAtkFactory", menuName = "Atk Factory/CharacterAtk")]
     public class CharacterAtkFactory : AtkCompFactory
     {
-        public override IAtkComp CreateAtkComp(MAEntity gmo)
+        public override IAtkComp CreateAtkComp(IEntityContext gmo)
         {
             var comp = new DirectAtkComp();
             gmo.SetAtkComp(comp);

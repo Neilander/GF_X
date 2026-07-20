@@ -6,7 +6,7 @@ using System.Linq;
 
 public class PlayerSkillComp : ISkillComp
 {
-    private MAEntity _entity;
+    private IEntityContext _entity;
     private InputModel _inputModel;
 
     public const int SKILL_NUM = SkillInputRuntime.MaxSkillCount;
@@ -17,7 +17,7 @@ public class PlayerSkillComp : ISkillComp
     private HashSet<string> _appliedPassiveSkillIds;
     private Dictionary<string, GeneralCounter> _cooldownsBySkillId;
 
-    public void Init(MAEntity entity, List<ActiveSkillSO>skillSet, List<PassiveSkillSO> passiveSkillSet)
+    public void Init(IEntityContext entity, List<ActiveSkillSO>skillSet, List<PassiveSkillSO> passiveSkillSet)
     {
         _entity = entity;
 
@@ -107,12 +107,12 @@ public class PlayerSkillComp : ISkillComp
 
     void LockCompWhenStart()
     {
-        _entity.LockComp(_entity.atkComp,this);
+        _entity.LockComp(_entity.AtkComp,this);
     }
 
     void UnlockCompWhenEnd()
     {
-        _entity.ResumeComp(_entity.atkComp,this);
+        _entity.ResumeComp(_entity.AtkComp,this);
     }
 
     public void ShutDown()

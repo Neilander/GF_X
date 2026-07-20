@@ -4,7 +4,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "NoMoveFactory", menuName = "Move Factory/NoMove")]
 public class NoMoveFactory : MoveCompFactory
 {
-    public override IMoveComp CreateMoveComp(MAEntity gmo)
+    public override IMoveComp CreateMoveComp(IEntityContext gmo)
     {
         //gmo.AddComponent<NoAtkComp>();
         NoMoveComp comp = new NoMoveComp();
@@ -16,7 +16,7 @@ public class NoMoveFactory : MoveCompFactory
 
 public abstract class MoveCompFactory : ScriptableObject
 {
-    public abstract IMoveComp CreateMoveComp(MAEntity gmo);
+    public abstract IMoveComp CreateMoveComp(IEntityContext gmo);
     public static LoadAssetCallbacks MoveFactoryCallBack = new LoadAssetCallbacks(
-        (assetName,  asset, duration,  userData)=> (asset as MoveCompFactory)?.CreateMoveComp(userData as MAEntity));
+        (assetName,  asset, duration,  userData)=> (asset as MoveCompFactory)?.CreateMoveComp(userData as IEntityContext));
 }

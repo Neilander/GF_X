@@ -12,6 +12,7 @@ public static class EntityRegistry
 
     public static IList<IEntityContext> AllEntities => _entities;
     public static IEntityContext Player => _player;
+    public static event System.Action Changed;
 
     public static void Register(IEntityContext entity)
     {
@@ -42,6 +43,7 @@ public static class EntityRegistry
         }
 
         _entities.Insert(low, entity);
+        Changed?.Invoke();
     }
 
     public static void RegisterAsPlayer(IEntityContext entity)
@@ -50,11 +52,41 @@ public static class EntityRegistry
         Register(entity);
     }
 
+    public static bool TryGet(LogicEntityId entityId, out IEntityContext entity)
+    {
+        if (!entityId.IsValid)
+            throw new System.ArgumentException("Entity id must be valid.", nameof(entityId));
+
+        int low = 0;
+        int high = _entities.Count - 1;
+        while (low <= high)
+        {
+            int middle = low + ((high - low) >> 1);
+            IEntityContext current = _entities[middle];
+            int comparison = current.LogicEntityId.CompareTo(entityId);
+            if (comparison == 0)
+            {
+                entity = current;
+                return true;
+            }
+
+            if (comparison < 0)
+                low = middle + 1;
+            else
+                high = middle - 1;
+        }
+
+        entity = null;
+        return false;
+    }
+
     public static void Unregister(IEntityContext entity)
     {
-        _entities.Remove(entity);
+        bool removed = _entities.Remove(entity);
         if (_player == entity)
             _player = null;
+        if (removed)
+            Changed?.Invoke();
     }
 
     /// <summary>
@@ -67,7 +99,10 @@ public static class EntityRegistry
 
     public static void Clear()
     {
+        bool hadEntities = _entities.Count > 0 || _player != null;
         _entities.Clear();
         _player = null;
+        if (hadEntities)
+            Changed?.Invoke();
     }
 }

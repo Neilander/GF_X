@@ -23,7 +23,7 @@ public static class EntityContextExtensions
             return false;
 
         // 幽灵态（玩家死亡进入的复活等待状态）：Alive=true 但不可被攻击，避免敌人一直锁着它打
-        if (ctx is HeroEntity se && se.IsGhostState)
+        if (ctx is IHeroLogicContext se && se.IsGhostState)
             return false;
 
         // 检查是否处于战斗阶段（进攻阶段）
@@ -39,7 +39,7 @@ public static class EntityContextExtensions
         if (ctx.IsDestroyed() || !ctx.Alive)
             return false;
 
-        if (ctx is HeroEntity se && se.IsGhostState)
+        if (ctx is IHeroLogicContext se && se.IsGhostState)
             return false;
 
         int currentPhase = InGameDataModel.GetValue(IngameValueType.Phase);
@@ -51,14 +51,14 @@ public static class EntityContextExtensions
 
     public static bool NeedsHealing(this IEntityContext ctx)
     {
-        if (!(ctx is GeneralCreature creature) || creature.CreaturePropertyManager == null)
+        if (ctx?.CreatureProperties == null)
             return false;
 
-        Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 max = ctx.CreatureProperties.GetProperty(CreatureMainProperty.Health);
         if (max <= Fix64.Zero)
             return false;
 
-        return creature.HealthValue < max;
+        return ctx.HealthValue < max;
     }
 
     public static float HealthRatio(this IEntityContext ctx)
@@ -68,14 +68,14 @@ public static class EntityContextExtensions
 
     public static Fix64 HealthRatioFixed(this IEntityContext ctx)
     {
-        if (!(ctx is GeneralCreature creature) || creature.CreaturePropertyManager == null)
+        if (ctx?.CreatureProperties == null)
             return Fix64.One;
 
-        Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 max = ctx.CreatureProperties.GetProperty(CreatureMainProperty.Health);
         if (max <= Fix64.Zero)
             return Fix64.One;
 
-        return Fix64.Clamp(creature.HealthValue / max, Fix64.Zero, Fix64.One);
+        return Fix64.Clamp(ctx.HealthValue / max, Fix64.Zero, Fix64.One);
     }
 
     public static bool HasInvincibleBuff(this IEntityContext ctx)
@@ -84,96 +84,26 @@ public static class EntityContextExtensions
     }
 
     /// <summary>
-    /// 计算到目标可命中外轮廓的 XZ 平面距离，优先 HurtBox/Collider，回退到中心点距离。
+    /// 计算到目标逻辑战斗形状外轮廓的 XZ 平面距离。
     /// </summary>
     public static float DistanceToTargetSurface(this IEntityContext self, IEntityContext target)
     {
         if (self == null || target == null)
             return float.PositiveInfinity;
 
-        Vector3 from = self.Position;
-        if (target is BuildingEntity building)
-        {
-            FixVector2 point = new FixVector2((Fix64)from.x, (Fix64)from.z);
-            return (float)building.GetRequiredWorldCombatShape().DistanceToSurface(point);
-        }
-        if (target.TryGetTargetClosestPoint(from, out Vector3 closestPoint))
-            return HorizontalDistance(from, closestPoint);
-
-        return HorizontalDistance(from, target.Position);
-    }
-
-    private static float HorizontalDistance(Vector3 a, Vector3 b)
-    {
-        float dx = a.x - b.x;
-        float dz = a.z - b.z;
-        return Mathf.Sqrt(dx * dx + dz * dz);
+        return (float)target.CombatShape.DistanceToSurface(self.PositionFixed);
     }
 
     public static bool TryGetTargetClosestPoint(this IEntityContext target, Vector3 origin, out Vector3 closestPoint)
     {
         closestPoint = default;
 
-        if (!(target is Component targetComponent) || targetComponent == null)
-            return TryGetClosestPointFromCollisionRadius(target, origin, out closestPoint);
-
-        if (target is BuildingEntity building)
-        {
-            FixVector2 point = new FixVector2((Fix64)origin.x, (Fix64)origin.z);
-            FixVector2 closest = building.GetRequiredWorldCombatShape().ClosestPoint(point);
-            closestPoint = new Vector3((float)closest.x, origin.y, (float)closest.y);
-            return true;
-        }
-
-        var hurtBox = targetComponent.GetComponentInChildren<HurtBox>();
-        if (hurtBox != null && hurtBox.TryGetComponent<Collider>(out var hurtCollider) && hurtCollider.enabled)
-        {
-            closestPoint = hurtCollider.ClosestPoint(origin);
-            return true;
-        }
-
-        var rootCollider = targetComponent.GetComponent<Collider>();
-        if (rootCollider != null && rootCollider.enabled)
-        {
-            closestPoint = rootCollider.ClosestPoint(origin);
-            return true;
-        }
-
-        var childCollider = targetComponent.GetComponentInChildren<Collider>();
-        if (childCollider != null && childCollider.enabled)
-        {
-            closestPoint = childCollider.ClosestPoint(origin);
-            return true;
-        }
-
-        var renderer = targetComponent.GetComponentInChildren<Renderer>();
-        if (renderer != null)
-        {
-            closestPoint = renderer.bounds.ClosestPoint(origin);
-            return true;
-        }
-
-        return TryGetClosestPointFromCollisionRadius(target, origin, out closestPoint);
-    }
-
-    private static bool TryGetClosestPointFromCollisionRadius(IEntityContext target, Vector3 origin, out Vector3 closestPoint)
-    {
-        closestPoint = default;
         if (target == null)
             return false;
 
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(target.GetProperty(CreatureMainProperty.CollisionRadius));
-        if (radius <= 0.0001f)
-            return false;
-
-        Vector3 fromTarget = origin - target.Position;
-        fromTarget.y = 0f;
-        if (fromTarget.sqrMagnitude <= 0.0001f)
-            fromTarget = Vector3.forward;
-        else
-            fromTarget.Normalize();
-
-        closestPoint = target.Position + fromTarget * radius;
+        FixVector2 closest = target.CombatShape.ClosestPoint(
+            new FixVector2((Fix64)origin.x, (Fix64)origin.z));
+        closestPoint = new Vector3((float)closest.x, origin.y, (float)closest.y);
         return true;
     }
 

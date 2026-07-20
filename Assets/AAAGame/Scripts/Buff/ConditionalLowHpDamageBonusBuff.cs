@@ -17,17 +17,17 @@ public sealed class ConditionalLowHpDamageBonusBuff : BuffCallback
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (!(target is GeneralCreature gc) || gc.CreaturePropertyManager == null)
+        if (target is not IEntityContext context || context.CreatureProperties == null)
             return baseDamage;
 
-        Fix64 cur = gc.HealthValue;
-        Fix64 max = gc.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+        Fix64 cur = context.HealthValue;
+        Fix64 max = context.CreatureProperties.GetProperty(CreatureMainProperty.Health);
         if (max <= Fix64.Zero) return baseDamage;
 
         Fix64 hpPercent = (cur / max) * (Fix64)100;
         if (hpPercent < m_HpThresholdPercent)
         {
-            Debug.Log($"[ConditionalLowHpDamageBonus] target={gc.CharacterKey} HP%={(float)hpPercent:F1}% < {(float)m_HpThresholdPercent}%, damage {(float)baseDamage} -> {(float)(baseDamage + m_BonusAmount)}");
+            Debug.Log($"[ConditionalLowHpDamageBonus] target={context.CharacterKey} HP%={(float)hpPercent:F1}% < {(float)m_HpThresholdPercent}%, damage {(float)baseDamage} -> {(float)(baseDamage + m_BonusAmount)}");
             return baseDamage + m_BonusAmount;
         }
         return baseDamage;

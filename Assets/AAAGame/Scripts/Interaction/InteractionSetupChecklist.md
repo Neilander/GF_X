@@ -1,39 +1,29 @@
-# 交互系统接入清单（最小可跑通）
+# 交互系统接入清单
 
-## 玩家（Actor）侧
+## 玩家侧
 
-1. 在玩家对象或其子对象上添加一个球形触发器（推荐挂在子对象，例如 `Player/InteractionTrigger`）：
+1. 玩家或其子对象挂 `InteractionManager`。
+2. 距离、权重、切换阈值和最短保持时间只作为配置边界；运行时会量化为 Fix64 和整数 Tick。
+3. 不再添加 `SphereCollider`、`Rigidbody` 或 `InteractionDetector`。候选目标由逻辑 Tick 从 `EntityRegistry` 稳定扫描。
+4. 玩家必须已绑定有效 `LogicEntityId`，并进入 `LogicEntityFrameSnapshotService`。
 
-   - `SphereCollider`，勾选 `Is Trigger`
-   - 半径会由 `InteractionManager` 自动同步为：`interactionRange + triggerPadding`
-2. 在该触发器对象上挂：
+## 可交互建筑侧
 
-   - `InteractionDetector`
-3. 在玩家对象（或同一对象）挂：
+1. 建筑必须是已注册且存活的 `BuildingEntity`，并具有有效 `LogicEntityId`。
+2. 建筑权威距离使用 authored `LogicCombatShape`，不读取 Collider 最近点。
+3. 有可见选项的建筑必须挂 `InteractionHost`。缺失时明确报错，不做 fallback。
+4. `InteractionHost` 只持有 UI option；目标选择使用逻辑帧状态，交互执行提交稳定 ID 命令。
 
-   - `SimpleInteractionResolver`
-   - `InteractionManager`
-4. 在 `InteractionManager`：
+## 输入与长按
 
-   - `detector` 指向你的 `InteractionDetector`
-   - `resolverBehaviour` 指向你的 `SimpleInteractionResolver`
-   - 配置 `interactionRange`（默认 10）和 `triggerPadding`（默认 3），无需再分别填写 detector/resolver 的 maxDistance
+- `Player/Interact`、`Interact2`、`Interact3` 进入通用交互逐 Tick hold。
+- `Player/Build1`、`Build2`、`Build3` 和鼠标主键进入专用建造/升级面板逐 Tick hold。
+- 按下、松开和鼠标屏幕坐标先写入 `LogicInputTimeline`，再由 sealed `LogicInputFrame` 消费。
+- UI Update 只显示 `LogicInteractionHoldService` 的 Fix64 进度，不使用 `Time.deltaTime` 推进权威长按。
 
-## 可交互物体侧
+## 执行与回放
 
-1. 物体必须有 Collider（非 Trigger 也行，取决于你检测方式），并且 Layer 要在 `InteractionDetector.interactableLayerMask` 内。
-2. 物体挂一个InteractionHost。
-
-## 输入侧（新 InputSystem）
-
-- 当前交互按键从 `InputModel.InteractionPressed/2/3Pressed` 读取。
-- `InputManager` 会尝试 FindAction：
-  - Primary: `Player/Interact` 或 `interact` 或 `Interact`
-  - Secondary: `Player/Interact2` 或 `interact2` 或 `Interact2`
-  - Tertiary: `Player/Interact3` 或 `interact3` 或 `Interact3`
-
-## 订阅执行
-
-- 示例脚本：`InteractionCommandExecutorExample`
-  - 订阅 `InteractionFocusChangedEventArgs` 用于更新 UI
-  - 订阅 `InteractionOptionTriggeredEventArgs` 用于执行命令
+- 建造、升级、研究和回收只提交 `LogicInteractionCommand`，严格下一 Tick 生效。
+- 命令使用 `EffectiveFrame + Sequence + LogicEntityId + BuildingInstanceId + payload`。
+- `BuildManager` 是唯一运行时消费者；非 Apply 窗口不能直接修改交互事务。
+- 当前目标、hold 状态、pending/applied 命令均进入 Gameplay Hash；命令进入 replay v4 metadata。

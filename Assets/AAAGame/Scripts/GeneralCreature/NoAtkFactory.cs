@@ -4,7 +4,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "NoAtkFactory", menuName = "Atk Factory/NoAtk")]
 public class NoAtkFactory : AtkCompFactory
 {
-    public override IAtkComp CreateAtkComp(MAEntity gmo)
+    public override IAtkComp CreateAtkComp(IEntityContext gmo)
     {
         //gmo.AddComponent<NoAtkComp>();
         NoAtkComp comp = new NoAtkComp();
@@ -16,9 +16,9 @@ public class NoAtkFactory : AtkCompFactory
 
 public abstract class AtkCompFactory : ScriptableObject
 {
-    public abstract IAtkComp CreateAtkComp(MAEntity gmo);
+    public abstract IAtkComp CreateAtkComp(IEntityContext gmo);
     public static LoadAssetCallbacks AtkFactoryCallBack = new LoadAssetCallbacks(
-        (assetName,  asset, duration,  userData)=> (asset as AtkCompFactory)?.CreateAtkComp(userData as MAEntity));
+        (assetName,  asset, duration,  userData)=> (asset as AtkCompFactory)?.CreateAtkComp(userData as IEntityContext));
 }
 
 

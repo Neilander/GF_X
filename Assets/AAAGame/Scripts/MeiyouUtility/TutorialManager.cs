@@ -260,7 +260,7 @@ public class TutorialManager : GameFrameworkComponent
 
     private void TickPlayCardTutorial()
     {
-        if (EntityRegistry.Player is not HeroEntity player || !player.IsGhostState)
+        if (EntityRegistry.Player is not IHeroLogicContext player || !player.IsGhostState)
             return;
 
         CompleteTutorial(TutorialType.PlayCard, autoChain: false);

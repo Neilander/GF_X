@@ -49,7 +49,7 @@ namespace AAAGame.Scripts.BuffSystem
         /// <summary>
         /// 宿主实体
         /// </summary>
-        private MAEntity _hostEntity;
+        private IEntityContext _hostEntity;
 
         /// <summary>
         /// 属性管理器
@@ -59,21 +59,16 @@ namespace AAAGame.Scripts.BuffSystem
         /// <summary>
         /// 初始化Buff组件
         /// </summary>
-        public void Init(MAEntity entity)
+        public void Init(IEntityContext entity)
         {
-            _hostEntity = entity;
-            // CreaturePropertyManager不是MonoBehaviour，直接从GeneralCreature获取
-            global::GeneralCreature generalCreature = entity as global::GeneralCreature;
-            if (generalCreature != null)
-            {
-                _propertyManager = generalCreature.CreaturePropertyManager;
-            }
+            _hostEntity = entity ?? throw new System.ArgumentNullException(nameof(entity));
+            _propertyManager = entity.CreatureProperties;
         }
 
         /// <summary>
         /// 添加Buff
         /// </summary>
-        public bool AddBuff(BuffData buffData, MAEntity hostEntity)
+        public bool AddBuff(BuffData buffData, IEntityContext hostEntity)
         {
             if (buffData == null || string.IsNullOrEmpty(buffData.id))
             {
@@ -490,7 +485,7 @@ namespace AAAGame.Scripts.BuffSystem
         /// <summary>
         /// 宿主击杀目标时处理
         /// </summary>
-        public void OnKill(MAEntity target)
+        public void OnKill(IEntityContext target)
         {
             List<BuffData> buffSnapshot = new List<BuffData>(_buffDict.Values);
 
@@ -510,6 +505,21 @@ namespace AAAGame.Scripts.BuffSystem
 
                     module.OnKill(target);
                 }
+            }
+        }
+
+        public void OnHealed(Fix64 amount)
+        {
+            if (amount <= Fix64.Zero)
+                return;
+
+            List<BuffData> buffSnapshot = new List<BuffData>(_buffDict.Values);
+            foreach (BuffData buffData in buffSnapshot)
+            {
+                if (buffData?.modules == null)
+                    continue;
+                foreach (BuffCallback module in buffData.modules)
+                    module?.OnHealed(amount);
             }
         }
 
@@ -561,6 +571,6 @@ namespace AAAGame.Scripts.BuffSystem
         /// <summary>
         /// 获取宿主实体
         /// </summary>
-        public MAEntity HostEntity => _hostEntity;
+        public IEntityContext HostEntity => _hostEntity;
     }
 }

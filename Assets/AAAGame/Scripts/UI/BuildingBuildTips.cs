@@ -17,10 +17,6 @@ public partial class BuildingBuildTips : UIFormBase
     private const string CoinReservesPrefix = "剩余";
     private const string BuildPreviewFolder = "建筑预览";
     private const string BaseMilestoneTechPattern = "Tech_BaseBuilt_{0}_Lv1";
-    private const float HoldPerStarMinSeconds = 0.1f;
-    private const float HoldPerStarMaxSeconds = 0.4f;
-    private const float HoldAlignedDurationSeconds = 2f;
-    private const float HoldDurationMinSeconds = 1f;
 
     private static readonly Dictionary<BuilType, Archetype> s_LastSelectedIndustryByType = new();
     private static readonly Dictionary<string, int> s_ArmySupplyPerUnitCache = new(StringComparer.Ordinal);
@@ -41,7 +37,6 @@ public partial class BuildingBuildTips : UIFormBase
     private BuildOptionBinding m_HoldBinding;
     private float m_HoldProgressStars;
     private int m_LastHighlightStars;
-    private bool m_HoldTriggered;
 
     private sealed class IndustryOptionBinding
     {
@@ -88,6 +83,10 @@ public partial class BuildingBuildTips : UIFormBase
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnResourceChanged);
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnResourceChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        LogicInteractionHoldService.RegisterPanelConsumer(
+            ResolveLogicHoldButton,
+            ResolveLogicHoldThresholdFrames,
+            ExecuteLogicHold);
         subscribeTicks = System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks;
 
         LogBuildPanelPerf(
@@ -102,6 +101,13 @@ public partial class BuildingBuildTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        if (LogicInteractionHoldService.IsActive)
+        {
+            LogicInteractionHoldService.UnregisterPanelConsumer(
+                ResolveLogicHoldButton,
+                ResolveLogicHoldThresholdFrames,
+                ExecuteLogicHold);
+        }
         ClearCoinPreviewDeduction();
         ClearBuildOptionPreviewImages();
         ClearRuntimeState();
@@ -523,47 +529,20 @@ public partial class BuildingBuildTips : UIFormBase
 
     private void UpdateBuildHoldProgress()
     {
-        if (m_BuildOptionBindings.Count == 0)
-        {
-            ResetHoldState();
-            return;
-        }
-
-        BuildOptionBinding pressedBinding = ResolvePressedBuildBinding();
-        if (m_HoldBinding == null)
-        {
-            if (pressedBinding == null)
-                return;
-
-            m_HoldBinding = pressedBinding;
-            m_HoldProgressStars = 0f;
-            m_LastHighlightStars = 0;
-            m_HoldTriggered = false;
-        }
-        else if (pressedBinding != null && pressedBinding != m_HoldBinding)
+        if (m_BuildOptionBindings.Count == 0 || m_HoldBinding == null)
         {
             ApplyStarHighlight(m_HoldBinding, 0);
-            m_HoldBinding = pressedBinding;
-            m_HoldProgressStars = 0f;
-            m_LastHighlightStars = 0;
-            m_HoldTriggered = false;
+            return;
         }
 
-        if (m_HoldBinding == null)
-            return;
-
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
-        float duration = ResolveHoldDurationSeconds(starCount);
-        float starsPerSecond = starCount / Mathf.Max(0.01f, duration);
-        float delta = starsPerSecond * Time.deltaTime;
-
-        bool pressing = IsBuildBindingPressed(m_HoldBinding);
-        m_HoldProgressStars = pressing
-            ? Mathf.Min(starCount, m_HoldProgressStars + delta)
-            : Mathf.Max(0f, m_HoldProgressStars - delta);
+        Fix64 logicProgress = LogicInteractionHoldService.IsActive
+            ? LogicInteractionHoldService.GetPanelProgress()
+            : Fix64.Zero;
+        m_HoldProgressStars = (float)(logicProgress * starCount);
 
         int highlightCount;
-        if (pressing)
+        if (logicProgress > Fix64.Zero)
         {
             if (m_HoldProgressStars <= 1e-4f)
             {
@@ -596,58 +575,72 @@ public partial class BuildingBuildTips : UIFormBase
         if (highlightCount > m_LastHighlightStars && AudioManager.Instance != null)
             AudioManager.Instance.Play("goldPay");
         m_LastHighlightStars = highlightCount;
-
-        // 视觉与行为对齐：最后一颗星点亮的同一帧就触发建造。
-        if (!m_HoldTriggered && pressing && highlightCount >= starCount)
-        {
-            m_HoldTriggered = true;
-            TryConstructCurrentHoldingBuilding();
-        }
-
-        if (!pressing && m_HoldProgressStars <= 1e-4f)
-        {
-            m_HoldBinding = null;
-            m_HoldTriggered = false;
-        }
     }
 
-    private BuildOptionBinding ResolvePressedBuildBinding()
+    private LogicInputButton? ResolveLogicHoldButton(LogicInputFrame frame)
     {
+        if (frame == null)
+            throw new ArgumentNullException(nameof(frame));
+
+        if (m_HoldBinding != null
+            && TryResolveHeldButton(frame, m_HoldBinding, out LogicInputButton activeButton))
+        {
+            return activeButton;
+        }
+
+        ApplyStarHighlight(m_HoldBinding, 0);
+        m_HoldBinding = null;
+        m_LastHighlightStars = 0;
         for (int i = 0; i < m_BuildOptionBindings.Count; i++)
         {
             BuildOptionBinding binding = m_BuildOptionBindings[i];
             if (binding == null || !binding.Executable || binding.Item == null)
                 continue;
 
-            if (IsBuildBindingPressed(binding))
-                return binding;
+            if (!TryResolveHeldButton(frame, binding, out LogicInputButton button))
+                continue;
+
+            m_HoldBinding = binding;
+            return button;
         }
 
         return null;
     }
 
-    private bool IsBuildBindingPressed(BuildOptionBinding binding)
+    private bool TryResolveHeldButton(
+        LogicInputFrame frame,
+        BuildOptionBinding binding,
+        out LogicInputButton button)
     {
-        if (binding == null || binding.Item == null)
-            return false;
+        if (TryMapBuildAction(binding.ActionName, out button) && frame.IsHeld(button))
+            return true;
 
-        return IsActionPressed(binding.ActionName) || IsPointerHoldingOnItem(binding.Item.HoldRoot);
+        button = LogicInputButton.PlayerAttack;
+        return frame.IsHeld(button)
+               && IsScreenPointInside(binding.Item.HoldRoot, frame.SelectScreenPosition);
     }
 
-    private void TryConstructCurrentHoldingBuilding()
+    private int ResolveLogicHoldThresholdFrames()
+    {
+        if (m_HoldBinding == null)
+            throw new InvalidOperationException("Build hold threshold requested without an active binding.");
+
+        return ResolveHoldThresholdFrames(Mathf.Max(1, m_HoldBinding.Stars.Count));
+    }
+
+    private bool ExecuteLogicHold()
     {
         if (m_HoldBinding == null || m_HoldBinding.BuildingData == null || m_TargetBuilding == null)
-            return;
+            return false;
 
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         if (buildManager == null)
-            return;
+            throw new InvalidOperationException("BuildManager is unavailable while completing a logic build hold.");
 
         bool success = buildManager.ConstructBuilding(m_TargetBuilding, m_HoldBinding.BuildingData.Identifier);
         if (success)
             ClearCoinPreviewDeduction();
-        if (!success)
-            RefreshView();
+        return success;
     }
 
     private void ApplyStarHighlight(BuildOptionBinding binding, int highlightCount)
@@ -766,25 +759,36 @@ public partial class BuildingBuildTips : UIFormBase
         return InGameDataModel.GetValue(IngameValueType.Coin) >= cost;
     }
 
-    private static float ResolveHoldDurationSeconds(int starCount)
+    private static int ResolveHoldThresholdFrames(int starCount)
     {
         if (starCount <= 1)
-            return HoldPerStarMinSeconds;
+            return 3;
 
-        float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
-        perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
-        float duration = perStarSeconds * (starCount - 1f);
-        // 若因速度限幅导致总时长小于 1s，则无视速度限幅，按总时长 1s 重新分配。
-        if (duration < HoldDurationMinSeconds)
-            return HoldDurationMinSeconds;
-
-        return duration;
+        int gaps = starCount - 1;
+        if (gaps < 5)
+            return Mathf.Max(30, 12 * gaps);
+        if (gaps <= 20)
+            return 60;
+        return checked(3 * gaps);
     }
 
-    private bool IsActionPressed(string actionName)
+    private static bool TryMapBuildAction(string actionName, out LogicInputButton button)
     {
-        InputManager inputManager = EnsureInputManager();
-        return inputManager != null && inputManager.IsActionPressed(actionName);
+        switch (actionName)
+        {
+            case "Player/Build1":
+                button = LogicInputButton.Build1;
+                return true;
+            case "Player/Build2":
+                button = LogicInputButton.Build2;
+                return true;
+            case "Player/Build3":
+                button = LogicInputButton.Build3;
+                return true;
+            default:
+                button = default;
+                return false;
+        }
     }
 
     private bool WasActionPressedThisFrame(string actionName)
@@ -800,19 +804,20 @@ public partial class BuildingBuildTips : UIFormBase
         return m_InputManager;
     }
 
-    private bool IsPointerHoldingOnItem(RectTransform itemRect)
+    private static bool IsScreenPointInside(RectTransform itemRect, FixVector2 screenPosition)
     {
-        InputManager inputManager = EnsureInputManager();
-        if (itemRect == null || inputManager == null || !inputManager.IsPrimaryPointerPressed())
+        if (itemRect == null)
             return false;
 
-        Vector2 screenPosition = inputManager.GetPointerScreenPosition();
         Canvas canvas = itemRect.GetComponentInParent<Canvas>();
         Camera uiCamera = null;
         if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
             uiCamera = canvas.worldCamera != null ? canvas.worldCamera : GF.UICamera;
 
-        return RectTransformUtility.RectangleContainsScreenPoint(itemRect, screenPosition, uiCamera);
+        return RectTransformUtility.RectangleContainsScreenPoint(
+            itemRect,
+            new Vector2((float)screenPosition.x, (float)screenPosition.y),
+            uiCamera);
     }
 
     private void ClearAllSpawnedItems()
@@ -855,7 +860,6 @@ public partial class BuildingBuildTips : UIFormBase
         m_HoldBinding = null;
         m_HoldProgressStars = 0f;
         m_LastHighlightStars = 0;
-        m_HoldTriggered = false;
     }
 
     private void UnspawnItemTemplate(GameObject template)

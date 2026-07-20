@@ -43,7 +43,8 @@ public abstract class PositionAreaRefreshBuff : BuffCallback
 
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity target || !target.Alive)
+            IEntityContext target = all[i];
+            if (target == null || !target.Alive)
                 continue;
             if (!IsTargetValid(hostEntity, target))
                 continue;
@@ -54,8 +55,8 @@ public abstract class PositionAreaRefreshBuff : BuffCallback
         }
     }
 
-    protected abstract bool IsTargetValid(MAEntity caster, MAEntity target);
-    protected abstract void RefreshTarget(MAEntity target);
+    protected abstract bool IsTargetValid(IEntityContext caster, IEntityContext target);
+    protected abstract void RefreshTarget(IEntityContext target);
 }
 
 public sealed class FriendlyAttackSpeedAreaBuff : PositionAreaRefreshBuff
@@ -72,12 +73,12 @@ public sealed class FriendlyAttackSpeedAreaBuff : PositionAreaRefreshBuff
         m_SkillId = skillId;
     }
 
-    protected override bool IsTargetValid(MAEntity caster, MAEntity target)
+    protected override bool IsTargetValid(IEntityContext caster, IEntityContext target)
     {
         return caster.Side == target.Side;
     }
 
-    protected override void RefreshTarget(MAEntity target)
+    protected override void RefreshTarget(IEntityContext target)
     {
         if (target.BuffComp == null)
             throw new InvalidOperationException($"FriendlyAttackSpeedAreaBuff target missing BuffComp. target={target.CharacterKey}");
@@ -104,12 +105,12 @@ public sealed class EnemyBlindAreaBuff : PositionAreaRefreshBuff
         m_SkillId = skillId;
     }
 
-    protected override bool IsTargetValid(MAEntity caster, MAEntity target)
+    protected override bool IsTargetValid(IEntityContext caster, IEntityContext target)
     {
         return target.IsAttackTargetable() && EntityCombatTeamHelper.IsEnemy(caster, target);
     }
 
-    protected override void RefreshTarget(MAEntity target)
+    protected override void RefreshTarget(IEntityContext target)
     {
         if (target.BuffComp == null)
             throw new InvalidOperationException($"EnemyBlindAreaBuff target missing BuffComp. target={target.CharacterKey}");

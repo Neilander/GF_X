@@ -77,8 +77,7 @@ public sealed class MainPropertyAdditiveBuff : BuffCallback
 
     public override void OnAdd()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Bonus == Fix64.Zero)
             return;
 
@@ -88,8 +87,7 @@ public sealed class MainPropertyAdditiveBuff : BuffCallback
 
     public override void OnRemove()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Modifier == null)
             return;
 
@@ -112,8 +110,7 @@ public sealed class MainPropertyPercentBuff : BuffCallback
 
     public override void OnAdd()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Percent == Fix64.Zero)
             return;
 
@@ -123,8 +120,7 @@ public sealed class MainPropertyPercentBuff : BuffCallback
 
     public override void OnRemove()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Modifier == null)
             return;
 
@@ -173,7 +169,7 @@ public sealed class OutgoingAttackDebuffBuff : BuffCallback, ILogicDeterministic
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (m_AttackDelta == Fix64.Zero || m_Duration <= 0f || target is not MAEntity targetEntity)
+        if (m_AttackDelta == Fix64.Zero || m_Duration <= 0f || target is not IEntityContext targetEntity)
             return baseDamage;
 
         var comp = targetEntity.BuffComp as CharacterBuffComp;
@@ -210,14 +206,15 @@ public sealed class ConsecutiveSameTargetBonusDamageBuff : BuffCallback, ILogicD
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (m_BonusDamage == Fix64.Zero || target is not EntityBase entity)
+        if (m_BonusDamage == Fix64.Zero || target is not IEntityContext entity)
             return baseDamage;
 
-        if (entity.Id == m_LastTargetId)
+        int targetId = entity.LogicEntityId.Value;
+        if (targetId == m_LastTargetId)
             m_ConsecutiveHits++;
         else
         {
-            m_LastTargetId = entity.Id;
+            m_LastTargetId = targetId;
             m_ConsecutiveHits = 1;
         }
 
@@ -267,8 +264,8 @@ public sealed class MissingHealthAttackSpeedBuff : BuffCallback, ILogicDetermini
 
     private void Refresh()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var creature = hostEntity;
+        var propertyManager = creature?.CreatureProperties;
         if (propertyManager == null || m_HealthPerStep <= Fix64.Zero || m_AttackSpeedPercentPerStep == Fix64.Zero)
             return;
 
@@ -285,7 +282,7 @@ public sealed class MissingHealthAttackSpeedBuff : BuffCallback, ILogicDetermini
 
     private void ApplyFactor(Fix64 factor)
     {
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null || factor <= Fix64.Zero)
             return;
 
@@ -333,7 +330,7 @@ public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterminis
     public override void OnAdd()
     {
         if (hostEntity != null)
-            m_LastPosition = new FixVector2((Fix64)hostEntity.Position.x, (Fix64)hostEntity.Position.z);
+            m_LastPosition = hostEntity.PositionFixed;
     }
 
     public override void OnUpdate(Fix64 deltaTime)
@@ -372,7 +369,7 @@ public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterminis
         if (m_AttackApplied || m_AttackPercent == Fix64.Zero)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null)
             return;
 
@@ -386,7 +383,7 @@ public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterminis
         if (!m_AttackApplied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon != null)
             weapon.ApplyPercentAdd(WeaponStatId.Atk, -m_AppliedPercentAdd);
 
@@ -483,7 +480,8 @@ public sealed class LoneUnitBonusBuff : BuffCallback, ILogicDeterministicStateCo
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity other || ReferenceEquals(other, hostEntity) || !other.Alive)
+            IEntityContext other = all[i];
+            if (other == null || ReferenceEquals(other, hostEntity) || !other.Alive)
                 continue;
             if (other.Side != hostEntity.Side)
                 continue;
@@ -499,15 +497,14 @@ public sealed class LoneUnitBonusBuff : BuffCallback, ILogicDeterministicStateCo
         if (m_Applied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon != null && m_AttackSpeedPercent != Fix64.Zero)
         {
             m_AttackSpeedFactor = Fix64.One / (Fix64.One + m_AttackSpeedPercent / (Fix64)100);
             weapon.ApplyMultiplier(WeaponStatId.Interval, m_AttackSpeedFactor);
         }
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager != null && m_DefBonus != Fix64.Zero)
         {
             m_DefModifier = PropertyDirectAdditiveModifier.Create(m_DefBonus);
@@ -522,12 +519,11 @@ public sealed class LoneUnitBonusBuff : BuffCallback, ILogicDeterministicStateCo
         if (!m_Applied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon != null && m_AttackSpeedFactor != Fix64.Zero && m_AttackSpeedFactor != Fix64.One)
             weapon.ApplyMultiplier(WeaponStatId.Interval, Fix64.One / m_AttackSpeedFactor);
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager != null && m_DefModifier != null)
             propertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_DefModifier, false);
 
@@ -564,8 +560,7 @@ public sealed class NearbyFriendlyCountDefBuff : BuffCallback, ILogicDeterminist
 
     public override void OnAdd()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null)
             return;
 
@@ -588,8 +583,7 @@ public sealed class NearbyFriendlyCountDefBuff : BuffCallback, ILogicDeterminist
 
     public override void OnRemove()
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager != null && m_Modifier != null)
             propertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Def, m_Modifier, false);
 
@@ -607,7 +601,8 @@ public sealed class NearbyFriendlyCountDefBuff : BuffCallback, ILogicDeterminist
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity other || ReferenceEquals(other, hostEntity) || !other.Alive)
+            IEntityContext other = all[i];
+            if (other == null || ReferenceEquals(other, hostEntity) || !other.Alive)
                 continue;
             if (other.Side != hostEntity.Side)
                 continue;
@@ -648,19 +643,18 @@ public sealed class OnKillFlatGrowthBuff : BuffCallback, ILogicDeterministicStat
         m_HealthPerStep = healthPerStep;
     }
 
-    public override void OnKill(MAEntity target)
+    public override void OnKill(IEntityContext target)
     {
         m_KillCount++;
         if (m_KillCount < m_KillsPerStep)
             return;
 
         m_KillCount = 0;
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon != null && m_AttackPerStep != Fix64.Zero)
             weapon.ApplyAdditive(WeaponStatId.Atk, m_AttackPerStep);
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager != null && m_HealthPerStep != Fix64.Zero)
             propertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Health, PropertyDirectAdditiveModifier.Create(m_HealthPerStep), true);
     }
@@ -688,14 +682,15 @@ public sealed class OnDeathHealNearbyAlliesBuff : BuffCallback
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity ally || ReferenceEquals(ally, hostEntity) || !ally.Alive)
+            IEntityContext ally = all[i];
+            if (ally == null || ReferenceEquals(ally, hostEntity) || !ally.Alive)
                 continue;
             if (ally.Side != hostEntity.Side)
                 continue;
             if (LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(hostEntity, ally) > radius)
                 continue;
 
-            Fix64 max = ally.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+            Fix64 max = ally.CreatureProperties.GetProperty(CreatureMainProperty.Health);
             ally.Heal(max * m_HealPercent / (Fix64)100);
         }
     }
@@ -724,7 +719,8 @@ public sealed class OnDeathEnemyAttackDebuffBuff : BuffCallback, ILogicDetermini
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity enemy || !enemy.Alive)
+            IEntityContext enemy = all[i];
+            if (enemy == null || !enemy.Alive)
                 continue;
             if (!EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
                 continue;
@@ -757,30 +753,30 @@ public sealed class FatalDamageProtectionBuff : BuffCallback, ILogicDeterministi
 
     public override Fix64 ModifyIncomingDamage(IEntityContext attacker, Fix64 baseDamage, HealthModifyType modType)
     {
-        if (m_Consumed || modType != HealthModifyType.reduce || baseDamage <= Fix64.Zero || hostEntity is not GeneralCreature creature)
+        if (m_Consumed || modType != HealthModifyType.reduce || baseDamage <= Fix64.Zero || hostEntity == null)
             return baseDamage;
 
-        if (creature.HealthValue - baseDamage > Fix64.Zero)
+        if (hostEntity.HealthValue - baseDamage > Fix64.Zero)
             return baseDamage;
 
         m_Consumed = true;
         AddTemporaryInvincible(hostEntity);
-        Fix64 capped = creature.HealthValue - Fix64.One;
+        Fix64 capped = hostEntity.HealthValue - Fix64.One;
         return capped > Fix64.Zero ? capped : Fix64.Zero;
     }
 
-    private void AddTemporaryInvincible(MAEntity entity)
+    private void AddTemporaryInvincible(IEntityContext entity)
     {
         if (m_InvincibleSeconds <= 0f)
             return;
 
         var comp = entity.BuffComp as CharacterBuffComp;
         comp?.AddBuff(BuffData.Create(
-            id: $"tech_fatal_invincible_{buffData?.id}_{entity.Id}",
+            id: $"tech_fatal_invincible_{buffData?.id}_{entity.LogicEntityId.Value}",
             duration: m_InvincibleSeconds,
             isForever: false,
             maxStack: 1,
-            modules: new List<BuffCallback> { new TemporaryInvincibleSourceBuff($"tech_fatal_invincible_{buffData?.id}_{entity.Id}") }), entity);
+            modules: new List<BuffCallback> { new TemporaryInvincibleSourceBuff($"tech_fatal_invincible_{buffData?.id}_{entity.LogicEntityId.Value}") }), entity);
     }
 
     public void WriteDeterministicState(LogicStateHasher hasher) => hasher.Add(m_Consumed);
@@ -824,7 +820,7 @@ public sealed class TimedBuffOnSpawnModule : BuffCallback
 
         var comp = hostEntity.BuffComp as CharacterBuffComp;
         comp?.AddBuff(BuffData.Create(
-            id: $"tech_timed_spawn_{buffData?.id}_{hostEntity.Id}",
+            id: $"tech_timed_spawn_{buffData?.id}_{hostEntity.LogicEntityId.Value}",
             duration: m_Duration,
             isForever: false,
             maxStack: 1,

@@ -7,7 +7,7 @@ public class TauntBuffCallback : BuffCallback
 {
     private int _tauntValue = 1;
 
-    public override void Initialize(BuffData data, MAEntity entity)
+    public override void Initialize(BuffData data, IEntityContext entity)
     {
         base.Initialize(data, entity);
     }
@@ -20,19 +20,15 @@ public class TauntBuffCallback : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        if (hostEntity is GeneralCreature be)
-        {
-            be.TauntLevel += _tauntValue;
-        }
+        if (hostEntity != null)
+            hostEntity.TauntLevel += _tauntValue;
     }
 
     public override void OnRemove()
     {
         base.OnRemove();
-        if (hostEntity is GeneralCreature be)
-        {
-            be.TauntLevel -= _tauntValue;
-        }
+        if (hostEntity != null)
+            hostEntity.TauntLevel -= _tauntValue;
     }
 
     /// <summary>

@@ -4,7 +4,7 @@ using AAAGame.MiniMap;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public partial class BuildingEntity : MAEntity
+public partial class BuildingEntity : MAEntity, IBuildingLogicContext
 {
     public const string P_BuildingData = "BuildingData";
     public const string P_BuildingInstanceId = "BuildingInstanceId";
@@ -42,12 +42,20 @@ public partial class BuildingEntity : MAEntity
             return techManager != null && techManager.HasTechInteraction(this);
         }
     }
-    public bool IsDisabled => _isDisabled;
+    public bool IsDisabled => LogicState != null ? LogicState.IsDisabled : _isDisabled;
     public bool IsLv0Invincible => _lv0InvincibleByBuff;
     public bool IsPhaseProtected => _phaseProtectionByBuff;
     public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff || _stealthHealthBarSuppressed;
     public bool IsHealthBarSuppressedByPhaseBuff => _healthBarSuppressedByBuff;
     public bool HasPermanentNoAttackCapability { get; private set; }
+    BuildingData IBuildingLogicContext.BuildingData => buildingData;
+    int IBuildingLogicContext.OwnerFactionId => OwnerFactionID;
+    bool IBuildingLogicContext.BlocksLogicMovement => LogicState.BlocksLogicMovement;
+    event System.Action<int, int> IBuildingLogicContext.OwnerFactionChanged
+    {
+        add => LogicState.OwnerFactionChanged += value;
+        remove => LogicState.OwnerFactionChanged -= value;
+    }
 
     private DirectAtkComp _directAtkComp;
     private bool _isDisabled;
@@ -57,13 +65,13 @@ public partial class BuildingEntity : MAEntity
     private bool _stealthHealthBarSuppressed;
     private bool _stealthMinimapHidden;
     private bool _permanentStealthVisibility;
-    private bool _combatLocked;
-    private static readonly ICapability DisabledStateLocker = new DisabledCapabilityLocker();
     private BaseValueProperty _armyForceProperty;
     private BaseValueProperty _armySupplyPerUnitProperty;
     private MinimapReportComponent _minimapReportComponent;
     private BuildingExtraProps _extraProps; // 引用自 GlobalBuffManager 的中央字典，升级场景同 id 共享同对象
     private readonly List<int> _registeredFlowObstacleIds = new List<int>();
+    private readonly List<ColliderState> _collisionBlockingColliderStates = new List<ColliderState>();
+    private bool _blocksLogicMovement = true;
     private BuildingCombatShapeCatalog _combatShapeCatalog;
     private BuildingLogicObstacleShapeCatalog _logicObstacleShapeCatalog;
     protected override bool UsesFlowNavigationAgent => false;
@@ -73,11 +81,15 @@ public partial class BuildingEntity : MAEntity
         if (_combatShapeCatalog == null || buildingData == null)
             throw new System.InvalidOperationException($"BuildingEntity combat shape is not initialized. building={CharacterKey}.");
         EnsureAuthoredShapeTransform();
+        FixVector2 position = PositionFixed;
+        Vector3 worldPosition = new Vector3((float)position.x, transform.position.y, (float)position.y);
         return _combatShapeCatalog.ResolveRequired(
             buildingData.PrefabPath,
-            transform.position,
+            worldPosition,
             transform.eulerAngles.y);
     }
+
+    public override LogicCombatShape CombatShape => GetRequiredWorldCombatShape();
 
     protected override void RefreshCharacterData(object userData)
     {
@@ -99,8 +111,6 @@ public partial class BuildingEntity : MAEntity
             throw new System.InvalidOperationException("BuildingEntity.RefreshCharacterData failed: BuildingData is missing.");
         _combatShapeCatalog = BuildingCombatShapeCatalog.LoadRequired();
         _logicObstacleShapeCatalog = BuildingLogicObstacleShapeCatalog.LoadRequired();
-        SetBrain(new BuildingAIBrain());
-
         if (string.IsNullOrWhiteSpace(BuildingInstanceId))
             throw new System.InvalidOperationException($"BuildingEntity.RefreshCharacterData failed: BuildingInstanceId is empty. character={CharacterKey}.");
     }
@@ -111,6 +121,8 @@ public partial class BuildingEntity : MAEntity
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
+        _directAtkComp = atkComp as DirectAtkComp
+                         ?? throw new System.InvalidOperationException($"BuildingEntity.OnShow failed: logic AtkComp is not DirectAtkComp. entity={LogicEntityId.Value}.");
         TauntLevel = 0; // 建筑默认嘲讽等级 0
 
         RegisterOutlineRenderers();
@@ -131,9 +143,12 @@ public partial class BuildingEntity : MAEntity
         // 拿到 extra 属性引用（升级场景同 BuildingInstanceId 共享同一对象，extra 数据自然延续）
         _extraProps = GameEntry.GetComponent<GlobalBuffManager>()?.GetOrCreateExtraProps(BuildingInstanceId);
 
-        EnsureLv0InvincibleBuff();
-        EnsurePhaseProtectionBuff();
-        ApplyBuildingInitialBuffs();
+        ApplyBuildingProductionBuffs();
+
+        ApplyDisabledPresentation(LogicState.IsDisabled, null, false);
+        ApplyCollisionBlockingPresentation(LogicState.BlocksLogicMovement);
+        SetPermanentStealthVisibility(LogicState.IsPermanentStealth);
+        _phaseProtectionByBuff = LogicState.IsPhaseProtected;
 
         if (HasUpgrade)
         {
@@ -145,27 +160,19 @@ public partial class BuildingEntity : MAEntity
     protected override void OnLogicActivated()
     {
         base.OnLogicActivated();
-        if (_registeredFlowObstacleIds.Count == 0)
-            ScheduleFlowFieldObstacleAdds(true, false);
         if (EnableConstructionEscape)
             BeginConstructionEscapeForOverlappingHeroes();
     }
 
     protected override void OnLogicDeactivating()
     {
-        if (_registeredFlowObstacleIds.Count > 0)
-        {
-            if (LogicEntityLifecycleService.IsApplyingFrame)
-                ScheduleFlowFieldObstacleRemovals(true, false);
-            else
-                UnregisterFlowFieldObstaclesImmediately();
-        }
         base.OnLogicDeactivating();
     }
 
     protected override CreaturePropertyManager CreateCreaturePropertyManager()
     {
-        return new CreaturePropertyManager(GetBuildingPropertyConfigValue);
+        return LogicState.CreatureProperties
+               ?? throw new System.InvalidOperationException($"BuildingEntity.CreateCreaturePropertyManager failed: logic properties are missing. entity={LogicEntityId.Value}.");
     }
 
     private Fix64 GetBuildingPropertyConfigValue(CreatureMainProperty property)
@@ -252,6 +259,7 @@ public partial class BuildingEntity : MAEntity
         UnsubscribeLv0PhaseVisibilityEvents();
         RestorePhaseVisibility();
         SetStealthVisualState(false, false, 1f);
+        ApplyCollisionBlockingPresentation(true);
         UnregisterOutlineRenderers();
         InGameDataModel.UnregisterBuilding(this);
 
@@ -300,6 +308,71 @@ public partial class BuildingEntity : MAEntity
 
         ScheduleFlowFieldObstacleRemovals(false, false);
         ScheduleFlowFieldObstacleAdds(false, false);
+    }
+
+    public void SetCollisionBlockingByBuff(bool blocksMovement)
+    {
+        LogicState.SetCollisionBlockingByBuff(blocksMovement);
+    }
+
+    protected override void OnLogicCollisionBlockingPresentation(bool blocksMovement)
+    {
+        base.OnLogicCollisionBlockingPresentation(blocksMovement);
+        ApplyCollisionBlockingPresentation(blocksMovement);
+    }
+
+    private void ApplyCollisionBlockingPresentation(bool blocksMovement)
+    {
+        if (_blocksLogicMovement == blocksMovement)
+            return;
+
+        _blocksLogicMovement = blocksMovement;
+        if (!blocksMovement)
+        {
+            Collider[] colliders = GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider collider = colliders[i];
+                if (collider == null || collider.isTrigger)
+                    continue;
+                _collisionBlockingColliderStates.Add(new ColliderState(collider, collider.enabled));
+                collider.enabled = false;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < _collisionBlockingColliderStates.Count; i++)
+            {
+                ColliderState state = _collisionBlockingColliderStates[i];
+                if (state.Collider != null)
+                    state.Collider.enabled = state.Enabled;
+            }
+            _collisionBlockingColliderStates.Clear();
+        }
+
+    }
+
+    void IBuildingLogicContext.SetPermanentStealthByBuff(bool enabled)
+    {
+        LogicState.SetPermanentStealthByBuff(enabled);
+    }
+
+    protected override void OnLogicPermanentStealthPresentation(bool enabled)
+    {
+        base.OnLogicPermanentStealthPresentation(enabled);
+        SetPermanentStealthVisibility(enabled);
+    }
+
+    private readonly struct ColliderState
+    {
+        public readonly Collider Collider;
+        public readonly bool Enabled;
+
+        public ColliderState(Collider collider, bool enabled)
+        {
+            Collider = collider;
+            Enabled = enabled;
+        }
     }
 
     private void ScheduleFlowFieldObstacleAdds(bool currentLifecycleFrame, bool applyImmediatelyForPrewarm)
@@ -466,6 +539,7 @@ public partial class BuildingEntity : MAEntity
         CurrentStronghold = stronghold;
         OwnerFactionID = stronghold != null ? stronghold.OwnerFactionId : 0;
         SyncSideFromFaction();
+        LogicState.SetBuildingOwnerFaction(OwnerFactionID, Side);
         _minimapReportComponent?.SetSide(Side);
         RefreshLv0PhaseVisibility();
         RefreshPermanentStealthVisibility();
@@ -611,67 +685,7 @@ public partial class BuildingEntity : MAEntity
 
     public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
-        if (damage <= Fix64.Zero)
-            return;
-
-        if (this.HasInvincibleBuff() || _isDisabled || !Alive)
-            return;
-
-        Fix64 before = HealthValue;
-        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 finalDamage = CalculateIncomingDamage(damage, modType);
-        if (finalDamage <= Fix64.Zero)
-        {
-            GameDebugSettings.Log(DebugCategory.Attack,
-                $"[BuildingDamage] {CharacterKey} raw={damage} def={GetCurrentDefense()} final=0 hp={before}/{max} attacker={attacker?.CharacterKey}");
-            return;
-        }
-
-        TriggerHitAnimation();
-
-        CreaturePropertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(-finalDamage), true);
-
-        Fix64 cur = HealthValue;
-        NotifyDamageTakenForOutOfCombat();
-
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-finalDamage)));
-
-        ShowDamagePopText(finalDamage);
-
-        GameDebugSettings.Log(DebugCategory.Attack,
-            $"[BuildingDamage] {CharacterKey} raw={damage} def={GetCurrentDefense()} final={finalDamage} hp={before}->{cur}/{max} attacker={attacker?.CharacterKey}");
-
-        // 受击告警：通知 TargetingComp，让它广播 attacker 给周围友军（建筑自身 EnableAggroFallback=false 不记 _lastAttacker，但仍广播）
-        if (attacker != null && targetComp != null)
-            targetComp.NotifyDamageTaken(attacker);
-
-        if (cur <= Fix64.Zero)
-        {
-            EnterDisabledState(attacker);
-        }
-    }
-
-    private Fix64 CalculateIncomingDamage(Fix64 damage, HealthModifyType modType)
-    {
-        if (modType != HealthModifyType.reduce)
-            return damage;
-
-        Fix64 defense = GetCurrentDefense();
-        if (defense <= Fix64.Zero)
-            return damage;
-
-        return Fix64.Max(Fix64.Zero, damage - defense);
-    }
-
-    private Fix64 GetCurrentDefense()
-    {
-        if (CreaturePropertyManager == null)
-            return Fix64.Zero;
-
-        Fix64 defense = CreaturePropertyManager.GetProperty(CreatureMainProperty.Def);
-        return defense > Fix64.Zero ? defense : Fix64.Zero;
+        base.TakeDamage(damage, modType, attacker);
     }
 
     private void EnsureInteractionHost()
@@ -694,42 +708,12 @@ public partial class BuildingEntity : MAEntity
             GameEntry.GetComponent<TechManager>().ConfigureTechInteractionOptions(this, host);
     }
 
-    private void EnsureLv0InvincibleBuff()
+    private void ApplyBuildingProductionBuffs()
     {
         if (BuffComp == null)
             return;
 
-        var buffData = BuffData.Create(
-            id: Lv0InvincibleBuffId,
-            duration: float.MaxValue,
-            isForever: true,
-            maxStack: 1,
-            modules: new List<BuffCallback> { new BuildingLv0InvincibleBuff() });
-
-        BuffComp.AddBuff(buffData, this);
-    }
-
-    private void EnsurePhaseProtectionBuff()
-    {
-        if (BuffComp == null)
-            return;
-
-        var buffData = BuffData.Create(
-            id: PhaseGuardBuffId,
-            duration: float.MaxValue,
-            isForever: true,
-            maxStack: 1,
-            modules: new List<BuffCallback> { new BuildingPhaseGuardBuff() });
-
-        BuffComp.AddBuff(buffData, this);
-    }
-
-    private void ApplyBuildingInitialBuffs()
-    {
-        if (BuffComp == null)
-            return;
-
-        List<BuffData> buffs = BuildingInitialBuffFactory.CreateInitialBuffs(buildingData);
+        List<BuffData> buffs = BuildingInitialBuffFactory.CreateProductionBuffs(buildingData);
         List<BuffData> runtimeTechBuffs = GameEntry.GetComponent<GlobalBuffManager>()?.GetRuntimeBuffsForBuildingEntity(this);
         if (buffs == null && runtimeTechBuffs == null)
             return;
@@ -749,12 +733,13 @@ public partial class BuildingEntity : MAEntity
 
     public void SetPhaseProtectionByBuff(bool enabled)
     {
-        if (_phaseProtectionByBuff == enabled)
-            return;
+        LogicState.SetPhaseProtectionByBuff(enabled);
+    }
 
+    protected override void OnLogicPhaseProtectionPresentation(bool enabled)
+    {
+        base.OnLogicPhaseProtectionPresentation(enabled);
         _phaseProtectionByBuff = enabled;
-        if (_phaseProtectionByBuff && targetComp != null)
-            targetComp.CurrentTarget = null;
     }
 
     public void SetLv0InvincibleByBuff(bool enabled)
@@ -1018,66 +1003,32 @@ public partial class BuildingEntity : MAEntity
         HasPermanentNoAttackCapability = buildingData != null && (buildingData.Weapon == null || buildingData.Weapon.Atk <= Fix64.Zero);
     }
 
-    private void EnterDisabledState(IEntityContext attacker)
+    protected override void OnLogicHealthChangedPresentation(LogicEntityHealthChange change)
     {
-        if (_isDisabled)
+        base.OnLogicHealthChangedPresentation(change);
+        if (change.Delta >= Fix64.Zero)
             return;
+        ShowDamagePopText(-change.Delta);
+        GameDebugSettings.Log(DebugCategory.Attack,
+            $"[BuildingDamage] {CharacterKey} final={-change.Delta} hp={change.Current}/{change.Max}");
+    }
 
-        _isDisabled = true;
-        GF.Event.Fire(this, BuildingDisabledStateChangedEventArgs.Create(Id, BuildingInstanceId, true));
-        Alive = false;
-
-        Fix64 curHealth = HealthValue;
-        if (curHealth < Fix64.Zero)
-        {
-            CreaturePropertyManager.ModifyCurrentProperty(
-                CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(-curHealth),
-                true);
-        }
-
-        if (targetComp != null)
-            targetComp.CurrentTarget = null;
-
-        LockCombatCapabilities();
-        OnDead();
-        SetDisabledVisual(true);
-
-        LevelEntity.NotifyBuildingDisabled(this, attacker);
+    protected override void OnLogicBuildingDisabledPresentation(bool disabled, IEntityContext attacker)
+    {
+        base.OnLogicBuildingDisabledPresentation(disabled, attacker);
+        ApplyDisabledPresentation(disabled, attacker, true);
     }
 
     public void RestoreToFullHealthAndEnable()
     {
-        ResetCombatRuntimeState();
-        Alive = true;
-
-        if (CreaturePropertyManager == null)
-            return;
-
-        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 currentHealth = HealthValue;
-        Fix64 delta = maxHealth - currentHealth;
-        if (Fix64.Abs(delta) > (Fix64)0.001f)
-        {
-            CreaturePropertyManager.ModifyCurrentProperty(
-                CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(delta),
-                true);
-        }
-
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)HealthValue, (float)maxHealth, (float)delta));
+        LogicState.RestoreBuildingToFullHealth();
     }
+
+    void IBuildingLogicContext.RestoreBuildingToFullHealth() => LogicState.RestoreBuildingToFullHealth();
 
     private void ResetCombatRuntimeState()
     {
-        bool wasDisabled = _isDisabled;
         _isDisabled = false;
-        if (wasDisabled)
-        {
-            GF.Event.Fire(this, BuildingDisabledStateChangedEventArgs.Create(Id, BuildingInstanceId, false));
-        }
-
-        UnlockCombatCapabilities();
 
         if (targetComp != null)
             targetComp.CurrentTarget = null;
@@ -1085,53 +1036,29 @@ public partial class BuildingEntity : MAEntity
         SetDisabledVisual(false);
     }
 
-    private void LockCombatCapabilities()
+    private void ApplyDisabledPresentation(bool disabled, IEntityContext attacker, bool publishEvent)
     {
-        if (_combatLocked)
+        if (_isDisabled == disabled)
             return;
 
-        if (atkComp != null)
-            LockComp(atkComp, DisabledStateLocker);
-
-        if (targetComp != null)
-            LockComp(targetComp, DisabledStateLocker);
-
-        _combatLocked = true;
-    }
-
-    private void UnlockCombatCapabilities()
-    {
-        if (!_combatLocked)
+        _isDisabled = disabled;
+        Alive = LogicState.Alive;
+        SetDisabledVisual(disabled);
+        if (!publishEvent)
             return;
 
-        if (atkComp != null)
-            ResumeComp(atkComp, DisabledStateLocker);
-
-        if (targetComp != null)
-            ResumeComp(targetComp, DisabledStateLocker);
-
-        _combatLocked = false;
+        GF.Event.Fire(this, BuildingDisabledStateChangedEventArgs.Create(Id, BuildingInstanceId, disabled));
+        if (disabled)
+        {
+            PlayDeathSound();
+            LevelEntity.NotifyBuildingDisabled(this, attacker);
+        }
     }
 
     private void SyncSideFromFaction()
     {
         int teamId = EntityCombatTeamHelper.ResolveTeamIdByFaction(OwnerFactionID);
         Side = EntitySideHelper.ToSide(teamId);
-    }
-
-    private void TriggerHitAnimation()
-    {
-        if (animator == null)
-            return;
-
-        foreach (var p in animator.parameters)
-        {
-            if (p.name == "GetHit" && p.type == AnimatorControllerParameterType.Trigger)
-            {
-                animator.SetTrigger("GetHit");
-                break;
-            }
-        }
     }
 
     // 是否显示建筑受伤跳字。false=不显示。改回 true 即可恢复
@@ -1415,14 +1342,4 @@ public partial class BuildingEntity : MAEntity
         return row != null ? Mathf.Max(0, row.Supply) : 0;
     }
 
-    private sealed class DisabledCapabilityLocker : ICapability
-    {
-        public void ShutDown()
-        {
-        }
-
-        public void Resume()
-        {
-        }
-    }
 }

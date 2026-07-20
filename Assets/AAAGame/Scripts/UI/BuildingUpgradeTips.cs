@@ -19,11 +19,6 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private const string ConditionBaseLevelTextId = "Building_Upgrade_Cond_BaseLevel";
     private const string ConditionUniqueTechTextId = "Building_Upgrade_Cond_UniqueTech";
-    private const float HoldPerStarMinSeconds = 0.1f;
-    private const float HoldPerStarMaxSeconds = 0.4f;
-    private const float HoldAlignedDurationSeconds = 2f;
-    private const float HoldDurationMinSeconds = 1f;
-    private const float RecycleHoldDurationSeconds = 2f;
     private const string RecycleTextFormat = "回收  <sprite name=\"Coin\"> {0}";
     private static readonly Color32 DefaultLitColor = new(250, 112, 36, 255);
 
@@ -43,9 +38,8 @@ public partial class BuildingUpgradeTips : UIFormBase
     private UpgradeOptionBinding m_HoldBinding;
     private float m_HoldProgressStars;
     private int m_LastHighlightStars;
-    private bool m_HoldTriggered;
     private float m_RecycleHoldProgress;
-    private bool m_RecycleTriggered;
+    private bool m_RecycleLogicHoldActive;
     private Color m_ConditionIconSatisfiedColor = DefaultLitColor;
 
     private sealed class UpgradeOptionBinding
@@ -78,6 +72,10 @@ public partial class BuildingUpgradeTips : UIFormBase
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnStateChanged);
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnStateChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        LogicInteractionHoldService.RegisterPanelConsumer(
+            ResolveLogicHoldButton,
+            ResolveLogicHoldThresholdFrames,
+            ExecuteLogicHold);
     }
 
     protected override void OnClose(bool isShutdown, object userData)
@@ -85,6 +83,13 @@ public partial class BuildingUpgradeTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnStateChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        if (LogicInteractionHoldService.IsActive)
+        {
+            LogicInteractionHoldService.UnregisterPanelConsumer(
+                ResolveLogicHoldButton,
+                ResolveLogicHoldThresholdFrames,
+                ExecuteLogicHold);
+        }
         ClearCoinPreviewDeduction();
         ClearRuntimeState();
 
@@ -476,46 +481,20 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private void UpdateUpgradeHoldProgress()
     {
-        if (m_SelectedBinding == null || m_SelectedBinding.PreviewItem == null || !IsSelectedOptionExecutable())
-        {
-            ResetHoldState();
-            return;
-        }
-
-        UpgradeOptionBinding pressed = ResolvePressedBinding();
-        if (m_HoldBinding == null)
-        {
-            if (pressed == null)
-                return;
-
-            m_HoldBinding = pressed;
-            m_HoldProgressStars = 0f;
-            m_LastHighlightStars = 0;
-            m_HoldTriggered = false;
-        }
-        else if (pressed != null && pressed != m_HoldBinding)
+        if (m_HoldBinding == null || m_RecycleLogicHoldActive)
         {
             ApplyStarHighlight(m_HoldBinding, 0);
-            m_HoldBinding = pressed;
-            m_HoldProgressStars = 0f;
-            m_LastHighlightStars = 0;
-            m_HoldTriggered = false;
+            return;
         }
 
-        if (m_HoldBinding == null)
-            return;
-
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
-        float duration = ResolveHoldDurationSeconds(starCount);
-        float delta = (starCount / Mathf.Max(0.01f, duration)) * Time.deltaTime;
-
-        bool pressing = IsBindingPressed(m_HoldBinding);
-        m_HoldProgressStars = pressing
-            ? Mathf.Min(starCount, m_HoldProgressStars + delta)
-            : Mathf.Max(0f, m_HoldProgressStars - delta);
+        Fix64 logicProgress = LogicInteractionHoldService.IsActive
+            ? LogicInteractionHoldService.GetPanelProgress()
+            : Fix64.Zero;
+        m_HoldProgressStars = (float)(logicProgress * starCount);
 
         int highlightCount;
-        if (pressing)
+        if (logicProgress > Fix64.Zero)
         {
             if (m_HoldProgressStars <= 1e-4f)
             {
@@ -544,49 +523,92 @@ public partial class BuildingUpgradeTips : UIFormBase
         if (highlightCount > m_LastHighlightStars && AudioManager.Instance != null)
             AudioManager.Instance.Play("goldPay");
         m_LastHighlightStars = highlightCount;
+    }
 
-        if (!m_HoldTriggered && pressing && highlightCount >= starCount)
+    private LogicInputButton? ResolveLogicHoldButton(LogicInputFrame frame)
+    {
+        if (frame == null)
+            throw new ArgumentNullException(nameof(frame));
+
+        if (m_HoldBinding != null
+            && TryResolveHeldButton(frame, m_HoldBinding, out LogicInputButton activeButton))
         {
-            m_HoldTriggered = true;
-            TryExecuteSelectedUpgrade();
+            return activeButton;
+        }
+        if (m_RecycleLogicHoldActive
+            && TryResolvePointerButton(frame, varRecycleBtn != null ? varRecycleBtn.transform as RectTransform : null))
+        {
+            return LogicInputButton.PlayerAttack;
         }
 
-        if (!pressing && m_HoldProgressStars <= 1e-4f)
-            ResetHoldState();
+        ApplyStarHighlight(m_HoldBinding, 0);
+        m_HoldBinding = null;
+        m_RecycleLogicHoldActive = false;
+        m_LastHighlightStars = 0;
+
+        if (m_SelectedBinding != null
+            && m_SelectedBinding.PreviewItem != null
+            && IsSelectedOptionExecutable()
+            && TryResolveHeldButton(frame, m_SelectedBinding, out LogicInputButton selectedButton))
+        {
+            m_HoldBinding = m_SelectedBinding;
+            return selectedButton;
+        }
+
+        if (CanShowRecycle()
+            && TryResolvePointerButton(frame, varRecycleBtn != null ? varRecycleBtn.transform as RectTransform : null))
+        {
+            m_RecycleLogicHoldActive = true;
+            return LogicInputButton.PlayerAttack;
+        }
+
+        return null;
     }
 
-    private UpgradeOptionBinding ResolvePressedBinding()
+    private bool TryResolveHeldButton(
+        LogicInputFrame frame,
+        UpgradeOptionBinding binding,
+        out LogicInputButton button)
     {
-        UpgradeOptionBinding selected = m_SelectedBinding;
-        if (selected == null)
-            return null;
+        if (TryMapBuildAction(binding.ActionName, out button) && frame.IsHeld(button))
+            return true;
 
-        return IsBindingPressed(selected) ? selected : null;
-    }
-
-    private bool IsBindingPressed(UpgradeOptionBinding binding)
-    {
-        if (binding == null || binding.PreviewItem == null)
+        button = LogicInputButton.PlayerAttack;
+        if (!frame.IsHeld(button))
             return false;
-
-        if (IsActionPressed(binding.ActionName))
+        if (IsScreenPointInside(binding.PreviewItem.HoldRoot, frame.SelectScreenPosition))
             return true;
 
-        if (IsPointerHoldingOnItem(binding.PreviewItem.HoldRoot))
-            return true;
-
-        return binding.ButtonItem != null && IsPointerHoldingOnItem(binding.ButtonItem.HoldRoot);
+        return binding.ButtonItem != null
+               && IsScreenPointInside(binding.ButtonItem.HoldRoot, frame.SelectScreenPosition);
     }
 
-    private void TryExecuteSelectedUpgrade()
+    private int ResolveLogicHoldThresholdFrames()
+    {
+        if (m_RecycleLogicHoldActive)
+            return 60;
+        if (m_HoldBinding == null)
+            throw new InvalidOperationException("Upgrade hold threshold requested without an active binding.");
+
+        return ResolveHoldThresholdFrames(Mathf.Max(1, m_HoldBinding.Stars.Count));
+    }
+
+    private bool ExecuteLogicHold()
+    {
+        return m_RecycleLogicHoldActive
+            ? TryRecycleBuilding()
+            : TryExecuteSelectedUpgrade();
+    }
+
+    private bool TryExecuteSelectedUpgrade()
     {
         if (m_SelectedBinding == null || m_TargetBuilding == null)
-            return;
+            return false;
 
         bool success;
         TechManager techManager = GameEntry.GetComponent<TechManager>();
         if (techManager == null)
-            return;
+            throw new InvalidOperationException("TechManager is unavailable while completing a logic upgrade hold.");
 
         if (m_TargetBuilding.buildingData != null && m_TargetBuilding.buildingData.Type == BuilType.Tech)
             success = techManager.ResearchTech(m_TargetBuilding, m_SelectedBinding.TechId);
@@ -595,8 +617,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         if (success)
             ClearCoinPreviewDeduction();
-        if (!success)
-            RefreshView();
+        return success;
     }
 
     private void UpdatePanelPosition()
@@ -861,25 +882,36 @@ public partial class BuildingUpgradeTips : UIFormBase
         return value > 0 ? $"+{value}" : value.ToString();
     }
 
-    private static float ResolveHoldDurationSeconds(int starCount)
+    private static int ResolveHoldThresholdFrames(int starCount)
     {
         if (starCount <= 1)
-            return HoldPerStarMinSeconds;
+            return 3;
 
-        float perStarSeconds = HoldAlignedDurationSeconds / (starCount - 1f);
-        perStarSeconds = Mathf.Clamp(perStarSeconds, HoldPerStarMinSeconds, HoldPerStarMaxSeconds);
-        float duration = perStarSeconds * (starCount - 1f);
-        // 若因速度限幅导致总时长小于 1s，则无视速度限幅，按总时长 1s 重新分配。
-        if (duration < HoldDurationMinSeconds)
-            return HoldDurationMinSeconds;
-
-        return duration;
+        int gaps = starCount - 1;
+        if (gaps < 5)
+            return Mathf.Max(30, 12 * gaps);
+        if (gaps <= 20)
+            return 60;
+        return checked(3 * gaps);
     }
 
-    private bool IsActionPressed(string actionName)
+    private static bool TryMapBuildAction(string actionName, out LogicInputButton button)
     {
-        InputManager inputManager = EnsureInputManager();
-        return inputManager != null && inputManager.IsActionPressed(actionName);
+        switch (actionName)
+        {
+            case "Player/Build1":
+                button = LogicInputButton.Build1;
+                return true;
+            case "Player/Build2":
+                button = LogicInputButton.Build2;
+                return true;
+            case "Player/Build3":
+                button = LogicInputButton.Build3;
+                return true;
+            default:
+                button = default;
+                return false;
+        }
     }
 
     private bool WasActionPressedThisFrame(string actionName)
@@ -895,19 +927,26 @@ public partial class BuildingUpgradeTips : UIFormBase
         return m_InputManager;
     }
 
-    private bool IsPointerHoldingOnItem(RectTransform itemRect)
+    private static bool TryResolvePointerButton(LogicInputFrame frame, RectTransform itemRect)
     {
-        InputManager inputManager = EnsureInputManager();
-        if (itemRect == null || inputManager == null || !inputManager.IsPrimaryPointerPressed())
+        return frame.IsHeld(LogicInputButton.PlayerAttack)
+               && IsScreenPointInside(itemRect, frame.SelectScreenPosition);
+    }
+
+    private static bool IsScreenPointInside(RectTransform itemRect, FixVector2 screenPosition)
+    {
+        if (itemRect == null)
             return false;
 
-        Vector2 screenPosition = inputManager.GetPointerScreenPosition();
         Canvas canvas = itemRect.GetComponentInParent<Canvas>();
         Camera uiCamera = null;
         if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
             uiCamera = canvas.worldCamera != null ? canvas.worldCamera : GF.UICamera;
 
-        return RectTransformUtility.RectangleContainsScreenPoint(itemRect, screenPosition, uiCamera);
+        return RectTransformUtility.RectangleContainsScreenPoint(
+            itemRect,
+            new Vector2((float)screenPosition.x, (float)screenPosition.y),
+            uiCamera);
     }
 
     private void ApplyStarHighlight(UpgradeOptionBinding binding, int highlightCount)
@@ -954,7 +993,6 @@ public partial class BuildingUpgradeTips : UIFormBase
         m_HoldBinding = null;
         m_HoldProgressStars = 0f;
         m_LastHighlightStars = 0;
-        m_HoldTriggered = false;
     }
 
     private void RefreshRecycleArea()
@@ -978,29 +1016,21 @@ public partial class BuildingUpgradeTips : UIFormBase
 
     private void UpdateRecycleHoldProgress()
     {
-        if (!CanShowRecycle())
+        if (!CanShowRecycle() || !m_RecycleLogicHoldActive)
         {
-            ResetRecycleHoldState();
+            m_RecycleHoldProgress = 0f;
+            if (varRecycleFill != null)
+                varRecycleFill.fillAmount = 0f;
             return;
         }
 
-        bool holding = IsPointerHoldingOnRecycleButton();
-        float delta = Time.deltaTime / Mathf.Max(0.01f, RecycleHoldDurationSeconds);
-        m_RecycleHoldProgress = holding
-            ? Mathf.Min(1f, m_RecycleHoldProgress + delta)
-            : Mathf.Max(0f, m_RecycleHoldProgress - delta);
+        Fix64 progress = LogicInteractionHoldService.IsActive
+            ? LogicInteractionHoldService.GetPanelProgress()
+            : Fix64.Zero;
+        m_RecycleHoldProgress = (float)progress;
 
         if (varRecycleFill != null)
             varRecycleFill.fillAmount = m_RecycleHoldProgress;
-
-        if (!m_RecycleTriggered && holding && m_RecycleHoldProgress >= 1f)
-        {
-            m_RecycleTriggered = true;
-            TryRecycleBuilding();
-        }
-
-        if (!holding && m_RecycleHoldProgress <= 1e-4f)
-            m_RecycleTriggered = false;
     }
 
     private bool CanShowRecycle()
@@ -1015,28 +1045,25 @@ public partial class BuildingUpgradeTips : UIFormBase
         return buildManager != null ? buildManager.CalculateRecycleRefund(m_TargetBuilding) : 0;
     }
 
-    private bool IsPointerHoldingOnRecycleButton()
-    {
-        RectTransform rect = varRecycleBtn != null ? varRecycleBtn.transform as RectTransform : null;
-        return IsPointerHoldingOnItem(rect);
-    }
-
-    private void TryRecycleBuilding()
+    private bool TryRecycleBuilding()
     {
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         if (buildManager == null || m_TargetBuilding == null)
-            return;
+            return false;
 
         if (buildManager.RecycleBuilding(m_TargetBuilding))
+        {
             GF.UI.Close(this.UIForm);
-        else
-            RefreshView();
+            return true;
+        }
+
+        return false;
     }
 
     private void ResetRecycleHoldState()
     {
         m_RecycleHoldProgress = 0f;
-        m_RecycleTriggered = false;
+        m_RecycleLogicHoldActive = false;
         if (varRecycleFill != null)
             varRecycleFill.fillAmount = 0f;
     }

@@ -17,6 +17,21 @@ public enum MAEntityLogicFramePhase
     Count = 11,
 }
 
+public interface ILogicFrameEntity : IEntityContext
+{
+    bool IsLogicActive { get; }
+    int NavigationAgentTypeId { get; }
+    bool AllowsZeroCollisionRadius { get; }
+    bool HasPreparedLogicMove { get; }
+    ulong PreparedLogicFrame { get; }
+    bool PreparedCollisionMovable { get; }
+    uint AgentCollisionMask { get; }
+    FixVector2 PreparedResolvedHorizontalDisplacement { get; }
+    void BeginLogicFrame(Fix64 deltaTime);
+    void ExecuteLogicFramePhase(MAEntityLogicFramePhase phase, Fix64 deltaTime);
+    void CompleteLogicFrame(Fix64 deltaTime);
+}
+
 public static class MAEntityLogicFrameSystem
 {
     private sealed class PhaseListener : ILogicFrameUpdate, ILogicFrameStableOrder
@@ -31,7 +46,7 @@ public static class MAEntityLogicFrameSystem
     }
 
     private static readonly PhaseListener s_Listener = new PhaseListener();
-    private static readonly List<MAEntity> s_FrameEntities = new List<MAEntity>();
+    private static readonly List<ILogicFrameEntity> s_FrameEntities = new List<ILogicFrameEntity>();
 
     public static bool IsActive { get; private set; }
     public static ulong LastCompletedFrame { get; private set; }
@@ -94,7 +109,7 @@ public static class MAEntityLogicFrameSystem
 
         CollectFrameEntities(snapshot);
         for (int i = 0; i < s_FrameEntities.Count; i++)
-            s_FrameEntities[i].BeginCoordinatedLogicFrame(deltaTime);
+            s_FrameEntities[i].BeginLogicFrame(deltaTime);
 
         int phaseExecutionCount = 0;
         LogicDamageEventService.BeginFrame(frame);
@@ -103,7 +118,7 @@ public static class MAEntityLogicFrameSystem
             MAEntityLogicFramePhase phase = (MAEntityLogicFramePhase)phaseValue;
             for (int entityIndex = 0; entityIndex < s_FrameEntities.Count; entityIndex++)
             {
-                s_FrameEntities[entityIndex].ExecuteCoordinatedLogicFramePhase(phase, deltaTime);
+                s_FrameEntities[entityIndex].ExecuteLogicFramePhase(phase, deltaTime);
                 phaseExecutionCount++;
             }
             if (phase == MAEntityLogicFramePhase.Projectile)
@@ -116,7 +131,7 @@ public static class MAEntityLogicFrameSystem
         }
 
         for (int i = 0; i < s_FrameEntities.Count; i++)
-            s_FrameEntities[i].CompleteCoordinatedLogicFrame(deltaTime);
+            s_FrameEntities[i].CompleteLogicFrame(deltaTime);
 
         LastFrameEntityCount = s_FrameEntities.Count;
         LastFramePhaseExecutionCount = phaseExecutionCount;
@@ -136,10 +151,10 @@ public static class MAEntityLogicFrameSystem
         int previousEntityId = 0;
         for (int i = 0; i < entities.Count; i++)
         {
-            if (!(entities[i] is MAEntity entity))
+            if (!(entities[i] is ILogicFrameEntity entity))
             {
                 throw new InvalidOperationException(
-                    $"MAEntityLogicFrameSystem.CollectFrameEntities failed: registry entity {entities[i].LogicEntityId.Value} is not an MAEntity.");
+                    $"MAEntityLogicFrameSystem.CollectFrameEntities failed: registry entity {entities[i].LogicEntityId.Value} does not implement ILogicFrameEntity.");
             }
             if (!entity.IsLogicActive)
             {

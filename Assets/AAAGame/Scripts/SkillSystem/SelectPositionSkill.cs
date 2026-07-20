@@ -9,7 +9,7 @@ public class SelectPositionSkill : ActiveSkillSO
     //public float radius = 10f;
     //public Vector3 selectRatio;
 
-    protected override SkillInfo CreateSkillInfo(MAEntity body)
+    protected override SkillInfo CreateSkillInfo(IEntityContext body)
     {
         return new SelectPosSkillInfo()
         {
@@ -17,11 +17,11 @@ public class SelectPositionSkill : ActiveSkillSO
             currentIndex = 0,
             isFinished = false,
             selectTargets = new List<ISelectable>(),
-            selectPos = body.transform.position
+            selectPos = body.Position
         };
     }
 
-    public override void StartSkill(MAEntity body, out SkillInfo info)
+    public override void StartSkill(IEntityContext body, out SkillInfo info)
     {
         base.StartSkill(body, out info);
     }
@@ -54,7 +54,9 @@ public class SelectPositionSkill : ActiveSkillSO
         if (info.currentInfo is not PositionSelectActionInfo posSelectInfo)
             return;
         //GF.Log("我是2");
-        posSelectInfo.centerTrans = info.entity.transform;
+        if (info.entity is not MAEntity positionSelectionView)
+            throw new System.InvalidOperationException($"SelectPositionSkill requires a bound MAEntity presenter. entity={info.entity.LogicEntityId.Value}.");
+        posSelectInfo.centerTrans = positionSelectionView.transform;
         posSelectInfo.radius = radius;
         posSelectInfo.selectScale = selectRatio;
     }

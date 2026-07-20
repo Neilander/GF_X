@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using AAAGame.Scripts.GeneralCreature;
 
 /// <summary>
 /// 集成测试：多个 Sim 组件协同工作，模拟真实游戏场景。
@@ -37,6 +38,30 @@ ctx.AtkComp?.Attack((Fix64)dt);
 
         ctx.MoveExecutor.Execute(dt);
         ctx.SyncPositionFromExecutor();
+    }
+
+    [Test]
+    public void CoreFactories_ConfigurePureEntityContextWithoutMAEntity()
+    {
+        var context = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var moveFactory = ScriptableObject.CreateInstance<NoMoveFactory>();
+        var attackFactory = ScriptableObject.CreateInstance<NoAtkFactory>();
+        var targetingFactory = ScriptableObject.CreateInstance<NoTargetingFactory>();
+        try
+        {
+            Assert.IsInstanceOf<NoMoveComp>(moveFactory.CreateMoveComp(context));
+            Assert.IsInstanceOf<NoAtkComp>(attackFactory.CreateAtkComp(context));
+            Assert.IsInstanceOf<NoTargetingComp>(targetingFactory.CreateTargetingComp(context));
+            Assert.IsNotNull(context.MoveComp);
+            Assert.IsNotNull(context.AtkComp);
+            Assert.IsNotNull(context.TargetComp);
+        }
+        finally
+        {
+            Object.DestroyImmediate(moveFactory);
+            Object.DestroyImmediate(attackFactory);
+            Object.DestroyImmediate(targetingFactory);
+        }
     }
 
     [Test]

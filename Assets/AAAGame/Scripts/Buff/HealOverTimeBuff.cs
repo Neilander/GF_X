@@ -43,8 +43,8 @@ public sealed class HealOverTimeBuff : BuffCallback
             return;
         }
 
-        var creature = hostEntity as GeneralCreature;
-        var pm = creature?.CreaturePropertyManager;
+        var creature = hostEntity;
+        var pm = creature?.CreatureProperties;
         if (pm == null || !creature.Alive)
         {
             if (shouldLog)

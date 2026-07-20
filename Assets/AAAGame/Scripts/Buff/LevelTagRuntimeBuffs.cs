@@ -60,14 +60,14 @@ public sealed class AttackLifeStealPercentBuff : BuffCallback
     {
         if (m_Percent <= Fix64.Zero || baseDamage <= Fix64.Zero)
             return baseDamage;
-        if (hostEntity?.weaponComp?.Data == null || WeaponTargetRules.IsHealingWeapon(hostEntity.weaponComp.Data.Type))
+        if (hostEntity?.WeaponComp?.Data == null || WeaponTargetRules.IsHealingWeapon(hostEntity.WeaponComp.Data.Type))
             return baseDamage;
         if (target is not IEntityContext targetContext || !EntityCombatTeamHelper.IsEnemy(hostEntity, targetContext))
             return baseDamage;
-        if (hostEntity is not GeneralCreature creature)
+        if (hostEntity == null)
             return baseDamage;
 
-        creature.Heal(baseDamage * m_Percent / (Fix64)100);
+        hostEntity.Heal(baseDamage * m_Percent / (Fix64)100);
         return baseDamage;
     }
 }
@@ -125,7 +125,7 @@ public sealed class DayScalingHeroStatsBuff : BuffCallback
 
     private void ApplyAttackPercent(Fix64 percent)
     {
-        Weapon weapon = hostEntity?.weaponComp?.Data;
+        Weapon weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null)
             return;
 
@@ -139,8 +139,7 @@ public sealed class DayScalingHeroStatsBuff : BuffCallback
 
     private void ApplyHealthPercent(Fix64 percent)
     {
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null)
             return;
 

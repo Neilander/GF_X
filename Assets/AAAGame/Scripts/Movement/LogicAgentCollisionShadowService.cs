@@ -39,7 +39,7 @@ public static class LogicAgentCollisionShadowService
     private const uint UnitMask = 1u;
 
     private static readonly List<LogicAgentCollisionBody> s_Bodies = new List<LogicAgentCollisionBody>();
-    private static readonly List<MAEntity> s_BodyEntities = new List<MAEntity>();
+    private static readonly List<ILogicFrameEntity> s_BodyEntities = new List<ILogicFrameEntity>();
     private static readonly List<FixVector2> s_BodyFrameStartPositions = new List<FixVector2>();
     private static readonly List<LogicAgentCollisionShadowState> s_States = new List<LogicAgentCollisionShadowState>();
     private static readonly List<FixVector2> s_ProposedPositions = new List<FixVector2>();
@@ -67,7 +67,7 @@ public static class LogicAgentCollisionShadowService
     public static void SolveFrame(
         ulong frameId,
         LogicEntityFrameSnapshot snapshot,
-        IReadOnlyList<MAEntity> entities)
+        IReadOnlyList<ILogicFrameEntity> entities)
     {
         if (!LogicFrameRuntime.IsTicking || frameId != LogicFrameRuntime.CurrentFrame)
         {
@@ -92,25 +92,24 @@ public static class LogicAgentCollisionShadowService
         s_ResolvedPositions.Clear();
         for (int i = 0; i < entities.Count; i++)
         {
-            MAEntity entity = entities[i];
+            ILogicFrameEntity entity = entities[i];
             LogicEntityFrameState state = snapshot.States[i];
             if (entity == null || state.EntityId != entity.LogicEntityId)
                 throw new InvalidOperationException($"LogicAgentCollisionShadowService.SolveFrame failed: identity mismatch at index {i}.");
 
-            MoveExecutor executor = entity.LogicMoveExecutor;
-            if (executor == null || !executor.HasPreparedLogicMove || executor.PreparedLogicFrame != frameId)
+            if (!entity.HasPreparedLogicMove || entity.PreparedLogicFrame != frameId)
             {
                 throw new InvalidOperationException(
                     $"LogicAgentCollisionShadowService.SolveFrame failed: entity {state.EntityId.Value} has no prepared move for frame {frameId}.");
             }
 
-            FixVector2 proposedPosition = state.Position + executor.PreparedResolvedHorizontalDisplacement;
+            FixVector2 proposedPosition = state.Position + entity.PreparedResolvedHorizontalDisplacement;
             s_ResolvedPositions.Add(state.EntityId.Value, proposedPosition);
             if (!state.Alive)
                 continue;
             if (state.CollisionRadius <= Fix64.Zero)
             {
-                if (!(entity is BuildingEntity) && executor.PreparedCollisionMovable)
+                if (!entity.AllowsZeroCollisionRadius && entity.PreparedCollisionMovable)
                 {
                     throw new InvalidOperationException(
                         $"LogicAgentCollisionShadowService.SolveFrame failed: movable entity {state.EntityId.Value} has no collision radius.");
@@ -122,9 +121,9 @@ public static class LogicAgentCollisionShadowService
                 state.EntityId,
                 proposedPosition,
                 state.CollisionRadius,
-                executor.PreparedCollisionMovable ? Fix64.One : Fix64.Zero,
+                entity.PreparedCollisionMovable ? Fix64.One : Fix64.Zero,
                 UnitCategory,
-                UnitMask));
+                entity.AgentCollisionMask));
             s_BodyEntities.Add(entity);
             s_BodyFrameStartPositions.Add(state.Position);
             s_ProposedPositions.Add(proposedPosition);
@@ -192,9 +191,9 @@ public static class LogicAgentCollisionShadowService
 
             FixVector2 frameStart = s_BodyFrameStartPositions[i];
             FixVector2 pairDisplacement = pairState.Position - frameStart;
-            MAEntity entity = s_BodyEntities[i];
+            ILogicFrameEntity entity = s_BodyEntities[i];
             bool staticAvailable = LogicStaticCollisionShadowService.TrySolveFixed(
-                entity.navAgentTypeID,
+                entity.NavigationAgentTypeId,
                 frameStart,
                 pairDisplacement,
                 body.Radius,
@@ -203,7 +202,7 @@ public static class LogicAgentCollisionShadowService
             if (!staticAvailable)
             {
                 throw new InvalidOperationException(
-                    $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: no static collision world for entity {body.EntityId.Value}, agentType={entity.navAgentTypeID}.");
+                    $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: no static collision world for entity {body.EntityId.Value}, agentType={entity.NavigationAgentTypeId}.");
             }
 
             FixVector2 staticPosition = pairState.Position;

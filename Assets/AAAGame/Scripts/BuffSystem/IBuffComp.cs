@@ -8,12 +8,12 @@
         /// <summary>
         /// 初始化Buff组件
         /// </summary>
-        void Init(MAEntity entity);
+        void Init(IEntityContext entity);
 
         /// <summary>
         /// 添加Buff
         /// </summary>
-        bool AddBuff(BuffData buffData, MAEntity hostEntity);
+        bool AddBuff(BuffData buffData, IEntityContext hostEntity);
 
         /// <summary>
         /// 更新Buff
@@ -40,6 +40,8 @@
         /// <summary>
         /// 宿主击杀目标时处理
         /// </summary>
-        void OnKill(MAEntity target);
+        void OnKill(IEntityContext target);
+
+        void OnHealed(Fix64 amount);
     }
 }

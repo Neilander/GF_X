@@ -18,8 +18,8 @@ public sealed class PercentHealthBonusBuff : BuffCallback
     public override void OnAdd()
     {
         base.OnAdd();
-        var creature = hostEntity as GeneralCreature;
-        var pm = creature?.CreaturePropertyManager;
+        var creature = hostEntity;
+        var pm = creature?.CreatureProperties;
         if (pm == null || m_Percent == Fix64.Zero) return;
 
         Fix64 before = pm.GetProperty(CreatureMainProperty.Health);
@@ -32,8 +32,7 @@ public sealed class PercentHealthBonusBuff : BuffCallback
     public override void OnRemove()
     {
         base.OnRemove();
-        var creature = hostEntity as GeneralCreature;
-        var pm = creature?.CreaturePropertyManager;
+        var pm = hostEntity?.CreatureProperties;
         if (pm == null || m_Modifier == null) return;
 
         pm.ModifyMainPropertyMul(CreatureMainProperty.Health, NormalBaseValueTp.Buff, m_Modifier, false);

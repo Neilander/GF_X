@@ -205,6 +205,11 @@ public partial class GeneralSetup : GameFrameworkComponent
             // 给所有生物挂血条
             if (ma is GeneralCreature creature)
             {
+                if (creature.CreaturePropertyManager == null)
+                {
+                    throw new InvalidOperationException(
+                        $"GeneralSetup.OnGeneralShowEntitySuccess failed: creature OnShow did not complete. viewEntity={creature.Id}, logicEntity={ma.LogicEntityId.Value}.");
+                }
                 Fix64 max = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
 
                 // 根据单位的Side判断阵营，友方显示绿色血条，敌方显示红色血条

@@ -9,7 +9,7 @@ public class CharacterSkillFactory : SkillCompFactory
     [Header("被动技能")]
     public List<PassiveSkillSO> passiveSkills;
 
-    public override ISkillComp CreateSkillComp(MAEntity gmo)
+    public override ISkillComp CreateSkillComp(IEntityContext gmo)
     {
         if (gmo is not ISkillCompHost host)
             throw new System.InvalidOperationException($"CharacterSkillFactory requires ISkillCompHost. entity={gmo?.GetType().Name}");

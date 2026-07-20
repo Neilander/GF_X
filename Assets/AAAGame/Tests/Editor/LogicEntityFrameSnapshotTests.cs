@@ -71,14 +71,12 @@ public class LogicEntityFrameSnapshotTests
     }
 
     [Test]
-    public void Build_RejectsNonFinitePosition()
+    public void PositionBoundary_RejectsNonFiniteBeforeSnapshot()
     {
-        var entity = CreateEntity(1, new Vector3(float.NaN, 0f, 0f), (Fix64)10);
+        ArgumentOutOfRangeException exception = Assert.Throws<ArgumentOutOfRangeException>(
+            () => CreateEntity(1, new Vector3(float.NaN, 0f, 0f), (Fix64)10));
 
-        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
-            () => LogicEntityFrameSnapshotBuilder.Build(1, new List<IEntityContext> { entity }));
-
-        StringAssert.Contains("non-finite position", exception.Message);
+        StringAssert.Contains("finite XZ", exception.Message);
     }
 
     private static SimEntityContext CreateEntity(int id, Vector3 position, Fix64 collisionRadius)

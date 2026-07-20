@@ -14,6 +14,7 @@ public class HoldProgress : MonoBehaviour, IPointerDownHandler, IPointerUpHandle
     float progress;     // 0-1
     bool pointerHolding;
     bool externalHolding;
+    bool useExternalLogicProgress;
     bool lockUntilRelease;
     RectTransform fillRect;
     Vector3 fillBaseScale = Vector3.one;
@@ -61,6 +62,19 @@ public class HoldProgress : MonoBehaviour, IPointerDownHandler, IPointerUpHandle
         externalHolding = holding;
     }
 
+    public void SetExternalLogicProgress(bool enabled, float value)
+    {
+        useExternalLogicProgress = enabled;
+        if (!enabled)
+            return;
+
+        pointerHolding = false;
+        externalHolding = false;
+        lockUntilRelease = false;
+        progress = Mathf.Clamp01(value);
+        ApplyVisual(progress);
+    }
+
     public void SetHoldSeconds(float seconds)
     {
         seconds = Mathf.Max(0.01f, seconds);
@@ -75,6 +89,12 @@ public class HoldProgress : MonoBehaviour, IPointerDownHandler, IPointerUpHandle
 
     void Update()
     {
+        if (useExternalLogicProgress)
+        {
+            ApplyVisual(progress);
+            return;
+        }
+
         bool anyHolding = allowHold && (pointerHolding || externalHolding);
         if (lockUntilRelease && !anyHolding)
             lockUntilRelease = false;

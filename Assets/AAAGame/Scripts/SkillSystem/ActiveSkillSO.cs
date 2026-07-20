@@ -59,7 +59,7 @@ public class ActiveSkillSO : SkillEffectSO
             selectRatio.z);
     }
 
-    protected virtual SkillInfo CreateSkillInfo(MAEntity body)
+    protected virtual SkillInfo CreateSkillInfo(IEntityContext body)
     {
         return new SkillInfo()
         {
@@ -69,7 +69,7 @@ public class ActiveSkillSO : SkillEffectSO
         };
     }
 
-    public virtual void StartSkill(MAEntity body, out SkillInfo info)
+    public virtual void StartSkill(IEntityContext body, out SkillInfo info)
     {
         info = CreateSkillInfo(body);
         info.tempInfoRecords = new Dictionary<ActionInfo, Type>();
@@ -133,11 +133,15 @@ public class ActiveSkillSO : SkillEffectSO
 
         //更新信息
         var action = actions[actionIndex];
-        action.StartAction(info.entity, out info.currentInfo);
+        action.StartAction(RequireLegacyActionBody(info.entity), out info.currentInfo);
         info.currentInfo.executeIndex = actionIndex;
         info.currentInfo.damageInfo = new Damage(info.entity, Fix64.One);
-        if (!string.IsNullOrWhiteSpace(action.relatedTriggerString))
-            info.entity.animator.SetTrigger(action.relatedTriggerString);
+        if (!string.IsNullOrWhiteSpace(action.relatedTriggerString)
+            && info.entity is MAEntity view
+            && view.animator != null)
+        {
+            view.animator.SetTrigger(action.relatedTriggerString);
+        }
         info.currentInfo.fatherInfo = info;
 
         //根据新的信息容器类型来注入
@@ -145,12 +149,25 @@ public class ActiveSkillSO : SkillEffectSO
         switch (info.currentInfo)
         {
             case PositionSelectActionInfo posSelectInfo:
-                posSelectInfo.centerTrans = info.entity.transform;
+                if (info.entity is not MAEntity positionSelectionView)
+                {
+                    throw new InvalidOperationException(
+                        $"ActiveSkillSO position selection requires a bound MAEntity presenter. skillId={skillId}, entity={info.entity.LogicEntityId.Value}.");
+                }
+                posSelectInfo.centerTrans = positionSelectionView.transform;
                 posSelectInfo.radius = GetCastDistanceWorldOrFallback();
                 posSelectInfo.selectScale = GetSelectionScaleOrFallback();
                 break;
 
         }
+    }
+
+    private static GeneralCreature RequireLegacyActionBody(IEntityContext entity)
+    {
+        if (entity is GeneralCreature creature)
+            return creature;
+        throw new InvalidOperationException(
+            $"Legacy BasicAction requires a GeneralCreature presenter. entity={entity?.LogicEntityId.Value ?? 0}.");
     }
 
 
@@ -177,7 +194,7 @@ public class SkillInfo
 {
     public int currentIndex = 0;
     public bool isFinished = false;
-    public MAEntity entity;
+    public IEntityContext entity;
     public ActionInfo currentInfo;
     public Dictionary<ActionInfo, Type> tempInfoRecords;
 }

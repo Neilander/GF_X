@@ -4,12 +4,6 @@ using UnityEngine;
 
 public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
 {
-    private const string HeroOutOfCombatSpeedBuffId = "hero_out_of_combat_speed_x2";
-    private const float HeroOutOfCombatSpeedDelay = 2f;
-    private const float HeroOutOfCombatSpeedRampDuration = 1f;
-    private static readonly Fix64 HeroOutOfCombatSpeedBuffPercent = Fix64.One;
-
-    private const string HeroGhostBuffId = "hero_ghost_state";
     private const float GhostAlphaMultiplier = 0.6f;
     private const string UnitOutlineShaderName = "Hidden/AAAGame/UnitOutline";
     private static readonly int ColorId = Shader.PropertyToID("_Color");
@@ -20,7 +14,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     private static readonly int SrcBlendId = Shader.PropertyToID("_SrcBlend");
     private static readonly int DstBlendId = Shader.PropertyToID("_DstBlend");
     private static readonly int ZWriteId = Shader.PropertyToID("_ZWrite");
-    private static readonly ICapability GhostCapabilityLocker = new GhostStateCapabilityLocker();
     private const int GhostCollisionSyncIntervalFrames = 6;
     private const int CastRangeSegments = 96;
     private const string AttackRangePreviewNodeName = "AttackRangePreview";
@@ -35,8 +28,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     private readonly Dictionary<Renderer, Material[]> _ghostMaterials = new Dictionary<Renderer, Material[]>();
     private readonly Dictionary<int, CharacterController> _ghostIgnoredUnitControllers = new Dictionary<int, CharacterController>();
     private readonly Dictionary<int, Collider> _constructionEscapeIgnoredColliders = new Dictionary<int, Collider>();
-    private bool _heroOutOfCombatSpeedFirstApplyPending;
-    private bool _heroOutOfCombatSpeedInitialGraceActive;
     private bool _isHidingOrShuttingDown;
     private int _nextGhostCollisionSyncFrame;
     private Transform _rangeTrans;
@@ -46,9 +37,10 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     private Fix64 _renderedAttackRange;
     private Vector3 _attackRangePreviewParentScale;
     private bool _hasRenderedAttackRange;
+    private bool _presentedGhostState;
 
     public ISkillComp skillComp { get; private set; }
-    public bool IsGhostState { get; private set; }
+    public bool IsGhostState => LogicState != null ? LogicState.IsGhostState : _presentedGhostState;
     public bool IsHeroSoldier => true;
 
     protected override void OnInit(object userData)
@@ -60,25 +52,19 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     protected override void OnShow(object userData)
     {
         _isHidingOrShuttingDown = false;
-        _heroOutOfCombatSpeedFirstApplyPending = true;
-        _heroOutOfCombatSpeedInitialGraceActive = false;
-
         base.OnShow(userData);
-        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnHeroPhaseChanged);
         GF.Event.Subscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         EnsurePlayerInteractionRuntime();
         EnsureHeroSkillRuntime();
+        ApplyGhostPresentation(LogicState.IsGhostState);
         SyncAttackRangePreview(true);
-        SyncHeroOutOfCombatSpeedBuff();
     }
 
     protected override void OnHide(bool isShutdown, object userData)
     {
         _isHidingOrShuttingDown = true;
-        GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnHeroPhaseChanged);
         GF.Event.Unsubscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         CancelRunningSkills();
-        skillComp?.ShutDown();
         skillComp = null;
         ClearConstructionEscapeRuntimeState();
         ClearGhostRuntimeState();
@@ -91,7 +77,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     protected override void OnPostLogicFrameUpdate(Fix64 deltaTime)
     {
         base.OnPostLogicFrameUpdate(deltaTime);
-        SyncHeroOutOfCombatSpeedBuff();
         TickGhostCollisionRuntime();
         TickConstructionEscapeRuntime();
 
@@ -102,36 +87,9 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+        if (_presentedGhostState != LogicState.IsGhostState)
+            ApplyGhostPresentation(LogicState.IsGhostState);
         SyncAttackRangePreview(false);
-    }
-
-    protected override void OnOutOfCombatStateRefreshed()
-    {
-        base.OnOutOfCombatStateRefreshed();
-        SyncHeroOutOfCombatSpeedBuff();
-    }
-
-    public override void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
-    {
-        if (this.HasInvincibleBuff())
-            return;
-
-        Fix64 before = HealthValue;
-        base.TakeDamage(damage, modType, attacker);
-        if (HealthValue < before)
-            RemoveHeroOutOfCombatSpeedBuff();
-    }
-
-    protected override bool TryHandleZeroHealth(IEntityContext attacker)
-    {
-        if (LevelTagRuntime.TryConsumeHeroRevive(this))
-        {
-            ReviveHeroToFullHealth();
-            return true;
-        }
-
-        EnterGhostState();
-        return true;
     }
 
     public void SetSkillComp(ISkillComp newSkillComp) => skillComp = newSkillComp;
@@ -165,30 +123,9 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
 
     private void EnsureHeroSkillRuntime()
     {
-        if (skillComp == null)
-            FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath("PlayerSkillFactory"), this);
-        else
-            skillComp.OnSkillChanged();
-    }
-
-    private void OnHeroPhaseChanged(object sender, GameEventArgs e)
-    {
-        if (e is not IngamePhaseChangedEventArgs args)
-            return;
-
-        if (args.OldPhase == args.NewPhase)
-            return;
-
-        if (InGameDataModel.IsBuildPhase(args.NewPhase))
-        {
-            CancelRunningSkills();
-            GF.DataModel.GetDataModel<InputModel>()?.ClearSkillRequests();
-        }
-
-        if (Alive)
-            RestoreHealthToFull();
-
-        SyncHeroOutOfCombatSpeedBuff();
+        skillComp = LogicState.SkillComp
+                    ?? throw new System.InvalidOperationException($"HeroEntity.EnsureHeroSkillRuntime failed: logic SkillComp is missing. entity={LogicEntityId.Value}.");
+        skillComp.OnSkillChanged();
     }
 
     private void OnSkillChanged(object sender, GameEventArgs e)
@@ -196,49 +133,19 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         skillComp?.OnSkillChanged();
     }
 
-    private void RestoreHealthToFull()
+    protected override void OnLogicGhostStatePresentation(bool enabled)
     {
-        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 delta = maxHealth - HealthValue;
-        if (delta <= Fix64.Zero)
-            return;
-
-        CreaturePropertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(delta),
-            true);
-
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)maxHealth, (float)maxHealth, (float)delta));
+        base.OnLogicGhostStatePresentation(enabled);
+        ApplyGhostPresentation(enabled);
+        if (!enabled)
+            TryEnsureHealthBarVisible(LogicState.GetProperty(CreatureMainProperty.Health));
     }
 
-    private void ReviveHeroToFullHealth()
+    private void ApplyGhostPresentation(bool enabled)
     {
-        RestoreHealthToFull();
-        Alive = true;
-    }
-
-    public void SetGhostStateByBuff(bool enabled)
-    {
-        if (IsGhostState == enabled)
+        if (_presentedGhostState == enabled)
             return;
-
-        IsGhostState = enabled;
-        Alive = true;
-
-        if (targetComp != null)
-            targetComp.CurrentTarget = null;
-
-        if (enabled)
-        {
-            LockComp(atkComp, GhostCapabilityLocker);
-            LockComp(targetComp, GhostCapabilityLocker);
-        }
-        else
-        {
-            ResumeComp(atkComp, GhostCapabilityLocker);
-            ResumeComp(targetComp, GhostCapabilityLocker);
-        }
-
+        _presentedGhostState = enabled;
         if (enabled)
             CancelHitFlashVisual();
 
@@ -251,47 +158,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
 
         fogManager.SetEntityRevealerAllowRevealHidden(Id, !enabled);
         fogManager.RefreshRevealHiddenByHeroGhostState();
-    }
-
-    public void RestoreFromGhostState()
-    {
-        SetGhostStateByBuff(false);
-        Alive = true;
-        RestoreHealthToFull();
-        TryEnsureHealthBarVisible(CreaturePropertyManager.GetProperty(CreatureMainProperty.Health));
-    }
-
-    private void EnterGhostState()
-    {
-        ClampHealthToZero();
-
-        if (BuffComp.HasBuff(HeroGhostBuffId))
-            return;
-
-        BuffData buffData = BuffData.Create(
-            id: HeroGhostBuffId,
-            duration: float.MaxValue,
-            isForever: true,
-            maxStack: 1,
-            modules: new List<BuffCallback> { new HeroGhostBuff() });
-
-        BuffComp.AddBuff(buffData, this);
-    }
-
-    private void ClampHealthToZero()
-    {
-        Fix64 currentHealth = HealthValue;
-        if (currentHealth >= Fix64.Zero)
-            return;
-
-        Fix64 delta = -currentHealth;
-        CreaturePropertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(delta),
-            true);
-
-        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, 0f, (float)maxHealth, (float)delta));
     }
 
     private void TryEnsureHealthBarVisible(Fix64 maxHealth)
@@ -322,58 +188,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         return GF.Entity != null && GF.Entity.HasEntity(Id);
     }
 
-    private void SyncHeroOutOfCombatSpeedBuff()
-    {
-        if (BuffComp == null || CreaturePropertyManager == null)
-            return;
-
-        if (!IsOutOfCombat)
-            _heroOutOfCombatSpeedInitialGraceActive = false;
-
-        bool isFirstApply = _heroOutOfCombatSpeedFirstApplyPending;
-        bool keepInitialGraceBuff = _heroOutOfCombatSpeedInitialGraceActive && IsOutOfCombat;
-        bool canEnableBuff = Alive
-                             && (isFirstApply
-                                 || keepInitialGraceBuff
-                                 || (IsOutOfCombat && OutOfCombatElapsedLogicTime >= (Fix64)HeroOutOfCombatSpeedDelay));
-        bool hasBuff = BuffComp.HasBuff(HeroOutOfCombatSpeedBuffId);
-
-        if (canEnableBuff)
-        {
-            _heroOutOfCombatSpeedFirstApplyPending = false;
-            if (isFirstApply)
-                _heroOutOfCombatSpeedInitialGraceActive = true;
-
-            if (hasBuff)
-                return;
-
-            BuffData buffData = BuffData.Create(
-                id: HeroOutOfCombatSpeedBuffId,
-                duration: float.MaxValue,
-                isForever: true,
-                maxStack: 1,
-                modules: new List<BuffCallback>
-                {
-                    new RampedPercentMoveSpeedBonusBuff(
-                        HeroOutOfCombatSpeedBuffPercent,
-                        HeroOutOfCombatSpeedRampDuration,
-                        isFirstApply)
-                });
-
-            BuffComp.AddBuff(buffData, this);
-            return;
-        }
-
-        RemoveHeroOutOfCombatSpeedBuff();
-    }
-
-    private void RemoveHeroOutOfCombatSpeedBuff()
-    {
-        _heroOutOfCombatSpeedInitialGraceActive = false;
-        if (BuffComp != null && BuffComp.HasBuff(HeroOutOfCombatSpeedBuffId))
-            BuffComp.RemoveBuff(HeroOutOfCombatSpeedBuffId);
-    }
-
     private void EnsurePlayerInteractionRuntime()
     {
         Transform interactionNode = transform.Find(PlayerInteractionNodeName);
@@ -392,22 +206,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
             interactionObject = interactionNode.gameObject;
         }
 
-        SphereCollider triggerSphere = interactionObject.GetComponent<SphereCollider>();
-        if (triggerSphere == null)
-            triggerSphere = interactionObject.AddComponent<SphereCollider>();
-        triggerSphere.isTrigger = true;
-
-        Rigidbody triggerBody = interactionObject.GetComponent<Rigidbody>();
-        if (triggerBody == null)
-            triggerBody = interactionObject.AddComponent<Rigidbody>();
-        triggerBody.isKinematic = true;
-        triggerBody.useGravity = false;
-        triggerBody.constraints = RigidbodyConstraints.FreezeAll;
-
-        InteractionDetector detector = interactionObject.GetComponent<InteractionDetector>();
-        if (detector == null)
-            detector = interactionObject.AddComponent<InteractionDetector>();
-
         InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
         if (manager == null)
             manager = interactionObject.AddComponent<InteractionManager>();
@@ -416,7 +214,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
             interactionObject.AddComponent<InteractOptionTipsPresenter>();
 
         manager.ConfigureRuntime(
-            detector,
             PlayerInteractionRange,
             PlayerInteractionPadding,
             0.65f,
@@ -954,8 +751,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
 
     private void ClearGhostRuntimeState()
     {
-        SetGhostStateByBuff(false);
-        IsGhostState = false;
+        ApplyGhostPresentation(false);
 
         foreach (var mats in _ghostMaterials.Values)
         {
@@ -973,16 +769,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         _originalMaterials.Clear();
         _ghostIgnoredUnitControllers.Clear();
         _nextGhostCollisionSyncFrame = 0;
-    }
-
-    private sealed class GhostStateCapabilityLocker : ICapability
-    {
-        public void ShutDown()
-        {
-        }
-
-        public void Resume()
-        {
-        }
+        _presentedGhostState = false;
     }
 }

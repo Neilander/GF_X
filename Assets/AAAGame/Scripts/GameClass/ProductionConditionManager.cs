@@ -159,10 +159,8 @@ public class ProductionConditionManager : GameFrameworkComponent
 
         for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
         {
-            if (EntityRegistry.AllEntities[i] is not MAEntity entity)
-                continue;
-
-            if (entity is BuildingEntity)
+            IEntityContext entity = EntityRegistry.AllEntities[i];
+            if (entity == null || entity is IBuildingLogicContext)
                 continue;
 
             if (!entity.Alive)

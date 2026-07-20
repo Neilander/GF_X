@@ -416,13 +416,13 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         if (target == null)
             return -1;
 
-        if (target is BuildingEntity building)
+        if (target is IBuildingLogicContext building)
         {
             int taunt = GetTauntLevel(target);
             if (taunt > 0)
                 return 1;
 
-            if (building.buildingData != null && building.buildingData.Type == BuilType.Def)
+            if (building.BuildingData != null && building.BuildingData.Type == BuilType.Def)
                 return 3;
 
             if (ReferenceEquals(target, _defendFallbackTarget))
@@ -443,15 +443,12 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
     private static int GetTauntLevel(IEntityContext entity)
     {
-        if (entity is GeneralCreature creature)
-            return creature.TauntLevel;
-
-        return 0;
+        return entity?.TauntLevel ?? 0;
     }
 
     private static bool ShouldUseAttackRangeOnly(IEntityContext entity)
     {
-        return entity is BuildingEntity || IsHeroUnit(entity);
+        return entity is IBuildingLogicContext || IsHeroUnit(entity);
     }
 
     private static bool IsHeroUnit(IEntityContext entity)

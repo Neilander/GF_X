@@ -10,8 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 5594260648389450015}
   - component: {fileID: 7530057947831727837}
-  - component: {fileID: 8965230775669802338}
-  - component: {fileID: 6537118591455826704}
   - component: {fileID: 3891650223461357633}
   m_Layer: 0
   m_Name: InteractCollider
@@ -49,48 +47,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   interactionRange: 10
   triggerPadding: 3
-  detector: {fileID: 6537118591455826704}
   distanceWeight: 0.6
   angleWeight: 0.4
   switchThreshold: 0.05
   minHoldTime: 0
---- !u!135 &8965230775669802338
-SphereCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3596309835734647297}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 1
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Radius: 13
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &6537118591455826704
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3596309835734647297}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f5bd96dfe07562e4bb113d8fe6ad9b16, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  maxDistance: 10
-  interactableLayerMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
 --- !u!114 &3891650223461357633
 MonoBehaviour:
   m_ObjectHideFlags: 0

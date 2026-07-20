@@ -86,7 +86,7 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
 
     private static int GetTauntLevel(IEntityContext entity)
     {
-        return entity is GeneralCreature creature ? creature.TauntLevel : 0;
+        return entity?.TauntLevel ?? 0;
     }
 
     public void WriteDeterministicState(LogicStateHasher hasher)
@@ -183,7 +183,7 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
             if (distance > scanRange)
                 continue;
 
-            int taunt = candidate is GeneralCreature creature ? creature.TauntLevel : 0;
+            int taunt = candidate.TauntLevel;
             if (taunt > bestTaunt
                 || (taunt == bestTaunt && (distance < bestDistance
                     || (distance == bestDistance

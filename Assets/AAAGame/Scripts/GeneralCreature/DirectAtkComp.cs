@@ -104,9 +104,9 @@ public class DirectAtkComp : IAtkComp
     private Weapon[] _weapons;
     private int _activeWeaponIndex;
     private BaseWeaponSO _weaponSO;
-    private Animator _animator;
-
     public BaseWeaponSO WeaponSO => _weaponSO;
+    public event Action<Fix64, bool> AttackPresentationStarted;
+    public event Action AttackPresentationInterrupted;
 
     public void SetWeaponSO(BaseWeaponSO so) => _weaponSO = so;
 
@@ -253,13 +253,6 @@ public class DirectAtkComp : IAtkComp
         _lockedTargets.Clear();
         _movementLockedByThisAttack = false;
 
-        // 获取Animator组件
-        var entity = _ctx as MAEntity;
-        if (entity != null)
-        {
-            _animator = entity.animator;
-        }
-
         if (ctx.WeaponComp?.Data != null)
         {
             SetWeapons(new[] { ctx.WeaponComp.Data });
@@ -269,10 +262,8 @@ public class DirectAtkComp : IAtkComp
             string id = ctx.CharacterKey;
             var row = ctx.CharacterData;
             Fix64 level = Fix64.One;
-            if (ctx is MAEntity ownerEntity && ownerEntity.CreaturePropertyManager != null)
-            {
-                level = ownerEntity.CreaturePropertyManager.GetLevel();
-            }
+            if (ctx.CreatureProperties != null)
+                level = ctx.CreatureProperties.GetLevel();
 
             WeaponData[] weaponDatas = CharacterDataDetailAccessor.GetWeaponDatas(row, level);
             if (weaponDatas == null || weaponDatas.Length == 0)
@@ -290,14 +281,7 @@ public class DirectAtkComp : IAtkComp
 
         // 创建 WeaponComp 并挂载到 Entity
         var wc = new WeaponComp(_weapon);
-        var maEntity = _ctx as MAEntity;
-        if (maEntity != null)
-        {
-            maEntity.SetWeaponComp(wc);
-        }
-        else
-        {
-        }
+        _ctx.SetWeaponComp(wc);
     }
 
     public void UpdateWeaponData(WeaponData weaponData)
@@ -309,14 +293,10 @@ public class DirectAtkComp : IAtkComp
         _activeWeaponIndex = 0;
         _weapon = _weapons[_activeWeaponIndex];
 
-        var maEntity = _ctx as MAEntity;
-        if (maEntity != null)
-        {
-            if (maEntity.weaponComp == null)
-                maEntity.SetWeaponComp(new WeaponComp(_weapon));
-            else
-                maEntity.weaponComp.SwapWeapon(_weapon);
-        }
+        if (_ctx.WeaponComp == null)
+            _ctx.SetWeaponComp(new WeaponComp(_weapon));
+        else
+            _ctx.WeaponComp.SwapWeapon(_weapon);
 
         WeaponHelper.LoadWeapon(GetWeaponSOPath(), this);
         ShutDown();
@@ -324,7 +304,7 @@ public class DirectAtkComp : IAtkComp
 
     private void SetWeapons(WeaponData[] weaponDatas)
     {
-        PropertyManager ownerManager = (_ctx as MAEntity)?.CreaturePropertyManager?.propertyManager;
+        PropertyManager ownerManager = _ctx.CreatureProperties?.propertyManager;
         _weapons = new Weapon[weaponDatas.Length];
         for (int i = 0; i < weaponDatas.Length; i++)
         {
@@ -619,18 +599,26 @@ public void Attack(Fix64 deltaTime)
         {
             AreaWeaponDamage.DealSelfAoE(_ctx, target, snapshot);
         }
-        else if (activeWeapon.Type == WeaponType.Special && _ctx is BuildingEntity building && BuildingAbilityIds.IsBuilding(building.buildingData, BuildingAbilityIds.Monitor))
+        else if (activeWeapon.Type == WeaponType.Special
+                 && _ctx is IBuildingLogicContext building
+                 && BuildingAbilityIds.IsBuilding(building.BuildingData, BuildingAbilityIds.Monitor))
         {
             MonitorWeaponEffect.Execute(_ctx, target, snapshot);
         }
-        // 优先委托武器 SO 执行伤害
-        else if (_weaponSO != null)
+        else if (WeaponTargetRules.IsProjectileLikeWeapon(activeWeapon.Type))
         {
-            _weaponSO.Execute(_ctx, target, snapshot);
+            if (!LogicProjectileService.IsActive || !LogicDamageEventService.IsCollecting)
+            {
+                throw new InvalidOperationException(
+                    "DirectAtkComp.ExecuteWeaponEffect failed: no logic projectile collection window is active.");
+            }
+
+            ulong logicProjectileId = LogicProjectileService.Submit(_ctx, target, snapshot);
+            if (_weaponSO is RangedWeaponSO rangedWeaponPresenter)
+                rangedWeaponPresenter.Present(_ctx, target, snapshot, logicProjectileId);
         }
         else
         {
-            // 降级 fallback：走 DamageHelper 统一走 buff 钩子链路
             var dmg = new Damage(_ctx as ITargetable, snapshot.Damage, HealthModifyType.reduce);
             DamageHelper.DoDamage(target as ITargetable, dmg, _ctx);
         }
@@ -723,17 +711,10 @@ public void Attack(Fix64 deltaTime)
             $"[{_ctx.CharacterKey}] 状态 {State} → {newState}");
         State = newState;
 
-        // 通过参数驱动 Animator Controller
-        if (_animator != null && newState == AtkState.WindUp)
-        {
-            _animator.SetTrigger("Attack");
-        }
-
-        if (newState == AtkState.WindUp && !WeaponTargetRules.IsProjectileLikeWeapon(GetActiveWeapon().Type))
-        {
-            float trailDuration = Mathf.Max(0.08f, (float)GetCurrentWindUp() + 0.08f);
-            WeaponAttackTrailEffect.Play(_ctx, trailDuration);
-        }
+        if (newState == AtkState.WindUp)
+            AttackPresentationStarted?.Invoke(
+                GetCurrentWindUp(),
+                !WeaponTargetRules.IsProjectileLikeWeapon(GetActiveWeapon().Type));
     }
 
     public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced)
@@ -745,10 +726,10 @@ public void Attack(Fix64 deltaTime)
             ReleaseMovementLock();
 
         if (wasAttacking)
+        {
             NotifyAttackInterrupted(reason, interruptedTarget);
-
-        WeaponAttackTrailEffect.Stop(_ctx, true);
-        ResetPendingAttackAnimationTrigger();
+            AttackPresentationInterrupted?.Invoke();
+        }
 
         _movementLockedByThisAttack = false;
         State = AtkState.Idle;
@@ -790,7 +771,7 @@ public void Attack(Fix64 deltaTime)
 
     private List<BuffCallback> GetBuffModuleSnapshot()
     {
-        if (!(_ctx is MAEntity entity) || !(entity.BuffComp is CharacterBuffComp buffComp))
+        if (!(_ctx.BuffComp is CharacterBuffComp buffComp))
             return EmptyBuffModuleSnapshot;
 
         var result = new List<BuffCallback>();
@@ -798,22 +779,6 @@ public void Attack(Fix64 deltaTime)
             result.Add(module);
 
         return result;
-    }
-
-    private void ResetPendingAttackAnimationTrigger()
-    {
-        if (_animator == null)
-            return;
-
-        AnimatorControllerParameter[] parameters = _animator.parameters;
-        for (int i = 0; i < parameters.Length; i++)
-        {
-            if (parameters[i].type == AnimatorControllerParameterType.Trigger && parameters[i].name == "Attack")
-            {
-                _animator.ResetTrigger("Attack");
-                return;
-            }
-        }
     }
 
     public void Resume() { }

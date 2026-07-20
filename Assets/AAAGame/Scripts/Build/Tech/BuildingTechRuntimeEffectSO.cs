@@ -557,12 +557,13 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity ma || !ma.Alive || ma.Side != targetSide)
+            IEntityContext ma = all[i];
+            if (ma == null || !ma.Alive || ma.Side != targetSide)
                 continue;
 
             var comp = ma.BuffComp as CharacterBuffComp;
             comp?.AddBuff(BuffData.Create(
-                id: $"{DiscardFieldBuffPrefix}{uniqueTechId}_{ma.Id}",
+                id: $"{DiscardFieldBuffPrefix}{uniqueTechId}_{ma.LogicEntityId.Value}",
                 duration: float.MaxValue,
                 isForever: true,
                 maxStack: 1,
@@ -603,7 +604,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is MAEntity ma && ma.BuffComp is CharacterBuffComp comp)
+            if (all[i]?.BuffComp is CharacterBuffComp comp)
                 comp.RemoveBuffsByPrefix(DiscardFieldBuffPrefix);
         }
 
@@ -1062,7 +1063,7 @@ public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback, ILogicDetermi
         if (m_Applied || m_AttackSpeedPercent == Fix64.Zero)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null)
             return;
 
@@ -1076,7 +1077,7 @@ public sealed class ConditionalCoinAttackSpeedBuff : BuffCallback, ILogicDetermi
         if (!m_Applied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon != null && m_Factor != Fix64.Zero)
             weapon.ApplyMultiplier(WeaponStatId.Interval, Fix64.One / m_Factor);
 
@@ -1130,15 +1131,17 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback, ILogicDetermini
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity enemy || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
+            IEntityContext enemy = all[i];
+            if (enemy == null || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
                 continue;
             if (enemy.CharacterData == null || enemy.CharacterData.Size != m_TargetSize)
                 continue;
             if (hostEntity.LogicFrameDistanceToTargetSurfaceFixed(enemy) > radius)
                 continue;
 
-            current.Add(enemy.Id);
-            if (!m_Affected.Contains(enemy.Id))
+            int enemyId = enemy.LogicEntityId.Value;
+            current.Add(enemyId);
+            if (!m_Affected.Contains(enemyId))
                 AddDebuff(enemy);
         }
 
@@ -1153,19 +1156,19 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback, ILogicDetermini
             RemoveDebuff(removeIds[i]);
     }
 
-    private void AddDebuff(MAEntity enemy)
+    private void AddDebuff(IEntityContext enemy)
     {
         var comp = enemy.BuffComp as CharacterBuffComp;
         if (comp == null)
             return;
 
         comp.AddBuff(BuffData.Create(
-            id: GetBuffId(enemy.Id),
+            id: GetBuffId(enemy.LogicEntityId.Value),
             duration: float.MaxValue,
             isForever: true,
             maxStack: 1,
             modules: new List<BuffCallback> { new AttackSpeedBonusBuff(m_AttackSpeedPercent) }), enemy);
-        m_Affected.Add(enemy.Id);
+        m_Affected.Add(enemy.LogicEntityId.Value);
     }
 
     private void RemoveDebuff(int entityId)
@@ -1173,7 +1176,8 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback, ILogicDetermini
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is MAEntity entity && entity.Id == entityId && entity.BuffComp is CharacterBuffComp comp)
+            IEntityContext entity = all[i];
+            if (entity != null && entity.LogicEntityId.Value == entityId && entity.BuffComp is CharacterBuffComp comp)
             {
                 comp.RemoveBuff(GetBuffId(entityId));
                 break;
@@ -1210,7 +1214,7 @@ public sealed class MeleeVsRangedDamageBonusBuff : BuffCallback
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (m_BonusPercent == Fix64.Zero || target is not MAEntity targetEntity)
+        if (m_BonusPercent == Fix64.Zero || target is not IEntityContext targetEntity)
             return baseDamage;
         if (targetEntity.CharacterData?.UnitTags == null || !HasTag(targetEntity.CharacterData.UnitTags, UnitTag.Ranged))
             return baseDamage;
@@ -1290,8 +1294,7 @@ public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback, ILogicDetermi
         if (m_Applied || m_MoveSpeedPercent == Fix64.Zero)
             return;
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null)
             return;
 
@@ -1305,8 +1308,7 @@ public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback, ILogicDetermi
         if (!m_Applied)
             return;
 
-        var creature = hostEntity as GeneralCreature;
-        var propertyManager = creature?.CreaturePropertyManager;
+        var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager != null && m_Modifier != null)
             propertyManager.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, false);
 
@@ -1362,17 +1364,17 @@ public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback, ILogicDet
         RemoveAttackSpeedPenalty();
     }
 
-    private void Trigger(MAEntity ma)
+    private void Trigger(IEntityContext ma)
     {
         m_Triggered = true;
 
-        if (ma is GeneralCreature creature && creature.CreaturePropertyManager != null && m_HealthThresholdPercent > Fix64.Zero)
+        if (ma.CreatureProperties != null && m_HealthThresholdPercent > Fix64.Zero)
         {
-            Fix64 maxHealth = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
+            Fix64 maxHealth = ma.CreatureProperties.GetProperty(CreatureMainProperty.Health);
             Fix64 targetHealth = maxHealth * m_HealthThresholdPercent / (Fix64)100;
-            Fix64 healAmount = targetHealth - creature.HealthValue;
+            Fix64 healAmount = targetHealth - ma.HealthValue;
             if (healAmount > Fix64.Zero)
-                creature.Heal(healAmount);
+                ma.Heal(healAmount);
         }
 
         ApplyAttackSpeedPenalty();
@@ -1383,7 +1385,7 @@ public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback, ILogicDet
         if (m_PenaltyApplied || m_AttackSpeedPenaltyPercent <= Fix64.Zero)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon == null)
             return;
 
@@ -1401,7 +1403,7 @@ public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback, ILogicDet
         if (!m_PenaltyApplied)
             return;
 
-        var weapon = hostEntity?.weaponComp?.Data;
+        var weapon = hostEntity?.WeaponComp?.Data;
         if (weapon != null && m_AppliedAttackIntervalFactor != Fix64.Zero)
             weapon.ApplyMultiplier(WeaponStatId.Interval, Fix64.One / m_AppliedAttackIntervalFactor);
 
@@ -1475,7 +1477,7 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
     private readonly Fix64 m_Distance;
     private Fix64 m_Timer;
     private bool m_Applied;
-    private string BuffId => $"tech_security_behind_attack_{buffData?.id}_{hostEntity?.Id}";
+    private string BuffId => $"tech_security_behind_attack_{buffData?.id}_{hostEntity?.LogicEntityId.Value}";
 
     public BehindSecurityRangedAttackAuraBuff(Fix64 attackBonus, float coneAngle, Fix64 distance)
     {
@@ -1512,7 +1514,8 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity security || security == hostEntity || !security.Alive)
+            IEntityContext security = all[i];
+            if (security == null || ReferenceEquals(security, hostEntity) || !security.Alive)
                 continue;
             if (!EntityCombatTeamHelper.IsAlly(hostEntity, security))
                 continue;
@@ -1579,23 +1582,25 @@ public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity enemy || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
+            IEntityContext enemy = all[i];
+            if (enemy == null || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
                 continue;
 
             Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(enemy.Position);
             string strongholdId = stronghold?.strongholdData?.StrongholdId;
-            m_LastStrongholdIdByEntity.TryGetValue(enemy.Id, out string previousId);
+            int enemyId = enemy.LogicEntityId.Value;
+            m_LastStrongholdIdByEntity.TryGetValue(enemyId, out string previousId);
             int ownerFactionId = EntitySideHelper.ToFactionId(hostEntity.Side);
             if (stronghold == null || stronghold.OwnerFactionId != ownerFactionId)
             {
-                m_LastStrongholdIdByEntity[enemy.Id] = null;
+                m_LastStrongholdIdByEntity[enemyId] = null;
                 continue;
             }
 
             if (!string.Equals(previousId, strongholdId, StringComparison.Ordinal))
                 DamageHelper.DoDirectDamage(enemy, m_Damage, HealthModifyType.reduce, hostEntity);
 
-            m_LastStrongholdIdByEntity[enemy.Id] = strongholdId;
+            m_LastStrongholdIdByEntity[enemyId] = strongholdId;
         }
     }
 
@@ -1640,7 +1645,8 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity enemy || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
+            IEntityContext enemy = all[i];
+            if (enemy == null || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
                 continue;
 
             Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(enemy.Position);
@@ -1648,8 +1654,9 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
             if (stronghold == null || stronghold.OwnerFactionId != ownerFactionId)
                 continue;
 
-            current.Add(enemy.Id);
-            if (!m_Affected.Contains(enemy.Id))
+            int enemyId = enemy.LogicEntityId.Value;
+            current.Add(enemyId);
+            if (!m_Affected.Contains(enemyId))
                 AddDebuff(enemy);
         }
 
@@ -1660,14 +1667,15 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
         }
     }
 
-    private void AddDebuff(MAEntity enemy)
+    private void AddDebuff(IEntityContext enemy)
     {
         if (m_DefPenalty == Fix64.Zero || enemy.BuffComp is not CharacterBuffComp comp)
             return;
 
-        comp.AddBuff(BuffData.Create(GetBuffId(enemy.Id), float.MaxValue, true, 1,
+        int enemyId = enemy.LogicEntityId.Value;
+        comp.AddBuff(BuffData.Create(GetBuffId(enemyId), float.MaxValue, true, 1,
             new List<BuffCallback> { new MainPropertyAdditiveBuff(CreatureMainProperty.Def, -m_DefPenalty) }), enemy);
-        m_Affected.Add(enemy.Id);
+        m_Affected.Add(enemyId);
     }
 
     private void RemoveDebuff(int entityId)
@@ -1675,7 +1683,8 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is MAEntity entity && entity.Id == entityId)
+            IEntityContext entity = all[i];
+            if (entity != null && entity.LogicEntityId.Value == entityId)
             {
                 entity.BuffComp?.RemoveBuff(GetBuffId(entityId));
                 break;
@@ -1733,13 +1742,15 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is not MAEntity ally || !ally.Alive || !EntityCombatTeamHelper.IsAlly(hostEntity, ally))
+            IEntityContext ally = all[i];
+            if (ally == null || !ally.Alive || !EntityCombatTeamHelper.IsAlly(hostEntity, ally))
                 continue;
             if (hostEntity.LogicFrameDistanceToTargetSurfaceFixed(ally) > radius)
                 continue;
 
-            current.Add(ally.Id);
-            if (!m_Affected.Contains(ally.Id))
+            int allyId = ally.LogicEntityId.Value;
+            current.Add(allyId);
+            if (!m_Affected.Contains(allyId))
                 AddReceiver(ally);
         }
 
@@ -1750,14 +1761,15 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
         }
     }
 
-    private void AddReceiver(MAEntity ally)
+    private void AddReceiver(IEntityContext ally)
     {
         if (ally.BuffComp is not CharacterBuffComp comp)
             return;
 
-        comp.AddBuff(BuffData.Create(GetBuffId(ally.Id), float.MaxValue, true, 1,
+        int allyId = ally.LogicEntityId.Value;
+        comp.AddBuff(BuffData.Create(GetBuffId(allyId), float.MaxValue, true, 1,
             new List<BuffCallback> { new DelayedIncomingDamageReceiverBuff(m_DelayPercent, m_Duration) }), ally);
-        m_Affected.Add(ally.Id);
+        m_Affected.Add(allyId);
     }
 
     private void RemoveReceiver(int entityId)
@@ -1765,7 +1777,8 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
-            if (all[i] is MAEntity entity && entity.Id == entityId)
+            IEntityContext entity = all[i];
+            if (entity != null && entity.LogicEntityId.Value == entityId)
             {
                 entity.BuffComp?.RemoveBuff(GetBuffId(entityId));
                 break;
@@ -1884,28 +1897,16 @@ public sealed class OnHealedTimedStatsBuff : BuffCallback
         m_DefBonus = defBonus;
     }
 
-    public override void OnAdd()
+    public override void OnHealed(Fix64 amount)
     {
-        if (GF.Event != null)
-            GF.Event.Subscribe(CreatureHealedEventArgs.EventId, OnCreatureHealed);
-    }
-
-    public override void OnRemove()
-    {
-        if (GF.Event != null)
-            GF.Event.Unsubscribe(CreatureHealedEventArgs.EventId, OnCreatureHealed);
-    }
-
-    private void OnCreatureHealed(object sender, GameEventArgs e)
-    {
-        if (hostEntity == null || e is not CreatureHealedEventArgs args || args.EntityId != hostEntity.Id || args.Amount <= 0f)
+        if (amount <= Fix64.Zero)
             return;
 
         if (hostEntity.BuffComp is not CharacterBuffComp comp)
             return;
 
         comp.AddBuff(BuffData.Create(
-            $"tech_on_healed_stats_{buffData?.id}_{hostEntity.Id}",
+            $"tech_on_healed_stats_{buffData?.id}_{hostEntity.LogicEntityId.Value}",
             m_Duration,
             false,
             1,
