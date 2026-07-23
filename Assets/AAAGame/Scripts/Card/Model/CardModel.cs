@@ -8,6 +8,7 @@
     {
         private ICardDataProvider m_DataProvider;
         private BuildingEntity m_SourceBuilding;
+        private readonly string m_SourceBuildingInstanceId;
 
         /// <summary>
         /// 数据提供者
@@ -18,11 +19,46 @@
         /// 卡牌来源建筑
         /// </summary>
         public BuildingEntity SourceBuilding => m_SourceBuilding;
+        public ulong RuntimeId { get; }
 
         public CardModel(ICardDataProvider dataProvider, BuildingEntity sourceBuilding = null)
+            : this(0, dataProvider, sourceBuilding != null ? sourceBuilding.BuildingInstanceId : null, sourceBuilding)
         {
+        }
+
+        public CardModel(ulong runtimeId, ICardDataProvider dataProvider, BuildingEntity sourceBuilding = null)
+            : this(
+                runtimeId,
+                dataProvider,
+                sourceBuilding != null ? sourceBuilding.BuildingInstanceId : null,
+                sourceBuilding)
+        {
+        }
+
+        public CardModel(
+            ulong runtimeId,
+            ICardDataProvider dataProvider,
+            string sourceBuildingInstanceId,
+            BuildingEntity sourceBuilding = null)
+        {
+            if (dataProvider == null)
+                throw new System.ArgumentNullException(nameof(dataProvider));
+            if (sourceBuilding != null
+                && !string.Equals(
+                    sourceBuilding.BuildingInstanceId,
+                    sourceBuildingInstanceId,
+                    System.StringComparison.Ordinal))
+            {
+                throw new System.ArgumentException(
+                    "Source building view does not match source building instance id.",
+                    nameof(sourceBuilding));
+            }
             m_DataProvider = dataProvider;
             m_SourceBuilding = sourceBuilding;
+            m_SourceBuildingInstanceId = string.IsNullOrWhiteSpace(sourceBuildingInstanceId)
+                ? string.Empty
+                : sourceBuildingInstanceId;
+            RuntimeId = runtimeId;
         }
 
         /// <summary>
@@ -77,20 +113,16 @@
 
         public int GetTroopCount()
         {
-            if (m_SourceBuilding != null)
-            {
-                return m_SourceBuilding.GetArmyForce();
-            }
+            if (!string.IsNullOrWhiteSpace(m_SourceBuildingInstanceId))
+                return LogicBuildingQueryService.GetRequiredByInstanceId(m_SourceBuildingInstanceId).GetArmyForce();
 
             return m_DataProvider?.SoldierCount ?? 0;
         }
 
         public int GetOccupiedSupply()
         {
-            if (m_SourceBuilding != null)
-            {
-                return m_SourceBuilding.GetArmyOccupiedSupply();
-            }
+            if (!string.IsNullOrWhiteSpace(m_SourceBuildingInstanceId))
+                return LogicBuildingQueryService.GetRequiredByInstanceId(m_SourceBuildingInstanceId).GetArmyOccupiedSupply();
 
             return m_DataProvider?.PopulationCost ?? 0;
         }
@@ -100,7 +132,20 @@
         /// </summary>
         public string GetSourceBuildingInstanceId()
         {
-            return m_SourceBuilding != null ? m_SourceBuilding.BuildingInstanceId : string.Empty;
+            return m_SourceBuildingInstanceId;
+        }
+
+        internal void WriteDeterministicState(LogicStateHasher hasher)
+        {
+            if (hasher == null)
+                throw new System.ArgumentNullException(nameof(hasher));
+            hasher.Add(RuntimeId);
+            hasher.Add(m_DataProvider.CardId);
+            hasher.Add((int)m_DataProvider.SoldierIndex);
+            hasher.Add(m_DataProvider.RequiredLv);
+            hasher.Add(m_DataProvider.PopulationCost);
+            hasher.Add(m_DataProvider.SoldierCount);
+            hasher.Add(m_SourceBuildingInstanceId);
         }
     }
 }

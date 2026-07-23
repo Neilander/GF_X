@@ -53,7 +53,9 @@
 
 自动单位主链路：
 
-`CharacterMoveComp.Move()` -> `FlowFieldCrowdMovementSystem.TryGetSteeringVelocity()` -> `MoveExecutor.SetInput()` -> `MoveExecutor.Execute()`
+`CharacterMoveComp.Move()` -> `FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed()` -> `MoveExecutor.SetInputFixed()` -> `MoveExecutor.Execute()`
+
+生产链路从目标、速度、steering 到移动输入均使用 `Fix64/FixVector2`。`TryGetSteeringVelocity(Vector3, float)` 只保留为 Editor 测试和显式兼容边界，内部立即量化并转调定点入口，不得作为 gameplay authority 调用。
 
 英雄手动链路：
 
@@ -119,9 +121,9 @@
 9. island 是 flow grid 连通分支，不是 WorldCell。
 10. `TryPrepareNavigationRequest()` 已在 `CharacterMoveComp.SetNavTarget()` / `MoveTo()` 入口提交 path request、shared goal field 和 flow tile chain；`TryPrepareSharedGoalRequest()` 复用同一入口。这对应文献 23.5 “path request 后提交 flow field requests”。
 11. steering 已区分 LOS、flow direction、portal pending、final goal pending。
-12. flow tile 构建走预算队列，`TryGetSteeringVelocity()` 热路径不再同步 force-complete portal tile 或 final goal tile。
+12. flow tile 构建走预算队列，`TryGetSteeringVelocityFixed()` 热路径不再同步 force-complete portal tile 或 final goal tile。
 13. 瓶颈 lane commitment 已在同 sector LOS 后保持已承诺走廊轴，避免单位进入窄走廊后因斜向目标反复改轴。
-14. 邻居避让使用局部空间桶和 TTC/分离主导，不再全量扫描。
+14. 多单位目标占位只保留定点 goal occupancy、稳定 agent ID 顺序和同 Tick reservation；局部空间桶只服务显式诊断/查询，不再承载第二套 float idle recovery 或动态避让行为。
 15. 位移期间主动寻路输入被切断，兼容后续推/拉系统。
 16. authored source 层已支持多个 movement type grid；同一场景可以为小/大单位提供不同 walkable mask，运行时不会让大单位复用小单位底图。
 17. authored source cost field 已进入主链路。`FlowNavigationGridAsset` 保存 cost；`FlowNavigationGridSource` 传入 cost；world build 直接使用 source cost；runtime dirty sector 从 source cost 局部重建后叠加动态障碍和 CostStamp。
@@ -131,7 +133,7 @@
 21. 位移约束不是 fallback。它的职责是把输入位移限制在 FlowGrid 中心空间内：direct segment 被 blocked cell 拦住时，应基于 blocked cell 边界求法线并沿切线滑动，而不是吞掉速度或用直线/随机候选替代。该修复覆盖英雄手动移动和自动单位最终 MoveExecutor 约束。
 22. 移动目标的 flow tile 队列必须只服务仍被活动 path 引用的 tile。旧目标位置留下的 pending tile job 会被剪掉，当前活动 path 的 tile chain 会提升到队列前部，避免单位长期停在 `PendingPortal` 且 required tile 被数千个旧 job 淹没。
 23. 非最终 portal tile 不能等待整条下游 tile 链。只要下游 sector 不是最终 sector，就用预构建的 sector portal access / transition 成本生成 seeds；只有“下一 sector 就是 final sector”时才需要下游 final tile 的 seam cost。这符合文献按 sector/portal 预计算连接成本的结构，也避免移动目标反复变更时 tile 依赖串行化。
-24. portal graph A* 选择目标 sector 入口 portal 时，不允许同步构建 final goal tile。目标 sector 内 portal 到 goal 的代价直接读取预构建 portal access cost；精确 shared goal field / final tile 由预算队列后续补齐。这样 `TryGetSteeringVelocity()` 热路径不会因为接敌或移动目标换格而卡主线程。
+24. portal graph A* 选择目标 sector 入口 portal 时，不允许同步构建 final goal tile。目标 sector 内 portal 到 goal 的代价直接读取预构建 portal access cost；精确 shared goal field / final tile 由预算队列后续补齐。这样 `TryGetSteeringVelocityFixed()` 热路径不会因为接敌或移动目标换格而卡主线程。
 
 ## 5. 仍与文献不同或未完成的点
 
@@ -139,7 +141,7 @@
 
 1. `FlowNavigationGridPrefabBaker` 已按 movement type footprint 生成中心可站空间，但它仍是离散 grid raster。窄边、斜边、角落会受 cell size、footprint 采样密度、collider 边界和 neighbor traversal 影响。若出现 island 被切碎或建筑对面错误直冲，先查 asset walkable、neighbor traversal、portal window、portal access cost，不要改 steering 补偿。
 2. authored grid 已有 source cost field，但目前成本来源主要是墙边 blur、movement type hard clearance 和 runtime CostStamp。“道路偏好”“特殊地形成本”“设计师手工成本编辑”还不是完整编辑器数据源。
-3. 多单位攻击同一目标的站位分散依赖 combat slot/cache 和动态避让，还不是文献 multiple goals 或完善 formation。若再次扎点，优先查 slot 分配、目标可达点、攻击距离判定和 collision radius。
+3. 多单位攻击同一目标的站位分散依赖 combat slot/cache、定点 goal occupancy 和同 Tick reservation，还不是文献 multiple goals 或完善 formation。若再次扎点，优先查 slot 分配、目标可达点、reservation 顺序、攻击距离判定和 collision radius。
 
 ### 后续工程化增强
 
@@ -175,7 +177,7 @@
 ## 7. 不要做的事
 
 1. 不要把“朝最终目标直线走”作为 tile 未就绪策略。
-2. 不要在 `TryGetSteeringVelocity()` 热路径同步补完 world、runtime dirty、shared goal field 或任何 flow tile，包括 final goal tile 和 portal tile。
+2. 不要在 `TryGetSteeringVelocityFixed()` 热路径同步补完 world、runtime dirty、shared goal field 或任何 flow tile，包括 final goal tile 和 portal tile。
 3. 不要把道路偏好、墙边绕行、建筑侧角选择放到 steering 层硬推。
 4. 不要用扩大 arriveDistance、减速、随机抖动掩盖 flow/path 错误。
 5. 不要让位移期间主动寻路输入继续叠加。
@@ -200,7 +202,9 @@
 
 当前主链路目标是：严格 authored FlowGrid、无运行时 NavMesh、无静默 fallback。Portal graph path search 已包含真正的 merging A*，不是旧的合并优先级偏置。Portal transition/access 已按 portal center 节点语义计成本，portal handoff/LOS 已按选中对侧槽位推进，path request 会预提交 flow tile chain，flow tile 在预算队列构建，瓶颈车道会保留已承诺走廊轴。
 
-最新验证：`dotnet build AAAGame.Tests.Editor.csproj --no-restore` 通过且 0 警告 0 错误；Unity EditMode 回归通过 `FlowTileBuildQueue低预算会保留未完成TileJob`、`FlowTileBuildQueue会在后续查询前预构建路径Tile链`、`查询热路径不应同步构建非末端PortalTile链`、`移动目标旧TileJob不会淹没当前活动Tile`、`Lv3研发中心右下边缘真实追击不应多人挤住`，测试后 Console 无 error/warning。
+v42 已删除无生产调用的 float goal occupancy、idle overlap recovery、agent leader/group/state shadow 和旧动态避让宽限链。保留的空间桶仅服务显式诊断/查询，保留的 Vector3 steering API 仅在入口量化后转调 fixed 实现；`SoldierAIBrain` 与 `GroupMoveManager` 不再同步或包装上述无行为消费者元数据，Flow agent 注册入口也不再接受无意义的 `isLeader` 参数。
+
+最新验证：`dotnet build AAAGame.Tests.Editor.csproj --no-restore -m:1 /p:UseSharedCompilation=false` 通过且 0 警告 0 错误；Flow/Soldier/GameplayHash/Replay 聚焦 EditMode 185/185 通过，job `25697e02c6dd46d4aed17b6b7966abc9`；最终完整 EditMode 448/448 通过，job `5605cd032deb4b0bbcb4db1c18299793`。严格 Launch -> Lv_2 实测中 frame/time/skill 一致，22 个实体的 requested/authority/active/bound 全部闭合，异常关键词为 0，Stop 后逻辑服务和生命周期状态全部清零。
 
 最近一次实测卡墙角的根因不是 steering 方向补偿，而是队列调度和依赖模型：移动目标反复刷新留下大量旧 pending tile jobs，活动单位所需 tile 被压到队列数千位之后，导致长期 `PendingPortal`；同时非最终 portal tile 过度依赖下游 tile，会把本可由 portal access 解决的 tile 链串行化。已修复为活动 path 提升、非活动 job 剪枝、非最终 portal tile 使用预构建 portal access seeds、目标 sector portal access 不再同步构建 final tile。
 

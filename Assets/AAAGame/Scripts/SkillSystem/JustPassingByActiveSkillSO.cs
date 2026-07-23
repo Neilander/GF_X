@@ -5,14 +5,14 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "JustPassingByActiveSkillSO", menuName = "Skills/Active/Just Passing By")]
 public sealed class JustPassingByActiveSkillSO : TargetPositionActiveSkillSO
 {
-    private const float RefreshDurationPaddingSeconds = 0.2f;
+    private static readonly Fix64 RefreshDurationPaddingSeconds = (Fix64)0.2f;
 
-    protected override void ApplyAtPosition(IEntityContext caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets)
+    protected override void ApplyAtPosition(IEntityContext caster, FixVector2 position, IReadOnlyList<ISelectable> selectedTargets)
     {
-        float radius = GetAreaRangeWorld();
+        Fix64 radius = GetAreaRangeWorldFixed();
         Fix64 attackSpeedPercent = GetValue(0);
-        float duration = GetDurationSeconds();
-        if (radius <= 0f || duration <= 0f)
+        Fix64 duration = GetDurationLogicTime();
+        if (radius <= Fix64.Zero || duration <= Fix64.Zero)
             throw new InvalidOperationException($"JustPassingBy values invalid. skillId={skillId}");
 
         AddCasterAreaBuff(
@@ -21,7 +21,7 @@ public sealed class JustPassingByActiveSkillSO : TargetPositionActiveSkillSO
             duration);
     }
 
-    private void AddCasterAreaBuff(IEntityContext caster, BuffCallback module, float duration)
+    private void AddCasterAreaBuff(IEntityContext caster, BuffCallback module, Fix64 duration)
     {
         if (caster == null || caster.BuffComp == null)
             throw new InvalidOperationException($"Active area skill requires caster BuffComp. skillId={skillId}");

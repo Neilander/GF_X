@@ -9,16 +9,16 @@ public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBu
     private readonly string m_TechId;
     private readonly TechEffectSO m_Effect;
     private readonly TechData m_TechData;
-    private readonly Func<BuildingEntity, bool> m_Matches;
-    private readonly Func<BuildingEntity, string> m_ResolveTechId;
+    private readonly Func<IBuildingLogicContext, bool> m_Matches;
+    private readonly Func<IBuildingLogicContext, string> m_ResolveTechId;
 
     public SourceBuildingTechUnitBuffProvider(
         int ownerFactionId,
         string techId,
         TechEffectSO effect,
         TechData techData,
-        Func<BuildingEntity, bool> matches,
-        Func<BuildingEntity, string> resolveTechId)
+        Func<IBuildingLogicContext, bool> matches,
+        Func<IBuildingLogicContext, string> resolveTechId)
     {
         m_OwnerFactionId = ownerFactionId;
         m_TechId = techId;
@@ -30,9 +30,9 @@ public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBu
 
     public bool CanProvideUnitBuffs()
     {
-        BuildingEntity building = GetHostBuilding();
+        IBuildingLogicContext building = GetHostBuilding();
         return building != null
-               && building.OwnerFactionID == m_OwnerFactionId
+               && building.OwnerFactionId == m_OwnerFactionId
                && !string.IsNullOrWhiteSpace(m_TechId)
                && m_Effect != null
                && m_TechData != null
@@ -45,7 +45,7 @@ public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBu
         if (modules == null || !CanProvideUnitBuffs())
             return;
 
-        BuildingEntity building = GetHostBuilding();
+        IBuildingLogicContext building = GetHostBuilding();
         string resolvedTechId = m_ResolveTechId != null ? m_ResolveTechId.Invoke(building) : m_TechId;
         if (string.IsNullOrWhiteSpace(resolvedTechId))
             return;
@@ -57,9 +57,9 @@ public sealed class SourceBuildingTechUnitBuffProvider : BuffCallback, ISourceBu
         modules.AddRange(createdModules);
     }
 
-    private BuildingEntity GetHostBuilding()
+    private IBuildingLogicContext GetHostBuilding()
     {
-        return hostEntity as BuildingEntity;
+        return hostEntity as IBuildingLogicContext;
     }
 }
 

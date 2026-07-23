@@ -1,8 +1,34 @@
+﻿using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEngine;
 
 [TestFixture]
 public sealed class InteractionManagerTests
 {
+    private sealed class VisibleOption : IInteractionOption
+    {
+        public string DisplayName { get; private set; }
+        public string DisplayDesc => string.Empty;
+        public KeyValuePair<IngameValueType, int>[] CostResource => null;
+        public void Init(object owner, string displayName, InteractionParams @params) => DisplayName = displayName;
+        public bool IsVisible() => true;
+        public bool IsExecutable() => true;
+        public void Execute() { }
+        public void Clear() => DisplayName = null;
+    }
+
+    private sealed class HiddenOption : IInteractionOption
+    {
+        public string DisplayName { get; private set; }
+        public string DisplayDesc => string.Empty;
+        public KeyValuePair<IngameValueType, int>[] CostResource => null;
+        public void Init(object owner, string displayName, InteractionParams @params) => DisplayName = displayName;
+        public bool IsVisible() => false;
+        public bool IsExecutable() => false;
+        public void Execute() { }
+        public void Clear() => DisplayName = null;
+    }
+
     [Test]
     public void FixedScore_UsesBuildingSurfaceDistanceAtNegativeCoordinates()
     {
@@ -84,6 +110,33 @@ public sealed class InteractionManagerTests
             true,
             (Fix64)1,
             new LogicEntityId(9)));
+    }
+
+    [Test]
+    public void InteractionHost_SameKeyDefinitionsResolveExactlyOneVisibleOption()
+    {
+        var gameObject = new GameObject("InteractionHost_SameKeyDefinitions");
+        try
+        {
+            InteractionHost host = gameObject.AddComponent<InteractionHost>();
+            host.Init(new object());
+            host.AddOption<HiddenOption>(InputKey.InteractionPrimary, "hidden", null);
+            host.AddOption<VisibleOption>(InputKey.InteractionPrimary, "visible", null);
+
+            var options = new SortedDictionary<InputKey, IInteractionOption>();
+            host.GetOptionsWithKeys(options);
+
+            Assert.AreEqual(1, options.Count);
+            Assert.AreEqual("visible", options[InputKey.InteractionPrimary].DisplayName);
+
+            host.AddOption<VisibleOption>(InputKey.InteractionPrimary, "duplicate", null);
+            Assert.Throws<System.InvalidOperationException>(() => host.CanExecute(InputKey.InteractionPrimary));
+            host.ResetOptions();
+        }
+        finally
+        {
+            Object.DestroyImmediate(gameObject);
+        }
     }
 
     private static LogicEntityFrameState CreateState(

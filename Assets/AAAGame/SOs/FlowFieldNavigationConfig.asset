@@ -13,23 +13,14 @@ MonoBehaviour:
   m_Name: FlowFieldNavigationConfig
   m_EditorClassIdentifier: 
   RequireAuthoredNavigationSource: 1
-  NavigationCellSize: 0
-  NavigationBoundsPadding: 0.6
   SectorSizeInCells: 12
   PortalNarrowWidthCells: 2
   PortalMaxWindowWidthCells: 6
   FlowTileCacheLimit: 256
   WorldBuildOperationQuota: 32768
   RuntimeRebuildOperationQuota: 4096
-  FlowBuildOperationQuota: 2048
-  CrowdPredictionTime: 0.35
-  LaneBiasStrength: 0.22
-  BoundaryAvoidanceWeight: 1
-  PathDirectionBlend: 0.35
-  BottleneckSwitchCooldown: 0.35
-  BottleneckWaitTimeout: 1.25
-  BottleneckInfluenceDistance: 2.2
-  BottleneckClearanceHoldTime: 0.45
+  DeterministicFlowTileCommitQuota: 8
+  SharedGoalBuildOperationQuota: 2048
   EnableDeterministicStaticCollisionShadow: 1
   StaticCollisionShadowMismatchTolerance: 0.03
   StaticCollisionShadowLogIntervalTicks: 300

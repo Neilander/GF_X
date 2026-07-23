@@ -5,14 +5,14 @@ using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Card;
+using AAAGame.MiniMap.FOG3;
 
-public partial class CardSetup : GameFrameworkComponent
+public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateContributor
 {
     private const long CardPhasePerfWarnMs = 30;
     private CardSystemController m_CardSystemController;
     private int m_CardUIFormId = -1;
-    private float m_NextAutoDrawTime;
-    private const float AutoDrawInterval = 0.15f;
+    private readonly LogicCardAutoDrawClock m_AutoDrawClock = new LogicCardAutoDrawClock();
 
     private void OnEnable()
     {
@@ -33,8 +33,10 @@ public partial class CardSetup : GameFrameworkComponent
     {
         var watch = Stopwatch.StartNew();
         CardSystemShutdown(false);
-        m_NextAutoDrawTime = 0f;
+        m_AutoDrawClock.Reset();
         InitializeCardSystem();
+        LogicCardCommandService.CommandApplying += m_CardSystemController.ApplyLogicCardCommand;
+        LogicCardRuntimeState.Bind(this);
         watch.Stop();
         LogPhasePerf("card-setup.total", watch.ElapsedMilliseconds);
     }
@@ -42,34 +44,19 @@ public partial class CardSetup : GameFrameworkComponent
     public void CardSystemUpdate()
     {
         if (m_CardSystemController != null)
-        {
-            if (CanAutoDrawNextCard())
-            {
-                if (m_CardSystemController.TryAutoDrawOneCardFromDeck())
-                {
-                    m_NextAutoDrawTime = Time.unscaledTime + AutoDrawInterval;
-                }
-            }
-
             m_CardSystemController.UpdatePlacement();
-        }
     }
 
-    private bool CanAutoDrawNextCard()
+    public void ApplyLogicFrame(ulong frameId)
     {
-        if (Time.unscaledTime < m_NextAutoDrawTime)
-        {
-            return false;
-        }
+        if (frameId == 0 || frameId != LogicTimeControlService.CurrentFrame)
+            throw new System.InvalidOperationException(
+                $"CardSetup.ApplyLogicFrame frame mismatch. requested={frameId}, current={LogicTimeControlService.CurrentFrame}.");
+        if (m_CardSystemController == null || !m_AutoDrawClock.IsDue(frameId))
+            return;
 
-        if (m_CardUIFormId <= 0 || GF.UI == null)
-        {
-            return false;
-        }
-
-        var uiForm = GF.UI.GetUIForm(m_CardUIFormId) as UIForm;
-        var cardUIForm = uiForm != null ? uiForm.Logic as CardUIForm : null;
-        return cardUIForm != null && cardUIForm.IsReadyForAutoDraw;
+        if (m_CardSystemController.TryAutoDrawOneCardFromDeck())
+            m_AutoDrawClock.RecordDraw(frameId);
     }
 
     public void CardSystemShutdown(bool playCloseAnimation = true)
@@ -84,6 +71,8 @@ public partial class CardSetup : GameFrameworkComponent
         // Shutdown card system controller.
         if (m_CardSystemController != null)
         {
+            LogicCardRuntimeState.Unbind(this);
+            LogicCardCommandService.CommandApplying -= m_CardSystemController.ApplyLogicCardCommand;
             var controllerShutdownWatch = Stopwatch.StartNew();
             m_CardSystemController.Shutdown();
             m_CardSystemController = null;
@@ -91,9 +80,20 @@ public partial class CardSetup : GameFrameworkComponent
             LogPhasePerf("card-shutdown.controller", controllerShutdownWatch.ElapsedMilliseconds);
         }
 
-        m_NextAutoDrawTime = 0f;
+        if (LogicCardPlacementAuthority.IsActive && LogicCardPlacementAuthority.IsWorldBound)
+            LogicCardPlacementAuthority.UnbindWorld();
+
+        m_AutoDrawClock.Reset();
         totalWatch.Stop();
         LogPhasePerf("card-shutdown.total", totalWatch.ElapsedMilliseconds);
+    }
+
+    void ILogicCardRuntimeStateContributor.WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (m_CardSystemController == null)
+            throw new System.InvalidOperationException("Bound card runtime state has no controller.");
+        m_AutoDrawClock.WriteDeterministicState(hasher);
+        m_CardSystemController.WriteDeterministicState(hasher);
     }
 
     private void CloseCardUI(bool playCloseAnimation)
@@ -172,8 +172,7 @@ public partial class CardSetup : GameFrameworkComponent
         // Reset to empty deck and empty hand on each setup.
         m_CardSystemController.ResetDeckAndHand();
 
-        // Bind placeable area objects.
-        SetupAreaObjects();
+        BindLogicCardPlacementWorld();
 
         Log.Info("[CardGame] Card system initialized.");
     }
@@ -196,19 +195,16 @@ public partial class CardSetup : GameFrameworkComponent
         return cardPool;
     }
 
-    private void SetupAreaObjects()
+    private static void BindLogicCardPlacementWorld()
     {
-        GameObject validArea = GameObject.Find("ValidArea");
-        GameObject invalidArea = GameObject.Find("InvalidArea");
+        Fog3Manager fogManager = Fog3Manager.Instance;
+        if (fogManager == null || !fogManager.IsInitialized || fogManager.MapData == null)
+            throw new System.InvalidOperationException("CardSetup requires initialized Fog3MapData before binding card placement.");
 
-        if (validArea != null && invalidArea != null)
-        {
-            m_CardSystemController.SetAreaObjects(validArea, invalidArea);
-        }
-        else
-        {
-            Log.Warning("[CardGame] Area objects not found. Card placement may not work.");
-        }
+        LogicCardPlacementAuthority.BindRuntimeWorld(
+            fogManager.MapData,
+            LevelSelectionService.SelectedLevelIdentifier,
+            fogManager.BlocksHiddenRevealByEnemyStronghold);
     }
 
     public void OpenCardUI()
@@ -245,7 +241,7 @@ public partial class CardSetup : GameFrameworkComponent
             Log.Warning("[PhasePerf] {0}: {1}ms", step, elapsedMilliseconds);
     }
 
-    public bool GenerateCardToDeck(BuildingEntity sourceBuilding)
+    public bool GenerateCardToDeck(IBuildingLogicContext sourceBuilding)
     {
         return m_CardSystemController != null && m_CardSystemController.AddCardToDeck(sourceBuilding);
     }

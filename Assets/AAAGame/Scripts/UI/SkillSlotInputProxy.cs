@@ -1,6 +1,7 @@
 ﻿using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityGameFramework.Runtime;
 
 public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
@@ -124,7 +125,7 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
         if (toIndex < 0 || toIndex == fromIndex)
             return;
 
-        SkillRuntimeDataModel.SwapSkillSlots(fromIndex, toIndex);
+        SkillRuntimeDataModel.RequestSwapSkillSlots(fromIndex, toIndex);
     }
 
     private static SkillSlotInputProxy GetDropTarget(PointerEventData eventData)
@@ -145,10 +146,10 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
         if (eventData == null)
             return;
 
-        InputModel inputModel = GF.DataModel.GetDataModel<InputModel>();
-        if (inputModel == null)
-            throw new InvalidOperationException("InputModel is required for skill drag position.");
+        InputManager inputManager = GameEntry.GetComponent<InputManager>();
+        if (inputManager == null)
+            throw new InvalidOperationException("InputManager is required for skill drag position.");
 
-        inputModel.RequestSelectScreenPosition(eventData.position);
+        inputManager.RequestSelectPosition(eventData.position);
     }
 }

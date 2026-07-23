@@ -84,7 +84,7 @@ public class TimedDeathBuff : BuffCallback
         {
             GF.Log($"TimedDeathBuff[宿主ID={currentHost.LogicEntityId.Value}]: 定时死亡Buff生效，单位即将死亡");
 
-            if (currentHost is IBuildingLogicContext)
+            if (currentHost.IsLogicBuilding())
                 throw new System.InvalidOperationException($"TimedDeathBuff.OnDurationEnd failed: host {currentHost.LogicEntityId.Value} is a building.");
 
             GF.Log($"TimedDeathBuff[宿主ID={currentHost.LogicEntityId.Value}]: 单位类型: {currentHost.CharacterKey}, 当前生命值: {(float)currentHost.HealthValue}");

@@ -7,10 +7,14 @@ public class NoTargetingComp : ITargetingComp
     public IEntityContext FollowTarget => null;
 
     // 范围属性给 0 即可
-    public float AggroRange { get; set; } = 0f;
-    public float ForgetRange { get; set; } = 0f;
-    public float FollowSearchRange { get; set; } = 0f;
-    public float AlertRadius { get; set; } = 0f;
+    public Fix64 AggroRangeFixed { get; set; }
+    public Fix64 ForgetRangeFixed { get; set; }
+    public Fix64 FollowSearchRangeFixed { get; set; }
+    public Fix64 AlertRadiusFixed { get; set; }
+    public float AggroRange { get => (float)AggroRangeFixed; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
+    public float ForgetRange { get => (float)ForgetRangeFixed; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
+    public float FollowSearchRange { get => (float)FollowSearchRangeFixed; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
+    public float AlertRadius { get => (float)AlertRadiusFixed; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     // 接口方法留空
     public void Init(IEntityContext ctx) { }

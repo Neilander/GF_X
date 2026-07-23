@@ -97,6 +97,26 @@ namespace AAAGame.Card
             return m_Cards[index];
         }
 
+        public CardModel GetRequiredByRuntimeId(ulong runtimeId)
+        {
+            if (runtimeId == 0)
+                throw new System.ArgumentOutOfRangeException(nameof(runtimeId));
+
+            CardModel result = null;
+            for (int i = 0; i < m_Cards.Count; i++)
+            {
+                CardModel candidate = m_Cards[i]
+                                      ?? throw new System.InvalidOperationException($"Card hand contains null at index {i}.");
+                if (candidate.RuntimeId != runtimeId)
+                    continue;
+                if (result != null)
+                    throw new System.InvalidOperationException($"Card hand contains duplicate runtime id {runtimeId}.");
+                result = candidate;
+            }
+
+            return result ?? throw new System.InvalidOperationException($"Card runtime id {runtimeId} is not in hand.");
+        }
+
         /// <summary>
         /// 获取所有卡牌
         /// </summary>
@@ -119,6 +139,20 @@ namespace AAAGame.Card
         public bool Contains(CardModel card)
         {
             return m_Cards.Contains(card);
+        }
+
+        internal void WriteDeterministicState(LogicStateHasher hasher)
+        {
+            if (hasher == null)
+                throw new System.ArgumentNullException(nameof(hasher));
+            hasher.Add(m_MaxCards);
+            hasher.Add(m_Cards.Count);
+            for (int i = 0; i < m_Cards.Count; i++)
+            {
+                CardModel card = m_Cards[i]
+                                 ?? throw new System.InvalidOperationException($"Card hand contains null at index {i}.");
+                card.WriteDeterministicState(hasher);
+            }
         }
 
         /// <summary>

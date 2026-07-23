@@ -187,37 +187,14 @@ public class GameEndManager : GameFrameworkComponent
         return false;
     }
 
-    public bool TryGetNearestPlayerInitialConditionBuilding(Vector3 origin, out BuildingEntity building)
+    public bool TryGetNearestPlayerInitialConditionBuilding(
+        FixVector2 origin,
+        out IBuildingLogicContext building)
     {
-        building = null;
-        if (m_PlayerTargetBuildingInstanceIds.Count == 0)
-            return false;
-
-        var inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-        if (inGameData == null)
-            return false;
-
-        float bestDistanceSq = float.PositiveInfinity;
-        foreach (var instanceId in m_PlayerTargetBuildingInstanceIds)
-        {
-            foreach (var candidate in inGameData.Buildings)
-            {
-                if (candidate == null || string.IsNullOrWhiteSpace(candidate.BuildingInstanceId))
-                    continue;
-
-                if (!string.Equals(candidate.BuildingInstanceId, instanceId, StringComparison.Ordinal))
-                    continue;
-
-                float distanceSq = (candidate.transform.position - origin).sqrMagnitude;
-                if (distanceSq >= bestDistanceSq)
-                    continue;
-
-                bestDistanceSq = distanceSq;
-                building = candidate;
-            }
-        }
-
-        return building != null;
+        return LogicBuildingQueryService.TryGetNearestByInstanceIds(
+            m_PlayerTargetBuildingInstanceIds,
+            origin,
+            out building);
     }
 
     private void SubscribeEvents()

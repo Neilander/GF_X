@@ -13,7 +13,7 @@ public abstract class InstantActiveSkillSO : ActiveSkillSO
         };
     }
 
-    public override void TickSkill(SkillInfo info, float deltaTime)
+    public override void TickSkill(SkillInfo info, Fix64 deltaTime)
     {
         if (info != null)
             info.isFinished = true;

@@ -88,6 +88,59 @@ public class LogicFrameRuntimeTests
         CollectionAssert.AreEqual(new long[] { 5, 1000 }, ticks);
     }
 
+    [Test]
+    public void DefendSchedule_QuantizesDurationOnceToAbsoluteTickOffset()
+    {
+        Assert.AreEqual(31UL, DefendPhaseRuntime.GetEditorTestTickCount(Fix64.One));
+        Assert.AreEqual(62UL, checked(DefendPhaseRuntime.GetEditorTestTickCount(Fix64.One) * 2UL));
+    }
+
+    [Test]
+    public void CardAutoDrawClock_UsesAbsoluteLogicFramesWithoutRenderRetiming()
+    {
+        var clock = new LogicCardAutoDrawClock();
+
+        Assert.AreEqual(5UL, clock.IntervalTicks);
+        Assert.IsTrue(clock.IsDue(100));
+        clock.RecordDraw(100);
+        Assert.AreEqual(105UL, clock.NextEligibleFrame);
+        Assert.IsFalse(clock.IsDue(104));
+        Assert.IsTrue(clock.IsDue(105));
+        Assert.IsTrue(clock.IsDue(108));
+        clock.RecordDraw(108);
+        Assert.AreEqual(113UL, clock.NextEligibleFrame);
+    }
+
+    [Test]
+    public void CardRuntimeState_HashTracksBoundContributorAndRejectsAmbiguousOwnership()
+    {
+        var first = new CardStateContributorStub(10);
+        var second = new CardStateContributorStub(20);
+        try
+        {
+            LogicCardRuntimeState.Bind(first);
+            var before = new LogicStateHasher();
+            LogicCardRuntimeState.WriteDeterministicState(before);
+
+            first.Value = 11;
+            var after = new LogicStateHasher();
+            LogicCardRuntimeState.WriteDeterministicState(after);
+
+            Assert.AreNotEqual(before.Hash, after.Hash);
+            Assert.Throws<InvalidOperationException>(() => LogicCardRuntimeState.Bind(second));
+            Assert.Throws<InvalidOperationException>(() => LogicCardRuntimeState.Unbind(second));
+        }
+        finally
+        {
+            if (LogicCardRuntimeState.IsBound)
+                LogicCardRuntimeState.Unbind(first);
+        }
+
+        var unbound = new LogicStateHasher();
+        LogicCardRuntimeState.WriteDeterministicState(unbound);
+        Assert.IsFalse(LogicCardRuntimeState.IsBound);
+    }
+
     private void Register(ILogicFrameUpdate listener)
     {
         LogicFrameRuntime.Register(listener);
@@ -111,6 +164,21 @@ public class LogicFrameRuntimeTests
         public void OnLogicFrameUpdate(Fix64 deltaTime)
         {
             m_Ticks.Add(LogicFrameStableKey);
+        }
+    }
+
+    private sealed class CardStateContributorStub : ILogicCardRuntimeStateContributor
+    {
+        public CardStateContributorStub(int value)
+        {
+            Value = value;
+        }
+
+        public int Value { get; set; }
+
+        public void WriteDeterministicState(LogicStateHasher hasher)
+        {
+            hasher.Add(Value);
         }
     }
 

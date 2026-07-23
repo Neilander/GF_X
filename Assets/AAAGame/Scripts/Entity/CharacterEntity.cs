@@ -28,30 +28,6 @@ public class CharacterEntity : SkillEntity
             //暂时测试用，应该把相机绑定的权力交还给生成实体的那个人。真正知道“当前这一局游戏，谁才是主角，相机该拍谁”的，是 Procedure（流程） 或者专门的 LevelManager（关卡管理器）
         }
 
-        RegisterToGroupMove(); // Side 已赋值，安全注册
     }
 
-    protected override void SetUpSkillComp()
-    {
-        // 用你已经写好的 CharacterSkillComp 的工厂（你需要做一个对应的 SkillFactory，见下）
-        string skillFacPath = "CharacterSkillFactory";
-        FactoryHelper.CreateSkillComp(UtilityBuiltin.AssetsPath.GetSkillFactoryPath(skillFacPath), this);
-    }
-
-    protected override void SetUpMAComp(object userData)
-    {
-        string moveFacPath = "CharacterMoveFactory";
-        string targetFacPath = "CharacterTargetingFactory";
-
-        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
-
-        IAtkComp attackComp = userData is EntityParams ep && ep.BrainType == BrainType.Player
-            ? new MoveAtkComp()
-            : new DirectAtkComp();
-        SetAtkComp(attackComp);
-        attackComp.Init(this);
-
-        FactoryHelper.CreateTargetingComp(UtilityBuiltin.AssetsPath.GetTargetingFactoryPath(targetFacPath), this);
-    }
-    
 }

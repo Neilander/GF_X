@@ -1,52 +1,25 @@
 ﻿using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityGameFramework.Runtime;
 
 public class TechManager : GameFrameworkComponent
 {
-    private readonly InputKey[] m_OptionalOptionKeys =
+    public bool HasTechInteraction(IBuildingLogicContext owner)
     {
-        InputKey.InteractionPrimary,
-        InputKey.InteractionSecondary,
-        InputKey.InteractionTertiary,
-    };
-    private const string InfoOptionTextId = "InteractOption_Check";
-
-    public bool HasTechInteraction(BuildingEntity owner)
-    {
-        if (owner == null || owner.buildingData == null || owner.buildingData.Lv == 0)
+        if (owner == null || owner.BuildingData == null || owner.BuildingData.Lv == 0)
             return false;
 
         if (HasInfoInteraction(owner))
             return true;
 
-        if (owner.buildingData.Type == BuilType.Tech)
+        if (owner.BuildingData.Type == BuilType.Tech)
             return HasResearchTechCandidates(owner);
 
         return HasUpgradeTechCandidates(owner);
     }
 
-    public void ConfigureTechInteractionOptions(BuildingEntity owner, InteractionHost host)
-    {
-        if (owner == null || owner.buildingData == null || owner.buildingData.Lv == 0 || host == null)
-            return;
-
-        if (HasInfoInteraction(owner))
-        {
-            ConfigureInfoOption(owner, host);
-            return;
-        }
-
-        if (owner.buildingData.Type == BuilType.Tech)
-        {
-            ConfigureTechResearchOptions(owner, host);
-            return;
-        }
-
-        ConfigureUpgradeOptions(owner, host);
-    }
-
-    public bool IsUpgradeOptionVisible(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool IsUpgradeOptionVisible(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         if (!CanPlayerOperateInBuildPhase(owner))
             return false;
@@ -66,12 +39,12 @@ public class TechManager : GameFrameworkComponent
                && !LogicTechEffectCommandService.HasPending(techId);
     }
 
-    public bool IsResearchOptionVisible(BuildingEntity owner, string techId)
+    public bool IsResearchOptionVisible(IBuildingLogicContext owner, string techId)
     {
         if (!CanPlayerOperateInBuildPhase(owner))
             return false;
 
-        if (owner.buildingData.Type != BuilType.Tech)
+        if (owner.BuildingData.Type != BuilType.Tech)
             return false;
 
         if (HasReachedResearchLimit(owner))
@@ -89,7 +62,7 @@ public class TechManager : GameFrameworkComponent
                && !LogicTechEffectCommandService.HasPending(techId);
     }
 
-    public bool IsUpgradeOptionExecutable(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool IsUpgradeOptionExecutable(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         if (HasPendingInteraction(owner))
             return false;
@@ -99,7 +72,7 @@ public class TechManager : GameFrameworkComponent
             && buildManager.HasBuildCost(upgradeBuildingId, owner);
     }
 
-    public bool IsResearchOptionExecutable(BuildingEntity owner, string techId)
+    public bool IsResearchOptionExecutable(IBuildingLogicContext owner, string techId)
     {
         if (HasPendingInteraction(owner))
             return false;
@@ -108,7 +81,7 @@ public class TechManager : GameFrameworkComponent
             && HasTechCost(techId);
     }
 
-    public bool IsInfoOptionVisible(BuildingEntity owner)
+    public bool IsInfoOptionVisible(IBuildingLogicContext owner)
     {
         return CanPlayerOperateInBuildPhase(owner) && HasInfoInteraction(owner);
     }
@@ -129,7 +102,7 @@ public class TechManager : GameFrameworkComponent
         };
     }
 
-    public bool SatisfyUpgradeCondition(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool SatisfyUpgradeCondition(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         if (owner == null)
             return false;
@@ -139,10 +112,10 @@ public class TechManager : GameFrameworkComponent
             return false;
 
         var buildManager = RequireBuildManager();
-        return SatisfyTechCondition(techId) && buildManager.SatisfyBuildCondition(upgradeBuildingData, owner.OwnerFactionID);
+        return SatisfyTechCondition(techId) && buildManager.SatisfyBuildCondition(upgradeBuildingData, owner.OwnerFactionId);
     }
 
-    public bool UpgradeBuilding(BuildingEntity owner, string upgradeBuildingId, string techId)
+    public bool UpgradeBuilding(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         if (!IsUpgradeOptionExecutable(owner, upgradeBuildingId, techId))
             return false;
@@ -156,7 +129,7 @@ public class TechManager : GameFrameworkComponent
         return true;
     }
 
-    internal bool ApplyScheduledUpgradeBuilding(BuildingEntity owner, string upgradeBuildingId, string techId)
+    internal bool ApplyScheduledUpgradeBuilding(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         EnsureInteractionApplyWindow();
         if (!IsUpgradeOptionExecutableForApply(owner, upgradeBuildingId, techId))
@@ -171,8 +144,11 @@ public class TechManager : GameFrameworkComponent
             return false;
 
         var buildManager = RequireBuildManager();
-        int upgradeCost = buildManager.GetBuildingCost(upgradeBuildingData, owner.CurrentStronghold);
-        bool built = buildManager.BuildBuildingForTechUpgrade(upgradeBuildingId, owner.CachedTransform.position, owner.BuildingInstanceId);
+        int upgradeCost = buildManager.GetBuildingCost(upgradeBuildingId, owner);
+        bool built = buildManager.BuildBuildingForTechUpgrade(
+            upgradeBuildingId,
+            ToWorldPosition(owner.PositionFixed),
+            owner.BuildingInstanceId);
         if (!built)
             return false;
 
@@ -184,15 +160,15 @@ public class TechManager : GameFrameworkComponent
                 techId,
                 techData.IsStackable,
                 owner.BuildingInstanceId,
-                owner.OwnerFactionID))
+                owner.OwnerFactionId))
         {
             throw new InvalidOperationException($"Upgrade transaction failed to schedule tech '{techId}'.");
         }
-        owner.RequestDespawn();
+        LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
         return true;
     }
 
-    public bool ResearchTech(BuildingEntity owner, string techId)
+    public bool ResearchTech(IBuildingLogicContext owner, string techId)
     {
         if (!IsResearchOptionExecutable(owner, techId))
             return false;
@@ -205,7 +181,7 @@ public class TechManager : GameFrameworkComponent
         return true;
     }
 
-    internal bool ApplyScheduledResearchTech(BuildingEntity owner, string techId)
+    internal bool ApplyScheduledResearchTech(IBuildingLogicContext owner, string techId)
     {
         EnsureInteractionApplyWindow();
         if (!IsResearchOptionExecutableForApply(owner, techId))
@@ -223,7 +199,7 @@ public class TechManager : GameFrameworkComponent
                 techId,
                 techData.IsStackable,
                 owner.BuildingInstanceId,
-                owner.OwnerFactionID))
+                owner.OwnerFactionId))
         {
             throw new InvalidOperationException($"Research transaction failed to schedule tech '{techId}'.");
         }
@@ -231,7 +207,7 @@ public class TechManager : GameFrameworkComponent
         return true;
     }
 
-    private bool IsUpgradeOptionExecutableForApply(BuildingEntity owner, string upgradeBuildingId, string techId)
+    private bool IsUpgradeOptionExecutableForApply(IBuildingLogicContext owner, string upgradeBuildingId, string techId)
     {
         var buildManager = RequireBuildManager();
         return IsUpgradeOptionVisible(owner, upgradeBuildingId, techId)
@@ -239,14 +215,14 @@ public class TechManager : GameFrameworkComponent
                && buildManager.HasBuildCost(upgradeBuildingId, owner);
     }
 
-    private bool IsResearchOptionExecutableForApply(BuildingEntity owner, string techId)
+    private bool IsResearchOptionExecutableForApply(IBuildingLogicContext owner, string techId)
     {
         return IsResearchOptionVisible(owner, techId)
                && SatisfyTechCondition(techId)
                && HasTechCost(techId);
     }
 
-    private static bool HasPendingInteraction(BuildingEntity owner)
+    private static bool HasPendingInteraction(IBuildingLogicContext owner)
     {
         return owner != null
                && LogicInteractionCommandService.IsActive
@@ -259,7 +235,7 @@ public class TechManager : GameFrameworkComponent
             throw new InvalidOperationException("Tech interaction mutation requires the logic interaction command apply window.");
     }
 
-    public int RollbackTechsForBuilding(BuildingEntity owner)
+    public int RollbackTechsForBuilding(IBuildingLogicContext owner)
     {
         if (owner == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
             return 0;
@@ -279,31 +255,31 @@ public class TechManager : GameFrameworkComponent
             if (!InGameDataModel.ReduceTechStack(techId, owner.BuildingInstanceId, 1))
                 continue;
 
-            globalBuffManager?.UnregisterTechEffects(techId, owner.OwnerFactionID, owner.BuildingInstanceId);
+            globalBuffManager?.UnregisterTechEffects(techId, owner.OwnerFactionId, owner.BuildingInstanceId);
             rolledBack++;
         }
 
         if (rolledBack > 0)
-            globalBuffManager?.ClearBuildingRuntimeTechState(owner.BuildingInstanceId, owner.OwnerFactionID);
+            globalBuffManager?.ClearBuildingRuntimeTechState(owner.BuildingInstanceId, owner.OwnerFactionId);
 
         return rolledBack;
     }
 
-    private bool HasUpgradeTechCandidates(BuildingEntity owner)
+    private bool HasUpgradeTechCandidates(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null || owner.buildingData.UpgradeTechIDs == null)
+        if (owner == null || owner.BuildingData == null || owner.BuildingData.UpgradeTechIDs == null)
             return false;
 
-        string upgradeBuildingId = BuildingDataModel.GetUpgradeID(owner.buildingData.Identifier);
+        string upgradeBuildingId = BuildingDataModel.GetUpgradeID(owner.BuildingData.Identifier);
         if (string.IsNullOrWhiteSpace(upgradeBuildingId))
             return false;
 
         if (BuildingDataModel.GetBuildingData(upgradeBuildingId) == null)
             return false;
 
-        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
+        for (int i = 0; i < owner.BuildingData.UpgradeTechIDs.Length; i++)
         {
-            string techId = owner.buildingData.UpgradeTechIDs[i];
+            string techId = owner.BuildingData.UpgradeTechIDs[i];
             if (string.IsNullOrWhiteSpace(techId))
                 continue;
 
@@ -314,14 +290,14 @@ public class TechManager : GameFrameworkComponent
         return false;
     }
 
-    private bool HasResearchTechCandidates(BuildingEntity owner)
+    private bool HasResearchTechCandidates(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null || owner.buildingData.UpgradeTechIDs == null)
+        if (owner == null || owner.BuildingData == null || owner.BuildingData.UpgradeTechIDs == null)
             return false;
 
-        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
+        for (int i = 0; i < owner.BuildingData.UpgradeTechIDs.Length; i++)
         {
-            string techId = owner.buildingData.UpgradeTechIDs[i];
+            string techId = owner.BuildingData.UpgradeTechIDs[i];
             if (string.IsNullOrWhiteSpace(techId))
                 continue;
 
@@ -332,12 +308,12 @@ public class TechManager : GameFrameworkComponent
         return false;
     }
 
-    private bool HasInfoInteraction(BuildingEntity owner)
+    private bool HasInfoInteraction(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null)
+        if (owner == null || owner.BuildingData == null)
             return false;
 
-        BuildingData data = owner.buildingData;
+        BuildingData data = owner.BuildingData;
         if (data.Lv >= 3)
             return true;
 
@@ -360,31 +336,31 @@ public class TechManager : GameFrameworkComponent
         return false;
     }
 
-    private static bool HasReachedResearchLimit(BuildingEntity owner)
+    private static bool HasReachedResearchLimit(IBuildingLogicContext owner)
     {
         return CountResearchedTech(owner) >= GetResearchLimit(owner);
     }
 
-    private static int GetResearchLimit(BuildingEntity owner)
+    private static int GetResearchLimit(IBuildingLogicContext owner)
     {
-        if (owner?.buildingData == null || owner.buildingData.Type != BuilType.Tech)
+        if (owner?.BuildingData == null || owner.BuildingData.Type != BuilType.Tech)
             return 1;
 
         return Math.Max(1, 1 + LevelTagRuntime.GetExtraTechResearchCountPerBuilding());
     }
 
-    private static int CountResearchedTech(BuildingEntity owner)
+    private static int CountResearchedTech(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
+        if (owner == null || owner.BuildingData == null || string.IsNullOrWhiteSpace(owner.BuildingInstanceId))
             return 0;
 
-        if (owner.buildingData.UpgradeTechIDs == null)
+        if (owner.BuildingData.UpgradeTechIDs == null)
             return 0;
 
         int count = 0;
-        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
+        for (int i = 0; i < owner.BuildingData.UpgradeTechIDs.Length; i++)
         {
-            string techId = owner.buildingData.UpgradeTechIDs[i];
+            string techId = owner.BuildingData.UpgradeTechIDs[i];
             if (string.IsNullOrWhiteSpace(techId))
                 continue;
 
@@ -393,71 +369,6 @@ public class TechManager : GameFrameworkComponent
         }
 
         return count;
-    }
-
-    private void ConfigureInfoOption(BuildingEntity owner, InteractionHost host)
-    {
-        string displayName = LocalizationTextDataModel.GetText(InfoOptionTextId);
-        host.AddOption<BuildingInfoInteractionOption>(InputKey.InteractionPrimary, displayName, InteractionParams.Create());
-    }
-
-    private void ConfigureUpgradeOptions(BuildingEntity owner, InteractionHost host)
-    {
-        if (owner.buildingData.UpgradeTechIDs == null)
-            return;
-
-        string upgradeBuildingId = BuildingDataModel.GetUpgradeID(owner.buildingData.Identifier);
-        if (string.IsNullOrWhiteSpace(upgradeBuildingId) || BuildingDataModel.GetBuildingData(upgradeBuildingId) == null)
-            return;
-
-        int optionIndex = 0;
-        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
-        {
-            // 先挂载所有合法升级选项，是否显示/可执行交给 option 的动态判定。
-            string techId = owner.buildingData.UpgradeTechIDs[i];
-            var techData = TechDataModel.GetTechData(techId);
-            if (techData == null)
-                continue;
-
-            string displayName = LocalizationTextManager.GetLocalizedText(techData.NameKey, false);
-            InteractionParams @params = InteractionParams.Create();
-            @params.Set<VarString>("UpgradeBuildingId", upgradeBuildingId);
-            @params.Set<VarString>("TechId", techId);
-
-            if (TryGetOptionalOptionKey(optionIndex, out var optionKey))
-                host.AddOption<BuildingUpgradeInteractionOption>(optionKey, displayName, @params);
-            else
-                host.AddOption<BuildingUpgradeInteractionOption>(displayName, @params);
-
-            optionIndex++;
-        }
-    }
-
-    private void ConfigureTechResearchOptions(BuildingEntity owner, InteractionHost host)
-    {
-        if (owner.buildingData.UpgradeTechIDs == null)
-            return;
-
-        int optionIndex = 0;
-        for (int i = 0; i < owner.buildingData.UpgradeTechIDs.Length; i++)
-        {
-            // 先挂载所有合法研究选项，避免生成时机导致后续阶段无可见项。
-            string techId = owner.buildingData.UpgradeTechIDs[i];
-            var techData = TechDataModel.GetTechData(techId);
-            if (techData == null)
-                continue;
-
-            string displayName = LocalizationTextManager.GetLocalizedText(techData.NameKey, false);
-            InteractionParams @params = InteractionParams.Create();
-            @params.Set<VarString>("TechId", techId);
-
-            if (TryGetOptionalOptionKey(optionIndex, out var optionKey))
-                host.AddOption<TechResearchInteractionOption>(optionKey, displayName, @params);
-            else
-                host.AddOption<TechResearchInteractionOption>(displayName, @params);
-
-            optionIndex++;
-        }
     }
 
     private bool SatisfyTechCondition(string techId)
@@ -481,19 +392,9 @@ public class TechManager : GameFrameworkComponent
         return techData != null && InGameDataModel.GetValue(IngameValueType.Coin) >= LevelTagRuntime.ModifyTechCost(techData.Cost);
     }
 
-    private bool TryGetOptionalOptionKey(int optionIndex, out InputKey key)
+    private static bool CanPlayerOperateInBuildPhase(IBuildingLogicContext owner)
     {
-        key = default;
-        if (optionIndex < 0 || optionIndex >= m_OptionalOptionKeys.Length)
-            return false;
-
-        key = m_OptionalOptionKeys[optionIndex];
-        return true;
-    }
-
-    private static bool CanPlayerOperateInBuildPhase(BuildingEntity owner)
-    {
-        if (owner == null || owner.buildingData == null || owner.OwnerFactionID != 0)
+        if (owner == null || owner.BuildingData == null || owner.OwnerFactionId != 0)
             return false;
 
         var inGameData = GF.DataModel.GetDataModel<InGameDataModel>();
@@ -507,5 +408,10 @@ public class TechManager : GameFrameworkComponent
             throw new InvalidOperationException("BuildManager is required for TechManager.");
 
         return buildManager;
+    }
+
+    private static Vector3 ToWorldPosition(FixVector2 position)
+    {
+        return new Vector3((float)position.x, 0f, (float)position.y);
     }
 }

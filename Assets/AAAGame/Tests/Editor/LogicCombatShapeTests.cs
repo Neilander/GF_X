@@ -48,6 +48,20 @@ public class LogicCombatShapeTests
     }
 
     [Test]
+    public void AuthoredCatalog_FixedAuthorityPositionPreservesEveryRawUnit()
+    {
+        BuildingCombatShapeCatalog catalog = BuildingCombatShapeCatalog.LoadRequired();
+        BuildingCombatShapeCatalog.Entry entry = catalog.Entries[0];
+        var position = new FixVector2(Fix64.FromRaw(123456789), Fix64.FromRaw(-987654321));
+        LogicCombatShape local = catalog.ResolveRequired(entry.PrefabPath, FixVector2.Zero, 1);
+        LogicCombatShape translated = catalog.ResolveRequired(entry.PrefabPath, position, 1);
+
+        Assert.AreEqual(position.x.RawValue, (translated.Center.x - local.Center.x).RawValue);
+        Assert.AreEqual(position.y.RawValue, (translated.Center.y - local.Center.y).RawValue);
+        Assert.AreEqual(local.HalfExtents, translated.HalfExtents);
+    }
+
+    [Test]
     public void AuthoredObstacleCatalog_PreservesAllBlockingBoxes()
     {
         BuildingLogicObstacleShapeCatalog catalog = BuildingLogicObstacleShapeCatalog.LoadRequired();

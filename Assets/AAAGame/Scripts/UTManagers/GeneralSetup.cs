@@ -188,7 +188,6 @@ public partial class GeneralSetup : GameFrameworkComponent
             // 玩家注册为 Player
             if (ma.Brain is PlayerBrain)
             {
-                ma.RequestPlayerRegistration();
                 m_PlayerReady = true;
                 LogSetupTiming("player-ready");
 
@@ -250,6 +249,12 @@ public partial class GeneralSetup : GameFrameworkComponent
             return;
         }
 
+        InGameDataModel inGameData = GF.DataModel?.GetDataModel<InGameDataModel>()
+                                     ?? throw new System.InvalidOperationException("GeneralSetup requires InGameDataModel before entering the initial phase.");
+        string levelId = inGameData.lvData?.Identifier;
+        if (string.IsNullOrWhiteSpace(levelId))
+            throw new System.InvalidOperationException("GeneralSetup requires a stable level id for stage checkpoints.");
+        StageCheckpointRuntimeCoordinator.BeginSession(levelId);
         PhaseManager.EnterCurrentPhaseOnGameStart();
         m_InitialPhaseEntered = true;
         m_SetupInProgress = false;

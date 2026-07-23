@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -34,13 +33,18 @@ public static class ClusterSpawnSystem
     /// </summary>
     public static float CalculateAutoSpawnRadius(int count)
     {
-        if (count <= 1)
-        {
-            return MinAutoSpawnRadius;
-        }
+        return (float)CalculateAutoSpawnRadiusFixed(count);
+    }
 
-        float radius = Mathf.Sqrt(count) * FixedSpawnDistance * 0.55f + FixedSpawnDistance * 0.35f;
-        return Mathf.Max(MinAutoSpawnRadius, radius);
+    public static Fix64 CalculateAutoSpawnRadiusFixed(int count)
+    {
+        if (count <= 1)
+            return (Fix64)MinAutoSpawnRadius;
+
+        Fix64 spawnDistance = (Fix64)FixedSpawnDistance;
+        Fix64 radius = Fix64.Sqrt((Fix64)count) * spawnDistance * (Fix64)0.55f
+                       + spawnDistance * (Fix64)0.35f;
+        return Fix64.Max((Fix64)MinAutoSpawnRadius, radius);
     }
 
     /// <summary>
@@ -48,45 +52,27 @@ public static class ClusterSpawnSystem
     /// </summary>
     public static bool ValidateSpawn(Vector3 center, int count, float radius, float minDistance, out List<Vector3> spawnPositions)
     {
-        spawnPositions = new List<Vector3>(count);
-
-        if (count <= 0 || radius <= 0f || minDistance <= 0f)
-        {
+        spawnPositions = new List<Vector3>(Mathf.Max(0, count));
+        if (!ValidateInputs(count, radius, minDistance))
             return false;
-        }
 
-        int maxAttempts = count * 10;
-        for (int i = 0; i < maxAttempts; i++)
+        var fixedPositions = new List<FixVector2>(count);
+        FixVector2 fixedCenter = ToFixed(center);
+        Fix64 fixedRadius = (Fix64)radius;
+        Fix64 fixedMinDistance = (Fix64)minDistance;
+        int maxAttempts = checked(count * 10);
+        for (int i = 0; i < maxAttempts && fixedPositions.Count < count; i++)
         {
-            Vector3 candidate = GenerateDeterministicPointInCircle(center, radius, i, maxAttempts);
-            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, 0, out Vector3 spawnPos))
-            {
+            FixVector2 candidate = GenerateDeterministicPointInCircleFixed(fixedCenter, fixedRadius, i, maxAttempts);
+            if (!TryFindLegalNavigationPointFixed(candidate, (Fix64)FixedEdgeClearance, 0, out FixVector2 spawnPos))
                 continue;
-            }
-
-            bool isOverlap = false;
-            for (int j = 0; j < spawnPositions.Count; j++)
-            {
-                if ((spawnPos - spawnPositions[j]).sqrMagnitude < minDistance * minDistance)
-                {
-                    isOverlap = true;
-                    break;
-                }
-            }
-
-            if (isOverlap)
-            {
+            if (OverlapsSpawnPosition(fixedPositions, spawnPos, fixedMinDistance))
                 continue;
-            }
-
-            spawnPositions.Add(spawnPos);
-            if (spawnPositions.Count >= count)
-            {
-                return true;
-            }
+            fixedPositions.Add(spawnPos);
         }
 
-        return spawnPositions.Count >= count;
+        CopyToUnityPositions(fixedPositions, spawnPositions);
+        return fixedPositions.Count >= count;
     }
 
     /// <summary>
@@ -105,95 +91,64 @@ public static class ClusterSpawnSystem
         bool avoidExistingAgents = false,
         int unitLevel = 1)
     {
-        if (count <= 0 || radius <= 0f || minDistance <= 0f)
-        {
-            return false;
-        }
-
-        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at {center}, unitType={unitIndex}, side={side}");
-
-        List<Vector3> spawnPositions = new List<Vector3>(count);
-        int agentTypeId = ResolveAgentTypeId(unitIndex);
-        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId))
-        {
-            Debug.LogWarning(
-                $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
-            return false;
-        }
-
-        for (int i = 0; i < spawnPositions.Count; i++)
-        {
-            Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
-            SoldierFactory.ShowSoldier(unitIndex, spawnPosition, side, brainType, sourceBuildingInstanceId, sourceStrongholdId, null, unitLevel);
-        }
-
-        return true;
+        return SpawnClusterFixed(
+            ToFixed(center),
+            count,
+            (Fix64)radius,
+            (Fix64)minDistance,
+            unitIndex,
+            side,
+            brainType,
+            sourceBuildingInstanceId,
+            sourceStrongholdId,
+            avoidExistingAgents,
+            unitLevel);
     }
 
-    /// <summary>
-    /// 异步分帧生成整组单位，返回实际成功 Show 的单位数量。
-    /// </summary>
-    public static async UniTask<int> SpawnClusterAwait(
-        Vector3 center,
+    public static bool SpawnClusterFixed(
+        FixVector2 center,
         int count,
-        float radius,
-        float minDistance,
+        Fix64 radius,
+        Fix64 minDistance,
         UnitType unitIndex,
         SideType side,
         BrainType brainType,
         string sourceBuildingInstanceId = null,
-        int yieldEveryUnits = 2,
-        Func<bool> keepSpawningPredicate = null,
         string sourceStrongholdId = null,
         bool avoidExistingAgents = false,
         int unitLevel = 1)
     {
-        if (count <= 0 || radius <= 0f || minDistance <= 0f)
-        {
-            return 0;
-        }
+        if (count <= 0 || radius <= Fix64.Zero || minDistance <= Fix64.Zero)
+            return false;
 
-        List<Vector3> spawnPositions = new List<Vector3>(count);
+        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at fixed=({center.x.RawValue},{center.y.RawValue}), unitType={unitIndex}, side={side}");
+
+        var spawnPositions = new List<FixVector2>(count);
         int agentTypeId = ResolveAgentTypeId(unitIndex);
-        if (!TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId))
+        if (!TryGetSpawnPositionsFixed(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId))
         {
             Debug.LogWarning(
-                $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, center={center}, fixedDistance={FixedSpawnDistance:F2}, radius={radius:F2}");
-            return 0;
+                $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, centerRaw=({center.x.RawValue},{center.y.RawValue}), radiusRaw={radius.RawValue}");
+            return false;
         }
 
-        int spawnedCount = 0;
-        int batchSize = Mathf.Max(1, yieldEveryUnits);
         for (int i = 0; i < spawnPositions.Count; i++)
         {
-            if (keepSpawningPredicate != null && !keepSpawningPredicate())
-            {
-                break;
-            }
-
-            Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
-            bool shown = await SoldierFactory.ShowSoldierAwait(
+            Vector3 spawnPosition = ToUnity(spawnPositions[i], 0.05f);
+            int entityId = SoldierFactory.ShowSoldier(
                 unitIndex,
                 spawnPosition,
                 side,
                 brainType,
                 sourceBuildingInstanceId,
                 sourceStrongholdId,
-                keepSpawningPredicate,
+                null,
                 unitLevel);
-
-            if (shown)
-            {
-                spawnedCount++;
-            }
-
-            if ((i + 1) % batchSize == 0)
-            {
-                await UniTask.Yield();
-            }
+            if (entityId <= 0)
+                throw new InvalidOperationException($"ClusterSpawnSystem failed to request unit {i}. unit={unitIndex}.");
         }
 
-        return spawnedCount;
+        return true;
     }
 
     /// <summary>
@@ -227,23 +182,77 @@ public static class ClusterSpawnSystem
         int agentTypeId)
     {
         if (previewPositions == null)
-        {
-            return false;
-        }
+            throw new ArgumentNullException(nameof(previewPositions));
 
         previewPositions.Clear();
-        if (count <= 0 || radius <= 0f || minDistance <= 0f)
+        if (!ValidateInputs(count, radius, minDistance))
+            return false;
+
+        var fixedPositions = new List<FixVector2>(count);
+        bool success = TryGetFixedSpawnPositions(
+            center,
+            count,
+            radius,
+            minDistance,
+            fixedPositions,
+            avoidExistingAgents,
+            agentTypeId);
+        CopyToUnityPositions(fixedPositions, previewPositions);
+        return success;
+    }
+
+    private static bool TryGetFixedSpawnPositions(
+        Vector3 center,
+        int count,
+        float radius,
+        float minDistance,
+        List<FixVector2> spawnPositions,
+        bool avoidExistingAgents,
+        int agentTypeId)
+    {
+        return TryGetSpawnPositionsFixed(
+            ToFixed(center),
+            count,
+            (Fix64)radius,
+            (Fix64)minDistance,
+            spawnPositions,
+            avoidExistingAgents,
+            agentTypeId);
+    }
+
+    public static bool TryGetSpawnPositionsFixed(
+        FixVector2 center,
+        int count,
+        Fix64 radius,
+        Fix64 minDistance,
+        List<FixVector2> spawnPositions,
+        bool avoidExistingAgents,
+        int agentTypeId)
+    {
+        if (spawnPositions == null)
+            throw new ArgumentNullException(nameof(spawnPositions));
+
+        spawnPositions.Clear();
+        if (count <= 0 || radius <= Fix64.Zero || minDistance <= Fix64.Zero)
+            return false;
+
+        if (!TryFindLegalNavigationPointFixed(
+                center,
+                (Fix64)FixedEdgeClearance,
+                agentTypeId,
+                out FixVector2 legalCenter))
         {
             return false;
         }
 
-        if (!TryFindLegalNavigationPoint(center, FixedEdgeClearance, agentTypeId, out Vector3 legalCenter))
-        {
-            return false;
-        }
-
-        CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, avoidExistingAgents, agentTypeId);
-        return previewPositions.Count >= count;
+        CollectLegalSpawnPositionsFixed(
+            legalCenter,
+            count,
+            radius,
+            spawnPositions,
+            avoidExistingAgents,
+            agentTypeId);
+        return spawnPositions.Count >= count;
     }
 
     /// <summary>
@@ -282,34 +291,43 @@ public static class ClusterSpawnSystem
         resolvedCenter = preferredCenter;
 
         if (previewPositions == null)
-        {
-            return false;
-        }
+            throw new ArgumentNullException(nameof(previewPositions));
 
         previewPositions.Clear();
-        if (count <= 0 || radius <= 0f || minDistance <= 0f)
-        {
+        if (!ValidateInputs(count, radius, minDistance))
             return false;
-        }
 
+        FixVector2 fixedPreferredCenter = ToFixed(preferredCenter);
+        Fix64 fixedRadius = (Fix64)radius;
+        var fixedPositions = new List<FixVector2>(count);
         int totalCandidates = 1 + NearbyCenterSearchRings * NearbyCenterSamplesPerRing;
         for (int i = 0; i < totalCandidates; i++)
         {
-            Vector3 candidate = GenerateNearbyCenterCandidate(preferredCenter, radius, i);
-            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, agentTypeId, out Vector3 legalCenter))
+            FixVector2 candidate = GenerateNearbyCenterCandidateFixed(fixedPreferredCenter, fixedRadius, i);
+            if (!TryFindLegalNavigationPointFixed(
+                    candidate,
+                    (Fix64)FixedEdgeClearance,
+                    agentTypeId,
+                    out FixVector2 legalCenter))
             {
                 continue;
             }
 
-            if (centerValidator != null && !centerValidator(legalCenter, radius))
-            {
+            Vector3 unityLegalCenter = ToUnity(legalCenter, preferredCenter.y);
+            if (centerValidator != null && !centerValidator(unityLegalCenter, radius))
                 continue;
-            }
 
-            CollectLegalSpawnPositions(legalCenter, count, radius, previewPositions, true, agentTypeId);
-            if (previewPositions.Count >= count)
+            CollectLegalSpawnPositionsFixed(
+                legalCenter,
+                count,
+                fixedRadius,
+                fixedPositions,
+                true,
+                agentTypeId);
+            if (fixedPositions.Count >= count)
             {
-                resolvedCenter = legalCenter;
+                CopyToUnityPositions(fixedPositions, previewPositions);
+                resolvedCenter = unityLegalCenter;
                 return true;
             }
         }
@@ -338,95 +356,138 @@ public static class ClusterSpawnSystem
         return TryGetPreviewSpawnPositions(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId);
     }
 
-    private static void CollectLegalSpawnPositions(Vector3 legalCenter, int count, float radius, List<Vector3> spawnPositions, bool avoidExistingAgents, int agentTypeId)
+    private static void CollectLegalSpawnPositionsFixed(
+        FixVector2 legalCenter,
+        int count,
+        Fix64 radius,
+        List<FixVector2> spawnPositions,
+        bool avoidExistingAgents,
+        int agentTypeId)
     {
         spawnPositions.Clear();
 
-        int maxAttempts = Mathf.Max(count * 120, 240);
+        int maxAttempts = Math.Max(checked(count * 120), 240);
         for (int i = 0; i < maxAttempts && spawnPositions.Count < count; i++)
         {
-            Vector3 candidate = GenerateDeterministicPointInCircle(legalCenter, radius, i, maxAttempts);
-            if (!TryFindLegalNavigationPoint(candidate, FixedEdgeClearance, agentTypeId, out Vector3 spawnPos))
+            FixVector2 candidate = GenerateDeterministicPointInCircleFixed(legalCenter, radius, i, maxAttempts);
+            if (!TryFindLegalNavigationPointFixed(
+                    candidate,
+                    (Fix64)FixedEdgeClearance,
+                    agentTypeId,
+                    out FixVector2 spawnPos))
             {
                 continue;
             }
 
-            if (avoidExistingAgents && IsBlockedByExistingAgent(spawnPos))
-            {
+            if (avoidExistingAgents && IsBlockedByExistingAgentFixed(spawnPos))
                 continue;
-            }
 
-            bool isOverlap = false;
-            for (int j = 0; j < spawnPositions.Count; j++)
-            {
-                if ((spawnPos - spawnPositions[j]).sqrMagnitude < FixedSpawnDistance * FixedSpawnDistance)
-                {
-                    isOverlap = true;
-                    break;
-                }
-            }
-
-            if (!isOverlap)
-            {
+            if (!OverlapsSpawnPosition(spawnPositions, spawnPos, (Fix64)FixedSpawnDistance))
                 spawnPositions.Add(spawnPos);
-            }
         }
     }
 
-    private static bool TryFindLegalNavigationPoint(Vector3 candidate, float edgeClearance, int agentTypeId, out Vector3 legalPoint)
+    private static bool TryFindLegalNavigationPointFixed(
+        FixVector2 candidate,
+        Fix64 edgeClearance,
+        int agentTypeId,
+        out FixVector2 legalPoint)
     {
-        return FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+        return FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
             candidate,
             agentTypeId,
-            MaxHorizontalSnapDistance,
+            (Fix64)MaxHorizontalSnapDistance,
             edgeClearance,
             out legalPoint);
     }
 
-    private static bool IsBlockedByExistingAgent(Vector3 position)
+    private static bool IsBlockedByExistingAgentFixed(FixVector2 position)
     {
-        if (!GroupMoveManager.HasInstance)
-            return false;
-
-        float requiredDistance = FixedSpawnDistance;
-        return GroupMoveManager.Instance.IsPositionOccupiedByAgent(position, requiredDistance);
+        return FlowFieldCrowdMovementSystem.IsPositionOccupiedByAgentFixed(
+            position,
+            (Fix64)FixedSpawnDistance);
     }
 
-    private static Vector3 GenerateNearbyCenterCandidate(Vector3 center, float formationRadius, int index)
+    private static FixVector2 GenerateNearbyCenterCandidateFixed(FixVector2 center, Fix64 formationRadius, int index)
     {
         if (index <= 0)
-        {
             return center;
-        }
 
         int adjusted = index - 1;
         int ring = adjusted / NearbyCenterSamplesPerRing + 1;
         int ringIndex = adjusted % NearbyCenterSamplesPerRing;
-        float angleOffset = ring * 0.37f;
-        float angle = Mathf.PI * 2f * ringIndex / NearbyCenterSamplesPerRing + angleOffset;
-        float distance = ring * Mathf.Max(NearbyCenterSearchStep, formationRadius * 0.45f);
-        return center + new Vector3(Mathf.Cos(angle) * distance, 0f, Mathf.Sin(angle) * distance);
+        Fix64 angleOffset = (Fix64)ring * (Fix64)0.37f;
+        Fix64 angle = Fix64.PI * (Fix64)2 * (Fix64)ringIndex / (Fix64)NearbyCenterSamplesPerRing + angleOffset;
+        Fix64 distance = (Fix64)ring * Fix64.Max((Fix64)NearbyCenterSearchStep, formationRadius * (Fix64)0.45f);
+        return center + new FixVector2(Fix64.Cos(angle) * distance, Fix64.Sin(angle) * distance);
     }
 
     /// <summary>
     /// 在圆形区域内生成确定性采样点。
     /// </summary>
-    private static Vector3 GenerateDeterministicPointInCircle(Vector3 center, float radius, int index, int total)
+    private static FixVector2 GenerateDeterministicPointInCircleFixed(
+        FixVector2 center,
+        Fix64 radius,
+        int index,
+        int total)
     {
         if (total <= 1 || index <= 0)
-        {
             return center;
+
+        Fix64 t = ((Fix64)index + (Fix64)0.5f) / (Fix64)total;
+        Fix64 distance = radius * Fix64.Sqrt(Fix64.Clamp(t, Fix64.Zero, Fix64.One));
+        Fix64 angle = (Fix64)index * (Fix64)2.39996323f;
+        return center + new FixVector2(Fix64.Cos(angle) * distance, Fix64.Sin(angle) * distance);
+    }
+
+    private static bool OverlapsSpawnPosition(
+        List<FixVector2> spawnPositions,
+        FixVector2 candidate,
+        Fix64 minimumDistance)
+    {
+        Fix64 minimumDistanceSq = minimumDistance * minimumDistance;
+        for (int i = 0; i < spawnPositions.Count; i++)
+        {
+            if (FixVector2.SqrMagnitude(candidate - spawnPositions[i]) < minimumDistanceSq)
+                return true;
         }
 
-        const float goldenAngle = 2.39996323f;
-        float t = (index + 0.5f) / total;
-        float distance = radius * Mathf.Sqrt(Mathf.Clamp01(t));
-        float angle = index * goldenAngle;
+        return false;
+    }
 
-        float x = center.x + Mathf.Cos(angle) * distance;
-        float z = center.z + Mathf.Sin(angle) * distance;
+    private static bool ValidateInputs(int count, float radius, float minDistance)
+    {
+        return count > 0
+               && radius > 0f
+               && minDistance > 0f
+               && !float.IsNaN(radius)
+               && !float.IsInfinity(radius)
+               && !float.IsNaN(minDistance)
+               && !float.IsInfinity(minDistance);
+    }
 
-        return new Vector3(x, center.y, z);
+    private static FixVector2 ToFixed(Vector3 position)
+    {
+        if (float.IsNaN(position.x)
+            || float.IsInfinity(position.x)
+            || float.IsNaN(position.z)
+            || float.IsInfinity(position.z))
+        {
+            throw new ArgumentOutOfRangeException(nameof(position), position, "Spawn position must contain finite XZ coordinates.");
+        }
+        return new FixVector2((Fix64)position.x, (Fix64)position.z);
+    }
+
+    private static Vector3 ToUnity(FixVector2 position, float y)
+    {
+        return new Vector3((float)position.x, y, (float)position.y);
+    }
+
+    private static void CopyToUnityPositions(List<FixVector2> source, List<Vector3> destination)
+    {
+        destination.Clear();
+        for (int i = 0; i < source.Count; i++)
+            destination.Add(ToUnity(source[i], 0f));
     }
 }
 

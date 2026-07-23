@@ -6,65 +6,75 @@
 public class SimMoveComp : IMoveComp
 {
     private IEntityContext _ctx;
-    private Vector3? _targetPos;
+    private FixVector2? _targetPosFixed;
 
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
-        _targetPos = null;
+        _targetPosFixed = null;
     }
 
     public void MoveTo(Vector3 destination)
     {
-        _targetPos = destination;
+        MoveToFixed(new FixVector2((Fix64)destination.x, (Fix64)destination.z));
+    }
+
+    public void MoveToFixed(FixVector2 destination)
+    {
+        _targetPosFixed = destination;
     }
 
     public void StopMove()
     {
-        _targetPos = null;
+        _targetPosFixed = null;
     }
 
     public void Move(Fix64 deltaTime)
     {
         if (_ctx == null) return;
 
-        Vector3 moveDir = Vector3.zero;
+        FixVector2 moveDirection = FixVector2.Zero;
 
         // 优先响应 Brain 手动移动
-        Vector2 manualMove = _ctx.Brain?.Move ?? Vector2.zero;
-        if (manualMove.sqrMagnitude > 0.001f)
+        FixVector2 manualMove = _ctx.Brain?.MoveFixed ?? FixVector2.Zero;
+        if (FixVector2.SqrMagnitude(manualMove) > (Fix64)0.001f)
         {
             StopMove();
-            moveDir = new Vector3(manualMove.x, 0f, manualMove.y).normalized;
+            moveDirection = manualMove.GetNormalized();
         }
-        else if (_targetPos.HasValue)
+        else if (_targetPosFixed.HasValue)
         {
-            Vector3 offset = _targetPos.Value - _ctx.Position;
-            offset.y = 0f;
+            FixVector2 offset = _targetPosFixed.Value - _ctx.PositionFixed;
 
-            if (offset.magnitude < 0.2f)
+            if (FixVector2.Magnitude(offset) < (Fix64)0.2f)
             {
                 StopMove();
                 return;
             }
 
-            moveDir = offset.normalized;
+            moveDirection = offset.GetNormalized();
         }
 
         Fix64 speed = _ctx.GetProperty(CreatureMainProperty.Speed);
         if (speed <= (Fix64)0.01f) speed = (Fix64)5f;
 
-        _ctx.MoveExecutor.SetInput(moveDir * (float)speed * 0.1f);
+        _ctx.MoveExecutor.SetInputFixed(moveDirection * speed * (Fix64)0.1f);
     }
 
-    public void SetNavTarget(Vector3 destination) { _targetPos = destination; }
+    public void SetNavTarget(Vector3 destination)
+    {
+        _targetPosFixed = new FixVector2((Fix64)destination.x, (Fix64)destination.z);
+    }
 
     public Vector3 GetNavDirection()
     {
-        if (!_targetPos.HasValue || _ctx == null) return Vector3.zero;
-        Vector3 offset = _targetPos.Value - _ctx.Position;
-        offset.y = 0f;
-        return offset.sqrMagnitude > 0.001f ? offset.normalized : Vector3.zero;
+        if (!_targetPosFixed.HasValue || _ctx == null)
+            return Vector3.zero;
+        FixVector2 offset = _targetPosFixed.Value - _ctx.PositionFixed;
+        if (FixVector2.SqrMagnitude(offset) <= (Fix64)0.001f)
+            return Vector3.zero;
+        FixVector2 direction = offset.GetNormalized();
+        return new Vector3((float)direction.x, 0f, (float)direction.y);
     }
 
     public bool IsMoving
@@ -72,8 +82,8 @@ public class SimMoveComp : IMoveComp
         get
         {
             if (_ctx == null) return false;
-            Vector2 manualMove = _ctx.Brain?.Move ?? Vector2.zero;
-            return _targetPos.HasValue || manualMove.sqrMagnitude > 0.001f;
+            FixVector2 manualMove = _ctx.Brain?.MoveFixed ?? FixVector2.Zero;
+            return _targetPosFixed.HasValue || FixVector2.SqrMagnitude(manualMove) > (Fix64)0.001f;
         }
     }
 

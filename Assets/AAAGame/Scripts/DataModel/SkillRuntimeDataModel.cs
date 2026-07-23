@@ -44,7 +44,7 @@ public class SkillRuntimeDataModel : DataModelBase
 
         var dm = GetRequiredModel();
         int newLevel = dm.AddLevelInternal(skillData);
-        GF.Event.Fire(dm, SkillChangedEventArgs.Create(skillData.Identifier, newLevel));
+        dm.PublishSkillChanged(skillData.Identifier, newLevel);
         return true;
     }
 
@@ -100,10 +100,26 @@ public class SkillRuntimeDataModel : DataModelBase
         return results;
     }
 
-    public static void SwapSkillSlots(int fromIndex, int toIndex)
+    public static LogicSkillSlotCommand RequestSwapSkillSlots(int fromIndex, int toIndex)
     {
+        return LogicSkillSlotCommandService.ScheduleForNextFrame(fromIndex, toIndex);
+    }
+
+    internal static void ApplyScheduledSlotSwap(LogicSkillSlotCommand command)
+    {
+        if (!LogicSkillSlotCommandService.IsApplyingFrame)
+        {
+            throw new InvalidOperationException(
+                "SkillRuntimeDataModel.ApplyScheduledSlotSwap requires the logic skill-slot command apply window.");
+        }
+        if (command.EffectiveFrame != LogicTimeControlService.CurrentFrame)
+        {
+            throw new InvalidOperationException(
+                $"SkillRuntimeDataModel.ApplyScheduledSlotSwap frame mismatch. command={command.EffectiveFrame}, current={LogicTimeControlService.CurrentFrame}.");
+        }
+
         var dm = GetRequiredModel();
-        dm.SwapSkillSlotsInternal(fromIndex, toIndex);
+        dm.SwapSkillSlotsInternal(command.FromIndex, command.ToIndex);
     }
 
     public static bool IsUnlockedActiveSkillSlot(int slotIndex)
@@ -206,7 +222,7 @@ public class SkillRuntimeDataModel : DataModelBase
 
         m_SkillRemainingUsageCounts[skillId] = remainingUsageCount - 1;
         int level = m_SkillLevels.TryGetValue(skillId, out int storedLevel) ? storedLevel : 0;
-        GF.Event.Fire(this, SkillChangedEventArgs.Create(skillId, level));
+        PublishSkillChanged(skillId, level);
     }
 
     private void OnIngamePhaseChanged(object sender, GameEventArgs e)
@@ -239,7 +255,7 @@ public class SkillRuntimeDataModel : DataModelBase
         }
 
         if (changed)
-            GF.Event.Fire(this, SkillChangedEventArgs.Create(null, 0));
+            PublishSkillChanged(null, 0);
     }
 
     private static int GetRequiredMaxUsageCount(SkillData skillData, int level)
@@ -279,7 +295,13 @@ public class SkillRuntimeDataModel : DataModelBase
             return;
 
         (m_UnlockOrder[fromIndex], m_UnlockOrder[toIndex]) = (m_UnlockOrder[toIndex], m_UnlockOrder[fromIndex]);
-        GF.Event.Fire(this, SkillChangedEventArgs.Create(null, 0));
+        PublishSkillChanged(null, 0);
+    }
+
+    private void PublishSkillChanged(string skillId, int level)
+    {
+        LogicSkillStateService.RefreshActiveSkillComponents();
+        GF.Event.Fire(this, SkillChangedEventArgs.Create(skillId, level));
     }
 
     private void ResetSkills()

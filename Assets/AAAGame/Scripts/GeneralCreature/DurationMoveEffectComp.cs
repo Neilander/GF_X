@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 
-public class DurationMoveEffectComp : IDurationMoveEffectComp
+public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterministicStateContributor
 {
     private IEntityContext _ctx;
     //用于计数返回
@@ -140,6 +140,35 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp
     public void Resume()
     {
         _ctx?.MoveExecutor?.SetMovementMode(MovementMode.Normal);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new System.ArgumentNullException(nameof(hasher));
+        if (_timedAdditionalEffects == null || _timedOverrideEffects == null)
+            throw new System.InvalidOperationException("DurationMoveEffectComp deterministic state requested before initialization.");
+
+        hasher.Add(_additionalIndex);
+        WriteEffects(hasher, _timedAdditionalEffects);
+        hasher.Add(_overrideIndex);
+        WriteEffects(hasher, _timedOverrideEffects);
+    }
+
+    private static void WriteEffects(LogicStateHasher hasher, Dictionary<int, TimedMoveEffect> effects)
+    {
+        var keys = new List<int>(effects.Keys);
+        keys.Sort();
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            int key = keys[i];
+            TimedMoveEffect effect = effects[key];
+            hasher.Add(key);
+            hasher.Add(effect.duration.RawValue);
+            hasher.Add(effect.speed.x.RawValue);
+            hasher.Add(effect.speed.y.RawValue);
+        }
     }
 
     class TimedMoveEffect : TimedEffect

@@ -7,24 +7,38 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
 {
     private const float SpawnMinDistance = 0.7f;
 
-    protected override void ApplyAtPosition(IEntityContext caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets)
+    protected override void ApplyAtPosition(IEntityContext caster, FixVector2 position, IReadOnlyList<ISelectable> selectedTargets)
     {
         if (caster == null)
             throw new InvalidOperationException($"UrgentRequest caster missing. skillId={skillId}");
 
-        int count = Mathf.RoundToInt((float)GetValue(0));
+        Fix64 countValue = GetValue(0);
+        if (countValue <= Fix64.Zero)
+            throw new InvalidOperationException($"UrgentRequest count invalid. skillId={skillId}, raw={countValue.RawValue}");
+
+        long roundedCount = checked((countValue.RawValue + (1L << (Fix64.FRACTIONAL_PLACES - 1))) >> Fix64.FRACTIONAL_PLACES);
+        int count = checked((int)roundedCount);
         if (count <= 0)
             throw new InvalidOperationException($"UrgentRequest count invalid. skillId={skillId}, count={count}");
 
         float radius = ClusterSpawnSystem.CalculateAutoSpawnRadius(count);
-        List<Vector3> spawnPositions = new List<Vector3>(count);
+        List<FixVector2> spawnPositions = new List<FixVector2>(count);
         int agentTypeId = ClusterSpawnSystem.ResolveAgentTypeId(UnitType.Unit_Intern);
-        if (!ClusterSpawnSystem.TryGetPreviewSpawnPositions(position, count, radius, SpawnMinDistance, spawnPositions, true, agentTypeId))
+        if (!ClusterSpawnSystem.TryGetSpawnPositionsFixed(
+                position,
+                count,
+                (Fix64)radius,
+                (Fix64)SpawnMinDistance,
+                spawnPositions,
+                true,
+                agentTypeId))
+        {
             throw new InvalidOperationException($"UrgentRequest spawn failed. skillId={skillId}, count={count}, position={position}");
+        }
 
         for (int i = 0; i < spawnPositions.Count; i++)
         {
-            Vector3 spawnPosition = spawnPositions[i] + Vector3.up * 0.05f;
+            Vector3 spawnPosition = new Vector3((float)spawnPositions[i].x, 0.05f, (float)spawnPositions[i].y);
             SoldierFactory.ShowSoldier(
                 UnitType.Unit_Intern,
                 spawnPosition,

@@ -10,10 +10,18 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
 
     public IEntityContext CurrentTarget { get; set; }
     public IEntityContext FollowTarget => null;
-    public float AggroRange { get; set; } = 6f;
-    public float ForgetRange { get; set; } = 8f;
-    public float FollowSearchRange { get; set; }
-    public float AlertRadius { get; set; } = 5f;
+    private Fix64 m_AggroRange = (Fix64)6;
+    private Fix64 m_ForgetRange = (Fix64)8;
+    private Fix64 m_FollowSearchRange;
+    private Fix64 m_AlertRadius = (Fix64)5;
+    public Fix64 AggroRangeFixed { get => m_AggroRange; set => m_AggroRange = LogicTargetingRange.Require(value, nameof(AggroRangeFixed)); }
+    public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
+    public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
+    public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
+    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
+    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
+    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
+    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     public void Init(IEntityContext ctx)
     {
@@ -94,8 +102,8 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
         if (hasher == null)
             throw new System.ArgumentNullException(nameof(hasher));
         hasher.Add(_scanTimer.RawValue);
-        hasher.Add(((Fix64)AggroRange).RawValue);
-        hasher.Add(((Fix64)ForgetRange).RawValue);
+        hasher.Add(m_AggroRange.RawValue);
+        hasher.Add(m_ForgetRange.RawValue);
     }
 
     public void NotifyDamageTaken(IEntityContext attacker) { }
@@ -120,10 +128,18 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
 
     public IEntityContext CurrentTarget { get; set; }
     public IEntityContext FollowTarget => null;
-    public float AggroRange { get; set; } = 6f;
-    public float ForgetRange { get; set; } = 8f;
-    public float FollowSearchRange { get; set; }
-    public float AlertRadius { get; set; } = 5f;
+    private Fix64 m_AggroRange = (Fix64)6;
+    private Fix64 m_ForgetRange = (Fix64)8;
+    private Fix64 m_FollowSearchRange;
+    private Fix64 m_AlertRadius = (Fix64)5;
+    public Fix64 AggroRangeFixed { get => m_AggroRange; set => m_AggroRange = LogicTargetingRange.Require(value, nameof(AggroRangeFixed)); }
+    public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
+    public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
+    public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
+    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
+    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
+    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
+    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     public void Init(IEntityContext ctx)
     {
@@ -210,8 +226,8 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
             throw new System.ArgumentNullException(nameof(hasher));
         hasher.Add(_scanTimer.RawValue);
         hasher.Add(_facingConeAngle.RawValue);
-        hasher.Add(((Fix64)AggroRange).RawValue);
-        hasher.Add(((Fix64)ForgetRange).RawValue);
+        hasher.Add(m_AggroRange.RawValue);
+        hasher.Add(m_ForgetRange.RawValue);
     }
 
     public void NotifyDamageTaken(IEntityContext attacker) { }

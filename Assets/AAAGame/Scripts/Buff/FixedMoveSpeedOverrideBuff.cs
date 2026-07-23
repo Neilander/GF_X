@@ -8,6 +8,9 @@ public sealed class FixedMoveSpeedOverrideBuff : BuffCallback
 
     public FixedMoveSpeedOverrideBuff(Fix64 targetSpeed)
     {
+        if (targetSpeed <= Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(targetSpeed), targetSpeed.RawValue, "Target speed must be positive.");
+
         m_TargetSpeed = targetSpeed;
     }
 
@@ -15,11 +18,13 @@ public sealed class FixedMoveSpeedOverrideBuff : BuffCallback
     {
         base.OnAdd();
         var propertyManager = hostEntity?.CreatureProperties;
-        if (propertyManager == null || m_TargetSpeed <= Fix64.Zero)
-            return;
+        if (propertyManager == null)
+            throw new System.InvalidOperationException("FixedMoveSpeedOverrideBuff.OnAdd failed: host property manager is missing.");
+        if (m_Modifier != null)
+            throw new System.InvalidOperationException("FixedMoveSpeedOverrideBuff.OnAdd failed: modifier is already applied.");
 
         m_Modifier = PropertyOverrideModifier.Create(m_TargetSpeed);
-        propertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Speed, m_Modifier, true);
+        propertyManager.UnsafeModifyAnyProperty(CreatureMainProperty.Speed.ToString(), m_Modifier, true);
     }
 
     public override void OnRemove()
@@ -27,8 +32,9 @@ public sealed class FixedMoveSpeedOverrideBuff : BuffCallback
         base.OnRemove();
         var propertyManager = hostEntity?.CreatureProperties;
         if (propertyManager == null || m_Modifier == null)
-            return;
+            throw new System.InvalidOperationException("FixedMoveSpeedOverrideBuff.OnRemove failed: host property manager or modifier is missing.");
 
-        propertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Speed, m_Modifier, false);
+        propertyManager.UnsafeModifyAnyProperty(CreatureMainProperty.Speed.ToString(), m_Modifier, false);
+        m_Modifier = null;
     }
 }

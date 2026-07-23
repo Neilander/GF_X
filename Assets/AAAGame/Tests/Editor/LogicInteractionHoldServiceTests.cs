@@ -110,7 +110,7 @@ public sealed class LogicInteractionHoldServiceTests
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();
-        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero);
+        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
         return timeline;
     }
 }

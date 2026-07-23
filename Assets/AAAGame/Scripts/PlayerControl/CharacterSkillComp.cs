@@ -3,22 +3,22 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 
-public class CharacterSkillComp : ISkillComp
+public class CharacterSkillComp : ISkillComp, ILogicDeterministicStateContributor
 {
     private IEntityContext _entity;
-    
+
     public const int SKILL_NUM = SkillInputRuntime.MaxSkillCount;
-    
+
     private List<SkillSlot> _skillSlots;
     private Dictionary<string, ActiveSkillSO> _skillsById;
     private Dictionary<string, PassiveSkillSO> _passiveSkillsById;
     private HashSet<string> _appliedPassiveSkillIds;
     private Dictionary<string, GeneralCounter> _cooldownsBySkillId;
-    
+
     public void Init(IEntityContext entity, List<ActiveSkillSO>skillSet, List<PassiveSkillSO> passiveSkillSet)
     {
         _entity = entity;
-        
+
         _skillSlots = new List<SkillSlot>();
         _skillsById = new Dictionary<string, ActiveSkillSO>(System.StringComparer.Ordinal);
         _passiveSkillsById = new Dictionary<string, PassiveSkillSO>(System.StringComparer.Ordinal);
@@ -36,7 +36,7 @@ public class CharacterSkillComp : ISkillComp
 
             _skillsById[skill.skillId] = skill;
             var cooldown = new GeneralCounter();
-            cooldown.Init((Fix64)skill.ResolveCooldownInterval(), true);
+            cooldown.Init(skill.ResolveCooldownIntervalFixed(), true);
             _cooldownsBySkillId[skill.skillId] = cooldown;
         }
 
@@ -73,32 +73,32 @@ public class CharacterSkillComp : ISkillComp
     {
         RefreshPassiveSkills();
     }
-    
+
     public void Skill(Fix64 deltaTime)
     {
         //检测正在执行的技能，运行
         UpdateTickingSkill(deltaTime);
-        
-        
+
+
         //技能冷却
         CoolDown(deltaTime);
         UpdateSkillRuntime();
-        
+
         //检测输入
         int curSkillPressed = CheckInput();
-        
+
         //if(curSkillPressed != -1)
-            
-        
-        
+
+
+
         //如果冷却好了，就触发技能
         if (curSkillPressed == -1)
             return;
         GF.Log("使用技能："+(curSkillPressed+1));
         SkillSlot curSlot = _skillSlots[curSkillPressed];
         SyncSlotSkill(curSlot, curSkillPressed, true);
-       
-        
+
+
         //触发技能逻辑（恢复其他技能还没做好）
         StartASkill(curSlot, curSkillPressed);
 
@@ -156,7 +156,7 @@ public class CharacterSkillComp : ISkillComp
             if (slot.isTicking)
             {
                 //触发技能的tick
-                slot.skill.TickSkill(slot.runInfo, (float)deltaTime);
+                slot.skill.TickSkill(slot.runInfo, deltaTime);
                 if (slot.runInfo.isFinished)
                 {
                     slot.isTicking = false;
@@ -164,7 +164,7 @@ public class CharacterSkillComp : ISkillComp
                     slot.DirectUnlockAll();
                     SkillCastState.EndCast();
                     UnlockCompWhenEnd();
-                    
+
                 }
             }
         }
@@ -180,7 +180,7 @@ public class CharacterSkillComp : ISkillComp
         //触发其开始函数
         curSlot.runInfo = runInfo;
         curSlot.isTicking = true;
-        
+
         //根据技能的需求，关闭其他comp和技能输入
         //如果技能Ban所有其他的，其他的都按不了
         if (curSlot.skill.banOtherSkillWhenCast)
@@ -211,7 +211,7 @@ public class CharacterSkillComp : ISkillComp
             cooldown.Tick(deltaTime);
         }
     }
-    
+
     private void UpdateSkillRuntime()
     {
         for (int i = 0; i < _skillSlots.Count; i++)
@@ -280,10 +280,10 @@ public class CharacterSkillComp : ISkillComp
         slot.skill = hasSkill ? skill : null;
         slot.cooldown = hasCooldown ? cooldown : null;
         if (hasSkill && hasCooldown)
-            cooldown.SetTarget((Fix64)skill.ResolveCooldownInterval(skillInfo.Level));
+            cooldown.SetTarget(skill.ResolveCooldownIntervalFixed(skillInfo.Level));
         slot.isCoolingDown = hasCooldown && !cooldown.IsFinished();
     }
-    
+
     private void BanOtherSkill(SkillSlot curSlot)
     {
         foreach (var slot in _skillSlots)
@@ -331,5 +331,10 @@ public class CharacterSkillComp : ISkillComp
         }
 
         _appliedPassiveSkillIds.Clear();
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        SkillCompDeterministicStateUtility.Write(hasher, _entity, _skillSlots, _cooldownsBySkillId, _appliedPassiveSkillIds);
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameStableOrder
@@ -14,7 +14,8 @@ public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameS
     [SerializeField] private float minHoldTime = 0f;
 
     private MAEntity m_Actor;
-    private InteractionHost m_CurrentTarget;
+    private LogicEntityId m_CurrentTargetId;
+    private InteractionHost m_CurrentPresentationTarget;
     private Fix64 m_EffectiveRange;
     private Fix64 m_DistanceWeight;
     private Fix64 m_AngleWeight;
@@ -22,6 +23,7 @@ public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameS
     private int m_MinHoldFrames;
     private ulong m_LastSwitchFrame;
     private bool m_IsRegistered;
+    private bool m_IsHoldConsumerRegistered;
 
     public int LogicFrameOrder => -500;
     public long LogicFrameStableKey => m_Actor != null && m_Actor.LogicEntityId.IsValid
@@ -86,44 +88,36 @@ public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameS
         if (LogicEntityFrameSnapshotService.CapturedFrame != LogicFrameRuntime.CurrentFrame)
             throw new InvalidOperationException("InteractionManager requires the current frame snapshot.");
 
-        InteractionHost target = ResolveBestTarget(m_CurrentTarget);
-        LogicEntityId targetId = default;
-        if (target != null)
-        {
-            if (!TryResolveBuilding(target, out BuildingEntity targetBuilding))
-                throw new InvalidOperationException("Resolved interaction target is no longer a valid building.");
-            targetId = targetBuilding.LogicEntityId;
-        }
+        LogicEntityId targetId = ResolveBestTarget(m_CurrentTargetId);
         LogicInteractionTargetStateService.SetTarget(m_Actor.LogicEntityId, targetId);
-        if (target == m_CurrentTarget)
-            return;
+        if (targetId != m_CurrentTargetId)
+        {
+            m_CurrentTargetId = targetId;
+            m_LastSwitchFrame = LogicFrameRuntime.CurrentFrame;
+        }
 
-        m_CurrentTarget = target;
-        m_LastSwitchFrame = LogicFrameRuntime.CurrentFrame;
+        InteractionHost presentationTarget = ResolvePresentationTarget(targetId);
+        if (presentationTarget == m_CurrentPresentationTarget)
+            return;
+        m_CurrentPresentationTarget = presentationTarget;
         if (GF.Event == null)
             throw new InvalidOperationException("InteractionManager cannot publish focus without GF.Event.");
 
-        GF.Event.Fire(this, InteractionFocusChangedEventArgs.Create(m_CurrentTarget));
+        GF.Event.Fire(this, InteractionFocusChangedEventArgs.Create(m_CurrentPresentationTarget));
     }
 
-    private InteractionHost ResolveBestTarget(InteractionHost current)
+    private LogicEntityId ResolveBestTarget(LogicEntityId currentId)
     {
         LogicEntityFrameState actorState = LogicEntityFrameSnapshotService.GetRequiredCurrent(m_Actor);
-        BuildingEntity bestBuilding = null;
-        InteractionHost bestHost = null;
+        IBuildingLogicContext bestBuilding = null;
         Fix64 bestScore = -(Fix64)1;
 
         for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
         {
-            if (!(EntityRegistry.AllEntities[i] is BuildingEntity building) || !building.Alive)
+            if (!EntityRegistry.AllEntities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
+                || !building.Alive)
                 continue;
-            if (!building.HasUpgrade)
-                continue;
-
-            InteractionHost host = building.GetComponent<InteractionHost>()
-                                   ?? throw new InvalidOperationException(
-                                       $"Interactable building {building.LogicEntityId.Value} has no InteractionHost.");
-            if (!host.IsInteractable())
+            if (!LogicInteractionOptionService.HasVisibleOptions(building))
                 continue;
             if (!TryScore(actorState, building, out Fix64 score))
                 continue;
@@ -136,31 +130,31 @@ public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameS
                     bestBuilding != null ? bestBuilding.LogicEntityId : default))
             {
                 bestBuilding = building;
-                bestHost = host;
                 bestScore = score;
             }
         }
 
-        if (bestHost == null || current == null || current == bestHost)
-            return bestHost;
-        if (!TryResolveBuilding(current, out BuildingEntity currentBuilding)
+        LogicEntityId bestId = bestBuilding != null ? bestBuilding.LogicEntityId : default;
+        if (!bestId.IsValid || !currentId.IsValid || currentId == bestId)
+            return bestId;
+        if (!TryResolveBuilding(currentId, out IBuildingLogicContext currentBuilding)
             || !TryScore(actorState, currentBuilding, out Fix64 currentScore))
         {
-            return bestHost;
+            return bestId;
         }
 
         ulong heldFrames = LogicFrameRuntime.CurrentFrame - m_LastSwitchFrame;
         if (heldFrames < (ulong)m_MinHoldFrames)
-            return current;
-        return bestScore > currentScore + m_SwitchThreshold ? bestHost : current;
+            return currentId;
+        return bestScore > currentScore + m_SwitchThreshold ? bestId : currentId;
     }
 
     private bool TryScore(
         LogicEntityFrameState actorState,
-        BuildingEntity building,
+        IBuildingLogicContext building,
         out Fix64 score)
     {
-        LogicEntityFrameState targetState = LogicEntityFrameSnapshotService.GetRequiredCurrent(building);
+        LogicEntityFrameState targetState = LogicEntityFrameSnapshotService.Current.GetRequired(building.LogicEntityId);
         return TryComputeScore(
             actorState,
             targetState,
@@ -245,11 +239,25 @@ public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameS
     {
         if (m_IsRegistered || !isActiveAndEnabled)
             return;
-        if (!LogicFrameRuntime.IsActive || m_Actor == null || !m_Actor.LogicEntityId.IsValid)
+        if (!LogicFrameRuntime.IsActive
+            || !LogicInteractionHoldService.IsActive
+            || m_Actor == null
+            || !m_Actor.LogicEntityId.IsValid)
             return;
 
-        LogicFrameRuntime.Register(this);
-        m_IsRegistered = true;
+        LogicInteractionHoldService.RegisterConsumer(CanExecuteLogicInteraction, ExecuteLogicInteraction);
+        m_IsHoldConsumerRegistered = true;
+        try
+        {
+            LogicFrameRuntime.Register(this);
+            m_IsRegistered = true;
+        }
+        catch
+        {
+            LogicInteractionHoldService.UnregisterConsumer(CanExecuteLogicInteraction, ExecuteLogicInteraction);
+            m_IsHoldConsumerRegistered = false;
+            throw;
+        }
     }
 
     private void Unregister()
@@ -261,14 +269,22 @@ public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameS
 
         LogicFrameRuntime.Unregister(this);
         m_IsRegistered = false;
+        if (m_IsHoldConsumerRegistered)
+        {
+            if (!LogicInteractionHoldService.IsActive)
+                throw new InvalidOperationException("InteractionManager lost its interaction hold service before unregistering.");
+            LogicInteractionHoldService.UnregisterConsumer(CanExecuteLogicInteraction, ExecuteLogicInteraction);
+            m_IsHoldConsumerRegistered = false;
+        }
     }
 
     private void ClearFocus()
     {
-        if (m_CurrentTarget == null)
+        if (!m_CurrentTargetId.IsValid && m_CurrentPresentationTarget == null)
             return;
 
-        m_CurrentTarget = null;
+        m_CurrentTargetId = default;
+        m_CurrentPresentationTarget = null;
         if (LogicInteractionTargetStateService.IsActive
             && m_Actor != null
             && m_Actor.LogicEntityId.IsValid)
@@ -279,11 +295,44 @@ public class InteractionManager : MonoBehaviour, ILogicFrameUpdate, ILogicFrameS
             GF.Event.Fire(this, InteractionFocusChangedEventArgs.Create(null));
     }
 
-    private static bool TryResolveBuilding(InteractionHost host, out BuildingEntity building)
+    private bool CanExecuteLogicInteraction(InputKey key)
     {
-        building = host != null ? host.Owner as BuildingEntity : null;
-        if (building == null && host != null)
-            building = host.GetComponent<BuildingEntity>();
-        return building != null && building.Alive && host.IsInteractable();
+        return TryResolveBuilding(m_CurrentTargetId, out IBuildingLogicContext building)
+               && LogicInteractionOptionService.TryGetVisibleOption(building, key, out LogicInteractionOptionDescriptor option)
+               && LogicInteractionOptionService.IsExecutable(building, option);
+    }
+
+    private bool ExecuteLogicInteraction(InputKey key)
+    {
+        return TryResolveBuilding(m_CurrentTargetId, out IBuildingLogicContext building)
+               && LogicInteractionOptionService.TryGetVisibleOption(building, key, out LogicInteractionOptionDescriptor option)
+               && LogicInteractionOptionService.Execute(building, option);
+    }
+
+    private static bool TryResolveBuilding(LogicEntityId entityId, out IBuildingLogicContext building)
+    {
+        building = null;
+        if (!entityId.IsValid || !EntityRegistry.TryGet(entityId, out IEntityContext context))
+            return false;
+        if (!context.TryGetLogicBuilding(out building))
+            return false;
+        return building != null
+               && building.Alive
+               && LogicInteractionOptionService.HasVisibleOptions(building);
+    }
+
+    private static InteractionHost ResolvePresentationTarget(LogicEntityId targetId)
+    {
+        if (!targetId.IsValid || !LogicEntityLifecycleService.TryGetBoundView(targetId, out MAEntity view))
+            return null;
+        BuildingEntity building = view as BuildingEntity
+                                  ?? throw new InvalidOperationException($"Interaction target view {targetId.Value} is not a BuildingEntity.");
+        InteractionHost host = building.GetComponent<InteractionHost>();
+        if (host == null || !host.IsInteractable())
+        {
+            throw new InvalidOperationException(
+                $"Bound interaction target view {targetId.Value} has no active InteractionHost.");
+        }
+        return host;
     }
 }

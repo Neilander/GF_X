@@ -73,16 +73,6 @@ public class InputModel : DataModelBase
             LogicInputButton.SkillConfirm);
     }
 
-    public void RequestSelectScreenPosition(Vector2 screenPosition)
-    {
-        if (!LogicTimeline.IsStarted || (LogicTimeControlService.IsActive && LogicTimeControlService.IsPaused))
-            return;
-
-        LogicTimeline.EnqueueSelectScreenPosition(
-            Time.realtimeSinceStartupAsDouble,
-            new FixVector2((Fix64)screenPosition.x, (Fix64)screenPosition.y));
-    }
-
     public void ClearSkillRequests()
     {
         Skill1Pressed = false;

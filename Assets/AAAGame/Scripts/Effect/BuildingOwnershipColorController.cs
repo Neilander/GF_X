@@ -139,15 +139,7 @@ namespace AAAGame.Effect
             if (building == null)
                 return false;
 
-            // 优先使用据点实时归属，避免初始化阶段 OwnerFactionID 尚未同步导致误判。
-            if (LevelEntity.ActiveLevelEntity != null)
-            {
-                Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(building.transform.position);
-                if (stronghold != null)
-                    return stronghold.OwnerFactionId != EntitySideHelper.PlayerFactionId;
-            }
-
-            return building.OwnerFactionID != EntitySideHelper.PlayerFactionId;
+            return ((IBuildingLogicContext)building).OwnerFactionId != EntitySideHelper.PlayerFactionId;
         }
 
         private void ApplyRendererOwnershipColor(Renderer renderer, bool isEnemy)

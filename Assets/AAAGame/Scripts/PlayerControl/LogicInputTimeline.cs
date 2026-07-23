@@ -31,6 +31,7 @@ public enum RawInputEventKind
     ResetGameplayState = 5,
     ButtonHeldSet = 6,
     ButtonHeldCleared = 7,
+    SelectWorldPositionChanged = 8,
 }
 
 public readonly struct RawInputEvent
@@ -67,6 +68,8 @@ public sealed class LogicInputFrame
         0,
         FixVector2.Zero,
         FixVector2.Zero,
+        false,
+        FixVector2.Zero,
         0,
         0,
         0,
@@ -81,6 +84,8 @@ public sealed class LogicInputFrame
         uint playerId,
         FixVector2 worldMove,
         FixVector2 selectScreenPosition,
+        bool hasSelectWorldPosition,
+        FixVector2 selectWorldPosition,
         ulong heldBits,
         ulong pressedBits,
         ulong releasedBits,
@@ -94,6 +99,8 @@ public sealed class LogicInputFrame
         PlayerId = playerId;
         WorldMove = worldMove;
         SelectScreenPosition = selectScreenPosition;
+        HasSelectWorldPosition = hasSelectWorldPosition;
+        SelectWorldPosition = selectWorldPosition;
         HeldBits = heldBits;
         PressedBits = pressedBits;
         ReleasedBits = releasedBits;
@@ -110,6 +117,8 @@ public sealed class LogicInputFrame
     public uint PlayerId { get; }
     public FixVector2 WorldMove { get; }
     public FixVector2 SelectScreenPosition { get; }
+    public bool HasSelectWorldPosition { get; }
+    public FixVector2 SelectWorldPosition { get; }
     public ulong HeldBits { get; }
     public ulong PressedBits { get; }
     public ulong ReleasedBits { get; }
@@ -153,6 +162,8 @@ public sealed class LogicInputTimeline
     private double m_LastCutoff;
     private FixVector2 m_WorldMove;
     private FixVector2 m_SelectScreenPosition;
+    private bool m_HasSelectWorldPosition;
+    private FixVector2 m_SelectWorldPosition;
     private ulong m_HeldBits;
     private bool m_IsStarted;
 
@@ -171,7 +182,9 @@ public sealed class LogicInputTimeline
         double startRealtime,
         FixVector2 initialWorldMove,
         ulong initialHeldBits,
-        FixVector2 initialSelectScreenPosition)
+        FixVector2 initialSelectScreenPosition,
+        bool hasInitialSelectWorldPosition,
+        FixVector2 initialSelectWorldPosition)
     {
         ValidateTimestamp(startRealtime, nameof(startRealtime));
         ValidateHeldBits(initialHeldBits);
@@ -183,6 +196,8 @@ public sealed class LogicInputTimeline
         m_LastCutoff = startRealtime;
         m_WorldMove = initialWorldMove;
         m_SelectScreenPosition = initialSelectScreenPosition;
+        m_HasSelectWorldPosition = hasInitialSelectWorldPosition;
+        m_SelectWorldPosition = initialSelectWorldPosition;
         m_HeldBits = initialHeldBits;
         LateEventCount = 0;
         CurrentFrame = LogicInputFrame.Empty;
@@ -198,6 +213,8 @@ public sealed class LogicInputTimeline
         m_LastCutoff = 0d;
         m_WorldMove = FixVector2.Zero;
         m_SelectScreenPosition = FixVector2.Zero;
+        m_HasSelectWorldPosition = false;
+        m_SelectWorldPosition = FixVector2.Zero;
         m_HeldBits = 0;
         LateEventCount = 0;
         CurrentFrame = LogicInputFrame.Empty;
@@ -240,6 +257,11 @@ public sealed class LogicInputTimeline
     public void EnqueueSelectScreenPosition(double timestamp, FixVector2 screenPosition)
     {
         Enqueue(timestamp, RawInputEventKind.SelectScreenPositionChanged, default, screenPosition);
+    }
+
+    public void EnqueueSelectWorldPosition(double timestamp, FixVector2 worldPosition)
+    {
+        Enqueue(timestamp, RawInputEventKind.SelectWorldPositionChanged, default, worldPosition);
     }
 
     public void EnqueueResetGameplayState(double timestamp)
@@ -290,6 +312,10 @@ public sealed class LogicInputTimeline
                 case RawInputEventKind.SelectScreenPositionChanged:
                     m_SelectScreenPosition = inputEvent.Vector;
                     break;
+                case RawInputEventKind.SelectWorldPositionChanged:
+                    m_HasSelectWorldPosition = true;
+                    m_SelectWorldPosition = inputEvent.Vector;
+                    break;
                 case RawInputEventKind.ResetGameplayState:
                     releasedBits |= m_HeldBits;
                     m_HeldBits = 0;
@@ -318,6 +344,8 @@ public sealed class LogicInputTimeline
             m_PlayerId,
             m_WorldMove,
             m_SelectScreenPosition,
+            m_HasSelectWorldPosition,
+            m_SelectWorldPosition,
             m_HeldBits,
             pressedBits,
             releasedBits,
@@ -329,6 +357,8 @@ public sealed class LogicInputTimeline
             m_PlayerId,
             m_WorldMove,
             m_SelectScreenPosition,
+            m_HasSelectWorldPosition,
+            m_SelectWorldPosition,
             m_HeldBits,
             pressedBits,
             releasedBits,
@@ -432,6 +462,8 @@ public sealed class LogicInputTimeline
         uint playerId,
         FixVector2 worldMove,
         FixVector2 selectScreenPosition,
+        bool hasSelectWorldPosition,
+        FixVector2 selectWorldPosition,
         ulong heldBits,
         ulong pressedBits,
         ulong releasedBits,
@@ -448,6 +480,9 @@ public sealed class LogicInputTimeline
         AddHash(ref hash, unchecked((ulong)worldMove.y.RawValue), prime);
         AddHash(ref hash, unchecked((ulong)selectScreenPosition.x.RawValue), prime);
         AddHash(ref hash, unchecked((ulong)selectScreenPosition.y.RawValue), prime);
+        AddHash(ref hash, hasSelectWorldPosition ? 1UL : 0UL, prime);
+        AddHash(ref hash, unchecked((ulong)selectWorldPosition.x.RawValue), prime);
+        AddHash(ref hash, unchecked((ulong)selectWorldPosition.y.RawValue), prime);
         AddHash(ref hash, heldBits, prime);
         AddHash(ref hash, pressedBits, prime);
         AddHash(ref hash, releasedBits, prime);

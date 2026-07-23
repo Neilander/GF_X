@@ -20,10 +20,18 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
     }
     public IEntityContext FollowTarget { get; private set; }
 
-    public float AggroRange { get; set; } = 6f;
-    public float ForgetRange { get; set; } = 8f;
-    public float FollowSearchRange { get; set; } = 30f;
-    public float AlertRadius { get; set; } = 5f;
+    private Fix64 m_AggroRange = (Fix64)6;
+    private Fix64 m_ForgetRange = (Fix64)8;
+    private Fix64 m_FollowSearchRange = (Fix64)30;
+    private Fix64 m_AlertRadius = (Fix64)5;
+    public Fix64 AggroRangeFixed { get => m_AggroRange; set => m_AggroRange = LogicTargetingRange.Require(value, nameof(AggroRangeFixed)); }
+    public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
+    public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
+    public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
+    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
+    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
+    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
+    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     /// <summary>
     /// 是否启用"视线外仇恨"。建筑等不应被拉走，可关掉。
@@ -101,8 +109,8 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
     private void BroadcastEnemyToAllies(IEntityContext enemy)
     {
-        if (enemy == null || AlertRadius <= 0f) return;
-        float r2 = AlertRadius * AlertRadius;
+        if (enemy == null || m_AlertRadius <= Fix64.Zero) return;
+        Fix64 radiusSquared = m_AlertRadius * m_AlertRadius;
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
@@ -110,9 +118,8 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             if (ally == null || ReferenceEquals(ally, _ctx)) continue;
             if (ally.Side != _ctx.Side) continue;
             if (!ally.Alive) continue;
-            Vector3 d = ally.LogicFramePosition() - _ctx.LogicFramePosition();
-            d.y = 0f;
-            if (d.sqrMagnitude > r2) continue;
+            FixVector2 offset = ally.LogicFramePositionFixed() - _ctx.LogicFramePositionFixed();
+            if (FixVector2.SqrMagnitude(offset) > radiusSquared) continue;
             ally.TargetComp?.NotifyAllyFoundEnemy(enemy);
         }
     }
@@ -149,7 +156,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
             currentTargetDist = dist;
             currentTargetTaunt = GetTauntLevel(CurrentTarget);
-            Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : (Fix64)ForgetRange;
+            Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : m_ForgetRange;
             // 视线外仇恨特例：CurrentTarget 是 fallback 来的 attacker → 跳过距离过滤，让单位一路追上去
             bool isAggroFallback = !useAttackRangeOnlyForThisUnit && (CurrentTarget == _lastAttacker);
             bool dropByDistance = !isAggroFallback && dist > targetRetentionRange;
@@ -169,7 +176,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         if (FollowTarget != null)
         {
             Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
-            if (dist > (Fix64)FollowSearchRange || !FollowTarget.Alive)
+            if (dist > m_FollowSearchRange || !FollowTarget.Alive)
             {
                 GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | dist={dist:F1} followRange={FollowSearchRange} alive={FollowTarget.Alive}");
                 FollowTarget = null;
@@ -186,7 +193,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             IEntityContext nearest = null;
             Fix64 scanRange = useAttackRangeOnlyForThisUnit
                 ? effectiveAttackRange
-                : Fix64.Max((Fix64)AggroRange, effectiveAttackRange);
+                : Fix64.Max(m_AggroRange, effectiveAttackRange);
             Fix64 nearestDist = scanRange;
             int nearestTaunt = -1;
 
@@ -303,7 +310,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                 if (player != null && player.Alive && player.Side == _ctx.Side)
                 {
                     Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(player);
-                    if (dist <= (Fix64)FollowSearchRange)
+                    if (dist <= m_FollowSearchRange)
                     {
                         GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定跟随目标 {player} | dist={dist:F1} followRange={FollowSearchRange}");
                         FollowTarget = player;
@@ -332,7 +339,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
     private void UpdateDefendEnemyTargeting(Fix64 deltaTime)
     {
         Fix64 effectiveAttackRange = GetEffectiveAttackRange();
-        Fix64 scanRange = Fix64.Max((Fix64)AggroRange, effectiveAttackRange);
+        Fix64 scanRange = Fix64.Max(m_AggroRange, effectiveAttackRange);
 
         _scanTimer += deltaTime;
         if (_scanTimer < SCAN_INTERVAL)
@@ -397,7 +404,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             return false;
 
         Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(target);
-        return distance <= Fix64.Max((Fix64)ForgetRange, scanRange);
+        return distance <= Fix64.Max(m_ForgetRange, scanRange);
     }
 
     private bool IsDefendFallbackTargetValid()
@@ -416,7 +423,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         if (target == null)
             return -1;
 
-        if (target is IBuildingLogicContext building)
+        if (target.TryGetLogicBuilding(out IBuildingLogicContext building))
         {
             int taunt = GetTauntLevel(target);
             if (taunt > 0)
@@ -448,7 +455,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
     private static bool ShouldUseAttackRangeOnly(IEntityContext entity)
     {
-        return entity is IBuildingLogicContext || IsHeroUnit(entity);
+        return entity.IsLogicBuilding() || IsHeroUnit(entity);
     }
 
     private static bool IsHeroUnit(IEntityContext entity)
@@ -481,10 +488,10 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         hasher.Add(GetLogicId(_lastAttacker));
         hasher.Add(GetLogicId(_defendFallbackTarget));
         hasher.Add(EnableAggroFallback);
-        hasher.Add(((Fix64)AggroRange).RawValue);
-        hasher.Add(((Fix64)ForgetRange).RawValue);
-        hasher.Add(((Fix64)FollowSearchRange).RawValue);
-        hasher.Add(((Fix64)AlertRadius).RawValue);
+        hasher.Add(m_AggroRange.RawValue);
+        hasher.Add(m_ForgetRange.RawValue);
+        hasher.Add(m_FollowSearchRange.RawValue);
+        hasher.Add(m_AlertRadius.RawValue);
     }
 
     private static int GetLogicId(IEntityContext entity)
@@ -511,10 +518,18 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
 
     public IEntityContext FollowTarget { get; private set; }
     public IReadOnlyList<IEntityContext> CurrentTargets => _currentTargets;
-    public float AggroRange { get; set; } = 6f;
-    public float ForgetRange { get; set; } = 8f;
-    public float FollowSearchRange { get; set; } = 30f;
-    public float AlertRadius { get; set; } = 5f;
+    private Fix64 m_AggroRange = (Fix64)6;
+    private Fix64 m_ForgetRange = (Fix64)8;
+    private Fix64 m_FollowSearchRange = (Fix64)30;
+    private Fix64 m_AlertRadius = (Fix64)5;
+    public Fix64 AggroRangeFixed { get => m_AggroRange; set => m_AggroRange = LogicTargetingRange.Require(value, nameof(AggroRangeFixed)); }
+    public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
+    public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
+    public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
+    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
+    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
+    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
+    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     public void Init(IEntityContext ctx)
     {
@@ -571,7 +586,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
             return;
 
         Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
-        if (dist > (Fix64)FollowSearchRange || !FollowTarget.Alive)
+        if (dist > m_FollowSearchRange || !FollowTarget.Alive)
             FollowTarget = null;
     }
 
@@ -582,7 +597,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
             throw new System.InvalidOperationException("HealTargetingComp.FindHealTargetByRangePriority failed: EntityRegistry.AllEntities is null.");
 
         Fix64 attackRange = GetEffectiveAttackRange();
-        Fix64 scanRange = Fix64.Max((Fix64)AggroRange, attackRange);
+        Fix64 scanRange = Fix64.Max(m_AggroRange, attackRange);
         int targetCount = ResolveTargetCount();
         var inAttackRange = new List<HealCandidate>(targetCount);
         var outsideAttackRange = new List<HealCandidate>(targetCount);
@@ -657,7 +672,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
             return;
 
         Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(player);
-        if (dist <= (Fix64)FollowSearchRange)
+        if (dist <= m_FollowSearchRange)
             FollowTarget = player;
     }
 
@@ -696,9 +711,9 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
             throw new System.ArgumentNullException(nameof(hasher));
         hasher.Add(_scanTimer.RawValue);
         hasher.Add(FollowTarget != null && FollowTarget.LogicEntityId.IsValid ? FollowTarget.LogicEntityId.Value : 0);
-        hasher.Add(((Fix64)AggroRange).RawValue);
-        hasher.Add(((Fix64)ForgetRange).RawValue);
-        hasher.Add(((Fix64)FollowSearchRange).RawValue);
+        hasher.Add(m_AggroRange.RawValue);
+        hasher.Add(m_ForgetRange.RawValue);
+        hasher.Add(m_FollowSearchRange.RawValue);
         hasher.Add(_currentTargets.Count);
         for (int i = 0; i < _currentTargets.Count; i++)
         {

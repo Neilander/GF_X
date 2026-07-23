@@ -105,6 +105,34 @@ public sealed class DeterministicStaticCollisionTests
     }
 
     [Test]
+    public void StartInsideSolidBlockedCluster_RecoversToNearestClearAxisDeterministically()
+    {
+        LogicStaticCollisionWorld world = CreateWorld(
+            7,
+            7,
+            (1, 1), (2, 1), (3, 1),
+            (1, 2), (2, 2), (3, 2),
+            (1, 3), (2, 3), (3, 3));
+
+        LogicStaticCollisionSolveResult first = Solve(world, 2.5f, 2.5f, 0f, 0f, 0.25f);
+        LogicStaticCollisionSolveResult second = Solve(world, 2.5f, 2.5f, 0f, 0f, 0.25f);
+
+        Assert.IsFalse(DeterministicStaticCollisionSolver.IsCircleClear(
+            world,
+            new FixVector2((Fix64)2.5f, (Fix64)2.5f),
+            (Fix64)0.25f));
+        Assert.IsTrue(first.Success);
+        Assert.IsTrue(first.StartedOverlapping);
+        AssertVector(first.ResolvedDisplacement, -1.75f, 0f, 0.002f);
+        Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(
+            world,
+            first.Start + first.ResolvedDisplacement,
+            (Fix64)0.25f));
+        Assert.AreEqual(first.ResolvedDisplacement.x.RawValue, second.ResolvedDisplacement.x.RawValue);
+        Assert.AreEqual(first.ResolvedDisplacement.y.RawValue, second.ResolvedDisplacement.y.RawValue);
+    }
+
+    [Test]
     public void RepeatedSolve_ProducesIdenticalRawValues()
     {
         LogicStaticCollisionWorld world = CreateWorld(6, 6, (3, 1), (3, 2), (3, 3));

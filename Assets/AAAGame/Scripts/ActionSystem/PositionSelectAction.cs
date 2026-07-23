@@ -10,20 +10,25 @@ public class PositionSelectAction : BasicAction
     //[SerializeField] protected Vector3 selectScale;
 
 
-    protected override ActionInfo CreateInfo(GeneralCreature body)
+    protected override ActionInfo CreateInfo(IEntityContext body)
     {
-        //GF.Log("调用了新的创建");
+        if (GF.DataModel == null)
+            throw new System.InvalidOperationException("PositionSelectAction requires GF.DataModel.");
+        InputModel inputModel = GF.DataModel.GetDataModel<InputModel>();
+        if (inputModel == null)
+            throw new System.InvalidOperationException("PositionSelectAction requires InputModel.");
+
         return new PositionSelectActionInfo
         {
             selfBody = body,
-            elapsed = 0f,
+            elapsed = Fix64.Zero,
             isRunning = false,
             isInterrupted = false,
             isFinished = false,
             getPosAlready = false,
             showSelectorAlready = false,
-            inputs = GF.DataModel.GetDataModel<InputModel>()
-        };   
+            inputs = inputModel
+        };
     }
 
     protected override void OnStart(ActionInfo info)
@@ -33,55 +38,34 @@ public class PositionSelectAction : BasicAction
         if (posInfo.curSelector != null)
         {
             GF.Entity.HideEntity(posInfo.curSelector.GetEntityID());
+            posInfo.curSelector = null;
         }
-        
-        
+
+        posInfo.lastSelectPos = info.selfBody.LogicFramePositionFixed();
+        posInfo.confirmedSelectPos = posInfo.lastSelectPos;
+        posInfo.getPosAlready = true;
     }
 
-    protected override void OnUpdate(ActionInfo info, float deltaTime)
+    protected override void OnUpdate(ActionInfo info, Fix64 deltaTime)
     {
         PositionSelectActionInfo posInfo = GetInfo(info);
-        Vector2 selectScreenPos = posInfo.inputs.SelectScreenPosition;
-        Vector3 selectWorldPos = GetCurrentPos(posInfo, selectScreenPos);
-    
-        //GF.Log("当前选中位置：x:"+selectWorldPos.x+",y:"+selectWorldPos.y+",z:"+selectWorldPos.z);
-        if (posInfo.curSelector == null)
-        {
-            if (posInfo.showSelectorAlready)
-                return;
-           
+        LogicInputFrame inputFrame = posInfo.inputs.CurrentLogicFrame;
+        FixVector2 center = info.selfBody.LogicFramePositionFixed();
+        FixVector2 requested = inputFrame.HasSelectWorldPosition
+            ? inputFrame.SelectWorldPosition
+            : center;
+        posInfo.lastSelectPos = ClampToRadius(center, requested, posInfo.radius);
 
-            posInfo.showSelectorAlready = true;
-            //生成新的selector
-            var selectorParams = EntityParams.Create();
-            selectorParams.OnShowCallback = logic =>
-            {
-                CylinderTargetSelector selector = (CylinderTargetSelector)logic;
-                selector.Activate(new List<ISelectable>(), info.selfBody.Side);
-                selector.ChangeRange(posInfo.selectScale);
-                selector.SetPosition(selectWorldPos);
-                posInfo.curSelector = selector;
-            };
-        
-            GF.Entity.ShowEntity<CylinderTargetSelector>(posSelectPrefabName, Const.EntityGroup.Default, selectorParams);
-            if (info.selfBody is not ICastRangePresenter rangePresenter)
-                throw new System.InvalidOperationException($"PositionSelectAction requires ICastRangePresenter. body={info.selfBody?.GetType().Name}");
+        UpdatePresentation(info, posInfo);
 
-            rangePresenter.ShowCastRange(posInfo.radius);
-        }
-        else
+        if (inputFrame.WasPressed(LogicInputButton.SkillConfirm))
         {
-            posInfo.curSelector.SetPosition(selectWorldPos);
-        }
-
-        if (info.inputs.SkillConfirmPressed)
-        {
-            posInfo.curSelector.GetSelected(out posInfo.selectedTargets);
+            posInfo.selectedTargets = CollectSelectedTargets(
+                posInfo.lastSelectPos,
+                posInfo.selectionRadius,
+                info.selfBody.Side);
             posInfo.confirmedSelectPos = posInfo.lastSelectPos;
-            GF.Entity.HideEntity(posInfo.curSelector.GetEntityID());
-            posInfo.curSelector = null;
-            if (info.selfBody is ICastRangePresenter rangePresenter)
-                rangePresenter.HideCastRange();
+            HidePresentation(info.selfBody, posInfo);
             FinishAction(info);
         }
 
@@ -92,108 +76,103 @@ public class PositionSelectAction : BasicAction
     protected override void OnInterrupt(ActionInfo info)
     {
         PositionSelectActionInfo posInfo = GetInfo(info);
+        HidePresentation(info.selfBody, posInfo);
+    }
+
+    private PositionSelectActionInfo GetInfo(ActionInfo info)
+    {
+        return info as PositionSelectActionInfo
+               ?? throw new System.InvalidOperationException("PositionSelectAction requires PositionSelectActionInfo.");
+    }
+
+    public static FixVector2 ClampToRadius(FixVector2 center, FixVector2 requested, Fix64 radius)
+    {
+        if (radius < Fix64.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(radius), radius, "Selection radius must be non-negative.");
+        if (radius == Fix64.Zero)
+            return center;
+
+        FixVector2 offset = requested - center;
+        if (FixVector2.SqrMagnitude(offset) <= radius * radius)
+            return requested;
+        return center + offset.GetNormalized() * radius;
+    }
+
+    private void UpdatePresentation(ActionInfo info, PositionSelectActionInfo posInfo)
+    {
+        if (info.selfBody is not ICastRangePresenter rangePresenter)
+            return;
+
+        Vector3 position = ToPresentationPosition(info.selfBody, posInfo.lastSelectPos);
+        posInfo.curSelector?.SetPosition(position);
+        if (posInfo.showSelectorAlready)
+            return;
+
+        posInfo.showSelectorAlready = true;
+        var selectorParams = EntityParams.Create();
+        selectorParams.OnShowCallback = logic =>
+        {
+            CylinderTargetSelector selector = logic as CylinderTargetSelector
+                ?? throw new System.InvalidOperationException($"PositionSelectAction expected CylinderTargetSelector, actual={logic?.GetType().FullName ?? "null"}.");
+            if (!info.isRunning || info.isFinished || info.isInterrupted)
+            {
+                GF.Entity.HideEntity(selector.GetEntityID());
+                return;
+            }
+
+            selector.Activate(new List<ISelectable>(), info.selfBody.Side);
+            selector.ChangeRange(posInfo.selectScale);
+            selector.SetPosition(ToPresentationPosition(info.selfBody, posInfo.lastSelectPos));
+            posInfo.curSelector = selector;
+        };
+
+        GF.Entity.ShowEntity<CylinderTargetSelector>(posSelectPrefabName, Const.EntityGroup.Default, selectorParams);
+        rangePresenter.ShowCastRange((float)posInfo.radius);
+    }
+
+    private static List<ISelectable> CollectSelectedTargets(FixVector2 center, Fix64 radius, SideType side)
+    {
+        List<ITargetable> targets = LogicTargetSelectionQuery.CollectCurrentFrameCircle(
+            center,
+            radius,
+            side,
+            null);
+        var selected = new List<ISelectable>(targets.Count);
+        for (int i = 0; i < targets.Count; i++)
+            selected.Add(targets[i]);
+        return selected;
+    }
+
+    private static Vector3 ToPresentationPosition(IEntityContext body, FixVector2 position)
+    {
+        return new Vector3((float)position.x, body.Position.y, (float)position.y);
+    }
+
+    private static void HidePresentation(IEntityContext body, PositionSelectActionInfo posInfo)
+    {
         if (posInfo.curSelector != null)
         {
             GF.Entity.HideEntity(posInfo.curSelector.GetEntityID());
             posInfo.curSelector = null;
         }
 
-        if (info.selfBody is ICastRangePresenter rangePresenter)
+        if (body is ICastRangePresenter rangePresenter)
             rangePresenter.HideCastRange();
-    }
-
-    private PositionSelectActionInfo GetInfo(ActionInfo info)
-    {
-        PositionSelectActionInfo posInfo = info as PositionSelectActionInfo;
-        if(posInfo == null)
-            GF.LogError("正在使用非法的ActionInfo，应该使用PositionSelectActionInfo");
-        return posInfo;
-    }
-    
-    private Vector3 GetCurrentPos(
-        PositionSelectActionInfo posInfo,
-        Vector2 mouseScreenPos
-    )
-    {
-        if (!posInfo.getPosAlready || !IsWithinRadiusXZ(posInfo.lastSelectPos, posInfo.centerTrans, posInfo.radius))
-        {
-            posInfo.getPosAlready = true;
-            posInfo.lastSelectPos = posInfo.centerTrans.position;
-        }
-        
-        
-
-        Camera cam = Camera.main;
-        if (cam == null)
-            return posInfo.lastSelectPos;
-
-        Ray ray = cam.ScreenPointToRay(mouseScreenPos);
-
-        int groundMask = LayerMask.GetMask("Ground");
-
-        if (!Physics.Raycast(ray, out RaycastHit hit, cam.farClipPlane, groundMask))
-        {
-            // 没有碰到地面，直接用上一次的位置
-            return posInfo.lastSelectPos;
-        }
-
-        Vector3 hitPos = hit.point;
-
-        Vector3 centerPos = posInfo.centerTrans.position;
-
-        // 在半径内：直接用 hitPos
-        if (IsWithinRadiusXZ(hitPos, posInfo.centerTrans, posInfo.radius))
-        {
-            posInfo.lastSelectPos = hitPos;
-            return hitPos;
-        }
-
-        // —— 超出半径：沿方向 clamp 到圆周 ——
-        Vector2 dirXZ = new Vector2(
-            hitPos.x - centerPos.x,
-            hitPos.z - centerPos.z
-        );
-
-        Vector2 clampedDir = dirXZ.normalized * posInfo.radius;
-
-        Vector3 clampedPos = new Vector3(
-            centerPos.x + clampedDir.x,
-            hitPos.y, // 保留原来的高度；如果你想锁高度，用 centerPos.y
-            centerPos.z + clampedDir.y
-        );
-
-        posInfo.lastSelectPos = clampedPos;
-        return clampedPos;
-    }
-    
-    private static bool IsWithinRadiusXZ(
-        Vector3 worldPos,
-        Transform centerTrans,
-        float radius
-    )
-    {
-        Vector2 posXZ = new Vector2(worldPos.x, worldPos.z);
-        Vector2 centerXZ = new Vector2(
-            centerTrans.position.x,
-            centerTrans.position.z
-        );
-
-        return Vector2.Distance(posXZ, centerXZ) <= radius;
     }
 }
 
 public class PositionSelectActionInfo : ActionInfo
 {
     public ISelector<ISelectable> curSelector;
-    public Vector3 lastSelectPos;
+    public FixVector2 lastSelectPos;
     public bool getPosAlready;
     public bool showSelectorAlready;
     public List<ISelectable> selectedTargets;
-    public Vector3 confirmedSelectPos;
+    public FixVector2 confirmedSelectPos;
 
     //需要设置的数值
-    public Transform centerTrans;
-    public float radius;
+    public Fix64 radius;
+    public Fix64 selectionRadius;
     public Vector3 selectScale;
 
 }

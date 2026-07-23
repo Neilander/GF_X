@@ -1,4 +1,5 @@
 ﻿using System;
+using AAAGame.Card;
 using AAAGame.MiniMap;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using Cysharp.Threading.Tasks;
@@ -47,6 +48,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicInteractionHoldService.BeginTimeline();
         LogicInteractionTargetStateService.BeginTimeline();
         LogicInteractionCommandService.BeginTimeline();
+        LogicCardCommandService.BeginTimeline();
+        LogicCardPlacementAuthority.BeginTimeline();
+        LogicSkillSlotCommandService.BeginTimeline();
         LogicPhaseCommandService.BeginTimeline();
         LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
@@ -90,6 +94,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
         FlowFieldCrowdMovementSystem.ForceEndRuntimeNavigationTransition();
+        if (StageCheckpointRuntimeCoordinator.IsActive)
+            StageCheckpointRuntimeCoordinator.EndSession();
         OnRuntimeShutdown();
         m_RuntimeInitPipeline?.Shutdown();
         m_RuntimeInitPipeline = null;
@@ -107,6 +113,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicObstacleCommandService.EndTimeline();
         LogicEntityLifecycleService.EndTimeline();
         LogicTechEffectCommandService.EndTimeline();
+        LogicSkillSlotCommandService.EndTimeline();
+        LogicCardPlacementAuthority.EndTimeline();
+        LogicCardCommandService.EndTimeline();
         LogicInteractionCommandService.EndTimeline();
         LogicInteractionTargetStateService.EndTimeline();
         MAEntityLogicFrameSystem.EndTimeline();
@@ -228,6 +237,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             }
 
             PhaseManager.CancelRuntimePhaseFlows();
+            if (StageCheckpointRuntimeCoordinator.IsActive)
+                StageCheckpointRuntimeCoordinator.EndSession();
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;
             m_LogicFrameClockStarted = false;
@@ -245,6 +256,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicInteractionHoldService.ResetForWorldTransition();
             LogicInteractionTargetStateService.ResetForWorldTransition();
             LogicInteractionCommandService.ResetForWorldTransition();
+            LogicCardCommandService.ResetForWorldTransition();
+            LogicCardPlacementAuthority.ResetForWorldTransition();
+            LogicSkillSlotCommandService.ResetForWorldTransition();
             LogicPhaseCommandService.ResetForWorldTransition();
             LogicTechEffectCommandService.ResetForWorldTransition();
             LogicObstacleCommandService.ResetForWorldTransition();
@@ -339,6 +353,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicTimeControlService.ResetFrameTimelinePreservingPauses();
                 LogicInteractionHoldService.ResetFrameTimeline();
                 LogicInteractionCommandService.ResetFrameTimeline();
+                LogicCardCommandService.ResetFrameTimeline();
+                LogicCardPlacementAuthority.ResetFrameTimeline();
+                LogicSkillSlotCommandService.ResetFrameTimeline();
                 LogicPhaseCommandService.ResetFrameTimeline();
                 LogicTechEffectCommandService.ResetFrameTimeline();
                 LogicEntityLifecycleService.ResetFrameTimelinePreservingEntities();
@@ -378,9 +395,23 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicTimeControlService.BeginFrame(frame);
                 LogicInputFrame inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
                 LogicInteractionHoldService.ProcessFrame(inputFrame);
+                if (LogicCardPlacementAuthority.IsWorldBound)
+                {
+                    LogicCardPlacementAuthority.ApplyFrame(frame);
+                }
+                else if (LogicCardRuntimeState.IsBound)
+                {
+                    throw new InvalidOperationException("Card runtime is bound without a logic card-placement world.");
+                }
+                LogicCardCommandService.ApplyFrame(frame);
+                LogicSkillSlotCommandService.ApplyFrame(frame);
                 LogicPhaseCommandService.ApplyFrame(frame);
+                CardSetup cardSetup = GameEntry.GetComponent<CardSetup>()
+                                      ?? throw new InvalidOperationException("RuntimeProcedureBase requires CardSetup for logic-frame card updates.");
+                cardSetup.ApplyLogicFrame(frame);
                 LogicInteractionCommandService.ApplyFrame(frame);
                 LogicTechEffectCommandService.ApplyFrame(frame);
+                DefendPhaseRuntime.ApplyScheduledSpawnRequests(frame);
                 LogicEntityLifecycleService.ApplyFrame(frame);
                 LogicObstacleCommandService.ApplyFrame(frame);
                 LogicFrameRuntime.Tick(frame);

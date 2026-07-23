@@ -13,17 +13,15 @@ public class BuildingCaptureInvincibleBuff : BuffCallback
             ? "building_capture_invincible::source"
             : $"{buffData.id}::source";
 
-        if (hostEntity is BuildingEntity building)
-        {
-            building.RegisterInvincibleSource(_invincibleSourceId);
-        }
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new System.InvalidOperationException("BuildingCaptureInvincibleBuff requires a building logic context.");
+        building.RegisterInvincibleSource(_invincibleSourceId);
     }
 
     public override void OnRemove()
     {
-        if (hostEntity is BuildingEntity building)
-        {
-            building.UnregisterInvincibleSource(_invincibleSourceId);
-        }
+        if (hostEntity is not IBuildingLogicContext building)
+            throw new System.InvalidOperationException("BuildingCaptureInvincibleBuff requires a building logic context.");
+        building.UnregisterInvincibleSource(_invincibleSourceId);
     }
 }

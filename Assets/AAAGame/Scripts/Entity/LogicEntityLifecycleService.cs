@@ -5,9 +5,7 @@ using System.Collections.ObjectModel;
 public enum LogicEntityLifecycleCommandKind
 {
     SpawnRequested = 0,
-    ViewBound = 1,
-    ViewUnbound = 2,
-    DespawnRequested = 3,
+    DespawnRequested = 1,
 }
 
 public readonly struct LogicEntityLifecycleCommand
@@ -16,21 +14,18 @@ public readonly struct LogicEntityLifecycleCommand
         ulong effectiveFrame,
         ulong sequence,
         LogicEntityLifecycleCommandKind kind,
-        LogicEntityId entityId,
-        int viewEntityId)
+        LogicEntityId entityId)
     {
         EffectiveFrame = effectiveFrame;
         Sequence = sequence;
         Kind = kind;
         EntityId = entityId;
-        ViewEntityId = viewEntityId;
     }
 
     public ulong EffectiveFrame { get; }
     public ulong Sequence { get; }
     public LogicEntityLifecycleCommandKind Kind { get; }
     public LogicEntityId EntityId { get; }
-    public int ViewEntityId { get; }
 }
 
 public static class LogicEntityLifecycleService
@@ -43,6 +38,7 @@ public static class LogicEntityLifecycleService
     private static readonly Dictionary<int, ulong> s_SpawnFramesByEntityId = new Dictionary<int, ulong>();
     private static readonly Dictionary<int, ulong> s_DespawnFramesByEntityId = new Dictionary<int, ulong>();
     private static readonly HashSet<int> s_ActivatedEntityIds = new HashSet<int>();
+    private static readonly HashSet<int> s_DespawnCommittedEntityIds = new HashSet<int>();
     private static readonly List<int> s_DueDespawnEntityIds = new List<int>();
     private static readonly List<int> s_DueSpawnEntityIds = new List<int>();
     private static ulong s_LastSequence;
@@ -51,6 +47,7 @@ public static class LogicEntityLifecycleService
     public static bool IsApplyingFrame { get; private set; }
     public static ulong LastSequence => s_LastSequence;
     public static int RequestedEntityCount => s_RequestedEntityIds.Count;
+    public static int AuthorityEntityCount => s_RequestedEntityIds.Count - s_DespawnCommittedEntityIds.Count;
     public static int BoundViewCount => s_BoundViewIdsByEntityId.Count;
     public static int ActiveEntityCount => s_ActivatedEntityIds.Count;
     public static IReadOnlyList<LogicEntityLifecycleCommand> Commands => s_ReadOnlyCommands;
@@ -66,6 +63,8 @@ public static class LogicEntityLifecycleService
         LogicEntityIdAllocator.BeginTimeline();
         LogicPersistentIdAllocator.BeginTimeline();
         LogicEntityStateStore.BeginTimeline();
+        LogicBuildingExtraPropsStore.ClearAll();
+        LogicProductionConditionState.ClearAll();
         IsActive = true;
         IsApplyingFrame = false;
         s_LastSequence = 0;
@@ -76,6 +75,7 @@ public static class LogicEntityLifecycleService
         s_SpawnFramesByEntityId.Clear();
         s_DespawnFramesByEntityId.Clear();
         s_ActivatedEntityIds.Clear();
+        s_DespawnCommittedEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
     }
@@ -95,10 +95,13 @@ public static class LogicEntityLifecycleService
         s_SpawnFramesByEntityId.Clear();
         s_DespawnFramesByEntityId.Clear();
         s_ActivatedEntityIds.Clear();
+        s_DespawnCommittedEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
         s_LastSequence = 0;
         LogicEntityStateStore.EndTimeline();
+        LogicBuildingExtraPropsStore.ClearAll();
+        LogicProductionConditionState.ClearAll();
         LogicEntityIdAllocator.EndTimeline();
         LogicPersistentIdAllocator.EndTimeline();
     }
@@ -110,15 +113,56 @@ public static class LogicEntityLifecycleService
 
     public static LogicEntityId RequestSpawn(LogicEntitySpawnDescriptor descriptor)
     {
+        return RequestSpawnCore(descriptor, null, false, false);
+    }
+
+    public static LogicEntityId RequestConfiguredSpawn(
+        LogicEntitySpawnDescriptor descriptor,
+        Action<LogicEntityState> configure)
+    {
+        if (configure == null)
+            throw new ArgumentNullException(nameof(configure));
+        return RequestSpawnCore(descriptor, configure, true, false);
+    }
+
+    public static LogicEntityId RequestConfiguredSpawnForCurrentInteractionFrame(
+        LogicEntitySpawnDescriptor descriptor,
+        Action<LogicEntityState> configure)
+    {
+        if (configure == null)
+            throw new ArgumentNullException(nameof(configure));
+        EnsureCurrentInteractionFrameWindow();
+        return RequestSpawnCore(descriptor, configure, true, true);
+    }
+
+    private static LogicEntityId RequestSpawnCore(
+        LogicEntitySpawnDescriptor descriptor,
+        Action<LogicEntityState> configure,
+        bool requireConfigured,
+        bool currentInteractionFrame)
+    {
         EnsureActive();
         LogicEntityId entityId = LogicEntityIdAllocator.Allocate();
+        LogicEntityState state = LogicEntityStateStore.Create(entityId, descriptor);
+        try
+        {
+            configure?.Invoke(state);
+            if (requireConfigured)
+                state.ValidateReadyForSpawn();
+        }
+        catch
+        {
+            LogicEntityStateStore.RemoveDespawned(entityId);
+            throw;
+        }
+
         if (!s_RequestedEntityIds.Add(entityId.Value))
             throw new InvalidOperationException($"LogicEntityLifecycleService.RequestSpawn failed: duplicate entity id {entityId.Value}.");
-
-        ulong effectiveFrame = checked(LogicTimeControlService.CurrentFrame + 1);
-        LogicEntityStateStore.Create(entityId, descriptor);
+        ulong effectiveFrame = currentInteractionFrame
+            ? LogicTimeControlService.CurrentFrame
+            : checked(LogicTimeControlService.CurrentFrame + 1);
         s_SpawnFramesByEntityId.Add(entityId.Value, effectiveFrame);
-        Record(LogicEntityLifecycleCommandKind.SpawnRequested, entityId, 0, effectiveFrame);
+        Record(LogicEntityLifecycleCommandKind.SpawnRequested, entityId, effectiveFrame);
         return entityId;
     }
 
@@ -141,10 +185,13 @@ public static class LogicEntityLifecycleService
         s_SpawnFramesByEntityId.Clear();
         s_DespawnFramesByEntityId.Clear();
         s_ActivatedEntityIds.Clear();
+        s_DespawnCommittedEntityIds.Clear();
         s_DueDespawnEntityIds.Clear();
         s_DueSpawnEntityIds.Clear();
         s_LastSequence = 0;
         LogicEntityStateStore.ResetForWorldTransition();
+        LogicBuildingExtraPropsStore.ClearAll();
+        LogicProductionConditionState.ClearAll();
 
         LogicEntityIdAllocator.EndTimeline();
         LogicPersistentIdAllocator.EndTimeline();
@@ -155,6 +202,12 @@ public static class LogicEntityLifecycleService
     public static void BindView(LogicEntityId entityId, int viewEntityId)
     {
         BindView(entityId, viewEntityId, null);
+    }
+
+    public static bool TryGetBoundView(LogicEntityId entityId, out MAEntity view)
+    {
+        EnsureKnownEntity(entityId, nameof(TryGetBoundView));
+        return s_BoundViewsByEntityId.TryGetValue(entityId.Value, out view) && view != null;
     }
 
     public static void BindView(LogicEntityId entityId, int viewEntityId, MAEntity view)
@@ -182,7 +235,6 @@ public static class LogicEntityLifecycleService
             throw;
         }
 
-        Record(LogicEntityLifecycleCommandKind.ViewBound, entityId, viewEntityId);
     }
 
     public static void RequestDespawn(MAEntity view)
@@ -202,6 +254,17 @@ public static class LogicEntityLifecycleService
 
     public static void RequestDespawn(LogicEntityId entityId)
     {
+        RequestDespawnCore(entityId, false);
+    }
+
+    public static void RequestDespawnForCurrentInteractionFrame(LogicEntityId entityId)
+    {
+        EnsureCurrentInteractionFrameWindow();
+        RequestDespawnCore(entityId, true);
+    }
+
+    private static void RequestDespawnCore(LogicEntityId entityId, bool currentInteractionFrame)
+    {
         EnsureKnownEntity(entityId, nameof(RequestDespawn));
         if (!s_ActivatedEntityIds.Contains(entityId.Value))
             throw new InvalidOperationException($"LogicEntityLifecycleService.RequestDespawn failed: entity {entityId.Value} is not active.");
@@ -211,10 +274,22 @@ public static class LogicEntityLifecycleService
                 $"LogicEntityLifecycleService.RequestDespawn failed: entity {entityId.Value} already has a pending despawn command.");
         }
 
-        ulong effectiveFrame = checked(LogicTimeControlService.CurrentFrame + 1);
+        ulong effectiveFrame = currentInteractionFrame
+            ? LogicTimeControlService.CurrentFrame
+            : checked(LogicTimeControlService.CurrentFrame + 1);
         s_DespawnFramesByEntityId.Add(entityId.Value, effectiveFrame);
-        int viewEntityId = s_BoundViewIdsByEntityId.TryGetValue(entityId.Value, out int boundId) ? boundId : 0;
-        Record(LogicEntityLifecycleCommandKind.DespawnRequested, entityId, viewEntityId, effectiveFrame);
+        Record(LogicEntityLifecycleCommandKind.DespawnRequested, entityId, effectiveFrame);
+    }
+
+    private static void EnsureCurrentInteractionFrameWindow()
+    {
+        EnsureActive();
+        if (!LogicInteractionCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("Current-frame lifecycle changes require the logic interaction apply window.");
+        if (LogicTimeControlService.CurrentFrame == 0)
+            throw new InvalidOperationException("Current-frame lifecycle changes require a positive logic frame.");
+        if (IsApplyingFrame)
+            throw new InvalidOperationException("Current-frame lifecycle changes must be scheduled before lifecycle apply.");
     }
 
     public static void UnbindView(LogicEntityId entityId, int viewEntityId)
@@ -228,13 +303,7 @@ public static class LogicEntityLifecycleService
         s_BoundViewIdsByEntityId.Remove(entityId.Value);
         s_BoundViewsByEntityId.Remove(entityId.Value);
         LogicEntityStateStore.UnbindView(entityId, viewEntityId);
-        Record(
-            LogicEntityLifecycleCommandKind.ViewUnbound,
-            entityId,
-            viewEntityId,
-            LogicTimeControlService.CurrentFrame);
-
-        if (!s_ActivatedEntityIds.Contains(entityId.Value))
+        if (s_DespawnCommittedEntityIds.Contains(entityId.Value))
             RemoveDespawnedEntity(entityId);
     }
 
@@ -294,6 +363,8 @@ public static class LogicEntityLifecycleService
             LogicEntityState state = LogicEntityStateStore.GetRequired(logicEntityId);
             state.DeactivateRuntime();
             LogicEntityStateStore.CommitDespawn(logicEntityId);
+            if (!s_DespawnCommittedEntityIds.Add(entityId))
+                throw new InvalidOperationException($"LogicEntityLifecycleService.ApplyFrame failed: duplicate committed despawn. entity={entityId}.");
             if (!s_ActivatedEntityIds.Remove(entityId))
             {
                 throw new InvalidOperationException(
@@ -315,7 +386,7 @@ public static class LogicEntityLifecycleService
         s_DueSpawnEntityIds.Clear();
         foreach (KeyValuePair<int, ulong> pair in s_SpawnFramesByEntityId)
         {
-            if (s_ActivatedEntityIds.Contains(pair.Key))
+            if (s_ActivatedEntityIds.Contains(pair.Key) || s_DespawnCommittedEntityIds.Contains(pair.Key))
                 continue;
             if (pair.Value < frameId)
             {
@@ -327,6 +398,11 @@ public static class LogicEntityLifecycleService
         }
 
         s_DueSpawnEntityIds.Sort();
+        for (int i = 0; i < s_DueSpawnEntityIds.Count; i++)
+        {
+            int entityId = s_DueSpawnEntityIds[i];
+            LogicEntityStateStore.GetRequired(new LogicEntityId(entityId)).ValidateReadyForSpawn();
+        }
         for (int i = 0; i < s_DueSpawnEntityIds.Count; i++)
         {
             int entityId = s_DueSpawnEntityIds[i];
@@ -347,7 +423,7 @@ public static class LogicEntityLifecycleService
         var pendingEntityIds = new List<int>();
         foreach (KeyValuePair<int, ulong> pair in s_SpawnFramesByEntityId)
         {
-            if (!s_ActivatedEntityIds.Contains(pair.Key))
+            if (!s_ActivatedEntityIds.Contains(pair.Key) && !s_DespawnCommittedEntityIds.Contains(pair.Key))
                 pendingEntityIds.Add(pair.Key);
         }
 
@@ -366,8 +442,7 @@ public static class LogicEntityLifecycleService
                     1,
                     command.Sequence,
                     command.Kind,
-                    command.EntityId,
-                    command.ViewEntityId);
+                    command.EntityId);
                 break;
             }
         }
@@ -388,8 +463,7 @@ public static class LogicEntityLifecycleService
                     1,
                     command.Sequence,
                     command.Kind,
-                    command.EntityId,
-                    command.ViewEntityId);
+                    command.EntityId);
                 break;
             }
         }
@@ -406,21 +480,21 @@ public static class LogicEntityLifecycleService
             LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
             state.DeactivateRuntime(true);
             LogicEntityStateStore.CommitDespawn(entityId);
+            s_DespawnCommittedEntityIds.Add(entityId.Value);
             if (s_BoundViewsByEntityId.TryGetValue(entityIds[i], out MAEntity view) && view != null)
                 view.DeactivateLogicParticipation(true);
         }
         s_ActivatedEntityIds.Clear();
     }
 
-    private static void Record(LogicEntityLifecycleCommandKind kind, LogicEntityId entityId, int viewEntityId, ulong effectiveFrame = 0)
+    private static void Record(LogicEntityLifecycleCommandKind kind, LogicEntityId entityId, ulong effectiveFrame = 0)
     {
         ulong sequence = checked(s_LastSequence + 1);
         var command = new LogicEntityLifecycleCommand(
             effectiveFrame > 0 ? effectiveFrame : checked(LogicTimeControlService.CurrentFrame + 1),
             sequence,
             kind,
-            entityId,
-            viewEntityId);
+            entityId);
         s_LastSequence = sequence;
         s_Commands.Add(command);
         CommandRecorded?.Invoke(command);
@@ -436,6 +510,7 @@ public static class LogicEntityLifecycleService
         s_SpawnFramesByEntityId.Remove(entityId.Value);
         s_DespawnFramesByEntityId.Remove(entityId.Value);
         s_RequestedEntityIds.Remove(entityId.Value);
+        s_DespawnCommittedEntityIds.Remove(entityId.Value);
         LogicEntityStateStore.RemoveDespawned(entityId);
     }
 

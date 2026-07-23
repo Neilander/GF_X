@@ -113,6 +113,14 @@ public sealed class BuildingCombatShapeCatalog
 
     public LogicCombatShape ResolveRequired(string prefabPath, Vector3 worldPosition, float worldYawDegrees)
     {
+        return ResolveRequired(
+            prefabPath,
+            new FixVector2((Fix64)worldPosition.x, (Fix64)worldPosition.z),
+            BuildingAuthoredShapeTransform.ResolveQuarterTurn(worldYawDegrees));
+    }
+
+    public LogicCombatShape ResolveRequired(string prefabPath, FixVector2 worldPosition, int quarterTurn)
+    {
         if (string.IsNullOrWhiteSpace(prefabPath))
             throw new ArgumentException("Building combat shape requires a prefab path.", nameof(prefabPath));
         EnsureIndex();
@@ -123,7 +131,7 @@ public sealed class BuildingCombatShapeCatalog
         FixVector2 localHalfExtents = new FixVector2(Fix64.FromRaw(entry.HalfExtentXRaw), Fix64.FromRaw(entry.HalfExtentZRaw));
         if (localHalfExtents.x <= Fix64.Zero || localHalfExtents.y <= Fix64.Zero)
             throw new InvalidOperationException($"Building combat shape '{prefabPath}' has invalid half extents.");
-        return BuildingAuthoredShapeTransform.ResolveBox(localCenter, localHalfExtents, worldPosition, worldYawDegrees);
+        return BuildingAuthoredShapeTransform.ResolveBox(localCenter, localHalfExtents, worldPosition, quarterTurn);
     }
 
     private void EnsureIndex()
@@ -185,6 +193,14 @@ public sealed class BuildingLogicObstacleShapeCatalog
 
     public IReadOnlyList<LogicCombatShape> ResolveRequired(string prefabPath, Vector3 worldPosition, float worldYawDegrees)
     {
+        return ResolveRequired(
+            prefabPath,
+            new FixVector2((Fix64)worldPosition.x, (Fix64)worldPosition.z),
+            BuildingAuthoredShapeTransform.ResolveQuarterTurn(worldYawDegrees));
+    }
+
+    public IReadOnlyList<LogicCombatShape> ResolveRequired(string prefabPath, FixVector2 worldPosition, int quarterTurn)
+    {
         EnsureIndex();
         if (!m_ByPrefabPath.TryGetValue(prefabPath, out PrefabEntry entry))
             throw new InvalidOperationException($"Building logic obstacle shapes are not authored for prefab '{prefabPath}'.");
@@ -199,7 +215,7 @@ public sealed class BuildingLogicObstacleShapeCatalog
                 throw new InvalidOperationException($"Building logic obstacle entry '{prefabPath}' contains a null box.");
             FixVector2 localCenter = new FixVector2(Fix64.FromRaw(box.CenterXRaw), Fix64.FromRaw(box.CenterZRaw));
             FixVector2 localHalfExtents = new FixVector2(Fix64.FromRaw(box.HalfExtentXRaw), Fix64.FromRaw(box.HalfExtentZRaw));
-            result[i] = BuildingAuthoredShapeTransform.ResolveBox(localCenter, localHalfExtents, worldPosition, worldYawDegrees);
+            result[i] = BuildingAuthoredShapeTransform.ResolveBox(localCenter, localHalfExtents, worldPosition, quarterTurn);
         }
         return result;
     }
@@ -228,9 +244,23 @@ public static class BuildingAuthoredShapeTransform
         Vector3 worldPosition,
         float worldYawDegrees)
     {
+        return ResolveBox(
+            localCenter,
+            localHalfExtents,
+            new FixVector2((Fix64)worldPosition.x, (Fix64)worldPosition.z),
+            ResolveQuarterTurn(worldYawDegrees));
+    }
+
+    public static LogicCombatShape ResolveBox(
+        FixVector2 localCenter,
+        FixVector2 localHalfExtents,
+        FixVector2 worldPosition,
+        int quarterTurn)
+    {
         if (localHalfExtents.x <= Fix64.Zero || localHalfExtents.y <= Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(localHalfExtents));
-        int quarterTurn = ResolveQuarterTurn(worldYawDegrees);
+        if (quarterTurn < 0 || quarterTurn > 3)
+            throw new ArgumentOutOfRangeException(nameof(quarterTurn));
         FixVector2 rotatedCenter;
         FixVector2 worldHalfExtents;
         switch (quarterTurn)
@@ -254,11 +284,10 @@ public static class BuildingAuthoredShapeTransform
             default:
                 throw new InvalidOperationException("Invalid building quarter turn.");
         }
-        FixVector2 position = new FixVector2((Fix64)worldPosition.x, (Fix64)worldPosition.z);
-        return LogicCombatShape.AxisAlignedBox(position + rotatedCenter, worldHalfExtents);
+        return LogicCombatShape.AxisAlignedBox(worldPosition + rotatedCenter, worldHalfExtents);
     }
 
-    private static int ResolveQuarterTurn(float yawDegrees)
+    public static int ResolveQuarterTurn(float yawDegrees)
     {
         if (float.IsNaN(yawDegrees) || float.IsInfinity(yawDegrees))
             throw new ArgumentOutOfRangeException(nameof(yawDegrees));

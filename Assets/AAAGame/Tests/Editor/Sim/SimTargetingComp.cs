@@ -13,10 +13,14 @@ public class SimTargetingComp : ITargetingComp
     public IEntityContext CurrentTarget { get; set; }
     public IEntityContext FollowTarget { get; private set; }
 
-    public float AggroRange { get; set; } = 6f;
-    public float ForgetRange { get; set; } = 8f;
-    public float FollowSearchRange { get; set; } = 30f;
-    public float AlertRadius { get; set; } = 0f;
+    public Fix64 AggroRangeFixed { get; set; } = (Fix64)6;
+    public Fix64 ForgetRangeFixed { get; set; } = (Fix64)8;
+    public Fix64 FollowSearchRangeFixed { get; set; } = (Fix64)30;
+    public Fix64 AlertRadiusFixed { get; set; }
+    public float AggroRange { get => (float)AggroRangeFixed; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
+    public float ForgetRange { get => (float)ForgetRangeFixed; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
+    public float FollowSearchRange { get => (float)FollowSearchRangeFixed; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
+    public float AlertRadius { get => (float)AlertRadiusFixed; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     private Fix64 _scanTimer = Fix64.Zero;
     private static readonly Fix64 SCAN_INTERVAL = (Fix64)0.2f;

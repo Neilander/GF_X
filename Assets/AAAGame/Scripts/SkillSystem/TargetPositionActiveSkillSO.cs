@@ -12,7 +12,7 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
             currentIndex = 0,
             isFinished = false,
             selectTargets = new List<ISelectable>(),
-            selectPos = body.Position
+            selectPos = body.PositionFixed
         };
     }
 
@@ -21,27 +21,14 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
         CapturePositionSelection(info);
         base.SwitchToNextAction(info);
 
-        if (info is TargetPositionSkillInfo positionInfo)
-        {
-            info.currentInfo.selectTargets = positionInfo.selectTargets;
-            info.currentInfo.selectPos = positionInfo.selectPos;
-        }
+        if (info is not TargetPositionSkillInfo positionInfo)
+            throw new InvalidOperationException($"{GetType().Name} requires TargetPositionSkillInfo. skillId={skillId}");
+
+        info.currentInfo.selectTargets = positionInfo.selectTargets;
+        info.currentInfo.selectPos = positionInfo.selectPos;
     }
 
-    protected override void SetupNewAction(SkillInfo info, int actionIndex)
-    {
-        base.SetupNewAction(info, actionIndex);
-        if (info.currentInfo is PositionSelectActionInfo posSelectInfo)
-        {
-            if (info.entity is not MAEntity positionSelectionView)
-                throw new InvalidOperationException($"TargetPositionActiveSkillSO requires a bound MAEntity presenter. entity={info.entity.LogicEntityId.Value}.");
-            posSelectInfo.centerTrans = positionSelectionView.transform;
-            posSelectInfo.radius = GetCastDistanceWorldOrFallback();
-            posSelectInfo.selectScale = GetSelectionScaleOrFallback();
-        }
-    }
-
-    public override void TickSkill(SkillInfo info, float deltaTime)
+    public override void TickSkill(SkillInfo info, Fix64 deltaTime)
     {
         if (info == null)
             throw new ArgumentNullException(nameof(info));
@@ -61,7 +48,7 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
         }
     }
 
-    protected abstract void ApplyAtPosition(IEntityContext caster, Vector3 position, IReadOnlyList<ISelectable> selectedTargets);
+    protected abstract void ApplyAtPosition(IEntityContext caster, FixVector2 position, IReadOnlyList<ISelectable> selectedTargets);
 
     private static void CapturePositionSelection(SkillInfo info)
     {
@@ -79,5 +66,5 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
 public class TargetPositionSkillInfo : SkillInfo
 {
     public List<ISelectable> selectTargets;
-    public Vector3 selectPos;
+    public FixVector2 selectPos;
 }

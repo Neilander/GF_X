@@ -11,6 +11,10 @@ public sealed class LogicReplayTests
             LogicObstacleCommandService.EndTimeline();
         if (LogicEntityLifecycleService.IsActive)
             LogicEntityLifecycleService.EndTimeline();
+        if (LogicCardCommandService.IsActive)
+            LogicCardCommandService.EndTimeline();
+        if (LogicSkillSlotCommandService.IsActive)
+            LogicSkillSlotCommandService.EndTimeline();
         if (LogicInteractionCommandService.IsActive)
             LogicInteractionCommandService.EndTimeline();
         if (LogicTechEffectCommandService.IsActive)
@@ -32,6 +36,10 @@ public sealed class LogicReplayTests
             LogicObstacleCommandService.EndTimeline();
         if (LogicEntityLifecycleService.IsActive)
             LogicEntityLifecycleService.EndTimeline();
+        if (LogicCardCommandService.IsActive)
+            LogicCardCommandService.EndTimeline();
+        if (LogicSkillSlotCommandService.IsActive)
+            LogicSkillSlotCommandService.EndTimeline();
         if (LogicInteractionCommandService.IsActive)
             LogicInteractionCommandService.EndTimeline();
         if (LogicTechEffectCommandService.IsActive)
@@ -86,6 +94,19 @@ public sealed class LogicReplayTests
     }
 
     [Test]
+    public void InputHash_TracksFrozenWorldSelection()
+    {
+        LogicInputFrame first = CreateWorldSelectionFrame(
+            new FixVector2(Fix64.FromRaw(1001), Fix64.FromRaw(2002)));
+        LogicInputFrame second = CreateWorldSelectionFrame(
+            new FixVector2(Fix64.FromRaw(1001), Fix64.FromRaw(2003)));
+
+        Assert.AreNotEqual(
+            LogicStateHasher.ComputeInputHash(first),
+            LogicStateHasher.ComputeInputHash(second));
+    }
+
+    [Test]
     public void Comparer_ReportsFirstGameplayHashDivergence()
     {
         LogicReplayLog expected = RecordSingleFrame(100ul);
@@ -99,6 +120,24 @@ public sealed class LogicReplayTests
         Assert.IsTrue(divergence.HasDivergence);
         Assert.AreEqual(1ul, divergence.FrameId);
         Assert.AreEqual("GameplayStateHash", divergence.Field);
+    }
+
+    [Test]
+    public void Comparer_ReportsExactFrozenWorldSelectionDivergence()
+    {
+        LogicReplayLog expected = RecordSingleWorldSelectionFrame(
+            new FixVector2(Fix64.FromRaw(10), Fix64.FromRaw(20)));
+
+        LogicTimeControlService.EndTimeline();
+        LogicTimeControlService.BeginTimeline();
+        LogicReplayLog actual = RecordSingleWorldSelectionFrame(
+            new FixVector2(Fix64.FromRaw(10), Fix64.FromRaw(21)));
+
+        LogicReplayDivergence divergence = LogicReplayComparer.FindFirstDivergence(expected, actual);
+
+        Assert.IsTrue(divergence.HasDivergence);
+        Assert.AreEqual(1ul, divergence.FrameId);
+        Assert.AreEqual("Input.SelectWorldPosition.Y", divergence.Field);
     }
 
     [Test]
@@ -124,11 +163,54 @@ public sealed class LogicReplayTests
     }
 
     [Test]
+    public void ProtocolV18_CrossPlatformDeterminismCorpus_IsStable()
+    {
+        var timeline = new LogicInputTimeline(7);
+        timeline.Begin(
+            100d,
+            new FixVector2(Fix64.FromRaw(111), Fix64.FromRaw(-222)),
+            LogicInputTimeline.GetButtonBit(LogicInputButton.InteractionPrimary),
+            new FixVector2(Fix64.FromRaw(333), Fix64.FromRaw(444)),
+            true,
+            new FixVector2(Fix64.FromRaw(555), Fix64.FromRaw(-666)));
+        timeline.EnqueueWorldMove(100.01d, new FixVector2(Fix64.FromRaw(777), Fix64.FromRaw(-888)));
+        timeline.EnqueueSelectScreenPosition(100.011d, new FixVector2(Fix64.FromRaw(999), Fix64.FromRaw(1111)));
+        timeline.EnqueueSelectWorldPosition(100.011d, new FixVector2(Fix64.FromRaw(-2222), Fix64.FromRaw(3333)));
+        timeline.EnqueueButtonPulse(100.012d, LogicInputButton.Skill3);
+        timeline.EnqueueButtonPressed(100.013d, LogicInputButton.SkillConfirm);
+        timeline.EnqueueButtonReleased(100.014d, LogicInputButton.SkillConfirm);
+        LogicInputFrame frame = timeline.Seal(1, 100d + 1d / 30d);
+
+        LogicTimeControlService.EndTimeline();
+        LogicTimeControlService.BeginTimeline();
+        LogicTimeControlService.SetBulletTimeScale(10, 2750);
+        LogicTimeControlService.AcquirePause(42);
+        LogicTimeControlSnapshot snapshot = LogicTimeControlService.CaptureSnapshot();
+
+        ulong inputHash = LogicStateHasher.ComputeInputHash(frame);
+        ulong timeHash = LogicStateHasher.ComputeTimeControlHash(snapshot);
+        ulong fullHash = LogicStateHasher.ComputeFrameHash(
+            frame.FrameId,
+            inputHash,
+            timeHash,
+            0x123456789ABCDEF0UL);
+
+        Assert.AreEqual(42, LogicReplayLog.CurrentProtocolVersion);
+        Assert.AreEqual(6, frame.Events.Count);
+        Assert.AreEqual(44622919u, frame.Checksum);
+        Assert.AreEqual(2238831199762417194ul, inputHash);
+        Assert.AreEqual(1522784806954703928ul, timeHash);
+        Assert.AreEqual(6256122146117919571ul, fullHash);
+    }
+
+    [Test]
     public void Recorder_CapturesInitialPhaseTechLifecycleAndObstacleCommandHistory()
     {
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
         LogicInteractionCommandService.BeginTimeline();
+        LogicCardCommandService.BeginTimeline();
+        LogicSkillSlotCommandService.BeginTimeline();
         LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
         LogicObstacleCommandService.BeginTimeline();
@@ -140,7 +222,12 @@ public sealed class LogicReplayTests
             "building-1",
             "Building_Test_Lv2",
             "Tech_Test");
+        LogicCardCommand cardCommand = LogicCardCommandService.SchedulePlayForNextFrame(
+            17,
+            new FixVector2(Fix64.FromRaw(321), Fix64.FromRaw(-654)));
+        LogicSkillSlotCommand skillSlotCommand = LogicSkillSlotCommandService.ScheduleForNextFrame(0, 1);
         LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn();
+        LogicEntityLifecycleService.BindView(entityId, 404);
         LogicObstacleCommandService.ScheduleBoxForNextFrame(
             101,
             new FixVector2((Fix64)2, (Fix64)3),
@@ -148,6 +235,7 @@ public sealed class LogicReplayTests
 
         var recorder = new LogicReplayRecorder();
         recorder.Begin();
+        LogicEntityLifecycleService.UnbindView(entityId, 404);
         LogicReplayLog log = recorder.End();
 
         Assert.AreEqual(1, log.PhaseCommands.Count);
@@ -159,10 +247,32 @@ public sealed class LogicReplayTests
         Assert.AreEqual(1, log.InteractionCommands.Count);
         Assert.AreEqual(interactionCommand.Sequence, log.InteractionCommands[0].Sequence);
         Assert.AreEqual(LogicInteractionActionKind.UpgradeBuilding, log.InteractionCommands[0].ActionKind);
+        Assert.AreEqual(1, log.CardCommands.Count);
+        Assert.AreEqual(cardCommand.Sequence, log.CardCommands[0].Sequence);
+        Assert.AreEqual(321L, log.CardCommands[0].SelectedPosition.x.RawValue);
+        Assert.AreEqual(-654L, log.CardCommands[0].SelectedPosition.y.RawValue);
+        Assert.AreEqual(1, log.SkillSlotCommands.Count);
+        Assert.AreEqual(skillSlotCommand.Sequence, log.SkillSlotCommands[0].Sequence);
+        Assert.AreEqual(0, log.SkillSlotCommands[0].FromIndex);
+        Assert.AreEqual(1, log.SkillSlotCommands[0].ToIndex);
         Assert.AreEqual(1, log.LifecycleCommands.Count);
         Assert.AreEqual(entityId, log.LifecycleCommands[0].EntityId);
+        Assert.AreEqual(LogicEntityLifecycleCommandKind.SpawnRequested, log.LifecycleCommands[0].Kind);
         Assert.AreEqual(1, log.ObstacleCommands.Count);
         Assert.AreEqual(101, log.ObstacleCommands[0].StableObstacleId);
+    }
+
+    [Test]
+    public void Comparer_ReportsSkillSlotCommandDivergence()
+    {
+        LogicReplayLog expected = RecordSingleSkillSlotCommand(1);
+        LogicReplayLog actual = RecordSingleSkillSlotCommand(2);
+
+        LogicReplayDivergence divergence = LogicReplayComparer.FindFirstDivergence(expected, actual);
+
+        Assert.IsTrue(divergence.HasDivergence);
+        Assert.AreEqual(1UL, divergence.FrameId);
+        Assert.AreEqual("SkillSlotCommand", divergence.Field);
     }
 
     private static LogicReplayLog RecordSingleFrame(ulong gameplayStateHash)
@@ -177,6 +287,30 @@ public sealed class LogicReplayTests
         return recorder.End();
     }
 
+    private static LogicReplayLog RecordSingleWorldSelectionFrame(FixVector2 worldPosition)
+    {
+        var recorder = new LogicReplayRecorder();
+        recorder.Begin();
+        LogicTimeControlService.BeginFrame(1);
+
+        var timeline = CreateTimeline();
+        timeline.EnqueueSelectWorldPosition(0.01d, worldPosition);
+        LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
+        recorder.RecordFrame(inputFrame);
+        return recorder.End();
+    }
+
+    private static LogicReplayLog RecordSingleSkillSlotCommand(int toIndex)
+    {
+        LogicSkillSlotCommandService.BeginTimeline();
+        var recorder = new LogicReplayRecorder();
+        recorder.Begin();
+        LogicSkillSlotCommandService.ScheduleForNextFrame(0, toIndex);
+        LogicReplayLog log = recorder.End();
+        LogicSkillSlotCommandService.EndTimeline();
+        return log;
+    }
+
     private static LogicInputFrame CreatePulseFrame(double timestamp)
     {
         var timeline = CreateTimeline();
@@ -184,10 +318,17 @@ public sealed class LogicReplayTests
         return timeline.Seal(1, 1d / 30d);
     }
 
+    private static LogicInputFrame CreateWorldSelectionFrame(FixVector2 worldPosition)
+    {
+        var timeline = CreateTimeline();
+        timeline.EnqueueSelectWorldPosition(0.01d, worldPosition);
+        return timeline.Seal(1, 1d / 30d);
+    }
+
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();
-        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero);
+        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
         return timeline;
     }
 }

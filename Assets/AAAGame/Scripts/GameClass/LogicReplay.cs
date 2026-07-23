@@ -70,6 +70,9 @@ public sealed class LogicStateHasher
         hasher.Add(frame.WorldMove.y.RawValue);
         hasher.Add(frame.SelectScreenPosition.x.RawValue);
         hasher.Add(frame.SelectScreenPosition.y.RawValue);
+        hasher.Add(frame.HasSelectWorldPosition);
+        hasher.Add(frame.SelectWorldPosition.x.RawValue);
+        hasher.Add(frame.SelectWorldPosition.y.RawValue);
         hasher.Add(frame.HeldBits);
         hasher.Add(frame.PressedBits);
         hasher.Add(frame.ReleasedBits);
@@ -195,8 +198,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 4;
-    public const string CurrentContentVersion = "Avenge-30Hz-v4";
+    public const int CurrentProtocolVersion = 42;
+    public const string CurrentContentVersion = "Avenge-30Hz-v42";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
@@ -206,6 +209,8 @@ public sealed class LogicReplayLog
         LogicPhaseCommand[] phaseCommands,
         LogicTechEffectCommand[] techEffectCommands,
         LogicInteractionCommand[] interactionCommands,
+        LogicCardCommand[] cardCommands,
+        LogicSkillSlotCommand[] skillSlotCommands,
         LogicEntityLifecycleCommand[] lifecycleCommands,
         LogicObstacleCommand[] obstacleCommands)
     {
@@ -220,6 +225,8 @@ public sealed class LogicReplayLog
         PhaseCommands = Array.AsReadOnly((LogicPhaseCommand[])phaseCommands.Clone());
         TechEffectCommands = Array.AsReadOnly((LogicTechEffectCommand[])techEffectCommands.Clone());
         InteractionCommands = Array.AsReadOnly((LogicInteractionCommand[])interactionCommands.Clone());
+        CardCommands = Array.AsReadOnly((LogicCardCommand[])cardCommands.Clone());
+        SkillSlotCommands = Array.AsReadOnly((LogicSkillSlotCommand[])skillSlotCommands.Clone());
         LifecycleCommands = Array.AsReadOnly((LogicEntityLifecycleCommand[])lifecycleCommands.Clone());
         ObstacleCommands = Array.AsReadOnly((LogicObstacleCommand[])obstacleCommands.Clone());
     }
@@ -235,6 +242,8 @@ public sealed class LogicReplayLog
     public ReadOnlyCollection<LogicPhaseCommand> PhaseCommands { get; }
     public ReadOnlyCollection<LogicTechEffectCommand> TechEffectCommands { get; }
     public ReadOnlyCollection<LogicInteractionCommand> InteractionCommands { get; }
+    public ReadOnlyCollection<LogicCardCommand> CardCommands { get; }
+    public ReadOnlyCollection<LogicSkillSlotCommand> SkillSlotCommands { get; }
     public ReadOnlyCollection<LogicEntityLifecycleCommand> LifecycleCommands { get; }
     public ReadOnlyCollection<LogicObstacleCommand> ObstacleCommands { get; }
 }
@@ -247,6 +256,8 @@ public sealed class LogicReplayRecorder
     private readonly List<LogicPhaseCommand> m_PhaseCommands = new List<LogicPhaseCommand>();
     private readonly List<LogicTechEffectCommand> m_TechEffectCommands = new List<LogicTechEffectCommand>();
     private readonly List<LogicInteractionCommand> m_InteractionCommands = new List<LogicInteractionCommand>();
+    private readonly List<LogicCardCommand> m_CardCommands = new List<LogicCardCommand>();
+    private readonly List<LogicSkillSlotCommand> m_SkillSlotCommands = new List<LogicSkillSlotCommand>();
     private readonly List<LogicEntityLifecycleCommand> m_LifecycleCommands = new List<LogicEntityLifecycleCommand>();
     private readonly List<LogicObstacleCommand> m_ObstacleCommands = new List<LogicObstacleCommand>();
 
@@ -255,6 +266,8 @@ public sealed class LogicReplayRecorder
     private bool m_TracksPhases;
     private bool m_TracksTechEffects;
     private bool m_TracksInteractions;
+    private bool m_TracksCards;
+    private bool m_TracksSkillSlots;
     private bool m_TracksLifecycle;
     private bool m_TracksObstacles;
 
@@ -273,6 +286,8 @@ public sealed class LogicReplayRecorder
         m_PhaseCommands.Clear();
         m_TechEffectCommands.Clear();
         m_InteractionCommands.Clear();
+        m_CardCommands.Clear();
+        m_SkillSlotCommands.Clear();
         m_LifecycleCommands.Clear();
         m_ObstacleCommands.Clear();
         m_InitialTimeControlSnapshot = LogicTimeControlService.CaptureSnapshot();
@@ -282,6 +297,8 @@ public sealed class LogicReplayRecorder
         m_TracksPhases = LogicPhaseCommandService.IsActive;
         m_TracksTechEffects = LogicTechEffectCommandService.IsActive;
         m_TracksInteractions = LogicInteractionCommandService.IsActive;
+        m_TracksCards = LogicCardCommandService.IsActive;
+        m_TracksSkillSlots = LogicSkillSlotCommandService.IsActive;
         m_TracksLifecycle = LogicEntityLifecycleService.IsActive;
         m_TracksObstacles = LogicObstacleCommandService.IsActive;
         if (m_TracksPhases)
@@ -301,6 +318,18 @@ public sealed class LogicReplayRecorder
             for (int i = 0; i < LogicInteractionCommandService.History.Count; i++)
                 m_InteractionCommands.Add(LogicInteractionCommandService.History[i]);
             LogicInteractionCommandService.CommandRecorded += OnInteractionCommandRecorded;
+        }
+        if (m_TracksCards)
+        {
+            for (int i = 0; i < LogicCardCommandService.History.Count; i++)
+                m_CardCommands.Add(LogicCardCommandService.History[i]);
+            LogicCardCommandService.CommandRecorded += OnCardCommandRecorded;
+        }
+        if (m_TracksSkillSlots)
+        {
+            for (int i = 0; i < LogicSkillSlotCommandService.History.Count; i++)
+                m_SkillSlotCommands.Add(LogicSkillSlotCommandService.History[i]);
+            LogicSkillSlotCommandService.CommandRecorded += OnSkillSlotCommandRecorded;
         }
         if (m_TracksLifecycle)
         {
@@ -367,6 +396,10 @@ public sealed class LogicReplayRecorder
             LogicTechEffectCommandService.CommandRecorded -= OnTechEffectCommandRecorded;
         if (m_TracksInteractions)
             LogicInteractionCommandService.CommandRecorded -= OnInteractionCommandRecorded;
+        if (m_TracksCards)
+            LogicCardCommandService.CommandRecorded -= OnCardCommandRecorded;
+        if (m_TracksSkillSlots)
+            LogicSkillSlotCommandService.CommandRecorded -= OnSkillSlotCommandRecorded;
         if (m_TracksLifecycle)
             LogicEntityLifecycleService.CommandRecorded -= OnLifecycleCommandRecorded;
         if (m_TracksObstacles)
@@ -374,6 +407,8 @@ public sealed class LogicReplayRecorder
         m_TracksPhases = false;
         m_TracksTechEffects = false;
         m_TracksInteractions = false;
+        m_TracksCards = false;
+        m_TracksSkillSlots = false;
         m_TracksLifecycle = false;
         m_TracksObstacles = false;
         IsRecording = false;
@@ -385,6 +420,8 @@ public sealed class LogicReplayRecorder
             m_PhaseCommands.ToArray(),
             m_TechEffectCommands.ToArray(),
             m_InteractionCommands.ToArray(),
+            m_CardCommands.ToArray(),
+            m_SkillSlotCommands.ToArray(),
             m_LifecycleCommands.ToArray(),
             m_ObstacleCommands.ToArray());
     }
@@ -412,6 +449,16 @@ public sealed class LogicReplayRecorder
     private void OnInteractionCommandRecorded(LogicInteractionCommand command)
     {
         m_InteractionCommands.Add(command);
+    }
+
+    private void OnCardCommandRecorded(LogicCardCommand command)
+    {
+        m_CardCommands.Add(command);
+    }
+
+    private void OnSkillSlotCommandRecorded(LogicSkillSlotCommand command)
+    {
+        m_SkillSlotCommands.Add(command);
     }
 
     private void OnLifecycleCommandRecorded(LogicEntityLifecycleCommand command)
@@ -535,7 +582,10 @@ public static class LogicReplayComparer
             if (expectedFrame.FrameId != actualFrame.FrameId)
                 return new LogicReplayDivergence(true, Math.Min(expectedFrame.FrameId, actualFrame.FrameId), "FrameId");
             if (expectedFrame.InputHash != actualFrame.InputHash)
-                return new LogicReplayDivergence(true, expectedFrame.FrameId, "InputHash");
+                return new LogicReplayDivergence(
+                    true,
+                    expectedFrame.FrameId,
+                    FindInputDivergenceField(expectedFrame.InputFrame, actualFrame.InputFrame));
             if (expectedFrame.TimeControlHash != actualFrame.TimeControlHash)
                 return new LogicReplayDivergence(true, expectedFrame.FrameId, "TimeControlHash");
             if (expectedFrame.GameplayStateHash != actualFrame.GameplayStateHash)
@@ -556,6 +606,45 @@ public static class LogicReplayComparer
         return commandDivergence.HasDivergence
             ? commandDivergence
             : new LogicReplayDivergence(false, 0, null);
+    }
+
+    private static string FindInputDivergenceField(LogicInputFrame expected, LogicInputFrame actual)
+    {
+        if (expected == null || actual == null) return "InputFrame";
+        if (expected.PlayerId != actual.PlayerId) return "Input.PlayerId";
+        if (expected.WorldMove.x != actual.WorldMove.x) return "Input.WorldMove.X";
+        if (expected.WorldMove.y != actual.WorldMove.y) return "Input.WorldMove.Y";
+        if (expected.SelectScreenPosition.x != actual.SelectScreenPosition.x) return "Input.SelectScreenPosition.X";
+        if (expected.SelectScreenPosition.y != actual.SelectScreenPosition.y) return "Input.SelectScreenPosition.Y";
+        if (expected.HasSelectWorldPosition != actual.HasSelectWorldPosition) return "Input.HasSelectWorldPosition";
+        if (expected.SelectWorldPosition.x != actual.SelectWorldPosition.x) return "Input.SelectWorldPosition.X";
+        if (expected.SelectWorldPosition.y != actual.SelectWorldPosition.y) return "Input.SelectWorldPosition.Y";
+        if (expected.HeldBits != actual.HeldBits) return "Input.HeldBits";
+        if (expected.PressedBits != actual.PressedBits) return "Input.PressedBits";
+        if (expected.ReleasedBits != actual.ReleasedBits) return "Input.ReleasedBits";
+        if (expected.FirstSequence != actual.FirstSequence) return "Input.FirstSequence";
+        if (expected.LastSequence != actual.LastSequence) return "Input.LastSequence";
+
+        for (int i = 0; i < LogicInputTimeline.ButtonCount; i++)
+        {
+            var button = (LogicInputButton)i;
+            if (expected.GetPressCount(button) != actual.GetPressCount(button))
+                return $"Input.PressCount[{button}]";
+        }
+
+        if (expected.Events.Count != actual.Events.Count) return "Input.EventCount";
+        for (int i = 0; i < expected.Events.Count; i++)
+        {
+            RawInputEvent left = expected.Events[i];
+            RawInputEvent right = actual.Events[i];
+            if (left.Sequence != right.Sequence) return $"Input.Events[{i}].Sequence";
+            if (left.Kind != right.Kind) return $"Input.Events[{i}].Kind";
+            if (left.Button != right.Button) return $"Input.Events[{i}].Button";
+            if (left.Vector.x != right.Vector.x) return $"Input.Events[{i}].Vector.X";
+            if (left.Vector.y != right.Vector.y) return $"Input.Events[{i}].Vector.Y";
+        }
+
+        return expected.Checksum != actual.Checksum ? "Input.Checksum" : "InputHash";
     }
 
     private static LogicReplayDivergence CompareCommands(LogicReplayLog expected, LogicReplayLog actual)
@@ -645,6 +734,40 @@ public static class LogicReplayComparer
             }
         }
 
+        if (expected.CardCommands.Count != actual.CardCommands.Count)
+            return new LogicReplayDivergence(true, 0, "CardCommandCount");
+        for (int i = 0; i < expected.CardCommands.Count; i++)
+        {
+            LogicCardCommand left = expected.CardCommands[i];
+            LogicCardCommand right = actual.CardCommands[i];
+            if (left.EffectiveFrame != right.EffectiveFrame
+                || left.Sequence != right.Sequence
+                || left.Kind != right.Kind
+                || left.CardRuntimeId != right.CardRuntimeId
+                || left.SelectedPosition != right.SelectedPosition)
+            {
+                return new LogicReplayDivergence(true, Math.Min(left.EffectiveFrame, right.EffectiveFrame), "CardCommand");
+            }
+        }
+
+        if (expected.SkillSlotCommands.Count != actual.SkillSlotCommands.Count)
+            return new LogicReplayDivergence(true, 0, "SkillSlotCommandCount");
+        for (int i = 0; i < expected.SkillSlotCommands.Count; i++)
+        {
+            LogicSkillSlotCommand left = expected.SkillSlotCommands[i];
+            LogicSkillSlotCommand right = actual.SkillSlotCommands[i];
+            if (left.EffectiveFrame != right.EffectiveFrame
+                || left.Sequence != right.Sequence
+                || left.FromIndex != right.FromIndex
+                || left.ToIndex != right.ToIndex)
+            {
+                return new LogicReplayDivergence(
+                    true,
+                    Math.Min(left.EffectiveFrame, right.EffectiveFrame),
+                    "SkillSlotCommand");
+            }
+        }
+
         if (expected.LifecycleCommands.Count != actual.LifecycleCommands.Count)
             return new LogicReplayDivergence(true, 0, "LifecycleCommandCount");
         for (int i = 0; i < expected.LifecycleCommands.Count; i++)
@@ -654,8 +777,7 @@ public static class LogicReplayComparer
             if (left.EffectiveFrame != right.EffectiveFrame
                 || left.Sequence != right.Sequence
                 || left.Kind != right.Kind
-                || left.EntityId != right.EntityId
-                || left.ViewEntityId != right.ViewEntityId)
+                || left.EntityId != right.EntityId)
             {
                 return new LogicReplayDivergence(true, Math.Min(left.EffectiveFrame, right.EffectiveFrame), "LifecycleCommand");
             }

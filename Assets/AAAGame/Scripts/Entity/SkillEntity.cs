@@ -1,11 +1,9 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using GameFramework.Event;
 using UnityEngine;
 
-public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
+public class SkillEntity : MAEntity, ICastRangePresenter
 {
-    public ISkillComp skillComp { get; protected set; }
     private Transform _rangeTrans;
     private LineRenderer _rangeLineRenderer;
     private const int CastRangeSegments = 96;
@@ -16,59 +14,10 @@ public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
         _rangeTrans = transform.Find("CastRange");
     }
 
-    protected override void OnShow(object userData)
-    {
-        base.OnShow(userData);
-        skillComp = LogicState.SkillComp
-                    ?? throw new System.InvalidOperationException($"SkillEntity.OnShow failed: logic SkillComp is missing. entity={LogicEntityId.Value}.");
-        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
-        GF.Event.Subscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
-        skillComp?.OnSkillChanged();
-    }
-
     protected override void OnHide(bool isShutdown, object userData)
     {
-        GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
-        GF.Event.Unsubscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
-        CancelRunningSkills();
-        skillComp = null;
-        base.OnHide(isShutdown, userData);
-    }
-
-    protected override void OnPostLogicFrameUpdate(Fix64 deltaTime)
-    {
-        base.OnPostLogicFrameUpdate(deltaTime);
-
-        if(CanRun(skillComp))
-            skillComp.Skill(deltaTime);
-    }
-
-    protected  virtual void SetUpSkillComp()
-    {
-        GF.LogError("目前还没有Implement通用的skill装载");
-    }
-
-    public void CancelRunningSkills()
-    {
-        skillComp?.CancelSkills();
         HideCastRange();
-    }
-
-    private void OnIngamePhaseChanged(object sender, GameEventArgs e)
-    {
-        if (e is not IngamePhaseChangedEventArgs args)
-            return;
-
-        if (!InGameDataModel.IsBuildPhase(args.NewPhase))
-            return;
-
-        CancelRunningSkills();
-        GF.DataModel.GetDataModel<InputModel>()?.ClearSkillRequests();
-    }
-
-    private void OnSkillChanged(object sender, GameEventArgs e)
-    {
-        skillComp?.OnSkillChanged();
+        base.OnHide(isShutdown, userData);
     }
 
     public virtual void ShowCastRange(float radius)
@@ -90,8 +39,6 @@ public class SkillEntity : MAEntity, ISkillCompHost, ICastRangePresenter
     {
         ShowCastRange(0f);
     }
-
-    public void SetSkillComp(ISkillComp newSkillComp)=> skillComp = newSkillComp;
 
     private void EnsureCastRange()
     {

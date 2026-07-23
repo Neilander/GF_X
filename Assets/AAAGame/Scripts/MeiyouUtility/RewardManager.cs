@@ -1,6 +1,7 @@
-using AAAGame.Card;
+﻿using AAAGame.Card;
 using GameFramework;
 using GameFramework.Event;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -131,8 +132,8 @@ public class RewardManager : GameFrameworkComponent
 		}
 
 		GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
-		GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
 		GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+		LogicBuildingOwnershipEventService.OwnerFactionChanged += OnLogicBuildingOwnerFactionChanged;
 		m_DeathEventSubscribed = true;
 		m_WaitingEventReadyLogged = false;
 	}
@@ -147,7 +148,6 @@ public class RewardManager : GameFrameworkComponent
 			try
 			{
 				GF.Event.Unsubscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
-				GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
 				GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
 			}
 			catch (GameFrameworkException)
@@ -155,25 +155,26 @@ public class RewardManager : GameFrameworkComponent
 				// PlayMode 退出时 EventPool 可能已释放，忽略退订异常。
 			}
 		}
+		LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
 
 		m_DeathEventSubscribed = false;
 	}
 
-	private void OnEntityFactionChanged(object sender, GameEventArgs e)
+	private void OnLogicBuildingOwnerFactionChanged(
+		IBuildingLogicContext building,
+		int oldFactionId,
+		int newFactionId)
 	{
-		if (e is not EntityFactionChangedEventArgs args)
-			return;
-
 		if ((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) != GamePhase.Invade)
 			return;
 
-		if (args.OldFactionId == EntitySideHelper.PlayerFactionId || args.NewFactionId != EntitySideHelper.PlayerFactionId)
+		if (oldFactionId == EntitySideHelper.PlayerFactionId || newFactionId != EntitySideHelper.PlayerFactionId)
 			return;
 
-		if (!TryResolveStrongholdIdFromFactionChanged(args, out string strongholdId))
-			return;
+		if (building == null || string.IsNullOrWhiteSpace(building.StrongholdId))
+			throw new InvalidOperationException("Captured building ownership event has no stronghold id.");
 
-		m_PlayerCapturedStrongholdIdsInCurrentInvade.Add(strongholdId);
+		m_PlayerCapturedStrongholdIdsInCurrentInvade.Add(building.StrongholdId);
 	}
 
 	private void OnIngamePhaseChanged(object sender, GameEventArgs e)
@@ -218,32 +219,6 @@ public class RewardManager : GameFrameworkComponent
 
 		Vector3 sourcePosition = TryGetPlayerPosition(out Vector3 playerPos) ? playerPos : Vector3.zero;
 		GrantCoinAfterFly(sourcePosition, coinAmount, "battle_to_build_income");
-	}
-
-	private static bool TryResolveStrongholdIdFromFactionChanged(EntityFactionChangedEventArgs args, out string strongholdId)
-	{
-		strongholdId = null;
-
-		InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-		if (inGameData == null)
-			return false;
-
-		foreach (var building in inGameData.Buildings)
-		{
-			if (building == null)
-				continue;
-
-			bool entityMatched = args.EntityId > 0 && building.Id == args.EntityId;
-			bool instanceMatched = !string.IsNullOrWhiteSpace(args.BuildingInstanceId)
-				&& args.BuildingInstanceId == building.BuildingInstanceId;
-			if (!entityMatched && !instanceMatched)
-				continue;
-
-			strongholdId = building.CurrentStronghold?.strongholdData?.StrongholdId;
-			return !string.IsNullOrWhiteSpace(strongholdId);
-		}
-
-		return false;
 	}
 
 	private void OnSoldierDead(object sender, GameEventArgs e)
@@ -311,18 +286,7 @@ public class RewardManager : GameFrameworkComponent
 
 	private static int CountPlayerOwnedStrongholds()
 	{
-		InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-		if (inGameData?.Strongholds == null)
-			return 0;
-
-		int count = 0;
-		foreach (Stronghold stronghold in inGameData.Strongholds)
-		{
-			if (stronghold != null && stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
-				count++;
-		}
-
-		return count;
+		return LogicStrongholdMap.CountOwnedStrongholds(EntitySideHelper.PlayerFactionId);
 	}
 
 	private void GrantBuildPhaseIncomeFromPlayerProdBuildings()
@@ -334,69 +298,31 @@ public class RewardManager : GameFrameworkComponent
 			return;
 		}
 		
-		int playerProdBuildings = 0;
 		int totalProduction = 0;
-		
-		foreach (var building in inGameData.Buildings)
+
+		IList<IEntityContext> entities = EntityRegistry.AllEntities;
+		for (int i = 0; i < entities.Count; i++)
 		{
-			if (building == null || building.buildingData == null)
-			{
+			if (!(entities[i] is IBuildingLogicContext building)
+				|| !building.Alive
+				|| building.IsDisabled
+				|| building.OwnerFactionId != EntitySideHelper.PlayerFactionId
+				|| building.BuildingData == null
+				|| building.BuildingData.Type != BuilType.Prod
+				|| building.BuildingData.Lv < 1)
 				continue;
-			}
 
-			if (building.OwnerFactionID != EntitySideHelper.PlayerFactionId)
-			{
-				continue;
-			}
-			
-			if (building.buildingData.Type != BuilType.Prod)
-			{
-				continue;
-			}
-
-			// 检查建造等级：只有Lv1及以上的建筑才能生产资源
-			if (building.buildingData.Lv < 1)
-			{
-				continue;
-			}
-
-			playerProdBuildings++;
-			
-			int production = 0;
-			try
-			{
-				production = building.GetProduction();
-			}
-			catch (System.Exception ex)
-			{
-				Debug.LogError($"[RewardManager] Error getting production for {building.buildingData.Identifier}: {ex.Message}");
-				continue;
-			}
-			
-			if (production <= 0)
-			{
-				continue;
-			}
-
-			int actualProduction = ResolveProductionByCoinReserves(building, production);
+			int actualProduction = LogicBuildingProductionService.GrantProduction(building);
 			if (actualProduction <= 0)
-			{
 				continue;
-			}
 
 			totalProduction += actualProduction;
-			building.NotifyProductionGranted(production, actualProduction);
-			GrantCoinAfterFly(building.transform.position, actualProduction, "build_phase_income");
+			Vector3 sourcePosition = new Vector3(
+				(float)building.PositionFixed.x,
+				0f,
+				(float)building.PositionFixed.y);
+			GrantCoinAfterFly(sourcePosition, actualProduction, "build_phase_income");
 		}
-	}
-
-	private static int ResolveProductionByCoinReserves(BuildingEntity building, int rawProduction)
-	{
-		if (building == null || rawProduction <= 0)
-			return 0;
-
-		int consumed = InGameDataModel.ConsumeProductionBuildingCoinReserves(building.BuildingInstanceId, rawProduction);
-		return Mathf.Max(0, consumed);
 	}
 
 	private void GrantCoinAfterFly(Vector3 sourceWorldPos, int coinAmount, string reason)
@@ -404,11 +330,10 @@ public class RewardManager : GameFrameworkComponent
 		if (coinAmount <= 0)
 			return;
 
+		// Economy is committed in the phase transaction; the fly effect is presentation only.
+		ApplyCoinDirectly(coinAmount, reason);
 		if (GF.UI == null || !TryGetPlayerPosition(out Vector3 playerPos))
-		{
-			ApplyCoinDirectly(coinAmount, reason);
 			return;
-		}
 
 		Vector3 spawnPos = sourceWorldPos + CoinSpawnOffset;
 		Vector3 targetPos = playerPos + CoinTargetOffset;
@@ -419,7 +344,7 @@ public class RewardManager : GameFrameworkComponent
 			0f,
 			null,
 			coinAmount,
-			() => ApplyCoinDirectly(1, reason),
+			null,
 			CoinFlySpawnIntervalSeconds);
 	}
 
@@ -428,10 +353,16 @@ public class RewardManager : GameFrameworkComponent
 		if (coinAmount <= 0)
 			return;
 
-		if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, coinAmount, true))
+		int oldValue = InGameDataModel.GetValue(IngameValueType.Coin);
+		if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, coinAmount, false))
 		{
 			Log.Error("[RewardManager] Apply coin failed. deltaCoin={0}, reason={1}", coinAmount, reason);
+			return;
 		}
+
+		int newValue = InGameDataModel.GetValue(IngameValueType.Coin);
+		if (GF.Event != null && oldValue != newValue)
+			GF.Event.Fire(null, IngameValueChangedEventArgs.Create(IngameValueType.Coin, oldValue, newValue));
 	}
 
 	private static Vector3 ResolveDiscardRewardSourcePosition(CardModel cardModel, Vector2? discardScreenPosition)

@@ -306,6 +306,26 @@ public class SteeringMovementTests
     }
 
     [Test]
+    public void 敌兵返航阈值使用定点出生点和位置()
+    {
+        var soldier = MakeSoldier(Vector3.zero, SideType.EnemySide);
+        soldier.PositionFixed = new FixVector2(Fix64.FromRaw(Fix64.One.RawValue + 1), Fix64.Zero);
+        EntityRegistry.Register(soldier);
+
+        var brain = new SoldierAIBrain
+        {
+            ChaseRange = 1f,
+            HomeArrivedRadius = 0.1f,
+        };
+        brain.SetBirthPositionFixed(FixVector2.Zero);
+        soldier.Brain = brain;
+
+        brain.Tick(soldier, Fix64.One / (Fix64)60);
+
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Returning, brain.State);
+    }
+
+    [Test]
     public void Follow状态_发现敌人后转为Combat()
     {
         var player = MakeSoldier(new Vector3(0, 0, 0));

@@ -88,10 +88,47 @@ public sealed class LogicInputTimelineTests
         Assert.AreEqual(1, second.GetPressCount(LogicInputButton.SkillConfirm));
     }
 
+    [Test]
+    public void WorldSelection_IsSealedOnExactTickAndCarriesForward()
+    {
+        var timeline = CreateTimeline();
+        var firstPosition = new FixVector2(Fix64.FromRaw(123), Fix64.FromRaw(-456));
+        var secondPosition = new FixVector2(Fix64.FromRaw(789), Fix64.FromRaw(321));
+        timeline.EnqueueSelectWorldPosition(1d / 30d, firstPosition);
+        timeline.EnqueueSelectWorldPosition(1d / 30d + 0.000001d, secondPosition);
+
+        LogicInputFrame first = timeline.Seal(1, 1d / 30d);
+        LogicInputFrame second = timeline.Seal(2, 2d / 30d);
+        LogicInputFrame third = timeline.Seal(3, 3d / 30d);
+
+        Assert.IsTrue(first.HasSelectWorldPosition);
+        Assert.AreEqual(firstPosition, first.SelectWorldPosition);
+        Assert.AreEqual(1, first.Events.Count);
+        Assert.AreEqual(RawInputEventKind.SelectWorldPositionChanged, first.Events[0].Kind);
+        Assert.AreEqual(secondPosition, second.SelectWorldPosition);
+        Assert.AreEqual(1, second.Events.Count);
+        Assert.AreEqual(secondPosition, third.SelectWorldPosition);
+        Assert.AreEqual(0, third.Events.Count);
+    }
+
+    [Test]
+    public void InitialWorldSelection_IsAvailableWithoutSyntheticEvent()
+    {
+        var initialPosition = new FixVector2(Fix64.FromRaw(101), Fix64.FromRaw(202));
+        var timeline = new LogicInputTimeline();
+        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, true, initialPosition);
+
+        LogicInputFrame frame = timeline.Seal(1, 1d / 30d);
+
+        Assert.IsTrue(frame.HasSelectWorldPosition);
+        Assert.AreEqual(initialPosition, frame.SelectWorldPosition);
+        Assert.AreEqual(0, frame.Events.Count);
+    }
+
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();
-        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero);
+        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
         return timeline;
     }
 }

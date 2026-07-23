@@ -23,8 +23,14 @@ namespace AAAGame.Card
         /// <summary>
         /// 抽取卡牌
         /// </summary>
-        public bool DrawCard(ICardDataProvider cardData, BuildingEntity sourceBuilding = null)
+        public bool DrawCard(
+            ulong runtimeId,
+            ICardDataProvider cardData,
+            string sourceBuildingInstanceId = null,
+            BuildingEntity sourceBuilding = null)
         {
+            if (runtimeId == 0)
+                throw new ArgumentOutOfRangeException(nameof(runtimeId));
             if (cardData == null)
             {
                 Debug.LogError("[Card] Card data is null.");
@@ -38,7 +44,7 @@ namespace AAAGame.Card
             }
 
             // 创建卡牌模型
-            CardModel cardModel = new CardModel(cardData, sourceBuilding);
+            CardModel cardModel = new CardModel(runtimeId, cardData, sourceBuildingInstanceId, sourceBuilding);
 
             // 添加到手牌
             if (!m_HandModel.AddCard(cardModel))

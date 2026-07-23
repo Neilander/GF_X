@@ -1,4 +1,4 @@
-﻿using System.Collections;
+﻿﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -66,5 +66,17 @@ public class GeneralCounter
         
 
         return _finished;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new System.ArgumentNullException(nameof(hasher));
+
+        hasher.Add(_setted);
+        hasher.Add(_target.RawValue);
+        hasher.Add(_current.RawValue);
+        hasher.Add(_start.RawValue);
+        hasher.Add(_finished);
     }
 }

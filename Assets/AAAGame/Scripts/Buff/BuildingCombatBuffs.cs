@@ -437,7 +437,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
 
     private bool IsEligibleTarget(IBuildingLogicContext building, IEntityContext candidate)
     {
-        if (candidate is IBuildingLogicContext)
+        if (candidate.IsLogicBuilding())
             return false;
         if (!candidate.IsAttackTargetable())
             return false;

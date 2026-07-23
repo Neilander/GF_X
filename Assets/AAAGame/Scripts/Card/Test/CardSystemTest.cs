@@ -12,10 +12,6 @@ public class CardSystemTest : MonoBehaviour
     [SerializeField] private int maxPopulation = 10;
     [SerializeField] private int initialCardCount = 4;
 
-    [Header("区域对象")]
-    [SerializeField] private GameObject validArea;
-    [SerializeField] private GameObject invalidArea;
-
     [Header("卡牌数据")]
     [SerializeField] private List<CardData> testCardDataList;
 
@@ -106,10 +102,7 @@ public class CardSystemTest : MonoBehaviour
             GFBuiltin.Log($"✓ 卡牌池已设置，共 {providers.Count} 张卡牌");
         }
 
-        // 4. 设置区域对象
-        SetupAreas();
-
-        // 5. 打开 UI（使用 UIViews 枚举）
+        // 4. 打开 UI（使用 UIViews 枚举）
         try
         {
             //GFBuiltin.UI.OpenUIForm(UIViews.CardUIForm);
@@ -160,29 +153,6 @@ public class CardSystemTest : MonoBehaviour
 
         GFBuiltin.LogWarning("未找到卡牌数据，将创建测试数据");
         return providers;
-    }
-
-    private void SetupAreas()
-    {
-        // 自动查找区域对象（如果没有手动配置）
-        if (validArea == null)
-        {
-            validArea = GameObject.Find("ValidArea");
-        }
-
-        if (invalidArea == null)
-        {
-            invalidArea = GameObject.Find("InvalidArea");
-        }
-
-        if (validArea == null || invalidArea == null)
-        {
-            GFBuiltin.LogWarning("⚠️ 区域对象未配置，请在 Inspector 中设置或确保场景中有 ValidArea 和 InvalidArea 对象");
-            return;
-        }
-
-        m_CardSystem.SetAreaObjects(validArea, invalidArea);
-        GFBuiltin.Log($"✓ 区域对象已设置: Valid={validArea.name}, Invalid={invalidArea.name}");
     }
 
     void Update()

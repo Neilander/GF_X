@@ -17,7 +17,7 @@ public class SelectPositionSkill : ActiveSkillSO
             currentIndex = 0,
             isFinished = false,
             selectTargets = new List<ISelectable>(),
-            selectPos = body.Position
+            selectPos = body.PositionFixed
         };
     }
 
@@ -46,24 +46,10 @@ public class SelectPositionSkill : ActiveSkillSO
          info.currentInfo.selectPos = posInfo.selectPos;
     }
 
-    protected override void SetupNewAction(SkillInfo info, int actionIndex)
-    {
-        base.SetupNewAction(info, actionIndex);
-        //检测新的currentInfo是否为某某某
-        //GF.Log("我是1");
-        if (info.currentInfo is not PositionSelectActionInfo posSelectInfo)
-            return;
-        //GF.Log("我是2");
-        if (info.entity is not MAEntity positionSelectionView)
-            throw new System.InvalidOperationException($"SelectPositionSkill requires a bound MAEntity presenter. entity={info.entity.LogicEntityId.Value}.");
-        posSelectInfo.centerTrans = positionSelectionView.transform;
-        posSelectInfo.radius = radius;
-        posSelectInfo.selectScale = selectRatio;
-    }
 }
 
 public class SelectPosSkillInfo :SkillInfo
 {
     public List<ISelectable> selectTargets;
-    public Vector3 selectPos;
+    public FixVector2 selectPos;
 }

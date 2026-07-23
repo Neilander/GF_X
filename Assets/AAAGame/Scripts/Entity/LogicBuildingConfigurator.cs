@@ -10,11 +10,13 @@ public static class LogicBuildingConfigurator
     private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
     private static readonly Fix64 PlaceholderWindUp = (Fix64)0.35f;
     private static readonly Fix64 PlaceholderWindDown = (Fix64)0.35f;
+    public static event Action<IBuildingLogicContext> BuildingConfigured;
 
     public static void Configure(
         LogicEntityState state,
         BuildingData buildingData,
         string buildingInstanceId,
+        string strongholdId,
         int ownerFactionId,
         int logicQuarterTurns)
     {
@@ -36,23 +38,32 @@ public static class LogicBuildingConfigurator
                 $"LogicBuildingConfigurator.Configure failed: character key mismatch. entity={state.EntityId.Value}, state={state.CharacterKey}, building={buildingData.Identifier}.");
         }
 
-        var properties = new CreaturePropertyManager(property => GetPropertyConfigValue(buildingData, property));
+        bool tutorialLevel = TutorialManager.IsCurrentLevelTutorial();
+        var properties = new CreaturePropertyManager(property => GetPropertyConfigValue(buildingData, property, tutorialLevel));
         state.Configure(null, properties, MAEntity.UnknownNavAgentTypeId, true, new BuildingAIBrain(), false, false);
 
-        float yawDegrees = logicQuarterTurns * 90f;
-        Vector3 worldPosition = new Vector3((float)state.Position.x, 0f, (float)state.Position.y);
         LogicCombatShape combatShape = BuildingCombatShapeCatalog.LoadRequired()
-            .ResolveRequired(buildingData.PrefabPath, worldPosition, yawDegrees);
+            .ResolveRequired(buildingData.PrefabPath, state.Position, logicQuarterTurns);
         IReadOnlyList<LogicCombatShape> obstacleShapes = BuildingLogicObstacleShapeCatalog.LoadRequired()
-            .ResolveRequired(buildingData.PrefabPath, worldPosition, yawDegrees);
+            .ResolveRequired(buildingData.PrefabPath, state.Position, logicQuarterTurns);
         bool noAttack = buildingData.Weapon == null || buildingData.Weapon.Atk <= Fix64.Zero;
+        LogicInteractionOptionDescriptor[] interactionOptions = LogicInteractionOptionDescriptorFactory.Create(
+            state.EntityId,
+            buildingInstanceId,
+            buildingData);
+        int? armySupplyPerUnit = buildingData.Type == BuilType.Army
+            ? ResolveRequiredUnitSupply(buildingData)
+            : (int?)null;
         state.ConfigureBuilding(
             buildingData,
             buildingInstanceId,
+            strongholdId,
             ownerFactionId,
             combatShape,
             obstacleShapes,
-            noAttack);
+            interactionOptions,
+            noAttack,
+            armySupplyPerUnit);
 
         var moveComp = new NoMoveComp();
         state.SetMoveComp(moveComp);
@@ -70,11 +81,16 @@ public static class LogicBuildingConfigurator
         attackComp.Init(state);
 
         AddLogicInitialBuffs(state, buildingData);
+        if (buildingData.Type == BuilType.Prod)
+            LogicBuildingProductionService.Configure(state);
 
-        float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range) + 1.5f, 4f);
-        targetingComp.AggroRange = aggroRange;
-        targetingComp.ForgetRange = aggroRange + 2f;
-        targetingComp.FollowSearchRange = 0f;
+        Fix64 aggroRange = Fix64.Max(
+            DistanceUnitConverter.ConvertToWorld(weaponData.Range) + (Fix64)1.5f,
+            (Fix64)4);
+        targetingComp.AggroRangeFixed = aggroRange;
+        targetingComp.ForgetRangeFixed = aggroRange + (Fix64)2;
+        targetingComp.FollowSearchRangeFixed = Fix64.Zero;
+        BuildingConfigured?.Invoke(state);
     }
 
     private static void AddLogicInitialBuffs(LogicEntityState state, BuildingData buildingData)
@@ -117,10 +133,10 @@ public static class LogicBuildingConfigurator
         else
             result = new CharacterTargetingComp { EnableAggroFallback = false };
 
-        result.AggroRange = 6f;
-        result.ForgetRange = 8f;
-        result.FollowSearchRange = 0f;
-        result.AlertRadius = 12f;
+        result.AggroRangeFixed = (Fix64)6;
+        result.ForgetRangeFixed = (Fix64)8;
+        result.FollowSearchRangeFixed = Fix64.Zero;
+        result.AlertRadiusFixed = (Fix64)12;
         return result;
     }
 
@@ -145,14 +161,18 @@ public static class LogicBuildingConfigurator
             Array.Empty<Fix64>());
     }
 
-    private static Fix64 GetPropertyConfigValue(BuildingData buildingData, CreatureMainProperty property)
+    private static Fix64 GetPropertyConfigValue(
+        BuildingData buildingData,
+        CreatureMainProperty property,
+        bool tutorialLevel)
     {
         switch (property)
         {
             case CreatureMainProperty.Def:
                 return buildingData.Def > Fix64.Zero ? buildingData.Def : Fix64.Zero;
             case CreatureMainProperty.Health:
-                return buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
+                Fix64 health = buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
+                return tutorialLevel ? health * (Fix64)0.5f : health;
             case CreatureMainProperty.Sight:
                 return buildingData.Weapon != null && buildingData.Weapon.Range > Fix64.Zero
                     ? buildingData.Weapon.Range
@@ -160,5 +180,26 @@ public static class LogicBuildingConfigurator
             default:
                 return Fix64.Zero;
         }
+    }
+
+    private static int ResolveRequiredUnitSupply(BuildingData buildingData)
+    {
+        if (string.IsNullOrWhiteSpace(buildingData.UnitID))
+        {
+            if (buildingData.Lv == 0)
+                return 0;
+            throw new InvalidOperationException($"Army building '{buildingData.Identifier}' has no UnitID.");
+        }
+        if (GF.DataTable == null)
+            throw new InvalidOperationException($"Cannot configure army building '{buildingData.Identifier}': data tables are unavailable.");
+
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>()
+                    ?? throw new InvalidOperationException("CharacterDataDetail table is unavailable.");
+        CharacterDataDetail row = table.GetDataRow(candidate => candidate.CharacterKey == buildingData.UnitID)
+                                  ?? throw new InvalidOperationException(
+                                      $"Army building '{buildingData.Identifier}' references missing unit '{buildingData.UnitID}'.");
+        if (row.Supply < 0)
+            throw new InvalidOperationException($"Unit '{buildingData.UnitID}' has negative supply {row.Supply}.");
+        return row.Supply;
     }
 }

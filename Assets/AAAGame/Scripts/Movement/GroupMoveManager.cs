@@ -109,7 +109,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
             throw new System.ArgumentNullException(nameof(entity));
 
         float radius = ResolveAgentRadius(entity);
-        FlowFieldCrowdMovementSystem.RegisterAgent(entity, false, radius);
+        FlowFieldCrowdMovementSystem.RegisterAgent(entity, radius);
     }
 
     public void UnregisterAgent(IEntityContext entity)
@@ -307,21 +307,6 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.SetAgentIgnoreCollision(id, ignore);
     }
 
-    public void SetAgentLeader(int id, bool isLeader)
-    {
-        FlowFieldCrowdMovementSystem.SetAgentLeader(id, isLeader);
-    }
-
-    public void SetAgentGroup(int id, int groupId)
-    {
-        FlowFieldCrowdMovementSystem.SetAgentGroup(id, groupId);
-    }
-
-    public void SetAgentState(int id, FlowFieldAgentState state)
-    {
-        FlowFieldCrowdMovementSystem.SetAgentState(id, state);
-    }
-
     public void InvalidateNavigation(string reason = null)
     {
         FlowFieldCrowdMovementSystem.MarkWorldDirty(reason);
@@ -335,11 +320,6 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
     public bool HasActiveNavigationAgents()
     {
         return FlowFieldCrowdMovementSystem.HasActiveNavigationAgents();
-    }
-
-    public bool IsPositionOccupiedByAgent(Vector3 position, float requiredDistance)
-    {
-        return FlowFieldCrowdMovementSystem.IsPositionOccupiedByAgent(position, requiredDistance);
     }
 
     // ── Gizmos ──

@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using AAAGame.Card;
 using AAAGame.Scripts.BuffSystem;
-using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -67,6 +66,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     public void ClearRuntimeState()
     {
+        UnsubscribeRuntimeEvents();
         m_DiscardBuffs.Clear();
         m_PendingBuildPhaseCoinsByFaction.Clear();
         m_SortingCenterCardForceSpecs.Clear();
@@ -77,6 +77,83 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         DiscardRewardModifierService.Clear();
         EnemyArmyForceModifierService.Clear();
         HealingTargetFilterService.Clear();
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        hasher.Add(0x425452554E54494DUL);
+        hasher.Add(m_EventsSubscribed);
+        hasher.Add(m_DiscardCounter);
+        AddDiscardBuffs(hasher);
+        AddPendingBuildPhaseCoins(hasher);
+        AddSortingCenterSpecs(hasher);
+        AddFireHqSpecs(hasher);
+        AddIntDictionary(hasher, m_BattleCardCountsByFaction);
+        AddIntDictionary(hasher, m_DeadSupplyByFaction);
+    }
+
+    private void AddDiscardBuffs(LogicStateHasher hasher)
+    {
+        var keys = new List<string>(m_DiscardBuffs.Keys);
+        keys.Sort(StringComparer.Ordinal);
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            DiscardBuffSpec spec = m_DiscardBuffs[keys[i]];
+            hasher.Add(keys[i]);
+            hasher.Add(spec.OwnerFactionId);
+            hasher.Add(spec.HealthBonus.RawValue);
+            hasher.Add(spec.AttackSpeedPercent.RawValue);
+        }
+    }
+
+    private void AddPendingBuildPhaseCoins(LogicStateHasher hasher)
+    {
+        AddIntDictionary(hasher, m_PendingBuildPhaseCoinsByFaction);
+    }
+
+    private void AddSortingCenterSpecs(LogicStateHasher hasher)
+    {
+        var keys = new List<string>(m_SortingCenterCardForceSpecs.Keys);
+        keys.Sort(StringComparer.Ordinal);
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            SortingCenterCardForceSpec spec = m_SortingCenterCardForceSpecs[keys[i]];
+            hasher.Add(keys[i]);
+            hasher.Add(spec.OwnerFactionId);
+            hasher.Add(spec.CardLimit);
+            hasher.Add(spec.BonusForce.RawValue);
+        }
+    }
+
+    private void AddFireHqSpecs(LogicStateHasher hasher)
+    {
+        var keys = new List<string>(m_FireHqDeathSupplySpecs.Keys);
+        keys.Sort(StringComparer.Ordinal);
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            FireHqDeathSupplySpec spec = m_FireHqDeathSupplySpecs[keys[i]];
+            hasher.Add(keys[i]);
+            hasher.Add(spec.OwnerFactionId);
+            hasher.Add(spec.SupplyPerCoin);
+        }
+    }
+
+    private static void AddIntDictionary(LogicStateHasher hasher, Dictionary<int, int> values)
+    {
+        var keys = new List<int>(values.Keys);
+        keys.Sort();
+        hasher.Add(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            hasher.Add(keys[i]);
+            hasher.Add(values[keys[i]]);
+        }
     }
 
     public override void Activate(TechEffectContext context)
@@ -489,46 +566,76 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private void EnsureEventSubscriptions()
     {
-        if (m_EventsSubscribed || GF.Event == null)
+        if (m_EventsSubscribed)
             return;
 
-        GF.Event.Subscribe(CardDiscardedEventArgs.EventId, OnCardDiscarded);
-        GF.Event.Subscribe(CardPlayedEventArgs.EventId, OnCardPlayed);
-        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
-        GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
+        LogicCardCommandService.CardResolved += OnLogicCardResolved;
+        LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
+        LogicUnitDeathEventService.UnitDied += OnLogicUnitDied;
         m_EventsSubscribed = true;
     }
 
-    private void OnCardDiscarded(object sender, GameEventArgs e)
+    private void UnsubscribeRuntimeEvents()
+    {
+        if (!m_EventsSubscribed)
+            return;
+
+        LogicCardCommandService.CardResolved -= OnLogicCardResolved;
+        LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
+        LogicUnitDeathEventService.UnitDied -= OnLogicUnitDied;
+        m_EventsSubscribed = false;
+    }
+
+    private void OnDisable()
+    {
+        UnsubscribeRuntimeEvents();
+    }
+
+    private void OnLogicCardResolved(LogicCardResolution resolution)
+    {
+        if (!LogicCardCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("Building tech received a card resolution outside the logic card apply window.");
+
+        if (resolution.Kind == LogicCardCommandKind.Discard)
+        {
+            ApplyAllDiscardBuffs();
+            return;
+        }
+
+        if (resolution.Kind != LogicCardCommandKind.Play || m_SortingCenterCardForceSpecs.Count == 0)
+            return;
+
+        string sourceBuildingInstanceId = resolution.SourceBuildingInstanceId;
+        if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
+            return;
+        IBuildingLogicContext sourceBuilding = LogicBuildingQueryService.GetRequiredByInstanceId(sourceBuildingInstanceId);
+        if (!IsArmyBuilding(sourceBuilding))
+            throw new InvalidOperationException(
+                $"Played card source '{sourceBuildingInstanceId}' is not an army building.");
+
+        m_BattleCardCountsByFaction.TryGetValue(sourceBuilding.OwnerFactionId, out int currentCount);
+        m_BattleCardCountsByFaction[sourceBuilding.OwnerFactionId] = checked(currentCount + 1);
+    }
+
+    private void ApplyAllDiscardBuffs()
     {
         if (m_DiscardBuffs.Count == 0)
             return;
 
         foreach (DiscardBuffSpec spec in m_DiscardBuffs.Values)
-        {
             ApplyDiscardBuff(spec);
-        }
     }
 
-    private void OnCardPlayed(object sender, GameEventArgs e)
+    private void OnLogicUnitDied(IEntityContext victim)
     {
-        if (m_SortingCenterCardForceSpecs.Count == 0 || e is not CardPlayedEventArgs args || args.CardModel == null)
+        if (m_FireHqDeathSupplySpecs.Count == 0)
             return;
+        if (!LogicDamageEventService.IsApplying)
+            throw new InvalidOperationException("Building tech received a unit death outside the logic damage apply window.");
+        if (victim == null)
+            throw new ArgumentNullException(nameof(victim));
 
-        BuildingEntity sourceBuilding = args.CardModel.SourceBuilding;
-        if (!IsArmyBuilding(sourceBuilding))
-            return;
-
-        m_BattleCardCountsByFaction.TryGetValue(sourceBuilding.OwnerFactionID, out int currentCount);
-        m_BattleCardCountsByFaction[sourceBuilding.OwnerFactionID] = currentCount + 1;
-    }
-
-    private void OnSoldierDead(object sender, GameEventArgs e)
-    {
-        if (m_FireHqDeathSupplySpecs.Count == 0 || e is not SoldierDeadEventArgs args)
-            return;
-
-        int ownerFactionId = EntitySideHelper.ToFactionId(args.VictimSide);
+        int ownerFactionId = EntitySideHelper.ToFactionId(victim.Side);
         if (ownerFactionId < 0)
             return;
 
@@ -536,15 +643,16 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         if (phase != GamePhase.Invade && phase != GamePhase.Defend)
             return;
 
+        int victimSupply = victim.CharacterData != null ? Math.Max(0, victim.CharacterData.Supply) : 0;
         m_DeadSupplyByFaction.TryGetValue(ownerFactionId, out int current);
-        m_DeadSupplyByFaction[ownerFactionId] = current + Mathf.Max(0, args.VictimSupply);
+        m_DeadSupplyByFaction[ownerFactionId] = checked(current + victimSupply);
     }
 
     private void ApplyDiscardBuff(DiscardBuffSpec spec)
     {
         var manager = GameEntry.GetComponent<GlobalBuffManager>();
         if (manager == null)
-            return;
+            throw new InvalidOperationException("Building tech discard resolution requires GlobalBuffManager.");
 
         string uniqueTechId = $"{DiscardFutureBuffPrefix}{spec.TechId}_{m_DiscardCounter++}";
         TechData techData = TechDataModel.GetTechData(spec.TechId);
@@ -581,24 +689,26 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         return modules;
     }
 
-    private void OnPhaseChanged(object sender, GameEventArgs e)
+    private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
     {
-        if (e is not IngamePhaseChangedEventArgs args)
-            return;
+        if (!LogicPhaseCommandService.IsApplyingFrame)
+            throw new InvalidOperationException("Building tech received a phase transition outside the logic phase apply window.");
 
-        if (args.NewPhase == GamePhase.Invade || args.NewPhase == GamePhase.Defend)
+        if (newPhase == GamePhase.Invade || newPhase == GamePhase.Defend)
             ResetBattleCardCounts();
 
-        if (!InGameDataModel.IsBuildPhase(args.NewPhase))
+        if (!InGameDataModel.IsBuildPhase(newPhase))
             return;
 
         GrantPendingBuildPhaseCoins();
         GrantFireHqDeathSupplyCoins();
 
         var manager = GameEntry.GetComponent<GlobalBuffManager>();
+        if (m_DiscardBuffs.Count > 0 && manager == null)
+            throw new InvalidOperationException("Building tech phase transition requires GlobalBuffManager for discard buffs.");
         foreach (DiscardBuffSpec spec in m_DiscardBuffs.Values)
         {
-            manager?.UnregisterUnitBuffByTechPrefix(spec.OwnerFactionId, DiscardFutureBuffPrefix);
+            manager.UnregisterUnitBuffByTechPrefix(spec.OwnerFactionId, DiscardFutureBuffPrefix);
         }
 
         var all = EntityRegistry.AllEntities;
@@ -684,7 +794,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
                 if (!IsArmyBuilding(building))
                     return Fix64.Zero;
 
-                m_BattleCardCountsByFaction.TryGetValue(building.OwnerFactionID, out int playedCount);
+                m_BattleCardCountsByFaction.TryGetValue(building.OwnerFactionId, out int playedCount);
                 return playedCount < cardLimit ? bonusForce : Fix64.Zero;
             });
     }
@@ -740,7 +850,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         m_BattleCardCountsByFaction.Clear();
     }
 
-    private void RegisterSourceBuildingWatcher(TechEffectContext context, Func<BuildingEntity, List<BuffCallback>> createModules)
+    private void RegisterSourceBuildingWatcher(TechEffectContext context, Func<IBuildingLogicContext, List<BuffCallback>> createModules)
     {
         if (createModules == null)
             return;
@@ -782,8 +892,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             context.SourceBuildingInstanceId,
             context.TechId,
             building => IsArmyBuilding(building)
-                        && building.CurrentStronghold != null
-                        && StrongholdHasBuildingArchetype(building.CurrentStronghold, archetype)
+                        && LogicBuildingQueryService.HasBuildingArchetype(building, archetype)
                 ? bonusForce
                 : Fix64.Zero);
     }
@@ -793,15 +902,14 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         if (discountPerArchetype <= 0)
             return;
 
-        BuildingEntity sourceBuilding = FindBuildingByInstanceId(context.SourceBuildingInstanceId);
-        if (sourceBuilding == null || sourceBuilding.CurrentStronghold == null)
-        {
-            Debug.LogWarning($"[BuildingTechRuntimeEffect] 研发中心造价科技缺少来源据点，techId={context.TechId}, buildingInstanceId={context.SourceBuildingInstanceId}");
-            return;
-        }
+        IBuildingLogicContext sourceBuilding = LogicBuildingQueryService.GetRequiredByInstanceId(
+            context.SourceBuildingInstanceId);
+        if (string.IsNullOrWhiteSpace(sourceBuilding.StrongholdId))
+            throw new InvalidOperationException(
+                $"Research center cost discount source has no stronghold. techId={context.TechId}, buildingInstanceId={context.SourceBuildingInstanceId}.");
 
         BuildingCostModifierService.RegisterStrongholdArchetypeDiscount(
-            sourceBuilding.CurrentStronghold,
+            sourceBuilding.StrongholdId,
             context.TechId,
             context.OwnerFactionId,
             discountPerArchetype);
@@ -852,8 +960,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             this,
             context.TechData,
             building => IsArmyBuilding(building)
-                        && building.CurrentStronghold != null
-                        && StrongholdHasDifferentArmyArchetype(building));
+                        && LogicBuildingQueryService.HasDifferentArmyArchetype(building));
     }
 
     private void RegisterArmyBuffInStrongholdsWithArchetypeBuilding(TechEffectContext context, Archetype archetype)
@@ -865,8 +972,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             this,
             context.TechData,
             building => IsArmyBuilding(building)
-                        && building.CurrentStronghold != null
-                        && StrongholdHasBuildingArchetype(building.CurrentStronghold, archetype));
+                        && LogicBuildingQueryService.HasBuildingArchetype(building, archetype));
     }
 
     private void RegisterBuildingEntityPropertyBuff(TechEffectContext context, CreatureMainProperty property, Fix64 amount)
@@ -878,11 +984,11 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             context.OwnerFactionId,
             context.SourceBuildingInstanceId,
             context.TechId,
-            building => building != null && building.buildingData != null,
+            building => building != null && building.BuildingData != null,
             _ => Modules(new MainPropertyAdditiveBuff(property, amount)));
     }
 
-    private static int CalculateTrainingRoomSteps(BuildingEntity building, Fix64 forcePerStep)
+    private static int CalculateTrainingRoomSteps(IBuildingLogicContext building, Fix64 forcePerStep)
     {
         if (!IsArmyBuilding(building) || forcePerStep <= Fix64.Zero)
             return 0;
@@ -890,50 +996,17 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         return (int)Fix64.Floor((Fix64)building.GetArmyForce() / forcePerStep);
     }
 
-    private static IEnumerable<BuildingEntity> EnumeratePlayerBuildings()
+    private static bool IsArmyBuilding(IBuildingLogicContext building)
     {
-        var dataModel = GF.DataModel?.GetDataModel<InGameDataModel>();
-        if (dataModel?.Buildings == null)
-            yield break;
-
-        foreach (BuildingEntity building in dataModel.Buildings)
-        {
-            if (building == null || building.buildingData == null || building.OwnerFactionID != EntitySideHelper.PlayerFactionId)
-                continue;
-
-            yield return building;
-        }
+        return building?.BuildingData != null && building.BuildingData.Type == BuilType.Army;
     }
 
-    private static BuildingEntity FindBuildingByInstanceId(string buildingInstanceId)
+    private static bool ArmyBuildingUnitHasTag(IBuildingLogicContext building, UnitTag tag)
     {
-        if (string.IsNullOrWhiteSpace(buildingInstanceId))
-            return null;
-
-        var dataModel = GF.DataModel?.GetDataModel<InGameDataModel>();
-        if (dataModel?.Buildings == null)
-            return null;
-
-        foreach (BuildingEntity building in dataModel.Buildings)
-        {
-            if (building != null && string.Equals(building.BuildingInstanceId, buildingInstanceId, StringComparison.Ordinal))
-                return building;
-        }
-
-        return null;
-    }
-
-    private static bool IsArmyBuilding(BuildingEntity building)
-    {
-        return building?.buildingData != null && building.buildingData.Type == BuilType.Army;
-    }
-
-    private static bool ArmyBuildingUnitHasTag(BuildingEntity building, UnitTag tag)
-    {
-        if (!IsArmyBuilding(building) || string.IsNullOrWhiteSpace(building.buildingData.UnitID))
+        if (!IsArmyBuilding(building) || string.IsNullOrWhiteSpace(building.BuildingData.UnitID))
             return false;
 
-        CharacterDataDetail row = FindCharacterData(building.buildingData.UnitID);
+        CharacterDataDetail row = FindCharacterData(building.BuildingData.UnitID);
         return HasTag(row?.UnitTags, tag);
     }
 
@@ -954,44 +1027,6 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         for (int i = 0; i < tags.Length; i++)
         {
             if (tags[i] == tag)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool StrongholdHasBuildingArchetype(Stronghold stronghold, Archetype archetype)
-    {
-        if (stronghold?.Buildings == null || archetype == Archetype.None)
-            return false;
-
-        foreach (BuildingEntity building in stronghold.Buildings)
-        {
-            if (building != null
-                && building.OwnerFactionID == EntitySideHelper.PlayerFactionId
-                && building.buildingData != null
-                && building.buildingData.Arche == archetype)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool StrongholdHasDifferentArmyArchetype(BuildingEntity source)
-    {
-        if (source?.CurrentStronghold?.Buildings == null || source.buildingData == null)
-            return false;
-
-        Archetype sourceArchetype = source.buildingData.Arche;
-        foreach (BuildingEntity building in source.CurrentStronghold.Buildings)
-        {
-            if (building == null || ReferenceEquals(building, source) || building.buildingData == null)
-                continue;
-            if (building.OwnerFactionID != EntitySideHelper.PlayerFactionId || building.buildingData.Type != BuilType.Army)
-                continue;
-            if (building.buildingData.Arche != Archetype.None && building.buildingData.Arche != sourceArchetype)
                 return true;
         }
 
@@ -1586,12 +1621,13 @@ public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback
             if (enemy == null || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
                 continue;
 
-            Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(enemy.Position);
-            string strongholdId = stronghold?.strongholdData?.StrongholdId;
             int enemyId = enemy.LogicEntityId.Value;
             m_LastStrongholdIdByEntity.TryGetValue(enemyId, out string previousId);
             int ownerFactionId = EntitySideHelper.ToFactionId(hostEntity.Side);
-            if (stronghold == null || stronghold.OwnerFactionId != ownerFactionId)
+            if (!LogicBuildingQueryService.TryResolveOwnedStrongholdAtPosition(
+                    enemy.PositionFixed,
+                    ownerFactionId,
+                    out string strongholdId))
             {
                 m_LastStrongholdIdByEntity[enemyId] = null;
                 continue;
@@ -1649,9 +1685,11 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
             if (enemy == null || !enemy.Alive || !EntityCombatTeamHelper.IsEnemy(hostEntity, enemy))
                 continue;
 
-            Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(enemy.Position);
             int ownerFactionId = EntitySideHelper.ToFactionId(hostEntity.Side);
-            if (stronghold == null || stronghold.OwnerFactionId != ownerFactionId)
+            if (!LogicBuildingQueryService.TryResolveOwnedStrongholdAtPosition(
+                    enemy.PositionFixed,
+                    ownerFactionId,
+                    out _))
                 continue;
 
             int enemyId = enemy.LogicEntityId.Value;
@@ -2058,16 +2096,19 @@ public static class BuildingCostModifierService
         s_DiscountsByStrongholdId.Clear();
     }
 
-    public static void RegisterStrongholdArchetypeDiscount(Stronghold stronghold, string techId, int ownerFactionId, int discountPerArchetype)
+    public static void RegisterStrongholdArchetypeDiscount(
+        string strongholdId,
+        string techId,
+        int ownerFactionId,
+        int discountPerArchetype)
     {
-        if (stronghold?.strongholdData == null || string.IsNullOrWhiteSpace(stronghold.strongholdData.StrongholdId))
-            throw new InvalidOperationException($"RegisterStrongholdArchetypeDiscount failed: invalid stronghold. techId={techId}");
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("strongholdId is required.", nameof(strongholdId));
         if (string.IsNullOrWhiteSpace(techId))
             throw new ArgumentException("techId is required.", nameof(techId));
         if (discountPerArchetype <= 0)
             return;
 
-        string strongholdId = stronghold.strongholdData.StrongholdId;
         if (!s_DiscountsByStrongholdId.TryGetValue(strongholdId, out var discounts))
         {
             discounts = new List<StrongholdArchetypeDiscount>();
@@ -2094,29 +2135,32 @@ public static class BuildingCostModifierService
         });
     }
 
-    public static int CalculateBuildingCost(BuildingData buildingData, Stronghold stronghold)
+    public static int CalculateBuildingCost(
+        BuildingData buildingData,
+        string strongholdId,
+        int ownerFactionId)
     {
         if (buildingData == null)
             return 0;
 
         int cost = Mathf.Max(0, buildingData.Cost);
-        int discount = CalculateDiscount(stronghold);
+        int discount = CalculateDiscount(strongholdId, ownerFactionId);
         return LevelTagRuntime.ModifyBuildingCost(buildingData, Mathf.Max(0, cost - discount));
     }
 
-    private static int CalculateDiscount(Stronghold stronghold)
+    private static int CalculateDiscount(string strongholdId, int ownerFactionId)
     {
-        if (stronghold?.strongholdData == null || string.IsNullOrWhiteSpace(stronghold.strongholdData.StrongholdId))
+        if (string.IsNullOrWhiteSpace(strongholdId))
             return 0;
-        if (!s_DiscountsByStrongholdId.TryGetValue(stronghold.strongholdData.StrongholdId, out var discounts) || discounts == null)
+        if (!s_DiscountsByStrongholdId.TryGetValue(strongholdId, out var discounts) || discounts == null)
             return 0;
 
-        int archetypeCount = CountDistinctArchetypes(stronghold);
+        int archetypeCount = CountDistinctArchetypes(strongholdId, ownerFactionId);
         int total = 0;
         for (int i = 0; i < discounts.Count; i++)
         {
             var discount = discounts[i];
-            if (discount == null || discount.OwnerFactionId != stronghold.OwnerFactionId)
+            if (discount == null || discount.OwnerFactionId != ownerFactionId)
                 continue;
 
             total += Mathf.Max(0, discount.DiscountPerArchetype) * archetypeCount;
@@ -2125,19 +2169,22 @@ public static class BuildingCostModifierService
         return total;
     }
 
-    private static int CountDistinctArchetypes(Stronghold stronghold)
+    private static int CountDistinctArchetypes(string strongholdId, int ownerFactionId)
     {
-        if (stronghold?.Buildings == null || stronghold.Buildings.Count == 0)
-            return 0;
-
         var archetypes = new HashSet<Archetype>();
-        for (int i = 0; i < stronghold.Buildings.Count; i++)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            BuildingEntity building = stronghold.Buildings[i];
-            if (building == null || building.buildingData == null || building.OwnerFactionID != stronghold.OwnerFactionId)
+            if (!(entities[i] is IBuildingLogicContext building)
+                || !building.Alive
+                || building.BuildingData == null
+                || building.OwnerFactionId != ownerFactionId
+                || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
+            {
                 continue;
+            }
 
-            Archetype archetype = building.buildingData.Arche;
+            Archetype archetype = building.BuildingData.Arche;
             if (archetype != Archetype.None)
                 archetypes.Add(archetype);
         }

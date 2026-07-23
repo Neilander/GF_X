@@ -12,48 +12,29 @@ public class BuildManager : GameFrameworkComponent
     private readonly Dictionary<Archetype, List<BuildingData>> m_Lv0ConstructCandidatesByArchetype = new();
     private HashSet<Archetype> m_PlayerUnlockedBaseArchesCache;
     private bool m_IsSubscribedTechUnlocked;
-    private bool m_IsSubscribedEntityFactionChanged;
+    private bool m_IsSubscribedBuildingOwnership;
     private bool m_IsSubscribedInteractionCommands;
 
-    // 默认给前 3 个选项分配交互按键；更多选项仍走鼠标长按触发。
-    private readonly InputKey[] OptionalOptionKeys =
+    public bool HasConstructOption(IBuildingLogicContext owner)
     {
-        InputKey.InteractionPrimary,
-        InputKey.InteractionSecondary,
-        InputKey.InteractionTertiary,
-    };
-
-    public bool HasConstructOption(BuildingEntity owner)
-    {
-        if (owner == null || owner.buildingData == null)
+        if (owner == null || owner.BuildingData == null)
             return false;
 
-        if (owner.buildingData.Lv != 0)
+        if (owner.BuildingData.Lv != 0)
             return false;
 
         return HasAnyLv0ConstructCandidate(owner, requireUnlockedArche: false);
     }
 
-    public void ConfigureConstructInteractionOptions(BuildingEntity owner, InteractionHost host)
+    public bool IsConstructOptionVisible(IBuildingLogicContext owner, string buildBuildingId)
     {
-        if (owner == null || owner.buildingData == null || host == null)
-            return;
-
-        if (owner.buildingData.Lv != 0)
-            return;
-
-        ConfigureLv0ConstructOptions(owner, host);
-    }
-
-    public bool IsConstructOptionVisible(BuildingEntity owner, string buildBuildingId)
-    {
-        if (owner == null || owner.buildingData == null)
+        if (owner == null || owner.BuildingData == null)
             return false;
 
-        if (owner.buildingData.Lv != 0)
+        if (owner.BuildingData.Lv != 0)
             return false;
 
-        if (owner.OwnerFactionID != 0)
+        if (owner.OwnerFactionId != 0)
             return false;
 
         var inGameData = GF.DataModel.GetDataModel<InGameDataModel>();
@@ -67,7 +48,7 @@ public class BuildManager : GameFrameworkComponent
         if (target == null)
             return false;
 
-        if (target.Lv != 1 || target.Type != owner.buildingData.Type)
+        if (target.Lv != 1 || target.Type != owner.BuildingData.Type)
             return false;
 
         if (target.Arche == Archetype.None)
@@ -79,10 +60,10 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    public List<BuildingData> GetLv0ConstructCandidates(BuildingEntity owner, bool requireUnlockedArche = true)
+    public List<BuildingData> GetLv0ConstructCandidates(IBuildingLogicContext owner, bool requireUnlockedArche = true)
     {
         var results = new List<BuildingData>();
-        if (owner == null || owner.buildingData == null || owner.buildingData.Lv != 0)
+        if (owner == null || owner.BuildingData == null || owner.BuildingData.Lv != 0)
             return results;
 
         HashSet<Archetype> unlockedArches = null;
@@ -93,7 +74,7 @@ public class BuildManager : GameFrameworkComponent
                 return results;
         }
 
-        foreach (var data in GetCachedLv0ConstructCandidates(owner.buildingData.Type))
+        foreach (var data in GetCachedLv0ConstructCandidates(owner.BuildingData.Type))
         {
             if (data == null)
                 continue;
@@ -107,12 +88,12 @@ public class BuildManager : GameFrameworkComponent
         return results;
     }
 
-    private bool HasAnyLv0ConstructCandidate(BuildingEntity owner, bool requireUnlockedArche = true)
+    private bool HasAnyLv0ConstructCandidate(IBuildingLogicContext owner, bool requireUnlockedArche = true)
     {
         return GetLv0ConstructCandidates(owner, requireUnlockedArche).Count > 0;
     }
 
-    public bool IsConstructOptionExecutable(BuildingEntity owner, string buildBuildingId)
+    public bool IsConstructOptionExecutable(IBuildingLogicContext owner, string buildBuildingId)
     {
         if (owner != null
             && LogicInteractionCommandService.IsActive
@@ -124,10 +105,10 @@ public class BuildManager : GameFrameworkComponent
             return false;
 
         BuildingData target = BuildingDataModel.GetBuildingData(buildBuildingId);
-        return target != null && SatisfyBuildCondition(target, owner.OwnerFactionID) && HasBuildCost(buildBuildingId, owner);
+        return target != null && SatisfyBuildCondition(target, owner.OwnerFactionId) && HasBuildCost(buildBuildingId, owner);
     }
 
-    public bool ConstructBuilding(BuildingEntity owner, string buildBuildingId)
+    public bool ConstructBuilding(IBuildingLogicContext owner, string buildBuildingId)
     {
         if (owner == null || !IsConstructOptionExecutable(owner, buildBuildingId))
             return false;
@@ -140,20 +121,21 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    private bool ApplyScheduledConstructBuilding(BuildingEntity owner, string buildBuildingId)
+    private bool ApplyScheduledConstructBuilding(IBuildingLogicContext owner, string buildBuildingId)
     {
         EnsureInteractionApplyWindow();
         bool built = BuildBuildingInternal(
             buildBuildingId,
-            owner.CachedTransform.position,
+            ToWorldPosition(owner.PositionFixed),
             owner.BuildingInstanceId,
             checkCondition: true,
             consumeCoins: true,
-            enableConstructionEscape: true) > 0;
+            enableConstructionEscape: true,
+            currentInteractionFrameLifecycle: true) > 0;
         if (built && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
         if (built)
-            owner.RequestDespawn();
+            LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
 
         return built;
     }
@@ -164,27 +146,38 @@ public class BuildManager : GameFrameworkComponent
         if (buildingData == null)
             return false;
 
-        return HasBuildCost(buildingData, null);
+        return HasBuildCost(buildingData, null, EntitySideHelper.PlayerFactionId);
     }
 
-    public bool HasBuildCost(string buildingId, BuildingEntity owner)
+    public bool HasBuildCost(string buildingId, IBuildingLogicContext owner)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
             return false;
 
-        return HasBuildCost(buildingData, owner != null ? owner.CurrentStronghold : null);
+        return HasBuildCost(buildingData, owner?.StrongholdId, owner?.OwnerFactionId ?? EntitySideHelper.PlayerFactionId);
     }
 
-    public int GetBuildingCost(string buildingId, BuildingEntity owner)
+    public int GetBuildingCost(string buildingId, IBuildingLogicContext owner)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
-        return GetBuildingCost(buildingData, owner != null ? owner.CurrentStronghold : null);
+        return BuildingCostModifierService.CalculateBuildingCost(
+            buildingData,
+            owner?.StrongholdId,
+            owner?.OwnerFactionId ?? EntitySideHelper.PlayerFactionId);
     }
 
-    public int GetBuildingCost(BuildingData buildingData, Stronghold stronghold)
+    public int GetBuildingCost(BuildingData buildingData, IBuildingLogicContext owner)
     {
-        return BuildingCostModifierService.CalculateBuildingCost(buildingData, stronghold);
+        return BuildingCostModifierService.CalculateBuildingCost(
+            buildingData,
+            owner?.StrongholdId,
+            owner?.OwnerFactionId ?? EntitySideHelper.PlayerFactionId);
+    }
+
+    private static Vector3 ToWorldPosition(FixVector2 position)
+    {
+        return new Vector3((float)position.x, 0f, (float)position.y);
     }
 
     public KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId)
@@ -192,10 +185,13 @@ public class BuildManager : GameFrameworkComponent
         return GetBuildingResourceCosts(buildingId, null);
     }
 
-    public KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId, BuildingEntity owner)
+    public KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId, IBuildingLogicContext owner)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
-        int cost = GetBuildingCost(buildingData, owner != null ? owner.CurrentStronghold : null);
+        int cost = BuildingCostModifierService.CalculateBuildingCost(
+            buildingData,
+            owner?.StrongholdId,
+            owner?.OwnerFactionId ?? EntitySideHelper.PlayerFactionId);
         if (buildingData == null || cost <= 0)
             return null;
 
@@ -205,15 +201,15 @@ public class BuildManager : GameFrameworkComponent
         };
     }
 
-    public void OnBuildingDemolished(BuildingEntity owner)
+    public void OnBuildingDemolished(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null)
+        if (owner == null || owner.BuildingData == null)
             return;
 
-        if (owner.buildingData.Type == BuilType.Base)
+        if (owner.BuildingData.Type == BuilType.Base)
         {
-            m_BaseMilestoneTechService.ReduceForDemolishedBase(owner.buildingData, owner.BuildingInstanceId);
-            int supplyCapacity = CalculateBaseSupplyCapacity(owner.buildingData, owner.OwnerFactionID);
+            m_BaseMilestoneTechService.ReduceForDemolishedBase(owner.BuildingData, owner.BuildingInstanceId);
+            int supplyCapacity = CalculateBaseSupplyCapacity(owner.BuildingData, owner.OwnerFactionId);
             if (supplyCapacity > 0)
                 InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, -supplyCapacity, true);
 
@@ -221,18 +217,18 @@ public class BuildManager : GameFrameworkComponent
         }
     }
 
-    public bool CanRecycleBuilding(BuildingEntity owner)
+    public bool CanRecycleBuilding(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null)
+        if (owner == null || owner.BuildingData == null)
             return false;
 
-        if (owner.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+        if (owner.OwnerFactionId != EntitySideHelper.PlayerFactionId)
             return false;
 
-        if (owner.buildingData.Lv <= 0)
+        if (owner.BuildingData.Lv <= 0)
             return false;
 
-        if (owner.buildingData.Type == BuilType.Base)
+        if (owner.BuildingData.Type == BuilType.Base)
             return false;
 
         if (LogicInteractionCommandService.IsActive
@@ -244,14 +240,14 @@ public class BuildManager : GameFrameworkComponent
         return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
     }
 
-    public int CalculateRecycleRefund(BuildingEntity owner)
+    public int CalculateRecycleRefund(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null)
+        if (owner == null || owner.BuildingData == null)
             return 0;
 
         int spent = InGameDataModel.GetBuildingCostSpent(owner.BuildingInstanceId);
         if (spent <= 0)
-            spent = InGameDataModel.CalculateOriginalBuildingCostSum(owner.buildingData);
+            spent = InGameDataModel.CalculateOriginalBuildingCostSum(owner.BuildingData);
 
         if (spent <= 0)
             return 0;
@@ -266,7 +262,7 @@ public class BuildManager : GameFrameworkComponent
         return refund > int.MaxValue ? int.MaxValue : (int)refund;
     }
 
-    public bool RecycleBuilding(BuildingEntity owner)
+    public bool RecycleBuilding(IBuildingLogicContext owner)
     {
         if (!CanRecycleBuilding(owner))
             return false;
@@ -278,17 +274,17 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    private bool ApplyScheduledRecycleBuilding(BuildingEntity owner)
+    private bool ApplyScheduledRecycleBuilding(IBuildingLogicContext owner)
     {
         EnsureInteractionApplyWindow();
         if (!CanRecycleBuildingForApply(owner))
             return false;
 
-        string lv0BuildingId = ResolveLv0BuildingId(owner.buildingData.Type);
+        string lv0BuildingId = ResolveLv0BuildingId(owner.BuildingData.Type);
         if (string.IsNullOrWhiteSpace(lv0BuildingId))
             return false;
 
-        Vector3 position = owner.CachedTransform.position;
+        Vector3 position = ToWorldPosition(owner.PositionFixed);
         string buildingInstanceId = owner.BuildingInstanceId;
         int refund = CalculateRecycleRefund(owner);
 
@@ -298,15 +294,16 @@ public class BuildManager : GameFrameworkComponent
             buildingInstanceId,
             checkCondition: false,
             consumeCoins: false,
-            enableConstructionEscape: true);
+            enableConstructionEscape: true,
+            currentInteractionFrameLifecycle: true);
         if (entityId <= 0)
             return false;
 
         GameEntry.GetComponent<TechManager>()?.RollbackTechsForBuilding(owner);
-        GameEntry.GetComponent<GlobalBuffManager>()?.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionID);
+        GameEntry.GetComponent<GlobalBuffManager>()?.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionId);
         OnBuildingDemolished(owner);
         InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
-        owner.RequestDespawn();
+        LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
         RewardManager.HandleBuildingRecycleReward(position, refund);
 
         if (AudioManager.Instance != null)
@@ -337,7 +334,8 @@ public class BuildManager : GameFrameworkComponent
             buildingInstanceId,
             checkCondition: true,
             consumeCoins: false,
-            enableConstructionEscape: true) > 0;
+            enableConstructionEscape: true,
+            currentInteractionFrameLifecycle: true) > 0;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildImportant");
         return ok;
@@ -396,14 +394,21 @@ public class BuildManager : GameFrameworkComponent
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
         bool isNavigationStaticBaked = false,
-        bool enableConstructionEscape = false)
+        bool enableConstructionEscape = false,
+        bool currentInteractionFrameLifecycle = false)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
             return 0;
 
-        Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
-        int ownerFactionId = stronghold != null ? stronghold.OwnerFactionId : 0;
+        var positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
+        string strongholdId = null;
+        int ownerFactionId = EntitySideHelper.PlayerFactionId;
+        if (LogicStrongholdMap.TryResolveStrongholdId(positionFixed, out string resolvedStrongholdId))
+        {
+            strongholdId = resolvedStrongholdId;
+            ownerFactionId = LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId);
+        }
 
         if (checkCondition && !SatisfyBuildCondition(buildingData, ownerFactionId))
             return 0;
@@ -411,8 +416,11 @@ public class BuildManager : GameFrameworkComponent
         int consumedCost = 0;
         if (consumeCoins)
         {
-            int actualCost = GetBuildingCost(buildingData, stronghold);
-            if (!HasBuildCost(buildingData, stronghold))
+            int actualCost = BuildingCostModifierService.CalculateBuildingCost(
+                buildingData,
+                strongholdId,
+                ownerFactionId);
+            if (!HasBuildCost(buildingData, strongholdId, ownerFactionId))
                 return 0;
             consumedCost = actualCost;
         }
@@ -427,11 +435,13 @@ public class BuildManager : GameFrameworkComponent
             buildingData,
             position,
             resolvedBuildingInstanceId,
+            strongholdId,
             ownerFactionId,
             0,
             isGameEndConditionBuilding,
             isNavigationStaticBaked,
-            enableConstructionEscape);
+            enableConstructionEscape,
+            currentInteractionFrameLifecycle);
 
         if (entityId > 0)
         {
@@ -473,32 +483,6 @@ public class BuildManager : GameFrameworkComponent
             return 0;
 
         return LevelTagRuntime.ModifyRequiredBaseLevel(Mathf.Clamp(buildingData.Lv, 1, 3));
-    }
-
-    private void ConfigureLv0ConstructOptions(BuildingEntity owner, InteractionHost host)
-    {
-        // Lv0 在 host 初始化时先挂载同类型的所有 Lv1 备选，
-        // 可见性仍由 IsConstructOptionVisible 动态判断（含科技解锁条件）。
-        // 这样即使关卡预设生成顺序是“先 Lv0 再 Base”，后续解锁后也能立刻出现可交互面板。
-        var candidates = GetLv0ConstructCandidates(owner, requireUnlockedArche: false);
-        int optionIndex = 0;
-        for (int i = 0; i < candidates.Count; i++)
-        {
-            var candidate = candidates[i];
-            string displayName = !string.IsNullOrWhiteSpace(candidate.NameKey)
-                ? LocalizationTextManager.GetLocalizedText(candidate.NameKey, false)
-                : candidate.Identifier;
-
-            InteractionParams @params = InteractionParams.Create();
-            @params.Set<VarString>("BuildBuildingId", candidate.Identifier);
-
-            if (TryGetOptionalOptionKey(optionIndex, out var optionKey))
-                host.AddOption<BuildingConstructInteractionOption>(optionKey, displayName, @params);
-            else
-                host.AddOption<BuildingConstructInteractionOption>(displayName, @params);
-
-            optionIndex++;
-        }
     }
 
     private HashSet<Archetype> GetPlayerUnlockedBaseArches()
@@ -583,29 +567,13 @@ public class BuildManager : GameFrameworkComponent
         }
     }
 
-    private bool TryGetOptionalOptionKey(int optionIndex, out InputKey key)
-    {
-        key = default;
-        if (optionIndex < 0)
-            return false;
-
-        if (OptionalOptionKeys == null || optionIndex >= OptionalOptionKeys.Length)
-            return false;
-
-        key = OptionalOptionKeys[optionIndex];
-        return true;
-    }
-
-    private int ResolveOwnerFactionId(Vector3 position)
-    {
-        var stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
-        return stronghold != null ? stronghold.OwnerFactionId : 0;
-    }
-
-    private static bool HasBuildCost(BuildingData buildingData, Stronghold stronghold)
+    private static bool HasBuildCost(BuildingData buildingData, string strongholdId, int ownerFactionId)
     {
         return buildingData != null
-               && InGameDataModel.GetValue(IngameValueType.Coin) >= BuildingCostModifierService.CalculateBuildingCost(buildingData, stronghold);
+               && InGameDataModel.GetValue(IngameValueType.Coin) >= BuildingCostModifierService.CalculateBuildingCost(
+                   buildingData,
+                   strongholdId,
+                   ownerFactionId);
     }
 
     private static int ResolveExistingBaseLevel(BuildingData targetBuildingData, int ownerFactionId, string buildingInstanceId)
@@ -618,22 +586,19 @@ public class BuildManager : GameFrameworkComponent
             return 0;
         }
 
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
-        if (dataModel == null)
-            return 0;
-
-        foreach (var building in dataModel.Buildings)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            if (building == null || building.buildingData == null)
+            if (!(entities[i] is IBuildingLogicContext building) || building.BuildingData == null)
                 continue;
 
-            if (building.buildingData.Type != BuilType.Base)
+            if (building.BuildingData.Type != BuilType.Base)
                 continue;
 
             if (!string.Equals(building.BuildingInstanceId, buildingInstanceId, StringComparison.Ordinal))
                 continue;
 
-            return Mathf.Max(0, building.buildingData.Lv);
+            return Mathf.Max(0, building.BuildingData.Lv);
         }
 
         return 0;
@@ -668,14 +633,14 @@ public class BuildManager : GameFrameworkComponent
         base.Awake();
         TrySubscribeInteractionCommands();
         TrySubscribeTechUnlockedEvent();
-        TrySubscribeEntityFactionChangedEvent();
+        TrySubscribeBuildingOwnershipEvent();
     }
 
     private void Start()
     {
         TrySubscribeInteractionCommands();
         TrySubscribeTechUnlockedEvent();
-        TrySubscribeEntityFactionChangedEvent();
+        TrySubscribeBuildingOwnershipEvent();
     }
 
     private void Update()
@@ -684,8 +649,8 @@ public class BuildManager : GameFrameworkComponent
             TrySubscribeInteractionCommands();
         if (!m_IsSubscribedTechUnlocked)
             TrySubscribeTechUnlockedEvent();
-        if (!m_IsSubscribedEntityFactionChanged)
-            TrySubscribeEntityFactionChangedEvent();
+        if (!m_IsSubscribedBuildingOwnership)
+            TrySubscribeBuildingOwnershipEvent();
     }
 
     private void OnDestroy()
@@ -694,12 +659,12 @@ public class BuildManager : GameFrameworkComponent
             LogicInteractionCommandService.CommandApplying -= OnInteractionCommandApplying;
         if (m_IsSubscribedTechUnlocked && GF.Event != null)
             GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
-        if (m_IsSubscribedEntityFactionChanged && GF.Event != null)
-            GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
+        if (m_IsSubscribedBuildingOwnership)
+            LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
 
         m_IsSubscribedInteractionCommands = false;
         m_IsSubscribedTechUnlocked = false;
-        m_IsSubscribedEntityFactionChanged = false;
+        m_IsSubscribedBuildingOwnership = false;
     }
 
     private void TrySubscribeInteractionCommands()
@@ -720,8 +685,11 @@ public class BuildManager : GameFrameworkComponent
                 $"Interaction command target is not registered. entity={command.TargetEntityId.Value}, sequence={command.Sequence}.");
         }
 
-        BuildingEntity owner = context as BuildingEntity
-                               ?? throw new InvalidOperationException($"Interaction command target is not a building. entity={command.TargetEntityId.Value}.");
+        if (!context.TryGetLogicBuilding(out IBuildingLogicContext owner))
+        {
+            throw new InvalidOperationException(
+                $"Interaction command target is not a building. entity={command.TargetEntityId.Value}.");
+        }
         if (!string.Equals(owner.BuildingInstanceId, command.TargetBuildingInstanceId, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -762,13 +730,13 @@ public class BuildManager : GameFrameworkComponent
         }
     }
 
-    private static bool CanRecycleBuildingForApply(BuildingEntity owner)
+    private static bool CanRecycleBuildingForApply(IBuildingLogicContext owner)
     {
-        if (owner == null || owner.buildingData == null)
+        if (owner == null || owner.BuildingData == null)
             return false;
-        if (owner.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+        if (owner.OwnerFactionId != EntitySideHelper.PlayerFactionId)
             return false;
-        if (owner.buildingData.Lv <= 0 || owner.buildingData.Type == BuilType.Base)
+        if (owner.BuildingData.Lv <= 0 || owner.BuildingData.Type == BuilType.Base)
             return false;
         return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
     }
@@ -784,74 +752,53 @@ public class BuildManager : GameFrameworkComponent
         InvalidateUnlockedArchetypeCache();
     }
 
-    private void OnEntityFactionChanged(object sender, GameFramework.Event.GameEventArgs e)
+    private void OnLogicBuildingOwnerFactionChanged(
+        IBuildingLogicContext building,
+        int oldFactionId,
+        int newFactionId)
     {
-        EntityFactionChangedEventArgs args = e as EntityFactionChangedEventArgs;
-        if (args == null)
-            return;
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
+        EnsureCapturedBuildingCostRecord(building, oldFactionId, newFactionId);
+        ApplyBaseOwnershipEffects(building, oldFactionId, newFactionId);
 
-        EnsureCapturedBuildingCostRecord(args);
-        ApplyBaseOwnershipEffects(args);
-
-        if (args.OldFactionId == EntitySideHelper.PlayerFactionId || args.NewFactionId == EntitySideHelper.PlayerFactionId)
+        if (oldFactionId == EntitySideHelper.PlayerFactionId || newFactionId == EntitySideHelper.PlayerFactionId)
             InvalidateUnlockedArchetypeCache();
     }
 
-    private static void EnsureCapturedBuildingCostRecord(EntityFactionChangedEventArgs args)
+    private static void EnsureCapturedBuildingCostRecord(
+        IBuildingLogicContext building,
+        int oldFactionId,
+        int newFactionId)
     {
-        if (args.NewFactionId != EntitySideHelper.PlayerFactionId || args.OldFactionId == EntitySideHelper.PlayerFactionId)
+        if (newFactionId != EntitySideHelper.PlayerFactionId || oldFactionId == EntitySideHelper.PlayerFactionId)
             return;
+        if (building.BuildingData == null)
+            throw new InvalidOperationException($"Logic building {building.LogicEntityId.Value} has no BuildingData.");
 
-        BuildingEntity building = FindRegisteredBuilding(args);
-        if (building == null || building.buildingData == null)
-            return;
-
-        InGameDataModel.EnsureBuildingCostSpentFromOriginalCosts(building.BuildingInstanceId, building.buildingData);
+        InGameDataModel.EnsureBuildingCostSpentFromOriginalCosts(building.BuildingInstanceId, building.BuildingData);
     }
 
-    private void ApplyBaseOwnershipEffects(EntityFactionChangedEventArgs args)
+    private void ApplyBaseOwnershipEffects(
+        IBuildingLogicContext building,
+        int oldFactionId,
+        int newFactionId)
     {
-        BuildingEntity building = FindRegisteredBuilding(args);
-        if (building == null || building.CurrentStronghold == null || building.buildingData == null)
+        if (building.BuildingData == null)
+            throw new InvalidOperationException($"Logic building {building.LogicEntityId.Value} has no BuildingData.");
+
+        if (building.BuildingData.Type != BuilType.Base)
             return;
+        if (string.IsNullOrWhiteSpace(building.StrongholdId))
+            throw new InvalidOperationException($"Base building {building.LogicEntityId.Value} has no stable stronghold id.");
 
-        if (building.buildingData.Type != BuilType.Base)
-            return;
+        m_BaseMilestoneTechService.ReduceForDemolishedBase(building.BuildingData, building.BuildingInstanceId);
+        m_BaseMilestoneTechService.GrantForBuiltBase(building.BuildingData, building.BuildingInstanceId, newFactionId);
 
-        if (args.OldFactionId == args.NewFactionId)
-            return;
-
-        m_BaseMilestoneTechService.ReduceForDemolishedBase(building.buildingData, building.BuildingInstanceId);
-        m_BaseMilestoneTechService.GrantForBuiltBase(building.buildingData, building.BuildingInstanceId, args.NewFactionId);
-
-        int supplyDelta = CalculateBaseSupplyCapacity(building.buildingData, args.NewFactionId)
-                        - CalculateBaseSupplyCapacity(building.buildingData, args.OldFactionId);
+        int supplyDelta = CalculateBaseSupplyCapacity(building.BuildingData, newFactionId)
+                        - CalculateBaseSupplyCapacity(building.BuildingData, oldFactionId);
         if (supplyDelta != 0)
             InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, supplyDelta, true);
-    }
-
-    private static BuildingEntity FindRegisteredBuilding(EntityFactionChangedEventArgs args)
-    {
-        var dataModel = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-        if (dataModel == null || dataModel.Buildings == null)
-            return null;
-
-        foreach (var building in dataModel.Buildings)
-        {
-            if (building == null)
-                continue;
-
-            if (building.Id == args.EntityId)
-                return building;
-
-            if (!string.IsNullOrWhiteSpace(args.BuildingInstanceId)
-                && string.Equals(building.BuildingInstanceId, args.BuildingInstanceId, StringComparison.Ordinal))
-            {
-                return building;
-            }
-        }
-
-        return null;
     }
 
     private static int CalculateBaseSupplyCapacity(BuildingData buildingData, int ownerFactionId)
@@ -897,16 +844,13 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    private bool TrySubscribeEntityFactionChangedEvent()
+    private bool TrySubscribeBuildingOwnershipEvent()
     {
-        if (m_IsSubscribedEntityFactionChanged)
+        if (m_IsSubscribedBuildingOwnership)
             return true;
 
-        if (GF.Event == null)
-            return false;
-
-        GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        m_IsSubscribedEntityFactionChanged = true;
+        LogicBuildingOwnershipEventService.OwnerFactionChanged += OnLogicBuildingOwnerFactionChanged;
+        m_IsSubscribedBuildingOwnership = true;
         return true;
     }
 

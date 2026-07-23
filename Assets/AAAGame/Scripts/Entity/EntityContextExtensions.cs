@@ -2,6 +2,24 @@
 
 public static class EntityContextExtensions
 {
+    public static bool TryGetLogicBuilding(
+        this IEntityContext context,
+        out IBuildingLogicContext building)
+    {
+        building = context as IBuildingLogicContext;
+        if (building == null || building.BuildingData == null)
+        {
+            building = null;
+            return false;
+        }
+        return true;
+    }
+
+    public static bool IsLogicBuilding(this IEntityContext context)
+    {
+        return context.TryGetLogicBuilding(out _);
+    }
+
     /// <summary>
     /// 检查 IEntityContext 背后的 Unity 对象是否已被销毁。
     /// 接口变量不走 Unity 的 == 重载，需要先转为 Object。

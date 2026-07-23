@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using Stopwatch = System.Diagnostics.Stopwatch;
-using Cysharp.Threading.Tasks;
 using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -22,11 +21,13 @@ public static class DefendPhaseRuntime
     private static readonly HashSet<int> s_AliveEnemyEntityIds = new();
 
     private static bool s_SubscribedSoldierDead;
-    private static int s_FlowToken;
     private static int s_CachedLevelEntityId;
     private static int s_DefendRoundIndex;
     private static bool s_SpawnScheduleCompleted;
     private static string s_WaveConfigLevelIdentifier = string.Empty;
+    private static readonly List<PlannedSpawnEvent> s_PlannedSpawnEvents = new();
+    private static int s_NextPlannedSpawnIndex;
+    private static ulong s_SpawnRequestStartFrame;
 
     public readonly struct DefendPreviewSpawnEntry
     {
@@ -48,7 +49,6 @@ public static class DefendPhaseRuntime
 
     public static void CancelRuntime()
     {
-        s_FlowToken++;
         ResetDefendPhaseState(keepRoundIndex: true);
     }
 
@@ -71,14 +71,13 @@ public static class DefendPhaseRuntime
             stopwatch.Elapsed.TotalMilliseconds - spawnPointMs);
     }
 
-    public static async UniTaskVoid EnterDefendPhaseAsync()
+    public static void EnterDefendPhase()
     {
         EnsureSubscribedSoldierDead();
         EnsureArchetypeCache();
         EnsureSpawnPointCache();
         EnsureWaveConfigLoaded();
 
-        int flowToken = ++s_FlowToken;
         ResetDefendPhaseState(keepRoundIndex: true);
         s_DefendRoundIndex++;
 
@@ -91,8 +90,8 @@ public static class DefendPhaseRuntime
             return;
         }
 
-        List<PlannedSpawnEvent> spawnEvents = BuildSpawnEvents(wave);
-        if (spawnEvents.Count == 0)
+        s_PlannedSpawnEvents.AddRange(BuildSpawnEvents(wave));
+        if (s_PlannedSpawnEvents.Count == 0)
         {
             Log.Warning("[DefendPhase] 当前防御波次无法生成出怪计划，直接结束。round={0}", s_DefendRoundIndex);
             s_SpawnScheduleCompleted = true;
@@ -100,59 +99,68 @@ public static class DefendPhaseRuntime
             return;
         }
 
-        spawnEvents.Sort((a, b) => a.Time.CompareTo(b.Time));
-        float lastTime = 0f;
-        for (int i = 0; i < spawnEvents.Count; i++)
+        s_PlannedSpawnEvents.Sort(ComparePlannedSpawnEvents);
+        s_SpawnRequestStartFrame = LogicTimeControlService.CurrentFrame > 0
+            ? LogicTimeControlService.CurrentFrame
+            : 1UL;
+    }
+
+    public static void ApplyScheduledSpawnRequests(ulong frame)
+    {
+        if (frame == 0 || frame != LogicTimeControlService.CurrentFrame)
         {
-            if (flowToken != s_FlowToken || PhaseManager.CurrentPhase != GamePhase.Defend)
+            throw new InvalidOperationException(
+                $"DefendPhaseRuntime.ApplyScheduledSpawnRequests failed: frame mismatch. requested={frame}, logic={LogicTimeControlService.CurrentFrame}.");
+        }
+        if (s_SpawnScheduleCompleted || s_PlannedSpawnEvents.Count == 0)
+            return;
+        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+            throw new InvalidOperationException("DefendPhaseRuntime has a pending spawn schedule outside the Defend phase.");
+
+        while (s_NextPlannedSpawnIndex < s_PlannedSpawnEvents.Count)
+        {
+            PlannedSpawnEvent evt = s_PlannedSpawnEvents[s_NextPlannedSpawnIndex];
+            ulong requestFrame = checked(s_SpawnRequestStartFrame + evt.RequestFrameOffset);
+            if (requestFrame < frame)
+            {
+                throw new InvalidOperationException(
+                    $"DefendPhaseRuntime missed a scheduled spawn request. index={s_NextPlannedSpawnIndex} expected={requestFrame} current={frame}.");
+            }
+            if (requestFrame > frame)
                 return;
 
-            PlannedSpawnEvent evt = spawnEvents[i];
-            float waitTime = Mathf.Max(0f, evt.Time - lastTime);
-            lastTime = evt.Time;
-            if (waitTime > 0f)
-            {
-                if (!LogicFrameRuntime.IsTimelineRunning)
-                    throw new InvalidOperationException("DefendPhaseRuntime spawn wait failed: logic frame timeline is not running.");
-
-                Fix64 resumeTime = LogicFrameRuntime.ElapsedTime + (Fix64)waitTime;
-                await UniTask.WaitUntil(
-                    () => flowToken != s_FlowToken
-                          || PhaseManager.CurrentPhase != GamePhase.Defend
-                          || (LogicFrameRuntime.IsTimelineRunning && LogicFrameRuntime.ElapsedTime >= resumeTime),
-                    PlayerLoopTiming.Update);
-                if (flowToken != s_FlowToken || PhaseManager.CurrentPhase != GamePhase.Defend)
-                    return;
-            }
-
-            int entityId = SoldierFactory.ShowSoldier(
-                evt.UnitType,
-                evt.SpawnPosition,
-                SideType.EnemySide,
-                BrainType.DefendEnemyAI,
-                null,
-                evt.SourceStrongholdId,
-                entityParams =>
-                {
-                    entityParams.Set<VarFloat>(SoldierEntity.P_DefendAssignedSpeed, evt.SpeedProperty);
-                },
-                evt.UnitLevel);
-            if (entityId <= 0)
-            {
-                Log.Warning("[DefendPhase] 生成单位失败。unit={0}, pos={1}", evt.UnitType, evt.SpawnPosition);
-                continue;
-            }
-
-            LogDefendSpawnEvent(evt, entityId);
-
-            s_AliveEnemyEntityIds.Add(entityId);
+            SpawnPlannedEvent(evt);
+            s_NextPlannedSpawnIndex++;
         }
-
-        if (flowToken != s_FlowToken || PhaseManager.CurrentPhase != GamePhase.Defend)
-            return;
 
         s_SpawnScheduleCompleted = true;
         TryCompleteDefendPhase();
+    }
+
+    private static void SpawnPlannedEvent(PlannedSpawnEvent evt)
+    {
+        Vector3 spawnPosition = new Vector3((float)evt.SpawnPosition.x, 0f, (float)evt.SpawnPosition.y);
+        int entityId = SoldierFactory.ShowSoldier(
+            evt.UnitType,
+            spawnPosition,
+            SideType.EnemySide,
+            BrainType.DefendEnemyAI,
+            null,
+            evt.SourceStrongholdId,
+            entityParams =>
+            {
+                entityParams.DefendAssignedSpeed = evt.SpeedProperty;
+            },
+            evt.UnitLevel);
+        if (entityId <= 0)
+        {
+            throw new InvalidOperationException(
+                $"DefendPhaseRuntime failed to request soldier spawn. unit={evt.UnitType} raw=({evt.SpawnPosition.x.RawValue},{evt.SpawnPosition.y.RawValue}).");
+        }
+
+        LogDefendSpawnEvent(evt, entityId);
+        if (!s_AliveEnemyEntityIds.Add(entityId))
+            throw new InvalidOperationException($"DefendPhaseRuntime produced duplicate enemy entity id {entityId}.");
     }
 
     public static bool TryGetNextDefendPreviewSpawnEntries(List<DefendPreviewSpawnEntry> results)
@@ -179,17 +187,18 @@ public static class DefendPhaseRuntime
             for (int j = 0; j < pointCounts.Count; j++)
             {
                 PointSpawnCount pointCount = pointCounts[j];
-                if (pointCount == null || pointCount.Point == null || pointCount.Point.Point == null)
+                if (pointCount == null || pointCount.Point == null)
                     continue;
                 if (pointCount.Count <= 0)
                     continue;
 
+                FixVector2 spawnPosition = pointCount.Point.Position;
                 results.Add(new DefendPreviewSpawnEntry(
                     waveEntry.UnitType,
                     waveEntry.UnitLevel,
                     pointCount.Count,
-                    pointCount.Point.Point.Position,
-                    ResolvePreviewSpawnPointIdentifier(pointCount.Point.Point)));
+                    new Vector3((float)spawnPosition.x, 0f, (float)spawnPosition.y),
+                    pointCount.Point.Identifier));
             }
         }
 
@@ -312,11 +321,26 @@ public static class DefendPhaseRuntime
                 diagnosticsMs += diagnosticsStopwatch.Elapsed.TotalMilliseconds;
             }
 
+            Vector3 pointPosition = point.Position;
+            var pointPositionFixed = new FixVector2((Fix64)pointPosition.x, (Fix64)pointPosition.z);
+            if (!LogicStrongholdMap.TryResolveStrongholdId(pointPositionFixed, out string strongholdId))
+            {
+                throw new InvalidOperationException(
+                    $"DefendPhaseRuntime spawn point is outside the logic stronghold map. point={point.name} " +
+                    $"raw=({pointPositionFixed.x.RawValue},{pointPositionFixed.y.RawValue}).");
+            }
+
             s_DefendSpawnPoints.Add(new DefendSpawnPointRuntime
             {
-                Point = point
+                Position = pointPositionFixed,
+                Weight = Math.Max(0, point.DefendSpawnWeight),
+                Identifier = ResolvePreviewSpawnPointIdentifier(point),
+                Name = string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name,
+                StrongholdId = strongholdId,
             });
         }
+
+        s_DefendSpawnPoints.Sort(CompareDefendSpawnPoints);
 
         Log.Info(
             "[DefendPhaseTiming] stage=spawn-point-cache totalMs={0:F3} presetPoints={1} defendPoints={2} cached={3} diagnosticsMs={4:F3}",
@@ -327,57 +351,79 @@ public static class DefendPhaseRuntime
             diagnosticsMs);
     }
 
-    private static Vector3 ResolvePlayerBasePosition()
+    private static FixVector2 ResolvePlayerBasePositionFixed()
     {
-        var gameEndManager = GameEntry.GetComponent<GameEndManager>();
-        if (gameEndManager != null && gameEndManager.TryGetAnyPlayerInitialConditionBuilding(out BuildingEntity initialBase) && initialBase != null)
-            return initialBase.transform.position;
-
-        var inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-        if (inGameData != null)
+        IEntityContext bestBase = null;
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            foreach (var building in inGameData.Buildings)
+            if (!(entities[i] is IBuildingLogicContext building)
+                || !building.Alive
+                || building.OwnerFactionId != EntitySideHelper.PlayerFactionId
+                || building.BuildingData == null
+                || building.BuildingData.Type != BuilType.Base)
             {
-                if (building == null || building.buildingData == null)
-                    continue;
-
-                if (building.OwnerFactionID != EntitySideHelper.PlayerFactionId)
-                    continue;
-
-                if (building.buildingData.Type != BuilType.Base)
-                    continue;
-
-                return building.transform.position;
+                continue;
             }
+
+            if (bestBase == null || building.LogicEntityId.Value < bestBase.LogicEntityId.Value)
+                bestBase = building;
         }
+        if (bestBase != null)
+            return bestBase.PositionFixed;
 
         if (EntityRegistry.Player != null)
-            return EntityRegistry.Player.Position;
+            return EntityRegistry.Player.PositionFixed;
 
-        return Vector3.zero;
+        throw new InvalidOperationException("DefendPhaseRuntime cannot resolve a player base or player logic position.");
     }
 
-    private static float CalculatePathDistance(Vector3 from, Vector3 to, UnitType unitType)
+    private static Fix64 CalculatePathDistanceFixed(FixVector2 from, FixVector2 to, UnitType unitType)
     {
         int agentTypeId = ResolveAgentTypeId(unitType);
-        if (!TryResolveBaseNavigationPoint(to, agentTypeId, out Vector3 navigationBase, out string failureReason))
+        if (!TryResolveBaseNavigationPointFixed(to, agentTypeId, out FixVector2 navigationBase, out string failureReason))
         {
             throw new InvalidOperationException(
-                $"DefendPhaseRuntime.CalculatePathDistance failed: unit={unitType} from={from} to={to} agentType={agentTypeId} reason={failureReason}");
+                $"DefendPhaseRuntime.CalculatePathDistanceFixed failed: unit={unitType} fromRaw=({from.x.RawValue},{from.y.RawValue}) " +
+                $"toRaw=({to.x.RawValue},{to.y.RawValue}) agentType={agentTypeId} reason={failureReason}");
         }
 
-        if (FlowFieldCrowdMovementSystem.TryEstimateNavigationDistance(
+        if (FlowFieldCrowdMovementSystem.TryEstimateNavigationDistanceFixed(
                 from,
                 navigationBase,
                 agentTypeId,
-                out float distance,
+                out Fix64 distance,
                 out failureReason))
         {
             return distance;
         }
 
         throw new InvalidOperationException(
-            $"DefendPhaseRuntime.CalculatePathDistance failed: unit={unitType} from={from} to={to} agentType={agentTypeId} reason={failureReason}");
+            $"DefendPhaseRuntime.CalculatePathDistanceFixed failed: unit={unitType} fromRaw=({from.x.RawValue},{from.y.RawValue}) " +
+            $"toRaw=({to.x.RawValue},{to.y.RawValue}) agentType={agentTypeId} reason={failureReason}");
+    }
+
+    private static bool TryResolveBaseNavigationPointFixed(
+        FixVector2 basePosition,
+        int agentTypeId,
+        out FixVector2 navigationBase,
+        out string failureReason)
+    {
+        if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
+                basePosition,
+                agentTypeId,
+                (Fix64)NavigationPointProbeRadius,
+                Fix64.Zero,
+                out navigationBase))
+        {
+            failureReason = string.Empty;
+            return true;
+        }
+
+        failureReason =
+            $"no legal navigation point near player base raw=({basePosition.x.RawValue},{basePosition.y.RawValue}) " +
+            $"agentType={agentTypeId} maxSnapDistanceRaw={((Fix64)NavigationPointProbeRadius).RawValue}";
+        return false;
     }
 
     private static bool TryResolveBaseNavigationPoint(
@@ -386,19 +432,18 @@ public static class DefendPhaseRuntime
         out Vector3 navigationBase,
         out string failureReason)
     {
-        if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
-                basePosition,
+        var fixedBase = new FixVector2((Fix64)basePosition.x, (Fix64)basePosition.z);
+        if (TryResolveBaseNavigationPointFixed(
+                fixedBase,
                 agentTypeId,
-                NavigationPointProbeRadius,
-                0f,
-                out navigationBase))
+                out FixVector2 fixedNavigationBase,
+                out failureReason))
         {
-            failureReason = string.Empty;
+            navigationBase = new Vector3((float)fixedNavigationBase.x, basePosition.y, (float)fixedNavigationBase.y);
             return true;
         }
 
-        failureReason =
-            $"no legal navigation point near player base position={basePosition} agentType={agentTypeId} maxSnapDistance={NavigationPointProbeRadius:F2}";
+        navigationBase = Vector3.zero;
         return false;
     }
 
@@ -435,20 +480,22 @@ public static class DefendPhaseRuntime
     private static void LogDefendSpawnEvent(PlannedSpawnEvent evt, int entityId)
     {
         int agentTypeId = ResolveAgentTypeId(evt.UnitType);
+        Vector3 spawnPosition = new Vector3((float)evt.SpawnPosition.x, 0f, (float)evt.SpawnPosition.y);
         bool flowHit = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
-            evt.SpawnPosition,
+            spawnPosition,
             agentTypeId,
             NavigationPointProbeRadius,
             0f,
             out Vector3 legalPoint);
 
         Log.Info(
-            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} point={5} stronghold={6} flowHit={7} flowPos={8} agentType={9}",
+            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} speedRaw={5} point={6} stronghold={7} flowHit={8} flowPos={9} agentType={10}",
             entityId,
             evt.UnitType,
             evt.UnitLevel,
-            evt.SpawnPosition,
-            evt.SpeedProperty,
+            spawnPosition,
+            (float)evt.SpeedProperty,
+            evt.SpeedProperty.RawValue,
             evt.SpawnPointName,
             evt.SourceStrongholdId ?? "null",
             flowHit,
@@ -588,15 +635,22 @@ public static class DefendPhaseRuntime
         if (wave == null || wave.Entries.Count == 0 || s_DefendSpawnPoints.Count == 0)
             return events;
 
-        float arriveInterval = GF.Config != null
-            ? Mathf.Max(MinArriveIntervalSeconds, GF.Config.GetFloat(DefendEnemyArriveIntervalConfigKey, 0.8f))
-            : 0.8f;
-        float minSpeedProperty = GF.Config != null
-            ? Mathf.Max(1f, GF.Config.GetFloat(DefendEnemyMinSpeedConfigKey, 500f))
-            : 500f;
-        float minSpeedWorld = Mathf.Max(MinWorldSpeed, DistanceUnitConverter.ConvertToWorldFloat((Fix64)minSpeedProperty));
-        float conversionRate = Mathf.Max(0.0001f, DistanceUnitConverter.DistanceConversionRate);
-        Vector3 basePosition = ResolvePlayerBasePosition();
+        Fix64 arriveInterval = ResolveFiniteConfigFixed(
+            DefendEnemyArriveIntervalConfigKey,
+            (Fix64)0.8f,
+            (Fix64)MinArriveIntervalSeconds);
+        ulong arriveIntervalTicks = SecondsToTicksCeiling(arriveInterval);
+        Fix64 minSpeedProperty = ResolveFiniteConfigFixed(
+            DefendEnemyMinSpeedConfigKey,
+            (Fix64)500,
+            Fix64.One);
+        Fix64 minSpeedWorld = Fix64.Max(
+            (Fix64)MinWorldSpeed,
+            DistanceUnitConverter.ConvertToWorld(minSpeedProperty));
+        Fix64 conversionRate = (Fix64)DistanceUnitConverter.DistanceConversionRate;
+        if (conversionRate <= Fix64.Zero)
+            throw new InvalidOperationException($"DefendPhaseRuntime requires a positive distance conversion rate. raw={conversionRate.RawValue}.");
+        FixVector2 basePosition = ResolvePlayerBasePositionFixed();
 
         for (int i = 0; i < wave.Entries.Count; i++)
         {
@@ -611,18 +665,18 @@ public static class DefendPhaseRuntime
             for (int pointIndex = 0; pointIndex < pointCounts.Count; pointIndex++)
             {
                 PointSpawnCount pointCount = pointCounts[pointIndex];
-                if (pointCount?.Point?.Point == null)
+                if (pointCount?.Point == null)
                     throw new InvalidOperationException($"DefendPhaseRuntime.BuildSpawnEvents failed: spawn point is null. unit={entry.UnitType} index={pointIndex}.");
 
-                pointCount.DistanceToBase = CalculatePathDistance(
-                    pointCount.Point.Point.Position,
+                pointCount.DistanceToBase = CalculatePathDistanceFixed(
+                    pointCount.Point.Position,
                     basePosition,
                     entry.UnitType);
             }
 
-            pointCounts.Sort((a, b) => a.DistanceToBase.CompareTo(b.DistanceToBase));
+            pointCounts.Sort(ComparePointSpawnCounts);
 
-            float previousLastArrival = 0f;
+            ulong previousLastArrivalTicks = 0;
             for (int pointIndex = 0; pointIndex < pointCounts.Count; pointIndex++)
             {
                 PointSpawnCount pointCount = pointCounts[pointIndex];
@@ -630,58 +684,118 @@ public static class DefendPhaseRuntime
                 if (spawnCount <= 0)
                     continue;
 
-                float distance = Mathf.Max(0f, pointCount.DistanceToBase);
-                float targetFirstArrival;
-                float spawnDelay;
-                float pointSpeedWorld;
+                Fix64 distance = Fix64.Max(Fix64.Zero, pointCount.DistanceToBase);
+                ulong targetFirstArrivalTicks;
+                ulong spawnDelayTicks;
+                Fix64 pointSpeedWorld;
+                ulong naturalArrivalTicks = SecondsToTicksCeiling(distance / minSpeedWorld);
 
                 if (pointIndex == 0)
                 {
-                    targetFirstArrival = distance / minSpeedWorld;
-                    spawnDelay = 0f;
+                    targetFirstArrivalTicks = naturalArrivalTicks;
+                    spawnDelayTicks = 0;
                     pointSpeedWorld = minSpeedWorld;
                 }
                 else
                 {
-                    targetFirstArrival = previousLastArrival + arriveInterval;
-                    float naturalArrival = distance / minSpeedWorld;
-                    if (naturalArrival <= targetFirstArrival)
+                    targetFirstArrivalTicks = checked(previousLastArrivalTicks + arriveIntervalTicks);
+                    if (naturalArrivalTicks <= targetFirstArrivalTicks)
                     {
-                        spawnDelay = targetFirstArrival - naturalArrival;
+                        spawnDelayTicks = targetFirstArrivalTicks - naturalArrivalTicks;
                         pointSpeedWorld = minSpeedWorld;
                     }
                     else
                     {
-                        spawnDelay = 0f;
-                        pointSpeedWorld = distance / Mathf.Max(targetFirstArrival, MinArriveIntervalSeconds);
+                        spawnDelayTicks = 0;
+                        Fix64 targetArrivalTime = TicksToDuration(targetFirstArrivalTicks);
+                        pointSpeedWorld = distance / targetArrivalTime;
                     }
                 }
 
-                float pointSpeedProperty = pointSpeedWorld / conversionRate;
-                float pointLastArrival = targetFirstArrival + (spawnCount - 1) * arriveInterval;
-                previousLastArrival = pointLastArrival;
+                Fix64 pointSpeedProperty = pointSpeedWorld / conversionRate;
+                ulong pointLastArrivalTicks = checked(
+                    targetFirstArrivalTicks + checked((ulong)(spawnCount - 1) * arriveIntervalTicks));
+                previousLastArrivalTicks = pointLastArrivalTicks;
 
-                string strongholdId = pointCount.PointStronghold?.strongholdData?.StrongholdId;
-                string pointName = pointCount.Point.Point != null ? pointCount.Point.Point.name : "<null>";
+                string strongholdId = pointCount.StrongholdId;
+                string pointName = pointCount.Point.Name;
+                FixVector2 spawnPosition = pointCount.Point.Position;
 
                 for (int spawnIndex = 0; spawnIndex < spawnCount; spawnIndex++)
                 {
                     events.Add(new PlannedSpawnEvent
                     {
-                        Time = spawnDelay + spawnIndex * arriveInterval,
+                        RequestFrameOffset = checked(spawnDelayTicks + checked((ulong)spawnIndex * arriveIntervalTicks)),
+                        Sequence = checked((ulong)events.Count + 1UL),
                         UnitType = entry.UnitType,
                         UnitLevel = entry.UnitLevel,
-                        SpawnPosition = pointCount.Point.Point.Position,
+                        SpawnPosition = spawnPosition,
                         SpeedProperty = pointSpeedProperty,
                         SourceStrongholdId = strongholdId,
                         SpawnPointName = pointName,
-                        TheoreticalArrivalTime = targetFirstArrival + spawnIndex * arriveInterval
+                        TheoreticalArrivalFrameOffset = checked(
+                            targetFirstArrivalTicks + checked((ulong)spawnIndex * arriveIntervalTicks))
                     });
                 }
             }
         }
 
         return events;
+    }
+
+    private static Fix64 ResolveFiniteConfigFixed(string key, Fix64 fallback, Fix64 minimum)
+    {
+        float configured = GF.Config != null ? GF.Config.GetFloat(key, (float)fallback) : (float)fallback;
+        if (float.IsNaN(configured) || float.IsInfinity(configured))
+            throw new InvalidOperationException($"DefendPhaseRuntime config '{key}' must be finite. actual={configured}.");
+        return Fix64.Max(minimum, (Fix64)configured);
+    }
+
+    private static ulong SecondsToTicksCeiling(Fix64 duration)
+    {
+        if (duration < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(duration), duration.RawValue, "Duration cannot be negative.");
+        long ticks = (long)Fix64.Ceiling(duration / LogicFrameRuntime.FixedDeltaTime);
+        return checked((ulong)ticks);
+    }
+
+    private static Fix64 TicksToDuration(ulong ticks)
+    {
+        if (ticks == 0 || ticks > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(ticks), ticks, "Tick duration must fit a positive Int64.");
+        return LogicFrameRuntime.FixedDeltaTime * (Fix64)(long)ticks;
+    }
+
+    private static int ComparePointSpawnCounts(PointSpawnCount left, PointSpawnCount right)
+    {
+        int distance = left.DistanceToBase.CompareTo(right.DistanceToBase);
+        return distance != 0
+            ? distance
+            : CompareDefendSpawnPoints(left.Point, right.Point);
+    }
+
+    private static int CompareDefendSpawnPoints(DefendSpawnPointRuntime left, DefendSpawnPointRuntime right)
+    {
+        int identifier = string.CompareOrdinal(left.Identifier, right.Identifier);
+        if (identifier != 0)
+            return identifier;
+        int x = left.Position.x.RawValue.CompareTo(right.Position.x.RawValue);
+        if (x != 0)
+            return x;
+        int y = left.Position.y.RawValue.CompareTo(right.Position.y.RawValue);
+        if (y != 0)
+            return y;
+        int stronghold = string.CompareOrdinal(left.StrongholdId, right.StrongholdId);
+        if (stronghold != 0)
+            return stronghold;
+        int name = string.CompareOrdinal(left.Name, right.Name);
+        return name != 0 ? name : left.Weight.CompareTo(right.Weight);
+    }
+
+    private static int ComparePlannedSpawnEvents(PlannedSpawnEvent left, PlannedSpawnEvent right)
+    {
+        int frame = left.RequestFrameOffset.CompareTo(right.RequestFrameOffset);
+        return frame != 0 ? frame : left.Sequence.CompareTo(right.Sequence);
     }
 
     private static List<PointSpawnCount> AllocatePointCountsForUnit(UnitType unitType, int totalCount)
@@ -692,20 +806,26 @@ public static class DefendPhaseRuntime
 
         bool hasArchetype = s_ArchetypeByUnitType.TryGetValue(unitType, out Archetype unitArchetype);
         var eligiblePoints = new List<DefendSpawnPointRuntime>();
-        float totalWeightAllSides = 0f;
+        int totalWeightAllSides = 0;
 
         for (int i = 0; i < s_DefendSpawnPoints.Count; i++)
         {
             DefendSpawnPointRuntime runtimePoint = s_DefendSpawnPoints[i];
-            Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(runtimePoint.Point.Position);
-            if (stronghold == null)
+            if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(runtimePoint.StrongholdId, out int ownerFactionId)
+                || ownerFactionId == EntitySideHelper.PlayerFactionId)
+            {
                 continue;
+            }
 
-            bool archMatched = !hasArchetype || StrongholdContainsArchetypeBuilding(stronghold, unitArchetype);
+            bool archMatched = !hasArchetype
+                               || LogicBuildingQueryService.HasBuildingArchetype(
+                                   runtimePoint.StrongholdId,
+                                   ownerFactionId,
+                                   unitArchetype);
             if (!archMatched)
                 continue;
 
-            int weight = Mathf.Max(0, runtimePoint.Point.DefendSpawnWeight);
+            int weight = runtimePoint.Weight;
             if (weight <= 0)
                 continue;
 
@@ -713,16 +833,18 @@ public static class DefendPhaseRuntime
             totalWeightAllSides += weight;
         }
 
-        if (eligiblePoints.Count == 0 || totalWeightAllSides <= 0f)
+        if (eligiblePoints.Count == 0 || totalWeightAllSides <= 0)
         {
             for (int i = 0; i < s_DefendSpawnPoints.Count; i++)
             {
                 var runtimePoint = s_DefendSpawnPoints[i];
-                Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(runtimePoint.Point.Position);
-                if (stronghold == null || stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+                if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(runtimePoint.StrongholdId, out int ownerFactionId)
+                    || ownerFactionId == EntitySideHelper.PlayerFactionId)
+                {
                     continue;
+                }
 
-                int weight = Mathf.Max(0, runtimePoint.Point.DefendSpawnWeight);
+                int weight = runtimePoint.Weight;
                 if (weight <= 0)
                     continue;
 
@@ -731,19 +853,21 @@ public static class DefendPhaseRuntime
             }
         }
 
-        if (eligiblePoints.Count == 0 || totalWeightAllSides <= 0f)
+        if (eligiblePoints.Count == 0 || totalWeightAllSides <= 0)
             return result;
 
         int allocatedTotal = 0;
         for (int i = 0; i < eligiblePoints.Count; i++)
         {
             DefendSpawnPointRuntime runtimePoint = eligiblePoints[i];
-            Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(runtimePoint.Point.Position);
-            if (stronghold == null || stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
+            if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(runtimePoint.StrongholdId, out int ownerFactionId)
+                || ownerFactionId == EntitySideHelper.PlayerFactionId)
+            {
                 continue;
+            }
 
-            int weight = Mathf.Max(0, runtimePoint.Point.DefendSpawnWeight);
-            int count = Mathf.RoundToInt(weight / totalWeightAllSides * totalCount);
+            int weight = runtimePoint.Weight;
+            int count = RoundPositiveRatioToInt((long)weight * totalCount, totalWeightAllSides);
             if (count <= 0)
                 continue;
 
@@ -751,7 +875,7 @@ public static class DefendPhaseRuntime
             result.Add(new PointSpawnCount
             {
                 Point = runtimePoint,
-                PointStronghold = stronghold,
+                StrongholdId = runtimePoint.StrongholdId,
                 Count = count
             });
         }
@@ -796,22 +920,19 @@ public static class DefendPhaseRuntime
         return result;
     }
 
-    private static bool StrongholdContainsArchetypeBuilding(Stronghold stronghold, Archetype archetype)
+    private static int RoundPositiveRatioToInt(long numerator, int denominator)
     {
-        if (stronghold?.Buildings == null || archetype == Archetype.None)
-            return false;
+        if (numerator < 0)
+            throw new ArgumentOutOfRangeException(nameof(numerator));
+        if (denominator <= 0)
+            throw new ArgumentOutOfRangeException(nameof(denominator));
 
-        for (int i = 0; i < stronghold.Buildings.Count; i++)
-        {
-            BuildingEntity building = stronghold.Buildings[i];
-            if (building == null || building.buildingData == null)
-                continue;
-
-            if (building.buildingData.Arche == archetype)
-                return true;
-        }
-
-        return false;
+        long whole = numerator / denominator;
+        long remainder = numerator % denominator;
+        long twiceRemainder = checked(remainder * 2L);
+        if (twiceRemainder > denominator || (twiceRemainder == denominator && (whole & 1L) != 0L))
+            whole++;
+        return checked((int)whole);
     }
 
     private static string ResolvePreviewSpawnPointIdentifier(EntityPresetPoint point)
@@ -828,14 +949,60 @@ public static class DefendPhaseRuntime
     private static void ResetDefendPhaseState(bool keepRoundIndex)
     {
         s_AliveEnemyEntityIds.Clear();
+        s_PlannedSpawnEvents.Clear();
+        s_NextPlannedSpawnIndex = 0;
+        s_SpawnRequestStartFrame = 0;
         s_SpawnScheduleCompleted = false;
         if (!keepRoundIndex)
             s_DefendRoundIndex = 0;
     }
 
+    public static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        hasher.Add(s_DefendRoundIndex);
+        hasher.Add(s_SpawnScheduleCompleted);
+        hasher.Add(s_SpawnRequestStartFrame);
+        hasher.Add(s_NextPlannedSpawnIndex);
+        hasher.Add(s_PlannedSpawnEvents.Count);
+        for (int i = 0; i < s_PlannedSpawnEvents.Count; i++)
+        {
+            PlannedSpawnEvent evt = s_PlannedSpawnEvents[i];
+            hasher.Add(evt.RequestFrameOffset);
+            hasher.Add(evt.Sequence);
+            hasher.Add((int)evt.UnitType);
+            hasher.Add(evt.UnitLevel);
+            hasher.Add(evt.SpawnPosition.x.RawValue);
+            hasher.Add(evt.SpawnPosition.y.RawValue);
+            hasher.Add(evt.SpeedProperty.RawValue);
+            hasher.Add(evt.SourceStrongholdId);
+            hasher.Add(evt.SpawnPointName);
+            hasher.Add(evt.TheoreticalArrivalFrameOffset);
+        }
+
+        var aliveIds = new List<int>(s_AliveEnemyEntityIds);
+        aliveIds.Sort();
+        hasher.Add(aliveIds.Count);
+        for (int i = 0; i < aliveIds.Count; i++)
+            hasher.Add(aliveIds[i]);
+    }
+
+#if UNITY_EDITOR
+    public static ulong GetEditorTestTickCount(Fix64 duration)
+    {
+        return SecondsToTicksCeiling(duration);
+    }
+#endif
+
     private sealed class DefendSpawnPointRuntime
     {
-        public EntityPresetPoint Point;
+        public FixVector2 Position;
+        public int Weight;
+        public string Identifier;
+        public string Name;
+        public string StrongholdId;
     }
 
     private sealed class DefendWaveDefinition
@@ -853,20 +1020,21 @@ public static class DefendPhaseRuntime
     private sealed class PointSpawnCount
     {
         public DefendSpawnPointRuntime Point;
-        public Stronghold PointStronghold;
+        public string StrongholdId;
         public int Count;
-        public float DistanceToBase;
+        public Fix64 DistanceToBase;
     }
 
     private sealed class PlannedSpawnEvent
     {
-        public float Time;
+        public ulong RequestFrameOffset;
+        public ulong Sequence;
         public UnitType UnitType;
         public int UnitLevel;
-        public Vector3 SpawnPosition;
-        public float SpeedProperty;
+        public FixVector2 SpawnPosition;
+        public Fix64 SpeedProperty;
         public string SourceStrongholdId;
         public string SpawnPointName;
-        public float TheoreticalArrivalTime;
+        public ulong TheoreticalArrivalFrameOffset;
     }
 }

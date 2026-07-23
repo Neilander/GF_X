@@ -30,21 +30,37 @@ public class ActiveSkillSO : SkillEffectSO
 
     public float ResolveCooldownInterval(int level)
     {
+        return (float)ResolveCooldownIntervalFixed(level);
+    }
+
+    public Fix64 ResolveCooldownIntervalFixed()
+    {
+        return ResolveCooldownIntervalFixed(1);
+    }
+
+    public Fix64 ResolveCooldownIntervalFixed(int level)
+    {
         if (string.IsNullOrWhiteSpace(skillId))
-            return coolDownInterval;
+            return (Fix64)coolDownInterval;
 
         SkillData skillData = SkillDataModel.GetSkillData(skillId);
         if (skillData == null)
-            return coolDownInterval;
+            return (Fix64)coolDownInterval;
 
         Fix64 cooldown = skillData.GetCooldown(level);
-        return cooldown > Fix64.Zero ? (float)cooldown : coolDownInterval;
+        return cooldown > Fix64.Zero ? cooldown : (Fix64)coolDownInterval;
     }
 
     protected float GetCastDistanceWorldOrFallback()
     {
         float tableValue = GetCastDistanceWorld();
         return tableValue > 0f ? tableValue : radius;
+    }
+
+    protected Fix64 GetCastDistanceWorldFixedOrFallback()
+    {
+        Fix64 tableValue = GetCastDistanceWorldFixed();
+        return tableValue > Fix64.Zero ? tableValue : (Fix64)radius;
     }
 
     protected Vector3 GetSelectionScaleOrFallback()
@@ -80,11 +96,11 @@ public class ActiveSkillSO : SkillEffectSO
         /*
         actions[0].StartAction(body, out info.currentInfo);
         info.currentInfo.damageInfo = new Damage(body, 1);
-        
+
         body.animator.SetTrigger(actions[0].relatedTriggerString);*/
     }
 
-    public virtual void TickSkill(SkillInfo info, float deltaTime)
+    public virtual void TickSkill(SkillInfo info, Fix64 deltaTime)
     {
         actions[info.currentIndex].Tick(info.currentInfo, deltaTime);
         if (info.currentInfo.isFinished)
@@ -133,7 +149,7 @@ public class ActiveSkillSO : SkillEffectSO
 
         //更新信息
         var action = actions[actionIndex];
-        action.StartAction(RequireLegacyActionBody(info.entity), out info.currentInfo);
+        action.StartAction(info.entity, out info.currentInfo);
         info.currentInfo.executeIndex = actionIndex;
         info.currentInfo.damageInfo = new Damage(info.entity, Fix64.One);
         if (!string.IsNullOrWhiteSpace(action.relatedTriggerString)
@@ -149,28 +165,16 @@ public class ActiveSkillSO : SkillEffectSO
         switch (info.currentInfo)
         {
             case PositionSelectActionInfo posSelectInfo:
-                if (info.entity is not MAEntity positionSelectionView)
-                {
-                    throw new InvalidOperationException(
-                        $"ActiveSkillSO position selection requires a bound MAEntity presenter. skillId={skillId}, entity={info.entity.LogicEntityId.Value}.");
-                }
-                posSelectInfo.centerTrans = positionSelectionView.transform;
-                posSelectInfo.radius = GetCastDistanceWorldOrFallback();
+                posSelectInfo.radius = GetCastDistanceWorldFixedOrFallback();
                 posSelectInfo.selectScale = GetSelectionScaleOrFallback();
+                Fix64 areaRange = GetAreaRangeWorldFixed();
+                posSelectInfo.selectionRadius = areaRange > Fix64.Zero
+                    ? areaRange
+                    : (Fix64)posSelectInfo.selectScale.x;
                 break;
 
         }
     }
-
-    private static GeneralCreature RequireLegacyActionBody(IEntityContext entity)
-    {
-        if (entity is GeneralCreature creature)
-            return creature;
-        throw new InvalidOperationException(
-            $"Legacy BasicAction requires a GeneralCreature presenter. entity={entity?.LogicEntityId.Value ?? 0}.");
-    }
-
-
 
     public virtual void InterruptSkill(SkillInfo info)
     {

@@ -19,14 +19,14 @@ public abstract class BasicAction : ScriptableObject
     [Header("Config")] [SerializeField] protected bool ifUseDuration = true;
     [SerializeField] protected float duration = 0f;
     public string relatedTriggerString;
-    
+
     // ===== runtime creation =====
-    protected virtual ActionInfo CreateInfo(GeneralCreature body)
+    protected virtual ActionInfo CreateInfo(IEntityContext body)
     {
         return new ActionInfo
         {
             selfBody = body,
-            elapsed = 0f,
+            elapsed = Fix64.Zero,
             isRunning = false,
             isInterrupted = false,
             isFinished = false,
@@ -36,11 +36,12 @@ public abstract class BasicAction : ScriptableObject
 
     // ===== executor API =====
 
-    public virtual void StartAction(GeneralCreature body, out ActionInfo info)
+    public virtual void StartAction(IEntityContext body, out ActionInfo info)
     {
         info = CreateInfo(body);
 
-        info.elapsed = 0f;
+        info.elapsed = Fix64.Zero;
+        info.duration = (Fix64)duration;
         info.isRunning = true;
         info.isInterrupted = false;
         info.isFinished = false;
@@ -49,7 +50,7 @@ public abstract class BasicAction : ScriptableObject
         OnStart(info);
     }
 
-    public virtual void Tick(ActionInfo info, float deltaTime)
+    public virtual void Tick(ActionInfo info, Fix64 deltaTime)
     {
         if (!info.isRunning || info.isFinished || info.isInterrupted)
             return;
@@ -58,7 +59,7 @@ public abstract class BasicAction : ScriptableObject
 
         OnUpdate(info, deltaTime);
 
-        if (duration > 0f && info.elapsed >= duration && ifUseDuration)
+        if (info.duration > Fix64.Zero && info.elapsed >= info.duration && ifUseDuration)
             FinishAction(info);
     }
 
@@ -88,7 +89,7 @@ public abstract class BasicAction : ScriptableObject
 
     // ===== hooks =====
     protected virtual void OnStart(ActionInfo info) { }
-    protected virtual void OnUpdate(ActionInfo info, float deltaTime) { }
+    protected virtual void OnUpdate(ActionInfo info, Fix64 deltaTime) { }
     protected virtual void OnFinish(ActionInfo info) { }
     protected virtual void OnInterrupt(ActionInfo info) { }
 }
@@ -100,17 +101,18 @@ public class ActionInfo
     public int executeIndex;
     public SkillInfo fatherInfo;
     public bool injectInfoAlready = false;
-    
+
     // ===== 伤害相关 ====
-    public GeneralCreature selfBody;
+    public IEntityContext selfBody;
     public Damage damageInfo;
-    
+
     // ===== 继承数值 ====
     public List<ISelectable> selectTargets;
-    public Vector3 selectPos;
-    
+    public FixVector2 selectPos;
 
-    public float elapsed;
+
+    public Fix64 elapsed;
+    public Fix64 duration;
     public bool isRunning;
     public bool isInterrupted;
     public bool isFinished;

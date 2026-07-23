@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -7,20 +8,18 @@ using UnityGameFramework.Runtime;
 public class PhaseManager : GameFrameworkComponent
 {
     public static event Action<GamePhase, GamePhase> OnPhaseChanged;
+    internal static event Action<GamePhase> PersistentStageCommitted;
 
     private const float EnemyPresetClusterRadius = 3f;
     private const float EnemyPresetClusterMinDistance = 1.2f;
     private const long PhaseStepWarnMs = 30;
-    private const int EnemySpawnYieldEveryUnits = 2;
     private const string EnemyProductionBuildingDailyResourceCostConfigKey = "EnemyProductionBuildingDailyResourceCost";
-    private static int s_InvadeFlowToken;
     private static int s_PhaseSoundToken;
 
     public static GamePhase CurrentPhase => (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
 
     public static void CancelRuntimePhaseFlows()
     {
-        s_InvadeFlowToken++;
         s_PhaseSoundToken++;
         DefendPhaseRuntime.CancelRuntime();
     }
@@ -34,12 +33,17 @@ public class PhaseManager : GameFrameworkComponent
         {
             case GamePhase.BuildBeforeInvade:
             case GamePhase.BuildBeforeDefend:
-                HandleEnterBuildPhase(currentPhase, true);
+                LogicBuildingProductionService.PrepareBuildPhase(false);
+                CommitBuildPhasePersistentState(currentPhase, true);
+                PublishPersistentStageBoundary(currentPhase);
+                HandleEnterBuildPhase();
                 break;
             case GamePhase.Invade:
-                HandleEnterInvadePhaseAsync().Forget();
+                PublishPersistentStageBoundary(currentPhase);
+                HandleEnterInvadePhase();
                 break;
             case GamePhase.Defend:
+                PublishPersistentStageBoundary(currentPhase);
                 HandleEnterDefendPhase();
                 break;
         }
@@ -94,6 +98,13 @@ public class PhaseManager : GameFrameworkComponent
 
         TryAdvanceDayOnBuildTransition(oldPhase, phase);
         InGameDataModel.SetPhase(phase);
+        if (InGameDataModel.IsBuildPhase(phase))
+        {
+            LogicBuildingProductionService.PrepareBuildPhase(true);
+            CommitBuildPhasePersistentState(oldPhase, false);
+        }
+
+        PublishPersistentStageBoundary(phase);
 
         var transitionWatch = Stopwatch.StartNew();
         HandlePhaseTransition(oldPhase, phase);
@@ -129,7 +140,7 @@ public class PhaseManager : GameFrameworkComponent
         {
             case GamePhase.BuildBeforeInvade:
             case GamePhase.BuildBeforeDefend:
-                HandleEnterBuildPhase(oldPhase);
+                HandleEnterBuildPhase();
                 break;
             case GamePhase.Invade:
                 HandleEnterInvadePhase();
@@ -140,12 +151,10 @@ public class PhaseManager : GameFrameworkComponent
         }
     }
 
-    private static void HandleEnterBuildPhase(GamePhase previousPhase, bool isFirstPhase = false)
+    private static void HandleEnterBuildPhase()
     {
         PlayPhaseEnterSound("enterManage");
 
-        // 进入 Build 时取消未完成的 Invade 异步生成流程。
-        s_InvadeFlowToken++;
         DefendPhaseRuntime.CancelRuntime();
 
         var totalWatch = Stopwatch.StartNew();
@@ -158,12 +167,6 @@ public class PhaseManager : GameFrameworkComponent
         InputModel inputModel = GF.DataModel?.GetDataModel<InputModel>()
                                 ?? throw new InvalidOperationException("PhaseManager.HandleEnterBuildPhase failed: InputModel is unavailable.");
         inputModel.ClearSkillRequests();
-
-        var rewardWatch = Stopwatch.StartNew();
-        ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter();
-        RewardManager.HandleEnterBuildPhaseReward(isFirstPhase, previousPhase);
-        rewardWatch.Stop();
-        LogPhaseStep("build.reward", rewardWatch.ElapsedMilliseconds);
 
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
         if (cardSetup != null)
@@ -178,6 +181,20 @@ public class PhaseManager : GameFrameworkComponent
         LogPhaseStep("build.total", totalWatch.ElapsedMilliseconds);
     }
 
+    private static void CommitBuildPhasePersistentState(GamePhase previousPhase, bool isFirstPhase)
+    {
+        var rewardWatch = Stopwatch.StartNew();
+        ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter();
+        RewardManager.HandleEnterBuildPhaseReward(isFirstPhase, previousPhase);
+        rewardWatch.Stop();
+        LogPhaseStep("build.persistent", rewardWatch.ElapsedMilliseconds);
+    }
+
+    private static void PublishPersistentStageBoundary(GamePhase phase)
+    {
+        PersistentStageCommitted?.Invoke(phase);
+    }
+
     private static void ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter()
     {
         int consumeCost = GF.Config != null ? GF.Config.GetInt(EnemyProductionBuildingDailyResourceCostConfigKey, 0) : 0;
@@ -185,19 +202,16 @@ public class PhaseManager : GameFrameworkComponent
         if (consumeCost <= 0)
             return;
 
-        InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-        if (inGameData == null)
-            return;
-
-        foreach (var building in inGameData.Buildings)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            if (building == null || building.buildingData == null)
-                continue;
-
-            if (building.OwnerFactionID == EntitySideHelper.PlayerFactionId)
-                continue;
-
-            if (building.buildingData.Type != BuilType.Prod || building.buildingData.Lv <= 0)
+            if (!(entities[i] is IBuildingLogicContext building)
+                || !building.Alive
+                || building.IsDisabled
+                || building.BuildingData == null
+                || building.OwnerFactionId == EntitySideHelper.PlayerFactionId
+                || building.BuildingData.Type != BuilType.Prod
+                || building.BuildingData.Lv <= 0)
                 continue;
 
             InGameDataModel.ConsumeProductionBuildingCoinReserves(building.BuildingInstanceId, consumeCost);
@@ -206,33 +220,27 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void HandleEnterInvadePhase()
     {
-        HandleEnterInvadePhaseAsync().Forget();
-    }
-
-    private static async UniTaskVoid HandleEnterInvadePhaseAsync()
-    {
         PlayPhaseEnterSound("enterBattle");
 
-        int flowToken = ++s_InvadeFlowToken;
         DefendPhaseRuntime.CancelRuntime();
         var totalWatch = Stopwatch.StartNew();
 
         PrepareBattlePhaseCards("invade");
 
         var spawnEnemyWatch = Stopwatch.StartNew();
-        await SpawnEnemySoldiersAsync(flowToken);
+        SpawnEnemySoldiers();
         spawnEnemyWatch.Stop();
-        LogPhaseStep("invade.spawn-enemy-async", spawnEnemyWatch.ElapsedMilliseconds);
+        LogPhaseStep("invade.spawn-enemy", spawnEnemyWatch.ElapsedMilliseconds);
 
         totalWatch.Stop();
-        LogPhaseStep("invade.total-async", totalWatch.ElapsedMilliseconds);
+        LogPhaseStep("invade.total", totalWatch.ElapsedMilliseconds);
     }
 
     private static void HandleEnterDefendPhase()
     {
         PlayPhaseEnterSound("enterBattle");
         PrepareBattlePhaseCards("defend");
-        DefendPhaseRuntime.EnterDefendPhaseAsync().Forget();
+        DefendPhaseRuntime.EnterDefendPhase();
     }
 
     private static void PrepareBattlePhaseCards(string phaseTag)
@@ -297,29 +305,27 @@ public class PhaseManager : GameFrameworkComponent
     {
         var watch = Stopwatch.StartNew();
 
-        var ingameData = GF.DataModel.GetOrCreate<InGameDataModel>();
         var cardSetup = GameEntry.GetComponent<CardSetup>();
         int scanBuildingCount = 0;
         int generatedCardCount = 0;
 
-        if (cardSetup != null && ingameData != null)
+        if (cardSetup != null)
         {
-            foreach (var building in ingameData.Buildings)
+            IList<IEntityContext> entities = EntityRegistry.AllEntities;
+            for (int i = 0; i < entities.Count; i++)
             {
-                scanBuildingCount++;
-                if (building == null || building.CurrentStronghold == null)
-                {
+                if (entities[i] is not IBuildingLogicContext building)
                     continue;
-                }
+                scanBuildingCount++;
+                if (!building.Alive
+                    || building.IsDisabled
+                    || building.BuildingData == null
+                    || building.BuildingData.Type != BuilType.Army
+                    || building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
+                    continue;
 
-                if (building.buildingData.Type == BuilType.Army
-                    && building.CurrentStronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
-                {
-                    if (cardSetup.GenerateCardToDeck(building))
-                    {
-                        generatedCardCount++;
-                    }
-                }
+                if (cardSetup.GenerateCardToDeck(building))
+                    generatedCardCount++;
             }
         }
 
@@ -328,7 +334,7 @@ public class PhaseManager : GameFrameworkComponent
         return generatedCardCount;
     }
 
-    private static async UniTask SpawnEnemySoldiersAsync(int flowToken)
+    private static void SpawnEnemySoldiers()
     {
         var totalWatch = Stopwatch.StartNew();
         LogCreatureEntityPoolState("before-spawn");
@@ -338,59 +344,64 @@ public class PhaseManager : GameFrameworkComponent
         findWatch.Stop();
         LogPhaseStep($"spawn-enemy.find-preset-points count={presetPoints.Length}", findWatch.ElapsedMilliseconds);
 
-        int spawnedCount = 0;
-        int attemptedClusterCount = 0;
-        long totalSpawnClusterMs = 0;
-        long maxSingleSpawnClusterMs = 0;
-
-        foreach (var point in presetPoints)
+        var spawnPlans = new List<InvadeSpawnPlan>();
+        for (int i = 0; i < presetPoints.Length; i++)
         {
+            EntityPresetPoint point = presetPoints[i];
             if (point == null || point.PointType != EntityPresetPointType.Unit)
+                continue;
+
+            Vector3 authoredPosition = point.Position;
+            var position = new FixVector2((Fix64)authoredPosition.x, (Fix64)authoredPosition.z);
+            if (!LogicStrongholdMap.TryResolveStrongholdId(position, out string strongholdId))
+            {
+                throw new InvalidOperationException(
+                    $"PhaseManager invade spawn point is outside the logic stronghold map. point={point.name} raw=({position.x.RawValue},{position.y.RawValue}).");
+            }
+            if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(strongholdId, out int ownerFactionId)
+                || ownerFactionId == EntitySideHelper.PlayerFactionId)
             {
                 continue;
             }
-
-            if (flowToken != s_InvadeFlowToken || CurrentPhase != GamePhase.Invade)
+            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out UnitType unitType, out int unitLevel))
             {
-                Log.Warning("[PhasePerf] spawn-enemy canceled: phase changed while spawning.");
-                break;
-            }
-
-            var stronghold = LevelEntity.GetStrongholdAtWorldPosition(point.Position);
-            if (stronghold == null || stronghold.OwnerFactionId == EntitySideHelper.PlayerFactionId)
-            {
-                continue;
-            }
-
-            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out var unitType, out int unitLevel))
-            {
-                Log.Warning($"Skip unit preset point '{point.name}': invalid identifier '{point.Identifier}'.");
-                continue;
+                throw new InvalidOperationException(
+                    $"PhaseManager invade spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
             }
 
             int count = EnemyArmyForceModifierService.CalculateSpawnCount(point.UnitSpawnCount);
             if (count <= 0)
-            {
-                Log.Warning($"Skip unit preset point '{point.name}': UnitSpawnCount={count}.");
-                continue;
-            }
+                throw new InvalidOperationException($"PhaseManager invade spawn count is not positive. point={point.name} count={count}.");
 
-            attemptedClusterCount++;
-
-            var spawnWatch = Stopwatch.StartNew();
-            int clusterSpawned = await ClusterSpawnSystem.SpawnClusterAwait(
-                point.Position,
+            spawnPlans.Add(new InvadeSpawnPlan(
+                position,
+                unitType,
+                unitLevel,
                 count,
+                strongholdId,
+                string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name));
+        }
+        spawnPlans.Sort(CompareInvadeSpawnPlans);
+
+        int spawnedCount = 0;
+        long totalSpawnClusterMs = 0;
+        long maxSingleSpawnClusterMs = 0;
+
+        for (int i = 0; i < spawnPlans.Count; i++)
+        {
+            InvadeSpawnPlan plan = spawnPlans[i];
+            var spawnWatch = Stopwatch.StartNew();
+            bool clusterSpawned = ClusterSpawnSystem.SpawnCluster(
+                new Vector3((float)plan.Position.x, 0f, (float)plan.Position.y),
+                plan.Count,
                 EnemyPresetClusterRadius,
                 EnemyPresetClusterMinDistance,
-                unitType,
+                plan.UnitType,
                 SideType.EnemySide,
                 BrainType.SoldierAI,
                 null,
-                EnemySpawnYieldEveryUnits,
-                () => flowToken == s_InvadeFlowToken && CurrentPhase == GamePhase.Invade,
-                stronghold.strongholdData.StrongholdId,
-                unitLevel: unitLevel);
+                plan.StrongholdId,
+                unitLevel: plan.UnitLevel);
             spawnWatch.Stop();
 
             long spawnMs = spawnWatch.ElapsedMilliseconds;
@@ -400,23 +411,65 @@ public class PhaseManager : GameFrameworkComponent
                 maxSingleSpawnClusterMs = spawnMs;
             }
 
-            if (clusterSpawned > 0)
+            if (!clusterSpawned)
             {
-                spawnedCount += clusterSpawned;
+                throw new InvalidOperationException(
+                    $"PhaseManager invade cluster spawn failed. point={plan.Name} requested={plan.Count}.");
             }
-            else
-            {
-                Log.Warning($"Cluster spawn failed at preset point '{point.name}', requestedCount={count}.");
-            }
+            spawnedCount = checked(spawnedCount + plan.Count);
         }
 
         totalWatch.Stop();
         LogCreatureEntityPoolState("after-spawn");
         LogPhaseStep(
-            $"spawn-enemy.detail clusters={attemptedClusterCount},units={spawnedCount},clusterTotalMs={totalSpawnClusterMs},clusterMaxMs={maxSingleSpawnClusterMs}",
+            $"spawn-enemy.detail clusters={spawnPlans.Count},units={spawnedCount},clusterTotalMs={totalSpawnClusterMs},clusterMaxMs={maxSingleSpawnClusterMs}",
             totalWatch.ElapsedMilliseconds);
 
         Log.Debug($"Spawned {spawnedCount} enemy soldiers from enemy stronghold unit preset points");
+    }
+
+    private static int CompareInvadeSpawnPlans(InvadeSpawnPlan left, InvadeSpawnPlan right)
+    {
+        int stronghold = string.CompareOrdinal(left.StrongholdId, right.StrongholdId);
+        if (stronghold != 0)
+            return stronghold;
+        int unitType = left.UnitType.CompareTo(right.UnitType);
+        if (unitType != 0)
+            return unitType;
+        int level = left.UnitLevel.CompareTo(right.UnitLevel);
+        if (level != 0)
+            return level;
+        int x = left.Position.x.RawValue.CompareTo(right.Position.x.RawValue);
+        if (x != 0)
+            return x;
+        int y = left.Position.y.RawValue.CompareTo(right.Position.y.RawValue);
+        return y != 0 ? y : string.CompareOrdinal(left.Name, right.Name);
+    }
+
+    private readonly struct InvadeSpawnPlan
+    {
+        public InvadeSpawnPlan(
+            FixVector2 position,
+            UnitType unitType,
+            int unitLevel,
+            int count,
+            string strongholdId,
+            string name)
+        {
+            Position = position;
+            UnitType = unitType;
+            UnitLevel = unitLevel;
+            Count = count;
+            StrongholdId = strongholdId;
+            Name = name;
+        }
+
+        public FixVector2 Position { get; }
+        public UnitType UnitType { get; }
+        public int UnitLevel { get; }
+        public int Count { get; }
+        public string StrongholdId { get; }
+        public string Name { get; }
     }
 
     private static void LogPhaseStep(string step, long elapsedMs)

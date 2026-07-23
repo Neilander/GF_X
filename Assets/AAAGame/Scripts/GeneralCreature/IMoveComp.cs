@@ -7,6 +7,7 @@ public interface IMoveComp : ICapability
     void Move(Fix64 deltaTime);
 
     void MoveTo(Vector3 destination);
+    void MoveToFixed(FixVector2 destination);
     void StopMove();
 
     /// <summary>

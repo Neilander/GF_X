@@ -1,7 +1,7 @@
 ﻿using System;
 using UnityEngine;
 
-public sealed class LogicMoveExecutor : IMoveExecutor
+public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateContributor
 {
     private FixVector2 m_InputVelocity;
     private FixVector2 m_ExternalVelocity;
@@ -137,6 +137,28 @@ public sealed class LogicMoveExecutor : IMoveExecutor
         m_OverrideVelocity = FixVector2.Zero;
         m_HasOverride = false;
         m_BypassConstraintForNextFrame = false;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        hasher.Add(m_InputVelocity.x.RawValue);
+        hasher.Add(m_InputVelocity.y.RawValue);
+        hasher.Add(m_ExternalVelocity.x.RawValue);
+        hasher.Add(m_ExternalVelocity.y.RawValue);
+        hasher.Add(m_OverrideVelocity.x.RawValue);
+        hasher.Add(m_OverrideVelocity.y.RawValue);
+        hasher.Add(m_HasOverride);
+        hasher.Add(m_NavigationConstrained);
+        hasher.Add(m_BypassConstraintForNextFrame);
+        hasher.Add((int)m_MovementMode);
+        hasher.Add(HasPreparedLogicMove);
+        hasher.Add(PreparedLogicFrame);
+        hasher.Add(PreparedCollisionMovable);
+        hasher.Add(PreparedResolvedHorizontalDisplacement.x.RawValue);
+        hasher.Add(PreparedResolvedHorizontalDisplacement.y.RawValue);
     }
 
     private static FixVector2 ToFixed(Vector3 value)

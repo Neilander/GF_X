@@ -15,6 +15,10 @@ public class NoMoveComp : IMoveComp
     {
     }
 
+    public void MoveToFixed(FixVector2 destination)
+    {
+    }
+
     public void StopMove()
     {
     }

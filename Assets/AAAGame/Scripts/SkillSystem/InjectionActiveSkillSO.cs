@@ -10,9 +10,9 @@ public sealed class InjectionActiveSkillSO : InstantActiveSkillSO
         if (caster == null)
             throw new InvalidOperationException($"Injection caster missing. skillId={skillId}");
 
-        float radius = GetAreaRangeWorld();
-        float duration = GetDurationSeconds();
-        if (radius <= 0f || duration <= 0f)
+        Fix64 radius = GetAreaRangeWorldFixed();
+        Fix64 duration = GetDurationLogicTime();
+        if (radius <= Fix64.Zero || duration <= Fix64.Zero)
             throw new InvalidOperationException($"Injection values invalid. skillId={skillId}");
 
         var all = EntityRegistry.AllEntities;
@@ -20,10 +20,10 @@ public sealed class InjectionActiveSkillSO : InstantActiveSkillSO
         {
             IEntityContext target = all[i];
             if (target == null)
-                continue;
+                throw new InvalidOperationException("Injection encountered a null entity in EntityRegistry.");
             if (!target.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(caster, target))
                 continue;
-            if (Vector3.Distance(caster.Position, target.Position) > radius)
+            if (FixVector2.Distance(caster.LogicFramePositionFixed(), target.LogicFramePositionFixed()) > radius)
                 continue;
             if (target.BuffComp == null)
                 throw new InvalidOperationException($"Injection target missing BuffComp. target={target.CharacterKey}");
@@ -41,14 +41,14 @@ public sealed class InjectionActiveSkillSO : InstantActiveSkillSO
     }
 }
 
-public sealed class FearMoveAwayBuff : BuffCallback, ICapability
+public sealed class FearMoveAwayBuff : BuffCallback, ICapability, ILogicDeterministicStateContributor
 {
     private readonly IEntityContext m_Source;
     private bool m_MoveLocked;
 
     public FearMoveAwayBuff(IEntityContext source)
     {
-        m_Source = source;
+        m_Source = source ?? throw new ArgumentNullException(nameof(source));
     }
 
     public override bool IsNegativeStatus => true;
@@ -64,8 +64,8 @@ public sealed class FearMoveAwayBuff : BuffCallback, ICapability
 
     public override void OnUpdate(Fix64 deltaTime)
     {
-        if (hostEntity == null || m_Source == null || hostEntity.DurationMoveEffectComp == null)
-            return;
+        if (hostEntity == null || hostEntity.DurationMoveEffectComp == null)
+            throw new InvalidOperationException("FearMoveAwayBuff requires host entity and duration move component.");
 
         FixVector2 direction = hostEntity.LogicFramePositionFixed() - m_Source.LogicFramePositionFixed();
         if (FixVector2.SqrMagnitude(direction) == Fix64.Zero)
@@ -86,4 +86,12 @@ public sealed class FearMoveAwayBuff : BuffCallback, ICapability
 
     public void ShutDown() { }
     public void Resume() { }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (!m_Source.LogicEntityId.IsValid)
+            throw new InvalidOperationException("FearMoveAwayBuff source has an invalid logic entity id.");
+        hasher.Add(m_Source.LogicEntityId.Value);
+        hasher.Add(m_MoveLocked);
+    }
 }

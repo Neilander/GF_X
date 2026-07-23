@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System;
 using System.Collections;
 using System.Globalization;
@@ -90,6 +90,7 @@ namespace AAAGame.MiniMap.FOG3
         public Fog3Controller Controller => controller;
         public Fog3MapData MapData => controller?.MapData;
         public bool IsInitialized => isInitialized;
+        public bool BlocksHiddenRevealByEnemyStronghold => enableEnemyStrongholdHiddenVisionBlock;
 
         public void LogDiagnostics(string phase)
         {

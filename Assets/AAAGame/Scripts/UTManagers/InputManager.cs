@@ -73,6 +73,8 @@ public partial class InputManager : GameFrameworkComponent
 
         if (_moveAction == null)
             throw new InvalidOperationException("InputManager.Start failed: Player/Move action is required.");
+        if (_selectPositionAction == null)
+            throw new InvalidOperationException("InputManager.Start failed: Player/SelectPosition action is required.");
 
         if (_playerCancelAction != null && !_playerCancelAction.enabled)
             _playerCancelAction.Enable();
@@ -137,9 +139,16 @@ public partial class InputManager : GameFrameworkComponent
             ? CaptureWorldMove(_moveAction.ReadValue<Vector2>())
             : FixVector2.Zero;
         ulong initialHeldBits = CurState == InputState.Game ? CaptureHeldBits() : 0;
-        FixVector2 initialScreenPosition = CaptureSelectScreenPosition();
+        Vector2 initialScreenPosition = GetPointerScreenPosition();
+        bool hasInitialWorldPosition = TryCaptureSelectWorldPosition(initialScreenPosition, out FixVector2 initialWorldPosition);
 
-        _model.LogicTimeline.Begin(realtime, initialMove, initialHeldBits, initialScreenPosition);
+        _model.LogicTimeline.Begin(
+            realtime,
+            initialMove,
+            initialHeldBits,
+            QuantizeScreenPosition(initialScreenPosition),
+            hasInitialWorldPosition,
+            initialWorldPosition);
         _model.ClearCompatibilityState();
     }
 
@@ -200,7 +209,17 @@ public partial class InputManager : GameFrameworkComponent
 
     public Vector2 GetPointerScreenPosition()
     {
-        return _selectPositionAction != null ? _selectPositionAction.ReadValue<Vector2>() : Vector2.zero;
+        if (_selectPositionAction == null)
+            throw new InvalidOperationException("InputManager cannot read pointer position without Player/SelectPosition.");
+        return _selectPositionAction.ReadValue<Vector2>();
+    }
+
+    public void RequestSelectPosition(Vector2 screenPosition)
+    {
+        if (!CanCaptureGameplayInput())
+            return;
+
+        EnqueueSelectPositionSample(Time.realtimeSinceStartupAsDouble, screenPosition);
     }
 
     private void BindGameplayCallbacks()
@@ -300,10 +319,7 @@ public partial class InputManager : GameFrameworkComponent
 
         if (context.action == _selectPositionAction)
         {
-            Vector2 screenPosition = context.ReadValue<Vector2>();
-            _model.LogicTimeline.EnqueueSelectScreenPosition(
-                timestamp,
-                new FixVector2((Fix64)screenPosition.x, (Fix64)screenPosition.y));
+            EnqueueSelectPositionSample(timestamp, context.ReadValue<Vector2>());
             return;
         }
 
@@ -362,10 +378,38 @@ public partial class InputManager : GameFrameworkComponent
         return InputDirTranslator.TranslateAndQuantize(deviceMove, Camera.main);
     }
 
-    private FixVector2 CaptureSelectScreenPosition()
+    private void EnqueueSelectPositionSample(double timestamp, Vector2 screenPosition)
     {
-        Vector2 screenPosition = GetPointerScreenPosition();
+        _model.LogicTimeline.EnqueueSelectScreenPosition(timestamp, QuantizeScreenPosition(screenPosition));
+        if (TryCaptureSelectWorldPosition(screenPosition, out FixVector2 worldPosition))
+            _model.LogicTimeline.EnqueueSelectWorldPosition(timestamp, worldPosition);
+    }
+
+    private static FixVector2 QuantizeScreenPosition(Vector2 screenPosition)
+    {
         return new FixVector2((Fix64)screenPosition.x, (Fix64)screenPosition.y);
+    }
+
+    private static bool TryCaptureSelectWorldPosition(Vector2 screenPosition, out FixVector2 worldPosition)
+    {
+        Camera camera = Camera.main;
+        if (camera == null)
+            throw new InvalidOperationException("InputManager cannot project a selection position without Camera.main.");
+
+        int groundMask = LayerMask.GetMask("Ground");
+        if (groundMask == 0)
+            throw new InvalidOperationException("InputManager cannot project a selection position because the Ground layer is missing.");
+
+        Ray ray = camera.ScreenPointToRay(screenPosition);
+        if (!Physics.Raycast(ray, out RaycastHit hit, camera.farClipPlane, groundMask, QueryTriggerInteraction.Ignore))
+        {
+            // A ray miss is a valid sample: the timeline retains its last valid world point.
+            worldPosition = FixVector2.Zero;
+            return false;
+        }
+
+        worldPosition = new FixVector2((Fix64)hit.point.x, (Fix64)hit.point.z);
+        return true;
     }
 
     private ulong CaptureHeldBits()

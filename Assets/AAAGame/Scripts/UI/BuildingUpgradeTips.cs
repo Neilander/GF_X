@@ -732,7 +732,7 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         return buildManager != null
-            ? buildManager.GetBuildingCost(binding.UpgradeBuildingData, m_TargetBuilding != null ? m_TargetBuilding.CurrentStronghold : null)
+            ? buildManager.GetBuildingCost(binding.UpgradeBuildingData, m_TargetBuilding)
             : (binding.UpgradeBuildingData != null ? Mathf.Max(0, binding.UpgradeBuildingData.Cost) : 0);
     }
 

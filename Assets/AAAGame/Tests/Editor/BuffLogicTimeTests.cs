@@ -64,6 +64,16 @@ public sealed class BuffLogicTimeTests
     }
 
     [Test]
+    public void FearMoveAwayBuffHash_TracksSourceEntity()
+    {
+        ulong first = ComputeFearBuffHash(new LogicEntityId(101));
+        ulong second = ComputeFearBuffHash(new LogicEntityId(202));
+
+        Assert.AreNotEqual(first, second,
+            "Fear movement source changes future movement and must enter deterministic buff state.");
+    }
+
+    [Test]
     public void HeroOutOfCombatSpeed_UsesLogicElapsedTimeForDelayAndRamp()
     {
         var context = new SimEntityContext
@@ -115,5 +125,29 @@ public sealed class BuffLogicTimeTests
         {
             UpdatedTime += deltaTime;
         }
+    }
+
+    private static ulong ComputeFearBuffHash(LogicEntityId sourceId)
+    {
+        var source = new SimEntityContext { LogicEntityId = sourceId };
+        var host = new SimEntityContext();
+        var move = new NoMoveComp();
+        move.Init(host);
+        host.MoveComp = move;
+        var component = new CharacterBuffComp();
+        host.BuffComp = component;
+        component.Init(host);
+        BuffData buff = BuffData.Create(
+            "fear_hash_test",
+            1f,
+            false,
+            1,
+            new List<BuffCallback> { new FearMoveAwayBuff(source) });
+        Assert.IsTrue(component.AddBuff(buff, host));
+
+        var hasher = new LogicStateHasher();
+        component.WriteDeterministicState(hasher);
+        component.ShutDown();
+        return hasher.Hash;
     }
 }

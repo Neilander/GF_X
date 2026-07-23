@@ -51,8 +51,13 @@ public abstract class SkillEffectSO : ScriptableObject
 
     protected float GetCastDistanceWorld()
     {
+        return (float)GetCastDistanceWorldFixed();
+    }
+
+    protected Fix64 GetCastDistanceWorldFixed()
+    {
         Fix64 value = GetCastDistanceValue();
-        return value > Fix64.Zero ? DistanceUnitConverter.ConvertToWorldFloat(value) : 0f;
+        return value > Fix64.Zero ? DistanceUnitConverter.ConvertToWorld(value) : Fix64.Zero;
     }
 
     protected Fix64 GetAreaRangeValue()
@@ -67,17 +72,27 @@ public abstract class SkillEffectSO : ScriptableObject
 
     protected float GetAreaRangeWorld()
     {
+        return (float)GetAreaRangeWorldFixed();
+    }
+
+    protected Fix64 GetAreaRangeWorldFixed()
+    {
         Fix64 value = GetAreaRangeValue();
-        return value > Fix64.Zero ? DistanceUnitConverter.ConvertToWorldFloat(value) : 0f;
+        return value > Fix64.Zero ? DistanceUnitConverter.ConvertToWorld(value) : Fix64.Zero;
     }
 
     protected float GetDurationSeconds()
+    {
+        return (float)GetDurationLogicTime();
+    }
+
+    protected Fix64 GetDurationLogicTime()
     {
         SkillRuntimeInfo info = GetRuntimeInfo();
         SkillData data = info.Data;
         if (data == null)
             throw new InvalidOperationException($"SkillData missing. skillId={skillId}");
 
-        return (float)data.GetDuration(info.Level);
+        return data.GetDuration(info.Level);
     }
 }

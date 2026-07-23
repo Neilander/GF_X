@@ -7,11 +7,11 @@ public abstract class PositionAreaRefreshBuff : BuffCallback
 {
     private static readonly Fix64 ScanIntervalSeconds = (Fix64)0.2f;
 
-    private readonly Vector3 m_Center;
-    private readonly float m_Radius;
+    private readonly FixVector2 m_Center;
+    private readonly Fix64 m_Radius;
     private Fix64 m_Timer;
 
-    protected PositionAreaRefreshBuff(Vector3 center, float radius)
+    protected PositionAreaRefreshBuff(FixVector2 center, Fix64 radius)
     {
         m_Center = center;
         m_Radius = radius;
@@ -44,11 +44,13 @@ public abstract class PositionAreaRefreshBuff : BuffCallback
         for (int i = 0; i < all.Count; i++)
         {
             IEntityContext target = all[i];
-            if (target == null || !target.Alive)
+            if (target == null)
+                throw new InvalidOperationException($"{GetType().Name} encountered a null entity in EntityRegistry.");
+            if (!target.Alive)
                 continue;
             if (!IsTargetValid(hostEntity, target))
                 continue;
-            if (Vector3.Distance(m_Center, target.Position) > m_Radius)
+            if (FixVector2.Distance(m_Center, target.LogicFramePositionFixed()) > m_Radius)
                 continue;
 
             RefreshTarget(target);
@@ -62,10 +64,10 @@ public abstract class PositionAreaRefreshBuff : BuffCallback
 public sealed class FriendlyAttackSpeedAreaBuff : PositionAreaRefreshBuff
 {
     private readonly Fix64 m_AttackSpeedPercent;
-    private readonly float m_TargetBuffDuration;
+    private readonly Fix64 m_TargetBuffDuration;
     private readonly string m_SkillId;
 
-    public FriendlyAttackSpeedAreaBuff(Vector3 center, float radius, Fix64 attackSpeedPercent, float targetBuffDuration, string skillId)
+    public FriendlyAttackSpeedAreaBuff(FixVector2 center, Fix64 radius, Fix64 attackSpeedPercent, Fix64 targetBuffDuration, string skillId)
         : base(center, radius)
     {
         m_AttackSpeedPercent = attackSpeedPercent;
@@ -94,10 +96,10 @@ public sealed class FriendlyAttackSpeedAreaBuff : PositionAreaRefreshBuff
 public sealed class EnemyBlindAreaBuff : PositionAreaRefreshBuff
 {
     private readonly Fix64 m_MissChancePercent;
-    private readonly float m_TargetBuffDuration;
+    private readonly Fix64 m_TargetBuffDuration;
     private readonly string m_SkillId;
 
-    public EnemyBlindAreaBuff(Vector3 center, float radius, Fix64 missChancePercent, float targetBuffDuration, string skillId)
+    public EnemyBlindAreaBuff(FixVector2 center, Fix64 radius, Fix64 missChancePercent, Fix64 targetBuffDuration, string skillId)
         : base(center, radius)
     {
         m_MissChancePercent = missChancePercent;

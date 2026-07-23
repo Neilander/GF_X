@@ -12,15 +12,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public const string P_IsNavigationStaticBaked = "IsNavigationStaticBaked";
     public const string P_EnableConstructionEscape = "EnableConstructionEscape";
 
-    private static readonly Fix64 PlaceholderAttackInterval = (Fix64)1.6f;
-    private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
-    private static readonly Fix64 PlaceholderWindUp = (Fix64)0.35f;
-    private static readonly Fix64 PlaceholderWindDown = (Fix64)0.35f;
-    private const string Lv0InvincibleBuffId = "building_lv0_invincible";
-    private const string PhaseGuardBuffId = "building_phase_guard";
-    private const string ArmyForcePropertyId = "Building_ArmyForce";
-    private const string ArmySupplyPerUnitPropertyId = "Building_ArmySupplyPerUnit";
-
     public BuildingData buildingData;
     public int OwnerFactionID { get; set; }
     public string BuildingInstanceId { get; private set; }
@@ -43,13 +34,22 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         }
     }
     public bool IsDisabled => LogicState != null ? LogicState.IsDisabled : _isDisabled;
-    public bool IsLv0Invincible => _lv0InvincibleByBuff;
-    public bool IsPhaseProtected => _phaseProtectionByBuff;
+    public bool IsLv0Invincible => LogicState != null
+        ? LogicState.BuildingData != null && LogicState.BuildingData.Lv == 0
+        : throw new System.InvalidOperationException("BuildingEntity.IsLv0Invincible requires a bound logic state.");
+    public bool IsPhaseProtected => LogicState != null
+        ? LogicState.IsPhaseProtected
+        : throw new System.InvalidOperationException("BuildingEntity.IsPhaseProtected requires a bound logic state.");
     public bool IsHealthBarSuppressedByBuff => _healthBarSuppressedByBuff || _stealthHealthBarSuppressed;
     public bool IsHealthBarSuppressedByPhaseBuff => _healthBarSuppressedByBuff;
-    public bool HasPermanentNoAttackCapability { get; private set; }
-    BuildingData IBuildingLogicContext.BuildingData => buildingData;
-    int IBuildingLogicContext.OwnerFactionId => OwnerFactionID;
+    public bool HasPermanentNoAttackCapability => LogicState != null
+        ? LogicState.HasPermanentNoAttackCapability
+        : throw new System.InvalidOperationException("BuildingEntity.HasPermanentNoAttackCapability requires a bound logic state.");
+    BuildingData IBuildingLogicContext.BuildingData => LogicState.BuildingData;
+    BuildingExtraProps IBuildingLogicContext.ProductionProps => LogicState.ProductionProps;
+    string IBuildingLogicContext.StrongholdId => LogicState.StrongholdId;
+    int IBuildingLogicContext.OwnerFactionId => LogicState.OwnerFactionId;
+    IReadOnlyList<LogicInteractionOptionDescriptor> IBuildingLogicContext.InteractionOptions => LogicState.InteractionOptions;
     bool IBuildingLogicContext.BlocksLogicMovement => LogicState.BlocksLogicMovement;
     event System.Action<int, int> IBuildingLogicContext.OwnerFactionChanged
     {
@@ -57,25 +57,18 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         remove => LogicState.OwnerFactionChanged -= value;
     }
 
-    private DirectAtkComp _directAtkComp;
     private bool _isDisabled;
-    private bool _lv0InvincibleByBuff;
-    private bool _phaseProtectionByBuff;
     private bool _healthBarSuppressedByBuff;
     private bool _stealthHealthBarSuppressed;
     private bool _stealthMinimapHidden;
     private bool _permanentStealthVisibility;
-    private BaseValueProperty _armyForceProperty;
-    private BaseValueProperty _armySupplyPerUnitProperty;
     private MinimapReportComponent _minimapReportComponent;
-    private BuildingExtraProps _extraProps; // 引用自 GlobalBuffManager 的中央字典，升级场景同 id 共享同对象
+    private BuildingExtraProps _extraProps; // 引用逻辑层按 BuildingInstanceId 管理的状态
     private readonly List<int> _registeredFlowObstacleIds = new List<int>();
     private readonly List<ColliderState> _collisionBlockingColliderStates = new List<ColliderState>();
     private bool _blocksLogicMovement = true;
     private BuildingCombatShapeCatalog _combatShapeCatalog;
     private BuildingLogicObstacleShapeCatalog _logicObstacleShapeCatalog;
-    protected override bool UsesFlowNavigationAgent => false;
-
     public LogicCombatShape GetRequiredWorldCombatShape()
     {
         if (_combatShapeCatalog == null || buildingData == null)
@@ -121,18 +114,12 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);
-        _directAtkComp = atkComp as DirectAtkComp
-                         ?? throw new System.InvalidOperationException($"BuildingEntity.OnShow failed: logic AtkComp is not DirectAtkComp. entity={LogicEntityId.Value}.");
-        TauntLevel = 0; // 建筑默认嘲讽等级 0
+        OwnerFactionID = LogicState.OwnerFactionId;
 
         RegisterOutlineRenderers();
 
-        InitializeAttackCapabilityFlags();
-        ResetCombatRuntimeState();
-        ApplyBuildingPropertyOverrides();
+        ResetCombatPresentationState();
         LogBuildingCombatState("OnShow");
-        InitializeArmyCardProperties();
-        ConfigureCombatByBuildingData();
         SyncHurtBoxToBuildingBounds();
 
         InGameDataModel.RegisterBuilding(this);
@@ -141,14 +128,12 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         SubscribeLv0PhaseVisibilityEvents();
         RefreshLv0PhaseVisibility();
         // 拿到 extra 属性引用（升级场景同 BuildingInstanceId 共享同一对象，extra 数据自然延续）
-        _extraProps = GameEntry.GetComponent<GlobalBuffManager>()?.GetOrCreateExtraProps(BuildingInstanceId);
-
-        ApplyBuildingProductionBuffs();
-
+        _extraProps = LogicState.ProductionProps
+                      ?? throw new System.InvalidOperationException(
+                          $"BuildingEntity.OnShow failed: logic production props are missing. buildingInstanceId={BuildingInstanceId}.");
         ApplyDisabledPresentation(LogicState.IsDisabled, null, false);
         ApplyCollisionBlockingPresentation(LogicState.BlocksLogicMovement);
         SetPermanentStealthVisibility(LogicState.IsPermanentStealth);
-        _phaseProtectionByBuff = LogicState.IsPhaseProtected;
 
         if (HasUpgrade)
         {
@@ -268,22 +253,18 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         if (host != null)
             host.ResetOptions();
 
-        ResetCombatRuntimeState();
+        ResetCombatPresentationState();
 
         CurrentStronghold = null;
         OwnerFactionID = 0;
-        HasPermanentNoAttackCapability = false;
         IsGameEndConditionBuilding = false;
         IsNavigationStaticBaked = false;
         EnableConstructionEscape = false;
-        _lv0InvincibleByBuff = false;
-        _phaseProtectionByBuff = false;
         _healthBarSuppressedByBuff = false;
         _stealthHealthBarSuppressed = false;
         _stealthMinimapHidden = false;
         _permanentStealthVisibility = false;
-        ClearArmyCardProperties();
-        _extraProps = null; // 仅清字段引用，中央字典里的对象保留给同 id 的下次 Show
+        _extraProps = null; // 仅清 View 引用，逻辑状态按同一 BuildingInstanceId 延续
         _combatShapeCatalog = null;
         _logicObstacleShapeCatalog = null;
         buildingData = null;
@@ -310,10 +291,8 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         ScheduleFlowFieldObstacleAdds(false, false);
     }
 
-    public void SetCollisionBlockingByBuff(bool blocksMovement)
-    {
-        LogicState.SetCollisionBlockingByBuff(blocksMovement);
-    }
+    void IBuildingLogicContext.SetCollisionBlockingByBuff(bool blocksMovement) =>
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetCollisionBlockingByBuff));
 
     protected override void OnLogicCollisionBlockingPresentation(bool blocksMovement)
     {
@@ -354,7 +333,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
 
     void IBuildingLogicContext.SetPermanentStealthByBuff(bool enabled)
     {
-        LogicState.SetPermanentStealthByBuff(enabled);
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetPermanentStealthByBuff));
     }
 
     protected override void OnLogicPermanentStealthPresentation(bool enabled)
@@ -533,13 +512,53 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         }
     }
 
-    public void SetStronghold(Stronghold stronghold, bool triggerFactionChangedEvent = true)
+    internal void BindStrongholdView(
+        Stronghold stronghold,
+        int previousOwnerFactionId,
+        bool publishFactionChangedEvent)
     {
-        int oldFactionId = OwnerFactionID;
+        string expectedStrongholdId = LogicState.StrongholdId;
+        string actualStrongholdId = stronghold?.strongholdData?.StrongholdId;
+        if (!string.Equals(expectedStrongholdId, actualStrongholdId, System.StringComparison.Ordinal))
+        {
+            throw new System.InvalidOperationException(
+                $"Building stronghold view mismatch. entity={LogicEntityId.Value}, logic='{expectedStrongholdId}', view='{actualStrongholdId}'.");
+        }
+
+        int logicOwnerFactionId = LogicState.OwnerFactionId;
+        if (stronghold != null && stronghold.OwnerFactionId != logicOwnerFactionId)
+        {
+            throw new System.InvalidOperationException(
+                $"Building owner view mismatch. entity={LogicEntityId.Value}, logic={logicOwnerFactionId}, view={stronghold.OwnerFactionId}.");
+        }
+
         CurrentStronghold = stronghold;
-        OwnerFactionID = stronghold != null ? stronghold.OwnerFactionId : 0;
+        ApplyOwnerFactionPresentation(
+            previousOwnerFactionId,
+            logicOwnerFactionId,
+            publishFactionChangedEvent);
+    }
+
+    internal void UnbindStrongholdView()
+    {
+        CurrentStronghold = null;
+    }
+
+    void IBuildingLogicContext.SetOwnerFaction(int ownerFactionId)
+    {
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetOwnerFaction));
+    }
+
+    private void ApplyOwnerFactionPresentation(
+        int oldFactionId,
+        int ownerFactionId,
+        bool publishFactionChangedEvent)
+    {
+        if (ownerFactionId < 0)
+            throw new System.ArgumentOutOfRangeException(nameof(ownerFactionId));
+
+        OwnerFactionID = ownerFactionId;
         SyncSideFromFaction();
-        LogicState.SetBuildingOwnerFaction(OwnerFactionID, Side);
         _minimapReportComponent?.SetSide(Side);
         RefreshLv0PhaseVisibility();
         RefreshPermanentStealthVisibility();
@@ -547,74 +566,9 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         if (oldFactionId != OwnerFactionID)
         {
             RefreshInteractionHostForCurrentOwnership();
-            if (triggerFactionChangedEvent)
+            if (publishFactionChangedEvent)
                 GF.Event.Fire(this, EntityFactionChangedEventArgs.Create(Id, oldFactionId, OwnerFactionID, BuildingInstanceId));
         }
-    }
-
-    protected override void SetUpMAComp(object userData)
-    {
-        var noMoveComp = new NoMoveComp();
-        SetMoveComp(noMoveComp);
-        noMoveComp.Init(this);
-
-        ITargetingComp targetingComp = CreateBuildingTargetingComp();
-        SetTargetingComp(targetingComp);
-        targetingComp.Init(this);
-
-        SetWeaponComp(new WeaponComp(CreateBuildingWeaponData().ToWeapon($"{CharacterKey}_Weapon1", CreaturePropertyManager?.propertyManager)));
-
-        _directAtkComp = new DirectAtkComp();
-        SetAtkComp(_directAtkComp);
-        _directAtkComp.Init(this);
-    }
-
-    private ITargetingComp CreateBuildingTargetingComp()
-    {
-        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Pharmacy))
-        {
-            return new HealTargetingComp
-            {
-                AggroRange = 6f,
-                ForgetRange = 8f,
-                FollowSearchRange = 0f,
-                AlertRadius = 12f
-            };
-        }
-
-        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.MeatRack))
-        {
-            return new MeatRackTargetingComp
-            {
-                AggroRange = 6f,
-                ForgetRange = 8f,
-                FollowSearchRange = 0f,
-                AlertRadius = 12f
-            };
-        }
-
-        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Monitor))
-        {
-            return new MonitorTargetingComp(MonitorWeaponEffect.ResolveFacingConeAngle(this))
-            {
-                AggroRange = 6f,
-                ForgetRange = 8f,
-                FollowSearchRange = 0f,
-                AlertRadius = 12f
-            };
-        }
-
-        if (BuildingAbilityIds.IsBuilding(buildingData, BuildingAbilityIds.Restroom))
-            return new NoTargetingComp();
-
-        return new CharacterTargetingComp
-        {
-            AggroRange = 6f,
-            ForgetRange = 8f,
-            FollowSearchRange = 0f,
-            EnableAggroFallback = false, // 建筑不需要"视线外仇恨"，原地反击就好
-            AlertRadius = 12f            // 建筑被打/扫到敌人时，召唤 12m 内友军反击
-        };
     }
 
     protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
@@ -701,56 +655,11 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         // 防御：即使 OnHide 没被调用，也不让旧交互泄漏到下一次复用。
         host.ResetOptions();
         host.Init(this);
-
-        if (buildingData != null && buildingData.Lv == 0)
-            GameEntry.GetComponent<BuildManager>().ConfigureConstructInteractionOptions(this, host);
-        else
-            GameEntry.GetComponent<TechManager>().ConfigureTechInteractionOptions(this, host);
+        host.ConfigureFromLogicState(this);
     }
 
-    private void ApplyBuildingProductionBuffs()
-    {
-        if (BuffComp == null)
-            return;
-
-        List<BuffData> buffs = BuildingInitialBuffFactory.CreateProductionBuffs(buildingData);
-        List<BuffData> runtimeTechBuffs = GameEntry.GetComponent<GlobalBuffManager>()?.GetRuntimeBuffsForBuildingEntity(this);
-        if (buffs == null && runtimeTechBuffs == null)
-            return;
-
-        if (buffs != null)
-        {
-            for (int i = 0; i < buffs.Count; i++)
-                BuffComp.AddBuff(buffs[i], this);
-        }
-
-        if (runtimeTechBuffs != null)
-        {
-            for (int i = 0; i < runtimeTechBuffs.Count; i++)
-                BuffComp.AddBuff(runtimeTechBuffs[i], this);
-        }
-    }
-
-    public void SetPhaseProtectionByBuff(bool enabled)
-    {
-        LogicState.SetPhaseProtectionByBuff(enabled);
-    }
-
-    protected override void OnLogicPhaseProtectionPresentation(bool enabled)
-    {
-        base.OnLogicPhaseProtectionPresentation(enabled);
-        _phaseProtectionByBuff = enabled;
-    }
-
-    public void SetLv0InvincibleByBuff(bool enabled)
-    {
-        if (_lv0InvincibleByBuff == enabled)
-            return;
-
-        _lv0InvincibleByBuff = enabled;
-        if (_lv0InvincibleByBuff && targetComp != null)
-            targetComp.CurrentTarget = null;
-    }
+    void IBuildingLogicContext.SetPhaseProtectionByBuff(bool enabled) =>
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetPhaseProtectionByBuff));
 
     public void SetHealthBarSuppressedByBuff(bool enabled)
     {
@@ -900,66 +809,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         return TryGetVisualBounds(out bounds);
     }
 
-    private void ConfigureCombatByBuildingData()
-    {
-        if (_directAtkComp == null)
-            return;
-
-        WeaponData weaponData = CreateBuildingWeaponData();
-
-        _directAtkComp.UpdateWeaponData(weaponData);
-
-        if (targetComp != null)
-        {
-            float aggroRange = Mathf.Max(DistanceUnitConverter.ConvertToWorldFloat(weaponData.Range) + 1.5f, 4f);
-            targetComp.AggroRange = aggroRange;
-            targetComp.ForgetRange = aggroRange + 2f;
-            targetComp.FollowSearchRange = 0f;
-        }
-    }
-
-    private void ApplyBuildingPropertyOverrides()
-    {
-        if (CreaturePropertyManager == null)
-            return;
-
-        Fix64 hp = buildingData != null && buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
-        if (TutorialManager.IsCurrentLevelTutorial())
-            hp *= (Fix64)0.5f;
-
-        Fix64 def = buildingData != null ? buildingData.Def : (Fix64)10;
-        if (def < Fix64.Zero)
-            def = Fix64.Zero;
-
-        // 建筑表数值应作为“目标值”而非“叠加值”，否则会把模板属性再加一遍导致血量过高。
-        Fix64 currentHpMax = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 currentDef = CreaturePropertyManager.GetProperty(CreatureMainProperty.Def);
-
-        Fix64 hpDelta = hp - currentHpMax;
-        Fix64 defDelta = def - currentDef;
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.Health,
-            PropertyDirectAdditiveModifier.Create(hpDelta),
-            true);
-
-        CreaturePropertyManager.ModifyMainPropertyValueBuff(
-            CreatureMainProperty.Def,
-            PropertyDirectAdditiveModifier.Create(defDelta),
-            true);
-
-        Fix64 maxHealth = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 currentHealth = HealthValue;
-        Fix64 delta = maxHealth - currentHealth;
-        if (Fix64.Abs(delta) > (Fix64)0.001f)
-        {
-            CreaturePropertyManager.ModifyCurrentProperty(
-                CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(delta),
-                true);
-        }
-    }
-
     private void LogBuildingCombatState(string stage)
     {
         if (CreaturePropertyManager == null)
@@ -970,37 +819,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         Fix64 defense = CreaturePropertyManager.GetProperty(CreatureMainProperty.Def);
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[BuildingCombat] {stage} {buildingData?.Identifier} tableHp={buildingData?.HP} hp={currentHealth}/{maxHealth} def={defense}");
-    }
-
-    private WeaponData CreatePlaceholderWeaponData()
-    {
-        return new WeaponData(
-            WeaponType.Melee,
-            Fix64.Zero,
-            PlaceholderAttackInterval,
-            PlaceholderAttackRange,
-            Fix64.Zero,
-            PlaceholderWindUp,
-            PlaceholderWindDown,
-            Fix64.Zero,
-            Fix64.Zero,
-            Fix64.Zero,
-            Fix64.Zero,
-            Fix64.Zero,
-            new Fix64[0]);
-    }
-
-    private WeaponData CreateBuildingWeaponData()
-    {
-        if (buildingData != null && buildingData.Weapon != null && buildingData.Weapon.Atk > Fix64.Zero)
-            return buildingData.Weapon;
-
-        return CreatePlaceholderWeaponData();
-    }
-
-    private void InitializeAttackCapabilityFlags()
-    {
-        HasPermanentNoAttackCapability = buildingData != null && (buildingData.Weapon == null || buildingData.Weapon.Atk <= Fix64.Zero);
     }
 
     protected override void OnLogicHealthChangedPresentation(LogicEntityHealthChange change)
@@ -1019,20 +837,12 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         ApplyDisabledPresentation(disabled, attacker, true);
     }
 
-    public void RestoreToFullHealthAndEnable()
-    {
-        LogicState.RestoreBuildingToFullHealth();
-    }
+    void IBuildingLogicContext.RestoreBuildingToFullHealth() =>
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.RestoreBuildingToFullHealth));
 
-    void IBuildingLogicContext.RestoreBuildingToFullHealth() => LogicState.RestoreBuildingToFullHealth();
-
-    private void ResetCombatRuntimeState()
+    private void ResetCombatPresentationState()
     {
         _isDisabled = false;
-
-        if (targetComp != null)
-            targetComp.CurrentTarget = null;
-
         SetDisabledVisual(false);
     }
 
@@ -1051,7 +861,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         if (disabled)
         {
             PlayDeathSound();
-            LevelEntity.NotifyBuildingDisabled(this, attacker);
         }
     }
 
@@ -1077,235 +886,50 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     }
 
     /// <summary>
-    /// 收获资源
-    /// </summary>
-    public void Harvest()
-    {
-        if (buildingData == null || !Alive || IsDisabled)
-            return;
-
-        // 只处理资源建筑
-        if (buildingData.Type == BuilType.Prod)
-        {
-            int production = GetProduction();
-            if (production > 0)
-            {
-                int actualProduction = InGameDataModel.ConsumeProductionBuildingCoinReserves(BuildingInstanceId, production);
-                if (actualProduction <= 0)
-                    return;
-
-                // 增加资源（受点位存量限制）
-                InGameDataModel.TryModifyValue(IngameValueType.Coin, actualProduction, true);
-                Debug.Log($"Building {buildingData.Identifier} harvested {actualProduction} coins (raw={production})");
-            }
-        }
-    }
-
-    /// <summary>
     /// 当前建筑的日产出值（仅对 Prod 类型建筑有意义）。
     /// = BuildingData.Production (base) + BuildingExtraProps.Production (tech extra) + BuildingExtraProps.DynamicProduction (动态产出)
     /// </summary>
     public int GetProduction()
     {
-        if (buildingData == null)
-            return 0;
-
-        Fix64 baseValue = (Fix64)buildingData.Production;
-        Fix64 techExtra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
-        Fix64 dynamicExtra = _extraProps != null ? _extraProps.DynamicProduction : Fix64.Zero;
-        Fix64 cap = _extraProps != null && _extraProps.ProductionCap > Fix64.Zero
-            ? _extraProps.ProductionCap
-            : (Fix64)int.MaxValue;
-
-        // 应用上限限制
-        Fix64 total = baseValue + techExtra + dynamicExtra;
-        Fix64 cappedTotal = total > cap ? cap : total;
-
-        return Mathf.Max(0, (int)cappedTotal);
-    }
-
-    /// <summary>
-    /// 设置动态产出值
-    /// </summary>
-    public void SetDynamicProduction(int value)
-    {
-        if (_extraProps != null)
-        {
-            _extraProps.DynamicProduction = (Fix64)value;
-        }
-    }
-
-    public int GetBaseProductionWithTechExtra()
-    {
-        if (buildingData == null)
-            return 0;
-
-        Fix64 baseValue = (Fix64)buildingData.Production;
-        Fix64 techExtra = _extraProps != null ? _extraProps.Production : Fix64.Zero;
-        return Mathf.Max(0, (int)(baseValue + techExtra));
-    }
-
-    /// <summary>
-    /// 设置产出上限
-    /// </summary>
-    public void SetProductionCap(int value)
-    {
-        if (_extraProps != null)
-        {
-            _extraProps.ProductionCap = (Fix64)value;
-        }
-    }
-
-    public int GetStoredProduction()
-    {
-        return _extraProps != null ? Mathf.Max(0, _extraProps.StoredProduction) : 0;
-    }
-
-    public void SetStoredProduction(int value)
-    {
-        if (_extraProps != null)
-            _extraProps.StoredProduction = Mathf.Max(0, value);
-    }
-
-    public int GetProductionTraitFirstDay()
-    {
-        return _extraProps != null ? Mathf.Max(0, _extraProps.ProductionTraitFirstDay) : 0;
-    }
-
-    public void SetProductionTraitFirstDay(int day)
-    {
-        if (_extraProps != null)
-            _extraProps.ProductionTraitFirstDay = Mathf.Max(0, day);
-    }
-
-    public void NotifyProductionGranted(int rawProduction, int actualProduction)
-    {
-        if (BuffComp is AAAGame.Scripts.BuffSystem.CharacterBuffComp buffComp)
-        {
-            foreach (BuffCallback module in buffComp.EnumerateAllModules())
-                module.OnBuildingProductionGranted(this, rawProduction, actualProduction);
-        }
-    }
-
-    /// <summary>
-    /// 设置产出计算类型
-    /// </summary>
-    public void SetProductionType(ProductionType productionType)
-    {
-        if (_extraProps != null)
-        {
-            _extraProps.ProductionType = productionType;
-        }
-    }
-
-    /// <summary>
-    /// 设置条件计数
-    /// </summary>
-    public void SetConditionCount(int count)
-    {
-        if (_extraProps != null)
-        {
-            _extraProps.ConditionCount = count;
-        }
+        return LogicBuildingProductionService.GetProduction(this);
     }
 
     public int GetArmyForce()
     {
-        Fix64 baseValue = (Fix64)GetArmyForceWithoutRuntimeRules();
-        Fix64 runtimeBonus = GameEntry.GetComponent<GlobalBuffManager>()?.CalculateRuntimeArmyForceBonus(this) ?? Fix64.Zero;
-        return Mathf.Max(0, (int)(baseValue + runtimeBonus));
+        return LogicState.GetArmyForce();
     }
 
     public int GetArmyForceWithoutRuntimeRules()
     {
-        if (_armyForceProperty == null)
-            return 0;
-
-        Fix64 baseValue = _armyForceProperty.GetValue();
-        Fix64 extra = _extraProps != null ? _extraProps.ArmyForce : Fix64.Zero;
-        return Mathf.Max(0, (int)(baseValue + extra));
+        return LogicState.GetArmyForceWithoutRuntimeRules();
     }
 
     public int GetArmySupplyPerUnit()
     {
-        if (_armySupplyPerUnitProperty == null)
-            return 0;
-
-        int value = (int)_armySupplyPerUnitProperty.GetValue() + LevelTagRuntime.CalculateArmySupplyPerUnitBonus(this);
-        return Mathf.Max(0, value);
+        return LogicState.GetArmySupplyPerUnit();
     }
 
     public int GetArmyOccupiedSupply()
     {
-        long occupied = (long)GetArmyForce() * GetArmySupplyPerUnit();
-        if (occupied <= 0)
-            return 0;
-
-        return occupied >= int.MaxValue ? int.MaxValue : (int)occupied;
+        return LogicState.GetArmyOccupiedSupply();
     }
 
-    public void SetArmyForceBase(int value)
+    void IBuildingLogicContext.SetArmyForceBase(int value) =>
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetArmyForceBase));
+
+    void IBuildingLogicContext.SetArmySupplyPerUnitBase(int value) =>
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.SetArmySupplyPerUnitBase));
+
+    void IBuildingLogicContext.ModifyArmyForce(IPropertyModifier modifier, bool ifAdd) =>
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.ModifyArmyForce));
+
+    void IBuildingLogicContext.ModifyArmySupplyPerUnit(IPropertyModifier modifier, bool ifAdd) =>
+        throw ViewLogicMutationException(nameof(IBuildingLogicContext.ModifyArmySupplyPerUnit));
+
+    private static System.InvalidOperationException ViewLogicMutationException(string memberName)
     {
-        if (_armyForceProperty == null)
-            return;
-
-        _armyForceProperty.SetBaseValue((Fix64)Mathf.Max(0, value));
-    }
-
-    public void SetArmySupplyPerUnitBase(int value)
-    {
-        if (_armySupplyPerUnitProperty == null)
-            return;
-
-        _armySupplyPerUnitProperty.SetBaseValue((Fix64)Mathf.Max(0, value));
-    }
-
-    public void ModifyArmyForce(IPropertyModifier modifier, bool ifAdd = true)
-    {
-        if (_armyForceProperty == null || modifier == null)
-            return;
-
-        if (ifAdd)
-            _armyForceProperty.AddModifier(modifier);
-        else
-            _armyForceProperty.RemoveModifier(modifier);
-    }
-
-    public void ModifyArmySupplyPerUnit(IPropertyModifier modifier, bool ifAdd = true)
-    {
-        if (_armySupplyPerUnitProperty == null || modifier == null)
-            return;
-
-        if (ifAdd)
-            _armySupplyPerUnitProperty.AddModifier(modifier);
-        else
-            _armySupplyPerUnitProperty.RemoveModifier(modifier);
-    }
-
-    private void InitializeArmyCardProperties()
-    {
-        ClearArmyCardProperties();
-
-        if (buildingData == null || buildingData.Type != BuilType.Army)
-            return;
-
-        PropertyManager propertyManager = CreaturePropertyManager.propertyManager;
-        _armyForceProperty = PropertyHelper.CreateBaseProperty(ArmyForcePropertyId, propertyManager);
-        _armySupplyPerUnitProperty = PropertyHelper.CreateBaseProperty(ArmySupplyPerUnitPropertyId, propertyManager);
-
-        int initArmyForce = Mathf.Max(0, buildingData.Production);
-        int initSupplyPerUnit = ResolveUnitSupplyByCharacterKey(buildingData.UnitID);
-        _armyForceProperty.SetBaseValue((Fix64)initArmyForce);
-        _armySupplyPerUnitProperty.SetBaseValue((Fix64)Mathf.Max(0, initSupplyPerUnit));
-
-        _armyForceProperty.OnDirty(RaiseArmyCardPropertyChangedEvent);
-        _armySupplyPerUnitProperty.OnDirty(RaiseArmyCardPropertyChangedEvent);
-    }
-
-    private void ClearArmyCardProperties()
-    {
-        _armyForceProperty = null;
-        _armySupplyPerUnitProperty = null;
+        return new System.InvalidOperationException(
+            $"BuildingEntity View cannot execute {memberName}; update the registered LogicEntityState instead.");
     }
 
     private void RaiseArmyCardPropertyChangedEvent()
@@ -1327,19 +951,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public void RaiseArmyCardPropertyChangedEventForTech()
     {
         RaiseArmyCardPropertyChangedEvent();
-    }
-
-    private static int ResolveUnitSupplyByCharacterKey(string characterKey)
-    {
-        if (string.IsNullOrWhiteSpace(characterKey) || GF.DataTable == null)
-            return 0;
-
-        var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        if (table == null)
-            return 0;
-
-        var row = table.GetDataRow(r => r.CharacterKey == characterKey);
-        return row != null ? Mathf.Max(0, row.Supply) : 0;
     }
 
 }

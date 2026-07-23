@@ -410,6 +410,11 @@ public static class DeterministicStaticCollisionSolver
         if (center.x < minX || center.x > maxX || center.y < minY || center.y > maxY)
             return false;
 
+        int centerCellX = world.WorldToGridX(center.x);
+        int centerCellY = world.WorldToGridY(center.y);
+        if (!world.IsWalkable(centerCellX, centerCellY))
+            return false;
+
         return !TryFindCellPenetration(world, center, radius, out _);
     }
 
@@ -447,6 +452,16 @@ public static class DeterministicStaticCollisionSolver
                 continue;
             }
 
+            int centerCellX = world.WorldToGridX(position.x);
+            int centerCellY = world.WorldToGridY(position.y);
+            if (!world.IsWalkable(centerCellX, centerCellY))
+            {
+                startedOverlapping = true;
+                if (!TryRecoverBlockedCenter(world, position, centerCellX, centerCellY, radius, out position))
+                    return false;
+                continue;
+            }
+
             if (TryFindCellPenetration(world, position, radius, out Penetration cell))
             {
                 startedOverlapping = true;
@@ -458,6 +473,85 @@ public static class DeterministicStaticCollisionSolver
         }
 
         return IsCircleClear(world, position, radius);
+    }
+
+    private static bool TryRecoverBlockedCenter(
+        LogicStaticCollisionWorld world,
+        FixVector2 position,
+        int centerCellX,
+        int centerCellY,
+        Fix64 radius,
+        out FixVector2 recoveredPosition)
+    {
+        bool found = false;
+        recoveredPosition = position;
+        Fix64 bestDistanceSquared = Fix64.FromRaw(long.MaxValue);
+        int bestStableKey = int.MaxValue;
+
+        TrySelectBlockedCenterRecovery(
+            world, position, centerCellX, centerCellY, -1, 0, radius, 0,
+            ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
+        TrySelectBlockedCenterRecovery(
+            world, position, centerCellX, centerCellY, 1, 0, radius, 1,
+            ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
+        TrySelectBlockedCenterRecovery(
+            world, position, centerCellX, centerCellY, 0, -1, radius, 2,
+            ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
+        TrySelectBlockedCenterRecovery(
+            world, position, centerCellX, centerCellY, 0, 1, radius, 3,
+            ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
+        return found;
+    }
+
+    private static void TrySelectBlockedCenterRecovery(
+        LogicStaticCollisionWorld world,
+        FixVector2 position,
+        int centerCellX,
+        int centerCellY,
+        int directionX,
+        int directionY,
+        Fix64 radius,
+        int stableKey,
+        ref bool found,
+        ref FixVector2 bestPosition,
+        ref Fix64 bestDistanceSquared,
+        ref int bestStableKey)
+    {
+        int maxSteps = directionX != 0 ? world.Width : world.Height;
+        for (int step = 1; step <= maxSteps; step++)
+        {
+            int cellX = centerCellX + directionX * step;
+            int cellY = centerCellY + directionY * step;
+            if (cellX < 0 || cellX >= world.Width || cellY < 0 || cellY >= world.Height)
+                return;
+            if (!world.IsWalkable(cellX, cellY))
+                continue;
+
+            FixVector2 candidate = position;
+            if (directionX < 0)
+                candidate.x = world.GetCellMinX(cellX + 1) - radius - s_Epsilon;
+            else if (directionX > 0)
+                candidate.x = world.GetCellMinX(cellX) + radius + s_Epsilon;
+            else if (directionY < 0)
+                candidate.y = world.GetCellMinY(cellY + 1) - radius - s_Epsilon;
+            else
+                candidate.y = world.GetCellMinY(cellY) + radius + s_Epsilon;
+
+            if (!IsCircleClear(world, candidate, radius))
+                continue;
+
+            Fix64 distanceSquared = FixVector2.SqrMagnitude(candidate - position);
+            if (!found
+                || distanceSquared < bestDistanceSquared
+                || (distanceSquared == bestDistanceSquared && stableKey < bestStableKey))
+            {
+                found = true;
+                bestPosition = candidate;
+                bestDistanceSquared = distanceSquared;
+                bestStableKey = stableKey;
+            }
+            return;
+        }
     }
 
     private static bool TryFindWorldBoundaryPenetration(

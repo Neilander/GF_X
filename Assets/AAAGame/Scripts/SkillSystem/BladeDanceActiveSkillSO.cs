@@ -7,15 +7,15 @@ public sealed class BladeDanceActiveSkillSO : InstantActiveSkillSO
 {
     protected override void ApplyInstant(IEntityContext caster)
     {
-        float duration = GetDurationSeconds();
+        Fix64 duration = GetDurationLogicTime();
         Fix64 attackSpeedPercent = GetValue(0);
-        if (duration <= 0f)
+        if (duration <= Fix64.Zero)
             throw new InvalidOperationException($"BladeDance duration invalid. skillId={skillId}");
 
         AddTimedBuff(caster, new AttackSpeedBonusBuff(attackSpeedPercent), duration);
     }
 
-    private void AddTimedBuff(IEntityContext caster, BuffCallback module, float duration)
+    private void AddTimedBuff(IEntityContext caster, BuffCallback module, Fix64 duration)
     {
         if (caster == null || caster.BuffComp == null)
             throw new InvalidOperationException($"Active skill requires BuffComp. skillId={skillId}");

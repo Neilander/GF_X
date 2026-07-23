@@ -152,10 +152,7 @@ public partial class BuildingEntity
 
     private bool IsNonPlayerOwnedBuilding()
     {
-        if (CurrentStronghold != null)
-            return CurrentStronghold.OwnerFactionId != EntitySideHelper.PlayerFactionId;
-
-        return OwnerFactionID != EntitySideHelper.PlayerFactionId;
+        return LogicState.OwnerFactionId != EntitySideHelper.PlayerFactionId;
     }
 
     private bool IsLv0Building()

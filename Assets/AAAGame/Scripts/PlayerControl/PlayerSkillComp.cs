@@ -4,7 +4,7 @@ using GameFramework.Event;
 using UnityEngine;
 using System.Linq;
 
-public class PlayerSkillComp : ISkillComp
+public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
 {
     private IEntityContext _entity;
     private InputModel _inputModel;
@@ -38,7 +38,7 @@ public class PlayerSkillComp : ISkillComp
 
             _skillsById[skill.skillId] = skill;
             var cooldown = new GeneralCounter();
-            cooldown.Init((Fix64)skill.ResolveCooldownInterval(), true);
+            cooldown.Init(skill.ResolveCooldownIntervalFixed(), true);
             _cooldownsBySkillId[skill.skillId] = cooldown;
         }
 
@@ -157,7 +157,7 @@ public class PlayerSkillComp : ISkillComp
             if (slot.isTicking)
             {
                 //触发技能的tick
-                slot.skill.TickSkill(slot.runInfo, (float)deltaTime);
+                slot.skill.TickSkill(slot.runInfo, deltaTime);
                 if (slot.runInfo.isFinished)
                 {
                     slot.isTicking = false;
@@ -290,7 +290,7 @@ public class PlayerSkillComp : ISkillComp
         slot.skill = hasSkill ? skill : null;
         slot.cooldown = hasCooldown ? cooldown : null;
         if (hasSkill && hasCooldown)
-            cooldown.SetTarget((Fix64)skill.ResolveCooldownInterval(skillInfo.Level));
+            cooldown.SetTarget(skill.ResolveCooldownIntervalFixed(skillInfo.Level));
         slot.isCoolingDown = hasCooldown && !cooldown.IsFinished();
     }
 
@@ -341,6 +341,11 @@ public class PlayerSkillComp : ISkillComp
         }
 
         _appliedPassiveSkillIds.Clear();
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        SkillCompDeterministicStateUtility.Write(hasher, _entity, _skillSlots, _cooldownsBySkillId, _appliedPassiveSkillIds);
     }
 }
 public class SkillSlot: ISkillLocker
@@ -398,5 +403,37 @@ public class SkillSlot: ISkillLocker
         }
 
         _lockedSlotsByMe.Clear();
+    }
+
+    internal void WriteDeterministicState(LogicStateHasher hasher, List<SkillSlot> ownerSlots)
+    {
+        hasher.Add(skill?.skillId);
+        hasher.Add(cooldown != null);
+        if (cooldown != null)
+            cooldown.WriteDeterministicState(hasher);
+        hasher.Add(isCoolingDown);
+        hasher.Add(canCast);
+        hasher.Add(isTicking);
+        SkillCompDeterministicStateUtility.WriteSkillInfo(hasher, runInfo);
+        WriteSlotSet(hasher, ownerSlots, _lockers);
+        WriteSlotSet(hasher, ownerSlots, _lockedSlotsByMe);
+    }
+
+    private static void WriteSlotSet<T>(LogicStateHasher hasher, List<SkillSlot> ownerSlots, HashSet<T> values)
+    {
+        var indices = new List<int>(values.Count);
+        foreach (T value in values)
+        {
+            if (value is not SkillSlot slot)
+                throw new System.InvalidOperationException($"Skill lock has unsupported owner type {value?.GetType().FullName ?? "null"}.");
+            int index = ownerSlots.IndexOf(slot);
+            if (index < 0)
+                throw new System.InvalidOperationException("Skill lock references a slot outside its owner component.");
+            indices.Add(index);
+        }
+        indices.Sort();
+        hasher.Add(indices.Count);
+        for (int i = 0; i < indices.Count; i++)
+            hasher.Add(indices[i]);
     }
 }

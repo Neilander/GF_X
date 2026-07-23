@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using AAAGame.Scripts.Entity;
+using UnityGameFramework.Runtime;
 
 public static class LogicUnitConfigurator
 {
+    public const string DefendSpeedBuffId = "defend_phase_speed_override";
     public const float DefaultAggroRange = 10f;
     public const float DefaultForgetRange = 20f;
     public const float DefaultFollowRange = 30f;
@@ -48,6 +50,8 @@ public static class LogicUnitConfigurator
             entityParams.BrainType == BrainType.Player,
             entityParams.LogicSkillFactoryKind == LogicSkillFactoryKind.Player);
 
+        ConfigureDefendEnemySpawnSpeed(state, entityParams);
+
         var moveComp = new CharacterMoveComp();
         state.SetMoveComp(moveComp);
         moveComp.Init(state, navigationAgentTypeId);
@@ -62,18 +66,20 @@ public static class LogicUnitConfigurator
             ? new HealTargetingComp()
             : new CharacterTargetingComp();
         targetingComp.Init(state);
-        targetingComp.AggroRange = DefaultAggroRange;
-        targetingComp.ForgetRange = DefaultForgetRange;
-        targetingComp.FollowSearchRange = DefaultFollowRange;
-        targetingComp.AlertRadius = DefaultAlertRadius;
+        targetingComp.AggroRangeFixed = (Fix64)10;
+        targetingComp.ForgetRangeFixed = (Fix64)20;
+        targetingComp.FollowSearchRangeFixed = (Fix64)30;
+        targetingComp.AlertRadiusFixed = (Fix64)5;
         state.SetTargetingComp(targetingComp);
+        ConfigureTargetingModeForSpawn(
+            state,
+            entityParams,
+            targetingComp,
+            ResolveDefendFallbackTarget(state, entityParams));
 
         if (brain is SoldierAIBrain soldierBrain)
         {
-            soldierBrain.SetBirthPosition(new UnityEngine.Vector3(
-                (float)state.Position.x,
-                0f,
-                (float)state.Position.y));
+            soldierBrain.SetBirthPositionFixed(state.Position);
             soldierBrain.SetReturnToBirthEnabled(entityParams.BrainType != BrainType.DefendEnemyAI);
         }
 
@@ -108,6 +114,109 @@ public static class LogicUnitConfigurator
                 state.BuffComp.AddBuff(buff, state);
             }
         }
+    }
+
+    public static void ConfigureDefendEnemySpawnSpeed(LogicEntityState state, EntityParams entityParams)
+    {
+        if (state == null)
+            throw new ArgumentNullException(nameof(state));
+        if (entityParams == null)
+            throw new ArgumentNullException(nameof(entityParams));
+        if (entityParams.BrainType != BrainType.DefendEnemyAI)
+            return;
+        if (entityParams.Side != SideType.EnemySide || state.Side != SideType.EnemySide)
+        {
+            throw new InvalidOperationException(
+                $"LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed failed: DefendEnemyAI must use EnemySide. entity={state.EntityId.Value}, paramsSide={entityParams.Side}, stateSide={state.Side}.");
+        }
+        if (!entityParams.DefendAssignedSpeed.HasValue)
+        {
+            throw new InvalidOperationException(
+                $"LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed failed: assigned speed is missing. entity={state.EntityId.Value}.");
+        }
+
+        Fix64 assignedSpeed = entityParams.DefendAssignedSpeed.Value;
+        if (assignedSpeed <= Fix64.Zero)
+        {
+            throw new InvalidOperationException(
+                $"LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed failed: assigned speed must be positive. entity={state.EntityId.Value}, raw={assignedSpeed.RawValue}.");
+        }
+        if (state.BuffComp == null)
+            throw new InvalidOperationException($"LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed failed: entity {state.EntityId.Value} has no BuffComp.");
+        if (state.BuffComp.HasBuff(DefendSpeedBuffId))
+            throw new InvalidOperationException($"LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed failed: duplicate speed buff. entity={state.EntityId.Value}.");
+
+        BuffData buffData = BuffData.Create(
+            DefendSpeedBuffId,
+            Fix64.Zero,
+            true,
+            1,
+            new List<BuffCallback> { new FixedMoveSpeedOverrideBuff(assignedSpeed) });
+        if (!state.BuffComp.AddBuff(buffData, state))
+            throw new InvalidOperationException($"LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed failed: speed buff was rejected. entity={state.EntityId.Value}.");
+    }
+
+    public static void ConfigureTargetingModeForSpawn(
+        LogicEntityState state,
+        EntityParams entityParams,
+        ITargetingComp targetingComp,
+        IEntityContext defendFallbackTarget)
+    {
+        if (state == null)
+            throw new ArgumentNullException(nameof(state));
+        if (entityParams == null)
+            throw new ArgumentNullException(nameof(entityParams));
+        if (targetingComp == null)
+            throw new ArgumentNullException(nameof(targetingComp));
+
+        if (entityParams.BrainType != BrainType.DefendEnemyAI)
+        {
+            if (defendFallbackTarget != null)
+                throw new InvalidOperationException("LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: non-defend unit received a defend fallback target.");
+            if (targetingComp is CharacterTargetingComp defaultTargeting)
+                defaultTargeting.UseDefaultMode();
+            return;
+        }
+
+        if (entityParams.Side != SideType.EnemySide || state.Side != SideType.EnemySide)
+        {
+            throw new InvalidOperationException(
+                $"LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: DefendEnemyAI must use EnemySide. entity={state.EntityId.Value}, paramsSide={entityParams.Side}, stateSide={state.Side}.");
+        }
+        if (targetingComp is not CharacterTargetingComp defendTargeting)
+        {
+            throw new InvalidOperationException(
+                $"LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: DefendEnemyAI requires CharacterTargetingComp. entity={state.EntityId.Value}, actual={targetingComp.GetType().FullName}.");
+        }
+        if (defendFallbackTarget != null)
+        {
+            bool hasValidId = defendFallbackTarget.LogicEntityId.IsValid;
+            bool isBuilding = defendFallbackTarget.TryGetLogicBuilding(out _);
+            bool isAlive = defendFallbackTarget.Alive;
+            bool isEnemy = EntityCombatTeamHelper.IsEnemy(state, defendFallbackTarget);
+            if (!hasValidId || !isBuilding || !isAlive || !isEnemy)
+            {
+                throw new InvalidOperationException(
+                    $"LogicUnitConfigurator.ConfigureTargetingModeForSpawn failed: invalid defend fallback target. entity={state.EntityId.Value}, fallback={defendFallbackTarget.LogicEntityId.Value}, validId={hasValidId}, building={isBuilding}, alive={isAlive}, enemy={isEnemy}.");
+            }
+        }
+
+        defendTargeting.UseDefendEnemyMode(defendFallbackTarget);
+    }
+
+    private static IEntityContext ResolveDefendFallbackTarget(LogicEntityState state, EntityParams entityParams)
+    {
+        if (entityParams.BrainType != BrainType.DefendEnemyAI)
+            return null;
+
+        GameEndManager gameEndManager = GameEntry.GetComponent<GameEndManager>();
+        if (gameEndManager == null)
+            throw new InvalidOperationException("LogicUnitConfigurator.ResolveDefendFallbackTarget failed: GameEndManager is missing.");
+
+        gameEndManager.TryGetNearestPlayerInitialConditionBuilding(
+            state.Position,
+            out IBuildingLogicContext fallbackTarget);
+        return fallbackTarget;
     }
 }
 

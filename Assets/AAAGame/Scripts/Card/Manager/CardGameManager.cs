@@ -23,10 +23,6 @@ namespace AAAGame.Card
             }
         }
 
-        [Header("区域配置")]
-        [SerializeField] private GameObject validAreaObject;
-        [SerializeField] private GameObject invalidAreaObject;
-
         private CardSystemController cardSystemController;
         private bool isInitialized = false;
 
@@ -63,12 +59,6 @@ namespace AAAGame.Card
             cardSystemController.Initialize();
 
             // 设置人口上限
-
-            // 设置区域对象
-            if (validAreaObject != null && invalidAreaObject != null)
-            {
-                cardSystemController.SetAreaObjects(validAreaObject, invalidAreaObject);
-            }
 
             // 连接到 Manager
             ConnectToManagers();

@@ -10,13 +10,12 @@ public static class InputDirTranslator
 
         if (inputData.sqrMagnitude <= 0.0001f)
             return FixVector2.Zero;
+        if (camera == null)
+            throw new ArgumentNullException(nameof(camera), "Non-zero move input requires a camera at the input sampling boundary.");
 
         Vector3 worldDirection = new Vector3(inputData.x, 0f, inputData.y);
-        if (camera != null)
-        {
-            float yaw = camera.transform.eulerAngles.y;
-            worldDirection = Quaternion.Euler(0f, yaw, 0f) * worldDirection;
-        }
+        float yaw = camera.transform.eulerAngles.y;
+        worldDirection = Quaternion.Euler(0f, yaw, 0f) * worldDirection;
 
         worldDirection = Vector3.ClampMagnitude(worldDirection, 1f);
         return new FixVector2((Fix64)worldDirection.x, (Fix64)worldDirection.z);

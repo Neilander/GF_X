@@ -91,9 +91,9 @@ public sealed class SkillDisarmOnHitBuff : BuffCallback
     private readonly string m_BuffPrefix;
     private readonly Fix64 m_AttackReduce;
     private readonly Fix64 m_DefReduce;
-    private readonly float m_Duration;
+    private readonly Fix64 m_Duration;
 
-    public SkillDisarmOnHitBuff(string buffPrefix, Fix64 attackReduce, Fix64 defReduce, float duration)
+    public SkillDisarmOnHitBuff(string buffPrefix, Fix64 attackReduce, Fix64 defReduce, Fix64 duration)
     {
         m_BuffPrefix = buffPrefix;
         m_AttackReduce = attackReduce;
@@ -103,7 +103,7 @@ public sealed class SkillDisarmOnHitBuff : BuffCallback
 
     public override void OnAttackCompleted(IEntityContext target)
     {
-        if (target is not IEntityContext targetEntity || targetEntity.BuffComp == null || m_Duration <= 0f)
+        if (target is not IEntityContext targetEntity || targetEntity.BuffComp == null || m_Duration <= Fix64.Zero)
             return;
 
         string buffId = $"{m_BuffPrefix}_{targetEntity.LogicEntityId.Value}";

@@ -207,6 +207,9 @@ public static class LogicTargetSelectionQuery
                 selected.Add(target);
         }
 
+        selected.Sort((left, right) =>
+            ((IEntityContext)left).LogicEntityId.Value.CompareTo(((IEntityContext)right).LogicEntityId.Value));
+
         return selected;
     }
 }

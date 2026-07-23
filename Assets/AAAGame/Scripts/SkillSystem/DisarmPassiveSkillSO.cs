@@ -5,7 +5,7 @@ public sealed class DisarmPassiveSkillSO : PassiveSkillSO
 {
     public override void Apply(IEntityContext owner)
     {
-        ReplaceBuff(owner, new SkillDisarmOnHitBuff(BuffId, GetValue(0), GetValue(1), GetDurationSeconds()));
+        ReplaceBuff(owner, new SkillDisarmOnHitBuff(BuffId, GetValue(0), GetValue(1), GetDurationLogicTime()));
     }
 
     public override void Remove(IEntityContext owner)

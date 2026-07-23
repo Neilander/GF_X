@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 using System;
 using UnityGameFramework.Runtime;
@@ -18,11 +17,26 @@ namespace AAAGame.Card
         {
             public ICardDataProvider CardData { get; }
             public BuildingEntity SourceBuilding { get; }
+            public string SourceBuildingInstanceId { get; }
 
-            public Card(ICardDataProvider cardData, BuildingEntity sourceBuilding)
+            public Card(ICardDataProvider cardData, IBuildingLogicContext sourceBuilding)
             {
                 CardData = cardData;
-                SourceBuilding = sourceBuilding;
+                SourceBuilding = ResolveBuildingView(sourceBuilding);
+                SourceBuildingInstanceId = sourceBuilding != null
+                    ? sourceBuilding.BuildingInstanceId
+                    : string.Empty;
+            }
+
+            private static BuildingEntity ResolveBuildingView(IBuildingLogicContext sourceBuilding)
+            {
+                if (sourceBuilding == null)
+                    return null;
+                if (sourceBuilding is BuildingEntity view)
+                    return view;
+                if (LogicEntityLifecycleService.TryGetBoundView(sourceBuilding.LogicEntityId, out MAEntity boundView))
+                    return boundView as BuildingEntity;
+                return null;
             }
         }
 
@@ -41,7 +55,6 @@ namespace AAAGame.Card
         private PlayerHandModel m_HandModel;
         private HandCardController m_HandCardController;
         private CardPlacementController m_PlacementController;
-        private AreaDetectionController m_AreaDetectionController;
         private EnemyBuildingForbiddenZoneController m_EnemyBuildingForbiddenZoneController;
         private bool m_IsIngameValueSubscribed;
 
@@ -49,6 +62,7 @@ namespace AAAGame.Card
         private readonly List<Card> m_DeckCards = new List<Card>();
         private readonly List<ICardDataProvider> m_OwnedPlaceableCardProviders = new List<ICardDataProvider>();
         private readonly HashSet<string> m_OwnedPlaceableCardProviderKeys = new HashSet<string>();
+        private ulong m_LastCardRuntimeId;
 
         // 事件回调
         public event Action<int, int> OnHandChanged; // (cardCount, maxCards)
@@ -67,12 +81,7 @@ namespace AAAGame.Card
             // 初始化控制器
             m_HandCardController = new HandCardController(m_HandModel);
             m_PlacementController = new CardPlacementController();
-            m_AreaDetectionController = new AreaDetectionController();
             m_EnemyBuildingForbiddenZoneController = new EnemyBuildingForbiddenZoneController();
-            m_PlacementController.SetAdditionalForbiddenChecker((position, radius) =>
-                IsBlockedByConfiguredInvalidArea(position, radius)
-                || (m_EnemyBuildingForbiddenZoneController != null
-                    && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(position, radius)));
 
             // 订阅子控制器事件
             m_HandCardController.OnCardDrawn += (card) =>
@@ -90,6 +99,7 @@ namespace AAAGame.Card
             // 初始化卡牌池
             m_CardPool = new List<ICardDataProvider>();
             m_DeckCards.Clear();
+            m_LastCardRuntimeId = 0;
 
 
             Debug.Log("[Card] CardSystemController initialized.");
@@ -116,6 +126,7 @@ namespace AAAGame.Card
         public void ResetDeckAndHand()
         {
             m_DeckCards.Clear();
+            m_LastCardRuntimeId = 0;
             m_OwnedPlaceableCardProviders.Clear();
             m_OwnedPlaceableCardProviderKeys.Clear();
             m_HandModel?.Clear();
@@ -125,28 +136,27 @@ namespace AAAGame.Card
         /// <summary>
         /// 按单位类型向卡组加入一张卡，并记录来源建筑。
         /// </summary>
-        public bool AddCardToDeck(BuildingEntity sourceBuilding)
+        public bool AddCardToDeck(IBuildingLogicContext sourceBuilding)
         {
-            if (sourceBuilding == null || sourceBuilding.buildingData == null)
+            if (sourceBuilding == null || sourceBuilding.BuildingData == null)
             {
-                Debug.LogWarning("[Card] Skip adding card: source building is invalid.");
-                return false;
+                throw new ArgumentException("Card source logic building is invalid.", nameof(sourceBuilding));
             }
 
             if (sourceBuilding.GetArmyForce() <= 0)
             {
-                Debug.LogWarning($"[Card] Skip army building '{sourceBuilding.buildingData.Identifier}': army force is 0.");
+                Debug.LogWarning($"[Card] Skip army building '{sourceBuilding.BuildingData.Identifier}': army force is 0.");
                 return false;
             }
 
             // 每个部队建筑生成对应的卡牌
-            if (!UnitTypeHelper.TryParseUnitType(sourceBuilding.buildingData.UnitID, out var unitType))
+            if (!UnitTypeHelper.TryParseUnitType(sourceBuilding.BuildingData.UnitID, out var unitType))
             {
-                Debug.LogWarning($"Skip army building '{sourceBuilding.buildingData.Identifier}': invalid UnitID '{sourceBuilding.buildingData.UnitID}'.");
+                Debug.LogWarning($"Skip army building '{sourceBuilding.BuildingData.Identifier}': invalid UnitID '{sourceBuilding.BuildingData.UnitID}'.");
                 return false;
             }
 
-            int lv = sourceBuilding.buildingData.Lv;
+            int lv = sourceBuilding.BuildingData.Lv;
             ICardDataProvider cardData = FindCardData(unitType, lv);
             if (cardData == null)
             {
@@ -156,7 +166,7 @@ namespace AAAGame.Card
 
             m_DeckCards.Add(new Card(cardData, sourceBuilding));
             RememberOwnedPlaceableCard(cardData);
-            Log.Info($"[CardGame] 卡牌入组: unitType={unitType}, lv={lv}, source={sourceBuilding?.BuildingInstanceId ?? "None"}");
+            Log.Info($"[CardGame] 卡牌入组: unitType={unitType}, lv={lv}, source={sourceBuilding.BuildingInstanceId}");
             return true;
         }
 
@@ -306,14 +316,6 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 设置区域对象
-        /// </summary>
-        public void SetAreaObjects(GameObject validAreaObject, GameObject invalidAreaObject)
-        {
-            m_AreaDetectionController.SetAreaObjects(validAreaObject, invalidAreaObject);
-        }
-
-        /// <summary>
         /// 抽取卡牌
         /// </summary>
         public void DrawCards(int count)
@@ -350,9 +352,15 @@ namespace AAAGame.Card
 
             m_DeckCards.Remove(entry);
 
-            bool success = m_HandCardController.DrawCard(entry.CardData, entry.SourceBuilding);
+            ulong runtimeId = checked(m_LastCardRuntimeId + 1);
+            bool success = m_HandCardController.DrawCard(
+                runtimeId,
+                entry.CardData,
+                entry.SourceBuildingInstanceId,
+                entry.SourceBuilding);
             if (success)
             {
+                m_LastCardRuntimeId = runtimeId;
                 OnHandChanged?.Invoke(m_HandModel.CardCount, m_HandModel.MaxCards);
             }
             else
@@ -431,7 +439,7 @@ namespace AAAGame.Card
                 indices.Add(i);
             }
 
-            if (!TryGetHeroPosition(out var heroPosition))
+            if (!TryGetHeroPositionFixed(out FixVector2 heroPosition))
             {
                 return indices;
             }
@@ -441,8 +449,8 @@ namespace AAAGame.Card
                 Card left = leftIndex >= 0 && leftIndex < m_DeckCards.Count ? m_DeckCards[leftIndex] : null;
                 Card right = rightIndex >= 0 && rightIndex < m_DeckCards.Count ? m_DeckCards[rightIndex] : null;
 
-                float leftDistanceSqr = GetDeckCardDistanceSqr(left, heroPosition);
-                float rightDistanceSqr = GetDeckCardDistanceSqr(right, heroPosition);
+                Fix64 leftDistanceSqr = GetDeckCardDistanceSquaredFixed(left, heroPosition);
+                Fix64 rightDistanceSqr = GetDeckCardDistanceSquaredFixed(right, heroPosition);
                 int compare = leftDistanceSqr.CompareTo(rightDistanceSqr);
                 if (compare != 0)
                 {
@@ -455,25 +463,25 @@ namespace AAAGame.Card
             return indices;
         }
 
-        private static float GetDeckCardDistanceSqr(Card entry, Vector3 heroPosition)
+        private static Fix64 GetDeckCardDistanceSquaredFixed(Card entry, FixVector2 heroPosition)
         {
-            if (entry == null || entry.SourceBuilding == null)
-            {
-                return float.MaxValue;
-            }
+            if (entry == null || string.IsNullOrWhiteSpace(entry.SourceBuildingInstanceId))
+                return Fix64.FromRaw(long.MaxValue);
 
-            return (entry.SourceBuilding.transform.position - heroPosition).sqrMagnitude;
+            IBuildingLogicContext source = LogicBuildingQueryService.GetRequiredByInstanceId(
+                entry.SourceBuildingInstanceId);
+            return FixVector2.SqrMagnitude(source.PositionFixed - heroPosition);
         }
 
-        private static bool TryGetHeroPosition(out Vector3 heroPosition)
+        private static bool TryGetHeroPositionFixed(out FixVector2 heroPosition)
         {
             if (EntityRegistry.Player != null)
             {
-                heroPosition = EntityRegistry.Player.Position;
+                heroPosition = EntityRegistry.Player.PositionFixed;
                 return true;
             }
 
-            heroPosition = Vector3.zero;
+            heroPosition = FixVector2.Zero;
             return false;
         }
 
@@ -551,26 +559,16 @@ namespace AAAGame.Card
                 return false;
             }
 
-            if (!m_PlacementController.ConfirmPlacement(cardModel, releaseScreenPosition))
+            if (!m_PlacementController.TryCreatePlayCommandPayload(
+                    cardModel,
+                    releaseScreenPosition,
+                    out FixVector2 selectedPosition))
             {
                 return false;
             }
 
+            LogicCardCommandService.SchedulePlayForNextFrame(cardModel.RuntimeId, selectedPosition);
             m_EnemyBuildingForbiddenZoneController?.EndPlacement();
-
-            InGameDataModel.RefreshCurrentSupplyFromFriendlyUnits(true);
-
-            // 从手牌移除
-            m_HandCardController.RemoveCard(cardModel);
-
-            // 触发卡牌打出事件（C# 事件）
-            OnCardPlayed?.Invoke(cardModel);
-
-            // UI 需要在当前帧立刻移除手牌，避免事件队列晚一帧导致残留可交互卡牌。
-            GameFramework.Event.GameEventArgs cardEvent = CardPlayedEventArgs.Create(cardModel);
-            GF.Event.FireNow(this, cardEvent);
-
-            Debug.Log($"[Card] Card played: {cardModel.GetCardName()}, Population: {InGameDataModel.GetCurrentSupply()}/{InGameDataModel.GetMaxSupply()}");
             return true;
         }
 
@@ -594,25 +592,119 @@ namespace AAAGame.Card
                 return false;
             }
 
-            // 从手牌移除
-            if (!m_HandCardController.RemoveCard(cardModel))
-            {
+            if (!m_HandModel.Contains(cardModel))
                 return false;
+            LogicCardCommandService.ScheduleDiscardForNextFrame(cardModel.RuntimeId);
+            return true;
+        }
+
+        public void ApplyLogicCardCommand(LogicCardCommand command)
+        {
+            if (!LogicCardCommandService.IsApplyingFrame)
+                throw new InvalidOperationException("Card commands may only be applied by LogicCardCommandService.");
+            CardModel cardModel = m_HandModel.GetRequiredByRuntimeId(command.CardRuntimeId);
+            switch (command.Kind)
+            {
+                case LogicCardCommandKind.Play:
+                    ApplyPlayCommand(cardModel, command.SelectedPosition);
+                    break;
+                case LogicCardCommandKind.Discard:
+                    ApplyDiscardCommand(cardModel);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(command), command.Kind, "Unknown card command kind.");
+            }
+        }
+
+        private void ApplyPlayCommand(CardModel cardModel, FixVector2 selectedPosition)
+        {
+            int occupiedSupply = cardModel.GetOccupiedSupply();
+            if (!HasEnoughPopulation(occupiedSupply))
+            {
+                Log.Warning("[Card] Play command rejected at logic frame: insufficient supply. card={0}, runtimeId={1}.",
+                    cardModel.GetCardId(), cardModel.RuntimeId);
+                return;
             }
 
-            ApplyDiscardResourceReward(cardModel, discardScreenPosition);
+            ICardDataProvider dataProvider = cardModel.DataProvider
+                                             ?? throw new InvalidOperationException($"Card {cardModel.RuntimeId} has no data provider.");
+            int soldierCount = cardModel.GetTroopCount();
+            if (soldierCount <= 0)
+                throw new InvalidOperationException($"Card {cardModel.RuntimeId} resolved a non-positive soldier count {soldierCount}.");
+            string sourceBuildingInstanceId = cardModel.GetSourceBuildingInstanceId();
+            if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
+                sourceBuildingInstanceId = null;
 
-            // 触发丢弃事件（C# 委托 + GF.Event）
+            Fix64 spawnRadius = ClusterSpawnSystem.CalculateAutoSpawnRadiusFixed(soldierCount);
+            LogicCardPlacementInvalidReason placementReason = LogicCardPlacementAuthority.Evaluate(
+                selectedPosition,
+                spawnRadius);
+            if (placementReason != LogicCardPlacementInvalidReason.None)
+            {
+                Log.Warning(
+                    "[Card] Play command rejected at logic frame: placement permission changed. card={0}, runtimeId={1}, reason={2}, xRaw={3}, yRaw={4}.",
+                    cardModel.GetCardId(),
+                    cardModel.RuntimeId,
+                    placementReason,
+                    selectedPosition.x.RawValue,
+                    selectedPosition.y.RawValue);
+                return;
+            }
+
+            bool spawned = ClusterSpawnSystem.SpawnClusterFixed(
+                selectedPosition,
+                soldierCount,
+                spawnRadius,
+                (Fix64)2,
+                dataProvider.SoldierIndex,
+                SideType.PlayerSide,
+                BrainType.SoldierAI,
+                sourceBuildingInstanceId,
+                null,
+                true,
+                dataProvider.RequiredLv);
+            if (!spawned)
+            {
+                Log.Warning(
+                    "[Card] Play command rejected at logic frame: deterministic spawn failed. card={0}, runtimeId={1}, xRaw={2}, yRaw={3}.",
+                    cardModel.GetCardId(),
+                    cardModel.RuntimeId,
+                    selectedPosition.x.RawValue,
+                    selectedPosition.y.RawValue);
+                return;
+            }
+
+            if (!InGameDataModel.TryModifyValue(IngameValueType.CurrentSupply, occupiedSupply, true))
+                throw new InvalidOperationException($"Card {cardModel.RuntimeId} lost its validated supply capacity before commit.");
+            if (!m_HandCardController.RemoveCard(cardModel))
+                throw new InvalidOperationException($"Card {cardModel.RuntimeId} disappeared during play commit.");
+
+            m_PlacementController.NotifyPlacementApplied(cardModel, selectedPosition);
+            LogicCardCommandService.PublishResolvedCard(
+                LogicCardCommandKind.Play,
+                cardModel.RuntimeId,
+                sourceBuildingInstanceId);
+            OnCardPlayed?.Invoke(cardModel);
+            GF.Event.FireNow(this, CardPlayedEventArgs.Create(cardModel));
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.Play("createUnit");
+            Debug.Log($"[Card] Card played on logic frame: {cardModel.GetCardName()}, frame={LogicTimeControlService.CurrentFrame}");
+        }
+
+        private void ApplyDiscardCommand(CardModel cardModel)
+        {
+            if (!m_HandCardController.RemoveCard(cardModel))
+                throw new InvalidOperationException($"Card {cardModel.RuntimeId} disappeared during discard commit.");
+            ApplyDiscardResourceReward(cardModel, null);
+            LogicCardCommandService.PublishResolvedCard(
+                LogicCardCommandKind.Discard,
+                cardModel.RuntimeId,
+                cardModel.GetSourceBuildingInstanceId());
             OnCardDiscarded?.Invoke(cardModel);
-
-            var cardEvent = CardDiscardedEventArgs.Create(cardModel);
-            GF.Event.Fire(this, cardEvent);
-            Debug.Log($"[DISCARD-BUFF] CardSystemController.DiscardCard 已 Fire CardDiscardedEventArgs");
-
+            GF.Event.Fire(this, CardDiscardedEventArgs.Create(cardModel));
             if (AudioManager.Instance != null)
                 AudioManager.Instance.Play("discardCard");
-
-            return true;
+            Debug.Log($"[Card] Card discarded on logic frame: {cardModel.GetCardName()}, frame={LogicTimeControlService.CurrentFrame}");
         }
 
         private void ApplyDiscardResourceReward(CardModel cardModel, Vector2? discardScreenPosition)
@@ -649,6 +741,39 @@ namespace AAAGame.Card
         public PlayerHandModel GetHandModel()
         {
             return m_HandModel;
+        }
+
+        public void WriteDeterministicState(LogicStateHasher hasher)
+        {
+            if (hasher == null)
+                throw new ArgumentNullException(nameof(hasher));
+            if (m_HandModel == null)
+                throw new InvalidOperationException("Card runtime state is not initialized.");
+
+            hasher.Add(m_LastCardRuntimeId);
+            hasher.Add(m_DeckCards.Count);
+            for (int i = 0; i < m_DeckCards.Count; i++)
+            {
+                Card entry = m_DeckCards[i]
+                             ?? throw new InvalidOperationException($"Card deck contains null at index {i}.");
+                AddCardData(hasher, entry.CardData, entry.SourceBuildingInstanceId);
+            }
+            m_HandModel.WriteDeterministicState(hasher);
+        }
+
+        private static void AddCardData(
+            LogicStateHasher hasher,
+            ICardDataProvider cardData,
+            string sourceBuildingInstanceId)
+        {
+            if (cardData == null)
+                throw new InvalidOperationException("Card deck contains an entry without card data.");
+            hasher.Add(cardData.CardId);
+            hasher.Add((int)cardData.SoldierIndex);
+            hasher.Add(cardData.RequiredLv);
+            hasher.Add(cardData.PopulationCost);
+            hasher.Add(cardData.SoldierCount);
+            hasher.Add(sourceBuildingInstanceId);
         }
 
         /// <summary>
@@ -693,40 +818,14 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 获取区域检测控制器
-        /// </summary>
-        public AreaDetectionController GetAreaDetectionController()
-        {
-            return m_AreaDetectionController;
-        }
-
-        /// <summary>
         /// 检查位置是否在禁止区域
         /// </summary>
         public bool IsInForbiddenArea(Vector3 worldPosition)
         {
-            bool inStaticForbiddenArea = IsBlockedByConfiguredInvalidArea(worldPosition, 0f);
-            bool inEnemyBuildingForbiddenArea = m_EnemyBuildingForbiddenZoneController != null
-                && m_EnemyBuildingForbiddenZoneController.IsPositionBlocked(worldPosition, 0f);
-            bool inInvisibleFogArea = !IsPositionInVisibleArea(worldPosition);
-            return inStaticForbiddenArea || inEnemyBuildingForbiddenArea || inInvisibleFogArea;
-        }
-
-        private bool IsBlockedByConfiguredInvalidArea(Vector3 worldPosition, float radius)
-        {
-            return m_AreaDetectionController != null
-                && m_AreaDetectionController.IsPositionBlockedByInvalidArea(worldPosition, radius);
-        }
-
-        private static bool IsPositionInVisibleArea(Vector3 worldPosition)
-        {
-            Fog3Manager fogManager = Fog3Manager.Instance;
-            if (fogManager == null || !fogManager.IsInitialized || fogManager.MapData == null)
-            {
-                return false;
-            }
-
-            return fogManager.IsPositionVisible(worldPosition);
+            LogicCardPlacementInvalidReason reason = LogicCardPlacementAuthority.Evaluate(
+                new FixVector2((Fix64)worldPosition.x, (Fix64)worldPosition.z),
+                Fix64.Zero);
+            return reason != LogicCardPlacementInvalidReason.None;
         }
 
         /// <summary>
@@ -736,10 +835,10 @@ namespace AAAGame.Card
         {
             m_PlacementController?.Shutdown();
             m_EnemyBuildingForbiddenZoneController?.Shutdown();
-            m_AreaDetectionController?.Shutdown();
             m_HandModel?.Clear();
             m_CardPool?.Clear();
             m_DeckCards.Clear();
+            m_LastCardRuntimeId = 0;
             m_OwnedPlaceableCardProviders.Clear();
             m_OwnedPlaceableCardProviderKeys.Clear();
 

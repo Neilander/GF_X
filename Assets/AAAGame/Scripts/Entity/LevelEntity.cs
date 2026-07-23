@@ -1,5 +1,6 @@
-using GameFramework;
+﻿using GameFramework;
 using GameFramework.Event;
+using AAAGame.Scripts.BuffSystem;
 using System;
 using System.Collections.Generic;
 using Stopwatch = System.Diagnostics.Stopwatch;
@@ -63,6 +64,7 @@ public partial class LevelEntity : EntityBase
     {
         base.OnShow(userData);
         activeLevelEntity = this;
+        LogicBuildingDisabledEventService.BuildingDisabled += OnLogicBuildingDisabled;
         IsRuntimeInitializationCompleted = false;
         m_HiddenDuringRuntimeInitialization = LevelSelectionService.IsLevelLoading;
 
@@ -80,6 +82,7 @@ public partial class LevelEntity : EntityBase
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        LogicBuildingDisabledEventService.BuildingDisabled -= OnLogicBuildingDisabled;
         UnsubscribeRuntimeLayerRules();
 
         bool wasActiveLevel = activeLevelEntity == this;
@@ -90,6 +93,7 @@ public partial class LevelEntity : EntityBase
 
         if (wasActiveLevel)
         {
+            LogicStrongholdMap.Clear();
             InGameDataModel.ClearStrongholdRuntimeData();
         }
         ClearEnemyStrongholdFogEffects();
@@ -426,18 +430,9 @@ public partial class LevelEntity : EntityBase
                     if (point.IsGameEndConditionBuilding)
                     {
                         int initialOwnerFactionId = ResolveOwnerFactionIdByPosition(point.Position);
-
-                        // 特殊逻辑：快递柜的所有者应该根据据点所有权来设置
-                        // 如果快递柜位于敌方据点内，应该属于敌人（显示红色血条）
-                        // 如果快递柜位于玩家据点内，应该属于玩家（显示绿色血条）
                         if (effectiveIdentifier.Contains("ParcelLocker"))
                         {
-                            var stronghold = GetStrongholdAtWorldPosition(point.Position);
-                            if (stronghold != null)
-                            {
-                                initialOwnerFactionId = stronghold.OwnerFactionId;
-                                Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {stronghold.OwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
-                            }
+                            Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {initialOwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
                         }
 
                         gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
@@ -545,12 +540,7 @@ public partial class LevelEntity : EntityBase
 
                         if (effectiveIdentifier.Contains("ParcelLocker"))
                         {
-                            var stronghold = GetStrongholdAtWorldPosition(point.Position);
-                            if (stronghold != null)
-                            {
-                                initialOwnerFactionId = stronghold.OwnerFactionId;
-                                Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {stronghold.OwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
-                            }
+                            Debug.Log($"[LevelEntity] 设置快递柜所有者: {effectiveIdentifier}, 位置: {point.Position}, 据点所有者: {initialOwnerFactionId}, 血条颜色: {(initialOwnerFactionId == EntitySideHelper.PlayerFactionId ? "绿色(友方)" : "红色(敌方)")}");
                         }
 
                         gameEndManager.RegisterInitialConditionBuilding(buildingInstanceId, initialOwnerFactionId);
@@ -584,8 +574,10 @@ public partial class LevelEntity : EntityBase
 
     private int ResolveOwnerFactionIdByPosition(Vector3 position)
     {
-        var stronghold = GetStrongholdAtWorldPosition(position);
-        return stronghold != null ? stronghold.OwnerFactionId : EntitySideHelper.PlayerFactionId;
+        var positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
+        return LogicStrongholdMap.TryResolveStrongholdId(positionFixed, out string strongholdId)
+            ? LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId)
+            : EntitySideHelper.PlayerFactionId;
     }
 
 
@@ -595,8 +587,7 @@ public partial class LevelEntity : EntityBase
         tileWorldCreatorManager = GetComponentInChildren<TileWorldCreatorManager>();
         if (tileWorldCreatorManager == null || tileWorldCreatorManager.configuration == null)
         {
-            Log.Error("LevelEntity.CollectStrongholds failed: TileWorldCreatorManager or configuration is null.");
-            return;
+            throw new InvalidOperationException("LevelEntity.CollectStrongholds failed: TileWorldCreatorManager or configuration is null.");
         }
 
         var strongholds = new List<Stronghold>();
@@ -633,6 +624,7 @@ public partial class LevelEntity : EntityBase
         }
 
         InGameDataModel.SetStrongholds(strongholds);
+        InitializeLogicStrongholdMap(strongholds);
 
         var existingBuildings = GameObject.FindObjectsOfType<BuildingEntity>();
         for (int i = 0; i < existingBuildings.Length; i++)
@@ -645,12 +637,73 @@ public partial class LevelEntity : EntityBase
             strongholds.Count);
     }
 
-    public static void NotifyBuildingDisabled(BuildingEntity building, IEntityContext attacker)
+    private void InitializeLogicStrongholdMap(IReadOnlyList<Stronghold> strongholds)
     {
-        if (activeLevelEntity == null)
-            return;
+        Transform gridTransform = tileWorldCreatorManager.transform;
+        Vector3 localX = gridTransform.TransformVector(Vector3.right);
+        Vector3 localY = gridTransform.TransformVector(Vector3.up);
+        Vector3 localZ = gridTransform.TransformVector(Vector3.forward);
+        const float planarTolerance = 0.00001f;
+        if (Mathf.Abs(localX.y) > planarTolerance
+            || Mathf.Abs(localZ.y) > planarTolerance
+            || Mathf.Abs(localY.x) > planarTolerance
+            || Mathf.Abs(localY.z) > planarTolerance)
+        {
+            throw new InvalidOperationException(
+                $"LevelEntity stronghold grid must remain planar in XZ. right={localX}, up={localY}, forward={localZ}.");
+        }
 
-        activeLevelEntity.TryCaptureStrongholdAfterBuildingDisabled(building, attacker);
+        var cells = new List<LogicStrongholdCellDefinition>();
+        for (int strongholdIndex = 0; strongholdIndex < strongholds.Count; strongholdIndex++)
+        {
+            Stronghold stronghold = strongholds[strongholdIndex]
+                ?? throw new InvalidOperationException($"LevelEntity stronghold {strongholdIndex} is null.");
+            StrongholdData data = stronghold.strongholdData
+                ?? throw new InvalidOperationException($"LevelEntity stronghold {strongholdIndex} data is null.");
+            if (string.IsNullOrWhiteSpace(data.StrongholdId))
+                throw new InvalidOperationException($"LevelEntity stronghold {strongholdIndex} id is empty.");
+            if (data.RangeCells == null)
+                throw new InvalidOperationException($"LevelEntity stronghold '{data.StrongholdId}' cells are null.");
+            if (data.RangeCells.Count == 0)
+                throw new InvalidOperationException($"LevelEntity stronghold '{data.StrongholdId}' has no authored cells.");
+
+            foreach (Vector2 authoredCell in data.RangeCells)
+            {
+                if (float.IsNaN(authoredCell.x)
+                    || float.IsInfinity(authoredCell.x)
+                    || float.IsNaN(authoredCell.y)
+                    || float.IsInfinity(authoredCell.y))
+                {
+                    throw new InvalidOperationException(
+                        $"LevelEntity stronghold '{data.StrongholdId}' contains a non-finite cell {authoredCell}.");
+                }
+
+                int x = Mathf.RoundToInt(authoredCell.x);
+                int y = Mathf.RoundToInt(authoredCell.y);
+                if (Mathf.Abs(authoredCell.x - x) > planarTolerance
+                    || Mathf.Abs(authoredCell.y - y) > planarTolerance)
+                {
+                    throw new InvalidOperationException(
+                        $"LevelEntity stronghold '{data.StrongholdId}' contains a non-integral cell {authoredCell}.");
+                }
+                cells.Add(new LogicStrongholdCellDefinition(data.StrongholdId, x, y, stronghold.OwnerFactionId));
+            }
+        }
+
+        Vector3 origin = gridTransform.position;
+        LogicStrongholdMap.Initialize(
+            new FixVector2((Fix64)origin.x, (Fix64)origin.z),
+            new FixVector2((Fix64)localX.x, (Fix64)localX.z),
+            new FixVector2((Fix64)localZ.x, (Fix64)localZ.z),
+            (Fix64)tileWorldCreatorManager.configuration.cellSize,
+            cells);
+    }
+
+    private void OnLogicBuildingDisabled(IBuildingLogicContext building, IEntityContext attacker)
+    {
+        if (activeLevelEntity != this)
+            throw new InvalidOperationException("Inactive LevelEntity received a logic building disabled event.");
+        TryCaptureStrongholdAfterBuildingDisabled(building, attacker);
     }
 
     private bool TryParseStrongholdLayerName(string layerName, out int factionId)
@@ -686,28 +739,29 @@ public partial class LevelEntity : EntityBase
         return true;
     }
 
-    private void TryCaptureStrongholdAfterBuildingDisabled(BuildingEntity disabledBuilding, IEntityContext attacker)
+    private void TryCaptureStrongholdAfterBuildingDisabled(IBuildingLogicContext disabledBuilding, IEntityContext attacker)
     {
         if (disabledBuilding == null)
-            return;
-
-        var stronghold = disabledBuilding.CurrentStronghold;
-        if (stronghold == null)
+            throw new ArgumentNullException(nameof(disabledBuilding));
+        if (string.IsNullOrWhiteSpace(disabledBuilding.StrongholdId))
             return;
 
         int captureFactionId = ResolveCaptureFactionId(attacker);
-        if (captureFactionId < 0)
-            captureFactionId = EntitySideHelper.PlayerFactionId;
-
-        if (stronghold.OwnerFactionId == captureFactionId)
+        int currentOwnerFactionId = LogicStrongholdMap.GetOwnerFactionIdRequired(disabledBuilding.StrongholdId);
+        if (currentOwnerFactionId == captureFactionId)
             return;
 
         bool hasCapturableBuildings = false;
-        for (int i = 0; i < stronghold.Buildings.Count; i++)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            var building = stronghold.Buildings[i];
-            if (building == null || building.IsLv0Invincible)
+            if (!(entities[i] is IBuildingLogicContext building)
+                || !string.Equals(building.StrongholdId, disabledBuilding.StrongholdId, StringComparison.Ordinal)
+                || building.BuildingData == null
+                || building.BuildingData.Lv == 0)
+            {
                 continue;
+            }
 
             hasCapturableBuildings = true;
             if (!building.IsDisabled)
@@ -717,79 +771,108 @@ public partial class LevelEntity : EntityBase
         if (!hasCapturableBuildings)
             return;
 
-        CaptureStronghold(stronghold, captureFactionId);
+        CaptureStronghold(disabledBuilding.StrongholdId, captureFactionId);
     }
 
-    private void CaptureStronghold(Stronghold stronghold, int newOwnerFactionId)
+    private void CaptureStronghold(string strongholdId, int newOwnerFactionId)
     {
-        if (stronghold == null)
-            return;
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new ArgumentException("Stronghold id is empty.", nameof(strongholdId));
+        int oldOwnerFactionId = LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId);
+        if (oldOwnerFactionId == newOwnerFactionId)
+            throw new InvalidOperationException($"Stronghold '{strongholdId}' is already owned by faction {newOwnerFactionId}.");
 
-        int oldOwnerFactionId = stronghold.OwnerFactionId;
+        Stronghold stronghold = GetStrongholdViewRequired(strongholdId);
+        if (stronghold.OwnerFactionId != oldOwnerFactionId)
+        {
+            throw new InvalidOperationException(
+                $"Stronghold owner mismatch before capture. id={strongholdId}, logic={oldOwnerFactionId}, view={stronghold.OwnerFactionId}.");
+        }
+        LogicStrongholdMap.SetOwnerFactionId(strongholdId, newOwnerFactionId);
         stronghold.OwnerFactionId = newOwnerFactionId;
         bool capturedByPlayer = oldOwnerFactionId != EntitySideHelper.PlayerFactionId
                                 && newOwnerFactionId == EntitySideHelper.PlayerFactionId;
         int captureDay = capturedByPlayer ? Math.Max(1, InGameDataModel.GetValue(IngameValueType.Day)) : 0;
 
-        // 同步修改属于该据点的兵归属
-        SideType newSide = EntitySideHelper.ToSide(newOwnerFactionId);
-        var creatureGroup = GF.Entity.GetEntityGroup(Const.EntityGroup.Creature.ToString());
-        if (creatureGroup != null)
+        SideType newSide = EntitySideHelper.ToSide(
+            EntityCombatTeamHelper.ResolveTeamIdByFaction(newOwnerFactionId));
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            var entities = creatureGroup.GetAllEntities();
-            for (int i = 0; i < entities.Length; i++)
+            if (!(entities[i] is LogicEntityState unit)
+                || unit.IsBuildingEntity
+                || !unit.Alive
+                || !string.Equals(unit.SourceStrongholdId, strongholdId, StringComparison.Ordinal)
+                || unit.Side == newSide)
             {
-                if (entities[i] is UnityGameFramework.Runtime.Entity entity && entity.Logic is SoldierEntity soldier)
-                {
-                    if (soldier.Alive && soldier.SourceStrongholdId == stronghold.strongholdData.StrongholdId && soldier.Side != newSide)
-                    {
-                        soldier.ChangeSide(newSide);
-                    }
-                }
+                continue;
+            }
+
+            unit.SetUnitSide(newSide);
+            if (LogicEntityLifecycleService.TryGetBoundView(unit.EntityId, out MAEntity unitView))
+            {
+                if (unitView is not SoldierEntity soldierView)
+                    throw new InvalidOperationException($"Stronghold unit {unit.EntityId.Value} is bound to non-soldier view {unitView.GetType().Name}.");
+                soldierView.ChangeSide(newSide);
             }
         }
 
-        for (int i = 0; i < stronghold.Buildings.Count; i++)
+        for (int i = 0; i < entities.Count; i++)
         {
-            var building = stronghold.Buildings[i];
-            if (building == null)
+            if (!(entities[i] is IBuildingLogicContext building)
+                || !string.Equals(building.StrongholdId, strongholdId, StringComparison.Ordinal))
+            {
                 continue;
+            }
 
-            building.SetStronghold(stronghold);
-            building.RestoreToFullHealthAndEnable();
+            building.SetOwnerFaction(newOwnerFactionId);
+            building.RestoreBuildingToFullHealth();
             if (capturedByPlayer)
                 LevelTagRuntime.ApplyCapturedStrongholdTrainingProvider(building, captureDay);
 
-            // 占领后短时无敌保护（避免队友立即误伤）
-            try
-            {
-                if (building.BuffComp != null)
-                {
-                    string buffId = $"building_capture_invincible_{building.Id}";
-                    var buffData = BuffData.Create(
-                        id: buffId,
-                        duration: 3f,
-                        isForever: false,
-                        maxStack: 1,
-                        modules: new System.Collections.Generic.List<BuffCallback> { new BuildingCaptureInvincibleBuff() }
-                    );
+            IBuffComp buffComp = building.BuffComp
+                                 ?? throw new InvalidOperationException(
+                                     $"Captured building {building.LogicEntityId.Value} has no BuffComp.");
+            string buffId = $"building_capture_invincible_{building.LogicEntityId.Value}";
+            var buffData = BuffData.Create(
+                id: buffId,
+                duration: 3f,
+                isForever: false,
+                maxStack: 1,
+                modules: new List<BuffCallback> { new BuildingCaptureInvincibleBuff() });
+            buffComp.AddBuff(buffData, building);
 
-                    building.BuffComp.AddBuff(buffData, building);
-                }
-            }
-            catch (System.Exception ex)
+            if (LogicEntityLifecycleService.TryGetBoundView(building.LogicEntityId, out MAEntity buildingView))
             {
-                Debug.LogWarning($"[LevelEntity] Failed to apply capture invincible buff to building id={building.Id}: {ex}");
+                if (buildingView is not BuildingEntity buildingEntityView)
+                    throw new InvalidOperationException($"Building {building.LogicEntityId.Value} is bound to non-building view {buildingView.GetType().Name}.");
+                buildingEntityView.BindStrongholdView(stronghold, oldOwnerFactionId, true);
             }
         }
 
         Log.Info("Stronghold captured. id={0}, newOwnerFaction={1}",
-            stronghold.strongholdData != null ? stronghold.strongholdData.StrongholdId : "<unknown>",
+            strongholdId,
             newOwnerFactionId);
 
         PlayCaptureVfx(stronghold);
 
         RefreshEnemyStrongholdFogEffects(stronghold);
+    }
+
+    private Stronghold GetStrongholdViewRequired(string strongholdId)
+    {
+        IReadOnlyList<Stronghold> strongholds = Strongholds;
+        for (int i = 0; i < strongholds.Count; i++)
+        {
+            Stronghold stronghold = strongholds[i];
+            if (stronghold?.strongholdData != null
+                && string.Equals(stronghold.strongholdData.StrongholdId, strongholdId, StringComparison.Ordinal))
+            {
+                return stronghold;
+            }
+        }
+
+        throw new InvalidOperationException($"LevelEntity cannot resolve stronghold view '{strongholdId}'.");
     }
 
     /// <summary>
@@ -813,13 +896,15 @@ public partial class LevelEntity : EntityBase
     private static int ResolveCaptureFactionId(IEntityContext attacker)
     {
         if (attacker == null)
-            return EntitySideHelper.PlayerFactionId;
+            throw new InvalidOperationException("Stronghold capture requires an attacker.");
 
-        if (attacker is BuildingEntity attackerBuilding)
-            return attackerBuilding.OwnerFactionID;
+        if (attacker.TryGetLogicBuilding(out IBuildingLogicContext attackerBuilding))
+            return attackerBuilding.OwnerFactionId;
 
         int factionId = EntitySideHelper.ToFactionId(attacker.Side);
-        return factionId >= 0 ? factionId : EntitySideHelper.PlayerFactionId;
+        if (factionId < 0)
+            throw new InvalidOperationException($"Stronghold capture attacker {attacker.LogicEntityId.Value} has no faction.");
+        return factionId;
     }
 }
 

@@ -1,6 +1,7 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using GameFramework;
 using UnityEngine;
+using UnityGameFramework.Runtime;
 
 /// <summary>
 /// 通用可交互宿主：
@@ -12,7 +13,7 @@ using UnityEngine;
 public class InteractionHost : MonoBehaviour
 {
     // 使用 SortedDictionary 保证按 InputKey(enum 值) 的自然顺序枚举
-    private readonly SortedDictionary<InputKey, IInteractionOption> _optionsByKey = new();
+    private readonly SortedDictionary<InputKey, List<IInteractionOption>> _optionsByKey = new();
     private readonly List<IInteractionOption> _options = new();
 
     public object Owner { get; private set; }
@@ -84,14 +85,94 @@ public class InteractionHost : MonoBehaviour
         Owner = owner;
     }
 
+    public void ConfigureFromLogicState(BuildingEntity owner)
+    {
+        if (owner == null)
+            throw new System.ArgumentNullException(nameof(owner));
+        if (owner.LogicState == null || !owner.LogicState.IsBuildingEntity)
+            throw new System.InvalidOperationException("InteractionHost requires a configured logic building state.");
+
+        IReadOnlyList<LogicInteractionOptionDescriptor> descriptors = owner.LogicState.InteractionOptions;
+        for (int i = 0; i < descriptors.Count; i++)
+            AddDescriptorOption(descriptors[i]);
+    }
+
+    private void AddDescriptorOption(LogicInteractionOptionDescriptor descriptor)
+    {
+        InteractionParams @params = InteractionParams.Create();
+        switch (descriptor.Kind)
+        {
+            case LogicInteractionOptionKind.ConstructBuilding:
+            {
+                BuildingData buildingData = BuildingDataModel.GetBuildingData(descriptor.PrimaryId)
+                                            ?? throw new System.InvalidOperationException($"Construct interaction building '{descriptor.PrimaryId}' is missing.");
+                @params.Set<VarString>("BuildBuildingId", descriptor.PrimaryId);
+                string displayName = !string.IsNullOrWhiteSpace(buildingData.NameKey)
+                    ? LocalizationTextManager.GetLocalizedText(buildingData.NameKey, false)
+                    : buildingData.Identifier;
+                AddOption<BuildingConstructInteractionOption>(descriptor, displayName, @params);
+                break;
+            }
+            case LogicInteractionOptionKind.UpgradeBuilding:
+            {
+                TechData techData = TechDataModel.GetTechData(descriptor.SecondaryId)
+                                    ?? throw new System.InvalidOperationException($"Upgrade interaction tech '{descriptor.SecondaryId}' is missing.");
+                @params.Set<VarString>("UpgradeBuildingId", descriptor.PrimaryId);
+                @params.Set<VarString>("TechId", descriptor.SecondaryId);
+                AddOption<BuildingUpgradeInteractionOption>(
+                    descriptor,
+                    LocalizationTextManager.GetLocalizedText(techData.NameKey, false),
+                    @params);
+                break;
+            }
+            case LogicInteractionOptionKind.ResearchTech:
+            {
+                TechData techData = TechDataModel.GetTechData(descriptor.PrimaryId)
+                                    ?? throw new System.InvalidOperationException($"Research interaction tech '{descriptor.PrimaryId}' is missing.");
+                @params.Set<VarString>("TechId", descriptor.PrimaryId);
+                AddOption<TechResearchInteractionOption>(
+                    descriptor,
+                    LocalizationTextManager.GetLocalizedText(techData.NameKey, false),
+                    @params);
+                break;
+            }
+            case LogicInteractionOptionKind.BuildingInfo:
+                AddOption<BuildingInfoInteractionOption>(
+                    descriptor,
+                    LocalizationTextDataModel.GetText("InteractOption_Check"),
+                    @params);
+                break;
+            default:
+                @params.Clear();
+                ReferencePool.Release(@params);
+                throw new System.ArgumentOutOfRangeException(nameof(descriptor.Kind), descriptor.Kind, "Unknown interaction option kind.");
+        }
+    }
+
+    private void AddOption<TInteractionOption>(
+        LogicInteractionOptionDescriptor descriptor,
+        string displayName,
+        InteractionParams @params)
+        where TInteractionOption : class, IInteractionOption, new()
+    {
+        if (descriptor.HasInputKey)
+            AddOption<TInteractionOption>(descriptor.InputKey, displayName, @params);
+        else
+            AddOption<TInteractionOption>(displayName, @params);
+    }
+
     public bool IsInteractable() => enabled && gameObject.activeInHierarchy && HasVisibleOptions();
 
     public bool HasVisibleOptions()
     {
-        foreach (var option in _optionsByKey.Values)
+        foreach (var pair in _optionsByKey)
         {
-            if (option != null && option.IsVisible())
-                return true;
+            List<IInteractionOption> options = pair.Value;
+            for (int i = 0; i < options.Count; i++)
+            {
+                if (options[i] != null && options[i].IsVisible())
+                    return true;
+            }
         }
 
         foreach (var option in _options)
@@ -108,13 +189,11 @@ public class InteractionHost : MonoBehaviour
         if (results == null)
             return;
 
-        foreach (var kv in _optionsByKey)
+        foreach (var pair in _optionsByKey)
         {
-            var option = kv.Value;
-            if (option == null || !option.IsVisible())
-                continue;
-            // always add option; UI/manager should query host for the key mapping
-            results.Add(option);
+            IInteractionOption option = ResolveVisibleKeyOption(pair.Key);
+            if (option != null)
+                results.Add(option);
         }
 
         foreach (var option in _options)
@@ -134,14 +213,11 @@ public class InteractionHost : MonoBehaviour
         if (results == null || _optionsByKey.Count == 0)
             return;
 
-        foreach (var kv in _optionsByKey)
+        foreach (var pair in _optionsByKey)
         {
-            var key = kv.Key;
-            var option = kv.Value;
-            if (option == null || !option.IsVisible())
-                continue;
-
-            results.Add(key, option);
+            IInteractionOption option = ResolveVisibleKeyOption(pair.Key);
+            if (option != null)
+                results.Add(pair.Key, option);
         }
     }
 
@@ -153,17 +229,6 @@ public class InteractionHost : MonoBehaviour
     public TInteractionOption AddOption<TInteractionOption>(InputKey key, string displayName, InteractionParams @params)
             where TInteractionOption : class, IInteractionOption, new()
     {
-        if (_optionsByKey.ContainsKey(key))
-        {
-            Debug.LogError($"[Interaction] Duplicate key {key} on {name}.");
-            if (@params != null)
-            {
-                @params.Clear();
-                ReferencePool.Release(@params);
-            }
-            return null;
-        }
-
         var option = ReferencePool.Acquire<TInteractionOption>();
         option.Init(Owner, displayName, @params);
 
@@ -174,7 +239,12 @@ public class InteractionHost : MonoBehaviour
             ReferencePool.Release(@params);
         }
 
-        _optionsByKey.Add(key, option);
+        if (!_optionsByKey.TryGetValue(key, out List<IInteractionOption> options))
+        {
+            options = new List<IInteractionOption>();
+            _optionsByKey.Add(key, options);
+        }
+        options.Add(option);
         return option;
     }
     /// <summary>
@@ -198,12 +268,13 @@ public class InteractionHost : MonoBehaviour
 
     public void ResetOptions()
     {
-        foreach (var kv in _optionsByKey)
+        foreach (var pair in _optionsByKey)
         {
-            var option = kv.Value;
-            if (option != null)
+            List<IInteractionOption> options = pair.Value;
+            for (int i = 0; i < options.Count; i++)
             {
-                ReferencePool.Release(option);
+                if (options[i] != null)
+                    ReferencePool.Release(options[i]);
             }
         }
 
@@ -225,7 +296,9 @@ public class InteractionHost : MonoBehaviour
         if (!CanExecute(key))
             return false;
 
-        IInteractionOption option = _optionsByKey[key];
+        IInteractionOption option = ResolveVisibleKeyOption(key);
+        if (option == null)
+            return false;
         option.Execute();
         GF.Event.Fire(this, InteractionOptionTriggeredEventArgs.Create(this, option));
         return true;
@@ -233,10 +306,8 @@ public class InteractionHost : MonoBehaviour
 
     public bool CanExecute(InputKey key)
     {
-        return _optionsByKey.TryGetValue(key, out IInteractionOption option)
-               && option != null
-               && option.IsVisible()
-               && option.IsExecutable();
+        IInteractionOption option = ResolveVisibleKeyOption(key);
+        return option != null && option.IsExecutable();
     }
 
     public bool TryExecute(IInteractionOption option)
@@ -250,5 +321,23 @@ public class InteractionHost : MonoBehaviour
         option.Execute();
         GF.Event.Fire(this, InteractionOptionTriggeredEventArgs.Create(this, option));
         return true;
+    }
+
+    private IInteractionOption ResolveVisibleKeyOption(InputKey key)
+    {
+        if (!_optionsByKey.TryGetValue(key, out List<IInteractionOption> options))
+            return null;
+
+        IInteractionOption result = null;
+        for (int i = 0; i < options.Count; i++)
+        {
+            IInteractionOption option = options[i];
+            if (option == null || !option.IsVisible())
+                continue;
+            if (result != null)
+                throw new System.InvalidOperationException($"InteractionHost '{name}' has multiple visible options for {key}.");
+            result = option;
+        }
+        return result;
     }
 }

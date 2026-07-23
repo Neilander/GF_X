@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
+using System.Collections.Generic;
 
 /// <summary>
 /// 实体上下文接口：组件和 Brain 通过此接口访问实体，而非直接依赖 MAEntity。
@@ -60,13 +61,25 @@ public interface IEntityContext : ITargetable
 public interface IBuildingLogicContext : IEntityContext
 {
     BuildingData BuildingData { get; }
+    BuildingExtraProps ProductionProps { get; }
     string BuildingInstanceId { get; }
+    string StrongholdId { get; }
     int OwnerFactionId { get; }
+    int GetArmyForce();
+    int GetArmyForceWithoutRuntimeRules();
+    int GetArmySupplyPerUnit();
+    int GetArmyOccupiedSupply();
+    void SetArmyForceBase(int value);
+    void SetArmySupplyPerUnitBase(int value);
+    void ModifyArmyForce(IPropertyModifier modifier, bool ifAdd = true);
+    void ModifyArmySupplyPerUnit(IPropertyModifier modifier, bool ifAdd = true);
+    IReadOnlyList<LogicInteractionOptionDescriptor> InteractionOptions { get; }
     bool IsDisabled { get; }
     bool IsPhaseProtected { get; }
     bool HasPermanentNoAttackCapability { get; }
     bool BlocksLogicMovement { get; }
     event System.Action<int, int> OwnerFactionChanged;
+    void SetOwnerFaction(int ownerFactionId);
     void RestoreBuildingToFullHealth();
     void SetCollisionBlockingByBuff(bool blocksMovement);
     void SetPermanentStealthByBuff(bool enabled);

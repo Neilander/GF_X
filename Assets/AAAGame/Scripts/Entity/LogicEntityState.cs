@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
+using UnityGameFramework.Runtime;
 
 public readonly struct LogicEntitySpawnDescriptor
 {
@@ -9,7 +10,8 @@ public readonly struct LogicEntitySpawnDescriptor
         FixVector2 position,
         FixVector2 forward,
         SideType side,
-        string characterKey)
+        string characterKey,
+        string sourceStrongholdId = null)
     {
         FixVector2 normalizedForward = forward.GetNormalized();
         if (FixVector2.SqrMagnitude(normalizedForward) == Fix64.Zero)
@@ -21,12 +23,14 @@ public readonly struct LogicEntitySpawnDescriptor
         Forward = normalizedForward;
         Side = side;
         CharacterKey = characterKey;
+        SourceStrongholdId = string.IsNullOrWhiteSpace(sourceStrongholdId) ? null : sourceStrongholdId;
     }
 
     public FixVector2 Position { get; }
     public FixVector2 Forward { get; }
     public SideType Side { get; }
     public string CharacterKey { get; }
+    public string SourceStrongholdId { get; }
 
     internal static LogicEntitySpawnDescriptor CreateUnspecified()
     {
@@ -52,8 +56,53 @@ public readonly struct LogicEntityHealthChange
     public Fix64 Delta { get; }
 }
 
+public static class LogicBuildingOwnershipEventService
+{
+    public static event Action<IBuildingLogicContext, int, int> OwnerFactionChanged;
+
+    internal static void Publish(IBuildingLogicContext building, int oldFactionId, int newFactionId)
+    {
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
+        if (oldFactionId == newFactionId)
+            throw new InvalidOperationException("Logic building ownership event requires a faction change.");
+        OwnerFactionChanged?.Invoke(building, oldFactionId, newFactionId);
+    }
+}
+
+public static class LogicBuildingDisabledEventService
+{
+    public static event Action<IBuildingLogicContext, IEntityContext> BuildingDisabled;
+
+    internal static void Publish(IBuildingLogicContext building, IEntityContext attacker)
+    {
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
+        if (!building.IsDisabled)
+            throw new InvalidOperationException("Logic building disabled event requires a disabled building.");
+        BuildingDisabled?.Invoke(building, attacker);
+    }
+}
+
+public static class LogicUnitDeathEventService
+{
+    public static event Action<IEntityContext> UnitDied;
+
+    internal static void Publish(IEntityContext victim)
+    {
+        if (victim == null)
+            throw new ArgumentNullException(nameof(victim));
+        if (victim.Alive)
+            throw new InvalidOperationException($"LogicUnitDeathEventService cannot publish a living unit. entity={victim.LogicEntityId.Value}.");
+
+        UnitDied?.Invoke(victim);
+    }
+}
+
 public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuildingLogicContext, IHeroLogicContext
 {
+    private const string ArmyForcePropertyId = "Building_ArmyForce";
+    private const string ArmySupplyPerUnitPropertyId = "Building_ArmySupplyPerUnit";
     private static readonly ICapability DisabledCapabilityLocker = new StateCapabilityLocker();
     private static readonly ICapability GhostCapabilityLocker = new StateCapabilityLocker();
     private const string HeroGhostBuffId = "hero_ghost_state";
@@ -79,9 +128,15 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private bool m_CombatCapabilitiesLockedForGhost;
     private BuildingData m_BuildingData;
     private string m_BuildingInstanceId;
+    private string m_StrongholdId;
+    private string m_SourceStrongholdId;
+    private BuildingExtraProps m_ProductionProps;
+    private BaseValueProperty m_ArmyForceProperty;
+    private BaseValueProperty m_ArmySupplyPerUnitProperty;
     private int m_OwnerFactionId = -1;
     private LogicCombatShape m_BuildingCombatShape;
     private IReadOnlyList<LogicCombatShape> m_LogicObstacleShapes = Array.Empty<LogicCombatShape>();
+    private IReadOnlyList<LogicInteractionOptionDescriptor> m_InteractionOptions = Array.Empty<LogicInteractionOptionDescriptor>();
     private readonly List<int> m_RegisteredObstacleIds = new List<int>();
 
     internal LogicEntityState(LogicEntityId entityId, LogicEntitySpawnDescriptor descriptor)
@@ -94,6 +149,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         Forward = descriptor.Forward;
         Side = descriptor.Side;
         CharacterKey = descriptor.CharacterKey;
+        m_SourceStrongholdId = descriptor.SourceStrongholdId;
         Alive = true;
     }
 
@@ -104,6 +160,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public SideType Side { get; internal set; }
     public string CharacterKey { get; }
     public bool IsSpawnCommitted { get; internal set; }
+    public bool IsDespawnCommitted { get; internal set; }
     public int BoundViewEntityId { get; internal set; }
     public bool HasBoundView => BoundViewEntityId > 0;
     public bool IsConfigured => m_IsConfigured;
@@ -118,8 +175,12 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public bool IsGhostState { get; private set; }
     public bool IsBuildingEntity => m_BuildingData != null;
     public BuildingData BuildingData => m_BuildingData;
+    public BuildingExtraProps ProductionProps => m_ProductionProps;
     public string BuildingInstanceId => m_BuildingInstanceId;
+    public string StrongholdId => m_StrongholdId;
+    public string SourceStrongholdId => m_SourceStrongholdId;
     public int OwnerFactionId => m_OwnerFactionId;
+    public IReadOnlyList<LogicInteractionOptionDescriptor> InteractionOptions => m_InteractionOptions;
     public bool IsDisabled { get; private set; }
     public bool IsPhaseProtected { get; private set; }
     public bool IsPermanentStealth { get; private set; }
@@ -225,10 +286,13 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public void ConfigureBuilding(
         BuildingData buildingData,
         string buildingInstanceId,
+        string strongholdId,
         int ownerFactionId,
         LogicCombatShape combatShape,
         IReadOnlyList<LogicCombatShape> obstacleShapes,
-        bool hasPermanentNoAttackCapability)
+        IReadOnlyList<LogicInteractionOptionDescriptor> interactionOptions,
+        bool hasPermanentNoAttackCapability,
+        int? armySupplyPerUnit = null)
     {
         if (!m_IsConfigured)
             throw new InvalidOperationException($"LogicEntityState.ConfigureBuilding failed: entity {EntityId.Value} is not configured.");
@@ -244,6 +308,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             throw new ArgumentException("Building combat shape must be an axis-aligned box.", nameof(combatShape));
         if (obstacleShapes == null)
             throw new ArgumentNullException(nameof(obstacleShapes));
+        if (interactionOptions == null)
+            throw new ArgumentNullException(nameof(interactionOptions));
 
         var copiedShapes = new LogicCombatShape[obstacleShapes.Count];
         for (int i = 0; i < obstacleShapes.Count; i++)
@@ -257,11 +323,129 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_BuildingData = buildingData;
         TauntLevel = 0;
         m_BuildingInstanceId = buildingInstanceId;
+        m_StrongholdId = strongholdId;
+        m_ProductionProps = LogicBuildingExtraPropsStore.GetOrCreate(buildingInstanceId);
+        ConfigureArmyCardProperties(buildingData, armySupplyPerUnit);
         m_OwnerFactionId = ownerFactionId;
         m_BuildingCombatShape = combatShape;
         m_LogicObstacleShapes = copiedShapes;
+        var copiedOptions = new LogicInteractionOptionDescriptor[interactionOptions.Count];
+        for (int i = 0; i < interactionOptions.Count; i++)
+        {
+            LogicInteractionOptionDescriptor option = interactionOptions[i];
+            if (option.TargetEntityId != EntityId
+                || !string.Equals(option.TargetBuildingInstanceId, buildingInstanceId, StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"Building interaction option {i} target does not match entity {EntityId.Value}.", nameof(interactionOptions));
+            }
+            copiedOptions[i] = option;
+        }
+        m_InteractionOptions = copiedOptions;
         HasPermanentNoAttackCapability = hasPermanentNoAttackCapability;
         BlocksLogicMovement = copiedShapes.Length > 0;
+    }
+
+    public int GetArmyForce()
+    {
+        Fix64 baseValue = (Fix64)GetArmyForceWithoutRuntimeRules();
+        GlobalBuffManager manager = GameEntry.GetComponent<GlobalBuffManager>();
+        Fix64 runtimeBonus = manager != null
+            ? manager.CalculateRuntimeArmyForceBonus(this)
+            : LevelTagRuntime.CalculateArmyForceBonus(this);
+        return Math.Max(0, (int)(baseValue + runtimeBonus));
+    }
+
+    public int GetArmyForceWithoutRuntimeRules()
+    {
+        if (m_ArmyForceProperty == null)
+            return 0;
+
+        Fix64 extra = m_ProductionProps != null ? m_ProductionProps.ArmyForce : Fix64.Zero;
+        return Math.Max(0, (int)(m_ArmyForceProperty.GetValue() + extra));
+    }
+
+    public int GetArmySupplyPerUnit()
+    {
+        if (m_ArmySupplyPerUnitProperty == null)
+            return 0;
+
+        int value = (int)m_ArmySupplyPerUnitProperty.GetValue()
+                    + LevelTagRuntime.CalculateArmySupplyPerUnitBonus(this);
+        return Math.Max(0, value);
+    }
+
+    public int GetArmyOccupiedSupply()
+    {
+        long occupied = (long)GetArmyForce() * GetArmySupplyPerUnit();
+        if (occupied <= 0)
+            return 0;
+        return occupied >= int.MaxValue ? int.MaxValue : (int)occupied;
+    }
+
+    public void SetArmyForceBase(int value)
+    {
+        RequireArmyProperty(m_ArmyForceProperty, ArmyForcePropertyId).SetBaseValue((Fix64)Math.Max(0, value));
+    }
+
+    public void SetArmySupplyPerUnitBase(int value)
+    {
+        RequireArmyProperty(m_ArmySupplyPerUnitProperty, ArmySupplyPerUnitPropertyId)
+            .SetBaseValue((Fix64)Math.Max(0, value));
+    }
+
+    public void ModifyArmyForce(IPropertyModifier modifier, bool ifAdd = true)
+    {
+        ModifyArmyProperty(RequireArmyProperty(m_ArmyForceProperty, ArmyForcePropertyId), modifier, ifAdd);
+    }
+
+    public void ModifyArmySupplyPerUnit(IPropertyModifier modifier, bool ifAdd = true)
+    {
+        ModifyArmyProperty(
+            RequireArmyProperty(m_ArmySupplyPerUnitProperty, ArmySupplyPerUnitPropertyId),
+            modifier,
+            ifAdd);
+    }
+
+    private void ConfigureArmyCardProperties(BuildingData buildingData, int? armySupplyPerUnit)
+    {
+        if (buildingData.Type != BuilType.Army)
+        {
+            if (armySupplyPerUnit.HasValue)
+                throw new ArgumentException("Non-army building cannot define army supply.", nameof(armySupplyPerUnit));
+            return;
+        }
+        if (!armySupplyPerUnit.HasValue)
+        {
+            if (!string.IsNullOrWhiteSpace(buildingData.UnitID))
+            {
+                throw new ArgumentException(
+                    $"Army building '{buildingData.Identifier}' requires an explicit supply-per-unit value.",
+                    nameof(armySupplyPerUnit));
+            }
+            armySupplyPerUnit = 0;
+        }
+
+        PropertyManager propertyManager = RequireProperties().propertyManager;
+        m_ArmyForceProperty = PropertyHelper.CreateBaseProperty(ArmyForcePropertyId, propertyManager);
+        m_ArmySupplyPerUnitProperty = PropertyHelper.CreateBaseProperty(ArmySupplyPerUnitPropertyId, propertyManager);
+        m_ArmyForceProperty.SetBaseValue((Fix64)Math.Max(0, buildingData.Production));
+        m_ArmySupplyPerUnitProperty.SetBaseValue((Fix64)Math.Max(0, armySupplyPerUnit.Value));
+    }
+
+    private static BaseValueProperty RequireArmyProperty(BaseValueProperty property, string propertyId)
+    {
+        return property ?? throw new InvalidOperationException(
+            $"Army property '{propertyId}' is unavailable on a non-army logic building.");
+    }
+
+    private static void ModifyArmyProperty(BaseValueProperty property, IPropertyModifier modifier, bool ifAdd)
+    {
+        if (modifier == null)
+            throw new ArgumentNullException(nameof(modifier));
+        if (ifAdd)
+            property.AddModifier(modifier);
+        else
+            property.RemoveModifier(modifier);
     }
 
     public void SetCollisionBlockingByBuff(bool blocksMovement)
@@ -363,7 +547,26 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_OwnerFactionId = ownerFactionId;
         Side = side;
         if (oldOwnerFactionId != ownerFactionId)
+        {
             OwnerFactionChanged?.Invoke(oldOwnerFactionId, ownerFactionId);
+            LogicBuildingOwnershipEventService.Publish(this, oldOwnerFactionId, ownerFactionId);
+        }
+    }
+    public void SetOwnerFaction(int ownerFactionId) =>
+        SetBuildingOwnerFaction(
+            ownerFactionId,
+            EntitySideHelper.ToSide(EntityCombatTeamHelper.ResolveTeamIdByFaction(ownerFactionId)));
+    public void SetUnitSide(SideType side)
+    {
+        if (IsBuildingEntity)
+            throw new InvalidOperationException($"LogicEntityState.SetUnitSide failed: entity {EntityId.Value} is a building.");
+        SideType oldSide = Side;
+        if (oldSide == side)
+            return;
+        Side = side;
+        FlowFieldCrowdMovementSystem.SetAgentSide(EntityId.Value, side);
+        if (m_Brain is IBrainSideChangeHandler sideChangeHandler)
+            sideChangeHandler.OnSideChanged(this, oldSide, side);
     }
     public void SetMoveComp(IMoveComp moveComp) => m_MoveComp = moveComp ?? throw new ArgumentNullException(nameof(moveComp));
     public void SetAtkComp(IAtkComp atkComp) => m_AtkComp = atkComp ?? throw new ArgumentNullException(nameof(atkComp));
@@ -393,6 +596,17 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
         if (IsBuildingEntity && BlocksLogicMovement)
             ScheduleObstacleAdds(true);
+    }
+
+    internal void ValidateReadyForSpawn()
+    {
+        EnsureConfigured();
+        if (m_MoveComp == null)
+            throw new InvalidOperationException($"LogicEntityState spawn validation failed: move component is missing. entity={EntityId.Value}.");
+        if (m_AtkComp == null)
+            throw new InvalidOperationException($"LogicEntityState spawn validation failed: attack component is missing. entity={EntityId.Value}.");
+        if (m_TargetingComp == null)
+            throw new InvalidOperationException($"LogicEntityState spawn validation failed: targeting component is missing. entity={EntityId.Value}.");
     }
 
     internal void DeactivateRuntime(bool isShutdown = false)
@@ -437,6 +651,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             return;
 
         ModifyHealth(-damage);
+        if (IsBuildingEntity)
+            LogicProductionConditionState.RecordBuildingDamaged(this);
         m_OutOfCombatStart = m_CombatClock;
         m_TargetingComp?.NotifyDamageTaken(attacker);
         if (HealthValue <= Fix64.Zero)
@@ -514,6 +730,55 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             m_CapabilityLockers.Remove(toResume);
             toResume.Resume();
         }
+    }
+
+    internal void WriteDeterministicControlState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        var invincibleSources = new List<string>(m_InvincibleSources);
+        invincibleSources.Sort(StringComparer.Ordinal);
+        hasher.Add(invincibleSources.Count);
+        for (int i = 0; i < invincibleSources.Count; i++)
+            hasher.Add(invincibleSources[i]);
+
+        int writtenCapabilityCount = 0;
+        writtenCapabilityCount += WriteCapabilityLockState(hasher, "Move", m_MoveComp);
+        writtenCapabilityCount += WriteCapabilityLockState(hasher, "Attack", m_AtkComp);
+        writtenCapabilityCount += WriteCapabilityLockState(hasher, "Targeting", m_TargetingComp);
+        writtenCapabilityCount += WriteCapabilityLockState(hasher, "DurationMove", m_DurationMoveEffectComp);
+        writtenCapabilityCount += WriteCapabilityLockState(hasher, "Weapon", m_WeaponComp);
+        writtenCapabilityCount += WriteCapabilityLockState(hasher, "Skill", m_SkillComp);
+        if (writtenCapabilityCount != m_CapabilityLockers.Count)
+        {
+            throw new InvalidOperationException(
+                $"LogicEntityState deterministic control state has an unsupported capability key. entity={EntityId.Value}.");
+        }
+    }
+
+    private int WriteCapabilityLockState(LogicStateHasher hasher, string slot, ICapability capability)
+    {
+        hasher.Add(slot);
+        if (capability == null || !m_CapabilityLockers.TryGetValue(capability, out List<ICapability> lockers))
+        {
+            hasher.Add(0);
+            return 0;
+        }
+
+        var lockerTypes = new List<string>(lockers.Count);
+        for (int i = 0; i < lockers.Count; i++)
+        {
+            ICapability locker = lockers[i]
+                ?? throw new InvalidOperationException(
+                    $"LogicEntityState capability locker is null. entity={EntityId.Value}, slot={slot}, index={i}.");
+            lockerTypes.Add(locker.GetType().FullName);
+        }
+        lockerTypes.Sort(StringComparer.Ordinal);
+        hasher.Add(lockerTypes.Count);
+        for (int i = 0; i < lockerTypes.Count; i++)
+            hasher.Add(lockerTypes[i]);
+        return 1;
     }
 
     public void BeginLogicFrame(Fix64 deltaTime)
@@ -641,6 +906,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_CombatCapabilitiesLockedForDisabled = true;
         m_BuffComp.OnHostDead();
         BuildingDisabledChanged?.Invoke(true, attacker);
+        LogicBuildingDisabledEventService.Publish(this, attacker);
     }
 
     private void HandleHeroZeroHealth()
@@ -669,6 +935,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     {
         ClampHealthToZero();
         Alive = false;
+        LogicProductionConditionState.RecordUnitDeath(this);
+        LogicUnitDeathEventService.Publish(this);
         m_BuffComp.OnHostDead();
         attacker?.BuffComp?.OnKill(this);
         UnitDied?.Invoke(attacker);
@@ -866,6 +1134,9 @@ public static class LogicEntityStateStore
         LogicEntityState state = GetRequired(entityId);
         if (state.IsSpawnCommitted)
             throw new InvalidOperationException($"LogicEntityStateStore.CommitSpawn failed: entity {entityId.Value} is already committed.");
+        if (state.IsDespawnCommitted)
+            throw new InvalidOperationException($"LogicEntityStateStore.CommitSpawn failed: entity {entityId.Value} was already despawned.");
+        state.ValidateReadyForSpawn();
         state.IsSpawnCommitted = true;
     }
 
@@ -875,6 +1146,7 @@ public static class LogicEntityStateStore
         if (!state.IsSpawnCommitted)
             throw new InvalidOperationException($"LogicEntityStateStore.CommitDespawn failed: entity {entityId.Value} is not committed.");
         state.IsSpawnCommitted = false;
+        state.IsDespawnCommitted = true;
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
@@ -883,7 +1155,12 @@ public static class LogicEntityStateStore
             throw new ArgumentNullException(nameof(hasher));
         EnsureActive();
 
-        var ids = new List<int>(s_States.Keys);
+        var ids = new List<int>();
+        foreach (KeyValuePair<int, LogicEntityState> pair in s_States)
+        {
+            if (!pair.Value.IsDespawnCommitted)
+                ids.Add(pair.Key);
+        }
         ids.Sort();
         hasher.Add(ids.Count);
         for (int i = 0; i < ids.Count; i++)
@@ -896,9 +1173,57 @@ public static class LogicEntityStateStore
             hasher.Add(state.Forward.y.RawValue);
             hasher.Add((int)state.Side);
             hasher.Add(state.CharacterKey);
+            hasher.Add(state.SourceStrongholdId);
             hasher.Add(state.IsSpawnCommitted);
-            hasher.Add(state.BoundViewEntityId);
+            state.WriteDeterministicControlState(hasher);
+            hasher.Add(state.IsBuildingEntity);
+            if (state.IsBuildingEntity)
+            {
+                hasher.Add(state.BuildingData.Identifier);
+                hasher.Add(state.BuildingInstanceId);
+                hasher.Add(state.StrongholdId);
+                hasher.Add(state.OwnerFactionId);
+                LogicInteractionOptionService.WriteDeterministicState(hasher, state.InteractionOptions);
+            }
         }
+    }
+
+    internal static LogicEntityState[] CapturePendingSpawnStates()
+    {
+        EnsureActive();
+        var ids = new List<int>();
+        foreach (KeyValuePair<int, LogicEntityState> pair in s_States)
+        {
+            if (!pair.Value.IsSpawnCommitted && !pair.Value.IsDespawnCommitted)
+                ids.Add(pair.Key);
+        }
+
+        ids.Sort();
+        var states = new LogicEntityState[ids.Count];
+        for (int i = 0; i < ids.Count; i++)
+            states[i] = s_States[ids[i]];
+        return states;
+    }
+
+    internal static LogicEntityState[] CaptureStageBuildingStates()
+    {
+        EnsureActive();
+        var ids = new List<int>();
+        foreach (KeyValuePair<int, LogicEntityState> pair in s_States)
+        {
+            if (!pair.Value.IsDespawnCommitted && pair.Value.IsBuildingEntity)
+                ids.Add(pair.Key);
+        }
+
+        ids.Sort();
+        var states = new LogicEntityState[ids.Count];
+        for (int i = 0; i < ids.Count; i++)
+        {
+            LogicEntityState state = s_States[ids[i]];
+            state.ValidateReadyForSpawn();
+            states[i] = state;
+        }
+        return states;
     }
 
     private static void EnsureActive()

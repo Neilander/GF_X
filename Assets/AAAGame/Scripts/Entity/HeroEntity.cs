@@ -1,8 +1,7 @@
 ﻿using System.Collections.Generic;
-using GameFramework.Event;
 using UnityEngine;
 
-public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
+public class HeroEntity : SoldierEntity, ICastRangePresenter
 {
     private const float GhostAlphaMultiplier = 0.6f;
     private const string UnitOutlineShaderName = "Hidden/AAAGame/UnitOutline";
@@ -39,7 +38,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     private bool _hasRenderedAttackRange;
     private bool _presentedGhostState;
 
-    public ISkillComp skillComp { get; private set; }
     public bool IsGhostState => LogicState != null ? LogicState.IsGhostState : _presentedGhostState;
     public bool IsHeroSoldier => true;
 
@@ -53,9 +51,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     {
         _isHidingOrShuttingDown = false;
         base.OnShow(userData);
-        GF.Event.Subscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         EnsurePlayerInteractionRuntime();
-        EnsureHeroSkillRuntime();
         ApplyGhostPresentation(LogicState.IsGhostState);
         SyncAttackRangePreview(true);
     }
@@ -63,9 +59,7 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     protected override void OnHide(bool isShutdown, object userData)
     {
         _isHidingOrShuttingDown = true;
-        GF.Event.Unsubscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
-        CancelRunningSkills();
-        skillComp = null;
+        HideCastRange();
         ClearConstructionEscapeRuntimeState();
         ClearGhostRuntimeState();
         if (_attackRangePreviewTrans != null)
@@ -74,31 +68,14 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
         base.OnHide(isShutdown, userData);
     }
 
-    protected override void OnPostLogicFrameUpdate(Fix64 deltaTime)
-    {
-        base.OnPostLogicFrameUpdate(deltaTime);
-        TickGhostCollisionRuntime();
-        TickConstructionEscapeRuntime();
-
-        if (CanRun(skillComp))
-            skillComp.Skill(deltaTime);
-    }
-
     protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+        TickGhostCollisionRuntime();
+        TickConstructionEscapeRuntime();
         if (_presentedGhostState != LogicState.IsGhostState)
             ApplyGhostPresentation(LogicState.IsGhostState);
         SyncAttackRangePreview(false);
-    }
-
-    public void SetSkillComp(ISkillComp newSkillComp) => skillComp = newSkillComp;
-
-    public void CancelRunningSkills()
-    {
-        skillComp?.CancelSkills();
-        HideCastRange();
-        SkillCastState.Reset();
     }
 
     public void ShowCastRange(float radius)
@@ -119,18 +96,6 @@ public class HeroEntity : SoldierEntity, ISkillCompHost, ICastRangePresenter
     public void HideCastRange()
     {
         ShowCastRange(0f);
-    }
-
-    private void EnsureHeroSkillRuntime()
-    {
-        skillComp = LogicState.SkillComp
-                    ?? throw new System.InvalidOperationException($"HeroEntity.EnsureHeroSkillRuntime failed: logic SkillComp is missing. entity={LogicEntityId.Value}.");
-        skillComp.OnSkillChanged();
-    }
-
-    private void OnSkillChanged(object sender, GameEventArgs e)
-    {
-        skillComp?.OnSkillChanged();
     }
 
     protected override void OnLogicGhostStatePresentation(bool enabled)

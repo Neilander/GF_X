@@ -5,6 +5,7 @@ using UnityGameFramework.Runtime;
 
 public class GeneralCreature : EntityBase, ITargetable
 {
+    protected virtual bool InitializeDefaultTauntLevelOnShow => true;
     public SideType Side { get; protected set; }
     public bool Alive { get; set; }
     //public ITargetable Instigator { get; set; }
@@ -82,7 +83,8 @@ public class GeneralCreature : EntityBase, ITargetable
     {
         base.OnShow(userData);
         Alive = true;
-        TauntLevel = 1; // 生物默认嘲讽等级 1
+        if (InitializeDefaultTauntLevelOnShow)
+            TauntLevel = 1; // 生物默认嘲讽等级 1
         CreaturePropertyManager = CreateCreaturePropertyManager();
         //Debug.LogError($"[Creature] {CharacterKey} 属性 - 血量:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Health)} 移速:{(float)CreaturePropertyManager.GetProperty(CreatureMainProperty.Speed)}");
     }

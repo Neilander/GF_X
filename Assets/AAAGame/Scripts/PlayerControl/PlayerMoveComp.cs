@@ -41,6 +41,11 @@ public class PlayerMoveComp : IMoveComp
         throw new System.NotImplementedException();
     }
 
+    public void MoveToFixed(FixVector2 destination)
+    {
+        throw new System.NotImplementedException();
+    }
+
     public void StopMove()
     {
         throw new System.NotImplementedException();

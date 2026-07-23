@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using AAAGame.Card;
 using AAAGame.Scripts.BuffSystem;
 
 public static class LogicGameplayStateHasher
@@ -37,8 +38,17 @@ public static class LogicGameplayStateHasher
         LogicInteractionHoldService.WriteDeterministicState(hasher);
         LogicInteractionTargetStateService.WriteDeterministicState(hasher);
         LogicInteractionCommandService.WriteDeterministicState(hasher);
+        LogicCardCommandService.WriteDeterministicState(hasher);
+        LogicCardPlacementAuthority.WriteDeterministicState(hasher);
+        LogicCardRuntimeState.WriteDeterministicState(hasher);
+        LogicSkillSlotCommandService.WriteDeterministicState(hasher);
         LogicPhaseCommandService.WriteDeterministicState(hasher);
         LogicTechEffectCommandService.WriteDeterministicState(hasher);
+        GlobalBuffManager.WriteCurrentDeterministicState(hasher);
+        LogicBuildingExtraPropsStore.WriteDeterministicState(hasher);
+        LogicProductionConditionState.WriteDeterministicState(hasher);
+        LogicStrongholdMap.WriteDeterministicState(hasher);
+        DefendPhaseRuntime.WriteDeterministicState(hasher);
         AddEntities(hasher, frame);
         AddLifecycle(hasher, frame);
         AddObstacles(hasher, frame);
@@ -68,6 +78,7 @@ public static class LogicGameplayStateHasher
             FixVector2 resolved = LogicAgentCollisionShadowService.GetRequiredResolvedPosition(entity.LogicEntityId, frame);
             hasher.Add(state.EntityId.Value);
             hasher.Add(entity.CharacterKey);
+            hasher.Add(entity is LogicEntityState logicState ? logicState.SourceStrongholdId : null);
             hasher.Add(resolved.x.RawValue);
             hasher.Add(resolved.y.RawValue);
             hasher.Add(state.Forward.x.RawValue);
@@ -88,14 +99,20 @@ public static class LogicGameplayStateHasher
                 hasher.Add(hero.IsGhostState);
             else
                 hasher.Add(false);
-            if (entity is IBuildingLogicContext building)
+            if (entity.TryGetLogicBuilding(out IBuildingLogicContext building))
             {
                 hasher.Add(true);
                 hasher.Add(building.BuildingInstanceId);
+                hasher.Add(building.StrongholdId);
                 hasher.Add(building.OwnerFactionId);
                 hasher.Add(building.IsDisabled);
                 hasher.Add(building.IsPhaseProtected);
                 hasher.Add(building.BlocksLogicMovement);
+                hasher.Add(building.GetArmyForceWithoutRuntimeRules());
+                hasher.Add(building.GetArmyForce());
+                hasher.Add(building.GetArmySupplyPerUnit());
+                hasher.Add(building.GetArmyOccupiedSupply());
+                LogicInteractionOptionService.WriteDeterministicState(hasher, building.InteractionOptions);
             }
             else
             {
@@ -117,6 +134,9 @@ public static class LogicGameplayStateHasher
             AddContributor(hasher, entity.TargetComp);
             AddContributor(hasher, entity.Brain);
             AddContributor(hasher, entity.MoveComp);
+            AddContributor(hasher, entity.MoveExecutor);
+            AddContributor(hasher, entity.DurationMoveEffectComp);
+            AddContributor(hasher, entity is ISkillCompHost skillHost ? skillHost.skillComp : null);
             if (entity.AtkComp is DirectAtkComp directAttack)
                 AddAttack(hasher, directAttack.CaptureDeterministicState());
             else
@@ -200,8 +220,8 @@ public static class LogicGameplayStateHasher
     private static void AddLifecycle(LogicStateHasher hasher, ulong frame)
     {
         LogicEntityStateStore.WriteDeterministicState(hasher);
-        hasher.Add(LogicEntityLifecycleService.RequestedEntityCount);
-        hasher.Add(LogicEntityLifecycleService.BoundViewCount);
+        AddPendingSpawnStates(hasher);
+        hasher.Add(LogicEntityLifecycleService.AuthorityEntityCount);
         hasher.Add(LogicEntityLifecycleService.ActiveEntityCount);
         IReadOnlyList<LogicEntityLifecycleCommand> commands = LogicEntityLifecycleService.Commands;
         int pendingCount = 0;
@@ -220,7 +240,85 @@ public static class LogicGameplayStateHasher
             hasher.Add(command.Sequence);
             hasher.Add((int)command.Kind);
             hasher.Add(command.EntityId.Value);
-            hasher.Add(command.ViewEntityId);
+        }
+    }
+
+    private static void AddPendingSpawnStates(LogicStateHasher hasher)
+    {
+        LogicEntityState[] states = LogicEntityStateStore.CapturePendingSpawnStates();
+        hasher.Add(states.Length);
+        for (int i = 0; i < states.Length; i++)
+        {
+            LogicEntityState state = states[i]
+                ?? throw new InvalidOperationException($"LogicGameplayStateHasher pending spawn state {i} is null.");
+            state.ValidateReadyForSpawn();
+            hasher.Add(state.EntityId.Value);
+            hasher.Add(state.IsConfigured);
+            hasher.Add(state.NavigationAgentTypeId);
+            hasher.Add(state.AllowsZeroCollisionRadius);
+            hasher.Add(state.UsesFlowNavigationAgent);
+            hasher.Add(state.IsPlayerEntity);
+            hasher.Add(state.IsHeroEntity);
+            hasher.Add(state.Alive);
+            hasher.Add(state.TauntLevel);
+            hasher.Add(state.IsOutOfCombat);
+            hasher.Add(state.OutOfCombatElapsedLogicTime.RawValue);
+            hasher.Add(state.IsGhostState);
+            hasher.Add(state.SourceStrongholdId);
+            hasher.Add(state.IsPermanentStealth);
+            hasher.Add(state.HasPermanentNoAttackCapability);
+            hasher.Add(state.BlocksLogicMovement);
+
+            LogicCombatShape combatShape = state.CombatShape;
+            hasher.Add((int)combatShape.Kind);
+            hasher.Add(combatShape.Center.x.RawValue);
+            hasher.Add(combatShape.Center.y.RawValue);
+            hasher.Add(combatShape.Radius.RawValue);
+            hasher.Add(combatShape.HalfExtents.x.RawValue);
+            hasher.Add(combatShape.HalfExtents.y.RawValue);
+
+            hasher.Add(state.IsBuildingEntity);
+            if (state.IsBuildingEntity)
+            {
+                hasher.Add(state.BuildingData?.Identifier);
+                hasher.Add(state.BuildingInstanceId);
+                hasher.Add(state.StrongholdId);
+                hasher.Add(state.OwnerFactionId);
+                hasher.Add(state.IsDisabled);
+                hasher.Add(state.IsPhaseProtected);
+                hasher.Add(state.GetArmyForceWithoutRuntimeRules());
+                hasher.Add(state.GetArmyForce());
+                hasher.Add(state.GetArmySupplyPerUnit());
+                hasher.Add(state.GetArmyOccupiedSupply());
+                LogicInteractionOptionService.WriteDeterministicState(hasher, state.InteractionOptions);
+                hasher.Add(state.LogicObstacleShapes.Count);
+                for (int shapeIndex = 0; shapeIndex < state.LogicObstacleShapes.Count; shapeIndex++)
+                {
+                    LogicCombatShape shape = state.LogicObstacleShapes[shapeIndex];
+                    hasher.Add((int)shape.Kind);
+                    hasher.Add(shape.Center.x.RawValue);
+                    hasher.Add(shape.Center.y.RawValue);
+                    hasher.Add(shape.Radius.RawValue);
+                    hasher.Add(shape.HalfExtents.x.RawValue);
+                    hasher.Add(shape.HalfExtents.y.RawValue);
+                }
+            }
+
+            hasher.Add(state.HealthValue.RawValue);
+            for (int propertyIndex = 0; propertyIndex < s_MainProperties.Length; propertyIndex++)
+                hasher.Add(state.GetProperty(s_MainProperties[propertyIndex]).RawValue);
+            AddWeapon(hasher, state.WeaponComp);
+            AddContributor(hasher, state.TargetComp);
+            AddContributor(hasher, state.Brain);
+            AddContributor(hasher, state.MoveComp);
+            AddContributor(hasher, state.MoveExecutor);
+            AddContributor(hasher, state.DurationMoveEffectComp);
+            AddContributor(hasher, state.SkillComp);
+            if (state.AtkComp is DirectAtkComp directAttack)
+                AddAttack(hasher, directAttack.CaptureDeterministicState());
+            else
+                hasher.Add(0);
+            AddBuffs(hasher, state.BuffComp);
         }
     }
 

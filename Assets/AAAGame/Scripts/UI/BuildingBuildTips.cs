@@ -425,7 +425,7 @@ public partial class BuildingBuildTips : UIFormBase
     {
         BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
         return buildManager != null
-            ? buildManager.GetBuildingCost(data, m_TargetBuilding != null ? m_TargetBuilding.CurrentStronghold : null)
+            ? buildManager.GetBuildingCost(data, m_TargetBuilding)
             : (data != null ? Mathf.Max(0, data.Cost) : 0);
     }
 

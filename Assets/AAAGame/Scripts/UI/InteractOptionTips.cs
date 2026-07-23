@@ -1,4 +1,4 @@
-using UnityGameFramework.Runtime;
+﻿using UnityGameFramework.Runtime;
 using System.Collections.Generic;
 using GameFramework.Event;
 using UnityEngine;
@@ -44,8 +44,6 @@ public partial class InteractOptionTips : UIFormBase
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        LogicInteractionHoldService.RegisterConsumer(CanExecuteLogicInteraction, ExecuteLogicInteraction);
-
         RefreshList();
     }
     protected override void OnClose(bool isShutdown, object userData)
@@ -56,8 +54,6 @@ public partial class InteractOptionTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnResourceAmountChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        if (LogicInteractionHoldService.IsActive)
-            LogicInteractionHoldService.UnregisterConsumer(CanExecuteLogicInteraction, ExecuteLogicInteraction);
         base.OnClose(isShutdown, userData);
     }
 
@@ -216,13 +212,4 @@ public partial class InteractOptionTips : UIFormBase
         }
     }
 
-    private bool CanExecuteLogicInteraction(InputKey key)
-    {
-        return _target != null && _target.CanExecute(key);
-    }
-
-    private bool ExecuteLogicInteraction(InputKey key)
-    {
-        return _target != null && _target.TryExecute(key);
-    }
 }

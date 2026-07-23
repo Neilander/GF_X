@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
@@ -76,47 +75,6 @@ public static class SoldierFactory
             return MAEntityFactory.ShowHero(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
 
         return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
-    }
-
-    public static async UniTask<bool> ShowSoldierAwait(
-        UnitType unitType,
-        Vector3 position,
-        SideType side = SideType.PlayerSide,
-        BrainType brainType = BrainType.SoldierAI,
-        string sourceBuildingInstanceId = null,
-        string sourceStrongholdId = null,
-        Func<bool> keepAlivePredicate = null,
-        int unitLevel = 1)
-    {
-        unitLevel = NormalizeUnitLevel(unitLevel);
-        string characterKey = unitType.ToString();
-        string prefabName = GetPrefabPathFromCharacterData(characterKey);
-        Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
-
-        var startBuffs = new System.Collections.Generic.List<BuffData>();
-        AddInitialBuffs(startBuffs, unitType, unitLevel);
-        AddGlobalBuffs(startBuffs, unitType, side);
-        AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
-
-        EntityParams entityParams = MAEntityFactory.CreateMAEntityParams(
-            position,
-            characterKey,
-            side,
-            brainType,
-            startBuffs,
-            sourceStrongholdId,
-            unitLevel,
-            unitType == UnitType.Unit_Hero ? LogicSkillFactoryKind.Player : LogicSkillFactoryKind.None);
-        var logic = unitType == UnitType.Unit_Hero
-            ? await GF.Entity.ShowEntityAwait<HeroEntity>(prefabName, entityGroup, entityParams)
-            : await GF.Entity.ShowEntityAwait<SoldierEntity>(prefabName, entityGroup, entityParams);
-        if (logic != null && keepAlivePredicate != null && !keepAlivePredicate())
-        {
-            GF.Entity.HideEntitySafe(logic);
-            return false;
-        }
-
-        return logic != null;
     }
 
     private static string GetPrefabPathFromCharacterData(string characterKey)

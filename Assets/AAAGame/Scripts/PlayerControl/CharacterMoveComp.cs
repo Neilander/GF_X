@@ -38,6 +38,12 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         PrepareFlowNavigationRequest(_targetPos.Value, false);
     }
 
+    public void MoveToFixed(FixVector2 destination)
+    {
+        SetTargetFixed(destination, 0f);
+        PrepareFlowNavigationRequest(_targetPos.Value, false);
+    }
+
     public void StopMove()
     {
         Vector3? previousTarget = _targetPos;
@@ -89,7 +95,7 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         {
             FixVector2 frameStartPositionFixed = LogicFrameRuntime.IsTicking
                 ? LogicEntityFrameSnapshotService.GetRequiredPosition(_ctx)
-                : new FixVector2((Fix64)_ctx.Position.x, (Fix64)_ctx.Position.z);
+                : _ctx.PositionFixed;
             FixVector2 toTargetFixed = _targetPosFixed.Value - frameStartPositionFixed;
             Vector3 frameStartPosition = new Vector3((float)frameStartPositionFixed.x, _ctx.Position.y, (float)frameStartPositionFixed.y);
 
@@ -207,8 +213,13 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
             throw new System.ArgumentOutOfRangeException(nameof(destination), destination, "Navigation target must be finite.");
         }
 
-        _targetPosFixed = new FixVector2((Fix64)destination.x, (Fix64)destination.z);
-        _targetPos = new Vector3((float)_targetPosFixed.Value.x, destination.y, (float)_targetPosFixed.Value.y);
+        SetTargetFixed(new FixVector2((Fix64)destination.x, (Fix64)destination.z), destination.y);
+    }
+
+    private void SetTargetFixed(FixVector2 destination, float height)
+    {
+        _targetPosFixed = destination;
+        _targetPos = new Vector3((float)destination.x, height, (float)destination.y);
     }
 
     private static void RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)

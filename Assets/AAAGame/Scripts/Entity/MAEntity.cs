@@ -6,21 +6,12 @@ using UnityEngine;
 using UnityGameFramework.Runtime;
 using AAAGame.Scripts.BuffSystem;
 
-public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
+public class MAEntity : CompCreature, IEntityContext
 {
     public LogicEntityId LogicEntityId { get; private set; }
     private LogicEntityState _logicState;
     private bool _isViewBound;
     public LogicEntityState LogicState => _logicState;
-    public long LogicFrameStableKey
-    {
-        get
-        {
-            if (!LogicEntityId.IsValid)
-                throw new InvalidOperationException("MAEntity.LogicFrameStableKey failed: logic entity id is invalid.");
-            return LogicEntityId.Value;
-        }
-    }
     protected override bool InterpolateRenderRotation => false;
 
     public CharacterDataDetail CharacterData { get; protected set; }
@@ -39,7 +30,7 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
 
     /// <summary>
     /// 导航 movement type ID，用于 FlowField world 和移动约束。
-    /// 子类可在 OnShow/SetUpMAComp 之前设置。
+    /// View 在 OnShow 时从 LogicEntityState 读取该值。
     /// </summary>
     public const int UnknownNavAgentTypeId = int.MinValue;
     public int navAgentTypeID = UnknownNavAgentTypeId;
@@ -50,21 +41,10 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
     private readonly HashSet<string> _invincibleSourceRegistry = new HashSet<string>();
 
     private Quaternion? _targetRotation = null;
-    private FixVector2 _logicForward = new FixVector2(Fix64.Zero, Fix64.One);
-    public FixVector2 LogicForward => _logicForward;
+    public FixVector2 LogicForward => RequireLogicState().Forward;
     private Transform _modelTransform = null;
     private AnimationRatePresenter _animationRatePresenter;
     private bool _isLogicActive;
-    private bool _groupMoveRegistrationRequested;
-    private bool _isGroupMoveRegistered;
-    private bool _playerRegistrationRequested;
-    private Fix64 _combatStateClock;
-    private Fix64 _outOfCombatStartTime;
-    private bool _coordinatedLogicFrameActive;
-    private MAEntityLogicFramePhase _nextCoordinatedLogicFramePhase;
-    private Fix64 _coordinatedLogicFrameDeltaTime;
-    private long _logicFrameUpdateStartTicks;
-    private long _logicFrameUpdateStartAllocatedBytes;
 
     private Vector3 _collisionScaleBase = Vector3.one;
     private float _collisionRadiusBaseWorld;
@@ -73,37 +53,16 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
     private Fix64 _lastAppliedCollisionRadius;
     public IControlBrain Brain { get; private set; }
     public bool IsLogicActive => _isLogicActive;
-    public int NavigationAgentTypeId => navAgentTypeID;
-    public bool AllowsZeroCollisionRadius => this is BuildingEntity;
-    public bool HasPreparedLogicMove => _moveExecutor != null && _moveExecutor.HasPreparedLogicMove;
-    public ulong PreparedLogicFrame => _moveExecutor != null ? _moveExecutor.PreparedLogicFrame : 0;
-    public bool PreparedCollisionMovable => _moveExecutor != null && _moveExecutor.PreparedCollisionMovable;
-    public uint AgentCollisionMask => _logicState?.AgentCollisionMask ?? 1u;
-    public FixVector2 PreparedResolvedHorizontalDisplacement => _moveExecutor != null
-        ? _moveExecutor.PreparedResolvedHorizontalDisplacement
-        : throw new InvalidOperationException("MAEntity prepared movement is unavailable.");
     public void SetBrain(IControlBrain brain) => Brain = brain;
-    protected virtual bool UsesFlowNavigationAgent => true;
+    protected override bool InitializeDefaultTauntLevelOnShow => false;
     protected override bool UsesCoordinatedLogicFrameUpdate => true;
-    protected override bool ShouldRunLogicFrameUpdate => _isLogicActive;
+    protected override bool ShouldRunLogicFrameUpdate => false;
 
     public virtual void ChangeSide(SideType newSide)
     {
-        SideType oldSide = Side;
         int oldFactionId = EntitySideHelper.ToFactionId(Side);
         Side = newSide;
-        if (_logicState != null)
-            _logicState.Side = newSide;
         int newFactionId = EntitySideHelper.ToFactionId(newSide);
-
-        if (oldSide != newSide)
-        {
-            if (_isGroupMoveRegistered)
-                GroupMoveManager.Instance.UpdateAgentSide(this);
-
-            if (Brain is IBrainSideChangeHandler sideChangeHandler)
-                sideChangeHandler.OnSideChanged(this, oldSide, newSide);
-        }
 
         if (oldFactionId != newFactionId)
         {
@@ -175,20 +134,17 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
     WeaponComp IEntityContext.WeaponComp => weaponComp;
     IDurationMoveEffectComp IEntityContext.DurationMoveEffectComp => durationMoveEffectComp;
     public CreaturePropertyManager CreatureProperties => CreaturePropertyManager;
-    public bool IsOutOfCombat { get; private set; }
-    public Fix64 OutOfCombatElapsedLogicTime => IsOutOfCombat
-        ? Fix64.Max(Fix64.Zero, _combatStateClock - _outOfCombatStartTime)
-        : Fix64.Zero;
-    public float OutOfCombatElapsedSeconds => (float)OutOfCombatElapsedLogicTime;
+    public bool IsOutOfCombat => RequireLogicState().IsOutOfCombat;
+    public Fix64 OutOfCombatElapsedLogicTime => RequireLogicState().OutOfCombatElapsedLogicTime;
+    public float OutOfCombatElapsedSeconds => RequireLogicState().OutOfCombatElapsedSeconds;
     public override int TauntLevel
     {
         get => _logicState != null ? _logicState.TauntLevel : base.TauntLevel;
         set
         {
             if (_logicState != null)
-                _logicState.TauntLevel = value;
-            else
-                base.TauntLevel = value;
+                throw new InvalidOperationException("MAEntity view cannot change TauntLevel; update LogicEntityState instead.");
+            base.TauntLevel = value;
         }
     }
 
@@ -235,9 +191,7 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
         base.OnShow(userData);
         SubscribeLogicStatePresentation();
         Alive = _logicState.Alive;
-        PositionFixed = _logicState.Position;
-
-        InitializeLogicForward();
+        InitializePresentationPoseFromLogicState();
 
         if (animator != null)
         {
@@ -279,16 +233,7 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
 
         _moveExecutor.Init(cController, navAgentTypeID);
 
-        // 对象池复用时，清理上一生命周期残留的移动/目标状态，避免出生后被旧状态拉走。
-        moveComp?.StopMove();
-        if (targetComp != null)
-            targetComp.CurrentTarget = null;
-        ResetOutOfCombatState();
-        durationMoveEffectComp?.StopAllMove();
-        _moveExecutor.SetInput(Vector3.zero);
-        _moveExecutor.SetExternal(Vector3.zero);
-        _moveExecutor.ClearOverride();
-        _moveExecutor.SetMovementMode(MovementMode.Normal);
+        ResetPresentationMovementForShow();
 
         InitializeCollisionScaleBase();
 
@@ -336,23 +281,16 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
         durationMoveEffectComp = state.DurationMoveEffectComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: DurationMoveEffectComp is missing. entity={LogicEntityId.Value}.");
         _buffComp = state.BuffComp ?? throw new InvalidOperationException($"MAEntity.BindLogicStateComponents failed: BuffComp is missing. entity={LogicEntityId.Value}.");
     }
-    /// <summary>
-    /// 子类在 OnShow 末尾（Side 等字段赋值完毕后）调用，注册到 GroupMoveManager。
-    /// </summary>
-    protected void RegisterToGroupMove()
+
+    private void ResetPresentationMovementForShow()
     {
-        if (_groupMoveRegistrationRequested)
-            throw new InvalidOperationException($"MAEntity.RegisterToGroupMove failed: registration was already requested. entity={LogicEntityId.Value}.");
+        if (_moveExecutor == null)
+            throw new InvalidOperationException("MAEntity.ResetPresentationMovementForShow failed: MoveExecutor is missing.");
 
-        _groupMoveRegistrationRequested = UsesFlowNavigationAgent;
-    }
-
-    public void RequestPlayerRegistration()
-    {
-        if (_playerRegistrationRequested)
-            throw new InvalidOperationException($"MAEntity.RequestPlayerRegistration failed: player registration was already requested. entity={LogicEntityId.Value}.");
-
-        _playerRegistrationRequested = true;
+        _moveExecutor.SetInput(Vector3.zero);
+        _moveExecutor.SetExternal(Vector3.zero);
+        _moveExecutor.ClearOverride();
+        _moveExecutor.SetMovementMode(MovementMode.Normal);
     }
 
     public void RequestDespawn()
@@ -460,257 +398,7 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
         _hasAppliedCollisionScale = false;
         _collisionRadiusBaseWorld = 0f;
         _collisionScaleBase = Vector3.one;
-        _groupMoveRegistrationRequested = false;
-        _isGroupMoveRegistered = false;
-        _playerRegistrationRequested = false;
-
         base.OnHide(isShutdown, userData);
-    }
-
-    protected override void OnLogicFrameUpdate(Fix64 deltaTime)
-    {
-        BeginLogicFramePhases(deltaTime);
-        for (int phaseValue = 0; phaseValue < (int)MAEntityLogicFramePhase.Count; phaseValue++)
-            ExecuteLogicFramePhase((MAEntityLogicFramePhase)phaseValue, deltaTime);
-        CompleteLogicFramePhases(deltaTime);
-    }
-
-    internal void BeginCoordinatedLogicFrame(Fix64 deltaTime)
-    {
-        BeginCoordinatedLogicFrameUpdate();
-        BeginLogicFramePhases(deltaTime);
-    }
-
-    void ILogicFrameEntity.BeginLogicFrame(Fix64 deltaTime)
-    {
-        BeginCoordinatedLogicFrame(deltaTime);
-    }
-
-    internal void ExecuteCoordinatedLogicFramePhase(MAEntityLogicFramePhase phase, Fix64 deltaTime)
-    {
-        ExecuteLogicFramePhase(phase, deltaTime);
-    }
-
-    void ILogicFrameEntity.ExecuteLogicFramePhase(MAEntityLogicFramePhase phase, Fix64 deltaTime)
-    {
-        ExecuteCoordinatedLogicFramePhase(phase, deltaTime);
-    }
-
-    internal void CompleteCoordinatedLogicFrame(Fix64 deltaTime)
-    {
-        CompleteLogicFramePhases(deltaTime);
-        CompleteCoordinatedLogicFrameUpdate();
-    }
-
-    void ILogicFrameEntity.CompleteLogicFrame(Fix64 deltaTime)
-    {
-        CompleteCoordinatedLogicFrame(deltaTime);
-    }
-
-    private void BeginLogicFramePhases(Fix64 deltaTime)
-    {
-        if (_coordinatedLogicFrameActive)
-            throw new InvalidOperationException($"MAEntity.BeginLogicFramePhases failed: entity {LogicEntityId.Value} already has an active frame.");
-        if (deltaTime != LogicFrameRuntime.FixedDeltaTime)
-            throw new InvalidOperationException($"MAEntity.BeginLogicFramePhases failed: entity {LogicEntityId.Value} received a non-fixed delta.");
-
-        _coordinatedLogicFrameActive = true;
-        _nextCoordinatedLogicFramePhase = MAEntityLogicFramePhase.BaseAndBuffs;
-        _coordinatedLogicFrameDeltaTime = deltaTime;
-        _logicFrameUpdateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        _logicFrameUpdateStartAllocatedBytes = System.GC.GetAllocatedBytesForCurrentThread();
-    }
-
-    private void ExecuteLogicFramePhase(MAEntityLogicFramePhase phase, Fix64 deltaTime)
-    {
-        if (!_coordinatedLogicFrameActive)
-            throw new InvalidOperationException($"MAEntity.ExecuteLogicFramePhase failed: entity {LogicEntityId.Value} has no active frame.");
-        if (deltaTime != _coordinatedLogicFrameDeltaTime)
-            throw new InvalidOperationException($"MAEntity.ExecuteLogicFramePhase failed: entity {LogicEntityId.Value} delta changed within the frame.");
-        if (phase != _nextCoordinatedLogicFramePhase)
-        {
-            throw new InvalidOperationException(
-                $"MAEntity.ExecuteLogicFramePhase failed: entity {LogicEntityId.Value} phase mismatch. expected={_nextCoordinatedLogicFramePhase}, actual={phase}.");
-        }
-
-        switch (phase)
-        {
-            case MAEntityLogicFramePhase.BaseAndBuffs:
-                ExecuteBaseAndBuffPhase(deltaTime);
-                break;
-            case MAEntityLogicFramePhase.NavigationSync:
-                ExecuteNavigationSyncPhase();
-                break;
-            case MAEntityLogicFramePhase.Brain:
-                ExecuteBrainPhase(deltaTime);
-                break;
-            case MAEntityLogicFramePhase.Targeting:
-                ExecuteTargetingPhase(deltaTime);
-                break;
-            case MAEntityLogicFramePhase.Projectile:
-                break;
-            case MAEntityLogicFramePhase.Attack:
-                ExecuteAttackPhase(deltaTime);
-                break;
-            case MAEntityLogicFramePhase.DamageResolve:
-                break;
-            case MAEntityLogicFramePhase.MoveIntent:
-                ExecuteMoveIntentPhase(deltaTime);
-                break;
-            case MAEntityLogicFramePhase.MoveResolve:
-                ExecuteMoveResolvePhase(deltaTime);
-                break;
-            case MAEntityLogicFramePhase.MoveCommit:
-                ExecuteMoveCommitPhase(deltaTime);
-                break;
-            case MAEntityLogicFramePhase.PostUpdate:
-                OnPostLogicFrameUpdate(deltaTime);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(phase), phase, "Unknown MA logic frame phase.");
-        }
-
-        _nextCoordinatedLogicFramePhase = (MAEntityLogicFramePhase)((int)phase + 1);
-    }
-
-    private void CompleteLogicFramePhases(Fix64 deltaTime)
-    {
-        if (!_coordinatedLogicFrameActive)
-            throw new InvalidOperationException($"MAEntity.CompleteLogicFramePhases failed: entity {LogicEntityId.Value} has no active frame.");
-        if (deltaTime != _coordinatedLogicFrameDeltaTime)
-            throw new InvalidOperationException($"MAEntity.CompleteLogicFramePhases failed: entity {LogicEntityId.Value} delta changed within the frame.");
-        if (_nextCoordinatedLogicFramePhase != MAEntityLogicFramePhase.Count)
-        {
-            throw new InvalidOperationException(
-                $"MAEntity.CompleteLogicFramePhases failed: entity {LogicEntityId.Value} stopped at phase {_nextCoordinatedLogicFramePhase}.");
-        }
-
-        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
-            UnityGameFramework.Runtime.MainThreadPerfScope.EntityUpdate,
-            System.Diagnostics.Stopwatch.GetTimestamp() - _logicFrameUpdateStartTicks,
-            System.Math.Max(0L, System.GC.GetAllocatedBytesForCurrentThread() - _logicFrameUpdateStartAllocatedBytes));
-        _coordinatedLogicFrameActive = false;
-    }
-
-    private void ExecuteBaseAndBuffPhase(Fix64 deltaTime)
-    {
-        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        base.OnLogicFrameUpdate(deltaTime);
-        RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityBase, stageStartTicks);
-        _combatStateClock += deltaTime;
-        RefreshOutOfCombatState();
-        OnOutOfCombatStateRefreshed();
-
-        if (CanRun(_buffComp))
-        {
-            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            _buffComp.UpdateBuff(deltaTime);
-            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityBuff, stageStartTicks);
-        }
-
-        if (Alive)
-        {
-            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            SyncScaleFromCollisionRadius();
-            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityScale, stageStartTicks);
-        }
-    }
-
-    private void ExecuteNavigationSyncPhase()
-    {
-        if (!UsesFlowNavigationAgent || !GroupMoveManager.HasInstance)
-            return;
-
-        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        GroupMoveManager.Instance.UpdateAgentPosition(this);
-        RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAgentPosition, stageStartTicks);
-    }
-
-    private void ExecuteBrainPhase(Fix64 deltaTime)
-    {
-        if (!(Brain is ITickBrain tickBrain))
-            return;
-
-        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        tickBrain.Tick(this, deltaTime);
-        RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityBrain, stageStartTicks);
-    }
-
-    private void ExecuteTargetingPhase(Fix64 deltaTime)
-    {
-        if (CanRun(targetComp))
-        {
-            long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            targetComp.UpdateTargeting(deltaTime);
-            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityTargeting, stageStartTicks);
-        }
-
-        RefreshOutOfCombatState();
-        OnOutOfCombatStateRefreshed();
-    }
-
-    private void ExecuteAttackPhase(Fix64 deltaTime)
-    {
-        if (CanRun(atkComp))
-        {
-            long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            atkComp.Attack(deltaTime);
-            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAttack, stageStartTicks);
-        }
-
-        RefreshOutOfCombatState();
-        OnOutOfCombatStateRefreshed();
-    }
-
-    private void ExecuteMoveIntentPhase(Fix64 deltaTime)
-    {
-        if (!Alive)
-            return;
-
-        if (CanRun(durationMoveEffectComp))
-        {
-            long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            durationMoveEffectComp.ApplyEffect(deltaTime);
-            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityDurationMove, stageStartTicks);
-        }
-
-        if (CanRun(moveComp))
-        {
-            long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            moveComp.Move(deltaTime);
-            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityMoveComp, stageStartTicks);
-        }
-    }
-
-    private void ExecuteMoveCommitPhase(Fix64 deltaTime)
-    {
-        FixVector2 resolvedPosition = LogicAgentCollisionShadowService.GetRequiredResolvedPosition(
-            LogicEntityId,
-            LogicFrameRuntime.CurrentFrame);
-        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        _moveExecutor.CommitPreparedLogicFrame(resolvedPosition);
-        _logicState.Position = resolvedPosition;
-        UpdateLogicForward(resolvedPosition);
-        RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityMoveExecutor, stageStartTicks);
-
-        if (Alive && UsesFlowNavigationAgent && GroupMoveManager.HasInstance)
-        {
-            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            GroupMoveManager.Instance.UpdateAgentPosition(this);
-            RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAgentPosition, stageStartTicks);
-        }
-    }
-
-    private void ExecuteMoveResolvePhase(Fix64 deltaTime)
-    {
-        LogicEntityFrameState frameState = LogicEntityFrameSnapshotService.GetRequiredCurrent(this);
-        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        _moveExecutor.PrepareLogicFrame(deltaTime, frameState, Alive);
-        RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityMoveExecutor, stageStartTicks);
-    }
-
-    protected virtual void OnPostLogicFrameUpdate(Fix64 deltaTime)
-    {
     }
 
     protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
@@ -740,7 +428,10 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
             animator.SetBool("Moving", isMoving);
 
             if (Brain != null)
-                _targetRotation = Quaternion.LookRotation(new Vector3((float)_logicForward.x, 0f, (float)_logicForward.y));
+            {
+                FixVector2 logicForward = LogicForward;
+                _targetRotation = Quaternion.LookRotation(new Vector3((float)logicForward.x, 0f, (float)logicForward.y));
+            }
 
             RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityAnimator, stageStartTicks);
         }
@@ -768,50 +459,16 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
             System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
     }
 
-    private void InitializeLogicForward()
+    private void InitializePresentationPoseFromLogicState()
     {
-        Vector3 worldForward = Rotation * Vector3.forward;
-        SetLogicForward(new FixVector2((Fix64)worldForward.x, (Fix64)worldForward.z), "OnShow");
-    }
+        LogicEntityState state = RequireLogicState();
+        Vector3 currentPosition = transform.position;
+        transform.position = new Vector3((float)state.Position.x, currentPosition.y, (float)state.Position.y);
 
-    private void UpdateLogicForward(FixVector2 resolvedPosition)
-    {
-        LogicEntityFrameState selfState = LogicEntityFrameSnapshotService.GetRequiredCurrent(this);
-        IEntityContext target = targetComp?.CurrentTarget;
-        if (atkComp != null && atkComp.IsAttacking && target != null && target.Alive)
-        {
-            FixVector2 targetPosition = LogicEntityFrameSnapshotService.GetRequiredPosition(target);
-            FixVector2 toTarget = targetPosition - selfState.Position;
-            if (FixVector2.SqrMagnitude(toTarget) > Fix64.Zero)
-            {
-                SetLogicForward(toTarget, "attack target");
-                return;
-            }
-        }
-
-        FixVector2 displacement = resolvedPosition - selfState.Position;
-        if (FixVector2.SqrMagnitude(displacement) > Fix64.Zero)
-        {
-            SetLogicForward(displacement, "resolved movement");
-            return;
-        }
-
-        if (target != null && target.Alive)
-        {
-            FixVector2 targetPosition = LogicEntityFrameSnapshotService.GetRequiredPosition(target);
-            FixVector2 toTarget = targetPosition - selfState.Position;
-            if (FixVector2.SqrMagnitude(toTarget) > Fix64.Zero)
-                SetLogicForward(toTarget, "idle target");
-        }
-    }
-
-    private void SetLogicForward(FixVector2 direction, string source)
-    {
-        FixVector2 normalized = direction.GetNormalized();
-        if (FixVector2.SqrMagnitude(normalized) == Fix64.Zero)
-            throw new InvalidOperationException($"MAEntity.SetLogicForward failed: zero direction. entity={LogicEntityId.Value}, source={source}.");
-        _logicForward = normalized;
-        RequireLogicState().Forward = normalized;
+        FixVector2 forward = state.Forward;
+        if (FixVector2.SqrMagnitude(forward) == Fix64.Zero)
+            throw new InvalidOperationException($"MAEntity.InitializePresentationPoseFromLogicState failed: entity {LogicEntityId.Value} has zero forward.");
+        transform.rotation = Quaternion.LookRotation(new Vector3((float)forward.x, 0f, (float)forward.y));
     }
 
     private void SyncPresenterPoseFromLogicState()
@@ -843,65 +500,6 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
     public override void Heal(Fix64 amount)
     {
         RequireLogicState().Heal(amount);
-    }
-
-    protected void NotifyDamageTakenForOutOfCombat()
-    {
-        _outOfCombatStartTime = _combatStateClock;
-    }
-
-    private void ResetOutOfCombatState()
-    {
-        _combatStateClock = Fix64.Zero;
-        _outOfCombatStartTime = Fix64.Zero;
-        IsOutOfCombat = false;
-        RefreshOutOfCombatState();
-    }
-
-    private void RefreshOutOfCombatState()
-    {
-        if (!Alive)
-        {
-            ExitOutOfCombat();
-            return;
-        }
-
-        bool hasAttackTarget = HasAttackTarget();
-        if (hasAttackTarget)
-            ExitOutOfCombat();
-        else
-            EnterOutOfCombat();
-    }
-
-    protected virtual void OnOutOfCombatStateRefreshed()
-    {
-    }
-
-    private bool HasAttackTarget()
-    {
-        IEntityContext currentTarget = targetComp?.CurrentTarget;
-        if (currentTarget != null && currentTarget.IsAttackTargetable())
-            return true;
-
-        return atkComp != null && atkComp.IsAttacking;
-    }
-
-    private void EnterOutOfCombat()
-    {
-        if (IsOutOfCombat)
-            return;
-
-        IsOutOfCombat = true;
-        _outOfCombatStartTime = _combatStateClock;
-    }
-
-    private void ExitOutOfCombat()
-    {
-        if (!IsOutOfCombat)
-            return;
-
-        IsOutOfCombat = false;
-        _outOfCombatStartTime = _combatStateClock;
     }
 
     public bool RegisterInvincibleSource(string sourceId)
@@ -1106,33 +704,24 @@ public class MAEntity : CompCreature, ILogicFrameEntity, ILogicFrameStableOrder
 
     #region Move and Attack
 
-    protected virtual void SetUpMAComp(object userData)
-    {
-        string moveFacPath = "CharacterMoveFactory";
-        string atkFacPath = "CharacterAtkFactory";
-
-        FactoryHelper.CreateMoveComp(UtilityBuiltin.AssetsPath.GetMoveFactoryPath(moveFacPath), this);
-        FactoryHelper.CreateAtkComp(UtilityBuiltin.AssetsPath.GetAttackFactoryPath(atkFacPath), this);
-    }
-
     public void SetMoveComp(IMoveComp newMoveComp)
     {
-        moveComp = newMoveComp ?? throw new ArgumentNullException(nameof(newMoveComp));
+        throw new InvalidOperationException("MAEntity view cannot own or replace MoveComp; configure LogicEntityState instead.");
     }
 
     public void SetAtkComp(IAtkComp newAtkComp)
     {
-        atkComp = newAtkComp ?? throw new ArgumentNullException(nameof(newAtkComp));
+        throw new InvalidOperationException("MAEntity view cannot own or replace AtkComp; configure LogicEntityState instead.");
     }
 
     public void SetTargetingComp(ITargetingComp newTargetingComp)
     {
-        targetComp = newTargetingComp ?? throw new ArgumentNullException(nameof(newTargetingComp));
+        throw new InvalidOperationException("MAEntity view cannot own or replace TargetingComp; configure LogicEntityState instead.");
     }
-    public void SetBuffComp(IBuffComp newBuffComp) => _buffComp = newBuffComp;
+
     public void SetWeaponComp(WeaponComp newWeaponComp)
     {
-        weaponComp = newWeaponComp ?? throw new ArgumentNullException(nameof(newWeaponComp));
+        throw new InvalidOperationException("MAEntity view cannot own or replace WeaponComp; configure LogicEntityState instead.");
     }
 
     #endregion

@@ -13,7 +13,8 @@ public static class MAEntityFactory
         List<BuffData> startBuffs = null,
         string sourceStrongholdId = null,
         int unitLevel = 1,
-        LogicSkillFactoryKind skillFactoryKind = LogicSkillFactoryKind.None)
+        LogicSkillFactoryKind skillFactoryKind = LogicSkillFactoryKind.None,
+        System.Action<EntityParams> configureParams = null)
     {
         EntityParams entityParams = CreateLogicEntityParams(position);
         entityParams.Side = side;
@@ -26,8 +27,14 @@ public static class MAEntityFactory
             entityParams.SetString(EntityParams.P_SourceStrongholdId, sourceStrongholdId);
         }
         entityParams.StartBuffs = startBuffs;
-        AssignLogicState(entityParams, position, side, characterKey);
-        LogicUnitConfigurator.Configure(entityParams.LogicEntityState, entityParams);
+        configureParams?.Invoke(entityParams);
+        AssignConfiguredLogicState(
+            entityParams,
+            position,
+            new FixVector2(Fix64.Zero, Fix64.One),
+            side,
+            characterKey,
+            state => LogicUnitConfigurator.Configure(state, entityParams));
         return entityParams;
     }
 
@@ -50,8 +57,9 @@ public static class MAEntityFactory
             brainType,
             startBuffs,
             sourceStrongholdId,
-            unitLevel);
-        configureParams?.Invoke(entityParams);
+            unitLevel,
+            LogicSkillFactoryKind.None,
+            configureParams);
         return GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
     }
 
@@ -75,8 +83,8 @@ public static class MAEntityFactory
             startBuffs,
             sourceStrongholdId,
             unitLevel,
-            LogicSkillFactoryKind.Player);
-        configureParams?.Invoke(entityParams);
+            LogicSkillFactoryKind.Player,
+            configureParams);
         return GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
     }
 
@@ -103,11 +111,13 @@ public static class MAEntityFactory
         BuildingData buildingData,
         Vector3 position,
         string buildingInstanceId,
+        string strongholdId,
         int ownerFactionId,
         int logicQuarterTurns = 0,
         bool isGameEndConditionBuilding = false,
         bool isNavigationStaticBaked = false,
-        bool enableConstructionEscape = false)
+        bool enableConstructionEscape = false,
+        bool currentInteractionFrameLifecycle = false)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             throw new System.ArgumentException("MAEntityFactory.ShowBuilding failed: buildingInstanceId is empty.", nameof(buildingInstanceId));
@@ -136,13 +146,20 @@ public static class MAEntityFactory
             entityParams.Set<VarBoolean>(BuildingEntity.P_EnableConstructionEscape, true);
         }
         SideType side = EntitySideHelper.ToSide(EntityCombatTeamHelper.ResolveTeamIdByFaction(ownerFactionId));
-        AssignLogicState(entityParams, position, side, buildingData.Identifier);
-        LogicBuildingConfigurator.Configure(
-            entityParams.LogicEntityState,
-            buildingData,
-            buildingInstanceId,
-            ownerFactionId,
-            logicQuarterTurns);
+        AssignConfiguredLogicState(
+            entityParams,
+            position,
+            ResolveBuildingForwardFixed(logicQuarterTurns),
+            side,
+            buildingData.Identifier,
+            state => LogicBuildingConfigurator.Configure(
+                state,
+                buildingData,
+                buildingInstanceId,
+                strongholdId,
+                ownerFactionId,
+                logicQuarterTurns),
+            currentInteractionFrameLifecycle);
 
         return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
     }
@@ -152,95 +169,60 @@ public static class MAEntityFactory
         return EntityParams.Create(position: position);
     }
 
-    private static void AssignLogicState(
+    public static FixVector2 ResolveBuildingForwardFixed(int logicQuarterTurns)
+    {
+        switch (logicQuarterTurns)
+        {
+            case 0:
+                return new FixVector2(Fix64.Zero, Fix64.One);
+            case 1:
+                return new FixVector2(Fix64.One, Fix64.Zero);
+            case 2:
+                return new FixVector2(Fix64.Zero, -Fix64.One);
+            case 3:
+                return new FixVector2(-Fix64.One, Fix64.Zero);
+            default:
+                throw new System.ArgumentOutOfRangeException(nameof(logicQuarterTurns));
+        }
+    }
+
+    private static void AssignConfiguredLogicState(
         EntityParams entityParams,
         Vector3 position,
+        FixVector2 forward,
         SideType side,
-        string characterKey)
+        string characterKey,
+        System.Action<LogicEntityState> configure,
+        bool currentInteractionFrameLifecycle = false)
     {
         if (entityParams == null)
             throw new System.ArgumentNullException(nameof(entityParams));
         if (entityParams.LogicEntityId.IsValid || entityParams.LogicEntityState != null)
-            throw new System.InvalidOperationException("MAEntityFactory.AssignLogicState failed: params already have logic identity.");
+            throw new System.InvalidOperationException("MAEntityFactory.AssignConfiguredLogicState failed: params already have logic identity.");
+        if (configure == null)
+            throw new System.ArgumentNullException(nameof(configure));
 
         var descriptor = new LogicEntitySpawnDescriptor(
             new FixVector2((Fix64)position.x, (Fix64)position.z),
-            new FixVector2(Fix64.Zero, Fix64.One),
+            forward,
             side,
-            characterKey);
-        entityParams.LogicEntityId = LogicEntityLifecycleService.RequestSpawn(descriptor);
-        entityParams.LogicEntityState = LogicEntityStateStore.GetRequired(entityParams.LogicEntityId);
+            characterKey,
+            entityParams.GetString(EntityParams.P_SourceStrongholdId));
+        LogicEntityId entityId = currentInteractionFrameLifecycle
+            ? LogicEntityLifecycleService.RequestConfiguredSpawnForCurrentInteractionFrame(descriptor, configure)
+            : LogicEntityLifecycleService.RequestConfiguredSpawn(descriptor, configure);
+        entityParams.LogicEntityId = entityId;
+        entityParams.LogicEntityState = LogicEntityStateStore.GetRequired(entityId);
     }
 }
 
 public static class BuildingInitialBuffFactory
 {
-    public static List<BuffData> CreateProductionBuffs(BuildingData buildingData)
-    {
-        var buffs = new List<BuffData>();
-        AddProductionBuff(buffs, buildingData);
-        return buffs.Count > 0 ? buffs : null;
-    }
-
     public static List<BuffData> CreateCombatInitialBuffs(BuildingData buildingData)
     {
         var buffs = new List<BuffData>();
         AddDefenseUtilityBuff(buffs, buildingData);
         return buffs.Count > 0 ? buffs : null;
-    }
-
-    public static List<BuffData> CreateInitialBuffs(BuildingData buildingData)
-    {
-        var buffs = new List<BuffData>();
-        AddInitialBuffs(buffs, buildingData);
-        return buffs.Count > 0 ? buffs : null;
-    }
-
-    public static void AddInitialBuffs(List<BuffData> buffList, BuildingData buildingData)
-    {
-        if (buffList == null || buildingData == null)
-            return;
-
-        AddProductionBuff(buffList, buildingData);
-        AddDefenseUtilityBuff(buffList, buildingData);
-    }
-
-    private static void AddProductionBuff(List<BuffData> buffList, BuildingData buildingData)
-    {
-        if (buildingData.Type != BuilType.Prod)
-            return;
-
-        BuffCallback module = null;
-        if (IsBuilding(buildingData, "Buil_ParcelLocker"))
-            module = new ParcelLockerProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_SouvenirStand"))
-            module = new SouvenirStandProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_MeatStall"))
-            module = new MeatStallProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_MiningRig"))
-            module = new MiningRigProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_ServiceDesk"))
-            module = new ServiceDeskProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_TrophyRack"))
-            module = new TrophyRackProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_Nursery"))
-            module = new NurseryProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_ReceptionDesk"))
-            module = new ReceptionDeskProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_InsuranceOffice"))
-            module = new InsuranceOfficeProductionBuff();
-        else if (IsBuilding(buildingData, "Buil_TicketBooth"))
-            module = new TicketBoothProductionBuff();
-
-        if (module == null)
-            return;
-
-        buffList.Add(BuffData.Create(
-            id: $"building_initial_production_{buildingData.Identifier}",
-            duration: float.MaxValue,
-            isForever: true,
-            maxStack: 1,
-            modules: new List<BuffCallback> { module }));
     }
 
     private static void AddDefenseUtilityBuff(List<BuffData> buffList, BuildingData buildingData)

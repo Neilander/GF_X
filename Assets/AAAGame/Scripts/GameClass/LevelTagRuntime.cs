@@ -99,9 +99,9 @@ public static class LevelTagRuntime
         };
     }
 
-    public static List<BuffData> CreateBuildingBuffs(BuildingEntity building)
+    public static List<BuffData> CreateBuildingBuffs(IBuildingLogicContext building)
     {
-        if (building?.buildingData == null)
+        if (building?.BuildingData == null)
             return null;
 
         var modules = new List<BuffCallback>();
@@ -112,7 +112,7 @@ public static class LevelTagRuntime
         if (modules.Count > 0)
         {
             result.Add(BuffData.Create(
-                id: $"level_tag_building_{building.OwnerFactionID}_{building.BuildingInstanceId}",
+                id: $"level_tag_building_{building.OwnerFactionId}_{building.BuildingInstanceId}",
                 duration: float.MaxValue,
                 isForever: true,
                 maxStack: 1,
@@ -122,7 +122,7 @@ public static class LevelTagRuntime
         return result.Count > 0 ? result : null;
     }
 
-    public static List<BuffData> CreateUnitBuffsFromSourceBuilding(BuildingEntity sourceBuilding)
+    public static List<BuffData> CreateUnitBuffsFromSourceBuilding(IBuildingLogicContext sourceBuilding)
     {
         if (sourceBuilding?.BuffComp is not CharacterBuffComp buffComp)
             return null;
@@ -150,11 +150,16 @@ public static class LevelTagRuntime
         };
     }
 
-    public static void ApplyCapturedStrongholdTrainingProvider(BuildingEntity building, int captureDay)
+    public static void ApplyCapturedStrongholdTrainingProvider(IBuildingLogicContext building, int captureDay)
     {
         BuffData buff = CreateCapturedStrongholdTrainingProviderBuff(building, captureDay);
         if (buff != null)
-            building.BuffComp?.AddBuff(buff, building);
+        {
+            IBuffComp buffComp = building.BuffComp
+                                 ?? throw new InvalidOperationException(
+                                     $"Captured stronghold building {building.LogicEntityId.Value} has no BuffComp.");
+            buffComp.AddBuff(buff, building);
+        }
     }
 
     public static bool TryConsumeHeroRevive(IEntityContext hero)
@@ -466,9 +471,9 @@ public static class LevelTagRuntime
         return Mathf.Max(0, (int)Fix64.Ceiling(result));
     }
 
-    public static Fix64 CalculateArmyForceBonus(BuildingEntity building)
+    public static Fix64 CalculateArmyForceBonus(IBuildingLogicContext building)
     {
-        if (building?.buildingData == null || building.buildingData.Type != BuilType.Army)
+        if (building?.BuildingData == null || building.BuildingData.Type != BuilType.Army)
             return Fix64.Zero;
 
         Fix64 total = Fix64.Zero;
@@ -490,12 +495,12 @@ public static class LevelTagRuntime
         return total;
     }
 
-    public static int CalculateArmySupplyPerUnitBonus(BuildingEntity building)
+    public static int CalculateArmySupplyPerUnitBonus(IBuildingLogicContext building)
     {
-        if (building?.buildingData == null || building.buildingData.Type != BuilType.Army)
+        if (building?.BuildingData == null || building.BuildingData.Type != BuilType.Army)
             return 0;
 
-        CharacterDataDetail row = FindCharacterData(building.buildingData.UnitID);
+        CharacterDataDetail row = FindCharacterData(building.BuildingData.UnitID);
         if (row == null || !IsHeavy(row))
             return 0;
 
@@ -672,13 +677,13 @@ public static class LevelTagRuntime
         }
     }
 
-    private static void AddBuildingModules(LevelTagTable tag, BuildingEntity building, List<BuffCallback> modules)
+    private static void AddBuildingModules(LevelTagTable tag, IBuildingLogicContext building, List<BuffCallback> modules)
     {
-        if (tag == null || building?.buildingData == null || modules == null)
+        if (tag == null || building?.BuildingData == null || modules == null)
             return;
 
-        bool player = building.OwnerFactionID == EntitySideHelper.PlayerFactionId;
-        bool enemy = building.OwnerFactionID != EntitySideHelper.PlayerFactionId;
+        bool player = building.OwnerFactionId == EntitySideHelper.PlayerFactionId;
+        bool enemy = building.OwnerFactionId != EntitySideHelper.PlayerFactionId;
         switch (tag.Identifier)
         {
             case "LvTag_EntrenchedFirepower":
@@ -741,12 +746,47 @@ public static class LevelTagRuntime
                 result.Add(row);
         }
 
+        result.Sort(CompareActiveTags);
         return result;
     }
 
-    private static BuffData CreateCapturedStrongholdTrainingProviderBuff(BuildingEntity building, int captureDay)
+    private static int CompareActiveTags(LevelTagTable left, LevelTagTable right)
     {
-        if (building?.buildingData == null || building.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+        if (ReferenceEquals(left, right))
+            return 0;
+        if (left == null)
+            return -1;
+        if (right == null)
+            return 1;
+
+        int idComparison = left.Id.CompareTo(right.Id);
+        return idComparison != 0
+            ? idComparison
+            : string.Compare(left.Identifier, right.Identifier, StringComparison.Ordinal);
+    }
+
+#if UNITY_EDITOR
+    public static int[] GetEditorTestSortedActiveTagIds(LevelTagTable[] tags)
+    {
+        if (tags == null)
+            throw new ArgumentNullException(nameof(tags));
+
+        var sorted = new List<LevelTagTable>(tags);
+        sorted.Sort(CompareActiveTags);
+        var ids = new int[sorted.Count];
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            if (sorted[i] == null)
+                throw new InvalidOperationException($"GetEditorTestSortedActiveTagIds failed: tag at index {i} is null.");
+            ids[i] = sorted[i].Id;
+        }
+        return ids;
+    }
+#endif
+
+    private static BuffData CreateCapturedStrongholdTrainingProviderBuff(IBuildingLogicContext building, int captureDay)
+    {
+        if (building?.BuildingData == null || building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
             return null;
 
         if (captureDay <= 0)

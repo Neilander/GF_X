@@ -338,7 +338,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         }
         Vector3 requestedHorizontalDisplacement = horizontalDisplacement;
 
-        UpdateNavigationConstraintBypassState(frameStartPosition);
+        UpdateNavigationConstraintBypassState(frameId, frameStartPosition);
         bool shouldConstrain = _navigationConstrained && !_constraintBypassForNextFrame && !_navigationConstraintBypass;
         DebugRequestedHorizontalDisplacement = requestedHorizontalDisplacement;
         DebugNavigationConstraintEnabled = shouldConstrain;
@@ -532,24 +532,33 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         }
     }
 
-    private void UpdateNavigationConstraintBypassState(Vector3 frameStartPosition)
+    private void UpdateNavigationConstraintBypassState(ulong frameId, Vector3 frameStartPosition)
     {
         if (!_navigationConstraintBypassUntilLegalPoint)
             return;
 
-        if (!FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
+        bool isLegal = frameId > 0
+            ? FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
+                _preparedLogicStartPosition,
+                _agentTypeID,
+                Fix64.Zero,
+                Fix64.Zero,
+                out _)
+            : FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
                 frameStartPosition,
                 _agentTypeID,
                 0f,
                 0f,
-                out _))
+                out _);
+        if (!isLegal)
             return;
 
         _navigationConstraintBypassUntilLegalPoint = false;
         _navigationConstraintBypass = false;
         Debug.Log(
             $"[MoveExecutor] Navigation escape complete. gameObject={gameObject.name} " +
-            $"position={frameStartPosition} agentTypeID={_agentTypeID}");
+            $"position={frameStartPosition} logicPositionRaw=({_preparedLogicStartPosition.x.RawValue},{_preparedLogicStartPosition.y.RawValue}) " +
+            $"agentTypeID={_agentTypeID} logicFrame={frameId}");
     }
 
     private void OnControllerColliderHit(ControllerColliderHit hit)

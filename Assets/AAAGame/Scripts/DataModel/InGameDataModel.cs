@@ -28,7 +28,7 @@ public enum IngameValueType
 /// <summary>
 /// 关卡数据模型类, 储存运行时关卡数据
 /// </summary>
-public class InGameDataModel : DataModelBase
+public partial class InGameDataModel : DataModelBase
 {
     private const string InitMaxSupplyConfigKey = "InitMaxSupply";
     private const string BaseProvideSupplyConfigKey = "BaseProvideSupply";
@@ -40,13 +40,13 @@ public class InGameDataModel : DataModelBase
     private readonly List<Stronghold> m_Strongholds = new();
     private readonly HashSet<BuildingEntity> m_Buildings = new();
     // 建筑点位橙髓存量：key=BuildingInstanceId。升级/回收沿用同 id，因此存量可跨建筑形态保持。
-    private readonly Dictionary<string, int> m_ProductionBuildingCoinReservesByInstanceId = new(StringComparer.Ordinal);
+    private Dictionary<string, int> m_ProductionBuildingCoinReservesByInstanceId = new(StringComparer.Ordinal);
     // 建筑实际建造/升级花费：key=BuildingInstanceId。回收按历史实际花费返钱。
-    private readonly Dictionary<string, int> m_BuildingCostSpentByInstanceId = new(StringComparer.Ordinal);
+    private Dictionary<string, int> m_BuildingCostSpentByInstanceId = new(StringComparer.Ordinal);
     private bool m_SupplyEventsSubscribed;
     // techId -> 已拥有该科技的建筑实例集合。
     // 全局层数 = 集合 Count；单建筑是否拥有 = 集合 Contains(buildingInstanceId)。
-    private readonly Dictionary<string, HashSet<string>> m_TechOwnerContextsById = new();
+    private Dictionary<string, HashSet<string>> m_TechOwnerContextsById = new(StringComparer.Ordinal);
 
     public string[] UnlockedTechIds { get; private set; }
     public Dictionary<int, Faction> Factions { get; private set; }
@@ -587,13 +587,18 @@ public class InGameDataModel : DataModelBase
             return false;
         }
 
-        foreach (var building in m_Buildings)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            if (building == null || building.OwnerFactionID != ownerFactionId)
+            if (!(entities[i] is IBuildingLogicContext building)
+                || !building.Alive
+                || building.OwnerFactionId != ownerFactionId)
+            {
                 continue;
+            }
 
             if (string.IsNullOrWhiteSpace(building.BuildingInstanceId))
-                continue;
+                throw new InvalidOperationException($"Logic building {building.LogicEntityId.Value} has no stable instance id.");
 
             if (owners.Contains(building.BuildingInstanceId))
                 return true;
@@ -638,8 +643,25 @@ public class InGameDataModel : DataModelBase
 
         UnregisterBuilding(building);
 
-        var stronghold = LevelEntity.GetStrongholdAtWorldPosition(building.transform.position);
-        building.SetStronghold(stronghold, false);
+        IBuildingLogicContext logicBuilding = building;
+        Stronghold stronghold = null;
+        if (!string.IsNullOrWhiteSpace(logicBuilding.StrongholdId))
+        {
+            for (int i = 0; i < dataModel.m_Strongholds.Count; i++)
+            {
+                Stronghold candidate = dataModel.m_Strongholds[i];
+                if (candidate?.strongholdData != null
+                    && string.Equals(candidate.strongholdData.StrongholdId, logicBuilding.StrongholdId, StringComparison.Ordinal))
+                {
+                    stronghold = candidate;
+                    break;
+                }
+            }
+            if (stronghold == null)
+                throw new InvalidOperationException($"Building {building.LogicEntityId.Value} references unknown stronghold '{logicBuilding.StrongholdId}'.");
+        }
+
+        building.BindStrongholdView(stronghold, logicBuilding.OwnerFactionId, false);
         if (stronghold != null)
         {
             stronghold.Buildings.Add(building);
@@ -653,13 +675,13 @@ public class InGameDataModel : DataModelBase
         if (dataModel == null)
             return;
 
-        var stronghold = building.CurrentStronghold;
+        Stronghold stronghold = building.CurrentStronghold;
         if (stronghold != null)
         {
             stronghold.Buildings.Remove(building);
         }
 
-        building.SetStronghold(null, false);
+        building.UnbindStrongholdView();
         dataModel.m_Buildings.Remove(building);
     }
 
@@ -725,7 +747,7 @@ public class InGameDataModel : DataModelBase
         for (int i = 0; i < EntityRegistry.AllEntities.Count; i++)
         {
             IEntityContext entity = EntityRegistry.AllEntities[i];
-            if (entity == null || entity is IBuildingLogicContext)
+            if (entity == null || entity.IsLogicBuilding())
                 continue;
 
             if (!entity.Alive || entity.Side != SideType.PlayerSide)
