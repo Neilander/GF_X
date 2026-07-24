@@ -193,6 +193,100 @@ public sealed class FlowNavigationGridPrefabBakerTests
         Assert.AreEqual(0, mask[1] & (1 << 3), "Left traversal must be cut by the wall between anchors.");
     }
 
+    [Test]
+    public void OverwriteBakesFixedAuthorityPayloadForGridMetadataAndAnchors()
+    {
+        FlowNavigationGridAsset asset = ScriptableObject.CreateInstance<FlowNavigationGridAsset>();
+        try
+        {
+            const int width = 2;
+            const int height = 1;
+            const float cellSize = 0.09f;
+            var origin = new Vector3(12.78f, 0f, 7.11f);
+            var anchors = new[]
+            {
+                new Vector3(12.80f, 0f, 7.13f),
+                new Vector3(12.915f, 0f, 7.155f)
+            };
+
+            asset.Overwrite(
+                -1372625422,
+                width,
+                height,
+                cellSize,
+                origin,
+                new[] { true, true },
+                new byte[] { 1, 1 },
+                anchors,
+                new byte[] { 16, 8 });
+
+            PropertyInfo hasPayloadProperty = typeof(FlowNavigationGridAsset).GetProperty("HasFixedAuthorityPayload");
+            MethodInfo getMetadataMethod = typeof(FlowNavigationGridAsset).GetMethod("GetFixedAuthorityMetadata");
+            MethodInfo getAnchorsMethod = typeof(FlowNavigationGridAsset).GetMethod("GetCellAnchorsFixedRuntimeReadOnlyReference");
+
+            Assert.IsNotNull(hasPayloadProperty, "FlowNavigationGridAsset must expose a baked fixed authority payload contract.");
+            Assert.IsNotNull(getMetadataMethod, "FlowNavigationGridAsset must expose baked Q32 grid metadata.");
+            Assert.IsNotNull(getAnchorsMethod, "FlowNavigationGridAsset must expose baked fixed anchors.");
+            Assert.IsTrue((bool)hasPayloadProperty.GetValue(asset));
+
+            object metadata = getMetadataMethod.Invoke(asset, null);
+            Type metadataType = metadata.GetType();
+            long cellSizeRaw = (long)metadataType.GetField("CellSizeGridRaw").GetValue(metadata);
+            long originXRaw = (long)metadataType.GetField("OriginXGridRaw").GetValue(metadata);
+            long originZRaw = (long)metadataType.GetField("OriginZGridRaw").GetValue(metadata);
+            Array fixedAnchors = (Array)getAnchorsMethod.Invoke(asset, null);
+
+            Assert.AreEqual(386547072L, cellSizeRaw);
+            Assert.AreEqual(54889680896L, originXRaw);
+            Assert.AreEqual(30537218048L, originZRaw);
+            Assert.AreEqual(width * height, fixedAnchors.Length);
+            Assert.AreEqual(((Fix64)anchors[0].x).RawValue, ReadFixVectorRaw(fixedAnchors.GetValue(0), "x"));
+            Assert.AreEqual(((Fix64)anchors[0].z).RawValue, ReadFixVectorRaw(fixedAnchors.GetValue(0), "y"));
+            Assert.AreEqual(((Fix64)anchors[1].x).RawValue, ReadFixVectorRaw(fixedAnchors.GetValue(1), "x"));
+            Assert.AreEqual(((Fix64)anchors[1].z).RawValue, ReadFixVectorRaw(fixedAnchors.GetValue(1), "y"));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(asset);
+        }
+    }
+
+    [Test]
+    public void ProjectFlowNavigationGridAssetsCarryValidV3FixedAuthorityPayloads()
+    {
+        string[] guids = AssetDatabase.FindAssets("t:FlowNavigationGridAsset", new[] { "Assets/AAAGame/Tilemap" });
+        Array.Sort(guids, StringComparer.Ordinal);
+        Assert.AreEqual(12, guids.Length);
+
+        for (int i = 0; i < guids.Length; i++)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+            FlowNavigationGridAsset asset = AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(path);
+            Assert.IsNotNull(asset, path);
+            Assert.IsTrue(asset.HasFixedAuthorityPayload, path);
+
+            FlowNavigationGridAsset.FixedAuthorityMetadata metadata = asset.GetFixedAuthorityMetadata();
+            FlowNavigationGridAsset.DerivedNavigationData derivedData = asset.GetDerivedNavigationDataRuntimeReadOnlyReference();
+            Assert.IsNotNull(derivedData, path);
+            Assert.IsTrue(derivedData.IsValid, path);
+            Assert.AreEqual(FlowNavigationGridAsset.DerivedNavigationData.CurrentVersion, derivedData.Version, path);
+            Assert.AreEqual(metadata.CellSizeGridRaw, derivedData.CellSizeGridRaw, path);
+            Assert.AreEqual(metadata.OriginXGridRaw, derivedData.OriginXGridRaw, path);
+            Assert.AreEqual(metadata.OriginZGridRaw, derivedData.OriginZGridRaw, path);
+            Assert.AreEqual(asset.CellCount, asset.GetCellAnchorsFixedRuntimeReadOnlyReference().Length, path);
+        }
+    }
+
+    private static long ReadFixVectorRaw(object value, string fieldName)
+    {
+        FieldInfo field = value.GetType().GetField(fieldName);
+        Assert.IsNotNull(field);
+        object fix64 = field.GetValue(value);
+        PropertyInfo rawValue = fix64.GetType().GetProperty("RawValue");
+        Assert.IsNotNull(rawValue);
+        return (long)rawValue.GetValue(fix64);
+    }
+
     private static object InvokeBakeFromTerrainPrefab(
         string terrainPrefabPath,
         string assetPath,

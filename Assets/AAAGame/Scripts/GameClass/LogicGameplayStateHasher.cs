@@ -35,6 +35,7 @@ public static class LogicGameplayStateHasher
         hasher.Add(0x47414D4553544154UL);
         hasher.Add(frame);
         InGameDataModel.WriteDeterministicState(hasher);
+        LogicRewardStateService.WriteDeterministicState(hasher);
         LogicInteractionHoldService.WriteDeterministicState(hasher);
         LogicInteractionTargetStateService.WriteDeterministicState(hasher);
         LogicInteractionCommandService.WriteDeterministicState(hasher);

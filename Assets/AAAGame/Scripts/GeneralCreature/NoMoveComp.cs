@@ -24,6 +24,7 @@ public class NoMoveComp : IMoveComp
     }
 
     public void SetNavTarget(Vector3 destination) { }
+    public void SetNavTargetFixed(FixVector2 destination) { }
     public Vector3 GetNavDirection() => Vector3.zero;
     public void ShutDown() { }
     public void Resume() { }

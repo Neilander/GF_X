@@ -14,6 +14,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static ulong _sharedGoalFieldAuthorityContentHash;
     private static ulong _costStampAuthorityContentHash;
     private static int _sharedGoalBuildJobAuthorityHashRefreshCount;
+    private static long _sharedGoalBuildJobAuthorityHashVisitedEntryCount;
 
     public static int DiagnosticCheckpointRefreshCount { get; private set; }
 
@@ -89,6 +90,7 @@ public static partial class FlowFieldCrowdMovementSystem
         AddAuthorityMovingTargetAnchors(hasher);
         AddGoalReservations(hasher);
         AddAuthorityFixedPortalOwners(hasher);
+        AddAuthorityFixedCorridorBuilds(hasher);
     }
 
     private static void AddAuthorityNavigationConfig(LogicStateHasher hasher)
@@ -116,6 +118,7 @@ public static partial class FlowFieldCrowdMovementSystem
         _sharedGoalFieldAuthorityContentHash = 0;
         _costStampAuthorityContentHash = 0;
         _sharedGoalBuildJobAuthorityHashRefreshCount = 0;
+        _sharedGoalBuildJobAuthorityHashVisitedEntryCount = 0;
         DiagnosticCheckpointRefreshCount = 0;
     }
 
@@ -426,6 +429,161 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private static void AddAuthorityToken(ref ulong hash, long value)
+    {
+        ulong raw = unchecked((ulong)value);
+        for (int i = 0; i < sizeof(ulong); i++)
+        {
+            hash ^= (byte)(raw >> (i * 8));
+            hash *= 1099511628211UL;
+        }
+    }
+
+    private static ulong ComputeAuthorityIntToken(ulong domain, int value)
+    {
+        ulong token = 14695981039346656037UL;
+        AddAuthorityToken(ref token, unchecked((long)domain));
+        AddAuthorityToken(ref token, value);
+        return token;
+    }
+
+    private static ulong ComputeAuthorityIntIntToken(ulong domain, int key, int value)
+    {
+        ulong token = 14695981039346656037UL;
+        AddAuthorityToken(ref token, unchecked((long)domain));
+        AddAuthorityToken(ref token, key);
+        AddAuthorityToken(ref token, value);
+        return token;
+    }
+
+    private static ulong ComputeAuthorityIntLongToken(ulong domain, int key, long value)
+    {
+        ulong token = 14695981039346656037UL;
+        AddAuthorityToken(ref token, unchecked((long)domain));
+        AddAuthorityToken(ref token, key);
+        AddAuthorityToken(ref token, value);
+        return token;
+    }
+
+    private static ulong ComputeDeterministicCostQueueNodeAuthorityToken(int index, long cost)
+    {
+        return ComputeAuthorityIntLongToken(0x5347484541504E44UL, index, cost);
+    }
+
+    public static bool TryValidateEditorTestSharedGoalIncrementalAuthorityHashes(out string failureReason)
+    {
+        for (LinkedListNode<SharedGoalFieldBuildJob> node = SharedGoalFieldBuildQueue.First; node != null; node = node.Next)
+        {
+            SharedGoalFieldBuildJob job = node.Value;
+            if (job == null)
+            {
+                failureReason = "Shared-goal build queue contains a null job.";
+                return false;
+            }
+            if (job.PortalOpenSet != null
+                && job.PortalOpenSet.AuthorityContentHash != job.PortalOpenSet.ComputeAuthorityContentHashForValidation())
+            {
+                failureReason = $"Shared-goal heap authority hash mismatch key={job.Key}.";
+                return false;
+            }
+            if (job.DemandStartSectorAuthorityContentHash
+                != ComputeAuthorityIntSetHash(job.DemandStartSectorIds, 0x534744534543544FUL))
+            {
+                failureReason = $"Shared-goal demand sector authority hash mismatch key={job.Key}.";
+                return false;
+            }
+            if (job.DemandStartCellAuthorityContentHash
+                != ComputeAuthorityIntIntMapHash(job.DemandStartSectorByCellIndex, 0x53474443454C4C4FUL))
+            {
+                failureReason = $"Shared-goal demand cell authority hash mismatch key={job.Key}.";
+                return false;
+            }
+            if (job.SettledPortalAuthorityContentHash
+                != ComputeAuthorityIntSetHash(job.SettledPortalNodes, 0x5347534554544C45UL))
+            {
+                failureReason = $"Shared-goal settled portal authority hash mismatch key={job.Key}.";
+                return false;
+            }
+            if (!TryValidateSharedGoalFieldIncrementalAuthorityHashes(job.Field, out failureReason))
+                return false;
+        }
+
+        foreach (SharedGoalField field in SharedGoalFields.Values)
+        {
+            if (!TryValidateSharedGoalFieldIncrementalAuthorityHashes(field, out failureReason))
+                return false;
+        }
+
+        failureReason = null;
+        return true;
+    }
+
+    private static bool TryValidateSharedGoalFieldIncrementalAuthorityHashes(SharedGoalField field, out string failureReason)
+    {
+        if (field == null)
+        {
+            failureReason = null;
+            return true;
+        }
+        if (field.NodeCostsAuthorityContentHash
+            != ComputeAuthorityIntLongMapHash(field.NodeCosts, 0x5347464E434F5354UL))
+        {
+            failureReason = $"Shared-goal node cost authority hash mismatch key={field.Key}.";
+            return false;
+        }
+        if (field.NextNodeTowardGoalAuthorityContentHash
+            != ComputeAuthorityIntIntMapHash(field.NextNodeTowardGoal, 0x5347464E4558544EUL))
+        {
+            failureReason = $"Shared-goal next node authority hash mismatch key={field.Key}.";
+            return false;
+        }
+        if (field.CompletedDemandStartSectorAuthorityContentHash
+            != ComputeAuthorityIntSetHash(field.CompletedDemandStartSectorIds, 0x534746434F4D5053UL))
+        {
+            failureReason = $"Shared-goal completed demand sector authority hash mismatch key={field.Key}.";
+            return false;
+        }
+        if (field.CompletedDemandStartCellAuthorityContentHash
+            != ComputeAuthorityIntSetHash(field.CompletedDemandStartCellIndices, 0x534746434F4D5043UL))
+        {
+            failureReason = $"Shared-goal completed demand cell authority hash mismatch key={field.Key}.";
+            return false;
+        }
+
+        failureReason = null;
+        return true;
+    }
+
+    private static ulong ComputeAuthorityIntSetHash(IEnumerable<int> values, ulong domain)
+    {
+        ulong contentHash = 0;
+        if (values == null)
+            return contentHash;
+        foreach (int value in values)
+            contentHash ^= ComputeAuthorityIntToken(domain, value);
+        return contentHash;
+    }
+
+    private static ulong ComputeAuthorityIntIntMapHash(IDictionary<int, int> values, ulong domain)
+    {
+        ulong contentHash = 0;
+        if (values == null)
+            return contentHash;
+        foreach (KeyValuePair<int, int> pair in values)
+            contentHash ^= ComputeAuthorityIntIntToken(domain, pair.Key, pair.Value);
+        return contentHash;
+    }
+
+    private static ulong ComputeAuthorityIntLongMapHash(IDictionary<int, long> values, ulong domain)
+    {
+        ulong contentHash = 0;
+        if (values == null)
+            return contentHash;
+        foreach (KeyValuePair<int, long> pair in values)
+            contentHash ^= ComputeAuthorityIntLongToken(domain, pair.Key, pair.Value);
+        return contentHash;
+    }
+
     private static void AddAuthoritySharedGoalFieldBuildQueue(LogicStateHasher hasher)
     {
         hasher.Add(0x4E415653484A4F42UL);
@@ -466,14 +624,61 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.GoalY);
         hasher.Add(job.AgentTypeId);
         hasher.Add((int)job.Stage);
-        AddDeterministicCostHeap(hasher, job.PortalOpenSet);
-        AddSortedInts(hasher, job.DemandStartSectorIds);
-        AddSortedIntDictionary(hasher, job.DemandStartSectorByCellIndex);
-        AddSortedInts(hasher, job.SettledPortalNodes);
-        AddSharedGoalField(hasher, job.Field);
+        AddSharedGoalBuildHeapProgressDigest(hasher, job.PortalOpenSet);
+        AddSharedGoalBuildSetProgressDigest(hasher, job.DemandStartSectorIds, job.DemandStartSectorAuthorityContentHash);
+        AddSharedGoalBuildMapProgressDigest(hasher, job.DemandStartSectorByCellIndex, job.DemandStartCellAuthorityContentHash);
+        AddSharedGoalBuildSetProgressDigest(hasher, job.SettledPortalNodes, job.SettledPortalAuthorityContentHash);
+        AddSharedGoalFieldProgressDigest(hasher, job.Field);
         job.AuthorityProgressHash = hasher.Hash;
         job.HasAuthorityProgressHash = true;
         _sharedGoalBuildJobAuthorityHashRefreshCount++;
+    }
+
+    private static void AddSharedGoalBuildHeapProgressDigest(LogicStateHasher hasher, DeterministicCostHeap heap)
+    {
+        hasher.Add(heap != null);
+        if (heap == null)
+            return;
+        hasher.Add(heap.Count);
+        hasher.Add(heap.AuthorityContentHash);
+    }
+
+    private static void AddSharedGoalBuildSetProgressDigest(LogicStateHasher hasher, ICollection<int> values, ulong contentHash)
+    {
+        hasher.Add(values != null);
+        if (values == null)
+            return;
+        hasher.Add(values.Count);
+        hasher.Add(contentHash);
+    }
+
+    private static void AddSharedGoalBuildMapProgressDigest(LogicStateHasher hasher, IDictionary<int, int> values, ulong contentHash)
+    {
+        hasher.Add(values != null);
+        if (values == null)
+            return;
+        hasher.Add(values.Count);
+        hasher.Add(contentHash);
+    }
+
+    private static void AddSharedGoalFieldProgressDigest(LogicStateHasher hasher, SharedGoalField field)
+    {
+        hasher.Add(field != null);
+        if (field == null)
+            return;
+        AddSharedGoalKey(hasher, field.Key);
+        hasher.Add(field.GoalSectorId);
+        hasher.Add(field.GoalX);
+        hasher.Add(field.GoalY);
+        hasher.Add(field.NodeCosts.Count);
+        hasher.Add(field.NodeCostsAuthorityContentHash);
+        hasher.Add(field.NextNodeTowardGoal.Count);
+        hasher.Add(field.NextNodeTowardGoalAuthorityContentHash);
+        hasher.Add(field.CompletedDemandStartSectorIds.Count);
+        hasher.Add(field.CompletedDemandStartSectorAuthorityContentHash);
+        hasher.Add(field.CompletedDemandStartCellIndices.Count);
+        hasher.Add(field.CompletedDemandStartCellAuthorityContentHash);
+        hasher.Add(field.LastUsedFrame);
     }
 
     private static ulong ComputeDeterministicFlowTileAuthorityContentHash(FlowTileCacheEntry tile)
@@ -977,6 +1182,49 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private static void AddAuthorityFixedCorridorBuilds(LogicStateHasher hasher)
+    {
+        var worldVersions = new List<int>(FixedCorridorLookupByWorldVersion.Keys);
+        worldVersions.Sort();
+        hasher.Add(0x4E4156434F525244UL);
+        hasher.Add(FixedCorridorBuildOperationQuota);
+        hasher.Add(worldVersions.Count);
+        for (int i = 0; i < worldVersions.Count; i++)
+        {
+            int worldVersion = worldVersions[i];
+            FixedCorridorLookup lookup = FixedCorridorLookupByWorldVersion[worldVersion]
+                ?? throw new InvalidOperationException("Navigation authority digest encountered a null fixed corridor lookup.");
+            hasher.Add(worldVersion);
+            hasher.Add(lookup.NarrowWidth);
+            hasher.Add(lookup.NextComponentId);
+            hasher.Add(lookup.ComponentIdByCell.Count);
+            hasher.Add(lookup.ComponentAssignmentContentHash);
+            hasher.Add(lookup.CompletedComponentIds.Count);
+            hasher.Add(lookup.CompletedComponentContentHash);
+            hasher.Add(lookup.DescriptorByComponentId.Count);
+            hasher.Add(lookup.DescriptorContentHash);
+            hasher.Add(lookup.PendingStartIndices.Count);
+            hasher.Add(lookup.PendingStartContentHash);
+
+            FixedCorridorBuildJob job = lookup.ActiveBuildJob;
+            hasher.Add(job != null);
+            if (job == null)
+                continue;
+            hasher.Add(job.ComponentId);
+            hasher.Add(job.StartIndex);
+            hasher.Add(job.MinimumCellIndex);
+            hasher.Add(job.Head);
+            hasher.Add(job.Queue.Count);
+            hasher.Add(job.ComponentCellContentHash);
+            hasher.Add(job.ExternalEndpointCells.Count);
+            hasher.Add(job.ExternalEndpointContentHash);
+            hasher.Add(job.ExternalEndpointOverflow);
+            hasher.Add(job.TerminalEndpointCells.Count);
+            hasher.Add(job.TerminalEndpointContentHash);
+            hasher.Add(job.TerminalEndpointOverflow);
+        }
+    }
+
     private static void AddWorldStates(LogicStateHasher hasher)
     {
         var keys = new List<int>(WorldStates.Keys);
@@ -1291,7 +1539,6 @@ public static partial class FlowFieldCrowdMovementSystem
             AddPathHandle(hasher, nav.PathHandle);
             AddVector3(hasher, nav.CurrentFlowDirection);
             AddVector3(hasher, nav.DesiredVelocity);
-            AddVector3(hasher, nav.PreviousResolvedVelocity);
             AddVector3(hasher, nav.ResolvedVelocity);
             hasher.Add(nav.ResolvedVelocityFrame);
             hasher.Add((int)nav.LastMovementMode);

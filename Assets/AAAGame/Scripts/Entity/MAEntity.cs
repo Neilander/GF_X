@@ -89,12 +89,8 @@ public class MAEntity : CompCreature, IEntityContext
     public FixVector2 PositionFixed
     {
         get => RequireLogicState().Position;
-        set
-        {
-            RequireLogicState().Position = value;
-            Vector3 current = transform.position;
-            transform.position = new Vector3((float)value.x, current.y, (float)value.y);
-        }
+        set => throw new InvalidOperationException(
+            "MAEntity.PositionFixed setter rejected: View cannot mutate LogicEntityState position.");
     }
 
     public FixVector2 ForwardFixed => RequireLogicState().Forward;
@@ -110,12 +106,8 @@ public class MAEntity : CompCreature, IEntityContext
             FixVector2 fixedPosition = PositionFixed;
             return new Vector3((float)fixedPosition.x, transform.position.y, (float)fixedPosition.y);
         }
-        set
-        {
-            PositionFixed = new FixVector2((Fix64)value.x, (Fix64)value.z);
-            Vector3 current = transform.position;
-            transform.position = new Vector3(current.x, value.y, current.z);
-        }
+        set => throw new InvalidOperationException(
+            "MAEntity.Position setter rejected: View cannot mutate LogicEntityState position.");
     }
 
     public Quaternion Rotation

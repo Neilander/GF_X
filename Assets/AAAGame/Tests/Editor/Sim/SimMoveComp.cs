@@ -66,6 +66,11 @@ public class SimMoveComp : IMoveComp
         _targetPosFixed = new FixVector2((Fix64)destination.x, (Fix64)destination.z);
     }
 
+    public void SetNavTargetFixed(FixVector2 destination)
+    {
+        _targetPosFixed = destination;
+    }
+
     public Vector3 GetNavDirection()
     {
         if (!_targetPosFixed.HasValue || _ctx == null)

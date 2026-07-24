@@ -10,11 +10,11 @@ using System.Collections.Generic;
 public interface IEntityContext : ITargetable
 {
     LogicEntityId LogicEntityId { get; }
-    FixVector2 PositionFixed { get; set; }
+    FixVector2 PositionFixed { get; }
     FixVector2 ForwardFixed { get; }
     LogicCombatShape CombatShape { get; }
-    Vector3 Position { get; set; }
-    Quaternion Rotation { get; set; }
+    Vector3 Position { get; }
+    Quaternion Rotation { get; }
     new SideType Side { get; }
     new bool Alive { get; }
     new string CharacterKey { get; }

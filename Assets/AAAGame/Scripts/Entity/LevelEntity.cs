@@ -190,31 +190,6 @@ public partial class LevelEntity : EntityBase
 #endif
     }
 
-    private static int RefreshAllBuildingFlowFieldObstacles()
-    {
-        if (!GroupMoveManager.HasInstance)
-        {
-            Log.Error("LevelEntity.RefreshAllBuildingFlowFieldObstacles failed: GroupMoveManager is not available.");
-            return 0;
-        }
-
-        BuildingEntity[] buildings = FindObjectsByType<BuildingEntity>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        int refreshedCount = 0;
-        for (int i = 0; i < buildings.Length; i++)
-        {
-            BuildingEntity building = buildings[i];
-            if (building == null || !building.gameObject.activeInHierarchy)
-            {
-                continue;
-            }
-
-            building.RefreshFlowFieldObstacles();
-            refreshedCount++;
-        }
-
-        return refreshedCount;
-    }
-
     private void SubscribeRuntimeLayerRules()
     {
         if (tileWorldCreatorManager == null)
@@ -440,8 +415,6 @@ public partial class LevelEntity : EntityBase
                     break;
             }
         }
-
-        RefreshAllBuildingFlowFieldObstacles();
     }
 
     private async UniTask SpawnPresetEntitiesAsync(int initVersion)
@@ -557,19 +530,15 @@ public partial class LevelEntity : EntityBase
             }
         }
 
-        Stopwatch refreshStopwatch = Stopwatch.StartNew();
-        int refreshedObstacles = RefreshAllBuildingFlowFieldObstacles();
         Log.Info(
-            "[LevelRuntimeInitTiming] stage=spawn-presets-complete elapsedMs={0:F3} presetPoints={1} processed={2} buildings={3} heroSpawned={4} skipped={5} yields={6} obstacleRefreshMs={7:F3} refreshedObstacles={8}",
+            "[LevelRuntimeInitTiming] stage=spawn-presets-complete elapsedMs={0:F3} presetPoints={1} processed={2} buildings={3} heroSpawned={4} skipped={5} yields={6}",
             stopwatch.Elapsed.TotalMilliseconds,
             presetPoints.Length,
             processedCount,
             buildingCount,
             heroSpawned,
             skippedCount,
-            yieldCount,
-            refreshStopwatch.Elapsed.TotalMilliseconds,
-            refreshedObstacles);
+            yieldCount);
     }
 
     private int ResolveOwnerFactionIdByPosition(Vector3 position)

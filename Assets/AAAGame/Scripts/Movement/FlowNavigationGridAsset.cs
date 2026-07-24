@@ -17,9 +17,15 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     [SerializeField] private Vector3[] _sparseCellAnchorValues = Array.Empty<Vector3>();
     [SerializeField] private byte[] _neighborTraversalMask = Array.Empty<byte>();
     [SerializeField] private bool _hasAuthoredNeighborTraversalMask;
+    [SerializeField] private int _fixedAuthorityPayloadVersion;
+    [SerializeField] private long _cellSizeGridRaw;
+    [SerializeField] private long _originXGridRaw;
+    [SerializeField] private long _originZGridRaw;
+    [SerializeField] private byte[] _sparseCellAnchorFixedRaw = Array.Empty<byte>();
     [SerializeField] private DerivedNavigationData _derivedNavigationData;
 
     [NonSerialized] private Vector3[] _runtimeCellAnchorsCache;
+    [NonSerialized] private FixVector2[] _runtimeCellAnchorsFixedCache;
 
     public int AgentTypeId => _agentTypeId;
     public int Width => _width;
@@ -28,6 +34,11 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     public Vector3 Origin => _origin;
     public int CellCount => _width * _height;
     public bool HasDerivedNavigationData => _derivedNavigationData != null && _derivedNavigationData.IsValid;
+    public bool HasFixedAuthorityPayload => _fixedAuthorityPayloadVersion == NavigationGridFixedMath.AuthorityPayloadVersion
+                                            && _cellSizeGridRaw > 0
+                                            && _sparseCellAnchorIndices != null
+                                            && _sparseCellAnchorFixedRaw != null
+                                            && _sparseCellAnchorFixedRaw.Length == _sparseCellAnchorIndices.Length * NavigationGridFixedMath.EncodedFixVector2Size;
     public bool HasAuthoredCellAnchors
     {
         get
@@ -41,7 +52,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     [Serializable]
     public sealed class DerivedNavigationData
     {
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
 
         public int Version;
         public int AgentTypeId;
@@ -49,6 +60,9 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         public int Height;
         public float CellSize;
         public Vector3 Origin;
+        public long CellSizeGridRaw;
+        public long OriginXGridRaw;
+        public long OriginZGridRaw;
         public int ConfigSectorSizeInCells;
         public int ConfigPortalNarrowWidthCells;
         public int ConfigPortalMaxWindowWidthCells;
@@ -67,6 +81,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
                                && Width > 0
                                && Height > 0
                                && CellSize > 0.0001f
+                               && CellSizeGridRaw > 0
                                && SectorSizeInCells > 0
                                && SectorCountX > 0
                                && SectorCountY > 0
@@ -75,6 +90,20 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
                                && Sectors != null
                                && Sectors.Length == SectorCountX * SectorCountY
                                && Portals != null;
+    }
+
+    public readonly struct FixedAuthorityMetadata
+    {
+        public readonly long CellSizeGridRaw;
+        public readonly long OriginXGridRaw;
+        public readonly long OriginZGridRaw;
+
+        public FixedAuthorityMetadata(long cellSizeGridRaw, long originXGridRaw, long originZGridRaw)
+        {
+            CellSizeGridRaw = cellSizeGridRaw;
+            OriginXGridRaw = originXGridRaw;
+            OriginZGridRaw = originZGridRaw;
+        }
     }
 
     [Serializable]
@@ -127,6 +156,8 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
     {
         _origin = origin;
         ResetCellAnchorsToCenters();
+        _derivedNavigationData = null;
+        RebuildFixedAuthorityPayload();
     }
 
     public void Resize(int width, int height, float cellSize, bool defaultWalkable)
@@ -180,7 +211,8 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         NormalizeCellAnchors();
         StoreSparseCellAnchors(_cellAnchors);
         _costs = CreateDefaultCosts(_walkable);
-        InvalidateRuntimeCellAnchorsCache();
+        InvalidateRuntimeCellAnchorCaches();
+        RebuildFixedAuthorityPayload();
     }
 
     public void Overwrite(
@@ -243,6 +275,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         }
 
         StoreSparseCellAnchors(normalizedAnchors);
+        RebuildFixedAuthorityPayload();
     }
 
     public void Fill(bool walkable)
@@ -258,7 +291,8 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
                 _neighborTraversalMask[i] = 0;
         }
 
-        InvalidateRuntimeCellAnchorsCache();
+        InvalidateRuntimeCellAnchorCaches();
+        RebuildFixedAuthorityPayload();
     }
 
     public bool IsCellWalkable(int x, int y)
@@ -284,7 +318,8 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
                 _neighborTraversalMask[index] = 0;
         }
 
-        InvalidateRuntimeCellAnchorsCache();
+        InvalidateRuntimeCellAnchorCaches();
+        RebuildFixedAuthorityPayload();
     }
 
     public Vector3 GetCellAnchor(int x, int y)
@@ -307,7 +342,8 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
             throw new InvalidOperationException($"FlowNavigationGridAsset.SetCellAnchor failed: anchor is not finite for cell ({x},{y}).");
 
         SetStoredCellAnchor(x + y * _width, x, y, anchor);
-        InvalidateRuntimeCellAnchorsCache();
+        InvalidateRuntimeCellAnchorCaches();
+        RebuildFixedAuthorityPayload();
     }
 
     public void SetCellNeighborTraversalMask(int x, int y, byte mask)
@@ -415,6 +451,78 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         return HasAuthoredCellAnchors ? GetCellAnchorsRuntimeReadOnlyReference() : null;
     }
 
+    public FixedAuthorityMetadata GetFixedAuthorityMetadata()
+    {
+        ValidateFixedAuthorityPayload("FlowNavigationGridAsset.GetFixedAuthorityMetadata");
+        return new FixedAuthorityMetadata(_cellSizeGridRaw, _originXGridRaw, _originZGridRaw);
+    }
+
+    public FixVector2[] GetCellAnchorsFixedRuntimeReadOnlyReference()
+    {
+        ValidateFixedAuthorityPayload("FlowNavigationGridAsset.GetCellAnchorsFixedRuntimeReadOnlyReference");
+        if (_runtimeCellAnchorsFixedCache == null || _runtimeCellAnchorsFixedCache.Length != CellCount)
+            _runtimeCellAnchorsFixedCache = BuildDenseFixedCellAnchors();
+        return _runtimeCellAnchorsFixedCache;
+    }
+
+    public void RebuildFixedAuthorityPayload()
+    {
+        EnsureValidStorage();
+        if (HasDenseCellAnchors())
+            StoreSparseCellAnchors(_cellAnchors);
+
+        _fixedAuthorityPayloadVersion = NavigationGridFixedMath.AuthorityPayloadVersion;
+        _cellSizeGridRaw = NavigationGridFixedMath.FloatToGridRaw(_cellSize);
+        _originXGridRaw = NavigationGridFixedMath.FloatToGridRaw(_origin.x);
+        _originZGridRaw = NavigationGridFixedMath.FloatToGridRaw(_origin.z);
+        _sparseCellAnchorFixedRaw = NavigationGridFixedMath.EncodeFixVector2XZ(_sparseCellAnchorValues);
+        _runtimeCellAnchorsFixedCache = null;
+        ValidateFixedAuthorityPayload("FlowNavigationGridAsset.RebuildFixedAuthorityPayload");
+    }
+
+    public void UpgradeFixedAuthorityPayloadAndDerivedMetadata()
+    {
+        RebuildFixedAuthorityPayload();
+        if (_derivedNavigationData == null)
+            throw new InvalidOperationException("FlowNavigationGridAsset upgrade failed: derived navigation data is missing.");
+
+        DerivedNavigationData data = _derivedNavigationData;
+        bool supportedVersion = data.Version == 2 || data.Version == DerivedNavigationData.CurrentVersion;
+        bool hasValidTopology = data.Width > 0
+                                && data.Height > 0
+                                && data.CellSize > 0.0001f
+                                && data.SectorSizeInCells > 0
+                                && data.SectorCountX > 0
+                                && data.SectorCountY > 0
+                                && data.IslandIds != null
+                                && data.IslandIds.Length == data.Width * data.Height
+                                && data.Sectors != null
+                                && data.Sectors.Length == data.SectorCountX * data.SectorCountY
+                                && data.Portals != null;
+        if (!supportedVersion || !hasValidTopology)
+        {
+            throw new InvalidOperationException(
+                $"FlowNavigationGridAsset upgrade failed: derived navigation topology is invalid. version={data.Version}.");
+        }
+        if (data.AgentTypeId != _agentTypeId
+            || data.Width != _width
+            || data.Height != _height
+            || !Mathf.Approximately(data.CellSize, _cellSize)
+            || data.Origin != _origin)
+        {
+            throw new InvalidOperationException("FlowNavigationGridAsset upgrade failed: derived metadata does not match the asset.");
+        }
+
+        DerivedNavigationData upgraded = CloneDerivedNavigationData(data);
+        upgraded.Version = DerivedNavigationData.CurrentVersion;
+        upgraded.CellSizeGridRaw = _cellSizeGridRaw;
+        upgraded.OriginXGridRaw = _originXGridRaw;
+        upgraded.OriginZGridRaw = _originZGridRaw;
+        if (!upgraded.IsValid)
+            throw new InvalidOperationException("FlowNavigationGridAsset upgrade failed: upgraded derived navigation data is invalid.");
+        _derivedNavigationData = upgraded;
+    }
+
     public byte[] CreateNeighborTraversalMaskCopy()
     {
         EnsureValidStorage();
@@ -448,7 +556,10 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
             || data.Width != _width
             || data.Height != _height
             || !Mathf.Approximately(data.CellSize, _cellSize)
-            || data.Origin != _origin)
+            || data.Origin != _origin
+            || data.CellSizeGridRaw != _cellSizeGridRaw
+            || data.OriginXGridRaw != _originXGridRaw
+            || data.OriginZGridRaw != _originZGridRaw)
         {
             throw new InvalidOperationException(
                 $"FlowNavigationGridAsset.SetDerivedNavigationData failed: derived metadata does not match asset. " +
@@ -479,6 +590,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         _height = Mathf.Max(1, _height);
         _cellSize = Mathf.Max(0.0001f, _cellSize);
         EnsureValidStorage();
+        RebuildFixedAuthorityPayload();
     }
 
     private static DerivedNavigationData CloneDerivedNavigationData(DerivedNavigationData source)
@@ -494,6 +606,9 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
             Height = source.Height,
             CellSize = source.CellSize,
             Origin = source.Origin,
+            CellSizeGridRaw = source.CellSizeGridRaw,
+            OriginXGridRaw = source.OriginXGridRaw,
+            OriginZGridRaw = source.OriginZGridRaw,
             ConfigSectorSizeInCells = source.ConfigSectorSizeInCells,
             ConfigPortalNarrowWidthCells = source.ConfigPortalNarrowWidthCells,
             ConfigPortalMaxWindowWidthCells = source.ConfigPortalMaxWindowWidthCells,
@@ -637,7 +752,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         _cellAnchors = Array.Empty<Vector3>();
         _sparseCellAnchorIndices = Array.Empty<int>();
         _sparseCellAnchorValues = Array.Empty<Vector3>();
-        InvalidateRuntimeCellAnchorsCache();
+        InvalidateRuntimeCellAnchorCaches();
         NormalizeCellAnchors();
     }
 
@@ -656,7 +771,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         _cellAnchors = Array.Empty<Vector3>();
         _sparseCellAnchorIndices = Array.Empty<int>();
         _sparseCellAnchorValues = Array.Empty<Vector3>();
-        InvalidateRuntimeCellAnchorsCache();
+        InvalidateRuntimeCellAnchorCaches();
     }
 
     private void NormalizeCellAnchors()
@@ -748,7 +863,7 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
         _cellAnchors = Array.Empty<Vector3>();
         _sparseCellAnchorIndices = indices.Count > 0 ? indices.ToArray() : Array.Empty<int>();
         _sparseCellAnchorValues = values.Count > 0 ? values.ToArray() : Array.Empty<Vector3>();
-        InvalidateRuntimeCellAnchorsCache();
+        InvalidateRuntimeCellAnchorCaches();
     }
 
     private Vector3[] BuildDenseCellAnchors()
@@ -810,9 +925,72 @@ public sealed class FlowNavigationGridAsset : ScriptableObject
                && Mathf.Abs(anchor.z - center.z) <= epsilon;
     }
 
-    private void InvalidateRuntimeCellAnchorsCache()
+    private FixVector2[] BuildDenseFixedCellAnchors()
+    {
+        int expectedLength = Mathf.Max(1, _width) * Mathf.Max(1, _height);
+        FixVector2[] anchors = new FixVector2[expectedLength];
+        for (int y = 0; y < _height; y++)
+        {
+            for (int x = 0; x < _width; x++)
+            {
+                anchors[x + y * _width] = NavigationGridFixedMath.GridCellCenterFixed(
+                    _cellSizeGridRaw,
+                    _originXGridRaw,
+                    _originZGridRaw,
+                    x,
+                    y);
+            }
+        }
+
+        for (int i = 0; i < _sparseCellAnchorIndices.Length; i++)
+            anchors[_sparseCellAnchorIndices[i]] = NavigationGridFixedMath.DecodeFixVector2XZ(_sparseCellAnchorFixedRaw, i);
+        return anchors;
+    }
+
+    private void ValidateFixedAuthorityPayload(string caller)
+    {
+        if (_fixedAuthorityPayloadVersion != NavigationGridFixedMath.AuthorityPayloadVersion)
+        {
+            throw new InvalidOperationException(
+                $"{caller} failed: fixed authority payload version is invalid. " +
+                $"expected={NavigationGridFixedMath.AuthorityPayloadVersion} actual={_fixedAuthorityPayloadVersion}. Rebuild the FlowNavigationGridAsset.");
+        }
+        if (_cellSizeGridRaw <= 0)
+            throw new InvalidOperationException($"{caller} failed: fixed authority cell size must be positive.");
+        if (_cellSizeGridRaw != NavigationGridFixedMath.FloatToGridRaw(_cellSize)
+            || _originXGridRaw != NavigationGridFixedMath.FloatToGridRaw(_origin.x)
+            || _originZGridRaw != NavigationGridFixedMath.FloatToGridRaw(_origin.z))
+        {
+            throw new InvalidOperationException(
+                $"{caller} failed: fixed authority metadata does not match the authored float shadow. Rebuild the FlowNavigationGridAsset.");
+        }
+        if (!HasValidSparseCellAnchors(CellCount))
+            throw new InvalidOperationException($"{caller} failed: sparse navigation anchors are invalid.");
+
+        int expectedPayloadLength = checked(_sparseCellAnchorIndices.Length * NavigationGridFixedMath.EncodedFixVector2Size);
+        if (_sparseCellAnchorFixedRaw == null || _sparseCellAnchorFixedRaw.Length != expectedPayloadLength)
+        {
+            throw new InvalidOperationException(
+                $"{caller} failed: fixed anchor payload length is invalid. expected={expectedPayloadLength} actual={_sparseCellAnchorFixedRaw?.Length ?? -1}.");
+        }
+
+        for (int i = 0; i < _sparseCellAnchorValues.Length; i++)
+        {
+            FixVector2 fixedAnchor = NavigationGridFixedMath.DecodeFixVector2XZ(_sparseCellAnchorFixedRaw, i);
+            Vector3 floatAnchor = _sparseCellAnchorValues[i];
+            if (fixedAnchor.x.RawValue != ((Fix64)floatAnchor.x).RawValue
+                || fixedAnchor.y.RawValue != ((Fix64)floatAnchor.z).RawValue)
+            {
+                throw new InvalidOperationException(
+                    $"{caller} failed: fixed anchor does not match the authored float shadow. sparseIndex={i} cellIndex={_sparseCellAnchorIndices[i]}.");
+            }
+        }
+    }
+
+    private void InvalidateRuntimeCellAnchorCaches()
     {
         _runtimeCellAnchorsCache = null;
+        _runtimeCellAnchorsFixedCache = null;
     }
 
     private void NormalizeCosts()

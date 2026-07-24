@@ -16,7 +16,58 @@ public static class MAEntityFactory
         LogicSkillFactoryKind skillFactoryKind = LogicSkillFactoryKind.None,
         System.Action<EntityParams> configureParams = null)
     {
-        EntityParams entityParams = CreateLogicEntityParams(position);
+        return CreateMAEntityParamsCore(
+            position,
+            new FixVector2((Fix64)position.x, (Fix64)position.z),
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            sourceStrongholdId,
+            unitLevel,
+            skillFactoryKind,
+            configureParams);
+    }
+
+    public static EntityParams CreateMAEntityParamsFixed(
+        FixVector2 position,
+        float viewY,
+        string characterKey,
+        SideType side,
+        BrainType brainType,
+        List<BuffData> startBuffs = null,
+        string sourceStrongholdId = null,
+        int unitLevel = 1,
+        LogicSkillFactoryKind skillFactoryKind = LogicSkillFactoryKind.None,
+        System.Action<EntityParams> configureParams = null)
+    {
+        var viewPosition = new Vector3((float)position.x, viewY, (float)position.y);
+        return CreateMAEntityParamsCore(
+            viewPosition,
+            position,
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            sourceStrongholdId,
+            unitLevel,
+            skillFactoryKind,
+            configureParams);
+    }
+
+    private static EntityParams CreateMAEntityParamsCore(
+        Vector3 viewPosition,
+        FixVector2 logicPosition,
+        string characterKey,
+        SideType side,
+        BrainType brainType,
+        List<BuffData> startBuffs,
+        string sourceStrongholdId,
+        int unitLevel,
+        LogicSkillFactoryKind skillFactoryKind,
+        System.Action<EntityParams> configureParams)
+    {
+        EntityParams entityParams = CreateLogicEntityParams(viewPosition);
         entityParams.Side = side;
         entityParams.BrainType = brainType;
         entityParams.UnitLevel = Mathf.Clamp(unitLevel, 1, 3);
@@ -30,12 +81,42 @@ public static class MAEntityFactory
         configureParams?.Invoke(entityParams);
         AssignConfiguredLogicState(
             entityParams,
-            position,
+            logicPosition,
             new FixVector2(Fix64.Zero, Fix64.One),
             side,
             characterKey,
             state => LogicUnitConfigurator.Configure(state, entityParams));
         return entityParams;
+    }
+
+    public static LogicEntityId ShowSoldierFixed(
+        string prefabName,
+        string characterKey,
+        FixVector2 position,
+        float viewY,
+        SideType side,
+        BrainType brainType,
+        Const.EntityGroup entityGroup,
+        List<BuffData> startBuffs = null,
+        string sourceStrongholdId = null,
+        System.Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
+    {
+        EntityParams entityParams = CreateMAEntityParamsFixed(
+            position,
+            viewY,
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            sourceStrongholdId,
+            unitLevel,
+            LogicSkillFactoryKind.None,
+            configureParams);
+        int viewRequestId = GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
+        if (viewRequestId <= 0)
+            throw new System.InvalidOperationException($"MAEntityFactory.ShowSoldierFixed failed to request view. logicEntity={entityParams.LogicEntityId.Value}, prefab={prefabName}.");
+        return entityParams.LogicEntityId;
     }
 
     public static int ShowSoldier(
@@ -88,6 +169,36 @@ public static class MAEntityFactory
         return GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
     }
 
+    public static LogicEntityId ShowHeroFixed(
+        string prefabName,
+        string characterKey,
+        FixVector2 position,
+        float viewY,
+        SideType side,
+        BrainType brainType,
+        Const.EntityGroup entityGroup,
+        List<BuffData> startBuffs = null,
+        string sourceStrongholdId = null,
+        System.Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
+    {
+        EntityParams entityParams = CreateMAEntityParamsFixed(
+            position,
+            viewY,
+            characterKey,
+            side,
+            brainType,
+            startBuffs,
+            sourceStrongholdId,
+            unitLevel,
+            LogicSkillFactoryKind.Player,
+            configureParams);
+        int viewRequestId = GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
+        if (viewRequestId <= 0)
+            throw new System.InvalidOperationException($"MAEntityFactory.ShowHeroFixed failed to request view. logicEntity={entityParams.LogicEntityId.Value}, prefab={prefabName}.");
+        return entityParams.LogicEntityId;
+    }
+
     public static int ShowCharacter(
         string prefabName,
         string characterKey,
@@ -119,6 +230,72 @@ public static class MAEntityFactory
         bool enableConstructionEscape = false,
         bool currentInteractionFrameLifecycle = false)
     {
+        EntityParams entityParams = CreateBuildingEntityParams(
+            buildingData,
+            position,
+            new FixVector2((Fix64)position.x, (Fix64)position.z),
+            buildingInstanceId,
+            strongholdId,
+            ownerFactionId,
+            logicQuarterTurns,
+            isGameEndConditionBuilding,
+            isNavigationStaticBaked,
+            enableConstructionEscape,
+            currentInteractionFrameLifecycle);
+        return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
+    }
+
+    public static LogicEntityId ShowBuildingFixed(
+        BuildingData buildingData,
+        FixVector2 position,
+        float viewY,
+        string buildingInstanceId,
+        string strongholdId,
+        int ownerFactionId,
+        int logicQuarterTurns = 0,
+        bool isGameEndConditionBuilding = false,
+        bool isNavigationStaticBaked = false,
+        bool enableConstructionEscape = false,
+        bool currentInteractionFrameLifecycle = false)
+    {
+        var viewPosition = new Vector3((float)position.x, viewY, (float)position.y);
+        EntityParams entityParams = CreateBuildingEntityParams(
+            buildingData,
+            viewPosition,
+            position,
+            buildingInstanceId,
+            strongholdId,
+            ownerFactionId,
+            logicQuarterTurns,
+            isGameEndConditionBuilding,
+            isNavigationStaticBaked,
+            enableConstructionEscape,
+            currentInteractionFrameLifecycle);
+        int viewRequestId = GF.Entity.ShowEntity<BuildingEntity>(
+            buildingData.PrefabPath,
+            Const.EntityGroup.Building,
+            entityParams);
+        if (viewRequestId <= 0)
+        {
+            throw new System.InvalidOperationException(
+                $"MAEntityFactory.ShowBuildingFixed failed to request view. logicEntity={entityParams.LogicEntityId.Value}, building={buildingData.Identifier}.");
+        }
+        return entityParams.LogicEntityId;
+    }
+
+    private static EntityParams CreateBuildingEntityParams(
+        BuildingData buildingData,
+        Vector3 viewPosition,
+        FixVector2 logicPosition,
+        string buildingInstanceId,
+        string strongholdId,
+        int ownerFactionId,
+        int logicQuarterTurns,
+        bool isGameEndConditionBuilding,
+        bool isNavigationStaticBaked,
+        bool enableConstructionEscape,
+        bool currentInteractionFrameLifecycle)
+    {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
             throw new System.ArgumentException("MAEntityFactory.ShowBuilding failed: buildingInstanceId is empty.", nameof(buildingInstanceId));
         if (buildingData == null)
@@ -128,7 +305,7 @@ public static class MAEntityFactory
         if (logicQuarterTurns < 0 || logicQuarterTurns > 3)
             throw new System.ArgumentOutOfRangeException(nameof(logicQuarterTurns));
 
-        EntityParams entityParams = CreateLogicEntityParams(position);
+        EntityParams entityParams = CreateLogicEntityParams(viewPosition);
         entityParams.FactionId = ownerFactionId;
         entityParams.eulerAngles = new Vector3(0f, logicQuarterTurns * 90f, 0f);
         entityParams.Set(BuildingEntity.P_BuildingData, buildingData);
@@ -148,7 +325,7 @@ public static class MAEntityFactory
         SideType side = EntitySideHelper.ToSide(EntityCombatTeamHelper.ResolveTeamIdByFaction(ownerFactionId));
         AssignConfiguredLogicState(
             entityParams,
-            position,
+            logicPosition,
             ResolveBuildingForwardFixed(logicQuarterTurns),
             side,
             buildingData.Identifier,
@@ -161,7 +338,7 @@ public static class MAEntityFactory
                 logicQuarterTurns),
             currentInteractionFrameLifecycle);
 
-        return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
+        return entityParams;
     }
 
     private static EntityParams CreateLogicEntityParams(Vector3 position)
@@ -188,7 +365,7 @@ public static class MAEntityFactory
 
     private static void AssignConfiguredLogicState(
         EntityParams entityParams,
-        Vector3 position,
+        FixVector2 position,
         FixVector2 forward,
         SideType side,
         string characterKey,
@@ -203,7 +380,7 @@ public static class MAEntityFactory
             throw new System.ArgumentNullException(nameof(configure));
 
         var descriptor = new LogicEntitySpawnDescriptor(
-            new FixVector2((Fix64)position.x, (Fix64)position.z),
+            position,
             forward,
             side,
             characterKey,

@@ -34,7 +34,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain, ILogicDeterministicSta
 
             if (distToEnemy > (Fix64)AttackRange)
             {
-                self.MoveComp.MoveTo(target.LogicFramePosition());
+                self.MoveComp.MoveToFixed(target.LogicFramePositionFixed());
             }
             else
             {
@@ -53,7 +53,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain, ILogicDeterministicSta
             {
                 _followTimer = Fix64.Zero;
 
-                self.MoveComp.MoveTo(followTarget.LogicFramePosition());
+                self.MoveComp.MoveToFixed(followTarget.LogicFramePositionFixed());
             }
             return;
         }

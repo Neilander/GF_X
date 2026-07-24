@@ -119,6 +119,18 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void LogicEntityPositionAndRotationContracts_AreReadOnlyOutsideTickCommit()
+    {
+        Assert.IsNull(typeof(IEntityContext).GetProperty(nameof(IEntityContext.PositionFixed))?.SetMethod);
+        Assert.IsNull(typeof(IEntityContext).GetProperty(nameof(IEntityContext.Position))?.SetMethod);
+        Assert.IsNull(typeof(IEntityContext).GetProperty(nameof(IEntityContext.Rotation))?.SetMethod);
+        Assert.IsNull(typeof(LogicEntityState).GetProperty(nameof(LogicEntityState.PositionFixed))?.SetMethod);
+        Assert.IsNull(typeof(LogicEntityState).GetProperty(nameof(LogicEntityState.Rotation))?.SetMethod);
+        Assert.IsTrue(typeof(LogicEntityState).GetProperty(nameof(LogicEntityState.Position))?.SetMethod?.IsPrivate);
+        Assert.IsTrue(typeof(LogicEntityState).GetProperty(nameof(LogicEntityState.Forward))?.SetMethod?.IsPrivate);
+    }
+
+    [Test]
     public void BuildingQuarterTurns_MapToExactFixedCardinalForward()
     {
         Assert.AreEqual(
@@ -134,6 +146,34 @@ public class LogicEntityIdentityTests
             new FixVector2(-Fix64.One, Fix64.Zero),
             MAEntityFactory.ResolveBuildingForwardFixed(3));
         Assert.Throws<ArgumentOutOfRangeException>(() => MAEntityFactory.ResolveBuildingForwardFixed(4));
+    }
+
+    [Test]
+    public void BuildingSpawnAndUpgrade_ExposeFixedLogicIdentityBoundaries()
+    {
+        var fixedSpawn = typeof(MAEntityFactory).GetMethod(
+            "ShowBuildingFixed",
+            new[]
+            {
+                typeof(BuildingData),
+                typeof(FixVector2),
+                typeof(float),
+                typeof(string),
+                typeof(string),
+                typeof(int),
+                typeof(int),
+                typeof(bool),
+                typeof(bool),
+                typeof(bool),
+                typeof(bool),
+            });
+        Assert.IsNotNull(fixedSpawn, "建筑出生必须公开 fixed 逻辑位置入口。");
+        Assert.AreEqual(typeof(LogicEntityId), fixedSpawn.ReturnType, "建筑出生事务必须返回逻辑身份，不能返回 View 请求 ID。");
+
+        var fixedUpgrade = typeof(BuildManager).GetMethod(
+            "BuildBuildingForTechUpgrade",
+            new[] { typeof(string), typeof(FixVector2), typeof(string) });
+        Assert.IsNotNull(fixedUpgrade, "逻辑帧内的建筑升级必须原样接收 FixVector2，不能经过 Vector3 往返量化。");
     }
 
     [Test]
@@ -360,6 +400,126 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void BuildingViewShapeQueries_UseBoundFixedLogicStateInsteadOfViewTransform()
+    {
+        LogicEntityState state = CreateConfiguredState("Building_ViewShapeAuthority", false);
+        LogicCombatShape combatShape = LogicCombatShape.AxisAlignedBox(
+            new FixVector2(Fix64.FromRaw(123456789), Fix64.FromRaw(-987654321)),
+            new FixVector2(Fix64.FromRaw(23456789), Fix64.FromRaw(34567890)));
+        var obstacleShapes = new[]
+        {
+            LogicCombatShape.AxisAlignedBox(
+                new FixVector2(Fix64.FromRaw(123400001), Fix64.FromRaw(-987600001)),
+                new FixVector2(Fix64.FromRaw(11111111), Fix64.FromRaw(22222222))),
+            LogicCombatShape.AxisAlignedBox(
+                new FixVector2(Fix64.FromRaw(123500001), Fix64.FromRaw(-987700001)),
+                new FixVector2(Fix64.FromRaw(33333333), Fix64.FromRaw(44444444))),
+        };
+        state.ConfigureBuilding(
+            CreateTestBuildingData("Building_ViewShapeAuthority"),
+            "building-view-shape-authority",
+            "stronghold-view-shape-authority",
+            EntitySideHelper.PlayerFactionId,
+            combatShape,
+            obstacleShapes,
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+
+        GameObject gameObject = new GameObject("BuildingViewShapeAuthority");
+        bool bound = false;
+        try
+        {
+            BuildingEntity view = gameObject.AddComponent<BuildingEntity>();
+            System.Reflection.FieldInfo logicStateField = typeof(MAEntity).GetField(
+                "_logicState",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            System.Reflection.PropertyInfo logicEntityIdProperty = typeof(MAEntity).GetProperty(nameof(MAEntity.LogicEntityId));
+            System.Reflection.PropertyInfo characterKeyProperty = typeof(GeneralCreature).GetProperty(nameof(GeneralCreature.CharacterKey));
+            Assert.NotNull(logicStateField);
+            Assert.NotNull(logicEntityIdProperty);
+            Assert.NotNull(characterKeyProperty);
+            logicStateField.SetValue(view, state);
+            logicEntityIdProperty.SetValue(view, state.EntityId);
+            characterKeyProperty.SetValue(view, state.CharacterKey);
+            LogicEntityLifecycleService.BindView(state.EntityId, 404, view);
+            bound = true;
+
+            gameObject.transform.position = new Vector3(99.25f, 7f, -73.5f);
+            gameObject.transform.rotation = Quaternion.Euler(0f, 270f, 0f);
+
+            Assert.AreEqual(combatShape, view.CombatShape);
+            System.Reflection.MethodInfo obstacleShapesMethod = typeof(BuildingEntity).GetMethod(
+                "GetRequiredWorldObstacleShapes",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(obstacleShapesMethod);
+            var actualObstacleShapes = obstacleShapesMethod.Invoke(view, null) as IReadOnlyList<LogicCombatShape>;
+            Assert.NotNull(actualObstacleShapes);
+            CollectionAssert.AreEqual(obstacleShapes, actualObstacleShapes);
+        }
+        finally
+        {
+            if (bound)
+                LogicEntityLifecycleService.UnbindView(state.EntityId, 404);
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
+    public void ViewlessBuildingActivation_SchedulesFixedObstacleAddsForItsLifecycleFrame()
+    {
+        LogicObstacleCommandService.BeginTimeline();
+        try
+        {
+            LogicEntityState state = CreateConfiguredState("Building_ViewlessObstacleAuthority", false);
+            var obstacleShapes = new[]
+            {
+                LogicCombatShape.AxisAlignedBox(
+                    new FixVector2(Fix64.FromRaw(500000001), Fix64.FromRaw(-600000001)),
+                    new FixVector2(Fix64.FromRaw(70000001), Fix64.FromRaw(80000001))),
+                LogicCombatShape.AxisAlignedBox(
+                    new FixVector2(Fix64.FromRaw(900000001), Fix64.FromRaw(-1000000001)),
+                    new FixVector2(Fix64.FromRaw(110000001), Fix64.FromRaw(120000001))),
+            };
+            state.ConfigureBuilding(
+                CreateTestBuildingData("Building_ViewlessObstacleAuthority"),
+                "building-viewless-obstacle-authority",
+                "stronghold-viewless-obstacle-authority",
+                EntitySideHelper.PlayerFactionId,
+                LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+                obstacleShapes,
+                Array.Empty<LogicInteractionOptionDescriptor>(),
+                false);
+
+            LogicTimeControlService.BeginFrame(1);
+            LogicEntityLifecycleService.ApplyFrame(1);
+
+            Assert.IsTrue(state.IsSpawnCommitted);
+            Assert.IsFalse(state.HasBoundView);
+            Assert.AreEqual(obstacleShapes.Length, LogicObstacleCommandService.PendingCount);
+            Assert.AreEqual(obstacleShapes.Length, LogicObstacleCommandService.History.Count);
+            var applied = new List<LogicObstacleCommand>();
+            LogicObstacleCommandService.ApplyFrameForTests(1, applied.Add);
+
+            Assert.AreEqual(obstacleShapes.Length, applied.Count);
+            for (int i = 0; i < obstacleShapes.Length; i++)
+            {
+                int stableObstacleId = LogicEntityObstacleId.FromBuildingCollider(state.EntityId, i);
+                LogicObstacleCommand command = applied.Find(item => item.StableObstacleId == stableObstacleId);
+                Assert.AreEqual(1UL, command.EffectiveFrame);
+                Assert.AreEqual(LogicObstacleCommandKind.AddOrUpdateBox, command.Kind);
+                Assert.AreEqual(stableObstacleId, command.StableObstacleId);
+                Assert.AreEqual(obstacleShapes[i].Center, command.Center);
+                Assert.AreEqual(obstacleShapes[i].HalfExtents, command.HalfExtents);
+            }
+            Assert.AreEqual(obstacleShapes.Length, LogicObstacleCommandService.ActiveObstacleCount);
+        }
+        finally
+        {
+            LogicObstacleCommandService.EndTimeline();
+        }
+    }
+
+    [Test]
     public void LifecycleAuthorityCommands_IgnoreViewBindingOrderAndIds()
     {
         LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn();
@@ -501,6 +661,19 @@ public class LogicEntityIdentityTests
             Assert.AreEqual(source.Forward.y.RawValue, ((Fix64)presentedForward.z).RawValue);
             Assert.Throws<InvalidOperationException>(() => view.TauntLevel = 7);
             Assert.AreEqual(1, source.TauntLevel);
+
+            FixVector2 positionBeforeViewMutation = source.Position;
+            Vector3 presentationBeforeViewMutation = gameObject.transform.position;
+            StringAssert.Contains(
+                "LogicEntityState",
+                Assert.Throws<InvalidOperationException>(() =>
+                    view.PositionFixed = new FixVector2(Fix64.FromRaw(12345), Fix64.FromRaw(-67890))).Message);
+            StringAssert.Contains(
+                "LogicEntityState",
+                Assert.Throws<InvalidOperationException>(() =>
+                    view.Position = new Vector3(11f, 22f, 33f)).Message);
+            Assert.AreEqual(positionBeforeViewMutation, source.Position);
+            Assert.AreEqual(presentationBeforeViewMutation, gameObject.transform.position);
 
             source.DurationMoveEffectComp.ApplyEffect((Fix64)0.1f);
             Assert.AreEqual(MovementMode.Displaced, source.MoveExecutor.MovementMode);

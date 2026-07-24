@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using UnityEngine;
 
 public enum LogicObstacleCommandKind
 {
@@ -432,29 +431,34 @@ public static class LogicObstacleCommandService
 
     private static void ApplyToFlowRuntime(LogicObstacleCommand command)
     {
-        if (!GroupMoveManager.HasInstance)
-            throw new InvalidOperationException("LogicObstacleCommandService.ApplyToFlowRuntime failed: GroupMoveManager is unavailable.");
-
-        GroupMoveManager manager = GroupMoveManager.Instance;
-        Vector3 center = new Vector3((float)command.Center.x, 0f, (float)command.Center.y);
         switch (command.Kind)
         {
             case LogicObstacleCommandKind.AddOrUpdateBox:
-                manager.RegisterBoxObstacle(
+                FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
                     command.StableObstacleId,
-                    center,
-                    new Vector3((float)command.HalfExtents.x, 0f, (float)command.HalfExtents.y));
+                    command.Center,
+                    command.HalfExtents);
                 break;
             case LogicObstacleCommandKind.AddOrUpdateCircle:
-                manager.RegisterCircleObstacle(command.StableObstacleId, center, (float)command.Radius);
+                FlowFieldCrowdMovementSystem.RegisterCircleObstacleFixed(
+                    command.StableObstacleId,
+                    command.Center,
+                    command.Radius);
                 break;
             case LogicObstacleCommandKind.Remove:
-                manager.UnregisterObstacle(command.StableObstacleId);
+                FlowFieldCrowdMovementSystem.UnregisterObstacle(command.StableObstacleId);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(command.Kind), command.Kind, "Unknown obstacle command kind.");
         }
     }
+
+#if UNITY_EDITOR
+    public static void ApplyToFlowRuntimeForTests(LogicObstacleCommand command)
+    {
+        ApplyToFlowRuntime(command);
+    }
+#endif
 
     private static void EnsureActive()
     {

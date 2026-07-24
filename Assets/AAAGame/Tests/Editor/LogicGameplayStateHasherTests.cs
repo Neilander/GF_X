@@ -142,6 +142,84 @@ public class LogicGameplayStateHasherTests
     }
 
     [Test]
+    public void DefendViewlessEnemyDeath_RemovesLogicIdentityWithoutViewEvent()
+    {
+        LogicEntityId enemyId = default;
+        BeginAndRunEmptyFrame(() =>
+        {
+            enemyId = LogicEntityLifecycleService.RequestConfiguredSpawn(
+                new LogicEntitySpawnDescriptor(
+                    FixVector2.Zero,
+                    new FixVector2(Fix64.Zero, Fix64.One),
+                    SideType.EnemySide,
+                    "Unit_DefendViewlessDeath"),
+                state => ConfigurePendingState(state, (Fix64)100));
+        });
+
+        InGameDataModel.SetPhase(GamePhase.Defend, false);
+        DefendPhaseRuntime.CancelRuntime();
+
+        var aliveIdsField = typeof(DefendPhaseRuntime).GetField(
+            "s_AliveEnemyLogicEntityIds",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        var aliveIds = aliveIdsField?.GetValue(null) as System.Collections.Generic.HashSet<int>;
+        Assert.IsNotNull(aliveIds);
+        Assert.IsTrue(aliveIds.Add(enemyId.Value));
+
+        typeof(DefendPhaseRuntime).GetMethod(
+                "EnsureSubscribedSoldierDead",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?.Invoke(null, null);
+
+        LogicEntityState enemy = LogicEntityStateStore.GetRequired(enemyId);
+        Assert.IsFalse(enemy.HasBoundView);
+        typeof(LogicEntityState).GetField(
+                "<Alive>k__BackingField",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?.SetValue(enemy, false);
+        typeof(LogicUnitDeathEventService).GetMethod(
+                "Publish",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?.Invoke(null, new object[] { enemy });
+
+        Assert.IsFalse(
+            aliveIds.Contains(enemyId.Value),
+            "Defend alive state must consume the logic death event even when no SoldierEntity view exists.");
+        DefendPhaseRuntime.CancelRuntime();
+    }
+
+    [Test]
+    public void RewardFutureState_ChangesGameplayFullHashAndIgnoresSetInsertionOrder()
+    {
+        LogicRewardStateService.Reset();
+        try
+        {
+            BeginAndRunEmptyFrame();
+
+            ulong empty = LogicGameplayStateHasher.ComputeCurrentFrame();
+            Assert.AreEqual(0, LogicRewardStateService.AccumulateEnemyDeadSupply(1, 2));
+            ulong withRemainder = LogicGameplayStateHasher.ComputeCurrentFrame();
+            Assert.AreNotEqual(empty, withRemainder);
+
+            LogicRewardStateService.Reset();
+            LogicRewardStateService.RecordCapturedStronghold("stronghold-b");
+            LogicRewardStateService.RecordCapturedStronghold("stronghold-a");
+            ulong forward = LogicGameplayStateHasher.ComputeCurrentFrame();
+            Assert.AreNotEqual(empty, forward);
+
+            LogicRewardStateService.Reset();
+            LogicRewardStateService.RecordCapturedStronghold("stronghold-a");
+            LogicRewardStateService.RecordCapturedStronghold("stronghold-b");
+            ulong reversed = LogicGameplayStateHasher.ComputeCurrentFrame();
+            Assert.AreEqual(forward, reversed);
+        }
+        finally
+        {
+            LogicRewardStateService.Reset();
+        }
+    }
+
+    [Test]
     public void GeneralCounterDeterministicState_TracksExactFixedProgress()
     {
         var counter = new GeneralCounter();

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using Stopwatch = System.Diagnostics.Stopwatch;
-using GameFramework.Event;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -18,9 +17,9 @@ public static class DefendPhaseRuntime
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
     private static readonly List<DefendSpawnPointRuntime> s_DefendSpawnPoints = new();
     private static readonly List<DefendWaveDefinition> s_DefendWaves = new();
-    private static readonly HashSet<int> s_AliveEnemyEntityIds = new();
+    private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
 
-    private static bool s_SubscribedSoldierDead;
+    private static bool s_SubscribedLogicUnitDead;
     private static int s_CachedLevelEntityId;
     private static int s_DefendRoundIndex;
     private static bool s_SpawnScheduleCompleted;
@@ -139,10 +138,10 @@ public static class DefendPhaseRuntime
 
     private static void SpawnPlannedEvent(PlannedSpawnEvent evt)
     {
-        Vector3 spawnPosition = new Vector3((float)evt.SpawnPosition.x, 0f, (float)evt.SpawnPosition.y);
-        int entityId = SoldierFactory.ShowSoldier(
+        LogicEntityId entityId = SoldierFactory.ShowSoldierFixed(
             evt.UnitType,
-            spawnPosition,
+            evt.SpawnPosition,
+            0f,
             SideType.EnemySide,
             BrainType.DefendEnemyAI,
             null,
@@ -152,15 +151,15 @@ public static class DefendPhaseRuntime
                 entityParams.DefendAssignedSpeed = evt.SpeedProperty;
             },
             evt.UnitLevel);
-        if (entityId <= 0)
+        if (!entityId.IsValid)
         {
             throw new InvalidOperationException(
                 $"DefendPhaseRuntime failed to request soldier spawn. unit={evt.UnitType} raw=({evt.SpawnPosition.x.RawValue},{evt.SpawnPosition.y.RawValue}).");
         }
 
         LogDefendSpawnEvent(evt, entityId);
-        if (!s_AliveEnemyEntityIds.Add(entityId))
-            throw new InvalidOperationException($"DefendPhaseRuntime produced duplicate enemy entity id {entityId}.");
+        if (!s_AliveEnemyLogicEntityIds.Add(entityId.Value))
+            throw new InvalidOperationException($"DefendPhaseRuntime produced duplicate enemy logic entity id {entityId.Value}.");
     }
 
     public static bool TryGetNextDefendPreviewSpawnEntries(List<DefendPreviewSpawnEntry> results)
@@ -232,22 +231,24 @@ public static class DefendPhaseRuntime
 
     private static void EnsureSubscribedSoldierDead()
     {
-        if (s_SubscribedSoldierDead || GF.Event == null)
+        if (s_SubscribedLogicUnitDead)
             return;
 
-        GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
-        s_SubscribedSoldierDead = true;
+        LogicUnitDeathEventService.UnitDied += OnLogicUnitDied;
+        s_SubscribedLogicUnitDead = true;
     }
 
-    private static void OnSoldierDead(object sender, GameEventArgs e)
+    private static void OnLogicUnitDied(IEntityContext victim)
     {
         if (PhaseManager.CurrentPhase != GamePhase.Defend)
             return;
 
-        if (e is not SoldierDeadEventArgs args || args.VictimSide != SideType.EnemySide)
+        if (victim == null)
+            throw new InvalidOperationException("DefendPhaseRuntime received a null logic death victim.");
+        if (victim.Side != SideType.EnemySide)
             return;
 
-        if (!s_AliveEnemyEntityIds.Remove(args.VictimEntityId))
+        if (!s_AliveEnemyLogicEntityIds.Remove(victim.LogicEntityId.Value))
             return;
 
         TryCompleteDefendPhase();
@@ -261,7 +262,7 @@ public static class DefendPhaseRuntime
         if (!s_SpawnScheduleCompleted)
             return;
 
-        if (s_AliveEnemyEntityIds.Count > 0)
+        if (s_AliveEnemyLogicEntityIds.Count > 0)
             return;
 
         Log.Info("[DefendPhase] 防御阶段结束：敌兵已全部清空。round={0}", s_DefendRoundIndex);
@@ -477,7 +478,7 @@ public static class DefendPhaseRuntime
             smallAgentTypeId);
     }
 
-    private static void LogDefendSpawnEvent(PlannedSpawnEvent evt, int entityId)
+    private static void LogDefendSpawnEvent(PlannedSpawnEvent evt, LogicEntityId entityId)
     {
         int agentTypeId = ResolveAgentTypeId(evt.UnitType);
         Vector3 spawnPosition = new Vector3((float)evt.SpawnPosition.x, 0f, (float)evt.SpawnPosition.y);
@@ -489,8 +490,8 @@ public static class DefendPhaseRuntime
             out Vector3 legalPoint);
 
         Log.Info(
-            "[DefendPhase] SpawnEvent entityId={0} unit={1} level={2} pos={3} speedProp={4:F2} speedRaw={5} point={6} stronghold={7} flowHit={8} flowPos={9} agentType={10}",
-            entityId,
+            "[DefendPhase] SpawnEvent logicEntityId={0} unit={1} level={2} pos={3} speedProp={4:F2} speedRaw={5} point={6} stronghold={7} flowHit={8} flowPos={9} agentType={10}",
+            entityId.Value,
             evt.UnitType,
             evt.UnitLevel,
             spawnPosition,
@@ -948,7 +949,7 @@ public static class DefendPhaseRuntime
 
     private static void ResetDefendPhaseState(bool keepRoundIndex)
     {
-        s_AliveEnemyEntityIds.Clear();
+        s_AliveEnemyLogicEntityIds.Clear();
         s_PlannedSpawnEvents.Clear();
         s_NextPlannedSpawnIndex = 0;
         s_SpawnRequestStartFrame = 0;
@@ -982,7 +983,7 @@ public static class DefendPhaseRuntime
             hasher.Add(evt.TheoreticalArrivalFrameOffset);
         }
 
-        var aliveIds = new List<int>(s_AliveEnemyEntityIds);
+        var aliveIds = new List<int>(s_AliveEnemyLogicEntityIds);
         aliveIds.Sort();
         hasher.Add(aliveIds.Count);
         for (int i = 0; i < aliveIds.Count; i++)

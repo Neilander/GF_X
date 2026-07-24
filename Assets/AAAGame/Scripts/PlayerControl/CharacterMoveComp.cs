@@ -32,6 +32,12 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
         PrepareFlowNavigationRequest(_targetPos.Value, true);
     }
 
+    public void SetNavTargetFixed(FixVector2 destination)
+    {
+        SetTargetFixed(destination, 0f);
+        PrepareFlowNavigationRequest(_targetPos.Value, true);
+    }
+
     public void MoveTo(Vector3 destination)
     {
         SetTarget(destination);

@@ -155,8 +155,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
     public LogicEntityId EntityId { get; }
     public LogicEntityId LogicEntityId => EntityId;
-    public FixVector2 Position { get; internal set; }
-    public FixVector2 Forward { get; internal set; }
+    public FixVector2 Position { get; private set; }
+    public FixVector2 Forward { get; private set; }
     public SideType Side { get; internal set; }
     public string CharacterKey { get; }
     public bool IsSpawnCommitted { get; internal set; }
@@ -192,11 +192,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public bool PreparedCollisionMovable => m_MoveExecutor.PreparedCollisionMovable;
     public uint AgentCollisionMask => IsGhostState ? 0u : 1u;
     public FixVector2 PreparedResolvedHorizontalDisplacement => m_MoveExecutor.PreparedResolvedHorizontalDisplacement;
-    public FixVector2 PositionFixed
-    {
-        get => Position;
-        set => Position = value;
-    }
+    public FixVector2 PositionFixed => Position;
     public FixVector2 ForwardFixed => Forward;
     public LogicCombatShape CombatShape
     {
@@ -210,23 +206,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             return LogicCombatShape.Circle(Position, Fix64.Max(Fix64.Zero, radius));
         }
     }
-    Vector3 IEntityContext.Position
-    {
-        get => new Vector3((float)Position.x, 0f, (float)Position.y);
-        set => Position = new FixVector2((Fix64)value.x, (Fix64)value.z);
-    }
-    public Quaternion Rotation
-    {
-        get => Quaternion.LookRotation(new Vector3((float)Forward.x, 0f, (float)Forward.y));
-        set
-        {
-            Vector3 direction = value * Vector3.forward;
-            FixVector2 fixedDirection = new FixVector2((Fix64)direction.x, (Fix64)direction.z).GetNormalized();
-            if (FixVector2.SqrMagnitude(fixedDirection) == Fix64.Zero)
-                throw new ArgumentException("Logic entity rotation produced zero forward.", nameof(value));
-            Forward = fixedDirection;
-        }
-    }
+    Vector3 IEntityContext.Position => new Vector3((float)Position.x, 0f, (float)Position.y);
+    public Quaternion Rotation => Quaternion.LookRotation(new Vector3((float)Forward.x, 0f, (float)Forward.y));
     public GameObject Gmo => null;
     public CharacterDataDetail CharacterData => m_CharacterData;
     public CreaturePropertyManager CreatureProperties => m_CreatureProperties;

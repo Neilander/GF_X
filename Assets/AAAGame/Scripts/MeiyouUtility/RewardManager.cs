@@ -1,10 +1,60 @@
 ﻿using AAAGame.Card;
-using GameFramework;
-using GameFramework.Event;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
+
+public static class LogicRewardStateService
+{
+	private static int s_EnemyDeadSupplyRemainder;
+	private static readonly HashSet<string> s_PlayerCapturedStrongholdIdsInCurrentInvade = new HashSet<string>();
+
+	public static int PlayerCapturedStrongholdCount => s_PlayerCapturedStrongholdIdsInCurrentInvade.Count;
+
+	public static void Reset()
+	{
+		s_EnemyDeadSupplyRemainder = 0;
+		s_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
+	}
+
+	public static int AccumulateEnemyDeadSupply(int deadSupply, int supplyPerCoin)
+	{
+		if (deadSupply < 0)
+			throw new ArgumentOutOfRangeException(nameof(deadSupply));
+		if (supplyPerCoin <= 0)
+			throw new ArgumentOutOfRangeException(nameof(supplyPerCoin));
+
+		int accumulated = checked(s_EnemyDeadSupplyRemainder + deadSupply);
+		int gainedCoin = accumulated / supplyPerCoin;
+		s_EnemyDeadSupplyRemainder = accumulated % supplyPerCoin;
+		return gainedCoin;
+	}
+
+	public static void RecordCapturedStronghold(string strongholdId)
+	{
+		if (string.IsNullOrWhiteSpace(strongholdId))
+			throw new ArgumentException("Captured stronghold id is empty.", nameof(strongholdId));
+		s_PlayerCapturedStrongholdIdsInCurrentInvade.Add(strongholdId);
+	}
+
+	public static void ClearCapturedStrongholds()
+	{
+		s_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
+	}
+
+	public static void WriteDeterministicState(LogicStateHasher hasher)
+	{
+		if (hasher == null)
+			throw new ArgumentNullException(nameof(hasher));
+
+		hasher.Add(s_EnemyDeadSupplyRemainder);
+		var capturedStrongholdIds = new List<string>(s_PlayerCapturedStrongholdIdsInCurrentInvade);
+		capturedStrongholdIds.Sort(StringComparer.Ordinal);
+		hasher.Add(capturedStrongholdIds.Count);
+		for (int i = 0; i < capturedStrongholdIds.Count; i++)
+			hasher.Add(capturedStrongholdIds[i]);
+	}
+}
 
 public class RewardManager : GameFrameworkComponent
 {
@@ -20,11 +70,8 @@ public class RewardManager : GameFrameworkComponent
 
 	private static RewardManager s_CachedManager;
 
-	private bool m_DeathEventSubscribed;
-	private bool m_WaitingEventReadyLogged;
-	private int m_EnemyDeadSupplyRemainder;
+	private bool m_LogicEventsSubscribed;
 	private bool m_KillRewardConfigInvalidLogged;
-	private readonly HashSet<string> m_PlayerCapturedStrongholdIdsInCurrentInvade = new HashSet<string>();
 
 	protected override void Awake()
 	{
@@ -44,7 +91,7 @@ public class RewardManager : GameFrameworkComponent
 
 	private void Update()
 	{
-		if (!m_DeathEventSubscribed)
+		if (!m_LogicEventsSubscribed)
 			TrySubscribeEvents();
 	}
 
@@ -62,9 +109,8 @@ public class RewardManager : GameFrameworkComponent
 
 	public void ResetLevelCounters()
 	{
-		m_EnemyDeadSupplyRemainder = 0;
+		LogicRewardStateService.Reset();
 		m_KillRewardConfigInvalidLogged = false;
-		m_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
 	}
 
 	public static void HandleCardDiscardReward(CardModel cardModel)
@@ -117,47 +163,25 @@ public class RewardManager : GameFrameworkComponent
 
 	private void TrySubscribeEvents()
 	{
-		if (m_DeathEventSubscribed)
+		if (m_LogicEventsSubscribed)
 			return;
 
-		if (GF.Event == null)
-		{
-			if (!m_WaitingEventReadyLogged)
-			{
-				m_WaitingEventReadyLogged = true;
-				Log.Info("[RewardManager] Waiting for GF.Event to become ready...");
-			}
-
-			return;
-		}
-
-		GF.Event.Subscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
-		GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+		LogicUnitDeathEventService.UnitDied += OnLogicUnitDied;
 		LogicBuildingOwnershipEventService.OwnerFactionChanged += OnLogicBuildingOwnerFactionChanged;
-		m_DeathEventSubscribed = true;
-		m_WaitingEventReadyLogged = false;
+		PhaseManager.OnPhaseChanged += OnPhaseChanged;
+		m_LogicEventsSubscribed = true;
 	}
 
 	private void TryUnsubscribeEvents()
 	{
-		if (!m_DeathEventSubscribed)
+		if (!m_LogicEventsSubscribed)
 			return;
 
-		if (GF.Event != null)
-		{
-			try
-			{
-				GF.Event.Unsubscribe(SoldierDeadEventArgs.EventId, OnSoldierDead);
-				GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
-			}
-			catch (GameFrameworkException)
-			{
-				// PlayMode 退出时 EventPool 可能已释放，忽略退订异常。
-			}
-		}
+		LogicUnitDeathEventService.UnitDied -= OnLogicUnitDied;
 		LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
+		PhaseManager.OnPhaseChanged -= OnPhaseChanged;
 
-		m_DeathEventSubscribed = false;
+		m_LogicEventsSubscribed = false;
 	}
 
 	private void OnLogicBuildingOwnerFactionChanged(
@@ -174,17 +198,14 @@ public class RewardManager : GameFrameworkComponent
 		if (building == null || string.IsNullOrWhiteSpace(building.StrongholdId))
 			throw new InvalidOperationException("Captured building ownership event has no stronghold id.");
 
-		m_PlayerCapturedStrongholdIdsInCurrentInvade.Add(building.StrongholdId);
+		LogicRewardStateService.RecordCapturedStronghold(building.StrongholdId);
 	}
 
-	private void OnIngamePhaseChanged(object sender, GameEventArgs e)
+	private void OnPhaseChanged(GamePhase oldPhase, GamePhase newPhase)
 	{
-		if (e is not IngamePhaseChangedEventArgs args)
-			return;
-
-		if (args.NewPhase == GamePhase.Invade)
+		if (newPhase == GamePhase.Invade)
 		{
-			m_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
+			LogicRewardStateService.ClearCapturedStrongholds();
 		}
 	}
 
@@ -205,8 +226,8 @@ public class RewardManager : GameFrameworkComponent
 		{
 			int incomePerCapturedOutpost = GF.Config != null ? GF.Config.GetInt(InvadePhaseIncomePerCapturedOutpostConfigKey, 0) : 0;
 			incomePerCapturedOutpost += LevelTagRuntime.GetCapturedOutpostIncomeDelta();
-			phaseBaseIncome = (long)incomePerCapturedOutpost * m_PlayerCapturedStrongholdIdsInCurrentInvade.Count;
-			m_PlayerCapturedStrongholdIdsInCurrentInvade.Clear();
+			phaseBaseIncome = (long)incomePerCapturedOutpost * LogicRewardStateService.PlayerCapturedStrongholdCount;
+			LogicRewardStateService.ClearCapturedStrongholds();
 		}
 
 		float totalIncome = currentDay * dailyGrowth
@@ -221,15 +242,16 @@ public class RewardManager : GameFrameworkComponent
 		GrantCoinAfterFly(sourcePosition, coinAmount, "battle_to_build_income");
 	}
 
-	private void OnSoldierDead(object sender, GameEventArgs e)
+	private void OnLogicUnitDied(IEntityContext victim)
 	{
-		if (e is not SoldierDeadEventArgs args)
+		if (victim == null)
+			throw new InvalidOperationException("RewardManager received a null logic death victim.");
+		if (victim.Side != SideType.EnemySide)
 			return;
+		CharacterDataDetail characterData = victim.CharacterData
+			?? throw new InvalidOperationException($"RewardManager logic death victim has no character data. entity={victim.LogicEntityId.Value}.");
 
-		if (args.VictimSide != SideType.EnemySide)
-			return;
-
-		int deadSupply = Mathf.Max(0, args.VictimSupply);
+		int deadSupply = Math.Max(0, characterData.Supply);
 		if (deadSupply <= 0)
 			return;
 
@@ -247,14 +269,17 @@ public class RewardManager : GameFrameworkComponent
 
 		m_KillRewardConfigInvalidLogged = false;
 		ratio = LevelTagRuntime.ModifyKillRewardConversionRate(ratio);
-		m_EnemyDeadSupplyRemainder += deadSupply;
-
-		int gainedCoin = m_EnemyDeadSupplyRemainder / ratio;
-		m_EnemyDeadSupplyRemainder %= ratio;
+		if (ratio <= 0)
+			throw new InvalidOperationException($"RewardManager kill reward ratio became non-positive after logic modifiers. value={ratio}.");
+		int gainedCoin = LogicRewardStateService.AccumulateEnemyDeadSupply(deadSupply, ratio);
 		if (gainedCoin <= 0)
 			return;
 
-		GrantCoinAfterFly(args.WorldPosition, gainedCoin, "kill_supply");
+		FixVector2 deathPosition = victim.PositionFixed;
+		GrantCoinAfterFly(
+			new Vector3((float)deathPosition.x, 0f, (float)deathPosition.y),
+			gainedCoin,
+			"kill_supply");
 	}
 
 	private void GrantDiscardCardReward(CardModel cardModel, int gainedCoin, Vector2? discardScreenPosition)

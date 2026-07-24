@@ -147,7 +147,7 @@ public class TechManager : GameFrameworkComponent
         int upgradeCost = buildManager.GetBuildingCost(upgradeBuildingId, owner);
         bool built = buildManager.BuildBuildingForTechUpgrade(
             upgradeBuildingId,
-            ToWorldPosition(owner.PositionFixed),
+            owner.PositionFixed,
             owner.BuildingInstanceId);
         if (!built)
             return false;
@@ -410,8 +410,4 @@ public class TechManager : GameFrameworkComponent
         return buildManager;
     }
 
-    private static Vector3 ToWorldPosition(FixVector2 position)
-    {
-        return new Vector3((float)position.x, 0f, (float)position.y);
-    }
 }

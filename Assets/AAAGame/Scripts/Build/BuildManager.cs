@@ -124,14 +124,15 @@ public class BuildManager : GameFrameworkComponent
     private bool ApplyScheduledConstructBuilding(IBuildingLogicContext owner, string buildBuildingId)
     {
         EnsureInteractionApplyWindow();
-        bool built = BuildBuildingInternal(
+        bool built = BuildBuildingInternalFixed(
             buildBuildingId,
-            ToWorldPosition(owner.PositionFixed),
+            owner.PositionFixed,
+            0f,
             owner.BuildingInstanceId,
             checkCondition: true,
             consumeCoins: true,
             enableConstructionEscape: true,
-            currentInteractionFrameLifecycle: true) > 0;
+            currentInteractionFrameLifecycle: true).IsValid;
         if (built && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
         if (built)
@@ -173,11 +174,6 @@ public class BuildManager : GameFrameworkComponent
             buildingData,
             owner?.StrongholdId,
             owner?.OwnerFactionId ?? EntitySideHelper.PlayerFactionId);
-    }
-
-    private static Vector3 ToWorldPosition(FixVector2 position)
-    {
-        return new Vector3((float)position.x, 0f, (float)position.y);
     }
 
     public KeyValuePair<IngameValueType, int>[] GetBuildingResourceCosts(string buildingId)
@@ -284,19 +280,20 @@ public class BuildManager : GameFrameworkComponent
         if (string.IsNullOrWhiteSpace(lv0BuildingId))
             return false;
 
-        Vector3 position = ToWorldPosition(owner.PositionFixed);
+        FixVector2 position = owner.PositionFixed;
         string buildingInstanceId = owner.BuildingInstanceId;
         int refund = CalculateRecycleRefund(owner);
 
-        int entityId = BuildBuildingInternal(
+        LogicEntityId entityId = BuildBuildingInternalFixed(
             lv0BuildingId,
             position,
+            0f,
             buildingInstanceId,
             checkCondition: false,
             consumeCoins: false,
             enableConstructionEscape: true,
             currentInteractionFrameLifecycle: true);
-        if (entityId <= 0)
+        if (!entityId.IsValid)
             return false;
 
         GameEntry.GetComponent<TechManager>()?.RollbackTechsForBuilding(owner);
@@ -304,7 +301,9 @@ public class BuildManager : GameFrameworkComponent
         OnBuildingDemolished(owner);
         InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
         LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
-        RewardManager.HandleBuildingRecycleReward(position, refund);
+        RewardManager.HandleBuildingRecycleReward(
+            new Vector3((float)position.x, 0f, (float)position.y),
+            refund);
 
         if (AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
@@ -320,22 +319,23 @@ public class BuildManager : GameFrameworkComponent
             buildingInstanceId,
             checkCondition: true,
             consumeCoins: true,
-            enableConstructionEscape: true) > 0;
+            enableConstructionEscape: true).IsValid;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
         return ok;
     }
 
-    public bool BuildBuildingForTechUpgrade(string buildingId, Vector3 position, string buildingInstanceId)
+    public bool BuildBuildingForTechUpgrade(string buildingId, FixVector2 position, string buildingInstanceId)
     {
-        bool ok = BuildBuildingInternal(
+        bool ok = BuildBuildingInternalFixed(
             buildingId,
             position,
+            0f,
             buildingInstanceId,
             checkCondition: true,
             consumeCoins: false,
             enableConstructionEscape: true,
-            currentInteractionFrameLifecycle: true) > 0;
+            currentInteractionFrameLifecycle: true).IsValid;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildImportant");
         return ok;
@@ -367,7 +367,7 @@ public class BuildManager : GameFrameworkComponent
             ? LogicPersistentIdAllocator.AllocateBuildingInstanceId()
             : buildingInstanceId;
 
-        int entityId = BuildBuildingInternal(
+        LogicEntityId entityId = BuildBuildingInternal(
             buildingId,
             position,
             resolvedBuildingInstanceId,
@@ -376,7 +376,7 @@ public class BuildManager : GameFrameworkComponent
             isGameEndConditionBuilding: isGameEndConditionBuilding,
             initialCoinReserves: initialCoinReserves,
             isNavigationStaticBaked: isNavigationStaticBaked);
-        if (entityId <= 0)
+        if (!entityId.IsValid)
         {
             resolvedBuildingInstanceId = null;
             return false;
@@ -385,7 +385,7 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    private int BuildBuildingInternal(
+    private LogicEntityId BuildBuildingInternal(
         string buildingId,
         Vector3 position,
         string buildingInstanceId,
@@ -397,21 +397,47 @@ public class BuildManager : GameFrameworkComponent
         bool enableConstructionEscape = false,
         bool currentInteractionFrameLifecycle = false)
     {
+        return BuildBuildingInternalFixed(
+            buildingId,
+            new FixVector2((Fix64)position.x, (Fix64)position.z),
+            position.y,
+            buildingInstanceId,
+            checkCondition,
+            consumeCoins,
+            isGameEndConditionBuilding,
+            initialCoinReserves,
+            isNavigationStaticBaked,
+            enableConstructionEscape,
+            currentInteractionFrameLifecycle);
+    }
+
+    private LogicEntityId BuildBuildingInternalFixed(
+        string buildingId,
+        FixVector2 position,
+        float viewY,
+        string buildingInstanceId,
+        bool checkCondition,
+        bool consumeCoins,
+        bool isGameEndConditionBuilding = false,
+        int? initialCoinReserves = null,
+        bool isNavigationStaticBaked = false,
+        bool enableConstructionEscape = false,
+        bool currentInteractionFrameLifecycle = false)
+    {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
-            return 0;
+            return default;
 
-        var positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
         string strongholdId = null;
         int ownerFactionId = EntitySideHelper.PlayerFactionId;
-        if (LogicStrongholdMap.TryResolveStrongholdId(positionFixed, out string resolvedStrongholdId))
+        if (LogicStrongholdMap.TryResolveStrongholdId(position, out string resolvedStrongholdId))
         {
             strongholdId = resolvedStrongholdId;
             ownerFactionId = LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId);
         }
 
         if (checkCondition && !SatisfyBuildCondition(buildingData, ownerFactionId))
-            return 0;
+            return default;
 
         int consumedCost = 0;
         if (consumeCoins)
@@ -421,7 +447,7 @@ public class BuildManager : GameFrameworkComponent
                 strongholdId,
                 ownerFactionId);
             if (!HasBuildCost(buildingData, strongholdId, ownerFactionId))
-                return 0;
+                return default;
             consumedCost = actualCost;
         }
 
@@ -431,9 +457,10 @@ public class BuildManager : GameFrameworkComponent
 
         int previousBaseLevel = ResolveExistingBaseLevel(buildingData, ownerFactionId, resolvedBuildingInstanceId);
 
-        int entityId = MAEntityFactory.ShowBuilding(
+        LogicEntityId entityId = MAEntityFactory.ShowBuildingFixed(
             buildingData,
             position,
+            viewY,
             resolvedBuildingInstanceId,
             strongholdId,
             ownerFactionId,
@@ -443,7 +470,7 @@ public class BuildManager : GameFrameworkComponent
             enableConstructionEscape,
             currentInteractionFrameLifecycle);
 
-        if (entityId > 0)
+        if (entityId.IsValid)
         {
             if (consumeCoins && !InGameDataModel.TryModifyValue(IngameValueType.Coin, -consumedCost, true))
                 throw new InvalidOperationException("Build transaction lost its validated coin balance before commit.");
@@ -457,7 +484,7 @@ public class BuildManager : GameFrameworkComponent
             TryGrantBaseSupplyCapacity(buildingData, ownerFactionId, previousBaseLevel);
         }
 
-        if (entityId > 0)
+        if (entityId.IsValid)
             m_BaseMilestoneTechService.GrantForBuiltBase(buildingData, resolvedBuildingInstanceId, ownerFactionId);
         return entityId;
     }

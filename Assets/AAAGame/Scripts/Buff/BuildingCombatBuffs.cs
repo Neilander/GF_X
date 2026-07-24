@@ -487,7 +487,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
         {
             IEntityContext target = _queue[i].Target;
             FixVector2 slot = GetQueueSlot(building, i);
-            target.MoveComp.SetNavTarget(new Vector3((float)slot.x, target.Position.y, (float)slot.y));
+            target.MoveComp.SetNavTargetFixed(slot);
 
             FixVector2 offset = slot - LogicEntityFrameSnapshotService.GetRequiredPosition(target);
             Fix64 distance = FixVector2.Magnitude(offset);

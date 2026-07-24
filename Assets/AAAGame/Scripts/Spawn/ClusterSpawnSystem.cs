@@ -134,17 +134,17 @@ public static class ClusterSpawnSystem
 
         for (int i = 0; i < spawnPositions.Count; i++)
         {
-            Vector3 spawnPosition = ToUnity(spawnPositions[i], 0.05f);
-            int entityId = SoldierFactory.ShowSoldier(
+            LogicEntityId entityId = SoldierFactory.ShowSoldierFixed(
                 unitIndex,
-                spawnPosition,
+                spawnPositions[i],
+                0.05f,
                 side,
                 brainType,
                 sourceBuildingInstanceId,
                 sourceStrongholdId,
                 null,
                 unitLevel);
-            if (entityId <= 0)
+            if (!entityId.IsValid)
                 throw new InvalidOperationException($"ClusterSpawnSystem failed to request unit {i}. unit={unitIndex}.");
         }
 

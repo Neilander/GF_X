@@ -15,6 +15,7 @@ public interface IMoveComp : ICapability
     /// 用于需要协调器控制实际移动的场景。
     /// </summary>
     void SetNavTarget(Vector3 destination);
+    void SetNavTargetFixed(FixVector2 destination);
 
     /// <summary>
     /// 获取当前导航目标的下一步归一化方向，无路径时返回 Vector3.zero。

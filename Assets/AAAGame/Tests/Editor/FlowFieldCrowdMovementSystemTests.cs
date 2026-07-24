@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using NUnit.Framework;
+﻿﻿﻿using NUnit.Framework;
 using UnityEngine;
 using System;
 using System.Collections;
@@ -105,6 +105,169 @@ public class FlowFieldCrowdMovementSystemTests
         ulong rebuildProgress = FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash();
         Assert.AreNotEqual(obstaclePending, rebuildProgress, "Runtime rebuild progress must affect NavigationHash.");
         Assert.AreEqual(rebuildProgress, FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash());
+    }
+
+    [Test]
+    public void AuthoredGridSourceUsesBakedFixedPayloadAndRejectsFloatShadowDrift()
+    {
+        const int width = 3;
+        const int height = 2;
+        const float cellSize = 0.09f;
+        var origin = new Vector3(12.78f, 0f, 7.11f);
+        bool[] walkable = new bool[width * height];
+        byte[] costs = new byte[width * height];
+        byte[] neighbors = new byte[width * height];
+        Vector3[] anchors = new Vector3[width * height];
+        int[] neighborOffsetX = { -1, 0, 1, -1, 1, -1, 0, 1 };
+        int[] neighborOffsetY = { -1, -1, -1, 0, 0, 1, 1, 1 };
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int index = x + y * width;
+                walkable[index] = true;
+                costs[index] = 1;
+                anchors[index] = new Vector3(
+                    origin.x + (x + 0.5f) * cellSize,
+                    0f,
+                    origin.z + (y + 0.5f) * cellSize);
+
+                byte mask = 0;
+                for (int direction = 0; direction < 8; direction++)
+                {
+                    int nextX = x + neighborOffsetX[direction];
+                    int nextY = y + neighborOffsetY[direction];
+                    if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height)
+                        mask |= (byte)(1 << direction);
+                }
+                neighbors[index] = mask;
+            }
+        }
+        anchors[0] = new Vector3(origin.x + 0.03f, 0f, origin.z + 0.04f);
+
+        FlowNavigationGridAsset asset = ScriptableObject.CreateInstance<FlowNavigationGridAsset>();
+        GameObject sourceObject = new GameObject("FixedAuthoredGridSourceTest");
+        try
+        {
+            asset.Overwrite(0, width, height, cellSize, origin, walkable, costs, anchors, neighbors);
+            FlowNavigationGridAsset.DerivedNavigationData derivedData = FlowFieldCrowdMovementSystem.BuildDerivedNavigationDataForAsset(
+                0,
+                width,
+                height,
+                cellSize,
+                origin,
+                walkable,
+                anchors,
+                costs,
+                neighbors);
+            asset.SetDerivedNavigationData(derivedData);
+
+            FlowNavigationGridSource source = sourceObject.AddComponent<FlowNavigationGridSource>();
+            source.Configure(asset, applyOnEnable: false, applyInEditMode: false, clearOnDisable: false);
+            source.ApplyToFlowField();
+            ProcessWorldBuildQueueUntilReady();
+
+            FlowNavigationGridAsset.FixedAuthorityMetadata metadata = asset.GetFixedAuthorityMetadata();
+            FixVector2 expectedCenter = NavigationGridFixedMath.GridCellCenterFixed(
+                metadata.CellSizeGridRaw,
+                metadata.OriginXGridRaw,
+                metadata.OriginZGridRaw,
+                1,
+                1);
+            FixVector2 actualCenter = FlowFieldCrowdMovementSystem.GetEditorTestGridToWorldCenterFixed(1, 1);
+            Assert.AreEqual(expectedCenter.x.RawValue, actualCenter.x.RawValue);
+            Assert.AreEqual(expectedCenter.y.RawValue, actualCenter.y.RawValue);
+
+            FieldInfo cellSizeField = typeof(FlowNavigationGridAsset).GetField("_cellSize", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(cellSizeField);
+            cellSizeField.SetValue(asset, 0.1f);
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => source.ApplyToFlowField());
+            StringAssert.Contains("fixed authority metadata does not match", exception.Message);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(sourceObject);
+            UnityEngine.Object.DestroyImmediate(asset);
+        }
+    }
+
+    [Test]
+    public void 更新障碍位置必须同时重建旧Bounds和新Bounds()
+    {
+        const int width = 32;
+        const int height = 3;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacleFixed(
+            82001,
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            (Fix64)0.4f);
+        ProcessRuntimeDirtyQueueUntilReady(1);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            1,
+            1,
+            out bool oldWalkableBeforeMove,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.IsFalse(oldWalkableBeforeMove);
+
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacleFixed(
+            82001,
+            new FixVector2((Fix64)30.5f, (Fix64)1.5f),
+            (Fix64)0.4f);
+        ProcessRuntimeDirtyQueueUntilReady(100);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            1,
+            1,
+            out bool oldWalkableAfterMove,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.IsTrue(oldWalkableAfterMove, "同 ID 障碍移走后旧位置必须从 authored mask 恢复。");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            30,
+            1,
+            out bool newWalkableAfterMove,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.IsFalse(newWalkableAfterMove);
+    }
+
+    [Test]
+    public void 同一障碍Id切换Shape不得残留旧类型()
+    {
+        const int obstacleId = 82002;
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacleFixed(
+            obstacleId,
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            (Fix64)0.4f);
+
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            obstacleId,
+            new FixVector2((Fix64)4.5f, (Fix64)1.5f),
+            new FixVector2((Fix64)0.4f, (Fix64)0.4f));
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.TryGetEditorTestCircleObstacleFixed(
+            obstacleId,
+            out _,
+            out _));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestBoxObstacleFixed(
+            obstacleId,
+            out _,
+            out _));
     }
 
     [Test]
@@ -284,6 +447,29 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(executor.HasFixedInput, "正式移动链必须调用 SetInputFixed。 ");
         Assert.AreEqual(expectedSpeed.RawValue, executor.LastFixedInput.x.RawValue);
         Assert.AreEqual(0L, executor.LastFixedInput.y.RawValue);
+    }
+
+    [Test]
+    public void Fixed导航目标不得经Vector3桥接改变DeterministicState()
+    {
+        Fix64 preciseCoordinate = Fix64.FromRaw(((Fix64)16777216).RawValue + 1);
+        var preciseTarget = new FixVector2(preciseCoordinate, -preciseCoordinate);
+        var expected = new CharacterMoveComp();
+        expected.Init(null);
+        expected.MoveToFixed(preciseTarget);
+        var expectedHasher = new LogicStateHasher();
+        expected.WriteDeterministicState(expectedHasher);
+
+        var actual = new CharacterMoveComp();
+        actual.Init(null);
+        actual.SetNavTargetFixed(preciseTarget);
+        var actualHasher = new LogicStateHasher();
+        actual.WriteDeterministicState(actualHasher);
+
+        Assert.AreEqual(
+            expectedHasher.Hash,
+            actualHasher.Hash,
+            "fixed queue slot 写入导航目标时不得经 float 改变 raw。");
     }
 
     [Test]
@@ -715,6 +901,195 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestFixedCorridorLookup());
         Assert.IsFalse(FlowFieldCrowdMovementSystem.TryGetEditorTestFixedCorridorOwner(0, out _, out _));
+    }
+
+    [Test]
+    public void FixedCorridor首次查询不得扫描整个大型World()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 16;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        const int width = 256;
+        const int height = 256;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        long classifiedBefore = FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorClassifiedCellCount();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.TryGetEditorTestFixedCorridorDescriptor(
+            width / 2,
+            height / 2,
+            out _,
+            out _,
+            out _,
+            out _));
+        stopwatch.Stop();
+        long classified = FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorClassifiedCellCount() - classifiedBefore;
+        TestContext.WriteLine($"fixed-corridor-first-query cells={classified}/{walkable.Length} elapsedMs={stopwatch.Elapsed.TotalMilliseconds:F3}");
+
+        Assert.Less(classified, 1024L, "首次局部 corridor 查询不得同步扫描整个 NavigationWorld。");
+    }
+
+    [Test]
+    public void FixedCorridor超长组件首次查询不得同步展开整个组件()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 16384;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        const int width = 8192;
+        bool[] walkable = new bool[width];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, 1, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.IsEditorTestFixedCorridorDescriptorPending(width / 2, 0));
+        int stepCount = 0;
+        while (FlowFieldCrowdMovementSystem.IsEditorTestFixedCorridorDescriptorPending(width / 2, 0))
+        {
+            long expandedBeforeStep = FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorExpandedCellCount();
+            int operations = FlowFieldCrowdMovementSystem.ProcessEditorTestFixedCorridorBuildStep();
+            long expandedThisStep = FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorExpandedCellCount() - expandedBeforeStep;
+            Assert.AreEqual(operations, expandedThisStep);
+            Assert.LessOrEqual(expandedThisStep, 256L, "每个逻辑步的 corridor component 展开必须受固定预算约束。");
+            stepCount++;
+            if (stepCount == 1)
+            {
+                Assert.IsTrue(
+                    FlowFieldCrowdMovementSystem.TryValidateEditorTestFixedCorridorIncrementalAuthorityHashes(out string hashFailure),
+                    hashFailure);
+            }
+            Assert.LessOrEqual(stepCount, width / 256 + 1, "长走廊增量解析未在预期逻辑步数内完成。");
+        }
+        stopwatch.Stop();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestFixedCorridorDescriptor(
+            width / 2,
+            0,
+            out _,
+            out int[] componentCells,
+            out _,
+            out _));
+        TestContext.WriteLine($"fixed-corridor-long-component steps={stepCount} cells={componentCells.Length}/{width} elapsedMs={stopwatch.Elapsed.TotalMilliseconds:F3}");
+
+        Assert.AreEqual(width, componentCells.Length, "测试前提失效：descriptor 必须覆盖完整长走廊组件。");
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_FixedCorridor增量进度必须影响Hash()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 1024;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        const int width = 600;
+        bool[] walkable = new bool[width];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, 1, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.IsEditorTestFixedCorridorDescriptorPending(width / 2, 0));
+        var before = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(before);
+        Assert.AreEqual(256, FlowFieldCrowdMovementSystem.ProcessEditorTestFixedCorridorBuildStep());
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryValidateEditorTestFixedCorridorIncrementalAuthorityHashes(out string hashFailure),
+            hashFailure);
+        var after = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(after);
+
+        Assert.AreNotEqual(before.Hash, after.Hash, "未完成 corridor 派生会改变后续停速时长，必须进入 authority digest。");
+    }
+
+    [Test]
+    public void FixedCorridor增量解析完成前权威速度保持为零()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 1024;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        const int width = 600;
+        bool[] walkable = new bool[width];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, 1, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        SimEntityContext entity = CreateEntity(new Vector3(300.5f, 0f, 0.5f), false, 0, 0.18f);
+        FixVector2 goal = new FixVector2((Fix64)599.5f, (Fix64)0.5f);
+
+        for (int frame = 1; frame <= 3; frame++)
+        {
+            long expandedBefore = FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorExpandedCellCount();
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(entity, goal, Fix64.One, out FixVector2 velocity));
+            long expanded = FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorExpandedCellCount() - expandedBefore;
+            Assert.LessOrEqual(expanded, 256L, "同一逻辑帧不得突破 corridor component 派生预算。");
+            if (frame <= 2)
+                Assert.AreEqual(FixVector2.Zero, velocity, "descriptor 未完成时不能把 Pending 误当成无 corridor 而放行。");
+            else
+                Assert.Greater(velocity.x.RawValue, 0L, "descriptor 完成后 owner 方向应恢复通行。");
+        }
+    }
+
+    [Test]
+    public void FixedCorridor局部Cache_查询顺序不改变Descriptor且组件内复用()
+    {
+        const int width = 6;
+        const int height = 6;
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        bool[] walkable = new bool[width * height];
+        for (int x = 0; x < width; x++)
+            SetWalkable(walkable, width, x, 0);
+        for (int y = 0; y < height; y++)
+            SetWalkable(walkable, width, width - 1, y);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestFixedCorridorDescriptor(
+            width - 1,
+            0,
+            out int cornerFirstId,
+            out int[] cornerFirstCells,
+            out int[] cornerFirstEndpointA,
+            out int[] cornerFirstEndpointB));
+        long classifiedAfterFirstQuery = FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorClassifiedCellCount();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestFixedCorridorDescriptor(
+            0,
+            0,
+            out int cachedId,
+            out int[] cachedCells,
+            out int[] cachedEndpointA,
+            out int[] cachedEndpointB));
+        Assert.AreEqual(
+            classifiedAfterFirstQuery,
+            FlowFieldCrowdMovementSystem.GetEditorTestFixedCorridorClassifiedCellCount(),
+            "同一 corridor 组件内二次查询必须直接复用 descriptor。");
+        Assert.AreEqual(cornerFirstId, cachedId);
+        CollectionAssert.AreEqual(cornerFirstCells, cachedCells);
+        CollectionAssert.AreEqual(cornerFirstEndpointA, cachedEndpointA);
+        CollectionAssert.AreEqual(cornerFirstEndpointB, cachedEndpointB);
+
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestFixedCorridorDescriptor(
+            0,
+            0,
+            out int endpointFirstId,
+            out int[] endpointFirstCells,
+            out int[] endpointFirstEndpointA,
+            out int[] endpointFirstEndpointB));
+
+        Assert.AreEqual(cornerFirstId, endpointFirstId);
+        CollectionAssert.AreEqual(cornerFirstCells, endpointFirstCells);
+        CollectionAssert.AreEqual(cornerFirstEndpointA, endpointFirstEndpointA);
+        CollectionAssert.AreEqual(cornerFirstEndpointB, endpointFirstEndpointB);
     }
 
     [Test]
@@ -1266,6 +1641,61 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationGrid_IEEE754位模式转换为稳定Q32GoldenRaw()
+    {
+        Assert.AreEqual(0L, FlowFieldCrowdMovementSystem.GetEditorTestGridRawFromFloat(
+            BitConverter.Int32BitsToSingle(unchecked((int)0x80000000))));
+        Assert.AreEqual(4294967296L, FlowFieldCrowdMovementSystem.GetEditorTestGridRawFromFloat(
+            BitConverter.Int32BitsToSingle(0x3F800000)));
+        Assert.AreEqual(-6442450944L, FlowFieldCrowdMovementSystem.GetEditorTestGridRawFromFloat(
+            BitConverter.Int32BitsToSingle(unchecked((int)0xBFC00000))));
+        Assert.AreEqual(429496736L, FlowFieldCrowdMovementSystem.GetEditorTestGridRawFromFloat(
+            BitConverter.Int32BitsToSingle(0x3DCCCCCD)));
+        Assert.AreEqual(1L, FlowFieldCrowdMovementSystem.GetEditorTestGridRawFromFloat(
+            BitConverter.Int32BitsToSingle(0x2F000000)));
+        Assert.AreEqual(-1L, FlowFieldCrowdMovementSystem.GetEditorTestGridRawFromFloat(
+            BitConverter.Int32BitsToSingle(unchecked((int)0xAF000000))));
+    }
+
+    [Test]
+    public void NavigationWorld_大负坐标下边界前后一Raw严格落格()
+    {
+        const int width = 8;
+        const int height = 4;
+        const float cellSize = 0.25f;
+        var origin = new Vector3(-1048576f, 321f, 524288f);
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, cellSize, origin, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Fix64 boundaryX = (Fix64)origin.x + (Fix64)cellSize * (Fix64)3;
+        Fix64 insideZ = (Fix64)origin.z + (Fix64)cellSize * (Fix64)2 + (Fix64)0.125f;
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestWorldToGridFixed(
+            new FixVector2(boundaryX, insideZ),
+            out int boundaryCellX,
+            out int boundaryCellY));
+        Assert.AreEqual(3, boundaryCellX);
+        Assert.AreEqual(2, boundaryCellY);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestWorldToGridFixed(
+            new FixVector2(Fix64.FromRaw(boundaryX.RawValue - 1), insideZ),
+            out int precedingCellX,
+            out int precedingCellY));
+        Assert.AreEqual(2, precedingCellX);
+        Assert.AreEqual(2, precedingCellY);
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.TryGetEditorTestWorldToGridFixed(
+            new FixVector2(Fix64.FromRaw(((Fix64)origin.x).RawValue - 1), insideZ),
+            out int outsideCellX,
+            out int outsideCellY));
+        Assert.AreEqual(-1, outsideCellX);
+        Assert.AreEqual(2, outsideCellY);
+    }
+
+    [Test]
     public void NavigationWorld_冻结AuthoredAnchorFixedXZ后FloatShadow不改变中心或AuthorityHash()
     {
         const int width = 8;
@@ -1299,6 +1729,15 @@ public class FlowFieldCrowdMovementSystemTests
 
         Assert.AreEqual(baselineHash, perturbedHash, "authored anchor 的 Vector3 shadow 不得重新定义 committed world authority hash。");
         Assert.AreEqual(baselineCenter, perturbedCenter);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestWorldAnchorFloatShadow(
+            1 + width,
+            new Vector3(float.NaN, float.PositiveInfinity, float.NegativeInfinity));
+        ulong nonFiniteShadowHash = FlowFieldCrowdMovementSystem.GetEditorTestCommittedWorldSetHash();
+        FixVector2 nonFiniteShadowCenter = FlowFieldCrowdMovementSystem.GetEditorTestGridToWorldCenterFixed(1, 1);
+
+        Assert.AreEqual(baselineHash, nonFiniteShadowHash, "非 finite Vector3 shadow 也不能改变 committed world authority hash。");
+        Assert.AreEqual(baselineCenter, nonFiniteShadowCenter, "冻结后的 authored fixed XZ 不能因表现 shadow 污染而回退到 cell center。");
     }
 
     [Test]
@@ -1698,6 +2137,54 @@ public class FlowFieldCrowdMovementSystemTests
             refreshCountAfterExpandedDemand,
             refreshCountAfterRepeatedDemand,
             "新增 demand 必须失效并重新计算 progress Hash。");
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_SharedGoal真实推进后不得全量扫描累计Portal状态()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 64);
+        config.SharedGoalBuildOperationQuota = 1;
+        config.SectorSizeInCells = 8;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        const int width = 256;
+        const int height = 256;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 0.5f));
+        SimEntityContext target = CreateEntity(new Vector3(255.5f, 0f, 255.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(0, 0f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _));
+
+        for (int frame = 1; frame <= 8; frame++)
+        {
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        }
+
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), 0);
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryValidateEditorTestSharedGoalIncrementalAuthorityHashes(out string consistencyFailure),
+            consistencyFailure);
+        long visitedBefore = FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalBuildJobAuthorityHashVisitedEntryCount();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalBuildQueueAuthorityHash();
+        stopwatch.Stop();
+        long visitedEntries = FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalBuildJobAuthorityHashVisitedEntryCount() - visitedBefore;
+        TestContext.WriteLine($"shared-goal authority refresh: visitedEntries={visitedEntries}, elapsedMs={stopwatch.Elapsed.TotalMilliseconds:F3}");
+
+        Assert.AreEqual(
+            0,
+            visitedEntries,
+            "单次 Hash 刷新只能汇总增量摘要，不得重新扫描随历史推进增长的 heap/map/set。");
     }
 
     [Test]
@@ -3426,6 +3913,54 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void StaticCollisionAuthority_冻结网格后FloatShadow不改变首次FixedSolve()
+    {
+        const int width = 7;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height; y++)
+            walkable[3 + y * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        FixVector2 start = new FixVector2((Fix64)1.5f, (Fix64)1.5f);
+        FixVector2 requested = new FixVector2((Fix64)4f, Fix64.Zero);
+        LogicStaticCollisionShadowService.Clear();
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            0,
+            start,
+            requested,
+            (Fix64)0.2f,
+            out LogicStaticCollisionShadowResult baseline));
+        ulong baselineHash = FlowFieldCrowdMovementSystem.GetEditorTestCommittedWorldSetHash();
+
+        FlowFieldCrowdMovementSystem.PerturbEditorTestWorldGridFloatShadows(
+            2f,
+            new Vector3(100f, 999f, -100f));
+        LogicStaticCollisionShadowService.Clear();
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            0,
+            start,
+            requested,
+            (Fix64)0.2f,
+            out LogicStaticCollisionShadowResult perturbed));
+        ulong perturbedHash = FlowFieldCrowdMovementSystem.GetEditorTestCommittedWorldSetHash();
+
+        Assert.AreEqual(baselineHash, perturbedHash, "float shadow 不得改变 committed world authority hash。");
+        Assert.AreEqual(baseline.SolveResult.Success, perturbed.SolveResult.Success);
+        Assert.AreEqual(baseline.SolveResult.Failure, perturbed.SolveResult.Failure);
+        Assert.AreEqual(
+            baseline.SolveResult.ResolvedDisplacement.x.RawValue,
+            perturbed.SolveResult.ResolvedDisplacement.x.RawValue);
+        Assert.AreEqual(
+            baseline.SolveResult.ResolvedDisplacement.y.RawValue,
+            perturbed.SolveResult.ResolvedDisplacement.y.RawValue);
+    }
+
+    [Test]
     public void 动态障碍改变连通性后会经RuntimeQueue重建Island()
     {
         const int width = 7;
@@ -4537,6 +5072,19 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void FlowAuthority_DoesNotRetainFloatMovingTargetMutationChain()
+    {
+        BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+        Assert.IsNull(typeof(FlowFieldCrowdMovementSystem).GetMethod("TryResolveStableGoalCell", flags));
+        Assert.IsNull(typeof(FlowFieldCrowdMovementSystem).GetMethod("TryResolveReachableNavigationPointCell", flags));
+        Assert.IsNull(typeof(FlowFieldCrowdMovementSystem).GetMethod("SetMovingTargetActiveGoal", flags));
+        Assert.IsNull(typeof(FlowFieldCrowdMovementSystem).GetMethod("SetMovingTargetPendingGoal", flags));
+        Assert.IsNull(typeof(FlowFieldCrowdMovementSystem).GetMethod("TryResolveStartCellForReachability", flags));
+        Assert.IsNull(typeof(FlowFieldCrowdMovementSystem).GetMethod("TryResolveReachableGoalCell", flags));
+        Assert.IsNull(typeof(FlowFieldCrowdMovementSystem).GetMethod("TryResolveGoalCell", flags));
+    }
+
+    [Test]
     public void 移动目标切换不会制造旧TileJob洪峰且当前Tile保持前排()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -4579,7 +5127,6 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.Greater(initialQueueCount, 0, "长路径预提交必须生成活动 tile chain。 ");
         Assert.AreEqual(initialQueueCount, peakQueueCount,
             $"移动目标 pending SharedGoalField 未完成前不得同步晋升并在活动 tile chain 之外累积旧 job。initial={initialQueueCount}, peak={peakQueueCount}");
-
         target.Position = new Vector3(79.5f, 0f, 7.5f);
         FlowFieldCrowdMovementSystem.SetEditorTestClock(32, 3.2f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(

@@ -163,44 +163,20 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void ProtocolV18_CrossPlatformDeterminismCorpus_IsStable()
+    public void ProtocolV51_CrossPlatformDeterminismCorpus_IsStable()
     {
-        var timeline = new LogicInputTimeline(7);
-        timeline.Begin(
-            100d,
-            new FixVector2(Fix64.FromRaw(111), Fix64.FromRaw(-222)),
-            LogicInputTimeline.GetButtonBit(LogicInputButton.InteractionPrimary),
-            new FixVector2(Fix64.FromRaw(333), Fix64.FromRaw(444)),
-            true,
-            new FixVector2(Fix64.FromRaw(555), Fix64.FromRaw(-666)));
-        timeline.EnqueueWorldMove(100.01d, new FixVector2(Fix64.FromRaw(777), Fix64.FromRaw(-888)));
-        timeline.EnqueueSelectScreenPosition(100.011d, new FixVector2(Fix64.FromRaw(999), Fix64.FromRaw(1111)));
-        timeline.EnqueueSelectWorldPosition(100.011d, new FixVector2(Fix64.FromRaw(-2222), Fix64.FromRaw(3333)));
-        timeline.EnqueueButtonPulse(100.012d, LogicInputButton.Skill3);
-        timeline.EnqueueButtonPressed(100.013d, LogicInputButton.SkillConfirm);
-        timeline.EnqueueButtonReleased(100.014d, LogicInputButton.SkillConfirm);
-        LogicInputFrame frame = timeline.Seal(1, 100d + 1d / 30d);
-
         LogicTimeControlService.EndTimeline();
+        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV51();
         LogicTimeControlService.BeginTimeline();
-        LogicTimeControlService.SetBulletTimeScale(10, 2750);
-        LogicTimeControlService.AcquirePause(42);
-        LogicTimeControlSnapshot snapshot = LogicTimeControlService.CaptureSnapshot();
 
-        ulong inputHash = LogicStateHasher.ComputeInputHash(frame);
-        ulong timeHash = LogicStateHasher.ComputeTimeControlHash(snapshot);
-        ulong fullHash = LogicStateHasher.ComputeFrameHash(
-            frame.FrameId,
-            inputHash,
-            timeHash,
-            0x123456789ABCDEF0UL);
+        Assert.AreEqual(51, result.ProtocolVersion);
+        Assert.AreEqual(6256122146117919571ul, result.FullHash);
+    }
 
-        Assert.AreEqual(42, LogicReplayLog.CurrentProtocolVersion);
-        Assert.AreEqual(6, frame.Events.Count);
-        Assert.AreEqual(44622919u, frame.Checksum);
-        Assert.AreEqual(2238831199762417194ul, inputHash);
-        Assert.AreEqual(1522784806954703928ul, timeHash);
-        Assert.AreEqual(6256122146117919571ul, fullHash);
+    [Test]
+    public void CrossPlatformDeterminismCorpus_RejectsActiveTimeline()
+    {
+        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV51());
     }
 
     [Test]

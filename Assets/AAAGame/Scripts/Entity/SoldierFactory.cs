@@ -61,20 +61,72 @@ public static class SoldierFactory
         string characterKey = unitType.ToString();
         string prefabName = GetPrefabPathFromCharacterData(characterKey);
         Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
-
-        // Build start buffs list.
-        var startBuffs = new System.Collections.Generic.List<BuffData>();
-        AddInitialBuffs(startBuffs, unitType, unitLevel);
-        AddGlobalBuffs(startBuffs, unitType, side);
-        AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
-
-        // Keep OnShowCallback empty here.
-        // Buff setup occurs in existing show-success chain.
+        List<BuffData> startBuffs = CreateStartBuffs(unitType, unitLevel, side, sourceBuildingInstanceId);
 
         if (unitType == UnitType.Unit_Hero)
             return MAEntityFactory.ShowHero(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
 
         return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
+    }
+
+    public static LogicEntityId ShowSoldierFixed(
+        UnitType unitType,
+        FixVector2 position,
+        float viewY,
+        SideType side = SideType.PlayerSide,
+        BrainType brainType = BrainType.SoldierAI,
+        string sourceBuildingInstanceId = null,
+        string sourceStrongholdId = null,
+        System.Action<EntityParams> configureParams = null,
+        int unitLevel = 1)
+    {
+        unitLevel = NormalizeUnitLevel(unitLevel);
+        string characterKey = unitType.ToString();
+        string prefabName = GetPrefabPathFromCharacterData(characterKey);
+        Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
+        List<BuffData> startBuffs = CreateStartBuffs(unitType, unitLevel, side, sourceBuildingInstanceId);
+
+        if (unitType == UnitType.Unit_Hero)
+        {
+            return MAEntityFactory.ShowHeroFixed(
+                prefabName,
+                characterKey,
+                position,
+                viewY,
+                side,
+                brainType,
+                entityGroup,
+                startBuffs,
+                sourceStrongholdId,
+                configureParams,
+                unitLevel);
+        }
+
+        return MAEntityFactory.ShowSoldierFixed(
+            prefabName,
+            characterKey,
+            position,
+            viewY,
+            side,
+            brainType,
+            entityGroup,
+            startBuffs,
+            sourceStrongholdId,
+            configureParams,
+            unitLevel);
+    }
+
+    private static List<BuffData> CreateStartBuffs(
+        UnitType unitType,
+        int unitLevel,
+        SideType side,
+        string sourceBuildingInstanceId)
+    {
+        var startBuffs = new List<BuffData>();
+        AddInitialBuffs(startBuffs, unitType, unitLevel);
+        AddGlobalBuffs(startBuffs, unitType, side);
+        AddBuildingBuffs(startBuffs, sourceBuildingInstanceId, side);
+        return startBuffs;
     }
 
     private static string GetPrefabPathFromCharacterData(string characterKey)

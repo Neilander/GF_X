@@ -66,14 +66,19 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
         {
             FlowNavigationGridAsset grid = grids[0];
             FlowNavigationGridAsset.DerivedNavigationData derivedData = RequireDerivedNavigationData(grid);
-            FlowFieldCrowdMovementSystem.SetAuthoredNavigationSource(
+            FlowNavigationGridAsset.FixedAuthorityMetadata fixedMetadata = grid.GetFixedAuthorityMetadata();
+            FlowFieldCrowdMovementSystem.SetAuthoredNavigationSourceFixed(
                 grid.AgentTypeId,
                 grid.Width,
                 grid.Height,
                 grid.CellSize,
                 grid.Origin,
+                fixedMetadata.CellSizeGridRaw,
+                fixedMetadata.OriginXGridRaw,
+                fixedMetadata.OriginZGridRaw,
                 grid.GetWalkableMaskRuntimeReadOnlyReference(),
                 grid.GetCellAnchorsRuntimeReadOnlyReferenceOrNull(),
+                grid.GetCellAnchorsFixedRuntimeReadOnlyReference(),
                 grid.GetCostFieldRuntimeReadOnlyReference(),
                 grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
                 derivedData,
@@ -99,6 +104,7 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
             if (!agentTypeIds.Add(grid.AgentTypeId))
                 throw new InvalidOperationException($"FlowNavigationGridSource.ApplyToFlowField failed: duplicate grid agentTypeId={grid.AgentTypeId}.");
 
+            FlowNavigationGridAsset.FixedAuthorityMetadata fixedMetadata = grid.GetFixedAuthorityMetadata();
             sources[i] = new AuthoredNavigationSourceData(
                 grid.AgentTypeId,
                 grid.Width,
@@ -110,7 +116,12 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
                 grid.GetCostFieldRuntimeReadOnlyReference(),
                 grid.GetNeighborTraversalMaskRuntimeReadOnlyReference(),
                 RequireDerivedNavigationData(grid),
-                useRuntimeReadOnlyReferences: true);
+                useRuntimeReadOnlyReferences: true,
+                cellSizeGridRaw: fixedMetadata.CellSizeGridRaw,
+                originXGridRaw: fixedMetadata.OriginXGridRaw,
+                originZGridRaw: fixedMetadata.OriginZGridRaw,
+                cellNavAnchorsFixedXZ: grid.GetCellAnchorsFixedRuntimeReadOnlyReference(),
+                hasFixedAuthorityPayload: true);
         }
 
         FlowFieldCrowdMovementSystem.SetAuthoredNavigationSources(sources);

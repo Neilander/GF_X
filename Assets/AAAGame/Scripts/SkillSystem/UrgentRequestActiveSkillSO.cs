@@ -38,10 +38,10 @@ public sealed class UrgentRequestActiveSkillSO : TargetPositionActiveSkillSO
 
         for (int i = 0; i < spawnPositions.Count; i++)
         {
-            Vector3 spawnPosition = new Vector3((float)spawnPositions[i].x, 0.05f, (float)spawnPositions[i].y);
-            SoldierFactory.ShowSoldier(
+            SoldierFactory.ShowSoldierFixed(
                 UnitType.Unit_Intern,
-                spawnPosition,
+                spawnPositions[i],
+                0.05f,
                 caster.Side,
                 BrainType.SoldierAI,
                 unitLevel: 1);

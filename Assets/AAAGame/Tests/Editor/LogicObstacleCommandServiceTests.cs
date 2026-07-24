@@ -103,4 +103,60 @@ public class LogicObstacleCommandServiceTests
         Assert.AreEqual(2, LogicObstacleCommandService.History.Count);
         Assert.AreEqual(3, applied.Count, "Restore must remove both current obstacles and then reapply the snapshot obstacle.");
     }
+
+    [Test]
+    public void FixedObstacleCommand应用到Flow不得经过Float舍入()
+    {
+        FlowFieldCrowdMovementSystem.ResetAll();
+        Fix64 largeCoordinate = Fix64.FromRaw(((Fix64)16777216).RawValue + 1);
+        Fix64 preciseRadius = Fix64.FromRaw(Fix64.One.RawValue + 1);
+        var center = new FixVector2(largeCoordinate, -largeCoordinate);
+        var command = new LogicObstacleCommand(
+            1,
+            1,
+            LogicObstacleCommandKind.AddOrUpdateCircle,
+            9001,
+            center,
+            FixVector2.Zero,
+            preciseRadius);
+
+        LogicObstacleCommandService.ApplyToFlowRuntimeForTests(command);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestCircleObstacleFixed(
+            command.StableObstacleId,
+            out FixVector2 appliedCenter,
+            out Fix64 appliedRadius));
+        Assert.AreEqual(center.x.RawValue, appliedCenter.x.RawValue);
+        Assert.AreEqual(center.y.RawValue, appliedCenter.y.RawValue);
+        Assert.AreEqual(preciseRadius.RawValue, appliedRadius.RawValue);
+    }
+
+    [Test]
+    public void FixedBoxObstacleCommand应用到Flow不得经过Float舍入()
+    {
+        FlowFieldCrowdMovementSystem.ResetAll();
+        Fix64 largeCoordinate = Fix64.FromRaw(((Fix64)16777216).RawValue + 1);
+        Fix64 preciseExtent = Fix64.FromRaw(Fix64.One.RawValue + 1);
+        var center = new FixVector2(largeCoordinate, -largeCoordinate);
+        var halfExtents = new FixVector2(preciseExtent, preciseExtent + preciseExtent);
+        var command = new LogicObstacleCommand(
+            1,
+            1,
+            LogicObstacleCommandKind.AddOrUpdateBox,
+            9002,
+            center,
+            halfExtents,
+            Fix64.Zero);
+
+        LogicObstacleCommandService.ApplyToFlowRuntimeForTests(command);
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestBoxObstacleFixed(
+            command.StableObstacleId,
+            out FixVector2 appliedCenter,
+            out FixVector2 appliedHalfExtents));
+        Assert.AreEqual(center.x.RawValue, appliedCenter.x.RawValue);
+        Assert.AreEqual(center.y.RawValue, appliedCenter.y.RawValue);
+        Assert.AreEqual(halfExtents.x.RawValue, appliedHalfExtents.x.RawValue);
+        Assert.AreEqual(halfExtents.y.RawValue, appliedHalfExtents.y.RawValue);
+    }
 }

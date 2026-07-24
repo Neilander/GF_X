@@ -29,27 +29,24 @@ internal readonly struct LogicStaticCollisionSourceData
         int worldVersion,
         int width,
         int height,
-        float cellSize,
-        float encodedCenterClearance,
-        Vector3 origin,
+        long cellSizeGridRaw,
+        long encodedCenterClearanceFixedRaw,
+        long originXGridRaw,
+        long originYGridRaw,
         bool[] walkableMask)
     {
-        if (float.IsNaN(encodedCenterClearance)
-            || float.IsInfinity(encodedCenterClearance)
-            || encodedCenterClearance < 0f)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(encodedCenterClearance),
-                encodedCenterClearance,
-                "Encoded center clearance must be finite and non-negative.");
-        }
+        if (cellSizeGridRaw <= 0)
+            throw new ArgumentOutOfRangeException(nameof(cellSizeGridRaw), cellSizeGridRaw, "Cell size raw must be positive.");
+        if (encodedCenterClearanceFixedRaw < 0)
+            throw new ArgumentOutOfRangeException(nameof(encodedCenterClearanceFixedRaw), encodedCenterClearanceFixedRaw, "Encoded center clearance raw must be non-negative.");
         AgentTypeId = agentTypeId;
         WorldVersion = worldVersion;
         Width = width;
         Height = height;
-        CellSize = cellSize;
-        EncodedCenterClearance = encodedCenterClearance;
-        Origin = origin;
+        CellSizeGridRaw = cellSizeGridRaw;
+        EncodedCenterClearanceFixedRaw = encodedCenterClearanceFixedRaw;
+        OriginXGridRaw = originXGridRaw;
+        OriginYGridRaw = originYGridRaw;
         WalkableMask = walkableMask;
     }
 
@@ -57,9 +54,10 @@ internal readonly struct LogicStaticCollisionSourceData
     public int WorldVersion { get; }
     public int Width { get; }
     public int Height { get; }
-    public float CellSize { get; }
-    public float EncodedCenterClearance { get; }
-    public Vector3 Origin { get; }
+    public long CellSizeGridRaw { get; }
+    public long EncodedCenterClearanceFixedRaw { get; }
+    public long OriginXGridRaw { get; }
+    public long OriginYGridRaw { get; }
     public bool[] WalkableMask { get; }
 }
 
@@ -67,7 +65,6 @@ public sealed class LogicStaticCollisionWorld
 {
     private const int GridFractionalPlaces = 32;
     private const int GridToFixShift = GridFractionalPlaces - Fix64.FRACTIONAL_PLACES;
-    private const long GridOne = 1L << GridFractionalPlaces;
     private readonly bool[] m_WalkableMask;
     private readonly long m_CellSizeGridRaw;
     private readonly long m_OriginXGridRaw;
@@ -113,7 +110,7 @@ public sealed class LogicStaticCollisionWorld
     {
     }
 
-    private LogicStaticCollisionWorld(
+    internal LogicStaticCollisionWorld(
         int agentTypeId,
         int worldVersion,
         int width,
@@ -199,21 +196,12 @@ public sealed class LogicStaticCollisionWorld
 
     private static long FloatToGridRaw(float value)
     {
-        if (float.IsNaN(value) || float.IsInfinity(value))
-            throw new ArgumentOutOfRangeException(nameof(value), value, "Collision grid value must be finite.");
-        double scaled = (double)value * GridOne;
-        if (scaled < long.MinValue || scaled > long.MaxValue)
-            throw new OverflowException($"Collision grid value is outside Q32 range: {value}.");
-        return checked((long)Math.Round(scaled, MidpointRounding.AwayFromZero));
+        return NavigationGridFixedMath.FloatToGridRaw(value);
     }
 
     private static Fix64 GridRawToFix64(long value)
     {
-        const long half = 1L << (GridToFixShift - 1);
-        long fixRaw = value >= 0
-            ? checked(value + half) >> GridToFixShift
-            : -checked((-value + half) >> GridToFixShift);
-        return Fix64.FromRaw(fixRaw);
+        return NavigationGridFixedMath.GridRawToFix64(value);
     }
 
     private static int FloorDivRaw(long numerator, long positiveDenominator)
@@ -921,7 +909,7 @@ public static class LogicStaticCollisionShadowService
         LogicStaticCollisionWorld world = ResolveWorld(agentTypeId, source);
         Fix64 effectiveRadius = Fix64.Max(
             Fix64.Zero,
-            radius - ToFix64(source.EncodedCenterClearance, nameof(source.EncodedCenterClearance)));
+            radius - Fix64.FromRaw(source.EncodedCenterClearanceFixedRaw));
         LogicStaticCollisionSolveResult solveResult = DeterministicStaticCollisionSolver.SolveCircle(
             world,
             start,
@@ -985,8 +973,9 @@ public static class LogicStaticCollisionShadowService
             source.WorldVersion,
             source.Width,
             source.Height,
-            source.CellSize,
-            source.Origin,
+            source.CellSizeGridRaw,
+            source.OriginXGridRaw,
+            source.OriginYGridRaw,
             source.WalkableMask);
         s_Worlds[requestedAgentTypeId] = new CachedWorld
         {
@@ -994,13 +983,6 @@ public static class LogicStaticCollisionShadowService
             World = world,
         };
         return world;
-    }
-
-    private static Fix64 ToFix64(float value, string name)
-    {
-        if (float.IsNaN(value) || float.IsInfinity(value))
-            throw new InvalidOperationException($"Static collision shadow cannot quantize non-finite {name}={value}.");
-        return (Fix64)value;
     }
 
     private static void ValidateFinite(Vector3 value, string name)
