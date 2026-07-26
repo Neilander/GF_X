@@ -138,27 +138,35 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
 
     private void AppendEntityDetails(IEntityContext entity, StringBuilder sb)
     {
-        var ma = entity as MAEntity;
-        var creature = entity as GeneralCreature;
-        var building = entity as BuildingEntity;
+        bool isBuilding = entity is LogicEntityState logicState
+            ? logicState.IsBuildingEntity
+            : entity is BuildingEntity
+              || entity is IBuildingLogicContext { BuildingData: not null };
+        IBuildingLogicContext building = isBuilding ? entity as IBuildingLogicContext : null;
+        if (isBuilding && (building == null || building.BuildingData == null))
+            throw new InvalidOperationException("RuntimeEntityStatsOverlay received an invalid building logic context.");
+        bool hasBoundView = LogicEntityLifecycleService.TryGetBoundView(entity.LogicEntityId, out MAEntity boundView);
 
         AppendLine(sb, "Common");
         AppendValue(sb, "Kind", building != null ? "Building" : "Unit");
-        AppendValue(sb, "Id", ma != null ? ma.Id.ToString() : "<not MAEntity>");
+        AppendValue(sb, "LogicId", entity.LogicEntityId.Value);
+        AppendValue(sb, "View", hasBoundView ? $"{boundView.GetType().Name}#{boundView.Id}" : "<unbound>");
         AppendValue(sb, "Key", entity.CharacterKey);
         AppendValue(sb, "Side", entity.Side);
         AppendValue(sb, "Alive", entity.Alive);
-        AppendValue(sb, "Level", ma != null ? ma.UnitLevel.ToString() : "-");
-        AppendValue(sb, "Position", FormatVector(entity.Position));
-        AppendValue(sb, "Taunt", creature != null ? creature.TauntLevel.ToString() : "-");
+        AppendValue(sb, "PositionFixed", FormatFixedVector(entity.PositionFixed));
+        AppendValue(sb, "ForwardFixed", FormatFixedVector(entity.ForwardFixed));
+        if (hasBoundView)
+            AppendValue(sb, "ViewPosition", FormatVector(boundView.transform.position));
+        AppendValue(sb, "Taunt", entity.TauntLevel);
         AppendValue(sb, "OutCombat", $"{entity.IsOutOfCombat} ({entity.OutOfCombatElapsedSeconds:0.00}s)");
 
         AppendLine(sb, "");
         AppendLine(sb, "Health / Main Props");
-        if (creature != null && creature.CreaturePropertyManager != null)
+        if (entity.CreatureProperties != null)
         {
-            Fix64 maxHp = creature.CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-            AppendValue(sb, "HP", $"{FormatFix(creature.HealthValue)} / {FormatFix(maxHp)}");
+            Fix64 maxHp = entity.CreatureProperties.GetProperty(CreatureMainProperty.Health);
+            AppendValue(sb, "HP", $"{FormatFix(entity.HealthValue)} / {FormatFix(maxHp)}");
             foreach (CreatureMainProperty prop in Enum.GetValues(typeof(CreatureMainProperty)))
                 AppendValue(sb, prop.ToString(), FormatFix(entity.GetProperty(prop)));
         }
@@ -228,7 +236,7 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         AppendValue(sb, "TargetComp", targetComp.GetType().Name);
         AppendValue(sb, "CurrentTarget", DescribeShort(target));
         if (target != null)
-            AppendValue(sb, "TargetDistance", Vector3.Distance(entity.Position, target.Position).ToString("0.###"));
+            AppendValue(sb, "TargetDistance", FormatFix(FixVector2.Distance(entity.PositionFixed, target.PositionFixed)));
         AppendValue(sb, "Aggro/Forget", $"{targetComp.AggroRange:0.###} / {targetComp.ForgetRange:0.###}");
         AppendValue(sb, "Alert", targetComp.AlertRadius.ToString("0.###"));
 
@@ -286,11 +294,11 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         AppendValue(sb, "UniqueValues", FormatFixArray(data.UniqueValues));
     }
 
-    private static void AppendBuildingDetails(BuildingEntity building, StringBuilder sb)
+    private static void AppendBuildingDetails(IBuildingLogicContext building, StringBuilder sb)
     {
         AppendLine(sb, "");
         AppendLine(sb, "Building Table / Runtime");
-        BuildingData data = building.buildingData;
+        BuildingData data = building.BuildingData;
         if (data == null)
         {
             AppendValue(sb, "BuildingData", "<missing>");
@@ -302,14 +310,14 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         AppendValue(sb, "Archetype", data.Arche);
         AppendValue(sb, "Lv", data.Lv);
         AppendValue(sb, "InstanceId", building.BuildingInstanceId);
-        AppendValue(sb, "OwnerFaction", building.OwnerFactionID);
+        AppendValue(sb, "OwnerFaction", building.OwnerFactionId);
         AppendValue(sb, "ArmyForce", building.GetArmyForce());
         AppendValue(sb, "UnitID", data.UnitID);
         AppendValue(sb, "Production", data.Production);
         AppendValue(sb, "Disabled", building.IsDisabled);
-        AppendValue(sb, "Lv0Invincible", building.IsLv0Invincible);
+        AppendValue(sb, "Lv0Invincible", data.Lv == 0);
         AppendValue(sb, "PhaseProtected", building.IsPhaseProtected);
-        AppendValue(sb, "HasUpgrade", building.HasUpgrade);
+        AppendValue(sb, "InteractionOptions", building.InteractionOptions?.Count ?? 0);
         AppendValue(sb, "UniqueValues", FormatFixArray(data.UniqueValues));
         AppendValue(sb, "UpgradeTechIDs", data.UpgradeTechIDs != null ? string.Join(", ", data.UpgradeTechIDs) : "<none>");
 
@@ -392,9 +400,8 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         if (entity == null)
             return "<none>";
 
-        string id = entity is MAEntity ma ? ma.Id.ToString() : "?";
-        string kind = entity is BuildingEntity ? "B" : "U";
-        return $"{kind}#{id} {entity.CharacterKey} {entity.Side}";
+        string kind = entity is IBuildingLogicContext ? "B" : "U";
+        return $"{kind}#{entity.LogicEntityId.Value} {entity.CharacterKey} {entity.Side}";
     }
 
     private static string FormatFix(Fix64 value)
@@ -416,6 +423,11 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
     private static string FormatVector(Vector3 value)
     {
         return $"{value.x:0.###}, {value.y:0.###}, {value.z:0.###}";
+    }
+
+    private static string FormatFixedVector(FixVector2 value)
+    {
+        return $"{FormatFix(value.x)}, {FormatFix(value.y)}";
     }
 
     private static void AppendLine(StringBuilder sb, string value)

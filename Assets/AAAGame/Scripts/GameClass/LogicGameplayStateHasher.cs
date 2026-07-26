@@ -5,6 +5,8 @@ using AAAGame.Scripts.BuffSystem;
 
 public static class LogicGameplayStateHasher
 {
+    private static readonly LogicStateHasher s_FrameHasher = new LogicStateHasher();
+    private static readonly List<LogicEntityState> s_PendingSpawnStates = new List<LogicEntityState>();
     private static readonly CreatureMainProperty[] s_MainProperties =
     {
         CreatureMainProperty.Def,
@@ -19,6 +21,11 @@ public static class LogicGameplayStateHasher
 
     public static ulong ComputeCurrentFrame()
     {
+        return ComputeCurrentFrameDigest().GameplayStateHash;
+    }
+
+    public static LogicGameplayStateDigest ComputeCurrentFrameDigest()
+    {
         ulong frame = LogicFrameRuntime.CurrentFrame;
         if (frame == 0 || !LogicFrameRuntime.IsTimelineRunning || LogicFrameRuntime.IsTicking)
             throw new InvalidOperationException("LogicGameplayStateHasher requires a completed positive logic frame.");
@@ -31,11 +38,13 @@ public static class LogicGameplayStateHasher
                 $"LogicGameplayStateHasher frame mismatch. frame={frame}, snapshot={LogicEntityFrameSnapshotService.CapturedFrame}, phase={MAEntityLogicFrameSystem.LastCompletedFrame}, movement={LogicAgentCollisionShadowService.LastCompletedFrame}, damage={LogicDamageEventService.LastCompletedFrame}.");
         }
 
-        var hasher = new LogicStateHasher();
+        LogicStateHasher hasher = s_FrameHasher;
+        hasher.Reset();
         hasher.Add(0x47414D4553544154UL);
         hasher.Add(frame);
         InGameDataModel.WriteDeterministicState(hasher);
         LogicRewardStateService.WriteDeterministicState(hasher);
+        ulong economyHash = hasher.Hash;
         LogicInteractionHoldService.WriteDeterministicState(hasher);
         LogicInteractionTargetStateService.WriteDeterministicState(hasher);
         LogicInteractionCommandService.WriteDeterministicState(hasher);
@@ -45,20 +54,42 @@ public static class LogicGameplayStateHasher
         LogicSkillSlotCommandService.WriteDeterministicState(hasher);
         LogicPhaseCommandService.WriteDeterministicState(hasher);
         LogicTechEffectCommandService.WriteDeterministicState(hasher);
+        ulong commandsHash = hasher.Hash;
+        LevelTagRuntime.WriteDeterministicState(hasher);
         GlobalBuffManager.WriteCurrentDeterministicState(hasher);
+        BuildingTechRuntimeEffectSO.WriteStaticModifierDeterministicState(hasher);
         LogicBuildingExtraPropsStore.WriteDeterministicState(hasher);
         LogicProductionConditionState.WriteDeterministicState(hasher);
         LogicStrongholdMap.WriteDeterministicState(hasher);
         DefendPhaseRuntime.WriteDeterministicState(hasher);
+        ulong worldRulesHash = hasher.Hash;
         AddEntities(hasher, frame);
+        ulong entitiesHash = hasher.Hash;
         AddLifecycle(hasher, frame);
+        ulong lifecycleHash = hasher.Hash;
         AddObstacles(hasher, frame);
+        ulong obstaclesHash = hasher.Hash;
         AddDamageEvents(hasher);
+        ulong damageEventsHash = hasher.Hash;
         AddProjectiles(hasher);
-        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(hasher);
+        ulong projectilesHash = hasher.Hash;
+        LogicNavigationAuthorityDigest navigation =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(hasher);
         hasher.Add(LogicEntityIdAllocator.CaptureSnapshot().LastAllocatedValue);
         hasher.Add(LogicPersistentIdAllocator.CaptureSnapshot().LastBuildingInstanceValue);
-        return hasher.Hash;
+        return new LogicGameplayStateDigest(
+            frame,
+            economyHash,
+            commandsHash,
+            worldRulesHash,
+            entitiesHash,
+            lifecycleHash,
+            obstaclesHash,
+            damageEventsHash,
+            projectilesHash,
+            navigation,
+            hasher.Hash,
+            hasher.Hash);
     }
 
     private static void AddEntities(LogicStateHasher hasher, ulong frame)
@@ -139,7 +170,7 @@ public static class LogicGameplayStateHasher
             AddContributor(hasher, entity.DurationMoveEffectComp);
             AddContributor(hasher, entity is ISkillCompHost skillHost ? skillHost.skillComp : null);
             if (entity.AtkComp is DirectAtkComp directAttack)
-                AddAttack(hasher, directAttack.CaptureDeterministicState());
+                AddAttack(hasher, directAttack);
             else
                 hasher.Add(0);
             AddBuffs(hasher, entity.BuffComp);
@@ -169,26 +200,10 @@ public static class LogicGameplayStateHasher
         hasher.Add(weaponComp.MaxAmmo);
     }
 
-    private static void AddAttack(LogicStateHasher hasher, DirectAttackDeterministicState state)
+    private static void AddAttack(LogicStateHasher hasher, DirectAtkComp directAttack)
     {
         hasher.Add(1);
-        hasher.Add((int)state.State);
-        hasher.Add(state.AttackCount);
-        hasher.Add(state.ActiveWeaponIndex);
-        hasher.Add(state.HasSchedule);
-        hasher.Add(state.StartFrame);
-        hasher.Add(state.HitFrame);
-        hasher.Add(state.RecoveryEndFrame);
-        hasher.Add(state.ReadyFrame);
-        hasher.Add(state.HitCommitted);
-        hasher.Add(state.RecoveryCommitted);
-        hasher.Add(state.HasAttackStartFrame);
-        hasher.Add(state.LastAttackStartFrame);
-        hasher.Add(state.MovementLockedByThisAttack);
-        hasher.Add(state.LockedTargetId);
-        hasher.Add(state.LockedTargetCount);
-        for (int i = 0; i < state.LockedTargetIds.Length; i++)
-            hasher.Add(state.LockedTargetIds[i]);
+        directAttack.WriteGameplayDeterministicState(hasher);
     }
 
     private static void AddBuffs(LogicStateHasher hasher, IBuffComp buffComp)
@@ -199,23 +214,7 @@ public static class LogicGameplayStateHasher
             return;
         }
 
-        IReadOnlyList<CharacterBuffDeterministicState> states = characterBuffComp.CaptureDeterministicStates();
-        hasher.Add(states.Count);
-        for (int i = 0; i < states.Count; i++)
-        {
-            CharacterBuffDeterministicState state = states[i];
-            hasher.Add(state.Id);
-            hasher.Add(state.Duration.RawValue);
-            hasher.Add(state.RemainingTime.RawValue);
-            hasher.Add(state.IsForever);
-            hasher.Add(state.CurrentStack);
-            hasher.Add(state.MaxStack);
-            hasher.Add(state.ModuleTypeNames.Length);
-            for (int moduleIndex = 0; moduleIndex < state.ModuleTypeNames.Length; moduleIndex++)
-                hasher.Add(state.ModuleTypeNames[moduleIndex]);
-            hasher.Add(state.BlindProgressRaw);
-        }
-        characterBuffComp.WriteDeterministicState(hasher);
+        characterBuffComp.WriteGameplayDeterministicState(hasher);
     }
 
     private static void AddLifecycle(LogicStateHasher hasher, ulong frame)
@@ -246,11 +245,11 @@ public static class LogicGameplayStateHasher
 
     private static void AddPendingSpawnStates(LogicStateHasher hasher)
     {
-        LogicEntityState[] states = LogicEntityStateStore.CapturePendingSpawnStates();
-        hasher.Add(states.Length);
-        for (int i = 0; i < states.Length; i++)
+        LogicEntityStateStore.CapturePendingSpawnStates(s_PendingSpawnStates);
+        hasher.Add(s_PendingSpawnStates.Count);
+        for (int i = 0; i < s_PendingSpawnStates.Count; i++)
         {
-            LogicEntityState state = states[i]
+            LogicEntityState state = s_PendingSpawnStates[i]
                 ?? throw new InvalidOperationException($"LogicGameplayStateHasher pending spawn state {i} is null.");
             state.ValidateReadyForSpawn();
             hasher.Add(state.EntityId.Value);
@@ -316,7 +315,7 @@ public static class LogicGameplayStateHasher
             AddContributor(hasher, state.DurationMoveEffectComp);
             AddContributor(hasher, state.SkillComp);
             if (state.AtkComp is DirectAtkComp directAttack)
-                AddAttack(hasher, directAttack.CaptureDeterministicState());
+                AddAttack(hasher, directAttack);
             else
                 hasher.Add(0);
             AddBuffs(hasher, state.BuffComp);
@@ -325,32 +324,7 @@ public static class LogicGameplayStateHasher
 
     private static void AddObstacles(LogicStateHasher hasher, ulong frame)
     {
-        var active = new Dictionary<int, LogicObstacleCommand>();
-        var pending = new List<LogicObstacleCommand>();
-        IReadOnlyList<LogicObstacleCommand> history = LogicObstacleCommandService.History;
-        for (int i = 0; i < history.Count; i++)
-        {
-            LogicObstacleCommand command = history[i];
-            if (command.EffectiveFrame > frame)
-            {
-                pending.Add(command);
-                continue;
-            }
-            if (command.Kind == LogicObstacleCommandKind.Remove)
-                active.Remove(command.StableObstacleId);
-            else
-                active[command.StableObstacleId] = command;
-        }
-
-        var activeCommands = new List<LogicObstacleCommand>(active.Values);
-        activeCommands.Sort(CompareObstacleCommands);
-        pending.Sort(ComparePendingObstacleCommands);
-        hasher.Add(activeCommands.Count);
-        for (int i = 0; i < activeCommands.Count; i++)
-            AddObstacleCommand(hasher, activeCommands[i], false);
-        hasher.Add(pending.Count);
-        for (int i = 0; i < pending.Count; i++)
-            AddObstacleCommand(hasher, pending[i], true);
+        LogicObstacleCommandService.WriteDeterministicState(hasher, frame);
     }
 
     private static void AddDamageEvents(LogicStateHasher hasher)
@@ -376,47 +350,7 @@ public static class LogicGameplayStateHasher
 
     private static void AddProjectiles(LogicStateHasher hasher)
     {
-        IReadOnlyList<LogicProjectileDeterministicState> projectiles = LogicProjectileService.CaptureActiveStates();
-        hasher.Add(projectiles.Count);
-        for (int i = 0; i < projectiles.Count; i++)
-        {
-            LogicProjectileDeterministicState projectile = projectiles[i];
-            hasher.Add(projectile.Id);
-            hasher.Add(projectile.AttackerId.Value);
-            hasher.Add(projectile.TargetId.Value);
-            hasher.Add(projectile.Position.x.RawValue);
-            hasher.Add(projectile.Position.y.RawValue);
-            hasher.Add(projectile.Speed.RawValue);
-        }
+        LogicProjectileService.WriteActiveDeterministicState(hasher);
     }
 
-    private static void AddObstacleCommand(LogicStateHasher hasher, LogicObstacleCommand command, bool includeTimeline)
-    {
-        if (includeTimeline)
-        {
-            hasher.Add(command.EffectiveFrame);
-            hasher.Add(command.Sequence);
-        }
-        hasher.Add((int)command.Kind);
-        hasher.Add(command.StableObstacleId);
-        hasher.Add(command.Center.x.RawValue);
-        hasher.Add(command.Center.y.RawValue);
-        hasher.Add(command.HalfExtents.x.RawValue);
-        hasher.Add(command.HalfExtents.y.RawValue);
-        hasher.Add(command.Radius.RawValue);
-    }
-
-    private static int CompareObstacleCommands(LogicObstacleCommand left, LogicObstacleCommand right)
-    {
-        return left.StableObstacleId.CompareTo(right.StableObstacleId);
-    }
-
-    private static int ComparePendingObstacleCommands(LogicObstacleCommand left, LogicObstacleCommand right)
-    {
-        int result = left.EffectiveFrame.CompareTo(right.EffectiveFrame);
-        if (result != 0)
-            return result;
-        result = left.StableObstacleId.CompareTo(right.StableObstacleId);
-        return result != 0 ? result : left.Sequence.CompareTo(right.Sequence);
-    }
 }

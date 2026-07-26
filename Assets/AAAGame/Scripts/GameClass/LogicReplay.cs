@@ -11,6 +11,11 @@ public sealed class LogicStateHasher
 
     public ulong Hash => m_Hash;
 
+    public void Reset()
+    {
+        m_Hash = OffsetBasis;
+    }
+
     public void Add(bool value)
     {
         Add(value ? (byte)1 : (byte)0);
@@ -178,13 +183,20 @@ public sealed class LogicReplayFrameRecord
         LogicInputFrame inputFrame,
         ulong inputHash,
         ulong timeControlHash,
-        ulong gameplayStateHash,
+        LogicGameplayStateDigest gameplayDigest,
         ulong fullHash)
     {
+        if (gameplayDigest.HasDetails && gameplayDigest.FrameId != inputFrame.FrameId)
+        {
+            throw new InvalidOperationException(
+                $"LogicReplayFrameRecord gameplay digest frame mismatch. input={inputFrame.FrameId}, gameplay={gameplayDigest.FrameId}.");
+        }
+
         InputFrame = inputFrame;
         InputHash = inputHash;
         TimeControlHash = timeControlHash;
-        GameplayStateHash = gameplayStateHash;
+        GameplayDigest = gameplayDigest;
+        GameplayStateHash = gameplayDigest.GameplayStateHash;
         FullHash = fullHash;
     }
 
@@ -192,14 +204,15 @@ public sealed class LogicReplayFrameRecord
     public LogicInputFrame InputFrame { get; }
     public ulong InputHash { get; }
     public ulong TimeControlHash { get; }
+    public LogicGameplayStateDigest GameplayDigest { get; }
     public ulong GameplayStateHash { get; }
     public ulong FullHash { get; }
 }
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 51;
-    public const string CurrentContentVersion = "Avenge-30Hz-v51";
+    public const int CurrentProtocolVersion = 58;
+    public const string CurrentContentVersion = "Avenge-30Hz-v58";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
@@ -348,6 +361,13 @@ public sealed class LogicReplayRecorder
 
     public LogicReplayFrameRecord RecordFrame(LogicInputFrame inputFrame, ulong gameplayStateHash = 0)
     {
+        return RecordFrame(inputFrame, LogicGameplayStateDigest.FromOpaqueHash(gameplayStateHash));
+    }
+
+    public LogicReplayFrameRecord RecordFrame(
+        LogicInputFrame inputFrame,
+        LogicGameplayStateDigest gameplayDigest)
+    {
         if (!IsRecording)
             throw new InvalidOperationException("LogicReplayRecorder.RecordFrame failed: recorder is not active.");
         if (inputFrame == null)
@@ -371,12 +391,12 @@ public sealed class LogicReplayRecorder
             inputFrame.FrameId,
             inputHash,
             timeControlHash,
-            gameplayStateHash);
+            gameplayDigest.GameplayStateHash);
         var record = new LogicReplayFrameRecord(
             inputFrame,
             inputHash,
             timeControlHash,
-            gameplayStateHash,
+            gameplayDigest,
             fullHash);
         m_Frames.Add(record);
         m_NextFrame = checked(m_NextFrame + 1);
@@ -474,10 +494,28 @@ public sealed class LogicReplayRecorder
 
 public static class LogicReplayRuntime
 {
+    public const string RuntimeRecordingCommandLineArgument = "-recordLogicReplay";
+
     private static LogicReplayRecorder s_Recorder;
+    private static readonly bool s_CommandLineRecordingRequested =
+        HasCommandLineArgument(RuntimeRecordingCommandLineArgument);
 
     public static bool IsRecording => s_Recorder != null && s_Recorder.IsRecording;
+    public static bool RuntimeSessionRecordingEnabled { get; private set; }
+    public static bool ShouldRecordRuntimeSession =>
+        RuntimeSessionRecordingEnabled || s_CommandLineRecordingRequested;
     public static LogicReplayLog LastCompletedLog { get; private set; }
+
+    public static void SetRuntimeSessionRecordingEnabled(bool enabled)
+    {
+        if (IsRecording)
+        {
+            throw new InvalidOperationException(
+                "LogicReplayRuntime.SetRuntimeSessionRecordingEnabled failed: recording is already active.");
+        }
+
+        RuntimeSessionRecordingEnabled = enabled;
+    }
 
     public static void BeginRecording()
     {
@@ -495,6 +533,15 @@ public static class LogicReplayRuntime
         return s_Recorder.RecordFrame(inputFrame, gameplayStateHash);
     }
 
+    public static LogicReplayFrameRecord RecordFrame(
+        LogicInputFrame inputFrame,
+        LogicGameplayStateDigest gameplayDigest)
+    {
+        if (!IsRecording)
+            throw new InvalidOperationException("LogicReplayRuntime.RecordFrame failed: no recorder is active.");
+        return s_Recorder.RecordFrame(inputFrame, gameplayDigest);
+    }
+
     public static LogicReplayLog EndRecording()
     {
         if (!IsRecording)
@@ -503,6 +550,18 @@ public static class LogicReplayRuntime
         LastCompletedLog = s_Recorder.End();
         s_Recorder = null;
         return LastCompletedLog;
+    }
+
+    private static bool HasCommandLineArgument(string expected)
+    {
+        string[] arguments = Environment.GetCommandLineArgs();
+        for (int i = 0; i < arguments.Length; i++)
+        {
+            if (string.Equals(arguments[i], expected, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 }
 
@@ -589,7 +648,12 @@ public static class LogicReplayComparer
             if (expectedFrame.TimeControlHash != actualFrame.TimeControlHash)
                 return new LogicReplayDivergence(true, expectedFrame.FrameId, "TimeControlHash");
             if (expectedFrame.GameplayStateHash != actualFrame.GameplayStateHash)
-                return new LogicReplayDivergence(true, expectedFrame.FrameId, "GameplayStateHash");
+            {
+                return new LogicReplayDivergence(
+                    true,
+                    expectedFrame.FrameId,
+                    FindGameplayDivergenceField(expectedFrame.GameplayDigest, actualFrame.GameplayDigest));
+            }
             if (expectedFrame.FullHash != actualFrame.FullHash)
                 return new LogicReplayDivergence(true, expectedFrame.FrameId, "FullHash");
         }
@@ -645,6 +709,53 @@ public static class LogicReplayComparer
         }
 
         return expected.Checksum != actual.Checksum ? "Input.Checksum" : "InputHash";
+    }
+
+    private static string FindGameplayDivergenceField(
+        LogicGameplayStateDigest expected,
+        LogicGameplayStateDigest actual)
+    {
+        if (!expected.HasDetails || !actual.HasDetails)
+            return "GameplayStateHash";
+        if (expected.FrameId != actual.FrameId) return "Gameplay.FrameId";
+        if (expected.EconomyHash != actual.EconomyHash) return "Gameplay.Economy";
+        if (expected.CommandsHash != actual.CommandsHash) return "Gameplay.Commands";
+        if (expected.WorldRulesHash != actual.WorldRulesHash) return "Gameplay.WorldRules";
+        if (expected.EntitiesHash != actual.EntitiesHash) return "Gameplay.Entities";
+        if (expected.LifecycleHash != actual.LifecycleHash) return "Gameplay.Lifecycle";
+        if (expected.ObstaclesHash != actual.ObstaclesHash) return "Gameplay.Obstacles";
+        if (expected.DamageEventsHash != actual.DamageEventsHash) return "Gameplay.DamageEvents";
+        if (expected.ProjectilesHash != actual.ProjectilesHash) return "Gameplay.Projectiles";
+
+        string navigationField = FindNavigationDivergenceField(expected.Navigation, actual.Navigation);
+        if (navigationField != null)
+            return navigationField;
+        if (expected.AllocatorsHash != actual.AllocatorsHash) return "Gameplay.Allocators";
+        return "GameplayStateHash";
+    }
+
+    private static string FindNavigationDivergenceField(
+        LogicNavigationAuthorityDigest expected,
+        LogicNavigationAuthorityDigest actual)
+    {
+        if (!expected.HasDetails || !actual.HasDetails)
+            return expected.FixedCorridorBuildsHash != actual.FixedCorridorBuildsHash
+                ? "Gameplay.Navigation"
+                : null;
+        if (expected.WorldAndConfigHash != actual.WorldAndConfigHash) return "Gameplay.Navigation.WorldAndConfig";
+        if (expected.CheckpointLiveStateHash != actual.CheckpointLiveStateHash) return "Gameplay.Navigation.CheckpointLiveState";
+        if (expected.WorldProgressHash != actual.WorldProgressHash) return "Gameplay.Navigation.WorldProgress";
+        if (expected.RuntimeObstaclesHash != actual.RuntimeObstaclesHash) return "Gameplay.Navigation.RuntimeObstacles";
+        if (expected.AgentsHash != actual.AgentsHash) return "Gameplay.Navigation.Agents";
+        if (expected.CachesHash != actual.CachesHash) return "Gameplay.Navigation.Caches";
+        if (expected.FlowTilesHash != actual.FlowTilesHash) return "Gameplay.Navigation.FlowTiles";
+        if (expected.FlowTileBuildQueueHash != actual.FlowTileBuildQueueHash) return "Gameplay.Navigation.FlowTileBuildQueue";
+        if (expected.SharedGoalBuildQueueHash != actual.SharedGoalBuildQueueHash) return "Gameplay.Navigation.SharedGoalBuildQueue";
+        if (expected.MovingTargetAnchorsHash != actual.MovingTargetAnchorsHash) return "Gameplay.Navigation.MovingTargetAnchors";
+        if (expected.GoalReservationsHash != actual.GoalReservationsHash) return "Gameplay.Navigation.GoalReservations";
+        if (expected.FixedPortalOwnersHash != actual.FixedPortalOwnersHash) return "Gameplay.Navigation.FixedPortalOwners";
+        if (expected.FixedCorridorBuildsHash != actual.FixedCorridorBuildsHash) return "Gameplay.Navigation.FixedCorridorBuilds";
+        return null;
     }
 
     private static LogicReplayDivergence CompareCommands(LogicReplayLog expected, LogicReplayLog actual)

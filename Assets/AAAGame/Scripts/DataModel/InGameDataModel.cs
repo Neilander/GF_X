@@ -30,6 +30,9 @@ public enum IngameValueType
 /// </summary>
 public partial class InGameDataModel : DataModelBase
 {
+    private static readonly List<string> s_DeterministicPrimaryIds = new List<string>();
+    private static readonly List<string> s_DeterministicSecondaryIds = new List<string>();
+
     private const string InitMaxSupplyConfigKey = "InitMaxSupply";
     private const string BaseProvideSupplyConfigKey = "BaseProvideSupply";
     private const string ResourcePointInitialAmountConfigKey = "ResourcePointInitialAmount";
@@ -537,21 +540,19 @@ public partial class InGameDataModel : DataModelBase
             hasher.Add(dataModel.m_IngameValue != null && dataModel.m_IngameValue.TryGetValue(valueType, out int value) ? value : 0);
         }
 
-        var techIds = new List<string>(dataModel.m_TechOwnerContextsById.Keys);
-        techIds.Sort(StringComparer.Ordinal);
-        hasher.Add(techIds.Count);
-        for (int i = 0; i < techIds.Count; i++)
+        FillSortedIds(s_DeterministicPrimaryIds, dataModel.m_TechOwnerContextsById.Keys);
+        hasher.Add(s_DeterministicPrimaryIds.Count);
+        for (int i = 0; i < s_DeterministicPrimaryIds.Count; i++)
         {
-            string techId = techIds[i];
+            string techId = s_DeterministicPrimaryIds[i];
             hasher.Add(techId);
             HashSet<string> ownerSet = dataModel.m_TechOwnerContextsById[techId];
             if (ownerSet == null)
                 throw new InvalidOperationException($"Tech owner set is null. techId='{techId}'.");
-            var owners = new List<string>(ownerSet);
-            owners.Sort(StringComparer.Ordinal);
-            hasher.Add(owners.Count);
-            for (int ownerIndex = 0; ownerIndex < owners.Count; ownerIndex++)
-                hasher.Add(owners[ownerIndex]);
+            FillSortedIds(s_DeterministicSecondaryIds, ownerSet);
+            hasher.Add(s_DeterministicSecondaryIds.Count);
+            for (int ownerIndex = 0; ownerIndex < s_DeterministicSecondaryIds.Count; ownerIndex++)
+                hasher.Add(s_DeterministicSecondaryIds[ownerIndex]);
         }
 
         AddSortedStringIntDictionary(hasher, dataModel.m_ProductionBuildingCoinReservesByInstanceId);
@@ -560,14 +561,21 @@ public partial class InGameDataModel : DataModelBase
 
     private static void AddSortedStringIntDictionary(LogicStateHasher hasher, Dictionary<string, int> values)
     {
-        var keys = new List<string>(values.Keys);
-        keys.Sort(StringComparer.Ordinal);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedIds(s_DeterministicPrimaryIds, values.Keys);
+        hasher.Add(s_DeterministicPrimaryIds.Count);
+        for (int i = 0; i < s_DeterministicPrimaryIds.Count; i++)
         {
-            hasher.Add(keys[i]);
-            hasher.Add(values[keys[i]]);
+            string key = s_DeterministicPrimaryIds[i];
+            hasher.Add(key);
+            hasher.Add(values[key]);
         }
+    }
+
+    private static void FillSortedIds(List<string> destination, IEnumerable<string> values)
+    {
+        destination.Clear();
+        destination.AddRange(values);
+        destination.Sort(StringComparer.Ordinal);
     }
 
     private bool HasAnyContextTech(string techId)

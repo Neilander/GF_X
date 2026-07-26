@@ -152,11 +152,12 @@ public sealed class LogicInputTimeline
 {
     public const int ButtonCount = (int)LogicInputButton.Build3 + 1;
 
+    private static readonly RawInputEvent[] s_NoEventArray = Array.Empty<RawInputEvent>();
+    private static readonly ReadOnlyCollection<RawInputEvent> s_NoEvents = Array.AsReadOnly(s_NoEventArray);
+    private static readonly int[] s_NoPressCounts = new int[ButtonCount];
+
     private readonly uint m_PlayerId;
     private readonly List<RawInputEvent> m_PendingEvents = new List<RawInputEvent>();
-    private readonly Dictionary<ulong, LogicInputFrame> m_SealedFrames =
-        new Dictionary<ulong, LogicInputFrame>();
-
     private ulong m_NextSequence;
     private ulong m_LastSealedFrame;
     private double m_LastCutoff;
@@ -176,6 +177,7 @@ public sealed class LogicInputTimeline
     public bool IsStarted => m_IsStarted;
     public LogicInputFrame CurrentFrame { get; private set; }
     public int PendingEventCount => m_PendingEvents.Count;
+    public int RetainedSealedFrameCount => CurrentFrame.FrameId == 0 ? 0 : 1;
     public ulong LateEventCount { get; private set; }
 
     public void Begin(
@@ -190,7 +192,6 @@ public sealed class LogicInputTimeline
         ValidateHeldBits(initialHeldBits);
 
         m_PendingEvents.Clear();
-        m_SealedFrames.Clear();
         m_NextSequence = 0;
         m_LastSealedFrame = 0;
         m_LastCutoff = startRealtime;
@@ -207,7 +208,6 @@ public sealed class LogicInputTimeline
     public void Clear()
     {
         m_PendingEvents.Clear();
-        m_SealedFrames.Clear();
         m_NextSequence = 0;
         m_LastSealedFrame = 0;
         m_LastCutoff = 0d;
@@ -283,8 +283,8 @@ public sealed class LogicInputTimeline
                 $"LogicInputTimeline.Seal failed: cutoff moved backwards. previous={m_LastCutoff:R}, current={cutoffRealtime:R}.");
 
         int eventCount = FindConsumableEventCount(cutoffRealtime);
-        var frameEvents = new RawInputEvent[eventCount];
-        var pressCounts = new int[ButtonCount];
+        RawInputEvent[] frameEvents = eventCount == 0 ? s_NoEventArray : new RawInputEvent[eventCount];
+        int[] pressCounts = eventCount == 0 ? s_NoPressCounts : new int[ButtonCount];
         ulong pressedBits = 0;
         ulong releasedBits = 0;
 
@@ -338,7 +338,9 @@ public sealed class LogicInputTimeline
 
         ulong firstSequence = eventCount > 0 ? frameEvents[0].Sequence : 0;
         ulong lastSequence = eventCount > 0 ? frameEvents[eventCount - 1].Sequence : 0;
-        var readonlyEvents = Array.AsReadOnly(frameEvents);
+        ReadOnlyCollection<RawInputEvent> readonlyEvents = eventCount == 0
+            ? s_NoEvents
+            : Array.AsReadOnly(frameEvents);
         uint checksum = ComputeChecksum(
             frameId,
             m_PlayerId,
@@ -368,22 +370,9 @@ public sealed class LogicInputTimeline
             lastSequence,
             checksum);
 
-        m_SealedFrames.Add(frameId, frame);
         CurrentFrame = frame;
         m_LastSealedFrame = frameId;
         m_LastCutoff = cutoffRealtime;
-        return frame;
-    }
-
-    public bool TryGetFrame(ulong frameId, out LogicInputFrame frame)
-    {
-        return m_SealedFrames.TryGetValue(frameId, out frame);
-    }
-
-    public LogicInputFrame GetFrame(ulong frameId)
-    {
-        if (!m_SealedFrames.TryGetValue(frameId, out LogicInputFrame frame))
-            throw new KeyNotFoundException($"Logic input frame is not sealed. frame={frameId}.");
         return frame;
     }
 

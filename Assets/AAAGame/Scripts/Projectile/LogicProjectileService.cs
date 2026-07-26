@@ -134,6 +134,27 @@ public static class LogicProjectileService
         return result;
     }
 
+    public static void WriteActiveDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+        EnsureActive();
+
+        hasher.Add(s_ActiveIds.Count);
+        for (int i = 0; i < s_ActiveIds.Count; i++)
+        {
+            ProjectileState state = s_States[s_ActiveIds[i]];
+            if (state == null || state.Attacker == null || state.Target == null)
+                throw new InvalidOperationException($"LogicProjectileService deterministic state is invalid. index={i}.");
+            hasher.Add(state.Id);
+            hasher.Add(state.Attacker.LogicEntityId.Value);
+            hasher.Add(state.Target.LogicEntityId.Value);
+            hasher.Add(state.Position.x.RawValue);
+            hasher.Add(state.Position.y.RawValue);
+            hasher.Add(state.Speed.RawValue);
+        }
+    }
+
     public static LogicProjectileSnapshot CaptureSnapshot()
     {
         EnsureActive();

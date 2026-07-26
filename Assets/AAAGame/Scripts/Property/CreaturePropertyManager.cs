@@ -1,4 +1,4 @@
-﻿﻿using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System;
 using UnityEngine;
@@ -37,6 +37,28 @@ public class CreaturePropertyManager
         CreatureMainProperty.Sight,
         CreatureMainProperty.StatusResistance,
         CreatureMainProperty.WeightLevel
+    };
+
+    private static readonly string[] MainPropertyNames =
+    {
+        nameof(CreatureMainProperty.Def),
+        nameof(CreatureMainProperty.Health),
+        nameof(CreatureMainProperty.Speed),
+        nameof(CreatureMainProperty.CollisionRadius),
+        nameof(CreatureMainProperty.TurnRate),
+        nameof(CreatureMainProperty.Sight),
+        nameof(CreatureMainProperty.StatusResistance),
+        nameof(CreatureMainProperty.WeightLevel)
+    };
+
+    private static readonly string[] MinorPropertyNames =
+    {
+        nameof(CreatureMinorProperty.HealthRecover)
+    };
+
+    private static readonly string[] CurrentPropertyNames =
+    {
+        nameof(CreatureCurrentProperty.HealthCurrent)
     };
 
     private static readonly Func<Func<Fix64>[], Func<Fix64>> ConfigOnlyRefFunc =
@@ -96,17 +118,26 @@ public class CreaturePropertyManager
 
     public Fix64 GetProperty(CreatureMainProperty property)
     {
-        return propertyManager.GetValueProperty(property.ToString()).GetValue();
+        int index = (int)property;
+        if ((uint)index >= (uint)MainPropertyNames.Length)
+            throw new ArgumentOutOfRangeException(nameof(property), property, "Unknown main creature property.");
+        return propertyManager.GetValueProperty(MainPropertyNames[index]).GetValue();
     }
 
     public Fix64 GetProperty(CreatureMinorProperty property)
     {
-        return propertyManager.GetValueProperty(property.ToString()).GetValue();
+        int index = (int)property;
+        if ((uint)index >= (uint)MinorPropertyNames.Length)
+            throw new ArgumentOutOfRangeException(nameof(property), property, "Unknown minor creature property.");
+        return propertyManager.GetValueProperty(MinorPropertyNames[index]).GetValue();
     }
 
     public Fix64 GetProperty(CreatureCurrentProperty property)
     {
-        return propertyManager.GetValueProperty(property.ToString()).GetValue();
+        int index = (int)property;
+        if ((uint)index >= (uint)CurrentPropertyNames.Length)
+            throw new ArgumentOutOfRangeException(nameof(property), property, "Unknown current creature property.");
+        return propertyManager.GetValueProperty(CurrentPropertyNames[index]).GetValue();
     }
 
     public Fix64 GetLevel()

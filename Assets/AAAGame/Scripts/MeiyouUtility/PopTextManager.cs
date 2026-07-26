@@ -313,15 +313,17 @@ public class PopTextManager : GameFrameworkComponent
     {
         position = Vector3.zero;
 
-        if (EntityRegistry.Player is MAEntity playerEntity)
+        IEntityContext player = EntityRegistry.Player;
+        if (player != null
+            && LogicEntityLifecycleService.TryGetBoundView(player.LogicEntityId, out MAEntity playerEntity))
         {
             position = playerEntity.transform.position + heroPopOffset;
             return true;
         }
 
-        if (EntityRegistry.Player != null)
+        if (player != null)
         {
-            position = EntityRegistry.Player.Position + heroPopOffset;
+            position = player.Position + heroPopOffset;
             return true;
         }
 

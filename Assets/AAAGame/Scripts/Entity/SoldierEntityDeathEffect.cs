@@ -1,8 +1,8 @@
 ﻿public partial class SoldierEntity
 {
-    public override void OnDead()
+    protected override void OnLogicUnitDiedPresentation(IEntityContext attacker)
     {
         AAAGame.Effect.UnitDeathDissolveEffect.PlayFor(gameObject);
-        base.OnDead();
+        base.OnLogicUnitDiedPresentation(attacker);
     }
 }

@@ -97,6 +97,8 @@ namespace UnityGameFramework.Runtime
         private static long _frameStartAllocatedBytes;
         private static int _frameStartCollectionCount;
 
+        public static bool LoggingEnabled { get; set; }
+
         public static void PulseFrame()
         {
             EnsureFrame();
@@ -155,6 +157,9 @@ namespace UnityGameFramework.Runtime
 
         private static void Flush(long frameTicks, long allocatedBytes, int collectionCount)
         {
+            if (!LoggingEnabled)
+                return;
+
             long trackedTicks = 0;
             for (int i = 0; i <= (int)MainThreadPerfScope.EntityUpdate; i++)
                 trackedTicks += ScopeTicks[i];

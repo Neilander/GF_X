@@ -3863,7 +3863,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetDebug: 0
   atkDebug: 0
-  moveDebug: 1
+  moveDebug: 0
   brainDebug: 0
   groupMoveDebug: 0
   runtimeResourceModifyEnabled: 1

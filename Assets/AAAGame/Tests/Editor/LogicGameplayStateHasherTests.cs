@@ -220,6 +220,64 @@ public class LogicGameplayStateHasherTests
     }
 
     [Test]
+    public void LevelTagFutureState_ChangesGameplayFullHashAndIgnoresInsertionOrder()
+    {
+        BeginAndRunEmptyFrame();
+
+        ulong empty = LogicGameplayStateHasher.ComputeCurrentFrame();
+        LevelTagRuntime.SetActiveTagIds(new[] { 41, 7, 23 });
+        ulong tagIdsForward = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(empty, tagIdsForward);
+
+        LevelTagRuntime.SetActiveTagIds(new[] { 23, 41, 7 });
+        ulong tagIdsReverse = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreEqual(tagIdsForward, tagIdsReverse);
+
+        LevelTagRuntime.SetActiveTagIdentifiers(new[] { "tag-b", "tag-a" });
+        ulong tagNamesForward = LogicGameplayStateHasher.ComputeCurrentFrame();
+        LevelTagRuntime.SetActiveTagIdentifiers(new[] { "tag-a", "tag-b" });
+        ulong tagNamesReverse = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreEqual(tagNamesForward, tagNamesReverse);
+        Assert.AreNotEqual(tagIdsForward, tagNamesForward);
+
+        LevelTagRuntime.ClearActiveTags();
+        LevelTagRuntime.SetEditorTestHeroReviveState(19, 2, 1);
+        LevelTagRuntime.SetEditorTestHeroReviveState(5, 3, 2);
+        ulong reviveForward = LogicGameplayStateHasher.ComputeCurrentFrame();
+
+        LevelTagRuntime.ClearActiveTags();
+        LevelTagRuntime.SetEditorTestHeroReviveState(5, 3, 2);
+        LevelTagRuntime.SetEditorTestHeroReviveState(19, 2, 1);
+        ulong reviveReverse = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreEqual(reviveForward, reviveReverse);
+
+        LevelTagRuntime.SetEditorTestHeroReviveState(19, 2, 2);
+        ulong reviveConsumedAgain = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(reviveForward, reviveConsumedAgain,
+            "英雄每日复活消费次数会改变未来死亡结果，必须进入 Gameplay FullHash。");
+    }
+
+    [Test]
+    public void BuildingTechStaticRules_ChangeGameplayFullHashAndIgnoreInsertionOrder()
+    {
+        BeginAndRunEmptyFrame();
+
+        RegisterBuildingTechStaticRules(false, 6);
+        ulong forward = LogicGameplayStateHasher.ComputeCurrentFrame();
+
+        ClearBuildingTechStaticRules();
+        RegisterBuildingTechStaticRules(true, 6);
+        ulong reverse = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreEqual(forward, reverse);
+
+        ClearBuildingTechStaticRules();
+        RegisterBuildingTechStaticRules(false, 7);
+        ulong changed = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(forward, changed,
+            "BuildingTech 静态规则会改变未来经济、出兵和目标选择结果，必须进入 Gameplay FullHash。");
+    }
+
+    [Test]
     public void GeneralCounterDeterministicState_TracksExactFixedProgress()
     {
         var counter = new GeneralCounter();
@@ -279,6 +337,39 @@ public class LogicGameplayStateHasherTests
     {
         BeginAndRunEmptyFrame();
         return LogicGameplayStateHasher.ComputeCurrentFrame();
+    }
+
+    private static void RegisterBuildingTechStaticRules(bool reverse, int settlementOffset)
+    {
+        string first = reverse ? "tech-b" : "tech-a";
+        string second = reverse ? "tech-a" : "tech-b";
+        DiscardRewardModifierService.RegisterRateReduction(first, 1, reverse ? 3 : 2);
+        DiscardRewardModifierService.RegisterRateReduction(second, 1, reverse ? 2 : 3);
+        EnemyArmyForceModifierService.RegisterReduction(first, 1, reverse ? (Fix64)9 : (Fix64)7);
+        EnemyArmyForceModifierService.RegisterReduction(second, 1, reverse ? (Fix64)7 : (Fix64)9);
+        HealingTargetFilterService.RegisterNurseHealthThreshold(first, 1, reverse ? (Fix64)60 : (Fix64)40);
+        HealingTargetFilterService.RegisterNurseHealthThreshold(second, 1, reverse ? (Fix64)40 : (Fix64)60);
+        if (reverse)
+        {
+            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-a", "tech-b", 1, 5);
+            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-b", "tech-a", 1, 4);
+        }
+        else
+        {
+            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-b", "tech-a", 1, 4);
+            BuildingCostModifierService.RegisterStrongholdArchetypeDiscount("stronghold-a", "tech-b", 1, 5);
+        }
+        SettlementOffsetRateService.RegisterOffsetRate(first, 1, reverse ? 8 : settlementOffset);
+        SettlementOffsetRateService.RegisterOffsetRate(second, 1, reverse ? settlementOffset : 8);
+    }
+
+    private static void ClearBuildingTechStaticRules()
+    {
+        DiscardRewardModifierService.Clear();
+        EnemyArmyForceModifierService.Clear();
+        HealingTargetFilterService.Clear();
+        BuildingCostModifierService.Clear();
+        SettlementOffsetRateService.Clear();
     }
 
     private static ulong RunPendingSpawnAndHash(int viewEntityId)
@@ -521,6 +612,7 @@ public class LogicGameplayStateHasherTests
     private static void BeginAndRunEmptyFrame(System.Action beforeFirstFrame = null)
     {
         EnsureInGameDataModel();
+        LevelTagRuntime.ClearActiveTags();
         EntityRegistry.Clear();
         LogicTimeControlService.BeginTimeline();
         LogicInteractionHoldService.BeginTimeline();
@@ -613,6 +705,8 @@ public class LogicGameplayStateHasherTests
             LogicInteractionHoldService.EndTimeline();
         if (LogicTimeControlService.IsActive)
             LogicTimeControlService.EndTimeline();
+        ClearBuildingTechStaticRules();
+        LevelTagRuntime.ClearActiveTags();
         EntityRegistry.Clear();
     }
 

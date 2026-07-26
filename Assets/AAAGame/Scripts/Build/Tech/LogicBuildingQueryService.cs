@@ -24,7 +24,7 @@ public static class LogicBuildingQueryService
                 continue;
             }
 
-            Fix64 distanceSquared = FixVector2.SqrMagnitude(candidate.PositionFixed - origin);
+            Fix64 distanceSquared = FixVector2.SqrMagnitude(candidate.LogicFramePositionFixed() - origin);
             if (building != null
                 && (distanceSquared > bestDistanceSquared
                     || (distanceSquared == bestDistanceSquared

@@ -5,6 +5,13 @@ using UnityEngine;
 public sealed class PositionSelectActionTests
 {
     [Test]
+    public void SelectorContract_DoesNotExposeGameObjectValidation()
+    {
+        Assert.IsNull(typeof(ISelector<ISelectable>).GetMethod("Validate"));
+        Assert.IsNull(typeof(TargetableSelector).GetMethod("Validate"));
+    }
+
+    [Test]
     public void ClampToRadius_UsesExactFixedWorldCoordinates()
     {
         var center = new FixVector2((Fix64)10, (Fix64)(-4));

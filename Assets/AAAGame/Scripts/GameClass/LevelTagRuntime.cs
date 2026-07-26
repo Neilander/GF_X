@@ -10,6 +10,9 @@ public static class LevelTagRuntime
     private static readonly HashSet<string> s_ActiveTagIdentifiers = new(StringComparer.Ordinal);
     private static readonly HashSet<string> s_WarnedUnsupportedTags = new(StringComparer.Ordinal);
     private static readonly Dictionary<int, HeroReviveState> s_HeroReviveStatesByEntityId = new();
+    private static readonly List<int> s_DeterministicTagIds = new();
+    private static readonly List<string> s_DeterministicTagIdentifiers = new();
+    private static readonly List<int> s_DeterministicHeroReviveEntityIds = new();
 
     private struct HeroReviveState
     {
@@ -51,6 +54,47 @@ public static class LevelTagRuntime
         s_ActiveTagIdentifiers.Clear();
         s_WarnedUnsupportedTags.Clear();
         s_HeroReviveStatesByEntityId.Clear();
+    }
+
+    public static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        hasher.Add(0x4C564C5441475354UL);
+
+        s_DeterministicTagIds.Clear();
+        s_DeterministicTagIds.AddRange(s_ActiveTagIds);
+        s_DeterministicTagIds.Sort();
+        hasher.Add(s_DeterministicTagIds.Count);
+        for (int i = 0; i < s_DeterministicTagIds.Count; i++)
+            hasher.Add(s_DeterministicTagIds[i]);
+
+        s_DeterministicTagIdentifiers.Clear();
+        s_DeterministicTagIdentifiers.AddRange(s_ActiveTagIdentifiers);
+        s_DeterministicTagIdentifiers.Sort(StringComparer.Ordinal);
+        hasher.Add(s_DeterministicTagIdentifiers.Count);
+        for (int i = 0; i < s_DeterministicTagIdentifiers.Count; i++)
+            hasher.Add(s_DeterministicTagIdentifiers[i]);
+
+        s_DeterministicHeroReviveEntityIds.Clear();
+        s_DeterministicHeroReviveEntityIds.AddRange(s_HeroReviveStatesByEntityId.Keys);
+        s_DeterministicHeroReviveEntityIds.Sort();
+        hasher.Add(s_DeterministicHeroReviveEntityIds.Count);
+        for (int i = 0; i < s_DeterministicHeroReviveEntityIds.Count; i++)
+        {
+            int entityId = s_DeterministicHeroReviveEntityIds[i];
+            HeroReviveState state = s_HeroReviveStatesByEntityId[entityId];
+            if (entityId <= 0 || state.Day <= 0 || state.Count <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"LevelTagRuntime deterministic state contains an invalid hero revive entry. entity={entityId}, day={state.Day}, count={state.Count}.");
+            }
+
+            hasher.Add(entityId);
+            hasher.Add(state.Day);
+            hasher.Add(state.Count);
+        }
     }
 
     public static int GetHeroSkillLevelBonus()
@@ -781,6 +825,22 @@ public static class LevelTagRuntime
             ids[i] = sorted[i].Id;
         }
         return ids;
+    }
+
+    public static void SetEditorTestHeroReviveState(int entityId, int day, int count)
+    {
+        if (entityId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(entityId));
+        if (day <= 0)
+            throw new ArgumentOutOfRangeException(nameof(day));
+        if (count <= 0)
+            throw new ArgumentOutOfRangeException(nameof(count));
+
+        s_HeroReviveStatesByEntityId[entityId] = new HeroReviveState
+        {
+            Day = day,
+            Count = count,
+        };
     }
 #endif
 

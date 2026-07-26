@@ -56,6 +56,12 @@ public class GlobalBuffManager : GameFrameworkComponent
     private readonly List<PersistentBuildingBuffRule> m_PersistentBuildingBuffRules = new();
     private readonly List<RuntimeArmyForceRule> m_RuntimeArmyForceRules = new();
     private readonly List<PersistentBuildingEntityBuffRule> m_PersistentBuildingEntityBuffRules = new();
+    private readonly List<int> m_DeterministicFactionIds = new();
+    private readonly List<UnitType> m_DeterministicUnitTypes = new();
+    private readonly List<GlobalUnitBuffEntry> m_DeterministicUnitBuffEntries = new();
+    private readonly List<PersistentBuildingBuffRule> m_DeterministicBuildingBuffRules = new();
+    private readonly List<RuntimeArmyForceRule> m_DeterministicArmyForceRules = new();
+    private readonly List<PersistentBuildingEntityBuffRule> m_DeterministicEntityBuffRules = new();
     private BuildingTechRuntimeEffectSO m_BuildingTechRuntimeEffect;
 
     public TechScopeResolver ScopeResolver => m_TechScopeResolver;
@@ -136,59 +142,65 @@ public class GlobalBuffManager : GameFrameworkComponent
         if (m_BuildingTechRuntimeEffect != null)
             m_BuildingTechRuntimeEffect.WriteDeterministicState(hasher);
 
-        var factions = new List<int>(m_UnitBuffsByFaction.Keys);
-        factions.Sort();
-        hasher.Add(factions.Count);
-        for (int factionIndex = 0; factionIndex < factions.Count; factionIndex++)
+        m_DeterministicFactionIds.Clear();
+        m_DeterministicFactionIds.AddRange(m_UnitBuffsByFaction.Keys);
+        m_DeterministicFactionIds.Sort();
+        hasher.Add(m_DeterministicFactionIds.Count);
+        for (int factionIndex = 0; factionIndex < m_DeterministicFactionIds.Count; factionIndex++)
         {
-            int factionId = factions[factionIndex];
+            int factionId = m_DeterministicFactionIds[factionIndex];
             hasher.Add(factionId);
-            var unitTypes = new List<UnitType>(m_UnitBuffsByFaction[factionId].Keys);
-            unitTypes.Sort((left, right) => ((int)left).CompareTo((int)right));
-            hasher.Add(unitTypes.Count);
-            for (int unitIndex = 0; unitIndex < unitTypes.Count; unitIndex++)
+            m_DeterministicUnitTypes.Clear();
+            m_DeterministicUnitTypes.AddRange(m_UnitBuffsByFaction[factionId].Keys);
+            m_DeterministicUnitTypes.Sort(CompareUnitTypes);
+            hasher.Add(m_DeterministicUnitTypes.Count);
+            for (int unitIndex = 0; unitIndex < m_DeterministicUnitTypes.Count; unitIndex++)
             {
-                UnitType unitType = unitTypes[unitIndex];
+                UnitType unitType = m_DeterministicUnitTypes[unitIndex];
                 hasher.Add((int)unitType);
                 List<GlobalUnitBuffEntry> entries = m_UnitBuffsByFaction[factionId][unitType];
-                var ordered = new List<GlobalUnitBuffEntry>(entries);
-                ordered.Sort(CompareGlobalUnitBuffEntries);
-                hasher.Add(ordered.Count);
-                for (int entryIndex = 0; entryIndex < ordered.Count; entryIndex++)
-                    AddGlobalUnitBuffEntry(hasher, ordered[entryIndex]);
+                m_DeterministicUnitBuffEntries.Clear();
+                m_DeterministicUnitBuffEntries.AddRange(entries);
+                m_DeterministicUnitBuffEntries.Sort(CompareGlobalUnitBuffEntries);
+                hasher.Add(m_DeterministicUnitBuffEntries.Count);
+                for (int entryIndex = 0; entryIndex < m_DeterministicUnitBuffEntries.Count; entryIndex++)
+                    AddGlobalUnitBuffEntry(hasher, m_DeterministicUnitBuffEntries[entryIndex]);
             }
         }
 
-        var persistent = new List<PersistentBuildingBuffRule>(m_PersistentBuildingBuffRules);
-        persistent.Sort(ComparePersistentBuildingBuffRules);
-        hasher.Add(persistent.Count);
-        for (int i = 0; i < persistent.Count; i++)
+        m_DeterministicBuildingBuffRules.Clear();
+        m_DeterministicBuildingBuffRules.AddRange(m_PersistentBuildingBuffRules);
+        m_DeterministicBuildingBuffRules.Sort(ComparePersistentBuildingBuffRules);
+        hasher.Add(m_DeterministicBuildingBuffRules.Count);
+        for (int i = 0; i < m_DeterministicBuildingBuffRules.Count; i++)
         {
-            PersistentBuildingBuffRule rule = persistent[i];
+            PersistentBuildingBuffRule rule = m_DeterministicBuildingBuffRules[i];
             hasher.Add(rule.OwnerFactionId);
             hasher.Add(rule.SourceBuildingInstanceId);
             hasher.Add(rule.TechId);
             hasher.Add(rule.Effect?.GetType().FullName);
         }
 
-        var army = new List<RuntimeArmyForceRule>(m_RuntimeArmyForceRules);
-        army.Sort(CompareRuntimeArmyForceRules);
-        hasher.Add(army.Count);
-        for (int i = 0; i < army.Count; i++)
+        m_DeterministicArmyForceRules.Clear();
+        m_DeterministicArmyForceRules.AddRange(m_RuntimeArmyForceRules);
+        m_DeterministicArmyForceRules.Sort(CompareRuntimeArmyForceRules);
+        hasher.Add(m_DeterministicArmyForceRules.Count);
+        for (int i = 0; i < m_DeterministicArmyForceRules.Count; i++)
         {
-            RuntimeArmyForceRule rule = army[i];
+            RuntimeArmyForceRule rule = m_DeterministicArmyForceRules[i];
             hasher.Add(rule.OwnerFactionId);
             hasher.Add(rule.SourceBuildingInstanceId);
             hasher.Add(rule.TechId);
             hasher.Add(rule.ResolveBonus != null);
         }
 
-        var entity = new List<PersistentBuildingEntityBuffRule>(m_PersistentBuildingEntityBuffRules);
-        entity.Sort(ComparePersistentBuildingEntityBuffRules);
-        hasher.Add(entity.Count);
-        for (int i = 0; i < entity.Count; i++)
+        m_DeterministicEntityBuffRules.Clear();
+        m_DeterministicEntityBuffRules.AddRange(m_PersistentBuildingEntityBuffRules);
+        m_DeterministicEntityBuffRules.Sort(ComparePersistentBuildingEntityBuffRules);
+        hasher.Add(m_DeterministicEntityBuffRules.Count);
+        for (int i = 0; i < m_DeterministicEntityBuffRules.Count; i++)
         {
-            PersistentBuildingEntityBuffRule rule = entity[i];
+            PersistentBuildingEntityBuffRule rule = m_DeterministicEntityBuffRules[i];
             hasher.Add(rule.OwnerFactionId);
             hasher.Add(rule.SourceBuildingInstanceId);
             hasher.Add(rule.TechId);
@@ -204,6 +216,11 @@ public class GlobalBuffManager : GameFrameworkComponent
         hasher.Add(entry.TechId);
         hasher.Add(entry.Effect?.GetType().FullName);
         hasher.Add(entry.TechData?.Identifier);
+    }
+
+    private static int CompareUnitTypes(UnitType left, UnitType right)
+    {
+        return ((int)left).CompareTo((int)right);
     }
 
     private static int CompareGlobalUnitBuffEntries(GlobalUnitBuffEntry left, GlobalUnitBuffEntry right)

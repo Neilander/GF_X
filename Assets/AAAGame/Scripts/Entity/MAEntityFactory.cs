@@ -227,7 +227,6 @@ public static class MAEntityFactory
         int logicQuarterTurns = 0,
         bool isGameEndConditionBuilding = false,
         bool isNavigationStaticBaked = false,
-        bool enableConstructionEscape = false,
         bool currentInteractionFrameLifecycle = false)
     {
         EntityParams entityParams = CreateBuildingEntityParams(
@@ -240,7 +239,6 @@ public static class MAEntityFactory
             logicQuarterTurns,
             isGameEndConditionBuilding,
             isNavigationStaticBaked,
-            enableConstructionEscape,
             currentInteractionFrameLifecycle);
         return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
     }
@@ -255,7 +253,6 @@ public static class MAEntityFactory
         int logicQuarterTurns = 0,
         bool isGameEndConditionBuilding = false,
         bool isNavigationStaticBaked = false,
-        bool enableConstructionEscape = false,
         bool currentInteractionFrameLifecycle = false)
     {
         var viewPosition = new Vector3((float)position.x, viewY, (float)position.y);
@@ -269,7 +266,6 @@ public static class MAEntityFactory
             logicQuarterTurns,
             isGameEndConditionBuilding,
             isNavigationStaticBaked,
-            enableConstructionEscape,
             currentInteractionFrameLifecycle);
         int viewRequestId = GF.Entity.ShowEntity<BuildingEntity>(
             buildingData.PrefabPath,
@@ -293,7 +289,6 @@ public static class MAEntityFactory
         int logicQuarterTurns,
         bool isGameEndConditionBuilding,
         bool isNavigationStaticBaked,
-        bool enableConstructionEscape,
         bool currentInteractionFrameLifecycle)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
@@ -317,10 +312,6 @@ public static class MAEntityFactory
         if (isNavigationStaticBaked)
         {
             entityParams.Set<VarBoolean>(BuildingEntity.P_IsNavigationStaticBaked, true);
-        }
-        if (enableConstructionEscape)
-        {
-            entityParams.Set<VarBoolean>(BuildingEntity.P_EnableConstructionEscape, true);
         }
         SideType side = EntitySideHelper.ToSide(EntityCombatTeamHelper.ResolveTeamIdByFaction(ownerFactionId));
         AssignConfiguredLogicState(

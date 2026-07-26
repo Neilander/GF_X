@@ -7,6 +7,8 @@ public class MAEntityLogicFrameSystemTests
     public void SetUp()
     {
         EntityRegistry.Clear();
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
         LogicFrameRuntime.Begin();
         LogicEntityFrameSnapshotService.BeginTimeline();
         MAEntityLogicFrameSystem.BeginTimeline();
@@ -20,6 +22,8 @@ public class MAEntityLogicFrameSystemTests
         MAEntityLogicFrameSystem.EndTimeline();
         LogicEntityFrameSnapshotService.EndTimeline();
         LogicFrameRuntime.End();
+        FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
     }
 
     [Test]
@@ -125,6 +129,113 @@ public class MAEntityLogicFrameSystemTests
             LogicEntityLifecycleService.EndTimeline();
             LogicTimeControlService.EndTimeline();
         }
+    }
+
+    [Test]
+    public void ViewlessLogicSpawnInsideRuntimeObstacle_RecoversExactlyOnceInCollisionPipeline()
+    {
+        const int width = 8;
+        const int height = 3;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            UnityEngine.Vector3.zero,
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            9001,
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+        ProcessRuntimeDirtyQueueUntilReady();
+
+        FixVector2 spawnPosition = new FixVector2((Fix64)1.5f, (Fix64)1.5f);
+        Fix64 collisionRadiusProperty = (Fix64)5;
+        Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(collisionRadiusProperty);
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            0,
+            spawnPosition,
+            FixVector2.Zero,
+            collisionRadius,
+            out LogicStaticCollisionShadowResult expectedSolve));
+        Assert.IsTrue(expectedSolve.SolveResult.Success);
+        Assert.IsTrue(expectedSolve.SolveResult.StartedOverlapping);
+        FixVector2 expectedPosition = spawnPosition + expectedSolve.SolveResult.ResolvedDisplacement;
+
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn(
+                new LogicEntitySpawnDescriptor(
+                    spawnPosition,
+                    new FixVector2(Fix64.Zero, Fix64.One),
+                    SideType.PlayerSide,
+                    "ViewlessConstructionEscape"));
+            LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+            state.Configure(
+                null,
+                new CreaturePropertyManager(property =>
+                    property switch
+                    {
+                        CreatureMainProperty.Health => (Fix64)100,
+                        CreatureMainProperty.CollisionRadius => collisionRadiusProperty,
+                        _ => Fix64.Zero,
+                    }),
+                0,
+                true,
+                null);
+            new NoMoveFactoryForTest().Configure(state);
+            LogicEntityStateStore.CommitSpawn(entityId);
+            EntityRegistry.Register(state);
+
+            LogicFrameRuntime.Tick(1);
+
+            Assert.IsFalse(state.HasBoundView);
+            Assert.AreEqual(expectedPosition.x.RawValue, state.Position.x.RawValue);
+            Assert.AreEqual(expectedPosition.y.RawValue, state.Position.y.RawValue);
+            Assert.AreEqual(1, LogicAgentCollisionShadowService.LastStaticProjectionChangedCount);
+            Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+                0,
+                state.Position,
+                FixVector2.Zero,
+                collisionRadius,
+                out LogicStaticCollisionShadowResult legalProbe));
+            Assert.IsTrue(legalProbe.SolveResult.Success);
+            Assert.IsFalse(legalProbe.SolveResult.StartedOverlapping);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    private static void ProcessWorldBuildQueueUntilReady()
+    {
+        for (int i = 0; i < 2048
+             && (!FlowFieldCrowdMovementSystem.HasEditorTestWorld()
+                 || FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+             i++)
+        {
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        }
+
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestWorld());
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+    }
+
+    private static void ProcessRuntimeDirtyQueueUntilReady()
+    {
+        for (int i = 0; i < 512 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
     }
 
     private sealed class NoMoveFactoryForTest

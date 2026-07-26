@@ -153,7 +153,8 @@ public class ActiveSkillSO : SkillEffectSO
         info.currentInfo.executeIndex = actionIndex;
         info.currentInfo.damageInfo = new Damage(info.entity, Fix64.One);
         if (!string.IsNullOrWhiteSpace(action.relatedTriggerString)
-            && info.entity is MAEntity view
+            && info.entity.LogicEntityId.IsValid
+            && LogicEntityLifecycleService.TryGetBoundView(info.entity.LogicEntityId, out MAEntity view)
             && view.animator != null)
         {
             view.animator.SetTrigger(action.relatedTriggerString);

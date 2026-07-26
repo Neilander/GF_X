@@ -508,6 +508,8 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
     private readonly List<IEntityContext> _currentTargets = new List<IEntityContext>();
+    private readonly List<HealCandidate> _inAttackRangeCandidates = new List<HealCandidate>();
+    private readonly List<HealCandidate> _outsideAttackRangeCandidates = new List<HealCandidate>();
     private Fix64 _scanTimer;
 
     public IEntityContext CurrentTarget
@@ -599,8 +601,8 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
         Fix64 attackRange = GetEffectiveAttackRange();
         Fix64 scanRange = Fix64.Max(m_AggroRange, attackRange);
         int targetCount = ResolveTargetCount();
-        var inAttackRange = new List<HealCandidate>(targetCount);
-        var outsideAttackRange = new List<HealCandidate>(targetCount);
+        _inAttackRangeCandidates.Clear();
+        _outsideAttackRangeCandidates.Clear();
 
         for (int i = 0; i < all.Count; i++)
         {
@@ -619,15 +621,17 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
             Fix64 hpRatio = candidate.HealthRatioFixed();
             if (distance <= attackRange)
             {
-                InsertHealCandidate(inAttackRange, new HealCandidate(candidate, hpRatio, distance), targetCount);
+                InsertHealCandidate(_inAttackRangeCandidates, new HealCandidate(candidate, hpRatio, distance), targetCount);
             }
             else
             {
-                InsertHealCandidate(outsideAttackRange, new HealCandidate(candidate, hpRatio, distance), targetCount);
+                InsertHealCandidate(_outsideAttackRangeCandidates, new HealCandidate(candidate, hpRatio, distance), targetCount);
             }
         }
 
-        var selected = inAttackRange.Count > 0 ? inAttackRange : outsideAttackRange;
+        List<HealCandidate> selected = _inAttackRangeCandidates.Count > 0
+            ? _inAttackRangeCandidates
+            : _outsideAttackRangeCandidates;
         _currentTargets.Clear();
         for (int i = 0; i < selected.Count; i++)
             _currentTargets.Add(selected[i].Target);

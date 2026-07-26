@@ -96,129 +96,16 @@ public class GeneralCreature : EntityBase, ITargetable
     }
 
 
-    /// <summary>
-    /// 治疗。和 TakeDamage 对称：改属性 + Fire CreatureHealthChangedEventArgs，让 UI/特效能感知。
-    /// 已死或满血直接返回；非正数 amount 视为无效。
-    /// </summary>
     public virtual void Heal(Fix64 amount)
     {
-        if (!Alive) return;
-        if (amount <= Fix64.Zero) return;
-
-        Fix64 maxHp = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-        Fix64 curHp = HealthValue;
-        if (curHp >= maxHp) return;
-
-        Fix64 actualAmount = Fix64.Min(amount, maxHp - curHp);
-        if (actualAmount <= Fix64.Zero) return;
-
-        CreaturePropertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(actualAmount), true);
-
-        Fix64 newCur = HealthValue;
-        actualAmount = newCur - curHp;
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(
-            Id, (float)newCur, (float)maxHp, (float)actualAmount));
-        GF.Event.Fire(this, CreatureHealedEventArgs.Create(Id, (float)actualAmount));
+        throw new System.InvalidOperationException(
+            "GeneralCreature.Heal rejected: combat health is owned by LogicEntityState.");
     }
 
     public virtual void TakeDamage(Fix64 damage, HealthModifyType modType, IEntityContext attacker = null)
     {
-        if (!Alive) return;
-
-        if (this is IEntityContext context && context.HasInvincibleBuff())
-            return;
-
-        // 安全触发受击动画（Animator 可能没有此参数）
-        if (animator != null)
-        {
-            foreach (var p in animator.parameters)
-            {
-                if (p.name == "GetHit" && p.type == AnimatorControllerParameterType.Trigger)
-                {
-                    animator.SetTrigger("GetHit");
-                    break;
-                }
-            }
-        }
-        CreaturePropertyManager.ModifyCurrentProperty(
-            CreatureCurrentProperty.HealthCurrent,
-            PropertyIrreversibleAdditiveModifier.Create(-damage), true);
-
-        Fix64 cur = HealthValue;
-        Fix64 max = CreaturePropertyManager.GetProperty(CreatureMainProperty.Health);
-
-        GF.Event.Fire(this, CreatureHealthChangedEventArgs.Create(Id, (float)cur, (float)max, (float)(-damage)));
-
-        // 视线外仇恨：受击时把 attacker 记到 TargetComp，让单位 scan 找不到敌人时 fallback 去打打过自己的人
-        if (attacker != null && this is IEntityContext ctx && ctx.TargetComp != null)
-        {
-            ctx.TargetComp.NotifyDamageTaken(attacker);
-        }
-
-        // // 显示伤害跳字
-        // Vector3 startPos = transform.position + new Vector3(0, 1.0f, 0);
-        // Vector3 endPos = startPos + new Vector3(UnityEngine.Random.Range(-0.5f, 0.5f), 1.5f, UnityEngine.Random.Range(-0.5f, 0.5f));
-        // Log.Info($"Damage pop text: damage={damage}, startPos={startPos}, endPos={endPos}");
-        // GF.Entity.ShowPopText(EntityParams.Create(startPos, Vector3.zero, Vector3.one), ((float)damage).ToString(), endPos, DamageTextType.Normal);
-
-        if (cur <= Fix64.Zero)
-        {
-            if (TryHandleZeroHealth(attacker))
-                return;
-
-            Alive = false;
-
-            // 获取被击杀的实体
-            Entity victimEntity = GF.Entity.GetEntity(this.Id);
-            SoldierEntity victim = victimEntity?.gameObject.GetComponent<SoldierEntity>();
-            if (victim != null)
-            {
-                if (GF.Event != null)
-                {
-                    GF.Event.Fire(victim, SoldierDeadEventArgs.Create(victim));
-                }
-
-                // 触发宿主死亡处理
-                victim.OnDead();
-
-                // 触发击杀回调
-                if (attacker != null)
-                {
-                    // 尝试从攻击者获取MAEntity实例
-                    MAEntity attackerEntity = attacker as MAEntity;
-                    if (attackerEntity != null)
-                    {
-                        Entity entity = GF.Entity.GetEntity(attackerEntity.Id);
-                        SoldierEntity soldier = entity?.gameObject.GetComponent<SoldierEntity>();
-                        if (soldier != null)
-                        {
-                            soldier.OnKill(victim);
-                        }
-                    }
-                }
-            }
-
-            RemoveAfterDeath();
-        }
-    }
-
-    protected virtual void RemoveAfterDeath()
-    {
-        if (GF.Entity.GetEntity(Id) == null)
-            throw new System.InvalidOperationException($"GeneralCreature.RemoveAfterDeath failed: entity {Id} is not loaded.");
-
-        GF.Entity.HideEntity(Id);
-    }
-
-    /// <summary>
-    /// 子类可在血量归零时拦截默认死亡逻辑。
-    /// 返回 true 表示已处理，基类不再执行隐藏与死亡回调。
-    /// </summary>
-    protected virtual bool TryHandleZeroHealth(IEntityContext attacker)
-    {
-        return false;
+        throw new System.InvalidOperationException(
+            "GeneralCreature.TakeDamage rejected: combat health is owned by LogicEntityState.");
     }
 
     protected virtual void SetUpHurtBox()

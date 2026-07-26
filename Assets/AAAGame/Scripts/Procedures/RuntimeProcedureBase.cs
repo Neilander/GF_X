@@ -29,6 +29,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private bool m_LogicFrameClockStarted;
     private bool m_LogicTimelineRestartPending;
     private ulong m_NextLogicFrameStatusLogFrame;
+#if UNITY_EDITOR
+    private double m_EditorStressCutoffRealtime;
+#endif
 
     protected virtual string RuntimeLevelIdentifier =>
         string.IsNullOrWhiteSpace(ChangeSceneProcedure.SelectedLevelIdentifier)
@@ -38,6 +41,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     protected virtual RuntimeInitSystemFlags RequiredRuntimeSystems => RuntimeInitSystemFlags.None;
 
     protected bool IsRuntimeReady => m_RuntimeInitPipeline != null && m_RuntimeInitPipeline.IsCompleted;
+
+#if UNITY_EDITOR
+    public bool IsEditorStressRuntimeReady => IsRuntimeReady;
+#endif
 
     protected override void OnEnter(IFsm<IProcedureManager> procedureOwner)
     {
@@ -370,7 +377,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: InputManager is null.");
             inputManager.BeginLogicInputTimeline(realtime);
             LogicFrameRuntime.StartTimeline();
-            if (!LogicReplayRuntime.IsRecording)
+            if (LogicReplayRuntime.ShouldRecordRuntimeSession && !LogicReplayRuntime.IsRecording)
             {
                 LogicReplayRuntime.BeginRecording();
             }
@@ -383,6 +390,14 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         if (logicInputManager == null)
             throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: InputManager is null.");
 
+#if UNITY_EDITOR
+        if (EditorLogicRuntimeStressGate.OwnsLogicClock)
+        {
+            UpdateEditorStressLogicFrames(logicInputManager);
+            return;
+        }
+#endif
+
         int tickCount = m_LogicFrameClock.Advance(
             realtime,
             () =>
@@ -392,30 +407,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             },
             (frame, cutoffRealtime) =>
             {
-                LogicTimeControlService.BeginFrame(frame);
-                LogicInputFrame inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
-                LogicInteractionHoldService.ProcessFrame(inputFrame);
-                if (LogicCardPlacementAuthority.IsWorldBound)
-                {
-                    LogicCardPlacementAuthority.ApplyFrame(frame);
-                }
-                else if (LogicCardRuntimeState.IsBound)
-                {
-                    throw new InvalidOperationException("Card runtime is bound without a logic card-placement world.");
-                }
-                LogicCardCommandService.ApplyFrame(frame);
-                LogicSkillSlotCommandService.ApplyFrame(frame);
-                LogicPhaseCommandService.ApplyFrame(frame);
-                CardSetup cardSetup = GameEntry.GetComponent<CardSetup>()
-                                      ?? throw new InvalidOperationException("RuntimeProcedureBase requires CardSetup for logic-frame card updates.");
-                cardSetup.ApplyLogicFrame(frame);
-                LogicInteractionCommandService.ApplyFrame(frame);
-                LogicTechEffectCommandService.ApplyFrame(frame);
-                DefendPhaseRuntime.ApplyScheduledSpawnRequests(frame);
-                LogicEntityLifecycleService.ApplyFrame(frame);
-                LogicObstacleCommandService.ApplyFrame(frame);
-                LogicFrameRuntime.Tick(frame);
-                LogicReplayRuntime.RecordFrame(inputFrame, LogicGameplayStateHasher.ComputeCurrentFrame());
+                LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
+                    logicInputManager,
+                    frame,
+                    cutoffRealtime,
+                    out LogicInputFrame inputFrame);
+                if (LogicReplayRuntime.IsRecording)
+                    LogicReplayRuntime.RecordFrame(inputFrame, gameplayDigest);
             });
         LogicFrameRuntime.CompleteRenderFrame(
             tickCount,
@@ -445,7 +443,111 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicFrameRuntime.ListenerCount);
             m_NextLogicFrameStatusLogFrame = m_LogicFrameClock.Frame + 300;
         }
+
+#if UNITY_EDITOR
+        if (EditorLogicRuntimeStressGate.Status == EditorLogicRuntimeStressGateStatus.Armed)
+        {
+            m_EditorStressCutoffRealtime = realtime;
+            EditorLogicRuntimeStressGate.Activate(m_LogicFrameClock.Frame);
+        }
+#endif
     }
+
+    private static LogicGameplayStateDigest ExecuteLogicFrame(
+        InputManager logicInputManager,
+        ulong frame,
+        double cutoffRealtime,
+        out LogicInputFrame inputFrame)
+    {
+        LogicTimeControlService.BeginFrame(frame);
+        inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
+        LogicInteractionHoldService.ProcessFrame(inputFrame);
+        if (LogicCardPlacementAuthority.IsWorldBound)
+        {
+            LogicCardPlacementAuthority.ApplyFrame(frame);
+        }
+        else if (LogicCardRuntimeState.IsBound)
+        {
+            throw new InvalidOperationException("Card runtime is bound without a logic card-placement world.");
+        }
+        LogicCardCommandService.ApplyFrame(frame);
+        LogicSkillSlotCommandService.ApplyFrame(frame);
+        LogicPhaseCommandService.ApplyFrame(frame);
+        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>()
+                              ?? throw new InvalidOperationException("RuntimeProcedureBase requires CardSetup for logic-frame card updates.");
+        cardSetup.ApplyLogicFrame(frame);
+        LogicInteractionCommandService.ApplyFrame(frame);
+        LogicTechEffectCommandService.ApplyFrame(frame);
+        DefendPhaseRuntime.ApplyScheduledSpawnRequests(frame);
+        LogicEntityLifecycleService.ApplyFrame(frame);
+        LogicObstacleCommandService.ApplyFrame(frame);
+        LogicFrameRuntime.Tick(frame);
+#if UNITY_EDITOR
+        if (EditorLogicRuntimeStressGate.OwnsLogicClock && !EditorLogicRuntimeStressGate.ComputeFullHash)
+            return LogicGameplayStateDigest.FromOpaqueHash(0);
+#endif
+        return LogicGameplayStateHasher.ComputeCurrentFrameDigest();
+    }
+
+#if UNITY_EDITOR
+    private void UpdateEditorStressLogicFrames(InputManager logicInputManager)
+    {
+        if (EditorLogicRuntimeStressGate.Status != EditorLogicRuntimeStressGateStatus.Running)
+        {
+            LogicFrameRuntime.CompleteRenderFrame(
+                0,
+                m_LogicFrameClock.AccumulatorSeconds,
+                m_LogicFrameClock.Interpolation);
+            return;
+        }
+
+        int requestedTickCount = EditorLogicRuntimeStressGate.NextBatchTickCount;
+        m_EditorStressCutoffRealtime += requestedTickCount * LogicFrameClock.FrameDurationSeconds;
+
+        try
+        {
+            int actualTickCount = m_LogicFrameClock.Advance(
+                m_EditorStressCutoffRealtime,
+                () =>
+                {
+                    LogicTimeControlService.PrepareFrame(checked(m_LogicFrameClock.Frame + 1));
+                    double schedulerScale = LogicTimeControlService.SchedulerScale;
+                    if (schedulerScale != 1d)
+                    {
+                        throw new InvalidOperationException(
+                            $"Editor logic stress gate requires scheduler scale 1. frame={m_LogicFrameClock.Frame + 1}, scale={schedulerScale:R}.");
+                    }
+                    return schedulerScale;
+                },
+                (frame, cutoffRealtime) =>
+                {
+                    EditorLogicRuntimeStressGate.PrepareInputFrame(frame, cutoffRealtime);
+                    LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
+                        logicInputManager,
+                        frame,
+                        cutoffRealtime,
+                        out LogicInputFrame inputFrame);
+                    EditorLogicRuntimeStressGate.RecordFrame(inputFrame, gameplayDigest);
+                });
+
+            if (actualTickCount != requestedTickCount)
+            {
+                throw new InvalidOperationException(
+                    $"Editor logic stress gate tick mismatch. requested={requestedTickCount}, actual={actualTickCount}, frame={m_LogicFrameClock.Frame}.");
+            }
+
+            LogicFrameRuntime.CompleteRenderFrame(
+                actualTickCount,
+                m_LogicFrameClock.AccumulatorSeconds,
+                m_LogicFrameClock.Interpolation);
+        }
+        catch (Exception exception)
+        {
+            EditorLogicRuntimeStressGate.Fail(exception);
+            throw;
+        }
+    }
+#endif
 
     private static void HideRuntimeEntitiesExceptLevel()
     {

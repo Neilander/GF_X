@@ -24,8 +24,6 @@ public class MAEntity : CompCreature, IEntityContext
 
     private CharacterController cController;
     private MoveExecutor _moveExecutor;
-    public IMoveExecutor moveExecutor => _moveExecutor;
-    internal MoveExecutor LogicMoveExecutor => _moveExecutor;
     public IDurationMoveEffectComp durationMoveEffectComp { get; protected set; }
 
     /// <summary>
@@ -118,7 +116,7 @@ public class MAEntity : CompCreature, IEntityContext
 
     // Side, Alive, CharacterKey 已在 GeneralCreature 中定义
 
-    IMoveExecutor IEntityContext.MoveExecutor => moveExecutor;
+    IMoveExecutor IEntityContext.MoveExecutor => RequireLogicState().MoveExecutor;
     IMoveComp IEntityContext.MoveComp => moveComp;
     IAtkComp IEntityContext.AtkComp => atkComp;
     ITargetingComp IEntityContext.TargetComp => targetComp;
@@ -325,33 +323,6 @@ public class MAEntity : CompCreature, IEntityContext
     }
 
 
-
-    public void OnKill(MAEntity target)
-    {
-        // 触发击杀回调，供Buff系统使用
-        if (_buffComp != null)
-        {
-            _buffComp.OnKill(target);
-        }
-    }
-
-    public virtual void OnDead()
-    {
-        _invincibleSourceRegistry.Clear();
-
-        // 触发死亡回调，供Buff系统使用
-        if (_buffComp != null)
-        {
-            _buffComp.OnHostDead();
-        }
-
-        PlayDeathSound();
-    }
-
-    protected override void RemoveAfterDeath()
-    {
-        RequestDespawn();
-    }
 
     /// <summary>
     /// 死亡音效。默认：敌方死亡播 "enemyDeath"。子类可覆盖（建筑覆盖为 "buildDeath"，无视阵营）。

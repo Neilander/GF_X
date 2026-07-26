@@ -9,6 +9,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
     private int _overrideIndex;
     private Dictionary<int, TimedMoveEffect> _timedAdditionalEffects;
     private Dictionary<int, TimedMoveEffect> _timedOverrideEffects;
+    private readonly List<int> _sortedEffectKeys = new List<int>();
 
     public void Init(IEntityContext ctx)
     {
@@ -75,13 +76,13 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         FixVector2 finalAdditionalVelocity = FixVector2.Zero;
         FixVector2 finalOverrideVelocity = FixVector2.Zero;
         // -------- 计算 Additional --------
-        var additionalKeys = new List<int>(_timedAdditionalEffects.Keys);
-        additionalKeys.Sort();
-        bool hadAdditionalEffectThisFrame = additionalKeys.Count > 0;
+        FillSortedEffectKeys(_timedAdditionalEffects);
+        bool hadAdditionalEffectThisFrame = _sortedEffectKeys.Count > 0;
 
-        foreach (var key in additionalKeys)
+        for (int i = 0; i < _sortedEffectKeys.Count; i++)
         {
-            var effect = _timedAdditionalEffects[key];
+            int key = _sortedEffectKeys[i];
+            TimedMoveEffect effect = _timedAdditionalEffects[key];
 
             // 先累加当前速度
             finalAdditionalVelocity += effect.speed;
@@ -94,13 +95,13 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         }
 
         // -------- 计算 Override --------
-        var overrideKeys = new List<int>(_timedOverrideEffects.Keys);
-        overrideKeys.Sort();
-        bool hasOverride = overrideKeys.Count > 0;
+        FillSortedEffectKeys(_timedOverrideEffects);
+        bool hasOverride = _sortedEffectKeys.Count > 0;
         bool hadOverrideEffectThisFrame = hasOverride;
-        foreach (var key in overrideKeys)
+        for (int i = 0; i < _sortedEffectKeys.Count; i++)
         {
-            var effect = _timedOverrideEffects[key];
+            int key = _sortedEffectKeys[i];
+            TimedMoveEffect effect = _timedOverrideEffects[key];
 
             finalOverrideVelocity += effect.speed;
 
@@ -155,20 +156,26 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         WriteEffects(hasher, _timedOverrideEffects);
     }
 
-    private static void WriteEffects(LogicStateHasher hasher, Dictionary<int, TimedMoveEffect> effects)
+    private void WriteEffects(LogicStateHasher hasher, Dictionary<int, TimedMoveEffect> effects)
     {
-        var keys = new List<int>(effects.Keys);
-        keys.Sort();
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedEffectKeys(effects);
+        hasher.Add(_sortedEffectKeys.Count);
+        for (int i = 0; i < _sortedEffectKeys.Count; i++)
         {
-            int key = keys[i];
+            int key = _sortedEffectKeys[i];
             TimedMoveEffect effect = effects[key];
             hasher.Add(key);
             hasher.Add(effect.duration.RawValue);
             hasher.Add(effect.speed.x.RawValue);
             hasher.Add(effect.speed.y.RawValue);
         }
+    }
+
+    private void FillSortedEffectKeys(Dictionary<int, TimedMoveEffect> effects)
+    {
+        _sortedEffectKeys.Clear();
+        _sortedEffectKeys.AddRange(effects.Keys);
+        _sortedEffectKeys.Sort();
     }
 
     class TimedMoveEffect : TimedEffect

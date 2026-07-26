@@ -68,6 +68,26 @@ public sealed class LogicAgentCollisionSolveResult
     public bool Success => ResidualOverlapCount == 0;
 }
 
+internal readonly struct LogicAgentCollisionSolveSummary
+{
+    public LogicAgentCollisionSolveSummary(
+        int iterationCount,
+        int candidatePairCount,
+        int residualOverlapCount,
+        Fix64 maxResidualPenetration)
+    {
+        IterationCount = iterationCount;
+        CandidatePairCount = candidatePairCount;
+        ResidualOverlapCount = residualOverlapCount;
+        MaxResidualPenetration = maxResidualPenetration;
+    }
+
+    public int IterationCount { get; }
+    public int CandidatePairCount { get; }
+    public int ResidualOverlapCount { get; }
+    public Fix64 MaxResidualPenetration { get; }
+}
+
 public static class DeterministicAgentCollisionSolver
 {
     private readonly struct SpatialCell : IEquatable<SpatialCell>, IComparable<SpatialCell>
@@ -104,98 +124,148 @@ public static class DeterministicAgentCollisionSolver
         public int SecondIndex { get; }
     }
 
+    private static readonly List<LogicAgentCollisionBody> BodiesScratch = new List<LogicAgentCollisionBody>();
+    private static readonly Dictionary<SpatialCell, List<int>> BucketsScratch =
+        new Dictionary<SpatialCell, List<int>>();
+    private static readonly List<List<int>> BucketListsScratch = new List<List<int>>();
+    private static readonly List<StablePair> PairsScratch = new List<StablePair>();
+    private static readonly HashSet<long> PairKeysScratch = new HashSet<long>();
+    private static readonly HashSet<long> CandidatePairKeysScratch = new HashSet<long>();
+    private static readonly Comparison<LogicAgentCollisionBody> BodyComparison = CompareBodies;
+    private static readonly Comparison<StablePair> PairComparison = ComparePairs;
+    private static FixVector2[] s_PositionsScratch = Array.Empty<FixVector2>();
+    private static FixVector2[] s_CorrectionsScratch = Array.Empty<FixVector2>();
+    private static bool s_IsSolving;
+
     public static LogicAgentCollisionSolveResult Solve(
         IReadOnlyList<LogicAgentCollisionBody> inputBodies,
         int iterationCount,
         Fix64 penetrationEpsilon)
     {
+        var states = new List<LogicAgentCollisionState>(inputBodies?.Count ?? 0);
+        LogicAgentCollisionSolveSummary summary = SolveInto(
+            inputBodies,
+            iterationCount,
+            penetrationEpsilon,
+            states);
+        return new LogicAgentCollisionSolveResult(
+            states,
+            summary.IterationCount,
+            summary.CandidatePairCount,
+            summary.ResidualOverlapCount,
+            summary.MaxResidualPenetration);
+    }
+
+    internal static LogicAgentCollisionSolveSummary SolveInto(
+        IReadOnlyList<LogicAgentCollisionBody> inputBodies,
+        int iterationCount,
+        Fix64 penetrationEpsilon,
+        List<LogicAgentCollisionState> outputStates)
+    {
         if (inputBodies == null)
             throw new ArgumentNullException(nameof(inputBodies));
+        if (outputStates == null)
+            throw new ArgumentNullException(nameof(outputStates));
         if (iterationCount <= 0)
             throw new ArgumentOutOfRangeException(nameof(iterationCount), iterationCount, "Agent collision iteration count must be positive.");
         if (penetrationEpsilon < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(penetrationEpsilon), "Agent collision epsilon cannot be negative.");
+        if (s_IsSolving)
+            throw new InvalidOperationException("DeterministicAgentCollisionSolver.SolveInto does not support reentrant execution.");
 
-        var bodies = new List<LogicAgentCollisionBody>(inputBodies.Count);
-        for (int i = 0; i < inputBodies.Count; i++)
+        s_IsSolving = true;
+        try
         {
-            LogicAgentCollisionBody body = inputBodies[i];
-            ValidateBody(body, i);
-            bodies.Add(body);
-        }
-
-        bodies.Sort((left, right) => left.EntityId.CompareTo(right.EntityId));
-        for (int i = 1; i < bodies.Count; i++)
-        {
-            if (bodies[i - 1].EntityId == bodies[i].EntityId)
-                throw new InvalidOperationException($"DeterministicAgentCollisionSolver.Solve failed: duplicate entity id {bodies[i].EntityId.Value}.");
-        }
-
-        var positions = new FixVector2[bodies.Count];
-        var corrections = new FixVector2[bodies.Count];
-        for (int i = 0; i < bodies.Count; i++)
-            positions[i] = bodies[i].Position;
-
-        Fix64 bucketSize = ResolveBucketSize(bodies);
-        var candidatePairKeys = new HashSet<long>();
-
-        for (int iteration = 0; iteration < iterationCount; iteration++)
-        {
-            List<StablePair> pairs = BuildStablePairs(bodies, positions, bucketSize);
-            Array.Clear(corrections, 0, corrections.Length);
-            for (int pairIndex = 0; pairIndex < pairs.Count; pairIndex++)
+            List<LogicAgentCollisionBody> bodies = BodiesScratch;
+            bodies.Clear();
+            if (bodies.Capacity < inputBodies.Count)
+                bodies.Capacity = inputBodies.Count;
+            for (int i = 0; i < inputBodies.Count; i++)
             {
-                StablePair pair = pairs[pairIndex];
-                candidatePairKeys.Add(GetPairKey(pair.FirstIndex, pair.SecondIndex));
-                LogicAgentCollisionBody first = bodies[pair.FirstIndex];
-                LogicAgentCollisionBody second = bodies[pair.SecondIndex];
-                if (!TryGetCorrection(
-                        first,
-                        second,
-                        positions[pair.FirstIndex],
-                        positions[pair.SecondIndex],
-                        penetrationEpsilon,
-                        out FixVector2 firstCorrection,
-                        out FixVector2 secondCorrection))
-                {
-                    continue;
-                }
-
-                corrections[pair.FirstIndex] += firstCorrection;
-                corrections[pair.SecondIndex] += secondCorrection;
+                LogicAgentCollisionBody body = inputBodies[i];
+                ValidateBody(body, i);
+                bodies.Add(body);
             }
 
-            for (int i = 0; i < positions.Length; i++)
-                positions[i] += corrections[i];
+            bodies.Sort(BodyComparison);
+            for (int i = 1; i < bodies.Count; i++)
+            {
+                if (bodies[i - 1].EntityId == bodies[i].EntityId)
+                    throw new InvalidOperationException($"DeterministicAgentCollisionSolver.Solve failed: duplicate entity id {bodies[i].EntityId.Value}.");
+            }
+
+            EnsureVectorScratchCapacity(bodies.Count);
+            FixVector2[] positions = s_PositionsScratch;
+            FixVector2[] corrections = s_CorrectionsScratch;
+            for (int i = 0; i < bodies.Count; i++)
+                positions[i] = bodies[i].Position;
+
+            Fix64 bucketSize = ResolveBucketSize(bodies);
+            CandidatePairKeysScratch.Clear();
+
+            for (int iteration = 0; iteration < iterationCount; iteration++)
+            {
+                List<StablePair> pairs = BuildStablePairs(bodies, positions, bucketSize);
+                Array.Clear(corrections, 0, bodies.Count);
+                for (int pairIndex = 0; pairIndex < pairs.Count; pairIndex++)
+                {
+                    StablePair pair = pairs[pairIndex];
+                    CandidatePairKeysScratch.Add(GetPairKey(pair.FirstIndex, pair.SecondIndex));
+                    LogicAgentCollisionBody first = bodies[pair.FirstIndex];
+                    LogicAgentCollisionBody second = bodies[pair.SecondIndex];
+                    if (!TryGetCorrection(
+                            first,
+                            second,
+                            positions[pair.FirstIndex],
+                            positions[pair.SecondIndex],
+                            penetrationEpsilon,
+                            out FixVector2 firstCorrection,
+                            out FixVector2 secondCorrection))
+                    {
+                        continue;
+                    }
+
+                    corrections[pair.FirstIndex] += firstCorrection;
+                    corrections[pair.SecondIndex] += secondCorrection;
+                }
+
+                for (int i = 0; i < bodies.Count; i++)
+                    positions[i] += corrections[i];
+            }
+
+            List<StablePair> residualPairs = BuildStablePairs(bodies, positions, bucketSize);
+            for (int i = 0; i < residualPairs.Count; i++)
+                CandidatePairKeysScratch.Add(GetPairKey(residualPairs[i].FirstIndex, residualPairs[i].SecondIndex));
+
+            MeasureResiduals(
+                bodies,
+                residualPairs,
+                positions,
+                penetrationEpsilon,
+                out int residualOverlapCount,
+                out Fix64 maxResidualPenetration);
+
+            outputStates.Clear();
+            if (outputStates.Capacity < bodies.Count)
+                outputStates.Capacity = bodies.Count;
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                outputStates.Add(new LogicAgentCollisionState(
+                    bodies[i].EntityId,
+                    positions[i],
+                    positions[i] - bodies[i].Position));
+            }
+
+            return new LogicAgentCollisionSolveSummary(
+                iterationCount,
+                CandidatePairKeysScratch.Count,
+                residualOverlapCount,
+                maxResidualPenetration);
         }
-
-        List<StablePair> residualPairs = BuildStablePairs(bodies, positions, bucketSize);
-        for (int i = 0; i < residualPairs.Count; i++)
-            candidatePairKeys.Add(GetPairKey(residualPairs[i].FirstIndex, residualPairs[i].SecondIndex));
-
-        MeasureResiduals(
-            bodies,
-            residualPairs,
-            positions,
-            penetrationEpsilon,
-            out int residualOverlapCount,
-            out Fix64 maxResidualPenetration);
-
-        var states = new List<LogicAgentCollisionState>(bodies.Count);
-        for (int i = 0; i < bodies.Count; i++)
+        finally
         {
-            states.Add(new LogicAgentCollisionState(
-                bodies[i].EntityId,
-                positions[i],
-                positions[i] - bodies[i].Position));
+            s_IsSolving = false;
         }
-
-        return new LogicAgentCollisionSolveResult(
-            states,
-            iterationCount,
-            candidatePairKeys.Count,
-            residualOverlapCount,
-            maxResidualPenetration);
     }
 
     private static List<StablePair> BuildStablePairs(
@@ -203,20 +273,32 @@ public static class DeterministicAgentCollisionSolver
         IReadOnlyList<FixVector2> positions,
         Fix64 bucketSize)
     {
-        var buckets = new Dictionary<SpatialCell, List<int>>();
+        BucketsScratch.Clear();
+        int usedBucketListCount = 0;
         for (int i = 0; i < bodies.Count; i++)
         {
             SpatialCell cell = ResolveCell(positions[i], bucketSize);
-            if (!buckets.TryGetValue(cell, out List<int> indices))
+            if (!BucketsScratch.TryGetValue(cell, out List<int> indices))
             {
-                indices = new List<int>();
-                buckets.Add(cell, indices);
+                if (usedBucketListCount < BucketListsScratch.Count)
+                {
+                    indices = BucketListsScratch[usedBucketListCount];
+                    indices.Clear();
+                }
+                else
+                {
+                    indices = new List<int>(4);
+                    BucketListsScratch.Add(indices);
+                }
+
+                usedBucketListCount++;
+                BucketsScratch.Add(cell, indices);
             }
             indices.Add(i);
         }
 
-        var pairs = new List<StablePair>();
-        var pairKeys = new HashSet<long>();
+        PairsScratch.Clear();
+        PairKeysScratch.Clear();
         for (int first = 0; first < bodies.Count; first++)
         {
             SpatialCell firstCell = ResolveCell(positions[first], bucketSize);
@@ -227,7 +309,7 @@ public static class DeterministicAgentCollisionSolver
                     var neighborCell = new SpatialCell(
                         checked(firstCell.X + offsetX),
                         checked(firstCell.Y + offsetY));
-                    if (!buckets.TryGetValue(neighborCell, out List<int> neighbors))
+                    if (!BucketsScratch.TryGetValue(neighborCell, out List<int> neighbors))
                         continue;
 
                     for (int neighborIndex = 0; neighborIndex < neighbors.Count; neighborIndex++)
@@ -237,21 +319,38 @@ public static class DeterministicAgentCollisionSolver
                             continue;
 
                         long pairKey = GetPairKey(first, second);
-                        if (pairKeys.Add(pairKey))
-                            pairs.Add(new StablePair(first, second));
+                        if (PairKeysScratch.Add(pairKey))
+                            PairsScratch.Add(new StablePair(first, second));
                     }
                 }
             }
         }
 
-        pairs.Sort((left, right) =>
-        {
-            int firstComparison = left.FirstIndex.CompareTo(right.FirstIndex);
-            return firstComparison != 0
-                ? firstComparison
-                : left.SecondIndex.CompareTo(right.SecondIndex);
-        });
-        return pairs;
+        PairsScratch.Sort(PairComparison);
+        return PairsScratch;
+    }
+
+    private static void EnsureVectorScratchCapacity(int count)
+    {
+        if (s_PositionsScratch.Length >= count)
+            return;
+
+        int capacity = Math.Max(count, Math.Max(16, s_PositionsScratch.Length * 2));
+        s_PositionsScratch = new FixVector2[capacity];
+        s_CorrectionsScratch = new FixVector2[capacity];
+    }
+
+    private static int CompareBodies(LogicAgentCollisionBody left, LogicAgentCollisionBody right)
+    {
+        return left.EntityId.CompareTo(right.EntityId);
+    }
+
+    private static int ComparePairs(StablePair left, StablePair right)
+    {
+        int firstComparison = left.FirstIndex.CompareTo(right.FirstIndex);
+        return firstComparison != 0
+            ? firstComparison
+            : left.SecondIndex.CompareTo(right.SecondIndex);
     }
 
     private static Fix64 ResolveBucketSize(IReadOnlyList<LogicAgentCollisionBody> bodies)

@@ -1,0 +1,16 @@
+.gitattributes text eol=crlf
+Assets/AAAGame/Scripts/Property/CreaturePropertyManager.cs text eol=crlf
+Assets/AAAGame/Scripts/Entity/HeroEntity.cs text eol=crlf
+Assets/AAAGame/Scripts/MiniMap/FOG3/Fog3Manager.cs text eol=crlf
+Assets/AAAGame/Scripts/GameClass/EditorLogicRuntimeStressGate.cs text eol=crlf
+Assets/AAAGame/Scripts/Editor/LogicRuntimeLongSessionGateRunner.cs text eol=crlf
+Assets/AAAGame/Tests/Editor/Fog3StageCheckpointTests.cs text eol=crlf
+Assets/AAAGame/Scripts/Entity/MAEntity.cs text eol=crlf
+Assets/AAAGame/Scripts/Entity/SoldierEntityDeathEffect.cs text eol=crlf
+Assets/AAAGame/Scripts/GeneralCreature/BattleEntity.cs text eol=crlf
+Assets/AAAGame/Scripts/GeneralCreature/GeneralCreature.cs text eol=crlf
+Assets/AAAGame/Scripts/UI/RuntimeEntityStatsOverlay.cs text eol=crlf
+Assets/AAAGame/Tests/Editor/LogicEntityIdentityTests.cs text eol=crlf
+Assets/AAAGame/Scripts/Movement/FlowFieldCrowdMovementSystem.cs text eol=crlf
+Assets/AAAGame/Scripts/Movement/FlowFieldCrowdMovementSystem.DeterministicState.cs text eol=crlf
+Assets/AAAGame/Tests/Editor/FlowFieldCrowdMovementSystemTests.cs text eol=crlf

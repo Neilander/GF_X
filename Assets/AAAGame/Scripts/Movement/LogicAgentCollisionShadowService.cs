@@ -43,6 +43,9 @@ public static class LogicAgentCollisionShadowService
     private static readonly List<FixVector2> s_BodyFrameStartPositions = new List<FixVector2>();
     private static readonly List<LogicAgentCollisionShadowState> s_States = new List<LogicAgentCollisionShadowState>();
     private static readonly List<FixVector2> s_ProposedPositions = new List<FixVector2>();
+    private static readonly List<FixVector2> s_PairAdjustedDisplacements = new List<FixVector2>();
+    private static readonly List<LogicAgentCollisionState> s_SolverStates = new List<LogicAgentCollisionState>();
+    private static readonly HashSet<int> s_StaticProjectionChangedEntityIds = new HashSet<int>();
     private static readonly IReadOnlyList<LogicAgentCollisionShadowState> s_ReadOnlyStates = s_States.AsReadOnly();
     private static readonly Dictionary<int, FixVector2> s_ResolvedPositions = new Dictionary<int, FixVector2>();
 
@@ -88,6 +91,8 @@ public static class LogicAgentCollisionShadowService
         s_BodyEntities.Clear();
         s_BodyFrameStartPositions.Clear();
         s_ProposedPositions.Clear();
+        s_PairAdjustedDisplacements.Clear();
+        s_StaticProjectionChangedEntityIds.Clear();
         s_States.Clear();
         s_ResolvedPositions.Clear();
         for (int i = 0; i < entities.Count; i++)
@@ -127,26 +132,29 @@ public static class LogicAgentCollisionShadowService
             s_BodyEntities.Add(entity);
             s_BodyFrameStartPositions.Add(state.Position);
             s_ProposedPositions.Add(proposedPosition);
+            s_PairAdjustedDisplacements.Add(proposedPosition - state.Position);
         }
 
-        LogicAgentCollisionSolveResult result = null;
+        LogicAgentCollisionSolveSummary summary = default;
         for (int pass = 0; pass < PairStaticProjectionPassCount; pass++)
         {
-            result = DeterministicAgentCollisionSolver.Solve(
+            summary = DeterministicAgentCollisionSolver.SolveInto(
                 s_Bodies,
                 SolverIterationCount,
-                PenetrationEpsilon);
-            ResolveStaticProjection(result, pass == PairStaticProjectionPassCount - 1);
+                PenetrationEpsilon,
+                s_SolverStates);
+            ResolveStaticProjection(s_SolverStates, pass == PairStaticProjectionPassCount - 1);
             if (pass < PairStaticProjectionPassCount - 1)
                 RebuildBodiesFromResolvedPositions();
         }
+        LastStaticProjectionChangedCount = s_StaticProjectionChangedEntityIds.Count;
 
         LastCompletedFrame = frameId;
         LastFrameEntityCount = entities.Count;
         LastBodyCount = s_Bodies.Count;
-        LastCandidatePairCount = result.CandidatePairCount;
-        LastResidualOverlapCount = result.ResidualOverlapCount;
-        LastMaxResidualPenetration = result.MaxResidualPenetration;
+        LastCandidatePairCount = summary.CandidatePairCount;
+        LastResidualOverlapCount = summary.ResidualOverlapCount;
+        LastMaxResidualPenetration = summary.MaxResidualPenetration;
         if (LastPairCorrectedBodyCount > 0)
             FramesWithPairCorrection = checked(FramesWithPairCorrection + 1);
         TotalPairCorrectedBodyCount = checked(TotalPairCorrectedBodyCount + (ulong)LastPairCorrectedBodyCount);
@@ -158,12 +166,15 @@ public static class LogicAgentCollisionShadowService
             TotalStaticProjectionFailureCount + (ulong)LastStaticProjectionFailureCount);
     }
 
-    private static void ResolveStaticProjection(LogicAgentCollisionSolveResult result, bool recordFinalState)
+    private static void ResolveStaticProjection(
+        IReadOnlyList<LogicAgentCollisionState> solverStates,
+        bool recordFinalState)
     {
-        if (result.States.Count != s_Bodies.Count
+        if (solverStates.Count != s_Bodies.Count
             || s_BodyEntities.Count != s_Bodies.Count
             || s_BodyFrameStartPositions.Count != s_Bodies.Count
-            || s_ProposedPositions.Count != s_Bodies.Count)
+            || s_ProposedPositions.Count != s_Bodies.Count
+            || s_PairAdjustedDisplacements.Count != s_Bodies.Count)
         {
             throw new InvalidOperationException(
                 "LogicAgentCollisionShadowService.ResolveStaticProjection failed: body/result count mismatch.");
@@ -174,14 +185,15 @@ public static class LogicAgentCollisionShadowService
         LastStaticProjectionAvailableCount = 0;
         LastStaticProjectionChangedCount = 0;
         LastStaticProjectionFailureCount = 0;
-        for (int i = 0; i < result.States.Count; i++)
+        for (int i = 0; i < solverStates.Count; i++)
         {
             LogicAgentCollisionBody body = s_Bodies[i];
-            LogicAgentCollisionState pairState = result.States[i];
+            LogicAgentCollisionState pairState = solverStates[i];
             if (pairState.EntityId != body.EntityId)
                 throw new InvalidOperationException("LogicAgentCollisionShadowService.ResolveStaticProjection failed: result identity mismatch.");
 
-            Fix64 pairCorrectionMagnitude = FixVector2.Magnitude(pairState.Position - s_ProposedPositions[i]);
+            FixVector2 pairCorrection = pairState.Position - body.Position;
+            Fix64 pairCorrectionMagnitude = FixVector2.Magnitude(pairCorrection);
             if (pairCorrectionMagnitude > Fix64.Zero)
             {
                 LastPairCorrectedBodyCount++;
@@ -190,12 +202,12 @@ public static class LogicAgentCollisionShadowService
             }
 
             FixVector2 frameStart = s_BodyFrameStartPositions[i];
-            FixVector2 pairDisplacement = pairState.Position - frameStart;
+            s_PairAdjustedDisplacements[i] += pairCorrection;
             ILogicFrameEntity entity = s_BodyEntities[i];
             bool staticAvailable = LogicStaticCollisionShadowService.TrySolveFixed(
                 entity.NavigationAgentTypeId,
                 frameStart,
-                pairDisplacement,
+                s_PairAdjustedDisplacements[i],
                 body.Radius,
                 out LogicStaticCollisionShadowResult staticResult);
 
@@ -213,7 +225,7 @@ public static class LogicAgentCollisionShadowService
             {
                 staticPosition = staticResult.SolveResult.Start + staticResult.SolveResult.ResolvedDisplacement;
                 if (staticPosition != pairState.Position)
-                    LastStaticProjectionChangedCount++;
+                    s_StaticProjectionChangedEntityIds.Add(body.EntityId.Value);
             }
             else
             {
@@ -282,6 +294,9 @@ public static class LogicAgentCollisionShadowService
         s_BodyEntities.Clear();
         s_BodyFrameStartPositions.Clear();
         s_ProposedPositions.Clear();
+        s_PairAdjustedDisplacements.Clear();
+        s_SolverStates.Clear();
+        s_StaticProjectionChangedEntityIds.Clear();
         s_States.Clear();
         s_ResolvedPositions.Clear();
         LastCompletedFrame = 0;

@@ -27,6 +27,8 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
     private readonly Dictionary<string, FireHqDeathSupplySpec> m_FireHqDeathSupplySpecs = new(StringComparer.Ordinal);
     private readonly Dictionary<int, int> m_BattleCardCountsByFaction = new();
     private readonly Dictionary<int, int> m_DeadSupplyByFaction = new();
+    private readonly List<string> m_DeterministicStringKeys = new();
+    private readonly List<int> m_DeterministicIntKeys = new();
     private bool m_EventsSubscribed;
     private int m_DiscardCounter;
 
@@ -95,15 +97,28 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         AddIntDictionary(hasher, m_DeadSupplyByFaction);
     }
 
+    public static void WriteStaticModifierDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        hasher.Add(0x4254535441544943UL);
+        DiscardRewardModifierService.WriteDeterministicState(hasher);
+        EnemyArmyForceModifierService.WriteDeterministicState(hasher);
+        HealingTargetFilterService.WriteDeterministicState(hasher);
+        BuildingCostModifierService.WriteDeterministicState(hasher);
+        SettlementOffsetRateService.WriteDeterministicState(hasher);
+    }
+
     private void AddDiscardBuffs(LogicStateHasher hasher)
     {
-        var keys = new List<string>(m_DiscardBuffs.Keys);
-        keys.Sort(StringComparer.Ordinal);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedStringKeys(m_DiscardBuffs.Keys);
+        hasher.Add(m_DeterministicStringKeys.Count);
+        for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
         {
-            DiscardBuffSpec spec = m_DiscardBuffs[keys[i]];
-            hasher.Add(keys[i]);
+            string key = m_DeterministicStringKeys[i];
+            DiscardBuffSpec spec = m_DiscardBuffs[key];
+            hasher.Add(key);
             hasher.Add(spec.OwnerFactionId);
             hasher.Add(spec.HealthBonus.RawValue);
             hasher.Add(spec.AttackSpeedPercent.RawValue);
@@ -117,13 +132,13 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private void AddSortingCenterSpecs(LogicStateHasher hasher)
     {
-        var keys = new List<string>(m_SortingCenterCardForceSpecs.Keys);
-        keys.Sort(StringComparer.Ordinal);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedStringKeys(m_SortingCenterCardForceSpecs.Keys);
+        hasher.Add(m_DeterministicStringKeys.Count);
+        for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
         {
-            SortingCenterCardForceSpec spec = m_SortingCenterCardForceSpecs[keys[i]];
-            hasher.Add(keys[i]);
+            string key = m_DeterministicStringKeys[i];
+            SortingCenterCardForceSpec spec = m_SortingCenterCardForceSpecs[key];
+            hasher.Add(key);
             hasher.Add(spec.OwnerFactionId);
             hasher.Add(spec.CardLimit);
             hasher.Add(spec.BonusForce.RawValue);
@@ -132,28 +147,37 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private void AddFireHqSpecs(LogicStateHasher hasher)
     {
-        var keys = new List<string>(m_FireHqDeathSupplySpecs.Keys);
-        keys.Sort(StringComparer.Ordinal);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedStringKeys(m_FireHqDeathSupplySpecs.Keys);
+        hasher.Add(m_DeterministicStringKeys.Count);
+        for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
         {
-            FireHqDeathSupplySpec spec = m_FireHqDeathSupplySpecs[keys[i]];
-            hasher.Add(keys[i]);
+            string key = m_DeterministicStringKeys[i];
+            FireHqDeathSupplySpec spec = m_FireHqDeathSupplySpecs[key];
+            hasher.Add(key);
             hasher.Add(spec.OwnerFactionId);
             hasher.Add(spec.SupplyPerCoin);
         }
     }
 
-    private static void AddIntDictionary(LogicStateHasher hasher, Dictionary<int, int> values)
+    private void AddIntDictionary(LogicStateHasher hasher, Dictionary<int, int> values)
     {
-        var keys = new List<int>(values.Keys);
-        keys.Sort();
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        m_DeterministicIntKeys.Clear();
+        m_DeterministicIntKeys.AddRange(values.Keys);
+        m_DeterministicIntKeys.Sort();
+        hasher.Add(m_DeterministicIntKeys.Count);
+        for (int i = 0; i < m_DeterministicIntKeys.Count; i++)
         {
-            hasher.Add(keys[i]);
-            hasher.Add(values[keys[i]]);
+            int key = m_DeterministicIntKeys[i];
+            hasher.Add(key);
+            hasher.Add(values[key]);
         }
+    }
+
+    private void FillSortedStringKeys(IEnumerable<string> keys)
+    {
+        m_DeterministicStringKeys.Clear();
+        m_DeterministicStringKeys.AddRange(keys);
+        m_DeterministicStringKeys.Sort(StringComparer.Ordinal);
     }
 
     public override void Activate(TechEffectContext context)
@@ -1625,7 +1649,7 @@ public sealed class EnemyEnterFriendlyStrongholdDamageWatcherBuff : BuffCallback
             m_LastStrongholdIdByEntity.TryGetValue(enemyId, out string previousId);
             int ownerFactionId = EntitySideHelper.ToFactionId(hostEntity.Side);
             if (!LogicBuildingQueryService.TryResolveOwnedStrongholdAtPosition(
-                    enemy.PositionFixed,
+                    enemy.LogicFramePositionFixed(),
                     ownerFactionId,
                     out string strongholdId))
             {
@@ -1687,7 +1711,7 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
 
             int ownerFactionId = EntitySideHelper.ToFactionId(hostEntity.Side);
             if (!LogicBuildingQueryService.TryResolveOwnedStrongholdAtPosition(
-                    enemy.PositionFixed,
+                    enemy.LogicFramePositionFixed(),
                     ownerFactionId,
                     out _))
                 continue;
@@ -1966,6 +1990,7 @@ public static class DiscardRewardModifierService
     }
 
     private static readonly List<RateReduction> s_Reductions = new();
+    private static readonly List<RateReduction> s_DeterministicReductions = new();
 
     public static void Clear()
     {
@@ -1993,6 +2018,29 @@ public static class DiscardRewardModifierService
 
         return LevelTagRuntime.ModifyDiscardRewardConversionRate(Mathf.Max(1, result));
     }
+
+    internal static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        s_DeterministicReductions.Clear();
+        s_DeterministicReductions.AddRange(s_Reductions);
+        s_DeterministicReductions.Sort(CompareReductions);
+        hasher.Add(s_DeterministicReductions.Count);
+        for (int i = 0; i < s_DeterministicReductions.Count; i++)
+        {
+            RateReduction item = s_DeterministicReductions[i];
+            if (item == null || string.IsNullOrWhiteSpace(item.TechId) || item.Reduction <= 0)
+                throw new InvalidOperationException("Discard reward modifier deterministic state contains an invalid reduction.");
+            hasher.Add(item.TechId);
+            hasher.Add(item.OwnerFactionId);
+            hasher.Add(item.Reduction);
+        }
+    }
+
+    private static int CompareReductions(RateReduction left, RateReduction right)
+    {
+        int result = string.CompareOrdinal(left?.TechId, right?.TechId);
+        return result != 0 ? result : left.OwnerFactionId.CompareTo(right.OwnerFactionId);
+    }
 }
 
 public static class EnemyArmyForceModifierService
@@ -2005,6 +2053,7 @@ public static class EnemyArmyForceModifierService
     }
 
     private static readonly List<Reduction> s_Reductions = new();
+    private static readonly List<Reduction> s_DeterministicReductions = new();
 
     public static void Clear()
     {
@@ -2032,6 +2081,29 @@ public static class EnemyArmyForceModifierService
 
         return LevelTagRuntime.ModifyEnemySpawnCount(Mathf.Max(0, (int)Fix64.Ceiling(result)));
     }
+
+    internal static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        s_DeterministicReductions.Clear();
+        s_DeterministicReductions.AddRange(s_Reductions);
+        s_DeterministicReductions.Sort(CompareReductions);
+        hasher.Add(s_DeterministicReductions.Count);
+        for (int i = 0; i < s_DeterministicReductions.Count; i++)
+        {
+            Reduction item = s_DeterministicReductions[i];
+            if (item == null || string.IsNullOrWhiteSpace(item.TechId) || item.Percent <= Fix64.Zero)
+                throw new InvalidOperationException("Enemy army force modifier deterministic state contains an invalid reduction.");
+            hasher.Add(item.TechId);
+            hasher.Add(item.OwnerFactionId);
+            hasher.Add(item.Percent.RawValue);
+        }
+    }
+
+    private static int CompareReductions(Reduction left, Reduction right)
+    {
+        int result = string.CompareOrdinal(left?.TechId, right?.TechId);
+        return result != 0 ? result : left.OwnerFactionId.CompareTo(right.OwnerFactionId);
+    }
 }
 
 public static class HealingTargetFilterService
@@ -2044,6 +2116,7 @@ public static class HealingTargetFilterService
     }
 
     private static readonly List<NurseThreshold> s_NurseThresholds = new();
+    private static readonly List<NurseThreshold> s_DeterministicThresholds = new();
 
     public static void Clear()
     {
@@ -2078,6 +2151,29 @@ public static class HealingTargetFilterService
 
         return (Fix64)target.HealthRatio() * (Fix64)100 < threshold;
     }
+
+    internal static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        s_DeterministicThresholds.Clear();
+        s_DeterministicThresholds.AddRange(s_NurseThresholds);
+        s_DeterministicThresholds.Sort(CompareThresholds);
+        hasher.Add(s_DeterministicThresholds.Count);
+        for (int i = 0; i < s_DeterministicThresholds.Count; i++)
+        {
+            NurseThreshold item = s_DeterministicThresholds[i];
+            if (item == null || string.IsNullOrWhiteSpace(item.TechId) || item.HealthPercentThreshold <= Fix64.Zero)
+                throw new InvalidOperationException("Healing target filter deterministic state contains an invalid threshold.");
+            hasher.Add(item.TechId);
+            hasher.Add(item.OwnerFactionId);
+            hasher.Add(item.HealthPercentThreshold.RawValue);
+        }
+    }
+
+    private static int CompareThresholds(NurseThreshold left, NurseThreshold right)
+    {
+        int result = string.CompareOrdinal(left?.TechId, right?.TechId);
+        return result != 0 ? result : left.OwnerFactionId.CompareTo(right.OwnerFactionId);
+    }
 }
 
 public static class BuildingCostModifierService
@@ -2090,6 +2186,8 @@ public static class BuildingCostModifierService
     }
 
     private static readonly Dictionary<string, List<StrongholdArchetypeDiscount>> s_DiscountsByStrongholdId = new(StringComparer.Ordinal);
+    private static readonly List<string> s_DeterministicStrongholdIds = new();
+    private static readonly List<StrongholdArchetypeDiscount> s_DeterministicDiscounts = new();
 
     public static void Clear()
     {
@@ -2191,6 +2289,44 @@ public static class BuildingCostModifierService
 
         return archetypes.Count;
     }
+
+    internal static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        s_DeterministicStrongholdIds.Clear();
+        s_DeterministicStrongholdIds.AddRange(s_DiscountsByStrongholdId.Keys);
+        s_DeterministicStrongholdIds.Sort(StringComparer.Ordinal);
+        hasher.Add(s_DeterministicStrongholdIds.Count);
+        for (int strongholdIndex = 0; strongholdIndex < s_DeterministicStrongholdIds.Count; strongholdIndex++)
+        {
+            string strongholdId = s_DeterministicStrongholdIds[strongholdIndex];
+            if (string.IsNullOrWhiteSpace(strongholdId))
+                throw new InvalidOperationException("Building cost modifier deterministic state contains an invalid stronghold id.");
+            hasher.Add(strongholdId);
+
+            List<StrongholdArchetypeDiscount> source = s_DiscountsByStrongholdId[strongholdId];
+            if (source == null)
+                throw new InvalidOperationException($"Building cost modifier deterministic state has a null discount list for '{strongholdId}'.");
+            s_DeterministicDiscounts.Clear();
+            s_DeterministicDiscounts.AddRange(source);
+            s_DeterministicDiscounts.Sort(CompareDiscounts);
+            hasher.Add(s_DeterministicDiscounts.Count);
+            for (int discountIndex = 0; discountIndex < s_DeterministicDiscounts.Count; discountIndex++)
+            {
+                StrongholdArchetypeDiscount item = s_DeterministicDiscounts[discountIndex];
+                if (item == null || string.IsNullOrWhiteSpace(item.TechId) || item.DiscountPerArchetype <= 0)
+                    throw new InvalidOperationException($"Building cost modifier deterministic state contains an invalid discount for '{strongholdId}'.");
+                hasher.Add(item.TechId);
+                hasher.Add(item.OwnerFactionId);
+                hasher.Add(item.DiscountPerArchetype);
+            }
+        }
+    }
+
+    private static int CompareDiscounts(StrongholdArchetypeDiscount left, StrongholdArchetypeDiscount right)
+    {
+        int result = string.CompareOrdinal(left?.TechId, right?.TechId);
+        return result != 0 ? result : left.OwnerFactionId.CompareTo(right.OwnerFactionId);
+    }
 }
 
 public static class SettlementOffsetRateService
@@ -2203,6 +2339,7 @@ public static class SettlementOffsetRateService
     }
 
     private static readonly List<OffsetRate> s_Values = new();
+    private static readonly List<OffsetRate> s_DeterministicValues = new();
 
     public static void Clear()
     {
@@ -2229,5 +2366,28 @@ public static class SettlementOffsetRateService
         }
 
         return total;
+    }
+
+    internal static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        s_DeterministicValues.Clear();
+        s_DeterministicValues.AddRange(s_Values);
+        s_DeterministicValues.Sort(CompareValues);
+        hasher.Add(s_DeterministicValues.Count);
+        for (int i = 0; i < s_DeterministicValues.Count; i++)
+        {
+            OffsetRate item = s_DeterministicValues[i];
+            if (item == null || string.IsNullOrWhiteSpace(item.TechId) || item.Value == 0)
+                throw new InvalidOperationException("Settlement offset deterministic state contains an invalid value.");
+            hasher.Add(item.TechId);
+            hasher.Add(item.OwnerFactionId);
+            hasher.Add(item.Value);
+        }
+    }
+
+    private static int CompareValues(OffsetRate left, OffsetRate right)
+    {
+        int result = string.CompareOrdinal(left?.TechId, right?.TechId);
+        return result != 0 ? result : left.OwnerFactionId.CompareTo(right.OwnerFactionId);
     }
 }

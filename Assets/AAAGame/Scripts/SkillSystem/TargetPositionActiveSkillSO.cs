@@ -12,7 +12,7 @@ public abstract class TargetPositionActiveSkillSO : ActiveSkillSO
             currentIndex = 0,
             isFinished = false,
             selectTargets = new List<ISelectable>(),
-            selectPos = body.PositionFixed
+            selectPos = body.LogicFramePositionFixed()
         };
     }
 

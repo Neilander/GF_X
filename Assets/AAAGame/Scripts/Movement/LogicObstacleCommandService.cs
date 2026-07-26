@@ -87,12 +87,27 @@ public static class LogicObstacleCommandService
         }
     }
 
+    private sealed class PendingCommandComparer : IComparer<LogicObstacleCommand>
+    {
+        public int Compare(LogicObstacleCommand x, LogicObstacleCommand y)
+        {
+            int result = x.EffectiveFrame.CompareTo(y.EffectiveFrame);
+            if (result != 0)
+                return result;
+            result = x.StableObstacleId.CompareTo(y.StableObstacleId);
+            return result != 0 ? result : x.Sequence.CompareTo(y.Sequence);
+        }
+    }
+
     private static readonly List<LogicObstacleCommand> s_History = new List<LogicObstacleCommand>();
     private static readonly ReadOnlyCollection<LogicObstacleCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicObstacleCommand> s_Pending = new List<LogicObstacleCommand>();
     private static readonly List<LogicObstacleCommand> s_Due = new List<LogicObstacleCommand>();
     private static readonly Dictionary<int, LogicObstacleCommand> s_Active = new Dictionary<int, LogicObstacleCommand>();
     private static readonly CommandComparer s_CommandComparer = new CommandComparer();
+    private static readonly PendingCommandComparer s_PendingCommandComparer = new PendingCommandComparer();
+    private static readonly List<LogicObstacleCommand> s_DeterministicActive = new List<LogicObstacleCommand>();
+    private static readonly List<LogicObstacleCommand> s_DeterministicPending = new List<LogicObstacleCommand>();
     private static ulong s_LastSequence;
 
     public static bool IsActive { get; private set; }
@@ -103,6 +118,58 @@ public static class LogicObstacleCommandService
     public static int ActiveObstacleCount => s_Active.Count;
     public static IReadOnlyList<LogicObstacleCommand> History => s_ReadOnlyHistory;
     public static event Action<LogicObstacleCommand> CommandRecorded;
+
+    public static void WriteDeterministicState(LogicStateHasher hasher, ulong frame)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+        EnsureActive();
+        if (IsApplyingFrame || LastAppliedFrame != frame)
+        {
+            throw new InvalidOperationException(
+                $"LogicObstacleCommandService deterministic frame mismatch. requested={frame}, applied={LastAppliedFrame}, applying={IsApplyingFrame}.");
+        }
+
+        s_DeterministicActive.Clear();
+        s_DeterministicActive.AddRange(s_Active.Values);
+        s_DeterministicActive.Sort(s_CommandComparer);
+        s_DeterministicPending.Clear();
+        s_DeterministicPending.AddRange(s_Pending);
+        s_DeterministicPending.Sort(s_PendingCommandComparer);
+        try
+        {
+            hasher.Add(s_DeterministicActive.Count);
+            for (int i = 0; i < s_DeterministicActive.Count; i++)
+                WriteCommandState(hasher, s_DeterministicActive[i], false);
+            hasher.Add(s_DeterministicPending.Count);
+            for (int i = 0; i < s_DeterministicPending.Count; i++)
+                WriteCommandState(hasher, s_DeterministicPending[i], true);
+        }
+        finally
+        {
+            s_DeterministicActive.Clear();
+            s_DeterministicPending.Clear();
+        }
+    }
+
+    private static void WriteCommandState(
+        LogicStateHasher hasher,
+        LogicObstacleCommand command,
+        bool includeTimeline)
+    {
+        if (includeTimeline)
+        {
+            hasher.Add(command.EffectiveFrame);
+            hasher.Add(command.Sequence);
+        }
+        hasher.Add((int)command.Kind);
+        hasher.Add(command.StableObstacleId);
+        hasher.Add(command.Center.x.RawValue);
+        hasher.Add(command.Center.y.RawValue);
+        hasher.Add(command.HalfExtents.x.RawValue);
+        hasher.Add(command.HalfExtents.y.RawValue);
+        hasher.Add(command.Radius.RawValue);
+    }
 
     public static LogicObstacleCommandSnapshot CaptureSnapshot()
     {

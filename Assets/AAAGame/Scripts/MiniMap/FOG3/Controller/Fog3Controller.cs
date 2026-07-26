@@ -55,7 +55,7 @@ namespace AAAGame.MiniMap.FOG3
             return revealers.TryGetValue(revealerId, out revealer);
         }
 
-        public void UpdateVisibility(LayerMask occluderMask, float eyeHeight, float softEdgeWidth, bool globalLineOfSight, bool enableEnemyStrongholdHiddenVisionBlock)
+        public void UpdateVisibility(LayerMask occluderMask, float eyeHeight, float softEdgeWidth, bool globalLineOfSight, bool enableEnemyStrongholdHiddenVisionBlock, bool logPerformanceDiagnostics)
         {
             if (MapData == null)
                 return;
@@ -119,7 +119,7 @@ namespace AAAGame.MiniMap.FOG3
 
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - updateStartTicks;
             double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-            if (elapsedMs >= 2.0)
+            if (logPerformanceDiagnostics && elapsedMs >= 2.0)
             {
                 Debug.LogFormat(
                     LogType.Log,

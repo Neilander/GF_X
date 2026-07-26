@@ -45,6 +45,11 @@ namespace AAAGame.Scripts.BuffSystem
         /// Buff字典
         /// </summary>
         private Dictionary<string, BuffData> _buffDict = new Dictionary<string, BuffData>();
+        private readonly List<string> _updateBuffIds = new List<string>();
+        private readonly List<string> _expiredBuffIds = new List<string>();
+        private readonly List<BuffCallback> _updateModules = new List<BuffCallback>();
+        private readonly List<string> _deterministicBuffIds = new List<string>();
+        private bool _isUpdating;
 
         /// <summary>
         /// 宿主实体
@@ -176,54 +181,58 @@ namespace AAAGame.Scripts.BuffSystem
         /// </summary>
         public void UpdateBuff(Fix64 deltaTime)
         {
-            List<string> expiredBuffs = new List<string>();
-            List<string> buffIds = new List<string>(_buffDict.Keys);
+            if (_isUpdating)
+                throw new System.InvalidOperationException("CharacterBuffComp.UpdateBuff does not support reentrant updates.");
 
-            foreach (string buffId in buffIds)
+            _isUpdating = true;
+            _updateBuffIds.Clear();
+            _updateBuffIds.AddRange(_buffDict.Keys);
+            _expiredBuffIds.Clear();
+            try
             {
-                if (!_buffDict.TryGetValue(buffId, out BuffData buffData))
+                for (int buffIndex = 0; buffIndex < _updateBuffIds.Count; buffIndex++)
                 {
-                    continue;
-                }
-
-                if (buffData == null)
-                {
-                    expiredBuffs.Add(buffId);
-                    continue;
-                }
-
-                // 永久Buff不更新时间
-                if (!buffData.isForever)
-                {
-                    if (buffData.AdvanceLogicTime(deltaTime))
-                    {
-                        expiredBuffs.Add(buffId);
+                    string buffId = _updateBuffIds[buffIndex];
+                    if (!_buffDict.TryGetValue(buffId, out BuffData buffData))
                         continue;
-                    }
-                }
 
-                // 更新每个Buff模块
-                if (buffData.modules == null)
-                {
-                    continue;
-                }
-
-                List<BuffCallback> modulesCopy = new List<BuffCallback>(buffData.modules);
-                foreach (BuffCallback module in modulesCopy)
-                {
-                    if (module == null)
+                    if (buffData == null)
                     {
+                        _expiredBuffIds.Add(buffId);
                         continue;
                     }
 
-                    module.OnUpdate(deltaTime);
+                    // 永久Buff不更新时间
+                    if (!buffData.isForever && buffData.AdvanceLogicTime(deltaTime))
+                    {
+                        _expiredBuffIds.Add(buffId);
+                        continue;
+                    }
+
+                    // 更新每个Buff模块
+                    if (buffData.modules == null)
+                        continue;
+
+                    _updateModules.Clear();
+                    _updateModules.AddRange(buffData.modules);
+                    for (int moduleIndex = 0; moduleIndex < _updateModules.Count; moduleIndex++)
+                    {
+                        BuffCallback module = _updateModules[moduleIndex];
+                        if (module != null)
+                            module.OnUpdate(deltaTime);
+                    }
                 }
+
+                // 移除过期Buff（调用OnDurationEnd）
+                for (int i = 0; i < _expiredBuffIds.Count; i++)
+                    RemoveExpiredBuff(_expiredBuffIds[i]);
             }
-
-            // 移除过期Buff（调用OnDurationEnd）
-            foreach (string buffId in expiredBuffs)
+            finally
             {
-                RemoveExpiredBuff(buffId);
+                _updateModules.Clear();
+                _expiredBuffIds.Clear();
+                _updateBuffIds.Clear();
+                _isUpdating = false;
             }
         }
 
@@ -368,13 +377,83 @@ namespace AAAGame.Scripts.BuffSystem
             return states;
         }
 
+        public void WriteGameplayDeterministicState(LogicStateHasher hasher)
+        {
+            if (hasher == null)
+                throw new System.ArgumentNullException(nameof(hasher));
+
+            FillDeterministicBuffIds();
+            WriteGameplaySnapshotFields(hasher, _deterministicBuffIds);
+            WriteModuleContributorFields(hasher, _deterministicBuffIds);
+        }
+
         public void WriteDeterministicState(LogicStateHasher hasher)
         {
             if (hasher == null)
                 throw new System.ArgumentNullException(nameof(hasher));
 
-            var ids = new List<string>(_buffDict.Keys);
-            ids.Sort(System.StringComparer.Ordinal);
+            FillDeterministicBuffIds();
+            WriteModuleContributorFields(hasher, _deterministicBuffIds);
+        }
+
+        private void FillDeterministicBuffIds()
+        {
+            _deterministicBuffIds.Clear();
+            _deterministicBuffIds.AddRange(_buffDict.Keys);
+            _deterministicBuffIds.Sort(System.StringComparer.Ordinal);
+        }
+
+        private void WriteGameplaySnapshotFields(LogicStateHasher hasher, List<string> ids)
+        {
+            hasher.Add(ids.Count);
+            for (int buffIndex = 0; buffIndex < ids.Count; buffIndex++)
+            {
+                BuffData data = _buffDict[ids[buffIndex]];
+                if (data == null || data.modules == null)
+                    throw new System.InvalidOperationException($"CharacterBuffComp deterministic state is invalid. id={ids[buffIndex]}.");
+                hasher.Add(data.id);
+                hasher.Add(data.duration.RawValue);
+                hasher.Add(data.remainingTime.RawValue);
+                hasher.Add(data.isForever);
+                hasher.Add(data.currentStack);
+                hasher.Add(data.maxStack);
+                hasher.Add(data.modules.Count);
+                long blindProgressRaw = 0;
+                for (int moduleIndex = 0; moduleIndex < data.modules.Count; moduleIndex++)
+                {
+                    BuffCallback module = data.modules[moduleIndex];
+                    if (module == null)
+                        throw new System.InvalidOperationException($"CharacterBuffComp contains a null module. id={data.id}, index={moduleIndex}.");
+                    hasher.Add(module.GetType().FullName);
+                    if (module is BlindAttackMissBuff blind)
+                        blindProgressRaw = blind.CaptureProgressSnapshot().ProgressRaw;
+                }
+                hasher.Add(blindProgressRaw);
+            }
+        }
+
+        public void CaptureModuleSnapshot(List<BuffCallback> destination)
+        {
+            if (destination == null)
+                throw new System.ArgumentNullException(nameof(destination));
+
+            destination.Clear();
+            foreach (KeyValuePair<string, BuffData> pair in _buffDict)
+            {
+                BuffData data = pair.Value;
+                if (data?.modules == null)
+                    continue;
+                for (int i = 0; i < data.modules.Count; i++)
+                {
+                    BuffCallback module = data.modules[i];
+                    if (module != null)
+                        destination.Add(module);
+                }
+            }
+        }
+
+        private void WriteModuleContributorFields(LogicStateHasher hasher, List<string> ids)
+        {
             hasher.Add(ids.Count);
             for (int buffIndex = 0; buffIndex < ids.Count; buffIndex++)
             {

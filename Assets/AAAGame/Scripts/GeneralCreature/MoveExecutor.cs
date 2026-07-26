@@ -1,27 +1,21 @@
 ﻿using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 
-public class MoveExecutor : MonoBehaviour, IMoveExecutor
+public class MoveExecutor : MonoBehaviour
 {
     private CharacterController _controller;
     private MAEntity _ownerEntity;
     private Fog3Manager _fog3Manager;
 
     private Vector3 _inputVelocity;
-    private FixVector2 _fixedInputVelocity;
-    private bool _hasFixedInputVelocity;
     private Vector3 _externalVelocity;
-    private FixVector2 _fixedExternalVelocity;
     private Vector3 _overrideVelocity;
-    private FixVector2 _fixedOverrideVelocity;
-    private bool _hasFixedOverrideVelocity;
     private bool _hasOverride;
     private bool _isMovingThisFrame;
 
     private bool _navigationConstrained = true;
     private bool _constraintBypassForNextFrame;
     private bool _navigationConstraintBypass;
-    private bool _navigationConstraintBypassUntilLegalPoint;
     private float _gravityVelocity;
     private float _edgeBuffer = 0.45f;
     private int _agentTypeID;
@@ -39,13 +33,10 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private Vector3 _previousHeroConstrainedHorizontal;
 
     private bool _hasPreparedMove;
-    private ulong _preparedFrame;
     private float _preparedDeltaTime;
     private Vector3 _preparedStartPosition;
-    private FixVector2 _preparedLogicStartPosition;
     private Vector3 _preparedFinalVelocity;
     private Vector3 _preparedHorizontalDisplacement;
-    private FixVector2 _preparedHorizontalDisplacementFixed;
     private Vector3 _preparedVerticalDisplacement;
     private Vector3 _preparedFinalDisplacement;
     private bool _preparedNavigationConstraintEnabled;
@@ -69,14 +60,6 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     public Vector3 DebugStaticCollisionShadowDisplacement { get; private set; }
     public LogicStaticCollisionFailure DebugStaticCollisionShadowFailure { get; private set; }
     public MovementMode MovementMode => _movementMode;
-    public bool HasPreparedLogicMove => _hasPreparedMove && _preparedFrame > 0;
-    public ulong PreparedLogicFrame => _preparedFrame;
-    public bool PreparedCollisionMovable => _controller != null && _controller.enabled;
-    public FixVector2 PreparedResolvedHorizontalDisplacement => _preparedHorizontalDisplacementFixed;
-    public FixVector2 DebugAuthoritativeLogicPosition { get; private set; }
-    public FixVector2 DebugAuthoritativeHorizontalDisplacement { get; private set; }
-    public bool DebugLastInputWasFixed { get; private set; }
-    public FixVector2 DebugLastFixedInput { get; private set; }
 
     public void Init(CharacterController controller) => Init(controller, 0);
 
@@ -87,9 +70,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _agentTypeID = agentTypeID;
         _constraintBypassForNextFrame = false;
         _navigationConstraintBypass = false;
-        _navigationConstraintBypassUntilLegalPoint = false;
         _hasPreparedMove = false;
-        _preparedFrame = 0;
 
         if (_controller == null)
             return;
@@ -114,61 +95,27 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     public void SetInput(Vector3 velocity)
     {
         _inputVelocity = velocity;
-        _fixedInputVelocity = FixVector2.Zero;
-        _hasFixedInputVelocity = false;
-        DebugLastInputWasFixed = false;
-    }
-
-    public void SetInputFixed(FixVector2 velocity)
-    {
-        _fixedInputVelocity = velocity;
-        _hasFixedInputVelocity = true;
-        _inputVelocity = new Vector3((float)velocity.x, 0f, (float)velocity.y);
-        DebugLastInputWasFixed = true;
-        DebugLastFixedInput = velocity;
     }
 
     public void AddExternal(Vector3 velocity)
     {
-        AddExternalFixed(new FixVector2((Fix64)velocity.x, (Fix64)velocity.z));
-    }
-
-    public void AddExternalFixed(FixVector2 velocity)
-    {
-        _fixedExternalVelocity += velocity;
-        _externalVelocity = new Vector3((float)_fixedExternalVelocity.x, 0f, (float)_fixedExternalVelocity.y);
+        _externalVelocity += velocity;
     }
 
     public void SetOverride(Vector3 velocity)
     {
         _overrideVelocity = velocity;
         _hasOverride = true;
-        _hasFixedOverrideVelocity = false;
-    }
-
-    public void SetOverrideFixed(FixVector2 velocity)
-    {
-        _fixedOverrideVelocity = velocity;
-        _overrideVelocity = new Vector3((float)velocity.x, 0f, (float)velocity.y);
-        _hasOverride = true;
-        _hasFixedOverrideVelocity = true;
     }
 
     public void ClearOverride()
     {
         _hasOverride = false;
-        _hasFixedOverrideVelocity = false;
     }
 
     public void SetExternal(Vector3 velocity)
     {
-        SetExternalFixed(new FixVector2((Fix64)velocity.x, (Fix64)velocity.z));
-    }
-
-    public void SetExternalFixed(FixVector2 velocity)
-    {
-        _fixedExternalVelocity = velocity;
-        _externalVelocity = new Vector3((float)velocity.x, 0f, (float)velocity.y);
+        _externalVelocity = velocity;
     }
 
     public void SetMovementMode(MovementMode mode)
@@ -198,79 +145,21 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _navigationConstraintBypass = true;
     }
 
-    /// <summary>
-    /// 建造/障碍替换导致角色暂时处于不可走区域时，允许角色先离开障碍。
-    /// 角色回到合法导航点后自动恢复约束。
-    /// </summary>
-    public void EnableNavigationConstraintBypassUntilLegalPoint()
-    {
-        _navigationConstraintBypass = true;
-        _navigationConstraintBypassUntilLegalPoint = true;
-
-        Debug.Log(
-            $"[MoveExecutor] Enable navigation escape. gameObject={gameObject.name} " +
-            $"position={transform.position} agentTypeID={_agentTypeID}");
-    }
-
-    public void Execute()
-    {
-        throw new System.InvalidOperationException("MoveExecutor.Execute failed: deltaTime must be supplied by the logic frame.");
-    }
-
     public void Execute(float deltaTime)
     {
         if (_hasPreparedMove)
             throw new System.InvalidOperationException("MoveExecutor.Execute failed: a prepared move is already pending.");
 
-        PrepareInternal(deltaTime, 0, transform.position, true);
-        CommitPreparedInternal(0, false, default, false);
+        PrepareInternal(deltaTime, transform.position, true);
+        CommitPreparedInternal();
     }
 
-    public void PrepareLogicFrame(Fix64 deltaTime, LogicEntityFrameState frameState, bool allowMovement)
-    {
-        if (_ownerEntity == null)
-            throw new System.InvalidOperationException("MoveExecutor.PrepareLogicFrame failed: owner entity is not bound.");
-        if (deltaTime != LogicFrameRuntime.FixedDeltaTime)
-            throw new System.InvalidOperationException("MoveExecutor.PrepareLogicFrame failed: deltaTime is not the fixed logic delta.");
-        if (!LogicFrameRuntime.IsTicking || LogicFrameRuntime.CurrentFrame == 0)
-            throw new System.InvalidOperationException("MoveExecutor.PrepareLogicFrame failed: no logic frame is running.");
-        if (frameState.EntityId != _ownerEntity.LogicEntityId)
-        {
-            throw new System.InvalidOperationException(
-                $"MoveExecutor.PrepareLogicFrame failed: snapshot identity mismatch. owner={_ownerEntity.LogicEntityId.Value}, snapshot={frameState.EntityId.Value}.");
-        }
-        if (_hasPreparedMove)
-        {
-            throw new System.InvalidOperationException(
-                $"MoveExecutor.PrepareLogicFrame failed: frame {_preparedFrame} is still pending for entity {_ownerEntity.LogicEntityId.Value}.");
-        }
-
-        Vector3 frameStartPosition = transform.position;
-        EnsureTransformMatchesFrameState(frameState, frameStartPosition);
-        _preparedLogicStartPosition = frameState.Position;
-        PrepareInternal((float)deltaTime, LogicFrameRuntime.CurrentFrame, frameStartPosition, allowMovement);
-    }
-
-    public void CommitPreparedLogicFrame(FixVector2 authoritativePosition)
-    {
-        if (!_hasPreparedMove || _preparedFrame == 0)
-            throw new System.InvalidOperationException("MoveExecutor.CommitPreparedLogicFrame failed: no logic-frame move is prepared.");
-        if (!LogicFrameRuntime.IsTicking || LogicFrameRuntime.CurrentFrame != _preparedFrame)
-        {
-            throw new System.InvalidOperationException(
-                $"MoveExecutor.CommitPreparedLogicFrame failed: frame mismatch. logicFrame={LogicFrameRuntime.CurrentFrame}, prepared={_preparedFrame}.");
-        }
-
-        CommitPreparedInternal(_preparedFrame, true, authoritativePosition, true);
-    }
-
-    private void PrepareInternal(float deltaTime, ulong frameId, Vector3 frameStartPosition, bool allowMovement)
+    private void PrepareInternal(float deltaTime, Vector3 frameStartPosition, bool allowMovement)
     {
         if (deltaTime <= 0f || float.IsNaN(deltaTime) || float.IsInfinity(deltaTime))
             throw new System.ArgumentOutOfRangeException(nameof(deltaTime), deltaTime, "Move deltaTime must be finite and positive.");
 
         _hasPreparedMove = true;
-        _preparedFrame = frameId;
         _preparedDeltaTime = deltaTime;
         _preparedStartPosition = frameStartPosition;
 
@@ -303,42 +192,9 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         }
 
         Vector3 horizontalVelocity = new Vector3(finalVelocity.x, 0f, finalVelocity.z);
-        FixVector2 fixedHorizontalVelocity;
-        if (_hasOverride)
-        {
-            fixedHorizontalVelocity = _hasFixedOverrideVelocity
-                ? _fixedOverrideVelocity
-                : new FixVector2((Fix64)_overrideVelocity.x, (Fix64)_overrideVelocity.z);
-        }
-        else
-        {
-            FixVector2 fixedInput = _movementMode == MovementMode.Normal
-                ? (_hasFixedInputVelocity
-                    ? _fixedInputVelocity
-                    : new FixVector2((Fix64)_inputVelocity.x, (Fix64)_inputVelocity.z))
-                : FixVector2.Zero;
-            fixedHorizontalVelocity = fixedInput + _fixedExternalVelocity;
-        }
-        Vector3 horizontalDisplacement;
-        if (frameId > 0)
-        {
-            Fix64 fixedDelta = LogicFrameRuntime.FixedDeltaTime;
-            _preparedHorizontalDisplacementFixed = fixedHorizontalVelocity * fixedDelta;
-            horizontalDisplacement = new Vector3(
-                (float)_preparedHorizontalDisplacementFixed.x,
-                0f,
-                (float)_preparedHorizontalDisplacementFixed.y);
-        }
-        else
-        {
-            horizontalDisplacement = horizontalVelocity * deltaTime;
-            _preparedHorizontalDisplacementFixed = new FixVector2(
-                (Fix64)horizontalDisplacement.x,
-                (Fix64)horizontalDisplacement.z);
-        }
+        Vector3 horizontalDisplacement = horizontalVelocity * deltaTime;
         Vector3 requestedHorizontalDisplacement = horizontalDisplacement;
 
-        UpdateNavigationConstraintBypassState(frameId, frameStartPosition);
         bool shouldConstrain = _navigationConstrained && !_constraintBypassForNextFrame && !_navigationConstraintBypass;
         DebugRequestedHorizontalDisplacement = requestedHorizontalDisplacement;
         DebugNavigationConstraintEnabled = shouldConstrain;
@@ -347,8 +203,7 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         DebugStaticCollisionShadowFailure = LogicStaticCollisionFailure.None;
         Vector3 staticCollisionShadowStart = frameStartPosition;
         LogicStaticCollisionShadowResult staticCollisionShadow = default;
-        bool hasStaticCollisionShadow = frameId == 0
-                                        && shouldConstrain
+        bool hasStaticCollisionShadow = shouldConstrain
                                         && requestedHorizontalDisplacement.sqrMagnitude > 0.000001f
                                         && LogicStaticCollisionShadowService.TrySolve(
                                             _agentTypeID,
@@ -362,12 +217,9 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
             DebugStaticCollisionShadowDisplacement = staticCollisionShadow.ResolvedDisplacement;
             DebugStaticCollisionShadowFailure = staticCollisionShadow.SolveResult.Failure;
         }
-        if (shouldConstrain && frameId == 0)
+        if (shouldConstrain)
         {
             horizontalDisplacement = ConstrainHorizontalDisplacement(frameStartPosition, horizontalDisplacement);
-            _preparedHorizontalDisplacementFixed = new FixVector2(
-                (Fix64)horizontalDisplacement.x,
-                (Fix64)horizontalDisplacement.z);
             if (ShouldLogVerboseMovement(horizontalDisplacement))
             {
                 GameDebugSettings.Log(DebugCategory.Move, $"[Move] [{gameObject.name}] Constrained horizontalDisplacement={horizontalDisplacement}");
@@ -391,33 +243,10 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         _preparedStaticCollisionShadow = staticCollisionShadow;
     }
 
-    private void CommitPreparedInternal(
-        ulong expectedFrame,
-        bool strictLogicFrame,
-        FixVector2 authoritativePosition,
-        bool useAuthoritativeHorizontalPosition)
+    private void CommitPreparedInternal()
     {
-        if (!_hasPreparedMove || _preparedFrame != expectedFrame)
-        {
-            throw new System.InvalidOperationException(
-                $"MoveExecutor.CommitPreparedInternal failed: expected frame {expectedFrame}, prepared frame {_preparedFrame}, hasPrepared={_hasPreparedMove}.");
-        }
-        if (strictLogicFrame)
-            EnsureTransformMatchesPreparedStart(_preparedStartPosition, "CommitPreparedLogicFrame");
-
-        if (useAuthoritativeHorizontalPosition)
-        {
-            FixVector2 authoritativeDisplacement = authoritativePosition - _preparedLogicStartPosition;
-            _preparedHorizontalDisplacement = new Vector3(
-                (float)authoritativeDisplacement.x,
-                0f,
-                (float)authoritativeDisplacement.y);
-            _preparedFinalDisplacement = _preparedHorizontalDisplacement + _preparedVerticalDisplacement;
-            DebugFinalDisplacement = _preparedFinalDisplacement;
-            DebugAuthoritativeLogicPosition = authoritativePosition;
-            DebugAuthoritativeHorizontalDisplacement = authoritativeDisplacement;
-            _preparedHorizontalDisplacementFixed = authoritativeDisplacement;
-        }
+        if (!_hasPreparedMove)
+            throw new System.InvalidOperationException("MoveExecutor.CommitPreparedInternal failed: no prepared move.");
 
         Vector3 beforeMovePosition = transform.position;
         DebugLastControllerHitName = string.Empty;
@@ -427,28 +256,18 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         if (_controller != null && _controller.enabled && _preparedVerticalDisplacement.sqrMagnitude > 0.000001f)
         {
             long controllerMoveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            _controller.Move(useAuthoritativeHorizontalPosition
-                ? _preparedVerticalDisplacement
-                : _preparedFinalDisplacement);
+            _controller.Move(_preparedFinalDisplacement);
             UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
                 UnityGameFramework.Runtime.MainThreadPerfScope.MoveExecutorControllerMove,
                 System.Diagnostics.Stopwatch.GetTimestamp() - controllerMoveStartTicks);
         }
-        if (useAuthoritativeHorizontalPosition)
-        {
-            Vector3 verticalResolvedPosition = transform.position;
-            transform.position = new Vector3(
-                (float)authoritativePosition.x,
-                verticalResolvedPosition.y,
-                (float)authoritativePosition.y);
-        }
         Vector3 afterMovePosition = transform.position;
         DebugActualHorizontalDisplacement = afterMovePosition - beforeMovePosition;
         DebugActualHorizontalDisplacement = new Vector3(DebugActualHorizontalDisplacement.x, 0f, DebugActualHorizontalDisplacement.z);
-        if (_preparedHasStaticCollisionShadow && !useAuthoritativeHorizontalPosition)
+        if (_preparedHasStaticCollisionShadow)
         {
             LogicStaticCollisionShadowService.RecordComparison(
-                strictLogicFrame ? expectedFrame : 0,
+                0,
                 _ownerEntity != null ? _ownerEntity.Id : 0,
                 _agentTypeID,
                 _preparedStartPosition,
@@ -483,7 +302,6 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
         DebugStaticCollisionShadowFailure = LogicStaticCollisionFailure.None;
         _preparedFinalVelocity = Vector3.zero;
         _preparedHorizontalDisplacement = Vector3.zero;
-        _preparedHorizontalDisplacementFixed = FixVector2.Zero;
         _preparedVerticalDisplacement = Vector3.zero;
         _preparedFinalDisplacement = Vector3.zero;
         _preparedNavigationConstraintEnabled = false;
@@ -494,71 +312,11 @@ public class MoveExecutor : MonoBehaviour, IMoveExecutor
     private void ClearPreparedMoveAndInputs()
     {
         _inputVelocity = Vector3.zero;
-        _fixedInputVelocity = FixVector2.Zero;
-        _hasFixedInputVelocity = false;
         _hasOverride = false;
-        _hasFixedOverrideVelocity = false;
         _externalVelocity = Vector3.zero;
-        _fixedExternalVelocity = FixVector2.Zero;
         _constraintBypassForNextFrame = false;
         _hasPreparedMove = false;
-        _preparedFrame = 0;
         _preparedDeltaTime = 0f;
-        _preparedLogicStartPosition = FixVector2.Zero;
-    }
-
-    private void EnsureTransformMatchesPreparedStart(Vector3 expected, string operation)
-    {
-        Vector3 actual = transform.position;
-        const float tolerance = 0.0001f;
-        if (Mathf.Abs(actual.x - expected.x) > tolerance || Mathf.Abs(actual.z - expected.z) > tolerance)
-        {
-            throw new System.InvalidOperationException(
-                $"MoveExecutor.{operation} failed: transform changed outside commit. entity={_ownerEntity?.LogicEntityId.Value ?? 0}, " +
-                $"frame={LogicFrameRuntime.CurrentFrame}, expectedXZ=({expected.x:F6},{expected.z:F6}), actualXZ=({actual.x:F6},{actual.z:F6}).");
-        }
-    }
-
-    private void EnsureTransformMatchesFrameState(LogicEntityFrameState frameState, Vector3 actual)
-    {
-        Fix64 actualX = (Fix64)actual.x;
-        Fix64 actualZ = (Fix64)actual.z;
-        if (actualX != frameState.Position.x || actualZ != frameState.Position.y)
-        {
-            throw new System.InvalidOperationException(
-                $"MoveExecutor.PrepareLogicFrame failed: transform changed after frame snapshot. entity={_ownerEntity?.LogicEntityId.Value ?? 0}, " +
-                $"frame={LogicFrameRuntime.CurrentFrame}, snapshotRaw=({frameState.Position.x.RawValue},{frameState.Position.y.RawValue}), " +
-                $"actualRaw=({actualX.RawValue},{actualZ.RawValue}), actualXZ=({actual.x:F6},{actual.z:F6}).");
-        }
-    }
-
-    private void UpdateNavigationConstraintBypassState(ulong frameId, Vector3 frameStartPosition)
-    {
-        if (!_navigationConstraintBypassUntilLegalPoint)
-            return;
-
-        bool isLegal = frameId > 0
-            ? FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixed(
-                _preparedLogicStartPosition,
-                _agentTypeID,
-                Fix64.Zero,
-                Fix64.Zero,
-                out _)
-            : FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
-                frameStartPosition,
-                _agentTypeID,
-                0f,
-                0f,
-                out _);
-        if (!isLegal)
-            return;
-
-        _navigationConstraintBypassUntilLegalPoint = false;
-        _navigationConstraintBypass = false;
-        Debug.Log(
-            $"[MoveExecutor] Navigation escape complete. gameObject={gameObject.name} " +
-            $"position={frameStartPosition} logicPositionRaw=({_preparedLogicStartPosition.x.RawValue},{_preparedLogicStartPosition.y.RawValue}) " +
-            $"agentTypeID={_agentTypeID} logicFrame={frameId}");
     }
 
     private void OnControllerColliderHit(ControllerColliderHit hit)

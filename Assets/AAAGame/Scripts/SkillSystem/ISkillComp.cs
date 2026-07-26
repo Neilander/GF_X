@@ -25,6 +25,8 @@ public static class LogicSkillStateService
 
 public static class SkillCompDeterministicStateUtility
 {
+    private static readonly List<string> s_DeterministicStringKeys = new List<string>();
+
     public static void Write(
         LogicStateHasher hasher,
         IEntityContext entity,
@@ -36,27 +38,21 @@ public static class SkillCompDeterministicStateUtility
             throw new System.ArgumentNullException(nameof(hasher));
 
         hasher.Add(entity?.LogicEntityId.Value ?? 0);
-        var cooldownIds = cooldownsBySkillId != null
-            ? new List<string>(cooldownsBySkillId.Keys)
-            : new List<string>();
-        cooldownIds.Sort(System.StringComparer.Ordinal);
-        hasher.Add(cooldownIds.Count);
-        for (int i = 0; i < cooldownIds.Count; i++)
+        FillSortedStringKeys(cooldownsBySkillId?.Keys);
+        hasher.Add(s_DeterministicStringKeys.Count);
+        for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
         {
-            string skillId = cooldownIds[i];
+            string skillId = s_DeterministicStringKeys[i];
             hasher.Add(skillId);
             GeneralCounter counter = cooldownsBySkillId[skillId]
                 ?? throw new System.InvalidOperationException($"Skill cooldown is null. skillId={skillId}.");
             counter.WriteDeterministicState(hasher);
         }
 
-        var passiveIds = appliedPassiveSkillIds != null
-            ? new List<string>(appliedPassiveSkillIds)
-            : new List<string>();
-        passiveIds.Sort(System.StringComparer.Ordinal);
-        hasher.Add(passiveIds.Count);
-        for (int i = 0; i < passiveIds.Count; i++)
-            hasher.Add(passiveIds[i]);
+        FillSortedStringKeys(appliedPassiveSkillIds);
+        hasher.Add(s_DeterministicStringKeys.Count);
+        for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
+            hasher.Add(s_DeterministicStringKeys[i]);
 
         int slotCount = slots?.Count ?? 0;
         hasher.Add(slotCount);
@@ -141,25 +137,33 @@ public static class SkillCompDeterministicStateUtility
 
     private static void WriteSortedBoolDictionary(LogicStateHasher hasher, Dictionary<string, bool> values)
     {
-        var keys = new List<string>(values.Keys);
-        keys.Sort(System.StringComparer.Ordinal);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedStringKeys(values.Keys);
+        hasher.Add(s_DeterministicStringKeys.Count);
+        for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
         {
-            hasher.Add(keys[i]);
-            hasher.Add(values[keys[i]]);
+            string key = s_DeterministicStringKeys[i];
+            hasher.Add(key);
+            hasher.Add(values[key]);
         }
     }
 
     private static void WriteSortedIntDictionary(LogicStateHasher hasher, Dictionary<string, int> values)
     {
-        var keys = new List<string>(values.Keys);
-        keys.Sort(System.StringComparer.Ordinal);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedStringKeys(values.Keys);
+        hasher.Add(s_DeterministicStringKeys.Count);
+        for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
         {
-            hasher.Add(keys[i]);
-            hasher.Add(values[keys[i]]);
+            string key = s_DeterministicStringKeys[i];
+            hasher.Add(key);
+            hasher.Add(values[key]);
         }
+    }
+
+    private static void FillSortedStringKeys(IEnumerable<string> values)
+    {
+        s_DeterministicStringKeys.Clear();
+        if (values != null)
+            s_DeterministicStringKeys.AddRange(values);
+        s_DeterministicStringKeys.Sort(System.StringComparer.Ordinal);
     }
 }

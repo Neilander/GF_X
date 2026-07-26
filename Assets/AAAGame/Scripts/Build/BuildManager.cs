@@ -131,7 +131,6 @@ public class BuildManager : GameFrameworkComponent
             owner.BuildingInstanceId,
             checkCondition: true,
             consumeCoins: true,
-            enableConstructionEscape: true,
             currentInteractionFrameLifecycle: true).IsValid;
         if (built && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
@@ -291,7 +290,6 @@ public class BuildManager : GameFrameworkComponent
             buildingInstanceId,
             checkCondition: false,
             consumeCoins: false,
-            enableConstructionEscape: true,
             currentInteractionFrameLifecycle: true);
         if (!entityId.IsValid)
             return false;
@@ -318,8 +316,7 @@ public class BuildManager : GameFrameworkComponent
             position,
             buildingInstanceId,
             checkCondition: true,
-            consumeCoins: true,
-            enableConstructionEscape: true).IsValid;
+            consumeCoins: true).IsValid;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildNormal");
         return ok;
@@ -334,7 +331,6 @@ public class BuildManager : GameFrameworkComponent
             buildingInstanceId,
             checkCondition: true,
             consumeCoins: false,
-            enableConstructionEscape: true,
             currentInteractionFrameLifecycle: true).IsValid;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildImportant");
@@ -394,7 +390,6 @@ public class BuildManager : GameFrameworkComponent
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
         bool isNavigationStaticBaked = false,
-        bool enableConstructionEscape = false,
         bool currentInteractionFrameLifecycle = false)
     {
         return BuildBuildingInternalFixed(
@@ -407,7 +402,6 @@ public class BuildManager : GameFrameworkComponent
             isGameEndConditionBuilding,
             initialCoinReserves,
             isNavigationStaticBaked,
-            enableConstructionEscape,
             currentInteractionFrameLifecycle);
     }
 
@@ -421,7 +415,6 @@ public class BuildManager : GameFrameworkComponent
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
         bool isNavigationStaticBaked = false,
-        bool enableConstructionEscape = false,
         bool currentInteractionFrameLifecycle = false)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
@@ -467,7 +460,6 @@ public class BuildManager : GameFrameworkComponent
             0,
             isGameEndConditionBuilding,
             isNavigationStaticBaked,
-            enableConstructionEscape,
             currentInteractionFrameLifecycle);
 
         if (entityId.IsValid)

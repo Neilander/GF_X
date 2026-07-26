@@ -5,24 +5,30 @@
 
 public static class LogicDeterministicStateWriter
 {
+    private static readonly System.Collections.Generic.List<int> s_SortedIds =
+        new System.Collections.Generic.List<int>();
+
     public static void AddSortedIds(LogicStateHasher hasher, System.Collections.Generic.IEnumerable<int> values)
     {
-        var sorted = new System.Collections.Generic.List<int>(values);
-        sorted.Sort();
-        hasher.Add(sorted.Count);
-        for (int i = 0; i < sorted.Count; i++)
-            hasher.Add(sorted[i]);
+        s_SortedIds.Clear();
+        s_SortedIds.AddRange(values);
+        s_SortedIds.Sort();
+        hasher.Add(s_SortedIds.Count);
+        for (int i = 0; i < s_SortedIds.Count; i++)
+            hasher.Add(s_SortedIds[i]);
     }
 
     public static void AddSortedStringsById(LogicStateHasher hasher, System.Collections.Generic.IDictionary<int, string> values)
     {
-        var keys = new System.Collections.Generic.List<int>(values.Keys);
-        keys.Sort();
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        s_SortedIds.Clear();
+        s_SortedIds.AddRange(values.Keys);
+        s_SortedIds.Sort();
+        hasher.Add(s_SortedIds.Count);
+        for (int i = 0; i < s_SortedIds.Count; i++)
         {
-            hasher.Add(keys[i]);
-            hasher.Add(values[keys[i]]);
+            int key = s_SortedIds[i];
+            hasher.Add(key);
+            hasher.Add(values[key]);
         }
     }
 }

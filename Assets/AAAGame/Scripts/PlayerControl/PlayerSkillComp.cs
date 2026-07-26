@@ -350,6 +350,7 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
 }
 public class SkillSlot: ISkillLocker
 {
+    private static readonly List<int> s_DeterministicSlotIndices = new List<int>();
     public ActiveSkillSO skill;
 
     public GeneralCounter cooldown;
@@ -421,7 +422,7 @@ public class SkillSlot: ISkillLocker
 
     private static void WriteSlotSet<T>(LogicStateHasher hasher, List<SkillSlot> ownerSlots, HashSet<T> values)
     {
-        var indices = new List<int>(values.Count);
+        s_DeterministicSlotIndices.Clear();
         foreach (T value in values)
         {
             if (value is not SkillSlot slot)
@@ -429,11 +430,11 @@ public class SkillSlot: ISkillLocker
             int index = ownerSlots.IndexOf(slot);
             if (index < 0)
                 throw new System.InvalidOperationException("Skill lock references a slot outside its owner component.");
-            indices.Add(index);
+            s_DeterministicSlotIndices.Add(index);
         }
-        indices.Sort();
-        hasher.Add(indices.Count);
-        for (int i = 0; i < indices.Count; i++)
-            hasher.Add(indices[i]);
+        s_DeterministicSlotIndices.Sort();
+        hasher.Add(s_DeterministicSlotIndices.Count);
+        for (int i = 0; i < s_DeterministicSlotIndices.Count; i++)
+            hasher.Add(s_DeterministicSlotIndices[i]);
     }
 }

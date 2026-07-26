@@ -18,6 +18,7 @@ public static class DefendPhaseRuntime
     private static readonly List<DefendSpawnPointRuntime> s_DefendSpawnPoints = new();
     private static readonly List<DefendWaveDefinition> s_DefendWaves = new();
     private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
+    private static readonly List<int> s_DeterministicAliveEnemyIds = new();
 
     private static bool s_SubscribedLogicUnitDead;
     private static int s_CachedLevelEntityId;
@@ -983,11 +984,12 @@ public static class DefendPhaseRuntime
             hasher.Add(evt.TheoreticalArrivalFrameOffset);
         }
 
-        var aliveIds = new List<int>(s_AliveEnemyLogicEntityIds);
-        aliveIds.Sort();
-        hasher.Add(aliveIds.Count);
-        for (int i = 0; i < aliveIds.Count; i++)
-            hasher.Add(aliveIds[i]);
+        s_DeterministicAliveEnemyIds.Clear();
+        s_DeterministicAliveEnemyIds.AddRange(s_AliveEnemyLogicEntityIds);
+        s_DeterministicAliveEnemyIds.Sort();
+        hasher.Add(s_DeterministicAliveEnemyIds.Count);
+        for (int i = 0; i < s_DeterministicAliveEnemyIds.Count; i++)
+            hasher.Add(s_DeterministicAliveEnemyIds[i]);
     }
 
 #if UNITY_EDITOR

@@ -21,7 +21,7 @@ public static class LogicDeterminismCorpusRunner
 
         try
         {
-            LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV51();
+            LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV58();
             Debug.Log(string.Format(
                 CultureInfo.InvariantCulture,
                 "{0} corpus={1} protocol={2} content={3} events={4} checksum={5} inputHash={6} timeHash={7} fullHash={8}",

@@ -72,7 +72,6 @@ public readonly struct DirectAttackDeterministicState
 /// </summary>
 public class DirectAtkComp : IAtkComp
 {
-    private static readonly List<BuffCallback> EmptyBuffModuleSnapshot = new List<BuffCallback>(0);
 
     private readonly struct AttackSchedule
     {
@@ -122,6 +121,7 @@ public class DirectAtkComp : IAtkComp
     private ulong _lastAttackStartFrame;
     private IEntityContext _lockedTarget;
     private readonly List<IEntityContext> _lockedTargets = new List<IEntityContext>();
+    private readonly List<BuffCallback> _buffModuleSnapshot = new List<BuffCallback>();
     private bool _movementLockedByThisAttack;
 
     public DirectAttackDeterministicState CaptureDeterministicState()
@@ -151,6 +151,37 @@ public class DirectAtkComp : IAtkComp
             _movementLockedByThisAttack,
             _lockedTarget != null && _lockedTarget.LogicEntityId.IsValid ? _lockedTarget.LogicEntityId.Value : 0,
             lockedTargetIds);
+    }
+
+    public void WriteGameplayDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        hasher.Add((int)State);
+        hasher.Add(AttackCount);
+        hasher.Add(_activeWeaponIndex);
+        hasher.Add(_hasSchedule);
+        hasher.Add(_hasSchedule ? _schedule.StartFrame : 0);
+        hasher.Add(_hasSchedule ? _schedule.HitFrame : 0);
+        hasher.Add(_hasSchedule ? _schedule.RecoveryEndFrame : 0);
+        hasher.Add(_hasSchedule ? _schedule.ReadyFrame : 0);
+        hasher.Add(_hitCommitted);
+        hasher.Add(_recoveryCommitted);
+        hasher.Add(_hasAttackStartFrame);
+        hasher.Add(_lastAttackStartFrame);
+        hasher.Add(_movementLockedByThisAttack);
+        hasher.Add(_lockedTarget != null && _lockedTarget.LogicEntityId.IsValid
+            ? _lockedTarget.LogicEntityId.Value
+            : 0);
+        hasher.Add(_lockedTargets.Count);
+        for (int i = 0; i < _lockedTargets.Count; i++)
+        {
+            IEntityContext target = _lockedTargets[i];
+            if (target == null || !target.LogicEntityId.IsValid)
+                throw new InvalidOperationException($"DirectAtkComp deterministic state contains an invalid locked target. index={i}.");
+            hasher.Add(target.LogicEntityId.Value);
+        }
     }
 
     public void RestoreDeterministicState(DirectAttackDeterministicState snapshot)
@@ -772,13 +803,13 @@ public void Attack(Fix64 deltaTime)
     private List<BuffCallback> GetBuffModuleSnapshot()
     {
         if (!(_ctx.BuffComp is CharacterBuffComp buffComp))
-            return EmptyBuffModuleSnapshot;
+        {
+            _buffModuleSnapshot.Clear();
+            return _buffModuleSnapshot;
+        }
 
-        var result = new List<BuffCallback>();
-        foreach (BuffCallback module in buffComp.EnumerateAllModules())
-            result.Add(module);
-
-        return result;
+        buffComp.CaptureModuleSnapshot(_buffModuleSnapshot);
+        return _buffModuleSnapshot;
     }
 
     public void Resume() { }

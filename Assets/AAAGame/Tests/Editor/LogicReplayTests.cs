@@ -141,6 +141,24 @@ public sealed class LogicReplayTests
     }
 
     [Test]
+    public void Comparer_ReportsFirstNavigationAuthorityCheckpointDivergence()
+    {
+        LogicGameplayStateDigest expectedDigest = CreateGameplayDigest(5ul, 13ul, 15ul);
+        LogicReplayLog expected = RecordSingleFrame(expectedDigest);
+
+        LogicTimeControlService.EndTimeline();
+        LogicTimeControlService.BeginTimeline();
+        LogicGameplayStateDigest actualDigest = CreateGameplayDigest(99ul, 113ul, 115ul);
+        LogicReplayLog actual = RecordSingleFrame(actualDigest);
+
+        LogicReplayDivergence divergence = LogicReplayComparer.FindFirstDivergence(expected, actual);
+
+        Assert.IsTrue(divergence.HasDivergence);
+        Assert.AreEqual(1ul, divergence.FrameId);
+        Assert.AreEqual("Gameplay.Navigation.Agents", divergence.Field);
+    }
+
+    [Test]
     public void SnapshotHash_IsIndependentOfCommandSubmissionInsertionLayout()
     {
         LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
@@ -163,20 +181,20 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void ProtocolV51_CrossPlatformDeterminismCorpus_IsStable()
+    public void ProtocolV58_CrossPlatformDeterminismCorpus_IsStable()
     {
         LogicTimeControlService.EndTimeline();
-        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV51();
+        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV58();
         LogicTimeControlService.BeginTimeline();
 
-        Assert.AreEqual(51, result.ProtocolVersion);
+        Assert.AreEqual(58, result.ProtocolVersion);
         Assert.AreEqual(6256122146117919571ul, result.FullHash);
     }
 
     [Test]
     public void CrossPlatformDeterminismCorpus_RejectsActiveTimeline()
     {
-        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV51());
+        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV58());
     }
 
     [Test]
@@ -261,6 +279,52 @@ public sealed class LogicReplayTests
         LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
         recorder.RecordFrame(inputFrame, gameplayStateHash);
         return recorder.End();
+    }
+
+    private static LogicReplayLog RecordSingleFrame(LogicGameplayStateDigest gameplayDigest)
+    {
+        var recorder = new LogicReplayRecorder();
+        recorder.Begin();
+        LogicTimeControlService.BeginFrame(1);
+
+        var timeline = CreateTimeline();
+        LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
+        recorder.RecordFrame(inputFrame, gameplayDigest);
+        return recorder.End();
+    }
+
+    private static LogicGameplayStateDigest CreateGameplayDigest(
+        ulong navigationAgentsHash,
+        ulong navigationFinalHash,
+        ulong gameplayStateHash)
+    {
+        var navigation = new LogicNavigationAuthorityDigest(
+            1ul,
+            2ul,
+            3ul,
+            4ul,
+            navigationAgentsHash,
+            navigationAgentsHash + 1,
+            navigationAgentsHash + 2,
+            navigationAgentsHash + 3,
+            navigationAgentsHash + 4,
+            navigationAgentsHash + 5,
+            navigationAgentsHash + 6,
+            navigationAgentsHash + 7,
+            navigationFinalHash);
+        return new LogicGameplayStateDigest(
+            1ul,
+            1ul,
+            2ul,
+            3ul,
+            4ul,
+            5ul,
+            6ul,
+            7ul,
+            8ul,
+            navigation,
+            gameplayStateHash - 1,
+            gameplayStateHash);
     }
 
     private static LogicReplayLog RecordSingleWorldSelectionFrame(FixVector2 worldPosition)

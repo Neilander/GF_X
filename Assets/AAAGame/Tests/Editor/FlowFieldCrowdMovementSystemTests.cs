@@ -1,4 +1,4 @@
-﻿﻿﻿using NUnit.Framework;
+﻿using NUnit.Framework;
 using UnityEngine;
 using System;
 using System.Collections;
@@ -342,6 +342,127 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationAuthorityDigest_WorldBuildPortalProgressMustAffectHash()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 16;
+        const int height = 8;
+        var walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+
+        var baseline = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(baseline);
+        FlowFieldCrowdMovementSystem.AddEditorTestOnlyWorldBuildPortalProgressProbe();
+        var portalProgress = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(portalProgress);
+        Assert.AreNotEqual(baseline.Hash, portalProgress.Hash);
+
+        FlowFieldCrowdMovementSystem.AddEditorTestOnlyWorldBuildPendingPortalAccessProbe();
+        var accessProgress = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(accessProgress);
+        Assert.AreNotEqual(portalProgress.Hash, accessProgress.Hash);
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_RuntimeDirtyProcessedBoundariesMustAffectHash()
+    {
+        const int width = 16;
+        const int height = 8;
+        var walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacle(81004, new Vector3(2.5f, 0f, 1.5f), 0.4f);
+        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+
+        var baseline = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(baseline);
+        FlowFieldCrowdMovementSystem.AddEditorTestOnlyRuntimeDirtyProcessedBoundaryProbe();
+        var changed = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(changed);
+        Assert.AreNotEqual(baseline.Hash, changed.Hash);
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_WorldBuildWorkingWorldTracksAuthorityButIgnoresFloatShadow()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 64;
+        const int height = 32;
+        var walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        for (int i = 0; i < 32 && !FlowFieldCrowdMovementSystem.HasEditorTestOnlyWorldBuildWorkingWorld(); i++)
+            FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestOnlyWorldBuildWorkingWorld());
+
+        var baseline = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(baseline);
+        var repeatedBaseline = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(repeatedBaseline);
+        Assert.AreEqual(baseline.Hash, repeatedBaseline.Hash, "相同 WorldBuild WorkingWorld 的重复 authority digest 必须稳定。");
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyWorldBuildWorkingWorldFloatShadow();
+        var floatShadow = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(floatShadow);
+        Assert.AreEqual(baseline.Hash, floatShadow.Hash, "WorkingWorld 的 Unity float shadow 不得进入 authority digest。");
+
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyWorldBuildWorkingWorldAuthorityCell();
+        var authorityChanged = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(authorityChanged);
+        Assert.AreNotEqual(floatShadow.Hash, authorityChanged.Hash, "WorkingWorld 的实际离散权威内容必须进入 authority digest。");
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_RuntimeDirtyWorkingWorldTracksAuthorityButIgnoresFloatShadow()
+    {
+        const int width = 64;
+        const int height = 32;
+        var walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacle(81005, new Vector3(2.5f, 0f, 1.5f), 0.4f);
+        for (int i = 0; i < 32 && !FlowFieldCrowdMovementSystem.HasEditorTestOnlyRuntimeDirtyWorkingWorld(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestOnlyRuntimeDirtyWorkingWorld());
+
+        var baseline = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(baseline);
+        var repeatedBaseline = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(repeatedBaseline);
+        Assert.AreEqual(baseline.Hash, repeatedBaseline.Hash, "相同 RuntimeDirty WorkingWorld 的重复 authority digest 必须稳定。");
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyRuntimeDirtyWorkingWorldFloatShadow();
+        var floatShadow = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(floatShadow);
+        Assert.AreEqual(baseline.Hash, floatShadow.Hash, "RuntimeDirty WorkingWorld 的 Unity float shadow 不得进入 authority digest。");
+
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyRuntimeDirtyWorkingWorldAuthorityCell();
+        var authorityChanged = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(authorityChanged);
+        Assert.AreNotEqual(floatShadow.Hash, authorityChanged.Hash, "RuntimeDirty WorkingWorld 的实际离散权威内容必须进入 authority digest。");
+    }
+
+    [Test]
     public void NavigationAuthorityDigest_忽略Side诊断Shadow但保留碰撞权威状态()
     {
         bool[] walkable = new bool[6 * 4];
@@ -363,6 +484,105 @@ public class FlowFieldCrowdMovementSystemTests
         var authorityChanged = new LogicStateHasher();
         FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(authorityChanged);
         Assert.AreNotEqual(shadowChanged.Hash, authorityChanged.Hash, "fixed goal occupancy 使用的碰撞忽略状态必须进入 authority digest。");
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_OrderedAgent索引损坏必须明确报错()
+    {
+        bool[] walkable = new bool[6 * 4];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(6, 4, 1f, Vector3.zero, walkable);
+        CreateEntity(new Vector3(1.5f, 0f, 1.5f));
+        CreateEntity(new Vector3(2.5f, 0f, 1.5f));
+
+        Assert.DoesNotThrow(() =>
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(new LogicStateHasher()));
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyOrderedAgentIndex();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(new LogicStateHasher()));
+        StringAssert.Contains("Navigation ordered-agent index mismatch", exception.Message);
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_RuntimeDirty派生Sector索引损坏必须明确报错()
+    {
+        bool[] walkable = new bool[32 * 8];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(32, 8, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.RegisterCircleObstacle(81006, new Vector3(15.5f, 0f, 3.5f), 1.25f);
+        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+
+        Assert.DoesNotThrow(() =>
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(new LogicStateHasher()));
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyRuntimeDirtyDerivedSectorIndex();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(new LogicStateHasher()));
+        StringAssert.Contains("runtime-dirty sectors derived index mismatch", exception.Message);
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_PendingPortal缺少CellPayload必须明确报错()
+    {
+        bool[] walkable = new bool[32 * 8];
+        Array.Fill(walkable, true);
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(32, 8, 1f, Vector3.zero, walkable);
+        FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingWorldBuild());
+        FlowFieldCrowdMovementSystem.AddEditorTestOnlyWorldBuildPortalProgressProbe();
+        FlowFieldCrowdMovementSystem.InvalidateEditorTestOnlyWorldBuildPortalProgressProbeCells();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(new LogicStateHasher()));
+        StringAssert.Contains("portal without cell payloads", exception.Message);
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_注册Float半径不得回灌定点权威状态()
+    {
+        SimEntityContext entity = CreateEntity(new Vector3(1.5f, 0f, 1.5f), false, 0, 0.2f);
+        var baselineHasher = new LogicStateHasher();
+        LogicNavigationAuthorityDigest baseline =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(baselineHasher);
+
+        FlowFieldCrowdMovementSystem.UpdateAgentForEditorTest(entity, 0.9f, 0);
+        var contaminatedHasher = new LogicStateHasher();
+        LogicNavigationAuthorityDigest contaminated =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(contaminatedHasher);
+
+        Assert.AreEqual(
+            baseline.AgentsHash,
+            contaminated.AgentsHash,
+            "仅供诊断的注册 float 半径不得改变 RadiusFixed 或 AgentsHash；权威半径必须只读取碰撞属性的 Fix64 值。");
+    }
+
+    [Test]
+    public void RegisterAgent_碰撞半径非正时明确报错而非Fallback()
+    {
+        var entity = new SimEntityContext
+        {
+            Position = new Vector3(1.5f, 0f, 1.5f),
+            Side = SideType.PlayerSide,
+            Alive = true,
+            MoveExecutor = new SimMoveExecutor { Position = new Vector3(1.5f, 0f, 1.5f) },
+        };
+        entity.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => FlowFieldCrowdMovementSystem.RegisterAgentForEditorTest(entity, 0.5f, 0));
+
+        StringAssert.Contains("ResolveCollisionRadiusFixed failed", exception.Message);
+        StringAssert.Contains($"entity={entity.LogicEntityId.Value}", exception.Message);
+        StringAssert.Contains("propertyRaw=0", exception.Message);
     }
 
     [Test]
@@ -1005,6 +1225,42 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationAuthorityDigest_FixedCorridor未处理队列顺序必须影响Hash()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 512;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int size = 257;
+        const int center = size / 2;
+        bool[] walkable = new bool[size * size];
+        for (int i = 0; i < size; i++)
+        {
+            SetWalkable(walkable, size, i, center);
+            SetWalkable(walkable, size, center, i);
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(size, size, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.IsEditorTestFixedCorridorDescriptorPending(center, center));
+        Assert.AreEqual(256, FlowFieldCrowdMovementSystem.ProcessEditorTestFixedCorridorBuildStep());
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryValidateEditorTestFixedCorridorIncrementalAuthorityHashes(out string hashFailure),
+            hashFailure);
+
+        var baseline = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(baseline);
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyFixedCorridorUnprocessedQueueOrder();
+        var reordered = new LogicStateHasher();
+        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(reordered);
+
+        Assert.AreNotEqual(
+            baseline.Hash,
+            reordered.Hash,
+            "未处理队列即使元素集合不变，展开顺序仍会影响后续端点发现和溢出，必须进入 authority digest。");
+    }
+
+    [Test]
     public void FixedCorridor增量解析完成前权威速度保持为零()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -1281,6 +1537,57 @@ public class FlowFieldCrowdMovementSystemTests
 
         Assert.AreEqual(contentHashBefore, contentHashAfter, "保留帧不是 tile cost/direction 内容，不应重算 payload Hash。");
         Assert.AreNotEqual(digestBefore.Hash, digestAfter.Hash, "保留帧会决定 trim 淘汰结果，必须进入逐 Tick authority digest。");
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_FlowTile双缓存镜像损坏必须明确报错()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        bool[] walkable = new bool[8 * 4];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(8, 4, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(
+            ctx,
+            new FixVector2((Fix64)7.5f, (Fix64)1.5f),
+            out string failureReason), failureReason);
+        FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+        Assert.AreEqual(1, FlowFieldCrowdMovementSystem.GetEditorTestDeterministicFlowTileCacheCount());
+
+        FlowFieldCrowdMovementSystem.AddEditorTestOnlyFlowTileMirrorExtraEntry();
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(new LogicStateHasher()));
+        StringAssert.Contains("flow-tile cache mirror count mismatch", exception.Message);
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_PendingFlowTile索引损坏必须明确报错()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        bool[] walkable = new bool[8 * 4];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(8, 4, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext ctx = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryPrepareNavigationRequestFixed(
+            ctx,
+            new FixVector2((Fix64)7.5f, (Fix64)1.5f),
+            out string failureReason), failureReason);
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), 0);
+
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyPendingFlowTileIndex();
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(new LogicStateHasher()));
+        StringAssert.Contains("pending flow-tile index count mismatch", exception.Message);
     }
 
     [Test]
@@ -2092,6 +2399,34 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationAuthorityDigest_PendingSharedGoal索引损坏必须明确报错()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 32);
+        config.SharedGoalBuildOperationQuota = 1;
+        config.SectorSizeInCells = 48;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        const int width = 96;
+        const int height = 48;
+        bool[] walkable = new bool[width * height];
+        Array.Fill(walkable, true);
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 23.5f));
+        var sources = new List<IEntityContext> { chaser };
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryPrepareSharedGoalRequest(
+            new Vector3(95.5f, 0f, 23.5f),
+            sources,
+            out string failureReason), failureReason);
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount(), 0);
+
+        FlowFieldCrowdMovementSystem.PerturbEditorTestOnlyPendingSharedGoalIndex();
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalBuildQueueAuthorityHash());
+        StringAssert.Contains("pending shared-goal index count mismatch", exception.Message);
+    }
+
+    [Test]
     public void NavigationAuthorityDigest_重复SharedGoalDemand不得刷新未变化ProgressHash()
     {
         FlowFieldNavigationConfig config = CreateConfig();
@@ -2280,51 +2615,6 @@ public class FlowFieldCrowdMovementSystemTests
         ctx.SyncPositionFromExecutor();
 
         Assert.Greater(ctx.Position.x, 0.5f, "位移结束后应沿原目标继续移动");
-    }
-
-    [Test]
-    public void 建筑障碍内启用逃离后应走出并自动恢复导航约束()
-    {
-        const int width = 8;
-        const int height = 3;
-        bool[] walkable = new bool[width * height];
-        for (int i = 0; i < walkable.Length; i++)
-            walkable[i] = true;
-
-        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
-        ProcessWorldBuildQueueUntilReady();
-        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(9001, new Vector3(1.5f, 0f, 1.5f), new Vector3(0.5f, 1f, 0.5f));
-
-        GameObject go = new GameObject("FlowTest_ConstructionEscape");
-        go.transform.position = new Vector3(1.5f, 0f, 1.5f);
-        CharacterController controller = go.AddComponent<CharacterController>();
-        controller.radius = 0.25f;
-        controller.height = 2f;
-        controller.center = new Vector3(0f, 1f, 0f);
-        MoveExecutor executor = go.AddComponent<MoveExecutor>();
-        executor.Init(controller, 0);
-
-        Assert.IsFalse(
-            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(go.transform.position, 0, 0f, 0f, out _),
-            "建筑注册为运行时障碍后，建筑内的英雄位置必须被识别为非法导航点");
-
-        executor.EnableNavigationConstraintBypassUntilLegalPoint();
-        bool restoredConstraint = false;
-        for (int frame = 0; frame < 8; frame++)
-        {
-            executor.SetInput(Vector3.right * 2f);
-            executor.Execute(0.2f);
-            if (frame == 0)
-                Assert.IsFalse(executor.DebugNavigationConstraintEnabled, "仍在建筑障碍内时必须保持导航约束 bypass");
-            restoredConstraint |= executor.DebugNavigationConstraintEnabled;
-        }
-
-        Assert.Greater(go.transform.position.x, 2.1f, "开启逃离后英雄应能穿出建造后的建筑障碍");
-        Assert.IsTrue(restoredConstraint, "英雄离开障碍并回到合法导航点后应自动恢复导航约束");
-        Assert.IsTrue(
-            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(go.transform.position, 0, 0f, 0f, out _),
-            "逃离结束时英雄必须位于合法导航点");
-        UnityEngine.Object.DestroyImmediate(go);
     }
 
     [Test]
@@ -4439,6 +4729,58 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void NavigationTargetExtent_UsesAuthoredAabbInsteadOfUnitCollisionRadius()
+    {
+        var target = new BoxTargetEntityContext(
+            new Vector3(6.5f, 0f, 2.5f),
+            new FixVector2((Fix64)1.25f, (Fix64)2.5f));
+        target.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
+
+        Fix64 extent = FlowFieldCrowdMovementSystem.ResolveNavigationTargetExtentForEditorTest(target);
+
+        Assert.AreEqual(((Fix64)2.5f).RawValue, extent.RawValue, "建筑目标径向范围必须来自 authored AABB 的较大半轴。");
+    }
+
+    [Test]
+    public void SteeringToBuildingTarget_DoesNotReadBuildingUnitCollisionRadius()
+    {
+        const int width = 12;
+        const int height = 5;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        SimEntityContext chaser = CreateEntity(new Vector3(0.5f, 0f, 2.5f), false, 0, 0.18f);
+        var target = new BoxTargetEntityContext(
+            new Vector3(9.5f, 0f, 2.5f),
+            new FixVector2((Fix64)1.5f, (Fix64)1f));
+        target.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
+        chaser.TargetComp = new SimTargetingComp(chaser, new List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+
+        Assert.DoesNotThrow(() =>
+            Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out _)));
+    }
+
+    [Test]
+    public void AgentCollisionRadius_ZeroStillThrowsExplicitly()
+    {
+        SimEntityContext agent = CreateEntity(new Vector3(0.5f, 0f, 0.5f));
+        agent.SetProperty(CreatureMainProperty.CollisionRadius, Fix64.Zero);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            FlowFieldCrowdMovementSystem.UpdateAgentForEditorTest(agent, 0f, 0));
+
+        StringAssert.Contains("ResolveCollisionRadiusFixed failed", exception.Message);
+        StringAssert.Contains($"entity={agent.LogicEntityId.Value}", exception.Message);
+    }
+
+    [Test]
     public void 普通导航目标点被占用时会旋转到附近空位()
     {
         const int width = 8;
@@ -5176,6 +5518,138 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount(), "长路径 flow tile chain 应在预算帧内完成");
         Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 0, "active path 当前窗口应保留已构建 flow tile");
         Assert.LessOrEqual(FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount(), 16, "flow tile cache 应遵守容量上限，远端路径由 active window 按需预建");
+    }
+
+    [Test]
+    public void LongSession_十万Tick移动目标压力下缓存队列与进程内存保持有界()
+    {
+        const int totalFrames = 100000;
+        const int warmupFrames = 10000;
+        const long managedGrowthLimit = 16L * 1024L * 1024L;
+        const long processReservedGrowthLimit = 128L * 1024L * 1024L;
+
+        FlowFieldNavigationConfig config = CreateConfig();
+        config.SectorSizeInCells = 4;
+        config.FlowTileCacheLimit = 16;
+        SetNavigationWorkQuotas(config, 64);
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+
+        const int width = 64;
+        const int height = 16;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext target = CreateEntity(new Vector3(48.5f, 0f, 7.5f));
+        var chasers = new[]
+        {
+            CreateEntity(new Vector3(0.5f, 0f, 1.5f)),
+            CreateEntity(new Vector3(1.5f, 0f, 5.5f)),
+            CreateEntity(new Vector3(2.5f, 0f, 9.5f)),
+            CreateEntity(new Vector3(3.5f, 0f, 13.5f)),
+        };
+        var targetList = new List<IEntityContext> { target };
+        for (int i = 0; i < chasers.Length; i++)
+        {
+            chasers[i].TargetComp = new SimTargetingComp(chasers[i], targetList)
+            {
+                CurrentTarget = target
+            };
+        }
+
+        long managedBefore = 0;
+        long processReservedBefore = 0;
+        int peakFlowTiles = 0;
+        int peakSharedGoals = 0;
+        int peakPendingFlowTiles = 0;
+        int peakPendingSharedGoals = 0;
+        ulong lastDigest = 0;
+
+        for (int frame = 1; frame <= totalFrames; frame++)
+        {
+            int targetStep = (frame / 8) & 31;
+            int targetX = 32 + targetStep;
+            int targetY = 2 + ((targetStep * 5) % 12);
+            target.Position = new Vector3(targetX + 0.5f, 0f, targetY + 0.5f);
+            FixVector2 targetFixed = target.LogicFramePositionFixed();
+
+            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame / 30f);
+            for (int i = 0; i < chasers.Length; i++)
+            {
+                Assert.IsTrue(
+                    FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+                        chasers[i],
+                        targetFixed,
+                        (Fix64)2,
+                        out _),
+                    $"fixed steering 必须在长局压力中持续可用。frame={frame}, chaser={i}");
+            }
+
+            peakPendingFlowTiles = Math.Max(
+                peakPendingFlowTiles,
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount());
+            peakPendingSharedGoals = Math.Max(
+                peakPendingSharedGoals,
+                FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount());
+
+            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            var hasher = new LogicStateHasher();
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(hasher);
+            lastDigest = hasher.Hash;
+
+            peakFlowTiles = Math.Max(
+                peakFlowTiles,
+                FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheCount());
+            peakSharedGoals = Math.Max(
+                peakSharedGoals,
+                FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount());
+
+            if (frame == warmupFrames)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                managedBefore = GC.GetTotalMemory(true);
+                processReservedBefore = UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong();
+                if (processReservedBefore <= 0)
+                    throw new InvalidOperationException("LongSession flow memory gate failed: Unity process reserved memory is unavailable.");
+            }
+        }
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        long managedAfter = GC.GetTotalMemory(true);
+        long processReservedAfter = UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong();
+
+        long managedGrowth = Math.Max(0L, managedAfter - managedBefore);
+        long processReservedGrowth = Math.Max(0L, processReservedAfter - processReservedBefore);
+        string diagnostics =
+            $"digest={lastDigest} peakFlow={peakFlowTiles} peakShared={peakSharedGoals} " +
+            $"peakPendingFlow={peakPendingFlowTiles} peakPendingShared={peakPendingSharedGoals} " +
+            $"managedBefore={managedBefore} managedAfter={managedAfter} managedGrowth={managedGrowth} " +
+            $"processReservedBefore={processReservedBefore} processReservedAfter={processReservedAfter} " +
+            $"processReservedGrowth={processReservedGrowth}";
+        Debug.Log($"[LongSessionFlowMemory] {diagnostics}");
+
+        Assert.Greater(peakPendingFlowTiles, 0, $"压力场景必须实际推进 flow tile job。{diagnostics}");
+        Assert.Greater(peakPendingSharedGoals, 0, $"压力场景必须实际推进 shared goal job。{diagnostics}");
+        Assert.LessOrEqual(peakFlowTiles, config.FlowTileCacheLimit, $"flow tile cache 必须始终受配置上限约束。{diagnostics}");
+        Assert.LessOrEqual(peakSharedGoals, 16, $"shared goal cache 必须始终受派生上限约束。{diagnostics}");
+        Assert.LessOrEqual(peakPendingFlowTiles, 128, $"flow tile pending queue 不得随 Tick 线性增长。{diagnostics}");
+        Assert.LessOrEqual(peakPendingSharedGoals, 16, $"shared goal pending queue 不得随 Tick 线性增长。{diagnostics}");
+        Assert.AreEqual(
+            0,
+            FlowFieldCrowdMovementSystem.GetEditorTestDuplicatePendingFlowTileBuildKeyCount(),
+            $"flow tile pending queue 不得保留重复 key。{diagnostics}");
+        Assert.LessOrEqual(managedGrowth, managedGrowthLimit, $"10 万 Tick 后 managed retained memory 超出门禁。{diagnostics}");
+        Assert.LessOrEqual(
+            processReservedGrowth,
+            processReservedGrowthLimit,
+            $"10 万 Tick 后 Unity 进程 reserved memory 超出门禁。{diagnostics}");
     }
 
     [Test]
@@ -7192,7 +7666,6 @@ public class FlowFieldCrowdMovementSystemTests
                 controller.center = new Vector3(0f, 1f, 0f);
                 MoveExecutor executor = go.AddComponent<MoveExecutor>();
                 executor.Init(controller, grid.AgentTypeId);
-                chaser.MoveExecutor = executor;
                 chasers[i] = chaser;
                 executors[i] = executor;
                 transforms[i] = go.transform;
@@ -8232,7 +8705,7 @@ public class FlowFieldCrowdMovementSystemTests
 
             SimEntityContext[] chasers = new SimEntityContext[chaserStarts.Length];
             CharacterMoveComp[] moveComps = new CharacterMoveComp[chaserStarts.Length];
-            MoveExecutor[] executors = new MoveExecutor[chaserStarts.Length];
+            SimMoveExecutor[] executors = new SimMoveExecutor[chaserStarts.Length];
             Transform[] transforms = new Transform[chaserStarts.Length];
             CharacterController[] controllers = new CharacterController[chaserStarts.Length];
             CharacterController sourceChaserController = LoadRequiredCharacterControllerFromPrefab(
@@ -8278,8 +8751,11 @@ public class FlowFieldCrowdMovementSystemTests
                 go.transform.position = chaser.Position;
                 CharacterController controller = go.AddComponent<CharacterController>();
                 CopyCharacterControllerSettings(sourceChaserController, controller);
-                MoveExecutor executor = go.AddComponent<MoveExecutor>();
-                executor.Init(controller, grid.AgentTypeId);
+                var executor = new SimMoveExecutor
+                {
+                    Position = chaser.Position,
+                    AgentTypeId = grid.AgentTypeId,
+                };
                 chaser.MoveExecutor = executor;
                 controllers[i] = controller;
                 transforms[i] = go.transform;
@@ -8364,7 +8840,7 @@ public class FlowFieldCrowdMovementSystemTests
                 for (int i = 0; i < chasers.Length; i++)
                 {
                     SimEntityContext chaser = chasers[i];
-                    MoveExecutor executor = executors[i];
+                    SimMoveExecutor executor = executors[i];
                     chaser.Position = transforms[i].position;
                     Vector3 before = chaser.Position;
                     frameStartPositions[i] = before;
@@ -8400,12 +8876,12 @@ public class FlowFieldCrowdMovementSystemTests
                         }
                     }
                     moveComps[i].Move((Fix64)dt);
-                    Vector3 requestedVelocity = executor.DebugInputVelocity;
+                    Vector3 requestedVelocity = executor.LastInputVelocity;
                     Vector3 after;
-                    if (executor.DebugLastInputWasFixed)
+                    if (executor.HasFixedInput)
                     {
                         FixVector2 startFixed = new FixVector2((Fix64)before.x, (Fix64)before.z);
-                        FixVector2 proposedFixed = startFixed + executor.DebugLastFixedInput * (Fix64)dt;
+                        FixVector2 proposedFixed = startFixed + executor.LastFixedInput * (Fix64)dt;
                         after = new Vector3((float)proposedFixed.x, before.y, (float)proposedFixed.y);
                     }
                     else
@@ -8433,12 +8909,12 @@ public class FlowFieldCrowdMovementSystemTests
                         out _,
                         out _,
                         out Vector3 resultVelocity);
-                    if (executor.DebugLastInputWasFixed)
+                    if (executor.HasFixedInput)
                     {
                         resultVelocity = new Vector3(
-                            (float)executor.DebugLastFixedInput.x,
+                            (float)executor.LastFixedInput.x,
                             0f,
-                            (float)executor.DebugLastFixedInput.y);
+                            (float)executor.LastFixedInput.y);
                         desiredVelocity = resultVelocity;
                     }
                     bool steeringCollapsed = hasHeroTarget
@@ -8537,14 +9013,14 @@ public class FlowFieldCrowdMovementSystemTests
                                 .Append(" requestedVelocity=").Append(requestedVelocity)
                                 .Append(" requestedDisp=").Append(requestedHorizontalDisplacement)
                                 .Append(" constrainedDisp=").Append(constrainedHorizontalDisplacement)
-                                .Append(" constraintEnabled=").Append(executor.DebugNavigationConstraintEnabled)
+                                .Append(" constraintEnabled=").Append(executor.ApplyNavigationConstraint)
                                 .Append(" actual=").Append(actual)
                                 .Append(" heroDist=").Append(heroDistance.ToString("F3"))
                                 .Append(" researchDist=").Append(researchDistance.ToString("F3"))
                                 .Append(" stallStreak=").Append(stallStreak[i]);
                             AppendCellDiagnostic(diagnostics, grid, derivedData, before, "before");
                             AppendCellDiagnostic(diagnostics, grid, derivedData, after, "after");
-                            AppendCharacterControllerPhysicsDiagnostics(diagnostics, controllers[i], executor);
+                            AppendCharacterControllerPhysicsDiagnostics(diagnostics, controllers[i], null);
                             AppendSteeringBreakdown(diagnostics, chaser);
                             AppendControllerCandidateProbeDiagnostics(diagnostics, controllers[i], chaser, dt);
                             AppendPathHandleDiagnostics(diagnostics, chaser, grid, derivedData, hero.Position);
@@ -11977,6 +12453,22 @@ public class FlowFieldCrowdMovementSystemTests
         ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)(radius / DistanceUnitConverter.DefaultDistanceConversionRate));
         FlowFieldCrowdMovementSystem.RegisterAgentForEditorTest(ctx, radius, agentTypeId);
         return ctx;
+    }
+
+    private sealed class BoxTargetEntityContext : SimEntityContext
+    {
+        private readonly FixVector2 m_HalfExtents;
+
+        public BoxTargetEntityContext(Vector3 position, FixVector2 halfExtents)
+        {
+            Position = position;
+            Side = SideType.EnemySide;
+            Alive = true;
+            m_HalfExtents = halfExtents;
+        }
+
+        public override LogicCombatShape CombatShape =>
+            LogicCombatShape.AxisAlignedBox(PositionFixed, m_HalfExtents);
     }
 
     private static FlowFieldNavigationConfig CreateConfig()

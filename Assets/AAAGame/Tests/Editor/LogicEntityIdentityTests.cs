@@ -46,6 +46,71 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void RuntimeEntityStatsOverlay_FormatsViewlessLogicState()
+    {
+        LogicEntityState state = CreateConfiguredState("Unit_ViewlessOverlay", false);
+        var overlayObject = new GameObject("RuntimeEntityStatsOverlayTest");
+        try
+        {
+            RuntimeEntityStatsOverlay overlay = overlayObject.AddComponent<RuntimeEntityStatsOverlay>();
+            var buffer = new System.Text.StringBuilder();
+            System.Reflection.MethodInfo append = typeof(RuntimeEntityStatsOverlay).GetMethod(
+                "AppendEntityDetails",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(append);
+
+            append.Invoke(overlay, new object[] { state, buffer });
+
+            string details = buffer.ToString();
+            StringAssert.Contains($"LogicId           : {state.LogicEntityId.Value}", details);
+            StringAssert.Contains("View              : <unbound>", details);
+            StringAssert.Contains("Kind              : Unit", details);
+            StringAssert.Contains("PositionFixed", details);
+            StringAssert.Contains("HP                : 100 / 100", details);
+            StringAssert.DoesNotContain("<not MAEntity>", details);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(overlayObject);
+        }
+    }
+
+    [Test]
+    public void GeneralCreature_DirectHealthMutationIsRejected()
+    {
+        var creatureObject = new GameObject("GeneralCreatureHealthBoundaryTest");
+        try
+        {
+            GeneralCreature creature = creatureObject.AddComponent<GeneralCreature>();
+            Assert.Throws<InvalidOperationException>(() => creature.Heal(Fix64.One));
+            Assert.Throws<InvalidOperationException>(() =>
+                creature.TakeDamage(Fix64.One, HealthModifyType.reduce));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(creatureObject);
+        }
+    }
+
+    [Test]
+    public void ViewCombatDeathChain_DoesNotExposeLegacyCallbacks()
+    {
+        const System.Reflection.BindingFlags declaredInstance =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic
+            | System.Reflection.BindingFlags.DeclaredOnly;
+
+        Assert.IsNull(typeof(MAEntity).GetMethod("OnKill", declaredInstance));
+        Assert.IsNull(typeof(MAEntity).GetMethod("OnDead", declaredInstance));
+        Assert.IsNull(typeof(MAEntity).GetMethod("RemoveAfterDeath", declaredInstance));
+        Assert.IsNull(typeof(GeneralCreature).GetMethod("RemoveAfterDeath", declaredInstance));
+        Assert.IsNull(typeof(GeneralCreature).GetMethod("TryHandleZeroHealth", declaredInstance));
+        Assert.NotNull(typeof(SoldierEntity).GetMethod("OnLogicUnitDiedPresentation", declaredInstance));
+        Assert.IsNull(typeof(MAEntity).Assembly.GetType("BattleEntity"));
+    }
+
+    [Test]
     public void AllocatorSnapshotRestore_ReplaysSameNextId()
     {
         LogicEntityId first = LogicEntityIdAllocator.Allocate();
@@ -131,6 +196,48 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void ViewMoveExecutor_IsNotExposedAsLogicAuthority()
+    {
+        Assert.IsFalse(typeof(IMoveExecutor).IsAssignableFrom(typeof(MoveExecutor)));
+        Assert.IsNull(typeof(MoveExecutor).GetMethod(
+            "PrepareLogicFrame",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public));
+        Assert.IsNull(typeof(MoveExecutor).GetMethod(
+            "EnableNavigationConstraintBypassUntilLegalPoint",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public));
+
+        LogicEntityState state = CreateConfiguredState("Unit_ViewMoveExecutorBoundary", false);
+        GameObject gameObject = new GameObject("ViewMoveExecutorBoundary");
+        try
+        {
+            MAEntity view = gameObject.AddComponent<MAEntity>();
+            System.Reflection.FieldInfo logicStateField = typeof(MAEntity).GetField(
+                "_logicState",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(logicStateField);
+            logicStateField.SetValue(view, state);
+
+            Assert.AreSame(state.MoveExecutor, ((IEntityContext)view).MoveExecutor);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
+    public void SoldierView_DoesNotDeclareLegacySpawnPositionOverride()
+    {
+        const System.Reflection.BindingFlags declaredInstance =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.NonPublic
+            | System.Reflection.BindingFlags.DeclaredOnly;
+
+        Assert.IsNull(typeof(SoldierEntity).GetMethod("ApplySpawnPosition", declaredInstance));
+        Assert.IsNull(typeof(SoldierEntity).GetMethod("LogSpawnDiagnostics", declaredInstance));
+    }
+
+    [Test]
     public void BuildingQuarterTurns_MapToExactFixedCardinalForward()
     {
         Assert.AreEqual(
@@ -162,7 +269,6 @@ public class LogicEntityIdentityTests
                 typeof(string),
                 typeof(int),
                 typeof(int),
-                typeof(bool),
                 typeof(bool),
                 typeof(bool),
                 typeof(bool),
@@ -579,6 +685,9 @@ public class LogicEntityIdentityTests
     {
         LogicEntityState source = CreateConfiguredState("Unit_LatePresentation", false);
         LogicEntityState target = CreateConfiguredStateForSide("Unit_LatePresentation_Target", SideType.EnemySide);
+        source.CreatureProperties.ModifyMainPropertyValueBuff(
+            CreatureMainProperty.CollisionRadius,
+            PropertyDirectAdditiveModifier.Create((Fix64)10));
         var move = new CharacterMoveComp();
         source.SetMoveComp(move);
         move.Init(source);
@@ -631,8 +740,8 @@ public class LogicEntityIdentityTests
             logicEntityIdProperty.SetValue(view, source.EntityId);
             bindComponentsMethod.Invoke(view, null);
             MoveExecutor presenterExecutor = gameObject.AddComponent<MoveExecutor>();
-            presenterExecutor.SetInputFixed(new FixVector2((Fix64)11, (Fix64)12));
-            presenterExecutor.SetOverrideFixed(new FixVector2((Fix64)13, (Fix64)14));
+            presenterExecutor.SetInput(new Vector3(11f, 0f, 12f));
+            presenterExecutor.SetOverride(new Vector3(13f, 0f, 14f));
             presenterExecutor.SetMovementMode(MovementMode.Displaced);
             moveExecutorField.SetValue(view, presenterExecutor);
             gameObject.transform.position = new Vector3(99f, 2f, -77f);
@@ -737,6 +846,8 @@ public class LogicEntityIdentityTests
         Assert.AreEqual(1, probe.RefreshCount);
         Assert.IsFalse(state.HasBoundView);
         Assert.AreSame(state, EntityRegistry.Player);
+        Assert.IsInstanceOf<LogicEntityState>(EntityRegistry.Player);
+        Assert.IsNotInstanceOf<MAEntity>(EntityRegistry.Player);
     }
 
     [Test]

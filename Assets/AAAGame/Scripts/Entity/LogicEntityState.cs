@@ -108,6 +108,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private const string HeroGhostBuffId = "hero_ghost_state";
     private readonly Dictionary<ICapability, List<ICapability>> m_CapabilityLockers = new();
     private readonly HashSet<string> m_InvincibleSources = new();
+    private readonly List<string> m_DeterministicStringValues = new List<string>();
     private readonly LogicMoveExecutor m_MoveExecutor = new();
     private CreaturePropertyManager m_CreatureProperties;
     private CharacterDataDetail m_CharacterData;
@@ -718,11 +719,12 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
 
-        var invincibleSources = new List<string>(m_InvincibleSources);
-        invincibleSources.Sort(StringComparer.Ordinal);
-        hasher.Add(invincibleSources.Count);
-        for (int i = 0; i < invincibleSources.Count; i++)
-            hasher.Add(invincibleSources[i]);
+        m_DeterministicStringValues.Clear();
+        m_DeterministicStringValues.AddRange(m_InvincibleSources);
+        m_DeterministicStringValues.Sort(StringComparer.Ordinal);
+        hasher.Add(m_DeterministicStringValues.Count);
+        for (int i = 0; i < m_DeterministicStringValues.Count; i++)
+            hasher.Add(m_DeterministicStringValues[i]);
 
         int writtenCapabilityCount = 0;
         writtenCapabilityCount += WriteCapabilityLockState(hasher, "Move", m_MoveComp);
@@ -747,18 +749,18 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             return 0;
         }
 
-        var lockerTypes = new List<string>(lockers.Count);
+        m_DeterministicStringValues.Clear();
         for (int i = 0; i < lockers.Count; i++)
         {
             ICapability locker = lockers[i]
                 ?? throw new InvalidOperationException(
                     $"LogicEntityState capability locker is null. entity={EntityId.Value}, slot={slot}, index={i}.");
-            lockerTypes.Add(locker.GetType().FullName);
+            m_DeterministicStringValues.Add(locker.GetType().FullName);
         }
-        lockerTypes.Sort(StringComparer.Ordinal);
-        hasher.Add(lockerTypes.Count);
-        for (int i = 0; i < lockerTypes.Count; i++)
-            hasher.Add(lockerTypes[i]);
+        m_DeterministicStringValues.Sort(StringComparer.Ordinal);
+        hasher.Add(m_DeterministicStringValues.Count);
+        for (int i = 0; i < m_DeterministicStringValues.Count; i++)
+            hasher.Add(m_DeterministicStringValues[i]);
         return 1;
     }
 
@@ -1028,6 +1030,7 @@ public static class LogicEntityStateStore
 {
     private static readonly Dictionary<int, LogicEntityState> s_States =
         new Dictionary<int, LogicEntityState>();
+    private static readonly List<int> s_DeterministicIds = new List<int>();
 
     public static bool IsActive { get; private set; }
     public static int Count => s_States.Count;
@@ -1136,17 +1139,17 @@ public static class LogicEntityStateStore
             throw new ArgumentNullException(nameof(hasher));
         EnsureActive();
 
-        var ids = new List<int>();
+        s_DeterministicIds.Clear();
         foreach (KeyValuePair<int, LogicEntityState> pair in s_States)
         {
             if (!pair.Value.IsDespawnCommitted)
-                ids.Add(pair.Key);
+                s_DeterministicIds.Add(pair.Key);
         }
-        ids.Sort();
-        hasher.Add(ids.Count);
-        for (int i = 0; i < ids.Count; i++)
+        s_DeterministicIds.Sort();
+        hasher.Add(s_DeterministicIds.Count);
+        for (int i = 0; i < s_DeterministicIds.Count; i++)
         {
-            LogicEntityState state = s_States[ids[i]];
+            LogicEntityState state = s_States[s_DeterministicIds[i]];
             hasher.Add(state.EntityId.Value);
             hasher.Add(state.Position.x.RawValue);
             hasher.Add(state.Position.y.RawValue);
@@ -1171,19 +1174,31 @@ public static class LogicEntityStateStore
 
     internal static LogicEntityState[] CapturePendingSpawnStates()
     {
+        var pending = new List<LogicEntityState>();
+        CapturePendingSpawnStates(pending);
+        return pending.ToArray();
+    }
+
+    internal static void CapturePendingSpawnStates(List<LogicEntityState> destination)
+    {
+        if (destination == null)
+            throw new ArgumentNullException(nameof(destination));
         EnsureActive();
-        var ids = new List<int>();
+
+        destination.Clear();
         foreach (KeyValuePair<int, LogicEntityState> pair in s_States)
         {
             if (!pair.Value.IsSpawnCommitted && !pair.Value.IsDespawnCommitted)
-                ids.Add(pair.Key);
+                destination.Add(pair.Value);
         }
+        destination.Sort(CompareEntityStatesById);
+    }
 
-        ids.Sort();
-        var states = new LogicEntityState[ids.Count];
-        for (int i = 0; i < ids.Count; i++)
-            states[i] = s_States[ids[i]];
-        return states;
+    private static int CompareEntityStatesById(LogicEntityState left, LogicEntityState right)
+    {
+        if (left == null || right == null)
+            throw new InvalidOperationException("LogicEntityStateStore contains a null state.");
+        return left.EntityId.Value.CompareTo(right.EntityId.Value);
     }
 
     internal static LogicEntityState[] CaptureStageBuildingStates()

@@ -35,7 +35,7 @@ public class SimEntityContext : IEntityContext, ITargetable
             return new FixVector2((Fix64)forward.x, (Fix64)forward.z).GetNormalized();
         }
     }
-    public LogicCombatShape CombatShape => LogicCombatShape.Circle(
+    public virtual LogicCombatShape CombatShape => LogicCombatShape.Circle(
         PositionFixed,
         DistanceUnitConverter.ConvertToWorld(GetProperty(CreatureMainProperty.CollisionRadius)));
     public Vector3 Position

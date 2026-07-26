@@ -108,8 +108,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         if (entity == null)
             throw new System.ArgumentNullException(nameof(entity));
 
-        float radius = ResolveAgentRadius(entity);
-        FlowFieldCrowdMovementSystem.RegisterAgent(entity, radius);
+        FlowFieldCrowdMovementSystem.RegisterAgent(entity);
     }
 
     public void UnregisterAgent(IEntityContext entity)
@@ -133,29 +132,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         if (entity == null)
             throw new System.ArgumentNullException(nameof(entity));
 
-        float radius = ResolveAgentRadius(entity);
-        FlowFieldCrowdMovementSystem.UpdateAgent(entity, radius);
-    }
-
-    private static float ResolveAgentRadius(IEntityContext entity)
-    {
-        if (entity == null)
-            throw new System.ArgumentNullException(nameof(entity));
-        if (entity.CreatureProperties == null)
-        {
-            throw new System.InvalidOperationException(
-                $"GroupMoveManager.ResolveAgentRadius failed: entity {entity.LogicEntityId.Value} has no creature properties.");
-        }
-
-        float configuredRadius = DistanceUnitConverter.ConvertToWorldFloat(
-            entity.GetProperty(CreatureMainProperty.CollisionRadius));
-        if (configuredRadius <= 0.0001f)
-        {
-            throw new System.InvalidOperationException(
-                $"GroupMoveManager.ResolveAgentRadius failed: entity {entity.LogicEntityId.Value} has invalid collision radius {configuredRadius}.");
-        }
-
-        return configuredRadius;
+        FlowFieldCrowdMovementSystem.UpdateAgent(entity);
     }
 
     // ── 障碍物注册 ──

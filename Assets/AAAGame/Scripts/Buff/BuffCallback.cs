@@ -301,6 +301,7 @@ public sealed class AlwaysCriticalDamageBuff : BuffCallback
 public sealed class FirstHitPerTargetCriticalBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly HashSet<int> m_HitTargetIds = new HashSet<int>();
+    private readonly List<int> m_DeterministicHitTargetIds = new List<int>();
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
@@ -315,11 +316,12 @@ public sealed class FirstHitPerTargetCriticalBuff : BuffCallback, ILogicDetermin
 
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
-        var ids = new List<int>(m_HitTargetIds);
-        ids.Sort();
-        hasher.Add(ids.Count);
-        for (int i = 0; i < ids.Count; i++)
-            hasher.Add(ids[i]);
+        m_DeterministicHitTargetIds.Clear();
+        m_DeterministicHitTargetIds.AddRange(m_HitTargetIds);
+        m_DeterministicHitTargetIds.Sort();
+        hasher.Add(m_DeterministicHitTargetIds.Count);
+        for (int i = 0; i < m_DeterministicHitTargetIds.Count; i++)
+            hasher.Add(m_DeterministicHitTargetIds[i]);
     }
 }
 

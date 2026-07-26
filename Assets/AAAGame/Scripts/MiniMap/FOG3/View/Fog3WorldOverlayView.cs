@@ -87,7 +87,7 @@ namespace AAAGame.MiniMap.FOG3
             return refreshed;
         }
 
-        public void Render(Fog3MapData mapData)
+        public void Render(Fog3MapData mapData, bool logPerformanceDiagnostics)
         {
             if (mapData == null || fogTexture == null || pixels == null)
                 return;
@@ -112,7 +112,7 @@ namespace AAAGame.MiniMap.FOG3
             long applyTicks = System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
             double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-            if (elapsedMs >= 4.0)
+            if (logPerformanceDiagnostics && elapsedMs >= 4.0)
             {
                 Debug.LogFormat(
                     LogType.Log,

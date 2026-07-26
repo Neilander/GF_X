@@ -39,15 +39,6 @@ public partial class SoldierEntity : MAEntity
             Side = ep.Side;
             BrainType = ep.BrainType; // 设置AI类型
             SourceStrongholdId = ep.GetString(EntityParams.P_SourceStrongholdId);
-
-            if (ep.position.HasValue)
-            {
-                ApplySpawnPosition(ep.position.Value);
-                LogSpawnDiagnostics(ep.position.Value);
-            }
-            else if (ep.BrainType == BrainType.Player)
-                Log.Error("Player SoldierEntity missing spawn position in EntityParams. CharacterKey={0}", CharacterKey);
-
         }
 
         //Debug.LogError("什么玩意");
@@ -109,43 +100,6 @@ public partial class SoldierEntity : MAEntity
     protected override void OnHide(bool isShutdown, object userData)
     {
         base.OnHide(isShutdown, userData);
-    }
-
-    private void ApplySpawnPosition(Vector3 worldPosition)
-    {
-        CharacterController controller = GetComponent<CharacterController>();
-        if (controller != null)
-        {
-            bool wasEnabled = controller.enabled;
-            controller.enabled = false;
-            transform.position = worldPosition;
-            controller.enabled = wasEnabled;
-            return;
-        }
-
-        transform.position = worldPosition;
-    }
-
-    private void LogSpawnDiagnostics(Vector3 requestedPosition)
-    {
-        bool flowHit = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
-            requestedPosition,
-            navAgentTypeID,
-            2.5f,
-            0f,
-            out Vector3 legalPoint);
-        Log.Info(
-            "[SoldierSpawn] key={0} brain={1} side={2} unitLevel={3} unitSize={4} navAgentType={5} requestedPos={6} actualPos={7} flowHit={8} flowPos={9}",
-            CharacterKey,
-            BrainType,
-            Side,
-            UnitLevel,
-            CharacterData != null ? CharacterData.Size.ToString() : "null",
-            navAgentTypeID,
-            requestedPosition,
-            transform.position,
-            flowHit,
-            flowHit ? legalPoint.ToString() : "none");
     }
 
 }

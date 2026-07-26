@@ -330,7 +330,7 @@ public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterminis
     public override void OnAdd()
     {
         if (hostEntity != null)
-            m_LastPosition = hostEntity.PositionFixed;
+            m_LastPosition = hostEntity.LogicFramePositionFixed();
     }
 
     public override void OnUpdate(Fix64 deltaTime)

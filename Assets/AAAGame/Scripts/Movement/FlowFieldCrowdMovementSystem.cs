@@ -1684,6 +1684,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static readonly RuntimeConfig Config = new RuntimeConfig();
     private static readonly Dictionary<int, AgentRuntimeData> Agents = new Dictionary<int, AgentRuntimeData>();
+    private static readonly List<int> OrderedAgentIds = new List<int>(128);
     private static readonly Dictionary<int, CircleObstacle> CircleObstacles = new Dictionary<int, CircleObstacle>();
     private static readonly Dictionary<int, BoxObstacle> BoxObstacles = new Dictionary<int, BoxObstacle>();
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
@@ -1694,7 +1695,6 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly LinkedList<FlowTileBuildJob> FlowTileBuildQueue = new LinkedList<FlowTileBuildJob>();
     private static readonly HashSet<FlowTileCacheKey> PendingFlowTileBuildJobs = new HashSet<FlowTileCacheKey>();
     private static readonly HashSet<FlowTileCacheKey> ActiveFlowTileBuildKeys = new HashSet<FlowTileCacheKey>();
-    private static readonly List<int> FlowBuildOrderedAgentIdsScratch = new List<int>(128);
     private static readonly Dictionary<int, Stack<float[]>> IntegrationArrayPool = new Dictionary<int, Stack<float[]>>();
     private static readonly Dictionary<SectorPathCacheKey, SectorPathCacheEntry> SectorPathCache = new Dictionary<SectorPathCacheKey, SectorPathCacheEntry>();
     private static readonly Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry> SectorPortalAccessCache = new Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry>();
@@ -1712,7 +1712,6 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<int, int> FixedPortalOwnerEvaluatedFrameByWorld = new Dictionary<int, int>();
     private static readonly Dictionary<FixedPortalOwnerKey, FixedPortalParticipantSnapshot> FixedPortalParticipantScratch = new Dictionary<FixedPortalOwnerKey, FixedPortalParticipantSnapshot>();
     private static readonly List<FixedPortalOwnerKey> FixedPortalOwnerKeyScratch = new List<FixedPortalOwnerKey>();
-    private static readonly List<int> FixedPortalAgentIdScratch = new List<int>();
     private static readonly Dictionary<int, FixedCorridorLookup> FixedCorridorLookupByWorldVersion = new Dictionary<int, FixedCorridorLookup>();
 
     private static readonly int[] NeighborOffsetX = { -1, 0, 1, -1, 1, -1, 0, 1 };
@@ -1724,7 +1723,6 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly List<AgentRuntimeData> NearbyAgentScratch = new List<AgentRuntimeData>(32);
     private static readonly List<AgentRuntimeData> CombatClusterScratch = new List<AgentRuntimeData>(16);
     private static readonly List<NavigationGoalReservation> NavigationGoalReservations = new List<NavigationGoalReservation>(128);
-    private static readonly List<int> NavigationGoalOrderedAgentIdsScratch = new List<int>(128);
     private static readonly List<int> BottleneckWaitingRemovalScratch = new List<int>(16);
     private static readonly MinHeap DistanceEstimateOpenSet = new MinHeap();
     private static readonly DeterministicCostHeap FixedDistanceEstimateOpenSet = new DeterministicCostHeap();
@@ -2421,6 +2419,7 @@ public static partial class FlowFieldCrowdMovementSystem
     public static void ResetAll()
     {
         Agents.Clear();
+        OrderedAgentIds.Clear();
         AgentSpatialBuckets.Clear();
         NearbyAgentScratch.Clear();
         CircleObstacles.Clear();
@@ -2433,7 +2432,6 @@ public static partial class FlowFieldCrowdMovementSystem
         FlowTileBuildQueue.Clear();
         PendingFlowTileBuildJobs.Clear();
         ActiveFlowTileBuildKeys.Clear();
-        FlowBuildOrderedAgentIdsScratch.Clear();
         ClearSectorPathCache();
         ClearSectorPortalAccessCache();
         StartPortalChoiceCache.Clear();
@@ -2448,7 +2446,6 @@ public static partial class FlowFieldCrowdMovementSystem
         FixedPortalOwnerEvaluatedFrameByWorld.Clear();
         FixedPortalParticipantScratch.Clear();
         FixedPortalOwnerKeyScratch.Clear();
-        FixedPortalAgentIdScratch.Clear();
         FixedCorridorLookupByWorldVersion.Clear();
         _fixedCorridorClassifiedCellCount = 0;
         _fixedCorridorExpandedCellCount = 0;
@@ -2546,6 +2543,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void ClearRuntimeNavigationRegistrations()
     {
         Agents.Clear();
+        OrderedAgentIds.Clear();
         AgentSpatialBuckets.Clear();
         NearbyAgentScratch.Clear();
         MovingTargetAnchors.Clear();
@@ -2659,6 +2657,211 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         TestAgentTypeRadii.Clear();
         MarkWorldDirty();
+    }
+
+    public static void AddEditorTestOnlyWorldBuildPortalProgressProbe()
+    {
+        WorldBuildJob job = GetRequiredSingleEditorTestWorldBuildJob();
+        job.PortalRebuiltPortals ??= new List<PortalData>();
+        job.PortalRebuiltPortals.Add(CreateEditorTestPortalProgressProbe());
+    }
+
+    public static void InvalidateEditorTestOnlyWorldBuildPortalProgressProbeCells()
+    {
+        WorldBuildJob job = GetRequiredSingleEditorTestWorldBuildJob();
+        if (job.PortalRebuiltPortals == null || job.PortalRebuiltPortals.Count == 0)
+            throw new InvalidOperationException("World-build portal cell probe requires pending portal progress.");
+        job.PortalRebuiltPortals[job.PortalRebuiltPortals.Count - 1].CellsA = null;
+    }
+
+    public static void AddEditorTestOnlyWorldBuildPendingPortalAccessProbe()
+    {
+        WorldBuildJob job = GetRequiredSingleEditorTestWorldBuildJob();
+        job.PendingPortalAccessEntries ??= new List<PendingSectorPortalAccess>();
+        job.PendingPortalAccessEntries.Add(new PendingSectorPortalAccess(701, 702, 703, true));
+    }
+
+    public static void AddEditorTestOnlyRuntimeDirtyProcessedBoundaryProbe()
+    {
+        RuntimeDirtyRebuildJob job = GetRequiredSingleEditorTestRuntimeDirtyJob();
+        job.PortalProcessedBoundaries ??= new HashSet<long>();
+        if (!job.PortalProcessedBoundaries.Add(0x1020304050607080L))
+            throw new InvalidOperationException("Runtime-dirty boundary probe was already present.");
+    }
+
+    public static bool HasEditorTestOnlyWorldBuildWorkingWorld()
+    {
+        WorldBuildJob result = null;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state?.BuildJob == null)
+                continue;
+            if (result != null)
+                throw new InvalidOperationException("Editor test requires at most one pending world-build job.");
+            result = state.BuildJob;
+        }
+
+        return result?.WorkingWorld != null;
+    }
+
+    public static void PerturbEditorTestOnlyWorldBuildWorkingWorldFloatShadow()
+    {
+        NavigationWorld world = GetRequiredSingleEditorTestWorldBuildJob().WorkingWorld
+                                ?? throw new InvalidOperationException("World-build working-world float probe requires an initialized working world.");
+        world.CellSize += 0.125f;
+        world.Origin += new Vector3(0.25f, 0f, 0.5f);
+    }
+
+    public static void PerturbEditorTestOnlyWorldBuildWorkingWorldAuthorityCell()
+    {
+        NavigationWorld world = GetRequiredSingleEditorTestWorldBuildJob().WorkingWorld
+                                ?? throw new InvalidOperationException("World-build working-world authority probe requires an initialized working world.");
+        if (world.WalkableMask == null || world.WalkableMask.Length == 0)
+            throw new InvalidOperationException("World-build working-world authority probe requires a walkable mask.");
+        world.WalkableMask[0] = !world.WalkableMask[0];
+    }
+
+    public static bool HasEditorTestOnlyRuntimeDirtyWorkingWorld()
+    {
+        RuntimeDirtyRebuildJob result = null;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state?.RuntimeDirtyJob == null)
+                continue;
+            if (result != null)
+                throw new InvalidOperationException("Editor test requires at most one pending runtime-dirty job.");
+            result = state.RuntimeDirtyJob;
+        }
+
+        return result?.WorkingWorld != null;
+    }
+
+    public static void PerturbEditorTestOnlyRuntimeDirtyWorkingWorldFloatShadow()
+    {
+        NavigationWorld world = GetRequiredSingleEditorTestRuntimeDirtyJob().WorkingWorld
+                                ?? throw new InvalidOperationException("Runtime-dirty working-world float probe requires an initialized working world.");
+        world.CellSize += 0.125f;
+        world.Origin += new Vector3(0.25f, 0f, 0.5f);
+    }
+
+    public static void PerturbEditorTestOnlyRuntimeDirtyWorkingWorldAuthorityCell()
+    {
+        NavigationWorld world = GetRequiredSingleEditorTestRuntimeDirtyJob().WorkingWorld
+                                ?? throw new InvalidOperationException("Runtime-dirty working-world authority probe requires an initialized working world.");
+        if (world.WalkableMask == null || world.WalkableMask.Length == 0)
+            throw new InvalidOperationException("Runtime-dirty working-world authority probe requires a walkable mask.");
+        world.WalkableMask[0] = !world.WalkableMask[0];
+    }
+
+    public static void PerturbEditorTestOnlyRuntimeDirtyDerivedSectorIndex()
+    {
+        RuntimeDirtyRebuildJob job = GetRequiredSingleEditorTestRuntimeDirtyJob();
+        if (job.DirtySectorIds == null || job.DirtySectorIds.Count == 0)
+            throw new InvalidOperationException("Runtime-dirty derived-sector probe requires at least one dirty sector.");
+        job.DirtySectorIds[0] = job.DirtySectorIds[0] == int.MaxValue
+            ? int.MinValue
+            : job.DirtySectorIds[0] + 1;
+    }
+
+    public static void AddEditorTestOnlyFlowTileMirrorExtraEntry()
+    {
+        if (DeterministicFlowTileCache.Count != 1 || FlowTileCache.Count != 1)
+        {
+            throw new InvalidOperationException(
+                $"Flow-tile mirror probe requires exactly one committed tile. view={FlowTileCache.Count}, authority={DeterministicFlowTileCache.Count}.");
+        }
+
+        foreach (FlowTileCacheKey key in DeterministicFlowTileCache.Keys)
+        {
+            var extraKey = new FlowTileCacheKey(
+                key.WorldVersion,
+                key.SectorId,
+                key.GoalKind,
+                key.GoalId,
+                key.DownstreamGoalHint,
+                key.FinalGoalIndex,
+                key.AgentTypeId,
+                checked(key.DirtyVersion + 1));
+            FlowTileCache.Add(extraKey, new FlowTileCacheEntry { Key = extraKey });
+            return;
+        }
+
+        throw new InvalidOperationException("Flow-tile mirror probe found no deterministic tile.");
+    }
+
+    public static void PerturbEditorTestOnlyPendingFlowTileIndex()
+    {
+        if (FlowTileBuildQueue.First?.Value == null)
+            throw new InvalidOperationException("Pending flow-tile index probe requires a queued job.");
+        FlowTileCacheKey key = FlowTileBuildQueue.First.Value.BuildKey.CacheKey;
+        if (!PendingFlowTileBuildJobs.Remove(key))
+            throw new InvalidOperationException("Pending flow-tile index probe could not remove the queued key.");
+    }
+
+    public static void PerturbEditorTestOnlyPendingSharedGoalIndex()
+    {
+        if (SharedGoalFieldBuildQueue.First?.Value == null)
+            throw new InvalidOperationException("Pending shared-goal index probe requires a queued job.");
+        SharedGoalFieldKey key = SharedGoalFieldBuildQueue.First.Value.Key;
+        if (!PendingSharedGoalFieldBuildJobs.Remove(key))
+            throw new InvalidOperationException("Pending shared-goal index probe could not remove the queued key.");
+    }
+
+    public static void PerturbEditorTestOnlyOrderedAgentIndex()
+    {
+        if (OrderedAgentIds.Count < 2)
+            throw new InvalidOperationException("Ordered-agent index probe requires at least two agents.");
+
+        int first = OrderedAgentIds[0];
+        OrderedAgentIds[0] = OrderedAgentIds[1];
+        OrderedAgentIds[1] = first;
+    }
+
+    private static WorldBuildJob GetRequiredSingleEditorTestWorldBuildJob()
+    {
+        WorldBuildJob result = null;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state?.BuildJob == null)
+                continue;
+            if (result != null)
+                throw new InvalidOperationException("Editor test requires exactly one pending world-build job.");
+            result = state.BuildJob;
+        }
+
+        return result
+               ?? throw new InvalidOperationException("Editor test requires a pending world-build job.");
+    }
+
+    private static RuntimeDirtyRebuildJob GetRequiredSingleEditorTestRuntimeDirtyJob()
+    {
+        RuntimeDirtyRebuildJob result = null;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state?.RuntimeDirtyJob == null)
+                continue;
+            if (result != null)
+                throw new InvalidOperationException("Editor test requires exactly one pending runtime-dirty job.");
+            result = state.RuntimeDirtyJob;
+        }
+
+        return result
+               ?? throw new InvalidOperationException("Editor test requires a pending runtime-dirty job.");
+    }
+
+    private static PortalData CreateEditorTestPortalProgressProbe()
+    {
+        return new PortalData
+        {
+            PortalId = 601,
+            SectorAId = 602,
+            SectorBId = 603,
+            CellsA = new[] { new Vector2Int(1, 2) },
+            CellsB = new[] { new Vector2Int(2, 2) },
+            WidthCells = 1,
+            IsNarrow = true,
+            IsVerticalBoundary = false,
+        };
     }
 
     public static void SetEditorTestClock(int frameCount, float time)
@@ -3801,10 +4004,6 @@ public static partial class FlowFieldCrowdMovementSystem
                 FlowBuildQueueWorldScratch.Add(state);
             FlowBuildQueueWorldScratch.Sort((left, right) => left.AgentTypeId.CompareTo(right.AgentTypeId));
 
-            FlowBuildOrderedAgentIdsScratch.Clear();
-            FlowBuildOrderedAgentIdsScratch.AddRange(Agents.Keys);
-            FlowBuildOrderedAgentIdsScratch.Sort();
-
             int worldCount = FlowBuildQueueWorldScratch.Count;
             int startIndex = worldCount > 0 ? _flowBuildQueueWorldStartIndex % worldCount : 0;
             for (int reverseOffset = worldCount - 1; reverseOffset >= 0; reverseOffset--)
@@ -3813,19 +4012,19 @@ public static partial class FlowFieldCrowdMovementSystem
                 ActivateFlowBuildQueueWorld(FlowBuildQueueWorldScratch[worldIndex]);
 
                 long phaseTicks = Stopwatch.GetTimestamp();
-                EnqueueSharedGoalFieldsForActiveAgents(FlowBuildOrderedAgentIdsScratch);
+                EnqueueSharedGoalFieldsForActiveAgents(OrderedAgentIds);
                 _perf.SharedGoalActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
                 phaseTicks = Stopwatch.GetTimestamp();
-                PruneInactivePendingSharedGoalFieldBuildJobs(FlowBuildOrderedAgentIdsScratch);
+                PruneInactivePendingSharedGoalFieldBuildJobs(OrderedAgentIds);
                 _perf.SharedGoalPruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
                 phaseTicks = Stopwatch.GetTimestamp();
-                EnqueueFlowTileBuildsForActiveAgents(FlowBuildOrderedAgentIdsScratch);
+                EnqueueFlowTileBuildsForActiveAgents(OrderedAgentIds);
                 _perf.FlowTileActiveEnqueueTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
                 phaseTicks = Stopwatch.GetTimestamp();
-                PruneInactivePendingFlowTileBuildJobs(FlowBuildOrderedAgentIdsScratch);
+                PruneInactivePendingFlowTileBuildJobs(OrderedAgentIds);
                 _perf.FlowTilePruneTicks += Stopwatch.GetTimestamp() - phaseTicks;
 
                 phaseTicks = Stopwatch.GetTimestamp();
@@ -4574,12 +4773,18 @@ public static partial class FlowFieldCrowdMovementSystem
         return priority;
     }
 
-    public static void RegisterAgent(IEntityContext entity, float radius)
+    public static void RegisterAgent(IEntityContext entity)
     {
-        RegisterAgentInternal(entity, radius, ResolveExplicitAgentTypeId(entity, nameof(RegisterAgent)));
+        Fix64 radiusFixed = ResolveCollisionRadiusFixed(entity);
+        RegisterAgentInternal(entity, (float)radiusFixed, ResolveExplicitAgentTypeId(entity, nameof(RegisterAgent)));
     }
 
 #if UNITY_EDITOR
+    public static Fix64 ResolveNavigationTargetExtentForEditorTest(IEntityContext target)
+    {
+        return ResolveNavigationTargetExtentFixed(target);
+    }
+
     public static void RegisterAgentForEditorTest(IEntityContext entity, float radius, int agentTypeId)
     {
         RegisterAgentInternal(entity, radius, ResolvePreferredAgentTypeId(agentTypeId));
@@ -4603,8 +4808,8 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.Position = entity.LogicFramePosition();
         agent.PositionFixed = entity.LogicFramePositionFixed();
         agent.RegisteredRadius = Mathf.Max(0.05f, radius);
-        agent.Radius = ResolveSynchronizedCollisionRadius(entity, agent.RegisteredRadius);
-        agent.RadiusFixed = ResolveSynchronizedCollisionRadiusFixed(entity, (Fix64)agent.RegisteredRadius);
+        agent.RadiusFixed = ResolveCollisionRadiusFixed(entity);
+        agent.Radius = (float)agent.RadiusFixed;
         agent.Side = entity.Side;
         agent.AgentTypeId = ResolvePreferredAgentTypeId(agentTypeId);
         agent.EntityTypeName = entity.GetType().Name;
@@ -4633,18 +4838,21 @@ public static partial class FlowFieldCrowdMovementSystem
             };
             agent.NavState.AgentId = id;
             Agents.Add(id, agent);
+            AddOrderedAgentId(id);
         }
 
         agent.CharacterKey = entity.CharacterKey;
         agent.Position = entity.LogicFramePosition();
         agent.PositionFixed = entity.LogicFramePositionFixed();
         agent.RegisteredRadius = Mathf.Max(0.05f, radius);
-        agent.Radius = ResolveSynchronizedCollisionRadius(entity, agent.RegisteredRadius);
-        agent.RadiusFixed = ResolveSynchronizedCollisionRadiusFixed(entity, (Fix64)agent.RegisteredRadius);
+        agent.RadiusFixed = ResolveCollisionRadiusFixed(entity);
+        agent.Radius = (float)agent.RadiusFixed;
         agent.Side = entity.Side;
         agent.AgentTypeId = agentTypeId;
-        agent.EntityTypeName = entity.GetType().Name;
-        agent.MoveCompTypeName = entity.MoveComp?.GetType().Name ?? "null";
+        if (string.IsNullOrEmpty(agent.EntityTypeName))
+            agent.EntityTypeName = entity.GetType().Name;
+        if (string.IsNullOrEmpty(agent.MoveCompTypeName))
+            agent.MoveCompTypeName = entity.MoveComp?.GetType().Name ?? "null";
         agent.RegistrationSource = "RegisterAgent";
         agent.IsSyntheticRegistration = false;
         UpdateAgentNavigationIntent(agent, entity.MoveComp);
@@ -4654,13 +4862,25 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void UnregisterAgent(int agentId)
     {
-        Agents.Remove(agentId);
+        bool removed = Agents.Remove(agentId);
+        int orderedIndex = OrderedAgentIds.BinarySearch(agentId);
+        if (removed)
+        {
+            if (orderedIndex < 0)
+                throw new InvalidOperationException($"UnregisterAgent failed: ordered agent id {agentId} is missing.");
+            OrderedAgentIds.RemoveAt(orderedIndex);
+        }
+        else if (orderedIndex >= 0)
+        {
+            throw new InvalidOperationException($"UnregisterAgent failed: stale ordered agent id {agentId} exists.");
+        }
+
         _lastAgentSpatialBucketFrame = -1;
         _lastAgentSpatialBucketWorldVersion = -1;
         _lastAgentRegistrySyncFrame = -1;
     }
 
-    public static void UpdateAgent(IEntityContext entity, float radius)
+    public static void UpdateAgent(IEntityContext entity)
     {
         BeginPerfCall();
         long startTicks = GetDiagnosticTimestamp();
@@ -4672,20 +4892,18 @@ public static partial class FlowFieldCrowdMovementSystem
         int id = ResolveAgentId(entity);
         if (!Agents.TryGetValue(id, out AgentRuntimeData agent))
         {
-            RegisterAgent(entity, radius);
+            RegisterAgent(entity);
             return;
         }
 
         agent.CharacterKey = entity.CharacterKey;
         agent.Position = entity.LogicFramePosition();
         agent.PositionFixed = entity.LogicFramePositionFixed();
-        agent.RegisteredRadius = Mathf.Max(0.05f, radius);
-        agent.Radius = ResolveSynchronizedCollisionRadius(entity, agent.RegisteredRadius);
-        agent.RadiusFixed = ResolveSynchronizedCollisionRadiusFixed(entity, (Fix64)agent.RegisteredRadius);
+        agent.RadiusFixed = ResolveCollisionRadiusFixed(entity);
+        agent.Radius = (float)agent.RadiusFixed;
+        agent.RegisteredRadius = agent.Radius;
         agent.Side = entity.Side;
         agent.AgentTypeId = ResolveExplicitAgentTypeId(entity, nameof(UpdateAgent));
-        agent.EntityTypeName = entity.GetType().Name;
-        agent.MoveCompTypeName = entity.MoveComp?.GetType().Name ?? "null";
         if (string.IsNullOrEmpty(agent.RegistrationSource))
             agent.RegistrationSource = "UpdateAgent";
         UpdateAgentNavigationIntent(agent, entity.MoveComp);
@@ -5143,6 +5361,11 @@ public static partial class FlowFieldCrowdMovementSystem
     public static int GetEditorTestFlowTileCacheCount()
     {
         return FlowTileCache.Count;
+    }
+
+    public static int GetEditorTestFlowTileCacheLimit()
+    {
+        return Config.FlowTileCacheLimit;
     }
 
     public static int GetEditorTestDeterministicFlowTileCacheCount()
@@ -5819,6 +6042,27 @@ public static partial class FlowFieldCrowdMovementSystem
             _world,
             GetOrCreateFixedCorridorLookup(_world),
             FixedCorridorBuildOperationQuota);
+    }
+
+    public static void PerturbEditorTestOnlyFixedCorridorUnprocessedQueueOrder()
+    {
+        if (_world == null
+            || !FixedCorridorLookupByWorldVersion.TryGetValue(_world.Version, out FixedCorridorLookup lookup)
+            || lookup?.ActiveBuildJob == null)
+        {
+            throw new InvalidOperationException("Fixed-corridor queue-order probe requires an active build job.");
+        }
+
+        FixedCorridorBuildJob job = lookup.ActiveBuildJob;
+        if (job.Head < 0 || job.Head + 1 >= job.Queue.Count)
+        {
+            throw new InvalidOperationException(
+                $"Fixed-corridor queue-order probe requires at least two unprocessed cells. head={job.Head}, count={job.Queue.Count}.");
+        }
+
+        int first = job.Queue[job.Head];
+        job.Queue[job.Head] = job.Queue[job.Head + 1];
+        job.Queue[job.Head + 1] = first;
     }
 
     public static bool TryGetEditorTestFixedCorridorOwner(
@@ -7039,9 +7283,9 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new ArgumentOutOfRangeException(nameof(requiredDistance), requiredDistance.RawValue, "Required distance cannot be negative.");
 
         Fix64 requiredDistanceSq = requiredDistance * requiredDistance;
-        foreach (KeyValuePair<int, AgentRuntimeData> pair in Agents)
+        for (int i = 0; i < OrderedAgentIds.Count; i++)
         {
-            AgentRuntimeData agent = pair.Value;
+            AgentRuntimeData agent = Agents[OrderedAgentIds[i]];
             if (agent.IgnoreAgentCollision)
                 continue;
             if (FixVector2.SqrMagnitude(agent.PositionFixed - position) < requiredDistanceSq)
@@ -7743,11 +7987,9 @@ public static partial class FlowFieldCrowdMovementSystem
         blockingDistance = Fix64.FromRaw(long.MaxValue);
         Fix64 requiredDistanceSq = requiredDistance * requiredDistance;
         Fix64 bestDistanceSq = Fix64.FromRaw(long.MaxValue);
-        var orderedAgentIds = new List<int>(Agents.Keys);
-        orderedAgentIds.Sort();
-        for (int i = 0; i < orderedAgentIds.Count; i++)
+        for (int i = 0; i < OrderedAgentIds.Count; i++)
         {
-            AgentRuntimeData agent = Agents[orderedAgentIds[i]];
+            AgentRuntimeData agent = Agents[OrderedAgentIds[i]];
             if (agent.Id == selfId || agent.Id == ignoredAgentId || agent.IgnoreAgentCollision)
                 continue;
 
@@ -9142,14 +9384,10 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void CollectFixedPortalParticipants()
     {
         FixedPortalParticipantScratch.Clear();
-        FixedPortalAgentIdScratch.Clear();
-        foreach (int agentId in Agents.Keys)
-            FixedPortalAgentIdScratch.Add(agentId);
-        FixedPortalAgentIdScratch.Sort();
 
-        for (int i = 0; i < FixedPortalAgentIdScratch.Count; i++)
+        for (int i = 0; i < OrderedAgentIds.Count; i++)
         {
-            AgentRuntimeData agent = Agents[FixedPortalAgentIdScratch[i]];
+            AgentRuntimeData agent = Agents[OrderedAgentIds[i]];
             if (agent == null || !IsAgentInActiveFlowBuildQueueWorld(agent))
                 continue;
             if (ResolveFixedPortalTraversal(agent, out FixedPortalOwnerKey key, out int direction, out int distanceInCells)
@@ -10824,7 +11062,10 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void RegisterSyntheticAgent(IEntityContext self)
     {
         int agentId = ResolveAgentId(self);
-        Agents[agentId] = new AgentRuntimeData
+        if (Agents.ContainsKey(agentId))
+            throw new InvalidOperationException($"RegisterSyntheticAgent failed: agent {agentId} is already registered.");
+
+        var agent = new AgentRuntimeData
         {
             Id = agentId,
             CharacterKey = self.CharacterKey,
@@ -10840,9 +11081,19 @@ public static partial class FlowFieldCrowdMovementSystem
             RegistrationSource = "RegisterSyntheticAgent",
             IsSyntheticRegistration = true
         };
-        Agents[agentId].NavState.AgentId = agentId;
-        Agents[agentId].NavState.LastMovementMode = self.MoveExecutor?.MovementMode ?? MovementMode.Normal;
-        UpdateAgentNavigationIntent(Agents[agentId], self.MoveComp);
+        agent.NavState.AgentId = agentId;
+        agent.NavState.LastMovementMode = self.MoveExecutor?.MovementMode ?? MovementMode.Normal;
+        UpdateAgentNavigationIntent(agent, self.MoveComp);
+        Agents.Add(agentId, agent);
+        AddOrderedAgentId(agentId);
+    }
+
+    private static void AddOrderedAgentId(int agentId)
+    {
+        int index = OrderedAgentIds.BinarySearch(agentId);
+        if (index >= 0)
+            throw new InvalidOperationException($"AddOrderedAgentId failed: duplicate agent id {agentId}.");
+        OrderedAgentIds.Insert(~index, agentId);
     }
 
     private static void DrawSectorDebug()
@@ -11157,8 +11408,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
             agent.Position = entity.LogicFramePosition();
             agent.PositionFixed = entity.LogicFramePositionFixed();
-            agent.Radius = ResolveSynchronizedCollisionRadius(entity, agent.RegisteredRadius);
-            agent.RadiusFixed = ResolveSynchronizedCollisionRadiusFixed(entity, (Fix64)agent.RegisteredRadius);
+            agent.RadiusFixed = ResolveCollisionRadiusFixed(entity);
+            agent.Radius = (float)agent.RadiusFixed;
             agent.Side = entity.Side;
             agent.MoveCompTypeName = entity.MoveComp?.GetType().Name ?? "null";
             agent.NavState.LastMovementMode = entity.MoveExecutor?.MovementMode ?? MovementMode.Normal;
@@ -17568,12 +17819,10 @@ public static partial class FlowFieldCrowdMovementSystem
     private static Dictionary<int, ExistingPathMergePoint> BuildExistingPathMergeNodes(int startSectorId, int goalSectorId, int goalX, int goalY)
     {
         Dictionary<int, ExistingPathMergePoint> mergeNodes = null;
-        var orderedAgentIds = new List<int>(Agents.Keys);
-        orderedAgentIds.Sort();
-        for (int agentIndex = 0; agentIndex < orderedAgentIds.Count; agentIndex++)
+        for (int agentIndex = 0; agentIndex < OrderedAgentIds.Count; agentIndex++)
         {
-            AgentRuntimeData agent = Agents[orderedAgentIds[agentIndex]]
-                ?? throw new InvalidOperationException($"BuildExistingPathMergeNodes failed: agent is null id={orderedAgentIds[agentIndex]}.");
+            AgentRuntimeData agent = Agents[OrderedAgentIds[agentIndex]]
+                ?? throw new InvalidOperationException($"BuildExistingPathMergeNodes failed: agent is null id={OrderedAgentIds[agentIndex]}.");
             PathHandle handle = agent.NavState.PathHandle;
             if (handle == null
                 || handle.WorldVersion != _world.Version
@@ -20474,8 +20723,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FixVector2 currentTargetFramePosition = currentTarget.LogicFramePositionFixed();
         FixVector2 targetOffset = rawGoalPosition - currentTargetFramePosition;
-        Fix64 currentTargetRadius = ResolveCollisionRadiusFixed(currentTarget);
-        Fix64 targetMatchDistance = Fix64.Max(currentTargetRadius * (Fix64)0.75f, (Fix64)0.35f);
+        Fix64 currentTargetExtent = ResolveNavigationTargetExtentFixed(currentTarget);
+        Fix64 targetMatchDistance = Fix64.Max(currentTargetExtent * (Fix64)0.75f, (Fix64)0.35f);
         bool useMovingTargetAnchor = IsNavigationMovingTarget(currentTarget);
         if (!useMovingTargetAnchor
             && FixVector2.SqrMagnitude(targetOffset) > targetMatchDistance * targetMatchDistance)
@@ -21106,8 +21355,8 @@ public static partial class FlowFieldCrowdMovementSystem
             return 0;
 
         FixVector2 offset = goalPosition - currentTarget.LogicFramePositionFixed();
-        Fix64 targetRadius = ResolveCollisionRadiusFixed(currentTarget);
-        Fix64 threshold = Fix64.Max(targetRadius * (Fix64)0.75f, (Fix64)0.35f);
+        Fix64 targetExtent = ResolveNavigationTargetExtentFixed(currentTarget);
+        Fix64 threshold = Fix64.Max(targetExtent * (Fix64)0.75f, (Fix64)0.35f);
         return FixVector2.SqrMagnitude(offset) > threshold * threshold
             ? ResolveAgentId(currentTarget)
             : 0;
@@ -21272,12 +21521,9 @@ public static partial class FlowFieldCrowdMovementSystem
             }
         }
 
-        NavigationGoalOrderedAgentIdsScratch.Clear();
-        NavigationGoalOrderedAgentIdsScratch.AddRange(Agents.Keys);
-        NavigationGoalOrderedAgentIdsScratch.Sort();
-        for (int i = 0; i < NavigationGoalOrderedAgentIdsScratch.Count; i++)
+        for (int i = 0; i < OrderedAgentIds.Count; i++)
         {
-            AgentRuntimeData other = Agents[NavigationGoalOrderedAgentIdsScratch[i]];
+            AgentRuntimeData other = Agents[OrderedAgentIds[i]];
             if (other.Id == selfId || other.Id == ignoredAgentId || other.IgnoreAgentCollision)
                 continue;
 
@@ -24190,8 +24436,42 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static float ResolveCollisionRadius(IEntityContext entity)
     {
-        float radius = DistanceUnitConverter.ConvertToWorldFloat(entity.GetProperty(CreatureMainProperty.CollisionRadius));
-        return radius > 0.0001f ? radius : 0.5f;
+        return (float)ResolveCollisionRadiusFixed(entity);
+    }
+
+    private static Fix64 ResolveNavigationTargetExtentFixed(IEntityContext target)
+    {
+        if (target == null)
+            throw new InvalidOperationException("ResolveNavigationTargetExtentFixed failed: target is null.");
+
+        LogicCombatShape shape = LogicFrameRuntime.IsTicking
+            ? LogicEntityFrameSnapshotService.GetRequiredCurrent(target).CombatShape
+            : target.CombatShape;
+        Fix64 extent;
+        switch (shape.Kind)
+        {
+            case LogicCombatShapeKind.Circle:
+                extent = shape.Radius;
+                break;
+            case LogicCombatShapeKind.AxisAlignedBox:
+                extent = Fix64.Max(shape.HalfExtents.x, shape.HalfExtents.y);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"ResolveNavigationTargetExtentFixed failed: target={target.LogicEntityId.Value}, " +
+                    $"key={target.CharacterKey}, shapeKind={(int)shape.Kind}.");
+        }
+
+        if (extent <= Fix64.Zero)
+        {
+            throw new InvalidOperationException(
+                $"ResolveNavigationTargetExtentFixed failed: target={target.LogicEntityId.Value}, " +
+                $"key={target.CharacterKey}, shapeKind={shape.Kind}, extentRaw={extent.RawValue}, " +
+                $"radiusRaw={shape.Radius.RawValue}, " +
+                $"halfExtentsRaw=({shape.HalfExtents.x.RawValue},{shape.HalfExtents.y.RawValue}).");
+        }
+
+        return extent;
     }
 
     private static Fix64 ResolveCollisionRadiusFixed(IEntityContext entity)
@@ -24199,24 +24479,23 @@ public static partial class FlowFieldCrowdMovementSystem
         if (entity == null)
             throw new InvalidOperationException("ResolveCollisionRadiusFixed failed: entity is null.");
 
-        Fix64 radius = DistanceUnitConverter.ConvertToWorld(entity.GetProperty(CreatureMainProperty.CollisionRadius));
-        return radius > Fix64.Zero ? radius : (Fix64)0.5f;
-    }
+        Fix64 propertyRadius = entity.GetProperty(CreatureMainProperty.CollisionRadius);
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(propertyRadius);
+        if (radius <= Fix64.Zero)
+        {
+            LogicEntityState logicState = entity as LogicEntityState;
+            string unitSize = entity.CharacterData != null ? entity.CharacterData.Size.ToString() : "<none>";
+            throw new InvalidOperationException(
+                $"ResolveCollisionRadiusFixed failed: entity={entity.LogicEntityId.Value}, key={entity.CharacterKey}, " +
+                $"type={entity.GetType().FullName}, alive={entity.Alive}, unitSize={unitSize}, " +
+                $"propertyRaw={propertyRadius.RawValue}, worldRaw={radius.RawValue}, " +
+                $"conversionRate={DistanceUnitConverter.DistanceConversionRate:R}, " +
+                $"navAgentType={logicState?.NavigationAgentTypeId.ToString() ?? "<unavailable>"}, " +
+                $"usesFlow={logicState?.UsesFlowNavigationAgent.ToString() ?? "<unavailable>"}, " +
+                $"hero={logicState?.IsHeroEntity.ToString() ?? "<unavailable>"}, " +
+                $"preparedMovable={logicState?.PreparedCollisionMovable.ToString() ?? "<unavailable>"}.");
+        }
 
-    private static float ResolveSynchronizedCollisionRadius(IEntityContext entity, float registeredRadius)
-    {
-        if (entity == null)
-            throw new InvalidOperationException("ResolveSynchronizedCollisionRadius failed: entity is null.");
-
-        float propertyRadius = ResolveCollisionRadius(entity);
-        return Mathf.Max(0.05f, registeredRadius, propertyRadius);
-    }
-
-    private static Fix64 ResolveSynchronizedCollisionRadiusFixed(IEntityContext entity, Fix64 registeredRadius)
-    {
-        if (entity == null)
-            throw new InvalidOperationException("ResolveSynchronizedCollisionRadiusFixed failed: entity is null.");
-
-        return Fix64.Max((Fix64)0.05f, Fix64.Max(registeredRadius, ResolveCollisionRadiusFixed(entity)));
+        return radius;
     }
 }

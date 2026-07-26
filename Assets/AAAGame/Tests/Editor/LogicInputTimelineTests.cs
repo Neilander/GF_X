@@ -125,6 +125,32 @@ public sealed class LogicInputTimelineTests
         Assert.AreEqual(0, frame.Events.Count);
     }
 
+    [Test]
+    public void LongSession_RetainsOnlyCurrentSealedFrame()
+    {
+        const ulong frameCount = 100000;
+        var timeline = CreateTimeline();
+
+        for (ulong frame = 1; frame <= frameCount; frame++)
+            timeline.Seal(frame, frame / 30d);
+
+        Assert.AreEqual(frameCount, timeline.CurrentFrame.FrameId);
+        Assert.AreEqual(1, timeline.RetainedSealedFrameCount);
+    }
+
+    [Test]
+    public void EmptyTicks_ReuseImmutableEmptyEventPayload()
+    {
+        var timeline = CreateTimeline();
+
+        LogicInputFrame first = timeline.Seal(1, 1d / 30d);
+        LogicInputFrame second = timeline.Seal(2, 2d / 30d);
+
+        Assert.AreSame(first.Events, second.Events);
+        Assert.AreEqual(0, first.Events.Count);
+        Assert.AreEqual(0, second.GetPressCount(LogicInputButton.Skill1));
+    }
+
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();

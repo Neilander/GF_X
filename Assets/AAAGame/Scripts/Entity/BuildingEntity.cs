@@ -10,7 +10,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public const string P_BuildingInstanceId = "BuildingInstanceId";
     public const string P_IsGameEndConditionBuilding = "IsGameEndConditionBuilding";
     public const string P_IsNavigationStaticBaked = "IsNavigationStaticBaked";
-    public const string P_EnableConstructionEscape = "EnableConstructionEscape";
 
     public BuildingData buildingData;
     public int OwnerFactionID { get; set; }
@@ -18,7 +17,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     public Stronghold CurrentStronghold { get; private set; }
     public bool IsGameEndConditionBuilding { get; private set; }
     public bool IsNavigationStaticBaked { get; private set; }
-    public bool EnableConstructionEscape { get; private set; }
     public bool HasUpgrade
     {
         get
@@ -89,10 +87,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         IsNavigationStaticBaked = entityParams != null
             && entityParams.TryGet<VarBoolean>(P_IsNavigationStaticBaked, out var isNavigationStaticBaked)
             && isNavigationStaticBaked;
-        EnableConstructionEscape = entityParams != null
-            && entityParams.TryGet<VarBoolean>(P_EnableConstructionEscape, out var enableConstructionEscape)
-            && enableConstructionEscape;
-
         CharacterKey = buildingData != null ? buildingData.Identifier : string.Empty;
         if (buildingData == null)
             throw new System.InvalidOperationException("BuildingEntity.RefreshCharacterData failed: BuildingData is missing.");
@@ -132,13 +126,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
             EnsureInteractionHost();
         }
 
-    }
-
-    protected override void OnLogicActivated()
-    {
-        base.OnLogicActivated();
-        if (EnableConstructionEscape)
-            BeginConstructionEscapeForOverlappingHeroes();
     }
 
     protected override void OnLogicDeactivating()
@@ -251,7 +238,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         OwnerFactionID = 0;
         IsGameEndConditionBuilding = false;
         IsNavigationStaticBaked = false;
-        EnableConstructionEscape = false;
         _healthBarSuppressedByBuff = false;
         _stealthHealthBarSuppressed = false;
         _stealthMinimapHidden = false;
@@ -332,29 +318,6 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         if (!state.IsBuildingEntity)
             throw new System.InvalidOperationException($"BuildingEntity obstacle shapes require building logic state. entity={state.EntityId.Value}.");
         return state.LogicObstacleShapes;
-    }
-
-    private void BeginConstructionEscapeForOverlappingHeroes()
-    {
-        IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
-        if (allEntities == null)
-            throw new System.InvalidOperationException($"BuildingEntity.BeginConstructionEscapeForOverlappingHeroes failed: EntityRegistry.AllEntities is null. building={CharacterKey} instance={BuildingInstanceId}.");
-
-        int playerHeroCount = 0;
-        int activatedCount = 0;
-        for (int i = 0; i < allEntities.Count; i++)
-        {
-            if (allEntities[i] is not HeroEntity hero || hero.Side != SideType.PlayerSide)
-                continue;
-
-            playerHeroCount++;
-            if (hero.TryBeginConstructionEscape(this))
-                activatedCount++;
-        }
-
-        Debug.Log(
-            $"[BuildingConstructionEscape] evaluate building={CharacterKey} instance={BuildingInstanceId} " +
-            $"position={Position} playerHeroes={playerHeroCount} activated={activatedCount}");
     }
 
     internal void BindStrongholdView(

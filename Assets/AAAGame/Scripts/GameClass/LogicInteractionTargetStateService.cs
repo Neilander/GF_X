@@ -4,6 +4,7 @@ using System.Collections.Generic;
 public static class LogicInteractionTargetStateService
 {
     private static readonly Dictionary<int, int> s_TargetByActor = new Dictionary<int, int>();
+    private static readonly List<int> s_DeterministicActorIds = new List<int>();
 
     public static bool IsActive { get; private set; }
     public static int ActorCount => s_TargetByActor.Count;
@@ -59,12 +60,13 @@ public static class LogicInteractionTargetStateService
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
 
-        var actorIds = new List<int>(s_TargetByActor.Keys);
-        actorIds.Sort();
-        hasher.Add(actorIds.Count);
-        for (int i = 0; i < actorIds.Count; i++)
+        s_DeterministicActorIds.Clear();
+        s_DeterministicActorIds.AddRange(s_TargetByActor.Keys);
+        s_DeterministicActorIds.Sort();
+        hasher.Add(s_DeterministicActorIds.Count);
+        for (int i = 0; i < s_DeterministicActorIds.Count; i++)
         {
-            int actorId = actorIds[i];
+            int actorId = s_DeterministicActorIds[i];
             hasher.Add(actorId);
             hasher.Add(s_TargetByActor[actorId]);
         }

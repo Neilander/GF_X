@@ -71,45 +71,6 @@ public abstract class TargetableSelector : EntityBase, ISelector<ISelectable>
         _logicRadius = (Fix64)radius;
     }
 
-    public bool Validate(GameObject obj)
-    {
-        if (!obj.TryGetComponent(out HurtBox target))
-            return false;
-
-        //未开启的hurtbox不选择
-        //这里不是单位未开启
-        if (!target.IsActive)
-            return false;
-
-        var targetOwner = target.Owner;
-
-        //选过的就不要选了
-        if (SelectRecords.ContainsKey(targetOwner))
-            return false;
-
-
-
-        if (_excludedCreatures.Contains(targetOwner))
-            return false;
-
-        //目标是死亡的也不选择,这里包含了目标死亡
-        if (!targetOwner.CanBeSelected())
-            return false;
-
-        if (targetOwner is IBuildingLogicContext building && building.IsDisabled)
-            return false;
-
-        if (targetOwner is IEntityContext context && context.HasInvincibleBuff())
-            return false;
-
-        if (!EntitySideHelper.GetHitSide(_selfSide).Contains(targetOwner.Side))
-            return false;
-
-        //选择到了一个开着的hurtbox，并且目标也是该选择的，也是活着的
-
-        return true;
-    }
-
     public abstract void ChangeRange(Vector3 ratio);
 
     /// <summary>

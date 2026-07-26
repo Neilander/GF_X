@@ -274,7 +274,9 @@ public sealed class SkillHigherHealthSplashBuff : BuffCallback
                     continue;
                 if (!candidate.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(hostEntity, candidate))
                     continue;
-                if (FixVector2.Distance(candidate.PositionFixed, mainTarget.PositionFixed) > (Fix64)radius)
+                if (FixVector2.Distance(
+                        candidate.LogicFramePositionFixed(),
+                        mainTarget.LogicFramePositionFixed()) > (Fix64)radius)
                     continue;
 
                 Fix64 candidateMax = candidate.CreatureProperties.GetProperty(CreatureMainProperty.Health);

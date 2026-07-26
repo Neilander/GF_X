@@ -1,23 +1,34 @@
 ﻿using UnityEngine;
 
+using System;
+using System.IO;
+using System.IO.Compression;
+
 namespace AAAGame.MiniMap.FOG3
 {
     public sealed class Fog3ExplorationCheckpoint
     {
+        private readonly byte[] compressedExploredBits;
+
         internal Fog3ExplorationCheckpoint(int width, int height, ulong terrainHash, byte[] exploredBits)
         {
+            if (exploredBits == null)
+                throw new ArgumentNullException(nameof(exploredBits));
+
             Width = width;
             Height = height;
             TerrainHash = terrainHash;
-            ExploredBits = (byte[])exploredBits.Clone();
+            RawPayloadByteCount = exploredBits.Length;
+            compressedExploredBits = Compress(exploredBits);
+            StoredPayloadByteCount = compressedExploredBits.Length;
             var hasher = new LogicStateHasher();
             hasher.Add(0x535447464F473030UL);
             hasher.Add(width);
             hasher.Add(height);
             hasher.Add(terrainHash);
-            hasher.Add(ExploredBits.Length);
-            for (int i = 0; i < ExploredBits.Length; i++)
-                hasher.Add((int)ExploredBits[i]);
+            hasher.Add(exploredBits.Length);
+            for (int i = 0; i < exploredBits.Length; i++)
+                hasher.Add((int)exploredBits[i]);
             ContentHash = hasher.Hash;
         }
 
@@ -25,7 +36,47 @@ namespace AAAGame.MiniMap.FOG3
         public int Height { get; }
         public ulong TerrainHash { get; }
         public ulong ContentHash { get; }
-        internal byte[] ExploredBits { get; }
+        public int RawPayloadByteCount { get; }
+        public int StoredPayloadByteCount { get; }
+
+        internal byte[] DecompressExploredBits()
+        {
+            var result = new byte[RawPayloadByteCount];
+            using (var input = new MemoryStream(compressedExploredBits, false))
+            using (var inflater = new DeflateStream(input, CompressionMode.Decompress))
+            {
+                int offset = 0;
+                while (offset < result.Length)
+                {
+                    int read = inflater.Read(result, offset, result.Length - offset);
+                    if (read <= 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"Fog checkpoint payload ended early. expected={result.Length}, actual={offset}.");
+                    }
+
+                    offset += read;
+                }
+
+                if (inflater.ReadByte() >= 0)
+                    throw new InvalidOperationException("Fog checkpoint payload contains trailing decompressed data.");
+            }
+
+            return result;
+        }
+
+        private static byte[] Compress(byte[] source)
+        {
+            using (var output = new MemoryStream())
+            {
+                using (var deflater = new DeflateStream(
+                           output,
+                           System.IO.Compression.CompressionLevel.Optimal,
+                           true))
+                    deflater.Write(source, 0, source.Length);
+                return output.ToArray();
+            }
+        }
     }
 
     public sealed class Fog3MapData
@@ -37,6 +88,9 @@ namespace AAAGame.MiniMap.FOG3
         private int exploredCellCount;
         private ulong explorationXorDigest;
         private ulong explorationSumDigest;
+        private ulong explorationVersion;
+        private ulong lastCheckpointExplorationVersion = ulong.MaxValue;
+        private Fog3ExplorationCheckpoint lastExplorationCheckpoint;
 
         public Fog3MapData(Fog3TerrainInfo terrainInfo)
         {
@@ -108,6 +162,7 @@ namespace AAAGame.MiniMap.FOG3
 
             explored[index] = true;
             AddExplorationDigest(index);
+            explorationVersion = checked(explorationVersion + 1);
             IsDirty = true;
             return true;
         }
@@ -119,6 +174,7 @@ namespace AAAGame.MiniMap.FOG3
 
         public void ResetExploration()
         {
+            bool changed = exploredCellCount > 0;
             for (int i = 0; i < explored.Length; i++)
             {
                 explored[i] = false;
@@ -128,19 +184,29 @@ namespace AAAGame.MiniMap.FOG3
             exploredCellCount = 0;
             explorationXorDigest = 0;
             explorationSumDigest = 0;
+            if (changed)
+                explorationVersion = checked(explorationVersion + 1);
 
             IsDirty = true;
         }
 
         public Fog3ExplorationCheckpoint CaptureExplorationCheckpoint()
         {
+            if (lastExplorationCheckpoint != null
+                && lastCheckpointExplorationVersion == explorationVersion)
+            {
+                return lastExplorationCheckpoint;
+            }
+
             var bits = new byte[(explored.Length + 7) / 8];
             for (int i = 0; i < explored.Length; i++)
             {
                 if (explored[i])
                     bits[i >> 3] |= (byte)(1 << (i & 7));
             }
-            return new Fog3ExplorationCheckpoint(Width, Height, terrainHash, bits);
+            lastExplorationCheckpoint = new Fog3ExplorationCheckpoint(Width, Height, terrainHash, bits);
+            lastCheckpointExplorationVersion = explorationVersion;
+            return lastExplorationCheckpoint;
         }
 
         public void RestoreExplorationCheckpoint(Fog3ExplorationCheckpoint checkpoint)
@@ -154,12 +220,13 @@ namespace AAAGame.MiniMap.FOG3
                 throw new System.InvalidOperationException(
                     $"Fog checkpoint terrain mismatch. expected={terrainHash}, actual={checkpoint.TerrainHash}.");
             int expectedByteCount = (explored.Length + 7) / 8;
-            if (checkpoint.ExploredBits.Length != expectedByteCount)
+            if (checkpoint.RawPayloadByteCount != expectedByteCount)
                 throw new System.InvalidOperationException(
-                    $"Fog checkpoint payload size mismatch. expected={expectedByteCount}, actual={checkpoint.ExploredBits.Length}.");
+                    $"Fog checkpoint payload size mismatch. expected={expectedByteCount}, actual={checkpoint.RawPayloadByteCount}.");
+            byte[] exploredBits = checkpoint.DecompressExploredBits();
             for (int i = 0; i < explored.Length; i++)
             {
-                bool nextExplored = (checkpoint.ExploredBits[i >> 3] & (1 << (i & 7))) != 0;
+                bool nextExplored = (exploredBits[i >> 3] & (1 << (i & 7))) != 0;
                 if (nextExplored && !walkable[i])
                     throw new System.InvalidOperationException($"Fog checkpoint marks non-walkable cell index {i} as explored.");
             }
@@ -169,11 +236,14 @@ namespace AAAGame.MiniMap.FOG3
             explorationSumDigest = 0;
             for (int i = 0; i < explored.Length; i++)
             {
-                explored[i] = (checkpoint.ExploredBits[i >> 3] & (1 << (i & 7))) != 0;
+                explored[i] = (exploredBits[i >> 3] & (1 << (i & 7))) != 0;
                 currentVisibility[i] = 0f;
                 if (explored[i])
                     AddExplorationDigest(i);
             }
+            explorationVersion = checked(explorationVersion + 1);
+            lastExplorationCheckpoint = checkpoint;
+            lastCheckpointExplorationVersion = explorationVersion;
             IsDirty = true;
         }
 

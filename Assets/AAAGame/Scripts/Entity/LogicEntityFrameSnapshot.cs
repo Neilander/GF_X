@@ -38,17 +38,14 @@ public sealed class LogicEntityFrameSnapshot
     private readonly ReadOnlyCollection<LogicEntityFrameState> m_ReadOnlyStates;
     private readonly Dictionary<int, int> m_StateIndexByEntityId;
 
-    internal LogicEntityFrameSnapshot(ulong frameId, List<LogicEntityFrameState> states)
+    internal LogicEntityFrameSnapshot()
     {
-        FrameId = frameId;
-        m_States = states ?? throw new ArgumentNullException(nameof(states));
+        m_States = new List<LogicEntityFrameState>();
         m_ReadOnlyStates = m_States.AsReadOnly();
-        m_StateIndexByEntityId = new Dictionary<int, int>(m_States.Count);
-        for (int i = 0; i < m_States.Count; i++)
-            m_StateIndexByEntityId.Add(m_States[i].EntityId.Value, i);
+        m_StateIndexByEntityId = new Dictionary<int, int>();
     }
 
-    public ulong FrameId { get; }
+    public ulong FrameId { get; private set; }
     public IReadOnlyList<LogicEntityFrameState> States => m_ReadOnlyStates;
 
     public bool TryGet(LogicEntityId entityId, out LogicEntityFrameState state)
@@ -79,18 +76,16 @@ public sealed class LogicEntityFrameSnapshot
             throw new ArgumentNullException(nameof(entity));
         return GetRequired(entity.LogicEntityId);
     }
-}
 
-public static class LogicEntityFrameSnapshotBuilder
-{
-    public static LogicEntityFrameSnapshot Build(ulong frameId, IList<IEntityContext> entities)
+    internal void Capture(ulong frameId, IList<IEntityContext> entities)
     {
         if (frameId == 0)
             throw new ArgumentOutOfRangeException(nameof(frameId), "Frame snapshot id must be positive.");
         if (entities == null)
             throw new ArgumentNullException(nameof(entities));
 
-        var states = new List<LogicEntityFrameState>(entities.Count);
+        m_States.Clear();
+        m_StateIndexByEntityId.Clear();
         for (int i = 0; i < entities.Count; i++)
         {
             IEntityContext entity = entities[i];
@@ -98,8 +93,6 @@ public static class LogicEntityFrameSnapshotBuilder
                 throw new InvalidOperationException($"LogicEntityFrameSnapshotBuilder.Build failed: entity at index {i} is null.");
             if (!entity.LogicEntityId.IsValid)
                 throw new InvalidOperationException($"LogicEntityFrameSnapshotBuilder.Build failed: entity at index {i} has an invalid logic id.");
-
-            FixVector2 position = entity.PositionFixed;
 
             Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(
                 entity.GetProperty(CreatureMainProperty.CollisionRadius));
@@ -116,29 +109,42 @@ public static class LogicEntityFrameSnapshotBuilder
                     $"LogicEntityFrameSnapshotBuilder.Build failed: entity {entity.LogicEntityId.Value} has a zero forward vector.");
             }
 
-            LogicCombatShape combatShape = entity.CombatShape;
-
-            states.Add(new LogicEntityFrameState(
+            m_States.Add(new LogicEntityFrameState(
                 entity.LogicEntityId,
-                position,
+                entity.PositionFixed,
                 forward,
                 collisionRadius,
-                combatShape,
+                entity.CombatShape,
                 entity.Side,
                 entity.Alive));
         }
 
-        states.Sort((left, right) => left.EntityId.CompareTo(right.EntityId));
-        for (int i = 1; i < states.Count; i++)
+        m_States.Sort(CompareStatesByEntityId);
+        for (int i = 0; i < m_States.Count; i++)
         {
-            if (states[i - 1].EntityId == states[i].EntityId)
+            int entityId = m_States[i].EntityId.Value;
+            if (!m_StateIndexByEntityId.TryAdd(entityId, i))
             {
                 throw new InvalidOperationException(
-                    $"LogicEntityFrameSnapshotBuilder.Build failed: duplicate logic entity id {states[i].EntityId.Value}.");
+                    $"LogicEntityFrameSnapshotBuilder.Build failed: duplicate logic entity id {entityId}.");
             }
         }
+        FrameId = frameId;
+    }
 
-        return new LogicEntityFrameSnapshot(frameId, states);
+    private static int CompareStatesByEntityId(LogicEntityFrameState left, LogicEntityFrameState right)
+    {
+        return left.EntityId.CompareTo(right.EntityId);
+    }
+}
+
+public static class LogicEntityFrameSnapshotBuilder
+{
+    public static LogicEntityFrameSnapshot Build(ulong frameId, IList<IEntityContext> entities)
+    {
+        var snapshot = new LogicEntityFrameSnapshot();
+        snapshot.Capture(frameId, entities);
+        return snapshot;
     }
 
 }
@@ -156,13 +162,13 @@ public static class LogicEntityFrameSnapshotService
             if (LogicFrameRuntime.CurrentFrame == 0)
                 throw new InvalidOperationException("LogicEntityFrameSnapshotService cannot capture frame zero.");
 
-            Current = LogicEntityFrameSnapshotBuilder.Build(
-                LogicFrameRuntime.CurrentFrame,
-                EntityRegistry.AllEntities);
+            s_CurrentSnapshot.Capture(LogicFrameRuntime.CurrentFrame, EntityRegistry.AllEntities);
+            Current = s_CurrentSnapshot;
         }
     }
 
     private static readonly SnapshotCaptureListener s_Listener = new SnapshotCaptureListener();
+    private static readonly LogicEntityFrameSnapshot s_CurrentSnapshot = new LogicEntityFrameSnapshot();
 
     public static bool IsActive { get; private set; }
     public static LogicEntityFrameSnapshot Current { get; private set; }

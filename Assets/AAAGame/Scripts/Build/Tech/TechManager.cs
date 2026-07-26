@@ -147,7 +147,7 @@ public class TechManager : GameFrameworkComponent
         int upgradeCost = buildManager.GetBuildingCost(upgradeBuildingId, owner);
         bool built = buildManager.BuildBuildingForTechUpgrade(
             upgradeBuildingId,
-            owner.PositionFixed,
+            owner.LogicFramePositionFixed(),
             owner.BuildingInstanceId);
         if (!built)
             return false;

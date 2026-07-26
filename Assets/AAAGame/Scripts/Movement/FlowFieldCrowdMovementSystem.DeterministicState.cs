@@ -1,9 +1,99 @@
-﻿﻿﻿﻿using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public static partial class FlowFieldCrowdMovementSystem
 {
+    public readonly struct RuntimeMemoryCensus
+    {
+        public RuntimeMemoryCensus(
+            int portalAccessCount,
+            long portalAccessPayloadBytes,
+            int sectorPathCount,
+            long sectorPathPayloadBytes,
+            int flowTileCount,
+            long flowTilePayloadBytes,
+            int sharedGoalCount,
+            long sharedGoalEntryCount,
+            int pendingSharedGoalCount,
+            long pendingSharedGoalEntryCount,
+            int startPortalChoiceCount,
+            int corridorLookupCount,
+            long corridorEntryCount,
+            int agentSpatialBucketCount,
+            long agentSpatialBucketCapacity,
+            int combatTargetSlotCount,
+            long combatTargetSlotEntryCount,
+            int navigationGoalReservationCapacity,
+            int distanceEstimateCellCapacity,
+            int runtimeArrayPoolArrayCount,
+            long runtimeArrayPoolPayloadBytes,
+            int worldCount,
+            long worldArrayPayloadBytes)
+        {
+            PortalAccessCount = portalAccessCount;
+            PortalAccessPayloadBytes = portalAccessPayloadBytes;
+            SectorPathCount = sectorPathCount;
+            SectorPathPayloadBytes = sectorPathPayloadBytes;
+            FlowTileCount = flowTileCount;
+            FlowTilePayloadBytes = flowTilePayloadBytes;
+            SharedGoalCount = sharedGoalCount;
+            SharedGoalEntryCount = sharedGoalEntryCount;
+            PendingSharedGoalCount = pendingSharedGoalCount;
+            PendingSharedGoalEntryCount = pendingSharedGoalEntryCount;
+            StartPortalChoiceCount = startPortalChoiceCount;
+            CorridorLookupCount = corridorLookupCount;
+            CorridorEntryCount = corridorEntryCount;
+            AgentSpatialBucketCount = agentSpatialBucketCount;
+            AgentSpatialBucketCapacity = agentSpatialBucketCapacity;
+            CombatTargetSlotCount = combatTargetSlotCount;
+            CombatTargetSlotEntryCount = combatTargetSlotEntryCount;
+            NavigationGoalReservationCapacity = navigationGoalReservationCapacity;
+            DistanceEstimateCellCapacity = distanceEstimateCellCapacity;
+            RuntimeArrayPoolArrayCount = runtimeArrayPoolArrayCount;
+            RuntimeArrayPoolPayloadBytes = runtimeArrayPoolPayloadBytes;
+            WorldCount = worldCount;
+            WorldArrayPayloadBytes = worldArrayPayloadBytes;
+        }
+
+        public int PortalAccessCount { get; }
+        public long PortalAccessPayloadBytes { get; }
+        public int SectorPathCount { get; }
+        public long SectorPathPayloadBytes { get; }
+        public int FlowTileCount { get; }
+        public long FlowTilePayloadBytes { get; }
+        public int SharedGoalCount { get; }
+        public long SharedGoalEntryCount { get; }
+        public int PendingSharedGoalCount { get; }
+        public long PendingSharedGoalEntryCount { get; }
+        public int StartPortalChoiceCount { get; }
+        public int CorridorLookupCount { get; }
+        public long CorridorEntryCount { get; }
+        public int AgentSpatialBucketCount { get; }
+        public long AgentSpatialBucketCapacity { get; }
+        public int CombatTargetSlotCount { get; }
+        public long CombatTargetSlotEntryCount { get; }
+        public int NavigationGoalReservationCapacity { get; }
+        public int DistanceEstimateCellCapacity { get; }
+        public int RuntimeArrayPoolArrayCount { get; }
+        public long RuntimeArrayPoolPayloadBytes { get; }
+        public int WorldCount { get; }
+        public long WorldArrayPayloadBytes { get; }
+
+        public override string ToString()
+        {
+            return
+                $"portal={PortalAccessCount}/{PortalAccessPayloadBytes}, " +
+                $"sectorPath={SectorPathCount}/{SectorPathPayloadBytes}, " +
+                $"flow={FlowTileCount}/{FlowTilePayloadBytes}, " +
+                $"shared={SharedGoalCount}/{SharedGoalEntryCount}, pendingShared={PendingSharedGoalCount}/{PendingSharedGoalEntryCount}, " +
+                $"startPortal={StartPortalChoiceCount}, corridor={CorridorLookupCount}/{CorridorEntryCount}, " +
+                $"spatial={AgentSpatialBucketCount}/{AgentSpatialBucketCapacity}, combatSlots={CombatTargetSlotCount}/{CombatTargetSlotEntryCount}, " +
+                $"goalWorkspace={NavigationGoalReservationCapacity}/{DistanceEstimateCellCapacity}, " +
+                $"arrayPool={RuntimeArrayPoolArrayCount}/{RuntimeArrayPoolPayloadBytes}, world={WorldCount}/{WorldArrayPayloadBytes}";
+        }
+    }
+
     private const ulong DeterministicHashCheckpointIntervalFrames = 30;
     private static ulong _deterministicHashCheckpointFrame;
     private static ulong _deterministicHashCheckpointValue;
@@ -15,8 +105,247 @@ public static partial class FlowFieldCrowdMovementSystem
     private static ulong _costStampAuthorityContentHash;
     private static int _sharedGoalBuildJobAuthorityHashRefreshCount;
     private static long _sharedGoalBuildJobAuthorityHashVisitedEntryCount;
+    private static readonly List<int> AuthorityWorldKeys = new List<int>();
+    private static readonly List<int> AuthorityCircleObstacleIds = new List<int>();
+    private static readonly List<int> AuthorityBoxObstacleIds = new List<int>();
+    private static readonly List<int> AuthorityAgentIds = new List<int>();
+    private static readonly List<MovingTargetAnchorKey> AuthorityMovingTargetKeys = new List<MovingTargetAnchorKey>();
+    private static readonly List<FixedPortalOwnerKey> AuthorityFixedPortalOwnerKeys = new List<FixedPortalOwnerKey>();
+    private static readonly List<int> AuthorityCorridorWorldVersions = new List<int>();
+    private static readonly List<int> AuthorityWorkingWorldPortalIds = new List<int>();
+    private static readonly List<int> SortedIntValues = new List<int>();
+    private static readonly HashSet<FlowTileCacheKey> AuthorityPendingFlowTileKeys = new HashSet<FlowTileCacheKey>();
+    private static readonly HashSet<SharedGoalFieldKey> AuthorityPendingSharedGoalKeys = new HashSet<SharedGoalFieldKey>();
 
     public static int DiagnosticCheckpointRefreshCount { get; private set; }
+
+    public static RuntimeMemoryCensus CaptureRuntimeMemoryCensus()
+    {
+        long portalAccessPayloadBytes = 0;
+        foreach (SectorPortalAccessEntry entry in SectorPortalAccessCache.Values)
+        {
+            if (entry == null)
+                throw new InvalidOperationException("Flow memory census encountered a null portal-access entry.");
+            portalAccessPayloadBytes = checked(
+                portalAccessPayloadBytes
+                + GetArrayPayloadBytes(entry.DeterministicIntegration, sizeof(long))
+                + GetArrayPayloadBytes(entry.QuantizedIntegration, sizeof(ushort)));
+        }
+
+        long sectorPathPayloadBytes = 0;
+        foreach (SectorPathCacheEntry entry in SectorPathCache.Values)
+        {
+            if (entry == null)
+                throw new InvalidOperationException("Flow memory census encountered a null sector-path entry.");
+            sectorPathPayloadBytes = checked(
+                sectorPathPayloadBytes
+                + GetArrayPayloadBytes(entry.SectorIds, sizeof(int))
+                + GetArrayPayloadBytes(entry.PortalIds, sizeof(int)));
+        }
+
+        long flowTilePayloadBytes = 0;
+        foreach (FlowTileCacheEntry tile in DeterministicFlowTileCache.Values)
+        {
+            if (tile == null)
+                throw new InvalidOperationException("Flow memory census encountered a null deterministic tile.");
+            flowTilePayloadBytes = checked(
+                flowTilePayloadBytes
+                + GetArrayPayloadBytes(tile.FlowFieldValues, sizeof(byte))
+                + GetArrayPayloadBytes(tile.DeterministicIntegrationCosts, sizeof(int))
+                + GetArrayPayloadBytes(tile.DeterministicFlowDirectionIndices, sizeof(byte))
+                + GetArrayPayloadBytes(tile.GoalCells, sizeof(int) * 2)
+                + GetArrayPayloadBytes(tile.DebugIntegrationPayload?.Values, sizeof(float)));
+        }
+
+        long sharedGoalEntryCount = 0;
+        foreach (SharedGoalField field in SharedGoalFields.Values)
+        {
+            if (field == null)
+                throw new InvalidOperationException("Flow memory census encountered a null shared-goal field.");
+            sharedGoalEntryCount = checked(
+                sharedGoalEntryCount
+                + field.NodeCosts.Count
+                + field.NextNodeTowardGoal.Count
+                + field.FirstCrossingPortalByStartNode.Count
+                + field.CompletedDemandStartSectorIds.Count
+                + field.CompletedDemandStartCellIndices.Count);
+        }
+
+        long pendingSharedGoalEntryCount = 0;
+        for (LinkedListNode<SharedGoalFieldBuildJob> node = SharedGoalFieldBuildQueue.First; node != null; node = node.Next)
+        {
+            SharedGoalFieldBuildJob job = node.Value
+                ?? throw new InvalidOperationException("Flow memory census encountered a null shared-goal job.");
+            pendingSharedGoalEntryCount = checked(
+                pendingSharedGoalEntryCount
+                + (job.PortalOpenSet?.Count ?? 0)
+                + (job.DemandStartSectorIds?.Count ?? 0)
+                + (job.DemandStartSectorByCellIndex?.Count ?? 0)
+                + (job.SettledPortalNodes?.Count ?? 0));
+            if (job.Field != null)
+            {
+                pendingSharedGoalEntryCount = checked(
+                    pendingSharedGoalEntryCount
+                    + job.Field.NodeCosts.Count
+                    + job.Field.NextNodeTowardGoal.Count
+                    + job.Field.FirstCrossingPortalByStartNode.Count
+                    + job.Field.CompletedDemandStartSectorIds.Count
+                    + job.Field.CompletedDemandStartCellIndices.Count);
+            }
+        }
+
+        long corridorEntryCount = 0;
+        foreach (FixedCorridorLookup lookup in FixedCorridorLookupByWorldVersion.Values)
+        {
+            if (lookup == null)
+                throw new InvalidOperationException("Flow memory census encountered a null corridor lookup.");
+            corridorEntryCount = checked(
+                corridorEntryCount
+                + lookup.OrientationsByCell.Count
+                + lookup.CandidateByCell.Count
+                + lookup.ComponentIdByCell.Count
+                + lookup.DescriptorByComponentId.Count
+                + lookup.CompletedComponentIds.Count
+                + lookup.ResolvedNonCorridorCells.Count
+                + lookup.PendingStartIndices.Count
+                + (lookup.ActiveBuildJob?.Queue.Count ?? 0)
+                + (lookup.ActiveBuildJob?.ExternalEndpointCells.Count ?? 0)
+                + (lookup.ActiveBuildJob?.TerminalEndpointCells.Count ?? 0));
+        }
+
+        long agentSpatialBucketCapacity = 0;
+        foreach (List<AgentRuntimeData> bucket in AgentSpatialBuckets.Values)
+        {
+            if (bucket == null)
+                throw new InvalidOperationException("Flow memory census encountered a null agent spatial bucket.");
+            agentSpatialBucketCapacity = checked(agentSpatialBucketCapacity + bucket.Capacity);
+        }
+
+        long combatTargetSlotEntryCount = 0;
+        foreach (CombatTargetSlotEntry entry in CombatTargetSlotCache.Values)
+        {
+            if (entry == null)
+                throw new InvalidOperationException("Flow memory census encountered a null combat target slot entry.");
+            combatTargetSlotEntryCount = checked(
+                combatTargetSlotEntryCount
+                + (entry.Points?.Length ?? 0)
+                + (entry.CellX?.Length ?? 0)
+                + (entry.CellY?.Length ?? 0)
+                + (entry.IslandIds?.Length ?? 0));
+        }
+
+        int runtimeArrayPoolArrayCount = 0;
+        long runtimeArrayPoolPayloadBytes = 0;
+        AddArrayPoolCensus(IntegrationArrayPool, sizeof(float), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
+        AddArrayPoolCensus(BoolArrayPool, sizeof(byte), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
+        AddArrayPoolCensus(ByteArrayPool, sizeof(byte), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
+        AddArrayPoolCensus(IntArrayPool, sizeof(int), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
+
+        int worldCount = 0;
+        long worldArrayPayloadBytes = 0;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state == null)
+                throw new InvalidOperationException("Flow memory census encountered a null world state.");
+            AddWorldArrayCensus(state.World, ref worldCount, ref worldArrayPayloadBytes);
+            AddWorldArrayCensus(state.BuildJob?.WorkingWorld, ref worldCount, ref worldArrayPayloadBytes);
+            AddWorldArrayCensus(state.RuntimeDirtyJob?.WorkingWorld, ref worldCount, ref worldArrayPayloadBytes);
+        }
+
+        return new RuntimeMemoryCensus(
+            SectorPortalAccessCache.Count,
+            portalAccessPayloadBytes,
+            SectorPathCache.Count,
+            sectorPathPayloadBytes,
+            DeterministicFlowTileCache.Count,
+            flowTilePayloadBytes,
+            SharedGoalFields.Count,
+            sharedGoalEntryCount,
+            SharedGoalFieldBuildQueue.Count,
+            pendingSharedGoalEntryCount,
+            StartPortalChoiceCache.Count,
+            FixedCorridorLookupByWorldVersion.Count,
+            corridorEntryCount,
+            AgentSpatialBuckets.Count,
+            agentSpatialBucketCapacity,
+            CombatTargetSlotCache.Count,
+            combatTargetSlotEntryCount,
+            NavigationGoalReservations.Capacity,
+            DistanceEstimateCosts.Length,
+            runtimeArrayPoolArrayCount,
+            runtimeArrayPoolPayloadBytes,
+            worldCount,
+            worldArrayPayloadBytes);
+    }
+
+    private static long GetArrayPayloadBytes(Array array, int elementSize)
+    {
+        return array == null ? 0L : checked((long)array.Length * elementSize);
+    }
+
+    private static void AddArrayPoolCensus<T>(
+        Dictionary<int, Stack<T[]>> pool,
+        int elementSize,
+        ref int arrayCount,
+        ref long payloadBytes)
+    {
+        foreach (Stack<T[]> arrays in pool.Values)
+        {
+            foreach (T[] array in arrays)
+            {
+                if (array == null)
+                    throw new InvalidOperationException("Flow memory census encountered a null pooled array.");
+                arrayCount = checked(arrayCount + 1);
+                payloadBytes = checked(payloadBytes + (long)array.Length * elementSize);
+            }
+        }
+    }
+
+    private static void AddWorldArrayCensus(
+        NavigationWorld world,
+        ref int worldCount,
+        ref long payloadBytes)
+    {
+        if (world == null)
+            return;
+
+        worldCount = checked(worldCount + 1);
+        payloadBytes = checked(
+            payloadBytes
+            + GetArrayPayloadBytes(world.BaseWalkableMask, sizeof(byte))
+            + GetArrayPayloadBytes(world.BaseNeighborTraversalMask, sizeof(byte))
+            + GetArrayPayloadBytes(world.SourceCostField, sizeof(byte))
+            + GetArrayPayloadBytes(world.WalkableMask, sizeof(byte))
+            + GetArrayPayloadBytes(world.CostField, sizeof(byte))
+            + GetArrayPayloadBytes(world.CellNavAnchors, sizeof(float) * 3)
+            + GetArrayPayloadBytes(world.CellNavAnchorsFixedXZ, sizeof(long) * 2)
+            + GetArrayPayloadBytes(world.NeighborTraversalMask, sizeof(byte))
+            + GetArrayPayloadBytes(world.IslandIds, sizeof(int)));
+        if (world.SectorCostFields != null)
+        {
+            for (int i = 0; i < world.SectorCostFields.Length; i++)
+                payloadBytes = checked(payloadBytes + GetArrayPayloadBytes(world.SectorCostFields[i], sizeof(byte)));
+        }
+        if (world.Sectors != null)
+        {
+            for (int i = 0; i < world.Sectors.Length; i++)
+                payloadBytes = checked(payloadBytes + GetArrayPayloadBytes(world.Sectors[i]?.LocalComponentIds, sizeof(int)));
+        }
+        if (world.Portals != null)
+        {
+            for (int i = 0; i < world.Portals.Length; i++)
+            {
+                PortalData portal = world.Portals[i];
+                if (portal == null)
+                    continue;
+                payloadBytes = checked(
+                    payloadBytes
+                    + GetArrayPayloadBytes(portal.CellsA, sizeof(int) * 2)
+                    + GetArrayPayloadBytes(portal.CellsB, sizeof(int) * 2));
+            }
+        }
+    }
+
 
     // Full navigation diagnostics include authored Unity boundary and float shadow fields.
     // This hash is useful for same-runtime investigation, but is not an authority replay hash.
@@ -73,24 +402,57 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void WriteDeterministicFrameDigest(LogicStateHasher hasher)
     {
+        WriteDeterministicFrameDigestWithCheckpoints(hasher);
+    }
+
+    public static LogicNavigationAuthorityDigest WriteDeterministicFrameDigestWithCheckpoints(
+        LogicStateHasher hasher)
+    {
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
+        ValidateAuthorityDigestCallBoundary();
 
         hasher.Add(0x4E41564652414D45UL);
         hasher.Add(_committedWorldSetHash);
         AddAuthorityNavigationConfig(hasher);
+        ulong worldAndConfigHash = hasher.Hash;
         AddDeterministicCheckpointLiveState(hasher);
+        ulong checkpointLiveStateHash = hasher.Hash;
         AddAuthorityWorldProgress(hasher);
+        ulong worldProgressHash = hasher.Hash;
         AddAuthorityRuntimeObstacles(hasher);
+        ulong runtimeObstaclesHash = hasher.Hash;
         AddAuthorityAgents(hasher);
+        ulong agentsHash = hasher.Hash;
         AddAuthorityNavigationCaches(hasher);
+        ulong cachesHash = hasher.Hash;
         AddAuthorityDeterministicFlowTiles(hasher);
+        ulong flowTilesHash = hasher.Hash;
         AddAuthorityFlowTileBuildQueue(hasher);
+        ulong flowTileBuildQueueHash = hasher.Hash;
         AddAuthoritySharedGoalFieldBuildQueue(hasher);
+        ulong sharedGoalBuildQueueHash = hasher.Hash;
         AddAuthorityMovingTargetAnchors(hasher);
+        ulong movingTargetAnchorsHash = hasher.Hash;
         AddGoalReservations(hasher);
+        ulong goalReservationsHash = hasher.Hash;
         AddAuthorityFixedPortalOwners(hasher);
+        ulong fixedPortalOwnersHash = hasher.Hash;
         AddAuthorityFixedCorridorBuilds(hasher);
+        return new LogicNavigationAuthorityDigest(
+            worldAndConfigHash,
+            checkpointLiveStateHash,
+            worldProgressHash,
+            runtimeObstaclesHash,
+            agentsHash,
+            cachesHash,
+            flowTilesHash,
+            flowTileBuildQueueHash,
+            sharedGoalBuildQueueHash,
+            movingTargetAnchorsHash,
+            goalReservationsHash,
+            fixedPortalOwnersHash,
+            hasher.Hash);
     }
 
     private static void AddAuthorityNavigationConfig(LogicStateHasher hasher)
@@ -357,6 +719,12 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthorityDeterministicFlowTiles(LogicStateHasher hasher)
     {
+        if (FlowTileCache.Count != DeterministicFlowTileCache.Count)
+        {
+            throw new InvalidOperationException(
+                $"Navigation flow-tile cache mirror count mismatch. view={FlowTileCache.Count}, authority={DeterministicFlowTileCache.Count}.");
+        }
+
         hasher.Add(0x4E41564155544854UL);
         hasher.Add(DeterministicFlowTileCache.Count);
         hasher.Add(_deterministicFlowTileAuthorityContentHash);
@@ -366,6 +734,12 @@ public static partial class FlowFieldCrowdMovementSystem
             FlowTileCacheEntry tile = pair.Value;
             if (tile == null)
                 throw new InvalidOperationException("Navigation authority digest encountered a null deterministic tile.");
+            if (!FlowTileCache.TryGetValue(pair.Key, out FlowTileCacheEntry mirroredTile)
+                || !ReferenceEquals(tile, mirroredTile))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation flow-tile cache mirror mismatch. key={FormatTileKey(pair.Key)}.");
+            }
 
             ulong token = 14695981039346656037UL;
             AddAuthorityToken(ref token, pair.Key.WorldVersion);
@@ -387,22 +761,25 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         hasher.Add(0x4E41564155544851UL);
         hasher.Add(FlowTileBuildQueue.Count);
+        AuthorityPendingFlowTileKeys.Clear();
         for (LinkedListNode<FlowTileBuildJob> node = FlowTileBuildQueue.First; node != null; node = node.Next)
         {
             FlowTileBuildJob job = node.Value;
             if (job == null)
                 throw new InvalidOperationException("Navigation authority digest encountered a null flow-tile build job.");
+            if (!AuthorityPendingFlowTileKeys.Add(job.BuildKey.CacheKey))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation flow-tile build queue contains a duplicate key. key={FormatTileKey(job.BuildKey.CacheKey)}.");
+            }
             AddFlowTileBuildKey(hasher, job.BuildKey);
             AddPathHandle(hasher, job.HandleSnapshot);
         }
 
+        ValidatePendingFlowTileBuildIndex();
         ulong pendingSetHash = 0;
-        int pendingUncommittedCount = 0;
         foreach (FlowTileCacheKey key in PendingFlowTileBuildJobs)
         {
-            if (DeterministicFlowTileCache.ContainsKey(key))
-                continue;
-            pendingUncommittedCount++;
             ulong token = 14695981039346656037UL;
             AddAuthorityToken(ref token, key.WorldVersion);
             AddAuthorityToken(ref token, key.SectorId);
@@ -415,8 +792,26 @@ public static partial class FlowFieldCrowdMovementSystem
             pendingSetHash ^= token;
         }
 
-        hasher.Add(pendingUncommittedCount);
+        hasher.Add(PendingFlowTileBuildJobs.Count);
         hasher.Add(pendingSetHash);
+    }
+
+    private static void ValidatePendingFlowTileBuildIndex()
+    {
+        if (PendingFlowTileBuildJobs.Count != AuthorityPendingFlowTileKeys.Count)
+        {
+            throw new InvalidOperationException(
+                $"Navigation pending flow-tile index count mismatch. queue={AuthorityPendingFlowTileKeys.Count}, index={PendingFlowTileBuildJobs.Count}.");
+        }
+
+        foreach (FlowTileCacheKey key in PendingFlowTileBuildJobs)
+        {
+            if (!AuthorityPendingFlowTileKeys.Contains(key))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation pending flow-tile index contains a key absent from the queue. key={FormatTileKey(key)}.");
+            }
+        }
     }
 
     private static void AddAuthorityToken(ref ulong hash, int value)
@@ -588,16 +983,23 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         hasher.Add(0x4E415653484A4F42UL);
         hasher.Add(SharedGoalFieldBuildQueue.Count);
+        AuthorityPendingSharedGoalKeys.Clear();
         for (LinkedListNode<SharedGoalFieldBuildJob> node = SharedGoalFieldBuildQueue.First; node != null; node = node.Next)
         {
             SharedGoalFieldBuildJob job = node.Value;
             if (job == null)
                 throw new InvalidOperationException("Navigation authority digest encountered a null shared-goal build job.");
+            if (!AuthorityPendingSharedGoalKeys.Add(job.Key))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation shared-goal build queue contains a duplicate key. key={job.Key}.");
+            }
 
             EnsureSharedGoalBuildJobAuthorityProgressHash(job);
             hasher.Add(job.AuthorityProgressHash);
         }
 
+        ValidatePendingSharedGoalBuildIndex();
         ulong pendingSetHash = 0;
         foreach (SharedGoalFieldKey key in PendingSharedGoalFieldBuildJobs)
         {
@@ -607,6 +1009,24 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         hasher.Add(PendingSharedGoalFieldBuildJobs.Count);
         hasher.Add(pendingSetHash);
+    }
+
+    private static void ValidatePendingSharedGoalBuildIndex()
+    {
+        if (PendingSharedGoalFieldBuildJobs.Count != AuthorityPendingSharedGoalKeys.Count)
+        {
+            throw new InvalidOperationException(
+                $"Navigation pending shared-goal index count mismatch. queue={AuthorityPendingSharedGoalKeys.Count}, index={PendingSharedGoalFieldBuildJobs.Count}.");
+        }
+
+        foreach (SharedGoalFieldKey key in PendingSharedGoalFieldBuildJobs)
+        {
+            if (!AuthorityPendingSharedGoalKeys.Contains(key))
+            {
+                throw new InvalidOperationException(
+                    $"Navigation pending shared-goal index contains a key absent from the queue. key={key}.");
+            }
+        }
     }
 
     private static void EnsureSharedGoalBuildJobAuthorityProgressHash(SharedGoalFieldBuildJob job)
@@ -775,17 +1195,18 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthorityWorldProgress(LogicStateHasher hasher)
     {
-        var keys = new List<int>(WorldStates.Keys);
-        keys.Sort();
+        AuthorityWorldKeys.Clear();
+        AuthorityWorldKeys.AddRange(WorldStates.Keys);
+        AuthorityWorldKeys.Sort();
         hasher.Add(0x4E41564155544857UL);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        hasher.Add(AuthorityWorldKeys.Count);
+        for (int i = 0; i < AuthorityWorldKeys.Count; i++)
         {
-            WorldRuntimeState state = WorldStates[keys[i]];
+            WorldRuntimeState state = WorldStates[AuthorityWorldKeys[i]];
             if (state == null)
-                throw new InvalidOperationException($"Navigation authority digest encountered a null world state. agentType={keys[i]}.");
+                throw new InvalidOperationException($"Navigation authority digest encountered a null world state. agentType={AuthorityWorldKeys[i]}.");
 
-            hasher.Add(keys[i]);
+            hasher.Add(AuthorityWorldKeys[i]);
             hasher.Add(state.IsDirty);
             AddSortedInts(hasher, state.DirtyRuntimeObstacleSectors);
             AddAuthorityWorldBuildProgress(hasher, state.BuildJob);
@@ -818,10 +1239,12 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.PortalAddCursor);
         hasher.Add(job.PortalTransitionCursor);
         hasher.Add(job.PortalTransitionFromCursor);
+        AddAuthorityPortalBuildProgress(hasher, job.PortalRebuiltPortals);
+        AddAuthorityPendingPortalAccessProgress(hasher, job.PendingPortalAccessEntries);
         hasher.Add(job.HasAuthorityInputHash);
         if (job.HasAuthorityInputHash)
             hasher.Add(job.AuthorityInputHash);
-        hasher.Add(job.WorkingWorld != null ? job.WorkingWorld.Version : 0);
+        AddAuthorityWorkingWorldProgress(hasher, job.WorkingWorld);
     }
 
     private static void AddAuthorityRuntimeDirtyProgress(LogicStateHasher hasher, RuntimeDirtyRebuildJob job)
@@ -851,13 +1274,283 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.PortalAddCursor);
         hasher.Add(job.PortalTransitionCursor);
         hasher.Add(job.PortalTransitionFromCursor);
+        AddAuthorityLongSetProgress(hasher, job.PortalProcessedBoundaries);
+        AddAuthorityPortalBuildProgress(hasher, job.PortalRebuiltPortals);
+        AddAuthorityPendingPortalAccessProgress(hasher, job.PendingPortalAccessEntries);
+        ValidateDerivedSortedIntSnapshot(job.DirtySectors, job.DirtySectorIds, "runtime-dirty sectors");
+        ValidateDerivedSortedIntSnapshot(job.CostDirtySectors, job.CostDirtySectorIds, "runtime-dirty cost sectors");
+        if (job.PortalTransitionSectorIds != null)
+        {
+            ValidateDerivedSortedIntSnapshot(
+                job.PortalTransitionDirtySectors,
+                job.PortalTransitionSectorIds,
+                "runtime-dirty portal transition sectors");
+        }
+        else if (job.PortalStage >= RuntimeDirtyPortalStage.RebuildTransitions)
+        {
+            throw new InvalidOperationException(
+                $"Navigation runtime-dirty portal transition index is missing. stage={job.PortalStage}.");
+        }
         AddSortedInts(hasher, job.DirtySectors);
         AddSortedInts(hasher, job.CostDirtySectors);
         AddSortedInts(hasher, job.PortalTransitionDirtySectors);
         if (!job.HasAuthorityInputHash)
             throw new InvalidOperationException("Runtime-dirty authority digest encountered a job without an input hash.");
         hasher.Add(job.AuthorityInputHash);
-        hasher.Add(job.WorkingWorld != null ? job.WorkingWorld.Version : 0);
+        AddAuthorityWorkingWorldProgress(hasher, job.WorkingWorld);
+    }
+
+    private static void AddAuthorityPortalBuildProgress(LogicStateHasher hasher, IList<PortalData> portals)
+    {
+        hasher.Add(portals != null);
+        if (portals == null)
+            return;
+
+        hasher.Add(portals.Count);
+        for (int i = 0; i < portals.Count; i++)
+            AddAuthorityPortalData(hasher, portals[i], $"pending index={i}");
+    }
+
+    private static void ValidateDerivedSortedIntSnapshot(
+        ICollection<int> authorityValues,
+        IList<int> orderedSnapshot,
+        string label)
+    {
+        if (authorityValues == null)
+            throw new InvalidOperationException($"Navigation {label} authority set is null.");
+        if (orderedSnapshot == null)
+            throw new InvalidOperationException($"Navigation {label} derived index is null.");
+
+        SortedIntValues.Clear();
+        SortedIntValues.AddRange(authorityValues);
+        SortedIntValues.Sort();
+        if (orderedSnapshot.Count != SortedIntValues.Count)
+        {
+            throw new InvalidOperationException(
+                $"Navigation {label} derived index count mismatch. index={orderedSnapshot.Count}, authority={SortedIntValues.Count}.");
+        }
+
+        for (int i = 0; i < SortedIntValues.Count; i++)
+        {
+            if (orderedSnapshot[i] != SortedIntValues[i])
+            {
+                throw new InvalidOperationException(
+                    $"Navigation {label} derived index mismatch. index={i}, ordered={orderedSnapshot[i]}, authority={SortedIntValues[i]}.");
+            }
+        }
+    }
+
+    private static void ValidateAuthorityDigestCallBoundary()
+    {
+        if (_navigationWorkBudgetActive || _remainingNavigationWorkOperations != 0)
+        {
+            throw new InvalidOperationException(
+                $"Navigation authority digest cannot run inside a navigation work-budget scope. active={_navigationWorkBudgetActive}, remaining={_remainingNavigationWorkOperations}.");
+        }
+    }
+
+    private static void AddAuthorityPendingPortalAccessProgress(
+        LogicStateHasher hasher,
+        IList<PendingSectorPortalAccess> entries)
+    {
+        hasher.Add(entries != null);
+        if (entries == null)
+            return;
+
+        hasher.Add(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            PendingSectorPortalAccess entry = entries[i];
+            hasher.Add(entry.SectorId);
+            hasher.Add(entry.PortalId);
+            hasher.Add(entry.SectorDirtyVersion);
+            hasher.Add(entry.IsAnalyticClearSector);
+        }
+    }
+
+    private static void AddAuthorityLongSetProgress(LogicStateHasher hasher, ICollection<long> values)
+    {
+        hasher.Add(values != null);
+        if (values == null)
+            return;
+
+        ulong contentHash = 0;
+        foreach (long value in values)
+        {
+            ulong token = 14695981039346656037UL;
+            AddAuthorityToken(ref token, value);
+            contentHash ^= token;
+        }
+
+        hasher.Add(values.Count);
+        hasher.Add(contentHash);
+    }
+
+    private static void AddAuthorityWorkingWorldProgress(LogicStateHasher hasher, NavigationWorld world)
+    {
+        hasher.Add(world != null);
+        if (world == null)
+            return;
+
+        hasher.Add(0x574F524B574F524CUL);
+        hasher.Add(world.Version);
+        hasher.Add(world.AgentTypeId);
+        hasher.Add(world.Width);
+        hasher.Add(world.Height);
+        world.ValidateAuthorityGridMetadata("AddAuthorityWorkingWorldProgress");
+        hasher.Add(world.CellSizeGridRaw);
+        hasher.Add(world.EncodedCenterClearanceFixedRaw);
+        hasher.Add(world.AgentRadiusFixedRaw);
+        hasher.Add(world.OriginXGridRaw);
+        hasher.Add(world.OriginZGridRaw);
+        hasher.Add(world.IslandCount);
+        hasher.Add(world.MainIslandId);
+        hasher.Add(world.MainIslandSize);
+        hasher.Add(world.SectorSizeInCells);
+        hasher.Add(world.SectorCountX);
+        hasher.Add(world.SectorCountY);
+        hasher.Add(world.NextPortalId);
+
+        AddAuthorityOptionalBoolArray(hasher, world.BaseWalkableMask);
+        AddAuthorityOptionalByteArray(hasher, world.BaseNeighborTraversalMask);
+        AddAuthorityOptionalByteArray(hasher, world.SourceCostField);
+        AddAuthorityOptionalBoolArray(hasher, world.WalkableMask);
+        AddAuthorityOptionalByteArray(hasher, world.CostField);
+        AddAuthorityOptionalByteArrayArray(hasher, world.SectorCostFields);
+        AddAuthorityOptionalNavigationAnchors(hasher, world.CellNavAnchorsFixedXZ);
+        AddAuthorityOptionalByteArray(hasher, world.NeighborTraversalMask);
+        AddAuthorityOptionalIntArray(hasher, world.IslandIds);
+
+        int sectorCount = world.Sectors?.Length ?? -1;
+        hasher.Add(sectorCount);
+        if (world.Sectors != null)
+        {
+            for (int i = 0; i < world.Sectors.Length; i++)
+            {
+                SectorData sector = world.Sectors[i];
+                hasher.Add(sector != null);
+                if (sector == null)
+                    continue;
+
+                hasher.Add(sector.SectorId);
+                hasher.Add(sector.StartX);
+                hasher.Add(sector.StartY);
+                hasher.Add(sector.Width);
+                hasher.Add(sector.Height);
+                hasher.Add(sector.DirtyVersion);
+                hasher.Add(sector.IsClearCostField);
+                hasher.Add(sector.IsClearFlowTile);
+                hasher.Add(sector.UniformIslandId);
+                hasher.Add(sector.LocalComponentCount);
+                AddAuthorityOptionalIntArray(hasher, sector.LocalComponentIds);
+                AddOrderedInts(hasher, sector.PortalIds);
+                hasher.Add(sector.PortalTransitions.Count);
+                for (int transitionIndex = 0; transitionIndex < sector.PortalTransitions.Count; transitionIndex++)
+                {
+                    PortalTransition transition = sector.PortalTransitions[transitionIndex]
+                                                  ?? throw new InvalidOperationException(
+                                                      $"Navigation authority digest encountered a null working-world transition. sector={sector.SectorId}, index={transitionIndex}.");
+                    hasher.Add(transition.FromPortalId);
+                    hasher.Add(transition.ToPortalId);
+                    hasher.Add(transition.DeterministicCost);
+                }
+            }
+        }
+
+        int portalArrayCount = world.Portals?.Length ?? -1;
+        hasher.Add(portalArrayCount);
+        if (world.Portals != null)
+        {
+            for (int i = 0; i < world.Portals.Length; i++)
+                AddAuthorityPortalData(hasher, world.Portals[i], $"array index={i}");
+        }
+
+        hasher.Add(world.PortalsById != null);
+        if (world.PortalsById != null)
+        {
+            AuthorityWorkingWorldPortalIds.Clear();
+            AuthorityWorkingWorldPortalIds.AddRange(world.PortalsById.Keys);
+            AuthorityWorkingWorldPortalIds.Sort();
+            hasher.Add(AuthorityWorkingWorldPortalIds.Count);
+            for (int i = 0; i < AuthorityWorkingWorldPortalIds.Count; i++)
+            {
+                int portalId = AuthorityWorkingWorldPortalIds[i];
+                hasher.Add(portalId);
+                PortalData portal = world.PortalsById[portalId];
+                if (portal == null || portal.PortalId != portalId)
+                {
+                    throw new InvalidOperationException(
+                        $"Navigation authority digest encountered an invalid working-world portal lookup. key={portalId}, value={portal?.PortalId.ToString() ?? "null"}.");
+                }
+                AddAuthorityPortalData(hasher, portal, $"lookup key={portalId}");
+            }
+        }
+
+        AddSortedPortalSignatures(hasher, world.PortalIdsBySignature);
+        AddSortedInts(hasher, world.UsedPortalIds);
+    }
+
+    private static void AddAuthorityPortalData(LogicStateHasher hasher, PortalData portal, string location)
+    {
+        if (portal == null)
+            throw new InvalidOperationException($"Navigation authority digest encountered a null portal. {location}.");
+        if (portal.CellsA == null || portal.CellsB == null)
+        {
+            throw new InvalidOperationException(
+                $"Navigation authority digest encountered a portal without cell payloads. portal={portal.PortalId}, {location}.");
+        }
+
+        hasher.Add(portal.PortalId);
+        hasher.Add(portal.SectorAId);
+        hasher.Add(portal.SectorBId);
+        AddVector2IntArray(hasher, portal.CellsA);
+        AddVector2IntArray(hasher, portal.CellsB);
+        hasher.Add(portal.WidthCells);
+        hasher.Add(portal.IsNarrow);
+        hasher.Add(portal.IsVerticalBoundary);
+    }
+
+    private static void AddAuthorityOptionalBoolArray(LogicStateHasher hasher, bool[] values)
+    {
+        hasher.Add(values != null);
+        if (values != null)
+            AddBoolArray(hasher, values);
+    }
+
+    private static void AddAuthorityOptionalByteArray(LogicStateHasher hasher, byte[] values)
+    {
+        hasher.Add(values != null);
+        if (values != null)
+            AddByteArray(hasher, values);
+    }
+
+    private static void AddAuthorityOptionalIntArray(LogicStateHasher hasher, int[] values)
+    {
+        hasher.Add(values != null);
+        if (values != null)
+            AddIntArray(hasher, values);
+    }
+
+    private static void AddAuthorityOptionalByteArrayArray(LogicStateHasher hasher, byte[][] values)
+    {
+        hasher.Add(values != null);
+        if (values == null)
+            return;
+
+        hasher.Add(values.Length);
+        for (int i = 0; i < values.Length; i++)
+        {
+            hasher.Add(values[i] != null);
+            if (values[i] != null)
+                AddByteArray(hasher, values[i]);
+        }
+    }
+
+    private static void AddAuthorityOptionalNavigationAnchors(LogicStateHasher hasher, FixVector2[] values)
+    {
+        hasher.Add(values != null);
+        if (values != null)
+            AddNavigationAnchorFixedXZArray(hasher, values);
     }
 
     private static void RefreshWorldBuildAuthorityInputHash(WorldBuildJob job)
@@ -997,29 +1690,31 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthorityRuntimeObstacles(LogicStateHasher hasher)
     {
-        var circleIds = new List<int>(CircleObstacles.Keys);
-        circleIds.Sort();
+        AuthorityCircleObstacleIds.Clear();
+        AuthorityCircleObstacleIds.AddRange(CircleObstacles.Keys);
+        AuthorityCircleObstacleIds.Sort();
         hasher.Add(0x4E4156415554484FUL);
-        hasher.Add(circleIds.Count);
-        for (int i = 0; i < circleIds.Count; i++)
+        hasher.Add(AuthorityCircleObstacleIds.Count);
+        for (int i = 0; i < AuthorityCircleObstacleIds.Count; i++)
         {
-            CircleObstacle obstacle = CircleObstacles[circleIds[i]];
+            CircleObstacle obstacle = CircleObstacles[AuthorityCircleObstacleIds[i]];
             if (obstacle == null)
-                throw new InvalidOperationException($"Navigation authority digest encountered a null circle obstacle. id={circleIds[i]}.");
+                throw new InvalidOperationException($"Navigation authority digest encountered a null circle obstacle. id={AuthorityCircleObstacleIds[i]}.");
             hasher.Add(obstacle.Id);
             hasher.Add(obstacle.PositionFixed.x.RawValue);
             hasher.Add(obstacle.PositionFixed.y.RawValue);
             hasher.Add(obstacle.RadiusFixed.RawValue);
         }
 
-        var boxIds = new List<int>(BoxObstacles.Keys);
-        boxIds.Sort();
-        hasher.Add(boxIds.Count);
-        for (int i = 0; i < boxIds.Count; i++)
+        AuthorityBoxObstacleIds.Clear();
+        AuthorityBoxObstacleIds.AddRange(BoxObstacles.Keys);
+        AuthorityBoxObstacleIds.Sort();
+        hasher.Add(AuthorityBoxObstacleIds.Count);
+        for (int i = 0; i < AuthorityBoxObstacleIds.Count; i++)
         {
-            BoxObstacle obstacle = BoxObstacles[boxIds[i]];
+            BoxObstacle obstacle = BoxObstacles[AuthorityBoxObstacleIds[i]];
             if (obstacle == null)
-                throw new InvalidOperationException($"Navigation authority digest encountered a null box obstacle. id={boxIds[i]}.");
+                throw new InvalidOperationException($"Navigation authority digest encountered a null box obstacle. id={AuthorityBoxObstacleIds[i]}.");
             hasher.Add(obstacle.Id);
             hasher.Add(obstacle.CenterFixed.x.RawValue);
             hasher.Add(obstacle.CenterFixed.y.RawValue);
@@ -1082,15 +1777,29 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthorityAgents(LogicStateHasher hasher)
     {
-        var ids = new List<int>(Agents.Keys);
-        ids.Sort();
-        hasher.Add(0x4E41564155544841UL);
-        hasher.Add(ids.Count);
-        for (int i = 0; i < ids.Count; i++)
+        AuthorityAgentIds.Clear();
+        AuthorityAgentIds.AddRange(Agents.Keys);
+        AuthorityAgentIds.Sort();
+        if (OrderedAgentIds.Count != AuthorityAgentIds.Count)
         {
-            AgentRuntimeData agent = Agents[ids[i]];
+            throw new InvalidOperationException(
+                $"Navigation ordered-agent index count mismatch. ordered={OrderedAgentIds.Count}, authority={AuthorityAgentIds.Count}.");
+        }
+        for (int i = 0; i < AuthorityAgentIds.Count; i++)
+        {
+            if (OrderedAgentIds[i] != AuthorityAgentIds[i])
+            {
+                throw new InvalidOperationException(
+                    $"Navigation ordered-agent index mismatch. index={i}, ordered={OrderedAgentIds[i]}, authority={AuthorityAgentIds[i]}.");
+            }
+        }
+        hasher.Add(0x4E41564155544841UL);
+        hasher.Add(AuthorityAgentIds.Count);
+        for (int i = 0; i < AuthorityAgentIds.Count; i++)
+        {
+            AgentRuntimeData agent = Agents[AuthorityAgentIds[i]];
             if (agent == null || agent.NavState == null)
-                throw new InvalidOperationException($"Navigation authority digest encountered an invalid agent. id={ids[i]}.");
+                throw new InvalidOperationException($"Navigation authority digest encountered an invalid agent. id={AuthorityAgentIds[i]}.");
 
             AgentNavState nav = agent.NavState;
             hasher.Add(agent.Id);
@@ -1122,19 +1831,14 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthorityMovingTargetAnchors(LogicStateHasher hasher)
     {
-        var keys = new List<MovingTargetAnchorKey>(MovingTargetAnchors.Keys);
-        keys.Sort((left, right) =>
-        {
-            int result = left.TargetId.CompareTo(right.TargetId);
-            if (result != 0) return result;
-            result = left.AgentTypeId.CompareTo(right.AgentTypeId);
-            return result != 0 ? result : left.IslandId.CompareTo(right.IslandId);
-        });
+        AuthorityMovingTargetKeys.Clear();
+        AuthorityMovingTargetKeys.AddRange(MovingTargetAnchors.Keys);
+        AuthorityMovingTargetKeys.Sort(CompareMovingTargetAnchorKeys);
         hasher.Add(0x4E4156415554484DUL);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        hasher.Add(AuthorityMovingTargetKeys.Count);
+        for (int i = 0; i < AuthorityMovingTargetKeys.Count; i++)
         {
-            MovingTargetAnchor anchor = MovingTargetAnchors[keys[i]];
+            MovingTargetAnchor anchor = MovingTargetAnchors[AuthorityMovingTargetKeys[i]];
             if (anchor == null)
                 throw new InvalidOperationException("Navigation authority digest encountered a null moving-target anchor.");
             hasher.Add(anchor.Key.TargetId);
@@ -1162,13 +1866,14 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthorityFixedPortalOwners(LogicStateHasher hasher)
     {
-        var keys = new List<FixedPortalOwnerKey>(FixedPortalOwners.Keys);
-        keys.Sort(CompareFixedPortalOwnerKeys);
+        AuthorityFixedPortalOwnerKeys.Clear();
+        AuthorityFixedPortalOwnerKeys.AddRange(FixedPortalOwners.Keys);
+        AuthorityFixedPortalOwnerKeys.Sort(CompareFixedPortalOwnerKeys);
         hasher.Add(0x4E4156504F574E52UL);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        hasher.Add(AuthorityFixedPortalOwnerKeys.Count);
+        for (int i = 0; i < AuthorityFixedPortalOwnerKeys.Count; i++)
         {
-            FixedPortalOwnerState state = FixedPortalOwners[keys[i]]
+            FixedPortalOwnerState state = FixedPortalOwners[AuthorityFixedPortalOwnerKeys[i]]
                 ?? throw new InvalidOperationException("Navigation authority digest encountered a null fixed portal owner.");
             hasher.Add(state.Key.WorldVersion);
             hasher.Add(state.Key.AgentTypeId);
@@ -1184,14 +1889,15 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthorityFixedCorridorBuilds(LogicStateHasher hasher)
     {
-        var worldVersions = new List<int>(FixedCorridorLookupByWorldVersion.Keys);
-        worldVersions.Sort();
+        AuthorityCorridorWorldVersions.Clear();
+        AuthorityCorridorWorldVersions.AddRange(FixedCorridorLookupByWorldVersion.Keys);
+        AuthorityCorridorWorldVersions.Sort();
         hasher.Add(0x4E4156434F525244UL);
         hasher.Add(FixedCorridorBuildOperationQuota);
-        hasher.Add(worldVersions.Count);
-        for (int i = 0; i < worldVersions.Count; i++)
+        hasher.Add(AuthorityCorridorWorldVersions.Count);
+        for (int i = 0; i < AuthorityCorridorWorldVersions.Count; i++)
         {
-            int worldVersion = worldVersions[i];
+            int worldVersion = AuthorityCorridorWorldVersions[i];
             FixedCorridorLookup lookup = FixedCorridorLookupByWorldVersion[worldVersion]
                 ?? throw new InvalidOperationException("Navigation authority digest encountered a null fixed corridor lookup.");
             hasher.Add(worldVersion);
@@ -1216,6 +1922,15 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(job.Head);
             hasher.Add(job.Queue.Count);
             hasher.Add(job.ComponentCellContentHash);
+            int unprocessedQueueCount = job.Queue.Count - job.Head;
+            if (unprocessedQueueCount < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Navigation authority digest encountered an invalid fixed-corridor queue. head={job.Head}, count={job.Queue.Count}.");
+            }
+            hasher.Add(unprocessedQueueCount);
+            for (int queueIndex = job.Head; queueIndex < job.Queue.Count; queueIndex++)
+                hasher.Add(job.Queue[queueIndex]);
             hasher.Add(job.ExternalEndpointCells.Count);
             hasher.Add(job.ExternalEndpointContentHash);
             hasher.Add(job.ExternalEndpointOverflow);
@@ -1766,6 +2481,14 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(key.GoalSectorDirtyVersion);
     }
 
+    private static int CompareMovingTargetAnchorKeys(MovingTargetAnchorKey left, MovingTargetAnchorKey right)
+    {
+        int result = left.TargetId.CompareTo(right.TargetId);
+        if (result != 0) return result;
+        result = left.AgentTypeId.CompareTo(right.AgentTypeId);
+        return result != 0 ? result : left.IslandId.CompareTo(right.IslandId);
+    }
+
     private static int CompareSectorPathKeys(SectorPathCacheKey left, SectorPathCacheKey right)
     {
         int result = left.WorldVersion.CompareTo(right.WorldVersion);
@@ -1837,11 +2560,12 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(-1);
             return;
         }
-        var sorted = new List<int>(values);
-        sorted.Sort();
-        hasher.Add(sorted.Count);
-        for (int i = 0; i < sorted.Count; i++)
-            hasher.Add(sorted[i]);
+        SortedIntValues.Clear();
+        SortedIntValues.AddRange(values);
+        SortedIntValues.Sort();
+        hasher.Add(SortedIntValues.Count);
+        for (int i = 0; i < SortedIntValues.Count; i++)
+            hasher.Add(SortedIntValues[i]);
     }
 
     private static void AddOrderedInts(LogicStateHasher hasher, IList<int> values)

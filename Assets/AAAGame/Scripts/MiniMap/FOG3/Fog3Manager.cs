@@ -65,6 +65,10 @@ namespace AAAGame.MiniMap.FOG3
         [Tooltip("兜底重建前等待的真实时间。立即初始化失败时才主要依赖它。")]
         [SerializeField] private float sceneRebuildDelay;
 
+        [Header("性能诊断")]
+        [Tooltip("输出 FOG3 热路径性能日志。默认关闭，仅用于临时诊断。")]
+        [SerializeField] private bool logPerformanceDiagnostics;
+
         private readonly Dictionary<int, int> entityRevealers = new Dictionary<int, int>();
         private readonly Dictionary<Transform, int> transformRevealers = new Dictionary<Transform, int>();
         private readonly Dictionary<int, Fog3EntityVisibilityState> enemyVisibilityStates = new Dictionary<int, Fog3EntityVisibilityState>();
@@ -91,6 +95,83 @@ namespace AAAGame.MiniMap.FOG3
         public Fog3MapData MapData => controller?.MapData;
         public bool IsInitialized => isInitialized;
         public bool BlocksHiddenRevealByEnemyStronghold => enableEnemyStrongholdHiddenVisionBlock;
+
+        public void GetEnemyUnitVisibilityDiagnostics(
+            out int aliveLogicCount,
+            out int boundViewCount,
+            out int trackedViewCount,
+            out int renderableViewCount,
+            out int fogVisibleViewCount,
+            out int rendererMismatchViewCount)
+        {
+            aliveLogicCount = 0;
+            boundViewCount = 0;
+            trackedViewCount = 0;
+            renderableViewCount = 0;
+            fogVisibleViewCount = 0;
+            rendererMismatchViewCount = 0;
+
+            IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
+            if (allEntities == null)
+                throw new InvalidOperationException("Fog3Manager enemy visibility diagnostics require EntityRegistry.AllEntities.");
+
+            for (int i = 0; i < allEntities.Count; i++)
+            {
+                IEntityContext logicEntity = allEntities[i]
+                                             ?? throw new InvalidOperationException(
+                                                 $"Fog3Manager enemy visibility diagnostics found a null logic entity at index {i}.");
+                if (!logicEntity.Alive || logicEntity.Side != SideType.EnemySide)
+                    continue;
+                if (logicEntity is IBuildingLogicContext building && building.BuildingData != null)
+                    continue;
+
+                aliveLogicCount++;
+                if (!TryResolveBoundView(logicEntity, out MAEntity view))
+                    continue;
+
+                boundViewCount++;
+                if (enemyVisibilityStates.TryGetValue(view.Id, out Fog3EntityVisibilityState state)
+                    && state.Entity == view)
+                {
+                    trackedViewCount++;
+                    if (HasAnyRenderer(state.Renderers))
+                        renderableViewCount++;
+                    if (state.LastCellState == Fog3CellState.Visible)
+                        fogVisibleViewCount++;
+                    if (!state.HasAppliedState || HasRendererStateMismatch(state.Renderers, state.LastShouldRender))
+                        rendererMismatchViewCount++;
+                }
+            }
+        }
+
+        private static bool HasAnyRenderer(Renderer[] renderers)
+        {
+            if (renderers == null)
+                return false;
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] != null)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool HasRendererStateMismatch(Renderer[] renderers, bool expectedEnabled)
+        {
+            if (renderers == null)
+                return false;
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer != null && renderer.enabled != expectedEnabled)
+                    return true;
+            }
+
+            return false;
+        }
 
         public void LogDiagnostics(string phase)
         {
@@ -363,7 +444,7 @@ namespace AAAGame.MiniMap.FOG3
                     long visibilityStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                     try
                     {
-                        controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
+                        controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock, logPerformanceDiagnostics);
                     }
                     finally
                     {
@@ -525,15 +606,18 @@ namespace AAAGame.MiniMap.FOG3
 
             for (int i = 0; i < allEntities.Count; i++)
             {
-                if (allEntities[i] is not EntityBase entityBase)
+                IEntityContext logicEntity = allEntities[i]
+                                             ?? throw new InvalidOperationException(
+                                                 $"Fog3Manager.RefreshRevealHiddenByHeroGhostState found a null logic entity at index {i}.");
+                if (!TryResolveBoundView(logicEntity, out MAEntity entityView))
                     continue;
 
-                if (!entityRevealers.ContainsKey(entityBase.Id))
+                if (!entityRevealers.ContainsKey(entityView.Id))
                     continue;
 
                 SetEntityRevealerAllowRevealHidden(
-                    entityBase.Id,
-                    ShouldEntityRevealerAllowRevealHidden(entityBase, hasPlayerSideGhostHero));
+                    entityView.Id,
+                    ShouldEntityRevealerAllowRevealHidden(entityView, hasPlayerSideGhostHero));
             }
         }
 
@@ -679,7 +763,7 @@ namespace AAAGame.MiniMap.FOG3
             currentOverlayHeight = ResolveOverlayHeight(terrainInfo);
             currentOverlayWorldOffset = ResolveOverlayWorldOffset(terrainInfo, currentOverlayHeight);
             overlayView.Build(terrainInfo, viewSettings, currentOverlayHeight, ResolveHeightSampleMask(), currentOverlayWorldOffset);
-            overlayView.Render(controller.MapData);
+            overlayView.Render(controller.MapData, logPerformanceDiagnostics);
         }
 
         private LayerMask ResolveHeightSampleMask()
@@ -940,7 +1024,7 @@ namespace AAAGame.MiniMap.FOG3
             currentOverlayHeight = nextOverlayHeight;
             currentOverlayWorldOffset = nextOverlayWorldOffset;
             overlayView.Build(currentTerrainInfo, viewSettings, currentOverlayHeight, ResolveHeightSampleMask(), currentOverlayWorldOffset);
-            overlayView.Render(controller.MapData);
+            overlayView.Render(controller.MapData, logPerformanceDiagnostics);
 
             if (isCloudLayer)
                 Log.Info($"[FOG3] Adjusted cloud overlay height to {currentOverlayHeight:F2} for the active camera.");
@@ -998,7 +1082,7 @@ namespace AAAGame.MiniMap.FOG3
             try
             {
                 if (overlayView != null)
-                    overlayView.Render(mapData);
+                    overlayView.Render(mapData, logPerformanceDiagnostics);
             }
             finally
             {
@@ -1019,7 +1103,7 @@ namespace AAAGame.MiniMap.FOG3
             long visibilityStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
-                controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock);
+                controller.UpdateVisibility(lineOfSightOccluderMask, lineOfSightEyeHeight, softEdgeWidth, useLineOfSight, enableEnemyStrongholdHiddenVisionBlock, logPerformanceDiagnostics);
             }
             finally
             {
@@ -1299,9 +1383,9 @@ namespace AAAGame.MiniMap.FOG3
 
             for (int i = 0; i < allEntities.Count; i++)
             {
-                if (allEntities[i] is HeroEntity soldier
-                    && soldier.Side == SideType.PlayerSide
-                    && soldier.IsGhostState)
+                if (allEntities[i] is IHeroLogicContext hero
+                    && hero.Side == SideType.PlayerSide
+                    && hero.IsGhostState)
                 {
                     return true;
                 }
@@ -1388,108 +1472,111 @@ namespace AAAGame.MiniMap.FOG3
             HealthBarComp.ResetFogVisibilityDiagnostics();
             try
             {
-            if (mapData == null)
-            {
-                ResetEnemyVisibilityStates();
-                return;
-            }
-
-            IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
-            if (allEntities == null || allEntities.Count == 0)
-            {
-                ResetEnemyVisibilityStates();
-                return;
-            }
-
-            updatedEnemyVisibilityIds.Clear();
-
-            for (int i = 0; i < allEntities.Count; i++)
-            {
-                allEntityCount++;
-                if (allEntities[i] is not MAEntity entity)
-                    continue;
-
-                if (!entity.Alive || entity.Side == SideType.PlayerSide)
-                    continue;
-
-                enemyEntityCount++;
-                int entityId = entity.Id;
-                if (entity is BuildingEntity building && building.buildingData != null && building.buildingData.Lv == 0)
+                if (mapData == null)
                 {
-                    lv0BuildingCount++;
-                    if (enemyVisibilityStates.ContainsKey(entityId))
-                        enemyVisibilityStates.Remove(entityId);
-
-                    building.RefreshLv0PhaseVisibility();
-                    HealthBarComp.SetFogVisible(entityId, false);
-                    continue;
+                    ResetEnemyVisibilityStates();
+                    return;
                 }
 
-                if (!enemyVisibilityStates.TryGetValue(entityId, out Fog3EntityVisibilityState visibilityState) || visibilityState.Entity != entity)
+                IList<IEntityContext> allEntities = EntityRegistry.AllEntities;
+                if (allEntities == null || allEntities.Count == 0)
                 {
-                    visibilityState = new Fog3EntityVisibilityState(entity, entity is BuildingEntity);
-                    enemyVisibilityStates[entityId] = visibilityState;
-                    stateCreatedCount++;
+                    ResetEnemyVisibilityStates();
+                    return;
                 }
 
-                updatedEnemyVisibilityIds.Add(entityId);
+                updatedEnemyVisibilityIds.Clear();
 
-                long resolveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                Fog3CellState cellState = ResolveEntityFogCellState(mapData, entity.transform.position);
-                resolveTicks += System.Diagnostics.Stopwatch.GetTimestamp() - resolveStartTicks;
-                Fog3CellState previousCellState = visibilityState.LastCellState;
-                if (previousCellState != cellState)
+                for (int i = 0; i < allEntities.Count; i++)
                 {
-                    visibilityState.LastCellState = cellState;
-                    cellChangedCount++;
-                    long eventStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                    FireEnemyVisibilityChanged(visibilityState, previousCellState, cellState);
-                    eventTicks += System.Diagnostics.Stopwatch.GetTimestamp() - eventStartTicks;
+                    allEntityCount++;
+                    IEntityContext logicEntity = allEntities[i]
+                                                 ?? throw new InvalidOperationException(
+                                                     $"Fog3Manager.UpdateEnemyVisibilityByFog found a null logic entity at index {i}.");
+                    if (!logicEntity.Alive || logicEntity.Side == SideType.PlayerSide)
+                        continue;
+
+                    enemyEntityCount++;
+                    if (!TryResolveBoundView(logicEntity, out MAEntity entity))
+                        continue;
+
+                    int entityId = entity.Id;
+                    if (entity is BuildingEntity building && building.buildingData != null && building.buildingData.Lv == 0)
+                    {
+                        lv0BuildingCount++;
+                        if (enemyVisibilityStates.ContainsKey(entityId))
+                            enemyVisibilityStates.Remove(entityId);
+
+                        building.RefreshLv0PhaseVisibility();
+                        HealthBarComp.SetFogVisible(entityId, false);
+                        continue;
+                    }
+
+                    if (!enemyVisibilityStates.TryGetValue(entityId, out Fog3EntityVisibilityState visibilityState) || visibilityState.Entity != entity)
+                    {
+                        visibilityState = new Fog3EntityVisibilityState(entity, entity is BuildingEntity);
+                        enemyVisibilityStates[entityId] = visibilityState;
+                        stateCreatedCount++;
+                    }
+
+                    updatedEnemyVisibilityIds.Add(entityId);
+
+                    long resolveStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    Fog3CellState cellState = ResolveEntityFogCellState(mapData, entity.transform.position);
+                    resolveTicks += System.Diagnostics.Stopwatch.GetTimestamp() - resolveStartTicks;
+                    Fog3CellState previousCellState = visibilityState.LastCellState;
+                    if (previousCellState != cellState)
+                    {
+                        visibilityState.LastCellState = cellState;
+                        cellChangedCount++;
+                        long eventStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        FireEnemyVisibilityChanged(visibilityState, previousCellState, cellState);
+                        eventTicks += System.Diagnostics.Stopwatch.GetTimestamp() - eventStartTicks;
+                    }
+
+                    long applyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    applyCallCount++;
+                    if (ApplyEntityVisibilityState(visibilityState, cellState, out int rendererWrites, out int animatorWrites))
+                    {
+                        rendererWriteCount += rendererWrites;
+                        animatorWriteCount += animatorWrites;
+                    }
+                    else
+                    {
+                        applySkippedCount++;
+                    }
+
+                    applyTicks += System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
                 }
 
-                long applyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                applyCallCount++;
-                if (ApplyEntityVisibilityState(visibilityState, cellState, out int rendererWrites, out int animatorWrites))
+                if (enemyVisibilityStates.Count == updatedEnemyVisibilityIds.Count)
+                    return;
+
+                long staleStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                staleEnemyVisibilityIds.Clear();
+                foreach (KeyValuePair<int, Fog3EntityVisibilityState> pair in enemyVisibilityStates)
                 {
-                    rendererWriteCount += rendererWrites;
-                    animatorWriteCount += animatorWrites;
-                }
-                else
-                {
-                    applySkippedCount++;
-                }
-
-                applyTicks += System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
-            }
-
-            if (enemyVisibilityStates.Count == updatedEnemyVisibilityIds.Count)
-                return;
-
-            long staleStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            staleEnemyVisibilityIds.Clear();
-            foreach (KeyValuePair<int, Fog3EntityVisibilityState> pair in enemyVisibilityStates)
-            {
-                if (!updatedEnemyVisibilityIds.Contains(pair.Key))
-                    staleEnemyVisibilityIds.Add(pair.Key);
-            }
-
-            for (int i = 0; i < staleEnemyVisibilityIds.Count; i++)
-            {
-                int staleEntityId = staleEnemyVisibilityIds[i];
-                if (!enemyVisibilityStates.TryGetValue(staleEntityId, out Fog3EntityVisibilityState staleState))
-                    continue;
-
-                if (staleState.LastCellState != Fog3CellState.Outside)
-                {
-                    FireEnemyVisibilityChanged(staleState, staleState.LastCellState, Fog3CellState.Outside);
-                    staleState.LastCellState = Fog3CellState.Outside;
+                    if (!updatedEnemyVisibilityIds.Contains(pair.Key))
+                        staleEnemyVisibilityIds.Add(pair.Key);
                 }
 
-                RestoreEntityVisibilityState(staleState);
-                enemyVisibilityStates.Remove(staleEntityId);
-                staleCount++;
-            }
-            staleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - staleStartTicks;
+                for (int i = 0; i < staleEnemyVisibilityIds.Count; i++)
+                {
+                    int staleEntityId = staleEnemyVisibilityIds[i];
+                    if (!enemyVisibilityStates.TryGetValue(staleEntityId, out Fog3EntityVisibilityState staleState))
+                        continue;
+
+                    if (staleState.LastCellState != Fog3CellState.Outside)
+                    {
+                        FireEnemyVisibilityChanged(staleState, staleState.LastCellState, Fog3CellState.Outside);
+                        staleState.LastCellState = Fog3CellState.Outside;
+                    }
+
+                    RestoreEntityVisibilityState(staleState);
+                    enemyVisibilityStates.Remove(staleEntityId);
+                    staleCount++;
+                }
+                staleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - staleStartTicks;
             }
             finally
             {
@@ -1504,7 +1591,7 @@ namespace AAAGame.MiniMap.FOG3
                     out long healthInternalTicks);
 
                 double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-                if (elapsedMs >= 2.0)
+                if (logPerformanceDiagnostics && elapsedMs >= 2.0)
                 {
                     UnityEngine.Debug.LogFormat(
                         LogType.Log,
@@ -1535,6 +1622,19 @@ namespace AAAGame.MiniMap.FOG3
                         healthInternalTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
                 }
             }
+        }
+
+        private static bool TryResolveBoundView(IEntityContext logicEntity, out MAEntity view)
+        {
+            if (logicEntity == null)
+                throw new ArgumentNullException(nameof(logicEntity));
+            if (!logicEntity.LogicEntityId.IsValid)
+            {
+                throw new InvalidOperationException(
+                    "Fog3Manager cannot resolve a View for a logic entity with an invalid logic entity id.");
+            }
+
+            return LogicEntityLifecycleService.TryGetBoundView(logicEntity.LogicEntityId, out view);
         }
 
         private static int SetRenderersEnabled(Renderer[] renderers, bool enabled)

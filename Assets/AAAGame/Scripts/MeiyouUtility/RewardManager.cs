@@ -8,6 +8,7 @@ public static class LogicRewardStateService
 {
 	private static int s_EnemyDeadSupplyRemainder;
 	private static readonly HashSet<string> s_PlayerCapturedStrongholdIdsInCurrentInvade = new HashSet<string>();
+	private static readonly List<string> s_DeterministicCapturedStrongholdIds = new List<string>();
 
 	public static int PlayerCapturedStrongholdCount => s_PlayerCapturedStrongholdIdsInCurrentInvade.Count;
 
@@ -48,11 +49,12 @@ public static class LogicRewardStateService
 			throw new ArgumentNullException(nameof(hasher));
 
 		hasher.Add(s_EnemyDeadSupplyRemainder);
-		var capturedStrongholdIds = new List<string>(s_PlayerCapturedStrongholdIdsInCurrentInvade);
-		capturedStrongholdIds.Sort(StringComparer.Ordinal);
-		hasher.Add(capturedStrongholdIds.Count);
-		for (int i = 0; i < capturedStrongholdIds.Count; i++)
-			hasher.Add(capturedStrongholdIds[i]);
+		s_DeterministicCapturedStrongholdIds.Clear();
+		s_DeterministicCapturedStrongholdIds.AddRange(s_PlayerCapturedStrongholdIdsInCurrentInvade);
+		s_DeterministicCapturedStrongholdIds.Sort(StringComparer.Ordinal);
+		hasher.Add(s_DeterministicCapturedStrongholdIds.Count);
+		for (int i = 0; i < s_DeterministicCapturedStrongholdIds.Count; i++)
+			hasher.Add(s_DeterministicCapturedStrongholdIds[i]);
 	}
 }
 
@@ -430,15 +432,17 @@ public class RewardManager : GameFrameworkComponent
 
 	private static bool TryGetPlayerPosition(out Vector3 position)
 	{
-		if (EntityRegistry.Player is MAEntity playerEntity)
+		IEntityContext player = EntityRegistry.Player;
+		if (player != null
+			&& LogicEntityLifecycleService.TryGetBoundView(player.LogicEntityId, out MAEntity playerEntity))
 		{
 			position = playerEntity.transform.position;
 			return true;
 		}
 
-		if (EntityRegistry.Player != null)
+		if (player != null)
 		{
-			position = EntityRegistry.Player.Position;
+			position = player.Position;
 			return true;
 		}
 

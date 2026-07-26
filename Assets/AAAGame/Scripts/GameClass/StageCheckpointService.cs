@@ -128,11 +128,14 @@ public static class StageCheckpointService
     public const int CurrentProtocolVersion = 1;
 
     private static readonly List<StageCheckpoint> s_History = new List<StageCheckpoint>();
+    private static readonly HashSet<Fog3ExplorationCheckpoint> s_RetainedFogSnapshots = new HashSet<Fog3ExplorationCheckpoint>();
     private static string s_LevelId;
     private static int s_NextPhaseEpoch;
 
     public static bool IsActive { get; private set; }
     public static ReadOnlyCollection<StageCheckpoint> History => s_History.AsReadOnly();
+    public static int RetainedFogSnapshotCount => s_RetainedFogSnapshots.Count;
+    public static long RetainedFogPayloadBytes { get; private set; }
 
     public static void BeginSession(string levelId)
     {
@@ -144,6 +147,8 @@ public static class StageCheckpointService
         s_LevelId = levelId;
         s_NextPhaseEpoch = 1;
         s_History.Clear();
+        s_RetainedFogSnapshots.Clear();
+        RetainedFogPayloadBytes = 0;
         IsActive = true;
     }
 
@@ -154,6 +159,8 @@ public static class StageCheckpointService
         s_LevelId = null;
         s_NextPhaseEpoch = 0;
         s_History.Clear();
+        s_RetainedFogSnapshots.Clear();
+        RetainedFogPayloadBytes = 0;
         IsActive = false;
     }
 
@@ -184,6 +191,11 @@ public static class StageCheckpointService
             LogicPersistentIdAllocator.CaptureSnapshot());
 
         s_History.Add(checkpoint);
+        if (s_RetainedFogSnapshots.Add(checkpoint.FogExploration))
+        {
+            RetainedFogPayloadBytes = checked(
+                RetainedFogPayloadBytes + checkpoint.FogExploration.StoredPayloadByteCount);
+        }
         s_NextPhaseEpoch = checked(s_NextPhaseEpoch + 1);
         return checkpoint;
     }
@@ -249,12 +261,17 @@ public static class StageCheckpointRuntimeCoordinator
         Fog3MapData fogMap = RequireFogMap();
         StageCheckpoint checkpoint = StageCheckpointService.CaptureStageStart(phase.ToString(), fogMap);
         Log.Info(
-            "[StageCheckpoint] Captured. level={0}, stage={1}, epoch={2}, phase={3}, buildings={4}, hash={5}.",
+            "[StageCheckpoint] Captured. level={0}, stage={1}, epoch={2}, phase={3}, buildings={4}, " +
+            "fogRaw={5}, fogStored={6}, retainedFogSnapshots={7}, retainedFogBytes={8}, hash={9}.",
             checkpoint.LevelId,
             checkpoint.StageId,
             checkpoint.PhaseEpoch,
             checkpoint.Phase,
             checkpoint.Buildings.Count,
+            checkpoint.FogExploration.RawPayloadByteCount,
+            checkpoint.FogExploration.StoredPayloadByteCount,
+            StageCheckpointService.RetainedFogSnapshotCount,
+            StageCheckpointService.RetainedFogPayloadBytes,
             checkpoint.ContentHash);
     }
 

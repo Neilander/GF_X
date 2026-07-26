@@ -7,6 +7,7 @@ public static class LogicProductionConditionState
     private static readonly Dictionary<string, int> s_HeavyKillCountByStrongholdDay = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, int> s_SurvivorCountByStrongholdDay = new(StringComparer.Ordinal);
     private static readonly HashSet<string> s_BuildingDamagedByStrongholdDay = new(StringComparer.Ordinal);
+    private static readonly List<string> s_DeterministicStringKeys = new List<string>();
 
     public static void ClearAll()
     {
@@ -156,11 +157,10 @@ public static class LogicProductionConditionState
         AddSortedDictionary(hasher, s_KillCountByStrongholdDay);
         AddSortedDictionary(hasher, s_HeavyKillCountByStrongholdDay);
         AddSortedDictionary(hasher, s_SurvivorCountByStrongholdDay);
-        var damaged = new List<string>(s_BuildingDamagedByStrongholdDay);
-        damaged.Sort(StringComparer.Ordinal);
-        hasher.Add(damaged.Count);
-        for (int i = 0; i < damaged.Count; i++)
-            hasher.Add(damaged[i]);
+        FillSortedStringKeys(s_BuildingDamagedByStrongholdDay);
+        hasher.Add(s_DeterministicStringKeys.Count);
+        for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
+            hasher.Add(s_DeterministicStringKeys[i]);
     }
 
     private static int GetValue(Dictionary<string, int> values, string key) =>
@@ -184,13 +184,20 @@ public static class LogicProductionConditionState
 
     private static void AddSortedDictionary(LogicStateHasher hasher, Dictionary<string, int> values)
     {
-        var keys = new List<string>(values.Keys);
-        keys.Sort(StringComparer.Ordinal);
-        hasher.Add(keys.Count);
-        for (int i = 0; i < keys.Count; i++)
+        FillSortedStringKeys(values.Keys);
+        hasher.Add(s_DeterministicStringKeys.Count);
+        for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
         {
-            hasher.Add(keys[i]);
-            hasher.Add(values[keys[i]]);
+            string key = s_DeterministicStringKeys[i];
+            hasher.Add(key);
+            hasher.Add(values[key]);
         }
+    }
+
+    private static void FillSortedStringKeys(IEnumerable<string> values)
+    {
+        s_DeterministicStringKeys.Clear();
+        s_DeterministicStringKeys.AddRange(values);
+        s_DeterministicStringKeys.Sort(StringComparer.Ordinal);
     }
 }
