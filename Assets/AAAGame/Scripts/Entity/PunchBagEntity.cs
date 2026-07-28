@@ -5,6 +5,8 @@ using UnityEngine;
 
 public class PunchBagEntity : GeneralCreature
 {
+    protected override bool ShouldRunLogicFrameUpdate => true;
+
     protected override void OnShow(object userData)
     {
         base.OnShow(userData);

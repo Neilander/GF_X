@@ -787,7 +787,7 @@ public struct FixVector3
 
         n = Fix64.Sqrt(n);
 
-        if (n < (Fix64)0.0001)
+        if (n < Fix64.FromRaw(1))
         {
             return;
         }
@@ -974,7 +974,7 @@ public struct FixVector2
 
         n = Fix64.Sqrt(n);
 
-        if (n < (Fix64)0.0001)
+        if (n < Fix64.FromRaw(1))
         {
             return;
         }

@@ -1,6 +1,9 @@
 #if UNITY_EDITOR
 using System;
 using AAAGame.MiniMap.FOG3;
+using DG.Tweening;
+using GameFramework.ObjectPool;
+using UnityEngine;
 using UnityEngine.Profiling;
 using UnityGameFramework.Runtime;
 
@@ -16,6 +19,76 @@ public enum EditorLogicRuntimeStressGateStatus
 
 public static class EditorLogicRuntimeStressGate
 {
+    private static readonly LogicStateHasher s_GameplayTraceHasher = new LogicStateHasher();
+    private static readonly LogicStateHasher s_DamageTraceHasher = new LogicStateHasher();
+
+    private readonly struct RuntimeRetentionCensus
+    {
+        public RuntimeRetentionCensus(
+            int objectPoolCount,
+            int pooledObjectCount,
+            int releasableObjectCount,
+            string largestObjectPool,
+            int largestObjectPoolCount,
+            int gameObjectCount,
+            int componentCount,
+            int monoBehaviourCount,
+            int transformCount,
+            int rendererCount,
+            int animatorCount,
+            int particleSystemCount,
+            int audioSourceCount,
+            int activeTweenCount,
+            int playingTweenCount,
+            int commandHistoryCount)
+        {
+            ObjectPoolCount = objectPoolCount;
+            PooledObjectCount = pooledObjectCount;
+            ReleasableObjectCount = releasableObjectCount;
+            LargestObjectPool = largestObjectPool;
+            LargestObjectPoolCount = largestObjectPoolCount;
+            GameObjectCount = gameObjectCount;
+            ComponentCount = componentCount;
+            MonoBehaviourCount = monoBehaviourCount;
+            TransformCount = transformCount;
+            RendererCount = rendererCount;
+            AnimatorCount = animatorCount;
+            ParticleSystemCount = particleSystemCount;
+            AudioSourceCount = audioSourceCount;
+            ActiveTweenCount = activeTweenCount;
+            PlayingTweenCount = playingTweenCount;
+            CommandHistoryCount = commandHistoryCount;
+        }
+
+        public int ObjectPoolCount { get; }
+        public int PooledObjectCount { get; }
+        public int ReleasableObjectCount { get; }
+        public string LargestObjectPool { get; }
+        public int LargestObjectPoolCount { get; }
+        public int GameObjectCount { get; }
+        public int ComponentCount { get; }
+        public int MonoBehaviourCount { get; }
+        public int TransformCount { get; }
+        public int RendererCount { get; }
+        public int AnimatorCount { get; }
+        public int ParticleSystemCount { get; }
+        public int AudioSourceCount { get; }
+        public int ActiveTweenCount { get; }
+        public int PlayingTweenCount { get; }
+        public int CommandHistoryCount { get; }
+
+        public override string ToString()
+        {
+            return
+                $"objectPools={ObjectPoolCount}/{PooledObjectCount}/{ReleasableObjectCount}," +
+                $"largestPool={LargestObjectPool}:{LargestObjectPoolCount}," +
+                $"unityObjects={GameObjectCount}/{ComponentCount}/{MonoBehaviourCount}/{TransformCount}," +
+                $"render={RendererCount}/{AnimatorCount}/{ParticleSystemCount}/{AudioSourceCount}," +
+                $"tweens={ActiveTweenCount}/{PlayingTweenCount}," +
+                $"commandHistory={CommandHistoryCount}";
+        }
+    }
+
     private readonly struct ReferencePoolCensus
     {
         public ReferencePoolCensus(
@@ -60,8 +133,6 @@ public static class EditorLogicRuntimeStressGate
 
     private const int MovementChangeIntervalTicks = 300;
     private const int CombatObservationWindowTicks = 3000;
-    private const long ManagedGrowthLimitBytes = 16L * 1024L * 1024L;
-    private const long ReservedGrowthLimitBytes = 128L * 1024L * 1024L;
     private const int ProjectileRetainedStateLimit = 4096;
 
     private static int s_TotalTicks;
@@ -74,13 +145,19 @@ public static class EditorLogicRuntimeStressGate
     private static int s_InjectedInputCount;
     private static bool s_InjectedThisFrame;
     private static FixVector2 s_InjectedDirection;
+    private static ulong s_ActivationFrame;
     private static ulong s_StartFrame;
+    private static ulong s_RequestedMeasurementStartFrame;
+    private static bool s_MeasurementInitialized;
     private static ulong s_InitialLateInputCount;
     private static ulong s_InitialStaticProjectionFailureCount;
     private static ulong s_FirstNavigationAgentsHash;
     private static bool s_NavigationHashChanged;
     private static bool s_CombatAuthorityObserved;
     private static bool s_DamageObserved;
+    private static long s_DamageSubmittedCount;
+    private static long s_DamageAppliedCount;
+    private static long s_DamageSkippedDeadTargetCount;
     private static bool s_CombatWindowEnemyObserved;
     private static bool s_CombatWindowDamageObserved;
     private static int s_CombatWindowsValidated;
@@ -105,6 +182,7 @@ public static class EditorLogicRuntimeStressGate
     private static int s_GcCollectionBaselineCount;
     private static FlowFieldCrowdMovementSystem.RuntimeMemoryCensus s_FlowMemoryBaseline;
     private static ReferencePoolCensus s_ReferencePoolBaseline;
+    private static RuntimeRetentionCensus s_RuntimeRetentionBaseline;
     private static int s_CheckpointBaselineCount;
     private static int s_RetainedFogSnapshotBaselineCount;
     private static long s_RetainedFogPayloadBaselineBytes;
@@ -120,26 +198,38 @@ public static class EditorLogicRuntimeStressGate
     private static int s_GcCollectionFinalCount;
     private static FlowFieldCrowdMovementSystem.RuntimeMemoryCensus s_FlowMemoryFinal;
     private static ReferencePoolCensus s_ReferencePoolFinal;
+    private static RuntimeRetentionCensus s_RuntimeRetentionFinal;
     private static LogicGameplayStateDigest s_FinalDigest;
     private static ulong s_FinalFrame;
     private static bool s_ComputeFullHash;
+    private static bool s_SuppressPhysicsSimulation;
+    private static bool s_AllowProfiler;
     private static string s_Failure = string.Empty;
     private static GameEndManager s_GameEndManager;
 
     public static EditorLogicRuntimeStressGateStatus Status { get; private set; }
     public static bool OwnsLogicClock =>
-        Status == EditorLogicRuntimeStressGateStatus.Running
+        Status == EditorLogicRuntimeStressGateStatus.Armed
+        || Status == EditorLogicRuntimeStressGateStatus.Running
         || Status == EditorLogicRuntimeStressGateStatus.AwaitingViewSettlement
         || Status == EditorLogicRuntimeStressGateStatus.Completed
         || Status == EditorLogicRuntimeStressGateStatus.Failed;
     public static int ProcessedTicks => s_ProcessedTicks;
     public static int TotalTicks => s_TotalTicks;
     public static bool ComputeFullHash => s_ComputeFullHash;
+    public static bool SuppressPhysicsSimulation => s_SuppressPhysicsSimulation && s_MeasurementInitialized;
+    public static bool AllowProfiler => s_AllowProfiler;
+    public static event Action<LogicGameplayStateDigest> AuthorityFrameRecorded;
     public static int NextBatchTickCount
     {
         get
         {
             EnsureStatus(EditorLogicRuntimeStressGateStatus.Running);
+            if (!s_MeasurementInitialized)
+            {
+                ulong preludeTicks = s_StartFrame - LogicFrameRuntime.CurrentFrame;
+                return (int)Math.Min((ulong)s_BatchTicks, preludeTicks);
+            }
             int remaining = s_TotalTicks - s_ProcessedTicks;
             int nextMilestone = s_ProcessedTicks < s_WarmupTicks
                 ? s_WarmupTicks - s_ProcessedTicks
@@ -153,7 +243,10 @@ public static class EditorLogicRuntimeStressGate
         int warmupTicks,
         int batchTicks,
         int combatBaselineAuthorityCount,
-        bool computeFullHash)
+        bool computeFullHash,
+        bool suppressPhysicsSimulation,
+        bool allowProfiler,
+        ulong measurementStartFrame = 0)
     {
         if (Status == EditorLogicRuntimeStressGateStatus.Armed
             || Status == EditorLogicRuntimeStressGateStatus.Running
@@ -182,19 +275,47 @@ public static class EditorLogicRuntimeStressGate
         s_BatchTicks = batchTicks;
         s_CombatBaselineAuthorityCount = combatBaselineAuthorityCount;
         s_ComputeFullHash = computeFullHash;
+        s_SuppressPhysicsSimulation = suppressPhysicsSimulation;
+        s_AllowProfiler = allowProfiler;
+        s_RequestedMeasurementStartFrame = measurementStartFrame;
         Status = EditorLogicRuntimeStressGateStatus.Armed;
         Log.Info(
-            "[LogicLongSessionGate] Armed. totalTicks={0}, warmupTicks={1}, batchTicks={2}, combatBaselineAuthority={3}, computeFullHash={4}.",
+            "[LogicLongSessionGate] Armed. totalTicks={0}, warmupTicks={1}, batchTicks={2}, combatBaselineAuthority={3}, computeFullHash={4}, suppressPhysicsSimulation={5}, allowProfiler={6}.",
             totalTicks,
             warmupTicks,
             batchTicks,
             combatBaselineAuthorityCount,
-            computeFullHash);
+            computeFullHash,
+            suppressPhysicsSimulation,
+            allowProfiler);
     }
 
     public static void Activate(ulong startFrame)
     {
         EnsureStatus(EditorLogicRuntimeStressGateStatus.Armed);
+        if (s_RequestedMeasurementStartFrame != 0 && s_RequestedMeasurementStartFrame <= startFrame)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate fixed measurement frame must be after activation. activation={startFrame}, measurement={s_RequestedMeasurementStartFrame}.");
+        }
+
+        s_ActivationFrame = startFrame;
+        s_StartFrame = s_RequestedMeasurementStartFrame == 0
+            ? startFrame
+            : s_RequestedMeasurementStartFrame;
+        Status = EditorLogicRuntimeStressGateStatus.Running;
+        if (s_RequestedMeasurementStartFrame == 0)
+            InitializeMeasurement(startFrame);
+
+        Log.Info(
+            "[LogicLongSessionGate] Activated. activationFrame={0}, measurementStartFrame={1}, authority={2}.",
+            s_ActivationFrame,
+            s_StartFrame,
+            LogicEntityLifecycleService.AuthorityEntityCount);
+    }
+
+    private static void InitializeMeasurement(ulong startFrame)
+    {
         InputModel inputModel = GetRequiredInputModel();
         if (!inputModel.LogicTimeline.IsStarted)
             throw new InvalidOperationException("Editor logic stress gate requires a started input timeline.");
@@ -202,8 +323,11 @@ public static class EditorLogicRuntimeStressGate
             throw new InvalidOperationException(
                 $"Editor logic stress gate input frame mismatch at activation. input={inputModel.LogicTimeline.CurrentFrame.FrameId}, clock={startFrame}.");
 
-        s_StartFrame = startFrame;
         s_InitialLateInputCount = inputModel.LogicTimeline.LateEventCount;
+        s_GameplayTraceHasher.Reset();
+        s_GameplayTraceHasher.Add(0x4741544554524143UL);
+        s_DamageTraceHasher.Reset();
+        s_DamageTraceHasher.Add(0x44414D4147455452UL);
         s_InitialStaticProjectionFailureCount = LogicAgentCollisionShadowService.TotalStaticProjectionFailureCount;
         s_InitialObstacleCount = LogicObstacleCommandService.ActiveObstacleCount;
         s_FlowTileCacheLimit = FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheLimit();
@@ -219,9 +343,9 @@ public static class EditorLogicRuntimeStressGate
         if (s_FlowTileCacheLimit < 16)
             throw new InvalidOperationException($"Editor logic stress gate received invalid flow cache limit {s_FlowTileCacheLimit}.");
 
-        Status = EditorLogicRuntimeStressGateStatus.Running;
+        s_MeasurementInitialized = true;
         Log.Info(
-            "[LogicLongSessionGate] Activated. startFrame={0}, authority={1}, obstacles={2}, flowLimit={3}.",
+            "[LogicLongSessionGate] Measurement initialized. startFrame={0}, authority={1}, obstacles={2}, flowLimit={3}.",
             startFrame,
             LogicEntityLifecycleService.AuthorityEntityCount,
             s_InitialObstacleCount,
@@ -231,6 +355,15 @@ public static class EditorLogicRuntimeStressGate
     public static void PrepareInputFrame(ulong frame, double cutoffRealtime)
     {
         EnsureStatus(EditorLogicRuntimeStressGateStatus.Running);
+        if (!s_MeasurementInitialized)
+        {
+            if (frame > s_StartFrame)
+            {
+                throw new InvalidOperationException(
+                    $"Editor logic stress gate prelude exceeded measurement start. frame={frame}, start={s_StartFrame}.");
+            }
+            return;
+        }
         ulong expectedFrame = checked(s_StartFrame + (ulong)s_ProcessedTicks + 1UL);
         if (frame != expectedFrame)
             throw new InvalidOperationException($"Editor logic stress gate prepare frame mismatch. expected={expectedFrame}, actual={frame}.");
@@ -263,6 +396,17 @@ public static class EditorLogicRuntimeStressGate
         EnsureStatus(EditorLogicRuntimeStressGateStatus.Running);
         if (inputFrame == null)
             throw new ArgumentNullException(nameof(inputFrame));
+        if (!s_MeasurementInitialized)
+        {
+            if (inputFrame.FrameId > s_StartFrame)
+            {
+                throw new InvalidOperationException(
+                    $"Editor logic stress gate prelude completed past measurement start. frame={inputFrame.FrameId}, start={s_StartFrame}.");
+            }
+            if (inputFrame.FrameId == s_StartFrame)
+                InitializeMeasurement(s_StartFrame);
+            return;
+        }
         if (s_ComputeFullHash && !gameplayDigest.HasDetails)
             throw new InvalidOperationException("Editor logic stress gate requires a detailed gameplay digest.");
 
@@ -275,6 +419,8 @@ public static class EditorLogicRuntimeStressGate
         }
 
         ValidateCompletedFrame(inputFrame, gameplayDigest);
+        RecordAuthorityTraces(inputFrame.FrameId, gameplayDigest);
+        AuthorityFrameRecorded?.Invoke(gameplayDigest);
         s_ProcessedTicks = checked(s_ProcessedTicks + 1);
         s_FinalDigest = gameplayDigest;
         s_FinalFrame = inputFrame.FrameId;
@@ -333,21 +479,69 @@ public static class EditorLogicRuntimeStressGate
         s_GcCollectionFinalCount = GetGcCollectionCount();
         s_FlowMemoryFinal = FlowFieldCrowdMovementSystem.CaptureRuntimeMemoryCensus();
         s_ReferencePoolFinal = CaptureReferencePoolCensus();
-        long managedGrowth = Math.Max(0L, s_ManagedFinalBytes - s_ManagedBaselineBytes);
-        long reservedGrowth = Math.Max(0L, s_ReservedFinalBytes - s_ReservedBaselineBytes);
-        if (managedGrowth > ManagedGrowthLimitBytes)
-        {
-            throw new InvalidOperationException(
-                $"Editor logic stress gate managed memory growth exceeded limit. growth={managedGrowth}, limit={ManagedGrowthLimitBytes}.");
-        }
-        if (reservedGrowth > ReservedGrowthLimitBytes)
-        {
-            throw new InvalidOperationException(
-                $"Editor logic stress gate reserved memory growth exceeded limit. growth={reservedGrowth}, limit={ReservedGrowthLimitBytes}.");
-        }
+        s_RuntimeRetentionFinal = CaptureRuntimeRetentionCensus();
+        ValidateRetainedRuntimeState();
 
         Status = EditorLogicRuntimeStressGateStatus.Completed;
         Log.Info("[LogicLongSessionGate] PASS. {0}", BuildReport());
+    }
+
+    private static void ValidateRetainedRuntimeState()
+    {
+        int checkpointCount = StageCheckpointService.History.Count;
+        if (checkpointCount != s_CheckpointBaselineCount)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate retained stage checkpoints. baseline={s_CheckpointBaselineCount}, final={checkpointCount}.");
+        }
+
+        int retainedFogSnapshotCount = StageCheckpointService.RetainedFogSnapshotCount;
+        long retainedFogPayloadBytes = StageCheckpointService.RetainedFogPayloadBytes;
+        if (retainedFogSnapshotCount != s_RetainedFogSnapshotBaselineCount
+            || retainedFogPayloadBytes != s_RetainedFogPayloadBaselineBytes)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate retained fog data grew. snapshots={s_RetainedFogSnapshotBaselineCount}->{retainedFogSnapshotCount}, " +
+                $"bytes={s_RetainedFogPayloadBaselineBytes}->{retainedFogPayloadBytes}.");
+        }
+
+        if (s_RuntimeRetentionFinal.CommandHistoryCount != s_RuntimeRetentionBaseline.CommandHistoryCount)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate command history grew. baseline={s_RuntimeRetentionBaseline.CommandHistoryCount}, " +
+                $"final={s_RuntimeRetentionFinal.CommandHistoryCount}.");
+        }
+        if (s_RuntimeRetentionFinal.ObjectPoolCount != s_RuntimeRetentionBaseline.ObjectPoolCount)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate object-pool registry changed. baseline={s_RuntimeRetentionBaseline.ObjectPoolCount}, " +
+                $"final={s_RuntimeRetentionFinal.ObjectPoolCount}.");
+        }
+        if (s_RuntimeRetentionFinal.GameObjectCount > s_RuntimeRetentionBaseline.GameObjectCount
+            || s_RuntimeRetentionFinal.ComponentCount > s_RuntimeRetentionBaseline.ComponentCount
+            || s_RuntimeRetentionFinal.MonoBehaviourCount > s_RuntimeRetentionBaseline.MonoBehaviourCount
+            || s_RuntimeRetentionFinal.TransformCount > s_RuntimeRetentionBaseline.TransformCount
+            || s_RuntimeRetentionFinal.RendererCount > s_RuntimeRetentionBaseline.RendererCount
+            || s_RuntimeRetentionFinal.AnimatorCount > s_RuntimeRetentionBaseline.AnimatorCount
+            || s_RuntimeRetentionFinal.ParticleSystemCount > s_RuntimeRetentionBaseline.ParticleSystemCount
+            || s_RuntimeRetentionFinal.AudioSourceCount > s_RuntimeRetentionBaseline.AudioSourceCount)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate retained Unity objects. baseline=[{s_RuntimeRetentionBaseline}], final=[{s_RuntimeRetentionFinal}].");
+        }
+        if (s_RuntimeRetentionFinal.ActiveTweenCount > s_RuntimeRetentionBaseline.ActiveTweenCount
+            || s_RuntimeRetentionFinal.PlayingTweenCount > s_RuntimeRetentionBaseline.PlayingTweenCount)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate retained tweens. baseline=[{s_RuntimeRetentionBaseline}], final=[{s_RuntimeRetentionFinal}].");
+        }
+
+        if (FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount() != 0
+            || FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount() != 0)
+        {
+            throw new InvalidOperationException(
+                "Editor logic stress gate completed with pending navigation work.");
+        }
     }
 
     public static void Fail(Exception exception)
@@ -363,9 +557,14 @@ public static class EditorLogicRuntimeStressGate
     {
         long managedGrowth = Math.Max(0L, s_ManagedFinalBytes - s_ManagedBaselineBytes);
         long reservedGrowth = Math.Max(0L, s_ReservedFinalBytes - s_ReservedBaselineBytes);
+        bool managedEqualsMonoUsed =
+            s_ManagedBaselineBytes == s_MonoUsedBaselineBytes
+            && s_ManagedFinalBytes == s_MonoUsedFinalBytes;
         return
-            $"status={Status}, ticks={s_ProcessedTicks}/{s_TotalTicks}, startFrame={s_StartFrame}, finalFrame={s_FinalFrame}, computeFullHash={s_ComputeFullHash}, " +
+            $"status={Status}, ticks={s_ProcessedTicks}/{s_TotalTicks}, activationFrame={s_ActivationFrame}, startFrame={s_StartFrame}, finalFrame={s_FinalFrame}, computeFullHash={s_ComputeFullHash}, suppressPhysicsSimulation={s_SuppressPhysicsSimulation}, allowProfiler={s_AllowProfiler}, " +
             $"gameplayHash={s_FinalDigest.GameplayStateHash}, navigationAgentsHash={s_FinalDigest.Navigation.AgentsHash}, " +
+            $"gameplayTraceHash={s_GameplayTraceHasher.Hash}, damageTraceHash={s_DamageTraceHasher.Hash}, " +
+            $"damageSubmitted={s_DamageSubmittedCount}, damageApplied={s_DamageAppliedCount}, damageSkippedDead={s_DamageSkippedDeadTargetCount}, " +
             $"combatObserved={s_CombatAuthorityObserved}, damageObserved={s_DamageObserved}, navigationChanged={s_NavigationHashChanged}, " +
             $"combatWindows={s_CombatWindowsValidated}, protectedBuildings={s_ProtectedPlayerBuildingCount}, " +
             $"enemyUnits={s_CurrentEnemyUnitCount}, enemyUnitPeak={s_MaxEnemyUnitCount}, enemyViewsBound={s_EnemyUnitBoundViewCount}, " +
@@ -380,6 +579,7 @@ public static class EditorLogicRuntimeStressGate
             $"sharedGoal={FlowFieldCrowdMovementSystem.GetEditorTestSharedGoalFieldCacheCount()}, sharedGoalBaseline={s_SharedGoalBaselineCount}, sharedGoalPeak={s_MaxSharedGoalCacheCount}, " +
             $"pendingFlow={FlowFieldCrowdMovementSystem.GetEditorTestPendingFlowTileBuildCount()}, pendingFlowBaseline={s_PendingFlowBaselineCount}, pendingFlowPeak={s_MaxPendingFlowTileCount}, " +
             $"pendingShared={FlowFieldCrowdMovementSystem.GetEditorTestPendingSharedGoalFieldBuildCount()}, pendingSharedBaseline={s_PendingSharedGoalBaselineCount}, pendingSharedPeak={s_MaxPendingSharedGoalCount}, " +
+            $"managedMetricScope=editorMonoAllocatorUsedDiagnosticOnly, managedEqualsMonoUsed={managedEqualsMonoUsed}, profilerContaminatesManagedComparison={s_AllowProfiler}, " +
             $"managedBaseline={s_ManagedBaselineBytes}, managedFinal={s_ManagedFinalBytes}, managedGrowth={managedGrowth}, " +
             $"reservedBaseline={s_ReservedBaselineBytes}, reservedFinal={s_ReservedFinalBytes}, reservedGrowth={reservedGrowth}, " +
             $"monoUsedBaseline={s_MonoUsedBaselineBytes}, monoUsedFinal={s_MonoUsedFinalBytes}, monoUsedGrowth={Math.Max(0L, s_MonoUsedFinalBytes - s_MonoUsedBaselineBytes)}, " +
@@ -388,6 +588,7 @@ public static class EditorLogicRuntimeStressGate
             $"gcBaseline={s_GcCollectionBaselineCount}, gcFinal={s_GcCollectionFinalCount}, gcDelta={Math.Max(0, s_GcCollectionFinalCount - s_GcCollectionBaselineCount)}, " +
             $"flowMemoryBaseline=[{s_FlowMemoryBaseline}], flowMemoryFinal=[{s_FlowMemoryFinal}], " +
             $"referencePoolBaseline=[{s_ReferencePoolBaseline}], referencePoolFinal=[{s_ReferencePoolFinal}], " +
+            $"runtimeRetentionBaseline=[{s_RuntimeRetentionBaseline}], runtimeRetentionFinal=[{s_RuntimeRetentionFinal}], " +
             $"projectionFailures={LogicAgentCollisionShadowService.TotalStaticProjectionFailureCount - s_InitialStaticProjectionFailureCount}, " +
             $"failure={s_Failure}";
     }
@@ -485,6 +686,36 @@ public static class EditorLogicRuntimeStressGate
             else
                 s_NavigationHashChanged |= s_FirstNavigationAgentsHash != gameplayDigest.Navigation.AgentsHash;
         }
+    }
+
+    private static void RecordAuthorityTraces(ulong frame, LogicGameplayStateDigest gameplayDigest)
+    {
+        s_GameplayTraceHasher.Add(frame);
+        s_GameplayTraceHasher.Add(gameplayDigest.GameplayStateHash);
+
+        s_DamageTraceHasher.Add(frame);
+        s_DamageTraceHasher.Add(LogicDamageEventService.LastSubmittedCount);
+        s_DamageTraceHasher.Add(LogicDamageEventService.LastAppliedCount);
+        s_DamageTraceHasher.Add(LogicDamageEventService.LastSkippedDeadTargetCount);
+        var events = LogicDamageEventService.LastOrderedEvents;
+        s_DamageTraceHasher.Add(events.Count);
+        for (int i = 0; i < events.Count; i++)
+        {
+            LogicHealthEvent healthEvent = events[i];
+            s_DamageTraceHasher.Add((int)healthEvent.Kind);
+            s_DamageTraceHasher.Add(healthEvent.AttackerId.Value);
+            s_DamageTraceHasher.Add(healthEvent.TargetId.Value);
+            s_DamageTraceHasher.Add(healthEvent.Amount.RawValue);
+            s_DamageTraceHasher.Add((int)healthEvent.ModifyType);
+            s_DamageTraceHasher.Add(healthEvent.ApplyDamageHooks);
+            s_DamageTraceHasher.Add(healthEvent.HitIndex);
+            s_DamageTraceHasher.Add(healthEvent.TotalHits);
+        }
+
+        s_DamageSubmittedCount = checked(s_DamageSubmittedCount + LogicDamageEventService.LastSubmittedCount);
+        s_DamageAppliedCount = checked(s_DamageAppliedCount + LogicDamageEventService.LastAppliedCount);
+        s_DamageSkippedDeadTargetCount = checked(
+            s_DamageSkippedDeadTargetCount + LogicDamageEventService.LastSkippedDeadTargetCount);
     }
 
     private static void ValidateWorldClosure(bool requireBoundViews)
@@ -644,6 +875,7 @@ public static class EditorLogicRuntimeStressGate
         s_GcCollectionBaselineCount = GetGcCollectionCount();
         s_FlowMemoryBaseline = FlowFieldCrowdMovementSystem.CaptureRuntimeMemoryCensus();
         s_ReferencePoolBaseline = CaptureReferencePoolCensus();
+        s_RuntimeRetentionBaseline = CaptureRuntimeRetentionCensus();
         s_CheckpointBaselineCount = StageCheckpointService.History.Count;
         s_RetainedFogSnapshotBaselineCount = StageCheckpointService.RetainedFogSnapshotCount;
         s_RetainedFogPayloadBaselineBytes = StageCheckpointService.RetainedFogPayloadBytes;
@@ -732,6 +964,56 @@ public static class EditorLogicRuntimeStressGate
             largestUsingCount);
     }
 
+    private static RuntimeRetentionCensus CaptureRuntimeRetentionCensus()
+    {
+        if (GF.ObjectPool == null)
+            throw new InvalidOperationException("Runtime retention census requires ObjectPoolComponent.");
+
+        ObjectPoolBase[] pools = GF.ObjectPool.GetAllObjectPools(true);
+        int pooledObjectCount = 0;
+        int releasableObjectCount = 0;
+        string largestObjectPool = string.Empty;
+        int largestObjectPoolCount = 0;
+        for (int i = 0; i < pools.Length; i++)
+        {
+            ObjectPoolBase pool = pools[i]
+                                  ?? throw new InvalidOperationException($"Runtime retention census found a null object pool. index={i}.");
+            pooledObjectCount = checked(pooledObjectCount + pool.Count);
+            releasableObjectCount = checked(releasableObjectCount + pool.CanReleaseCount);
+            if (pool.Count > largestObjectPoolCount)
+            {
+                largestObjectPool = pool.FullName;
+                largestObjectPoolCount = pool.Count;
+            }
+        }
+
+        int commandHistoryCount = checked(
+            LogicPhaseCommandService.History.Count
+            + LogicTechEffectCommandService.History.Count
+            + LogicInteractionCommandService.History.Count
+            + LogicCardCommandService.History.Count
+            + LogicSkillSlotCommandService.History.Count
+            + LogicObstacleCommandService.History.Count);
+
+        return new RuntimeRetentionCensus(
+            pools.Length,
+            pooledObjectCount,
+            releasableObjectCount,
+            largestObjectPool,
+            largestObjectPoolCount,
+            Resources.FindObjectsOfTypeAll<GameObject>().Length,
+            Resources.FindObjectsOfTypeAll<Component>().Length,
+            Resources.FindObjectsOfTypeAll<MonoBehaviour>().Length,
+            Resources.FindObjectsOfTypeAll<Transform>().Length,
+            Resources.FindObjectsOfTypeAll<Renderer>().Length,
+            Resources.FindObjectsOfTypeAll<Animator>().Length,
+            Resources.FindObjectsOfTypeAll<ParticleSystem>().Length,
+            Resources.FindObjectsOfTypeAll<AudioSource>().Length,
+            DOTween.TotalActiveTweens(),
+            DOTween.TotalPlayingTweens(),
+            commandHistoryCount);
+    }
+
     private static InputModel GetRequiredInputModel()
     {
         return GF.DataModel?.GetDataModel<InputModel>()
@@ -757,13 +1039,21 @@ public static class EditorLogicRuntimeStressGate
         s_InjectedInputCount = 0;
         s_InjectedThisFrame = false;
         s_InjectedDirection = FixVector2.Zero;
+        s_ActivationFrame = 0;
         s_StartFrame = 0;
+        s_RequestedMeasurementStartFrame = 0;
+        s_MeasurementInitialized = false;
+        s_GameplayTraceHasher.Reset();
+        s_DamageTraceHasher.Reset();
         s_InitialLateInputCount = 0;
         s_InitialStaticProjectionFailureCount = 0;
         s_FirstNavigationAgentsHash = 0;
         s_NavigationHashChanged = false;
         s_CombatAuthorityObserved = false;
         s_DamageObserved = false;
+        s_DamageSubmittedCount = 0;
+        s_DamageAppliedCount = 0;
+        s_DamageSkippedDeadTargetCount = 0;
         s_CombatWindowEnemyObserved = false;
         s_CombatWindowDamageObserved = false;
         s_CombatWindowsValidated = 0;
@@ -788,6 +1078,7 @@ public static class EditorLogicRuntimeStressGate
         s_GcCollectionBaselineCount = 0;
         s_FlowMemoryBaseline = default;
         s_ReferencePoolBaseline = default;
+        s_RuntimeRetentionBaseline = default;
         s_CheckpointBaselineCount = 0;
         s_RetainedFogSnapshotBaselineCount = 0;
         s_RetainedFogPayloadBaselineBytes = 0;
@@ -803,9 +1094,12 @@ public static class EditorLogicRuntimeStressGate
         s_GcCollectionFinalCount = 0;
         s_FlowMemoryFinal = default;
         s_ReferencePoolFinal = default;
+        s_RuntimeRetentionFinal = default;
         s_FinalDigest = default;
         s_FinalFrame = 0;
         s_ComputeFullHash = true;
+        s_SuppressPhysicsSimulation = false;
+        s_AllowProfiler = false;
         s_Failure = string.Empty;
         s_GameEndManager = null;
     }

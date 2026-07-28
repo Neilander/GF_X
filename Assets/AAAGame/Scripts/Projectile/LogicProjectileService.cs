@@ -113,6 +113,7 @@ public static class LogicProjectileService
     private static ulong s_LastId;
 
     public static bool IsActive { get; private set; }
+    public static ulong LastId => s_LastId;
     public static ulong LastCompletedFrame { get; private set; }
     public static int ActiveCount => s_ActiveIds.Count;
     public static int RetainedViewStateCount => s_States.Count;
@@ -140,6 +141,7 @@ public static class LogicProjectileService
             throw new ArgumentNullException(nameof(hasher));
         EnsureActive();
 
+        hasher.Add(s_LastId);
         hasher.Add(s_ActiveIds.Count);
         for (int i = 0; i < s_ActiveIds.Count; i++)
         {

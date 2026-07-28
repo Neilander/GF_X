@@ -20,8 +20,6 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
     private const float AttackRangePreviewHeight = 0.04f;
     private const float AttackRangePreviewWidth = 0.04f;
     private const string PlayerInteractionNodeName = "InteractCollider";
-    private const float PlayerInteractionRange = 2.7f;
-    private const float PlayerInteractionPadding = 0.7f;
 
     private readonly Dictionary<Renderer, Material[]> _originalMaterials = new Dictionary<Renderer, Material[]>();
     private readonly Dictionary<Renderer, Material[]> _ghostMaterials = new Dictionary<Renderer, Material[]>();
@@ -168,20 +166,11 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
             interactionObject = interactionNode.gameObject;
         }
 
-        InteractionManager manager = interactionObject.GetComponent<InteractionManager>();
-        if (manager == null)
-            manager = interactionObject.AddComponent<InteractionManager>();
+        if (interactionObject.GetComponent<InteractionManager>() == null)
+            interactionObject.AddComponent<InteractionManager>();
 
         if (interactionObject.GetComponent<InteractOptionTipsPresenter>() == null)
             interactionObject.AddComponent<InteractOptionTipsPresenter>();
-
-        manager.ConfigureRuntime(
-            PlayerInteractionRange,
-            PlayerInteractionPadding,
-            0.65f,
-            0.35f,
-            0.08f,
-            0.1f);
     }
 
     private void EnsureCastRange()

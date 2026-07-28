@@ -135,6 +135,23 @@ public static class LogicEntityLifecycleService
         return RequestSpawnCore(descriptor, configure, true, true);
     }
 
+    public static void PublishPendingInitializationEntities()
+    {
+        EnsureActive();
+        if (LogicTimeControlService.CurrentFrame != 0 || LogicFrameRuntime.IsTicking)
+            throw new InvalidOperationException("Pending initialization entities can only be published before the first logic frame.");
+
+        LogicEntityState[] pending = LogicEntityStateStore.CapturePendingSpawnStates();
+        for (int i = 0; i < pending.Length; i++)
+        {
+            LogicEntityState state = pending[i];
+            if (state.IsPlayerEntity)
+                EntityRegistry.RegisterAsPlayer(state);
+            else
+                EntityRegistry.Register(state);
+        }
+    }
+
     private static LogicEntityId RequestSpawnCore(
         LogicEntitySpawnDescriptor descriptor,
         Action<LogicEntityState> configure,

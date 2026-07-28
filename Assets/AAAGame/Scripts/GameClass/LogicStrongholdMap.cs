@@ -43,6 +43,8 @@ public static class LogicStrongholdMap
     private static readonly Dictionary<Cell, string> s_StrongholdIdByCell = new();
     private static readonly Dictionary<string, int> s_OwnerFactionByStrongholdId = new(StringComparer.Ordinal);
     private static readonly List<string> s_DeterministicStrongholdIds = new List<string>();
+    private static readonly Comparison<string> s_DeterministicStrongholdIdComparison =
+        string.CompareOrdinal;
     private static FixVector2 s_Origin;
     private static FixVector2 s_LocalXAxis;
     private static FixVector2 s_LocalZAxis;
@@ -212,8 +214,9 @@ public static class LogicStrongholdMap
         hasher.Add(s_AuthorityHash);
         hasher.Add(s_StrongholdIdByCell.Count);
         s_DeterministicStrongholdIds.Clear();
-        s_DeterministicStrongholdIds.AddRange(s_OwnerFactionByStrongholdId.Keys);
-        s_DeterministicStrongholdIds.Sort(StringComparer.Ordinal);
+        foreach (string strongholdId in s_OwnerFactionByStrongholdId.Keys)
+            s_DeterministicStrongholdIds.Add(strongholdId);
+        s_DeterministicStrongholdIds.Sort(s_DeterministicStrongholdIdComparison);
         hasher.Add(s_DeterministicStrongholdIds.Count);
         for (int i = 0; i < s_DeterministicStrongholdIds.Count; i++)
         {

@@ -13,6 +13,13 @@ public static class LevelTagRuntime
     private static readonly List<int> s_DeterministicTagIds = new();
     private static readonly List<string> s_DeterministicTagIdentifiers = new();
     private static readonly List<int> s_DeterministicHeroReviveEntityIds = new();
+    private static readonly List<LevelTagTable> s_ResolvedActiveTags = new();
+    private static readonly Dictionary<string, CharacterDataDetail> s_CharacterDataByKey = new(StringComparer.Ordinal);
+    private static readonly Comparison<LevelTagTable> s_ActiveTagComparison = CompareActiveTags;
+    private static readonly Comparison<int> s_IntComparison = CompareInts;
+    private static readonly Comparison<string> s_StringComparison = string.CompareOrdinal;
+    private static bool s_ResolvedActiveTagsDirty = true;
+    private static bool s_CharacterDataIndexInitialized;
 
     private struct HeroReviveState
     {
@@ -24,6 +31,7 @@ public static class LevelTagRuntime
     {
         s_ActiveTagIds.Clear();
         s_ActiveTagIdentifiers.Clear();
+        s_ResolvedActiveTagsDirty = true;
         if (tagIds == null)
             return;
 
@@ -38,6 +46,7 @@ public static class LevelTagRuntime
     {
         s_ActiveTagIds.Clear();
         s_ActiveTagIdentifiers.Clear();
+        s_ResolvedActiveTagsDirty = true;
         if (identifiers == null)
             return;
 
@@ -54,6 +63,10 @@ public static class LevelTagRuntime
         s_ActiveTagIdentifiers.Clear();
         s_WarnedUnsupportedTags.Clear();
         s_HeroReviveStatesByEntityId.Clear();
+        s_ResolvedActiveTags.Clear();
+        s_ResolvedActiveTagsDirty = false;
+        s_CharacterDataByKey.Clear();
+        s_CharacterDataIndexInitialized = false;
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
@@ -64,22 +77,25 @@ public static class LevelTagRuntime
         hasher.Add(0x4C564C5441475354UL);
 
         s_DeterministicTagIds.Clear();
-        s_DeterministicTagIds.AddRange(s_ActiveTagIds);
-        s_DeterministicTagIds.Sort();
+        foreach (int tagId in s_ActiveTagIds)
+            s_DeterministicTagIds.Add(tagId);
+        s_DeterministicTagIds.Sort(s_IntComparison);
         hasher.Add(s_DeterministicTagIds.Count);
         for (int i = 0; i < s_DeterministicTagIds.Count; i++)
             hasher.Add(s_DeterministicTagIds[i]);
 
         s_DeterministicTagIdentifiers.Clear();
-        s_DeterministicTagIdentifiers.AddRange(s_ActiveTagIdentifiers);
-        s_DeterministicTagIdentifiers.Sort(StringComparer.Ordinal);
+        foreach (string identifier in s_ActiveTagIdentifiers)
+            s_DeterministicTagIdentifiers.Add(identifier);
+        s_DeterministicTagIdentifiers.Sort(s_StringComparison);
         hasher.Add(s_DeterministicTagIdentifiers.Count);
         for (int i = 0; i < s_DeterministicTagIdentifiers.Count; i++)
             hasher.Add(s_DeterministicTagIdentifiers[i]);
 
         s_DeterministicHeroReviveEntityIds.Clear();
-        s_DeterministicHeroReviveEntityIds.AddRange(s_HeroReviveStatesByEntityId.Keys);
-        s_DeterministicHeroReviveEntityIds.Sort();
+        foreach (int entityId in s_HeroReviveStatesByEntityId.Keys)
+            s_DeterministicHeroReviveEntityIds.Add(entityId);
+        s_DeterministicHeroReviveEntityIds.Sort(s_IntComparison);
         hasher.Add(s_DeterministicHeroReviveEntityIds.Count);
         for (int i = 0; i < s_DeterministicHeroReviveEntityIds.Count; i++)
         {
@@ -136,7 +152,7 @@ public static class LevelTagRuntime
         {
             BuffData.Create(
                 id: $"level_tag_unit_{ownerFactionId}_{unitType}",
-                duration: float.MaxValue,
+                duration: Fix64.Zero,
                 isForever: true,
                 maxStack: 1,
                 modules: modules)
@@ -157,7 +173,7 @@ public static class LevelTagRuntime
         {
             result.Add(BuffData.Create(
                 id: $"level_tag_building_{building.OwnerFactionId}_{building.BuildingInstanceId}",
-                duration: float.MaxValue,
+                duration: Fix64.Zero,
                 isForever: true,
                 maxStack: 1,
                 modules: modules));
@@ -187,7 +203,7 @@ public static class LevelTagRuntime
         {
             BuffData.Create(
                 id: $"level_tag_source_building_unit_{sourceBuilding.BuildingInstanceId}",
-                duration: float.MaxValue,
+                duration: Fix64.Zero,
                 isForever: true,
                 maxStack: 1,
                 modules: modules)
@@ -773,13 +789,19 @@ public static class LevelTagRuntime
 
     private static List<LevelTagTable> ResolveActiveTags()
     {
-        var result = new List<LevelTagTable>();
+        if (!s_ResolvedActiveTagsDirty)
+            return s_ResolvedActiveTags;
+
+        s_ResolvedActiveTags.Clear();
         if (s_ActiveTagIds.Count == 0 && s_ActiveTagIdentifiers.Count == 0)
-            return result;
+        {
+            s_ResolvedActiveTagsDirty = false;
+            return s_ResolvedActiveTags;
+        }
 
         var table = GF.DataTable != null ? GF.DataTable.GetDataTable<LevelTagTable>() : null;
         if (table == null)
-            return result;
+            return s_ResolvedActiveTags;
 
         foreach (LevelTagTable row in table.GetAllDataRows())
         {
@@ -787,11 +809,12 @@ public static class LevelTagRuntime
                 continue;
 
             if (s_ActiveTagIds.Contains(row.Id) || s_ActiveTagIdentifiers.Contains(row.Identifier))
-                result.Add(row);
+                s_ResolvedActiveTags.Add(row);
         }
 
-        result.Sort(CompareActiveTags);
-        return result;
+        s_ResolvedActiveTags.Sort(s_ActiveTagComparison);
+        s_ResolvedActiveTagsDirty = false;
+        return s_ResolvedActiveTags;
     }
 
     private static int CompareActiveTags(LevelTagTable left, LevelTagTable right)
@@ -863,7 +886,7 @@ public static class LevelTagRuntime
 
             return BuffData.Create(
                 id: $"level_tag_captured_training_provider_{building.BuildingInstanceId}",
-                duration: float.MaxValue,
+                duration: Fix64.Zero,
                 isForever: true,
                 maxStack: 1,
                 modules: new List<BuffCallback>
@@ -893,13 +916,35 @@ public static class LevelTagRuntime
             return null;
 
         var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
-        return table?.GetDataRow(row => row.CharacterKey == characterKey);
+        if (table == null)
+            return null;
+        if (!s_CharacterDataIndexInitialized)
+        {
+            CharacterDataDetail[] rows = table.GetAllDataRows();
+            for (int i = 0; i < rows.Length; i++)
+            {
+                CharacterDataDetail row = rows[i]
+                                          ?? throw new InvalidOperationException($"Character data row is null. index={i}.");
+                if (string.IsNullOrWhiteSpace(row.CharacterKey))
+                    throw new InvalidOperationException($"Character data row has no key. id={row.Id}.");
+                s_CharacterDataByKey.Add(row.CharacterKey, row);
+            }
+            s_CharacterDataIndexInitialized = true;
+        }
+
+        s_CharacterDataByKey.TryGetValue(characterKey, out CharacterDataDetail result);
+        return result;
     }
 
     private static void AddAttackMove(List<BuffCallback> modules, Fix64 attackPercent, Fix64 move)
     {
         modules.Add(new PercentAttackBonusBuff(attackPercent));
         modules.Add(new RevertibleMoveSpeedBonusBuff(move));
+    }
+
+    private static int CompareInts(int left, int right)
+    {
+        return left.CompareTo(right);
     }
 
     private static void AddDefHealth(List<BuffCallback> modules, Fix64 def, Fix64 healthPercent)

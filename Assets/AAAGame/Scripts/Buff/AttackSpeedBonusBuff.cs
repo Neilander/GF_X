@@ -4,7 +4,7 @@
 /// 换算：新 Interval = 原 Interval * (1 / (1 + percent/100))
 /// ——攻速提升 80% 等价于 Interval 缩短为原来的 1/1.8 ≈ 55.6%。
 /// </summary>
-public sealed class AttackSpeedBonusBuff : BuffCallback
+public sealed class AttackSpeedBonusBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_Percent;
     private Fix64 m_AppliedFactor;
@@ -44,5 +44,12 @@ public sealed class AttackSpeedBonusBuff : BuffCallback
 
         weapon.ApplyMultiplier(WeaponStatId.Interval, Fix64.One / m_AppliedFactor);
         m_Applied = false;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Percent.RawValue);
+        hasher.Add(m_AppliedFactor.RawValue);
+        hasher.Add(m_Applied);
     }
 }

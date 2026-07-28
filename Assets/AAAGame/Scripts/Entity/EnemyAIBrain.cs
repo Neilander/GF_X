@@ -11,13 +11,11 @@ public class EnemyAIBrain : IControlBrain, ITickBrain
     public bool Skill4 { get; private set; }
     public bool Skill5 { get; private set; }
 
-    public float AggroRange = 6f;
-    public float AttackRange = 1.6f;
-    public float ForgetRange = 8f;
+    public Fix64 AttackRange = Fix64.FromRaw(6554);
 
     // === 分离力参数 ===
-    public float SeparationRadius = 1.5f;
-    public float SeparationWeight = 1.2f;
+    public Fix64 SeparationRadius = Fix64.FromRaw(6144);
+    public Fix64 SeparationWeight = Fix64.FromRaw(4916);
 
     private IEntityContext _target;
 
@@ -35,18 +33,16 @@ public class EnemyAIBrain : IControlBrain, ITickBrain
             FixVector2 to = LogicEntityFrameSnapshotService.GetRequiredPosition(_target)
                             - LogicEntityFrameSnapshotService.GetRequiredPosition(self);
             Fix64 d2 = FixVector2.SqrMagnitude(to);
-            Fix64 attackRange = (Fix64)AttackRange;
-
-            if (d2 > attackRange * attackRange)
+            if (d2 > AttackRange * AttackRange)
                 desiredMove = to.GetNormalized();
             else
                 Attack = true;
         }
 
-        FixVector2 separation = ResolveSeparation(self, (Fix64)SeparationRadius);
-        FixVector2 finalMove = desiredMove + separation * (Fix64)SeparationWeight;
+        FixVector2 separation = ResolveSeparation(self, SeparationRadius);
+        FixVector2 finalMove = desiredMove + separation * SeparationWeight;
 
-        MoveFixed = FixVector2.SqrMagnitude(finalMove) > (Fix64)0.01f && !Attack
+        MoveFixed = FixVector2.SqrMagnitude(finalMove) > Fix64.FromRaw(41) && !Attack
             ? finalMove.GetNormalized()
             : FixVector2.Zero;
     }

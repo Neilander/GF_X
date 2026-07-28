@@ -8,19 +8,15 @@ public enum MovementMode
 }
 
 /// <summary>
-/// 移动执行器接口：真实版通过 CharacterController 移动，测试版直接改坐标。
+/// 逻辑移动状态接口，只接受定点速度并由统一逻辑帧管线提交。
 /// </summary>
 public interface IMoveExecutor
 {
     MovementMode MovementMode { get; }
-    void SetInput(Vector3 velocity);
     void SetInputFixed(FixVector2 velocity);
-    void AddExternal(Vector3 velocity);
     void AddExternalFixed(FixVector2 velocity);
-    void SetOverride(Vector3 velocity);
     void SetOverrideFixed(FixVector2 velocity);
     void ClearOverride();
-    void SetExternal(Vector3 velocity);
     void SetExternalFixed(FixVector2 velocity);
     void SetMovementMode(MovementMode mode);
     void SetNavigationConstrained(bool constrained);
@@ -30,6 +26,4 @@ public interface IMoveExecutor
     /// 用于：位移/强制移动等不应主动寻路的阶段。
     /// </summary>
     void EnableNavigationConstraintBypass();
-    void Execute();
-    void Execute(float deltaTime);
 }

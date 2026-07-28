@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 public static class LogicInteractionTargetStateService
@@ -43,6 +43,22 @@ public static class LogicInteractionTargetStateService
             throw new ArgumentException("Actor id must be valid.", nameof(actorId));
 
         s_TargetByActor.Remove(actorId.Value);
+    }
+
+    public static bool TryGetTarget(LogicEntityId actorId, out LogicEntityId targetId)
+    {
+        EnsureActive();
+        if (!actorId.IsValid)
+            throw new ArgumentException("Actor id must be valid.", nameof(actorId));
+
+        if (s_TargetByActor.TryGetValue(actorId.Value, out int targetValue) && targetValue > 0)
+        {
+            targetId = new LogicEntityId(targetValue);
+            return true;
+        }
+
+        targetId = default;
+        return false;
     }
 
     public static void ResetForWorldTransition()

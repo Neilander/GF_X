@@ -73,6 +73,129 @@ public class SteeringMovementTests
         phaseField?.SetValue(model, values);
     }
 
+    [Test]
+    public void BrainAuthorityConstants_UseRawFixedValues()
+    {
+        string scriptsRoot = System.IO.Path.Combine(Application.dataPath, "AAAGame", "Scripts");
+        string[] brainFiles =
+        {
+            System.IO.Path.Combine(scriptsRoot, "Entity", "EnemyAIBrain.cs"),
+            System.IO.Path.Combine(scriptsRoot, "Entity", "FriendlyAIBrain.cs"),
+            System.IO.Path.Combine(scriptsRoot, "Movement", "SoldierAIBrain.cs"),
+        };
+        var floatToFixedPattern = new System.Text.RegularExpressions.Regex(
+            @"\(Fix64\)\s*\(?-?\d+(?:\.\d+)?f\)?",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        for (int i = 0; i < brainFiles.Length; i++)
+        {
+            string source = System.IO.File.ReadAllText(brainFiles[i]);
+            Assert.That(
+                floatToFixedPattern.Matches(source).Count,
+                Is.Zero,
+                $"Brain authority source still converts float literals to Fix64: {brainFiles[i]}.");
+        }
+
+        var enemy = new EnemyAIBrain();
+        AssertRaw(6554, enemy.AttackRange, nameof(enemy.AttackRange));
+        AssertRaw(6144, enemy.SeparationRadius, nameof(enemy.SeparationRadius));
+        AssertRaw(4916, enemy.SeparationWeight, nameof(enemy.SeparationWeight));
+
+        var friendly = new FriendlyAIBrain();
+        AssertRaw(6554, friendly.AttackRange, nameof(friendly.AttackRange));
+        AssertRaw(1229, friendly.FollowUpdateInterval, nameof(friendly.FollowUpdateInterval));
+
+        var soldier = new SoldierAIBrain();
+        AssertRaw(6144, soldier.WeaponRange, nameof(soldier.WeaponRange));
+        AssertRaw(40960, soldier.DetectEnemyRange, nameof(soldier.DetectEnemyRange));
+        AssertRaw(94208, soldier.ChaseRange, nameof(soldier.ChaseRange));
+        AssertRaw(6144, soldier.HomeArrivedRadius, nameof(soldier.HomeArrivedRadius));
+        AssertRaw(2048, soldier.ReturnSpeedBonusPercent, nameof(soldier.ReturnSpeedBonusPercent));
+        AssertRaw(820, soldier.ReturnHpRegenPercentPerSec, nameof(soldier.ReturnHpRegenPercentPerSec));
+        AssertRaw(2458, soldier.SoftReturnRatio, nameof(soldier.SoftReturnRatio));
+
+        AssertStaticRaw<SoldierAIBrain>("CombatApproachRangeSlackFixed", 328);
+        AssertStaticRaw<SoldierAIBrain>("CombatApproachRingSpacingFixed", 2253);
+        AssertStaticRaw<SoldierAIBrain>("CombatApproachOccupancyPaddingFixed", 1434);
+        AssertStaticRaw<SoldierAIBrain>("FallbackDeadZoneRange", 49152);
+        AssertStaticRaw<SoldierAIBrain>("FallbackInnerDeadZoneRange", 8192);
+
+        var directions = (FixVector2[])typeof(SoldierAIBrain)
+            .GetField("StableDeadZoneDirections", BindingFlags.Static | BindingFlags.NonPublic)
+            ?.GetValue(null);
+        Assert.NotNull(directions);
+        long[,] expectedDirectionRaw =
+        {
+            { 4096, 0 }, { 3785, 1568 }, { 2897, 2897 }, { 1568, 3785 },
+            { 0, 4096 }, { -1568, 3785 }, { -2897, 2897 }, { -3785, 1568 },
+            { -4096, 0 }, { -3785, -1568 }, { -2897, -2897 }, { -1568, -3785 },
+            { 0, -4096 }, { 1568, -3785 }, { 2897, -2897 }, { 3785, -1568 },
+        };
+        Assert.AreEqual(expectedDirectionRaw.GetLength(0), directions.Length);
+        for (int i = 0; i < directions.Length; i++)
+        {
+            Assert.AreEqual(expectedDirectionRaw[i, 0], directions[i].x.RawValue, $"Stable direction {i} X raw mismatch.");
+            Assert.AreEqual(expectedDirectionRaw[i, 1], directions[i].y.RawValue, $"Stable direction {i} Y raw mismatch.");
+        }
+
+        Fix64[] legacyValues =
+        {
+            (Fix64)1.6f,
+            (Fix64)1.5f,
+            (Fix64)1.2f,
+            (Fix64)0.9238795f,
+            (Fix64)0.7071068f,
+            (Fix64)0.3826834f,
+            (Fix64)0.6f,
+            (Fix64)0.5f,
+            (Fix64)0.45f,
+            (Fix64)0.3f,
+            (Fix64)0.25f,
+            (Fix64)0.2f,
+            (Fix64)0.15f,
+            (Fix64)0.12f,
+            (Fix64)0.08f,
+            (Fix64)0.05f,
+            (Fix64)0.01f,
+            (Fix64)0.0001f,
+        };
+        long[] expectedRaw =
+        {
+            6554,
+            6144,
+            4916,
+            3785,
+            2897,
+            1568,
+            2458,
+            2048,
+            1844,
+            1229,
+            1024,
+            820,
+            615,
+            492,
+            328,
+            205,
+            41,
+            1,
+        };
+        Assert.AreEqual(expectedRaw.Length, legacyValues.Length);
+        for (int i = 0; i < expectedRaw.Length; i++)
+            Assert.AreEqual(expectedRaw[i], legacyValues[i].RawValue, $"Legacy Q12 raw mismatch at index {i}.");
+    }
+
+    private static void AssertRaw(long expected, Fix64 actual, string fieldName)
+    {
+        Assert.AreEqual(expected, actual.RawValue, $"{fieldName} raw mismatch.");
+    }
+
+    private static void AssertStaticRaw<T>(string fieldName, long expected)
+    {
+        var field = typeof(T).GetField(fieldName, BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(field, $"Missing fixed authority field {typeof(T).Name}.{fieldName}.");
+        AssertRaw(expected, (Fix64)field.GetValue(null), $"{typeof(T).Name}.{fieldName}");
+    }
+
     #region Seek
 
     [Test]
@@ -197,7 +320,6 @@ public class SteeringMovementTests
         EntityRegistry.Register(soldier);
 
         var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
         brain.Inject();
         soldier.Brain = brain;
 
@@ -227,7 +349,7 @@ public class SteeringMovementTests
         EntityRegistry.Register(self);
         EntityRegistry.Register(lowerIdEnemy);
 
-        var targeting = new CharacterTargetingComp { AggroRange = 2f };
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)2f };
         targeting.Init(self);
         targeting.UpdateTargeting((Fix64)0.2f);
 
@@ -244,9 +366,6 @@ public class SteeringMovementTests
         EntityRegistry.Register(soldier);
 
         var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
-        brain.FollowDistanceMin = 2.5f;
-        brain.FollowDistanceMax = 5f;
         brain.Inject();
         soldier.Brain = brain;
 
@@ -255,7 +374,7 @@ public class SteeringMovementTests
 
         Vector3 before = soldier.Position;
         soldier.MoveComp.Move((Fix64)0.2f);
-        soldier.MoveExecutor.Execute(0.2f);
+        ((SimMoveExecutor)soldier.MoveExecutor).Execute(0.2f);
         soldier.SyncPositionFromExecutor();
 
         Assert.AreEqual(before.x, soldier.Position.x, 0.001f,
@@ -272,7 +391,6 @@ public class SteeringMovementTests
         EntityRegistry.Register(soldier);
 
         var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
         brain.Inject();
         soldier.Brain = brain;
 
@@ -291,8 +409,6 @@ public class SteeringMovementTests
         EntityRegistry.Register(soldier);
 
         var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
-        brain.LeashRange = 10f;
         brain.Inject();
         soldier.Brain = brain;
 
@@ -314,8 +430,8 @@ public class SteeringMovementTests
 
         var brain = new SoldierAIBrain
         {
-            ChaseRange = 1f,
-            HomeArrivedRadius = 0.1f,
+            ChaseRange = (Fix64)1f,
+            HomeArrivedRadius = (Fix64)0.1f,
         };
         brain.SetBirthPositionFixed(FixVector2.Zero);
         soldier.Brain = brain;
@@ -337,8 +453,7 @@ public class SteeringMovementTests
         EntityRegistry.Register(enemy);
 
         var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
-        brain.DetectEnemyRange = 6f;
+        brain.DetectEnemyRange = (Fix64)6f;
         brain.Inject();
         soldier.Brain = brain;
 
@@ -368,8 +483,7 @@ public class SteeringMovementTests
         EntityRegistry.Register(enemy);
 
         var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
-        brain.DetectEnemyRange = 6f;
+        brain.DetectEnemyRange = (Fix64)6f;
         brain.Inject();
         soldier.Brain = brain;
 
@@ -410,9 +524,8 @@ public class SteeringMovementTests
             $"targetable={enemy.IsAttackTargetable()} enemy={EntityCombatTeamHelper.IsEnemy(soldier, enemy)}");
 
         var brain = new SoldierAIBrain();
-        brain.RecruitRadius = 8f;
-        brain.DetectEnemyRange = 6f;
-        brain.WeaponRange = 1.5f;
+        brain.DetectEnemyRange = (Fix64)6f;
+        brain.WeaponRange = (Fix64)1.5f;
         brain.Inject();
         soldier.Brain = brain;
 

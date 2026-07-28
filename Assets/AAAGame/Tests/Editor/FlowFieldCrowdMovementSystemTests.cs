@@ -3,6 +3,7 @@ using UnityEngine;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using UnityEngine.TestTools;
 
@@ -105,6 +106,93 @@ public class FlowFieldCrowdMovementSystemTests
         ulong rebuildProgress = FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash();
         Assert.AreNotEqual(obstaclePending, rebuildProgress, "Runtime rebuild progress must affect NavigationHash.");
         Assert.AreEqual(rebuildProgress, FlowFieldCrowdMovementSystem.CaptureDiagnosticStateHash());
+    }
+
+    [Test]
+    public void NavigationAuthorityConfig_DoesNotReadFloatValues()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");
+        string[] authorityFiles =
+        {
+            Path.Combine(scriptsRoot, "Movement", "FlowFieldCrowdMovementSystem.cs"),
+            Path.Combine(scriptsRoot, "Common", "DistanceUnitConverter.cs"),
+            Path.Combine(scriptsRoot, "DataTable", "CharacterDataDetailAccessor.cs"),
+            Path.Combine(scriptsRoot, "Card", "LogicCardCommandService.cs"),
+            Path.Combine(scriptsRoot, "Card", "LogicCardPlacementAuthority.cs"),
+            Path.Combine(scriptsRoot, "GameClass", "DefendPhaseRuntime.cs"),
+            Path.Combine(scriptsRoot, "MeiyouUtility", "RewardManager.cs")
+        };
+        string[] buffFiles = Directory.GetFiles(
+            Path.Combine(scriptsRoot, "Buff"),
+            "*.cs",
+            SearchOption.AllDirectories);
+        Array.Sort(buffFiles, StringComparer.Ordinal);
+
+        for (int i = 0; i < authorityFiles.Length; i++)
+        {
+            string source = File.ReadAllText(authorityFiles[i]);
+            Assert.That(source, Does.Not.Contain("GF.Config.GetFloat"), authorityFiles[i]);
+        }
+        for (int i = 0; i < buffFiles.Length; i++)
+        {
+            string source = File.ReadAllText(buffFiles[i]);
+            Assert.That(source, Does.Not.Contain("GF.Config.GetFloat"), buffFiles[i]);
+        }
+
+        string flowSource = File.ReadAllText(authorityFiles[0]);
+        Assert.That(flowSource, Does.Contain("ResolveConfiguredAgentTypeRadiusFixed"));
+        Assert.That(flowSource, Does.Contain("DistanceConversionRateFixed"));
+        Assert.That(flowSource, Does.Not.Contain("return Time.frameCount"));
+        Assert.That(flowSource, Does.Not.Contain("return Time.time"));
+    }
+
+    [Test]
+    public void FlowAuthorityConstants_UseRawFixedValues()
+    {
+        string flowPath = Path.Combine(
+            Application.dataPath,
+            "AAAGame",
+            "Scripts",
+            "Movement",
+            "FlowFieldCrowdMovementSystem.cs");
+        string source = File.ReadAllText(flowPath);
+        var floatLiteralToFixedPattern = new System.Text.RegularExpressions.Regex(
+            @"\(Fix64\)\s*\(?-?\d+(?:\.\d+)?f\)?",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        Assert.That(
+            floatLiteralToFixedPattern.Matches(source).Count,
+            Is.Zero,
+            "Flow authority source must declare numeric fixed constants by raw value; float variables are only allowed at explicit Unity/test boundaries.");
+
+        Fix64[] legacyValues =
+        {
+            (Fix64)0.00001f,
+            (Fix64)0.0001f,
+            (Fix64)0.001f,
+            (Fix64)0.01f,
+            (Fix64)0.015f,
+            (Fix64)0.02f,
+            (Fix64)0.04f,
+            (Fix64)0.05f,
+            (Fix64)0.2f,
+            (Fix64)0.25f,
+            (Fix64)0.35f,
+            (Fix64)0.45f,
+            (Fix64)0.5f,
+            (Fix64)0.75f,
+        };
+        long[] expectedRaw = { 1, 1, 5, 41, 62, 82, 164, 205, 820, 1024, 1434, 1844, 2048, 3072 };
+        Assert.AreEqual(expectedRaw.Length, legacyValues.Length);
+        for (int i = 0; i < expectedRaw.Length; i++)
+            Assert.AreEqual(expectedRaw[i], legacyValues[i].RawValue, $"Legacy Flow Q12 raw mismatch at index {i}.");
+    }
+
+    [Test]
+    public void NavigationAuthorityFrame_BeforeLogicTimelineIsSetupFrameZero()
+    {
+        Assert.IsFalse(LogicFrameRuntime.IsTimelineRunning);
+        Assert.AreEqual(0, FlowFieldCrowdMovementSystem.GetCurrentNavigationFrame());
     }
 
     [Test]
@@ -645,6 +733,31 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(
             FlowFieldCrowdMovementSystem.GetEditorTestFixedGoalOccupancyParticipation(blocker.LogicEntityId.Value),
             "fixed flow 结果在 8 Tick 窗口内必须继续占用目标格。");
+    }
+
+    [Test]
+    public void NavigationAuthorityDigest_失败路径记忆必须进入AgentsHash()
+    {
+        SimEntityContext entity = CreateEntity(new Vector3(1.5f, 0f, 1.5f), false, 0, 0.2f);
+        var baselineHasher = new LogicStateHasher();
+        LogicNavigationAuthorityDigest baseline =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(baselineHasher);
+
+        FlowFieldCrowdMovementSystem.SetEditorTestOnlyFailedPathMemo(
+            entity.LogicEntityId.Value,
+            worldVersion: 17,
+            startCellIndex: 23,
+            goalCellIndex: 41,
+            startSectorDirtyVersion: 5,
+            goalSectorDirtyVersion: 7);
+        var changedHasher = new LogicStateHasher();
+        LogicNavigationAuthorityDigest changed =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(changedHasher);
+
+        Assert.AreNotEqual(
+            baseline.AgentsHash,
+            changed.AgentsHash,
+            "失败路径记忆会跳过后续 BuildPathHandle 并改变缓存访问，必须属于跨 Tick Navigation authority。");
     }
 
     [Test]
@@ -2592,18 +2705,18 @@ public class FlowFieldCrowdMovementSystemTests
         DurationMoveEffectComp effectComp = new DurationMoveEffectComp();
         effectComp.Init(ctx);
 
-        moveComp.MoveTo(new Vector3(6.5f, 0f, 0.5f));
+        moveComp.MoveToFixed(new FixVector2((Fix64)6.5f, (Fix64)0.5f));
 
         bool[] walkable = new bool[7];
         for (int i = 0; i < walkable.Length; i++)
             walkable[i] = true;
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(7, 1, 1f, Vector3.zero, walkable);
 
-        effectComp.StartDurationAdditionalMove(0.1f, Vector3.zero);
+        effectComp.StartDurationAdditionalMove((Fix64)0.1f, FixVector2.Zero);
         effectComp.ApplyEffect((Fix64)0.1f);
         Assert.AreEqual(MovementMode.Displaced, ctx.MoveExecutor.MovementMode, "位移生效期间应切入 Displaced");
         moveComp.Move((Fix64)0.1f);
-        ctx.MoveExecutor.Execute(0.1f);
+        ((SimMoveExecutor)ctx.MoveExecutor).Execute(0.1f);
         ctx.SyncPositionFromExecutor();
 
         Assert.AreEqual(0.5f, ctx.Position.x, 0.001f, "位移期间不应执行主动寻路位移");
@@ -2611,7 +2724,7 @@ public class FlowFieldCrowdMovementSystemTests
         effectComp.ApplyEffect((Fix64)0.1f);
         Assert.AreEqual(MovementMode.Normal, ctx.MoveExecutor.MovementMode, "位移结束后应恢复 Normal");
         moveComp.Move((Fix64)0.1f);
-        ctx.MoveExecutor.Execute(0.1f);
+        ((SimMoveExecutor)ctx.MoveExecutor).Execute(0.1f);
         ctx.SyncPositionFromExecutor();
 
         Assert.Greater(ctx.Position.x, 0.5f, "位移结束后应沿原目标继续移动");
@@ -2660,6 +2773,94 @@ public class FlowFieldCrowdMovementSystemTests
             fixedDistance.RawValue,
             FixVector2.Distance(fixedStart, fixedGoal).RawValue,
             "定点导航距离必须反映绕路长度");
+    }
+
+    [Test]
+    public void 非阻塞导航预览不得刷新权威路径缓存Usage()
+    {
+        const int width = 40;
+        const int height = 3;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        Assert.Greater(FlowFieldCrowdMovementSystem.GetEditorTestSectorPortalAccessCacheCount(), 0);
+        FlowFieldCrowdMovementSystem.SetEditorTestOnlySectorPortalAccessLastUsedFrame(-1234);
+        FlowFieldCrowdMovementSystem.GetEditorTestAuthorityCacheState(
+            out int sectorPathCountBefore,
+            out ulong sectorPathContentBefore,
+            out ulong sectorPathUsageBefore,
+            out int portalAccessCountBefore,
+            out ulong portalAccessContentBefore,
+            out ulong portalAccessUsageBefore,
+            out int sharedGoalCountBefore,
+            out ulong sharedGoalContentBefore,
+            out ulong sharedGoalUsageBefore);
+        var authorityBefore = new LogicStateHasher();
+        LogicNavigationAuthorityDigest digestBefore =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(authorityBefore);
+        string liveStateBefore = FlowFieldCrowdMovementSystem.GetEditorTestAuthorityCheckpointLiveStateSignature();
+
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixedNonBlocking(
+                new FixVector2((Fix64)39.5f, (Fix64)1.5f),
+                0,
+                (Fix64)2,
+                Fix64.Zero,
+                out FixVector2 previewGoal));
+        var corners = new List<Vector3>();
+        Assert.IsTrue(
+            FlowFieldCrowdMovementSystem.TryGetNavigationPathCornersNonBlocking(
+                new Vector3(0.5f, 0f, 1.5f),
+                new Vector3((float)previewGoal.x, 0f, (float)previewGoal.y),
+                0,
+                corners,
+                out string failureReason),
+            failureReason);
+
+        FlowFieldCrowdMovementSystem.GetEditorTestAuthorityCacheState(
+            out int sectorPathCountAfter,
+            out ulong sectorPathContentAfter,
+            out ulong sectorPathUsageAfter,
+            out int portalAccessCountAfter,
+            out ulong portalAccessContentAfter,
+            out ulong portalAccessUsageAfter,
+            out int sharedGoalCountAfter,
+            out ulong sharedGoalContentAfter,
+            out ulong sharedGoalUsageAfter);
+        var authorityAfter = new LogicStateHasher();
+        LogicNavigationAuthorityDigest digestAfter =
+            FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigestWithCheckpoints(authorityAfter);
+        string liveStateAfter = FlowFieldCrowdMovementSystem.GetEditorTestAuthorityCheckpointLiveStateSignature();
+        Assert.AreEqual(digestBefore.WorldAndConfigHash, digestAfter.WorldAndConfigHash, "WorldAndConfig changed.");
+        Assert.AreEqual(liveStateBefore, liveStateAfter, "CheckpointLiveState fields changed.");
+        Assert.AreEqual(digestBefore.CheckpointLiveStateHash, digestAfter.CheckpointLiveStateHash, "CheckpointLiveState changed.");
+        Assert.AreEqual(digestBefore.WorldProgressHash, digestAfter.WorldProgressHash, "WorldProgress changed.");
+        Assert.AreEqual(digestBefore.RuntimeObstaclesHash, digestAfter.RuntimeObstaclesHash, "RuntimeObstacles changed.");
+        Assert.AreEqual(digestBefore.AgentsHash, digestAfter.AgentsHash, "Agents changed.");
+        Assert.AreEqual(digestBefore.CachesHash, digestAfter.CachesHash, "Caches changed.");
+        Assert.AreEqual(digestBefore.FlowTilesHash, digestAfter.FlowTilesHash, "FlowTiles changed.");
+        Assert.AreEqual(digestBefore.FlowTileBuildQueueHash, digestAfter.FlowTileBuildQueueHash, "FlowTileBuildQueue changed.");
+        Assert.AreEqual(digestBefore.SharedGoalBuildQueueHash, digestAfter.SharedGoalBuildQueueHash, "SharedGoalBuildQueue changed.");
+        Assert.AreEqual(digestBefore.MovingTargetAnchorsHash, digestAfter.MovingTargetAnchorsHash, "MovingTargetAnchors changed.");
+        Assert.AreEqual(digestBefore.GoalReservationsHash, digestAfter.GoalReservationsHash, "GoalReservations changed.");
+        Assert.AreEqual(digestBefore.FixedPortalOwnersHash, digestAfter.FixedPortalOwnersHash, "FixedPortalOwners changed.");
+        Assert.AreEqual(digestBefore.FixedCorridorBuildsHash, digestAfter.FixedCorridorBuildsHash, "FixedCorridorBuilds changed.");
+        Assert.AreEqual(
+            authorityBefore.Hash,
+            authorityAfter.Hash,
+            "非阻塞 UI 预览不得改变 path handle 序列或任何 Navigation authority 状态。");
+        Assert.AreEqual(sectorPathCountBefore, sectorPathCountAfter);
+        Assert.AreEqual(sectorPathContentBefore, sectorPathContentAfter);
+        Assert.AreEqual(sectorPathUsageBefore, sectorPathUsageAfter);
+        Assert.AreEqual(portalAccessCountBefore, portalAccessCountAfter);
+        Assert.AreEqual(portalAccessContentBefore, portalAccessContentAfter);
+        Assert.AreEqual(portalAccessUsageBefore, portalAccessUsageAfter);
+        Assert.AreEqual(sharedGoalCountBefore, sharedGoalCountAfter);
+        Assert.AreEqual(sharedGoalContentBefore, sharedGoalContentAfter);
+        Assert.AreEqual(sharedGoalUsageBefore, sharedGoalUsageAfter);
     }
 
     [Test]
@@ -3829,7 +4030,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void PortalFloatShadow扰动不改变AuthorityDigest整数Access和Fixed路径()
+    public void Portal运行时状态只保留整数Access和DeterministicCost()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 4;
@@ -3851,19 +4052,21 @@ public class FlowFieldCrowdMovementSystemTests
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryBuildEditorTestPortalPath(0, 3, 11, 3, out int[] pathBefore));
         Assert.IsNotEmpty(pathBefore);
 
-        var digestBefore = new LogicStateHasher();
-        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(digestBefore);
-        Assert.Greater(FlowFieldCrowdMovementSystem.PerturbEditorTestPortalFloatShadows(), 0);
-        var digestAfter = new LogicStateHasher();
-        FlowFieldCrowdMovementSystem.WriteDeterministicFrameDigest(digestAfter);
+        Type movementSystemType = typeof(FlowFieldCrowdMovementSystem);
+        Type accessEntryType = movementSystemType.GetNestedType("SectorPortalAccessEntry", BindingFlags.NonPublic);
+        Type transitionType = movementSystemType.GetNestedType("PortalTransition", BindingFlags.NonPublic);
+        Assert.IsNotNull(accessEntryType);
+        Assert.IsNotNull(transitionType);
+        Assert.IsNull(accessEntryType.GetField("QuantizedIntegration", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
+        Assert.IsNull(accessEntryType.GetField("IntegrationScale", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
+        Assert.IsNull(transitionType.GetField("Cost", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic));
 
-        Assert.AreEqual(digestBefore.Hash, digestAfter.Hash, "portal float shadow 不得进入逐 Tick authority digest。");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestSectorPortalAccessCostRaw(0, portalId, 0, 3, out long accessAfter));
         Assert.AreEqual(accessBefore, accessAfter, "portal access 权威成本只能读取 deterministic integration。");
 
         FlowFieldCrowdMovementSystem.ClearEditorTestSectorPathCache();
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryBuildEditorTestPortalPath(0, 3, 11, 3, out int[] pathAfter));
-        CollectionAssert.AreEqual(pathBefore, pathAfter, "portal A* 不得读取 QuantizedIntegration、IntegrationScale 或 transition.Cost。");
+        CollectionAssert.AreEqual(pathBefore, pathAfter, "portal A* 必须只读取 deterministic integration 和 DeterministicCost。");
     }
 
     [Test]
@@ -4547,21 +4750,21 @@ public class FlowFieldCrowdMovementSystemTests
         CharacterMoveComp moveComp = new CharacterMoveComp();
         moveComp.Init(ctx);
         ctx.MoveComp = moveComp;
-        moveComp.MoveTo(new Vector3(8.5f, 0f, 2.5f));
+        moveComp.MoveToFixed(new FixVector2((Fix64)8.5f, (Fix64)2.5f));
 
         DurationMoveEffectComp effectComp = new DurationMoveEffectComp();
         effectComp.Init(ctx);
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
         moveComp.Move((Fix64)0.2f);
-        ctx.MoveExecutor.Execute(0.2f);
+        ((SimMoveExecutor)ctx.MoveExecutor).Execute(0.2f);
         ctx.SyncPositionFromExecutor();
         Assert.Greater(ctx.Position.x, 0.7f, $"首次寻路应正常向前，pos={ctx.Position}");
 
-        effectComp.StartDurationAdditionalMove(0.1f, new Vector3(0f, 0f, -10f));
+        effectComp.StartDurationAdditionalMove((Fix64)0.1f, new FixVector2(Fix64.Zero, (Fix64)(-10)));
         effectComp.ApplyEffect((Fix64)0.1f);
         moveComp.Move((Fix64)0.1f);
-        ctx.MoveExecutor.Execute(0.1f);
+        ((SimMoveExecutor)ctx.MoveExecutor).Execute(0.1f);
         ctx.SyncPositionFromExecutor();
         Assert.Less(ctx.Position.z, 2.0f, $"位移应把单位推离原走廊，pos={ctx.Position}");
 
@@ -4572,7 +4775,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.4f);
         moveComp.Move((Fix64)0.2f);
-        ctx.MoveExecutor.Execute(0.2f);
+        ((SimMoveExecutor)ctx.MoveExecutor).Execute(0.2f);
         ctx.SyncPositionFromExecutor();
 
         SimMoveExecutor executor = ctx.MoveExecutor as SimMoveExecutor;
@@ -6049,7 +6252,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         const float dt = 0.1f;
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, dt);
-        moveComp.MoveTo(hero.Position);
+        moveComp.MoveToFixed(hero.PositionFixed);
         moveComp.Move((Fix64)dt);
         executor.Execute(dt);
         chaser.SyncPositionFromExecutor();
@@ -6143,8 +6346,8 @@ public class FlowFieldCrowdMovementSystemTests
             interns[i].TargetComp = new SimTargetingComp(interns[i], allEntities)
             {
                 CurrentTarget = hero,
-                AggroRange = 32f,
-                ForgetRange = 48f
+                AggroRangeFixed = (Fix64)32f,
+                ForgetRangeFixed = (Fix64)48f
             };
             CharacterMoveComp moveComp = new CharacterMoveComp();
             moveComp.Init(interns[i], grid.AgentTypeId);
@@ -6158,8 +6361,8 @@ public class FlowFieldCrowdMovementSystemTests
             };
 
             brains[i] = new SoldierAIBrain();
-            brains[i].DetectEnemyRange = 32f;
-            brains[i].WeaponRange = 0.75f;
+            brains[i].DetectEnemyRange = (Fix64)32f;
+            brains[i].WeaponRange = (Fix64)0.75f;
             brains[i].SetBirthPositionFixed(interns[i].PositionFixed);
             brains[i].Inject();
             interns[i].Brain = brains[i];
@@ -6400,8 +6603,8 @@ public class FlowFieldCrowdMovementSystemTests
             chaser.TargetComp = new SimTargetingComp(chaser, allEntities)
             {
                 CurrentTarget = hero,
-                AggroRange = 34f,
-                ForgetRange = 50f
+                AggroRangeFixed = (Fix64)34f,
+                ForgetRangeFixed = (Fix64)50f
             };
             CharacterMoveComp moveComp = new CharacterMoveComp();
             moveComp.Init(chaser, grid.AgentTypeId);
@@ -6415,8 +6618,8 @@ public class FlowFieldCrowdMovementSystemTests
             };
 
             SoldierAIBrain brain = new SoldierAIBrain();
-            brain.DetectEnemyRange = 34f;
-            brain.WeaponRange = 0.75f;
+            brain.DetectEnemyRange = (Fix64)34f;
+            brain.WeaponRange = (Fix64)0.75f;
             brain.SetBirthPositionFixed(chaser.PositionFixed);
             brain.Inject();
             chaser.Brain = brain;
@@ -6728,8 +6931,8 @@ public class FlowFieldCrowdMovementSystemTests
             chaser.TargetComp = new SimTargetingComp(chaser, allEntities)
             {
                 CurrentTarget = hero,
-                AggroRange = 34f,
-                ForgetRange = 50f
+                AggroRangeFixed = (Fix64)34f,
+                ForgetRangeFixed = (Fix64)50f
             };
             CharacterMoveComp moveComp = new CharacterMoveComp();
             moveComp.Init(chaser, grid.AgentTypeId);
@@ -6743,9 +6946,9 @@ public class FlowFieldCrowdMovementSystemTests
             };
 
             SoldierAIBrain brain = new SoldierAIBrain();
-            brain.DetectEnemyRange = 34f;
-            brain.WeaponRange = 0.75f;
-            brain.ChaseRange = 120f;
+            brain.DetectEnemyRange = (Fix64)34f;
+            brain.WeaponRange = (Fix64)0.75f;
+            brain.ChaseRange = (Fix64)120f;
             brain.SetBirthPositionFixed(chaser.PositionFixed);
             brain.Inject();
             chaser.Brain = brain;
@@ -7198,7 +7401,7 @@ public class FlowFieldCrowdMovementSystemTests
                 SimMoveExecutor executor = executors[i];
                 chaser.SyncPositionToExecutor();
                 Vector3 decisionPosition = chaser.Position;
-                moveComps[i].MoveTo(hero.Position);
+                moveComps[i].MoveToFixed(hero.PositionFixed);
                 moveComps[i].Move((Fix64)dt);
                 executor.Execute(dt);
                 chaser.SyncPositionFromExecutor();
@@ -8029,7 +8232,7 @@ public class FlowFieldCrowdMovementSystemTests
                 SimMoveExecutor executor = executors[i];
                 chaser.SyncPositionToExecutor();
                 Vector3 decisionPosition = chaser.Position;
-                moveComps[i].MoveTo(hero.Position);
+                moveComps[i].MoveToFixed(hero.PositionFixed);
                 moveComps[i].Move((Fix64)dt);
                 executor.Execute(dt);
                 chaser.SyncPositionFromExecutor();
@@ -8350,8 +8553,8 @@ public class FlowFieldCrowdMovementSystemTests
             chaser.TargetComp = new SimTargetingComp(chaser, allEntities)
             {
                 CurrentTarget = scenario.UseNaturalTargetAcquisition ? null : hero,
-                AggroRange = 40f,
-                ForgetRange = 60f
+                AggroRangeFixed = (Fix64)40f,
+                ForgetRangeFixed = (Fix64)60f
             };
             CharacterMoveComp moveComp = new CharacterMoveComp();
             moveComp.Init(chaser, grid.AgentTypeId);
@@ -8366,9 +8569,9 @@ public class FlowFieldCrowdMovementSystemTests
             chaser.MoveExecutor = executor;
             SoldierAIBrain brain = new SoldierAIBrain
             {
-                DetectEnemyRange = 40f,
-                WeaponRange = 0.75f,
-                ChaseRange = 80f
+                DetectEnemyRange = (Fix64)40f,
+                WeaponRange = (Fix64)0.75f,
+                ChaseRange = (Fix64)80f
             };
             brain.SetBirthPositionFixed(chaser.PositionFixed);
             brain.Inject();
@@ -8730,17 +8933,17 @@ public class FlowFieldCrowdMovementSystemTests
                 chaser.TargetComp = new SimTargetingComp(chaser, allEntities)
                 {
                     CurrentTarget = scenario.UseNaturalTargetAcquisition ? null : hero,
-                    AggroRange = 40f,
-                    ForgetRange = 60f
+                    AggroRangeFixed = (Fix64)40f,
+                    ForgetRangeFixed = (Fix64)60f
                 };
                 CharacterMoveComp moveComp = new CharacterMoveComp();
                 moveComp.Init(chaser, grid.AgentTypeId);
                 chaser.MoveComp = moveComp;
                 SoldierAIBrain brain = new SoldierAIBrain
                 {
-                    DetectEnemyRange = 40f,
-                    WeaponRange = 0.75f,
-                    ChaseRange = 80f
+                    DetectEnemyRange = (Fix64)40f,
+                    WeaponRange = (Fix64)0.75f,
+                    ChaseRange = (Fix64)80f
                 };
                 brain.SetBirthPositionFixed(chaser.PositionFixed);
                 brain.Inject();
@@ -9860,7 +10063,7 @@ public class FlowFieldCrowdMovementSystemTests
         float heroSurfaceDistance = heroTarget != null ? chaser.DistanceToTargetSurface(heroTarget) : float.PositiveInfinity;
         float attackRange = chaser.WeaponComp != null
             ? (float)chaser.WeaponComp.AttackRange
-            : brain != null ? brain.WeaponRange : float.NaN;
+            : brain != null ? (float)brain.WeaponRange : float.NaN;
 
         diagnostics.Append("key=").Append(chaser.CharacterKey)
             .Append(",targetHero=").Append(ReferenceEquals(currentTarget, heroTarget))
@@ -9873,7 +10076,7 @@ public class FlowFieldCrowdMovementSystemTests
             .Append(",heroSurfaceDist=").Append(float.IsPositiveInfinity(heroSurfaceDistance) ? "INF" : heroSurfaceDistance.ToString("F3"))
             .Append(",attackRange=").Append(float.IsNaN(attackRange) ? "NaN" : attackRange.ToString("F3"))
             .Append(",navTarget=");
-        if (moveComp != null && moveComp.TryGetNavigationTarget(out Vector3 navigationTarget))
+        if (moveComp != null && moveComp.TryGetNavigationTargetFixed(out FixVector2 navigationTarget))
             diagnostics.Append(navigationTarget);
         else
             diagnostics.Append("none");
@@ -12132,7 +12335,7 @@ public class FlowFieldCrowdMovementSystemTests
                 brain.Tick(chaser, (Fix64)dt);
 
             chaser.MoveComp.Move((Fix64)dt);
-            chaser.MoveExecutor.Execute(dt);
+            ((SimMoveExecutor)chaser.MoveExecutor).Execute(dt);
             chaser.SyncPositionFromExecutor();
 
             if (FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringDiagnostic(
@@ -12187,7 +12390,7 @@ public class FlowFieldCrowdMovementSystemTests
                 brain.Tick(chaser, (Fix64)dt);
 
             chaser.MoveComp.Move((Fix64)dt);
-            chaser.MoveExecutor.Execute(dt);
+            ((SimMoveExecutor)chaser.MoveExecutor).Execute(dt);
             chaser.SyncPositionFromExecutor();
 
             if (chaser.MoveExecutor is SimMoveExecutor executor)

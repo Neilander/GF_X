@@ -19,6 +19,8 @@ public static class DefendPhaseRuntime
     private static readonly List<DefendWaveDefinition> s_DefendWaves = new();
     private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
     private static readonly List<int> s_DeterministicAliveEnemyIds = new();
+    private static readonly Comparison<int> s_DeterministicEnemyIdComparison =
+        (left, right) => left.CompareTo(right);
 
     private static bool s_SubscribedLogicUnitDead;
     private static int s_CachedLevelEntityId;
@@ -435,17 +437,22 @@ public static class DefendPhaseRuntime
         out string failureReason)
     {
         var fixedBase = new FixVector2((Fix64)basePosition.x, (Fix64)basePosition.z);
-        if (TryResolveBaseNavigationPointFixed(
+        if (FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPointFixedNonBlocking(
                 fixedBase,
                 agentTypeId,
-                out FixVector2 fixedNavigationBase,
-                out failureReason))
+                (Fix64)NavigationPointProbeRadius,
+                Fix64.Zero,
+                out FixVector2 fixedNavigationBase))
         {
             navigationBase = new Vector3((float)fixedNavigationBase.x, basePosition.y, (float)fixedNavigationBase.y);
+            failureReason = string.Empty;
             return true;
         }
 
         navigationBase = Vector3.zero;
+        failureReason =
+            $"no committed legal navigation point near player base raw=({fixedBase.x.RawValue},{fixedBase.y.RawValue}) " +
+            $"agentType={agentTypeId} maxSnapDistanceRaw={((Fix64)NavigationPointProbeRadius).RawValue}";
         return false;
     }
 
@@ -599,15 +606,15 @@ public static class DefendPhaseRuntime
             return null;
 
         if (roundIndex <= s_DefendWaves.Count)
-            return CloneWave(s_DefendWaves[Mathf.Max(0, roundIndex - 1)], 1f);
+            return CloneWave(s_DefendWaves[Mathf.Max(0, roundIndex - 1)], Fix64.One);
 
         int overflowRounds = roundIndex - s_DefendWaves.Count;
-        float growthRate = GF.Config != null ? GF.Config.GetFloat(DefendEndlessGrowthRateConfigKey, 1f) : 1f;
-        double scale = Math.Pow(Math.Max(0f, growthRate), overflowRounds);
-        return CloneWave(s_DefendWaves[s_DefendWaves.Count - 1], (float)scale);
+        Fix64 growthRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(DefendEndlessGrowthRateConfigKey);
+        Fix64 scale = Fix64.Pow(growthRate, overflowRounds);
+        return CloneWave(s_DefendWaves[s_DefendWaves.Count - 1], scale);
     }
 
-    private static DefendWaveDefinition CloneWave(DefendWaveDefinition source, float scale)
+    private static DefendWaveDefinition CloneWave(DefendWaveDefinition source, Fix64 scale)
     {
         if (source == null)
             return null;
@@ -616,7 +623,10 @@ public static class DefendPhaseRuntime
         for (int i = 0; i < source.Entries.Count; i++)
         {
             DefendWaveEntry entry = source.Entries[i];
-            int scaledCount = Mathf.RoundToInt(entry.Count * Mathf.Max(0f, scale));
+            long scaledCountRaw = checked((long)entry.Count * Fix64.Max(Fix64.Zero, scale).RawValue);
+            long roundedCount = checked(scaledCountRaw + (1L << (Fix64.FRACTIONAL_PLACES - 1)))
+                                >> Fix64.FRACTIONAL_PLACES;
+            int scaledCount = checked((int)roundedCount);
             if (entry.Count > 0 && scaledCount <= 0)
                 scaledCount = 1;
 
@@ -631,6 +641,15 @@ public static class DefendPhaseRuntime
         return clone;
     }
 
+#if UNITY_EDITOR
+    public static int GetEditorTestScaledSpawnCount(int count, Fix64 scale)
+    {
+        var wave = new DefendWaveDefinition();
+        wave.Entries.Add(new DefendWaveEntry { Count = count });
+        return CloneWave(wave, scale).Entries[0].Count;
+    }
+#endif
+
     private static List<PlannedSpawnEvent> BuildSpawnEvents(DefendWaveDefinition wave)
     {
         var events = new List<PlannedSpawnEvent>();
@@ -639,19 +658,14 @@ public static class DefendPhaseRuntime
 
         Fix64 arriveInterval = ResolveFiniteConfigFixed(
             DefendEnemyArriveIntervalConfigKey,
-            (Fix64)0.8f,
             (Fix64)MinArriveIntervalSeconds);
         ulong arriveIntervalTicks = SecondsToTicksCeiling(arriveInterval);
         Fix64 minSpeedProperty = ResolveFiniteConfigFixed(
             DefendEnemyMinSpeedConfigKey,
-            (Fix64)500,
             Fix64.One);
         Fix64 minSpeedWorld = Fix64.Max(
             (Fix64)MinWorldSpeed,
             DistanceUnitConverter.ConvertToWorld(minSpeedProperty));
-        Fix64 conversionRate = (Fix64)DistanceUnitConverter.DistanceConversionRate;
-        if (conversionRate <= Fix64.Zero)
-            throw new InvalidOperationException($"DefendPhaseRuntime requires a positive distance conversion rate. raw={conversionRate.RawValue}.");
         FixVector2 basePosition = ResolvePlayerBasePositionFixed();
 
         for (int i = 0; i < wave.Entries.Count; i++)
@@ -714,7 +728,7 @@ public static class DefendPhaseRuntime
                     }
                 }
 
-                Fix64 pointSpeedProperty = pointSpeedWorld / conversionRate;
+                Fix64 pointSpeedProperty = DistanceUnitConverter.ConvertFromWorld(pointSpeedWorld);
                 ulong pointLastArrivalTicks = checked(
                     targetFirstArrivalTicks + checked((ulong)(spawnCount - 1) * arriveIntervalTicks));
                 previousLastArrivalTicks = pointLastArrivalTicks;
@@ -745,12 +759,9 @@ public static class DefendPhaseRuntime
         return events;
     }
 
-    private static Fix64 ResolveFiniteConfigFixed(string key, Fix64 fallback, Fix64 minimum)
+    private static Fix64 ResolveFiniteConfigFixed(string key, Fix64 minimum)
     {
-        float configured = GF.Config != null ? GF.Config.GetFloat(key, (float)fallback) : (float)fallback;
-        if (float.IsNaN(configured) || float.IsInfinity(configured))
-            throw new InvalidOperationException($"DefendPhaseRuntime config '{key}' must be finite. actual={configured}.");
-        return Fix64.Max(minimum, (Fix64)configured);
+        return Fix64.Max(minimum, DistanceUnitConverter.ReadRequiredPositiveFixedConfig(key));
     }
 
     private static ulong SecondsToTicksCeiling(Fix64 duration)
@@ -985,8 +996,9 @@ public static class DefendPhaseRuntime
         }
 
         s_DeterministicAliveEnemyIds.Clear();
-        s_DeterministicAliveEnemyIds.AddRange(s_AliveEnemyLogicEntityIds);
-        s_DeterministicAliveEnemyIds.Sort();
+        foreach (int entityId in s_AliveEnemyLogicEntityIds)
+            s_DeterministicAliveEnemyIds.Add(entityId);
+        s_DeterministicAliveEnemyIds.Sort(s_DeterministicEnemyIdComparison);
         hasher.Add(s_DeterministicAliveEnemyIds.Count);
         for (int i = 0; i < s_DeterministicAliveEnemyIds.Count; i++)
             hasher.Add(s_DeterministicAliveEnemyIds[i]);

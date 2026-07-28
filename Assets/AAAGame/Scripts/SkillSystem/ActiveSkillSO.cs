@@ -23,16 +23,6 @@ public class ActiveSkillSO : SkillEffectSO
     public float radius = 10f;
     public Vector3 selectRatio;
 
-    public float ResolveCooldownInterval()
-    {
-        return ResolveCooldownInterval(1);
-    }
-
-    public float ResolveCooldownInterval(int level)
-    {
-        return (float)ResolveCooldownIntervalFixed(level);
-    }
-
     public Fix64 ResolveCooldownIntervalFixed()
     {
         return ResolveCooldownIntervalFixed(1);

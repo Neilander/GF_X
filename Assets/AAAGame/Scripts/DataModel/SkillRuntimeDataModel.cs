@@ -2,6 +2,7 @@ using GameFramework;
 using GameFramework.Event;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using UnityGameFramework.Runtime;
 
 /// <summary>
@@ -12,6 +13,14 @@ public class SkillRuntimeDataModel : DataModelBase
     private readonly Dictionary<string, int> m_SkillLevels = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> m_SkillRemainingUsageCounts = new(StringComparer.Ordinal);
     private readonly List<string> m_UnlockOrder = new();
+    private readonly List<SkillRuntimeInfo> m_UnlockedSkills = new();
+    private readonly ReadOnlyCollection<SkillRuntimeInfo> m_ReadOnlyUnlockedSkills;
+    private int m_CachedHeroSkillLevelBonus;
+
+    public SkillRuntimeDataModel()
+    {
+        m_ReadOnlyUnlockedSkills = m_UnlockedSkills.AsReadOnly();
+    }
 
     protected override void OnCreate(RefParams userdata)
     {
@@ -75,29 +84,42 @@ public class SkillRuntimeDataModel : DataModelBase
         if (dm == null)
             return Array.Empty<SkillRuntimeInfo>();
 
-        List<SkillRuntimeInfo> results = new(dm.m_UnlockOrder.Count);
-        for (int i = 0; i < dm.m_UnlockOrder.Count; i++)
+        int heroSkillLevelBonus = LevelTagRuntime.GetHeroSkillLevelBonus();
+        if (heroSkillLevelBonus != dm.m_CachedHeroSkillLevelBonus)
+            dm.RebuildUnlockedSkillsSnapshot(heroSkillLevelBonus);
+
+        return dm.m_ReadOnlyUnlockedSkills;
+    }
+
+    private void RebuildUnlockedSkillsSnapshot()
+    {
+        RebuildUnlockedSkillsSnapshot(LevelTagRuntime.GetHeroSkillLevelBonus());
+    }
+
+    private void RebuildUnlockedSkillsSnapshot(int heroSkillLevelBonus)
+    {
+        m_UnlockedSkills.Clear();
+        for (int i = 0; i < m_UnlockOrder.Count; i++)
         {
-            string skillId = dm.m_UnlockOrder[i];
+            string skillId = m_UnlockOrder[i];
             if (string.IsNullOrWhiteSpace(skillId))
                 continue;
 
-            if (!dm.m_SkillLevels.TryGetValue(skillId, out int level))
+            if (!m_SkillLevels.TryGetValue(skillId, out int level))
                 continue;
 
             SkillData skillData = SkillDataModel.GetSkillData(skillId);
             if (skillData == null)
                 throw new InvalidOperationException($"Unlocked SkillData not found. skillId={skillId}");
 
-            int effectiveLevel = GetEffectiveLevel(level);
+            int effectiveLevel = GetEffectiveLevel(level, heroSkillLevelBonus);
             int maxUsageCount = GetMaxUsageCount(skillData, effectiveLevel);
-            int remainingUsageCount = dm.m_SkillRemainingUsageCounts.TryGetValue(skillId, out int remaining)
+            int remainingUsageCount = m_SkillRemainingUsageCounts.TryGetValue(skillId, out int remaining)
                 ? remaining
                 : 0;
-            results.Add(new SkillRuntimeInfo(skillData, effectiveLevel, remainingUsageCount, maxUsageCount));
+            m_UnlockedSkills.Add(new SkillRuntimeInfo(skillData, effectiveLevel, remainingUsageCount, maxUsageCount));
         }
-
-        return results;
+        m_CachedHeroSkillLevelBonus = heroSkillLevelBonus;
     }
 
     public static LogicSkillSlotCommand RequestSwapSkillSlots(int fromIndex, int toIndex)
@@ -171,6 +193,7 @@ public class SkillRuntimeDataModel : DataModelBase
             m_UnlockOrder.Add(skillId);
             m_SkillLevels[skillId] = 1;
             SetInitialUsageCount(skillData, 1);
+            RebuildUnlockedSkillsSnapshot();
             return 1;
         }
 
@@ -178,6 +201,7 @@ public class SkillRuntimeDataModel : DataModelBase
         level++;
         m_SkillLevels[skillId] = level;
         AddUpgradeUsageCount(skillData, level, oldMaxUsageCount);
+        RebuildUnlockedSkillsSnapshot();
         return level;
     }
 
@@ -222,6 +246,7 @@ public class SkillRuntimeDataModel : DataModelBase
 
         m_SkillRemainingUsageCounts[skillId] = remainingUsageCount - 1;
         int level = m_SkillLevels.TryGetValue(skillId, out int storedLevel) ? storedLevel : 0;
+        RebuildUnlockedSkillsSnapshot();
         PublishSkillChanged(skillId, level);
     }
 
@@ -255,7 +280,10 @@ public class SkillRuntimeDataModel : DataModelBase
         }
 
         if (changed)
+        {
+            RebuildUnlockedSkillsSnapshot();
             PublishSkillChanged(null, 0);
+        }
     }
 
     private static int GetRequiredMaxUsageCount(SkillData skillData, int level)
@@ -277,10 +305,15 @@ public class SkillRuntimeDataModel : DataModelBase
 
     private static int GetEffectiveLevel(int storedLevel)
     {
+        return GetEffectiveLevel(storedLevel, LevelTagRuntime.GetHeroSkillLevelBonus());
+    }
+
+    private static int GetEffectiveLevel(int storedLevel, int heroSkillLevelBonus)
+    {
         if (storedLevel <= 0)
             return 0;
 
-        return storedLevel + LevelTagRuntime.GetHeroSkillLevelBonus();
+        return storedLevel + heroSkillLevelBonus;
     }
 
     private void SwapSkillSlotsInternal(int fromIndex, int toIndex)
@@ -295,6 +328,7 @@ public class SkillRuntimeDataModel : DataModelBase
             return;
 
         (m_UnlockOrder[fromIndex], m_UnlockOrder[toIndex]) = (m_UnlockOrder[toIndex], m_UnlockOrder[fromIndex]);
+        RebuildUnlockedSkillsSnapshot();
         PublishSkillChanged(null, 0);
     }
 
@@ -309,6 +343,8 @@ public class SkillRuntimeDataModel : DataModelBase
         m_SkillLevels.Clear();
         m_SkillRemainingUsageCounts.Clear();
         m_UnlockOrder.Clear();
+        m_UnlockedSkills.Clear();
+        m_CachedHeroSkillLevelBonus = LevelTagRuntime.GetHeroSkillLevelBonus();
     }
 
     private static SkillRuntimeDataModel GetModel()

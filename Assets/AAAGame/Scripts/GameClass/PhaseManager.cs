@@ -51,6 +51,17 @@ public class PhaseManager : GameFrameworkComponent
         Log.Debug($"Initial phase entered: {currentPhase}");
     }
 
+    public static void EnterRestoredPhaseOnGameStart(GamePhase restoredPhase)
+    {
+        DefendPhaseRuntime.PrepareForCurrentLevelIfNeeded();
+        if (CurrentPhase != restoredPhase)
+            throw new InvalidOperationException(
+                $"Restored phase mismatch. checkpoint={restoredPhase}, dataModel={CurrentPhase}.");
+        LogicPhaseCommandService.SetInitialPhase(restoredPhase);
+        HandlePhaseTransition(restoredPhase, restoredPhase);
+        Log.Debug($"Restored phase entered: {restoredPhase}");
+    }
+
     public static void SwitchToNextPhase()
     {
         GamePhase currentPhase = CurrentPhase;

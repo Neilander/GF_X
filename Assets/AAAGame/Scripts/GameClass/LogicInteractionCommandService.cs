@@ -41,6 +41,8 @@ public readonly struct LogicInteractionCommand
 
 public static class LogicInteractionCommandService
 {
+    private static readonly Action<LogicInteractionCommand> s_RuntimeSink = PublishCommandApplying;
+    private static readonly Comparison<LogicInteractionCommand> s_CommandComparison = CompareCommands;
     private static readonly List<LogicInteractionCommand> s_History = new List<LogicInteractionCommand>();
     private static readonly ReadOnlyCollection<LogicInteractionCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicInteractionCommand> s_Pending = new List<LogicInteractionCommand>();
@@ -125,7 +127,7 @@ public static class LogicInteractionCommandService
 
     public static void ApplyFrame(ulong frameId)
     {
-        ApplyFrame(frameId, PublishCommandApplying);
+        ApplyFrame(frameId, s_RuntimeSink);
     }
 
 #if UNITY_EDITOR
@@ -164,7 +166,7 @@ public static class LogicInteractionCommandService
                     s_Due.Add(command);
             }
 
-            s_Due.Sort((left, right) => left.Sequence.CompareTo(right.Sequence));
+            s_Due.Sort(s_CommandComparison);
             for (int i = 0; i < s_Due.Count; i++)
             {
                 LogicInteractionCommand command = s_Due[i];
@@ -184,6 +186,11 @@ public static class LogicInteractionCommandService
             IsApplyingFrame = false;
             s_Due.Clear();
         }
+    }
+
+    private static int CompareCommands(LogicInteractionCommand left, LogicInteractionCommand right)
+    {
+        return left.Sequence.CompareTo(right.Sequence);
     }
 
     public static void ResetForWorldTransition()

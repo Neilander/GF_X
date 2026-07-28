@@ -58,6 +58,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         var lvData = LevelData.FromRow(lvRow);
         DataModelSetup(lvData);
+        StageCheckpointRuntimeCoordinator.RestorePersistentDataBeforeLevelSpawn(lvData.Identifier);
         GameEntry.GetComponent<GameEndManager>().Init(lvData);
         LogSetupTiming("data-model-ready");
         LevelEntityFactory.ShowLevel(lvRow.PrefabPath);
@@ -107,6 +108,7 @@ public partial class GeneralSetup : GameFrameworkComponent
 
         GF.UI.CloseUIForms(UIViews.SideTipsUIForm);
         GF.UI.CloseUIForms(UIViews.GoalUIForm);
+        GF.UI.CloseUIForms(UIViews.GameOverUIForm);
         DataModelShutDown();
         m_InitialPhaseEntered = false;
         m_LevelReady = false;
@@ -254,8 +256,25 @@ public partial class GeneralSetup : GameFrameworkComponent
         string levelId = inGameData.lvData?.Identifier;
         if (string.IsNullOrWhiteSpace(levelId))
             throw new System.InvalidOperationException("GeneralSetup requires a stable level id for stage checkpoints.");
-        StageCheckpointRuntimeCoordinator.BeginSession(levelId);
-        PhaseManager.EnterCurrentPhaseOnGameStart();
+        LogicEntityLifecycleService.PublishPendingInitializationEntities();
+        if (StageCheckpointRuntimeCoordinator.HasPendingRestore)
+        {
+            StageCheckpoint pending = StageCheckpointRuntimeCoordinator.GetPendingRestoreForLevelSpawn(levelId);
+            GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
+                                                  ?? throw new InvalidOperationException(
+                                                      "Stage checkpoint restore requires GlobalBuffManager.");
+            globalBuffManager.RestoreStageCheckpointTechEffects(pending.InGameData);
+            for (int i = 0; i < pending.Buildings.Count; i++)
+                BuildManager.ApplyStageCheckpointBuildingProperties(pending.Buildings[i]);
+            StageCheckpoint checkpoint = StageCheckpointRuntimeCoordinator.BeginRestoredSession(levelId);
+            PhaseManager.EnterRestoredPhaseOnGameStart(checkpoint.Phase);
+            StageCheckpointRuntimeCoordinator.CompleteRestore();
+        }
+        else
+        {
+            StageCheckpointRuntimeCoordinator.BeginSession(levelId);
+            PhaseManager.EnterCurrentPhaseOnGameStart();
+        }
         m_InitialPhaseEntered = true;
         m_SetupInProgress = false;
         BootstrapSideTipsManager();

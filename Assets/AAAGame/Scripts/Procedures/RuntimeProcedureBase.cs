@@ -27,7 +27,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private bool m_InPlaceLevelSwitchInProgress;
     private readonly LogicFrameClock m_LogicFrameClock = new LogicFrameClock();
     private bool m_LogicFrameClockStarted;
-    private bool m_LogicTimelineRestartPending;
     private ulong m_NextLogicFrameStatusLogFrame;
 #if UNITY_EDITOR
     private double m_EditorStressCutoffRealtime;
@@ -63,9 +62,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicEntityLifecycleService.BeginTimeline();
         LogicObstacleCommandService.BeginTimeline();
         LogicEntityFrameSnapshotService.BeginTimeline();
+        LogicInteractionAuthorityService.BeginTimeline();
         MAEntityLogicFrameSystem.BeginTimeline();
         m_LogicFrameClockStarted = false;
-        m_LogicTimelineRestartPending = false;
         m_NextLogicFrameStatusLogFrame = 300;
 
         if (LevelSelectionService.ShouldShowStartupLevelSwitch)
@@ -103,13 +102,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         FlowFieldCrowdMovementSystem.ForceEndRuntimeNavigationTransition();
         if (StageCheckpointRuntimeCoordinator.IsActive)
             StageCheckpointRuntimeCoordinator.EndSession();
+        StageCheckpointRuntimeCoordinator.AbortPendingRestore();
         OnRuntimeShutdown();
         m_RuntimeInitPipeline?.Shutdown();
         m_RuntimeInitPipeline = null;
         m_ProcedureOwner = null;
         m_InPlaceLevelSwitchInProgress = false;
         m_LogicFrameClockStarted = false;
-        m_LogicTimelineRestartPending = false;
         if (LogicReplayRuntime.IsRecording)
         {
             LogicReplayRuntime.EndRecording();
@@ -124,6 +123,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicCardPlacementAuthority.EndTimeline();
         LogicCardCommandService.EndTimeline();
         LogicInteractionCommandService.EndTimeline();
+        LogicInteractionAuthorityService.EndTimeline();
         LogicInteractionTargetStateService.EndTimeline();
         MAEntityLogicFrameSystem.EndTimeline();
         LogicEntityFrameSnapshotService.EndTimeline();
@@ -194,6 +194,37 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         return true;
     }
 
+    public bool TryRestoreStageStart(int phaseEpoch, out string errorMessage)
+    {
+        errorMessage = null;
+        if (m_ProcedureOwner == null)
+        {
+            errorMessage = "Runtime procedure is not active.";
+            return false;
+        }
+        if (m_InPlaceLevelSwitchInProgress || !IsRuntimeReady)
+        {
+            errorMessage = "Runtime procedure is not ready for a stage restore.";
+            return false;
+        }
+
+        StageCheckpointRestoreRequest request;
+        try
+        {
+            request = StageCheckpointRuntimeCoordinator.PrepareRestore(phaseEpoch);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+
+        if (TryEnterRuntimeLevelInPlace(request.Checkpoint.LevelId, out errorMessage))
+            return true;
+        StageCheckpointRuntimeCoordinator.CancelPendingRestore(request);
+        return false;
+    }
+
     public bool TryStartRuntimeLevel(string levelIdentifier, out string errorMessage)
     {
         errorMessage = null;
@@ -246,10 +277,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             PhaseManager.CancelRuntimePhaseFlows();
             if (StageCheckpointRuntimeCoordinator.IsActive)
                 StageCheckpointRuntimeCoordinator.EndSession();
+            OnRuntimeShutdown();
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;
             m_LogicFrameClockStarted = false;
-            m_LogicTimelineRestartPending = true;
 
             Log.Info(
                 "[LogicEntityWorldTransition] Begin. level={0}, frame={1}, requested={2}, bound={3}, active={4}, lastAllocated={5}.",
@@ -262,6 +293,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicEntityLifecycleService.DeactivateAllForShutdown();
             LogicInteractionHoldService.ResetForWorldTransition();
             LogicInteractionTargetStateService.ResetForWorldTransition();
+            LogicInteractionAuthorityService.ResetForWorldTransition();
             LogicInteractionCommandService.ResetForWorldTransition();
             LogicCardCommandService.ResetForWorldTransition();
             LogicCardPlacementAuthority.ResetForWorldTransition();
@@ -271,6 +303,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicObstacleCommandService.ResetForWorldTransition();
             GF.Entity.HideAllLoadingEntities();
             HideRuntimeEntitiesExceptLevel();
+            LogicStrongholdMap.Clear();
             Log.Info(
                 "[LogicEntityWorldTransition] Old world hidden. level={0}, requested={1}, bound={2}, active={3}, listeners={4}.",
                 levelIdentifier,
@@ -281,6 +314,19 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicEntityLifecycleService.ResetForWorldTransition();
             LogicEntityFrameSnapshotService.ResetForWorldTransition();
             MAEntityLogicFrameSystem.ResetForWorldTransition();
+            if (LogicReplayRuntime.IsRecording)
+            {
+                LogicReplayRuntime.EndRecording();
+            }
+            LogicTimeControlService.ResetFrameTimelinePreservingPauses();
+            LogicInteractionHoldService.ResetFrameTimeline();
+            LogicInteractionCommandService.ResetFrameTimeline();
+            LogicCardCommandService.ResetFrameTimeline();
+            LogicCardPlacementAuthority.ResetFrameTimeline();
+            LogicSkillSlotCommandService.ResetFrameTimeline();
+            LogicTechEffectCommandService.ResetFrameTimeline();
+            LogicEntityLifecycleService.ResetFrameTimelinePreservingEntities();
+            LogicObstacleCommandService.ResetFrameTimelinePreservingCommands();
             Log.Info(
                 "[LogicEntityWorldTransition] Identity timeline reset. level={0}, requested={1}, bound={2}, active={3}, lastAllocated={4}.",
                 levelIdentifier,
@@ -334,6 +380,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             {
                 LogicTimeControlService.ReleasePause(LogicTimeControlSources.RuntimeLevelSwitchPause);
             }
+            StageCheckpointRuntimeCoordinator.AbortPendingRestore();
             LevelSelectionService.NotifyLevelLoadFailed(ex.Message);
             Log.Error("{0} Enter runtime level in place failed. level={1}, error={2}", RuntimeInitLogTag, levelIdentifier, ex);
         }
@@ -351,25 +398,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         double realtime = Time.realtimeSinceStartupAsDouble;
         if (!m_LogicFrameClockStarted)
         {
-            if (m_LogicTimelineRestartPending)
-            {
-                if (LogicReplayRuntime.IsRecording)
-                {
-                    LogicReplayRuntime.EndRecording();
-                }
-                LogicTimeControlService.ResetFrameTimelinePreservingPauses();
-                LogicInteractionHoldService.ResetFrameTimeline();
-                LogicInteractionCommandService.ResetFrameTimeline();
-                LogicCardCommandService.ResetFrameTimeline();
-                LogicCardPlacementAuthority.ResetFrameTimeline();
-                LogicSkillSlotCommandService.ResetFrameTimeline();
-                LogicPhaseCommandService.ResetFrameTimeline();
-                LogicTechEffectCommandService.ResetFrameTimeline();
-                LogicEntityLifecycleService.ResetFrameTimelinePreservingEntities();
-                LogicObstacleCommandService.ResetFrameTimelinePreservingCommands();
-                m_LogicTimelineRestartPending = false;
-            }
-
             LogicFrameRuntime.ResetTimeline();
             m_LogicFrameClock.Start(realtime);
             InputManager inputManager = GameEntry.GetComponent<InputManager>();
@@ -393,7 +421,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 #if UNITY_EDITOR
         if (EditorLogicRuntimeStressGate.OwnsLogicClock)
         {
-            UpdateEditorStressLogicFrames(logicInputManager);
+            UpdateEditorStressLogicFrames(logicInputManager, realtime);
             return;
         }
 #endif
@@ -444,13 +472,6 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             m_NextLogicFrameStatusLogFrame = m_LogicFrameClock.Frame + 300;
         }
 
-#if UNITY_EDITOR
-        if (EditorLogicRuntimeStressGate.Status == EditorLogicRuntimeStressGateStatus.Armed)
-        {
-            m_EditorStressCutoffRealtime = realtime;
-            EditorLogicRuntimeStressGate.Activate(m_LogicFrameClock.Frame);
-        }
-#endif
     }
 
     private static LogicGameplayStateDigest ExecuteLogicFrame(
@@ -490,8 +511,15 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     }
 
 #if UNITY_EDITOR
-    private void UpdateEditorStressLogicFrames(InputManager logicInputManager)
+    private void UpdateEditorStressLogicFrames(InputManager logicInputManager, double realtime)
     {
+        if (EditorLogicRuntimeStressGate.Status == EditorLogicRuntimeStressGateStatus.Armed)
+        {
+            m_LogicFrameClock.RebaseRealtimePreservingAccumulator(realtime);
+            m_EditorStressCutoffRealtime = realtime;
+            EditorLogicRuntimeStressGate.Activate(m_LogicFrameClock.Frame);
+        }
+
         if (EditorLogicRuntimeStressGate.Status != EditorLogicRuntimeStressGateStatus.Running)
         {
             LogicFrameRuntime.CompleteRenderFrame(

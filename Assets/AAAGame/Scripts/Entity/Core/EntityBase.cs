@@ -32,7 +32,7 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
     public virtual int LogicFrameOrder => 0;
     protected virtual bool UsesCoordinatedLogicFrameUpdate => false;
     protected virtual bool InterpolateRenderRotation => true;
-    protected virtual bool ShouldRunLogicFrameUpdate => true;
+    protected virtual bool ShouldRunLogicFrameUpdate => false;
 
     protected override void OnInit(object userData)
     {
@@ -82,10 +82,14 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
             if (m_LogicFrameRegistered)
                 throw new GameFrameworkException($"EntityBase.OnShow failed: coordinated entity is registered as a standalone listener. entityId={Id}, type={GetType().FullName}.");
         }
-        else
+        else if (ShouldRunLogicFrameUpdate)
         {
             LogicFrameRuntime.Register(this);
             m_LogicFrameRegistered = true;
+        }
+        else if (m_LogicFrameRegistered)
+        {
+            throw new GameFrameworkException($"EntityBase.OnShow failed: presentation-only entity is registered as a logic listener. entityId={Id}, type={GetType().FullName}.");
         }
         InitializeRenderInterpolation();
         Params.OnShowCallback?.Invoke(this);
@@ -100,13 +104,17 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
             if (m_CoordinatedLogicFrameActive)
                 throw new GameFrameworkException($"EntityBase.OnHide failed: coordinated logic frame is still active. entityId={Id}, type={GetType().FullName}.");
         }
-        else
+        else if (ShouldRunLogicFrameUpdate)
         {
             if (!m_LogicFrameRegistered)
                 throw new GameFrameworkException($"EntityBase.OnHide failed: logic frame listener is not registered. entityId={Id}, type={GetType().FullName}.");
 
             LogicFrameRuntime.Unregister(this);
             m_LogicFrameRegistered = false;
+        }
+        else if (m_LogicFrameRegistered)
+        {
+            throw new GameFrameworkException($"EntityBase.OnHide failed: presentation-only entity has a logic listener. entityId={Id}, type={GetType().FullName}.");
         }
         RestoreRenderTransform();
         m_InterpolatedRenderTransform = null;
@@ -122,13 +130,6 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
     {
         base.OnUpdate(elapseSeconds, realElapseSeconds);
 
-        if (!LogicFrameRuntime.IsActive && ShouldRunLogicFrameUpdate)
-        {
-            RestoreRenderTransform();
-            OnLogicFrameUpdate((Fix64)elapseSeconds);
-            CaptureCurrentLogicPose();
-        }
-
         OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
     }
 
@@ -139,7 +140,7 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
         if (!m_LogicFrameRegistered)
             throw new GameFrameworkException($"EntityBase logic tick failed: entity is not registered. entityId={Id}, type={GetType().FullName}.");
         if (!ShouldRunLogicFrameUpdate)
-            return;
+            throw new GameFrameworkException($"EntityBase logic tick failed: presentation-only entity was registered as a logic listener. entityId={Id}, type={GetType().FullName}.");
 
         RestoreRenderTransform();
         m_PreviousLogicPosition = m_CurrentLogicPosition;

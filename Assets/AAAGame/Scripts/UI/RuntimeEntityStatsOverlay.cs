@@ -237,8 +237,8 @@ public sealed class RuntimeEntityStatsOverlay : MonoBehaviour
         AppendValue(sb, "CurrentTarget", DescribeShort(target));
         if (target != null)
             AppendValue(sb, "TargetDistance", FormatFix(FixVector2.Distance(entity.PositionFixed, target.PositionFixed)));
-        AppendValue(sb, "Aggro/Forget", $"{targetComp.AggroRange:0.###} / {targetComp.ForgetRange:0.###}");
-        AppendValue(sb, "Alert", targetComp.AlertRadius.ToString("0.###"));
+        AppendValue(sb, "Aggro/Forget", $"{(float)targetComp.AggroRangeFixed:0.###} / {(float)targetComp.ForgetRangeFixed:0.###}");
+        AppendValue(sb, "Alert", ((float)targetComp.AlertRadiusFixed).ToString("0.###"));
 
         if (targetComp is IMultiTargetingComp multi)
         {

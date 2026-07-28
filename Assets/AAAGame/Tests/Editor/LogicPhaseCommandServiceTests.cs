@@ -76,6 +76,28 @@ public sealed class LogicPhaseCommandServiceTests
     }
 
     [Test]
+    public void EditorGateCommand_AppliesOnExplicitFutureFrame()
+    {
+        LogicPhaseCommand command = LogicPhaseCommandService.ScheduleForEditorGate(GamePhase.Invade, 3);
+        var applied = new List<LogicPhaseCommand>();
+
+        LogicTimeControlService.BeginFrame(1);
+        LogicPhaseCommandService.ApplyFrameForTests(1, applied.Add);
+        LogicTimeControlService.BeginFrame(2);
+        LogicPhaseCommandService.ApplyFrameForTests(2, applied.Add);
+        Assert.IsEmpty(applied);
+        Assert.AreEqual(1, LogicPhaseCommandService.PendingCount);
+
+        LogicTimeControlService.BeginFrame(3);
+        LogicPhaseCommandService.ApplyFrameForTests(3, applied.Add);
+
+        CollectionAssert.AreEqual(new[] { command.Sequence }, new[] { applied[0].Sequence });
+        Assert.AreEqual(0, LogicPhaseCommandService.PendingCount);
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => LogicPhaseCommandService.ScheduleForEditorGate(GamePhase.Defend, 3));
+    }
+
+    [Test]
     public void WorldTransition_RequiresNewInitialPhaseBeforeFramesResume()
     {
         const int pauseSource = 701;
@@ -87,6 +109,7 @@ public sealed class LogicPhaseCommandServiceTests
             () => LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade));
 
         LogicPhaseCommandService.SetInitialPhase(GamePhase.BuildBeforeDefend);
+        Assert.IsFalse(LogicPhaseCommandService.IsWorldTransitionActive);
         LogicTimeControlService.ResetFrameTimelinePreservingPauses();
         LogicPhaseCommandService.ResetFrameTimeline();
         Assert.AreEqual(GamePhase.BuildBeforeDefend, LogicPhaseCommandService.CurrentPhase);

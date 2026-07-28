@@ -42,7 +42,7 @@ public class BuildingAIBrain : IControlBrain, ITickBrain
 
     private Fix64 GetEffectiveAttackRange(IEntityContext self)
     {
-        Fix64 weaponRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : (Fix64)1.5f;
+        Fix64 weaponRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : Fix64.FromRaw(6144);
         return weaponRange;
     }
 }

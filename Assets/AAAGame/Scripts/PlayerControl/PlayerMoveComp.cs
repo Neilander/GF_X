@@ -7,7 +7,7 @@ public class PlayerMoveComp : IMoveComp
     private InputModel _inputModel;
     private IEntityContext _ctx;
     private bool _isMoving = false;
-    private Vector3 _moveDirection = Vector3.zero;
+    private FixVector2 _moveDirection = FixVector2.Zero;
 
     public void Move(Fix64 deltaTime)
     {
@@ -25,20 +25,13 @@ public class PlayerMoveComp : IMoveComp
             : FixVector2.Zero;
 
         // 更新移动状态
-        _isMoving = magnitude > (Fix64)0.001f;
-        _moveDirection = _isMoving
-            ? new Vector3((float)direction.x, 0f, (float)direction.y)
-            : Vector3.zero;
+        _isMoving = magnitude > Fix64.FromRaw(5);
+        _moveDirection = _isMoving ? direction : FixVector2.Zero;
 
         Fix64 speed = DistanceUnitConverter.ConvertToWorld(_ctx.GetProperty(CreatureMainProperty.Speed));
         _ctx.MoveExecutor.SetInputFixed(direction * speed);
 
         // 动画控制由MAEntity统一处理
-    }
-
-    public void MoveTo(Vector3 destination)
-    {
-        throw new System.NotImplementedException();
     }
 
     public void MoveToFixed(FixVector2 destination)
@@ -56,13 +49,9 @@ public class PlayerMoveComp : IMoveComp
         _ctx = ctx;
     }
 
-    public void SetNavTarget(Vector3 destination) { }
     public void SetNavTargetFixed(FixVector2 destination) { }
 
-    public Vector3 GetNavDirection()
-    {
-        return _moveDirection;
-    }
+    public FixVector2 NavDirectionFixed => _moveDirection;
 
     /// <summary>
     /// 是否正在移动

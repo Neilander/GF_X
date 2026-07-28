@@ -49,6 +49,8 @@ namespace AAAGame.Scripts.BuffSystem
         private readonly List<string> _expiredBuffIds = new List<string>();
         private readonly List<BuffCallback> _updateModules = new List<BuffCallback>();
         private readonly List<string> _deterministicBuffIds = new List<string>();
+        private static readonly System.Comparison<string> DeterministicBuffIdComparison =
+            System.String.CompareOrdinal;
         private bool _isUpdating;
 
         /// <summary>
@@ -399,8 +401,9 @@ namespace AAAGame.Scripts.BuffSystem
         private void FillDeterministicBuffIds()
         {
             _deterministicBuffIds.Clear();
-            _deterministicBuffIds.AddRange(_buffDict.Keys);
-            _deterministicBuffIds.Sort(System.StringComparer.Ordinal);
+            foreach (KeyValuePair<string, BuffData> pair in _buffDict)
+                _deterministicBuffIds.Add(pair.Key);
+            _deterministicBuffIds.Sort(DeterministicBuffIdComparison);
         }
 
         private void WriteGameplaySnapshotFields(LogicStateHasher hasher, List<string> ids)

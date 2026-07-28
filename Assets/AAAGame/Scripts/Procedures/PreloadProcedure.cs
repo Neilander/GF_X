@@ -310,7 +310,14 @@ public class PreloadProcedure : ProcedureBase
         if (m_DataTablesCount == 0)
         {
             InitializeGlobalTableCaches();
-            GameEntry.GetComponent<GlobalBuffManager>()?.PrepareRuntimeDependencies();
+            GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
+                                                  ?? throw new GameFrameworkException(
+                                                      "PreloadProcedure requires GlobalBuffManager to initialize deterministic tech dependencies.");
+            globalBuffManager.PrepareRuntimeDependencies();
+            BuildManager buildManager = GameEntry.GetComponent<BuildManager>()
+                                        ?? throw new GameFrameworkException(
+                                            "PreloadProcedure requires BuildManager to initialize deterministic building dependencies.");
+            buildManager.PrepareRuntimeDependencies();
             InitAndLoadLanguage();
         }
     }

@@ -158,6 +158,26 @@ public sealed class LogicFrameClockTests
     }
 
     [Test]
+    public void RebaseRealtimePreservingAccumulator_DiscardsRenderBacklogWithoutChangingLogicalProgress()
+    {
+        var clock = new LogicFrameClock();
+        clock.Start(0d);
+        Assert.AreEqual(0, clock.Advance(0.02d, 1d, _ => { }));
+        double accumulator = clock.AccumulatorSeconds;
+
+        clock.RebaseRealtimePreservingAccumulator(5d);
+        int ticks = clock.Advance(
+            5d + 10d * LogicFrameClock.FrameDurationSeconds,
+            1d,
+            _ => { });
+
+        Assert.AreEqual(10, ticks);
+        Assert.AreEqual(10UL, clock.Frame);
+        Assert.That(clock.AccumulatorSeconds, Is.EqualTo(accumulator).Within(1e-9d));
+        Assert.Throws<InvalidOperationException>(() => clock.RebaseRealtimePreservingAccumulator(4d));
+    }
+
+    [Test]
     public void Advance_OneHundredThousandTicks_DoesNotDropOrDuplicateFrames()
     {
         const int expectedTicks = 100000;
@@ -180,5 +200,171 @@ public sealed class LogicFrameClockTests
         Assert.AreEqual(expectedTicks, callbackCount);
         Assert.AreEqual((ulong)expectedTicks, clock.Frame);
         Assert.That(clock.AccumulatorSeconds, Is.EqualTo(0d).Within(1e-9d));
+    }
+
+    [Test]
+    public void Advance_RenderCadenceDoesNotChangeTickInputOrTimeControlFullHash()
+    {
+        const double durationSeconds = 10d;
+        CadenceRunResult baseline = RunCadence(BuildFixedCadence(15, durationSeconds));
+
+        AssertCadenceEquivalent(baseline, RunCadence(BuildFixedCadence(30, durationSeconds)), "30fps");
+        AssertCadenceEquivalent(baseline, RunCadence(BuildFixedCadence(60, durationSeconds)), "60fps");
+        AssertCadenceEquivalent(baseline, RunCadence(BuildFixedCadence(120, durationSeconds)), "120fps");
+        AssertCadenceEquivalent(baseline, RunCadence(BuildFixedCadence(1000, durationSeconds)), "1000fps");
+        AssertCadenceEquivalent(
+            baseline,
+            RunCadence(new[] { 0.001d, 0.5d, 3.75d, durationSeconds }),
+            "hitch");
+    }
+
+    private static CadenceRunResult RunCadence(IReadOnlyList<double> pumpTimes)
+    {
+        Assert.IsFalse(LogicTimeControlService.IsActive, "Cadence test requires an isolated time-control timeline.");
+        LogicTimeControlService.BeginTimeline();
+        try
+        {
+            LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+                5,
+                1,
+                TimeScaleCommandKind.SetBulletTimeScale,
+                10,
+                7500));
+            LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+                12,
+                2,
+                TimeScaleCommandKind.SetBulletTimeScale,
+                10,
+                2000));
+            LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+                18,
+                3,
+                TimeScaleCommandKind.RemoveBulletTimeScale,
+                10,
+                0));
+            LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+                25,
+                4,
+                TimeScaleCommandKind.SetBasePlaybackScale,
+                0,
+                15000));
+            LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+                35,
+                5,
+                TimeScaleCommandKind.SetBasePlaybackScale,
+                0,
+                LogicTimeControlService.NormalScaleUnits));
+
+            var timeline = new LogicInputTimeline();
+            timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
+            timeline.EnqueueButtonPressed(0.010d, LogicInputButton.Skill1);
+            timeline.EnqueueButtonReleased(0.020d, LogicInputButton.Skill1);
+            timeline.EnqueueButtonPulse(LogicFrameClock.FrameDurationSeconds, LogicInputButton.Skill2);
+            timeline.EnqueueWorldMove(
+                0.700d,
+                new FixVector2(Fix64.FromRaw(12345), Fix64.FromRaw(-67890)));
+            timeline.EnqueueSelectWorldPosition(
+                1.300d,
+                new FixVector2(Fix64.FromRaw(333), Fix64.FromRaw(444)));
+            timeline.EnqueueButtonPressed(4.125d, LogicInputButton.InteractionPrimary);
+            timeline.EnqueueButtonReleased(4.126d, LogicInputButton.InteractionPrimary);
+
+            var clock = new LogicFrameClock();
+            var fullHashes = new List<ulong>();
+            var cutoffs = new List<double>();
+            clock.Start(0d);
+
+            for (int i = 0; i < pumpTimes.Count; i++)
+            {
+                clock.Advance(
+                    pumpTimes[i],
+                    () => LogicTimeControlService.SchedulerScale,
+                    (frame, cutoff) =>
+                    {
+                        LogicTimeControlService.BeginFrame(frame);
+                        LogicInputFrame inputFrame = timeline.Seal(frame, cutoff);
+                        ulong inputHash = LogicStateHasher.ComputeInputHash(inputFrame);
+                        ulong timeHash = LogicStateHasher.ComputeTimeControlHash(
+                            LogicTimeControlService.CaptureSnapshot());
+                        fullHashes.Add(LogicStateHasher.ComputeFrameHash(
+                            frame,
+                            inputHash,
+                            timeHash,
+                            frame * 0x9E3779B97F4A7C15UL));
+                        cutoffs.Add(cutoff);
+                    });
+            }
+
+            return new CadenceRunResult(
+                clock.Frame,
+                clock.AccumulatorSeconds,
+                timeline.PendingEventCount,
+                timeline.LateEventCount,
+                fullHashes,
+                cutoffs);
+        }
+        finally
+        {
+            if (LogicTimeControlService.IsActive)
+                LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    private static List<double> BuildFixedCadence(int renderFrameRate, double durationSeconds)
+    {
+        int pumpCount = checked((int)(renderFrameRate * durationSeconds));
+        var pumpTimes = new List<double>(pumpCount);
+        for (int pump = 1; pump <= pumpCount; pump++)
+            pumpTimes.Add(pump / (double)renderFrameRate);
+        return pumpTimes;
+    }
+
+    private static void AssertCadenceEquivalent(
+        CadenceRunResult expected,
+        CadenceRunResult actual,
+        string cadence)
+    {
+        Assert.AreEqual(expected.Frame, actual.Frame, $"{cadence} changed the final logic frame.");
+        Assert.AreEqual(expected.PendingEventCount, actual.PendingEventCount, $"{cadence} changed pending input.");
+        Assert.AreEqual(expected.LateEventCount, actual.LateEventCount, $"{cadence} changed late-input accounting.");
+        Assert.That(
+            actual.AccumulatorSeconds,
+            Is.EqualTo(expected.AccumulatorSeconds).Within(1e-8d),
+            $"{cadence} changed the remaining clock accumulator.");
+        CollectionAssert.AreEqual(expected.FullHashes, actual.FullHashes, $"{cadence} changed a per-Tick FullHash.");
+        Assert.AreEqual(expected.Cutoffs.Count, actual.Cutoffs.Count);
+        for (int i = 0; i < expected.Cutoffs.Count; i++)
+        {
+            Assert.That(
+                actual.Cutoffs[i],
+                Is.EqualTo(expected.Cutoffs[i]).Within(1e-8d),
+                $"{cadence} changed the realtime cutoff for logic frame {i + 1}.");
+        }
+    }
+
+    private sealed class CadenceRunResult
+    {
+        public CadenceRunResult(
+            ulong frame,
+            double accumulatorSeconds,
+            int pendingEventCount,
+            ulong lateEventCount,
+            List<ulong> fullHashes,
+            List<double> cutoffs)
+        {
+            Frame = frame;
+            AccumulatorSeconds = accumulatorSeconds;
+            PendingEventCount = pendingEventCount;
+            LateEventCount = lateEventCount;
+            FullHashes = fullHashes;
+            Cutoffs = cutoffs;
+        }
+
+        public ulong Frame { get; }
+        public double AccumulatorSeconds { get; }
+        public int PendingEventCount { get; }
+        public ulong LateEventCount { get; }
+        public List<ulong> FullHashes { get; }
+        public List<double> Cutoffs { get; }
     }
 }

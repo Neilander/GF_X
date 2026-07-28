@@ -71,11 +71,6 @@ public class BuffData : IReference
         return ReferencePool.Acquire<BuffData>();
     }
 
-    public static BuffData Create(string id, float duration, bool isForever, int maxStack, List<BuffCallback> modules)
-    {
-        return Create(id, (Fix64)duration, isForever, maxStack, modules);
-    }
-
     public static BuffData Create(string id, Fix64 duration, bool isForever, int maxStack, List<BuffCallback> modules)
     {
         BuffData buffData = Create();

@@ -1,7 +1,7 @@
 ﻿/// <summary>
 /// 固定移速覆盖 Buff：将 Speed 白值层直接覆盖为指定值。
 /// </summary>
-public sealed class FixedMoveSpeedOverrideBuff : BuffCallback
+public sealed class FixedMoveSpeedOverrideBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_TargetSpeed;
     private IPropertyModifier m_Modifier;
@@ -36,5 +36,11 @@ public sealed class FixedMoveSpeedOverrideBuff : BuffCallback
 
         propertyManager.UnsafeModifyAnyProperty(CreatureMainProperty.Speed.ToString(), m_Modifier, false);
         m_Modifier = null;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_TargetSpeed.RawValue);
+        hasher.Add(m_Modifier != null);
     }
 }

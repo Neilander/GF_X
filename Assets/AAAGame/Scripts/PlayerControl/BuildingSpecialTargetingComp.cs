@@ -2,7 +2,7 @@
 
 public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
 {
-    private static readonly Fix64 ScanInterval = (Fix64)0.2f;
+    private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
     private static readonly Fix64 TauntScoreScale = (Fix64)100000;
 
     private IEntityContext _ctx;
@@ -18,10 +18,6 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
     public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
     public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
     public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
-    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
-    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
-    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
-    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     public void Init(IEntityContext ctx)
     {
@@ -88,7 +84,7 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
 
     private Fix64 GetEffectiveAttackRange()
     {
-        Fix64 weaponRange = _ctx?.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
+        Fix64 weaponRange = _ctx?.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
         return weaponRange;
     }
 
@@ -115,7 +111,7 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
 
 public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicStateContributor
 {
-    private static readonly Fix64 ScanInterval = (Fix64)0.1f;
+    private static readonly Fix64 ScanInterval = Fix64.FromRaw(410);
 
     private readonly Fix64 _facingConeAngle;
     private IEntityContext _ctx;
@@ -136,10 +132,6 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
     public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
     public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
     public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
-    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
-    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
-    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
-    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     public void Init(IEntityContext ctx)
     {
@@ -216,7 +208,7 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
 
     private Fix64 GetEffectiveAttackRange()
     {
-        Fix64 weaponRange = _ctx?.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
+        Fix64 weaponRange = _ctx?.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
         return weaponRange;
     }
 
@@ -270,7 +262,7 @@ public static class MonitorFacingUtility
         Fix64 distance = FixVector2.Magnitude(toMonitor);
         if (distance == Fix64.Zero || coneAngle >= (Fix64)360)
             return true;
-        Fix64 halfAngleRadians = coneAngle * (Fix64)0.5f * Fix64.PIOver180;
+        Fix64 halfAngleRadians = coneAngle * Fix64.FromRaw(2048) * Fix64.PIOver180;
         Fix64 minimumDot = Fix64.Cos(halfAngleRadians) * distance;
         return FixVector2.Dot(normalizedForward, toMonitor) >= minimumDot;
     }

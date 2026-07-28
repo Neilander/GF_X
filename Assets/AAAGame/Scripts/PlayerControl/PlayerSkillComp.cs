@@ -240,14 +240,6 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
         if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase())
             return curSkillPressed;
 
-        bool[] pressInfo =
-        {
-            _inputModel.Skill1Pressed,
-            _inputModel.Skill2Pressed,
-            _inputModel.Skill3Pressed,
-            _inputModel.Skill4Pressed,
-            _inputModel.Skill5Pressed
-        };
         //GF.Log( _inputModel.Skill1Pressed.ToString());
         for (int i = 0; i < _skillSlots.Count; i++)
         {
@@ -257,13 +249,26 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
             if (!SkillRuntimeDataModel.HasRemainingUsageAt(i))
                 continue;
 
-            if (!pressInfo[i])
+            if (!IsSkillPressed(i))
                 continue;
 
             if (_skillSlots[i].canCast)
                 return i;
         }
         return curSkillPressed;
+    }
+
+    private bool IsSkillPressed(int slotIndex)
+    {
+        return slotIndex switch
+        {
+            0 => _inputModel.Skill1Pressed,
+            1 => _inputModel.Skill2Pressed,
+            2 => _inputModel.Skill3Pressed,
+            3 => _inputModel.Skill4Pressed,
+            4 => _inputModel.Skill5Pressed,
+            _ => throw new System.ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Unknown active skill slot."),
+        };
     }
 
     private void SyncSlotSkill(SkillSlot slot, int slotIndex, bool requireAsset)

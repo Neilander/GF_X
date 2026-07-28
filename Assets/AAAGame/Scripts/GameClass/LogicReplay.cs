@@ -211,8 +211,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 58;
-    public const string CurrentContentVersion = "Avenge-30Hz-v58";
+    public const int CurrentProtocolVersion = 65;
+    public const string CurrentContentVersion = "Avenge-30Hz-v65";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
@@ -392,8 +392,9 @@ public sealed class LogicReplayRecorder
             inputHash,
             timeControlHash,
             gameplayDigest.GameplayStateHash);
+        LogicInputFrame recordedInputFrame = inputFrame.Freeze();
         var record = new LogicReplayFrameRecord(
-            inputFrame,
+            recordedInputFrame,
             inputHash,
             timeControlHash,
             gameplayDigest,

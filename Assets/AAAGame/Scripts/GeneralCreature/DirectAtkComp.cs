@@ -499,7 +499,8 @@ public void Attack(Fix64 deltaTime)
 
         if (_ctx.Brain == null)
         {
-            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.CharacterKey}] TryStart: Brain=null");
+            if (GameDebugSettings.IsEnabled(DebugCategory.Attack))
+                GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.CharacterKey}] TryStart: Brain=null");
             return;
         }
 
@@ -507,7 +508,8 @@ public void Attack(Fix64 deltaTime)
         bool playerAutoAttack = _ctx.Brain is AAAGame.Scripts.Entity.PlayerBrain && _ctx.TargetComp?.CurrentTarget != null;
         if (!manualAttack && !playerAutoAttack)
         {
-            GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.CharacterKey}] TryStart: Brain.Attack=false");
+            if (GameDebugSettings.IsEnabled(DebugCategory.Attack))
+                GameDebugSettings.Log(DebugCategory.Attack, $"[{_ctx.CharacterKey}] TryStart: Brain.Attack=false");
             return;
         }
 
@@ -515,15 +517,21 @@ public void Attack(Fix64 deltaTime)
         var target = _ctx.TargetComp?.CurrentTarget;
         if (!WeaponTargetRules.IsValidTargetForCurrentWeapon(_ctx, target))
         {
-            GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.CharacterKey}] TryStart: 无目标 targetComp={(_ctx.TargetComp != null ? "有" : "null")} target={target} alive={target?.Alive}");
+            if (GameDebugSettings.IsEnabled(DebugCategory.Attack))
+            {
+                GameDebugSettings.Log(DebugCategory.Attack,
+                    $"[{_ctx.CharacterKey}] TryStart: 无目标 targetComp={(_ctx.TargetComp != null ? "有" : "null")} target={target} alive={target?.Alive}");
+            }
             return;
         }
 
         if (_ctx.WeaponComp != null && !_ctx.WeaponComp.HasAmmoToAttack)
         {
-            GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.CharacterKey}] TryStart: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
+            if (GameDebugSettings.IsEnabled(DebugCategory.Attack))
+            {
+                GameDebugSettings.Log(DebugCategory.Attack,
+                    $"[{_ctx.CharacterKey}] TryStart: 弹药耗尽 ammo={_ctx.WeaponComp.CurrentAmmo}/{_ctx.WeaponComp.MaxAmmo}");
+            }
             return;
         }
 
@@ -535,8 +543,11 @@ public void Attack(Fix64 deltaTime)
 
         if (dist > range)
         {
-            GameDebugSettings.Log(DebugCategory.Attack,
-                $"[{_ctx.CharacterKey}] TryStart: 超距 dist={(float)dist:F2} range={(float)range:F2} (wpn={(float)wpnRange:F2})");
+            if (GameDebugSettings.IsEnabled(DebugCategory.Attack))
+            {
+                GameDebugSettings.Log(DebugCategory.Attack,
+                    $"[{_ctx.CharacterKey}] TryStart: 超距 dist={(float)dist:F2} range={(float)range:F2} (wpn={(float)wpnRange:F2})");
+            }
             return;
         }
 
@@ -560,9 +571,12 @@ public void Attack(Fix64 deltaTime)
         EnterState(AtkState.WindUp);
         NotifyAttackStarted(_lockedTarget);
 
-        GameDebugSettings.Log(DebugCategory.Attack,
-            $"[{_ctx.CharacterKey}] → WindUp 第{AttackCount}次攻击 目标={target.CharacterKey} dist={(float)dist:F2} range={(float)range:F2} " +
-            $"frames={_schedule.StartFrame}/{_schedule.HitFrame}/{_schedule.RecoveryEndFrame}/{_schedule.ReadyFrame}");
+        if (GameDebugSettings.IsEnabled(DebugCategory.Attack))
+        {
+            GameDebugSettings.Log(DebugCategory.Attack,
+                $"[{_ctx.CharacterKey}] → WindUp 第{AttackCount}次攻击 目标={target.CharacterKey} dist={(float)dist:F2} range={(float)range:F2} " +
+                $"frames={_schedule.StartFrame}/{_schedule.HitFrame}/{_schedule.RecoveryEndFrame}/{_schedule.ReadyFrame}");
+        }
     }
 
     private void DealDamage()

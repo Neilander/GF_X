@@ -40,7 +40,7 @@ public static class LogicCardRuntimeState
 
 public sealed class LogicCardAutoDrawClock
 {
-    private static readonly Fix64 DefaultInterval = (Fix64)0.15f;
+    private static readonly Fix64 DefaultInterval = Fix64.FromRaw(615);
 
     public LogicCardAutoDrawClock()
         : this(DefaultInterval)

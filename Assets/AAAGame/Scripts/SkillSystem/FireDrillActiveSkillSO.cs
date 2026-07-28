@@ -5,7 +5,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "FireDrillActiveSkillSO", menuName = "Skills/Active/Fire Drill")]
 public sealed class FireDrillActiveSkillSO : TargetPositionActiveSkillSO
 {
-    private static readonly Fix64 RefreshDurationPaddingSeconds = (Fix64)0.2f;
+    private static readonly Fix64 RefreshDurationPaddingSeconds = Fix64.FromRaw(820);
 
     protected override void ApplyAtPosition(IEntityContext caster, FixVector2 position, IReadOnlyList<ISelectable> selectedTargets)
     {

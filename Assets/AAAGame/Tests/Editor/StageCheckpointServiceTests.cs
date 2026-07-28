@@ -8,6 +8,7 @@ public sealed class StageCheckpointServiceTests
     private LogicPersistentIdAllocatorSnapshot m_OriginalPersistentIds;
     private bool m_StartedPersistentAllocator;
     private bool m_StartedEntityStateStore;
+    private bool m_InitializedStrongholdMap;
 
     [SetUp]
     public void SetUp()
@@ -34,6 +35,16 @@ public sealed class StageCheckpointServiceTests
             m_StartedEntityStateStore = true;
         }
         EntityRegistry.Clear();
+        if (!LogicStrongholdMap.IsInitialized)
+        {
+            LogicStrongholdMap.Initialize(
+                FixVector2.Zero,
+                new FixVector2(Fix64.One, Fix64.Zero),
+                new FixVector2(Fix64.Zero, Fix64.One),
+                Fix64.One,
+                new[] { new LogicStrongholdCellDefinition("stronghold-a", 3, 4) });
+            m_InitializedStrongholdMap = true;
+        }
     }
 
     [TearDown]
@@ -49,6 +60,8 @@ public sealed class StageCheckpointServiceTests
         if (m_StartedEntityStateStore && LogicEntityStateStore.IsActive)
             LogicEntityStateStore.EndTimeline();
         EntityRegistry.Clear();
+        if (m_InitializedStrongholdMap && LogicStrongholdMap.IsInitialized)
+            LogicStrongholdMap.Clear();
     }
 
     [Test]
@@ -98,11 +111,61 @@ public sealed class StageCheckpointServiceTests
         Assert.AreEqual("stronghold-a", first.Buildings[0].StrongholdId);
         Assert.AreEqual(Fix64.FromRaw(12), first.Buildings[0].ArmyForce);
         Assert.AreEqual(8, first.Buildings[0].StoredProduction);
+        Assert.IsTrue(first.Buildings[0].IsGameEndConditionBuilding);
+        Assert.IsTrue(first.Buildings[0].IsNavigationStaticBaked);
+        Assert.AreEqual(1, first.Strongholds.Count);
+        Assert.AreEqual("stronghold-a", first.Strongholds[0].StrongholdId);
         Assert.AreEqual(m_OriginalPersistentIds.LastBuildingInstanceValue, first.PersistentIdSnapshot.LastBuildingInstanceValue);
         Assert.AreEqual(m_OriginalPersistentIds.LastBuildingInstanceValue + 1, second.PersistentIdSnapshot.LastBuildingInstanceValue);
         Assert.AreNotEqual(first.InGameData.ContentHash, second.InGameData.ContentHash);
         Assert.AreNotEqual(first.FogExploration.ContentHash, second.FogExploration.ContentHash);
         Assert.AreNotEqual(first.ContentHash, second.ContentHash);
+    }
+
+    [Test]
+    public void PrepareRestore_ValidatesTopologyAndRetainsOnlySelectedHistoryPrefix()
+    {
+        var fog = new Fog3MapData(new Fog3TerrainInfo(
+            2,
+            2,
+            1f,
+            Vector3.zero,
+            new[] { true, true, true, true },
+            "StageCheckpointServiceTests"));
+        InGameDataModel.SetPhase(GamePhase.BuildBeforeInvade, false);
+        CreatePendingBuilding(
+            "building-checkpoint-restore",
+            "Buil_Prod_Lv2",
+            new FixVector2((Fix64)3, (Fix64)4),
+            "stronghold-a",
+            0);
+
+        StageCheckpointService.BeginSession("Lv_Test");
+        StageCheckpoint selected = StageCheckpointService.CaptureStageStart("BuildBeforeInvade", fog);
+        InGameDataModel.SetPhase(GamePhase.Invade, false);
+        StageCheckpointService.CaptureStageStart("Invade", fog);
+
+        StageCheckpointRestoreRequest request = StageCheckpointService.PrepareRestore(1, fog);
+        Assert.AreSame(selected, request.Checkpoint);
+        Assert.AreEqual(1, request.RetainedHistory.Count);
+        Assert.AreSame(selected, request.RetainedHistory[0]);
+
+        var incompatibleFog = new Fog3MapData(new Fog3TerrainInfo(
+            2,
+            2,
+            1f,
+            Vector3.zero,
+            new[] { true, true, false, true },
+            "StageCheckpointServiceTests.Incompatible"));
+        Assert.Throws<System.InvalidOperationException>(() => StageCheckpointService.PrepareRestore(1, incompatibleFog));
+
+        StageCheckpointService.EndSession();
+        StageCheckpointService.BeginSession("Lv_Test", request.RetainedHistory);
+        Assert.AreEqual(1, StageCheckpointService.History.Count);
+        Assert.AreEqual(1, StageCheckpointService.RetainedFogSnapshotCount);
+        InGameDataModel.SetPhase(GamePhase.Invade, false);
+        StageCheckpoint next = StageCheckpointService.CaptureStageStart("Invade", fog);
+        Assert.AreEqual(2, next.PhaseEpoch);
     }
 
     private static void EnsureInGameDataModel()
@@ -202,7 +265,10 @@ public sealed class StageCheckpointServiceTests
             LogicCombatShape.AxisAlignedBox(position, new FixVector2(Fix64.One, Fix64.One)),
             System.Array.Empty<LogicCombatShape>(),
             System.Array.Empty<LogicInteractionOptionDescriptor>(),
-            false);
+            false,
+            null,
+            true,
+            true);
         return state;
     }
 }

@@ -32,10 +32,11 @@ public static class LogicGameplayStateHasher
         if (LogicEntityFrameSnapshotService.CapturedFrame != frame
             || MAEntityLogicFrameSystem.LastCompletedFrame != frame
             || LogicAgentCollisionShadowService.LastCompletedFrame != frame
-            || LogicDamageEventService.LastCompletedFrame != frame)
+            || LogicDamageEventService.LastCompletedFrame != frame
+            || LogicProjectileService.LastCompletedFrame != frame)
         {
             throw new InvalidOperationException(
-                $"LogicGameplayStateHasher frame mismatch. frame={frame}, snapshot={LogicEntityFrameSnapshotService.CapturedFrame}, phase={MAEntityLogicFrameSystem.LastCompletedFrame}, movement={LogicAgentCollisionShadowService.LastCompletedFrame}, damage={LogicDamageEventService.LastCompletedFrame}.");
+                $"LogicGameplayStateHasher frame mismatch. frame={frame}, snapshot={LogicEntityFrameSnapshotService.CapturedFrame}, phase={MAEntityLogicFrameSystem.LastCompletedFrame}, movement={LogicAgentCollisionShadowService.LastCompletedFrame}, damage={LogicDamageEventService.LastCompletedFrame}, projectile={LogicProjectileService.LastCompletedFrame}.");
         }
 
         LogicStateHasher hasher = s_FrameHasher;
@@ -47,6 +48,7 @@ public static class LogicGameplayStateHasher
         ulong economyHash = hasher.Hash;
         LogicInteractionHoldService.WriteDeterministicState(hasher);
         LogicInteractionTargetStateService.WriteDeterministicState(hasher);
+        LogicInteractionAuthorityService.WriteDeterministicState(hasher);
         LogicInteractionCommandService.WriteDeterministicState(hasher);
         LogicCardCommandService.WriteDeterministicState(hasher);
         LogicCardPlacementAuthority.WriteDeterministicState(hasher);
@@ -221,6 +223,7 @@ public static class LogicGameplayStateHasher
     {
         LogicEntityStateStore.WriteDeterministicState(hasher);
         AddPendingSpawnStates(hasher);
+        hasher.Add(LogicEntityLifecycleService.LastSequence);
         hasher.Add(LogicEntityLifecycleService.AuthorityEntityCount);
         hasher.Add(LogicEntityLifecycleService.ActiveEntityCount);
         IReadOnlyList<LogicEntityLifecycleCommand> commands = LogicEntityLifecycleService.Commands;
@@ -330,6 +333,7 @@ public static class LogicGameplayStateHasher
     private static void AddDamageEvents(LogicStateHasher hasher)
     {
         IReadOnlyList<LogicHealthEvent> events = LogicDamageEventService.LastOrderedEvents;
+        hasher.Add(LogicDamageEventService.LastAssignedSequence);
         hasher.Add(events.Count);
         for (int i = 0; i < events.Count; i++)
         {

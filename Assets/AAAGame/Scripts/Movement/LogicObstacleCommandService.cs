@@ -78,6 +78,7 @@ public sealed class LogicObstacleCommandSnapshot
 
 public static class LogicObstacleCommandService
 {
+    private static readonly Action<LogicObstacleCommand> s_RuntimeSink = ApplyToFlowRuntime;
     private sealed class CommandComparer : IComparer<LogicObstacleCommand>
     {
         public int Compare(LogicObstacleCommand x, LogicObstacleCommand y)
@@ -106,6 +107,10 @@ public static class LogicObstacleCommandService
     private static readonly Dictionary<int, LogicObstacleCommand> s_Active = new Dictionary<int, LogicObstacleCommand>();
     private static readonly CommandComparer s_CommandComparer = new CommandComparer();
     private static readonly PendingCommandComparer s_PendingCommandComparer = new PendingCommandComparer();
+    private static readonly Comparison<LogicObstacleCommand> s_CommandComparison =
+        (left, right) => s_CommandComparer.Compare(left, right);
+    private static readonly Comparison<LogicObstacleCommand> s_PendingCommandComparison =
+        (left, right) => s_PendingCommandComparer.Compare(left, right);
     private static readonly List<LogicObstacleCommand> s_DeterministicActive = new List<LogicObstacleCommand>();
     private static readonly List<LogicObstacleCommand> s_DeterministicPending = new List<LogicObstacleCommand>();
     private static ulong s_LastSequence;
@@ -131,13 +136,15 @@ public static class LogicObstacleCommandService
         }
 
         s_DeterministicActive.Clear();
-        s_DeterministicActive.AddRange(s_Active.Values);
-        s_DeterministicActive.Sort(s_CommandComparer);
+        foreach (LogicObstacleCommand command in s_Active.Values)
+            s_DeterministicActive.Add(command);
+        s_DeterministicActive.Sort(s_CommandComparison);
         s_DeterministicPending.Clear();
         s_DeterministicPending.AddRange(s_Pending);
-        s_DeterministicPending.Sort(s_PendingCommandComparer);
+        s_DeterministicPending.Sort(s_PendingCommandComparison);
         try
         {
+            hasher.Add(s_LastSequence);
             hasher.Add(s_DeterministicActive.Count);
             for (int i = 0; i < s_DeterministicActive.Count; i++)
                 WriteCommandState(hasher, s_DeterministicActive[i], false);
@@ -340,7 +347,7 @@ public static class LogicObstacleCommandService
 
     public static void ApplyFrame(ulong frameId)
     {
-        ApplyFrame(frameId, ApplyToFlowRuntime);
+        ApplyFrame(frameId, s_RuntimeSink);
     }
 
 #if UNITY_EDITOR

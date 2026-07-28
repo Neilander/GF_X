@@ -76,16 +76,12 @@ public interface ISourceBuildingUnitBuffProvider
 public static class CriticalDamageUtility
 {
     private const string BaseCriticalDamageRateKey = "BaseCriticalDamageRate";
-    private const float DefaultBaseCriticalDamageRate = 50f;
-
     public static Fix64 ApplyCriticalDamage(IEntityContext attacker, Fix64 baseDamage)
     {
         if (attacker == null)
             throw new InvalidOperationException("CriticalDamageUtility.ApplyCriticalDamage failed: attacker is null.");
 
-        Fix64 criticalPercent = (Fix64)(GF.Config != null
-            ? GF.Config.GetFloat(BaseCriticalDamageRateKey, DefaultBaseCriticalDamageRate)
-            : DefaultBaseCriticalDamageRate);
+        Fix64 criticalPercent = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseCriticalDamageRateKey);
 
         if (attacker.BuffComp is CharacterBuffComp buffComp)
         {
@@ -135,9 +131,6 @@ public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
 {
     private const string PushDistancePerLevelKey = "HydroGunnerPushDistancePerLevel";
     private const string PushDurationKey = "HydroGunnerPushDuration";
-    private const float DefaultPushDistancePerLevel = 120f;
-    private const float DefaultPushDuration = 0.18f;
-
     private readonly Fix64 m_PushLevel;
 
     public KnockbackOnOutgoingDamageBuff(Fix64 pushLevel)
@@ -159,12 +152,10 @@ public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
             direction = LogicEntityFrameSnapshotService.GetRequiredForward(hostEntity);
         direction = direction.GetNormalized();
 
-        Fix64 distance = (Fix64)(GF.Config != null
-            ? GF.Config.GetFloat(PushDistancePerLevelKey, DefaultPushDistancePerLevel)
-            : DefaultPushDistancePerLevel) * m_PushLevel;
-        Fix64 duration = Fix64.Max((Fix64)0.01f, (Fix64)(GF.Config != null
-            ? GF.Config.GetFloat(PushDurationKey, DefaultPushDuration)
-            : DefaultPushDuration));
+        Fix64 distance = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PushDistancePerLevelKey) * m_PushLevel;
+        Fix64 duration = Fix64.Max(
+            Fix64.FromRaw(41),
+            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PushDurationKey));
         Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
         FixVector2 speedFixed = direction * (worldDistance / duration);
 
@@ -174,7 +165,7 @@ public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
     }
 }
 
-public sealed class PercentAttackBonusBuff : BuffCallback
+public sealed class PercentAttackBonusBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_Percent;
     private Fix64 m_AppliedPercentAdd;
@@ -209,9 +200,16 @@ public sealed class PercentAttackBonusBuff : BuffCallback
 
         m_Applied = false;
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Percent.RawValue);
+        hasher.Add(m_AppliedPercentAdd.RawValue);
+        hasher.Add(m_Applied);
+    }
 }
 
-public sealed class RevertibleMoveSpeedBonusBuff : BuffCallback
+public sealed class RevertibleMoveSpeedBonusBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_Bonus;
     private IPropertyModifier m_Modifier;
@@ -241,6 +239,12 @@ public sealed class RevertibleMoveSpeedBonusBuff : BuffCallback
 
         propertyManager.ModifyMainPropertyValueBuff(CreatureMainProperty.Speed, m_Modifier, false);
         m_Modifier = null;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Bonus.RawValue);
+        hasher.Add(m_Modifier != null);
     }
 }
 
@@ -386,9 +390,9 @@ public sealed class AmmoDepletedDeathBuff : BuffCallback, ILogicDeterministicSta
     private readonly Fix64 m_DelaySeconds;
     private Fix64 m_Timer;
 
-    public AmmoDepletedDeathBuff(float delaySeconds)
+    public AmmoDepletedDeathBuff(Fix64 delaySeconds)
     {
-        m_DelaySeconds = (Fix64)delaySeconds;
+        m_DelaySeconds = delaySeconds;
     }
 
     public override void OnUpdate(Fix64 deltaTime)
@@ -544,13 +548,13 @@ public sealed class LateRiderChargeBuff : BuffCallback, ILogicDeterministicState
         Fix64 maxDistance,
         Fix64 moveSpeedBonus,
         Fix64 attackBonus,
-        float cooldownSeconds)
+        Fix64 cooldownSeconds)
     {
         m_MinDistance = minDistance;
         m_MaxDistance = maxDistance;
         m_MoveSpeedBonus = moveSpeedBonus;
         m_AttackBonus = attackBonus;
-        m_CooldownSeconds = Fix64.Max(Fix64.Zero, (Fix64)cooldownSeconds);
+        m_CooldownSeconds = Fix64.Max(Fix64.Zero, cooldownSeconds);
     }
 
     public override void OnUpdate(Fix64 deltaTime)

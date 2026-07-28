@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using AAAGame.MiniMap.FOG3;
 using Newtonsoft.Json;
@@ -271,10 +271,8 @@ namespace AAAGame.Card
 
         private static Fix64 ResolveVisionRadius(string configKey)
         {
-            float configured = GF.Config.GetFloat(configKey, -1f);
-            if (float.IsNaN(configured) || float.IsInfinity(configured) || configured <= 0f)
-                throw new InvalidOperationException($"Logic card-placement vision config '{configKey}' is invalid: {configured:R}.");
-            Fix64 radius = DistanceUnitConverter.ConvertToWorld((Fix64)configured);
+            Fix64 configured = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(configKey);
+            Fix64 radius = DistanceUnitConverter.ConvertToWorld(configured);
             if (radius <= Fix64.Zero)
                 throw new InvalidOperationException($"Logic card-placement vision config '{configKey}' converted to {radius.RawValue} raw.");
             return radius;

@@ -155,7 +155,7 @@ public partial class InputManager : GameFrameworkComponent
     public LogicInputFrame SealLogicInputFrame(ulong frameId, double cutoffRealtime)
     {
         EnsureInputModel();
-        LogicInputFrame frame = _model.LogicTimeline.Seal(frameId, cutoffRealtime);
+        LogicInputFrame frame = _model.LogicTimeline.SealReusable(frameId, cutoffRealtime);
         _model.ApplyLogicInputFrame(frame);
         return frame;
     }

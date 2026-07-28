@@ -21,7 +21,7 @@ public abstract class PassiveSkillSO : SkillEffectSO
         owner.BuffComp.RemoveBuff(BuffId);
         var buffData = BuffData.Create(
             BuffId,
-            float.MaxValue,
+            Fix64.Zero,
             true,
             1,
             new List<BuffCallback> { module });
@@ -37,7 +37,7 @@ public abstract class PassiveSkillSO : SkillEffectSO
     }
 }
 
-public sealed class SkillMoveSpeedPercentBuff : BuffCallback
+public sealed class SkillMoveSpeedPercentBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_Percent;
     private IPropertyModifier m_Modifier;
@@ -65,6 +65,12 @@ public sealed class SkillMoveSpeedPercentBuff : BuffCallback
 
         propertyManager.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, false);
         m_Modifier = null;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Percent.RawValue);
+        hasher.Add(m_Modifier != null);
     }
 }
 
@@ -118,7 +124,7 @@ public sealed class SkillDisarmOnHitBuff : BuffCallback
     }
 }
 
-public sealed class SkillDisarmDebuff : BuffCallback
+public sealed class SkillDisarmDebuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_AttackReduce;
     private readonly Fix64 m_DefReduce;
@@ -162,11 +168,19 @@ public sealed class SkillDisarmDebuff : BuffCallback
         m_AttackApplied = false;
         m_DefModifier = null;
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_AttackReduce.RawValue);
+        hasher.Add(m_DefReduce.RawValue);
+        hasher.Add(m_DefModifier != null);
+        hasher.Add(m_AttackApplied);
+    }
 }
 
-public sealed class SkillCheerSquadBuff : BuffCallback
+public sealed class SkillCheerSquadBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private static readonly Fix64 ScanIntervalSeconds = (Fix64)0.25f;
+    private static readonly Fix64 ScanIntervalSeconds = Fix64.FromRaw(1024);
 
     private readonly int m_UnitsPerStep;
     private readonly Fix64 m_AttackPerStep;
@@ -237,6 +251,13 @@ public sealed class SkillCheerSquadBuff : BuffCallback
             weapon.ApplyMultiplier(WeaponStatId.Interval, m_AppliedAttackSpeedFactor);
 
         m_AppliedSteps = steps;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Timer.RawValue);
+        hasher.Add(m_AppliedSteps);
+        hasher.Add(m_AppliedAttackSpeedFactor.RawValue);
     }
 }
 

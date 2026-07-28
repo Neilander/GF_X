@@ -154,7 +154,10 @@ public partial class LevelEntity : EntityBase
         }
         catch (Exception ex)
         {
+            StageCheckpointRuntimeCoordinator.AbortPendingRestore();
+            LevelSelectionService.NotifyLevelLoadFailed(ex.Message);
             Log.Error("LevelEntity runtime initialization failed: {0}", ex);
+            throw;
         }
     }
 
@@ -382,7 +385,12 @@ public partial class LevelEntity : EntityBase
                     }
 
                     Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", point.name, point.Position);
-                    SoldierFactory.ShowSoldier(heroUnitType, point.Position, SideType.PlayerSide, BrainType.Player);
+                    SoldierFactory.ShowSoldierFixed(
+                        heroUnitType,
+                        new FixVector2((Fix64)point.Position.x, (Fix64)point.Position.z),
+                        point.Position.y,
+                        SideType.PlayerSide,
+                        BrainType.Player);
                     heroSpawned = true;
                     break;
 
@@ -422,6 +430,8 @@ public partial class LevelEntity : EntityBase
         Stopwatch stopwatch = Stopwatch.StartNew();
         var buildManager = GameEntry.GetComponent<BuildManager>();
         var gameEndManager = GameEntry.GetComponent<GameEndManager>();
+        string levelId = ChangeSceneProcedure.SelectedLevelIdentifier;
+        StageCheckpoint restoreCheckpoint = StageCheckpointRuntimeCoordinator.GetPendingRestoreForLevelSpawn(levelId);
         var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
         var testSlotConfig = TechTestSlotConfig.LoadOrNull();
         if (testSlotConfig == null)
@@ -483,12 +493,22 @@ public partial class LevelEntity : EntityBase
                     }
 
                     Log.Info("LevelEntity.SpawnPresetEntities hero spawn point: name={0}, position={1}.", point.name, point.Position);
-                    SoldierFactory.ShowSoldier(heroUnitType, point.Position, SideType.PlayerSide, BrainType.Player);
+                    SoldierFactory.ShowSoldierFixed(
+                        heroUnitType,
+                        new FixVector2((Fix64)point.Position.x, (Fix64)point.Position.z),
+                        point.Position.y,
+                        SideType.PlayerSide,
+                        BrainType.Player);
                     heroSpawned = true;
                     processedCount++;
                     break;
 
                 case EntityPresetPointType.Building:
+                    if (restoreCheckpoint != null)
+                    {
+                        skippedCount++;
+                        break;
+                    }
                     int? initialCoinReserves = point.TryGetInitialCoinReserves(out int customCoinReserves)
                         ? customCoinReserves
                         : null;
@@ -528,6 +548,29 @@ public partial class LevelEntity : EntityBase
                 yieldCount++;
                 await UniTask.Yield(PlayerLoopTiming.Update);
             }
+        }
+
+        if (restoreCheckpoint != null)
+        {
+            for (int i = 0; i < restoreCheckpoint.Buildings.Count; i++)
+            {
+                if (!IsRuntimeInitializationActive(initVersion))
+                    return;
+                StageBuildingCheckpoint building = restoreCheckpoint.Buildings[i];
+                buildManager.RestoreBuildingForStageCheckpoint(building);
+                if (building.IsGameEndConditionBuilding)
+                    gameEndManager.RegisterInitialConditionBuilding(building.BuildingInstanceId, building.OwnerFactionId);
+                buildingCount++;
+                processedCount++;
+                itemsThisFrame++;
+                if (itemsThisFrame >= RuntimeInitItemsPerFrame)
+                {
+                    itemsThisFrame = 0;
+                    yieldCount++;
+                    await UniTask.Yield(PlayerLoopTiming.Update);
+                }
+            }
+
         }
 
         Log.Info(
@@ -594,6 +637,9 @@ public partial class LevelEntity : EntityBase
 
         InGameDataModel.SetStrongholds(strongholds);
         InitializeLogicStrongholdMap(strongholds);
+        StageCheckpointRuntimeCoordinator.RestoreStrongholdOwners(
+            strongholds,
+            ChangeSceneProcedure.SelectedLevelIdentifier);
 
         var existingBuildings = GameObject.FindObjectsOfType<BuildingEntity>();
         for (int i = 0; i < existingBuildings.Length; i++)
@@ -805,7 +851,7 @@ public partial class LevelEntity : EntityBase
             string buffId = $"building_capture_invincible_{building.LogicEntityId.Value}";
             var buffData = BuffData.Create(
                 id: buffId,
-                duration: 3f,
+                duration: (Fix64)3,
                 isForever: false,
                 maxStack: 1,
                 modules: new List<BuffCallback> { new BuildingCaptureInvincibleBuff() });

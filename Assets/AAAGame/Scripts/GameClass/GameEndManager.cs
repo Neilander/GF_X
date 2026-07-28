@@ -1,4 +1,4 @@
-﻿using UnityGameFramework.Runtime;
+﻿﻿using UnityGameFramework.Runtime;
 using GameFramework;
 using GameFramework.Event;
 using System;
@@ -58,6 +58,8 @@ public class GameEndManager : GameFrameworkComponent
             && string.Equals(m_CurrentLevelIdentifier, levelIdentifier, StringComparison.Ordinal);
         if (isSameLevel)
         {
+            ResetTargetsForNewLevel();
+            EvaluateConditions();
             return;
         }
 

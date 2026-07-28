@@ -20,32 +20,29 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 {
     private static readonly FixVector2[] StableDeadZoneDirections =
     {
-        new FixVector2((Fix64)1f, Fix64.Zero),
-        new FixVector2((Fix64)0.9238795f, (Fix64)0.3826834f),
-        new FixVector2((Fix64)0.7071068f, (Fix64)0.7071068f),
-        new FixVector2((Fix64)0.3826834f, (Fix64)0.9238795f),
-        new FixVector2(Fix64.Zero, (Fix64)1f),
-        new FixVector2((Fix64)(-0.3826834f), (Fix64)0.9238795f),
-        new FixVector2((Fix64)(-0.7071068f), (Fix64)0.7071068f),
-        new FixVector2((Fix64)(-0.9238795f), (Fix64)0.3826834f),
-        new FixVector2((Fix64)(-1f), Fix64.Zero),
-        new FixVector2((Fix64)(-0.9238795f), (Fix64)(-0.3826834f)),
-        new FixVector2((Fix64)(-0.7071068f), (Fix64)(-0.7071068f)),
-        new FixVector2((Fix64)(-0.3826834f), (Fix64)(-0.9238795f)),
-        new FixVector2(Fix64.Zero, (Fix64)(-1f)),
-        new FixVector2((Fix64)0.3826834f, (Fix64)(-0.9238795f)),
-        new FixVector2((Fix64)0.7071068f, (Fix64)(-0.7071068f)),
-        new FixVector2((Fix64)0.9238795f, (Fix64)(-0.3826834f)),
+        new FixVector2(Fix64.One, Fix64.Zero),
+        new FixVector2(Fix64.FromRaw(3785), Fix64.FromRaw(1568)),
+        new FixVector2(Fix64.FromRaw(2897), Fix64.FromRaw(2897)),
+        new FixVector2(Fix64.FromRaw(1568), Fix64.FromRaw(3785)),
+        new FixVector2(Fix64.Zero, Fix64.One),
+        new FixVector2(Fix64.FromRaw(-1568), Fix64.FromRaw(3785)),
+        new FixVector2(Fix64.FromRaw(-2897), Fix64.FromRaw(2897)),
+        new FixVector2(Fix64.FromRaw(-3785), Fix64.FromRaw(1568)),
+        new FixVector2(-Fix64.One, Fix64.Zero),
+        new FixVector2(Fix64.FromRaw(-3785), Fix64.FromRaw(-1568)),
+        new FixVector2(Fix64.FromRaw(-2897), Fix64.FromRaw(-2897)),
+        new FixVector2(Fix64.FromRaw(-1568), Fix64.FromRaw(-3785)),
+        new FixVector2(Fix64.Zero, -Fix64.One),
+        new FixVector2(Fix64.FromRaw(1568), Fix64.FromRaw(-3785)),
+        new FixVector2(Fix64.FromRaw(2897), Fix64.FromRaw(-2897)),
+        new FixVector2(Fix64.FromRaw(3785), Fix64.FromRaw(-1568)),
     };
 
-    private const float CombatApproachRangeSlack = 0.08f;
     private const int CombatApproachCandidateCount = 16;
     private const int CombatApproachRingCount = 3;
-    private const float CombatApproachRingSpacing = 0.55f;
-    private const float CombatApproachOccupancyPadding = 0.35f;
-    private static readonly Fix64 CombatApproachRangeSlackFixed = (Fix64)CombatApproachRangeSlack;
-    private static readonly Fix64 CombatApproachRingSpacingFixed = (Fix64)CombatApproachRingSpacing;
-    private static readonly Fix64 CombatApproachOccupancyPaddingFixed = (Fix64)CombatApproachOccupancyPadding;
+    private static readonly Fix64 CombatApproachRangeSlackFixed = Fix64.FromRaw(328);
+    private static readonly Fix64 CombatApproachRingSpacingFixed = Fix64.FromRaw(2253);
+    private static readonly Fix64 CombatApproachOccupancyPaddingFixed = Fix64.FromRaw(1434);
 
     public enum SoldierState
     {
@@ -56,34 +53,23 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     }
 
     // --- 配置参数 ---
-    // RecruitRadius / LeashRange 运行时优先读 GroupMoveConfig (SO)；
-    // SO 不可用（如 Editor 测试）时回落到下面的字段值。
-    public float RecruitRadius = 8f;        // 玩家多近时开始跟随（fallback）
-    public float LeashRange = 30f;          // 脱离战斗回到跟随的距离（fallback）
-    public float FollowDistanceMin = 2.5f;  // 跟随最近距离（不贴太紧）
-    public float FollowDistanceMax = 5f;    // 跟随最远距离（超过才追）
-    public float WeaponRange = 1.5f;          // 武器本身的攻击距离（WeaponData.AttackRange * 0.01）
-    public float DetectEnemyRange = 10f;    // 发现敌人的距离
-    public float SeparationRadius = 1.5f;   // 同阵营分离半径
-    public float SeparationWeight = 1.5f;   // 分离力权重
-    public float AvoidPlayerRadius = 2.5f;  // 避让玩家半径
-    public float AvoidPlayerStrength = 3f;  // 避让玩家力度
-    public float SeekWeight = 0.6f;         // 趋向力权重
+    public Fix64 WeaponRange = Fix64.FromRaw(6144); // WeaponData.AttackRange 的 fallback
+    public Fix64 DetectEnemyRange = (Fix64)10;
 
     // --- 脱战返航参数（仅敌方有效，调参先在这里改）---
-    public float ChaseRange = 23f;                  // 距出生点超过此值就进入 Returning
-    public float HomeArrivedRadius = 1.5f;          // 距出生点 < 此值视为到家
-    public Fix64 ReturnSpeedBonusPercent = (Fix64)0.5f;        // 返航移速加成（50%）
-    public Fix64 ReturnHpRegenPercentPerSec = (Fix64)0.2f;     // 返航回血（每秒最大血量的 20%）
-    public float SoftReturnRatio = 0.6f;            // 软返航比例的 fallback（运行时优先读 GroupMoveConfig）
+    public Fix64 ChaseRange = (Fix64)23;                  // 距出生点超过此值就进入 Returning
+    public Fix64 HomeArrivedRadius = Fix64.FromRaw(6144);         // 距出生点 < 此值视为到家
+    public Fix64 ReturnSpeedBonusPercent = Fix64.FromRaw(2048);        // 返航移速加成（50%）
+    public Fix64 ReturnHpRegenPercentPerSec = Fix64.FromRaw(820);     // 返航回血（每秒最大血量的 20%）
+    public Fix64 SoftReturnRatio = Fix64.FromRaw(2458);           // 软返航比例的 fallback（运行时优先读 GroupMoveConfig）
     private const string ReturningBuffId = "soldier_returning";
 
     // --- 状态 ---
     public SoldierState State { get; private set; } = SoldierState.Idle;
 
     // --- Brain 接口 ---
-    public Vector2 Move { get; private set; }
-    public FixVector2 MoveFixed => new FixVector2((Fix64)Move.x, (Fix64)Move.y);
+    public Vector2 Move => Vector2.zero;
+    public FixVector2 MoveFixed => FixVector2.Zero;
     public bool Attack { get; private set; }
     public bool Skill1 => false;
     public bool Skill2 => false;
@@ -95,12 +81,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private IEntityContext _leader;
 
     // --- 内部 ---
-    private Vector3 _desiredMoveDir;
     private bool _inDeadZone;                // 是否已进入 leader 附近的死区
     // 死区参数由 GroupMoveConfig 的 FollowBaseStopRadius / FollowDeadZoneRange / FollowInnerDeadZoneRange 提供
     // 协调器不在场（测试环境）时使用下面的兜底默认值
-    private const float FallbackDeadZoneRange = 12f;
-    private const float FallbackInnerDeadZoneRange = 2f;
+    private static readonly Fix64 FallbackDeadZoneRange = Fix64.FromRaw(49152);
+    private static readonly Fix64 FallbackInnerDeadZoneRange = Fix64.FromRaw(8192);
     private FixVector2? _deadZoneTarget;        // 死区内的稳定定点导航目标点
     private FixVector2? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
     private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
@@ -156,11 +141,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         _birthPosition = _allowEnemyReturnToBirth && newSide == SideType.EnemySide ? self.LogicFramePositionFixed() : null;
 
-        GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.CharacterKey}] Side changed {oldSide} -> {newSide}, reset SoldierAI state");
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Side changed {oldSide} -> {newSide}, reset SoldierAI state");
+        }
     }
-
-    public Vector3 GetDesiredMoveDirection() => _desiredMoveDir;
 
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
@@ -173,8 +159,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         AddOptionalPosition(hasher, _birthPosition);
         hasher.Add(_softReturning);
         hasher.Add(_allowEnemyReturnToBirth);
-        hasher.Add(((Fix64)_desiredMoveDir.x).RawValue);
-        hasher.Add(((Fix64)_desiredMoveDir.z).RawValue);
         hasher.Add(_combatApproachPoint.x.RawValue);
         hasher.Add(_combatApproachPoint.y.RawValue);
         hasher.Add(_combatApproachTargetPoint.x.RawValue);
@@ -199,10 +183,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     public void Tick(IEntityContext self, Fix64 dt)
     {
-        Move = Vector2.zero;
         Attack = false;
-        _desiredMoveDir = Vector3.zero;
-
         if (!self.Alive) return;
 
         // 惰性刷新领袖
@@ -242,7 +223,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         if (State == SoldierState.Returning)
         {
             if (_birthPosition.HasValue &&
-                FixVector2.Distance(selfPositionFixed, _birthPosition.Value) <= (Fix64)HomeArrivedRadius)
+                FixVector2.Distance(selfPositionFixed, _birthPosition.Value) <= HomeArrivedRadius)
             {
                 ExitReturning(self);
             }
@@ -251,7 +232,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         // 仅敌方（已设置 _birthPosition）才检查脱战。Idle/Follow/Combat 都可被脱战打断。
         if (_birthPosition.HasValue &&
-            FixVector2.Distance(selfPositionFixed, _birthPosition.Value) > (Fix64)ChaseRange)
+            FixVector2.Distance(selfPositionFixed, _birthPosition.Value) > ChaseRange)
         {
             EnterReturning(self);
             return;
@@ -281,8 +262,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 else if (!IsValidFollowLeader(self, _leader))
                 {
                     self.MoveComp.StopMove(); // 清掉残留目标，防止被斥力推远
-                    GameDebugSettings.Log(DebugCategory.Brain,
-                        $"[{self.CharacterKey}] 离开跟随, leader失效");
+                    if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+                    {
+                        GameDebugSettings.Log(DebugCategory.Brain,
+                            $"[{self.CharacterKey}] 离开跟随, leader失效");
+                    }
                     _leader = null;
                     State = SoldierState.Idle;
                 }
@@ -295,9 +279,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 {
                     // 立即清掉旧导航目标，防止继续走向已死敌人
                     self.MoveComp.StopMove();
-                    GameDebugSettings.Log(DebugCategory.Brain,
-                        $"[{self.CharacterKey}] Combat→Idle: enemy={(enemy == null ? "null" : "invalid")}" +
-                        $", leader={(_leader != null ? _leader.CharacterKey : "null")}");
+                    if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+                    {
+                        GameDebugSettings.Log(DebugCategory.Brain,
+                            $"[{self.CharacterKey}] Combat→Idle: enemy={(enemy == null ? "null" : "invalid")}" +
+                            $", leader={(_leader != null ? _leader.CharacterKey : "null")}");
+                    }
                     State = SoldierState.Idle;
                 }
                 break;
@@ -323,7 +310,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 new PercentMoveSpeedBonusBuff(ReturnSpeedBonusPercent),
                 new HealOverTimeBuff(ReturnHpRegenPercentPerSec)
             };
-            var buff = BuffData.Create(ReturningBuffId, 0f, true, 1, modules);
+            var buff = BuffData.Create(ReturningBuffId, Fix64.Zero, true, 1, modules);
             bool added = self.BuffComp.AddBuff(buff, self);
             UnityEngine.Debug.Log($"[Returning.AddBuff] host={self.CharacterKey} added={added} " +
                                   $"buffCompType={self.BuffComp.GetType().Name} " +
@@ -336,8 +323,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         }
 
         State = SoldierState.Returning;
-        GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.CharacterKey}] 进入 Returning, birth={_birthPosition.Value}, dist={(float)FixVector2.Distance(self.LogicFramePositionFixed(), _birthPosition.Value):F2}");
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] 进入 Returning, birth={_birthPosition.Value}, dist={(float)FixVector2.Distance(self.LogicFramePositionFixed(), _birthPosition.Value):F2}");
+        }
     }
 
     private void ExitReturning(IEntityContext self)
@@ -352,8 +342,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             self.TargetComp.ClearAggro();
         }
         State = SoldierState.Idle;
-        GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.CharacterKey}] 到家, 退出 Returning");
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] 到家, 退出 Returning");
+        }
     }
 
     private static bool IsValidAttackTarget(IEntityContext self, IEntityContext target)
@@ -381,7 +374,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         Fix64 distFromHome = FixVector2.Distance(self.LogicFramePositionFixed(), _birthPosition.Value);
 
         // 已到家 → 停止
-        if (distFromHome <= (Fix64)HomeArrivedRadius)
+        if (distFromHome <= HomeArrivedRadius)
         {
             if (_softReturning)
             {
@@ -405,27 +398,30 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         // 触发判定：尚未在软返航中，且未达 softThreshold → 站着等
         if (!_softReturning)
         {
-            Fix64 softThreshold = (Fix64)ChaseRange * (Fix64)GetSoftReturnRatio();
+            Fix64 softThreshold = ChaseRange * GetSoftReturnRatio();
             if (distFromHome < softThreshold) return;
             _softReturning = true;
             self.TargetComp?.ClearAggro(); // 软返航触发时也清掉受击仇恨，避免回家路上又被拉走
         }
 
         // 持续走回家直到 HomeArrivedRadius 才停
-        GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.CharacterKey}] Idle soft-return MoveTo birth={_birthPosition.Value} from={self.LogicFramePositionFixed()} distFromHome={(float)distFromHome:F2}");
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Idle soft-return MoveTo birth={_birthPosition.Value} from={self.LogicFramePositionFixed()} distFromHome={(float)distFromHome:F2}");
+        }
         self.MoveComp.MoveToFixed(_birthPosition.Value);
     }
 
-    private float GetSoftReturnRatio()
+    private Fix64 GetSoftReturnRatio()
     {
         var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
-        return cfg != null ? cfg.EnemySoftReturnRatio : SoftReturnRatio;
+        return cfg != null ? cfg.EnemySoftReturnRatioFixed : SoftReturnRatio;
     }
 
     private bool HasEnemyInScanRange(IEntityContext self)
     {
-        Fix64 r = (Fix64)DetectEnemyRange;
+        Fix64 r = DetectEnemyRange;
         Fix64 rSq = r * r;
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
@@ -447,7 +443,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             return;
         }
 
-        Move = Vector2.zero;
         Fix64 leaderEqR;
         Fix64 deadZoneRange;
         Fix64 innerDeadZoneRange;
@@ -455,15 +450,15 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         {
             var mgr = GroupMoveManager.Instance;
             var cfg = mgr.Config;
-            leaderEqR = (Fix64)(cfg != null ? cfg.FollowBaseStopRadius : 1.5f);
-            deadZoneRange = (Fix64)(cfg != null ? cfg.FollowDeadZoneRange : FallbackDeadZoneRange);
-            innerDeadZoneRange = (Fix64)(cfg != null ? cfg.FollowInnerDeadZoneRange : FallbackInnerDeadZoneRange);
+            leaderEqR = cfg != null ? cfg.FollowBaseStopRadiusFixed : Fix64.FromRaw(6144);
+            deadZoneRange = cfg != null ? cfg.FollowDeadZoneRangeFixed : FallbackDeadZoneRange;
+            innerDeadZoneRange = cfg != null ? cfg.FollowInnerDeadZoneRangeFixed : FallbackInnerDeadZoneRange;
         }
         else
         {
-            leaderEqR = (Fix64)1.5f;
-            deadZoneRange = (Fix64)FallbackDeadZoneRange;
-            innerDeadZoneRange = (Fix64)FallbackInnerDeadZoneRange;
+            leaderEqR = Fix64.FromRaw(6144);
+            deadZoneRange = FallbackDeadZoneRange;
+            innerDeadZoneRange = FallbackInnerDeadZoneRange;
         }
         Fix64 deadZoneOuter = leaderEqR + deadZoneRange;
         Fix64 distToLeader = FixVector2.Distance(self.LogicFramePositionFixed(), _leader.LogicFramePositionFixed());
@@ -475,8 +470,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             {
                 _inDeadZone = true;
                 _deadZoneTarget = null;
-                GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.CharacterKey}] 进入死区 dist={distToLeader:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+                if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+                {
+                    GameDebugSettings.Log(DebugCategory.Brain,
+                        $"[{self.CharacterKey}] 进入死区 dist={distToLeader:F2} deadZone=[{leaderEqR:F2},{deadZoneOuter:F2}]");
+                }
             }
 
             self.MoveComp.StopMove();
@@ -489,12 +487,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 FixVector2.Distance(_deadZoneTarget.Value, _leader.LogicFramePositionFixed()) > deadZoneOuter)
             {
                 _deadZoneTarget = PickStableDeadZonePointFixed(self, _leader.LogicFramePositionFixed(), leaderEqR, deadZoneOuter);
-                GameDebugSettings.Log(DebugCategory.Brain,
-                    $"[{self.CharacterKey}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
+                if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+                {
+                    GameDebugSettings.Log(DebugCategory.Brain,
+                        $"[{self.CharacterKey}] 生成死区目标点 {_deadZoneTarget.Value} dist={distToLeader:F2}");
+                }
             }
 
-            GameDebugSettings.Log(DebugCategory.Brain,
-                $"[{self.CharacterKey}] Follow MoveTo deadZoneTarget={_deadZoneTarget.Value} leader={_leader.CharacterKey} leaderPos={_leader.LogicFramePosition()}");
+            if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+            {
+                GameDebugSettings.Log(DebugCategory.Brain,
+                    $"[{self.CharacterKey}] Follow MoveTo deadZoneTarget={_deadZoneTarget.Value} leader={_leader.CharacterKey} leaderPos={_leader.LogicFramePosition()}");
+            }
             self.MoveComp.MoveToFixed(_deadZoneTarget.Value);
         }
 
@@ -533,7 +537,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     /// </summary>
     private Fix64 GetEffectiveAttackRange(IEntityContext self)
     {
-        Fix64 wpnRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : (Fix64)WeaponRange;
+        Fix64 wpnRange = self.WeaponComp != null ? self.WeaponComp.AttackRange : WeaponRange;
         return wpnRange;
     }
 
@@ -553,12 +557,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         {
             // 在攻击范围内 → 攻击并停下
             Attack = true;
-            Move = Vector2.zero;
             self.MoveComp.StopMove();
         }
         else
         {
-            Move = Vector2.zero;
             if (!TryResolveCombatApproachPoint(
                     self,
                     out FixVector2 reachableApproachPoint,
@@ -576,10 +578,13 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                     $"selfPos={self.LogicFramePosition()} dist={distToEnemy:F2} range={effectiveRange:F2} reason={reachFailure}");
             }
 
-            GameDebugSettings.Log(DebugCategory.Brain,
-                $"[{self.CharacterKey}] Combat MoveTo enemy={enemy.CharacterKey} enemyPos={enemy.LogicFramePosition()} approach={reachableApproachPoint} " +
-                $"selfPos={self.LogicFramePosition()} dist={distToEnemy:F2} range={effectiveRange:F2} " +
-                $"attackNow={shouldAttackNow}");
+            if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+            {
+                GameDebugSettings.Log(DebugCategory.Brain,
+                    $"[{self.CharacterKey}] Combat MoveTo enemy={enemy.CharacterKey} enemyPos={enemy.LogicFramePosition()} approach={reachableApproachPoint} " +
+                    $"selfPos={self.LogicFramePosition()} dist={distToEnemy:F2} range={effectiveRange:F2} " +
+                    $"attackNow={shouldAttackNow}");
+            }
             self.MoveComp.MoveToFixed(reachableApproachPoint);
         }
     }
@@ -608,16 +613,16 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         bool useSurfacePoint = enemy.IsLogicBuilding();
         Fix64 standOff = ResolveCombatApproachStandOff(selfRadius, targetRadius, effectiveRange, arriveDistance, useSurfacePoint);
         Fix64 minimumStandOff = ResolveCombatApproachMinimumStandOff(selfRadius, targetRadius, useSurfacePoint);
-        Fix64 requiredClearance = Fix64.Max(selfRadius * (Fix64)2 + CombatApproachOccupancyPaddingFixed, (Fix64)0.45f);
+        Fix64 requiredClearance = Fix64.Max(selfRadius * (Fix64)2 + CombatApproachOccupancyPaddingFixed, Fix64.FromRaw(1844));
         FixVector2 targetPoint = useSurfacePoint
             ? self.LogicFrameTargetClosestPointFixed(enemy)
             : enemy.LogicFramePositionFixed();
 
         int targetId = ResolveCombatEntityId(enemy);
         int frame = FlowFieldCrowdMovementSystem.GetCurrentNavigationFrame();
-        Fix64 minRefreshDistance = Fix64.Max((Fix64)0.25f, selfRadius * (Fix64)1.5f);
+        Fix64 minRefreshDistance = Fix64.Max(Fix64.FromRaw(1024), selfRadius * Fix64.FromRaw(6144));
         Fix64 targetPointMoveDistance = FixVector2.Distance(_combatApproachTargetPoint, targetPoint);
-        Fix64 targetPointRefreshDistance = Fix64.Max((Fix64)0.12f, selfRadius * (Fix64)0.5f);
+        Fix64 targetPointRefreshDistance = Fix64.Max(Fix64.FromRaw(492), selfRadius * Fix64.FromRaw(2048));
         bool targetMatchesCache = _combatApproachTargetId == targetId;
         bool cacheFresh = frame - _combatApproachRefreshFrame < 10;
         bool targetStable = targetPointMoveDistance <= targetPointRefreshDistance;
@@ -741,7 +746,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     {
         Fix64 requiredClearance = Fix64.Max(
             selfRadius * (Fix64)2 + CombatApproachOccupancyPaddingFixed,
-            (Fix64)0.45f);
+            Fix64.FromRaw(1844));
         return FlowFieldCrowdMovementSystem.TryReserveNavigationGoalIfAvailableFixed(
             ResolveCombatEntityId(self),
             targetId,
@@ -761,7 +766,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         return FlowFieldCrowdMovementSystem.TryGetNavigationPointClearanceFixed(
                    approachPoint,
                    agentTypeId,
-                   Fix64.Max(selfRadius, (Fix64)0.01f),
+                   Fix64.Max(selfRadius, Fix64.FromRaw(41)),
                    out bool isClear,
                    out _,
                    out _,
@@ -789,7 +794,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         bool targetPointOnSurface)
     {
         Fix64 surfaceDistance = Fix64.Max(
-            selfRadius + (Fix64)0.05f,
+            selfRadius + Fix64.FromRaw(205),
             effectiveRange - arriveDistance - CombatApproachRangeSlackFixed);
         return targetPointOnSurface ? surfaceDistance : targetRadius + surfaceDistance;
     }
@@ -799,7 +804,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         Fix64 targetRadius,
         bool targetPointOnSurface)
     {
-        Fix64 surfaceSeparation = Fix64.Max((Fix64)0.05f, selfRadius + (Fix64)0.05f);
+        Fix64 surfaceSeparation = Fix64.Max(Fix64.FromRaw(205), selfRadius + Fix64.FromRaw(205));
         return targetPointOnSurface ? surfaceSeparation : targetRadius + surfaceSeparation;
     }
 
@@ -824,10 +829,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private static Fix64 ResolveNavigationArriveDistance(Fix64 collisionRadius)
     {
-        if (collisionRadius > (Fix64)0.0001f)
-            return Fix64.Max((Fix64)0.08f, collisionRadius * (Fix64)0.6f);
+        if (collisionRadius > Fix64.FromRaw(1))
+            return Fix64.Max(Fix64.FromRaw(328), collisionRadius * Fix64.FromRaw(2458));
 
-        return (Fix64)0.15f;
+        return Fix64.FromRaw(615);
     }
 
     private static Vector3 ToWorldVector3(FixVector2 point)
@@ -844,7 +849,6 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             return;
         }
 
-        Move = Vector2.zero;
         Attack = false;
 
         // 返航期间持续清 _lastAttacker / CurrentTarget，
@@ -855,8 +859,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             self.TargetComp.ClearAggro();
         }
 
-        GameDebugSettings.Log(DebugCategory.Brain,
-            $"[{self.CharacterKey}] Returning MoveTo birth={_birthPosition.Value} from={self.LogicFramePositionFixed()}");
+        if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+        {
+            GameDebugSettings.Log(DebugCategory.Brain,
+                $"[{self.CharacterKey}] Returning MoveTo birth={_birthPosition.Value} from={self.LogicFramePositionFixed()}");
+        }
         self.MoveComp.MoveToFixed(_birthPosition.Value);
     }
 
@@ -872,7 +879,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
             agentTypeId = 0;
 
-        Fix64 sampleRadius = Fix64.Max((Fix64)0.5f, outerR * (Fix64)0.25f);
+        Fix64 sampleRadius = Fix64.Max(Fix64.FromRaw(2048), outerR * Fix64.FromRaw(1024));
         const int maxAttempts = 24;
 
         System.Text.StringBuilder failure = new System.Text.StringBuilder(512);
@@ -908,15 +915,4 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         throw new System.InvalidOperationException(failure.ToString());
     }
 
-    private float GetRecruitRadius()
-    {
-        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
-        return cfg != null ? cfg.FollowRecruitRadius : RecruitRadius;
-    }
-
-    private float GetLeashRange()
-    {
-        var cfg = GroupMoveManager.HasInstance ? GroupMoveManager.Instance.Config : null;
-        return cfg != null ? cfg.FollowLeashRange : LeashRange;
-    }
 }

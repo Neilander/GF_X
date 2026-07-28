@@ -36,7 +36,7 @@ public class SimEntityIntegrationTests
         if (ctx.CanRun(ctx.AtkComp))
 ctx.AtkComp?.Attack((Fix64)dt);
 
-        ctx.MoveExecutor.Execute(dt);
+        ((SimMoveExecutor)ctx.MoveExecutor).Execute(dt);
         ctx.SyncPositionFromExecutor();
     }
 
@@ -92,7 +92,7 @@ ctx.AtkComp?.Attack((Fix64)dt);
         moveComp.Init(ctx);
         ctx.MoveComp = moveComp;
 
-        moveComp.MoveTo(new Vector3(10, 0, 0));
+        moveComp.MoveToFixed(new FixVector2((Fix64)10, Fix64.Zero));
 
         for (int i = 0; i < 1500; i++)
             TickEntity(ctx, 1f / 60f);
@@ -110,7 +110,7 @@ ctx.AtkComp?.Attack((Fix64)dt);
         var allEntities = new List<IEntityContext> { player, enemy };
 
         // 给敌人装上 Sim 组件
-        var targeting = new SimTargetingComp(enemy, allEntities) { AggroRange = 10f };
+        var targeting = new SimTargetingComp(enemy, allEntities) { AggroRangeFixed = (Fix64)10f };
         targeting.Init(enemy);
         enemy.TargetComp = targeting;
 
@@ -131,7 +131,7 @@ ctx.AtkComp?.Attack((Fix64)dt);
             // 如果发现目标，向目标移动
             if (targeting.CurrentTarget != null)
             {
-                moveComp.MoveTo(targeting.CurrentTarget.Position);
+                moveComp.MoveToFixed(targeting.CurrentTarget.PositionFixed);
             }
 
             TickEntity(enemy, 1f / 60f);

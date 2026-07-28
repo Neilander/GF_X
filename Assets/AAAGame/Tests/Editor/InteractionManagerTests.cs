@@ -45,7 +45,7 @@ public sealed class InteractionManagerTests
                 new FixVector2((Fix64)(-2), (Fix64)(-2)),
                 new FixVector2(Fix64.One, Fix64.One)));
 
-        bool valid = InteractionManager.TryComputeScore(
+        bool valid = LogicInteractionAuthorityService.TryComputeScore(
             actor,
             target,
             (Fix64)4,
@@ -71,7 +71,7 @@ public sealed class InteractionManagerTests
             new FixVector2(Fix64.One, Fix64.Zero),
             LogicCombatShape.Circle(new FixVector2((Fix64)2, Fix64.Zero), Fix64.Zero));
 
-        InteractionManager.TryComputeScore(
+        LogicInteractionAuthorityService.TryComputeScore(
             facing,
             target,
             (Fix64)4,
@@ -83,7 +83,7 @@ public sealed class InteractionManagerTests
             FixVector2.Zero,
             new FixVector2(-Fix64.One, Fix64.Zero),
             LogicCombatShape.Circle(FixVector2.Zero, Fix64.Zero));
-        InteractionManager.TryComputeScore(
+        LogicInteractionAuthorityService.TryComputeScore(
             away,
             target,
             (Fix64)4,
@@ -98,13 +98,13 @@ public sealed class InteractionManagerTests
     [Test]
     public void EqualScores_SelectSmallerLogicEntityId()
     {
-        Assert.IsTrue(InteractionManager.IsBetterCandidate(
+        Assert.IsTrue(LogicInteractionAuthorityService.IsBetterCandidate(
             (Fix64)1,
             new LogicEntityId(4),
             true,
             (Fix64)1,
             new LogicEntityId(9)));
-        Assert.IsFalse(InteractionManager.IsBetterCandidate(
+        Assert.IsFalse(LogicInteractionAuthorityService.IsBetterCandidate(
             (Fix64)1,
             new LogicEntityId(12),
             true,

@@ -14,11 +14,6 @@ public class SimMoveComp : IMoveComp
         _targetPosFixed = null;
     }
 
-    public void MoveTo(Vector3 destination)
-    {
-        MoveToFixed(new FixVector2((Fix64)destination.x, (Fix64)destination.z));
-    }
-
     public void MoveToFixed(FixVector2 destination)
     {
         _targetPosFixed = destination;
@@ -61,25 +56,22 @@ public class SimMoveComp : IMoveComp
         _ctx.MoveExecutor.SetInputFixed(moveDirection * speed * (Fix64)0.1f);
     }
 
-    public void SetNavTarget(Vector3 destination)
-    {
-        _targetPosFixed = new FixVector2((Fix64)destination.x, (Fix64)destination.z);
-    }
-
     public void SetNavTargetFixed(FixVector2 destination)
     {
         _targetPosFixed = destination;
     }
 
-    public Vector3 GetNavDirection()
+    public FixVector2 NavDirectionFixed
     {
-        if (!_targetPosFixed.HasValue || _ctx == null)
-            return Vector3.zero;
-        FixVector2 offset = _targetPosFixed.Value - _ctx.PositionFixed;
-        if (FixVector2.SqrMagnitude(offset) <= (Fix64)0.001f)
-            return Vector3.zero;
-        FixVector2 direction = offset.GetNormalized();
-        return new Vector3((float)direction.x, 0f, (float)direction.y);
+        get
+        {
+            if (!_targetPosFixed.HasValue || _ctx == null)
+                return FixVector2.Zero;
+            FixVector2 offset = _targetPosFixed.Value - _ctx.PositionFixed;
+            return FixVector2.SqrMagnitude(offset) <= (Fix64)0.001f
+                ? FixVector2.Zero
+                : offset.GetNormalized();
+        }
     }
 
     public bool IsMoving

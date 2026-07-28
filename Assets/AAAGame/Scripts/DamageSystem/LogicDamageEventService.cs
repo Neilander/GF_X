@@ -52,6 +52,7 @@ public readonly struct LogicHealthEvent
 
 public static class LogicDamageEventService
 {
+    private static readonly Comparison<LogicHealthEvent> s_EventComparison = CompareEvents;
     private static readonly List<LogicHealthEvent> s_Events = new List<LogicHealthEvent>();
     private static readonly List<LogicHealthEvent> s_LastOrderedEvents = new List<LogicHealthEvent>();
     private static ulong s_NextSequence;
@@ -60,6 +61,7 @@ public static class LogicDamageEventService
     public static bool IsActive { get; private set; }
     public static bool IsCollecting => s_CollectingFrame != 0;
     public static bool IsApplying { get; private set; }
+    public static ulong LastAssignedSequence => s_NextSequence;
     public static ulong LastCompletedFrame { get; private set; }
     public static int LastSubmittedCount { get; private set; }
     public static int LastAppliedCount { get; private set; }
@@ -181,7 +183,7 @@ public static class LogicDamageEventService
         IsApplying = true;
         try
         {
-            s_Events.Sort(CompareEvents);
+            s_Events.Sort(s_EventComparison);
             LastSubmittedCount = s_Events.Count;
             s_LastOrderedEvents.AddRange(s_Events);
             for (int i = 0; i < s_Events.Count; i++)

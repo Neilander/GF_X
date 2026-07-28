@@ -72,7 +72,7 @@ public sealed class AttackLifeStealPercentBuff : BuffCallback
     }
 }
 
-public sealed class DayScalingHeroStatsBuff : BuffCallback
+public sealed class DayScalingHeroStatsBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private const float RefreshInterval = 0.25f;
 
@@ -155,6 +155,17 @@ public sealed class DayScalingHeroStatsBuff : BuffCallback
 
         m_HealthModifier = PropertyDirectAdditiveModifier.Create(m_AppliedHealthPercent / (Fix64)100);
         propertyManager.ModifyMainPropertyMul(CreatureMainProperty.Health, NormalBaseValueTp.Buff, m_HealthModifier, true);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_AttackPercentPerDay.RawValue);
+        hasher.Add(m_HealthPercentPerDay.RawValue);
+        hasher.Add(m_Timer.RawValue);
+        hasher.Add(m_AppliedDays);
+        hasher.Add(m_AppliedAttackPercent.RawValue);
+        hasher.Add(m_AppliedHealthPercent.RawValue);
+        hasher.Add(m_HealthModifier != null);
     }
 }
 

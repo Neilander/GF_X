@@ -284,7 +284,7 @@ public static class AreaWeaponDamage
             weaponData.SplitDist > Fix64.Zero ? weaponData.SplitDist : weaponData.Range);
         if (weaponData.SplitAngle < Fix64.Zero || weaponData.SplitAngle >= (Fix64)180)
             throw new System.InvalidOperationException($"AreaWeaponDamage.DealCleave requires SplitAngle in [0, 180). actual={weaponData.SplitAngle}.");
-        Fix64 halfAngle = weaponData.SplitAngle * (Fix64)0.5f * Fix64.PIOver180;
+        Fix64 halfAngle = weaponData.SplitAngle * Fix64.FromRaw(2048) * Fix64.PIOver180;
         Fix64 tanHalfAngle = Fix64.Tan(halfAngle);
         Fix64 baseRadius = AreaWeaponDamageQuery.GetRequiredRadialExtent(attacker);
 

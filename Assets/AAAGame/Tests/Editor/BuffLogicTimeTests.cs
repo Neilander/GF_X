@@ -2,6 +2,7 @@
 using GameFramework;
 using NUnit.Framework;
 using AAAGame.Scripts.BuffSystem;
+using System.Linq;
 
 [TestFixture]
 public sealed class BuffLogicTimeTests
@@ -9,7 +10,7 @@ public sealed class BuffLogicTimeTests
     [Test]
     public void OneSecondBuff_ExpiresOnlyFromFixedLogicTicks()
     {
-        BuffData buff = BuffData.Create("test_fixed_duration", 1f, false, 1, new List<BuffCallback>());
+        BuffData buff = BuffData.Create("test_fixed_duration", Fix64.One, false, 1, new List<BuffCallback>());
         try
         {
             for (int i = 0; i < 30; i++)
@@ -26,7 +27,7 @@ public sealed class BuffLogicTimeTests
     [Test]
     public void PermanentBuff_DoesNotConsumeLogicTime()
     {
-        BuffData buff = BuffData.Create("test_forever", 1f, true, 1, new List<BuffCallback>());
+        BuffData buff = BuffData.Create("test_forever", Fix64.One, true, 1, new List<BuffCallback>());
         try
         {
             Fix64 before = buff.remainingTime;
@@ -50,7 +51,7 @@ public sealed class BuffLogicTimeTests
 
         BuffData buff = BuffData.Create(
             "pure_logic_host",
-            10f,
+            (Fix64)10,
             false,
             1,
             new List<BuffCallback> { callback });
@@ -74,6 +75,89 @@ public sealed class BuffLogicTimeTests
     }
 
     [Test]
+    public void StatefulBuffModules_ContributeFutureLogicState()
+    {
+        System.Type[] statefulTypes =
+        {
+            typeof(PercentAttackBonusBuff),
+            typeof(RevertibleMoveSpeedBonusBuff),
+            typeof(BuildingCollisionBlockingBuff),
+            typeof(PhaseAmmoResetBuff),
+            typeof(BuildingCaptureInvincibleBuff),
+            typeof(BuildingLv0InvincibleBuff),
+            typeof(BuildingPhaseGuardBuff),
+            typeof(FixedMoveSpeedOverrideBuff),
+            typeof(HeroGhostBuff),
+            typeof(AttackSpeedBonusBuff),
+            typeof(DayScalingHeroStatsBuff),
+            typeof(OnKillHealBuff),
+            typeof(PercentHealthBonusBuff),
+            typeof(PercentMoveSpeedBonusBuff),
+            typeof(RampedPercentMoveSpeedBonusBuff),
+            typeof(SkillMoveSpeedPercentBuff),
+            typeof(SkillDisarmDebuff),
+            typeof(SkillCheerSquadBuff),
+            typeof(PositionAreaRefreshBuff),
+            typeof(TauntBuffCallback),
+            typeof(TimedDeathBuff),
+        };
+
+        string[] missing = statefulTypes
+            .Where(type => !typeof(ILogicDeterministicStateContributor).IsAssignableFrom(type))
+            .Select(type => type.FullName)
+            .ToArray();
+
+        CollectionAssert.IsEmpty(
+            missing,
+            "跨 Tick 改变未来结算的 Buff 模块必须显式贡献确定性状态。");
+    }
+
+    [Test]
+    public void StatefulBuffContributorHashes_TrackFutureBranchFields()
+    {
+        AssertPrivateFieldChangesContributorHash(
+            new PercentAttackBonusBuff(Fix64.One),
+            typeof(PercentAttackBonusBuff),
+            "m_Applied",
+            true);
+        AssertPrivateFieldChangesContributorHash(
+            new BuildingPhaseGuardBuff(),
+            typeof(BuildingPhaseGuardBuff),
+            "_subscribed",
+            true);
+        AssertPrivateFieldChangesContributorHash(
+            new RampedPercentMoveSpeedBonusBuff(Fix64.One, 2f),
+            typeof(RampedPercentMoveSpeedBonusBuff),
+            "m_Elapsed",
+            Fix64.One);
+        AssertPrivateFieldChangesContributorHash(
+            new DayScalingHeroStatsBuff(Fix64.One, Fix64.One),
+            typeof(DayScalingHeroStatsBuff),
+            "m_Timer",
+            Fix64.One);
+        AssertPrivateFieldChangesContributorHash(
+            new SkillCheerSquadBuff(1, Fix64.One, Fix64.One),
+            typeof(SkillCheerSquadBuff),
+            "m_Timer",
+            Fix64.One);
+        AssertPrivateFieldChangesContributorHash(
+            new FriendlyAttackSpeedAreaBuff(FixVector2.Zero, Fix64.One, Fix64.One, Fix64.One, "hash"),
+            typeof(PositionAreaRefreshBuff),
+            "m_Timer",
+            Fix64.One);
+        AssertPrivateFieldChangesContributorHash(
+            new TimedDeathBuff(),
+            typeof(TimedDeathBuff),
+            "m_AdditiveDuration",
+            Fix64.One);
+        AssertPrivateFieldChangesContributorHash(
+            new HeroGhostBuff(),
+            typeof(HeroGhostBuff),
+            "_invincibleSourceId",
+            "hero-source");
+    }
+
+    [Test]
     public void HeroOutOfCombatSpeed_UsesLogicElapsedTimeForDelayAndRamp()
     {
         var context = new SimEntityContext
@@ -90,7 +174,7 @@ public sealed class BuffLogicTimeTests
         component.Init(context);
         BuffData buff = BuffData.Create(
             "hero_out_of_combat_speed_test",
-            float.MaxValue,
+            Fix64.Zero,
             true,
             1,
             new List<BuffCallback> { new HeroOutOfCombatMoveSpeedBuff() });
@@ -139,7 +223,7 @@ public sealed class BuffLogicTimeTests
         component.Init(host);
         BuffData buff = BuffData.Create(
             "fear_hash_test",
-            1f,
+            Fix64.One,
             false,
             1,
             new List<BuffCallback> { new FearMoveAwayBuff(source) });
@@ -149,5 +233,27 @@ public sealed class BuffLogicTimeTests
         component.WriteDeterministicState(hasher);
         component.ShutDown();
         return hasher.Hash;
+    }
+
+    private static void AssertPrivateFieldChangesContributorHash(
+        BuffCallback module,
+        System.Type declaringType,
+        string fieldName,
+        object changedValue)
+    {
+        var contributor = module as ILogicDeterministicStateContributor;
+        Assert.IsNotNull(contributor, module.GetType().FullName);
+
+        var before = new LogicStateHasher();
+        contributor.WriteDeterministicState(before);
+        System.Reflection.FieldInfo field = declaringType.GetField(
+            fieldName,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"{declaringType.FullName}.{fieldName}");
+        field.SetValue(module, changedValue);
+        var after = new LogicStateHasher();
+        contributor.WriteDeterministicState(after);
+
+        Assert.AreNotEqual(before.Hash, after.Hash, $"{declaringType.FullName}.{fieldName}");
     }
 }

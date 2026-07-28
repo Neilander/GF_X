@@ -3,7 +3,7 @@
 /// OnAdd 时增加宿主的 TauntLevel，OnRemove 时还原。
 /// 通过 CreateTaunt(int level) 创建 BuffData。
 /// </summary>
-public class TauntBuffCallback : BuffCallback
+public class TauntBuffCallback : BuffCallback, ILogicDeterministicStateContributor
 {
     private int _tauntValue = 1;
 
@@ -31,6 +31,11 @@ public class TauntBuffCallback : BuffCallback
             hostEntity.TauntLevel -= _tauntValue;
     }
 
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_tauntValue);
+    }
+
     /// <summary>
     /// 创建一个嘲讽 Buff（永久）
     /// </summary>
@@ -41,7 +46,7 @@ public class TauntBuffCallback : BuffCallback
 
         return BuffData.Create(
             id: "taunt_" + tauntValue,
-            duration: float.MaxValue,
+            duration: Fix64.Zero,
             isForever: true,
             maxStack: 1,
             modules: new System.Collections.Generic.List<BuffCallback> { callback }

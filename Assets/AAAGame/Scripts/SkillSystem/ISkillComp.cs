@@ -26,6 +26,8 @@ public static class LogicSkillStateService
 public static class SkillCompDeterministicStateUtility
 {
     private static readonly List<string> s_DeterministicStringKeys = new List<string>();
+    private static readonly System.Comparison<string> s_DeterministicStringComparison =
+        System.String.CompareOrdinal;
 
     public static void Write(
         LogicStateHasher hasher,
@@ -38,7 +40,7 @@ public static class SkillCompDeterministicStateUtility
             throw new System.ArgumentNullException(nameof(hasher));
 
         hasher.Add(entity?.LogicEntityId.Value ?? 0);
-        FillSortedStringKeys(cooldownsBySkillId?.Keys);
+        FillSortedStringKeys(cooldownsBySkillId);
         hasher.Add(s_DeterministicStringKeys.Count);
         for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
         {
@@ -137,7 +139,7 @@ public static class SkillCompDeterministicStateUtility
 
     private static void WriteSortedBoolDictionary(LogicStateHasher hasher, Dictionary<string, bool> values)
     {
-        FillSortedStringKeys(values.Keys);
+        FillSortedStringKeys(values);
         hasher.Add(s_DeterministicStringKeys.Count);
         for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
         {
@@ -149,7 +151,7 @@ public static class SkillCompDeterministicStateUtility
 
     private static void WriteSortedIntDictionary(LogicStateHasher hasher, Dictionary<string, int> values)
     {
-        FillSortedStringKeys(values.Keys);
+        FillSortedStringKeys(values);
         hasher.Add(s_DeterministicStringKeys.Count);
         for (int i = 0; i < s_DeterministicStringKeys.Count; i++)
         {
@@ -159,11 +161,25 @@ public static class SkillCompDeterministicStateUtility
         }
     }
 
-    private static void FillSortedStringKeys(IEnumerable<string> values)
+    private static void FillSortedStringKeys<T>(Dictionary<string, T> values)
     {
         s_DeterministicStringKeys.Clear();
         if (values != null)
-            s_DeterministicStringKeys.AddRange(values);
-        s_DeterministicStringKeys.Sort(System.StringComparer.Ordinal);
+        {
+            foreach (string key in values.Keys)
+                s_DeterministicStringKeys.Add(key);
+        }
+        s_DeterministicStringKeys.Sort(s_DeterministicStringComparison);
+    }
+
+    private static void FillSortedStringKeys(HashSet<string> values)
+    {
+        s_DeterministicStringKeys.Clear();
+        if (values != null)
+        {
+            foreach (string key in values)
+                s_DeterministicStringKeys.Add(key);
+        }
+        s_DeterministicStringKeys.Sort(s_DeterministicStringComparison);
     }
 }

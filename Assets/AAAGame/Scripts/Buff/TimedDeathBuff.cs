@@ -9,7 +9,7 @@ using UnityGameFramework.Runtime;
 /// 科技带来的寿命加减通过 ApplyAdditive / ApplyPercent 修改，自动同步到 BuffData.duration 和 remainingTime。
 /// 到期后自动调用宿主死亡逻辑。
 /// </summary>
-public class TimedDeathBuff : BuffCallback
+public class TimedDeathBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private Fix64 m_BaseDuration;
     private Fix64 m_AdditiveDuration;
@@ -93,7 +93,14 @@ public class TimedDeathBuff : BuffCallback
         }
     }
 
-    public static BuffData CreateTimedDeath(float duration)
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_BaseDuration.RawValue);
+        hasher.Add(m_AdditiveDuration.RawValue);
+        hasher.Add(m_PercentSum.RawValue);
+    }
+
+    public static BuffData CreateTimedDeath(Fix64 duration)
     {
         return BuffData.Create(
             id: "timed_death",

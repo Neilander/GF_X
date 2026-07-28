@@ -282,6 +282,10 @@ public class BuildManager : GameFrameworkComponent
         FixVector2 position = owner.PositionFixed;
         string buildingInstanceId = owner.BuildingInstanceId;
         int refund = CalculateRecycleRefund(owner);
+        TechManager techManager = GameEntry.GetComponent<TechManager>()
+                                  ?? throw new InvalidOperationException("Building recycle requires TechManager.");
+        GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
+                                                ?? throw new InvalidOperationException("Building recycle requires GlobalBuffManager.");
 
         LogicEntityId entityId = BuildBuildingInternalFixed(
             lv0BuildingId,
@@ -294,8 +298,8 @@ public class BuildManager : GameFrameworkComponent
         if (!entityId.IsValid)
             return false;
 
-        GameEntry.GetComponent<TechManager>()?.RollbackTechsForBuilding(owner);
-        GameEntry.GetComponent<GlobalBuffManager>()?.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionId);
+        techManager.RollbackTechsForBuilding(owner);
+        globalBuffManager.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionId);
         OnBuildingDemolished(owner);
         InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
         LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
@@ -379,6 +383,69 @@ public class BuildManager : GameFrameworkComponent
         }
 
         return true;
+    }
+
+    public LogicEntityId RestoreBuildingForStageCheckpoint(StageBuildingCheckpoint checkpoint)
+    {
+        if (checkpoint == null)
+            throw new ArgumentNullException(nameof(checkpoint));
+        BuildingData buildingData = BuildingDataModel.GetBuildingData(checkpoint.BuildingIdentifier)
+                                    ?? throw new InvalidOperationException(
+                                        $"Stage checkpoint references unknown building '{checkpoint.BuildingIdentifier}'.");
+
+        string resolvedStrongholdId = null;
+        LogicStrongholdMap.TryResolveStrongholdId(checkpoint.Position, out resolvedStrongholdId);
+        if (!string.Equals(resolvedStrongholdId, checkpoint.StrongholdId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Stage checkpoint building stronghold mismatch. instance='{checkpoint.BuildingInstanceId}', expected='{checkpoint.StrongholdId}', actual='{resolvedStrongholdId}'.");
+        }
+
+        int quarterTurns = ResolveBuildingQuarterTurns(checkpoint.Forward);
+        LogicEntityId entityId = MAEntityFactory.ShowBuildingFixed(
+            buildingData,
+            checkpoint.Position,
+            0f,
+            checkpoint.BuildingInstanceId,
+            checkpoint.StrongholdId,
+            checkpoint.OwnerFactionId,
+            quarterTurns,
+            checkpoint.IsGameEndConditionBuilding,
+            checkpoint.IsNavigationStaticBaked,
+            false);
+        if (!entityId.IsValid)
+            throw new InvalidOperationException($"Failed to restore stage checkpoint building '{checkpoint.BuildingInstanceId}'.");
+
+        ApplyStageCheckpointBuildingProperties(checkpoint);
+        return entityId;
+    }
+
+    public static void ApplyStageCheckpointBuildingProperties(StageBuildingCheckpoint checkpoint)
+    {
+        if (checkpoint == null)
+            throw new ArgumentNullException(nameof(checkpoint));
+        BuildingExtraProps props = LogicBuildingExtraPropsStore.TryGet(checkpoint.BuildingInstanceId)
+                                   ?? throw new InvalidOperationException(
+                                       $"Restored building properties are missing. instance='{checkpoint.BuildingInstanceId}'.");
+        props.ArmyForce = checkpoint.ArmyForce;
+        props.Production = checkpoint.Production;
+        props.DynamicProduction = checkpoint.DynamicProduction;
+        props.ProductionCap = checkpoint.ProductionCap;
+        props.StoredProduction = checkpoint.StoredProduction;
+        props.ProductionTraitFirstDay = checkpoint.ProductionTraitFirstDay;
+        props.ConditionCount = checkpoint.ConditionCount;
+        props.ProductionType = checkpoint.ProductionType;
+    }
+
+    private static int ResolveBuildingQuarterTurns(FixVector2 forward)
+    {
+        for (int quarterTurns = 0; quarterTurns < 4; quarterTurns++)
+        {
+            if (MAEntityFactory.ResolveBuildingForwardFixed(quarterTurns) == forward)
+                return quarterTurns;
+        }
+        throw new InvalidOperationException(
+            $"Stage checkpoint building forward is not cardinal. raw=({forward.x.RawValue},{forward.y.RawValue}).");
     }
 
     private LogicEntityId BuildBuildingInternal(
@@ -662,14 +729,12 @@ public class BuildManager : GameFrameworkComponent
         TrySubscribeBuildingOwnershipEvent();
     }
 
-    private void Update()
+    public void PrepareRuntimeDependencies()
     {
-        if (!m_IsSubscribedInteractionCommands)
-            TrySubscribeInteractionCommands();
-        if (!m_IsSubscribedTechUnlocked)
-            TrySubscribeTechUnlockedEvent();
-        if (!m_IsSubscribedBuildingOwnership)
-            TrySubscribeBuildingOwnershipEvent();
+        TrySubscribeInteractionCommands();
+        TrySubscribeBuildingOwnershipEvent();
+        if (!TrySubscribeTechUnlockedEvent())
+            throw new InvalidOperationException("BuildManager.PrepareRuntimeDependencies failed: GF.Event is not ready.");
     }
 
     private void OnDestroy()

@@ -28,10 +28,6 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
     public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
     public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
     public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
-    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
-    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
-    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
-    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     /// <summary>
     /// 是否启用"视线外仇恨"。建筑等不应被拉走，可关掉。
@@ -42,7 +38,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
     private IEntityContext _lastAttacker;
 
     private Fix64 _scanTimer = Fix64.Zero;
-    private static readonly Fix64 SCAN_INTERVAL = (Fix64)0.2f;
+    private static readonly Fix64 SCAN_INTERVAL = Fix64.FromRaw(820);
 
     public void UseDefaultMode()
     {
@@ -178,7 +174,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
             Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
             if (dist > m_FollowSearchRange || !FollowTarget.Alive)
             {
-                GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | dist={dist:F1} followRange={FollowSearchRange} alive={FollowTarget.Alive}");
+                GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | dist={dist:F1} followRange={m_FollowSearchRange} alive={FollowTarget.Alive}");
                 FollowTarget = null;
             }
         }
@@ -264,7 +260,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                 // 规则：
                 // 1) 攻击前：同嘲讽仅切更近；不同嘲讽可在大范围内切更高嘲讽。
                 // 2) 攻击中：只允许在攻击范围内切到更高嘲讽目标。
-                bool switchByCloserBeforeAttack = !isAttacking && sameTaunt && (nearestDist + (Fix64)0.1f < currentTargetDist);
+                bool switchByCloserBeforeAttack = !isAttacking && sameTaunt && (nearestDist + Fix64.FromRaw(410) < currentTargetDist);
                 bool switchByHigherTauntBeforeAttack = !isAttacking && higherTaunt;
                 bool switchByHigherTauntInAttackRange = isAttacking
                                                        && inAttackRangeCandidate != null
@@ -312,7 +308,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                     Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(player);
                     if (dist <= m_FollowSearchRange)
                     {
-                        GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定跟随目标 {player} | dist={dist:F1} followRange={FollowSearchRange}");
+                        GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 锁定跟随目标 {player} | dist={dist:F1} followRange={m_FollowSearchRange}");
                         FollowTarget = player;
                     }
                 }
@@ -444,7 +440,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
     private Fix64 GetEffectiveAttackRange()
     {
-        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
+        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
         return weaponRange;
     }
 
@@ -503,7 +499,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
 public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILogicDeterministicStateContributor
 {
-    private static readonly Fix64 ScanInterval = (Fix64)0.2f;
+    private static readonly Fix64 ScanInterval = Fix64.FromRaw(820);
 
     private IEntityContext _ctx;
     private IEntityContext _currentTarget;
@@ -528,10 +524,6 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
     public Fix64 ForgetRangeFixed { get => m_ForgetRange; set => m_ForgetRange = LogicTargetingRange.Require(value, nameof(ForgetRangeFixed)); }
     public Fix64 FollowSearchRangeFixed { get => m_FollowSearchRange; set => m_FollowSearchRange = LogicTargetingRange.Require(value, nameof(FollowSearchRangeFixed)); }
     public Fix64 AlertRadiusFixed { get => m_AlertRadius; set => m_AlertRadius = LogicTargetingRange.Require(value, nameof(AlertRadiusFixed)); }
-    public float AggroRange { get => (float)m_AggroRange; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
-    public float ForgetRange { get => (float)m_ForgetRange; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
-    public float FollowSearchRange { get => (float)m_FollowSearchRange; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
-    public float AlertRadius { get => (float)m_AlertRadius; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     public void Init(IEntityContext ctx)
     {
@@ -682,7 +674,7 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
 
     private Fix64 GetEffectiveAttackRange()
     {
-        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : (Fix64)1.5f;
+        Fix64 weaponRange = _ctx.WeaponComp != null ? _ctx.WeaponComp.AttackRange : Fix64.FromRaw(6144);
         return weaponRange;
     }
 

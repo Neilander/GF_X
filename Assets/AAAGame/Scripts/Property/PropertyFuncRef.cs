@@ -54,7 +54,7 @@ public static class PropertyFuncRef
             Fix64 pow = Fix64.Pow((Fix64)2, x);        // 2^x
             Fix64 scale = Fix64.One + y / (Fix64)10;   // 1 + y/10
 
-            Fix64 ability = pow * scale * race / (Fix64)18.5m;
+            Fix64 ability = pow * scale * race / Fix64.FromRaw(75776);
 
             return ability;
         };
@@ -83,7 +83,7 @@ public static class PropertyFuncRef
             Fix64 scale = Fix64.One + y / (Fix64)10;   // 1 + y/10
 
             // 新公式：3 + 2^x * (1+y/10) * race / 18.5
-            Fix64 ability = (Fix64)3 + pow * scale * race / (Fix64)18.5m;
+            Fix64 ability = (Fix64)3 + pow * scale * race / Fix64.FromRaw(75776);
 
             return ability;
         };
@@ -117,13 +117,13 @@ public static class PropertyFuncRef
 
             // 4. 计算蓝量
             // pow = (1.3)^x
-            Fix64 pow = Fix64.Pow((Fix64)1.3m, x);
+            Fix64 pow = Fix64.Pow(Fix64.FromRaw(5325), x);
 
             // scale = 1 + 3y / 100
             Fix64 scale = Fix64.One + (Fix64)3 * y / (Fix64)100;
 
             // 最终公式：1 + (1.3^x) * (1 + 3y/100) * 种族 / 18.5
-            Fix64 mana = (Fix64)1 + pow * scale * race / (Fix64)18.5m;
+            Fix64 mana = (Fix64)1 + pow * scale * race / Fix64.FromRaw(75776);
 
             return mana;
         };
@@ -135,7 +135,7 @@ public static class PropertyFuncRef
             Fix64 maxValue = funcArray[0]();
 
             // 返回 maxValue 的 1%
-            return maxValue * (Fix64)0.01m;
+            return maxValue * Fix64.FromRaw(41);
         };
 
     public static Func<Func<Fix64>[], Func<Fix64>> GetDirectValue =

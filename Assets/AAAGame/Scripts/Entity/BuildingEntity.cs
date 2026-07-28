@@ -49,6 +49,8 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     int IBuildingLogicContext.OwnerFactionId => LogicState.OwnerFactionId;
     IReadOnlyList<LogicInteractionOptionDescriptor> IBuildingLogicContext.InteractionOptions => LogicState.InteractionOptions;
     bool IBuildingLogicContext.BlocksLogicMovement => LogicState.BlocksLogicMovement;
+    bool IBuildingLogicContext.IsGameEndConditionBuilding => LogicState.IsGameEndConditionBuilding;
+    bool IBuildingLogicContext.IsNavigationStaticBaked => LogicState.IsNavigationStaticBaked;
     event System.Action<int, int> IBuildingLogicContext.OwnerFactionChanged
     {
         add => LogicState.OwnerFactionChanged += value;
@@ -81,12 +83,8 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
         var entityParams = userData as EntityParams;
         buildingData = entityParams?.Get(P_BuildingData) as BuildingData;
         BuildingInstanceId = entityParams != null && entityParams.TryGet<VarString>(P_BuildingInstanceId, out var instanceId) ? instanceId : null;
-        IsGameEndConditionBuilding = entityParams != null
-            && entityParams.TryGet<VarBoolean>(P_IsGameEndConditionBuilding, out var isGameEndConditionBuilding)
-            && isGameEndConditionBuilding;
-        IsNavigationStaticBaked = entityParams != null
-            && entityParams.TryGet<VarBoolean>(P_IsNavigationStaticBaked, out var isNavigationStaticBaked)
-            && isNavigationStaticBaked;
+        IsGameEndConditionBuilding = LogicState.IsGameEndConditionBuilding;
+        IsNavigationStaticBaked = LogicState.IsNavigationStaticBaked;
         CharacterKey = buildingData != null ? buildingData.Identifier : string.Empty;
         if (buildingData == null)
             throw new System.InvalidOperationException("BuildingEntity.RefreshCharacterData failed: BuildingData is missing.");
@@ -170,7 +168,7 @@ public partial class BuildingEntity : MAEntity, IBuildingLogicContext
     private void OnDrawGizmos()
     {
         if (targetComp == null) return; // 未播放或未初始化：跳过
-        float r = targetComp.AlertRadius;
+        float r = (float)targetComp.AlertRadiusFixed;
         if (r <= 0f) return;
 
         Gizmos.color = new Color(1f, 0.85f, 0.2f, 0.6f); // 半透明黄

@@ -17,10 +17,6 @@ public class SimTargetingComp : ITargetingComp
     public Fix64 ForgetRangeFixed { get; set; } = (Fix64)8;
     public Fix64 FollowSearchRangeFixed { get; set; } = (Fix64)30;
     public Fix64 AlertRadiusFixed { get; set; }
-    public float AggroRange { get => (float)AggroRangeFixed; set => AggroRangeFixed = LogicTargetingRange.FromFloat(value, nameof(AggroRange)); }
-    public float ForgetRange { get => (float)ForgetRangeFixed; set => ForgetRangeFixed = LogicTargetingRange.FromFloat(value, nameof(ForgetRange)); }
-    public float FollowSearchRange { get => (float)FollowSearchRangeFixed; set => FollowSearchRangeFixed = LogicTargetingRange.FromFloat(value, nameof(FollowSearchRange)); }
-    public float AlertRadius { get => (float)AlertRadiusFixed; set => AlertRadiusFixed = LogicTargetingRange.FromFloat(value, nameof(AlertRadius)); }
 
     private Fix64 _scanTimer = Fix64.Zero;
     private static readonly Fix64 SCAN_INTERVAL = (Fix64)0.2f;
@@ -55,7 +51,7 @@ public class SimTargetingComp : ITargetingComp
         if (CurrentTarget != null)
         {
             float dist = Vector3.Distance(_self.Position, CurrentTarget.Position);
-            if (dist > ForgetRange || !CurrentTarget.Alive)
+            if (dist > (float)ForgetRangeFixed || !CurrentTarget.Alive)
                 CurrentTarget = null;
         }
 
@@ -63,7 +59,7 @@ public class SimTargetingComp : ITargetingComp
         if (FollowTarget != null)
         {
             float dist = Vector3.Distance(_self.Position, FollowTarget.Position);
-            if (dist > FollowSearchRange || !FollowTarget.Alive)
+            if (dist > (float)FollowSearchRangeFixed || !FollowTarget.Alive)
                 FollowTarget = null;
         }
 
@@ -77,7 +73,7 @@ public class SimTargetingComp : ITargetingComp
             {
                 CurrentTarget = _allEntities
                     .Where(e => e != _self && e.Side != _self.Side && e.Side != SideType.NoSide && e.Alive)
-                    .Where(e => Vector3.Distance(_self.Position, e.Position) <= AggroRange)
+                    .Where(e => Vector3.Distance(_self.Position, e.Position) <= (float)AggroRangeFixed)
                     .OrderBy(e => Vector3.Distance(_self.Position, e.Position))
                     .FirstOrDefault();
             }
@@ -86,7 +82,7 @@ public class SimTargetingComp : ITargetingComp
             {
                 FollowTarget = _allEntities
                     .Where(e => e != _self && e.Side == _self.Side && e.Alive)
-                    .Where(e => Vector3.Distance(_self.Position, e.Position) <= FollowSearchRange)
+                    .Where(e => Vector3.Distance(_self.Position, e.Position) <= (float)FollowSearchRangeFixed)
                     .OrderBy(e => Vector3.Distance(_self.Position, e.Position))
                     .FirstOrDefault();
             }

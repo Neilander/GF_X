@@ -117,7 +117,7 @@ atkComp.Attack(Fix64.Zero);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
 
         var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
+        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)10f };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
 
@@ -151,7 +151,7 @@ atkComp.Attack(Fix64.Zero);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
 
         var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
+        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)10f };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
 
@@ -187,7 +187,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
 
         var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
+        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)10f };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
 
@@ -237,7 +237,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
         var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
         {
-            AggroRange = 10f
+            AggroRangeFixed = (Fix64)10f
         };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
@@ -276,7 +276,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
         var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
         {
-            AggroRange = 10f
+            AggroRangeFixed = (Fix64)10f
         };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
@@ -313,7 +313,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
         var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
         {
-            AggroRange = 10f
+            AggroRangeFixed = (Fix64)10f
         };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
@@ -357,7 +357,7 @@ atkComp.Attack((Fix64)999);
 
         var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
         {
-            AggroRange = 10f
+            AggroRangeFixed = (Fix64)10f
         };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
@@ -392,7 +392,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(10, 0, 0), SideType.EnemySide); // 10m 远
 
         var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 20f };
+        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)20f };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
 
@@ -423,7 +423,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide, hp: 5f);
 
         var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
+        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)10f };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
 
@@ -456,7 +456,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide, hp: 50f);
 
         var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
+        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)10f };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
 
@@ -492,7 +492,7 @@ atkComp.Attack((Fix64)999);
         var target = CreateUnit(new Vector3(5, 0, 0), SideType.EnemySide); // 5m 远
 
         var allEntities = new List<IEntityContext> { attacker, target };
-        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRange = 10f };
+        var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)10f };
         targeting.Init(attacker);
         attacker.TargetComp = targeting;
 

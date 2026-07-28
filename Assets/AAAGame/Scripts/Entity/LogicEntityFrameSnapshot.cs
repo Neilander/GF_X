@@ -34,6 +34,8 @@ public readonly struct LogicEntityFrameState
 
 public sealed class LogicEntityFrameSnapshot
 {
+    private static readonly Comparison<LogicEntityFrameState> s_StateComparison = CompareStatesByEntityId;
+
     private readonly List<LogicEntityFrameState> m_States;
     private readonly ReadOnlyCollection<LogicEntityFrameState> m_ReadOnlyStates;
     private readonly Dictionary<int, int> m_StateIndexByEntityId;
@@ -119,7 +121,7 @@ public sealed class LogicEntityFrameSnapshot
                 entity.Alive));
         }
 
-        m_States.Sort(CompareStatesByEntityId);
+        m_States.Sort(s_StateComparison);
         for (int i = 0; i < m_States.Count; i++)
         {
             int entityId = m_States[i].EntityId.Value;

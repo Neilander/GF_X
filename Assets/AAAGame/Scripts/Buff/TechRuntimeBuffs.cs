@@ -158,10 +158,10 @@ public sealed class FirstIncomingDamageReductionBuff : BuffCallback, ILogicDeter
 public sealed class OutgoingAttackDebuffBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_AttackDelta;
-    private readonly float m_Duration;
+    private readonly Fix64 m_Duration;
     private ulong m_ApplicationSequence;
 
-    public OutgoingAttackDebuffBuff(Fix64 attackDelta, float duration)
+    public OutgoingAttackDebuffBuff(Fix64 attackDelta, Fix64 duration)
     {
         m_AttackDelta = attackDelta;
         m_Duration = duration;
@@ -169,7 +169,7 @@ public sealed class OutgoingAttackDebuffBuff : BuffCallback, ILogicDeterministic
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (m_AttackDelta == Fix64.Zero || m_Duration <= 0f || target is not IEntityContext targetEntity)
+        if (m_AttackDelta == Fix64.Zero || m_Duration <= Fix64.Zero || target is not IEntityContext targetEntity)
             return baseDamage;
 
         var comp = targetEntity.BuffComp as CharacterBuffComp;
@@ -321,9 +321,9 @@ public sealed class StationaryAttackPercentBuff : BuffCallback, ILogicDeterminis
     private bool m_AttackApplied;
     private Fix64 m_AppliedPercentAdd;
 
-    public StationaryAttackPercentBuff(float requiredSeconds, Fix64 attackPercent)
+    public StationaryAttackPercentBuff(Fix64 requiredSeconds, Fix64 attackPercent)
     {
-        m_RequiredSeconds = Fix64.Max(Fix64.Zero, (Fix64)requiredSeconds);
+        m_RequiredSeconds = Fix64.Max(Fix64.Zero, requiredSeconds);
         m_AttackPercent = attackPercent;
     }
 
@@ -407,9 +407,9 @@ public sealed class IdleNextAttackCriticalBuff : BuffCallback, ILogicDeterminist
     private readonly Fix64 m_RequiredSeconds;
     private Fix64 m_LastAttackTime;
 
-    public IdleNextAttackCriticalBuff(float requiredSeconds)
+    public IdleNextAttackCriticalBuff(Fix64 requiredSeconds)
     {
-        m_RequiredSeconds = (Fix64)Mathf.Max(0f, requiredSeconds);
+        m_RequiredSeconds = Fix64.Max(Fix64.Zero, requiredSeconds);
     }
 
     public override void OnAdd()
@@ -700,10 +700,10 @@ public sealed class OnDeathEnemyAttackDebuffBuff : BuffCallback, ILogicDetermini
 {
     private readonly Fix64 m_Radius;
     private readonly Fix64 m_AttackDelta;
-    private readonly float m_Duration;
+    private readonly Fix64 m_Duration;
     private ulong m_ApplicationSequence;
 
-    public OnDeathEnemyAttackDebuffBuff(Fix64 radius, Fix64 attackDelta, float duration)
+    public OnDeathEnemyAttackDebuffBuff(Fix64 radius, Fix64 attackDelta, Fix64 duration)
     {
         m_Radius = radius;
         m_AttackDelta = attackDelta;
@@ -712,7 +712,7 @@ public sealed class OnDeathEnemyAttackDebuffBuff : BuffCallback, ILogicDetermini
 
     public override void OnHostDead()
     {
-        if (hostEntity == null || m_AttackDelta == Fix64.Zero || m_Duration <= 0f)
+        if (hostEntity == null || m_AttackDelta == Fix64.Zero || m_Duration <= Fix64.Zero)
             return;
 
         Fix64 radius = DistanceUnitConverter.ConvertToWorld(m_Radius);
@@ -743,12 +743,12 @@ public sealed class OnDeathEnemyAttackDebuffBuff : BuffCallback, ILogicDetermini
 
 public sealed class FatalDamageProtectionBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private readonly float m_InvincibleSeconds;
+    private readonly Fix64 m_InvincibleSeconds;
     private bool m_Consumed;
 
-    public FatalDamageProtectionBuff(float invincibleSeconds)
+    public FatalDamageProtectionBuff(Fix64 invincibleSeconds)
     {
-        m_InvincibleSeconds = Mathf.Max(0f, invincibleSeconds);
+        m_InvincibleSeconds = Fix64.Max(Fix64.Zero, invincibleSeconds);
     }
 
     public override Fix64 ModifyIncomingDamage(IEntityContext attacker, Fix64 baseDamage, HealthModifyType modType)
@@ -767,7 +767,7 @@ public sealed class FatalDamageProtectionBuff : BuffCallback, ILogicDeterministi
 
     private void AddTemporaryInvincible(IEntityContext entity)
     {
-        if (m_InvincibleSeconds <= 0f)
+        if (m_InvincibleSeconds <= Fix64.Zero)
             return;
 
         var comp = entity.BuffComp as CharacterBuffComp;
@@ -804,10 +804,10 @@ public sealed class TemporaryInvincibleSourceBuff : BuffCallback
 
 public sealed class TimedBuffOnSpawnModule : BuffCallback
 {
-    private readonly float m_Duration;
+    private readonly Fix64 m_Duration;
     private readonly Func<List<BuffCallback>> m_ModuleFactory;
 
-    public TimedBuffOnSpawnModule(float duration, Func<List<BuffCallback>> moduleFactory)
+    public TimedBuffOnSpawnModule(Fix64 duration, Func<List<BuffCallback>> moduleFactory)
     {
         m_Duration = duration;
         m_ModuleFactory = moduleFactory;
@@ -815,7 +815,7 @@ public sealed class TimedBuffOnSpawnModule : BuffCallback
 
     public override void OnAdd()
     {
-        if (hostEntity == null || m_ModuleFactory == null || m_Duration <= 0f)
+        if (hostEntity == null || m_ModuleFactory == null || m_Duration <= Fix64.Zero)
             return;
 
         var comp = hostEntity.BuffComp as CharacterBuffComp;

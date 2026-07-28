@@ -13,8 +13,6 @@ MonoBehaviour:
   m_Name: GroupMoveConfig
   m_EditorClassIdentifier: 
   EnemySoftReturnRatio: 0.6
-  FollowRecruitRadius: 15
-  FollowLeashRange: 30
   FollowBaseStopRadius: 1
   FollowDeadZoneRange: 5
   FollowInnerDeadZoneRange: 2

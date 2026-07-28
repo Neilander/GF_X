@@ -20,25 +20,11 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         _timedOverrideEffects = new Dictionary<int, TimedMoveEffect>();
     }
 
-    public int StartDurationAdditionalMove(float duration, Vector3 speed)
-    {
-        return StartDurationAdditionalMove(
-            (Fix64)duration,
-            new FixVector2((Fix64)speed.x, (Fix64)speed.z));
-    }
-
     public int StartDurationAdditionalMove(Fix64 duration, FixVector2 speed)
     {
         _additionalIndex++;
         _timedAdditionalEffects.Add(_additionalIndex, new TimedMoveEffect(duration, speed));
         return _additionalIndex;
-    }
-
-    public int StartDurationOverrideMove(float duration, Vector3 speed)
-    {
-        return StartDurationOverrideMove(
-            (Fix64)duration,
-            new FixVector2((Fix64)speed.x, (Fix64)speed.z));
     }
 
     public int StartDurationOverrideMove(Fix64 duration, FixVector2 speed)

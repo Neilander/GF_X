@@ -10,18 +10,10 @@ public interface ITargetingComp:ICapability
     IEntityContext CurrentTarget { get; set; }
     IEntityContext FollowTarget { get; }
 
-    // 索敌和遗忘半径
-    float AggroRange { get; set; }
-    float ForgetRange { get; set; }
-
-    float FollowSearchRange { get; set; }
-
-    /// <summary>友军告警传播半径：自己扫描到敌人时通知此半径内同阵营的友军。</summary>
-    float AlertRadius { get; set; }
-
     Fix64 AggroRangeFixed { get; set; }
     Fix64 ForgetRangeFixed { get; set; }
     Fix64 FollowSearchRangeFixed { get; set; }
+    /// <summary>友军告警传播半径：自己扫描到敌人时通知此半径内同阵营的友军。</summary>
     Fix64 AlertRadiusFixed { get; set; }
 
     /// <summary>
@@ -39,13 +31,6 @@ public interface ITargetingComp:ICapability
 
 public static class LogicTargetingRange
 {
-    public static Fix64 FromFloat(float value, string name)
-    {
-        if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f)
-            throw new System.ArgumentOutOfRangeException(name, value, "Targeting range must be finite and non-negative.");
-        return (Fix64)value;
-    }
-
     public static Fix64 Require(Fix64 value, string name)
     {
         if (value < Fix64.Zero)

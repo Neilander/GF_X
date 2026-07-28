@@ -114,8 +114,13 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly List<int> AuthorityCorridorWorldVersions = new List<int>();
     private static readonly List<int> AuthorityWorkingWorldPortalIds = new List<int>();
     private static readonly List<int> SortedIntValues = new List<int>();
+    private static readonly Comparison<MovingTargetAnchorKey> AuthorityMovingTargetKeyComparison = CompareMovingTargetAnchorKeys;
+    private static readonly Comparison<FixedPortalOwnerKey> AuthorityFixedPortalOwnerKeyComparison = CompareFixedPortalOwnerKeys;
+    private static readonly Comparison<int> AuthorityIntComparison =
+        (left, right) => left.CompareTo(right);
     private static readonly HashSet<FlowTileCacheKey> AuthorityPendingFlowTileKeys = new HashSet<FlowTileCacheKey>();
     private static readonly HashSet<SharedGoalFieldKey> AuthorityPendingSharedGoalKeys = new HashSet<SharedGoalFieldKey>();
+    private static readonly LogicStateHasher SectorPortalAccessContentHasher = new LogicStateHasher();
 
     public static int DiagnosticCheckpointRefreshCount { get; private set; }
 
@@ -128,8 +133,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 throw new InvalidOperationException("Flow memory census encountered a null portal-access entry.");
             portalAccessPayloadBytes = checked(
                 portalAccessPayloadBytes
-                + GetArrayPayloadBytes(entry.DeterministicIntegration, sizeof(long))
-                + GetArrayPayloadBytes(entry.QuantizedIntegration, sizeof(ushort)));
+                + GetArrayPayloadBytes(entry.DeterministicIntegration, sizeof(long)));
         }
 
         long sectorPathPayloadBytes = 0;
@@ -237,6 +241,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int runtimeArrayPoolArrayCount = 0;
         long runtimeArrayPoolPayloadBytes = 0;
         AddArrayPoolCensus(IntegrationArrayPool, sizeof(float), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
+        AddArrayPoolCensus(PortalAccessIntegrationArrayPool, sizeof(long), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
         AddArrayPoolCensus(BoolArrayPool, sizeof(byte), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
         AddArrayPoolCensus(ByteArrayPool, sizeof(byte), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
         AddArrayPoolCensus(IntArrayPool, sizeof(int), ref runtimeArrayPoolArrayCount, ref runtimeArrayPoolPayloadBytes);
@@ -494,6 +499,13 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void AddAuthoritySectorPathCache(LogicStateHasher hasher)
     {
+        hasher.Add(SectorPathCache.Count);
+        hasher.Add(_sectorPathAuthorityContentHash);
+        hasher.Add(ComputeSectorPathRuntimeSetHash());
+    }
+
+    private static ulong ComputeSectorPathRuntimeSetHash()
+    {
         ulong runtimeSetHash = 0;
         foreach (KeyValuePair<SectorPathCacheKey, SectorPathCacheEntry> pair in SectorPathCache)
         {
@@ -506,13 +518,17 @@ public static partial class FlowFieldCrowdMovementSystem
             AddAuthorityToken(ref token, entry.LastUsedFrame);
             runtimeSetHash ^= token;
         }
-
-        hasher.Add(SectorPathCache.Count);
-        hasher.Add(_sectorPathAuthorityContentHash);
-        hasher.Add(runtimeSetHash);
+        return runtimeSetHash;
     }
 
     private static void AddAuthoritySectorPortalAccessCache(LogicStateHasher hasher)
+    {
+        hasher.Add(SectorPortalAccessCache.Count);
+        hasher.Add(_sectorPortalAccessAuthorityContentHash);
+        hasher.Add(ComputeSectorPortalAccessRuntimeSetHash());
+    }
+
+    private static ulong ComputeSectorPortalAccessRuntimeSetHash()
     {
         ulong runtimeSetHash = 0;
         foreach (KeyValuePair<SectorPortalAccessKey, SectorPortalAccessEntry> pair in SectorPortalAccessCache)
@@ -526,13 +542,17 @@ public static partial class FlowFieldCrowdMovementSystem
             AddAuthorityToken(ref token, entry.LastUsedFrame);
             runtimeSetHash ^= token;
         }
-
-        hasher.Add(SectorPortalAccessCache.Count);
-        hasher.Add(_sectorPortalAccessAuthorityContentHash);
-        hasher.Add(runtimeSetHash);
+        return runtimeSetHash;
     }
 
     private static void AddAuthoritySharedGoalFieldCache(LogicStateHasher hasher)
+    {
+        hasher.Add(SharedGoalFields.Count);
+        hasher.Add(_sharedGoalFieldAuthorityContentHash);
+        hasher.Add(ComputeSharedGoalFieldRuntimeSetHash());
+    }
+
+    private static ulong ComputeSharedGoalFieldRuntimeSetHash()
     {
         ulong runtimeSetHash = 0;
         foreach (KeyValuePair<SharedGoalFieldKey, SharedGoalField> pair in SharedGoalFields)
@@ -546,11 +566,72 @@ public static partial class FlowFieldCrowdMovementSystem
             AddAuthorityToken(ref token, field.LastUsedFrame);
             runtimeSetHash ^= token;
         }
-
-        hasher.Add(SharedGoalFields.Count);
-        hasher.Add(_sharedGoalFieldAuthorityContentHash);
-        hasher.Add(runtimeSetHash);
+        return runtimeSetHash;
     }
+
+#if UNITY_EDITOR
+    public static void GetEditorTestAuthorityCacheState(
+        out int sectorPathCount,
+        out ulong sectorPathContentHash,
+        out ulong sectorPathUsageHash,
+        out int sectorPortalAccessCount,
+        out ulong sectorPortalAccessContentHash,
+        out ulong sectorPortalAccessUsageHash,
+        out int sharedGoalCount,
+        out ulong sharedGoalContentHash,
+        out ulong sharedGoalUsageHash)
+    {
+        sectorPathCount = SectorPathCache.Count;
+        sectorPathContentHash = _sectorPathAuthorityContentHash;
+        sectorPathUsageHash = ComputeSectorPathRuntimeSetHash();
+        sectorPortalAccessCount = SectorPortalAccessCache.Count;
+        sectorPortalAccessContentHash = _sectorPortalAccessAuthorityContentHash;
+        sectorPortalAccessUsageHash = ComputeSectorPortalAccessRuntimeSetHash();
+        sharedGoalCount = SharedGoalFields.Count;
+        sharedGoalContentHash = _sharedGoalFieldAuthorityContentHash;
+        sharedGoalUsageHash = ComputeSharedGoalFieldRuntimeSetHash();
+    }
+
+    public static void SetEditorTestOnlySectorPortalAccessLastUsedFrame(int frame)
+    {
+        if (SectorPortalAccessCache.Count == 0)
+            throw new InvalidOperationException("SetEditorTestOnlySectorPortalAccessLastUsedFrame requires a populated cache.");
+        foreach (SectorPortalAccessEntry entry in SectorPortalAccessCache.Values)
+        {
+            if (entry == null)
+                throw new InvalidOperationException("Sector portal-access cache contains a null entry.");
+            entry.LastUsedFrame = frame;
+        }
+    }
+
+    public static string GetEditorTestAuthorityCheckpointLiveStateSignature()
+    {
+        int dirtyWorldCount = 0;
+        int worldBuildJobCount = 0;
+        int runtimeDirtyJobCount = 0;
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state == null)
+                throw new InvalidOperationException("Checkpoint live-state signature encountered a null world state.");
+            if (state.IsDirty)
+                dirtyWorldCount++;
+            if (state.BuildJob != null)
+                worldBuildJobCount++;
+            if (state.RuntimeDirtyJob != null)
+                runtimeDirtyJobCount++;
+        }
+
+        return
+            $"topology={_navigationTopologyVersion}|nextWorld={_nextWorldVersion}|nextPath={_nextPathHandleId}|" +
+            $"flowStart={_flowBuildQueueWorldStartIndex}|transitionDepth={_runtimeNavigationTransitionDepth}|" +
+            $"worlds={WorldStates.Count}|activeAgentType={(_activeWorldState != null ? _activeWorldState.AgentTypeId : int.MinValue)}|" +
+            $"activeWorld={(_world != null ? _world.Version : 0)}|agents={Agents.Count}|circles={CircleObstacles.Count}|" +
+            $"boxes={BoxObstacles.Count}|costStamps={CostStamps.Count}|sectorPaths={SectorPathCache.Count}|" +
+            $"portalAccess={SectorPortalAccessCache.Count}|flowTiles={DeterministicFlowTileCache.Count}|sharedGoals={SharedGoalFields.Count}|" +
+            $"flowQueue={FlowTileBuildQueue.Count}|sharedQueue={SharedGoalFieldBuildQueue.Count}|anchors={MovingTargetAnchors.Count}|" +
+            $"reservations={NavigationGoalReservations.Count}|dirtyWorlds={dirtyWorldCount}|worldJobs={worldBuildJobCount}|runtimeJobs={runtimeDirtyJobCount}";
+    }
+#endif
 
     private static void AddSectorPathAuthorityToken(ref ulong token, SectorPathCacheKey key)
     {
@@ -625,7 +706,8 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!entry.IsAnalyticClearSector && entry.DeterministicIntegration == null)
             throw new InvalidOperationException("Cannot hash sector portal access before deterministic integration is committed.");
 
-        var hasher = new LogicStateHasher();
+        LogicStateHasher hasher = SectorPortalAccessContentHasher;
+        hasher.Reset();
         hasher.Add(0x4E4156504F525443UL);
         hasher.Add(key.WorldVersion);
         hasher.Add(key.SectorId);
@@ -665,12 +747,23 @@ public static partial class FlowFieldCrowdMovementSystem
             return;
         if (entry != null && entry.HasAuthorityContentHash)
             _sectorPortalAccessAuthorityContentHash ^= entry.AuthorityContentHash;
+        if (entry != null)
+        {
+            ReturnPortalAccessIntegrationArray(entry.DeterministicIntegration);
+            entry.DeterministicIntegration = null;
+        }
         SectorPortalAccessCache.Remove(key);
     }
 
     private static void ClearSectorPortalAccessCache()
     {
+        foreach (SectorPortalAccessEntry entry in SectorPortalAccessCache.Values)
+        {
+            if (entry != null)
+                ReturnPortalAccessIntegrationArray(entry.DeterministicIntegration);
+        }
         SectorPortalAccessCache.Clear();
+        PortalAccessIntegrationArrayPool.Clear();
         _sectorPortalAccessAuthorityContentHash = 0;
     }
 
@@ -1196,8 +1289,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void AddAuthorityWorldProgress(LogicStateHasher hasher)
     {
         AuthorityWorldKeys.Clear();
-        AuthorityWorldKeys.AddRange(WorldStates.Keys);
-        AuthorityWorldKeys.Sort();
+        foreach (int agentTypeId in WorldStates.Keys)
+            AuthorityWorldKeys.Add(agentTypeId);
+        AuthorityWorldKeys.Sort(AuthorityIntComparison);
         hasher.Add(0x4E41564155544857UL);
         hasher.Add(AuthorityWorldKeys.Count);
         for (int i = 0; i < AuthorityWorldKeys.Count; i++)
@@ -1469,8 +1563,9 @@ public static partial class FlowFieldCrowdMovementSystem
         if (world.PortalsById != null)
         {
             AuthorityWorkingWorldPortalIds.Clear();
-            AuthorityWorkingWorldPortalIds.AddRange(world.PortalsById.Keys);
-            AuthorityWorkingWorldPortalIds.Sort();
+            foreach (int portalId in world.PortalsById.Keys)
+                AuthorityWorkingWorldPortalIds.Add(portalId);
+            AuthorityWorkingWorldPortalIds.Sort(AuthorityIntComparison);
             hasher.Add(AuthorityWorkingWorldPortalIds.Count);
             for (int i = 0; i < AuthorityWorkingWorldPortalIds.Count; i++)
             {
@@ -1691,8 +1786,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void AddAuthorityRuntimeObstacles(LogicStateHasher hasher)
     {
         AuthorityCircleObstacleIds.Clear();
-        AuthorityCircleObstacleIds.AddRange(CircleObstacles.Keys);
-        AuthorityCircleObstacleIds.Sort();
+        foreach (int obstacleId in CircleObstacles.Keys)
+            AuthorityCircleObstacleIds.Add(obstacleId);
+        AuthorityCircleObstacleIds.Sort(AuthorityIntComparison);
         hasher.Add(0x4E4156415554484FUL);
         hasher.Add(AuthorityCircleObstacleIds.Count);
         for (int i = 0; i < AuthorityCircleObstacleIds.Count; i++)
@@ -1707,8 +1803,9 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         AuthorityBoxObstacleIds.Clear();
-        AuthorityBoxObstacleIds.AddRange(BoxObstacles.Keys);
-        AuthorityBoxObstacleIds.Sort();
+        foreach (int obstacleId in BoxObstacles.Keys)
+            AuthorityBoxObstacleIds.Add(obstacleId);
+        AuthorityBoxObstacleIds.Sort(AuthorityIntComparison);
         hasher.Add(AuthorityBoxObstacleIds.Count);
         for (int i = 0; i < AuthorityBoxObstacleIds.Count; i++)
         {
@@ -1778,8 +1875,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void AddAuthorityAgents(LogicStateHasher hasher)
     {
         AuthorityAgentIds.Clear();
-        AuthorityAgentIds.AddRange(Agents.Keys);
-        AuthorityAgentIds.Sort();
+        foreach (int agentId in Agents.Keys)
+            AuthorityAgentIds.Add(agentId);
+        AuthorityAgentIds.Sort(AuthorityIntComparison);
         if (OrderedAgentIds.Count != AuthorityAgentIds.Count)
         {
             throw new InvalidOperationException(
@@ -1823,6 +1921,12 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(nav.StableGoalTargetId);
             hasher.Add(nav.StableGoalWorldFixed.x.RawValue);
             hasher.Add(nav.StableGoalWorldFixed.y.RawValue);
+            hasher.Add(nav.HasFailedPathRequest);
+            hasher.Add(nav.FailedPathWorldVersion);
+            hasher.Add(nav.FailedPathStartCellIndex);
+            hasher.Add(nav.FailedPathGoalCellIndex);
+            hasher.Add(nav.FailedPathStartSectorDirtyVersion);
+            hasher.Add(nav.FailedPathGoalSectorDirtyVersion);
             hasher.Add(nav.LastFixedFlowFrame);
             hasher.Add(nav.LastFixedFlowVelocity.x.RawValue);
             hasher.Add(nav.LastFixedFlowVelocity.y.RawValue);
@@ -1832,8 +1936,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void AddAuthorityMovingTargetAnchors(LogicStateHasher hasher)
     {
         AuthorityMovingTargetKeys.Clear();
-        AuthorityMovingTargetKeys.AddRange(MovingTargetAnchors.Keys);
-        AuthorityMovingTargetKeys.Sort(CompareMovingTargetAnchorKeys);
+        foreach (MovingTargetAnchorKey key in MovingTargetAnchors.Keys)
+            AuthorityMovingTargetKeys.Add(key);
+        AuthorityMovingTargetKeys.Sort(AuthorityMovingTargetKeyComparison);
         hasher.Add(0x4E4156415554484DUL);
         hasher.Add(AuthorityMovingTargetKeys.Count);
         for (int i = 0; i < AuthorityMovingTargetKeys.Count; i++)
@@ -1867,8 +1972,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void AddAuthorityFixedPortalOwners(LogicStateHasher hasher)
     {
         AuthorityFixedPortalOwnerKeys.Clear();
-        AuthorityFixedPortalOwnerKeys.AddRange(FixedPortalOwners.Keys);
-        AuthorityFixedPortalOwnerKeys.Sort(CompareFixedPortalOwnerKeys);
+        foreach (FixedPortalOwnerKey key in FixedPortalOwners.Keys)
+            AuthorityFixedPortalOwnerKeys.Add(key);
+        AuthorityFixedPortalOwnerKeys.Sort(AuthorityFixedPortalOwnerKeyComparison);
         hasher.Add(0x4E4156504F574E52UL);
         hasher.Add(AuthorityFixedPortalOwnerKeys.Count);
         for (int i = 0; i < AuthorityFixedPortalOwnerKeys.Count; i++)
@@ -1890,8 +1996,9 @@ public static partial class FlowFieldCrowdMovementSystem
     private static void AddAuthorityFixedCorridorBuilds(LogicStateHasher hasher)
     {
         AuthorityCorridorWorldVersions.Clear();
-        AuthorityCorridorWorldVersions.AddRange(FixedCorridorLookupByWorldVersion.Keys);
-        AuthorityCorridorWorldVersions.Sort();
+        foreach (int worldVersion in FixedCorridorLookupByWorldVersion.Keys)
+            AuthorityCorridorWorldVersions.Add(worldVersion);
+        AuthorityCorridorWorldVersions.Sort(AuthorityIntComparison);
         hasher.Add(0x4E4156434F525244UL);
         hasher.Add(FixedCorridorBuildOperationQuota);
         hasher.Add(AuthorityCorridorWorldVersions.Count);

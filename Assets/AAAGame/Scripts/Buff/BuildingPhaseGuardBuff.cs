@@ -3,7 +3,7 @@
 /// - 战斗保护：非 Invade 阶段给敌方建筑提供“无敌/不可被索敌/不攻击”保护。
 /// - 血条效果：进入 Build 阶段后为双方建筑施加“禁用血条”效果，离开 Build 后恢复。
 /// </summary>
-public class BuildingPhaseGuardBuff : BuffCallback
+public class BuildingPhaseGuardBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private bool _subscribed;
     private string _invincibleSourceId;
@@ -81,5 +81,11 @@ public class BuildingPhaseGuardBuff : BuffCallback
         else
             building.UnregisterInvincibleSource(_invincibleSourceId);
 
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_subscribed);
+        hasher.Add(_invincibleSourceId);
     }
 }

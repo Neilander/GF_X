@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using BaseUtility;
-using GameFramework;
 using GameFramework.Event;
 using UnityGameFramework.Runtime;
 
@@ -16,8 +15,13 @@ public partial class InputManager
     {
         RebuildUIFormControlAssetSets();
 
-        GF.Event.Subscribe(OpenUIFormSuccessEventArgs.EventId, OnUIFormChanged);
-        GF.Event.Subscribe(CloseUIFormCompleteEventArgs.EventId, OnUIFormChanged);
+        EventComponent eventComponent = GF.Event;
+        if (eventComponent == null)
+            throw new System.InvalidOperationException("InputManager.InitializeUIFormControl failed: EventComponent is unavailable.");
+
+        eventComponent.Subscribe(OpenUIFormSuccessEventArgs.EventId, OnUIFormChanged);
+        eventComponent.Subscribe(CloseUIFormCompleteEventArgs.EventId, OnUIFormChanged);
+        _uiFormEventSubscribed = true;
 
         RecountOpenBlockingForms();
         ApplyInputStateByBlockingCount();
@@ -25,16 +29,17 @@ public partial class InputManager
 
     private void CleanupUIFormControl()
     {
-        // 退出运行时，EventComponent/EventPool 可能已先被销毁或清空，直接 Unsubscribe 会抛异常。
-        try
+        if (!_uiFormEventSubscribed)
+            return;
+
+        EventComponent eventComponent = GF.Event;
+        if (eventComponent != null)
         {
-            GF.Event.Unsubscribe(OpenUIFormSuccessEventArgs.EventId, OnUIFormChanged);
-            GF.Event.Unsubscribe(CloseUIFormCompleteEventArgs.EventId, OnUIFormChanged);
+            eventComponent.Unsubscribe(OpenUIFormSuccessEventArgs.EventId, OnUIFormChanged);
+            eventComponent.Unsubscribe(CloseUIFormCompleteEventArgs.EventId, OnUIFormChanged);
         }
-        catch (GameFrameworkException)
-        {
-            // 忽略：仅在生命周期销毁顺序导致的退订失败时触发
-        }
+
+        _uiFormEventSubscribed = false;
     }
 
     private void OnUIFormChanged(object sender, GameEventArgs e)

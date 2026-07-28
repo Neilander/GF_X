@@ -42,8 +42,8 @@ public static class ClusterSpawnSystem
             return (Fix64)MinAutoSpawnRadius;
 
         Fix64 spawnDistance = (Fix64)FixedSpawnDistance;
-        Fix64 radius = Fix64.Sqrt((Fix64)count) * spawnDistance * (Fix64)0.55f
-                       + spawnDistance * (Fix64)0.35f;
+        Fix64 radius = Fix64.Sqrt((Fix64)count) * spawnDistance * Fix64.FromRaw(2253)
+                       + spawnDistance * Fix64.FromRaw(1434);
         return Fix64.Max((Fix64)MinAutoSpawnRadius, radius);
     }
 
@@ -416,9 +416,9 @@ public static class ClusterSpawnSystem
         int adjusted = index - 1;
         int ring = adjusted / NearbyCenterSamplesPerRing + 1;
         int ringIndex = adjusted % NearbyCenterSamplesPerRing;
-        Fix64 angleOffset = (Fix64)ring * (Fix64)0.37f;
+        Fix64 angleOffset = (Fix64)ring * Fix64.FromRaw(1516);
         Fix64 angle = Fix64.PI * (Fix64)2 * (Fix64)ringIndex / (Fix64)NearbyCenterSamplesPerRing + angleOffset;
-        Fix64 distance = (Fix64)ring * Fix64.Max((Fix64)NearbyCenterSearchStep, formationRadius * (Fix64)0.45f);
+        Fix64 distance = (Fix64)ring * Fix64.Max((Fix64)NearbyCenterSearchStep, formationRadius * Fix64.FromRaw(1844));
         return center + new FixVector2(Fix64.Cos(angle) * distance, Fix64.Sin(angle) * distance);
     }
 
@@ -434,9 +434,9 @@ public static class ClusterSpawnSystem
         if (total <= 1 || index <= 0)
             return center;
 
-        Fix64 t = ((Fix64)index + (Fix64)0.5f) / (Fix64)total;
+        Fix64 t = ((Fix64)index + Fix64.FromRaw(2048)) / (Fix64)total;
         Fix64 distance = radius * Fix64.Sqrt(Fix64.Clamp(t, Fix64.Zero, Fix64.One));
-        Fix64 angle = (Fix64)index * (Fix64)2.39996323f;
+        Fix64 angle = (Fix64)index * Fix64.FromRaw(9831);
         return center + new FixVector2(Fix64.Cos(angle) * distance, Fix64.Sin(angle) * distance);
     }
 

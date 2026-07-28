@@ -195,17 +195,19 @@ public static class CharacterDataDetailAccessor
     private const string SmallUnitCollisionRadiusKey = "SmallUnitCollisionRadius";
     private const string MediumUnitCollisionRadiusKey = "MediumUnitCollisionRadius";
     private const string LargeUnitCollisionRadiusKey = "LargeUnitCollisionRadius";
+    private const string SuperLargeUnitCollisionRadiusKey = "SuperLargeUnitCollisionRadius";
     private static Fix64 GetCollisionRadiusBySize(UnitSize size)
     {
-        float radius = size switch
+        string configKey = size switch
         {
-            UnitSize.Small => GF.Config.GetFloat(SmallUnitCollisionRadiusKey, 0f),
-            UnitSize.Medium => GF.Config.GetFloat(MediumUnitCollisionRadiusKey, 0f),
-            UnitSize.Large => GF.Config.GetFloat(LargeUnitCollisionRadiusKey, 0f),
-            _ => 0f
+            UnitSize.Small => SmallUnitCollisionRadiusKey,
+            UnitSize.Medium => MediumUnitCollisionRadiusKey,
+            UnitSize.Large => LargeUnitCollisionRadiusKey,
+            UnitSize.SuperLarge => SuperLargeUnitCollisionRadiusKey,
+            _ => throw new InvalidOperationException($"Character collision radius config is undefined for unit size '{size}'.")
         };
 
-        return (Fix64)radius;
+        return DistanceUnitConverter.ReadRequiredPositiveFixedConfig(configKey);
     }
 
     private static Fix64 GetWeightLevelBySize(UnitSize size)

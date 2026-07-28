@@ -72,7 +72,7 @@ public sealed class FearMoveAwayBuff : BuffCallback, ICapability, ILogicDetermin
             direction = LogicEntityFrameSnapshotService.GetRequiredForward(hostEntity);
 
         direction = direction.GetNormalized();
-        hostEntity.DurationMoveEffectComp.StartDurationAdditionalMove((Fix64)0.1f, direction * (Fix64)3);
+        hostEntity.DurationMoveEffectComp.StartDurationAdditionalMove(Fix64.FromRaw(410), direction * (Fix64)3);
     }
 
     public override void OnRemove()

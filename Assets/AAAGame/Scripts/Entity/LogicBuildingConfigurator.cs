@@ -6,10 +6,10 @@ public static class LogicBuildingConfigurator
 {
     private const string Lv0InvincibleBuffId = "building_lv0_invincible";
     private const string PhaseGuardBuffId = "building_phase_guard";
-    private static readonly Fix64 PlaceholderAttackInterval = (Fix64)1.6f;
+    private static readonly Fix64 PlaceholderAttackInterval = Fix64.FromRaw(6554);
     private static readonly Fix64 PlaceholderAttackRange = (Fix64)650;
-    private static readonly Fix64 PlaceholderWindUp = (Fix64)0.35f;
-    private static readonly Fix64 PlaceholderWindDown = (Fix64)0.35f;
+    private static readonly Fix64 PlaceholderWindUp = Fix64.FromRaw(1434);
+    private static readonly Fix64 PlaceholderWindDown = Fix64.FromRaw(1434);
     public static event Action<IBuildingLogicContext> BuildingConfigured;
 
     public static void Configure(
@@ -18,7 +18,9 @@ public static class LogicBuildingConfigurator
         string buildingInstanceId,
         string strongholdId,
         int ownerFactionId,
-        int logicQuarterTurns)
+        int logicQuarterTurns,
+        bool isGameEndConditionBuilding = false,
+        bool isNavigationStaticBaked = false)
     {
         if (state == null)
             throw new ArgumentNullException(nameof(state));
@@ -63,7 +65,9 @@ public static class LogicBuildingConfigurator
             obstacleShapes,
             interactionOptions,
             noAttack,
-            armySupplyPerUnit);
+            armySupplyPerUnit,
+            isGameEndConditionBuilding,
+            isNavigationStaticBaked);
 
         var moveComp = new NoMoveComp();
         state.SetMoveComp(moveComp);
@@ -85,7 +89,7 @@ public static class LogicBuildingConfigurator
             LogicBuildingProductionService.Configure(state);
 
         Fix64 aggroRange = Fix64.Max(
-            DistanceUnitConverter.ConvertToWorld(weaponData.Range) + (Fix64)1.5f,
+            DistanceUnitConverter.ConvertToWorld(weaponData.Range) + Fix64.FromRaw(6144),
             (Fix64)4);
         targetingComp.AggroRangeFixed = aggroRange;
         targetingComp.ForgetRangeFixed = aggroRange + (Fix64)2;
@@ -98,7 +102,7 @@ public static class LogicBuildingConfigurator
         state.BuffComp.AddBuff(
             BuffData.Create(
                 Lv0InvincibleBuffId,
-                float.MaxValue,
+                Fix64.Zero,
                 true,
                 1,
                 new List<BuffCallback> { new BuildingLv0InvincibleBuff() }),
@@ -106,7 +110,7 @@ public static class LogicBuildingConfigurator
         state.BuffComp.AddBuff(
             BuffData.Create(
                 PhaseGuardBuffId,
-                float.MaxValue,
+                Fix64.Zero,
                 true,
                 1,
                 new List<BuffCallback> { new BuildingPhaseGuardBuff() }),
@@ -172,7 +176,7 @@ public static class LogicBuildingConfigurator
                 return buildingData.Def > Fix64.Zero ? buildingData.Def : Fix64.Zero;
             case CreatureMainProperty.Health:
                 Fix64 health = buildingData.HP > Fix64.Zero ? buildingData.HP : (Fix64)120;
-                return tutorialLevel ? health * (Fix64)0.5f : health;
+                return tutorialLevel ? health * Fix64.FromRaw(2048) : health;
             case CreatureMainProperty.Sight:
                 return buildingData.Weapon != null && buildingData.Weapon.Range > Fix64.Zero
                     ? buildingData.Weapon.Range

@@ -4,11 +4,6 @@ public class TimedEffect
 {
      public Fix64 duration;
 
-     public TimedEffect(float duration)
-         : this((Fix64)duration)
-     {
-     }
-
      public TimedEffect(Fix64 duration)
      {
           this.duration = duration;

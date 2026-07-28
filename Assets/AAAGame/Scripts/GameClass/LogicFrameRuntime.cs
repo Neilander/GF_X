@@ -46,10 +46,15 @@ public static class LogicFrameRuntime
     public static double BacklogSeconds { get; private set; }
     public static int ListenerCount => s_Listeners.Count;
 
+    public static event Action Began;
+    public static event Action Ending;
+
     public static void Register(ILogicFrameUpdate listener)
     {
         if (listener == null)
             throw new ArgumentNullException(nameof(listener));
+        if (!IsActive)
+            throw new InvalidOperationException("LogicFrameRuntime.Register failed: runtime is not active.");
         if (s_ListenerLookup.ContainsKey(listener))
             throw new InvalidOperationException($"LogicFrameRuntime.Register failed: listener is already registered. type={listener.GetType().FullName}.");
 
@@ -128,6 +133,7 @@ public static class LogicFrameRuntime
         BacklogSeconds = 0d;
         IsActive = true;
         IsTimelineRunning = false;
+        Began?.Invoke();
         Log.Info("[LogicFrame] Runtime begin. rate={0}, fixedDelta={1}, physicsModeBefore={2}.", FrameRate, (double)s_FixedDeltaTime, s_PreviousPhysicsSimulationMode);
     }
 
@@ -138,6 +144,7 @@ public static class LogicFrameRuntime
         if (IsTicking)
             throw new InvalidOperationException("LogicFrameRuntime.End failed: a logic frame is running.");
 
+        Ending?.Invoke();
         Physics.simulationMode = s_PreviousPhysicsSimulationMode;
         IsActive = false;
         IsTimelineRunning = false;
@@ -177,8 +184,13 @@ public static class LogicFrameRuntime
                 entry.Listener.OnLogicFrameUpdate(s_FixedDeltaTime);
             }
 
-            Physics.SyncTransforms();
-            Physics.Simulate((float)LogicFrameClock.FrameDurationSeconds);
+#if UNITY_EDITOR
+            if (!EditorLogicRuntimeStressGate.SuppressPhysicsSimulation)
+#endif
+            {
+                Physics.SyncTransforms();
+                Physics.Simulate((float)LogicFrameClock.FrameDurationSeconds);
+            }
         }
         finally
         {

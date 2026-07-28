@@ -11,10 +11,6 @@ public class NoMoveComp : IMoveComp
         //这是空行为，什么都不做
     }
 
-    public void MoveTo(Vector3 destination)
-    {
-    }
-
     public void MoveToFixed(FixVector2 destination)
     {
     }
@@ -23,9 +19,8 @@ public class NoMoveComp : IMoveComp
     {
     }
 
-    public void SetNavTarget(Vector3 destination) { }
     public void SetNavTargetFixed(FixVector2 destination) { }
-    public Vector3 GetNavDirection() => Vector3.zero;
+    public FixVector2 NavDirectionFixed => FixVector2.Zero;
     public void ShutDown() { }
     public void Resume() { }
     

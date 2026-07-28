@@ -30,6 +30,8 @@ public readonly struct LogicTechEffectCommand
 
 public static class LogicTechEffectCommandService
 {
+    private static readonly Action<LogicTechEffectCommand> s_RuntimeSink = PublishEffectApplying;
+    private static readonly Comparison<LogicTechEffectCommand> s_CommandComparison = CompareCommands;
     private static readonly List<LogicTechEffectCommand> s_History = new List<LogicTechEffectCommand>();
     private static readonly ReadOnlyCollection<LogicTechEffectCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicTechEffectCommand> s_Pending = new List<LogicTechEffectCommand>();
@@ -165,7 +167,7 @@ public static class LogicTechEffectCommandService
 
     public static void ApplyFrame(ulong frameId)
     {
-        ApplyFrame(frameId, PublishEffectApplying);
+        ApplyFrame(frameId, s_RuntimeSink);
     }
 
 #if UNITY_EDITOR
@@ -204,7 +206,7 @@ public static class LogicTechEffectCommandService
                     s_Due.Add(command);
             }
 
-            s_Due.Sort((left, right) => left.Sequence.CompareTo(right.Sequence));
+            s_Due.Sort(s_CommandComparison);
             for (int i = 0; i < s_Due.Count; i++)
             {
                 LogicTechEffectCommand command = s_Due[i];
@@ -224,6 +226,11 @@ public static class LogicTechEffectCommandService
             IsApplyingFrame = false;
             s_Due.Clear();
         }
+    }
+
+    private static int CompareCommands(LogicTechEffectCommand left, LogicTechEffectCommand right)
+    {
+        return left.Sequence.CompareTo(right.Sequence);
     }
 
     public static void ResetForWorldTransition()

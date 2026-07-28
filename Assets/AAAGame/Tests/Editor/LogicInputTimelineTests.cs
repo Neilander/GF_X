@@ -151,6 +151,41 @@ public sealed class LogicInputTimelineTests
         Assert.AreEqual(0, second.GetPressCount(LogicInputButton.Skill1));
     }
 
+    [Test]
+    public void ReusableSeal_ReusesFrameAndClearsPerTickEdges()
+    {
+        var timeline = CreateTimeline();
+        timeline.EnqueueButtonPulse(0.010d, LogicInputButton.Skill1);
+
+        LogicInputFrame first = timeline.SealReusable(1, 1d / 30d);
+        Assert.IsTrue(first.WasPressed(LogicInputButton.Skill1));
+        Assert.AreEqual(1, first.Events.Count);
+
+        LogicInputFrame second = timeline.SealReusable(2, 2d / 30d);
+
+        Assert.AreSame(first, second);
+        Assert.IsFalse(second.WasPressed(LogicInputButton.Skill1));
+        Assert.AreEqual(0, second.GetPressCount(LogicInputButton.Skill1));
+        Assert.AreEqual(0, second.Events.Count);
+    }
+
+    [Test]
+    public void ReusableFrame_FreezePreservesRecordedTick()
+    {
+        var timeline = CreateTimeline();
+        timeline.EnqueueButtonPulse(0.010d, LogicInputButton.Skill2);
+
+        LogicInputFrame runtimeFrame = timeline.SealReusable(1, 1d / 30d);
+        LogicInputFrame frozen = runtimeFrame.Freeze();
+        timeline.SealReusable(2, 2d / 30d);
+
+        Assert.AreNotSame(runtimeFrame, frozen);
+        Assert.AreEqual(1ul, frozen.FrameId);
+        Assert.IsTrue(frozen.WasPressed(LogicInputButton.Skill2));
+        Assert.AreEqual(1, frozen.GetPressCount(LogicInputButton.Skill2));
+        Assert.AreEqual(1, frozen.Events.Count);
+    }
+
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();

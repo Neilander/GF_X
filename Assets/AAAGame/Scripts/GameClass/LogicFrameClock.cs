@@ -37,6 +37,21 @@ public sealed class LogicFrameClock
         return Advance(realtime, () => timeScale, (frame, _) => tick(frame));
     }
 
+    public void RebaseRealtimePreservingAccumulator(double realtime)
+    {
+        if (!m_IsStarted)
+            throw new InvalidOperationException("LogicFrameClock.RebaseRealtimePreservingAccumulator failed: clock is not started.");
+        if (double.IsNaN(realtime) || double.IsInfinity(realtime))
+            throw new ArgumentOutOfRangeException(nameof(realtime), realtime, "Realtime must be finite.");
+        if (realtime < m_LastRealtime)
+        {
+            throw new InvalidOperationException(
+                $"LogicFrameClock.RebaseRealtimePreservingAccumulator failed: realtime moved backwards. previous={m_LastRealtime:R}, current={realtime:R}.");
+        }
+
+        m_LastRealtime = realtime;
+    }
+
     public int Advance(double realtime, Func<double> getTimeScale, Action<ulong, double> tick)
     {
         if (!m_IsStarted)

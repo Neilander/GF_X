@@ -73,7 +73,8 @@ public partial class SoldierEntity : MAEntity
             // 绿线：当前导航计算的方向
             if (moveComp != null)
             {
-                Vector3 navDir = moveComp.GetNavDirection();
+                FixVector2 navDirFixed = moveComp.NavDirectionFixed;
+                Vector3 navDir = new Vector3((float)navDirFixed.x, 0f, (float)navDirFixed.y);
                 Debug.DrawRay(pos, navDir * 3f, Color.green);
             }
             RecordSoldierPerf(UnityGameFramework.Runtime.MainThreadPerfScope.SoldierDebugDraw, stageStartTicks);

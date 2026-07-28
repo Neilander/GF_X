@@ -23,10 +23,10 @@ public class CharacterTargetingFactory : TargetingCompFactory
         comp.Init(gmo);
 
         // 赋予初始面板值
-        comp.AggroRange = defaultAggroRange;
-        comp.ForgetRange = defaultForgetRange;
-        comp.FollowSearchRange = defaultFollowRange;
-        comp.AlertRadius = defaultAlertRadius;
+        comp.AggroRangeFixed = (Fix64)defaultAggroRange;
+        comp.ForgetRangeFixed = (Fix64)defaultForgetRange;
+        comp.FollowSearchRangeFixed = (Fix64)defaultFollowRange;
+        comp.AlertRadiusFixed = (Fix64)defaultAlertRadius;
 
         gmo.SetTargetingComp(comp);
         return comp;

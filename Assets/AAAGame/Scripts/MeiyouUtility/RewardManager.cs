@@ -91,12 +91,6 @@ public class RewardManager : GameFrameworkComponent
 		TrySubscribeEvents();
 	}
 
-	private void Update()
-	{
-		if (!m_LogicEventsSubscribed)
-			TrySubscribeEvents();
-	}
-
 	private void OnDisable()
 	{
 		TryUnsubscribeEvents();
@@ -216,7 +210,7 @@ public class RewardManager : GameFrameworkComponent
 		if (previousPhase != GamePhase.Defend && previousPhase != GamePhase.Invade)
 			return;
 
-		float dailyGrowth = GF.Config != null ? GF.Config.GetFloat(BaseResourceIncomeDailyGrowthConfigKey, 0f) : 0f;
+		Fix64 dailyGrowth = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseResourceIncomeDailyGrowthConfigKey);
 		int currentDay = Mathf.Max(0, InGameDataModel.GetValue(IngameValueType.Day));
 
 		long phaseBaseIncome = 0;
@@ -232,17 +226,33 @@ public class RewardManager : GameFrameworkComponent
 			LogicRewardStateService.ClearCapturedStrongholds();
 		}
 
-		float totalIncome = currentDay * dailyGrowth
-			+ LevelTagRuntime.GetDailyBaseIncomeDelta()
-			+ phaseBaseIncome
-			- LevelTagRuntime.GetCapturedStrongholdDailyCost() * CountPlayerOwnedStrongholds();
-		int coinAmount = (int)System.Math.Round(totalIncome, System.MidpointRounding.AwayFromZero);
+		Fix64 totalIncome = (Fix64)currentDay * dailyGrowth
+			+ (Fix64)LevelTagRuntime.GetDailyBaseIncomeDelta()
+			+ (Fix64)phaseBaseIncome
+			- (Fix64)LevelTagRuntime.GetCapturedStrongholdDailyCost() * CountPlayerOwnedStrongholds();
+		int coinAmount = RoundFixedAwayFromZero(totalIncome);
 		if (coinAmount <= 0)
 			return;
 
 		Vector3 sourcePosition = TryGetPlayerPosition(out Vector3 playerPos) ? playerPos : Vector3.zero;
 		GrantCoinAfterFly(sourcePosition, coinAmount, "battle_to_build_income");
 	}
+
+	private static int RoundFixedAwayFromZero(Fix64 value)
+	{
+		long raw = value.RawValue;
+		long absoluteRaw = raw >= 0 ? raw : checked(-raw);
+		long rounded = checked(absoluteRaw + (1L << (Fix64.FRACTIONAL_PLACES - 1)))
+			>> Fix64.FRACTIONAL_PLACES;
+		return checked((int)(raw >= 0 ? rounded : -rounded));
+	}
+
+#if UNITY_EDITOR
+	public static int GetEditorTestRoundedIncome(Fix64 value)
+	{
+		return RoundFixedAwayFromZero(value);
+	}
+#endif
 
 	private void OnLogicUnitDied(IEntityContext victim)
 	{

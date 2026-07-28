@@ -23,7 +23,7 @@ public class DurationMoveEffectTests
         executor.SetInput(Vector3.forward * 5f);
 
         // 击飞效果：向后 20m/s，持续 0.5s
-        effectComp.StartDurationOverrideMove(0.5f, Vector3.back * 20f);
+        effectComp.StartDurationOverrideMove((Fix64)0.5f, new FixVector2(Fix64.Zero, (Fix64)(-20)));
         effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
 
@@ -42,7 +42,7 @@ public class DurationMoveEffectTests
         executor.SetInput(Vector3.forward * 5f);
 
         // 附加风力：向右 3m/s
-        effectComp.StartDurationAdditionalMove(1f, Vector3.right * 3f);
+        effectComp.StartDurationAdditionalMove(Fix64.One, new FixVector2((Fix64)3, Fix64.Zero));
         effectComp.ApplyEffect((Fix64)0.1f);
         executor.Execute(0.1f);
 
@@ -60,7 +60,7 @@ public class DurationMoveEffectTests
         effectComp.Init(ctx);
 
         // 0.2 秒的 Additional 效果
-        effectComp.StartDurationAdditionalMove(0.2f, Vector3.right * 10f);
+        effectComp.StartDurationAdditionalMove((Fix64)0.2f, new FixVector2((Fix64)10, Fix64.Zero));
 
         // 第一帧：有效果
         effectComp.ApplyEffect((Fix64)0.1f);
@@ -90,7 +90,7 @@ public class DurationMoveEffectTests
         var effectComp = new DurationMoveEffectComp();
         effectComp.Init(ctx);
 
-        int id = effectComp.StartDurationAdditionalMove(10f, Vector3.right * 10f);
+        int id = effectComp.StartDurationAdditionalMove((Fix64)10, new FixVector2((Fix64)10, Fix64.Zero));
 
         // 第一帧有效果
         effectComp.ApplyEffect((Fix64)0.1f);
@@ -117,7 +117,7 @@ public class DurationMoveEffectTests
         var effectComp = new DurationMoveEffectComp();
         effectComp.Init(ctx);
 
-        effectComp.StartDurationAdditionalMove(0.1f, Vector3.right * 5f);
+        effectComp.StartDurationAdditionalMove((Fix64)0.1f, new FixVector2((Fix64)5, Fix64.Zero));
         effectComp.ApplyEffect((Fix64)0.1f);
         executor.SetInput(Vector3.forward * 4f);
         executor.Execute(0.1f);
@@ -139,8 +139,8 @@ public class DurationMoveEffectTests
         var effectComp = new DurationMoveEffectComp();
         effectComp.Init(ctx);
 
-        effectComp.StartDurationAdditionalMove(0.1f, Vector3.right * 3f);
-        effectComp.StartDurationOverrideMove(0.1f, Vector3.back * 6f);
+        effectComp.StartDurationAdditionalMove((Fix64)0.1f, new FixVector2((Fix64)3, Fix64.Zero));
+        effectComp.StartDurationOverrideMove((Fix64)0.1f, new FixVector2(Fix64.Zero, (Fix64)(-6)));
 
         effectComp.ApplyEffect((Fix64)0.1f);
         Assert.AreEqual(MovementMode.Displaced, executor.MovementMode, "位移生效期间应切入 Displaced");

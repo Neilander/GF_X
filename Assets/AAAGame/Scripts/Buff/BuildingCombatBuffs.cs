@@ -48,7 +48,7 @@ public sealed class BuildingInvincibleSourceBuff : BuffCallback
     }
 }
 
-public sealed class BuildingCollisionBlockingBuff : BuffCallback
+public sealed class BuildingCollisionBlockingBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private bool _applied;
 
@@ -72,6 +72,11 @@ public sealed class BuildingCollisionBlockingBuff : BuffCallback
         _applied = false;
         if (hostEntity is IBuildingLogicContext building)
             building.SetCollisionBlockingByBuff(true);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_applied);
     }
 }
 
@@ -97,9 +102,9 @@ public sealed class AmmoReloadBuff : BuffCallback, ILogicDeterministicStateContr
     private readonly Fix64 _delaySeconds;
     private Fix64 _timer;
 
-    public AmmoReloadBuff(float delaySeconds)
+    public AmmoReloadBuff(Fix64 delaySeconds)
     {
-        _delaySeconds = Fix64.Max(Fix64.Zero, (Fix64)delaySeconds);
+        _delaySeconds = Fix64.Max(Fix64.Zero, delaySeconds);
     }
 
     public override void OnUpdate(Fix64 deltaTime)
@@ -115,7 +120,7 @@ public sealed class AmmoReloadBuff : BuffCallback, ILogicDeterministicStateContr
         }
 
         _timer += (Fix64)deltaTime;
-        if (_timer < (Fix64)BuildingCombatModifierUtility.ResolveAmmoReloadDelay(hostEntity, (float)_delaySeconds))
+        if (_timer < BuildingCombatModifierUtility.ResolveAmmoReloadDelay(hostEntity, _delaySeconds))
             return;
 
         weaponComp.ReloadFull();
@@ -130,9 +135,9 @@ public sealed class AmmoReloadBuff : BuffCallback, ILogicDeterministicStateContr
 
 public sealed class AmmoReloadDelayModifierBuff : BuffCallback
 {
-    public float DeltaSeconds { get; }
+    public Fix64 DeltaSeconds { get; }
 
-    public AmmoReloadDelayModifierBuff(float deltaSeconds)
+    public AmmoReloadDelayModifierBuff(Fix64 deltaSeconds)
     {
         DeltaSeconds = deltaSeconds;
     }
@@ -141,9 +146,9 @@ public sealed class AmmoReloadDelayModifierBuff : BuffCallback
 public sealed class RestroomQueueModifierBuff : BuffCallback
 {
     public int QueueLimitDelta { get; }
-    public float ReleaseIntervalDelta { get; }
+    public Fix64 ReleaseIntervalDelta { get; }
 
-    public RestroomQueueModifierBuff(int queueLimitDelta, float releaseIntervalDelta)
+    public RestroomQueueModifierBuff(int queueLimitDelta, Fix64 releaseIntervalDelta)
     {
         QueueLimitDelta = queueLimitDelta;
         ReleaseIntervalDelta = releaseIntervalDelta;
@@ -164,9 +169,6 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
 {
     private const string PullDistancePerLevelKey = "MeatRackPullDistancePerLevel";
     private const string PullDurationKey = "MeatRackPullDuration";
-    private const float DefaultPullDistancePerLevel = 120f;
-    private const float DefaultPullDuration = 0.18f;
-
     private readonly Fix64 _pullLevel;
 
     public PullOnOutgoingDamageBuff(Fix64 pullLevel)
@@ -188,12 +190,10 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
             return baseDamage;
         direction = direction.GetNormalized();
 
-        Fix64 distance = (Fix64)(GF.Config != null
-            ? GF.Config.GetFloat(PullDistancePerLevelKey, DefaultPullDistancePerLevel)
-            : DefaultPullDistancePerLevel) * _pullLevel;
-        Fix64 duration = Fix64.Max((Fix64)0.01f, (Fix64)(GF.Config != null
-            ? GF.Config.GetFloat(PullDurationKey, DefaultPullDuration)
-            : DefaultPullDuration));
+        Fix64 distance = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PullDistancePerLevelKey) * _pullLevel;
+        Fix64 duration = Fix64.Max(
+            Fix64.FromRaw(41),
+            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PullDurationKey));
         Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
         FixVector2 speedFixed = direction * (worldDistance / duration);
 
@@ -205,9 +205,9 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
 
 public static class BuildingCombatModifierUtility
 {
-    public static float ResolveAmmoReloadDelay(IEntityContext host, float baseDelaySeconds)
+    public static Fix64 ResolveAmmoReloadDelay(IEntityContext host, Fix64 baseDelaySeconds)
     {
-        float result = baseDelaySeconds;
+        Fix64 result = baseDelaySeconds;
         var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
         if (buffComp != null)
         {
@@ -218,7 +218,7 @@ public static class BuildingCombatModifierUtility
             }
         }
 
-        return Mathf.Max(0f, result);
+        return Fix64.Max(Fix64.Zero, result);
     }
 
     public static int ResolveRestroomQueueLimit(IEntityContext host, int baseQueueLimit)
@@ -237,9 +237,9 @@ public static class BuildingCombatModifierUtility
         return Mathf.Max(1, result);
     }
 
-    public static float ResolveRestroomReleaseInterval(IEntityContext host, float baseReleaseInterval)
+    public static Fix64 ResolveRestroomReleaseInterval(IEntityContext host, Fix64 baseReleaseInterval)
     {
-        float result = baseReleaseInterval;
+        Fix64 result = baseReleaseInterval;
         var buffComp = host?.BuffComp as AAAGame.Scripts.BuffSystem.CharacterBuffComp;
         if (buffComp != null)
         {
@@ -250,7 +250,7 @@ public static class BuildingCombatModifierUtility
             }
         }
 
-        return Mathf.Max(0.1f, result);
+        return Fix64.Max(Fix64.FromRaw(410), result);
     }
 
     public static Fix64 ResolveBlindPercent(IEntityContext host, Fix64 baseBlindPercent)
@@ -270,7 +270,7 @@ public static class BuildingCombatModifierUtility
     }
 }
 
-public sealed class PhaseAmmoResetBuff : BuffCallback
+public sealed class PhaseAmmoResetBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private bool _subscribed;
 
@@ -319,6 +319,11 @@ public sealed class PhaseAmmoResetBuff : BuffCallback
     {
         hostEntity?.WeaponComp?.ReloadFull();
     }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_subscribed);
+    }
 }
 
 public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDeterministicStateContributor
@@ -336,10 +341,10 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
     private Fix64 _releaseTimer;
     private Fix64 _scanTimer;
 
-    public RestroomQueueBuff(int queueLimit, float releaseInterval)
+    public RestroomQueueBuff(int queueLimit, Fix64 releaseInterval)
     {
         _queueLimit = Mathf.Max(1, queueLimit);
-        _releaseInterval = Fix64.Max((Fix64)0.1f, (Fix64)releaseInterval);
+        _releaseInterval = Fix64.Max(Fix64.FromRaw(410), releaseInterval);
     }
 
     public override void OnUpdate(Fix64 deltaTime)
@@ -577,7 +582,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
 
     private Fix64 GetReleaseInterval()
     {
-        return (Fix64)BuildingCombatModifierUtility.ResolveRestroomReleaseInterval(hostEntity, (float)_releaseInterval);
+        return BuildingCombatModifierUtility.ResolveRestroomReleaseInterval(hostEntity, _releaseInterval);
     }
 
     private static Fix64 GetWorldRange(IBuildingLogicContext building)
@@ -604,7 +609,7 @@ public sealed class RestroomQueueBuff : BuffCallback, ICapability, ILogicDetermi
     {
         BuffData buffData = BuffData.Create(
             id: buffId,
-            duration: float.MaxValue,
+            duration: Fix64.Zero,
             isForever: true,
             maxStack: 1,
             modules: new List<BuffCallback>());
@@ -705,7 +710,7 @@ public static class AttackMissUtility
 
 public static class MonitorWeaponEffect
 {
-    private const float BlindDurationPaddingSeconds = 0.1f;
+    private static readonly Fix64 BlindDurationPaddingSeconds = Fix64.FromRaw(410);
 
     public static void Execute(IEntityContext attacker, IEntityContext mainTarget, WeaponData weaponData)
     {
@@ -764,10 +769,13 @@ public static class MonitorWeaponEffect
         damagedTargets.Add(target);
         var damage = new Damage(attacker as ITargetable, weaponData.Damage, HealthModifyType.reduce);
         DamageHelper.DoDamage(target as ITargetable, damage, attacker);
-        ApplyBlind(target, blindPercent, Mathf.Max(0.1f, (float)weaponData.Interval + BlindDurationPaddingSeconds));
+        ApplyBlind(
+            target,
+            blindPercent,
+            Fix64.Max(Fix64.FromRaw(410), weaponData.Interval + BlindDurationPaddingSeconds));
     }
 
-    private static void ApplyBlind(IEntityContext target, Fix64 blindPercent, float duration)
+    private static void ApplyBlind(IEntityContext target, Fix64 blindPercent, Fix64 duration)
     {
         if (blindPercent <= Fix64.Zero)
             return;

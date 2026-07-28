@@ -12,7 +12,6 @@ public class GlobalBuffManager : GameFrameworkComponent
 {
     private static GlobalBuffManager s_Current;
     [SerializeField] private bool enableDebugLogs = true;
-    private bool m_HasLoggedScopeResolverDataNotReady;
 
     private sealed class GlobalUnitBuffEntry
     {
@@ -62,6 +61,12 @@ public class GlobalBuffManager : GameFrameworkComponent
     private readonly List<PersistentBuildingBuffRule> m_DeterministicBuildingBuffRules = new();
     private readonly List<RuntimeArmyForceRule> m_DeterministicArmyForceRules = new();
     private readonly List<PersistentBuildingEntityBuffRule> m_DeterministicEntityBuffRules = new();
+    private static readonly Comparison<UnitType> s_UnitTypeComparison = CompareUnitTypes;
+    private static readonly Comparison<int> s_IntComparison = CompareInts;
+    private static readonly Comparison<GlobalUnitBuffEntry> s_GlobalUnitBuffEntryComparison = CompareGlobalUnitBuffEntries;
+    private static readonly Comparison<PersistentBuildingBuffRule> s_PersistentBuildingBuffRuleComparison = ComparePersistentBuildingBuffRules;
+    private static readonly Comparison<RuntimeArmyForceRule> s_RuntimeArmyForceRuleComparison = CompareRuntimeArmyForceRules;
+    private static readonly Comparison<PersistentBuildingEntityBuffRule> s_PersistentBuildingEntityBuffRuleComparison = ComparePersistentBuildingEntityBuffRules;
     private BuildingTechRuntimeEffectSO m_BuildingTechRuntimeEffect;
 
     public TechScopeResolver ScopeResolver => m_TechScopeResolver;
@@ -82,14 +87,14 @@ public class GlobalBuffManager : GameFrameworkComponent
     protected void Start()
     {
         RegisterCurrent();
-        TryInitializeScopeResolver();
         SubscribeTechEffectCommands();
     }
 
     public void PrepareRuntimeDependencies()
     {
         RegisterCurrent();
-        TryInitializeScopeResolver();
+        if (!TryInitializeScopeResolver())
+            throw new InvalidOperationException("GlobalBuffManager.PrepareRuntimeDependencies failed: TechScopeResolver data tables are not ready.");
         SubscribeTechEffectCommands();
     }
 
@@ -101,15 +106,6 @@ public class GlobalBuffManager : GameFrameworkComponent
     private void OnDisable()
     {
         LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
-    }
-
-    private void Update()
-    {
-        if (m_IsSubscribed)
-            return;
-
-        TryInitializeScopeResolver();
-        SubscribeTechEffectCommands();
     }
 
     protected  void OnDestroy()
@@ -143,16 +139,18 @@ public class GlobalBuffManager : GameFrameworkComponent
             m_BuildingTechRuntimeEffect.WriteDeterministicState(hasher);
 
         m_DeterministicFactionIds.Clear();
-        m_DeterministicFactionIds.AddRange(m_UnitBuffsByFaction.Keys);
-        m_DeterministicFactionIds.Sort();
+        foreach (int factionId in m_UnitBuffsByFaction.Keys)
+            m_DeterministicFactionIds.Add(factionId);
+        m_DeterministicFactionIds.Sort(s_IntComparison);
         hasher.Add(m_DeterministicFactionIds.Count);
         for (int factionIndex = 0; factionIndex < m_DeterministicFactionIds.Count; factionIndex++)
         {
             int factionId = m_DeterministicFactionIds[factionIndex];
             hasher.Add(factionId);
             m_DeterministicUnitTypes.Clear();
-            m_DeterministicUnitTypes.AddRange(m_UnitBuffsByFaction[factionId].Keys);
-            m_DeterministicUnitTypes.Sort(CompareUnitTypes);
+            foreach (UnitType unitType in m_UnitBuffsByFaction[factionId].Keys)
+                m_DeterministicUnitTypes.Add(unitType);
+            m_DeterministicUnitTypes.Sort(s_UnitTypeComparison);
             hasher.Add(m_DeterministicUnitTypes.Count);
             for (int unitIndex = 0; unitIndex < m_DeterministicUnitTypes.Count; unitIndex++)
             {
@@ -161,7 +159,7 @@ public class GlobalBuffManager : GameFrameworkComponent
                 List<GlobalUnitBuffEntry> entries = m_UnitBuffsByFaction[factionId][unitType];
                 m_DeterministicUnitBuffEntries.Clear();
                 m_DeterministicUnitBuffEntries.AddRange(entries);
-                m_DeterministicUnitBuffEntries.Sort(CompareGlobalUnitBuffEntries);
+                m_DeterministicUnitBuffEntries.Sort(s_GlobalUnitBuffEntryComparison);
                 hasher.Add(m_DeterministicUnitBuffEntries.Count);
                 for (int entryIndex = 0; entryIndex < m_DeterministicUnitBuffEntries.Count; entryIndex++)
                     AddGlobalUnitBuffEntry(hasher, m_DeterministicUnitBuffEntries[entryIndex]);
@@ -170,7 +168,7 @@ public class GlobalBuffManager : GameFrameworkComponent
 
         m_DeterministicBuildingBuffRules.Clear();
         m_DeterministicBuildingBuffRules.AddRange(m_PersistentBuildingBuffRules);
-        m_DeterministicBuildingBuffRules.Sort(ComparePersistentBuildingBuffRules);
+        m_DeterministicBuildingBuffRules.Sort(s_PersistentBuildingBuffRuleComparison);
         hasher.Add(m_DeterministicBuildingBuffRules.Count);
         for (int i = 0; i < m_DeterministicBuildingBuffRules.Count; i++)
         {
@@ -183,7 +181,7 @@ public class GlobalBuffManager : GameFrameworkComponent
 
         m_DeterministicArmyForceRules.Clear();
         m_DeterministicArmyForceRules.AddRange(m_RuntimeArmyForceRules);
-        m_DeterministicArmyForceRules.Sort(CompareRuntimeArmyForceRules);
+        m_DeterministicArmyForceRules.Sort(s_RuntimeArmyForceRuleComparison);
         hasher.Add(m_DeterministicArmyForceRules.Count);
         for (int i = 0; i < m_DeterministicArmyForceRules.Count; i++)
         {
@@ -196,7 +194,7 @@ public class GlobalBuffManager : GameFrameworkComponent
 
         m_DeterministicEntityBuffRules.Clear();
         m_DeterministicEntityBuffRules.AddRange(m_PersistentBuildingEntityBuffRules);
-        m_DeterministicEntityBuffRules.Sort(ComparePersistentBuildingEntityBuffRules);
+        m_DeterministicEntityBuffRules.Sort(s_PersistentBuildingEntityBuffRuleComparison);
         hasher.Add(m_DeterministicEntityBuffRules.Count);
         for (int i = 0; i < m_DeterministicEntityBuffRules.Count; i++)
         {
@@ -221,6 +219,11 @@ public class GlobalBuffManager : GameFrameworkComponent
     private static int CompareUnitTypes(UnitType left, UnitType right)
     {
         return ((int)left).CompareTo((int)right);
+    }
+
+    private static int CompareInts(int left, int right)
+    {
+        return left.CompareTo(right);
     }
 
     private static int CompareGlobalUnitBuffEntries(GlobalUnitBuffEntry left, GlobalUnitBuffEntry right)
@@ -278,10 +281,41 @@ public class GlobalBuffManager : GameFrameworkComponent
 
     private void OnTechEffectApplying(LogicTechEffectCommand command)
     {
-        if (!TryInitializeScopeResolver())
-            throw new InvalidOperationException("GlobalBuffManager cannot apply a logic tech effect before TechScopeResolver is ready.");
         if (!LogicTechEffectCommandService.IsApplyingFrame)
             throw new InvalidOperationException("GlobalBuffManager received a tech effect outside the logic command apply window.");
+        ApplyTechEffect(command);
+    }
+
+    public void RestoreStageCheckpointTechEffects(InGameDataCheckpoint checkpoint)
+    {
+        if (checkpoint == null)
+            throw new ArgumentNullException(nameof(checkpoint));
+        if (!LevelSelectionService.IsLevelLoading || !LogicTimeControlService.IsPaused)
+            throw new InvalidOperationException("Stage checkpoint tech effects can only be restored during a paused level load.");
+
+        ulong sequence = 0;
+        for (int i = 0; i < checkpoint.TechOwnership.Count; i++)
+        {
+            StageTechOwnership tech = checkpoint.TechOwnership[i];
+            for (int ownerIndex = 0; ownerIndex < tech.OwnerBuildingInstanceIds.Count; ownerIndex++)
+            {
+                string buildingInstanceId = tech.OwnerBuildingInstanceIds[ownerIndex];
+                IBuildingLogicContext owner = LogicBuildingQueryService.GetRequiredByInstanceId(buildingInstanceId);
+                ApplyTechEffect(new LogicTechEffectCommand(
+                    0,
+                    checked(++sequence),
+                    tech.TechId,
+                    true,
+                    owner.OwnerFactionId,
+                    buildingInstanceId));
+            }
+        }
+    }
+
+    private void ApplyTechEffect(LogicTechEffectCommand command)
+    {
+        if (!TryInitializeScopeResolver())
+            throw new InvalidOperationException("GlobalBuffManager cannot apply a logic tech effect before TechScopeResolver is ready.");
 
         var techData = TechDataModel.GetTechData(command.TechId);
         if (techData == null)
@@ -338,27 +372,11 @@ public class GlobalBuffManager : GameFrameworkComponent
             return true;
 
         if (GF.DataTable?.GetDataTable<CharacterDataDetail>() == null)
-        {
-            m_HasLoggedScopeResolverDataNotReady = true;
             return false;
-        }
 
-        try
-        {
-            m_TechScopeIndex = TechScopeIndex.CreateFromCurrentDataTables();
-            m_TechScopeResolver = new TechScopeResolver(m_TechScopeIndex);
-            m_HasLoggedScopeResolverDataNotReady = false;
-            return true;
-        }
-        catch (Exception exception)
-        {
-            if (!m_HasLoggedScopeResolverDataNotReady)
-            {
-                Debug.LogWarning($"[GlobalBuffManager] 初始化 TechScopeResolver 失败: {exception.Message}");
-                m_HasLoggedScopeResolverDataNotReady = true;
-            }
-            return false;
-        }
+        m_TechScopeIndex = TechScopeIndex.CreateFromCurrentDataTables();
+        m_TechScopeResolver = new TechScopeResolver(m_TechScopeIndex);
+        return true;
     }
 
     private void SubscribeTechEffectCommands()
@@ -620,7 +638,7 @@ public class GlobalBuffManager : GameFrameworkComponent
 
             result.Add(BuffData.Create(
                 id: GetBuildingUnitProviderBuffId(rule.SourceBuildingInstanceId, rule.TechId, building.BuildingInstanceId),
-                duration: float.MaxValue,
+                duration: Fix64.Zero,
                 isForever: true,
                 maxStack: 1,
                 modules: new List<BuffCallback>
@@ -805,7 +823,7 @@ public class GlobalBuffManager : GameFrameworkComponent
             building.BuffComp.AddBuff(
                 BuffData.Create(
                     id: $"building_runtime_tech_{rule.TechId}_{building.BuildingInstanceId}",
-                    duration: float.MaxValue,
+                    duration: Fix64.Zero,
                     isForever: true,
                     maxStack: 1,
                     modules: modules),

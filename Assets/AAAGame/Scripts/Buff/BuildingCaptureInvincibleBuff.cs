@@ -3,7 +3,7 @@
 /// <summary>
 /// 据点占领后短时无敌 Buff（3s）——仅负责注册/注销无敌来源。
 /// </summary>
-public class BuildingCaptureInvincibleBuff : BuffCallback
+public class BuildingCaptureInvincibleBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private string _invincibleSourceId;
 
@@ -23,5 +23,10 @@ public class BuildingCaptureInvincibleBuff : BuffCallback
         if (hostEntity is not IBuildingLogicContext building)
             throw new System.InvalidOperationException("BuildingCaptureInvincibleBuff requires a building logic context.");
         building.UnregisterInvincibleSource(_invincibleSourceId);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_invincibleSourceId);
     }
 }

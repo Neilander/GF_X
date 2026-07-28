@@ -9,6 +9,7 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
 
     [SerializeField] private GroupMoveConfig _config;
     [SerializeField] private FlowFieldNavigationConfig _flowFieldConfig;
+    private bool _logicFrameRegistered;
     public GroupMoveConfig Config => _config;
     public FlowFieldNavigationConfig FlowFieldConfig => _flowFieldConfig;
     public int LogicFrameOrder => -1000;
@@ -17,21 +18,53 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
     {
         Instance = this;
         ApplyFlowFieldConfig();
-        LogicFrameRuntime.Register(this);
+        LogicFrameRuntime.Began += HandleLogicRuntimeBegan;
+        LogicFrameRuntime.Ending += HandleLogicRuntimeEnding;
+        if (LogicFrameRuntime.IsActive)
+            RegisterLogicFrameListener();
     }
 
     private void OnDestroy()
     {
-        LogicFrameRuntime.Unregister(this);
+        LogicFrameRuntime.Began -= HandleLogicRuntimeBegan;
+        LogicFrameRuntime.Ending -= HandleLogicRuntimeEnding;
+        if (_logicFrameRegistered)
+        {
+            if (!LogicFrameRuntime.IsActive)
+                throw new System.InvalidOperationException("GroupMoveManager.OnDestroy failed: logic listener outlived the runtime.");
+            UnregisterLogicFrameListener();
+        }
         if (Instance == this)
             FlowFieldCrowdMovementSystem.ResetAll();
         if (Instance == this) Instance = null;
     }
 
-    private void Update()
+    private void HandleLogicRuntimeBegan()
     {
-        if (!LogicFrameRuntime.IsActive || !LogicFrameRuntime.IsTimelineRunning)
-            UpdateNavigationRuntime();
+        RegisterLogicFrameListener();
+    }
+
+    private void HandleLogicRuntimeEnding()
+    {
+        UnregisterLogicFrameListener();
+    }
+
+    private void RegisterLogicFrameListener()
+    {
+        if (_logicFrameRegistered)
+            throw new System.InvalidOperationException("GroupMoveManager registration failed: listener is already registered.");
+
+        LogicFrameRuntime.Register(this);
+        _logicFrameRegistered = true;
+    }
+
+    private void UnregisterLogicFrameListener()
+    {
+        if (!_logicFrameRegistered)
+            throw new System.InvalidOperationException("GroupMoveManager unregistration failed: listener is not registered.");
+
+        LogicFrameRuntime.Unregister(this);
+        _logicFrameRegistered = false;
     }
 
     public void OnLogicFrameUpdate(Fix64 deltaTime)

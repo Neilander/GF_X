@@ -53,6 +53,8 @@ public readonly struct LogicCardResolution
 
 public static class LogicCardCommandService
 {
+    private static readonly Action<LogicCardCommand> s_RuntimeSink = PublishCommandApplying;
+    private static readonly Comparison<LogicCardCommand> s_CommandComparison = CompareCommands;
     private static readonly List<LogicCardCommand> s_History = new List<LogicCardCommand>();
     private static readonly ReadOnlyCollection<LogicCardCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicCardCommand> s_Pending = new List<LogicCardCommand>();
@@ -133,7 +135,7 @@ public static class LogicCardCommandService
 
     public static void ApplyFrame(ulong frameId)
     {
-        ApplyFrame(frameId, PublishCommandApplying);
+        ApplyFrame(frameId, s_RuntimeSink);
     }
 
     public static void PublishResolvedCard(
@@ -190,7 +192,7 @@ public static class LogicCardCommandService
                     s_Due.Add(command);
             }
 
-            s_Due.Sort((left, right) => left.Sequence.CompareTo(right.Sequence));
+            s_Due.Sort(s_CommandComparison);
             for (int i = 0; i < s_Due.Count; i++)
             {
                 LogicCardCommand command = s_Due[i];
@@ -210,6 +212,11 @@ public static class LogicCardCommandService
             IsApplyingFrame = false;
             s_Due.Clear();
         }
+    }
+
+    private static int CompareCommands(LogicCardCommand left, LogicCardCommand right)
+    {
+        return left.Sequence.CompareTo(right.Sequence);
     }
 
     public static void ResetForWorldTransition()

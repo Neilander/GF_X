@@ -245,7 +245,8 @@ public class TechManager : GameFrameworkComponent
             return 0;
 
         int rolledBack = 0;
-        GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
+        GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
+                                                ?? throw new InvalidOperationException("Tech rollback requires GlobalBuffManager.");
         for (int i = 0; i < techIds.Count; i++)
         {
             string techId = techIds[i];
@@ -255,12 +256,12 @@ public class TechManager : GameFrameworkComponent
             if (!InGameDataModel.ReduceTechStack(techId, owner.BuildingInstanceId, 1))
                 continue;
 
-            globalBuffManager?.UnregisterTechEffects(techId, owner.OwnerFactionId, owner.BuildingInstanceId);
+            globalBuffManager.UnregisterTechEffects(techId, owner.OwnerFactionId, owner.BuildingInstanceId);
             rolledBack++;
         }
 
         if (rolledBack > 0)
-            globalBuffManager?.ClearBuildingRuntimeTechState(owner.BuildingInstanceId, owner.OwnerFactionId);
+            globalBuffManager.ClearBuildingRuntimeTechState(owner.BuildingInstanceId, owner.OwnerFactionId);
 
         return rolledBack;
     }

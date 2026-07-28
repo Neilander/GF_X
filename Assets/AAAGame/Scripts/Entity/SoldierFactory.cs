@@ -9,7 +9,7 @@ using AAAGame.Scripts.BuffSystem;
 /// </summary>
 public static class SoldierFactory
 {
-    private const float NurseAmmoDepletedDeathDelaySeconds = 0.6f;
+    private static readonly Fix64 NurseAmmoDepletedDeathDelaySeconds = Fix64.FromRaw(2458);
     private static readonly HashSet<string> LoggedPrefabSourceCharacterKeys = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -38,35 +38,6 @@ public static class SoldierFactory
                 RemoveSoldier(soldier);
             }
         }
-    }
-
-    /// <summary>
-    /// Show one soldier entity.
-    /// </summary>
-    /// <param name="index">Unit type index.</param>
-    /// <param name="position">Spawn position.</param>
-    /// <param name="side">Side.</param>
-    /// <param name="brainType">Brain type.</param>
-    public static int ShowSoldier(
-        UnitType unitType,
-        Vector3 position,
-        SideType side = SideType.PlayerSide,
-        BrainType brainType = BrainType.SoldierAI,
-        string sourceBuildingInstanceId = null,
-        string sourceStrongholdId = null,
-        System.Action<EntityParams> configureParams = null,
-        int unitLevel = 1)
-    {
-        unitLevel = NormalizeUnitLevel(unitLevel);
-        string characterKey = unitType.ToString();
-        string prefabName = GetPrefabPathFromCharacterData(characterKey);
-        Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
-        List<BuffData> startBuffs = CreateStartBuffs(unitType, unitLevel, side, sourceBuildingInstanceId);
-
-        if (unitType == UnitType.Unit_Hero)
-            return MAEntityFactory.ShowHero(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
-
-        return MAEntityFactory.ShowSoldier(prefabName, characterKey, position, side, brainType, entityGroup, startBuffs, sourceStrongholdId, configureParams, unitLevel);
     }
 
     public static LogicEntityId ShowSoldierFixed(
@@ -174,7 +145,7 @@ public static class SoldierFactory
         return row.UniqueValues;
     }
 
-    private static BuffData CreateInitialBuff(string id, bool isForever, float duration, params BuffCallback[] modules)
+    private static BuffData CreateInitialBuff(string id, bool isForever, Fix64 duration, params BuffCallback[] modules)
     {
         if (modules == null || modules.Length == 0)
             throw new InvalidOperationException($"SoldierFactory.CreateInitialBuff failed: modules is empty. BuffId={id}.");
@@ -198,11 +169,11 @@ public static class SoldierFactory
         switch (index)
         {
             case UnitType.Unit_Intern:
-                buffList.Add(TimedDeathBuff.CreateTimedDeath(35f + (float)tech.LifetimeSecondsDelta));
+                buffList.Add(TimedDeathBuff.CreateTimedDeath((Fix64)35 + tech.LifetimeSecondsDelta));
                 break;
 
             case UnitType.Unit_BoneButcher:
-                buffList.Add(OnKillHealBuff.CreateOnKillHeal((float)(GetFirstUniqueValue(index) + tech.OnKillHealPercentDelta)));
+                buffList.Add(OnKillHealBuff.CreateOnKillHeal(GetFirstUniqueValue(index) + tech.OnKillHealPercentDelta));
                 break;
 
             case UnitType.Unit_Scapegoat:
@@ -215,7 +186,7 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_cold_carrier_excess_damage_reduction",
                     true,
-                    float.MaxValue,
+                    Fix64.Zero,
                     new ExcessDamageReductionBuff(values[0] + tech.ExcessDamageThresholdDelta, values[1] + tech.ExcessDamageReductionPercentDelta)));
                 break;
             }
@@ -228,7 +199,7 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_poacher_first_hit_critical",
                     true,
-                    float.MaxValue,
+                    Fix64.Zero,
                     new FirstHitPerTargetCriticalBuff()));
                 break;
 
@@ -236,19 +207,19 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_gardener_high_health_critical",
                     true,
-                    float.MaxValue,
+                    Fix64.Zero,
                     new HighHealthTargetCriticalBuff(GetFirstUniqueValue(index) + tech.GardenerThresholdPercentDelta)));
                 break;
 
             case UnitType.Unit_Surgeon:
-                buffList.Add(TimedDeathBuff.CreateTimedDeath((float)(GetFirstUniqueValue(index) + tech.LifetimeSecondsDelta)));
+                buffList.Add(TimedDeathBuff.CreateTimedDeath(GetFirstUniqueValue(index) + tech.LifetimeSecondsDelta));
                 break;
 
             case UnitType.Unit_Nurse:
                 buffList.Add(CreateInitialBuff(
                     "unit_nurse_ammo_depleted_death",
                     true,
-                    float.MaxValue,
+                    Fix64.Zero,
                     new AmmoDepletedDeathBuff(NurseAmmoDepletedDeathDelaySeconds)));
                 break;
 
@@ -256,7 +227,7 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_brat_nearby_enemy_attack_lock",
                     true,
-                    float.MaxValue,
+                    Fix64.Zero,
                     new NearbyEnemyAttackLockBuff(GetFirstUniqueValue(index))));
                 break;
 
@@ -266,13 +237,13 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_late_rider_charge",
                     true,
-                    float.MaxValue,
+                    Fix64.Zero,
                     new LateRiderChargeBuff(
                         values[0],
                         values[1] + tech.LateRiderMaxDistanceDelta,
                         values[2] + tech.LateRiderMoveSpeedDelta,
                         values[3] + tech.LateRiderAttackDelta,
-                        (float)values[4])));
+                        values[4])));
                 break;
             }
 
@@ -282,7 +253,7 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_sprinter_deploy_boost",
                     false,
-                    (float)(values[0] + tech.SprinterDurationDelta),
+                    values[0] + tech.SprinterDurationDelta,
                     new PercentAttackBonusBuff(values[1] + tech.SprinterAttackPercentDelta),
                     new AttackSpeedBonusBuff(values[2] + tech.SprinterAttackSpeedPercentDelta),
                     new RevertibleMoveSpeedBonusBuff(values[3] + tech.SprinterMoveSpeedDelta),
@@ -294,7 +265,7 @@ public static class SoldierFactory
                 buffList.Add(CreateInitialBuff(
                     "unit_javelin_thrower_critical_and_drain",
                     true,
-                    float.MaxValue,
+                    Fix64.Zero,
                     new AlwaysCriticalDamageBuff(),
                     new HealthDrainOverTimeBuff(GetFirstUniqueValue(index) + tech.HealthDrainPerSecondDelta)));
                 break;
@@ -310,7 +281,7 @@ public static class SoldierFactory
             buffList.Add(CreateInitialBuff(
                 $"army_level_tech_attack_speed_{unitType}",
                 true,
-                float.MaxValue,
+                Fix64.Zero,
                 new AttackSpeedBonusBuff(tech.AttackSpeedPercent)));
         }
 
@@ -319,7 +290,7 @@ public static class SoldierFactory
             buffList.Add(CreateInitialBuff(
                 $"army_level_tech_critical_damage_{unitType}",
                 true,
-                float.MaxValue,
+                Fix64.Zero,
                 new CriticalDamageBonusBuff(tech.CriticalDamageBonusPercent)));
         }
 
@@ -328,7 +299,7 @@ public static class SoldierFactory
             buffList.Add(CreateInitialBuff(
                 $"army_level_tech_heal_on_hit_{unitType}",
                 true,
-                float.MaxValue,
+                Fix64.Zero,
                 new HealOnOutgoingDamageBuff(tech.HealOnHit)));
         }
 
@@ -337,7 +308,7 @@ public static class SoldierFactory
             buffList.Add(CreateInitialBuff(
                 $"army_level_tech_knockback_{unitType}",
                 true,
-                float.MaxValue,
+                Fix64.Zero,
                 new KnockbackOnOutgoingDamageBuff(tech.KnockbackLevel)));
         }
     }

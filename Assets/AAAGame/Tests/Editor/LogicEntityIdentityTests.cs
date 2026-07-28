@@ -199,6 +199,35 @@ public class LogicEntityIdentityTests
     public void ViewMoveExecutor_IsNotExposedAsLogicAuthority()
     {
         Assert.IsFalse(typeof(IMoveExecutor).IsAssignableFrom(typeof(MoveExecutor)));
+        foreach (System.Reflection.MethodInfo method in typeof(IMoveExecutor).GetMethods())
+        {
+            foreach (System.Reflection.ParameterInfo parameter in method.GetParameters())
+            {
+                Assert.AreNotEqual(typeof(float), parameter.ParameterType, method.Name);
+                Assert.AreNotEqual(typeof(Vector3), parameter.ParameterType, method.Name);
+            }
+        }
+        foreach (System.Reflection.MethodInfo method in typeof(IMoveComp).GetMethods())
+        {
+            foreach (System.Reflection.ParameterInfo parameter in method.GetParameters())
+            {
+                Assert.AreNotEqual(typeof(float), parameter.ParameterType, method.Name);
+                Assert.AreNotEqual(typeof(Vector3), parameter.ParameterType, method.Name);
+            }
+        }
+        foreach (System.Reflection.PropertyInfo property in typeof(IMoveComp).GetProperties())
+            Assert.AreNotEqual(typeof(Vector3), property.PropertyType, property.Name);
+        foreach (System.Reflection.MethodInfo method in typeof(IDurationMoveEffectComp).GetMethods())
+        {
+            foreach (System.Reflection.ParameterInfo parameter in method.GetParameters())
+            {
+                Assert.AreNotEqual(typeof(float), parameter.ParameterType, method.Name);
+                Assert.AreNotEqual(typeof(Vector3), parameter.ParameterType, method.Name);
+            }
+        }
+        foreach (System.Reflection.PropertyInfo property in typeof(ITargetingComp).GetProperties())
+            Assert.AreNotEqual(typeof(float), property.PropertyType, property.Name);
+        Assert.IsNull(typeof(TimedEffect).GetConstructor(new[] { typeof(float) }));
         Assert.IsNull(typeof(MoveExecutor).GetMethod(
             "PrepareLogicFrame",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public));
@@ -222,6 +251,41 @@ public class LogicEntityIdentityTests
         finally
         {
             UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
+    public void AIBrainAuthorityState_DoesNotStoreFloatOrViewVectors()
+    {
+        Type[] brainTypes =
+        {
+            typeof(EnemyAIBrain),
+            typeof(FriendlyAIBrain),
+            typeof(SoldierAIBrain),
+        };
+        const System.Reflection.BindingFlags declaredFields =
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic
+            | System.Reflection.BindingFlags.DeclaredOnly;
+
+        foreach (Type brainType in brainTypes)
+        {
+            foreach (System.Reflection.FieldInfo field in brainType.GetFields(declaredFields))
+            {
+                Assert.AreNotEqual(typeof(float), field.FieldType, $"{brainType.Name}.{field.Name}");
+                Assert.AreNotEqual(typeof(double), field.FieldType, $"{brainType.Name}.{field.Name}");
+                Assert.AreNotEqual(typeof(Vector2), field.FieldType, $"{brainType.Name}.{field.Name}");
+                Assert.AreNotEqual(typeof(Vector3), field.FieldType, $"{brainType.Name}.{field.Name}");
+            }
+        }
+
+        foreach (System.Reflection.FieldInfo field in typeof(GroupMoveConfig).GetFields(
+                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+        {
+            Assert.AreNotEqual(typeof(float), field.FieldType, field.Name);
+            Assert.AreNotEqual(typeof(double), field.FieldType, field.Name);
         }
     }
 
@@ -258,6 +322,13 @@ public class LogicEntityIdentityTests
     [Test]
     public void BuildingSpawnAndUpgrade_ExposeFixedLogicIdentityBoundaries()
     {
+        Assert.IsNull(typeof(SoldierFactory).GetMethod("ShowSoldier"));
+        Assert.IsNull(typeof(MAEntityFactory).GetMethod("CreateMAEntityParams"));
+        Assert.IsNull(typeof(MAEntityFactory).GetMethod("ShowSoldier"));
+        Assert.IsNull(typeof(MAEntityFactory).GetMethod("ShowHero"));
+        Assert.IsNull(typeof(MAEntityFactory).GetMethod("ShowCharacter"));
+        Assert.IsNull(typeof(MAEntityFactory).GetMethod("ShowBuilding"));
+
         var fixedSpawn = typeof(MAEntityFactory).GetMethod(
             "ShowBuildingFixed",
             new[]
@@ -451,7 +522,7 @@ public class LogicEntityIdentityTests
         var first = new CharacterTargetingComp { AggroRangeFixed = Fix64.FromRaw(123456789) };
         var second = new CharacterTargetingComp { AggroRangeFixed = Fix64.FromRaw(123456790) };
 
-        Assert.AreEqual(first.AggroRange, second.AggroRange,
+        Assert.AreEqual((float)first.AggroRangeFixed, (float)second.AggroRangeFixed,
             "Chosen adjacent fixed values must collapse to the same presentation float for this regression.");
         Assert.AreNotEqual(ComputeTargetingHash(first), ComputeTargetingHash(second));
     }
@@ -752,9 +823,9 @@ public class LogicEntityIdentityTests
             initializePoseMethod.Invoke(view, null);
 
             Assert.AreSame(target, targeting.CurrentTarget);
-            Assert.IsTrue(move.TryGetNavigationTarget(out Vector3 actualTarget));
-            Assert.AreEqual(destination.x.RawValue, ((Fix64)actualTarget.x).RawValue);
-            Assert.AreEqual(destination.y.RawValue, ((Fix64)actualTarget.z).RawValue);
+            Assert.IsTrue(move.TryGetNavigationTargetFixed(out FixVector2 actualTarget));
+            Assert.AreEqual(destination.x.RawValue, actualTarget.x.RawValue);
+            Assert.AreEqual(destination.y.RawValue, actualTarget.y.RawValue);
             Assert.IsTrue(view.IsOutOfCombat);
             Assert.AreEqual(((Fix64)5).RawValue, view.OutOfCombatElapsedLogicTime.RawValue);
             Assert.AreEqual(Vector3.zero, presenterExecutor.DebugInputVelocity);
@@ -1544,7 +1615,11 @@ public class LogicEntityIdentityTests
         var managerObject = new GameObject("GlobalBuffManager_FutureViewlessPropertyTech_Test");
         var manager = managerObject.AddComponent<GlobalBuffManager>();
         var effect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
-        manager.PrepareRuntimeDependencies();
+        System.Reflection.MethodInfo subscribe = typeof(GlobalBuffManager).GetMethod(
+            "SubscribeTechEffectCommands",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(subscribe);
+        subscribe.Invoke(manager, null);
         try
         {
             effect.Activate(new TechEffectContext
@@ -1848,7 +1923,7 @@ public class LogicEntityIdentityTests
         state.BuffComp.AddBuff(
             BuffData.Create(
                 "building_phase_guard_test",
-                float.MaxValue,
+                Fix64.Zero,
                 true,
                 1,
                 new List<BuffCallback> { new BuildingPhaseGuardBuff() }),
@@ -1884,7 +1959,7 @@ public class LogicEntityIdentityTests
         state.BuffComp.AddBuff(
             BuffData.Create(
                 "building_lv0_invincible_test",
-                float.MaxValue,
+                Fix64.Zero,
                 true,
                 1,
                 new List<BuffCallback> { new BuildingLv0InvincibleBuff() }),
@@ -1904,7 +1979,7 @@ public class LogicEntityIdentityTests
         state.BuffComp.AddBuff(
             BuffData.Create(
                 "state-hosted-test",
-                float.MaxValue,
+                Fix64.Zero,
                 true,
                 1,
                 new List<BuffCallback>
@@ -2097,10 +2172,10 @@ public class LogicEntityIdentityTests
     {
         var targeting = new CharacterTargetingComp
         {
-            AggroRange = LogicUnitConfigurator.DefaultAggroRange,
-            ForgetRange = LogicUnitConfigurator.DefaultForgetRange,
-            FollowSearchRange = LogicUnitConfigurator.DefaultFollowRange,
-            AlertRadius = LogicUnitConfigurator.DefaultAlertRadius,
+            AggroRangeFixed = (Fix64)LogicUnitConfigurator.DefaultAggroRange,
+            ForgetRangeFixed = (Fix64)LogicUnitConfigurator.DefaultForgetRange,
+            FollowSearchRangeFixed = (Fix64)LogicUnitConfigurator.DefaultFollowRange,
+            AlertRadiusFixed = (Fix64)LogicUnitConfigurator.DefaultAlertRadius,
         };
         targeting.Init(state);
         return targeting;

@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using AAAGame.Scripts.BuffSystem;
 using UnityEngine;
 
-public abstract class PositionAreaRefreshBuff : BuffCallback
+public abstract class PositionAreaRefreshBuff : BuffCallback, ILogicDeterministicStateContributor
 {
-    private static readonly Fix64 ScanIntervalSeconds = (Fix64)0.2f;
+    private static readonly Fix64 ScanIntervalSeconds = Fix64.FromRaw(820);
 
     private readonly FixVector2 m_Center;
     private readonly Fix64 m_Radius;
@@ -59,6 +59,14 @@ public abstract class PositionAreaRefreshBuff : BuffCallback
 
     protected abstract bool IsTargetValid(IEntityContext caster, IEntityContext target);
     protected abstract void RefreshTarget(IEntityContext target);
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Center.x.RawValue);
+        hasher.Add(m_Center.y.RawValue);
+        hasher.Add(m_Radius.RawValue);
+        hasher.Add(m_Timer.RawValue);
+    }
 }
 
 public sealed class FriendlyAttackSpeedAreaBuff : PositionAreaRefreshBuff

@@ -28,6 +28,9 @@ public static class LogicBuildingExtraPropsStore
 {
     private static readonly System.Collections.Generic.Dictionary<string, BuildingExtraProps> s_PropsByBuildingInstanceId =
         new System.Collections.Generic.Dictionary<string, BuildingExtraProps>(StringComparer.Ordinal);
+    private static readonly System.Collections.Generic.List<string> s_DeterministicIds =
+        new System.Collections.Generic.List<string>();
+    private static readonly Comparison<string> s_DeterministicIdComparison = string.CompareOrdinal;
 
     public static BuildingExtraProps GetOrCreate(string buildingInstanceId)
     {
@@ -80,13 +83,16 @@ public static class LogicBuildingExtraPropsStore
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
 
-        var ids = new System.Collections.Generic.List<string>(s_PropsByBuildingInstanceId.Keys);
-        ids.Sort(StringComparer.Ordinal);
-        hasher.Add(ids.Count);
-        for (int i = 0; i < ids.Count; i++)
+        s_DeterministicIds.Clear();
+        foreach (string buildingInstanceId in s_PropsByBuildingInstanceId.Keys)
+            s_DeterministicIds.Add(buildingInstanceId);
+        s_DeterministicIds.Sort(s_DeterministicIdComparison);
+        hasher.Add(s_DeterministicIds.Count);
+        for (int i = 0; i < s_DeterministicIds.Count; i++)
         {
-            BuildingExtraProps props = s_PropsByBuildingInstanceId[ids[i]];
-            hasher.Add(ids[i]);
+            string buildingInstanceId = s_DeterministicIds[i];
+            BuildingExtraProps props = s_PropsByBuildingInstanceId[buildingInstanceId];
+            hasher.Add(buildingInstanceId);
             hasher.Add(props.ArmyForce.RawValue);
             hasher.Add(props.Production.RawValue);
             hasher.Add(props.DynamicProduction.RawValue);

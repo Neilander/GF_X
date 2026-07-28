@@ -109,6 +109,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     private readonly Dictionary<ICapability, List<ICapability>> m_CapabilityLockers = new();
     private readonly HashSet<string> m_InvincibleSources = new();
     private readonly List<string> m_DeterministicStringValues = new List<string>();
+    private static readonly Comparison<string> s_DeterministicStringComparison = string.CompareOrdinal;
     private readonly LogicMoveExecutor m_MoveExecutor = new();
     private CreaturePropertyManager m_CreatureProperties;
     private CharacterDataDetail m_CharacterData;
@@ -187,6 +188,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public bool IsPermanentStealth { get; private set; }
     public bool HasPermanentNoAttackCapability { get; private set; }
     public bool BlocksLogicMovement { get; private set; }
+    public bool IsGameEndConditionBuilding { get; private set; }
+    public bool IsNavigationStaticBaked { get; private set; }
     public IReadOnlyList<LogicCombatShape> LogicObstacleShapes => m_LogicObstacleShapes;
     public bool HasPreparedLogicMove => m_MoveExecutor.HasPreparedLogicMove;
     public ulong PreparedLogicFrame => m_MoveExecutor.PreparedLogicFrame;
@@ -274,7 +277,9 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         IReadOnlyList<LogicCombatShape> obstacleShapes,
         IReadOnlyList<LogicInteractionOptionDescriptor> interactionOptions,
         bool hasPermanentNoAttackCapability,
-        int? armySupplyPerUnit = null)
+        int? armySupplyPerUnit = null,
+        bool isGameEndConditionBuilding = false,
+        bool isNavigationStaticBaked = false)
     {
         if (!m_IsConfigured)
             throw new InvalidOperationException($"LogicEntityState.ConfigureBuilding failed: entity {EntityId.Value} is not configured.");
@@ -325,6 +330,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_InteractionOptions = copiedOptions;
         HasPermanentNoAttackCapability = hasPermanentNoAttackCapability;
         BlocksLogicMovement = copiedShapes.Length > 0;
+        IsGameEndConditionBuilding = isGameEndConditionBuilding;
+        IsNavigationStaticBaked = isNavigationStaticBaked;
     }
 
     public int GetArmyForce()
@@ -720,8 +727,9 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             throw new ArgumentNullException(nameof(hasher));
 
         m_DeterministicStringValues.Clear();
-        m_DeterministicStringValues.AddRange(m_InvincibleSources);
-        m_DeterministicStringValues.Sort(StringComparer.Ordinal);
+        foreach (string source in m_InvincibleSources)
+            m_DeterministicStringValues.Add(source);
+        m_DeterministicStringValues.Sort(s_DeterministicStringComparison);
         hasher.Add(m_DeterministicStringValues.Count);
         for (int i = 0; i < m_DeterministicStringValues.Count; i++)
             hasher.Add(m_DeterministicStringValues[i]);
@@ -757,7 +765,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                     $"LogicEntityState capability locker is null. entity={EntityId.Value}, slot={slot}, index={i}.");
             m_DeterministicStringValues.Add(locker.GetType().FullName);
         }
-        m_DeterministicStringValues.Sort(StringComparer.Ordinal);
+        m_DeterministicStringValues.Sort(s_DeterministicStringComparison);
         hasher.Add(m_DeterministicStringValues.Count);
         for (int i = 0; i < m_DeterministicStringValues.Count; i++)
             hasher.Add(m_DeterministicStringValues[i]);
@@ -907,7 +915,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_BuffComp.AddBuff(
             BuffData.Create(
                 HeroGhostBuffId,
-                float.MaxValue,
+                Fix64.Zero,
                 true,
                 1,
                 new List<BuffCallback> { new HeroGhostBuff() }),
@@ -976,7 +984,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         m_BuffComp.AddBuff(
             BuffData.Create(
                 InvincibleStateBuff.BuffId,
-                float.MaxValue,
+                Fix64.Zero,
                 true,
                 1,
                 new List<BuffCallback> { new InvincibleStateBuff() }),
@@ -1031,6 +1039,8 @@ public static class LogicEntityStateStore
     private static readonly Dictionary<int, LogicEntityState> s_States =
         new Dictionary<int, LogicEntityState>();
     private static readonly List<int> s_DeterministicIds = new List<int>();
+    private static readonly Comparison<int> s_DeterministicIdComparison = CompareInts;
+    private static readonly Comparison<LogicEntityState> s_EntityStateComparison = CompareEntityStatesById;
 
     public static bool IsActive { get; private set; }
     public static int Count => s_States.Count;
@@ -1145,7 +1155,7 @@ public static class LogicEntityStateStore
             if (!pair.Value.IsDespawnCommitted)
                 s_DeterministicIds.Add(pair.Key);
         }
-        s_DeterministicIds.Sort();
+        s_DeterministicIds.Sort(s_DeterministicIdComparison);
         hasher.Add(s_DeterministicIds.Count);
         for (int i = 0; i < s_DeterministicIds.Count; i++)
         {
@@ -1167,6 +1177,8 @@ public static class LogicEntityStateStore
                 hasher.Add(state.BuildingInstanceId);
                 hasher.Add(state.StrongholdId);
                 hasher.Add(state.OwnerFactionId);
+                hasher.Add(state.IsGameEndConditionBuilding);
+                hasher.Add(state.IsNavigationStaticBaked);
                 LogicInteractionOptionService.WriteDeterministicState(hasher, state.InteractionOptions);
             }
         }
@@ -1191,7 +1203,7 @@ public static class LogicEntityStateStore
             if (!pair.Value.IsSpawnCommitted && !pair.Value.IsDespawnCommitted)
                 destination.Add(pair.Value);
         }
-        destination.Sort(CompareEntityStatesById);
+        destination.Sort(s_EntityStateComparison);
     }
 
     private static int CompareEntityStatesById(LogicEntityState left, LogicEntityState right)
@@ -1199,6 +1211,11 @@ public static class LogicEntityStateStore
         if (left == null || right == null)
             throw new InvalidOperationException("LogicEntityStateStore contains a null state.");
         return left.EntityId.Value.CompareTo(right.EntityId.Value);
+    }
+
+    private static int CompareInts(int left, int right)
+    {
+        return left.CompareTo(right);
     }
 
     internal static LogicEntityState[] CaptureStageBuildingStates()

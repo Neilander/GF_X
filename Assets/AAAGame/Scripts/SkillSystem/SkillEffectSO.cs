@@ -81,11 +81,6 @@ public abstract class SkillEffectSO : ScriptableObject
         return value > Fix64.Zero ? DistanceUnitConverter.ConvertToWorld(value) : Fix64.Zero;
     }
 
-    protected float GetDurationSeconds()
-    {
-        return (float)GetDurationLogicTime();
-    }
-
     protected Fix64 GetDurationLogicTime()
     {
         SkillRuntimeInfo info = GetRuntimeInfo();

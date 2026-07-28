@@ -23,6 +23,8 @@ public readonly struct LogicPhaseCommand
 
 public static class LogicPhaseCommandService
 {
+    private static readonly Action<LogicPhaseCommand> s_RuntimeSink = ApplyScheduledPhase;
+    private static readonly Comparison<LogicPhaseCommand> s_CommandComparison = CompareCommands;
     private static readonly List<LogicPhaseCommand> s_History = new List<LogicPhaseCommand>();
     private static readonly ReadOnlyCollection<LogicPhaseCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicPhaseCommand> s_Pending = new List<LogicPhaseCommand>();
@@ -75,14 +77,38 @@ public static class LogicPhaseCommandService
 
         CurrentPhase = phase;
         IsInitialized = true;
+        if (IsWorldTransitionActive && LogicTimeControlService.CurrentFrame == 0)
+            IsWorldTransitionActive = false;
     }
 
     public static LogicPhaseCommand ScheduleForNextFrame(GamePhase phase)
     {
         EnsureReady();
         ValidatePhase(phase);
+        return Schedule(phase, checked(LogicTimeControlService.CurrentFrame + 1));
+    }
+
+#if UNITY_EDITOR
+    public static LogicPhaseCommand ScheduleForEditorGate(GamePhase phase, ulong effectiveFrame)
+    {
+        EnsureReady();
+        ValidatePhase(phase);
+        if (effectiveFrame <= LogicTimeControlService.CurrentFrame)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(effectiveFrame),
+                effectiveFrame,
+                $"Editor gate phase command must target a future frame. current={LogicTimeControlService.CurrentFrame}.");
+        }
+
+        return Schedule(phase, effectiveFrame);
+    }
+#endif
+
+    private static LogicPhaseCommand Schedule(GamePhase phase, ulong effectiveFrame)
+    {
         var command = new LogicPhaseCommand(
-            checked(LogicTimeControlService.CurrentFrame + 1),
+            effectiveFrame,
             checked(s_LastSequence + 1),
             phase);
         s_LastSequence = command.Sequence;
@@ -94,7 +120,7 @@ public static class LogicPhaseCommandService
 
     public static void ApplyFrame(ulong frameId)
     {
-        ApplyFrame(frameId, command => PhaseManager.ApplyScheduledPhase(command.Phase));
+        ApplyFrame(frameId, s_RuntimeSink);
     }
 
 #if UNITY_EDITOR
@@ -133,7 +159,7 @@ public static class LogicPhaseCommandService
                     s_Due.Add(command);
             }
 
-            s_Due.Sort((left, right) => left.Sequence.CompareTo(right.Sequence));
+            s_Due.Sort(s_CommandComparison);
             for (int i = 0; i < s_Due.Count; i++)
             {
                 LogicPhaseCommand command = s_Due[i];
@@ -156,6 +182,16 @@ public static class LogicPhaseCommandService
             IsApplyingFrame = false;
             s_Due.Clear();
         }
+    }
+
+    private static void ApplyScheduledPhase(LogicPhaseCommand command)
+    {
+        PhaseManager.ApplyScheduledPhase(command.Phase);
+    }
+
+    private static int CompareCommands(LogicPhaseCommand left, LogicPhaseCommand right)
+    {
+        return left.Sequence.CompareTo(right.Sequence);
     }
 
     public static void ResetForWorldTransition()

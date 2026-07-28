@@ -5,30 +5,6 @@ using UnityGameFramework.Runtime;
 
 public static class MAEntityFactory
 {
-    public static EntityParams CreateMAEntityParams(
-        Vector3 position,
-        string characterKey,
-        SideType side,
-        BrainType brainType,
-        List<BuffData> startBuffs = null,
-        string sourceStrongholdId = null,
-        int unitLevel = 1,
-        LogicSkillFactoryKind skillFactoryKind = LogicSkillFactoryKind.None,
-        System.Action<EntityParams> configureParams = null)
-    {
-        return CreateMAEntityParamsCore(
-            position,
-            new FixVector2((Fix64)position.x, (Fix64)position.z),
-            characterKey,
-            side,
-            brainType,
-            startBuffs,
-            sourceStrongholdId,
-            unitLevel,
-            skillFactoryKind,
-            configureParams);
-    }
-
     public static EntityParams CreateMAEntityParamsFixed(
         FixVector2 position,
         float viewY,
@@ -119,56 +95,6 @@ public static class MAEntityFactory
         return entityParams.LogicEntityId;
     }
 
-    public static int ShowSoldier(
-        string prefabName,
-        string characterKey,
-        Vector3 position,
-        SideType side,
-        BrainType brainType,
-        Const.EntityGroup entityGroup,
-        List<BuffData> startBuffs = null,
-        string sourceStrongholdId = null,
-        System.Action<EntityParams> configureParams = null,
-        int unitLevel = 1)
-    {
-        EntityParams entityParams = CreateMAEntityParams(
-            position,
-            characterKey,
-            side,
-            brainType,
-            startBuffs,
-            sourceStrongholdId,
-            unitLevel,
-            LogicSkillFactoryKind.None,
-            configureParams);
-        return GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
-    }
-
-    public static int ShowHero(
-        string prefabName,
-        string characterKey,
-        Vector3 position,
-        SideType side,
-        BrainType brainType,
-        Const.EntityGroup entityGroup,
-        List<BuffData> startBuffs = null,
-        string sourceStrongholdId = null,
-        System.Action<EntityParams> configureParams = null,
-        int unitLevel = 1)
-    {
-        EntityParams entityParams = CreateMAEntityParams(
-            position,
-            characterKey,
-            side,
-            brainType,
-            startBuffs,
-            sourceStrongholdId,
-            unitLevel,
-            LogicSkillFactoryKind.Player,
-            configureParams);
-        return GF.Entity.ShowEntity<HeroEntity>(prefabName, entityGroup, entityParams);
-    }
-
     public static LogicEntityId ShowHeroFixed(
         string prefabName,
         string characterKey,
@@ -197,50 +123,6 @@ public static class MAEntityFactory
         if (viewRequestId <= 0)
             throw new System.InvalidOperationException($"MAEntityFactory.ShowHeroFixed failed to request view. logicEntity={entityParams.LogicEntityId.Value}, prefab={prefabName}.");
         return entityParams.LogicEntityId;
-    }
-
-    public static int ShowCharacter(
-        string prefabName,
-        string characterKey,
-        Vector3 position,
-        SideType side,
-        BrainType brainType,
-        Const.EntityGroup entityGroup,
-        List<BuffData> startBuffs = null)
-    {
-        EntityParams entityParams = CreateMAEntityParams(
-            position,
-            characterKey,
-            side,
-            brainType,
-            startBuffs,
-            skillFactoryKind: LogicSkillFactoryKind.Character);
-        return GF.Entity.ShowEntity<CharacterEntity>(prefabName, entityGroup, entityParams);
-    }
-
-    public static int ShowBuilding(
-        BuildingData buildingData,
-        Vector3 position,
-        string buildingInstanceId,
-        string strongholdId,
-        int ownerFactionId,
-        int logicQuarterTurns = 0,
-        bool isGameEndConditionBuilding = false,
-        bool isNavigationStaticBaked = false,
-        bool currentInteractionFrameLifecycle = false)
-    {
-        EntityParams entityParams = CreateBuildingEntityParams(
-            buildingData,
-            position,
-            new FixVector2((Fix64)position.x, (Fix64)position.z),
-            buildingInstanceId,
-            strongholdId,
-            ownerFactionId,
-            logicQuarterTurns,
-            isGameEndConditionBuilding,
-            isNavigationStaticBaked,
-            currentInteractionFrameLifecycle);
-        return GF.Entity.ShowEntity<BuildingEntity>(buildingData.PrefabPath, Const.EntityGroup.Building, entityParams);
     }
 
     public static LogicEntityId ShowBuildingFixed(
@@ -326,7 +208,9 @@ public static class MAEntityFactory
                 buildingInstanceId,
                 strongholdId,
                 ownerFactionId,
-                logicQuarterTurns),
+                logicQuarterTurns,
+                isGameEndConditionBuilding,
+                isNavigationStaticBaked),
             currentInteractionFrameLifecycle);
 
         return entityParams;
@@ -446,7 +330,7 @@ public static class BuildingInitialBuffFactory
         }
         else if (IsBuilding(buildingData, BuildingAbilityIds.BallLauncher))
         {
-            float reloadDelay = (float)GetUniqueValue(buildingData, 0, (Fix64)16);
+            Fix64 reloadDelay = GetUniqueValue(buildingData, 0, (Fix64)16);
             buffList.Add(CreateInitialBuff(
                 "building_ball_launcher_ammo_reload",
                 new AmmoReloadBuff(reloadDelay)));
@@ -463,7 +347,7 @@ public static class BuildingInitialBuffFactory
             Fix64 releaseInterval = GetUniqueValue(buildingData, 1, (Fix64)4);
             buffList.Add(CreateInitialBuff(
                 "building_restroom_queue",
-                new RestroomQueueBuff((int)queueLimit, (float)releaseInterval)));
+                new RestroomQueueBuff((int)queueLimit, releaseInterval)));
         }
     }
 
@@ -474,7 +358,7 @@ public static class BuildingInitialBuffFactory
 
         return BuffData.Create(
             id: id,
-            duration: float.MaxValue,
+            duration: Fix64.Zero,
             isForever: true,
             maxStack: 1,
             modules: new List<BuffCallback>(modules));

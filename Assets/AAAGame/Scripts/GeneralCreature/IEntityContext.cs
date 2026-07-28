@@ -78,6 +78,8 @@ public interface IBuildingLogicContext : IEntityContext
     bool IsPhaseProtected { get; }
     bool HasPermanentNoAttackCapability { get; }
     bool BlocksLogicMovement { get; }
+    bool IsGameEndConditionBuilding { get; }
+    bool IsNavigationStaticBaked { get; }
     event System.Action<int, int> OwnerFactionChanged;
     void SetOwnerFaction(int ownerFactionId);
     void RestoreBuildingToFullHealth();

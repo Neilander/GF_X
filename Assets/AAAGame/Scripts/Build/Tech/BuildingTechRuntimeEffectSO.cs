@@ -29,6 +29,9 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
     private readonly Dictionary<int, int> m_DeadSupplyByFaction = new();
     private readonly List<string> m_DeterministicStringKeys = new();
     private readonly List<int> m_DeterministicIntKeys = new();
+    private static readonly Comparison<int> s_IntComparison =
+        (left, right) => left.CompareTo(right);
+    private static readonly Comparison<string> s_StringComparison = string.CompareOrdinal;
     private bool m_EventsSubscribed;
     private int m_DiscardCounter;
 
@@ -112,7 +115,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private void AddDiscardBuffs(LogicStateHasher hasher)
     {
-        FillSortedStringKeys(m_DiscardBuffs.Keys);
+        FillSortedStringKeys(m_DiscardBuffs);
         hasher.Add(m_DeterministicStringKeys.Count);
         for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
         {
@@ -132,7 +135,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private void AddSortingCenterSpecs(LogicStateHasher hasher)
     {
-        FillSortedStringKeys(m_SortingCenterCardForceSpecs.Keys);
+        FillSortedStringKeys(m_SortingCenterCardForceSpecs);
         hasher.Add(m_DeterministicStringKeys.Count);
         for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
         {
@@ -147,7 +150,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private void AddFireHqSpecs(LogicStateHasher hasher)
     {
-        FillSortedStringKeys(m_FireHqDeathSupplySpecs.Keys);
+        FillSortedStringKeys(m_FireHqDeathSupplySpecs);
         hasher.Add(m_DeterministicStringKeys.Count);
         for (int i = 0; i < m_DeterministicStringKeys.Count; i++)
         {
@@ -162,8 +165,9 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
     private void AddIntDictionary(LogicStateHasher hasher, Dictionary<int, int> values)
     {
         m_DeterministicIntKeys.Clear();
-        m_DeterministicIntKeys.AddRange(values.Keys);
-        m_DeterministicIntKeys.Sort();
+        foreach (int key in values.Keys)
+            m_DeterministicIntKeys.Add(key);
+        m_DeterministicIntKeys.Sort(s_IntComparison);
         hasher.Add(m_DeterministicIntKeys.Count);
         for (int i = 0; i < m_DeterministicIntKeys.Count; i++)
         {
@@ -173,11 +177,12 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         }
     }
 
-    private void FillSortedStringKeys(IEnumerable<string> keys)
+    private void FillSortedStringKeys<T>(Dictionary<string, T> values)
     {
         m_DeterministicStringKeys.Clear();
-        m_DeterministicStringKeys.AddRange(keys);
-        m_DeterministicStringKeys.Sort(StringComparer.Ordinal);
+        foreach (string key in values.Keys)
+            m_DeterministicStringKeys.Add(key);
+        m_DeterministicStringKeys.Sort(s_StringComparison);
     }
 
     public override void Activate(TechEffectContext context)
@@ -218,7 +223,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
         return BuffData.Create(
             id: $"base_tech_{techId}_{unitType}",
-            duration: float.MaxValue,
+            duration: Fix64.Zero,
             isForever: true,
             maxStack: 1,
             modules: modules);
@@ -285,7 +290,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         AddUnit(rules, "Tech_Buil_DreamPark_Lv2_Opt2",
             (techData, _) => Modules(new ConditionalCoinAttackSpeedBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
         AddUnit(rules, "Tech_Buil_DreamPark_Lv3_Opt2",
-            (techData, _) => Modules(new OutgoingAttackDebuffBuff(-GetValue(techData, 1), (float)GetValue(techData, 0))));
+            (techData, _) => Modules(new OutgoingAttackDebuffBuff(-GetValue(techData, 1), GetValue(techData, 0))));
 
         AddUnit(rules, "Tech_Buil_GiantMascot_Opt1",
             (techData, _) => Modules(
@@ -301,7 +306,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             (self, context) => self.RegisterEnemyArmyForceReduction(context, GetValue(context.TechData, 0)));
 
         AddUnit(rules, "Tech_Buil_SortingCenter_Lv2_Opt2",
-            (techData, _) => Modules(new TimedBuffOnSpawnModule((float)GetValue(techData, 0), () => Modules(
+            (techData, _) => Modules(new TimedBuffOnSpawnModule(GetValue(techData, 0), () => Modules(
                 new MainPropertyPercentBuff(CreatureMainProperty.Speed, GetValue(techData, 1)),
                 new MainPropertyAdditiveBuff(CreatureMainProperty.Def, GetValue(techData, 2))))));
         AddActivation(rules, "Tech_Buil_SortingCenter_Lv3_Opt2",
@@ -339,7 +344,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         AddUnit(rules, "Tech_Buil_FireAcademy_Opt1",
             (techData, _) => Modules(new FirstIncomingDamageReductionBuff(GetValue(techData, 0))));
         AddUnit(rules, "Tech_Buil_FireAcademy_Opt2",
-            (techData, _) => Modules(new OutgoingAttackDebuffBuff(-GetValue(techData, 1), (float)GetValue(techData, 0))));
+            (techData, _) => Modules(new OutgoingAttackDebuffBuff(-GetValue(techData, 1), GetValue(techData, 0))));
         AddUnit(rules, "Tech_Buil_FireAcademy_Opt3",
             (techData, _) => Modules(new PercentDamageReductionBuff(GetValue(techData, 0))));
         AddActivation(rules, "Tech_Buil_FireAcademy_Opt4",
@@ -358,7 +363,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         AddUnit(rules, "Tech_Buil_SurveillanceRoom_Opt1",
             (techData, _) => Modules(new MainPropertyAdditiveBuff(CreatureMainProperty.Def, GetValue(techData, 0))));
         AddUnit(rules, "Tech_Buil_SurveillanceRoom_Opt2",
-            (techData, _) => Modules(new BehindSecurityRangedAttackAuraBuff(GetValue(techData, 0), (float)GetValue(techData, 1), GetValue(techData, 2))));
+            (techData, _) => Modules(new BehindSecurityRangedAttackAuraBuff(GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
         AddActivation(rules, "Tech_Buil_SurveillanceRoom_Opt3",
             (self, context) => self.RegisterBuildingEntityPropertyBuff(context, CreatureMainProperty.Sight, GetValue(context.TechData, 0)));
         AddActivation(rules, "Tech_Buil_SurveillanceRoom_Opt4",
@@ -366,9 +371,9 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
                 _ => Modules(new EnemyEnterFriendlyStrongholdDamageWatcherBuff(GetValue(context.TechData, 0)))));
 
         AddUnit(rules, "Tech_Buil_WildernessCamp_Lv2_Opt2",
-            (techData, _) => Modules(new StationaryAttackPercentBuff((float)GetValue(techData, 0), GetValue(techData, 1))));
+            (techData, _) => Modules(new StationaryAttackPercentBuff(GetValue(techData, 0), GetValue(techData, 1))));
         AddUnit(rules, "Tech_Buil_WildernessCamp_Lv3_Opt2",
-            (techData, _) => Modules(new IdleNextAttackCriticalBuff((float)GetValue(techData, 0))));
+            (techData, _) => Modules(new IdleNextAttackCriticalBuff(GetValue(techData, 0))));
 
         AddUnit(rules, "Tech_Buil_Watchtower_Opt1",
             (techData, _) => Modules(new RangeBonusBuff(GetValue(techData, 0))));
@@ -399,23 +404,23 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             (techData, _) => Modules(new MainPropertyPercentBuff(CreatureMainProperty.Health, GetValue(techData, 0))));
 
         AddUnit(rules, "Tech_Buil_TopHospital_Lv2_Opt2",
-            (techData, _) => Modules(new NearbyMedicalDelayedDamageBuff(GetValue(techData, 0), GetValue(techData, 1), (float)GetValue(techData, 2))));
+            (techData, _) => Modules(new NearbyMedicalDelayedDamageBuff(GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
         AddUnit(rules, "Tech_Buil_TopHospital_Lv3_Opt2",
-            (techData, _) => Modules(new FatalDamageProtectionBuff((float)GetValue(techData, 0))));
+            (techData, _) => Modules(new FatalDamageProtectionBuff(GetValue(techData, 0))));
 
         AddUnit(rules, "Tech_Buil_Radiology_Opt1",
-            (techData, _) => Modules(new OnHealedTimedStatsBuff((float)GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
+            (techData, _) => Modules(new OnHealedTimedStatsBuff(GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
         AddUnit(rules, "Tech_Buil_Radiology_Opt3",
-            (techData, _) => Modules(new OnDeathEnemyAttackDebuffBuff(GetValue(techData, 0), -GetValue(techData, 1), (float)GetValue(techData, 2))));
+            (techData, _) => Modules(new OnDeathEnemyAttackDebuffBuff(GetValue(techData, 0), -GetValue(techData, 1), GetValue(techData, 2))));
         AddUnit(rules, "Tech_Buil_Radiology_Opt2",
-            (techData, _) => Modules(new OutOfCombatHealToThresholdOnceBuff((float)GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
+            (techData, _) => Modules(new OutOfCombatHealToThresholdOnceBuff(GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
         AddActivation(rules, "Tech_Buil_Radiology_Opt4",
             (self, context) => self.RegisterNurseHealTargetThreshold(context, GetValue(context.TechData, 0)));
 
         AddUnit(rules, "Tech_Buil_SwallowNest_Lv2_Opt2",
             (techData, _) => Modules(new MissingHealthAttackSpeedBuff(GetValue(techData, 0), GetValue(techData, 1))));
         AddUnit(rules, "Tech_Buil_SwallowNest_Lv3_Opt2",
-            (techData, _) => Modules(new TimedBuffOnSpawnModule((float)GetValue(techData, 0), () => Modules(
+            (techData, _) => Modules(new TimedBuffOnSpawnModule(GetValue(techData, 0), () => Modules(
                 new FlatAttackBonusBuff(GetValue(techData, 1)),
                 new AttackSpeedBonusBuff(GetValue(techData, 2)),
                 new HealthDrainOverTimeBuff(GetValue(techData, 3))))));
@@ -429,7 +434,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         AddUnit(rules, "Tech_Buil_TrainingRoom_Opt3",
             (techData, _) => Modules(new OnKillFlatGrowthBuff((int)GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
         AddUnit(rules, "Tech_Buil_TrainingRoom_Opt4",
-            (techData, _) => Modules(new OutOfCombatStickyMoveSpeedBuff((float)GetValue(techData, 0), GetValue(techData, 1), (float)GetValue(techData, 2))));
+            (techData, _) => Modules(new OutOfCombatStickyMoveSpeedBuff(GetValue(techData, 0), GetValue(techData, 1), GetValue(techData, 2))));
 
         AddNoEffect(rules, "Tech_Buil_SouthernMoon_Lv2");
         AddNoEffect(rules, "Tech_Buil_SouthernMoon_Lv3");
@@ -437,9 +442,9 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             techData => Modules(new BlindChanceBonusBuff(GetValue(techData, 0))));
         AddNoEffect(rules, "Tech_Buil_Monitor_Lv3");
         AddSelfBuilding(rules, "Tech_Buil_Restroom_Lv2",
-            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), (float)GetValue(techData, 1))));
+            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
         AddSelfBuilding(rules, "Tech_Buil_Restroom_Lv3",
-            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), (float)GetValue(techData, 1))));
+            techData => Modules(new RestroomQueueModifierBuff((int)GetValue(techData, 0), GetValue(techData, 1))));
         AddSelfBuilding(rules, "Tech_Buil_SortingTable_Lv2",
             techData => Modules(new AttackSpeedBonusBuff(GetValue(techData, 0))));
         AddSelfBuilding(rules, "Tech_Buil_SortingTable_Lv3",
@@ -466,7 +471,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         AddSelfBuilding(rules, "Tech_Buil_BallLauncher_Lv3",
             techData => Modules(
                 new AttackSpeedBonusBuff(GetValue(techData, 0)),
-                new AmmoReloadDelayModifierBuff(-(float)GetValue(techData, 1))));
+                new AmmoReloadDelayModifierBuff(-GetValue(techData, 1))));
 
         AddActivation(rules, "Tech_Buil_NavStation_Opt4",
             (self, context) => self.RegisterSettlementOffsetRate(context, (int)GetValue(context.TechData, 0)));
@@ -696,7 +701,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
             var comp = ma.BuffComp as CharacterBuffComp;
             comp?.AddBuff(BuffData.Create(
                 id: $"{DiscardFieldBuffPrefix}{uniqueTechId}_{ma.LogicEntityId.Value}",
-                duration: float.MaxValue,
+                duration: Fix64.Zero,
                 isForever: true,
                 maxStack: 1,
                 modules: CreateDiscardModules(spec)), ma);
@@ -1223,7 +1228,7 @@ public sealed class EnemySizeAttackSpeedAuraBuff : BuffCallback, ILogicDetermini
 
         comp.AddBuff(BuffData.Create(
             id: GetBuffId(enemy.LogicEntityId.Value),
-            duration: float.MaxValue,
+            duration: Fix64.Zero,
             isForever: true,
             maxStack: 1,
             modules: new List<BuffCallback> { new AttackSpeedBonusBuff(m_AttackSpeedPercent) }), enemy);
@@ -1306,11 +1311,11 @@ public sealed class OutOfCombatStickyMoveSpeedBuff : BuffCallback, ILogicDetermi
     private bool m_Applied;
     private IPropertyModifier m_Modifier;
 
-    public OutOfCombatStickyMoveSpeedBuff(float requiredOutOfCombatSeconds, Fix64 moveSpeedPercent, float stickySeconds)
+    public OutOfCombatStickyMoveSpeedBuff(Fix64 requiredOutOfCombatSeconds, Fix64 moveSpeedPercent, Fix64 stickySeconds)
     {
-        m_RequiredOutOfCombatSeconds = Fix64.Max(Fix64.Zero, (Fix64)requiredOutOfCombatSeconds);
+        m_RequiredOutOfCombatSeconds = Fix64.Max(Fix64.Zero, requiredOutOfCombatSeconds);
         m_MoveSpeedPercent = moveSpeedPercent;
-        m_StickySeconds = Fix64.Max(Fix64.Zero, (Fix64)stickySeconds);
+        m_StickySeconds = Fix64.Max(Fix64.Zero, stickySeconds);
     }
 
     public override void OnUpdate(Fix64 deltaTime)
@@ -1394,9 +1399,9 @@ public sealed class OutOfCombatHealToThresholdOnceBuff : BuffCallback, ILogicDet
     private bool m_PenaltyApplied;
     private Fix64 m_AppliedAttackIntervalFactor;
 
-    public OutOfCombatHealToThresholdOnceBuff(float requiredOutOfCombatSeconds, Fix64 healthThresholdPercent, Fix64 attackSpeedPenaltyPercent)
+    public OutOfCombatHealToThresholdOnceBuff(Fix64 requiredOutOfCombatSeconds, Fix64 healthThresholdPercent, Fix64 attackSpeedPenaltyPercent)
     {
-        m_RequiredOutOfCombatSeconds = Fix64.Max(Fix64.Zero, (Fix64)requiredOutOfCombatSeconds);
+        m_RequiredOutOfCombatSeconds = Fix64.Max(Fix64.Zero, requiredOutOfCombatSeconds);
         m_HealthThresholdPercent = healthThresholdPercent;
         m_AttackSpeedPenaltyPercent = attackSpeedPenaltyPercent;
     }
@@ -1532,16 +1537,16 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
 {
     private const float UpdateInterval = 0.15f;
     private readonly Fix64 m_AttackBonus;
-    private readonly float m_ConeAngle;
+    private readonly Fix64 m_ConeAngle;
     private readonly Fix64 m_Distance;
     private Fix64 m_Timer;
     private bool m_Applied;
     private string BuffId => $"tech_security_behind_attack_{buffData?.id}_{hostEntity?.LogicEntityId.Value}";
 
-    public BehindSecurityRangedAttackAuraBuff(Fix64 attackBonus, float coneAngle, Fix64 distance)
+    public BehindSecurityRangedAttackAuraBuff(Fix64 attackBonus, Fix64 coneAngle, Fix64 distance)
     {
         m_AttackBonus = attackBonus;
-        m_ConeAngle = Mathf.Max(0f, coneAngle);
+        m_ConeAngle = Fix64.Max(Fix64.Zero, coneAngle);
         m_Distance = distance;
     }
 
@@ -1569,7 +1574,7 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
             return false;
 
         Fix64 maxDistance = DistanceUnitConverter.ConvertToWorld(m_Distance);
-        Fix64 coneAngle = (Fix64)m_ConeAngle;
+        Fix64 coneAngle = m_ConeAngle;
         var all = EntityRegistry.AllEntities;
         for (int i = 0; i < all.Count; i++)
         {
@@ -1599,7 +1604,7 @@ public sealed class BehindSecurityRangedAttackAuraBuff : BuffCallback, ILogicDet
         if (m_Applied || m_AttackBonus == Fix64.Zero || hostEntity?.BuffComp is not CharacterBuffComp comp)
             return;
 
-        comp.AddBuff(BuffData.Create(BuffId, float.MaxValue, true, 1, new List<BuffCallback> { new FlatAttackBonusBuff(m_AttackBonus) }), hostEntity);
+        comp.AddBuff(BuffData.Create(BuffId, Fix64.Zero, true, 1, new List<BuffCallback> { new FlatAttackBonusBuff(m_AttackBonus) }), hostEntity);
         m_Applied = true;
     }
 
@@ -1735,7 +1740,7 @@ public sealed class EnemyInFriendlyStrongholdDefAuraWatcherBuff : BuffCallback, 
             return;
 
         int enemyId = enemy.LogicEntityId.Value;
-        comp.AddBuff(BuffData.Create(GetBuffId(enemyId), float.MaxValue, true, 1,
+        comp.AddBuff(BuffData.Create(GetBuffId(enemyId), Fix64.Zero, true, 1,
             new List<BuffCallback> { new MainPropertyAdditiveBuff(CreatureMainProperty.Def, -m_DefPenalty) }), enemy);
         m_Affected.Add(enemyId);
     }
@@ -1770,15 +1775,15 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
     private const float UpdateInterval = 0.15f;
     private readonly Fix64 m_Radius;
     private readonly Fix64 m_DelayPercent;
-    private readonly float m_Duration;
+    private readonly Fix64 m_Duration;
     private readonly HashSet<int> m_Affected = new();
     private Fix64 m_Timer;
 
-    public NearbyMedicalDelayedDamageBuff(Fix64 radius, Fix64 delayPercent, float duration)
+    public NearbyMedicalDelayedDamageBuff(Fix64 radius, Fix64 delayPercent, Fix64 duration)
     {
         m_Radius = radius;
         m_DelayPercent = delayPercent;
-        m_Duration = Mathf.Max(0.01f, duration);
+        m_Duration = Fix64.Max(Fix64.FromRaw(41), duration);
     }
 
     public override void OnUpdate(Fix64 deltaTime)
@@ -1829,7 +1834,7 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
             return;
 
         int allyId = ally.LogicEntityId.Value;
-        comp.AddBuff(BuffData.Create(GetBuffId(allyId), float.MaxValue, true, 1,
+        comp.AddBuff(BuffData.Create(GetBuffId(allyId), Fix64.Zero, true, 1,
             new List<BuffCallback> { new DelayedIncomingDamageReceiverBuff(m_DelayPercent, m_Duration) }), ally);
         m_Affected.Add(allyId);
     }
@@ -1862,14 +1867,14 @@ public sealed class NearbyMedicalDelayedDamageBuff : BuffCallback, ILogicDetermi
 public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_DelayPercent;
-    private readonly float m_Duration;
+    private readonly Fix64 m_Duration;
     private readonly List<DeferredDamage> m_DeferredDamages = new();
     private bool m_ApplyingDeferred;
 
-    public DelayedIncomingDamageReceiverBuff(Fix64 delayPercent, float duration)
+    public DelayedIncomingDamageReceiverBuff(Fix64 delayPercent, Fix64 duration)
     {
         m_DelayPercent = delayPercent;
-        m_Duration = Mathf.Max(0.01f, duration);
+        m_Duration = Fix64.Max(Fix64.FromRaw(41), duration);
     }
 
     public override Fix64 ModifyIncomingDamage(IEntityContext attacker, Fix64 baseDamage, HealthModifyType modType)
@@ -1922,12 +1927,12 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback, ILogicDete
         public Fix64 TotalDuration;
         public Fix64 RemainingDuration;
 
-        public DeferredDamage(Fix64 damage, float duration)
+        public DeferredDamage(Fix64 damage, Fix64 duration)
         {
             TotalDamage = damage;
             RemainingDamage = damage;
-            TotalDuration = (Fix64)duration;
-            RemainingDuration = (Fix64)duration;
+            TotalDuration = duration;
+            RemainingDuration = duration;
         }
     }
 
@@ -1948,13 +1953,13 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback, ILogicDete
 
 public sealed class OnHealedTimedStatsBuff : BuffCallback
 {
-    private readonly float m_Duration;
+    private readonly Fix64 m_Duration;
     private readonly Fix64 m_AttackBonus;
     private readonly Fix64 m_DefBonus;
 
-    public OnHealedTimedStatsBuff(float duration, Fix64 attackBonus, Fix64 defBonus)
+    public OnHealedTimedStatsBuff(Fix64 duration, Fix64 attackBonus, Fix64 defBonus)
     {
-        m_Duration = Mathf.Max(0.01f, duration);
+        m_Duration = Fix64.Max(Fix64.FromRaw(41), duration);
         m_AttackBonus = attackBonus;
         m_DefBonus = defBonus;
     }
@@ -1991,6 +1996,7 @@ public static class DiscardRewardModifierService
 
     private static readonly List<RateReduction> s_Reductions = new();
     private static readonly List<RateReduction> s_DeterministicReductions = new();
+    private static readonly Comparison<RateReduction> s_ReductionComparison = CompareReductions;
 
     public static void Clear()
     {
@@ -2023,7 +2029,7 @@ public static class DiscardRewardModifierService
     {
         s_DeterministicReductions.Clear();
         s_DeterministicReductions.AddRange(s_Reductions);
-        s_DeterministicReductions.Sort(CompareReductions);
+        s_DeterministicReductions.Sort(s_ReductionComparison);
         hasher.Add(s_DeterministicReductions.Count);
         for (int i = 0; i < s_DeterministicReductions.Count; i++)
         {
@@ -2054,6 +2060,7 @@ public static class EnemyArmyForceModifierService
 
     private static readonly List<Reduction> s_Reductions = new();
     private static readonly List<Reduction> s_DeterministicReductions = new();
+    private static readonly Comparison<Reduction> s_ReductionComparison = CompareReductions;
 
     public static void Clear()
     {
@@ -2086,7 +2093,7 @@ public static class EnemyArmyForceModifierService
     {
         s_DeterministicReductions.Clear();
         s_DeterministicReductions.AddRange(s_Reductions);
-        s_DeterministicReductions.Sort(CompareReductions);
+        s_DeterministicReductions.Sort(s_ReductionComparison);
         hasher.Add(s_DeterministicReductions.Count);
         for (int i = 0; i < s_DeterministicReductions.Count; i++)
         {
@@ -2117,6 +2124,7 @@ public static class HealingTargetFilterService
 
     private static readonly List<NurseThreshold> s_NurseThresholds = new();
     private static readonly List<NurseThreshold> s_DeterministicThresholds = new();
+    private static readonly Comparison<NurseThreshold> s_ThresholdComparison = CompareThresholds;
 
     public static void Clear()
     {
@@ -2156,7 +2164,7 @@ public static class HealingTargetFilterService
     {
         s_DeterministicThresholds.Clear();
         s_DeterministicThresholds.AddRange(s_NurseThresholds);
-        s_DeterministicThresholds.Sort(CompareThresholds);
+        s_DeterministicThresholds.Sort(s_ThresholdComparison);
         hasher.Add(s_DeterministicThresholds.Count);
         for (int i = 0; i < s_DeterministicThresholds.Count; i++)
         {
@@ -2188,6 +2196,7 @@ public static class BuildingCostModifierService
     private static readonly Dictionary<string, List<StrongholdArchetypeDiscount>> s_DiscountsByStrongholdId = new(StringComparer.Ordinal);
     private static readonly List<string> s_DeterministicStrongholdIds = new();
     private static readonly List<StrongholdArchetypeDiscount> s_DeterministicDiscounts = new();
+    private static readonly Comparison<StrongholdArchetypeDiscount> s_DiscountComparison = CompareDiscounts;
 
     public static void Clear()
     {
@@ -2293,7 +2302,8 @@ public static class BuildingCostModifierService
     internal static void WriteDeterministicState(LogicStateHasher hasher)
     {
         s_DeterministicStrongholdIds.Clear();
-        s_DeterministicStrongholdIds.AddRange(s_DiscountsByStrongholdId.Keys);
+        foreach (string strongholdId in s_DiscountsByStrongholdId.Keys)
+            s_DeterministicStrongholdIds.Add(strongholdId);
         s_DeterministicStrongholdIds.Sort(StringComparer.Ordinal);
         hasher.Add(s_DeterministicStrongholdIds.Count);
         for (int strongholdIndex = 0; strongholdIndex < s_DeterministicStrongholdIds.Count; strongholdIndex++)
@@ -2308,7 +2318,7 @@ public static class BuildingCostModifierService
                 throw new InvalidOperationException($"Building cost modifier deterministic state has a null discount list for '{strongholdId}'.");
             s_DeterministicDiscounts.Clear();
             s_DeterministicDiscounts.AddRange(source);
-            s_DeterministicDiscounts.Sort(CompareDiscounts);
+            s_DeterministicDiscounts.Sort(s_DiscountComparison);
             hasher.Add(s_DeterministicDiscounts.Count);
             for (int discountIndex = 0; discountIndex < s_DeterministicDiscounts.Count; discountIndex++)
             {
@@ -2340,6 +2350,7 @@ public static class SettlementOffsetRateService
 
     private static readonly List<OffsetRate> s_Values = new();
     private static readonly List<OffsetRate> s_DeterministicValues = new();
+    private static readonly Comparison<OffsetRate> s_ValueComparison = CompareValues;
 
     public static void Clear()
     {
@@ -2372,7 +2383,7 @@ public static class SettlementOffsetRateService
     {
         s_DeterministicValues.Clear();
         s_DeterministicValues.AddRange(s_Values);
-        s_DeterministicValues.Sort(CompareValues);
+        s_DeterministicValues.Sort(s_ValueComparison);
         hasher.Add(s_DeterministicValues.Count);
         for (int i = 0; i < s_DeterministicValues.Count; i++)
         {

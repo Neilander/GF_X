@@ -87,8 +87,6 @@ public static partial class FlowFieldCrowdMovementSystem
     private const byte FlowDirectionMask = 0x0F;
     private const byte FlowPathableFlag = 1 << 6;
     private const byte FlowReachableFlag = 1 << 7;
-    private const ushort QuantizedIntegrationInfinity = ushort.MaxValue;
-    private const ushort QuantizedIntegrationMaxFinite = ushort.MaxValue - 1;
     private static readonly long FlowPerfLogThresholdTicks = Stopwatch.Frequency * 4 / 1000;
     private const int WallCostAdjacentPenalty = 1;
     private const int WallCostOuterPenalty = 0;
@@ -221,7 +219,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         public void FreezeAuthorityGridMetadata()
         {
-            FreezeAuthorityGridMetadata(((Fix64)ResolveAgentTypeRadius(AgentTypeId)).RawValue);
+            FreezeAuthorityGridMetadata(ResolveAgentTypeRadiusFixed(AgentTypeId).RawValue);
         }
 
         public void FreezeAuthorityGridMetadata(long agentRadiusFixedRaw)
@@ -302,7 +300,7 @@ public static partial class FlowFieldCrowdMovementSystem
         private bool IsAnchorInsideCell(FixVector2 anchor, int x, int y)
         {
             GetGridCellBoundsFixed(x, y, out FixVector2 minimum, out FixVector2 maximum);
-            Fix64 epsilon = Fix64.Max((Fix64)0.00001f, GridRawToFix64(CellSizeGridRaw) * (Fix64)0.001f);
+            Fix64 epsilon = Fix64.Max(Fix64.FromRaw(1), GridRawToFix64(CellSizeGridRaw) * Fix64.FromRaw(5));
             return anchor.x > minimum.x + epsilon
                    && anchor.x < maximum.x - epsilon
                    && anchor.y > minimum.y + epsilon
@@ -432,7 +430,6 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         public int FromPortalId;
         public int ToPortalId;
-        public float Cost;
         public long DeterministicCost = long.MaxValue;
     }
 
@@ -624,8 +621,6 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private sealed class SectorPortalAccessEntry
     {
-        public ushort[] QuantizedIntegration;
-        public float IntegrationScale;
         public long[] DeterministicIntegration;
         public int LastUsedFrame;
         public bool IsAnalyticClearSector;
@@ -839,6 +834,12 @@ public static partial class FlowFieldCrowdMovementSystem
         public Vector3 StableGoalWorld;
         public FixVector2 StableGoalWorldFixed;
         public int StableGoalTargetId = int.MinValue;
+        public bool HasFailedPathRequest;
+        public int FailedPathWorldVersion;
+        public int FailedPathStartCellIndex;
+        public int FailedPathGoalCellIndex;
+        public int FailedPathStartSectorDirtyVersion;
+        public int FailedPathGoalSectorDirtyVersion;
         public int LastSteeringFrame = -1;
         public Vector3 LastSteeringGoal;
         public Vector3 LastSteeringDesiredDirection;
@@ -1685,6 +1686,8 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly RuntimeConfig Config = new RuntimeConfig();
     private static readonly Dictionary<int, AgentRuntimeData> Agents = new Dictionary<int, AgentRuntimeData>();
     private static readonly List<int> OrderedAgentIds = new List<int>(128);
+    private static readonly List<int> NavigationWorldAgentTypeIdsScratch = new List<int>(8);
+    private static readonly HashSet<int> NavigationWorldAgentTypeIdsSeenScratch = new HashSet<int>();
     private static readonly Dictionary<int, CircleObstacle> CircleObstacles = new Dictionary<int, CircleObstacle>();
     private static readonly Dictionary<int, BoxObstacle> BoxObstacles = new Dictionary<int, BoxObstacle>();
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
@@ -1696,6 +1699,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly HashSet<FlowTileCacheKey> PendingFlowTileBuildJobs = new HashSet<FlowTileCacheKey>();
     private static readonly HashSet<FlowTileCacheKey> ActiveFlowTileBuildKeys = new HashSet<FlowTileCacheKey>();
     private static readonly Dictionary<int, Stack<float[]>> IntegrationArrayPool = new Dictionary<int, Stack<float[]>>();
+    private static readonly Dictionary<int, Stack<long[]>> PortalAccessIntegrationArrayPool = new Dictionary<int, Stack<long[]>>();
     private static readonly Dictionary<SectorPathCacheKey, SectorPathCacheEntry> SectorPathCache = new Dictionary<SectorPathCacheKey, SectorPathCacheEntry>();
     private static readonly Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry> SectorPortalAccessCache = new Dictionary<SectorPortalAccessKey, SectorPortalAccessEntry>();
     private static readonly Dictionary<StartPortalChoiceKey, StartPortalChoiceEntry> StartPortalChoiceCache = new Dictionary<StartPortalChoiceKey, StartPortalChoiceEntry>();
@@ -1706,12 +1710,14 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly Dictionary<SharedGoalFieldKey, HashSet<int>> ActiveSharedGoalFieldDemandStartSectors = new Dictionary<SharedGoalFieldKey, HashSet<int>>();
     private static readonly Dictionary<SharedGoalFieldKey, Dictionary<int, int>> ActiveSharedGoalFieldDemandStartCells = new Dictionary<SharedGoalFieldKey, Dictionary<int, int>>();
     private static readonly List<SharedGoalFieldKey> ActiveSharedGoalFieldKeyOrderScratch = new List<SharedGoalFieldKey>(64);
+    private static readonly Comparison<SharedGoalFieldKey> SharedGoalFieldKeyComparison = CompareSharedGoalKeys;
     private static readonly List<int> SharedGoalPruneScratch = new List<int>(256);
     private static readonly Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry> CombatTargetSlotCache = new Dictionary<CombatTargetSlotKey, CombatTargetSlotEntry>();
     private static readonly Dictionary<FixedPortalOwnerKey, FixedPortalOwnerState> FixedPortalOwners = new Dictionary<FixedPortalOwnerKey, FixedPortalOwnerState>();
     private static readonly Dictionary<int, int> FixedPortalOwnerEvaluatedFrameByWorld = new Dictionary<int, int>();
     private static readonly Dictionary<FixedPortalOwnerKey, FixedPortalParticipantSnapshot> FixedPortalParticipantScratch = new Dictionary<FixedPortalOwnerKey, FixedPortalParticipantSnapshot>();
     private static readonly List<FixedPortalOwnerKey> FixedPortalOwnerKeyScratch = new List<FixedPortalOwnerKey>();
+    private static readonly Comparison<FixedPortalOwnerKey> FixedPortalOwnerKeyComparison = CompareFixedPortalOwnerKeys;
     private static readonly Dictionary<int, FixedCorridorLookup> FixedCorridorLookupByWorldVersion = new Dictionary<int, FixedCorridorLookup>();
 
     private static readonly int[] NeighborOffsetX = { -1, 0, 1, -1, 1, -1, 0, 1 };
@@ -1726,6 +1732,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly List<int> BottleneckWaitingRemovalScratch = new List<int>(16);
     private static readonly MinHeap DistanceEstimateOpenSet = new MinHeap();
     private static readonly DeterministicCostHeap FixedDistanceEstimateOpenSet = new DeterministicCostHeap();
+    private static readonly DeterministicCostHeap PortalAccessIntegrationOpenSet = new DeterministicCostHeap();
     private static readonly List<int> DistanceEstimatePathIndices = new List<int>(256);
     private static readonly Dictionary<int, Stack<bool[]>> BoolArrayPool = new Dictionary<int, Stack<bool[]>>();
     private static readonly Dictionary<int, Stack<byte[]>> ByteArrayPool = new Dictionary<int, Stack<byte[]>>();
@@ -1912,6 +1919,33 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (stack.Count < 16)
             stack.Push(array);
+    }
+
+    private static long[] RentPortalAccessIntegrationArray(int length)
+    {
+        if (length <= 0)
+            throw new InvalidOperationException($"RentPortalAccessIntegrationArray failed: invalid length={length}.");
+
+        if (PortalAccessIntegrationArrayPool.TryGetValue(length, out Stack<long[]> stack) && stack.Count > 0)
+            return stack.Pop();
+
+        return new long[length];
+    }
+
+    private static void ReturnPortalAccessIntegrationArray(long[] array)
+    {
+        if (array == null)
+            return;
+        if (array.Length <= 0)
+            throw new InvalidOperationException("ReturnPortalAccessIntegrationArray failed: invalid zero-length array.");
+
+        if (!PortalAccessIntegrationArrayPool.TryGetValue(array.Length, out Stack<long[]> stack))
+        {
+            stack = new Stack<long[]>();
+            PortalAccessIntegrationArrayPool.Add(array.Length, stack);
+        }
+
+        stack.Push(array);
     }
 
     private static void ReturnTileDebugIntegrationPayload(FlowTileCacheEntry tile)
@@ -2203,7 +2237,7 @@ public static partial class FlowFieldCrowdMovementSystem
             EncodedCenterClearanceFixedRaw = ((Fix64)EncodedCenterClearance).RawValue;
             OriginXGridRaw = NavigationWorld.FloatToGridRaw(Origin.x);
             OriginZGridRaw = NavigationWorld.FloatToGridRaw(Origin.z);
-            AgentRadiusFixedRaw = ((Fix64)ResolveAgentTypeRadius(AgentTypeId)).RawValue;
+            AgentRadiusFixedRaw = ResolveAgentTypeRadiusFixed(AgentTypeId).RawValue;
             HasAuthorityGridMetadata = true;
         }
 
@@ -2397,7 +2431,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private static TestTerrainOverride _testTerrainOverride;
     private static readonly Dictionary<int, TestTerrainOverride> AuthoredTerrainSources = new Dictionary<int, TestTerrainOverride>();
 #if UNITY_EDITOR
-    private static readonly Dictionary<int, float> TestAgentTypeRadii = new Dictionary<int, float>();
+    private static readonly Dictionary<int, Fix64> TestAgentTypeRadii = new Dictionary<int, Fix64>();
 #endif
     private static bool _hasTestTimeOverride;
     private static int _testFrameCount;
@@ -2649,7 +2683,15 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void SetEditorTestAgentTypeRadius(int agentTypeId, float radius)
     {
-        TestAgentTypeRadii[agentTypeId] = Mathf.Max(0.05f, radius);
+        SetEditorTestAgentTypeRadiusFixed(agentTypeId, (Fix64)radius);
+    }
+
+    public static void SetEditorTestAgentTypeRadiusFixed(int agentTypeId, Fix64 radius)
+    {
+        if (radius <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(radius), radius.RawValue, "Editor test agent radius must be positive.");
+
+        TestAgentTypeRadii[agentTypeId] = radius;
         MarkWorldDirty();
     }
 
@@ -3116,13 +3158,13 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         bool hasAgentTypeEncodedClearance = derivedNavigationData != null || agentTypeId != AnyAgentTypeId;
-        Fix64 agentRadiusFixed = (Fix64)ResolveAgentTypeRadius(agentTypeId);
+        Fix64 agentRadiusFixed = ResolveAgentTypeRadiusFixed(agentTypeId);
         Fix64 encodedCenterClearanceFixed = hasAgentTypeEncodedClearance
             ? Fix64.Max(
                 Fix64.Zero,
                 agentRadiusFixed - (hasFixedAuthorityPayload
                     ? NavigationGridFixedMath.GridRawToFix64(cellSizeGridRaw)
-                    : (Fix64)cellSize) * (Fix64)0.2f)
+                    : (Fix64)cellSize) * Fix64.FromRaw(820))
             : Fix64.Zero;
         float encodedCenterClearance = hasFixedAuthorityPayload
             ? (float)encodedCenterClearanceFixed
@@ -3263,7 +3305,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 {
                     FromPortalId = transition.FromPortalId,
                     ToPortalId = transition.ToPortalId,
-                    Cost = transition.Cost
+                    Cost = DequantizeDeterministicPortalCost(transition.DeterministicCost)
                 };
             }
 
@@ -3445,8 +3487,7 @@ public static partial class FlowFieldCrowdMovementSystem
                     imported.PortalTransitions.Add(new PortalTransition
                     {
                         FromPortalId = transition.FromPortalId,
-                        ToPortalId = transition.ToPortalId,
-                        Cost = transition.Cost
+                        ToPortalId = transition.ToPortalId
                     });
                 }
             }
@@ -3791,8 +3832,10 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static List<int> CollectNavigationWorldAgentTypes()
     {
-        List<int> agentTypeIds = new List<int>(8);
-        HashSet<int> seen = new HashSet<int>();
+        List<int> agentTypeIds = NavigationWorldAgentTypeIdsScratch;
+        HashSet<int> seen = NavigationWorldAgentTypeIdsSeenScratch;
+        agentTypeIds.Clear();
+        seen.Clear();
 
         if (AuthoredTerrainSources.Count > 1
             || (AuthoredTerrainSources.Count == 1 && !AuthoredTerrainSources.ContainsKey(AnyAgentTypeId)))
@@ -3848,7 +3891,6 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (agentTypeIds == null)
             throw new ArgumentNullException(nameof(agentTypeIds));
-        agentTypeIds.Sort();
         return agentTypeIds;
     }
 
@@ -3857,7 +3899,10 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!seen.Add(agentTypeId))
             return;
 
-        agentTypeIds.Add(agentTypeId);
+        int insertIndex = agentTypeIds.BinarySearch(agentTypeId);
+        if (insertIndex >= 0)
+            throw new InvalidOperationException($"AddNavigationWorldAgentType failed: duplicate agent type {agentTypeId} escaped the seen set.");
+        agentTypeIds.Insert(~insertIndex, agentTypeId);
     }
 
     private static void MarkRuntimeObstacleDirty(FixVector2 boundsMinimum, FixVector2 boundsMaximum)
@@ -4213,7 +4258,7 @@ public static partial class FlowFieldCrowdMovementSystem
         BuildActiveSharedGoalFieldBuildKeySet(orderedAgentIds);
         ActiveSharedGoalFieldKeyOrderScratch.Clear();
         ActiveSharedGoalFieldKeyOrderScratch.AddRange(ActiveSharedGoalFieldBuildKeys);
-        ActiveSharedGoalFieldKeyOrderScratch.Sort(CompareSharedGoalKeys);
+        ActiveSharedGoalFieldKeyOrderScratch.Sort(SharedGoalFieldKeyComparison);
         for (int i = 0; i < ActiveSharedGoalFieldKeyOrderScratch.Count; i++)
         {
             SharedGoalFieldKey key = ActiveSharedGoalFieldKeyOrderScratch[i];
@@ -5527,42 +5572,6 @@ public static partial class FlowFieldCrowdMovementSystem
         return hasher.Hash;
     }
 
-    public static int PerturbEditorTestPortalFloatShadows()
-    {
-        if (_world == null)
-            throw new InvalidOperationException("PerturbEditorTestPortalFloatShadows failed: world is unavailable.");
-
-        int perturbationCount = 0;
-        foreach (KeyValuePair<SectorPortalAccessKey, SectorPortalAccessEntry> pair in SectorPortalAccessCache)
-        {
-            if (pair.Key.WorldVersion != _world.Version)
-                continue;
-
-            SectorPortalAccessEntry entry = pair.Value;
-            if (entry?.QuantizedIntegration == null)
-                continue;
-
-            for (int i = 0; i < entry.QuantizedIntegration.Length; i++)
-                entry.QuantizedIntegration[i] = (ushort)(ushort.MaxValue - entry.QuantizedIntegration[i]);
-            entry.IntegrationScale = float.MaxValue;
-            perturbationCount++;
-        }
-
-        for (int sectorIndex = 0; sectorIndex < _world.Sectors.Length; sectorIndex++)
-        {
-            SectorData sector = _world.Sectors[sectorIndex];
-            for (int transitionIndex = 0; transitionIndex < sector.PortalTransitions.Count; transitionIndex++)
-            {
-                sector.PortalTransitions[transitionIndex].Cost = float.MaxValue;
-                perturbationCount++;
-            }
-        }
-
-        if (perturbationCount == 0)
-            throw new InvalidOperationException("PerturbEditorTestPortalFloatShadows failed: no portal float shadow exists in the committed world.");
-        return perturbationCount;
-    }
-
     public static bool TryBuildEditorTestPortalPath(
         int startX,
         int startY,
@@ -5781,6 +5790,15 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         int count = 0;
         foreach (Stack<float[]> stack in IntegrationArrayPool.Values)
+            count += stack.Count;
+
+        return count;
+    }
+
+    public static int GetEditorTestPortalAccessIntegrationArrayPoolCount()
+    {
+        int count = 0;
+        foreach (Stack<long[]> stack in PortalAccessIntegrationArrayPool.Values)
             count += stack.Count;
 
         return count;
@@ -6198,6 +6216,26 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.NavState.ResolvedVelocityFrame = frame;
     }
 
+    public static void SetEditorTestOnlyFailedPathMemo(
+        int agentId,
+        int worldVersion,
+        int startCellIndex,
+        int goalCellIndex,
+        int startSectorDirtyVersion,
+        int goalSectorDirtyVersion)
+    {
+        if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent) || agent?.NavState == null)
+            throw new InvalidOperationException($"SetEditorTestOnlyFailedPathMemo failed: agent {agentId} is missing.");
+
+        AgentNavState nav = agent.NavState;
+        nav.HasFailedPathRequest = true;
+        nav.FailedPathWorldVersion = worldVersion;
+        nav.FailedPathStartCellIndex = startCellIndex;
+        nav.FailedPathGoalCellIndex = goalCellIndex;
+        nav.FailedPathStartSectorDirtyVersion = startSectorDirtyVersion;
+        nav.FailedPathGoalSectorDirtyVersion = goalSectorDirtyVersion;
+    }
+
     public static void SetEditorTestOnlyLastFixedFlowFrame(int agentId, int frame)
     {
         if (!Agents.TryGetValue(agentId, out AgentRuntimeData agent) || agent?.NavState == null)
@@ -6584,18 +6622,6 @@ public static partial class FlowFieldCrowdMovementSystem
         return count;
     }
 
-    public static int GetEditorTestQuantizedSectorPortalAccessCacheCount()
-    {
-        int count = 0;
-        foreach (SectorPortalAccessEntry entry in SectorPortalAccessCache.Values)
-        {
-            if (entry != null && !entry.IsAnalyticClearSector && entry.QuantizedIntegration != null && entry.IntegrationScale > 0f)
-                count++;
-        }
-
-        return count;
-    }
-
     public static int GetEditorTestAnalyticSectorPortalAccessCacheCount()
     {
         int count = 0;
@@ -6743,8 +6769,8 @@ public static partial class FlowFieldCrowdMovementSystem
                     .Append(transition.FromPortalId)
                     .Append("->")
                     .Append(transition.ToPortalId)
-                    .Append("=")
-                    .Append(transition.Cost.ToString("F3"));
+                    .Append("=raw:")
+                    .Append(transition.DeterministicCost);
             }
         }
 
@@ -7052,7 +7078,7 @@ public static partial class FlowFieldCrowdMovementSystem
             || float.IsNaN(position.z) || float.IsInfinity(position.z)
             || float.IsNaN(radius) || float.IsInfinity(radius))
             throw new ArgumentOutOfRangeException(nameof(position), "Circle obstacle values must be finite.");
-        Fix64 clampedRadiusFixed = Fix64.Max((Fix64)0.01f, (Fix64)radius);
+        Fix64 clampedRadiusFixed = Fix64.Max(Fix64.FromRaw(41), (Fix64)radius);
         FixVector2 positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
         RegisterCircleObstacleFixed(obstacleId, positionFixed, clampedRadiusFixed);
     }
@@ -7687,7 +7713,47 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild: true, out NavigationWorld world))
             return false;
 
-        bool includeRuntimeObstacleOverlay = HasPendingRuntimeDirty(_activeWorldState);
+        return TryResolveLegalNavigationPointFixed(
+            world,
+            HasPendingRuntimeDirty(_activeWorldState),
+            candidate,
+            maxSnapDistance,
+            edgeClearance,
+            out legalPoint);
+    }
+
+    public static bool TryResolveLegalNavigationPointFixedNonBlocking(
+        FixVector2 candidate,
+        int agentTypeId,
+        Fix64 maxSnapDistance,
+        Fix64 edgeClearance,
+        out FixVector2 legalPoint)
+    {
+        legalPoint = FixVector2.Zero;
+        if (!TryGetCommittedNavigationQueryWorldReadOnly(agentTypeId, out WorldRuntimeState state, out NavigationWorld world))
+            return false;
+
+        return TryResolveLegalNavigationPointFixed(
+            world,
+            HasPendingRuntimeDirty(state),
+            candidate,
+            maxSnapDistance,
+            edgeClearance,
+            out legalPoint);
+    }
+
+    private static bool TryResolveLegalNavigationPointFixed(
+        NavigationWorld world,
+        bool includeRuntimeObstacleOverlay,
+        FixVector2 candidate,
+        Fix64 maxSnapDistance,
+        Fix64 edgeClearance,
+        out FixVector2 legalPoint)
+    {
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+
+        legalPoint = FixVector2.Zero;
         maxSnapDistance = Fix64.Max(Fix64.Zero, maxSnapDistance);
         edgeClearance = ResolveNavigationQueryClearanceFixed(world, edgeClearance);
         bool candidateInGrid = world.WorldToGridFixed(candidate, out int cellX, out int cellY);
@@ -7700,7 +7766,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         int searchRadius = checked((int)(long)Fix64.Ceiling(
-            maxSnapDistance / Fix64.Max((Fix64)0.001f, world.CellSizeFixed)) + 1);
+            maxSnapDistance / Fix64.Max(Fix64.FromRaw(5), world.CellSizeFixed)) + 1);
         Fix64 maxDistanceSq = maxSnapDistance * maxSnapDistance;
         bool found = false;
         Fix64 bestDistanceSq = Fix64.FromRaw(long.MaxValue);
@@ -7847,6 +7913,7 @@ public static partial class FlowFieldCrowdMovementSystem
             to,
             agentTypeId,
             true,
+            true,
             pathCorners,
             out failureReason);
     }
@@ -7863,6 +7930,7 @@ public static partial class FlowFieldCrowdMovementSystem
             to,
             agentTypeId,
             false,
+            false,
             pathCorners,
             out failureReason);
     }
@@ -7872,6 +7940,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Vector3 to,
         int agentTypeId,
         bool allowSynchronousBuild,
+        bool useAuthorityPathCaches,
         List<Vector3> pathCorners,
         out string failureReason)
     {
@@ -7880,12 +7949,24 @@ public static partial class FlowFieldCrowdMovementSystem
 
         pathCorners.Clear();
         failureReason = string.Empty;
-        if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild, out NavigationWorld world))
+        WorldRuntimeState queryWorldState;
+        NavigationWorld world;
+        bool hasWorld;
+        if (useAuthorityPathCaches)
+        {
+            hasWorld = TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild, out world);
+            queryWorldState = _activeWorldState;
+        }
+        else
+        {
+            hasWorld = TryGetCommittedNavigationQueryWorldReadOnly(agentTypeId, out queryWorldState, out world);
+        }
+        if (!hasWorld)
         {
             failureReason = $"navigation world unavailable agentType={agentTypeId}";
             return false;
         }
-        if (HasPendingRuntimeDirty(_activeWorldState))
+        if (HasPendingRuntimeDirty(queryWorldState))
         {
             if (!allowSynchronousBuild)
             {
@@ -7893,7 +7974,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 return false;
             }
 
-            world = ResolveReachabilityQueryWorld(_activeWorldState);
+            world = ResolveReachabilityQueryWorld(queryWorldState);
         }
         if (!world.WorldToGrid(from, out int startX, out int startY))
         {
@@ -7922,7 +8003,8 @@ public static partial class FlowFieldCrowdMovementSystem
             return true;
         }
 
-        if (ReferenceEquals(world, _world)
+        if (useAuthorityPathCaches
+            && ReferenceEquals(world, _world)
             && world.TryGetSectorId(startX, startY, out int startSectorId)
             && world.TryGetSectorId(goalX, goalY, out int goalSectorId)
             && startSectorId != goalSectorId)
@@ -8359,7 +8441,7 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("TryResolveCombatApproachPoint failed: combat target slot entry is invalid.");
 
         FixVector2 toTargetFromSelf = selfFramePosition - targetPointFixed;
-        if (FixVector2.SqrMagnitude(toTargetFromSelf) <= (Fix64)0.0001f)
+        if (FixVector2.SqrMagnitude(toTargetFromSelf) <= Fix64.FromRaw(1))
             toTargetFromSelf = new FixVector2(Fix64.Zero, Fix64.One);
         toTargetFromSelf = toTargetFromSelf.GetNormalized();
 
@@ -8551,9 +8633,9 @@ public static partial class FlowFieldCrowdMovementSystem
         FixVector2 targetPointFixed = targetPoint;
         bool targetLineCellValid = _world.IsWalkable(targetX, targetY);
         int targetIsland = targetLineCellValid ? ResolveIslandIdForDiagnostics(_world, targetX, targetY) : 0;
-        Fix64 spacing = Fix64.Max((Fix64)0.05f, ringSpacing);
-        Fix64 maximumRadius = Fix64.Max((Fix64)0.05f, standOff);
-        Fix64 minimumRadius = Fix64.Clamp(minimumStandOff, (Fix64)0.05f, maximumRadius);
+        Fix64 spacing = Fix64.Max(Fix64.FromRaw(205), ringSpacing);
+        Fix64 maximumRadius = Fix64.Max(Fix64.FromRaw(205), standOff);
+        Fix64 minimumRadius = Fix64.Clamp(minimumStandOff, Fix64.FromRaw(205), maximumRadius);
         int inwardSteps = checked((int)(long)Fix64.Ceiling(Fix64.Max(Fix64.Zero, standOff - minimumRadius) / spacing));
         int generatedRingCount = Mathf.Max(Mathf.Max(1, baseRingCount), inwardSteps + 1);
         int samplesPerRing = Mathf.Max(16, candidateCount * 2);
@@ -8628,8 +8710,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static Fix64 ResolveCombatAnglePenalty(FixVector2 direction, FixVector2 preferredDirection)
     {
-        if (FixVector2.SqrMagnitude(direction) <= (Fix64)0.0001f
-            || FixVector2.SqrMagnitude(preferredDirection) <= (Fix64)0.0001f)
+        if (FixVector2.SqrMagnitude(direction) <= Fix64.FromRaw(1)
+            || FixVector2.SqrMagnitude(preferredDirection) <= Fix64.FromRaw(1))
         {
             return Fix64.Zero;
         }
@@ -8642,7 +8724,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Fix64 dot = normalizedDirection.x * normalizedPreferred.x
                     + normalizedDirection.y * normalizedPreferred.y;
         Fix64 angleDegrees = Fix64.Atan2(cross, dot) * (Fix64)180 / Fix64.PI;
-        return angleDegrees * (Fix64)0.015f;
+        return angleDegrees * Fix64.FromRaw(62);
     }
 
     private static Vector3 ToWorldVector3(FixVector2 point)
@@ -8731,7 +8813,14 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
         }
 
-        if (!TryResolveStableGoalCellFixed(agent, source, goalPosition, out int goalX, out int goalY, out FixVector2 stableGoalPosition))
+        if (!TryResolveStableGoalCellFixed(
+                agent,
+                source,
+                goalPosition,
+                out int goalX,
+                out int goalY,
+                out FixVector2 stableGoalPosition,
+                out bool shouldEnqueueSharedGoal))
         {
             failureReason = $"goal reachability failed source={source.CharacterKey} {BuildGoalResolutionFailure(source, ToWorldVector3(goalPosition))}";
             return false;
@@ -8760,7 +8849,7 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
         }
 
-        if (agent.NavState.StableGoalTargetId == int.MinValue)
+        if (shouldEnqueueSharedGoal)
             EnqueueSharedGoalFieldBuild(goalSectorId, goalX, goalY, ResolvePreferredAgentTypeId(agent.AgentTypeId), startSectorId, startX, startY);
         EnqueueFlowTileBuildChain(agent.NavState.PathHandle, agent.NavState.PathHandle.CurrentSectorIndex, goalX, goalY, agent.AgentTypeId);
         return true;
@@ -8833,9 +8922,9 @@ public static partial class FlowFieldCrowdMovementSystem
         bool targetLineCellValid = _world.IsWalkable(targetX, targetY);
 
         FixVector2 targetPointFixed = targetPoint;
-        Fix64 spacing = Fix64.Max((Fix64)0.05f, ringSpacing);
-        Fix64 maximumRadius = Fix64.Max((Fix64)0.05f, standOff);
-        Fix64 minimumRadius = Fix64.Clamp(minimumStandOff, (Fix64)0.05f, maximumRadius);
+        Fix64 spacing = Fix64.Max(Fix64.FromRaw(205), ringSpacing);
+        Fix64 maximumRadius = Fix64.Max(Fix64.FromRaw(205), standOff);
+        Fix64 minimumRadius = Fix64.Clamp(minimumStandOff, Fix64.FromRaw(205), maximumRadius);
         int inwardSteps = checked((int)(long)Fix64.Ceiling(Fix64.Max(Fix64.Zero, standOff - minimumRadius) / spacing));
         int generatedRingCount = Mathf.Max(Mathf.Max(1, ringCount), inwardSteps + 1);
         for (int ring = 0; ring < generatedRingCount; ring++)
@@ -9353,7 +9442,7 @@ public static partial class FlowFieldCrowdMovementSystem
         FixedPortalOwnerKeyScratch.Clear();
         foreach (FixedPortalOwnerKey key in FixedPortalParticipantScratch.Keys)
             FixedPortalOwnerKeyScratch.Add(key);
-        FixedPortalOwnerKeyScratch.Sort(CompareFixedPortalOwnerKeys);
+        FixedPortalOwnerKeyScratch.Sort(FixedPortalOwnerKeyComparison);
         for (int i = 0; i < FixedPortalOwnerKeyScratch.Count; i++)
         {
             FixedPortalOwnerKey key = FixedPortalOwnerKeyScratch[i];
@@ -10524,17 +10613,17 @@ public static partial class FlowFieldCrowdMovementSystem
         if (box == null)
             throw new InvalidOperationException("ResolveBoxObstacleNavigationHalfExtentsFixed failed: box is null.");
 
-        Fix64 clearance = Fix64.Max(Fix64.Zero, world.AgentRadiusFixed - world.CellSizeFixed * (Fix64)0.2f);
+        Fix64 clearance = Fix64.Max(Fix64.Zero, world.AgentRadiusFixed - world.CellSizeFixed * Fix64.FromRaw(820));
         return box.HalfExtentsFixed + new FixVector2(clearance, clearance);
     }
 
     private static FixVector2 ResolveBoxObstacleDirtyHalfExtentsFixed(FixVector2 halfExtents)
     {
-        Fix64 maxRadius = (Fix64)0.5f;
+        Fix64 maxRadius = Fix64.FromRaw(2048);
         foreach (int agentTypeId in CollectNavigationWorldAgentTypes())
-            maxRadius = Fix64.Max(maxRadius, (Fix64)ResolveAgentTypeRadius(agentTypeId));
+            maxRadius = Fix64.Max(maxRadius, ResolveAgentTypeRadiusFixed(agentTypeId));
 
-        Fix64 clearance = Fix64.Max(Fix64.Zero, maxRadius - (Fix64)0.02f);
+        Fix64 clearance = Fix64.Max(Fix64.Zero, maxRadius - Fix64.FromRaw(82));
         return halfExtents + new FixVector2(clearance, clearance);
     }
 
@@ -10655,21 +10744,12 @@ public static partial class FlowFieldCrowdMovementSystem
             return _testFrameCount;
         if (LogicFrameRuntime.IsTimelineRunning)
             return checked((int)LogicFrameRuntime.CurrentFrame);
-        return Time.frameCount;
+        return 0;
     }
 
     public static int GetCurrentNavigationFrame()
     {
         return GetFrameCount();
-    }
-
-    private static float GetTime()
-    {
-        if (_hasTestTimeOverride)
-            return _testTime;
-        if (LogicFrameRuntime.IsTimelineRunning)
-            return (float)LogicFrameRuntime.ElapsedTime;
-        return Time.time;
     }
 
     private static void BeginNavigationWorkBudget(int operationQuota)
@@ -11332,7 +11412,6 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         AgentNavState nav = agent.NavState;
         nav.HasGoal = false;
-        nav.PathHandle = null;
         nav.DesiredVelocity = Vector3.zero;
         nav.ResolvedVelocity = Vector3.zero;
         nav.ResolvedVelocityFrame = -1;
@@ -11559,7 +11638,7 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
 
         FixVector2 goalOffset = nav.LastGoalWorldFixed - agent.PositionFixed;
-        Fix64 minimumDistanceSq = Fix64.Max(agent.RadiusFixed * agent.RadiusFixed, (Fix64)0.04f);
+        Fix64 minimumDistanceSq = Fix64.Max(agent.RadiusFixed * agent.RadiusFixed, Fix64.FromRaw(164));
         return FixVector2.SqrMagnitude(goalOffset) > minimumDistanceSq;
     }
 
@@ -12047,28 +12126,19 @@ public static partial class FlowFieldCrowdMovementSystem
         return count;
     }
 
-    private static bool TryGetPortalTransitionCost(SectorData sector, int fromPortalId, int toPortalId, out float cost)
+    private static bool HasPortalTransition(SectorData sector, int fromPortalId, int toPortalId)
     {
         if (sector == null)
-            throw new InvalidOperationException("TryGetPortalTransitionCost failed: sector is null.");
+            throw new InvalidOperationException("HasPortalTransition failed: sector is null.");
 
         for (int i = 0; i < sector.PortalTransitions.Count; i++)
         {
             PortalTransition transition = sector.PortalTransitions[i];
             if (transition.FromPortalId == fromPortalId && transition.ToPortalId == toPortalId)
-            {
-                cost = transition.Cost;
                 return true;
-            }
         }
 
-        cost = float.PositiveInfinity;
         return false;
-    }
-
-    private static bool HasPortalTransition(SectorData sector, int fromPortalId, int toPortalId)
-    {
-        return TryGetPortalTransitionCost(sector, fromPortalId, toPortalId, out _);
     }
 
     private static void RebuildIncomingPortalTransitionIndex(SectorData sector)
@@ -12126,22 +12196,19 @@ public static partial class FlowFieldCrowdMovementSystem
             : null;
     }
 
-    private static void AddPortalTransitionIfMissing(SectorData sector, int fromPortalId, int toPortalId, float cost)
+    private static void AddPortalTransitionIfMissing(SectorData sector, int fromPortalId, int toPortalId)
     {
         if (sector == null)
             throw new InvalidOperationException("AddPortalTransitionIfMissing failed: sector is null.");
         if (fromPortalId == toPortalId)
             throw new InvalidOperationException($"AddPortalTransitionIfMissing failed: self transition sector={sector.SectorId} portal={fromPortalId}.");
-        if (float.IsNaN(cost) || float.IsInfinity(cost))
-            throw new InvalidOperationException($"AddPortalTransitionIfMissing failed: invalid cost sector={sector.SectorId} from={fromPortalId} to={toPortalId} cost={cost}.");
         if (HasPortalTransition(sector, fromPortalId, toPortalId))
             return;
 
         sector.PortalTransitions.Add(new PortalTransition
         {
             FromPortalId = fromPortalId,
-            ToPortalId = toPortalId,
-            Cost = cost
+            ToPortalId = toPortalId
         });
     }
 
@@ -12941,7 +13008,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
             }
 
-            AddPortalTransitionIfMissing(sector, fromPortalId, toPortalId, 0f);
+            AddPortalTransitionIfMissing(sector, fromPortalId, toPortalId);
         }
     }
 
@@ -13139,15 +13206,15 @@ public static partial class FlowFieldCrowdMovementSystem
         int maxX = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.x + radius - origin.x).RawValue, cellSize.RawValue), 0, width - 1);
         int minY = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.y - radius - origin.y).RawValue, cellSize.RawValue), 0, height - 1);
         int maxY = Mathf.Clamp(NavigationWorld.FloorDivRaw((center.y + radius - origin.y).RawValue, cellSize.RawValue), 0, height - 1);
-        Fix64 blockRadius = radius + cellSize * (Fix64)0.45f;
+        Fix64 blockRadius = radius + cellSize * Fix64.FromRaw(1844);
         Fix64 blockRadiusSquared = blockRadius * blockRadius;
         for (int y = minY; y <= maxY; y++)
         {
             for (int x = minX; x <= maxX; x++)
             {
                 FixVector2 cellCenter = new FixVector2(
-                    origin.x + ((Fix64)x + (Fix64)0.5f) * cellSize,
-                    origin.y + ((Fix64)y + (Fix64)0.5f) * cellSize);
+                    origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
+                    origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
                 if (FixVector2.SqrMagnitude(cellCenter - center) <= blockRadiusSquared)
                     walkableMask[x + y * width] = false;
             }
@@ -13198,8 +13265,8 @@ public static partial class FlowFieldCrowdMovementSystem
             for (int x = minX; x <= maxX; x++)
             {
                 FixVector2 cellCenter = new FixVector2(
-                    origin.x + ((Fix64)x + (Fix64)0.5f) * cellSize,
-                    origin.y + ((Fix64)y + (Fix64)0.5f) * cellSize);
+                    origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
+                    origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
                 FixVector2 delta = cellCenter - center;
                 if (Fix64.Abs(delta.x) <= halfExtents.x && Fix64.Abs(delta.y) <= halfExtents.y)
                     walkableMask[x + y * width] = false;
@@ -14355,7 +14422,7 @@ public static partial class FlowFieldCrowdMovementSystem
         int rawMaxX = NavigationWorld.FloorDivRaw((center.x + radius - origin.x).RawValue, cellSize.RawValue);
         int rawMinY = NavigationWorld.FloorDivRaw((center.y - radius - origin.y).RawValue, cellSize.RawValue);
         int rawMaxY = NavigationWorld.FloorDivRaw((center.y + radius - origin.y).RawValue, cellSize.RawValue);
-        Fix64 blockRadius = radius + cellSize * (Fix64)0.45f;
+        Fix64 blockRadius = radius + cellSize * Fix64.FromRaw(1844);
         Fix64 blockRadiusSquared = blockRadius * blockRadius;
 
         foreach (int sectorId in sectorIds)
@@ -14373,8 +14440,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 for (int x = minX; x <= maxX; x++)
                 {
                     FixVector2 cellCenter = new FixVector2(
-                        origin.x + ((Fix64)x + (Fix64)0.5f) * cellSize,
-                        origin.y + ((Fix64)y + (Fix64)0.5f) * cellSize);
+                        origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
+                        origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
                     if (FixVector2.SqrMagnitude(cellCenter - center) <= blockRadiusSquared)
                         world.WalkableMask[x + y * world.Width] = false;
                 }
@@ -14414,8 +14481,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 for (int x = minX; x <= maxX; x++)
                 {
                     FixVector2 cellCenter = new FixVector2(
-                        origin.x + ((Fix64)x + (Fix64)0.5f) * cellSize,
-                        origin.y + ((Fix64)y + (Fix64)0.5f) * cellSize);
+                        origin.x + ((Fix64)x + Fix64.FromRaw(2048)) * cellSize,
+                        origin.y + ((Fix64)y + Fix64.FromRaw(2048)) * cellSize);
                     FixVector2 delta = cellCenter - center;
                     if (Fix64.Abs(delta.x) <= halfExtents.x && Fix64.Abs(delta.y) <= halfExtents.y)
                         world.WalkableMask[x + y * world.Width] = false;
@@ -15527,60 +15594,6 @@ public static partial class FlowFieldCrowdMovementSystem
         return entry.DeterministicIntegration[localIndex];
     }
 
-    private static float DecodePortalAccessIntegrationCost(SectorPortalAccessEntry entry, int localIndex)
-    {
-        if (entry == null)
-            throw new InvalidOperationException("DecodePortalAccessIntegrationCost failed: entry is null.");
-        if (entry.IsAnalyticClearSector)
-            throw new InvalidOperationException($"DecodePortalAccessIntegrationCost failed: analytic entry must be resolved with world coordinates sector={entry.SectorId} portal={entry.PortalId}.");
-        if (entry.QuantizedIntegration == null)
-            throw new InvalidOperationException("DecodePortalAccessIntegrationCost failed: quantized integration is null.");
-        if (localIndex < 0 || localIndex >= entry.QuantizedIntegration.Length)
-            throw new InvalidOperationException($"DecodePortalAccessIntegrationCost failed: local index out of range index={localIndex} length={entry.QuantizedIntegration.Length}.");
-        if (entry.IntegrationScale <= 0f || float.IsNaN(entry.IntegrationScale) || float.IsInfinity(entry.IntegrationScale))
-            throw new InvalidOperationException($"DecodePortalAccessIntegrationCost failed: invalid integration scale={entry.IntegrationScale}.");
-
-        ushort value = entry.QuantizedIntegration[localIndex];
-        return value == QuantizedIntegrationInfinity ? float.PositiveInfinity : value * entry.IntegrationScale;
-    }
-
-    private static ushort[] QuantizePortalAccessIntegration(SectorData sector, float[] integration, out float scale)
-    {
-        if (sector == null)
-            throw new InvalidOperationException("QuantizePortalAccessIntegration failed: sector is null.");
-        if (integration == null || integration.Length != sector.Width * sector.Height)
-            throw new InvalidOperationException($"QuantizePortalAccessIntegration failed: invalid integration sector={sector.SectorId}.");
-
-        float maxFinite = 0f;
-        for (int i = 0; i < integration.Length; i++)
-        {
-            float cost = integration[i];
-            if (float.IsPositiveInfinity(cost))
-                continue;
-            if (float.IsNaN(cost) || cost < 0f)
-                throw new InvalidOperationException($"QuantizePortalAccessIntegration failed: invalid cost sector={sector.SectorId} index={i} cost={cost}.");
-            if (cost > maxFinite)
-                maxFinite = cost;
-        }
-
-        scale = maxFinite > 0f ? maxFinite / QuantizedIntegrationMaxFinite : 1f;
-        ushort[] quantized = new ushort[integration.Length];
-        for (int i = 0; i < integration.Length; i++)
-        {
-            float cost = integration[i];
-            if (float.IsPositiveInfinity(cost))
-            {
-                quantized[i] = QuantizedIntegrationInfinity;
-                continue;
-            }
-
-            int encoded = Mathf.RoundToInt(cost / scale);
-            quantized[i] = (ushort)Mathf.Clamp(encoded, 0, QuantizedIntegrationMaxFinite);
-        }
-
-        return quantized;
-    }
-
     private static long ResolveDeterministicPortalCenterSeedCost(PortalData portal, Vector2Int cell)
     {
         if (portal == null)
@@ -15621,11 +15634,12 @@ public static partial class FlowFieldCrowdMovementSystem
         if (portal == null)
             throw new InvalidOperationException("BuildDeterministicPortalAccessIntegration failed: portal is null.");
 
-        long[] integration = new long[sector.Width * sector.Height];
+        long[] integration = RentPortalAccessIntegrationArray(sector.Width * sector.Height);
         for (int i = 0; i < integration.Length; i++)
             integration[i] = long.MaxValue;
 
-        var openSet = new DeterministicCostHeap();
+        DeterministicCostHeap openSet = PortalAccessIntegrationOpenSet;
+        openSet.Clear();
         Vector2Int[] portalCells = GetPortalCellsForSector(portal, sector.SectorId);
         for (int i = 0; i < portalCells.Length; i++)
         {
@@ -15770,19 +15784,6 @@ public static partial class FlowFieldCrowdMovementSystem
                 entry.DeterministicIntegration = entry.IsAnalyticClearSector
                     ? null
                     : BuildDeterministicPortalAccessIntegration(world, sector, GetPortalById(world, portalId));
-                if (entry.DeterministicIntegration != null)
-                {
-                    entry.QuantizedIntegration = BuildPortalAccessFloatShadow(
-                        sector,
-                        entry.DeterministicIntegration,
-                        out float scale);
-                    entry.IntegrationScale = scale;
-                }
-                else
-                {
-                    entry.QuantizedIntegration = null;
-                    entry.IntegrationScale = 0f;
-                }
             }
         }
 
@@ -15803,34 +15804,11 @@ public static partial class FlowFieldCrowdMovementSystem
                         $"RebuildDeterministicPortalTransitionCosts failed: transition is unreachable sector={sector.SectorId} from={transition.FromPortalId} to={transition.ToPortalId}.");
                 }
 
-                transition.Cost = DequantizeDeterministicPortalCost(transition.DeterministicCost);
             }
         }
 
         RefreshSectorPortalAccessAuthorityContentHashes();
-    }
-
-    private static ushort[] BuildPortalAccessFloatShadow(
-        SectorData sector,
-        long[] deterministicIntegration,
-        out float scale)
-    {
-        if (sector == null)
-            throw new InvalidOperationException("BuildPortalAccessFloatShadow failed: sector is null.");
-        if (deterministicIntegration == null || deterministicIntegration.Length != sector.Width * sector.Height)
-            throw new InvalidOperationException($"BuildPortalAccessFloatShadow failed: invalid deterministic integration sector={sector.SectorId}.");
-
-        float[] shadow = RentIntegrationArray(deterministicIntegration.Length);
-        try
-        {
-            for (int i = 0; i < deterministicIntegration.Length; i++)
-                shadow[i] = DequantizeDeterministicPortalCost(deterministicIntegration[i]);
-            return QuantizePortalAccessIntegration(sector, shadow, out scale);
-        }
-        finally
-        {
-            ReturnIntegrationArray(shadow);
-        }
+        PortalAccessIntegrationArrayPool.Clear();
     }
 
     private static SectorPortalAccessEntry GetPrebuiltSectorPortalAccess(SectorData sector, int sectorId, int portalId)
@@ -16284,11 +16262,31 @@ public static partial class FlowFieldCrowdMovementSystem
             return true;
         }
 
+        int startCellIndex = _world.GetIndex(startX, startY);
+        int goalCellIndex = _world.GetIndex(goalX, goalY);
+        int startSectorDirtyVersion = _world.Sectors[startSectorId].DirtyVersion;
+        int goalSectorDirtyVersion = _world.Sectors[goalSectorId].DirtyVersion;
+        if (agent.NavState.HasFailedPathRequest
+            && agent.NavState.FailedPathWorldVersion == _world.Version
+            && agent.NavState.FailedPathStartCellIndex == startCellIndex
+            && agent.NavState.FailedPathGoalCellIndex == goalCellIndex
+            && agent.NavState.FailedPathStartSectorDirtyVersion == startSectorDirtyVersion
+            && agent.NavState.FailedPathGoalSectorDirtyVersion == goalSectorDirtyVersion)
+        {
+            return false;
+        }
+
         PathHandle oldHandle = handle;
         string rebuildReason = ResolvePathHandleRebuildReason(oldHandle, startSectorId, goalSectorId, goalX, goalY);
         IncrementPathHandleRebuildReason(rebuildReason);
         handle = BuildPathHandle(startSectorId, goalSectorId, startX, startY, goalX, goalY);
         agent.NavState.PathHandle = handle;
+        agent.NavState.HasFailedPathRequest = handle == null;
+        agent.NavState.FailedPathWorldVersion = _world.Version;
+        agent.NavState.FailedPathStartCellIndex = startCellIndex;
+        agent.NavState.FailedPathGoalCellIndex = goalCellIndex;
+        agent.NavState.FailedPathStartSectorDirtyVersion = startSectorDirtyVersion;
+        agent.NavState.FailedPathGoalSectorDirtyVersion = goalSectorDirtyVersion;
         if (GameDebugSettings.IsEnabled(DebugCategory.Move)
             && TryConsumeSuccessfulMoveDiagnosticBudget())
         {
@@ -18659,7 +18657,30 @@ public static partial class FlowFieldCrowdMovementSystem
         if (sectorPathIndex < 0 || sectorPathIndex >= handle.SectorIds.Length)
             throw new InvalidOperationException($"EnqueueFlowTileBuildChain failed: sectorPathIndex out of range {sectorPathIndex}.");
 
-        PathHandle snapshot = ClonePathHandle(handle);
+        bool requiresSnapshot = false;
+        if (prependToFront)
+        {
+            int finalIndex = handle.SectorIds.Length - 1;
+            int finalAdjacentIndex = finalIndex - 1;
+            requiresSnapshot = RequiresNewFlowTileBuildJob(handle, finalIndex, goalX, goalY, agentTypeId)
+                               || (finalAdjacentIndex >= sectorPathIndex
+                                   && RequiresNewFlowTileBuildJob(handle, finalAdjacentIndex, goalX, goalY, agentTypeId))
+                               || (sectorPathIndex != finalIndex
+                                   && sectorPathIndex != finalAdjacentIndex
+                                   && RequiresNewFlowTileBuildJob(handle, sectorPathIndex, goalX, goalY, agentTypeId));
+        }
+        else
+        {
+            for (int i = handle.SectorIds.Length - 1; i >= sectorPathIndex; i--)
+            {
+                if (!RequiresNewFlowTileBuildJob(handle, i, goalX, goalY, agentTypeId))
+                    continue;
+                requiresSnapshot = true;
+                break;
+            }
+        }
+
+        PathHandle snapshot = requiresSnapshot ? ClonePathHandle(handle) : handle;
         if (prependToFront)
         {
             EnqueueFlowTileBuildChainToFront(snapshot, sectorPathIndex, goalX, goalY, agentTypeId);
@@ -18702,9 +18723,15 @@ public static partial class FlowFieldCrowdMovementSystem
         if (sectorPathIndex < 0 || sectorPathIndex >= handle.SectorIds.Length)
             throw new InvalidOperationException($"EnqueueActiveFlowTileBuilds failed: sectorPathIndex out of range {sectorPathIndex}.");
 
-        PathHandle snapshot = ClonePathHandle(handle);
-        int finalIndex = snapshot.SectorIds.Length - 1;
+        int finalIndex = handle.SectorIds.Length - 1;
         int finalAdjacentIndex = finalIndex - 1;
+        bool requiresSnapshot = RequiresNewFlowTileBuildJob(handle, finalIndex, goalX, goalY, agentTypeId)
+                                || (finalAdjacentIndex >= sectorPathIndex
+                                    && RequiresNewFlowTileBuildJob(handle, finalAdjacentIndex, goalX, goalY, agentTypeId))
+                                || (sectorPathIndex != finalIndex
+                                    && sectorPathIndex != finalAdjacentIndex
+                                    && RequiresNewFlowTileBuildJob(handle, sectorPathIndex, goalX, goalY, agentTypeId));
+        PathHandle snapshot = requiresSnapshot ? ClonePathHandle(handle) : handle;
         EnqueueFlowTileBuildJob(snapshot, finalIndex, goalX, goalY, agentTypeId, prependToFront: true);
         if (finalAdjacentIndex >= sectorPathIndex)
             EnqueueFlowTileBuildJob(snapshot, finalAdjacentIndex, goalX, goalY, agentTypeId, prependToFront: true);
@@ -18728,6 +18755,24 @@ public static partial class FlowFieldCrowdMovementSystem
             AddActiveFlowTileBuildKey(handle, finalAdjacentIndex, goalX, goalY, agentTypeId);
         if (sectorPathIndex != finalIndex && sectorPathIndex != finalAdjacentIndex)
             AddActiveFlowTileBuildKey(handle, sectorPathIndex, goalX, goalY, agentTypeId);
+    }
+
+    private static bool RequiresNewFlowTileBuildJob(
+        PathHandle handle,
+        int sectorPathIndex,
+        int goalX,
+        int goalY,
+        int agentTypeId)
+    {
+        FlowTileCacheKey key = CreateTileCacheKeyForPathSegment(
+            handle,
+            sectorPathIndex,
+            goalX,
+            goalY,
+            agentTypeId,
+            out _,
+            out _);
+        return !FlowTileCache.ContainsKey(key) && !PendingFlowTileBuildJobs.Contains(key);
     }
 
     private static void AddActiveFlowTileBuildKey(PathHandle handle, int sectorPathIndex, int goalX, int goalY, int agentTypeId)
@@ -20688,11 +20733,13 @@ public static partial class FlowFieldCrowdMovementSystem
         FixVector2 rawGoalPosition,
         out int goalX,
         out int goalY,
-        out FixVector2 stableGoalPosition)
+        out FixVector2 stableGoalPosition,
+        out bool shouldEnqueueSharedGoal)
     {
         goalX = 0;
         goalY = 0;
         stableGoalPosition = rawGoalPosition;
+        shouldEnqueueSharedGoal = true;
         if (!TryResolveReachableNavigationPointCellFixed(
                 self,
                 rawGoalPosition,
@@ -20724,13 +20771,14 @@ public static partial class FlowFieldCrowdMovementSystem
         FixVector2 currentTargetFramePosition = currentTarget.LogicFramePositionFixed();
         FixVector2 targetOffset = rawGoalPosition - currentTargetFramePosition;
         Fix64 currentTargetExtent = ResolveNavigationTargetExtentFixed(currentTarget);
-        Fix64 targetMatchDistance = Fix64.Max(currentTargetExtent * (Fix64)0.75f, (Fix64)0.35f);
+        Fix64 targetMatchDistance = Fix64.Max(currentTargetExtent * Fix64.FromRaw(3072), Fix64.FromRaw(1434));
         bool useMovingTargetAnchor = IsNavigationMovingTarget(currentTarget);
         if (!useMovingTargetAnchor
             && FixVector2.SqrMagnitude(targetOffset) > targetMatchDistance * targetMatchDistance)
         {
             _perf.StableGoalRaw++;
             ClearStableGoal(agent);
+            shouldEnqueueSharedGoal = false;
             goalX = reachableGoalX;
             goalY = reachableGoalY;
             stableGoalPosition = reachableGoalWorld;
@@ -20822,6 +20870,7 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.NavState.StableGoalY = anchor.ActiveGoalY;
         agent.NavState.StableGoalWorldFixed = anchor.ActiveGoalWorldFixed;
         agent.NavState.StableGoalWorld = anchor.ActiveGoalWorld;
+        shouldEnqueueSharedGoal = false;
         goalX = anchor.ActiveGoalX;
         goalY = anchor.ActiveGoalY;
         stableGoalPosition = anchor.ActiveGoalWorldFixed;
@@ -21317,7 +21366,7 @@ public static partial class FlowFieldCrowdMovementSystem
         Fix64 selfRadius = Fix64.Max(ResolveCollisionRadiusFixed(self), agent.RadiusFixed);
         Fix64 requiredDistance = Fix64.Max(
             selfRadius * (Fix64)2 + (Fix64)NavigationGoalOccupancyPadding,
-            selfRadius + (Fix64)0.2f);
+            selfRadius + Fix64.FromRaw(820));
         int ignoredTargetId = ResolveIgnoredGoalOccupancyTargetIdFixed(self, goalPosition);
         Fix64 distanceToGoal = FixVector2.Magnitude(goalPosition - selfFramePosition);
         Fix64 cellSize = _world.CellSizeFixed;
@@ -21356,7 +21405,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FixVector2 offset = goalPosition - currentTarget.LogicFramePositionFixed();
         Fix64 targetExtent = ResolveNavigationTargetExtentFixed(currentTarget);
-        Fix64 threshold = Fix64.Max(targetExtent * (Fix64)0.75f, (Fix64)0.35f);
+        Fix64 threshold = Fix64.Max(targetExtent * Fix64.FromRaw(3072), Fix64.FromRaw(1434));
         return FixVector2.SqrMagnitude(offset) > threshold * threshold
             ? ResolveAgentId(currentTarget)
             : 0;
@@ -21393,9 +21442,9 @@ public static partial class FlowFieldCrowdMovementSystem
         for (int ring = 0; ring < NavigationGoalRingCount; ring++)
         {
             Fix64 radius = Fix64.Max(
-                               selfRadius + (Fix64)0.05f,
-                               requiredDistance - selfRadius * (Fix64)0.5f)
-                           + (Fix64)ring * Fix64.Max((Fix64)0.35f, selfRadius * (Fix64)0.35f);
+                               selfRadius + Fix64.FromRaw(205),
+                               requiredDistance - selfRadius * Fix64.FromRaw(2048))
+                           + (Fix64)ring * Fix64.Max(Fix64.FromRaw(1434), selfRadius * Fix64.FromRaw(1434));
             for (int i = 0; i < NavigationGoalCandidateCount; i++)
             {
                 int candidateIndex = (candidateOrderStart + i) % NavigationGoalCandidateCount;
@@ -21447,12 +21496,12 @@ public static partial class FlowFieldCrowdMovementSystem
                     continue;
                 }
 
-                Fix64 anglePenalty = Fix64.Abs(angleDegrees) * (preferLateral ? (Fix64)0.02f : (Fix64)0.01f);
+                Fix64 anglePenalty = Fix64.Abs(angleDegrees) * (preferLateral ? Fix64.FromRaw(82) : Fix64.FromRaw(41));
                 if (preferLateral && angleDegrees == Fix64.Zero)
                     anglePenalty += Fix64.One;
                 Fix64 score = FixVector2.Magnitude(resolvedWorld - selfFramePosition)
                               + anglePenalty
-                              + (Fix64)ring * (Fix64)0.25f;
+                              + (Fix64)ring * Fix64.FromRaw(1024);
                 if (score >= bestScore)
                     continue;
 
@@ -22018,7 +22067,7 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("TryResolveNearbyStartWalkableFixed failed: world is null.");
 
         Fix64 cellSize = world.CellSizeFixed;
-        Fix64 maxSnapDistance = Fix64.Max(cellSize * (Fix64)0.45f, (Fix64)0.25f);
+        Fix64 maxSnapDistance = Fix64.Max(cellSize * Fix64.FromRaw(1844), Fix64.FromRaw(1024));
         Fix64 bestDistanceSq = maxSnapDistance * maxSnapDistance;
         bool found = false;
         long radiusRaw = checked((maxSnapDistance.RawValue + cellSize.RawValue - 1) / cellSize.RawValue);
@@ -22059,7 +22108,7 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("TryResolveNearbyStartWalkable failed: world is null.");
 
         Fix64 cellSize = world.CellSizeFixed;
-        Fix64 maxSnapDistance = Fix64.Max(cellSize * (Fix64)0.45f, (Fix64)0.25f);
+        Fix64 maxSnapDistance = Fix64.Max(cellSize * Fix64.FromRaw(1844), Fix64.FromRaw(1024));
         Fix64 bestDistanceSq = maxSnapDistance * maxSnapDistance;
         FixVector2 positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
         bool found = false;
@@ -22653,10 +22702,10 @@ public static partial class FlowFieldCrowdMovementSystem
         if (world == null)
             throw new InvalidOperationException("ResolveWallCostBlurRadiusCellsFixed failed: world is null.");
 
-        Fix64 cellSize = Fix64.Max((Fix64)0.001f, world.CellSizeFixed);
+        Fix64 cellSize = Fix64.Max(Fix64.FromRaw(5), world.CellSizeFixed);
         Fix64 extraRadiusCells = Fix64.Max(
             Fix64.Zero,
-            (world.AgentRadiusFixed - (Fix64)0.5f) / cellSize);
+            (world.AgentRadiusFixed - Fix64.FromRaw(2048)) / cellSize);
         return Fix64.FromRaw(WallCostBlurRadiusRaw) + extraRadiusCells;
     }
 
@@ -22686,7 +22735,7 @@ public static partial class FlowFieldCrowdMovementSystem
         if (outerPenalty < 0 || adjacentPenalty < outerPenalty)
             throw new ArgumentOutOfRangeException(nameof(outerPenalty), outerPenalty, $"Invalid wall penalties outer={outerPenalty} adjacent={adjacentPenalty}.");
 
-        long denominatorRaw = Math.Max(((Fix64)0.001f).RawValue, radiusRaw - Fix64.One.RawValue);
+        long denominatorRaw = Math.Max(Fix64.FromRaw(5).RawValue, radiusRaw - Fix64.One.RawValue);
         Fix64 t = Fix64.Clamp(
             Fix64.FromRaw(radiusRaw - distanceRaw) / Fix64.FromRaw(denominatorRaw),
             Fix64.Zero,
@@ -22727,8 +22776,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         Fix64 extraRadiusCells = Fix64.Max(
             Fix64.Zero,
-            (world.AgentRadiusFixed - (Fix64)0.5f)
-            / Fix64.Max((Fix64)0.001f, world.CellSizeFixed));
+            (world.AgentRadiusFixed - Fix64.FromRaw(2048))
+            / Fix64.Max(Fix64.FromRaw(5), world.CellSizeFixed));
         return WallCostAdjacentPenalty + checked((int)(long)Fix64.Ceiling(extraRadiusCells));
     }
 
@@ -23422,6 +23471,33 @@ public static partial class FlowFieldCrowdMovementSystem
         WorldRuntimeState state = _activeWorldState;
         if (state == null || state.World == null)
             return false;
+
+        world = state.World;
+        return true;
+    }
+
+    private static bool TryGetCommittedNavigationQueryWorldReadOnly(
+        int agentTypeId,
+        out WorldRuntimeState state,
+        out NavigationWorld world)
+    {
+        int resolvedAgentTypeId = ResolvePreferredAgentTypeId(agentTypeId);
+        state = null;
+        world = null;
+        if (!WorldStates.TryGetValue(resolvedAgentTypeId, out state) || state == null)
+            return false;
+        if (state.AgentTypeId != resolvedAgentTypeId)
+        {
+            throw new InvalidOperationException(
+                $"Read-only navigation world lookup found an agent type mismatch. key={resolvedAgentTypeId}, state={state.AgentTypeId}.");
+        }
+        if (state.IsDirty || state.BuildJob != null || state.World == null)
+            return false;
+        if (state.World.AgentTypeId != resolvedAgentTypeId)
+        {
+            throw new InvalidOperationException(
+                $"Read-only navigation world lookup found a committed world mismatch. key={resolvedAgentTypeId}, world={state.World.AgentTypeId}.");
+        }
 
         world = state.World;
         return true;
@@ -24410,28 +24486,33 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static float ResolveAgentTypeRadius(int agentTypeId)
     {
+        return (float)ResolveAgentTypeRadiusFixed(agentTypeId);
+    }
+
+    private static Fix64 ResolveAgentTypeRadiusFixed(int agentTypeId)
+    {
 #if UNITY_EDITOR
-        if (TestAgentTypeRadii.TryGetValue(agentTypeId, out float testRadius))
+        if (TestAgentTypeRadii.TryGetValue(agentTypeId, out Fix64 testRadius))
             return testRadius;
 #endif
 
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
-            return 0.5f;
+            return Fix64.FromRaw(2048);
 
         if (agentTypeId == AgentTypeHelper.SmallMovementTypeId)
-            return ResolveConfiguredAgentTypeRadius("SmallUnitCollisionRadius", 12f);
+            return ResolveConfiguredAgentTypeRadiusFixed("SmallUnitCollisionRadius");
         if (agentTypeId == AgentTypeHelper.MediumMovementTypeId)
-            return ResolveConfiguredAgentTypeRadius("MediumUnitCollisionRadius", 22f);
+            return ResolveConfiguredAgentTypeRadiusFixed("MediumUnitCollisionRadius");
         if (agentTypeId == AgentTypeHelper.LargeMovementTypeId)
-            return ResolveConfiguredAgentTypeRadius("LargeUnitCollisionRadius", 36f);
+            return ResolveConfiguredAgentTypeRadiusFixed("LargeUnitCollisionRadius");
 
-        return 0.5f;
+        return Fix64.FromRaw(2048);
     }
 
-    private static float ResolveConfiguredAgentTypeRadius(string configKey, float fallbackTableRadius)
+    private static Fix64 ResolveConfiguredAgentTypeRadiusFixed(string configKey)
     {
-        float tableRadius = GF.Config != null ? GF.Config.GetFloat(configKey, fallbackTableRadius) : fallbackTableRadius;
-        return tableRadius * DistanceUnitConverter.DistanceConversionRate;
+        Fix64 tableRadius = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(configKey);
+        return DistanceUnitConverter.ConvertToWorld(tableRadius);
     }
 
     private static float ResolveCollisionRadius(IEntityContext entity)
@@ -24489,7 +24570,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"ResolveCollisionRadiusFixed failed: entity={entity.LogicEntityId.Value}, key={entity.CharacterKey}, " +
                 $"type={entity.GetType().FullName}, alive={entity.Alive}, unitSize={unitSize}, " +
                 $"propertyRaw={propertyRadius.RawValue}, worldRaw={radius.RawValue}, " +
-                $"conversionRate={DistanceUnitConverter.DistanceConversionRate:R}, " +
+                $"conversionRateRaw={DistanceUnitConverter.DistanceConversionRateFixed.RawValue}, " +
                 $"navAgentType={logicState?.NavigationAgentTypeId.ToString() ?? "<unavailable>"}, " +
                 $"usesFlow={logicState?.UsesFlowNavigationAgent.ToString() ?? "<unavailable>"}, " +
                 $"hero={logicState?.IsHeroEntity.ToString() ?? "<unavailable>"}, " +

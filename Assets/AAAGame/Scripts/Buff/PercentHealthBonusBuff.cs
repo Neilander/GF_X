@@ -5,7 +5,7 @@
 /// 传入 percent 0.25 表示 +25%。
 /// 多个来源并列累加到 Mul-Buff，两个 +25% → final ×1.5（百分比加法栈）。
 /// </summary>
-public sealed class PercentHealthBonusBuff : BuffCallback
+public sealed class PercentHealthBonusBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_Percent;
     private IPropertyModifier m_Modifier;
@@ -36,5 +36,12 @@ public sealed class PercentHealthBonusBuff : BuffCallback
         if (pm == null || m_Modifier == null) return;
 
         pm.ModifyMainPropertyMul(CreatureMainProperty.Health, NormalBaseValueTp.Buff, m_Modifier, false);
+        m_Modifier = null;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Percent.RawValue);
+        hasher.Add(m_Modifier != null);
     }
 }

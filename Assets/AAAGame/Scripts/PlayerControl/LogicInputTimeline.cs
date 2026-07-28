@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 using UnityEngine;
+
+[assembly: InternalsVisibleTo("AAAGame.Tests.Editor")]
 
 public enum LogicInputButton
 {
@@ -90,10 +93,11 @@ public sealed class LogicInputFrame
         ulong pressedBits,
         ulong releasedBits,
         int[] pressCounts,
-        ReadOnlyCollection<RawInputEvent> events,
+        IReadOnlyList<RawInputEvent> events,
         ulong firstSequence,
         ulong lastSequence,
-        uint checksum)
+        uint checksum,
+        bool isReusable = false)
     {
         FrameId = frameId;
         PlayerId = playerId;
@@ -109,23 +113,25 @@ public sealed class LogicInputFrame
         FirstSequence = firstSequence;
         LastSequence = lastSequence;
         Checksum = checksum;
+        m_IsReusable = isReusable;
     }
 
-    private readonly int[] m_PressCounts;
+    private int[] m_PressCounts;
+    private readonly bool m_IsReusable;
 
-    public ulong FrameId { get; }
-    public uint PlayerId { get; }
-    public FixVector2 WorldMove { get; }
-    public FixVector2 SelectScreenPosition { get; }
-    public bool HasSelectWorldPosition { get; }
-    public FixVector2 SelectWorldPosition { get; }
-    public ulong HeldBits { get; }
-    public ulong PressedBits { get; }
-    public ulong ReleasedBits { get; }
-    public IReadOnlyList<RawInputEvent> Events { get; }
-    public ulong FirstSequence { get; }
-    public ulong LastSequence { get; }
-    public uint Checksum { get; }
+    public ulong FrameId { get; private set; }
+    public uint PlayerId { get; private set; }
+    public FixVector2 WorldMove { get; private set; }
+    public FixVector2 SelectScreenPosition { get; private set; }
+    public bool HasSelectWorldPosition { get; private set; }
+    public FixVector2 SelectWorldPosition { get; private set; }
+    public ulong HeldBits { get; private set; }
+    public ulong PressedBits { get; private set; }
+    public ulong ReleasedBits { get; private set; }
+    public IReadOnlyList<RawInputEvent> Events { get; private set; }
+    public ulong FirstSequence { get; private set; }
+    public ulong LastSequence { get; private set; }
+    public uint Checksum { get; private set; }
 
     public bool IsHeld(LogicInputButton button)
     {
@@ -146,6 +152,67 @@ public sealed class LogicInputFrame
     {
         return m_PressCounts[LogicInputTimeline.ValidateButton(button)];
     }
+
+    internal void ResetReusable(
+        ulong frameId,
+        uint playerId,
+        FixVector2 worldMove,
+        FixVector2 selectScreenPosition,
+        bool hasSelectWorldPosition,
+        FixVector2 selectWorldPosition,
+        ulong heldBits,
+        ulong pressedBits,
+        ulong releasedBits,
+        int[] pressCounts,
+        IReadOnlyList<RawInputEvent> events,
+        ulong firstSequence,
+        ulong lastSequence,
+        uint checksum)
+    {
+        if (!m_IsReusable)
+            throw new InvalidOperationException("LogicInputFrame.ResetReusable failed: frame is immutable.");
+
+        FrameId = frameId;
+        PlayerId = playerId;
+        WorldMove = worldMove;
+        SelectScreenPosition = selectScreenPosition;
+        HasSelectWorldPosition = hasSelectWorldPosition;
+        SelectWorldPosition = selectWorldPosition;
+        HeldBits = heldBits;
+        PressedBits = pressedBits;
+        ReleasedBits = releasedBits;
+        m_PressCounts = pressCounts;
+        Events = events;
+        FirstSequence = firstSequence;
+        LastSequence = lastSequence;
+        Checksum = checksum;
+    }
+
+    internal LogicInputFrame Freeze()
+    {
+        if (!m_IsReusable)
+            return this;
+
+        int[] pressCounts = (int[])m_PressCounts.Clone();
+        var events = new RawInputEvent[Events.Count];
+        for (int i = 0; i < events.Length; i++)
+            events[i] = Events[i];
+        return new LogicInputFrame(
+            FrameId,
+            PlayerId,
+            WorldMove,
+            SelectScreenPosition,
+            HasSelectWorldPosition,
+            SelectWorldPosition,
+            HeldBits,
+            PressedBits,
+            ReleasedBits,
+            pressCounts,
+            Array.AsReadOnly(events),
+            FirstSequence,
+            LastSequence,
+            Checksum);
+    }
 }
 
 public sealed class LogicInputTimeline
@@ -158,6 +225,10 @@ public sealed class LogicInputTimeline
 
     private readonly uint m_PlayerId;
     private readonly List<RawInputEvent> m_PendingEvents = new List<RawInputEvent>();
+    private readonly int[] m_RuntimePressCounts = new int[ButtonCount];
+    private readonly List<RawInputEvent> m_RuntimeEvents = new List<RawInputEvent>();
+    private readonly ReadOnlyCollection<RawInputEvent> m_ReadOnlyRuntimeEvents;
+    private readonly LogicInputFrame m_RuntimeFrame;
     private ulong m_NextSequence;
     private ulong m_LastSealedFrame;
     private double m_LastCutoff;
@@ -171,6 +242,23 @@ public sealed class LogicInputTimeline
     public LogicInputTimeline(uint playerId = 0)
     {
         m_PlayerId = playerId;
+        m_ReadOnlyRuntimeEvents = m_RuntimeEvents.AsReadOnly();
+        m_RuntimeFrame = new LogicInputFrame(
+            0,
+            playerId,
+            FixVector2.Zero,
+            FixVector2.Zero,
+            false,
+            FixVector2.Zero,
+            0,
+            0,
+            0,
+            m_RuntimePressCounts,
+            m_ReadOnlyRuntimeEvents,
+            0,
+            0,
+            0,
+            true);
         CurrentFrame = LogicInputFrame.Empty;
     }
 
@@ -271,6 +359,16 @@ public sealed class LogicInputTimeline
 
     public LogicInputFrame Seal(ulong frameId, double cutoffRealtime)
     {
+        return SealCore(frameId, cutoffRealtime, false);
+    }
+
+    internal LogicInputFrame SealReusable(ulong frameId, double cutoffRealtime)
+    {
+        return SealCore(frameId, cutoffRealtime, true);
+    }
+
+    private LogicInputFrame SealCore(ulong frameId, double cutoffRealtime, bool reuseRuntimeFrame)
+    {
         if (!m_IsStarted)
             throw new InvalidOperationException("LogicInputTimeline.Seal failed: timeline is not started.");
         if (frameId != m_LastSealedFrame + 1)
@@ -283,15 +381,27 @@ public sealed class LogicInputTimeline
                 $"LogicInputTimeline.Seal failed: cutoff moved backwards. previous={m_LastCutoff:R}, current={cutoffRealtime:R}.");
 
         int eventCount = FindConsumableEventCount(cutoffRealtime);
-        RawInputEvent[] frameEvents = eventCount == 0 ? s_NoEventArray : new RawInputEvent[eventCount];
-        int[] pressCounts = eventCount == 0 ? s_NoPressCounts : new int[ButtonCount];
+        RawInputEvent[] immutableEvents = reuseRuntimeFrame || eventCount == 0
+            ? s_NoEventArray
+            : new RawInputEvent[eventCount];
+        int[] pressCounts = reuseRuntimeFrame
+            ? m_RuntimePressCounts
+            : eventCount == 0 ? s_NoPressCounts : new int[ButtonCount];
+        if (reuseRuntimeFrame)
+        {
+            Array.Clear(m_RuntimePressCounts, 0, m_RuntimePressCounts.Length);
+            m_RuntimeEvents.Clear();
+        }
         ulong pressedBits = 0;
         ulong releasedBits = 0;
 
         for (int i = 0; i < eventCount; i++)
         {
             RawInputEvent inputEvent = m_PendingEvents[i];
-            frameEvents[i] = inputEvent;
+            if (reuseRuntimeFrame)
+                m_RuntimeEvents.Add(inputEvent);
+            else
+                immutableEvents[i] = inputEvent;
 
             switch (inputEvent.Kind)
             {
@@ -333,14 +443,14 @@ public sealed class LogicInputTimeline
             }
         }
 
+        ulong firstSequence = eventCount > 0 ? m_PendingEvents[0].Sequence : 0;
+        ulong lastSequence = eventCount > 0 ? m_PendingEvents[eventCount - 1].Sequence : 0;
         if (eventCount > 0)
             m_PendingEvents.RemoveRange(0, eventCount);
 
-        ulong firstSequence = eventCount > 0 ? frameEvents[0].Sequence : 0;
-        ulong lastSequence = eventCount > 0 ? frameEvents[eventCount - 1].Sequence : 0;
-        ReadOnlyCollection<RawInputEvent> readonlyEvents = eventCount == 0
-            ? s_NoEvents
-            : Array.AsReadOnly(frameEvents);
+        IReadOnlyList<RawInputEvent> readonlyEvents = reuseRuntimeFrame
+            ? m_ReadOnlyRuntimeEvents
+            : eventCount == 0 ? s_NoEvents : Array.AsReadOnly(immutableEvents);
         uint checksum = ComputeChecksum(
             frameId,
             m_PlayerId,
@@ -352,23 +462,46 @@ public sealed class LogicInputTimeline
             pressedBits,
             releasedBits,
             pressCounts,
-            frameEvents);
+            readonlyEvents);
 
-        var frame = new LogicInputFrame(
-            frameId,
-            m_PlayerId,
-            m_WorldMove,
-            m_SelectScreenPosition,
-            m_HasSelectWorldPosition,
-            m_SelectWorldPosition,
-            m_HeldBits,
-            pressedBits,
-            releasedBits,
-            pressCounts,
-            readonlyEvents,
-            firstSequence,
-            lastSequence,
-            checksum);
+        LogicInputFrame frame;
+        if (reuseRuntimeFrame)
+        {
+            m_RuntimeFrame.ResetReusable(
+                frameId,
+                m_PlayerId,
+                m_WorldMove,
+                m_SelectScreenPosition,
+                m_HasSelectWorldPosition,
+                m_SelectWorldPosition,
+                m_HeldBits,
+                pressedBits,
+                releasedBits,
+                pressCounts,
+                readonlyEvents,
+                firstSequence,
+                lastSequence,
+                checksum);
+            frame = m_RuntimeFrame;
+        }
+        else
+        {
+            frame = new LogicInputFrame(
+                frameId,
+                m_PlayerId,
+                m_WorldMove,
+                m_SelectScreenPosition,
+                m_HasSelectWorldPosition,
+                m_SelectWorldPosition,
+                m_HeldBits,
+                pressedBits,
+                releasedBits,
+                pressCounts,
+                readonlyEvents,
+                firstSequence,
+                lastSequence,
+                checksum);
+        }
 
         CurrentFrame = frame;
         m_LastSealedFrame = frameId;
@@ -457,7 +590,7 @@ public sealed class LogicInputTimeline
         ulong pressedBits,
         ulong releasedBits,
         int[] pressCounts,
-        RawInputEvent[] events)
+        IReadOnlyList<RawInputEvent> events)
     {
         const uint offsetBasis = 2166136261u;
         const uint prime = 16777619u;
@@ -478,7 +611,7 @@ public sealed class LogicInputTimeline
 
         for (int i = 0; i < pressCounts.Length; i++)
             AddHash(ref hash, unchecked((ulong)pressCounts[i]), prime);
-        for (int i = 0; i < events.Length; i++)
+        for (int i = 0; i < events.Count; i++)
         {
             RawInputEvent inputEvent = events[i];
             AddHash(ref hash, inputEvent.Sequence, prime);

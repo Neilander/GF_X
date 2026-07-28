@@ -19,6 +19,10 @@
 	ResourcePointInitialAmount	资源点初始资源量	60
 	BuildingRecycleRefundRate	回收建筑返还资源百分比	50
 	BaseCriticalDamageRate	基础暴击伤害百分比	50
+	HydroGunnerPushDistancePerLevel	水枪兵每级击退距离	120
+	HydroGunnerPushDuration	水枪兵击退持续时间	0.18
+	MeatRackPullDistancePerLevel	肉架每级拉扯距离	120
+	MeatRackPullDuration	肉架拉扯持续时间	0.18
 	MinimumDamagePerHit	单次伤害下限	1
 	KnockbackForceLevel0	0级推力	1
 	KnockbackForceLevel1	1级推力	2

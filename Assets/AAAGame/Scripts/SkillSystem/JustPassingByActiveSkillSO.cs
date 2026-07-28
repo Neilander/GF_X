@@ -5,7 +5,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "JustPassingByActiveSkillSO", menuName = "Skills/Active/Just Passing By")]
 public sealed class JustPassingByActiveSkillSO : TargetPositionActiveSkillSO
 {
-    private static readonly Fix64 RefreshDurationPaddingSeconds = (Fix64)0.2f;
+    private static readonly Fix64 RefreshDurationPaddingSeconds = Fix64.FromRaw(820);
 
     protected override void ApplyAtPosition(IEntityContext caster, FixVector2 position, IReadOnlyList<ISelectable> selectedTargets)
     {

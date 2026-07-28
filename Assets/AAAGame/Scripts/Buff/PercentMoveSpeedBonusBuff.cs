@@ -4,7 +4,7 @@
 /// 百分比移动速度 Buff：作用于 CreatureMainProperty.Speed 的 Mul-Buff 乘区。
 /// 传入 percent 0.25 表示 +25%。多个来源并列累加到 Mul-Buff（百分比加法栈）。
 /// </summary>
-public sealed class PercentMoveSpeedBonusBuff : BuffCallback
+public sealed class PercentMoveSpeedBonusBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_Percent;
     private IPropertyModifier m_Modifier;
@@ -35,10 +35,17 @@ public sealed class PercentMoveSpeedBonusBuff : BuffCallback
         if (pm == null || m_Modifier == null) return;
 
         pm.ModifyMainPropertyMul(CreatureMainProperty.Speed, NormalBaseValueTp.Buff, m_Modifier, false);
+        m_Modifier = null;
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_Percent.RawValue);
+        hasher.Add(m_Modifier != null);
     }
 }
 
-public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback
+public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private readonly Fix64 m_TargetPercent;
     private readonly Fix64 m_RampDuration;
@@ -108,6 +115,17 @@ public sealed class RampedPercentMoveSpeedBonusBuff : BuffCallback
 
         m_CurrentPercent = value;
         m_MulBuffProperty?.MakeDirty();
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(m_TargetPercent.RawValue);
+        hasher.Add(m_RampDuration.RawValue);
+        hasher.Add(m_StartFull);
+        hasher.Add(m_CurrentPercent.RawValue);
+        hasher.Add(m_Elapsed.RawValue);
+        hasher.Add(m_Modifier != null);
+        hasher.Add(m_MulBuffProperty != null);
     }
 }
 

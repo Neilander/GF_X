@@ -3,7 +3,7 @@
 /// - 生效时进入幽灵态（不可攻击、无敌、不可被选为攻击目标、半透明）
 /// - 阶段切换时自动移除，并由宿主恢复为满血常态
 /// </summary>
-public class HeroGhostBuff : BuffCallback
+public class HeroGhostBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private string _invincibleSourceId;
 
@@ -29,4 +29,8 @@ public class HeroGhostBuff : BuffCallback
         }
     }
 
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_invincibleSourceId);
+    }
 }

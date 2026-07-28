@@ -12,11 +12,10 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain, ILogicDeterministicSta
     public bool Skill4 { get; private set; }
     public bool Skill5 { get; private set; }
 
-    public float AttackRange = 1.6f;
-    public float FollowDistance = 2.2f;
+    public Fix64 AttackRange = Fix64.FromRaw(6554);
 
     // === 跟随延迟参数 ===
-    public float FollowUpdateInterval = 0.3f;
+    public Fix64 FollowUpdateInterval = Fix64.FromRaw(1229);
     private Fix64 _followTimer = Fix64.Zero;
 
     public void Tick(IEntityContext self, Fix64 dt)
@@ -32,7 +31,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain, ILogicDeterministicSta
         {
             Fix64 distToEnemy = LogicEntityFrameSnapshotService.GetRequiredTargetSurfaceDistance(self, target);
 
-            if (distToEnemy > (Fix64)AttackRange)
+            if (distToEnemy > AttackRange)
             {
                 self.MoveComp.MoveToFixed(target.LogicFramePositionFixed());
             }
@@ -49,7 +48,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain, ILogicDeterministicSta
         {
             _followTimer += dt;
 
-            if (_followTimer >= (Fix64)FollowUpdateInterval)
+            if (_followTimer >= FollowUpdateInterval)
             {
                 _followTimer = Fix64.Zero;
 
@@ -59,7 +58,7 @@ public class FriendlyAIBrain : IControlBrain, ITickBrain, ILogicDeterministicSta
         }
 
         // 3. 没敌人也没玩家，原地挂机并重置计时器
-        _followTimer = (Fix64)FollowUpdateInterval;
+        _followTimer = FollowUpdateInterval;
         self.MoveComp.StopMove();
     }
 

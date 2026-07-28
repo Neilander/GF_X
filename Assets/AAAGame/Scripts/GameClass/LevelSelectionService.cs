@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Resource;
@@ -155,6 +155,20 @@ public static class LevelSelectionService
         }
 
         Log.Info("[LevelSelection] Enter level in place requested. level={0}", selectedLevel.Identifier);
+        return true;
+    }
+
+    public static bool TryRestoreStageStart(int phaseEpoch, out string errorMessage)
+    {
+        RuntimeProcedureBase runtimeProcedure = GetCurrentRuntimeProcedure();
+        if (runtimeProcedure == null)
+        {
+            errorMessage = "Cannot restore a stage checkpoint because the current procedure is not a RuntimeProcedureBase.";
+            return false;
+        }
+        if (!runtimeProcedure.TryRestoreStageStart(phaseEpoch, out errorMessage))
+            return false;
+        Log.Info("[StageCheckpoint] Restore requested. epoch={0}.", phaseEpoch);
         return true;
     }
 

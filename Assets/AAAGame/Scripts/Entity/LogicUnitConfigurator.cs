@@ -98,7 +98,7 @@ public static class LogicUnitConfigurator
             state.BuffComp.AddBuff(
                 BuffData.Create(
                     "hero_out_of_combat_speed_x2",
-                    float.MaxValue,
+                    Fix64.Zero,
                     true,
                     1,
                     new List<BuffCallback> { new HeroOutOfCombatMoveSpeedBuff() }),

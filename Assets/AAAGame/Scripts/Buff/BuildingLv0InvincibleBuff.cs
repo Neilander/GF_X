@@ -2,7 +2,7 @@
 /// Lv0 建筑常驻无敌 Buff。
 /// 将旧的 buildingData.Lv == 0 硬判断迁移为 Buff 驱动状态。
 /// </summary>
-public class BuildingLv0InvincibleBuff : BuffCallback
+public class BuildingLv0InvincibleBuff : BuffCallback, ILogicDeterministicStateContributor
 {
     private string _invincibleSourceId;
 
@@ -31,5 +31,10 @@ public class BuildingLv0InvincibleBuff : BuffCallback
             building.RegisterInvincibleSource(_invincibleSourceId);
         else
             building.UnregisterInvincibleSource(_invincibleSourceId);
+    }
+
+    public void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        hasher.Add(_invincibleSourceId);
     }
 }

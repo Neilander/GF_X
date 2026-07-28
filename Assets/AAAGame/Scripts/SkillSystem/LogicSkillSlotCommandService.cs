@@ -20,6 +20,8 @@ public readonly struct LogicSkillSlotCommand
 
 public static class LogicSkillSlotCommandService
 {
+    private static readonly Action<LogicSkillSlotCommand> s_RuntimeSink = SkillRuntimeDataModel.ApplyScheduledSlotSwap;
+    private static readonly Comparison<LogicSkillSlotCommand> s_CommandComparison = CompareCommands;
     private static readonly List<LogicSkillSlotCommand> s_History = new List<LogicSkillSlotCommand>();
     private static readonly ReadOnlyCollection<LogicSkillSlotCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicSkillSlotCommand> s_Pending = new List<LogicSkillSlotCommand>();
@@ -76,7 +78,7 @@ public static class LogicSkillSlotCommandService
 
     public static void ApplyFrame(ulong frameId)
     {
-        ApplyFrame(frameId, SkillRuntimeDataModel.ApplyScheduledSlotSwap);
+        ApplyFrame(frameId, s_RuntimeSink);
     }
 
 #if UNITY_EDITOR
@@ -115,7 +117,7 @@ public static class LogicSkillSlotCommandService
                     s_Due.Add(command);
             }
 
-            s_Due.Sort((left, right) => left.Sequence.CompareTo(right.Sequence));
+            s_Due.Sort(s_CommandComparison);
             for (int i = 0; i < s_Due.Count; i++)
             {
                 LogicSkillSlotCommand command = s_Due[i];
@@ -135,6 +137,11 @@ public static class LogicSkillSlotCommandService
             IsApplyingFrame = false;
             s_Due.Clear();
         }
+    }
+
+    private static int CompareCommands(LogicSkillSlotCommand left, LogicSkillSlotCommand right)
+    {
+        return left.Sequence.CompareTo(right.Sequence);
     }
 
     public static void ResetForWorldTransition()

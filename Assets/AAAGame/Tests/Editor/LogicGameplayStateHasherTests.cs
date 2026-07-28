@@ -142,6 +142,145 @@ public class LogicGameplayStateHasherTests
     }
 
     [Test]
+    public void LifecycleNextCommandSequence_ChangesGameplayFullHash()
+    {
+        BeginAndRunEmptyFrame();
+        ulong before = LogicGameplayStateHasher.ComputeCurrentFrame();
+
+        System.Reflection.FieldInfo sequenceField = typeof(LogicEntityLifecycleService).GetField(
+            "s_LastSequence",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(sequenceField);
+        sequenceField.SetValue(null, LogicEntityLifecycleService.LastSequence + 1UL);
+
+        ulong after = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(
+            before,
+            after,
+            "生命周期下一命令序号会改变未来命令身份，必须立即进入 Gameplay FullHash。");
+    }
+
+    [Test]
+    public void ViewlessPlayer_IsOwnedByInteractionAuthorityOnLogicTick()
+    {
+        LogicEntityId playerId = default;
+        BeginAndRunEmptyFrame(() =>
+        {
+            playerId = LogicEntityLifecycleService.RequestConfiguredSpawn(
+                new LogicEntitySpawnDescriptor(
+                    FixVector2.Zero,
+                    new FixVector2(Fix64.Zero, Fix64.One),
+                    SideType.PlayerSide,
+                    "Unit_ViewlessInteractionPlayer"),
+                state => ConfigurePendingState(state, (Fix64)100, true));
+        });
+
+        LogicEntityState player = LogicEntityStateStore.GetRequired(playerId);
+        Assert.IsFalse(player.HasBoundView);
+        Assert.AreSame(player, EntityRegistry.Player);
+        Assert.AreEqual(playerId, LogicInteractionAuthorityService.CurrentActorId);
+        Assert.AreEqual(1, LogicInteractionTargetStateService.ActorCount);
+        Assert.IsFalse(LogicInteractionTargetStateService.TryGetTarget(playerId, out _));
+        Assert.IsTrue(LogicInteractionHoldService.HasConsumer);
+    }
+
+    [Test]
+    public void InteractionAuthoritySwitchFrame_ChangesGameplayFullHash()
+    {
+        BeginAndRunEmptyFrame();
+        ulong before = LogicGameplayStateHasher.ComputeCurrentFrame();
+
+        System.Reflection.FieldInfo switchFrameField = typeof(LogicInteractionAuthorityService).GetField(
+            "s_LastSwitchFrame",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(switchFrameField);
+        switchFrameField.SetValue(null, LogicInteractionAuthorityService.LastSwitchFrame + 1UL);
+
+        ulong after = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(
+            before,
+            after,
+            "交互目标切换滞回帧会改变未来目标选择，必须立即进入 Gameplay FullHash。");
+    }
+
+    [Test]
+    public void DamageNextSequence_ChangesGameplayFullHashWithoutCurrentEvents()
+    {
+        BeginAndRunEmptyFrame();
+        Assert.AreEqual(0, LogicDamageEventService.LastOrderedEvents.Count);
+        ulong before = LogicGameplayStateHasher.ComputeCurrentFrame();
+
+        System.Reflection.FieldInfo sequenceField = typeof(LogicDamageEventService).GetField(
+            "s_NextSequence",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(sequenceField);
+        sequenceField.SetValue(null, (ulong)sequenceField.GetValue(null) + 1UL);
+
+        ulong after = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(
+            before,
+            after,
+            "下一伤害事件序号会改变未来事件身份，空事件帧也必须进入 Gameplay FullHash。");
+    }
+
+    [Test]
+    public void ProjectileNextId_ChangesGameplayFullHashWithoutActiveProjectiles()
+    {
+        BeginAndRunEmptyFrame();
+        Assert.AreEqual(0, LogicProjectileService.ActiveCount);
+        ulong before = LogicGameplayStateHasher.ComputeCurrentFrame();
+
+        System.Reflection.FieldInfo lastIdField = typeof(LogicProjectileService).GetField(
+            "s_LastId",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(lastIdField);
+        lastIdField.SetValue(null, (ulong)lastIdField.GetValue(null) + 1UL);
+
+        ulong after = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(
+            before,
+            after,
+            "下一投射物 ID 会改变未来投射物身份，空投射物帧也必须进入 Gameplay FullHash。");
+    }
+
+    [Test]
+    public void ObstacleNextSequence_ChangesGameplayFullHashWithoutPendingCommands()
+    {
+        BeginAndRunEmptyFrame();
+        Assert.AreEqual(0, LogicObstacleCommandService.PendingCount);
+        ulong before = LogicGameplayStateHasher.ComputeCurrentFrame();
+
+        System.Reflection.FieldInfo sequenceField = typeof(LogicObstacleCommandService).GetField(
+            "s_LastSequence",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(sequenceField);
+        sequenceField.SetValue(null, (ulong)sequenceField.GetValue(null) + 1UL);
+
+        ulong after = LogicGameplayStateHasher.ComputeCurrentFrame();
+        Assert.AreNotEqual(
+            before,
+            after,
+            "下一动态障碍命令序号会改变未来命令身份，空 pending 帧也必须进入 Gameplay FullHash。");
+    }
+
+    [Test]
+    public void GameplayHash_RejectsProjectileFrameMismatch()
+    {
+        BeginAndRunEmptyFrame();
+        Assert.AreEqual(LogicFrameRuntime.CurrentFrame, LogicProjectileService.LastCompletedFrame);
+
+        System.Reflection.FieldInfo completedFrameField = typeof(LogicProjectileService).GetField(
+            "<LastCompletedFrame>k__BackingField",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(completedFrameField);
+        completedFrameField.SetValue(null, 0UL);
+
+        var exception = Assert.Throws<System.InvalidOperationException>(
+            () => LogicGameplayStateHasher.ComputeCurrentFrame());
+        StringAssert.Contains("projectile", exception.Message.ToLowerInvariant());
+    }
+
+    [Test]
     public void DefendViewlessEnemyDeath_RemovesLogicIdentityWithoutViewEvent()
     {
         LogicEntityId enemyId = default;
@@ -588,7 +727,7 @@ public class LogicGameplayStateHasherTests
         return LogicGameplayStateHasher.ComputeCurrentFrame();
     }
 
-    private static void ConfigurePendingState(LogicEntityState state, Fix64 health)
+    private static void ConfigurePendingState(LogicEntityState state, Fix64 health, bool isPlayer = false)
     {
         state.Configure(
             null,
@@ -597,7 +736,9 @@ public class LogicGameplayStateHasherTests
             0,
             true,
             null,
-            false);
+            false,
+            isPlayer,
+            isPlayer);
         var move = new NoMoveComp();
         state.SetMoveComp(move);
         move.Init(state);
@@ -629,6 +770,7 @@ public class LogicGameplayStateHasherTests
         LogicObstacleCommandService.BeginTimeline();
         LogicFrameRuntime.Begin();
         LogicEntityFrameSnapshotService.BeginTimeline();
+        LogicInteractionAuthorityService.BeginTimeline();
         MAEntityLogicFrameSystem.BeginTimeline();
         LogicFrameRuntime.StartTimeline();
         beforeFirstFrame?.Invoke();
@@ -679,6 +821,8 @@ public class LogicGameplayStateHasherTests
     {
         if (MAEntityLogicFrameSystem.IsActive)
             MAEntityLogicFrameSystem.EndTimeline();
+        if (LogicInteractionAuthorityService.IsActive)
+            LogicInteractionAuthorityService.EndTimeline();
         if (LogicEntityFrameSnapshotService.IsActive)
             LogicEntityFrameSnapshotService.EndTimeline();
         if (LogicFrameRuntime.IsActive)
