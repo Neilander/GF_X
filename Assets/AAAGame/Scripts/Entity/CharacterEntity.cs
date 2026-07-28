@@ -18,7 +18,12 @@ public class CharacterEntity : SkillEntity
             // 3. 只有真正的大脑是玩家时，才绑定相机
             if (brainType == BrainType.Player)
             {
-                CameraController.Instance.SetFollowTarget(gameObject.transform);
+                if (display == null)
+                    throw new System.InvalidOperationException("CharacterEntity.OnShow failed: player presentation transform is missing.");
+                if (CameraController.Instance == null)
+                    throw new System.InvalidOperationException("CharacterEntity.OnShow failed: CameraController.Instance is null.");
+
+                CameraController.Instance.SetFollowTarget(display);
                 gameObject.tag = "Player";
             }else
             {

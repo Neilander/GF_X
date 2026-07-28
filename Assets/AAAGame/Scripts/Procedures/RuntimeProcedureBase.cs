@@ -20,6 +20,8 @@ public enum RuntimeInitSystemFlags
 
 public abstract class RuntimeProcedureBase : ProcedureBase
 {
+    private const int MaxLogicTicksPerRenderFrame = 4;
+
     public static bool SuppressNextBuiltinLoadingProgress { get; set; }
 
     private RuntimeInitPipeline m_RuntimeInitPipeline;
@@ -28,6 +30,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private readonly LogicFrameClock m_LogicFrameClock = new LogicFrameClock();
     private bool m_LogicFrameClockStarted;
     private ulong m_NextLogicFrameStatusLogFrame;
+    private ResourceComponent m_RuntimeResourceComponent;
+    private float m_MaxUnloadUnusedAssetsIntervalBeforeRuntime;
 #if UNITY_EDITOR
     private double m_EditorStressCutoffRealtime;
 #endif
@@ -49,6 +53,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     {
         base.OnEnter(procedureOwner);
         m_ProcedureOwner = procedureOwner;
+        BeginRuntimeResourceUnloadDeferral();
         LogicFrameRuntime.Begin();
         LogicTimeControlService.BeginTimeline();
         LogicInteractionHoldService.BeginTimeline();
@@ -60,6 +65,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicPhaseCommandService.BeginTimeline();
         LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
+        LogicEntityViewSpawnQueue.BeginTimeline();
         LogicObstacleCommandService.BeginTimeline();
         LogicEntityFrameSnapshotService.BeginTimeline();
         LogicInteractionAuthorityService.BeginTimeline();
@@ -88,6 +94,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     {
         base.OnUpdate(procedureOwner, elapseSeconds, realElapseSeconds);
         m_RuntimeInitPipeline?.Update(realElapseSeconds);
+        LogicEntityViewSpawnQueue.UpdateRenderFrame();
         if (!IsRuntimeReady)
         {
             return;
@@ -113,6 +120,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
             LogicReplayRuntime.EndRecording();
         }
+        LogicEntityViewSpawnQueue.EndTimeline();
         LogicEntityLifecycleService.DeactivateAllForShutdown();
         GF.Entity.HideAllLoadingEntities();
         GF.Entity.HideAllLoadedEntities();
@@ -131,7 +139,46 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicInteractionHoldService.EndTimeline();
         LogicTimeControlService.EndTimeline();
         LogicFrameRuntime.End();
+        EndRuntimeResourceUnloadDeferral();
         base.OnLeave(procedureOwner, isShutdown);
+    }
+
+    private void BeginRuntimeResourceUnloadDeferral()
+    {
+        if (m_RuntimeResourceComponent != null)
+            throw new InvalidOperationException("RuntimeProcedureBase.BeginRuntimeResourceUnloadDeferral failed: deferral is already active.");
+
+        ResourceComponent resourceComponent = GameEntry.GetComponent<ResourceComponent>();
+        if (resourceComponent == null)
+            throw new InvalidOperationException("RuntimeProcedureBase.BeginRuntimeResourceUnloadDeferral failed: ResourceComponent is null.");
+
+        float maxInterval = resourceComponent.MaxUnloadUnusedAssetsInterval;
+        if (float.IsNaN(maxInterval) || float.IsInfinity(maxInterval) || maxInterval <= 0f)
+            throw new InvalidOperationException(
+                $"RuntimeProcedureBase.BeginRuntimeResourceUnloadDeferral failed: invalid max interval {maxInterval:R}.");
+
+        m_RuntimeResourceComponent = resourceComponent;
+        m_MaxUnloadUnusedAssetsIntervalBeforeRuntime = maxInterval;
+        resourceComponent.MaxUnloadUnusedAssetsInterval = float.PositiveInfinity;
+        Log.Info(
+            "[RuntimeResource] Automatic unused-asset unload deferred. runtime={0}, originalMaxInterval={1:R}.",
+            GetType().Name,
+            maxInterval);
+    }
+
+    private void EndRuntimeResourceUnloadDeferral()
+    {
+        if (m_RuntimeResourceComponent == null)
+            throw new InvalidOperationException("RuntimeProcedureBase.EndRuntimeResourceUnloadDeferral failed: deferral is not active.");
+
+        m_RuntimeResourceComponent.MaxUnloadUnusedAssetsInterval = m_MaxUnloadUnusedAssetsIntervalBeforeRuntime;
+        Log.Info(
+            "[RuntimeResource] Automatic unused-asset unload restored. runtime={0}, maxInterval={1:R}, elapsed={2:R}.",
+            GetType().Name,
+            m_MaxUnloadUnusedAssetsIntervalBeforeRuntime,
+            m_RuntimeResourceComponent.LastUnloadUnusedAssetsOperationElapseSeconds);
+        m_RuntimeResourceComponent = null;
+        m_MaxUnloadUnusedAssetsIntervalBeforeRuntime = 0f;
     }
 
     public bool TryEnterRuntimeLevel(string levelIdentifier, out string errorMessage)
@@ -281,6 +328,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             m_RuntimeInitPipeline?.Shutdown();
             m_RuntimeInitPipeline = null;
             m_LogicFrameClockStarted = false;
+            LogicEntityViewSpawnQueue.ResetForWorldTransition();
 
             Log.Info(
                 "[LogicEntityWorldTransition] Begin. level={0}, frame={1}, requested={2}, bound={3}, active={4}, lastAllocated={5}.",
@@ -442,7 +490,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                     out LogicInputFrame inputFrame);
                 if (LogicReplayRuntime.IsRecording)
                     LogicReplayRuntime.RecordFrame(inputFrame, gameplayDigest);
-            });
+            },
+            MaxLogicTicksPerRenderFrame);
         LogicFrameRuntime.CompleteRenderFrame(
             tickCount,
             m_LogicFrameClock.AccumulatorSeconds,
@@ -451,10 +500,11 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         if (tickCount >= 3)
         {
             Log.Warning(
-                "[LogicFrame] Catch-up executed. runtime={0}, ticks={1}, frame={2}, backlogSeconds={3:F6}, interpolation={4:F4}.",
+                "[LogicFrame] Catch-up executed. runtime={0}, ticks={1}, frame={2}, deferredRealtimeSeconds={3:F6}, accumulatorSeconds={4:F6}, interpolation={5:F4}.",
                 GetType().Name,
                 tickCount,
                 m_LogicFrameClock.Frame,
+                m_LogicFrameClock.DeferredRealtimeSeconds,
                 m_LogicFrameClock.AccumulatorSeconds,
                 m_LogicFrameClock.Interpolation);
         }
@@ -462,10 +512,11 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         if (m_LogicFrameClock.Frame >= m_NextLogicFrameStatusLogFrame)
         {
             Log.Info(
-                "[LogicFrame] Status. runtime={0}, frame={1}, ticksThisRenderFrame={2}, backlogSeconds={3:F6}, interpolation={4:F4}, listeners={5}.",
+                "[LogicFrame] Status. runtime={0}, frame={1}, ticksThisRenderFrame={2}, deferredRealtimeSeconds={3:F6}, accumulatorSeconds={4:F6}, interpolation={5:F4}, listeners={6}.",
                 GetType().Name,
                 m_LogicFrameClock.Frame,
                 tickCount,
+                m_LogicFrameClock.DeferredRealtimeSeconds,
                 m_LogicFrameClock.AccumulatorSeconds,
                 m_LogicFrameClock.Interpolation,
                 LogicFrameRuntime.ListenerCount);
@@ -503,10 +554,14 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicEntityLifecycleService.ApplyFrame(frame);
         LogicObstacleCommandService.ApplyFrame(frame);
         LogicFrameRuntime.Tick(frame);
+        bool requiresGameplayDigest = LogicReplayRuntime.IsRecording;
 #if UNITY_EDITOR
-        if (EditorLogicRuntimeStressGate.OwnsLogicClock && !EditorLogicRuntimeStressGate.ComputeFullHash)
-            return LogicGameplayStateDigest.FromOpaqueHash(0);
+        requiresGameplayDigest |= EditorLogicRuntimeStressGate.OwnsLogicClock
+                                  && EditorLogicRuntimeStressGate.ComputeFullHash;
 #endif
+        if (!requiresGameplayDigest)
+            return LogicGameplayStateDigest.FromOpaqueHash(0);
+
         return LogicGameplayStateHasher.ComputeCurrentFrameDigest();
     }
 

@@ -1,5 +1,7 @@
 ﻿using NUnit.Framework;
 
+using UnityEngine;
+
 [TestFixture]
 public class MAEntityLogicFrameSystemTests
 {
@@ -90,6 +92,38 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void CharacterTargeting_DropsStaleDeadTargetBeforeSnapshotDistanceQuery()
+    {
+        var self = new PureLogicFrameEntity
+        {
+            LogicEntityId = new LogicEntityId(17),
+            Alive = false,
+            Side = SideType.PlayerSide,
+        };
+        var staleTarget = new SimEntityContext
+        {
+            LogicEntityId = new LogicEntityId(18),
+            Alive = false,
+            Side = SideType.EnemySide,
+        };
+        var targeting = new CharacterTargetingComp();
+        targeting.Init(self);
+        targeting.CurrentTarget = staleTarget;
+        var probe = new TargetingUpdateProbe(targeting);
+        LogicFrameRuntime.Register(probe);
+
+        try
+        {
+            Assert.DoesNotThrow(() => LogicFrameRuntime.Tick(1));
+            Assert.IsNull(targeting.CurrentTarget);
+        }
+        finally
+        {
+            LogicFrameRuntime.Unregister(probe);
+        }
+    }
+
+    [Test]
     public void StoredLogicEntityState_ExecutesFrameWithoutBoundView()
     {
         LogicTimeControlService.BeginTimeline();
@@ -126,6 +160,81 @@ public class MAEntityLogicFrameSystemTests
         finally
         {
             EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void BoundMAEntityView_CapturesPoseAfterCompleteLogicFrame()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        GameObject viewObject = null;
+        LogicEntityId entityId = default;
+        bool viewBound = false;
+        try
+        {
+            entityId = LogicEntityLifecycleService.RequestSpawn(
+                new LogicEntitySpawnDescriptor(
+                    FixVector2.Zero,
+                    new FixVector2(Fix64.Zero, Fix64.One),
+                    SideType.PlayerSide,
+                    "CoordinatedPoseTest"));
+            LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+            state.Configure(
+                null,
+                new CreaturePropertyManager(property =>
+                    property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
+                0,
+                true,
+                null);
+            new NoMoveFactoryForTest().Configure(state);
+            LogicEntityStateStore.CommitSpawn(entityId);
+            EntityRegistry.Register(state);
+
+            viewObject = new GameObject("CoordinatedPoseTestView");
+            UnityGameFramework.Runtime.Entity frameworkEntity =
+                viewObject.AddComponent<UnityGameFramework.Runtime.Entity>();
+            CoordinatedPoseTestView view = viewObject.AddComponent<CoordinatedPoseTestView>();
+            typeof(UnityGameFramework.Runtime.Entity).GetField(
+                    "m_Id",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(frameworkEntity, 404);
+            typeof(UnityGameFramework.Runtime.EntityLogic).GetField(
+                    "m_Entity",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(view, frameworkEntity);
+            typeof(UnityGameFramework.Runtime.EntityLogic).GetField(
+                    "m_CachedTransform",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(view, viewObject.transform);
+            typeof(EntityBase).GetProperty(nameof(EntityBase.Id)).SetValue(view, 404);
+            typeof(MAEntity).GetProperty(nameof(MAEntity.LogicEntityId)).SetValue(view, entityId);
+            typeof(MAEntity).GetField(
+                    "_isLogicActive",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(view, true);
+            typeof(EntityBase).GetMethod(
+                    "InitializeRenderInterpolation",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(view, null);
+            LogicEntityLifecycleService.BindView(entityId, 404, view);
+            viewBound = true;
+
+            AssertPoseCache(view, 1f, 1f);
+            LogicFrameRuntime.Tick(1);
+            AssertPoseCache(view, 1f, 2f);
+            LogicFrameRuntime.Tick(2);
+            AssertPoseCache(view, 2f, 3f);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            if (viewBound)
+                LogicEntityLifecycleService.UnbindView(entityId, 404);
+            if (viewObject != null)
+                Object.DestroyImmediate(viewObject);
             LogicEntityLifecycleService.EndTimeline();
             LogicTimeControlService.EndTimeline();
         }
@@ -238,6 +347,16 @@ public class MAEntityLogicFrameSystemTests
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
     }
 
+    private static void AssertPoseCache(EntityBase view, float expectedPreviousX, float expectedCurrentX)
+    {
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        Vector3 previous = (Vector3)typeof(EntityBase).GetField("m_PreviousLogicPosition", flags).GetValue(view);
+        Vector3 current = (Vector3)typeof(EntityBase).GetField("m_CurrentLogicPosition", flags).GetValue(view);
+        Assert.AreEqual(expectedPreviousX, previous.x);
+        Assert.AreEqual(expectedCurrentX, current.x);
+    }
+
     private sealed class NoMoveFactoryForTest
     {
         public void Configure(LogicEntityState state)
@@ -293,5 +412,35 @@ public class MAEntityLogicFrameSystemTests
             Assert.AreEqual(MAEntityLogicFramePhase.Count, m_NextPhase);
             m_FrameActive = false;
         }
+    }
+
+    private sealed class TargetingUpdateProbe : ILogicFrameUpdate, ILogicFrameStableOrder
+    {
+        private readonly ITargetingComp m_Targeting;
+
+        public TargetingUpdateProbe(ITargetingComp targeting)
+        {
+            m_Targeting = targeting;
+        }
+
+        public int LogicFrameOrder => -1;
+        public long LogicFrameStableKey => 0;
+
+        public void OnLogicFrameUpdate(Fix64 deltaTime)
+        {
+            m_Targeting.UpdateTargeting(deltaTime);
+        }
+    }
+}
+
+public sealed class CoordinatedPoseTestView : MAEntity
+{
+    private int m_PoseSampleCount;
+
+    protected override void GetAuthoritativeLogicPose(out Vector3 position, out Quaternion rotation)
+    {
+        m_PoseSampleCount++;
+        position = new Vector3(m_PoseSampleCount, 0f, 0f);
+        rotation = Quaternion.identity;
     }
 }

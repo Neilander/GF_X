@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -237,25 +238,23 @@ public partial class LevelEntity
     private static void ConfigureEnemyStrongholdFogParticle(EntityLogic entity, Vector3 size, float shellThickness, float emissionRate, float startSizeMultiplier, float alpha, int sortingOrder)
     {
         if (entity == null)
-            return;
+            throw new ArgumentNullException(nameof(entity));
 
         var particleSystems = entity.GetComponentsInChildren<ParticleSystem>(true);
         if (particleSystems == null || particleSystems.Length == 0)
-            return;
+            throw new InvalidOperationException("Enemy stronghold fog entity has no ParticleSystem.");
+
+        EnemyStrongholdFogParticleBaseline baseline = entity.GetComponent<EnemyStrongholdFogParticleBaseline>();
+        if (baseline == null)
+            baseline = entity.gameObject.AddComponent<EnemyStrongholdFogParticleBaseline>();
 
         for (int i = 0; i < particleSystems.Length; i++)
         {
             var particleSystem = particleSystems[i];
             if (particleSystem == null)
-                continue;
+                throw new InvalidOperationException($"Enemy stronghold fog ParticleSystem is null at index {i}.");
 
-            var main = particleSystem.main;
-            Color originalColor = main.startColor.color;
-            main.startColor = new ParticleSystem.MinMaxGradient(new Color(originalColor.r, originalColor.g, originalColor.b, originalColor.a * Mathf.Clamp01(alpha)));
-            main.startSizeMultiplier *= Mathf.Max(0.1f, startSizeMultiplier);
-
-            var emission = particleSystem.emission;
-            emission.rateOverTimeMultiplier *= Mathf.Max(0f, emissionRate);
+            baseline.ApplyMultipliers(particleSystem, emissionRate, startSizeMultiplier, alpha);
 
             var shape = particleSystem.shape;
             shape.shapeType = ParticleSystemShapeType.Box;
@@ -266,34 +265,24 @@ public partial class LevelEntity
             shape.boxThickness = new Vector3(normX, normY, 1f);
 
             var renderer = particleSystem.GetComponent<ParticleSystemRenderer>();
-            if (renderer != null)
+            if (renderer == null)
+                throw new InvalidOperationException($"Enemy stronghold fog ParticleSystemRenderer is missing. particle={particleSystem.name}.");
+
+            renderer.sortingOrder = sortingOrder;
+
+            if (baseline.MarkRendererConfigured(renderer))
             {
-                renderer.sortingOrder = sortingOrder;
+                var mats = renderer.materials;
+                if (mats == null || mats.Length == 0)
+                    throw new InvalidOperationException($"Enemy stronghold fog renderer has no material. particle={particleSystem.name}.");
 
-                // Ensure the particle material renders below the FOG3 overlay but above regular geometry.
-                // Create material instances so we don't modify shared project assets at runtime.
-                try
+                int desiredQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 50;
+                for (int mi = 0; mi < mats.Length; mi++)
                 {
-                    var mats = renderer.materials;
-                    if (mats != null && mats.Length > 0)
-                    {
-                        int desiredQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 50;
-                        for (int mi = 0; mi < mats.Length; mi++)
-                        {
-                            var orig = mats[mi];
-                            if (orig == null)
-                                continue;
-
-                            var inst = new Material(orig) { hideFlags = HideFlags.DontSave };
-                            inst.renderQueue = desiredQueue;
-                            mats[mi] = inst;
-                        }
-
-                        renderer.materials = mats;
-                    }
-                }
-                catch
-                {
+                    Material material = mats[mi];
+                    if (material == null)
+                        throw new InvalidOperationException($"Enemy stronghold fog renderer material is null. particle={particleSystem.name}, index={mi}.");
+                    material.renderQueue = desiredQueue;
                 }
             }
 

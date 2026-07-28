@@ -8,7 +8,17 @@ public class SimpleFollowingCamera : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        CameraController.Instance.SetFollowTargetLegacyIsometric(GameObject.FindWithTag("Player").transform, false);
+        GameObject player = GameObject.FindWithTag("Player");
+        if (player == null)
+            throw new System.InvalidOperationException("SimpleFollowingCamera.Start failed: player object is missing.");
+
+        Transform presentation = player.transform.Find("Display");
+        if (presentation == null)
+            throw new System.InvalidOperationException("SimpleFollowingCamera.Start failed: player presentation transform is missing.");
+        if (CameraController.Instance == null)
+            throw new System.InvalidOperationException("SimpleFollowingCamera.Start failed: CameraController.Instance is null.");
+
+        CameraController.Instance.SetFollowTargetLegacyIsometric(presentation, false);
         // playerTransform = GameObject.FindWithTag("Player").transform;
     }
 

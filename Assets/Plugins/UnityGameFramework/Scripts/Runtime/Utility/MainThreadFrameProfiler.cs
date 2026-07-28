@@ -46,7 +46,16 @@ namespace UnityGameFramework.Runtime
         CharacterMoveSetInput = 36,
         CharacterMoveDebugLog = 37,
         CharacterMovePrepare = 38,
-        Count = 39
+        EntityShowRequest = 39,
+        EntityInstantiate = 40,
+        EntityCreate = 41,
+        EntityInitTotal = 42,
+        EntityLogicCreate = 43,
+        EntityLogicInit = 44,
+        EntityShowTotal = 45,
+        EntityLogicShow = 46,
+        EntitySuccessEvent = 47,
+        Count = 48
     }
 
     public static class MainThreadFrameProfiler
@@ -191,8 +200,8 @@ namespace UnityGameFramework.Runtime
                 "gf={4:F3}ms/{5} flow={6:F3}ms/{7} flowConfig={8:F3}ms/{9} flowSource={10:F3}ms/{11} " +
                 "fogUpdate={12:F3}ms/{13} fogVisibility={14:F3}ms/{15} fogOverlay={16:F3}ms/{17} fogEnemy={18:F3}ms/{19} " +
                 "interactionTrigger={20:F3}ms/{21} interactionCleanup={22:F3}ms/{23} interactionDetail({24}) entity={25:F3}ms/{26} " +
-                "entityDetail({27}) moveExecDetail({28}) characterMoveDetail({29}) env(targetFps={30},vSync={31},screen={32}x{33},focused={34},gcIncremental={35}) markers({36}) " +
-                "alloc(frame={37:F1}KB,gcCollections={38},scopes={39})",
+                "entityDetail({27}) moveExecDetail({28}) characterMoveDetail({29}) entityShowDetail({30}) env(targetFps={31},vSync={32},screen={33}x{34},focused={35},gcIncremental={36}) markers({37}) " +
+                "alloc(frame={38:F1}KB,gcCollections={39},scopes={40})",
                 _frame,
                 frameMs,
                 trackedMs,
@@ -212,6 +221,7 @@ namespace UnityGameFramework.Runtime
                 BuildScopeSummary(MainThreadPerfScope.EntityBase, MainThreadPerfScope.SoldierDebugDraw),
                 BuildScopeSummary(MainThreadPerfScope.MoveExecutorConstraint, MainThreadPerfScope.MoveExecutorControllerMove),
                 BuildScopeSummary(MainThreadPerfScope.CharacterMoveSteering, MainThreadPerfScope.CharacterMovePrepare),
+                BuildScopeSummary(MainThreadPerfScope.EntityShowRequest, MainThreadPerfScope.EntitySuccessEvent),
                 Application.targetFrameRate,
                 QualitySettings.vSyncCount,
                 Screen.width,

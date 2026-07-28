@@ -697,6 +697,46 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void StaticBakedBuildingActivation_DoesNotDuplicateRuntimeObstacles()
+    {
+        LogicObstacleCommandService.BeginTimeline();
+        try
+        {
+            LogicEntityState state = CreateConfiguredState("Building_StaticBakedObstacleAuthority", false);
+            var obstacleShapes = new[]
+            {
+                LogicCombatShape.AxisAlignedBox(
+                    new FixVector2(Fix64.FromRaw(500000001), Fix64.FromRaw(-600000001)),
+                    new FixVector2(Fix64.FromRaw(70000001), Fix64.FromRaw(80000001))),
+            };
+            state.ConfigureBuilding(
+                CreateTestBuildingData("Building_StaticBakedObstacleAuthority"),
+                "building-static-baked-obstacle-authority",
+                "stronghold-static-baked-obstacle-authority",
+                EntitySideHelper.PlayerFactionId,
+                LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+                obstacleShapes,
+                Array.Empty<LogicInteractionOptionDescriptor>(),
+                false,
+                isNavigationStaticBaked: true);
+
+            LogicTimeControlService.BeginFrame(1);
+            LogicEntityLifecycleService.ApplyFrame(1);
+
+            Assert.IsTrue(state.IsSpawnCommitted);
+            Assert.IsTrue(state.BlocksLogicMovement);
+            Assert.IsTrue(state.IsNavigationStaticBaked);
+            Assert.AreEqual(0, LogicObstacleCommandService.PendingCount);
+            Assert.AreEqual(0, LogicObstacleCommandService.History.Count);
+            Assert.AreEqual(0, LogicObstacleCommandService.ActiveObstacleCount);
+        }
+        finally
+        {
+            LogicObstacleCommandService.EndTimeline();
+        }
+    }
+
+    [Test]
     public void LifecycleAuthorityCommands_IgnoreViewBindingOrderAndIds()
     {
         LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn();

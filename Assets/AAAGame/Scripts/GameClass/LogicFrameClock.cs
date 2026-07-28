@@ -12,10 +12,12 @@ public sealed class LogicFrameClock
 
     private double m_LastRealtime;
     private double m_Accumulator;
+    private double m_DeferredRealtimeSeconds;
     private bool m_IsStarted;
 
     public ulong Frame { get; private set; }
     public double AccumulatorSeconds => m_Accumulator;
+    public double DeferredRealtimeSeconds => m_DeferredRealtimeSeconds;
     public double Interpolation => m_Accumulator / FrameDurationSeconds;
 
     public void Start(double realtime)
@@ -25,6 +27,7 @@ public sealed class LogicFrameClock
 
         m_LastRealtime = realtime;
         m_Accumulator = 0d;
+        m_DeferredRealtimeSeconds = 0d;
         Frame = 0;
         m_IsStarted = true;
     }
@@ -50,9 +53,19 @@ public sealed class LogicFrameClock
         }
 
         m_LastRealtime = realtime;
+        m_DeferredRealtimeSeconds = 0d;
     }
 
     public int Advance(double realtime, Func<double> getTimeScale, Action<ulong, double> tick)
+    {
+        return Advance(realtime, getTimeScale, tick, int.MaxValue);
+    }
+
+    public int Advance(
+        double realtime,
+        Func<double> getTimeScale,
+        Action<ulong, double> tick,
+        int maxTickCount)
     {
         if (!m_IsStarted)
             throw new InvalidOperationException("LogicFrameClock.Advance failed: clock is not started.");
@@ -64,11 +77,16 @@ public sealed class LogicFrameClock
             throw new ArgumentOutOfRangeException(nameof(realtime), realtime, "Realtime must be finite.");
         if (realtime < m_LastRealtime)
             throw new InvalidOperationException($"LogicFrameClock.Advance failed: realtime moved backwards. previous={m_LastRealtime:R}, current={realtime:R}.");
+        if (maxTickCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxTickCount), maxTickCount, "Tick budget must be positive.");
 
         double realtimeCursor = m_LastRealtime;
         int tickCount = 0;
         while (realtimeCursor < realtime)
         {
+            if (tickCount >= maxTickCount)
+                break;
+
             double timeScale = getTimeScale();
             ValidateTimeScale(timeScale);
             if (timeScale <= 0d)
@@ -90,7 +108,7 @@ public sealed class LogicFrameClock
                 break;
             }
 
-            realtimeCursor += Math.Max(0d, realUntilTick);
+            realtimeCursor = Math.Min(realtime, realtimeCursor + Math.Max(0d, realUntilTick));
             m_Accumulator = 0d;
             Frame++;
             tick(Frame, Math.Min(realtimeCursor, realtime));
@@ -100,7 +118,8 @@ public sealed class LogicFrameClock
         if (m_Accumulator > 0d && m_Accumulator <= BoundaryEpsilon)
             m_Accumulator = 0d;
 
-        m_LastRealtime = realtime;
+        m_LastRealtime = realtimeCursor;
+        m_DeferredRealtimeSeconds = realtime - realtimeCursor;
         return tickCount;
     }
 

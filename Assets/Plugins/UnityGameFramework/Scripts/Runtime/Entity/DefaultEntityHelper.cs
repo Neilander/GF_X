@@ -24,7 +24,17 @@ namespace UnityGameFramework.Runtime
         /// <returns>实例化后的实体。</returns>
         public override object InstantiateEntity(object entityAsset)
         {
-            return Instantiate((Object)entityAsset);
+            long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                return Instantiate((Object)entityAsset);
+            }
+            finally
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.EntityInstantiate,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
+            }
         }
 
         /// <summary>
@@ -36,17 +46,25 @@ namespace UnityGameFramework.Runtime
         /// <returns>实体。</returns>
         public override IEntity CreateEntity(object entityInstance, IEntityGroup entityGroup, object userData)
         {
+            long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             GameObject gameObject = entityInstance as GameObject;
             if (gameObject == null)
             {
                 Log.Error("Entity instance is invalid.");
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.EntityCreate,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
                 return null;
             }
 
             Transform transform = gameObject.transform;
             transform.SetParent(((MonoBehaviour)entityGroup.Helper).transform);
 
-            return gameObject.GetOrAddComponent<Entity>();
+            IEntity entity = gameObject.GetOrAddComponent<Entity>();
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.EntityCreate,
+                System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
+            return entity;
         }
 
         /// <summary>

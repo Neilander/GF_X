@@ -131,6 +131,7 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
         base.OnUpdate(elapseSeconds, realElapseSeconds);
 
         OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+        ApplyRenderInterpolation();
     }
 
     void ILogicFrameUpdate.OnLogicFrameUpdate(Fix64 deltaTime)
@@ -181,7 +182,13 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
     {
     }
 
-    private void LateUpdate()
+    protected virtual void GetAuthoritativeLogicPose(out Vector3 position, out Quaternion rotation)
+    {
+        position = CachedTransform.position;
+        rotation = CachedTransform.rotation;
+    }
+
+    private void ApplyRenderInterpolation()
     {
         if (!LogicFrameRuntime.IsTimelineRunning)
         {
@@ -208,16 +215,16 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
             m_RenderBaseLocalRotation = m_InterpolatedRenderTransform.localRotation;
         }
 
-        m_PreviousLogicPosition = CachedTransform.position;
-        m_CurrentLogicPosition = CachedTransform.position;
-        m_PreviousLogicRotation = CachedTransform.rotation;
-        m_CurrentLogicRotation = CachedTransform.rotation;
+        GetAuthoritativeLogicPose(out Vector3 position, out Quaternion rotation);
+        m_PreviousLogicPosition = position;
+        m_CurrentLogicPosition = position;
+        m_PreviousLogicRotation = rotation;
+        m_CurrentLogicRotation = rotation;
     }
 
     private void CaptureCurrentLogicPose()
     {
-        m_CurrentLogicPosition = CachedTransform.position;
-        m_CurrentLogicRotation = CachedTransform.rotation;
+        GetAuthoritativeLogicPose(out m_CurrentLogicPosition, out m_CurrentLogicRotation);
     }
 
     private void RestoreRenderTransform()

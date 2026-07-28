@@ -34,6 +34,56 @@ public sealed class LogicFrameClockTests
     }
 
     [Test]
+    public void Advance_TickBudgetDefersRealtimeWithoutDroppingInputOrCutoffs()
+    {
+        var clock = new LogicFrameClock();
+        var timeline = new LogicInputTimeline();
+        var cutoffs = new List<double>();
+        var pressedFrames = new List<ulong>();
+        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
+        timeline.EnqueueButtonPulse(0.2d, LogicInputButton.Skill1);
+        clock.Start(0d);
+
+        int totalTicks = clock.Advance(
+            0.5d,
+            () => 1d,
+            (frame, cutoff) =>
+            {
+                cutoffs.Add(cutoff);
+                if (timeline.Seal(frame, cutoff).WasPressed(LogicInputButton.Skill1))
+                    pressedFrames.Add(frame);
+            },
+            4);
+
+        Assert.AreEqual(4, totalTicks);
+        Assert.AreEqual(4ul, clock.Frame);
+        Assert.That(clock.DeferredRealtimeSeconds, Is.EqualTo(0.5d - 4d / 30d).Within(1e-9d));
+
+        while (clock.DeferredRealtimeSeconds > 0d)
+        {
+            totalTicks += clock.Advance(
+                0.5d,
+                () => 1d,
+                (frame, cutoff) =>
+                {
+                    cutoffs.Add(cutoff);
+                    if (timeline.Seal(frame, cutoff).WasPressed(LogicInputButton.Skill1))
+                        pressedFrames.Add(frame);
+                },
+                4);
+        }
+
+        Assert.AreEqual(15, totalTicks);
+        Assert.AreEqual(15ul, clock.Frame);
+        Assert.AreEqual(15, cutoffs.Count);
+        Assert.That(clock.DeferredRealtimeSeconds, Is.EqualTo(0d).Within(1e-9d));
+        Assert.That(clock.AccumulatorSeconds, Is.EqualTo(0d).Within(1e-9d));
+        CollectionAssert.AreEqual(new[] { 6ul }, pressedFrames);
+        for (int i = 0; i < cutoffs.Count; i++)
+            Assert.That(cutoffs[i], Is.EqualTo((i + 1d) / 30d).Within(1e-9d));
+    }
+
+    [Test]
     public void Advance_PartialFrames_AccumulatesWithoutDroppingTime()
     {
         var clock = new LogicFrameClock();
@@ -45,6 +95,18 @@ public sealed class LogicFrameClockTests
 
         Assert.AreEqual(1, callbacks);
         Assert.AreEqual(1ul, clock.Frame);
+    }
+
+    [Test]
+    public void Advance_EpsilonBoundary_DoesNotMoveRealtimeCursorPastSample()
+    {
+        var clock = new LogicFrameClock();
+        double realtime = LogicFrameClock.FrameDurationSeconds - 5e-9d;
+        clock.Start(0d);
+
+        Assert.AreEqual(1, clock.Advance(realtime, 1d, _ => { }));
+        Assert.DoesNotThrow(() => clock.Advance(realtime, 1d, _ => { }));
+        Assert.That(clock.DeferredRealtimeSeconds, Is.EqualTo(0d));
     }
 
     [Test]
@@ -216,9 +278,15 @@ public sealed class LogicFrameClockTests
             baseline,
             RunCadence(new[] { 0.001d, 0.5d, 3.75d, durationSeconds }),
             "hitch");
+        AssertCadenceEquivalent(
+            baseline,
+            RunCadence(new[] { 0.001d, 0.5d, 3.75d, durationSeconds }, 4),
+            "budgeted hitch");
     }
 
-    private static CadenceRunResult RunCadence(IReadOnlyList<double> pumpTimes)
+    private static CadenceRunResult RunCadence(
+        IReadOnlyList<double> pumpTimes,
+        int maxTickCount = int.MaxValue)
     {
         Assert.IsFalse(LogicTimeControlService.IsActive, "Cadence test requires an isolated time-control timeline.");
         LogicTimeControlService.BeginTimeline();
@@ -274,10 +342,10 @@ public sealed class LogicFrameClockTests
             var cutoffs = new List<double>();
             clock.Start(0d);
 
-            for (int i = 0; i < pumpTimes.Count; i++)
+            void Pump(double realtime)
             {
                 clock.Advance(
-                    pumpTimes[i],
+                    realtime,
                     () => LogicTimeControlService.SchedulerScale,
                     (frame, cutoff) =>
                     {
@@ -292,8 +360,16 @@ public sealed class LogicFrameClockTests
                             timeHash,
                             frame * 0x9E3779B97F4A7C15UL));
                         cutoffs.Add(cutoff);
-                    });
+                    },
+                    maxTickCount);
             }
+
+            for (int i = 0; i < pumpTimes.Count; i++)
+                Pump(pumpTimes[i]);
+
+            double finalRealtime = pumpTimes[pumpTimes.Count - 1];
+            while (clock.DeferredRealtimeSeconds > 0d)
+                Pump(finalRealtime);
 
             return new CadenceRunResult(
                 clock.Frame,

@@ -112,6 +112,23 @@ public sealed class LogicInputTimelineTests
     }
 
     [Test]
+    public void RepeatedClockBoundary_DoesNotMoveExactTimestampToNextTick()
+    {
+        var timeline = CreateTimeline();
+        timeline.EnqueueButtonPulse(0.2d, LogicInputButton.Skill1);
+        double cutoff = 0d;
+
+        for (ulong frame = 1; frame <= 6; frame++)
+        {
+            cutoff += LogicFrameClock.FrameDurationSeconds;
+            LogicInputFrame inputFrame = timeline.Seal(frame, cutoff);
+            Assert.AreEqual(frame == 6, inputFrame.WasPressed(LogicInputButton.Skill1));
+        }
+
+        Assert.AreEqual(0, timeline.PendingEventCount);
+    }
+
+    [Test]
     public void InitialWorldSelection_IsAvailableWithoutSyntheticEvent()
     {
         var initialPosition = new FixVector2(Fix64.FromRaw(101), Fix64.FromRaw(202));

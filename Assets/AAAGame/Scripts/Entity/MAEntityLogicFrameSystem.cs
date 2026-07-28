@@ -47,6 +47,7 @@ public static class MAEntityLogicFrameSystem
 
     private static readonly PhaseListener s_Listener = new PhaseListener();
     private static readonly List<ILogicFrameEntity> s_FrameEntities = new List<ILogicFrameEntity>();
+    private static readonly List<MAEntity> s_CoordinatedViews = new List<MAEntity>();
 
     public static bool IsActive { get; private set; }
     public static ulong LastCompletedFrame { get; private set; }
@@ -108,6 +109,10 @@ public static class MAEntityLogicFrameSystem
         }
 
         CollectFrameEntities(snapshot);
+        CollectCoordinatedViews();
+        for (int i = 0; i < s_CoordinatedViews.Count; i++)
+            s_CoordinatedViews[i].BeginCoordinatedLogicFrameUpdate();
+
         for (int i = 0; i < s_FrameEntities.Count; i++)
             s_FrameEntities[i].BeginLogicFrame(deltaTime);
 
@@ -132,6 +137,8 @@ public static class MAEntityLogicFrameSystem
 
         for (int i = 0; i < s_FrameEntities.Count; i++)
             s_FrameEntities[i].CompleteLogicFrame(deltaTime);
+        for (int i = 0; i < s_CoordinatedViews.Count; i++)
+            s_CoordinatedViews[i].CompleteCoordinatedLogicFrameUpdate();
 
         LastFrameEntityCount = s_FrameEntities.Count;
         LastFramePhaseExecutionCount = phaseExecutionCount;
@@ -180,9 +187,24 @@ public static class MAEntityLogicFrameSystem
         }
     }
 
+    private static void CollectCoordinatedViews()
+    {
+        s_CoordinatedViews.Clear();
+        if (!LogicEntityLifecycleService.IsActive)
+            return;
+
+        for (int i = 0; i < s_FrameEntities.Count; i++)
+        {
+            ILogicFrameEntity entity = s_FrameEntities[i];
+            if (LogicEntityLifecycleService.TryGetBoundView(entity.LogicEntityId, out MAEntity view))
+                s_CoordinatedViews.Add(view);
+        }
+    }
+
     private static void ClearFrameState()
     {
         s_FrameEntities.Clear();
+        s_CoordinatedViews.Clear();
         LastCompletedFrame = 0;
         LastFrameEntityCount = 0;
         LastCompletedPhase = default;

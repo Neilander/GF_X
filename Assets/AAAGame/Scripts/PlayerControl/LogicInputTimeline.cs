@@ -219,6 +219,7 @@ public sealed class LogicInputTimeline
 {
     public const int ButtonCount = (int)LogicInputButton.Build3 + 1;
 
+    private const double TimestampBoundaryEpsilonSeconds = 1e-8d;
     private static readonly RawInputEvent[] s_NoEventArray = Array.Empty<RawInputEvent>();
     private static readonly ReadOnlyCollection<RawInputEvent> s_NoEvents = Array.AsReadOnly(s_NoEventArray);
     private static readonly int[] s_NoPressCounts = new int[ButtonCount];
@@ -529,7 +530,7 @@ public sealed class LogicInputTimeline
         FixVector2 vector)
     {
         ValidateTimestamp(timestamp, nameof(timestamp));
-        if (m_IsStarted && timestamp <= m_LastCutoff)
+        if (m_IsStarted && timestamp <= m_LastCutoff + TimestampBoundaryEpsilonSeconds)
             LateEventCount = checked(LateEventCount + 1);
 
         var inputEvent = new RawInputEvent(
@@ -548,7 +549,8 @@ public sealed class LogicInputTimeline
     private int FindConsumableEventCount(double cutoffRealtime)
     {
         int count = 0;
-        while (count < m_PendingEvents.Count && m_PendingEvents[count].Timestamp <= cutoffRealtime)
+        while (count < m_PendingEvents.Count
+               && m_PendingEvents[count].Timestamp <= cutoffRealtime + TimestampBoundaryEpsilonSeconds)
             count++;
         return count;
     }

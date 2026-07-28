@@ -1119,7 +1119,11 @@ namespace UnityGameFramework.Runtime
 
         private void OnShowEntitySuccess(object sender, GameFramework.Entity.ShowEntitySuccessEventArgs e)
         {
+            long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             m_EventComponent.Fire(this, ShowEntitySuccessEventArgs.Create(e));
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.EntitySuccessEvent,
+                System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
         }
 
         private void OnShowEntityFailure(object sender, GameFramework.Entity.ShowEntityFailureEventArgs e)

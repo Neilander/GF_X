@@ -85,6 +85,8 @@ namespace AAAGame.MiniMap.FOG3
         private float nextInitializeRetryTime;
         private bool missingTerrainLogged;
         private float updateTimer;
+        private bool visibilityRefreshPending;
+        private int pendingVisibilityRefreshRequestCount;
         private float cloudHeightRefreshTimer;
         private bool cloudReferenceHeightResolved;
         private float cloudReferenceWorldY;
@@ -437,8 +439,25 @@ namespace AAAGame.MiniMap.FOG3
                     UpdateVisibilityImmediately();
                 }
 
+                bool visibilityUpdatedThisFrame = false;
+                if (visibilityRefreshPending)
+                {
+                    int batchedRequestCount = pendingVisibilityRefreshRequestCount;
+                    visibilityRefreshPending = false;
+                    pendingVisibilityRefreshRequestCount = 0;
+                    UpdateVisibilityImmediately();
+                    visibilityUpdatedThisFrame = true;
+
+                    if (batchedRequestCount > 1)
+                    {
+                        Log.Info(
+                            "[FOG3] Batched {0} entity visibility refresh requests into one update.",
+                            batchedRequestCount);
+                    }
+                }
+
                 updateTimer += Time.deltaTime;
-                if (updateInterval <= 0f || updateTimer >= updateInterval)
+                if (!visibilityUpdatedThisFrame && (updateInterval <= 0f || updateTimer >= updateInterval))
                 {
                     updateTimer = 0f;
                     long visibilityStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -503,6 +522,8 @@ namespace AAAGame.MiniMap.FOG3
         public void RebuildTerrain()
         {
             isInitialized = false;
+            visibilityRefreshPending = false;
+            pendingVisibilityRefreshRequestCount = 0;
             entityRevealers.Clear();
             transformRevealers.Clear();
             if (controller != null)
@@ -726,6 +747,8 @@ namespace AAAGame.MiniMap.FOG3
         private void ClearRuntimeState(bool destroyOverlay)
         {
             isInitialized = false;
+            visibilityRefreshPending = false;
+            pendingVisibilityRefreshRequestCount = 0;
             entityRevealers.Clear();
             transformRevealers.Clear();
             ResetEnemyVisibilityStates();
@@ -1113,6 +1136,12 @@ namespace AAAGame.MiniMap.FOG3
             }
         }
 
+        private void RequestVisibilityRefresh()
+        {
+            visibilityRefreshPending = true;
+            pendingVisibilityRefreshRequestCount++;
+        }
+
         private void TrySubscribeEvents()
         {
             if (!unitySceneEventsSubscribed)
@@ -1206,7 +1235,7 @@ namespace AAAGame.MiniMap.FOG3
 
             TryRegisterEntity(args.Entity.Id, args.Entity.Logic);
             RefreshOverlayHeightIfNeeded();
-            UpdateVisibilityImmediately();
+            RequestVisibilityRefresh();
         }
 
         private void OnEntityFactionChanged(object sender, GameEventArgs e)
@@ -1225,7 +1254,7 @@ namespace AAAGame.MiniMap.FOG3
                 if (entityRevealers.TryGetValue(args.EntityId, out int revealerId))
                 {
                     UnregisterRevealer(revealerId);
-                    UpdateVisibilityImmediately();
+                    RequestVisibilityRefresh();
                 }
 
                 return;
@@ -1254,7 +1283,7 @@ namespace AAAGame.MiniMap.FOG3
             if (TryRegisterEntity(args.EntityId, entity.Logic))
             {
                 RefreshOverlayHeightIfNeeded();
-                UpdateVisibilityImmediately();
+                RequestVisibilityRefresh();
             }
         }
 
@@ -1267,7 +1296,10 @@ namespace AAAGame.MiniMap.FOG3
         {
             HideEntityCompleteEventArgs args = (HideEntityCompleteEventArgs)e;
             if (entityRevealers.TryGetValue(args.EntityId, out int revealerId))
+            {
                 UnregisterRevealer(revealerId);
+                RequestVisibilityRefresh();
+            }
 
             HealthBarComp.Remove(args.EntityId);
 
@@ -1334,7 +1366,7 @@ namespace AAAGame.MiniMap.FOG3
             }
 
             RefreshOverlayHeightIfNeeded();
-            UpdateVisibilityImmediately();
+            RequestVisibilityRefresh();
         }
 
         private bool TryRegisterEntity(int entityId, EntityLogic logic)

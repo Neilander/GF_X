@@ -149,33 +149,56 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
         // 1. 维护当前敌人目标
         if (CurrentTarget != null)
         {
-            Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
-            currentTargetDist = dist;
-            currentTargetTaunt = GetTauntLevel(CurrentTarget);
-            Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : m_ForgetRange;
-            // 视线外仇恨特例：CurrentTarget 是 fallback 来的 attacker → 跳过距离过滤，让单位一路追上去
-            bool isAggroFallback = !useAttackRangeOnlyForThisUnit && (CurrentTarget == _lastAttacker);
-            bool dropByDistance = !isAggroFallback && dist > targetRetentionRange;
-            if (dropByDistance || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
+            if (!CurrentTarget.IsRegisteredInLogicWorld()
+                || !CurrentTarget.IsAttackTargetable()
+                || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
             {
                 GameDebugSettings.Log(DebugCategory.Targeting,
-                    $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} retentionRange={targetRetentionRange:F1} alive={CurrentTarget.Alive}");
+                    $"{_ctx} 丢失敌人目标 {CurrentTarget} | active={CurrentTarget.IsRegisteredInLogicWorld()} alive={CurrentTarget.Alive}");
                 CurrentTarget = null;
                 currentTargetDist = Fix64.FromRaw(long.MaxValue);
                 currentTargetTaunt = -1;
                 if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
                     ClearAggro();
             }
+            else
+            {
+                Fix64 dist = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
+                currentTargetDist = dist;
+                currentTargetTaunt = GetTauntLevel(CurrentTarget);
+                Fix64 targetRetentionRange = useAttackRangeOnlyForThisUnit ? effectiveAttackRange : m_ForgetRange;
+                // 视线外仇恨特例：CurrentTarget 是 fallback 来的 attacker → 跳过距离过滤，让单位一路追上去
+                bool isAggroFallback = !useAttackRangeOnlyForThisUnit && (CurrentTarget == _lastAttacker);
+                bool dropByDistance = !isAggroFallback && dist > targetRetentionRange;
+                if (dropByDistance)
+                {
+                    GameDebugSettings.Log(DebugCategory.Targeting,
+                        $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} retentionRange={targetRetentionRange:F1} alive={CurrentTarget.Alive}");
+                    CurrentTarget = null;
+                    currentTargetDist = Fix64.FromRaw(long.MaxValue);
+                    currentTargetTaunt = -1;
+                    if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
+                        ClearAggro();
+                }
+            }
         }
 
         // 2. 维护跟随目标
         if (FollowTarget != null)
         {
-            Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
-            if (dist > m_FollowSearchRange || !FollowTarget.Alive)
+            if (!FollowTarget.IsRegisteredInLogicWorld() || !FollowTarget.Alive)
             {
-                GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | dist={dist:F1} followRange={m_FollowSearchRange} alive={FollowTarget.Alive}");
+                GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | active={FollowTarget.IsRegisteredInLogicWorld()} alive={FollowTarget.Alive}");
                 FollowTarget = null;
+            }
+            else
+            {
+                Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
+                if (dist > m_FollowSearchRange)
+                {
+                    GameDebugSettings.Log(DebugCategory.Targeting, $"{_ctx} 丢失跟随目标 {FollowTarget} | dist={dist:F1} followRange={m_FollowSearchRange} alive={FollowTarget.Alive}");
+                    FollowTarget = null;
+                }
             }
         }
 
@@ -579,8 +602,14 @@ public sealed class HealTargetingComp : ITargetingComp, IMultiTargetingComp, ILo
         if (FollowTarget == null)
             return;
 
+        if (!FollowTarget.IsRegisteredInLogicWorld() || !FollowTarget.Alive)
+        {
+            FollowTarget = null;
+            return;
+        }
+
         Fix64 dist = _ctx.LogicFrameCenterDistanceFixed(FollowTarget);
-        if (dist > m_FollowSearchRange || !FollowTarget.Alive)
+        if (dist > m_FollowSearchRange)
             FollowTarget = null;
     }
 

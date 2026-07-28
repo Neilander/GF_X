@@ -87,6 +87,7 @@ namespace UnityGameFramework.Runtime
         /// <param name="userData">用户自定义数据。</param>
         public void OnInit(int entityId, string entityAssetName, IEntityGroup entityGroup, bool isNewInstance, object userData)
         {
+            long initStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             m_Id = entityId;
             m_EntityAssetName = entityAssetName;
             if (isNewInstance)
@@ -112,6 +113,9 @@ namespace UnityGameFramework.Runtime
                 if (m_EntityLogic.GetType() == entityLogicType)
                 {
                     m_EntityLogic.enabled = true;
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.EntityInitTotal,
+                        System.Diagnostics.Stopwatch.GetTimestamp() - initStartTicks);
                     return;
                 }
 
@@ -119,7 +123,11 @@ namespace UnityGameFramework.Runtime
                 m_EntityLogic = null;
             }
 
+            long logicCreateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             m_EntityLogic = gameObject.AddComponent(entityLogicType) as EntityLogic;
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.EntityLogicCreate,
+                System.Diagnostics.Stopwatch.GetTimestamp() - logicCreateStartTicks);
             if (m_EntityLogic == null)
             {
                 Log.Error("Entity '{0}' can not add entity logic.", entityAssetName);
@@ -128,12 +136,20 @@ namespace UnityGameFramework.Runtime
 
             try
             {
+                long logicInitStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 m_EntityLogic.OnInit(showEntityInfo.UserData);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.EntityLogicInit,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - logicInitStartTicks);
             }
             catch (Exception exception)
             {
                 Log.Error("Entity '[{0}]{1}' OnInit with exception '{2}'.", m_Id, m_EntityAssetName, exception);
             }
+
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.EntityInitTotal,
+                System.Diagnostics.Stopwatch.GetTimestamp() - initStartTicks);
         }
 
         /// <summary>
@@ -160,15 +176,24 @@ namespace UnityGameFramework.Runtime
         /// <param name="userData">用户自定义数据。</param>
         public void OnShow(object userData)
         {
+            long showStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             ShowEntityInfo showEntityInfo = (ShowEntityInfo)userData;
             try
             {
+                long logicShowStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 m_EntityLogic.OnShow(showEntityInfo.UserData);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.EntityLogicShow,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - logicShowStartTicks);
             }
             catch (Exception exception)
             {
                 Log.Error("Entity '[{0}]{1}' OnShow with exception '{2}'.", m_Id, m_EntityAssetName, exception);
             }
+
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.EntityShowTotal,
+                System.Diagnostics.Stopwatch.GetTimestamp() - showStartTicks);
         }
 
         /// <summary>

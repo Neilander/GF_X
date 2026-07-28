@@ -54,7 +54,7 @@ public class MAEntity : CompCreature, IEntityContext
     public void SetBrain(IControlBrain brain) => Brain = brain;
     protected override bool InitializeDefaultTauntLevelOnShow => false;
     protected override bool UsesCoordinatedLogicFrameUpdate => true;
-    protected override bool ShouldRunLogicFrameUpdate => false;
+    protected override bool ShouldRunLogicFrameUpdate => _isLogicActive;
 
     public virtual void ChangeSide(SideType newSide)
     {
@@ -413,6 +413,17 @@ public class MAEntity : CompCreature, IEntityContext
 
             RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope.EntityRotation, stageStartTicks);
         }
+    }
+
+    protected override void GetAuthoritativeLogicPose(out Vector3 position, out Quaternion rotation)
+    {
+        LogicEntityState state = RequireLogicState();
+        FixVector2 forward = state.Forward;
+        if (FixVector2.SqrMagnitude(forward) == Fix64.Zero)
+            throw new InvalidOperationException($"MAEntity.GetAuthoritativeLogicPose failed: entity {LogicEntityId.Value} has zero forward.");
+
+        position = new Vector3((float)state.Position.x, CachedTransform.position.y, (float)state.Position.y);
+        rotation = Quaternion.LookRotation(new Vector3((float)forward.x, 0f, (float)forward.y));
     }
 
     private static void RecordPerf(UnityGameFramework.Runtime.MainThreadPerfScope scope, long startTicks)

@@ -89,7 +89,7 @@ public static class MAEntityFactory
             unitLevel,
             LogicSkillFactoryKind.None,
             configureParams);
-        int viewRequestId = GF.Entity.ShowEntity<SoldierEntity>(prefabName, entityGroup, entityParams);
+        int viewRequestId = LogicEntityViewSpawnQueue.EnqueueSoldier(prefabName, entityGroup, entityParams);
         if (viewRequestId <= 0)
             throw new System.InvalidOperationException($"MAEntityFactory.ShowSoldierFixed failed to request view. logicEntity={entityParams.LogicEntityId.Value}, prefab={prefabName}.");
         return entityParams.LogicEntityId;

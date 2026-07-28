@@ -34,8 +34,11 @@ public sealed class MeatRackTargetingComp : ITargetingComp, ILogicDeterministicS
         Fix64 attackRange = GetEffectiveAttackRange();
         if (CurrentTarget != null)
         {
-            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
-            if (distance > attackRange || !CurrentTarget.IsAttackTargetable() || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
+            if (!CurrentTarget.IsRegisteredInLogicWorld()
+                || !CurrentTarget.IsAttackTargetable()
+                || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget))
+                CurrentTarget = null;
+            else if (_ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget) > attackRange)
                 CurrentTarget = null;
         }
 
@@ -148,11 +151,14 @@ public sealed class MonitorTargetingComp : ITargetingComp, ILogicDeterministicSt
         Fix64 attackRange = GetEffectiveAttackRange();
         if (CurrentTarget != null)
         {
-            Fix64 distance = _ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget);
-            if (distance > attackRange
+            if (!CurrentTarget.IsRegisteredInLogicWorld()
                 || !CurrentTarget.IsAttackTargetable()
                 || !EntityCombatTeamHelper.IsEnemy(_ctx, CurrentTarget)
                 || !MonitorFacingUtility.IsFacingMonitor(CurrentTarget, _ctx, _facingConeAngle))
+            {
+                CurrentTarget = null;
+            }
+            else if (_ctx.LogicFrameDistanceToTargetSurfaceFixed(CurrentTarget) > attackRange)
             {
                 CurrentTarget = null;
             }

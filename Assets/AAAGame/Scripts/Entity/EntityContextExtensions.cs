@@ -29,6 +29,18 @@ public static class EntityContextExtensions
         return ctx == null || (ctx is Object obj && obj == null);
     }
 
+    public static bool IsRegisteredInLogicWorld(this IEntityContext ctx)
+    {
+        if (ctx.IsDestroyed())
+            return false;
+
+        if (!ctx.LogicEntityId.IsValid)
+            throw new System.InvalidOperationException("Logic-world entity has an invalid logic id.");
+
+        return EntityRegistry.TryGet(ctx.LogicEntityId, out IEntityContext registered)
+               && ReferenceEquals(registered, ctx);
+    }
+
     /// <summary>
     /// 统一攻击目标判定：死亡、销毁、无敌、幽灵态都不可作为攻击目标。
     /// </summary>

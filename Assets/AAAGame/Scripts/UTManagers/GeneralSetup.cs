@@ -195,10 +195,12 @@ public partial class GeneralSetup : GameFrameworkComponent
 
                 // 设置摄像机跟随玩家
                 CameraController cameraController = Camera.main.GetComponent<CameraController>();
-                if (cameraController != null)
-                {
-                    cameraController.SetFollowTarget(ma.transform);
-                }
+                if (cameraController == null)
+                    throw new InvalidOperationException("GeneralSetup.OnGeneralShowEntitySuccess failed: CameraController is missing from the main camera.");
+                if (ma.display == null)
+                    throw new InvalidOperationException($"GeneralSetup.OnGeneralShowEntitySuccess failed: player presentation transform is missing. entity={ma.LogicEntityId.Value}.");
+
+                cameraController.SetFollowTarget(ma.display);
 
                 TryEnterInitialPhaseIfReady();
             }

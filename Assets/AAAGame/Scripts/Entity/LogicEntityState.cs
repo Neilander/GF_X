@@ -447,10 +447,13 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         if (!IsLogicActive)
             return;
 
-        if (blocksMovement)
-            ScheduleObstacleAdds(false);
-        else
-            ScheduleObstacleRemovals(false);
+        if (!IsNavigationStaticBaked)
+        {
+            if (blocksMovement)
+                ScheduleObstacleAdds(false);
+            else
+                ScheduleObstacleRemovals(false);
+        }
         CollisionBlockingChanged?.Invoke(blocksMovement);
     }
 
@@ -583,7 +586,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             GroupMoveManager.Instance.RegisterAgent(this);
         }
 
-        if (IsBuildingEntity && BlocksLogicMovement)
+        if (IsBuildingEntity && BlocksLogicMovement && !IsNavigationStaticBaked)
             ScheduleObstacleAdds(true);
     }
 
