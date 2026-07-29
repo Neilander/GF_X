@@ -42,7 +42,8 @@ public class UnitMovementSound : MonoBehaviour
         if (_moveExecutor != null)
         {
             bool moving = _moveExecutor.IsMoving();
-            LogDebug($"MoveExecutor.IsMoving() = {moving}");
+            if (enableDebugLog)
+                LogDebug($"MoveExecutor.IsMoving() = {moving}");
             return moving;
         }
 
@@ -51,7 +52,8 @@ public class UnitMovementSound : MonoBehaviour
             Vector3 velocity = _characterController.velocity;
             velocity.y = 0;
             bool moving = velocity.magnitude > moveThreshold;
-            LogDebug($"CharacterController.velocity={velocity.magnitude:F4}, moving={moving}");
+            if (enableDebugLog)
+                LogDebug($"CharacterController.velocity={velocity.magnitude:F4}, moving={moving}");
             return moving;
         }
 

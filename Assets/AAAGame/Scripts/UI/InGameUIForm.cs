@@ -84,13 +84,13 @@ public partial class InGameUIForm : UIFormBase
 
         if (btSelf == varCoinIcon)
         {
-            InGameDataModel.TryModifyValue(IngameValueType.Coin, 1, true);
+            LogicInGameValueCommandService.ScheduleDeltaForNextFrame(IngameValueType.Coin, 1);
             return;
         }
 
         if (btSelf == varSupplyIcon)
         {
-            InGameDataModel.TryModifyValue(IngameValueType.MaxSupply, 1, true);
+            LogicInGameValueCommandService.ScheduleDeltaForNextFrame(IngameValueType.MaxSupply, 1);
         }
     }
 

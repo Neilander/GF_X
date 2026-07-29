@@ -41,6 +41,36 @@ public sealed class BuffLogicTimeTests
     }
 
     [Test]
+    public void PhaseAmmoReset_UsesExactLogicPhaseApplyFrame()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
+        var host = new SimEntityContext();
+        host.WeaponComp = new WeaponComp(CreateAmmunitionWeapon(3));
+        var buff = new PhaseAmmoResetBuff();
+        buff.Initialize(null, host);
+        buff.OnAdd();
+        try
+        {
+            Assert.IsTrue(host.WeaponComp.TryConsumeAmmo(2));
+            Assert.AreEqual(1, host.WeaponComp.CurrentAmmo);
+            LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade);
+            LogicTimeControlService.BeginFrame(1);
+
+            LogicPhaseCommandService.ApplyFrameForTests(1, _ => { });
+
+            Assert.AreEqual(3, host.WeaponComp.CurrentAmmo);
+        }
+        finally
+        {
+            buff.OnRemove();
+            LogicPhaseCommandService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
     public void CharacterBuffComp_TicksOnPureLogicEntityContext()
     {
         var context = new SimEntityContext();
@@ -62,6 +92,26 @@ public sealed class BuffLogicTimeTests
         Assert.AreSame(context, callback.InitializedHost);
         Assert.AreEqual(LogicFrameRuntime.FixedDeltaTime.RawValue, callback.UpdatedTime.RawValue);
         component.ShutDown();
+    }
+
+    private static Weapon CreateAmmunitionWeapon(int capacity)
+    {
+        return Weapon.Create(
+            "BuffLogicTimeTests",
+            new WeaponData(
+                WeaponType.Projectile,
+                Fix64.One,
+                Fix64.One,
+                Fix64.One,
+                Fix64.One,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.One,
+                (Fix64)capacity,
+                System.Array.Empty<Fix64>()));
     }
 
     [Test]

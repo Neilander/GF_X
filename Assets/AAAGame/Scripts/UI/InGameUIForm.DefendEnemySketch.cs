@@ -255,6 +255,12 @@ public partial class InGameUIForm
     {
         if (varDefendEnemySketchItem == null)
             return;
+        if (m_DefendSketchItemHandles.Count == 0
+            && m_DefendNextSketchItemHandles.Count == 0
+            && m_DefendReusableSketchItemHandles.Count == 0)
+        {
+            return;
+        }
 
         UnspawnAllItem<UIItemObject>(varDefendEnemySketchItem);
         m_DefendSketchItemHandles.Clear();

@@ -90,25 +90,27 @@ namespace UnityGameFramework.Runtime
         CardSetupReset = 80,
         CardSetupBindWorld = 81,
         CardSetupBindRuntime = 82,
-        Count = 83
+        FlowWorldBuildQueue = 83,
+        FlowRuntimeRebuildQueue = 84,
+        FlowTileBuildQueue = 85,
+        Count = 86
     }
 
     public static class MainThreadFrameProfiler
     {
         private const int SlowFrameMilliseconds = 30;
-        private const int TrackedLogMilliseconds = 4;
         private const int ForceLogFrameMilliseconds = 200;
         private const int ForceTrackedLogMilliseconds = 50;
         private const int MinLogFrameInterval = 30;
         private const long HighAllocationBytes = 512 * 1024;
         private const long ForceAllocationLogBytes = 4 * 1024 * 1024;
         private static readonly long SlowFrameTicks = Stopwatch.Frequency * SlowFrameMilliseconds / 1000;
-        private static readonly long TrackedLogTicks = Stopwatch.Frequency * TrackedLogMilliseconds / 1000;
         private static readonly long ForceLogFrameTicks = Stopwatch.Frequency * ForceLogFrameMilliseconds / 1000;
         private static readonly long ForceTrackedLogTicks = Stopwatch.Frequency * ForceTrackedLogMilliseconds / 1000;
         private static readonly long[] ScopeTicks = new long[(int)MainThreadPerfScope.Count];
         private static readonly int[] ScopeCalls = new int[(int)MainThreadPerfScope.Count];
         private static readonly long[] ScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
+        private static readonly long[] IntervalScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly ProfilerMarkerSampler[] MarkerSamplers =
         {
             new ProfilerMarkerSampler(ProfilerCategory.Internal, "PlayerLoop"),
@@ -140,6 +142,7 @@ namespace UnityGameFramework.Runtime
         private static long _frameStartTicks;
         private static long _frameStartAllocatedBytes;
         private static int _frameStartCollectionCount;
+        private static long _intervalAllocatedBytes;
 
         public static bool LoggingEnabled { get; set; }
 
@@ -186,6 +189,8 @@ namespace UnityGameFramework.Runtime
                 Array.Clear(ScopeTicks, 0, ScopeTicks.Length);
                 Array.Clear(ScopeCalls, 0, ScopeCalls.Length);
                 Array.Clear(ScopeAllocatedBytes, 0, ScopeAllocatedBytes.Length);
+                Array.Clear(IntervalScopeAllocatedBytes, 0, IntervalScopeAllocatedBytes.Length);
+                _intervalAllocatedBytes = 0L;
                 _frame = frame;
                 _frameStartTicks = now;
                 _frameStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
@@ -216,6 +221,10 @@ namespace UnityGameFramework.Runtime
             if (!LoggingEnabled)
                 return;
 
+            _intervalAllocatedBytes += allocatedBytes;
+            for (int i = 0; i < ScopeAllocatedBytes.Length; i++)
+                IntervalScopeAllocatedBytes[i] += ScopeAllocatedBytes[i];
+
             long trackedTicks = 0;
             for (int i = 0; i <= (int)MainThreadPerfScope.EntityUpdate; i++)
                 trackedTicks += ScopeTicks[i];
@@ -223,14 +232,13 @@ namespace UnityGameFramework.Runtime
             EnsureRecorders();
 
             bool slowFrame = frameTicks >= SlowFrameTicks;
-            bool enoughTracked = trackedTicks >= TrackedLogTicks;
             bool highAllocation = allocatedBytes >= HighAllocationBytes;
             bool forceLog = frameTicks >= ForceLogFrameTicks
                             || trackedTicks >= ForceTrackedLogTicks
                             || allocatedBytes >= ForceAllocationLogBytes
                             || collectionCount > 0
                             || ScopeCalls[(int)MainThreadPerfScope.ClusterSpawnUnits] > 0;
-            if (!slowFrame && !enoughTracked && !highAllocation && collectionCount <= 0)
+            if (!slowFrame && !highAllocation && !forceLog)
                 return;
             int minLogFrameInterval = highAllocation ? 10 : MinLogFrameInterval;
             if (!forceLog && _frame - _lastLogFrame < minLogFrameInterval)
@@ -249,7 +257,9 @@ namespace UnityGameFramework.Runtime
                 "fogUpdate={12:F3}ms/{13} fogVisibility={14:F3}ms/{15} fogOverlay={16:F3}ms/{17} fogEnemy={18:F3}ms/{19} " +
                 "interactionTrigger={20:F3}ms/{21} interactionCleanup={22:F3}ms/{23} interactionDetail({24}) entity={25:F3}ms/{26} " +
                 "entityDetail({27}) moveExecDetail({28}) characterMoveDetail({29}) entityShowDetail({30}) fogEnemyDetail({31}) spawnDetail({32}) " +
-                "env(targetFps={33},vSync={34},screen={35}x{36},focused={37},gcIncremental={38}) markers({39}) alloc(frame={40:F1}KB,gcCollections={41},scopes={42})",
+                "env(targetFps={33},vSync={34},screen={35}x{36},focused={37},gcIncremental={38}) markers({39}) " +
+                "alloc(frame={40:F1}KB,sinceLastGC={41:F1}KB,gcCollections={42},scopes={43},sinceLastGCScopes={44}) " +
+                "flowQueues({45})",
                 _frame,
                 frameMs,
                 trackedMs,
@@ -280,8 +290,17 @@ namespace UnityGameFramework.Runtime
                 UnityEngine.Scripting.GarbageCollector.isIncremental,
                 BuildMarkerSummary(),
                 allocatedBytes / 1024.0,
+                _intervalAllocatedBytes / 1024.0,
                 collectionCount,
-                BuildAllocationScopeSummary());
+                BuildAllocationScopeSummary(ScopeAllocatedBytes),
+                BuildAllocationScopeSummary(IntervalScopeAllocatedBytes),
+                BuildScopeSummary(MainThreadPerfScope.FlowWorldBuildQueue, MainThreadPerfScope.FlowTileBuildQueue));
+
+            if (collectionCount > 0)
+            {
+                _intervalAllocatedBytes = 0L;
+                Array.Clear(IntervalScopeAllocatedBytes, 0, IntervalScopeAllocatedBytes.Length);
+            }
         }
 
         private static int GetCollectionCount()
@@ -338,17 +357,20 @@ namespace UnityGameFramework.Runtime
             return result.Length > 0 ? result : "none";
         }
 
-        private static string BuildAllocationScopeSummary()
+        private static string BuildAllocationScopeSummary(long[] allocatedBytesByScope)
         {
+            if (allocatedBytesByScope == null)
+                throw new ArgumentNullException(nameof(allocatedBytesByScope));
+
             string result = string.Empty;
-            for (int i = 0; i < ScopeAllocatedBytes.Length; i++)
+            for (int i = 0; i < allocatedBytesByScope.Length; i++)
             {
-                if (ScopeAllocatedBytes[i] <= 0)
+                if (allocatedBytesByScope[i] <= 0)
                     continue;
 
                 if (result.Length > 0)
                     result += ",";
-                result += ((MainThreadPerfScope)i).ToString() + "=" + (ScopeAllocatedBytes[i] / 1024.0).ToString("F1") + "KB";
+                result += ((MainThreadPerfScope)i).ToString() + "=" + (allocatedBytesByScope[i] / 1024.0).ToString("F1") + "KB";
             }
 
             return result.Length > 0 ? result : "none";

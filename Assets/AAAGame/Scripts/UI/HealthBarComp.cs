@@ -37,6 +37,7 @@ public class HealthBarComp : MonoBehaviour
 
     private int _entityId;
     private Transform _followTarget;
+    private Transform _positionTarget;
     private Vector3 _offset = new Vector3(0, 2f, 0);
     private bool _subscribed;
     private bool _pendingDestroy;
@@ -56,6 +57,7 @@ public class HealthBarComp : MonoBehaviour
     {
         _entityId = entityId;
         _followTarget = followTarget;
+        _positionTarget = ResolvePositionTarget(followTarget);
         if (offset.HasValue) _offset = offset.Value;
         if (ownerCanvas == null)
             ownerCanvas = GetComponent<Canvas>();
@@ -139,8 +141,10 @@ public class HealthBarComp : MonoBehaviour
             ownerCanvas.enabled = true;
 
         if (_followTarget == null) return;
+        if (_positionTarget == null)
+            throw new System.InvalidOperationException($"HealthBar position target is missing. entityId={_entityId}.");
         UpdateAmmoBar();
-        Vector3 worldPos = _followTarget.position + _offset;
+        Vector3 worldPos = _positionTarget.position + _offset;
 
         // 始终面向主摄像机
         if (Camera.main != null)
@@ -503,6 +507,15 @@ public class HealthBarComp : MonoBehaviour
             return creature.Side == SideType.PlayerSide;
 
         return fallback;
+    }
+
+    private static Transform ResolvePositionTarget(Transform followTarget)
+    {
+        if (followTarget == null)
+            throw new System.ArgumentNullException(nameof(followTarget));
+
+        Transform display = followTarget.Find("Display");
+        return display != null ? display : followTarget;
     }
 
     private static bool ShouldSuppressHealthBar(Transform followTarget)

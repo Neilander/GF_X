@@ -8,12 +8,14 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
     private bool m_HasOverride;
     private bool m_NavigationConstrained = true;
     private bool m_BypassConstraintForNextFrame;
+    private bool m_NavigationConstraintBypass;
     private MovementMode m_MovementMode;
 
     public MovementMode MovementMode => m_MovementMode;
     public bool HasPreparedLogicMove { get; private set; }
     public ulong PreparedLogicFrame { get; private set; }
     public bool PreparedCollisionMovable { get; private set; }
+    public bool PreparedNavigationConstraintEnabled { get; private set; }
     public FixVector2 PreparedResolvedHorizontalDisplacement { get; private set; }
 
     public void SetInputFixed(FixVector2 velocity)
@@ -51,6 +53,8 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
     public void SetNavigationConstrained(bool constrained)
     {
         m_NavigationConstrained = constrained;
+        if (constrained)
+            m_NavigationConstraintBypass = false;
     }
 
     public void SetConstraintBypassForNextFrame(bool bypass = true)
@@ -60,7 +64,7 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
 
     public void EnableNavigationConstraintBypass()
     {
-        m_BypassConstraintForNextFrame = true;
+        m_NavigationConstraintBypass = true;
     }
 
     public void PrepareLogicFrame(ulong frameId, Fix64 deltaTime, bool allowMovement)
@@ -85,7 +89,11 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
 
         PreparedLogicFrame = frameId;
         PreparedResolvedHorizontalDisplacement = velocity * deltaTime;
-        PreparedCollisionMovable = allowMovement && (m_NavigationConstrained || m_BypassConstraintForNextFrame);
+        PreparedCollisionMovable = allowMovement;
+        PreparedNavigationConstraintEnabled = allowMovement
+                                             && m_NavigationConstrained
+                                             && !m_BypassConstraintForNextFrame
+                                             && !m_NavigationConstraintBypass;
         HasPreparedLogicMove = true;
     }
 
@@ -100,6 +108,7 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
         HasPreparedLogicMove = false;
         PreparedLogicFrame = 0;
         PreparedCollisionMovable = false;
+        PreparedNavigationConstraintEnabled = false;
         PreparedResolvedHorizontalDisplacement = FixVector2.Zero;
         m_InputVelocity = FixVector2.Zero;
         m_ExternalVelocity = FixVector2.Zero;
@@ -122,10 +131,12 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
         hasher.Add(m_HasOverride);
         hasher.Add(m_NavigationConstrained);
         hasher.Add(m_BypassConstraintForNextFrame);
+        hasher.Add(m_NavigationConstraintBypass);
         hasher.Add((int)m_MovementMode);
         hasher.Add(HasPreparedLogicMove);
         hasher.Add(PreparedLogicFrame);
         hasher.Add(PreparedCollisionMovable);
+        hasher.Add(PreparedNavigationConstraintEnabled);
         hasher.Add(PreparedResolvedHorizontalDisplacement.x.RawValue);
         hasher.Add(PreparedResolvedHorizontalDisplacement.y.RawValue);
     }

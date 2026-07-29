@@ -14,6 +14,7 @@ public class InteractionHost : MonoBehaviour
 {
     // 使用 SortedDictionary 保证按 InputKey(enum 值) 的自然顺序枚举
     private readonly SortedDictionary<InputKey, List<IInteractionOption>> _optionsByKey = new();
+    private readonly List<IInteractionOption> _keyedOptions = new();
     private readonly List<IInteractionOption> _options = new();
 
     public object Owner { get; private set; }
@@ -165,14 +166,11 @@ public class InteractionHost : MonoBehaviour
 
     public bool HasVisibleOptions()
     {
-        foreach (var pair in _optionsByKey)
+        for (int i = 0; i < _keyedOptions.Count; i++)
         {
-            List<IInteractionOption> options = pair.Value;
-            for (int i = 0; i < options.Count; i++)
-            {
-                if (options[i] != null && options[i].IsVisible())
-                    return true;
-            }
+            IInteractionOption option = _keyedOptions[i];
+            if (option != null && option.IsVisible())
+                return true;
         }
 
         foreach (var option in _options)
@@ -245,6 +243,7 @@ public class InteractionHost : MonoBehaviour
             _optionsByKey.Add(key, options);
         }
         options.Add(option);
+        _keyedOptions.Add(option);
         return option;
     }
     /// <summary>
@@ -287,6 +286,7 @@ public class InteractionHost : MonoBehaviour
         }
 
         _optionsByKey.Clear();
+        _keyedOptions.Clear();
         _options.Clear();
         Owner = null;
     }

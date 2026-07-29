@@ -25,6 +25,7 @@ public interface ILogicFrameEntity : IEntityContext
     bool HasPreparedLogicMove { get; }
     ulong PreparedLogicFrame { get; }
     bool PreparedCollisionMovable { get; }
+    bool PreparedNavigationConstraintEnabled { get; }
     uint AgentCollisionMask { get; }
     FixVector2 PreparedResolvedHorizontalDisplacement { get; }
     void BeginLogicFrame(Fix64 deltaTime);

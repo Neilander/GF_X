@@ -222,8 +222,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         // Returning 优先：一旦进入返航就锁死，直到回到出生点。不可被任何状态打断。
         if (State == SoldierState.Returning)
         {
-            if (_birthPosition.HasValue &&
-                FixVector2.Distance(selfPositionFixed, _birthPosition.Value) <= HomeArrivedRadius)
+            if (!_birthPosition.HasValue)
+                throw new System.InvalidOperationException(
+                    $"SoldierAIBrain returning state has no birth position. entity={self.LogicEntityId.Value}.");
+            if (FixVector2.Distance(selfPositionFixed, _birthPosition.Value) <= HomeArrivedRadius)
             {
                 ExitReturning(self);
             }
@@ -848,11 +850,8 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private void TickReturning(IEntityContext self, Fix64 dt)
     {
         if (!_birthPosition.HasValue)
-        {
-            // 理论上不应该发生：Returning 是由 _birthPosition.HasValue 才能进入的
-            State = SoldierState.Idle;
-            return;
-        }
+            throw new System.InvalidOperationException(
+                $"SoldierAIBrain returning tick has no birth position. entity={self.LogicEntityId.Value}.");
 
         Attack = false;
 

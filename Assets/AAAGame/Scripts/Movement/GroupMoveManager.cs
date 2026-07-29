@@ -113,9 +113,23 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
             FlowFieldCrowdMovementSystem.RecordManagerSourceGateTicks(sourceCheckTicks);
             MainThreadFrameProfiler.Record(MainThreadPerfScope.FlowSourceGate, sourceCheckTicks);
 
+            sectionStartTicks = Stopwatch.GetTimestamp();
             FlowFieldCrowdMovementSystem.ProcessWorldBuildQueue();
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowWorldBuildQueue,
+                Stopwatch.GetTimestamp() - sectionStartTicks);
+
+            sectionStartTicks = Stopwatch.GetTimestamp();
             FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowRuntimeRebuildQueue,
+                Stopwatch.GetTimestamp() - sectionStartTicks);
+
+            sectionStartTicks = Stopwatch.GetTimestamp();
             FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowTileBuildQueue,
+                Stopwatch.GetTimestamp() - sectionStartTicks);
         }
         finally
         {

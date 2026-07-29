@@ -1,11 +1,9 @@
-﻿using AAAGame.MiniMap.FOG3;
-using UnityEngine;
+﻿using UnityEngine;
 
 public class MoveExecutor : MonoBehaviour
 {
     private CharacterController _controller;
     private MAEntity _ownerEntity;
-    private Fog3Manager _fog3Manager;
 
     private Vector3 _inputVelocity;
     private Vector3 _externalVelocity;
@@ -440,25 +438,6 @@ public class MoveExecutor : MonoBehaviour
         }
         RecordConstraintPerf(constraintStartTicks);
 
-        Vector3 constrainedPos = currentPos + constrainedDisplacement;
-        if (IsEnemyStrongholdBlocked(constrainedPos))
-        {
-            LogConstraintFailure("敌方据点被阻挡", currentPos, desiredPos, desiredHorizontalDisplacement);
-            return Vector3.zero;
-        }
-
-        if (IsInvadeTutorialStrongholdBlocked(constrainedPos))
-        {
-            LogConstraintFailure("Invade tutorial stronghold boundary blocked", currentPos, desiredPos, desiredHorizontalDisplacement);
-            return Vector3.zero;
-        }
-
-        if (IsNonVisibleBlocked(constrainedPos))
-        {
-            LogConstraintFailure("非可见区域被阻挡", currentPos, desiredPos, desiredHorizontalDisplacement);
-            return Vector3.zero;
-        }
-
         if (constrainedDisplacement.sqrMagnitude <= ConstraintMinStepDistance * ConstraintMinStepDistance
             && desiredHorizontalDisplacement.sqrMagnitude > ConstraintMinStepDistance * ConstraintMinStepDistance)
         {
@@ -502,51 +481,4 @@ public class MoveExecutor : MonoBehaviour
         }
     }
 
-    private bool IsNonVisibleBlocked(Vector3 worldPosition)
-    {
-        if (_ownerEntity == null)
-            _ownerEntity = GetComponent<MAEntity>();
-
-        if (_ownerEntity == null || _ownerEntity.Side != SideType.PlayerSide)
-            return false;
-
-        _fog3Manager ??= Fog3Manager.Instance;
-        if (_fog3Manager == null || !_fog3Manager.IsInitialized || _fog3Manager.MapData == null)
-            return false;
-
-        if (!_fog3Manager.MapData.WorldToGrid(worldPosition, out int gridX, out int gridY))
-            return true;
-
-        return _fog3Manager.MapData.GetCellState(gridX, gridY) != Fog3CellState.Visible;
-    }
-
-    private bool IsEnemyStrongholdBlocked(Vector3 worldPosition)
-    {
-        if (_ownerEntity == null)
-            _ownerEntity = GetComponent<MAEntity>();
-
-        if (_ownerEntity == null || _ownerEntity.Side != SideType.PlayerSide)
-            return false;
-
-        GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
-        if (phase == GamePhase.Invade)
-            return false;
-
-        Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(worldPosition);
-        if (stronghold == null)
-            return false;
-
-        return stronghold.OwnerFactionId != EntitySideHelper.PlayerFactionId;
-    }
-
-    private bool IsInvadeTutorialStrongholdBlocked(Vector3 worldPosition)
-    {
-        if (_ownerEntity == null)
-            _ownerEntity = GetComponent<MAEntity>();
-
-        if (_ownerEntity == null || _ownerEntity.Side != SideType.PlayerSide)
-            return false;
-
-        return TutorialManager.IsInvadeTutorialMovementBlocked(worldPosition);
-    }
 }

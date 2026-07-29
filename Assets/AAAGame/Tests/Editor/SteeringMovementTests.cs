@@ -1,4 +1,5 @@
 ﻿using NUnit.Framework;
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Reflection;
@@ -439,6 +440,24 @@ public class SteeringMovementTests
         brain.Tick(soldier, Fix64.One / (Fix64)60);
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Returning, brain.State);
+    }
+
+    [Test]
+    public void 返航状态缺少出生点时明确报错()
+    {
+        var soldier = MakeSoldier(Vector3.zero, SideType.EnemySide);
+        soldier.LogicEntityId = new LogicEntityId(100);
+        EntityRegistry.Register(soldier);
+        var brain = new SoldierAIBrain();
+        typeof(SoldierAIBrain)
+            .GetProperty(nameof(SoldierAIBrain.State), BindingFlags.Instance | BindingFlags.Public)
+            .SetValue(brain, SoldierAIBrain.SoldierState.Returning);
+        soldier.Brain = brain;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime));
+
+        StringAssert.Contains("has no birth position", exception.Message);
     }
 
     [Test]

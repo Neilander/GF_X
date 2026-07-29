@@ -55,6 +55,9 @@ namespace AAAGame.MiniMap
         private Dictionary<string, GameObject> buildingIconPrefabs = new Dictionary<string, GameObject>();
         private HashSet<int> currentUnitIds = new HashSet<int>();
         private HashSet<int> snapshotUnitIds = new HashSet<int>();
+        private readonly List<int> staleUnitVisualIds = new List<int>();
+        private readonly List<int> staleBuildingUnitIds = new List<int>();
+        private readonly List<int> staleTargetLocationUnitIds = new List<int>();
         private HashSet<int> knownBuildingUnitIds = new HashSet<int>();
         private HashSet<int> targetLocationUnitIds = new HashSet<int>();
         private RawImage terrainMapImage;
@@ -366,49 +369,42 @@ namespace AAAGame.MiniMap
                 RemoveUnitVisual(unit.UnitId);
             }
 
-            List<int> toRemove = new List<int>();
+            staleUnitVisualIds.Clear();
             foreach (var id in unitVisuals.Keys)
             {
-                if (!currentUnitIds.Contains(id)) toRemove.Add(id);
+                if (!currentUnitIds.Contains(id)) staleUnitVisualIds.Add(id);
             }
-            foreach (var id in toRemove) RemoveUnitVisual(id);
+            for (int i = 0; i < staleUnitVisualIds.Count; i++)
+                RemoveUnitVisual(staleUnitVisualIds[i]);
 
             if (knownBuildingUnitIds.Count > 0)
             {
-                List<int> staleBuildingIds = null;
+                staleBuildingUnitIds.Clear();
                 foreach (int buildingId in knownBuildingUnitIds)
                 {
                     if (snapshotUnitIds.Contains(buildingId))
                         continue;
 
-                    staleBuildingIds ??= new List<int>();
-                    staleBuildingIds.Add(buildingId);
+                    staleBuildingUnitIds.Add(buildingId);
                 }
 
-                if (staleBuildingIds != null)
-                {
-                    for (int i = 0; i < staleBuildingIds.Count; i++)
-                        knownBuildingUnitIds.Remove(staleBuildingIds[i]);
-                }
+                for (int i = 0; i < staleBuildingUnitIds.Count; i++)
+                    knownBuildingUnitIds.Remove(staleBuildingUnitIds[i]);
             }
 
             if (targetLocationUnitIds.Count > 0)
             {
-                List<int> staleTargetIds = null;
+                staleTargetLocationUnitIds.Clear();
                 foreach (int targetId in targetLocationUnitIds)
                 {
                     if (snapshotUnitIds.Contains(targetId))
                         continue;
 
-                    staleTargetIds ??= new List<int>();
-                    staleTargetIds.Add(targetId);
+                    staleTargetLocationUnitIds.Add(targetId);
                 }
 
-                if (staleTargetIds != null)
-                {
-                    for (int i = 0; i < staleTargetIds.Count; i++)
-                        targetLocationUnitIds.Remove(staleTargetIds[i]);
-                }
+                for (int i = 0; i < staleTargetLocationUnitIds.Count; i++)
+                    targetLocationUnitIds.Remove(staleTargetLocationUnitIds[i]);
             }
 
             RefreshMinimapFogOverlay(false, 0f);

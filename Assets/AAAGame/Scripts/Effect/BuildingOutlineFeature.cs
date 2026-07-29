@@ -110,6 +110,7 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
         private static readonly ProfilingSampler s_Sampler = new ProfilingSampler("BuildingOutline.Mask");
 
         private readonly Material _material;
+        private readonly List<Material> _sharedMaterials = new List<Material>();
         private RTHandle _maskRT;
         public RTHandle MaskHandle => _maskRT;
 
@@ -144,9 +145,9 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
                     var r = s_Renderers[i];
                     if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
 
-                    int subMeshCount = 1;
-                    var mats = r.sharedMaterials;
-                    if (mats != null && mats.Length > 1) subMeshCount = mats.Length;
+                    _sharedMaterials.Clear();
+                    r.GetSharedMaterials(_sharedMaterials);
+                    int subMeshCount = Mathf.Max(1, _sharedMaterials.Count);
 
                     for (int s = 0; s < subMeshCount; s++)
                         cmd.DrawRenderer(r, _material, s, 0);

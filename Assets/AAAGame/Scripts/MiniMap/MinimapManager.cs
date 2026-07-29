@@ -19,6 +19,7 @@ namespace AAAGame.MiniMap
         [SerializeField] private bool enableUnitLifecycleLogs;
 
         private Dictionary<int, MinimapUnitData> units = new Dictionary<int, MinimapUnitData>();
+        private readonly List<MinimapUnitData> unitSnapshot = new List<MinimapUnitData>();
         private int nextUnitId = 1;
         private int syncedLevelEntityId;
 
@@ -44,8 +45,9 @@ namespace AAAGame.MiniMap
             {
                 if (OnUnitsUpdated != null)
                 {
-                    List<MinimapUnitData> unitsList = new List<MinimapUnitData>(units.Values);
-                    OnUnitsUpdated.Invoke(unitsList);
+                    unitSnapshot.Clear();
+                    unitSnapshot.AddRange(units.Values);
+                    OnUnitsUpdated.Invoke(unitSnapshot);
                 }
             }
         }

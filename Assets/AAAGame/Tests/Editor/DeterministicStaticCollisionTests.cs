@@ -66,6 +66,174 @@ public sealed class DeterministicStaticCollisionTests
     }
 
     [Test]
+    public void RuntimeBoxObstacle_BlocksWithoutRasterRebuild()
+    {
+        LogicStaticCollisionWorld world = CreateWorld(8, 4);
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                9001,
+                LogicStaticCollisionObstacleKind.Box,
+                new FixVector2((Fix64)3, (Fix64)1.5f),
+                new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+                Fix64.Zero),
+        };
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            new FixVector2((Fix64)4, Fix64.Zero),
+            (Fix64)0.25f,
+            obstacles);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0.75f, 0f, 0.003f);
+    }
+
+    [Test]
+    public void RuntimeCircleObstacle_BlocksWithoutRasterRebuild()
+    {
+        LogicStaticCollisionWorld world = CreateWorld(8, 4);
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                9001,
+                LogicStaticCollisionObstacleKind.Circle,
+                new FixVector2((Fix64)3, (Fix64)1.5f),
+                FixVector2.Zero,
+                (Fix64)0.5f),
+        };
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            new FixVector2((Fix64)4, Fix64.Zero),
+            (Fix64)0.25f,
+            obstacles);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0.75f, 0f, 0.004f);
+    }
+
+    [Test]
+    public void RuntimeCircleObstacle_ExactTangentPreservesRequestedDisplacement()
+    {
+        LogicStaticCollisionWorld world = CreateWorld(8, 4);
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                9001,
+                LogicStaticCollisionObstacleKind.Circle,
+                new FixVector2((Fix64)3, (Fix64)1.5f),
+                FixVector2.Zero,
+                (Fix64)0.5f),
+        };
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)1.5f, (Fix64)2.25f),
+            new FixVector2((Fix64)3, Fix64.Zero),
+            (Fix64)0.25f,
+            obstacles);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 3f, 0f);
+        Assert.AreEqual(0, result.ContactCount);
+    }
+
+    [Test]
+    public void RuntimeCircleObstacle_TouchingBoundaryBlocksInwardAndAllowsOutward()
+    {
+        LogicStaticCollisionWorld world = CreateWorld(8, 4);
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                9001,
+                LogicStaticCollisionObstacleKind.Circle,
+                new FixVector2((Fix64)3, (Fix64)1.5f),
+                FixVector2.Zero,
+                (Fix64)0.5f),
+        };
+        FixVector2 touchingStart = new FixVector2((Fix64)2.25f, (Fix64)1.5f);
+
+        LogicStaticCollisionSolveResult inward = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            touchingStart,
+            new FixVector2((Fix64)0.5f, Fix64.Zero),
+            (Fix64)0.25f,
+            obstacles);
+        LogicStaticCollisionSolveResult outward = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            touchingStart,
+            new FixVector2((Fix64)(-0.5f), Fix64.Zero),
+            (Fix64)0.25f,
+            obstacles);
+
+        Assert.IsTrue(inward.Success);
+        AssertVector(inward.ResolvedDisplacement, 0f, 0f);
+        Assert.IsTrue(outward.Success);
+        AssertVector(outward.ResolvedDisplacement, -0.5f, 0f);
+    }
+
+    [Test]
+    public void RuntimeCircleObstacle_SweepIsInvariantAtLargeAuthoredOffset()
+    {
+        bool[] mask = CreateMask(8, 4);
+        FixVector2 offset = new FixVector2((Fix64)100000, (Fix64)100000);
+        var world = new LogicStaticCollisionWorld(0, 1, 8, 4, (Fix64)1, offset, mask);
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                9001,
+                LogicStaticCollisionObstacleKind.Circle,
+                offset + new FixVector2((Fix64)3, (Fix64)1.5f),
+                FixVector2.Zero,
+                (Fix64)0.5f),
+        };
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            offset + new FixVector2((Fix64)1.5f, (Fix64)1.5f),
+            new FixVector2((Fix64)4, Fix64.Zero),
+            (Fix64)0.25f,
+            obstacles);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0.75f, 0f, 0.004f);
+    }
+
+    [Test]
+    public void RuntimeBoxAddedUnderUnit_RecoversByStableMinimumPenetration()
+    {
+        LogicStaticCollisionWorld world = CreateWorld(8, 4);
+        var obstacles = new[]
+        {
+            new LogicStaticCollisionObstacle(
+                9001,
+                LogicStaticCollisionObstacleKind.Box,
+                new FixVector2((Fix64)3, (Fix64)1.5f),
+                new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+                Fix64.Zero),
+        };
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)3, (Fix64)1.5f),
+            FixVector2.Zero,
+            (Fix64)0.25f,
+            obstacles);
+
+        Assert.IsTrue(result.Success);
+        Assert.IsTrue(result.StartedOverlapping);
+        AssertVector(result.ResolvedDisplacement, -0.75f, 0f, 0.003f);
+        Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(
+            world,
+            result.Start + result.ResolvedDisplacement,
+            (Fix64)0.25f,
+            obstacles));
+    }
+
+    [Test]
     public void WorldBoundary_StopsCircleAndKeepsTangent()
     {
         LogicStaticCollisionWorld world = CreateWorld(5, 5);

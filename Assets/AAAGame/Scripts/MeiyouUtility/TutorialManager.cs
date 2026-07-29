@@ -1,5 +1,4 @@
 using GameFramework;
-using GameFramework.Event;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -16,7 +15,7 @@ public enum TutorialType
     PlayCard = 6,
 }
 
-public class TutorialManager : GameFrameworkComponent
+public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogicFrameStableOrder
 {
     public static event Action PhaseSwitchButtonGuideChanged;
 
@@ -45,9 +44,13 @@ public class TutorialManager : GameFrameworkComponent
     private readonly HashSet<TutorialType> completedTutorials = new HashSet<TutorialType>();
     private bool hasLoggedWaitingForInputModel;
     private bool m_EventSubscribed;
-    private bool m_WaitingEventReadyLogged;
+    private bool m_LogicFrameRegistered;
+    private ulong m_LastLogicFrame;
     private int m_BuildTutorialStartBuiltCount;
     private string m_InvadeTutorialStrongholdId;
+
+    public int LogicFrameOrder => 1000;
+    public long LogicFrameStableKey => 0;
 
     protected override void Awake()
     {
@@ -63,12 +66,22 @@ public class TutorialManager : GameFrameworkComponent
     private void OnEnable()
     {
         LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
+        LogicMovementRegionConstraintService.TutorialStrongholdBoundaryActivated += OnTutorialStrongholdBoundaryActivated;
+        LogicFrameRuntime.Began += OnLogicFrameRuntimeBegan;
+        LogicFrameRuntime.Ending += OnLogicFrameRuntimeEnding;
         TrySubscribeEvents();
+        if (LogicFrameRuntime.IsActive)
+            RegisterLogicFrame();
     }
 
     private void OnDisable()
     {
         LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
+        LogicMovementRegionConstraintService.TutorialStrongholdBoundaryActivated -= OnTutorialStrongholdBoundaryActivated;
+        LogicFrameRuntime.Began -= OnLogicFrameRuntimeBegan;
+        LogicFrameRuntime.Ending -= OnLogicFrameRuntimeEnding;
+        if (m_LogicFrameRegistered)
+            UnregisterLogicFrame();
         TryUnsubscribeEvents();
     }
 
@@ -79,16 +92,21 @@ public class TutorialManager : GameFrameworkComponent
             s_CachedManager = null;
     }
 
-    private void Update()
+    public void OnLogicFrameUpdate(Fix64 deltaTime)
     {
-        if (!m_EventSubscribed)
-            TrySubscribeEvents();
+        if (deltaTime != LogicFrameRuntime.FixedDeltaTime)
+            throw new InvalidOperationException("TutorialManager received a non-fixed logic delta.");
+        if (LogicFrameRuntime.CurrentFrame == 0)
+            throw new InvalidOperationException("TutorialManager cannot update on logic frame zero.");
+
+        m_LastLogicFrame = LogicFrameRuntime.CurrentFrame;
 
         if (activeTutorials.Count <= 0)
             return;
 
         activeTutorialsBuffer.Clear();
         activeTutorialsBuffer.AddRange(activeTutorials);
+        activeTutorialsBuffer.Sort();
 
         for (int i = 0; i < activeTutorialsBuffer.Count; i++)
         {
@@ -117,15 +135,6 @@ public class TutorialManager : GameFrameworkComponent
         return GameEntry.GetComponent<TutorialManager>().TryGetPhaseSwitchButtonGuideInternal(out interactable, out shouldBlink);
     }
 
-    public static bool IsInvadeTutorialMovementBlocked(Vector3 worldPosition)
-    {
-        TutorialManager manager = s_CachedManager;
-        if (manager == null)
-            return false;
-
-        return manager.IsInvadeTutorialMovementBlockedInternal(worldPosition);
-    }
-
     public static bool IsCurrentLevelTutorial()
     {
         return IsCurrentLevelLv1();
@@ -149,6 +158,7 @@ public class TutorialManager : GameFrameworkComponent
         completedTutorials.Clear();
         inputModel = null;
         hasLoggedWaitingForInputModel = false;
+        m_LastLogicFrame = 0;
         m_BuildTutorialStartBuiltCount = 0;
         m_InvadeTutorialStrongholdId = null;
         NotifyPhaseSwitchButtonGuideChanged();
@@ -196,31 +206,21 @@ public class TutorialManager : GameFrameworkComponent
         if (IsLv1FlowTutorial(triggerType) && !IsCurrentLevelLv1())
             return false;
 
-        SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
-        if (sideTipsManager == null)
-        {
-            Log.Warning("[Tutorial] Start tutorial failed: SideTipsManager is missing. type={0}.", triggerType);
-            return false;
-        }
-
         if (!TryGetTutorialTipConfig(triggerType, out string tipId, out string textId))
         {
             Log.Warning("[Tutorial] Start tutorial failed: unsupported type={0}.", triggerType);
             return false;
         }
 
-        string tipContent = LocalizationTextDataModel.GetText(textId);
-        if (string.Equals(tipContent, textId, StringComparison.Ordinal))
-            tipContent = string.Empty;
-
-        sideTipsManager.ShowConditionalTip(tipId, string.Empty, tipContent);
         activeTutorials.Add(triggerType);
 
         if (triggerType == TutorialType.Build)
             m_BuildTutorialStartBuiltCount = CountPlayerBuiltBuildings();
 
         if (triggerType == TutorialType.InvadeSH)
-            TryBindInvadeTutorialStronghold(triggerSource);
+            TryBindInvadeTutorialStronghold();
+
+        ShowTutorialPresentation(triggerType, tipId, textId);
 
         string sourceName = triggerSource != null ? triggerSource.name : "Auto";
         Log.Info("[Tutorial] Tutorial started. type={0}, trigger={1}, chain={2}.", triggerType, sourceName, startedByChain);
@@ -246,7 +246,7 @@ public class TutorialManager : GameFrameworkComponent
         if (!string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
             return;
 
-        TryBindInvadeTutorialStronghold(null);
+        TryBindInvadeTutorialStronghold();
     }
 
     private void TickBuildTutorial()
@@ -307,25 +307,24 @@ public class TutorialManager : GameFrameworkComponent
         }
     }
 
-    private void OnEntityFactionChanged(object sender, GameEventArgs e)
+    private void OnLogicBuildingOwnerFactionChanged(
+        IBuildingLogicContext building,
+        int oldFactionId,
+        int newFactionId)
     {
         if (!activeTutorials.Contains(TutorialType.InvadeSH))
             return;
-
-        var args = e as EntityFactionChangedEventArgs;
-        if (args == null)
+        if (building == null)
+            throw new ArgumentNullException(nameof(building));
+        if (newFactionId != EntitySideHelper.PlayerFactionId)
             return;
-
-        if (args.NewFactionId != EntitySideHelper.PlayerFactionId)
-            return;
-
-        if (args.OldFactionId == EntitySideHelper.PlayerFactionId)
+        if (oldFactionId == EntitySideHelper.PlayerFactionId)
             return;
 
         CompleteTutorial(TutorialType.InvadeSH, autoChain: true);
     }
 
-    private void OnIngamePhaseChanged(object sender, GameEventArgs e)
+    private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
     {
         if (activeTutorials.Contains(TutorialType.SwitchPhase))
         {
@@ -339,7 +338,7 @@ public class TutorialManager : GameFrameworkComponent
         }
     }
 
-    private void OnGameEndResult(object sender, GameEventArgs e)
+    private void OnLogicGameEnded(LogicGameEndResult result)
     {
         if (!activeTutorials.Contains(TutorialType.PlayCard))
             return;
@@ -352,22 +351,10 @@ public class TutorialManager : GameFrameworkComponent
         if (m_EventSubscribed)
             return;
 
-        if (GF.Event == null)
-        {
-            if (!m_WaitingEventReadyLogged)
-            {
-                m_WaitingEventReadyLogged = true;
-                Log.Warning("[Tutorial] Waiting for GF.Event to become ready...");
-            }
-
-            return;
-        }
-
-        GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
-        GF.Event.Subscribe(GameEndResultEventArgs.EventId, OnGameEndResult);
+        LogicBuildingOwnershipEventService.OwnerFactionChanged += OnLogicBuildingOwnerFactionChanged;
+        LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
+        LogicGameEndService.GameEnded += OnLogicGameEnded;
         m_EventSubscribed = true;
-        m_WaitingEventReadyLogged = false;
     }
 
     private void TryUnsubscribeEvents()
@@ -375,20 +362,9 @@ public class TutorialManager : GameFrameworkComponent
         if (!m_EventSubscribed)
             return;
 
-        if (GF.Event != null)
-        {
-            try
-            {
-                GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-                GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
-                GF.Event.Unsubscribe(GameEndResultEventArgs.EventId, OnGameEndResult);
-            }
-            catch (GameFrameworkException)
-            {
-                // PlayMode 退出时 EventPool 可能已释放，忽略退订异常。
-            }
-        }
-
+        LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
+        LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
+        LogicGameEndService.GameEnded -= OnLogicGameEnded;
         m_EventSubscribed = false;
     }
 
@@ -461,63 +437,23 @@ public class TutorialManager : GameFrameworkComponent
             || triggerType == TutorialType.PlayCard;
     }
 
-    private bool IsInvadeTutorialMovementBlockedInternal(Vector3 worldPosition)
-    {
-        if (!activeTutorials.Contains(TutorialType.InvadeSH)
-            && !activeTutorials.Contains(TutorialType.SwitchPhase))
-            return false;
-
-        if (string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
-            TryBindInvadeTutorialStronghold(null);
-
-        if (string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
-            return false;
-
-        Stronghold stronghold = TryGetStrongholdAtWorldPosition(worldPosition);
-        return stronghold == null
-            || stronghold.strongholdData == null
-            || !string.Equals(stronghold.strongholdData.StrongholdId, m_InvadeTutorialStrongholdId, StringComparison.Ordinal);
-    }
-
-    private void TryBindInvadeTutorialStronghold(Component triggerSource)
+    private void TryBindInvadeTutorialStronghold()
     {
         if (!string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
             return;
 
-        if (TryResolveStrongholdId(EntityRegistry.Player?.Position, out string playerStrongholdId))
-        {
-            m_InvadeTutorialStrongholdId = playerStrongholdId;
-            Log.Info("[Tutorial] Invade tutorial stronghold locked. id={0}, source=Player.", playerStrongholdId);
+        if (!LogicMovementRegionConstraintService.HasTutorialStrongholdBoundary)
             return;
-        }
 
-        if (triggerSource != null && TryResolveStrongholdId(triggerSource.transform.position, out string triggerStrongholdId))
-        {
-            m_InvadeTutorialStrongholdId = triggerStrongholdId;
-            Log.Info("[Tutorial] Invade tutorial stronghold locked. id={0}, source={1}.", triggerStrongholdId, triggerSource.name);
-        }
+        m_InvadeTutorialStrongholdId = LogicMovementRegionConstraintService.TutorialStrongholdId;
+        Log.Info("[Tutorial] Invade tutorial stronghold locked. id={0}, source=LogicTrigger.", m_InvadeTutorialStrongholdId);
     }
 
-    private static bool TryResolveStrongholdId(Vector3? worldPosition, out string strongholdId)
+    private void OnTutorialStrongholdBoundaryActivated(string strongholdId)
     {
-        strongholdId = null;
-        if (!worldPosition.HasValue)
-            return false;
-
-        Stronghold stronghold = TryGetStrongholdAtWorldPosition(worldPosition.Value);
-        if (stronghold == null || stronghold.strongholdData == null || string.IsNullOrEmpty(stronghold.strongholdData.StrongholdId))
-            return false;
-
-        strongholdId = stronghold.strongholdData.StrongholdId;
-        return true;
-    }
-
-    private static Stronghold TryGetStrongholdAtWorldPosition(Vector3 worldPosition)
-    {
-        if (LevelEntity.ActiveLevelEntity == null)
-            return null;
-
-        return LevelEntity.GetStrongholdAtWorldPosition(worldPosition);
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new InvalidOperationException("Tutorial stronghold activation event has an empty stronghold id.");
+        TryStartTutorial(TutorialType.InvadeSH, null, startedByChain: false);
     }
 
     private static bool IsCurrentLevelLv1()
@@ -531,26 +467,84 @@ public class TutorialManager : GameFrameworkComponent
 
     private static int CountPlayerBuiltBuildings()
     {
-        var inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-        if (inGameData == null)
-            return 0;
-
         int count = 0;
-        foreach (var building in inGameData.Buildings)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            if (building == null || building.buildingData == null)
+            if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
+                || building.BuildingData == null)
                 continue;
-
-            if (building.OwnerFactionID != EntitySideHelper.PlayerFactionId)
+            if (building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
                 continue;
-
-            if (building.buildingData.Lv <= 0)
+            if (building.BuildingData.Lv <= 0)
                 continue;
-
             count++;
         }
 
         return count;
+    }
+
+    public static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        TutorialManager manager = s_CachedManager;
+        hasher.Add(0x5455544F5249414CUL);
+        hasher.Add(manager != null);
+        if (manager == null)
+            return;
+
+        for (int value = (int)TutorialType.InvadeSH; value <= (int)TutorialType.PlayCard; value++)
+        {
+            TutorialType type = (TutorialType)value;
+            hasher.Add(manager.activeTutorials.Contains(type));
+            hasher.Add(manager.completedTutorials.Contains(type));
+        }
+        hasher.Add(manager.m_BuildTutorialStartBuiltCount);
+        hasher.Add(manager.m_InvadeTutorialStrongholdId);
+        hasher.Add(manager.m_LastLogicFrame);
+    }
+
+    private static void ShowTutorialPresentation(TutorialType triggerType, string tipId, string textId)
+    {
+        SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
+        if (sideTipsManager == null)
+        {
+            Log.Error("[Tutorial] SideTipsManager is missing. type={0}.", triggerType);
+            return;
+        }
+
+        string tipContent = LocalizationTextDataModel.GetText(textId);
+        if (string.Equals(tipContent, textId, StringComparison.Ordinal))
+            tipContent = string.Empty;
+        sideTipsManager.ShowConditionalTip(tipId, string.Empty, tipContent);
+    }
+
+    private void OnLogicFrameRuntimeBegan()
+    {
+        RegisterLogicFrame();
+    }
+
+    private void OnLogicFrameRuntimeEnding()
+    {
+        UnregisterLogicFrame();
+    }
+
+    private void RegisterLogicFrame()
+    {
+        if (m_LogicFrameRegistered)
+            throw new InvalidOperationException("TutorialManager logic-frame listener is already registered.");
+        LogicFrameRuntime.Register(this);
+        m_LogicFrameRegistered = true;
+    }
+
+    private void UnregisterLogicFrame()
+    {
+        if (!m_LogicFrameRegistered)
+            throw new InvalidOperationException("TutorialManager logic-frame listener is not registered.");
+        LogicFrameRuntime.Unregister(this);
+        m_LogicFrameRegistered = false;
     }
 
     private void RequestCloseSideTip(string tipId)

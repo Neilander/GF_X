@@ -290,7 +290,7 @@ public sealed class PhaseAmmoResetBuff : BuffCallback, ILogicDeterministicStateC
         if (_subscribed)
             return;
 
-        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
+        LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
         _subscribed = true;
     }
 
@@ -299,18 +299,11 @@ public sealed class PhaseAmmoResetBuff : BuffCallback, ILogicDeterministicStateC
         if (!_subscribed)
             return;
 
-        try
-        {
-            GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnPhaseChanged);
-        }
-        catch (GameFrameworkException)
-        {
-        }
-
+        LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
         _subscribed = false;
     }
 
-    private void OnPhaseChanged(object sender, GameEventArgs e)
+    private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
     {
         ReloadAmmo();
     }

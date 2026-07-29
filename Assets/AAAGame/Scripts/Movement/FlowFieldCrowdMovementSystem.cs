@@ -1690,6 +1690,11 @@ public static partial class FlowFieldCrowdMovementSystem
     private static readonly HashSet<int> NavigationWorldAgentTypeIdsSeenScratch = new HashSet<int>();
     private static readonly Dictionary<int, CircleObstacle> CircleObstacles = new Dictionary<int, CircleObstacle>();
     private static readonly Dictionary<int, BoxObstacle> BoxObstacles = new Dictionary<int, BoxObstacle>();
+    private static readonly List<LogicStaticCollisionObstacle> StaticCollisionObstacleSnapshotBuilder =
+        new List<LogicStaticCollisionObstacle>();
+    private static LogicStaticCollisionObstacle[] _staticCollisionObstacleSnapshot =
+        Array.Empty<LogicStaticCollisionObstacle>();
+    private static bool _staticCollisionObstacleSnapshotDirty = true;
     private static readonly Dictionary<int, CostStamp> CostStamps = new Dictionary<int, CostStamp>();
     private static readonly Dictionary<MovingTargetAnchorKey, MovingTargetAnchor> MovingTargetAnchors = new Dictionary<MovingTargetAnchorKey, MovingTargetAnchor>();
     private static readonly HashSet<MovingTargetAnchorKey> ReferencedMovingTargetAnchorKeysScratch = new HashSet<MovingTargetAnchorKey>();
@@ -2458,6 +2463,9 @@ public static partial class FlowFieldCrowdMovementSystem
         NearbyAgentScratch.Clear();
         CircleObstacles.Clear();
         BoxObstacles.Clear();
+        StaticCollisionObstacleSnapshotBuilder.Clear();
+        _staticCollisionObstacleSnapshot = Array.Empty<LogicStaticCollisionObstacle>();
+        _staticCollisionObstacleSnapshotDirty = true;
         ClearCostStamps();
         MovingTargetAnchors.Clear();
         CombatTargetSlotCache.Clear();
@@ -7100,6 +7108,7 @@ public static partial class FlowFieldCrowdMovementSystem
             PositionFixed = position,
             RadiusFixed = radius,
         };
+        _staticCollisionObstacleSnapshotDirty = true;
         if (replacedExisting)
             MarkRuntimeObstacleDirty(previousBoundsMinimum, previousBoundsMaximum);
         FixVector2 radiusExtents = new FixVector2(radius, radius);
@@ -7140,6 +7149,7 @@ public static partial class FlowFieldCrowdMovementSystem
             CenterFixed = center,
             HalfExtentsFixed = halfExtents,
         };
+        _staticCollisionObstacleSnapshotDirty = true;
         if (replacedExisting)
             MarkRuntimeObstacleDirty(previousBoundsMinimum, previousBoundsMaximum);
         FixVector2 dirtyHalfExtents = ResolveBoxObstacleDirtyHalfExtentsFixed(halfExtents);
@@ -7282,6 +7292,7 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             if (!CircleObstacles.Remove(obstacleId))
                 throw new InvalidOperationException($"Circle obstacle {obstacleId} disappeared during replacement.");
+            _staticCollisionObstacleSnapshotDirty = true;
             FixVector2 radiusExtents = new FixVector2(circle.RadiusFixed, circle.RadiusFixed);
             boundsMinimum = circle.PositionFixed - radiusExtents;
             boundsMaximum = circle.PositionFixed + radiusExtents;
@@ -7292,6 +7303,7 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             if (!BoxObstacles.Remove(obstacleId))
                 throw new InvalidOperationException($"Box obstacle {obstacleId} disappeared during replacement.");
+            _staticCollisionObstacleSnapshotDirty = true;
             FixVector2 dirtyHalfExtents = ResolveBoxObstacleDirtyHalfExtentsFixed(box.HalfExtentsFixed);
             boundsMinimum = box.CenterFixed - dirtyHalfExtents;
             boundsMaximum = box.CenterFixed + dirtyHalfExtents;
@@ -7459,7 +7471,7 @@ public static partial class FlowFieldCrowdMovementSystem
         source = default;
         if (!TryGetCommittedNavigationQueryWorld(agentTypeId, allowSynchronousBuild: false, out NavigationWorld world))
             return false;
-        if (world.WalkableMask == null || world.WalkableMask.Length != world.Width * world.Height)
+        if (world.BaseWalkableMask == null || world.BaseWalkableMask.Length != world.Width * world.Height)
         {
             throw new InvalidOperationException(
                 $"Static collision shadow source is invalid. agentType={agentTypeId}, world={world.Version}, size={world.Width}x{world.Height}.");
@@ -7474,8 +7486,47 @@ public static partial class FlowFieldCrowdMovementSystem
             world.EncodedCenterClearanceFixedRaw,
             world.OriginXGridRaw,
             world.OriginZGridRaw,
-            world.WalkableMask);
+            world.BaseWalkableMask,
+            ResolveStaticCollisionObstacleSnapshot());
         return true;
+    }
+
+    private static LogicStaticCollisionObstacle[] ResolveStaticCollisionObstacleSnapshot()
+    {
+        if (!_staticCollisionObstacleSnapshotDirty)
+            return _staticCollisionObstacleSnapshot;
+
+        StaticCollisionObstacleSnapshotBuilder.Clear();
+        foreach (BoxObstacle obstacle in BoxObstacles.Values)
+        {
+            if (obstacle == null)
+                throw new InvalidOperationException("Static collision box obstacle snapshot contains null.");
+            StaticCollisionObstacleSnapshotBuilder.Add(new LogicStaticCollisionObstacle(
+                obstacle.Id,
+                LogicStaticCollisionObstacleKind.Box,
+                obstacle.CenterFixed,
+                obstacle.HalfExtentsFixed,
+                Fix64.Zero));
+        }
+        foreach (CircleObstacle obstacle in CircleObstacles.Values)
+        {
+            if (obstacle == null)
+                throw new InvalidOperationException("Static collision circle obstacle snapshot contains null.");
+            StaticCollisionObstacleSnapshotBuilder.Add(new LogicStaticCollisionObstacle(
+                obstacle.Id,
+                LogicStaticCollisionObstacleKind.Circle,
+                obstacle.PositionFixed,
+                FixVector2.Zero,
+                obstacle.RadiusFixed));
+        }
+        StaticCollisionObstacleSnapshotBuilder.Sort((left, right) =>
+        {
+            int idOrder = left.StableId.CompareTo(right.StableId);
+            return idOrder != 0 ? idOrder : left.Kind.CompareTo(right.Kind);
+        });
+        _staticCollisionObstacleSnapshot = StaticCollisionObstacleSnapshotBuilder.ToArray();
+        _staticCollisionObstacleSnapshotDirty = false;
+        return _staticCollisionObstacleSnapshot;
     }
 
     private static bool TryResolveNavigationSegmentBoundaryNormal(
@@ -9241,6 +9292,11 @@ public static partial class FlowFieldCrowdMovementSystem
         FixVector2 resolvedNavigationGoal = nav.LastGoalWorldFixed;
         if (_world == null)
             throw new InvalidOperationException("ResolveDeterministicFlowVelocityFixed failed: world is null.");
+        if (HasPendingRuntimeDirty(_activeWorldState))
+        {
+            nav.LastFixedFlowResult = "runtime-dirty-pending";
+            return FixVector2.Zero;
+        }
         PathHandle handle = agent.NavState.PathHandle;
         if (handle == null || handle.SectorIds == null || handle.SectorIds.Length == 0)
         {
@@ -22067,7 +22123,9 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("TryResolveNearbyStartWalkableFixed failed: world is null.");
 
         Fix64 cellSize = world.CellSizeFixed;
-        Fix64 maxSnapDistance = Fix64.Max(cellSize * Fix64.FromRaw(1844), Fix64.FromRaw(1024));
+        Fix64 maxSnapDistance = ResolveNearbyStartMaxSnapDistanceFixed(
+            world,
+            IsRuntimeRasterOnlyBlockedCell(world, startX, startY));
         Fix64 bestDistanceSq = maxSnapDistance * maxSnapDistance;
         bool found = false;
         long radiusRaw = checked((maxSnapDistance.RawValue + cellSize.RawValue - 1) / cellSize.RawValue);
@@ -22108,7 +22166,9 @@ public static partial class FlowFieldCrowdMovementSystem
             throw new InvalidOperationException("TryResolveNearbyStartWalkable failed: world is null.");
 
         Fix64 cellSize = world.CellSizeFixed;
-        Fix64 maxSnapDistance = Fix64.Max(cellSize * Fix64.FromRaw(1844), Fix64.FromRaw(1024));
+        Fix64 maxSnapDistance = ResolveNearbyStartMaxSnapDistanceFixed(
+            world,
+            IsRuntimeRasterOnlyBlockedCell(world, startX, startY));
         Fix64 bestDistanceSq = maxSnapDistance * maxSnapDistance;
         FixVector2 positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
         bool found = false;
@@ -22140,6 +22200,39 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         return found;
+    }
+
+    private static bool IsRuntimeRasterOnlyBlockedCell(NavigationWorld world, int x, int y)
+    {
+        if (world == null)
+            throw new InvalidOperationException("IsRuntimeRasterOnlyBlockedCell failed: world is null.");
+        if (x < 0 || x >= world.Width || y < 0 || y >= world.Height)
+            return false;
+        if (world.BaseWalkableMask == null || world.BaseWalkableMask.Length != world.Width * world.Height)
+            throw new InvalidOperationException("IsRuntimeRasterOnlyBlockedCell failed: base walkable mask is invalid.");
+
+        int index = world.GetIndex(x, y);
+        return world.BaseWalkableMask[index] && !world.WalkableMask[index];
+    }
+
+    private static Fix64 ResolveNearbyStartMaxSnapDistanceFixed(NavigationWorld world, bool allowRuntimeRasterHalo)
+    {
+        if (world == null)
+            throw new InvalidOperationException("ResolveNearbyStartMaxSnapDistanceFixed failed: world is null.");
+
+        Fix64 cellSize = world.CellSizeFixed;
+        Fix64 authoredBlockerSnapDistance = Fix64.Max(
+            cellSize * Fix64.FromRaw(1844),
+            Fix64.FromRaw(1024));
+        if (!allowRuntimeRasterHalo)
+            return authoredBlockerSnapDistance;
+
+        Fix64 rasterClearance = Fix64.Max(
+            Fix64.Zero,
+            world.AgentRadiusFixed - cellSize * Fix64.FromRaw(820));
+        Fix64 maximumAxisGap = rasterClearance + cellSize * Fix64.FromRaw(2048);
+        Fix64 rasterDiagonalGap = Fix64.Sqrt(maximumAxisGap * maximumAxisGap * (Fix64)2);
+        return Fix64.Max(authoredBlockerSnapDistance, rasterDiagonalGap);
     }
 
     private static bool HasGridLineOfSight(NavigationWorld world, int x0, int y0, int x1, int y1)

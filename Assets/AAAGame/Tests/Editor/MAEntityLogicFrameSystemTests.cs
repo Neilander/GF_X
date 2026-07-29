@@ -13,6 +13,7 @@ public class MAEntityLogicFrameSystemTests
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
         LogicFrameRuntime.Begin();
         LogicEntityFrameSnapshotService.BeginTimeline();
+        LogicMovementRegionConstraintService.BeginTimeline();
         MAEntityLogicFrameSystem.BeginTimeline();
         LogicFrameRuntime.StartTimeline();
     }
@@ -22,6 +23,7 @@ public class MAEntityLogicFrameSystemTests
     {
         EntityRegistry.Clear();
         MAEntityLogicFrameSystem.EndTimeline();
+        LogicMovementRegionConstraintService.EndTimeline();
         LogicEntityFrameSnapshotService.EndTimeline();
         LogicFrameRuntime.End();
         FlowFieldCrowdMovementSystem.ResetAll();
@@ -260,7 +262,7 @@ public class MAEntityLogicFrameSystemTests
             9001,
             new FixVector2((Fix64)1.5f, (Fix64)1.5f),
             new FixVector2((Fix64)0.5f, (Fix64)0.5f));
-        ProcessRuntimeDirtyQueueUntilReady();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
 
         FixVector2 spawnPosition = new FixVector2((Fix64)1.5f, (Fix64)1.5f);
         Fix64 collisionRadiusProperty = (Fix64)5;
@@ -325,6 +327,88 @@ public class MAEntityLogicFrameSystemTests
         }
     }
 
+    [Test]
+    public void RuntimeObstacleRemove_StopsBlockingBeforeFlowRebuildCompletes()
+    {
+        const int width = 8;
+        const int height = 3;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            UnityEngine.Vector3.zero,
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FixVector2 obstacleCenter = new FixVector2((Fix64)1.5f, (Fix64)1.5f);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            9001,
+            obstacleCenter,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+        ProcessRuntimeDirtyQueueUntilReady();
+
+        FlowFieldCrowdMovementSystem.UnregisterObstacle(9001);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            0,
+            obstacleCenter,
+            FixVector2.Zero,
+            (Fix64)0.25f,
+            out LogicStaticCollisionShadowResult solve));
+        Assert.IsTrue(solve.SolveResult.Success);
+        Assert.IsFalse(solve.SolveResult.StartedOverlapping);
+        Assert.AreEqual(FixVector2.Zero, solve.SolveResult.ResolvedDisplacement);
+    }
+
+    [Test]
+    public void RuntimeObstacleRemove_PreservesAuthoredBaseBlockerBeforeFlowRebuildCompletes()
+    {
+        const int width = 8;
+        const int height = 3;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        walkable[1 * width + 4] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            UnityEngine.Vector3.zero,
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FixVector2 runtimeObstacleCenter = new FixVector2((Fix64)1.5f, (Fix64)1.5f);
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            9001,
+            runtimeObstacleCenter,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+        ProcessRuntimeDirtyQueueUntilReady();
+
+        FlowFieldCrowdMovementSystem.UnregisterObstacle(9001);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            0,
+            runtimeObstacleCenter,
+            FixVector2.Zero,
+            (Fix64)0.25f,
+            out LogicStaticCollisionShadowResult clearedRuntimeObstacle));
+        Assert.IsFalse(clearedRuntimeObstacle.SolveResult.StartedOverlapping);
+        Assert.AreEqual(FixVector2.Zero, clearedRuntimeObstacle.SolveResult.ResolvedDisplacement);
+
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            0,
+            new FixVector2((Fix64)2.5f, (Fix64)1.5f),
+            new FixVector2((Fix64)4, Fix64.Zero),
+            (Fix64)0.25f,
+            out LogicStaticCollisionShadowResult authoredBlocker));
+        Assert.IsTrue(authoredBlocker.SolveResult.Success);
+        Assert.That((float)authoredBlocker.SolveResult.ResolvedDisplacement.x, Is.EqualTo(1.25f).Within(0.003f));
+        Assert.That((float)authoredBlocker.SolveResult.ResolvedDisplacement.y, Is.EqualTo(0f).Within(0.003f));
+    }
+
     private static void ProcessWorldBuildQueueUntilReady()
     {
         for (int i = 0; i < 2048
@@ -384,6 +468,7 @@ public class MAEntityLogicFrameSystemTests
         public bool HasPreparedLogicMove => PreparedLogicFrame > 0;
         public ulong PreparedLogicFrame { get; private set; }
         public bool PreparedCollisionMovable => false;
+        public bool PreparedNavigationConstraintEnabled => false;
         public uint AgentCollisionMask => 1u;
         public FixVector2 PreparedResolvedHorizontalDisplacement => FixVector2.Zero;
         public int ExecutedPhaseCount { get; private set; }

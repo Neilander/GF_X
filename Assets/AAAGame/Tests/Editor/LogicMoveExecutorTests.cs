@@ -1,0 +1,193 @@
+using System.IO;
+using System.Text.RegularExpressions;
+using NUnit.Framework;
+using UnityEngine;
+
+[TestFixture]
+public sealed class LogicMoveExecutorTests
+{
+    [Test]
+    public void NavigationConstraintAndCollisionMobility_AreIndependent()
+    {
+        var executor = new LogicMoveExecutor();
+        executor.SetNavigationConstrained(false);
+        executor.SetInputFixed(new FixVector2(Fix64.One, Fix64.Zero));
+
+        executor.PrepareLogicFrame(1, LogicFrameRuntime.FixedDeltaTime, true);
+
+        Assert.IsTrue(executor.PreparedCollisionMovable);
+        Assert.IsFalse(executor.PreparedNavigationConstraintEnabled);
+        Assert.AreNotEqual(FixVector2.Zero, executor.PreparedResolvedHorizontalDisplacement);
+    }
+
+    [Test]
+    public void NextFrameConstraintBypass_IsConsumedExactlyOnce()
+    {
+        var executor = new LogicMoveExecutor();
+        executor.SetConstraintBypassForNextFrame();
+
+        executor.PrepareLogicFrame(1, LogicFrameRuntime.FixedDeltaTime, true);
+        Assert.IsFalse(executor.PreparedNavigationConstraintEnabled);
+        executor.CommitPreparedLogicFrame(1);
+
+        executor.PrepareLogicFrame(2, LogicFrameRuntime.FixedDeltaTime, true);
+        Assert.IsTrue(executor.PreparedNavigationConstraintEnabled);
+    }
+
+    [Test]
+    public void PersistentConstraintBypass_EndsOnlyWhenConstraintIsReenabled()
+    {
+        var executor = new LogicMoveExecutor();
+        executor.EnableNavigationConstraintBypass();
+
+        executor.PrepareLogicFrame(1, LogicFrameRuntime.FixedDeltaTime, true);
+        Assert.IsFalse(executor.PreparedNavigationConstraintEnabled);
+        executor.CommitPreparedLogicFrame(1);
+        executor.PrepareLogicFrame(2, LogicFrameRuntime.FixedDeltaTime, true);
+        Assert.IsFalse(executor.PreparedNavigationConstraintEnabled);
+        executor.CommitPreparedLogicFrame(2);
+
+        executor.SetNavigationConstrained(true);
+        executor.PrepareLogicFrame(3, LogicFrameRuntime.FixedDeltaTime, true);
+        Assert.IsTrue(executor.PreparedNavigationConstraintEnabled);
+    }
+
+    [Test]
+    public void HardLocked_DoesNotApplyInputOrExternalVelocity()
+    {
+        var executor = new LogicMoveExecutor();
+        executor.SetMovementMode(MovementMode.HardLocked);
+        executor.SetInputFixed(new FixVector2(Fix64.One, Fix64.Zero));
+        executor.SetExternalFixed(new FixVector2(Fix64.Zero, Fix64.One));
+
+        executor.PrepareLogicFrame(1, LogicFrameRuntime.FixedDeltaTime, true);
+
+        Assert.AreEqual(FixVector2.Zero, executor.PreparedResolvedHorizontalDisplacement);
+    }
+
+    [Test]
+    public void ViewMoveExecutor_DoesNotOwnGameplayRegionRules()
+    {
+        string viewSource = File.ReadAllText(Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/GeneralCreature/MoveExecutor.cs"));
+        string logicSource = File.ReadAllText(Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/Movement/LogicAgentCollisionShadowService.cs"));
+
+        StringAssert.DoesNotContain("Fog3Manager", viewSource);
+        StringAssert.DoesNotContain("Fog3CellState", viewSource);
+        StringAssert.DoesNotContain("GetStrongholdAtWorldPosition", viewSource);
+        StringAssert.DoesNotContain("TutorialManager", viewSource);
+        StringAssert.DoesNotContain("InGameDataModel.GetValue(IngameValueType.Phase)", viewSource);
+        StringAssert.Contains("LogicMovementRegionConstraintService.ResolvePosition", logicSource);
+    }
+
+    [Test]
+    public void TutorialPresentation_DoesNotWriteMovementAuthorityOrUseInvadePhysXTrigger()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame/Scripts");
+        string tutorialManager = File.ReadAllText(Path.Combine(scriptsRoot, "MeiyouUtility/TutorialManager.cs"));
+        string tutorialTrigger = File.ReadAllText(Path.Combine(scriptsRoot, "MeiyouUtility/TutorialTriggerCollider.cs"));
+        string runtime = File.ReadAllText(Path.Combine(scriptsRoot, "Procedures/RuntimeProcedureBase.cs"));
+
+        StringAssert.DoesNotContain("SetTutorialStrongholdBoundary", tutorialManager);
+        StringAssert.DoesNotContain("ClearTutorialStrongholdBoundary", tutorialManager);
+        StringAssert.Contains("triggerType == TutorialType.InvadeSH", tutorialTrigger);
+        StringAssert.Contains("LogicMovementRegionConstraintService.ApplyFrame(frame)", runtime);
+    }
+
+    [Test]
+    public void PresentationAndAdapterScripts_DoNotReacquireMigratedGameplayAuthority()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame/Scripts");
+        string buildingView = File.ReadAllText(Path.Combine(scriptsRoot, "Entity/BuildingEntity.cs"));
+        string projectileView = File.ReadAllText(Path.Combine(scriptsRoot, "Projectile/Projectile.cs"));
+        string productionAdapter = File.ReadAllText(Path.Combine(scriptsRoot, "GameClass/ProductionConditionManager.cs"));
+        string inGameUi = File.ReadAllText(Path.Combine(scriptsRoot, "UI/InGameUIForm.cs"));
+
+        StringAssert.DoesNotContain("BeginConstructionEscape", buildingView);
+        StringAssert.DoesNotContain("Physics.Overlap", buildingView);
+        StringAssert.DoesNotContain("EnableNavigationConstraintBypassUntilLegalPoint", buildingView);
+
+        StringAssert.DoesNotContain("DamageHelper", projectileView);
+        StringAssert.DoesNotContain("TakeDamage", projectileView);
+        StringAssert.DoesNotContain("HitTarget", projectileView);
+
+        StringAssert.DoesNotContain("void Update(", productionAdapter);
+        StringAssert.DoesNotContain("OnSoldierDead", productionAdapter);
+        StringAssert.DoesNotContain("OnCreatureHealthChanged", productionAdapter);
+        StringAssert.DoesNotContain("OnIngamePhaseChanged", productionAdapter);
+        StringAssert.DoesNotContain("EntityRegistry.AllEntities", productionAdapter);
+
+        StringAssert.DoesNotContain("InGameDataModel.TryModifyValue(IngameValueType.Coin", inGameUi);
+        StringAssert.DoesNotContain("InGameDataModel.TryModifyValue(IngameValueType.MaxSupply", inGameUi);
+        StringAssert.Contains("LogicInGameValueCommandService.ScheduleDeltaForNextFrame", inGameUi);
+    }
+
+    [Test]
+    public void RuntimeTimelineServices_AreHashedOrExplicitlyNonAuthority()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame/Scripts");
+        string runtimeSource = File.ReadAllText(Path.Combine(scriptsRoot, "Procedures/RuntimeProcedureBase.cs"));
+        string hasherSource = File.ReadAllText(Path.Combine(scriptsRoot, "GameClass/LogicGameplayStateHasher.cs"));
+        MatchCollection services = Regex.Matches(
+            runtimeSource,
+            @"^\s*([A-Za-z_][A-Za-z0-9_]*)\.BeginTimeline\(\);",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+
+        Assert.IsNotEmpty(services);
+        for (int i = 0; i < services.Count; i++)
+        {
+            string service = services[i].Groups[1].Value;
+            switch (service)
+            {
+                case "LogicTimeControlService":
+                    StringAssert.Contains("ComputeTimeControlHash", File.ReadAllText(Path.Combine(scriptsRoot, "GameClass/LogicReplay.cs")));
+                    break;
+                case "LogicEntityLifecycleService":
+                    StringAssert.Contains("AddLifecycle(hasher, frame)", hasherSource);
+                    break;
+                case "LogicEntityViewSpawnQueue":
+                    StringAssert.DoesNotContain("LogicEntityViewSpawnQueue", hasherSource);
+                    break;
+                case "LogicEntityFrameSnapshotService":
+                    StringAssert.Contains("LogicEntityFrameSnapshotService.Current", hasherSource);
+                    break;
+                case "MAEntityLogicFrameSystem":
+                    StringAssert.Contains("MAEntityLogicFrameSystem.LastCompletedFrame", hasherSource);
+                    StringAssert.Contains("AddDamageEvents(hasher)", hasherSource);
+                    StringAssert.Contains("AddProjectiles(hasher)", hasherSource);
+                    break;
+                default:
+                    StringAssert.Contains(service + ".WriteDeterministicState(", hasherSource);
+                    break;
+            }
+        }
+    }
+
+    [Test]
+    public void RuntimeTimelineServices_HaveSymmetricBeginAndEndLifecycle()
+    {
+        string runtimeSource = File.ReadAllText(Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/Procedures/RuntimeProcedureBase.cs"));
+        MatchCollection begins = Regex.Matches(
+            runtimeSource,
+            @"^\s*([A-Za-z_][A-Za-z0-9_]*)\.BeginTimeline\(\);",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        MatchCollection ends = Regex.Matches(
+            runtimeSource,
+            @"^\s*([A-Za-z_][A-Za-z0-9_]*)\.EndTimeline\(\);",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+
+        var beginServices = new System.Collections.Generic.HashSet<string>();
+        var endServices = new System.Collections.Generic.HashSet<string>();
+        for (int i = 0; i < begins.Count; i++)
+            beginServices.Add(begins[i].Groups[1].Value);
+        for (int i = 0; i < ends.Count; i++)
+            endServices.Add(ends[i].Groups[1].Value);
+
+        CollectionAssert.AreEquivalent(beginServices, endServices);
+    }
+}

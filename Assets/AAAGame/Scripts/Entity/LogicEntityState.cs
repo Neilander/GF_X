@@ -194,6 +194,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public bool HasPreparedLogicMove => m_MoveExecutor.HasPreparedLogicMove;
     public ulong PreparedLogicFrame => m_MoveExecutor.PreparedLogicFrame;
     public bool PreparedCollisionMovable => m_MoveExecutor.PreparedCollisionMovable;
+    public bool PreparedNavigationConstraintEnabled => m_MoveExecutor.PreparedNavigationConstraintEnabled;
     public uint AgentCollisionMask => IsGhostState ? 0u : 1u;
     public FixVector2 PreparedResolvedHorizontalDisplacement => m_MoveExecutor.PreparedResolvedHorizontalDisplacement;
     public FixVector2 PositionFixed => Position;

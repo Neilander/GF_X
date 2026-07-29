@@ -22,6 +22,45 @@ public readonly struct LogicTransform
     }
 }
 
+internal enum LogicStaticCollisionObstacleKind : byte
+{
+    Box = 0,
+    Circle = 1,
+}
+
+internal readonly struct LogicStaticCollisionObstacle
+{
+    public LogicStaticCollisionObstacle(
+        int stableId,
+        LogicStaticCollisionObstacleKind kind,
+        FixVector2 center,
+        FixVector2 halfExtents,
+        Fix64 radius)
+    {
+        if (stableId == 0)
+            throw new ArgumentOutOfRangeException(nameof(stableId));
+        if (kind == LogicStaticCollisionObstacleKind.Box
+            && (halfExtents.x < Fix64.Zero || halfExtents.y < Fix64.Zero))
+        {
+            throw new ArgumentOutOfRangeException(nameof(halfExtents));
+        }
+        if (kind == LogicStaticCollisionObstacleKind.Circle && radius <= Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(radius));
+
+        StableId = stableId;
+        Kind = kind;
+        Center = center;
+        HalfExtents = halfExtents;
+        Radius = radius;
+    }
+
+    public int StableId { get; }
+    public LogicStaticCollisionObstacleKind Kind { get; }
+    public FixVector2 Center { get; }
+    public FixVector2 HalfExtents { get; }
+    public Fix64 Radius { get; }
+}
+
 internal readonly struct LogicStaticCollisionSourceData
 {
     public LogicStaticCollisionSourceData(
@@ -33,7 +72,8 @@ internal readonly struct LogicStaticCollisionSourceData
         long encodedCenterClearanceFixedRaw,
         long originXGridRaw,
         long originYGridRaw,
-        bool[] walkableMask)
+        bool[] baseWalkableMask,
+        LogicStaticCollisionObstacle[] runtimeObstacles)
     {
         if (cellSizeGridRaw <= 0)
             throw new ArgumentOutOfRangeException(nameof(cellSizeGridRaw), cellSizeGridRaw, "Cell size raw must be positive.");
@@ -47,7 +87,8 @@ internal readonly struct LogicStaticCollisionSourceData
         EncodedCenterClearanceFixedRaw = encodedCenterClearanceFixedRaw;
         OriginXGridRaw = originXGridRaw;
         OriginYGridRaw = originYGridRaw;
-        WalkableMask = walkableMask;
+        BaseWalkableMask = baseWalkableMask;
+        RuntimeObstacles = runtimeObstacles ?? Array.Empty<LogicStaticCollisionObstacle>();
     }
 
     public int AgentTypeId { get; }
@@ -58,7 +99,8 @@ internal readonly struct LogicStaticCollisionSourceData
     public long EncodedCenterClearanceFixedRaw { get; }
     public long OriginXGridRaw { get; }
     public long OriginYGridRaw { get; }
-    public bool[] WalkableMask { get; }
+    public bool[] BaseWalkableMask { get; }
+    public LogicStaticCollisionObstacle[] RuntimeObstacles { get; }
 }
 
 public sealed class LogicStaticCollisionWorld
@@ -296,8 +338,25 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 desiredDisplacement,
         Fix64 radius)
     {
+        return SolveCircle(
+            world,
+            start,
+            desiredDisplacement,
+            radius,
+            Array.Empty<LogicStaticCollisionObstacle>());
+    }
+
+    internal static LogicStaticCollisionSolveResult SolveCircle(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 desiredDisplacement,
+        Fix64 radius,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles)
+    {
         if (world == null)
             throw new ArgumentNullException(nameof(world));
+        if (runtimeObstacles == null)
+            throw new ArgumentNullException(nameof(runtimeObstacles));
         if (radius < Fix64.Zero
             || radius * (Fix64)2 > world.MaxWorldX - world.Origin.x
             || radius * (Fix64)2 > world.MaxWorldY - world.Origin.y)
@@ -313,7 +372,7 @@ public static class DeterministicStaticCollisionSolver
 
         FixVector2 position = start;
         bool startedOverlapping = false;
-        if (!RecoverStart(world, ref position, radius, ref startedOverlapping))
+        if (!RecoverStart(world, runtimeObstacles, ref position, radius, ref startedOverlapping))
         {
             return FailureResult(
                 LogicStaticCollisionFailure.StartOverlapUnresolved,
@@ -332,7 +391,7 @@ public static class DeterministicStaticCollisionSolver
             if (remaining == FixVector2.Zero)
                 break;
 
-            if (!TryFindEarliestHit(world, position, remaining, radius, out SweepHit hit))
+            if (!TryFindEarliestHit(world, runtimeObstacles, position, remaining, radius, out SweepHit hit))
             {
                 position += remaining;
                 remaining = FixVector2.Zero;
@@ -386,8 +445,23 @@ public static class DeterministicStaticCollisionSolver
 
     public static bool IsCircleClear(LogicStaticCollisionWorld world, FixVector2 center, Fix64 radius)
     {
+        return IsCircleClear(
+            world,
+            center,
+            radius,
+            Array.Empty<LogicStaticCollisionObstacle>());
+    }
+
+    internal static bool IsCircleClear(
+        LogicStaticCollisionWorld world,
+        FixVector2 center,
+        Fix64 radius,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles)
+    {
         if (world == null)
             throw new ArgumentNullException(nameof(world));
+        if (runtimeObstacles == null)
+            throw new ArgumentNullException(nameof(runtimeObstacles));
         if (radius < Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(radius));
 
@@ -403,7 +477,13 @@ public static class DeterministicStaticCollisionSolver
         if (!world.IsWalkable(centerCellX, centerCellY))
             return false;
 
-        return !TryFindCellPenetration(world, center, radius, out _);
+        return !TryFindCellPenetration(world, center, radius, out _)
+               && !TryFindRuntimeObstaclePenetration(
+                   world,
+                   runtimeObstacles,
+                   center,
+                   radius,
+                   out _);
     }
 
     private static LogicStaticCollisionSolveResult FailureResult(
@@ -427,6 +507,7 @@ public static class DeterministicStaticCollisionSolver
 
     private static bool RecoverStart(
         LogicStaticCollisionWorld world,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         ref FixVector2 position,
         Fix64 radius,
         ref bool startedOverlapping)
@@ -445,7 +526,14 @@ public static class DeterministicStaticCollisionSolver
             if (!world.IsWalkable(centerCellX, centerCellY))
             {
                 startedOverlapping = true;
-                if (!TryRecoverBlockedCenter(world, position, centerCellX, centerCellY, radius, out position))
+                if (!TryRecoverBlockedCenter(
+                        world,
+                        runtimeObstacles,
+                        position,
+                        centerCellX,
+                        centerCellY,
+                        radius,
+                        out position))
                     return false;
                 continue;
             }
@@ -457,14 +545,27 @@ public static class DeterministicStaticCollisionSolver
                 continue;
             }
 
+            if (TryFindRuntimeObstaclePenetration(
+                    world,
+                    runtimeObstacles,
+                    position,
+                    radius,
+                    out Penetration runtimeObstacle))
+            {
+                startedOverlapping = true;
+                position += runtimeObstacle.Normal * (runtimeObstacle.Depth + s_Epsilon);
+                continue;
+            }
+
             return true;
         }
 
-        return IsCircleClear(world, position, radius);
+        return IsCircleClear(world, position, radius, runtimeObstacles);
     }
 
     private static bool TryRecoverBlockedCenter(
         LogicStaticCollisionWorld world,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         FixVector2 position,
         int centerCellX,
         int centerCellY,
@@ -477,22 +578,23 @@ public static class DeterministicStaticCollisionSolver
         int bestStableKey = int.MaxValue;
 
         TrySelectBlockedCenterRecovery(
-            world, position, centerCellX, centerCellY, -1, 0, radius, 0,
+            world, runtimeObstacles, position, centerCellX, centerCellY, -1, 0, radius, 0,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         TrySelectBlockedCenterRecovery(
-            world, position, centerCellX, centerCellY, 1, 0, radius, 1,
+            world, runtimeObstacles, position, centerCellX, centerCellY, 1, 0, radius, 1,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         TrySelectBlockedCenterRecovery(
-            world, position, centerCellX, centerCellY, 0, -1, radius, 2,
+            world, runtimeObstacles, position, centerCellX, centerCellY, 0, -1, radius, 2,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         TrySelectBlockedCenterRecovery(
-            world, position, centerCellX, centerCellY, 0, 1, radius, 3,
+            world, runtimeObstacles, position, centerCellX, centerCellY, 0, 1, radius, 3,
             ref found, ref recoveredPosition, ref bestDistanceSquared, ref bestStableKey);
         return found;
     }
 
     private static void TrySelectBlockedCenterRecovery(
         LogicStaticCollisionWorld world,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         FixVector2 position,
         int centerCellX,
         int centerCellY,
@@ -525,7 +627,7 @@ public static class DeterministicStaticCollisionSolver
             else
                 candidate.y = world.GetCellMinY(cellY) + radius + s_Epsilon;
 
-            if (!IsCircleClear(world, candidate, radius))
+            if (!IsCircleClear(world, candidate, radius, runtimeObstacles))
                 continue;
 
             Fix64 distanceSquared = FixVector2.SqrMagnitude(candidate - position);
@@ -604,6 +706,77 @@ public static class DeterministicStaticCollisionSolver
         return found;
     }
 
+    private static bool TryFindRuntimeObstaclePenetration(
+        LogicStaticCollisionWorld world,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        FixVector2 position,
+        Fix64 radius,
+        out Penetration penetration)
+    {
+        bool found = false;
+        penetration = default;
+        int stableKeyBase = GetRuntimeObstacleStableKeyBase(world);
+        for (int i = 0; i < runtimeObstacles.Count; i++)
+        {
+            LogicStaticCollisionObstacle obstacle = runtimeObstacles[i];
+            int obstacleKey = checked(stableKeyBase + i * 8);
+            switch (obstacle.Kind)
+            {
+                case LogicStaticCollisionObstacleKind.Box:
+                    Fix64 minX = obstacle.Center.x - obstacle.HalfExtents.x - radius;
+                    Fix64 maxX = obstacle.Center.x + obstacle.HalfExtents.x + radius;
+                    Fix64 minY = obstacle.Center.y - obstacle.HalfExtents.y - radius;
+                    Fix64 maxY = obstacle.Center.y + obstacle.HalfExtents.y + radius;
+                    if (position.x <= minX || position.x >= maxX
+                        || position.y <= minY || position.y >= maxY)
+                    {
+                        break;
+                    }
+
+                    SelectPenetration(
+                        new Penetration(position.x - minX, new FixVector2(-1, 0), obstacleKey),
+                        ref found,
+                        ref penetration);
+                    SelectPenetration(
+                        new Penetration(maxX - position.x, new FixVector2(1, 0), obstacleKey + 1),
+                        ref found,
+                        ref penetration);
+                    SelectPenetration(
+                        new Penetration(position.y - minY, new FixVector2(0, -1), obstacleKey + 2),
+                        ref found,
+                        ref penetration);
+                    SelectPenetration(
+                        new Penetration(maxY - position.y, new FixVector2(0, 1), obstacleKey + 3),
+                        ref found,
+                        ref penetration);
+                    break;
+                case LogicStaticCollisionObstacleKind.Circle:
+                    Fix64 expandedRadius = obstacle.Radius + radius;
+                    FixVector2 delta = position - obstacle.Center;
+                    Fix64 distanceSquared = FixVector2.SqrMagnitude(delta);
+                    if (distanceSquared >= expandedRadius * expandedRadius)
+                        break;
+
+                    Fix64 distance = Fix64.Sqrt(distanceSquared);
+                    FixVector2 normal = distance > Fix64.Zero
+                        ? delta / distance
+                        : new FixVector2(-1, 0);
+                    SelectPenetration(
+                        new Penetration(expandedRadius - distance, normal, obstacleKey + 4),
+                        ref found,
+                        ref penetration);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(obstacle.Kind),
+                        obstacle.Kind,
+                        "Unknown runtime collision obstacle kind.");
+            }
+        }
+
+        return found;
+    }
+
     private static void SelectPenetration(Penetration candidate, ref bool found, ref Penetration best)
     {
         if (!found
@@ -617,6 +790,7 @@ public static class DeterministicStaticCollisionSolver
 
     private static bool TryFindEarliestHit(
         LogicStaticCollisionWorld world,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
         FixVector2 start,
         FixVector2 displacement,
         Fix64 radius,
@@ -650,7 +824,96 @@ public static class DeterministicStaticCollisionSolver
             }
         }
 
+        int stableKeyBase = GetRuntimeObstacleStableKeyBase(world);
+        for (int i = 0; i < runtimeObstacles.Count; i++)
+        {
+            LogicStaticCollisionObstacle obstacle = runtimeObstacles[i];
+            int obstacleKey = checked(stableKeyBase + i * 8);
+            SweepHit candidate;
+            bool hasHit;
+            switch (obstacle.Kind)
+            {
+                case LogicStaticCollisionObstacleKind.Box:
+                    hasHit = TrySweepPointAabb(
+                        start,
+                        displacement,
+                        obstacle.Center.x - obstacle.HalfExtents.x - radius,
+                        obstacle.Center.x + obstacle.HalfExtents.x + radius,
+                        obstacle.Center.y - obstacle.HalfExtents.y - radius,
+                        obstacle.Center.y + obstacle.HalfExtents.y + radius,
+                        obstacleKey,
+                        out candidate);
+                    break;
+                case LogicStaticCollisionObstacleKind.Circle:
+                    hasHit = TrySweepPointCircle(
+                        start,
+                        displacement,
+                        obstacle.Center,
+                        obstacle.Radius + radius,
+                        obstacleKey + 4,
+                        out candidate);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(obstacle.Kind),
+                        obstacle.Kind,
+                        "Unknown runtime collision obstacle kind.");
+            }
+
+            if (!hasHit || FixVector2.Dot(displacement, candidate.Normal) >= Fix64.Zero)
+                continue;
+            SelectHit(candidate, ref found, ref hit);
+        }
+
         return found;
+    }
+
+    private static bool TrySweepPointCircle(
+        FixVector2 start,
+        FixVector2 displacement,
+        FixVector2 center,
+        Fix64 radius,
+        int stableKey,
+        out SweepHit hit)
+    {
+        Fix64 a = FixVector2.Dot(displacement, displacement);
+        if (a <= Fix64.Zero)
+        {
+            hit = default;
+            return false;
+        }
+
+        FixVector2 relativeStart = start - center;
+        Fix64 b = (Fix64)2 * FixVector2.Dot(relativeStart, displacement);
+        Fix64 c = FixVector2.Dot(relativeStart, relativeStart) - radius * radius;
+        Fix64 discriminant = b * b - (Fix64)4 * a * c;
+        if (discriminant < Fix64.Zero)
+        {
+            hit = default;
+            return false;
+        }
+
+        Fix64 time = (-b - Fix64.Sqrt(discriminant)) / ((Fix64)2 * a);
+        if (time < Fix64.Zero || time > Fix64.One)
+        {
+            hit = default;
+            return false;
+        }
+
+        FixVector2 contactDelta = start + displacement * time - center;
+        if (contactDelta == FixVector2.Zero)
+        {
+            hit = default;
+            return false;
+        }
+
+        hit = new SweepHit(time, contactDelta.GetNormalized(), stableKey);
+        return true;
+    }
+
+    private static int GetRuntimeObstacleStableKeyBase(LogicStaticCollisionWorld world)
+    {
+        return checked(4 + checked(world.Width * world.Height) * 4);
     }
 
     private static bool IsExposedFace(
@@ -914,7 +1177,8 @@ public static class LogicStaticCollisionShadowService
             world,
             start,
             desiredDisplacement,
-            effectiveRadius);
+            effectiveRadius,
+            source.RuntimeObstacles);
         result = new LogicStaticCollisionShadowResult(world.WorldVersion, solveResult);
         return true;
     }
@@ -966,7 +1230,7 @@ public static class LogicStaticCollisionShadowService
             return cached.World;
         }
 
-        if (source.WalkableMask == null)
+        if (source.BaseWalkableMask == null)
             throw new InvalidOperationException("Static collision shadow source has no base walkable mask.");
         var world = new LogicStaticCollisionWorld(
             source.AgentTypeId,
@@ -976,7 +1240,7 @@ public static class LogicStaticCollisionShadowService
             source.CellSizeGridRaw,
             source.OriginXGridRaw,
             source.OriginYGridRaw,
-            source.WalkableMask);
+            source.BaseWalkableMask);
         s_Worlds[requestedAgentTypeId] = new CachedWorld
         {
             Version = source.WorldVersion,

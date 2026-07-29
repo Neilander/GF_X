@@ -10,7 +10,8 @@ public readonly struct LogicAgentCollisionShadowState
         FixVector2 pairResolvedPosition,
         FixVector2 staticResolvedPosition,
         bool staticProjectionAvailable,
-        bool staticProjectionSucceeded)
+        bool staticProjectionSucceeded,
+        LogicMovementRegionConstraintFailure regionConstraintFailure)
     {
         EntityId = entityId;
         ProposedPosition = proposedPosition;
@@ -18,6 +19,7 @@ public readonly struct LogicAgentCollisionShadowState
         StaticResolvedPosition = staticResolvedPosition;
         StaticProjectionAvailable = staticProjectionAvailable;
         StaticProjectionSucceeded = staticProjectionSucceeded;
+        RegionConstraintFailure = regionConstraintFailure;
     }
 
     public LogicEntityId EntityId { get; }
@@ -28,6 +30,7 @@ public readonly struct LogicAgentCollisionShadowState
     public FixVector2 StaticCorrection => StaticResolvedPosition - PairResolvedPosition;
     public bool StaticProjectionAvailable { get; }
     public bool StaticProjectionSucceeded { get; }
+    public LogicMovementRegionConstraintFailure RegionConstraintFailure { get; }
 }
 
 public static class LogicAgentCollisionShadowService
@@ -46,6 +49,7 @@ public static class LogicAgentCollisionShadowService
     private static readonly List<FixVector2> s_PairAdjustedDisplacements = new List<FixVector2>();
     private static readonly List<LogicAgentCollisionState> s_SolverStates = new List<LogicAgentCollisionState>();
     private static readonly HashSet<int> s_StaticProjectionChangedEntityIds = new HashSet<int>();
+    private static readonly HashSet<int> s_RegionConstraintChangedEntityIds = new HashSet<int>();
     private static readonly IReadOnlyList<LogicAgentCollisionShadowState> s_ReadOnlyStates = s_States.AsReadOnly();
     private static readonly Dictionary<int, FixVector2> s_ResolvedPositions = new Dictionary<int, FixVector2>();
 
@@ -60,6 +64,7 @@ public static class LogicAgentCollisionShadowService
     public static int LastStaticProjectionAvailableCount { get; private set; }
     public static int LastStaticProjectionChangedCount { get; private set; }
     public static int LastStaticProjectionFailureCount { get; private set; }
+    public static int LastRegionConstraintChangedCount { get; private set; }
     public static IReadOnlyList<LogicAgentCollisionShadowState> LastStates => s_ReadOnlyStates;
     public static ulong FramesWithPairCorrection { get; private set; }
     public static ulong TotalPairCorrectedBodyCount { get; private set; }
@@ -93,6 +98,7 @@ public static class LogicAgentCollisionShadowService
         s_ProposedPositions.Clear();
         s_PairAdjustedDisplacements.Clear();
         s_StaticProjectionChangedEntityIds.Clear();
+        s_RegionConstraintChangedEntityIds.Clear();
         s_States.Clear();
         s_ResolvedPositions.Clear();
         for (int i = 0; i < entities.Count; i++)
@@ -148,6 +154,7 @@ public static class LogicAgentCollisionShadowService
                 RebuildBodiesFromResolvedPositions();
         }
         LastStaticProjectionChangedCount = s_StaticProjectionChangedEntityIds.Count;
+        LastRegionConstraintChangedCount = s_RegionConstraintChangedEntityIds.Count;
 
         LastCompletedFrame = frameId;
         LastFrameEntityCount = entities.Count;
@@ -204,38 +211,52 @@ public static class LogicAgentCollisionShadowService
             FixVector2 frameStart = s_BodyFrameStartPositions[i];
             s_PairAdjustedDisplacements[i] += pairCorrection;
             ILogicFrameEntity entity = s_BodyEntities[i];
-            bool staticAvailable = LogicStaticCollisionShadowService.TrySolveFixed(
-                entity.NavigationAgentTypeId,
-                frameStart,
-                s_PairAdjustedDisplacements[i],
-                body.Radius,
-                out LogicStaticCollisionShadowResult staticResult);
-
-            if (!staticAvailable)
-            {
-                throw new InvalidOperationException(
-                    $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: no static collision world for entity {body.EntityId.Value}, agentType={entity.NavigationAgentTypeId}.");
-            }
-
             FixVector2 staticPosition = pairState.Position;
+            bool staticAvailable = false;
             bool staticSucceeded = false;
-            LastStaticProjectionAvailableCount++;
-            staticSucceeded = staticResult.SolveResult.Success;
-            if (staticSucceeded)
+            if (entity.PreparedNavigationConstraintEnabled)
             {
+                staticAvailable = LogicStaticCollisionShadowService.TrySolveFixed(
+                    entity.NavigationAgentTypeId,
+                    frameStart,
+                    s_PairAdjustedDisplacements[i],
+                    body.Radius,
+                    out LogicStaticCollisionShadowResult staticResult);
+                if (!staticAvailable)
+                {
+                    throw new InvalidOperationException(
+                        $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: no static collision world for entity {body.EntityId.Value}, agentType={entity.NavigationAgentTypeId}.");
+                }
+
+                LastStaticProjectionAvailableCount++;
+                staticSucceeded = staticResult.SolveResult.Success;
+                if (!staticSucceeded)
+                {
+                    LastStaticProjectionFailureCount++;
+                    throw new InvalidOperationException(
+                        $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: static projection failed for entity {body.EntityId.Value}. " +
+                        $"failure={staticResult.SolveResult.Failure}, frame={LogicFrameRuntime.CurrentFrame}.");
+                }
+
                 staticPosition = staticResult.SolveResult.Start + staticResult.SolveResult.ResolvedDisplacement;
                 if (staticPosition != pairState.Position)
                     s_StaticProjectionChangedEntityIds.Add(body.EntityId.Value);
             }
-            else
+
+            FixVector2 resolvedPosition = staticPosition;
+            LogicMovementRegionConstraintFailure regionFailure = LogicMovementRegionConstraintFailure.None;
+            if (entity.PreparedNavigationConstraintEnabled)
             {
-                LastStaticProjectionFailureCount++;
-                throw new InvalidOperationException(
-                    $"LogicAgentCollisionShadowService.ResolveStaticProjection failed: static projection failed for entity {body.EntityId.Value}. " +
-                    $"failure={staticResult.SolveResult.Failure}, frame={LogicFrameRuntime.CurrentFrame}.");
+                resolvedPosition = LogicMovementRegionConstraintService.ResolvePosition(
+                    entity,
+                    frameStart,
+                    staticPosition,
+                    out regionFailure);
+                if (resolvedPosition != staticPosition)
+                    s_RegionConstraintChangedEntityIds.Add(body.EntityId.Value);
             }
 
-            s_ResolvedPositions[body.EntityId.Value] = staticPosition;
+            s_ResolvedPositions[body.EntityId.Value] = resolvedPosition;
 
             if (recordFinalState)
             {
@@ -243,9 +264,10 @@ public static class LogicAgentCollisionShadowService
                     body.EntityId,
                     s_ProposedPositions[i],
                     pairState.Position,
-                    staticPosition,
+                    resolvedPosition,
                     staticAvailable,
-                    staticSucceeded));
+                    staticSucceeded,
+                    regionFailure));
             }
         }
     }
@@ -297,6 +319,7 @@ public static class LogicAgentCollisionShadowService
         s_PairAdjustedDisplacements.Clear();
         s_SolverStates.Clear();
         s_StaticProjectionChangedEntityIds.Clear();
+        s_RegionConstraintChangedEntityIds.Clear();
         s_States.Clear();
         s_ResolvedPositions.Clear();
         LastCompletedFrame = 0;
@@ -310,6 +333,7 @@ public static class LogicAgentCollisionShadowService
         LastStaticProjectionAvailableCount = 0;
         LastStaticProjectionChangedCount = 0;
         LastStaticProjectionFailureCount = 0;
+        LastRegionConstraintChangedCount = 0;
         FramesWithPairCorrection = 0;
         TotalPairCorrectedBodyCount = 0;
         MaxObservedPairCorrection = Fix64.Zero;

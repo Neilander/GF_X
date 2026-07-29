@@ -15,6 +15,8 @@ public sealed class LogicReplayTests
             LogicCardCommandService.EndTimeline();
         if (LogicSkillSlotCommandService.IsActive)
             LogicSkillSlotCommandService.EndTimeline();
+        if (LogicInGameValueCommandService.IsActive)
+            LogicInGameValueCommandService.EndTimeline();
         if (LogicInteractionCommandService.IsActive)
             LogicInteractionCommandService.EndTimeline();
         if (LogicTechEffectCommandService.IsActive)
@@ -40,6 +42,8 @@ public sealed class LogicReplayTests
             LogicCardCommandService.EndTimeline();
         if (LogicSkillSlotCommandService.IsActive)
             LogicSkillSlotCommandService.EndTimeline();
+        if (LogicInGameValueCommandService.IsActive)
+            LogicInGameValueCommandService.EndTimeline();
         if (LogicInteractionCommandService.IsActive)
             LogicInteractionCommandService.EndTimeline();
         if (LogicTechEffectCommandService.IsActive)
@@ -181,20 +185,20 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void ProtocolV65_CrossPlatformDeterminismCorpus_IsStable()
+    public void ProtocolV73_CrossPlatformDeterminismCorpus_IsStable()
     {
         LogicTimeControlService.EndTimeline();
-        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV65();
+        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV73();
         LogicTimeControlService.BeginTimeline();
 
-        Assert.AreEqual(65, result.ProtocolVersion);
+        Assert.AreEqual(73, result.ProtocolVersion);
         Assert.AreEqual(6256122146117919571ul, result.FullHash);
     }
 
     [Test]
     public void CrossPlatformDeterminismCorpus_RejectsActiveTimeline()
     {
-        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV65());
+        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV73());
     }
 
     [Test]
@@ -205,6 +209,7 @@ public sealed class LogicReplayTests
         LogicInteractionCommandService.BeginTimeline();
         LogicCardCommandService.BeginTimeline();
         LogicSkillSlotCommandService.BeginTimeline();
+        LogicInGameValueCommandService.BeginTimeline();
         LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
         LogicObstacleCommandService.BeginTimeline();
@@ -220,6 +225,7 @@ public sealed class LogicReplayTests
             17,
             new FixVector2(Fix64.FromRaw(321), Fix64.FromRaw(-654)));
         LogicSkillSlotCommand skillSlotCommand = LogicSkillSlotCommandService.ScheduleForNextFrame(0, 1);
+        LogicInGameValueCommand valueCommand = LogicInGameValueCommandService.ScheduleDeltaForNextFrame(IngameValueType.Coin, 3);
         LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn();
         LogicEntityLifecycleService.BindView(entityId, 404);
         LogicObstacleCommandService.ScheduleBoxForNextFrame(
@@ -249,6 +255,10 @@ public sealed class LogicReplayTests
         Assert.AreEqual(skillSlotCommand.Sequence, log.SkillSlotCommands[0].Sequence);
         Assert.AreEqual(0, log.SkillSlotCommands[0].FromIndex);
         Assert.AreEqual(1, log.SkillSlotCommands[0].ToIndex);
+        Assert.AreEqual(1, log.InGameValueCommands.Count);
+        Assert.AreEqual(valueCommand.Sequence, log.InGameValueCommands[0].Sequence);
+        Assert.AreEqual(IngameValueType.Coin, log.InGameValueCommands[0].ValueType);
+        Assert.AreEqual(3, log.InGameValueCommands[0].Delta);
         Assert.AreEqual(1, log.LifecycleCommands.Count);
         Assert.AreEqual(entityId, log.LifecycleCommands[0].EntityId);
         Assert.AreEqual(LogicEntityLifecycleCommandKind.SpawnRequested, log.LifecycleCommands[0].Kind);
@@ -267,6 +277,19 @@ public sealed class LogicReplayTests
         Assert.IsTrue(divergence.HasDivergence);
         Assert.AreEqual(1UL, divergence.FrameId);
         Assert.AreEqual("SkillSlotCommand", divergence.Field);
+    }
+
+    [Test]
+    public void Comparer_ReportsInGameValueCommandDivergence()
+    {
+        LogicReplayLog expected = RecordSingleInGameValueCommand(1);
+        LogicReplayLog actual = RecordSingleInGameValueCommand(2);
+
+        LogicReplayDivergence divergence = LogicReplayComparer.FindFirstDivergence(expected, actual);
+
+        Assert.IsTrue(divergence.HasDivergence);
+        Assert.AreEqual(1UL, divergence.FrameId);
+        Assert.AreEqual("InGameValueCommand", divergence.Field);
     }
 
     private static LogicReplayLog RecordSingleFrame(ulong gameplayStateHash)
@@ -348,6 +371,17 @@ public sealed class LogicReplayTests
         LogicSkillSlotCommandService.ScheduleForNextFrame(0, toIndex);
         LogicReplayLog log = recorder.End();
         LogicSkillSlotCommandService.EndTimeline();
+        return log;
+    }
+
+    private static LogicReplayLog RecordSingleInGameValueCommand(int delta)
+    {
+        LogicInGameValueCommandService.BeginTimeline();
+        var recorder = new LogicReplayRecorder();
+        recorder.Begin();
+        LogicInGameValueCommandService.ScheduleDeltaForNextFrame(IngameValueType.Coin, delta);
+        LogicReplayLog log = recorder.End();
+        LogicInGameValueCommandService.EndTimeline();
         return log;
     }
 

@@ -117,21 +117,8 @@ namespace AAAGame.Card
                 IEntityContext entity = entities[i];
                 if (entity == null)
                     throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
-                if (!entity.Alive || entity.Side != SideType.PlayerSide)
+                if (!TryGetRevealRadius(entity, hasGhostHero, out Fix64 radius))
                     continue;
-
-                bool isBuilding = entity.TryGetLogicBuilding(out _);
-                bool isHero = IsLogicHero(entity);
-                bool canRevealHidden = !(isHero && IsGhostHero(entity))
-                                       && !(hasGhostHero && !isHero && !isBuilding);
-                if (!canRevealHidden)
-                    continue;
-
-                Fix64 radius = isBuilding
-                    ? s_BuildingVisionRadius
-                    : isHero
-                        ? s_HeroVisionRadius
-                        : s_UnitVisionRadius;
                 RevealCircle(entity.PositionFixed, radius);
             }
         }
@@ -174,6 +161,41 @@ namespace AAAGame.Card
             }
 
             return LogicCardPlacementInvalidReason.None;
+        }
+
+        public static bool IsVisibleFromCurrentLogicRevealers(FixVector2 position)
+        {
+            EnsureBound();
+            if (!TryWorldToCell(position, out int targetX, out int targetY)
+                || !s_MapData.IsWalkable(targetX, targetY))
+            {
+                return false;
+            }
+
+            FixVector2 targetCenter = GetCellCenter(targetX, targetY);
+            IList<IEntityContext> entities = EntityRegistry.AllEntities;
+            bool hasGhostHero = HasPlayerGhostHero(entities);
+            for (int i = 0; i < entities.Count; i++)
+            {
+                IEntityContext entity = entities[i];
+                if (entity == null)
+                    throw new InvalidOperationException($"LogicCardPlacementAuthority found a null registry entity at index {i}.");
+                if (!TryGetRevealRadius(entity, hasGhostHero, out Fix64 radius))
+                    continue;
+                if (FixVector2.SqrMagnitude(targetCenter - entity.PositionFixed) > radius * radius)
+                    continue;
+                if (!TryWorldToCell(entity.PositionFixed, out int sourceX, out int sourceY))
+                    continue;
+                if (s_BlockHiddenRevealByEnemyStronghold
+                    && IsHiddenRevealBlockedByEnemyStronghold(sourceX, sourceY, targetX, targetY))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         public static Fix64 ResolveEnemyBuildingPadding()
@@ -380,6 +402,25 @@ namespace AAAGame.Card
                     return true;
             }
             return false;
+        }
+
+        private static bool TryGetRevealRadius(IEntityContext entity, bool hasGhostHero, out Fix64 radius)
+        {
+            radius = Fix64.Zero;
+            if (!entity.Alive || entity.Side != SideType.PlayerSide)
+                return false;
+
+            bool isBuilding = entity.TryGetLogicBuilding(out _);
+            bool isHero = IsLogicHero(entity);
+            if ((isHero && IsGhostHero(entity)) || (hasGhostHero && !isHero && !isBuilding))
+                return false;
+
+            radius = isBuilding
+                ? s_BuildingVisionRadius
+                : isHero
+                    ? s_HeroVisionRadius
+                    : s_UnitVisionRadius;
+            return true;
         }
 
         private static bool IsLogicHero(IEntityContext entity)

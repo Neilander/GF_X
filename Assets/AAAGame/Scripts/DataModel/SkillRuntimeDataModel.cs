@@ -1,5 +1,4 @@
 using GameFramework;
-using GameFramework.Event;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -25,13 +24,13 @@ public class SkillRuntimeDataModel : DataModelBase
     protected override void OnCreate(RefParams userdata)
     {
         base.OnCreate(userdata);
-        GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
         ResetSkills();
     }
 
     protected override void OnRelease()
     {
-        GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnIngamePhaseChanged);
+        LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
         ResetSkills();
         base.OnRelease();
     }
@@ -250,9 +249,55 @@ public class SkillRuntimeDataModel : DataModelBase
         PublishSkillChanged(skillId, level);
     }
 
-    private void OnIngamePhaseChanged(object sender, GameEventArgs e)
+    private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
     {
         RefreshAllUsageCounts();
+    }
+
+    public static void WriteDeterministicState(LogicStateHasher hasher)
+    {
+        if (hasher == null)
+            throw new ArgumentNullException(nameof(hasher));
+
+        SkillRuntimeDataModel model = GetModel();
+        hasher.Add(0x534B494C4C535441UL);
+        hasher.Add(model != null);
+        if (model == null)
+            return;
+
+        if (model.m_SkillLevels.Count != model.m_UnlockOrder.Count)
+        {
+            throw new InvalidOperationException(
+                $"SkillRuntimeDataModel deterministic state mismatch. levels={model.m_SkillLevels.Count}, order={model.m_UnlockOrder.Count}.");
+        }
+
+        hasher.Add(model.m_UnlockOrder.Count);
+        for (int i = 0; i < model.m_UnlockOrder.Count; i++)
+        {
+            string skillId = model.m_UnlockOrder[i];
+            if (string.IsNullOrWhiteSpace(skillId))
+                throw new InvalidOperationException($"SkillRuntimeDataModel has an empty skill id at slot {i}.");
+            if (!model.m_SkillLevels.TryGetValue(skillId, out int level) || level <= 0)
+                throw new InvalidOperationException($"SkillRuntimeDataModel has invalid level state for '{skillId}'.");
+
+            hasher.Add(skillId);
+            hasher.Add(level);
+            bool hasRemainingUsage = model.m_SkillRemainingUsageCounts.TryGetValue(skillId, out int remainingUsage);
+            if (hasRemainingUsage && remainingUsage < 0)
+                throw new InvalidOperationException($"SkillRuntimeDataModel has negative remaining usage for '{skillId}'.");
+            hasher.Add(hasRemainingUsage);
+            if (hasRemainingUsage)
+                hasher.Add(remainingUsage);
+        }
+
+        foreach (string skillId in model.m_SkillRemainingUsageCounts.Keys)
+        {
+            if (!model.m_SkillLevels.ContainsKey(skillId))
+            {
+                throw new InvalidOperationException(
+                    $"SkillRuntimeDataModel has remaining usage for unknown skill '{skillId}'.");
+            }
+        }
     }
 
     private void RefreshAllUsageCounts()

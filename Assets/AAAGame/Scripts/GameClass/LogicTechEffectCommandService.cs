@@ -48,6 +48,7 @@ public static class LogicTechEffectCommandService
     public static IReadOnlyList<LogicTechEffectCommand> History => s_ReadOnlyHistory;
     public static event Action<LogicTechEffectCommand> CommandRecorded;
     public static event Action<LogicTechEffectCommand> EffectApplying;
+    public static event Action<LogicTechEffectCommand> EffectApplied;
 
     public static void BeginTimeline()
     {
@@ -211,6 +212,7 @@ public static class LogicTechEffectCommandService
             {
                 LogicTechEffectCommand command = s_Due[i];
                 sink(command);
+                EffectApplied?.Invoke(command);
                 RecordApplied(command);
             }
 

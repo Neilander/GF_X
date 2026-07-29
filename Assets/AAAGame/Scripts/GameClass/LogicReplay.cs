@@ -211,8 +211,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 65;
-    public const string CurrentContentVersion = "Avenge-30Hz-v65";
+    public const int CurrentProtocolVersion = 73;
+    public const string CurrentContentVersion = "Avenge-30Hz-v73";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
@@ -224,6 +224,7 @@ public sealed class LogicReplayLog
         LogicInteractionCommand[] interactionCommands,
         LogicCardCommand[] cardCommands,
         LogicSkillSlotCommand[] skillSlotCommands,
+        LogicInGameValueCommand[] inGameValueCommands,
         LogicEntityLifecycleCommand[] lifecycleCommands,
         LogicObstacleCommand[] obstacleCommands)
     {
@@ -240,6 +241,7 @@ public sealed class LogicReplayLog
         InteractionCommands = Array.AsReadOnly((LogicInteractionCommand[])interactionCommands.Clone());
         CardCommands = Array.AsReadOnly((LogicCardCommand[])cardCommands.Clone());
         SkillSlotCommands = Array.AsReadOnly((LogicSkillSlotCommand[])skillSlotCommands.Clone());
+        InGameValueCommands = Array.AsReadOnly((LogicInGameValueCommand[])inGameValueCommands.Clone());
         LifecycleCommands = Array.AsReadOnly((LogicEntityLifecycleCommand[])lifecycleCommands.Clone());
         ObstacleCommands = Array.AsReadOnly((LogicObstacleCommand[])obstacleCommands.Clone());
     }
@@ -257,6 +259,7 @@ public sealed class LogicReplayLog
     public ReadOnlyCollection<LogicInteractionCommand> InteractionCommands { get; }
     public ReadOnlyCollection<LogicCardCommand> CardCommands { get; }
     public ReadOnlyCollection<LogicSkillSlotCommand> SkillSlotCommands { get; }
+    public ReadOnlyCollection<LogicInGameValueCommand> InGameValueCommands { get; }
     public ReadOnlyCollection<LogicEntityLifecycleCommand> LifecycleCommands { get; }
     public ReadOnlyCollection<LogicObstacleCommand> ObstacleCommands { get; }
 }
@@ -271,6 +274,7 @@ public sealed class LogicReplayRecorder
     private readonly List<LogicInteractionCommand> m_InteractionCommands = new List<LogicInteractionCommand>();
     private readonly List<LogicCardCommand> m_CardCommands = new List<LogicCardCommand>();
     private readonly List<LogicSkillSlotCommand> m_SkillSlotCommands = new List<LogicSkillSlotCommand>();
+    private readonly List<LogicInGameValueCommand> m_InGameValueCommands = new List<LogicInGameValueCommand>();
     private readonly List<LogicEntityLifecycleCommand> m_LifecycleCommands = new List<LogicEntityLifecycleCommand>();
     private readonly List<LogicObstacleCommand> m_ObstacleCommands = new List<LogicObstacleCommand>();
 
@@ -281,6 +285,7 @@ public sealed class LogicReplayRecorder
     private bool m_TracksInteractions;
     private bool m_TracksCards;
     private bool m_TracksSkillSlots;
+    private bool m_TracksInGameValues;
     private bool m_TracksLifecycle;
     private bool m_TracksObstacles;
 
@@ -301,6 +306,7 @@ public sealed class LogicReplayRecorder
         m_InteractionCommands.Clear();
         m_CardCommands.Clear();
         m_SkillSlotCommands.Clear();
+        m_InGameValueCommands.Clear();
         m_LifecycleCommands.Clear();
         m_ObstacleCommands.Clear();
         m_InitialTimeControlSnapshot = LogicTimeControlService.CaptureSnapshot();
@@ -312,6 +318,7 @@ public sealed class LogicReplayRecorder
         m_TracksInteractions = LogicInteractionCommandService.IsActive;
         m_TracksCards = LogicCardCommandService.IsActive;
         m_TracksSkillSlots = LogicSkillSlotCommandService.IsActive;
+        m_TracksInGameValues = LogicInGameValueCommandService.IsActive;
         m_TracksLifecycle = LogicEntityLifecycleService.IsActive;
         m_TracksObstacles = LogicObstacleCommandService.IsActive;
         if (m_TracksPhases)
@@ -343,6 +350,12 @@ public sealed class LogicReplayRecorder
             for (int i = 0; i < LogicSkillSlotCommandService.History.Count; i++)
                 m_SkillSlotCommands.Add(LogicSkillSlotCommandService.History[i]);
             LogicSkillSlotCommandService.CommandRecorded += OnSkillSlotCommandRecorded;
+        }
+        if (m_TracksInGameValues)
+        {
+            for (int i = 0; i < LogicInGameValueCommandService.History.Count; i++)
+                m_InGameValueCommands.Add(LogicInGameValueCommandService.History[i]);
+            LogicInGameValueCommandService.CommandRecorded += OnInGameValueCommandRecorded;
         }
         if (m_TracksLifecycle)
         {
@@ -421,6 +434,8 @@ public sealed class LogicReplayRecorder
             LogicCardCommandService.CommandRecorded -= OnCardCommandRecorded;
         if (m_TracksSkillSlots)
             LogicSkillSlotCommandService.CommandRecorded -= OnSkillSlotCommandRecorded;
+        if (m_TracksInGameValues)
+            LogicInGameValueCommandService.CommandRecorded -= OnInGameValueCommandRecorded;
         if (m_TracksLifecycle)
             LogicEntityLifecycleService.CommandRecorded -= OnLifecycleCommandRecorded;
         if (m_TracksObstacles)
@@ -430,6 +445,7 @@ public sealed class LogicReplayRecorder
         m_TracksInteractions = false;
         m_TracksCards = false;
         m_TracksSkillSlots = false;
+        m_TracksInGameValues = false;
         m_TracksLifecycle = false;
         m_TracksObstacles = false;
         IsRecording = false;
@@ -443,6 +459,7 @@ public sealed class LogicReplayRecorder
             m_InteractionCommands.ToArray(),
             m_CardCommands.ToArray(),
             m_SkillSlotCommands.ToArray(),
+            m_InGameValueCommands.ToArray(),
             m_LifecycleCommands.ToArray(),
             m_ObstacleCommands.ToArray());
     }
@@ -480,6 +497,11 @@ public sealed class LogicReplayRecorder
     private void OnSkillSlotCommandRecorded(LogicSkillSlotCommand command)
     {
         m_SkillSlotCommands.Add(command);
+    }
+
+    private void OnInGameValueCommandRecorded(LogicInGameValueCommand command)
+    {
+        m_InGameValueCommands.Add(command);
     }
 
     private void OnLifecycleCommandRecorded(LogicEntityLifecycleCommand command)
@@ -877,6 +899,24 @@ public static class LogicReplayComparer
                     true,
                     Math.Min(left.EffectiveFrame, right.EffectiveFrame),
                     "SkillSlotCommand");
+            }
+        }
+
+        if (expected.InGameValueCommands.Count != actual.InGameValueCommands.Count)
+            return new LogicReplayDivergence(true, 0, "InGameValueCommandCount");
+        for (int i = 0; i < expected.InGameValueCommands.Count; i++)
+        {
+            LogicInGameValueCommand left = expected.InGameValueCommands[i];
+            LogicInGameValueCommand right = actual.InGameValueCommands[i];
+            if (left.EffectiveFrame != right.EffectiveFrame
+                || left.Sequence != right.Sequence
+                || left.ValueType != right.ValueType
+                || left.Delta != right.Delta)
+            {
+                return new LogicReplayDivergence(
+                    true,
+                    Math.Min(left.EffectiveFrame, right.EffectiveFrame),
+                    "InGameValueCommand");
             }
         }
 

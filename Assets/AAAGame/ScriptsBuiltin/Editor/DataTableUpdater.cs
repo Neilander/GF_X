@@ -14,6 +14,9 @@ namespace UGF.EditorTools
         static IList<string> tableFileChangedList;
         static IList<string> configFileChangedList;
         static IList<string> languageFileChangedList;
+        static FileSystemWatcher tableWatcher;
+        static FileSystemWatcher configWatcher;
+        static FileSystemWatcher languageWatcher;
 
         static bool isInitialized = false;
         static AppConfigs appConfigs = null;
@@ -27,43 +30,76 @@ namespace UGF.EditorTools
             languageFileChangedList = new List<string>();
             EditorApplication.update -= OnUpdate;
             EditorApplication.update += OnUpdate;
-            var tbWatcher = new FileSystemWatcher(ConstEditor.DataTableExcelPath, "*.xlsx")
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+                StartWatchers();
+            appConfigs = AppConfigs.GetInstanceEditor();
+            isInitialized = true;
+        }
+
+        private static void StartWatchers()
+        {
+            if (tableWatcher != null && configWatcher != null && languageWatcher != null)
+                return;
+            if (tableWatcher != null || configWatcher != null || languageWatcher != null)
+                throw new InvalidOperationException("DataTableUpdater file watchers are already running.");
+
+            tableWatcher = new FileSystemWatcher(ConstEditor.DataTableExcelPath, "*.xlsx")
             {
                 IncludeSubdirectories = true,
-
                 NotifyFilter = NotifyFilters.LastAccess | NotifyFilters.LastWrite | NotifyFilters.FileName,
                 EnableRaisingEvents = true
             };
-            var fileChangedCb = new FileSystemEventHandler(OnDataTableChanged);
-            tbWatcher.Changed -= fileChangedCb;
-            tbWatcher.Changed += fileChangedCb;
-            tbWatcher.Deleted -= fileChangedCb;
-            tbWatcher.Deleted += fileChangedCb;
+            tableWatcher.Changed += OnDataTableChanged;
+            tableWatcher.Deleted += OnDataTableChanged;
 
-            var cfgWatcher = new FileSystemWatcher(ConstEditor.ConfigExcelPath, "*.xlsx")
+            configWatcher = new FileSystemWatcher(ConstEditor.ConfigExcelPath, "*.xlsx")
             {
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.LastAccess | NotifyFilters.LastWrite | NotifyFilters.FileName,
                 EnableRaisingEvents = true
             };
-            var cfgFileChangedCb = new FileSystemEventHandler(OnConfigChanged);
-            cfgWatcher.Changed -= cfgFileChangedCb;
-            cfgWatcher.Changed += cfgFileChangedCb;
-            cfgWatcher.Deleted -= cfgFileChangedCb;
-            cfgWatcher.Deleted += cfgFileChangedCb;
-            var langWatcher = new FileSystemWatcher(ConstEditor.LanguageExcelPath, "*.xlsx")
+            configWatcher.Changed += OnConfigChanged;
+            configWatcher.Deleted += OnConfigChanged;
+
+            languageWatcher = new FileSystemWatcher(ConstEditor.LanguageExcelPath, "*.xlsx")
             {
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.LastAccess | NotifyFilters.LastWrite,
                 EnableRaisingEvents = true
             };
-            var langFileChangedCb = new FileSystemEventHandler(OnLanguageChanged);
-            langWatcher.Changed -= langFileChangedCb;
-            langWatcher.Changed += langFileChangedCb;
-            langWatcher.Deleted -= langFileChangedCb;
-            langWatcher.Deleted += langFileChangedCb;
-            appConfigs = AppConfigs.GetInstanceEditor();
-            isInitialized = true;
+            languageWatcher.Changed += OnLanguageChanged;
+            languageWatcher.Deleted += OnLanguageChanged;
+        }
+
+        private static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.EnteredPlayMode)
+            {
+                StopWatchers();
+                return;
+            }
+
+            if (state == PlayModeStateChange.EnteredEditMode)
+                StartWatchers();
+        }
+
+        private static void StopWatchers()
+        {
+            DisposeWatcher(ref tableWatcher);
+            DisposeWatcher(ref configWatcher);
+            DisposeWatcher(ref languageWatcher);
+        }
+
+        private static void DisposeWatcher(ref FileSystemWatcher watcher)
+        {
+            if (watcher == null)
+                return;
+
+            watcher.EnableRaisingEvents = false;
+            watcher.Dispose();
+            watcher = null;
         }
         static void InitGlobalCulture()
         {
@@ -73,6 +109,7 @@ namespace UGF.EditorTools
         private static void OnUpdate()
         {
             if (!isInitialized) return;
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
 
             if (tableFileChangedList.Count > 0)
             {

@@ -11,7 +11,7 @@ public class BuildManager : GameFrameworkComponent
     private readonly BaseMilestoneTechService m_BaseMilestoneTechService = new("Tech_BaseBuilt_{0}_Lv{1}");
     private readonly Dictionary<Archetype, List<BuildingData>> m_Lv0ConstructCandidatesByArchetype = new();
     private HashSet<Archetype> m_PlayerUnlockedBaseArchesCache;
-    private bool m_IsSubscribedTechUnlocked;
+    private bool m_IsSubscribedLogicTechApplied;
     private bool m_IsSubscribedBuildingOwnership;
     private bool m_IsSubscribedInteractionCommands;
 
@@ -718,36 +718,35 @@ public class BuildManager : GameFrameworkComponent
     {
         base.Awake();
         TrySubscribeInteractionCommands();
-        TrySubscribeTechUnlockedEvent();
+        SubscribeLogicTechAppliedEvent();
         TrySubscribeBuildingOwnershipEvent();
     }
 
     private void Start()
     {
         TrySubscribeInteractionCommands();
-        TrySubscribeTechUnlockedEvent();
+        SubscribeLogicTechAppliedEvent();
         TrySubscribeBuildingOwnershipEvent();
     }
 
     public void PrepareRuntimeDependencies()
     {
         TrySubscribeInteractionCommands();
+        SubscribeLogicTechAppliedEvent();
         TrySubscribeBuildingOwnershipEvent();
-        if (!TrySubscribeTechUnlockedEvent())
-            throw new InvalidOperationException("BuildManager.PrepareRuntimeDependencies failed: GF.Event is not ready.");
     }
 
     private void OnDestroy()
     {
         if (m_IsSubscribedInteractionCommands)
             LogicInteractionCommandService.CommandApplying -= OnInteractionCommandApplying;
-        if (m_IsSubscribedTechUnlocked && GF.Event != null)
-            GF.Event.Unsubscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
+        if (m_IsSubscribedLogicTechApplied)
+            LogicTechEffectCommandService.EffectApplied -= OnLogicTechEffectApplied;
         if (m_IsSubscribedBuildingOwnership)
             LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
 
         m_IsSubscribedInteractionCommands = false;
-        m_IsSubscribedTechUnlocked = false;
+        m_IsSubscribedLogicTechApplied = false;
         m_IsSubscribedBuildingOwnership = false;
     }
 
@@ -831,7 +830,7 @@ public class BuildManager : GameFrameworkComponent
             throw new InvalidOperationException("Building interaction mutation requires the logic interaction command apply window.");
     }
 
-    private void OnTechUnlocked(object sender, GameFramework.Event.GameEventArgs e)
+    private void OnLogicTechEffectApplied(LogicTechEffectCommand command)
     {
         InvalidateUnlockedArchetypeCache();
     }
@@ -915,17 +914,13 @@ public class BuildManager : GameFrameworkComponent
         return null;
     }
 
-    private bool TrySubscribeTechUnlockedEvent()
+    private void SubscribeLogicTechAppliedEvent()
     {
-        if (m_IsSubscribedTechUnlocked)
-            return true;
+        if (m_IsSubscribedLogicTechApplied)
+            return;
 
-        if (GF.Event == null)
-            return false;
-
-        GF.Event.Subscribe(TechUnlockedEventArgs.EventId, OnTechUnlocked);
-        m_IsSubscribedTechUnlocked = true;
-        return true;
+        LogicTechEffectCommandService.EffectApplied += OnLogicTechEffectApplied;
+        m_IsSubscribedLogicTechApplied = true;
     }
 
     private bool TrySubscribeBuildingOwnershipEvent()

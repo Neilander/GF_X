@@ -637,6 +637,7 @@ public partial class LevelEntity : EntityBase
 
         InGameDataModel.SetStrongholds(strongholds);
         InitializeLogicStrongholdMap(strongholds);
+        InitializeLogicTutorialMovementTrigger();
         StageCheckpointRuntimeCoordinator.RestoreStrongholdOwners(
             strongholds,
             ChangeSceneProcedure.SelectedLevelIdentifier);
@@ -712,6 +713,30 @@ public partial class LevelEntity : EntityBase
             new FixVector2((Fix64)localZ.x, (Fix64)localZ.z),
             (Fix64)tileWorldCreatorManager.configuration.cellSize,
             cells);
+    }
+
+    private void InitializeLogicTutorialMovementTrigger()
+    {
+        TutorialTriggerCollider[] triggers = GetComponentsInChildren<TutorialTriggerCollider>(true);
+        TutorialTriggerCollider invadeTrigger = null;
+        for (int i = 0; i < triggers.Length; i++)
+        {
+            TutorialTriggerCollider trigger = triggers[i]
+                ?? throw new InvalidOperationException($"LevelEntity tutorial trigger {i} is null.");
+            if (trigger.TriggerType != TutorialType.InvadeSH)
+                continue;
+            if (invadeTrigger != null)
+                throw new InvalidOperationException("LevelEntity contains multiple InvadeSH tutorial triggers.");
+            if (!trigger.TriggerOnce)
+                throw new InvalidOperationException("InvadeSH tutorial trigger must use triggerOnce.");
+            invadeTrigger = trigger;
+        }
+
+        if (invadeTrigger == null)
+            return;
+
+        invadeTrigger.GetFixedHorizontalBounds(out FixVector2 center, out FixVector2 halfExtents);
+        LogicMovementRegionConstraintService.BindTutorialInvadeTrigger(center, halfExtents);
     }
 
     private void OnLogicBuildingDisabled(IBuildingLogicContext building, IEntityContext attacker)

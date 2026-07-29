@@ -91,6 +91,8 @@ namespace AAAGame.MiniMap.FOG3
         private bool cloudReferenceHeightResolved;
         private float cloudReferenceWorldY;
         private Vector3 currentOverlayWorldOffset;
+        private int gameplaySceneIndex = -1;
+        private int gameplaySceneHandle;
 
         public static Fog3Manager Instance { get; private set; }
         public Fog3Controller Controller => controller;
@@ -668,11 +670,25 @@ namespace AAAGame.MiniMap.FOG3
             if (!waitForGameplayScene)
                 return true;
 
+            if (gameplaySceneIndex >= 0 && gameplaySceneIndex < SceneManager.sceneCount)
+            {
+                Scene cachedScene = SceneManager.GetSceneAt(gameplaySceneIndex);
+                if (cachedScene.handle == gameplaySceneHandle && cachedScene.isLoaded)
+                    return true;
+
+                gameplaySceneIndex = -1;
+                gameplaySceneHandle = 0;
+            }
+
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
                 Scene scene = SceneManager.GetSceneAt(i);
                 if (scene.isLoaded && IsGameplaySceneName(scene.name))
+                {
+                    gameplaySceneIndex = i;
+                    gameplaySceneHandle = scene.handle;
                     return true;
+                }
             }
 
             return false;

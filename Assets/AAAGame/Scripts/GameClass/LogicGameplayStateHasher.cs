@@ -33,10 +33,13 @@ public static class LogicGameplayStateHasher
             || MAEntityLogicFrameSystem.LastCompletedFrame != frame
             || LogicAgentCollisionShadowService.LastCompletedFrame != frame
             || LogicDamageEventService.LastCompletedFrame != frame
-            || LogicProjectileService.LastCompletedFrame != frame)
+            || LogicProjectileService.LastCompletedFrame != frame
+            || (LogicGameEndService.IsActive
+                && LogicGameEndService.IsInitialized
+                && LogicGameEndService.LastAppliedFrame != frame))
         {
             throw new InvalidOperationException(
-                $"LogicGameplayStateHasher frame mismatch. frame={frame}, snapshot={LogicEntityFrameSnapshotService.CapturedFrame}, phase={MAEntityLogicFrameSystem.LastCompletedFrame}, movement={LogicAgentCollisionShadowService.LastCompletedFrame}, damage={LogicDamageEventService.LastCompletedFrame}, projectile={LogicProjectileService.LastCompletedFrame}.");
+                $"LogicGameplayStateHasher frame mismatch. frame={frame}, snapshot={LogicEntityFrameSnapshotService.CapturedFrame}, phase={MAEntityLogicFrameSystem.LastCompletedFrame}, movement={LogicAgentCollisionShadowService.LastCompletedFrame}, damage={LogicDamageEventService.LastCompletedFrame}, projectile={LogicProjectileService.LastCompletedFrame}, gameEnd={LogicGameEndService.LastAppliedFrame}.");
         }
 
         LogicStateHasher hasher = s_FrameHasher;
@@ -44,6 +47,8 @@ public static class LogicGameplayStateHasher
         hasher.Add(0x47414D4553544154UL);
         hasher.Add(frame);
         InGameDataModel.WriteDeterministicState(hasher);
+        LogicInGameValueCommandService.WriteDeterministicState(hasher);
+        SkillRuntimeDataModel.WriteDeterministicState(hasher);
         LogicRewardStateService.WriteDeterministicState(hasher);
         ulong economyHash = hasher.Hash;
         LogicInteractionHoldService.WriteDeterministicState(hasher);
@@ -52,6 +57,9 @@ public static class LogicGameplayStateHasher
         LogicInteractionCommandService.WriteDeterministicState(hasher);
         LogicCardCommandService.WriteDeterministicState(hasher);
         LogicCardPlacementAuthority.WriteDeterministicState(hasher);
+        LogicMovementRegionConstraintService.WriteDeterministicState(hasher);
+        LogicGameEndService.WriteDeterministicState(hasher);
+        TutorialManager.WriteDeterministicState(hasher);
         LogicCardRuntimeState.WriteDeterministicState(hasher);
         LogicSkillSlotCommandService.WriteDeterministicState(hasher);
         LogicPhaseCommandService.WriteDeterministicState(hasher);

@@ -761,6 +761,7 @@ public class LogicGameplayStateHasherTests
         LogicInteractionCommandService.BeginTimeline();
         LogicCardCommandService.BeginTimeline();
         LogicCardPlacementAuthority.BeginTimeline();
+        LogicInGameValueCommandService.BeginTimeline();
         LogicSkillSlotCommandService.BeginTimeline();
         Assert.IsTrue(LogicInteractionHoldService.IsActive, "Interaction hold service must be active after BeginTimeline.");
         LogicPhaseCommandService.BeginTimeline();
@@ -781,6 +782,7 @@ public class LogicGameplayStateHasherTests
         LogicInteractionHoldService.ProcessFrame(inputTimeline.Seal(1, 1d / 30d));
         Assert.IsTrue(LogicInteractionHoldService.IsActive, "Interaction hold service became inactive while sealing input.");
         LogicCardCommandService.ApplyFrameForTests(1, _ => { });
+        LogicInGameValueCommandService.ApplyFrameForTests(1, _ => { });
         LogicSkillSlotCommandService.ApplyFrameForTests(1, _ => { });
         LogicPhaseCommandService.ApplyFrameForTests(1, _ => { });
         LogicInteractionCommandService.ApplyFrameForTests(1, _ => { });
@@ -837,6 +839,8 @@ public class LogicGameplayStateHasherTests
             LogicCardPlacementAuthority.EndTimeline();
         if (LogicSkillSlotCommandService.IsActive)
             LogicSkillSlotCommandService.EndTimeline();
+        if (LogicInGameValueCommandService.IsActive)
+            LogicInGameValueCommandService.EndTimeline();
         if (LogicCardCommandService.IsActive)
             LogicCardCommandService.EndTimeline();
         if (LogicInteractionCommandService.IsActive)

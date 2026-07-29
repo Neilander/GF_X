@@ -28,12 +28,17 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private IFsm<IProcedureManager> m_ProcedureOwner;
     private bool m_InPlaceLevelSwitchInProgress;
     private readonly LogicFrameClock m_LogicFrameClock = new LogicFrameClock();
+    private InputManager m_LogicInputManager;
+    private Func<double> m_LogicFrameScaleProvider;
+    private Action<ulong, double> m_LogicFrameTickCallback;
     private bool m_LogicFrameClockStarted;
     private ulong m_NextLogicFrameStatusLogFrame;
     private ResourceComponent m_RuntimeResourceComponent;
     private float m_MaxUnloadUnusedAssetsIntervalBeforeRuntime;
 #if UNITY_EDITOR
     private double m_EditorStressCutoffRealtime;
+    private Func<double> m_EditorStressScaleProvider;
+    private Action<ulong, double> m_EditorStressTickCallback;
 #endif
 
     protected virtual string RuntimeLevelIdentifier =>
@@ -56,11 +61,14 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         BeginRuntimeResourceUnloadDeferral();
         LogicFrameRuntime.Begin();
         LogicTimeControlService.BeginTimeline();
+        LogicInGameValueCommandService.BeginTimeline();
+        LogicGameEndService.BeginTimeline();
         LogicInteractionHoldService.BeginTimeline();
         LogicInteractionTargetStateService.BeginTimeline();
         LogicInteractionCommandService.BeginTimeline();
         LogicCardCommandService.BeginTimeline();
         LogicCardPlacementAuthority.BeginTimeline();
+        LogicMovementRegionConstraintService.BeginTimeline();
         LogicSkillSlotCommandService.BeginTimeline();
         LogicPhaseCommandService.BeginTimeline();
         LogicTechEffectCommandService.BeginTimeline();
@@ -70,6 +78,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicEntityFrameSnapshotService.BeginTimeline();
         LogicInteractionAuthorityService.BeginTimeline();
         MAEntityLogicFrameSystem.BeginTimeline();
+        m_LogicFrameScaleProvider ??= PrepareNextLogicFrame;
+        m_LogicFrameTickCallback ??= ExecuteScheduledLogicFrame;
+#if UNITY_EDITOR
+        m_EditorStressScaleProvider ??= PrepareNextEditorStressLogicFrame;
+        m_EditorStressTickCallback ??= ExecuteScheduledEditorStressLogicFrame;
+#endif
+        m_LogicInputManager = null;
         m_LogicFrameClockStarted = false;
         m_NextLogicFrameStatusLogFrame = 300;
 
@@ -115,6 +130,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         m_RuntimeInitPipeline = null;
         m_ProcedureOwner = null;
         m_InPlaceLevelSwitchInProgress = false;
+        m_LogicInputManager = null;
         m_LogicFrameClockStarted = false;
         if (LogicReplayRuntime.IsRecording)
         {
@@ -128,6 +144,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicEntityLifecycleService.EndTimeline();
         LogicTechEffectCommandService.EndTimeline();
         LogicSkillSlotCommandService.EndTimeline();
+        LogicMovementRegionConstraintService.EndTimeline();
         LogicCardPlacementAuthority.EndTimeline();
         LogicCardCommandService.EndTimeline();
         LogicInteractionCommandService.EndTimeline();
@@ -137,6 +154,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicEntityFrameSnapshotService.EndTimeline();
         LogicPhaseCommandService.EndTimeline();
         LogicInteractionHoldService.EndTimeline();
+        LogicGameEndService.EndTimeline();
+        LogicInGameValueCommandService.EndTimeline();
         LogicTimeControlService.EndTimeline();
         LogicFrameRuntime.End();
         EndRuntimeResourceUnloadDeferral();
@@ -340,11 +359,14 @@ public abstract class RuntimeProcedureBase : ProcedureBase
                 LogicEntityIdAllocator.LastAllocatedValue);
             LogicEntityLifecycleService.DeactivateAllForShutdown();
             LogicInteractionHoldService.ResetForWorldTransition();
+            LogicInGameValueCommandService.ResetForWorldTransition();
+            LogicGameEndService.ResetForWorldTransition();
             LogicInteractionTargetStateService.ResetForWorldTransition();
             LogicInteractionAuthorityService.ResetForWorldTransition();
             LogicInteractionCommandService.ResetForWorldTransition();
             LogicCardCommandService.ResetForWorldTransition();
             LogicCardPlacementAuthority.ResetForWorldTransition();
+            LogicMovementRegionConstraintService.ResetForWorldTransition();
             LogicSkillSlotCommandService.ResetForWorldTransition();
             LogicPhaseCommandService.ResetForWorldTransition();
             LogicTechEffectCommandService.ResetForWorldTransition();
@@ -371,6 +393,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicInteractionCommandService.ResetFrameTimeline();
             LogicCardCommandService.ResetFrameTimeline();
             LogicCardPlacementAuthority.ResetFrameTimeline();
+            LogicInGameValueCommandService.ResetFrameTimeline();
             LogicSkillSlotCommandService.ResetFrameTimeline();
             LogicTechEffectCommandService.ResetFrameTimeline();
             LogicEntityLifecycleService.ResetFrameTimelinePreservingEntities();
@@ -451,6 +474,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             InputManager inputManager = GameEntry.GetComponent<InputManager>();
             if (inputManager == null)
                 throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: InputManager is null.");
+            m_LogicInputManager = inputManager;
             inputManager.BeginLogicInputTimeline(realtime);
             LogicFrameRuntime.StartTimeline();
             if (LogicReplayRuntime.ShouldRecordRuntimeSession && !LogicReplayRuntime.IsRecording)
@@ -462,35 +486,21 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             Log.Info("[LogicFrame] Clock started. runtime={0}, realtime={1:R}.", GetType().Name, realtime);
         }
 
-        InputManager logicInputManager = GameEntry.GetComponent<InputManager>();
-        if (logicInputManager == null)
-            throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: InputManager is null.");
+        if (m_LogicInputManager == null)
+            throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: logic InputManager is null.");
 
 #if UNITY_EDITOR
         if (EditorLogicRuntimeStressGate.OwnsLogicClock)
         {
-            UpdateEditorStressLogicFrames(logicInputManager, realtime);
+            UpdateEditorStressLogicFrames(realtime);
             return;
         }
 #endif
 
         int tickCount = m_LogicFrameClock.Advance(
             realtime,
-            () =>
-            {
-                LogicTimeControlService.PrepareFrame(checked(m_LogicFrameClock.Frame + 1));
-                return LogicTimeControlService.SchedulerScale;
-            },
-            (frame, cutoffRealtime) =>
-            {
-                LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
-                    logicInputManager,
-                    frame,
-                    cutoffRealtime,
-                    out LogicInputFrame inputFrame);
-                if (LogicReplayRuntime.IsRecording)
-                    LogicReplayRuntime.RecordFrame(inputFrame, gameplayDigest);
-            },
+            m_LogicFrameScaleProvider,
+            m_LogicFrameTickCallback,
             MaxLogicTicksPerRenderFrame);
         LogicFrameRuntime.CompleteRenderFrame(
             tickCount,
@@ -525,6 +535,23 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
     }
 
+    private double PrepareNextLogicFrame()
+    {
+        LogicTimeControlService.PrepareFrame(checked(m_LogicFrameClock.Frame + 1));
+        return LogicTimeControlService.SchedulerScale;
+    }
+
+    private void ExecuteScheduledLogicFrame(ulong frame, double cutoffRealtime)
+    {
+        LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
+            m_LogicInputManager,
+            frame,
+            cutoffRealtime,
+            out LogicInputFrame inputFrame);
+        if (LogicReplayRuntime.IsRecording)
+            LogicReplayRuntime.RecordFrame(inputFrame, gameplayDigest);
+    }
+
     private static LogicGameplayStateDigest ExecuteLogicFrame(
         InputManager logicInputManager,
         ulong frame,
@@ -534,6 +561,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicTimeControlService.BeginFrame(frame);
         inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
         LogicInteractionHoldService.ProcessFrame(inputFrame);
+        LogicInGameValueCommandService.ApplyFrame(frame);
         if (LogicCardPlacementAuthority.IsWorldBound)
         {
             LogicCardPlacementAuthority.ApplyFrame(frame);
@@ -545,6 +573,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicCardCommandService.ApplyFrame(frame);
         LogicSkillSlotCommandService.ApplyFrame(frame);
         LogicPhaseCommandService.ApplyFrame(frame);
+        LogicMovementRegionConstraintService.ApplyFrame(frame);
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>()
                               ?? throw new InvalidOperationException("RuntimeProcedureBase requires CardSetup for logic-frame card updates.");
         cardSetup.ApplyLogicFrame(frame);
@@ -554,6 +583,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicEntityLifecycleService.ApplyFrame(frame);
         LogicObstacleCommandService.ApplyFrame(frame);
         LogicFrameRuntime.Tick(frame);
+        LogicGameEndService.ApplyFrame(frame);
         bool requiresGameplayDigest = LogicReplayRuntime.IsRecording;
 #if UNITY_EDITOR
         requiresGameplayDigest |= EditorLogicRuntimeStressGate.OwnsLogicClock
@@ -566,7 +596,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     }
 
 #if UNITY_EDITOR
-    private void UpdateEditorStressLogicFrames(InputManager logicInputManager, double realtime)
+    private void UpdateEditorStressLogicFrames(double realtime)
     {
         if (EditorLogicRuntimeStressGate.Status == EditorLogicRuntimeStressGateStatus.Armed)
         {
@@ -591,27 +621,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
             int actualTickCount = m_LogicFrameClock.Advance(
                 m_EditorStressCutoffRealtime,
-                () =>
-                {
-                    LogicTimeControlService.PrepareFrame(checked(m_LogicFrameClock.Frame + 1));
-                    double schedulerScale = LogicTimeControlService.SchedulerScale;
-                    if (schedulerScale != 1d)
-                    {
-                        throw new InvalidOperationException(
-                            $"Editor logic stress gate requires scheduler scale 1. frame={m_LogicFrameClock.Frame + 1}, scale={schedulerScale:R}.");
-                    }
-                    return schedulerScale;
-                },
-                (frame, cutoffRealtime) =>
-                {
-                    EditorLogicRuntimeStressGate.PrepareInputFrame(frame, cutoffRealtime);
-                    LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
-                        logicInputManager,
-                        frame,
-                        cutoffRealtime,
-                        out LogicInputFrame inputFrame);
-                    EditorLogicRuntimeStressGate.RecordFrame(inputFrame, gameplayDigest);
-                });
+                m_EditorStressScaleProvider,
+                m_EditorStressTickCallback);
 
             if (actualTickCount != requestedTickCount)
             {
@@ -629,6 +640,29 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             EditorLogicRuntimeStressGate.Fail(exception);
             throw;
         }
+    }
+
+    private double PrepareNextEditorStressLogicFrame()
+    {
+        LogicTimeControlService.PrepareFrame(checked(m_LogicFrameClock.Frame + 1));
+        double schedulerScale = LogicTimeControlService.SchedulerScale;
+        if (schedulerScale != 1d)
+        {
+            throw new InvalidOperationException(
+                $"Editor logic stress gate requires scheduler scale 1. frame={m_LogicFrameClock.Frame + 1}, scale={schedulerScale:R}.");
+        }
+        return schedulerScale;
+    }
+
+    private void ExecuteScheduledEditorStressLogicFrame(ulong frame, double cutoffRealtime)
+    {
+        EditorLogicRuntimeStressGate.PrepareInputFrame(frame, cutoffRealtime);
+        LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
+            m_LogicInputManager,
+            frame,
+            cutoffRealtime,
+            out LogicInputFrame inputFrame);
+        EditorLogicRuntimeStressGate.RecordFrame(inputFrame, gameplayDigest);
     }
 #endif
 
