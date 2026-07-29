@@ -500,6 +500,7 @@ public class SteeringMovementTests
         enemy.Alive = false;
         brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State, "敌人失效当帧应先清掉 Combat 和旧目标");
+        Assert.IsNull(targeting.CurrentTarget, "Brain 在 Targeting 阶段之前就必须清掉已失效目标，不能把退场实体带入寻路");
         brain.Tick(soldier, Fix64.One / (Fix64)60);
         Assert.AreEqual(SoldierAIBrain.SoldierState.Follow, brain.State, "敌人死后回到 Follow");
     }

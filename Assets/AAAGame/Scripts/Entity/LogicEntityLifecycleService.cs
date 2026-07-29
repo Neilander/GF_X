@@ -160,12 +160,20 @@ public static class LogicEntityLifecycleService
     {
         EnsureActive();
         LogicEntityId entityId = LogicEntityIdAllocator.Allocate();
+        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         LogicEntityState state = LogicEntityStateStore.Create(entityId, descriptor);
+        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+            UnityGameFramework.Runtime.MainThreadPerfScope.LogicStateCreate,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
         try
         {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             configure?.Invoke(state);
             if (requireConfigured)
                 state.ValidateReadyForSpawn();
+            UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+                UnityGameFramework.Runtime.MainThreadPerfScope.LogicStateConfigure,
+                System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
         }
         catch
         {
@@ -173,6 +181,7 @@ public static class LogicEntityLifecycleService
             throw;
         }
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!s_RequestedEntityIds.Add(entityId.Value))
             throw new InvalidOperationException($"LogicEntityLifecycleService.RequestSpawn failed: duplicate entity id {entityId.Value}.");
         ulong effectiveFrame = currentInteractionFrame
@@ -180,6 +189,9 @@ public static class LogicEntityLifecycleService
             : checked(LogicTimeControlService.CurrentFrame + 1);
         s_SpawnFramesByEntityId.Add(entityId.Value, effectiveFrame);
         Record(LogicEntityLifecycleCommandKind.SpawnRequested, entityId, effectiveFrame);
+        UnityGameFramework.Runtime.MainThreadFrameProfiler.Record(
+            UnityGameFramework.Runtime.MainThreadPerfScope.LogicStateRecord,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
         return entityId;
     }
 

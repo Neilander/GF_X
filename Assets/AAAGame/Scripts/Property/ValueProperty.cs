@@ -140,6 +140,7 @@ public abstract class ValueProperty : IProperty<Fix64>
             ReferencePool.Release(modifier);
         }
         _modifiers.Clear();
+        _parentIds?.Clear();
         _propertyManager = null;
         _propertyId = null;
     }

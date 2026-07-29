@@ -42,6 +42,8 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
     {
         base.OnInit(userData);
         _rangeTrans = transform.Find("CastRange");
+        if (_rangeTrans != null)
+            AttachRangeToPresentation(_rangeTrans);
     }
 
     protected override void OnShow(object userData)
@@ -83,7 +85,7 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
         }
 
         EnsureCastRange();
-        _rangeTrans.localScale = Vector3.one;
+        _rangeTrans.localScale = GetPresentationScaleCompensation(display, "cast range");
         _rangeTrans.gameObject.SetActive(true);
         UpdateCastRangeCircle(radius);
     }
@@ -180,9 +182,7 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
 
         GameObject rangeObject = new GameObject("CastRange");
         _rangeTrans = rangeObject.transform;
-        _rangeTrans.SetParent(transform, false);
-        _rangeTrans.localPosition = Vector3.zero;
-        _rangeTrans.localRotation = Quaternion.identity;
+        AttachRangeToPresentation(_rangeTrans);
 
         _rangeLineRenderer = rangeObject.AddComponent<LineRenderer>();
         _rangeLineRenderer.useWorldSpace = false;
@@ -205,9 +205,9 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
 
         EnsureAttackRangePreview();
 
-        Vector3 parentScale = transform.lossyScale;
+        Vector3 parentScale = display.lossyScale;
         if (Mathf.Abs(parentScale.x) <= 0.0001f || Mathf.Abs(parentScale.y) <= 0.0001f || Mathf.Abs(parentScale.z) <= 0.0001f)
-            throw new System.InvalidOperationException($"Hero attack range preview cannot compensate a zero transform scale. entityId={Id}, characterKey={CharacterKey}, scale={parentScale}.");
+            throw new System.InvalidOperationException($"Hero attack range preview cannot compensate a zero display scale. entityId={Id}, characterKey={CharacterKey}, scale={parentScale}.");
 
         bool scaleChanged = (_attackRangePreviewParentScale - parentScale).sqrMagnitude > 0.000001f;
         if (!_hasRenderedAttackRange || _renderedAttackRange != attackRange || scaleChanged)
@@ -235,12 +235,12 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
                 new Vector2(previewCenter.x, previewCenter.z),
                 new Vector2(previewEdge.x, previewEdge.z));
             float centerOffset = Vector2.Distance(
-                new Vector2(transform.position.x, transform.position.z),
+                new Vector2(display.position.x, display.position.z),
                 new Vector2(previewCenter.x, previewCenter.z));
             Debug.Log(
                 $"[HeroAttackRangePreview] entityId={Id}, characterKey={CharacterKey}, " +
                 $"rangeWorld={(float)attackRange:F3}, renderedRadius={renderedRadius:F3}, " +
-                $"centerOffset={centerOffset:F4}, center={transform.position}, parentScale={parentScale}.");
+                $"centerOffset={centerOffset:F4}, center={display.position}, parentScale={parentScale}.");
         }
     }
 
@@ -251,9 +251,7 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
 
         GameObject previewObject = new GameObject(AttackRangePreviewNodeName);
         _attackRangePreviewTrans = previewObject.transform;
-        _attackRangePreviewTrans.SetParent(transform, false);
-        _attackRangePreviewTrans.localPosition = Vector3.zero;
-        _attackRangePreviewTrans.localRotation = Quaternion.identity;
+        AttachRangeToPresentation(_attackRangePreviewTrans);
 
         Shader shader = Shader.Find("Sprites/Default");
         if (shader == null)
@@ -275,6 +273,30 @@ public class HeroEntity : SoldierEntity, ICastRangePresenter
         };
         _attackRangePreviewRenderer.startColor = new Color(1f, 1f, 1f, 0.75f);
         _attackRangePreviewRenderer.endColor = _attackRangePreviewRenderer.startColor;
+    }
+
+    private void AttachRangeToPresentation(Transform rangeTransform)
+    {
+        if (rangeTransform == null)
+            throw new System.ArgumentNullException(nameof(rangeTransform));
+        if (display == null)
+            throw new System.InvalidOperationException($"Hero range presentation requires a Display transform. entityId={Id}, characterKey={CharacterKey}.");
+
+        rangeTransform.SetParent(display, false);
+        rangeTransform.localPosition = Vector3.zero;
+        rangeTransform.localRotation = Quaternion.identity;
+    }
+
+    private Vector3 GetPresentationScaleCompensation(Transform parent, string presentationName)
+    {
+        if (parent == null)
+            throw new System.InvalidOperationException($"Hero {presentationName} requires a presentation parent. entityId={Id}, characterKey={CharacterKey}.");
+
+        Vector3 parentScale = parent.lossyScale;
+        if (Mathf.Abs(parentScale.x) <= 0.0001f || Mathf.Abs(parentScale.y) <= 0.0001f || Mathf.Abs(parentScale.z) <= 0.0001f)
+            throw new System.InvalidOperationException($"Hero {presentationName} cannot compensate a zero parent scale. entityId={Id}, characterKey={CharacterKey}, scale={parentScale}.");
+
+        return new Vector3(1f / parentScale.x, 1f / parentScale.y, 1f / parentScale.z);
     }
 
     private void UpdateAttackRangePreviewCircle(float radius)

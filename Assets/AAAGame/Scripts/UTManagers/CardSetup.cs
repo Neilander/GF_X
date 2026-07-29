@@ -13,6 +13,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     private CardSystemController m_CardSystemController;
     private int m_CardUIFormId = -1;
     private readonly LogicCardAutoDrawClock m_AutoDrawClock = new LogicCardAutoDrawClock();
+    private List<ICardDataProvider> m_PreloadedCardPool;
 
     private void OnEnable()
     {
@@ -27,18 +28,34 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     private void OnLevelLoadStarted()
     {
         CardSystemShutdown(false);
+        PreloadCardPool();
     }
 
     public void CardSystemSetup()
     {
-        var watch = Stopwatch.StartNew();
+        long totalStartTicks = Stopwatch.GetTimestamp();
+        long totalStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
+
+        long stageStartTicks = Stopwatch.GetTimestamp();
+        long stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         CardSystemShutdown(false);
+        RecordPerf(MainThreadPerfScope.CardSetupShutdown, stageStartTicks, stageStartBytes);
+
         m_AutoDrawClock.Reset();
         InitializeCardSystem();
+
+        stageStartTicks = Stopwatch.GetTimestamp();
+        stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         LogicCardCommandService.CommandApplying += m_CardSystemController.ApplyLogicCardCommand;
         LogicCardRuntimeState.Bind(this);
-        watch.Stop();
-        LogPhasePerf("card-setup.total", watch.ElapsedMilliseconds);
+        RecordPerf(MainThreadPerfScope.CardSetupBindRuntime, stageStartTicks, stageStartBytes);
+
+        long elapsedTicks = Stopwatch.GetTimestamp() - totalStartTicks;
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.CardSetupTotal,
+            elapsedTicks,
+            System.GC.GetAllocatedBytesForCurrentThread() - totalStartBytes);
+        LogPhasePerf("card-setup.total", TicksToMilliseconds(elapsedTicks));
     }
 
     public void CardSystemUpdate()
@@ -162,17 +179,39 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
     private void InitializeCardSystem()
     {
+        long stageStartTicks = Stopwatch.GetTimestamp();
+        long stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         m_CardSystemController = new CardSystemController();
         m_CardSystemController.Initialize();
+        RecordPerf(MainThreadPerfScope.CardSetupController, stageStartTicks, stageStartBytes);
 
-        // Load card pool from resources.
-        List<ICardDataProvider> cardPool = LoadCardPool();
+        if (m_PreloadedCardPool == null)
+        {
+            throw new System.InvalidOperationException(
+                "CardSetup.InitializeCardSystem failed: card pool was not preloaded during level loading.");
+        }
+
+        // The controller owns and clears its list during shutdown.
+        stageStartTicks = Stopwatch.GetTimestamp();
+        stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
+        List<ICardDataProvider> cardPool = new List<ICardDataProvider>(m_PreloadedCardPool);
+        RecordPerf(MainThreadPerfScope.CardSetupCopyPool, stageStartTicks, stageStartBytes);
+
+        stageStartTicks = Stopwatch.GetTimestamp();
+        stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         m_CardSystemController.SetCardPool(cardPool);
+        RecordPerf(MainThreadPerfScope.CardSetupSetPool, stageStartTicks, stageStartBytes);
 
         // Reset to empty deck and empty hand on each setup.
+        stageStartTicks = Stopwatch.GetTimestamp();
+        stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         m_CardSystemController.ResetDeckAndHand();
+        RecordPerf(MainThreadPerfScope.CardSetupReset, stageStartTicks, stageStartBytes);
 
+        stageStartTicks = Stopwatch.GetTimestamp();
+        stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         BindLogicCardPlacementWorld();
+        RecordPerf(MainThreadPerfScope.CardSetupBindWorld, stageStartTicks, stageStartBytes);
 
         Log.Info("[CardGame] Card system initialized.");
     }
@@ -193,6 +232,20 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
         }
 
         return cardPool;
+    }
+
+    private void PreloadCardPool()
+    {
+        if (m_PreloadedCardPool != null)
+            return;
+
+        var watch = Stopwatch.StartNew();
+        m_PreloadedCardPool = LoadCardPool();
+        watch.Stop();
+        Log.Info(
+            "[CardGame] Card pool preloaded during level loading. count={0}, elapsedMs={1}.",
+            m_PreloadedCardPool.Count,
+            watch.ElapsedMilliseconds);
     }
 
     private static void BindLogicCardPlacementWorld()
@@ -239,6 +292,19 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     {
         if (elapsedMilliseconds >= CardPhasePerfWarnMs)
             Log.Warning("[PhasePerf] {0}: {1}ms", step, elapsedMilliseconds);
+    }
+
+    private static void RecordPerf(MainThreadPerfScope scope, long startTicks, long startAllocatedBytes)
+    {
+        MainThreadFrameProfiler.Record(
+            scope,
+            Stopwatch.GetTimestamp() - startTicks,
+            System.GC.GetAllocatedBytesForCurrentThread() - startAllocatedBytes);
+    }
+
+    private static long TicksToMilliseconds(long ticks)
+    {
+        return ticks * 1000L / Stopwatch.Frequency;
     }
 
     public bool GenerateCardToDeck(IBuildingLogicContext sourceBuilding)

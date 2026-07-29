@@ -121,17 +121,28 @@ public static class ClusterSpawnSystem
         if (count <= 0 || radius <= Fix64.Zero || minDistance <= Fix64.Zero)
             return false;
 
-        Debug.Log($"ClusterSpawnSystem: Spawning {count} units at fixed=({center.x.RawValue},{center.y.RawValue}), unitType={unitIndex}, side={side}");
-
+        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         var spawnPositions = new List<FixVector2>(count);
         int agentTypeId = ResolveAgentTypeId(unitIndex);
-        if (!TryGetSpawnPositionsFixed(center, count, radius, minDistance, spawnPositions, avoidExistingAgents, agentTypeId))
+        bool hasSpawnPositions = TryGetSpawnPositionsFixed(
+            center,
+            count,
+            radius,
+            minDistance,
+            spawnPositions,
+            avoidExistingAgents,
+            agentTypeId);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.ClusterSpawnPositions,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
+        if (!hasSpawnPositions)
         {
             Debug.LogWarning(
                 $"ClusterSpawnSystem: spawn failed, legal points insufficient. need={count}, got={spawnPositions.Count}, centerRaw=({center.x.RawValue},{center.y.RawValue}), radiusRaw={radius.RawValue}");
             return false;
         }
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         for (int i = 0; i < spawnPositions.Count; i++)
         {
             LogicEntityId entityId = SoldierFactory.ShowSoldierFixed(
@@ -147,6 +158,9 @@ public static class ClusterSpawnSystem
             if (!entityId.IsValid)
                 throw new InvalidOperationException($"ClusterSpawnSystem failed to request unit {i}. unit={unitIndex}.");
         }
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.ClusterSpawnUnits,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
 
         return true;
     }

@@ -53,9 +53,17 @@ public static class SoldierFactory
     {
         unitLevel = NormalizeUnitLevel(unitLevel);
         string characterKey = unitType.ToString();
+        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         string prefabName = GetPrefabPathFromCharacterData(characterKey);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.SoldierResolvePrefab,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
         Const.EntityGroup entityGroup = unitType == UnitType.Unit_Hero ? Const.EntityGroup.Player : Const.EntityGroup.Creature;
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         List<BuffData> startBuffs = CreateStartBuffs(unitType, unitLevel, side, sourceBuildingInstanceId);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.SoldierCreateBuffs,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
 
         if (unitType == UnitType.Unit_Hero)
         {

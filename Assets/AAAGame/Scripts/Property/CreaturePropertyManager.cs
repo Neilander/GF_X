@@ -94,6 +94,14 @@ public class CreaturePropertyManager
         InitializeProperties();
     }
 
+    public CreaturePropertyManager(CharacterDataDetail characterData, int level)
+    {
+        _characterData = characterData ?? throw new ArgumentNullException(nameof(characterData));
+        propertyManager = new PropertyManager();
+        _level = Math.Max(1, Math.Min(3, level));
+        InitializeProperties();
+    }
+
     public CreaturePropertyManager(Func<CreatureMainProperty, Fix64> configValueProvider)
     {
         propertyManager = new PropertyManager();
@@ -305,7 +313,7 @@ public class CreaturePropertyManager
             NameValueBaseReferenceList
             );
         //初始化Config值
-        BaseValueProperty configProperty = tree.baseDictionary[RawComponent.Config] as BaseValueProperty;
+        BaseValueProperty configProperty = tree.GetBaseProperty(RawComponent.Config) as BaseValueProperty;
         if (configProperty != null)
         {
             configProperty.SetBaseValue(GetConfigValue(eName));
@@ -343,7 +351,7 @@ public class CreaturePropertyManager
             PropertyFuncRef.SumAll);
 
         //设置Name-Mul-Base的基础值
-        BaseValueProperty baseMul = mulTree.baseDictionary[NormalBaseValueTp.Base] as BaseValueProperty;
+        BaseValueProperty baseMul = mulTree.GetBaseProperty(NormalBaseValueTp.Base) as BaseValueProperty;
         if (baseMul != null)
         {
             baseMul.SetBaseValue(Fix64.One);
@@ -395,7 +403,7 @@ public class CreaturePropertyManager
             PropertyFuncRef.SumAll);
 
         //设置Name-Mul-Base的基础值
-        BaseValueProperty baseMul = mulTree.baseDictionary[NormalBaseValueTp.Base] as BaseValueProperty;
+        BaseValueProperty baseMul = mulTree.GetBaseProperty(NormalBaseValueTp.Base) as BaseValueProperty;
         if (baseMul != null)
         {
             baseMul.SetBaseValue(Fix64.One);

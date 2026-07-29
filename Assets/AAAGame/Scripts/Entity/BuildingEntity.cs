@@ -6,6 +6,8 @@ using UnityGameFramework.Runtime;
 
 public partial class BuildingEntity : MAEntity, IBuildingLogicContext
 {
+    protected override bool UsesUnitOutlinePresentation => false;
+
     public const string P_BuildingData = "BuildingData";
     public const string P_BuildingInstanceId = "BuildingInstanceId";
     public const string P_IsGameEndConditionBuilding = "IsGameEndConditionBuilding";

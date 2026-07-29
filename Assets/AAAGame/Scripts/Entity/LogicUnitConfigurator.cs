@@ -29,17 +29,24 @@ public static class LogicUnitConfigurator
         if (GF.DataTable == null)
             throw new InvalidOperationException("LogicUnitConfigurator.Configure failed: GF.DataTable is null.");
 
+        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         var table = GF.DataTable.GetDataTable<CharacterDataDetail>();
         if (table == null)
             throw new InvalidOperationException("LogicUnitConfigurator.Configure failed: CharacterDataDetail table is null.");
         CharacterDataDetail characterData = table.GetDataRow(row => row.CharacterKey == characterKey);
         if (characterData == null)
             throw new InvalidOperationException($"LogicUnitConfigurator.Configure failed: CharacterDataDetail row is missing. character={characterKey}.");
+        RecordPerf(MainThreadPerfScope.UnitConfigData, stageStartTicks);
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         int unitLevel = Math.Max(1, Math.Min(3, entityParams.UnitLevel));
-        var properties = new CreaturePropertyManager(characterKey, unitLevel);
+        var properties = new CreaturePropertyManager(characterData, unitLevel);
         int navigationAgentTypeId = AgentTypeHelper.ResolveNavAgentTypeId(characterData.Size);
+        RecordPerf(MainThreadPerfScope.UnitConfigProperties, stageStartTicks);
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         IControlBrain brain = BrainFactory.Create(entityParams.BrainType, state, entityParams);
+        RecordPerf(MainThreadPerfScope.UnitConfigBrain, stageStartTicks);
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         state.Configure(
             characterData,
             properties,
@@ -49,19 +56,27 @@ public static class LogicUnitConfigurator
             true,
             entityParams.BrainType == BrainType.Player,
             entityParams.LogicSkillFactoryKind == LogicSkillFactoryKind.Player);
+        RecordPerf(MainThreadPerfScope.UnitConfigState, stageStartTicks);
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         ConfigureDefendEnemySpawnSpeed(state, entityParams);
+        RecordPerf(MainThreadPerfScope.UnitConfigDefend, stageStartTicks);
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         var moveComp = new CharacterMoveComp();
         state.SetMoveComp(moveComp);
         moveComp.Init(state, navigationAgentTypeId);
+        RecordPerf(MainThreadPerfScope.UnitConfigMove, stageStartTicks);
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         IAtkComp attackComp = entityParams.BrainType == BrainType.Player
             ? new MoveAtkComp()
             : new DirectAtkComp();
         state.SetAtkComp(attackComp);
         attackComp.Init(state);
+        RecordPerf(MainThreadPerfScope.UnitConfigAttack, stageStartTicks);
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         ITargetingComp targetingComp = WeaponTargetRules.IsHealingWeapon(state.WeaponComp.Data.Type)
             ? new HealTargetingComp()
             : new CharacterTargetingComp();
@@ -76,23 +91,30 @@ public static class LogicUnitConfigurator
             entityParams,
             targetingComp,
             ResolveDefendFallbackTarget(state, entityParams));
+        RecordPerf(MainThreadPerfScope.UnitConfigTargeting, stageStartTicks);
 
         if (brain is SoldierAIBrain soldierBrain)
         {
-            soldierBrain.SetBirthPositionFixed(state.Position);
-            soldierBrain.SetReturnToBirthEnabled(entityParams.BrainType != BrainType.DefendEnemyAI);
+            bool returnToBirthEnabled = entityParams.Side == SideType.EnemySide
+                                        && entityParams.BrainType != BrainType.DefendEnemyAI;
+            soldierBrain.SetReturnToBirthEnabled(returnToBirthEnabled);
+            if (returnToBirthEnabled)
+                soldierBrain.SetBirthPositionFixed(state.Position);
         }
 
         if (entityParams.LogicSkillFactoryKind != LogicSkillFactoryKind.None)
         {
+            stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             string factoryName = entityParams.LogicSkillFactoryKind == LogicSkillFactoryKind.Player
                 ? "PlayerSkillFactory"
                 : "CharacterSkillFactory";
             FactoryHelper.CreatePreloadedSkillComp(
                 UtilityBuiltin.AssetsPath.GetSkillFactoryPath(factoryName),
                 state);
+            RecordPerf(MainThreadPerfScope.UnitConfigSkills, stageStartTicks);
         }
 
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         if (state.IsHeroEntity)
         {
             state.BuffComp.AddBuff(
@@ -114,6 +136,14 @@ public static class LogicUnitConfigurator
                 state.BuffComp.AddBuff(buff, state);
             }
         }
+        RecordPerf(MainThreadPerfScope.UnitConfigBuffs, stageStartTicks);
+    }
+
+    private static void RecordPerf(MainThreadPerfScope scope, long startTicks)
+    {
+        MainThreadFrameProfiler.Record(
+            scope,
+            System.Diagnostics.Stopwatch.GetTimestamp() - startTicks);
     }
 
     public static void ConfigureDefendEnemySpawnSpeed(LogicEntityState state, EntityParams entityParams)

@@ -4,7 +4,9 @@ using GameFramework;
 
 public class PropertyManager : IReference
 {
-    private Dictionary<string, IProperty> _properties = new Dictionary<string, IProperty>();
+    private const int InitialPropertyCapacity = 80;
+    private Dictionary<string, IProperty> _properties =
+        new Dictionary<string, IProperty>(InitialPropertyCapacity, System.StringComparer.Ordinal);
 
     public void RegisterProperty(IProperty property)
     {

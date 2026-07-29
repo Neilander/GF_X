@@ -279,6 +279,11 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 {
                     // 立即清掉旧导航目标，防止继续走向已死敌人
                     self.MoveComp.StopMove();
+                    if (self.TargetComp != null)
+                    {
+                        self.TargetComp.CurrentTarget = null;
+                        self.TargetComp.ClearAggro();
+                    }
                     if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
                     {
                         GameDebugSettings.Log(DebugCategory.Brain,

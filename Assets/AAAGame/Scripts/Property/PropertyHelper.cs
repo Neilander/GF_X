@@ -31,27 +31,23 @@ public static class PropertyHelper
         Func<Func<Fix64>[], Func<Fix64>>refFunc, 
         Dictionary<T,string> referenceProperties = null) where T:Enum
     {
-        Array enumValues = Enum.GetValues(typeof(T));
-        List<ValueProperty>  baseList = new List<ValueProperty>();
+        T[] enumValues = PropertyEnumCache<T>.Values;
+        string[] enumNames = PropertyEnumCache<T>.Names;
+        ValueProperty[] baseProperties = new ValueProperty[enumValues.Length];
         for (int i = 0; i < enumValues.Length; i++)
         {
-            T enumValue = (T)enumValues.GetValue(i);
-            string enumString = enumValues.GetValue(i).ToString();
+            T enumValue = enumValues[i];
+            string enumString = enumNames[i];
             string computeId = ModName(ModName(fatherPName, selfSuffix), enumString);
             ValueProperty property = null;
-            bool needParent = true;
-            if (referenceProperties != null && referenceProperties.Keys.Contains(enumValue))
+            if (referenceProperties != null && referenceProperties.TryGetValue(enumValue, out string refId))
             {
-                string refId = referenceProperties[enumValue];
                 property = manager.GetValueProperty(refId);
                 if (property == null)
                 {
-                    //needParent = false;
-                    property = manager.GetValueProperty(refId);
+                    throw new InvalidOperationException(
+                        $"Property tree reference '{refId}' is missing while building '{ModName(fatherPName, selfSuffix)}'.");
                 }
-                
-                if(property == null)
-                    GF.LogError("在构建属性树的时候，其中一个Reference值并不存在");
             }
             else
             {
@@ -60,36 +56,22 @@ public static class PropertyHelper
                 property.Register(manager);
             }
 
-            if (needParent)
-            {
-                property.NotifyParentDirty(ModName(fatherPName,selfSuffix));
-            }
-            
-            baseList.Add(property);
+            property.NotifyParentDirty(ModName(fatherPName,selfSuffix));
+            baseProperties[i] = property;
         }
-        Func<Fix64>[] funcArray = new Func<Fix64>[baseList.Count];
+        Func<Fix64>[] funcArray = new Func<Fix64>[baseProperties.Length];
         for (int i = 0; i < funcArray.Length; i++)
         {
             int index = i;
-            funcArray[index] = () => //manager.GetBaseValueProperty(baseList[index].PropertyId).GetValue();
+            ValueProperty property = baseProperties[index];
+            string propertyId = property.PropertyId;
+            funcArray[index] = () =>
             {
-                if (baseList[index] == null)
-                {
-                    Debug.LogError($"BaseList[{index}] is NULL at build time!");
-                    return Fix64.Zero;
-                }
-
-                if (baseList[index].PropertyId == null)
-                {
-                    Debug.LogError($"BaseList[{index}] PropertyId is NULL!");
-                    return Fix64.Zero;
-                }
-
-                var p = manager.GetValueProperty(baseList[index].PropertyId);
+                ValueProperty p = manager.GetValueProperty(propertyId);
                 if (p == null)
                 {
-                    Debug.LogError($"BaseValueProperty '{baseList[index].PropertyId}' NOT FOUND in manager!");
-                    return Fix64.Zero;
+                    throw new InvalidOperationException(
+                        $"Property tree node '{propertyId}' is missing from its manager.");
                 }
 
                 return p.GetValue();
@@ -103,7 +85,7 @@ public static class PropertyHelper
         if(fatherPName != "")
             compVP.NotifyParentDirty(fatherPName);
         
-        ComputePropertyTree<T> tree = new ComputePropertyTree<T>(baseList, compVP);
+        ComputePropertyTree<T> tree = new ComputePropertyTree<T>(baseProperties, compVP);
         return tree;
 
     }
@@ -112,18 +94,21 @@ public static class PropertyHelper
         PropertyManager manager, Func<Func<Fix64>[], Func<Fix64>> refFunc) where T:Enum
     {
         
-        Array enumValues = Enum.GetValues(typeof(T));
+        T[] enumValues = PropertyEnumCache<T>.Values;
+        string[] enumNames = PropertyEnumCache<T>.Names;
         Func<Fix64>[] funcArray = new Func<Fix64>[enumValues.Length];
-        List<ValueProperty> baseList = new List<ValueProperty>(enumValues.Length);
+        ValueProperty[] baseProperties = new ValueProperty[enumValues.Length];
         
         for (var i = 0; i < funcArray.Length; i++)
         {
             var index = i;
-            var id = ModName(ModName(fatherPName, selfSuffix), enumValues.GetValue(index).ToString());
+            string id = ModName(ModName(fatherPName, selfSuffix), enumNames[index]);
 
 // 新增：把取到的 ComputeValueProperty 放进 baseList
             ValueProperty cvp = manager.GetValueProperty(id);
-            baseList.Add(cvp);
+            if (cvp == null)
+                throw new InvalidOperationException($"Property tree node '{id}' is missing while binding '{ModName(fatherPName, selfSuffix)}'.");
+            baseProperties[index] = cvp;
 
 // 原来的 func 捕获也改成基于 cvp
             funcArray[index] = () => cvp.GetValue();
@@ -135,7 +120,7 @@ public static class PropertyHelper
         if (fatherPName != "")
             compVP.NotifyParentDirty(fatherPName);
         
-        ComputePropertyTree<T> tree = new ComputePropertyTree<T>(baseList, compVP);
+        ComputePropertyTree<T> tree = new ComputePropertyTree<T>(baseProperties, compVP);
         return tree;
         
     }
@@ -159,25 +144,51 @@ public static class PropertyHelper
 
 
 
+internal static class PropertyEnumCache<T> where T : Enum
+{
+    public static readonly T[] Values = (T[])Enum.GetValues(typeof(T));
+    public static readonly string[] Names = CreateNames();
+
+    public static int IndexOf(T value)
+    {
+        EqualityComparer<T> comparer = EqualityComparer<T>.Default;
+        for (int i = 0; i < Values.Length; i++)
+        {
+            if (comparer.Equals(Values[i], value))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static string[] CreateNames()
+    {
+        var names = new string[Values.Length];
+        for (int i = 0; i < Values.Length; i++)
+            names[i] = Values[i].ToString();
+        return names;
+    }
+}
+
 public class ComputePropertyTree<T> where T : Enum 
 {
-    public Dictionary<T,ValueProperty> baseDictionary;
+    private readonly ValueProperty[] m_BaseProperties;
     public ComputeValueProperty fatherProperty;
     
     public ComputePropertyTree(
-        List<ValueProperty> baseList,
+        ValueProperty[] baseProperties,
         ComputeValueProperty father)
     {
-        baseDictionary = new Dictionary<T, ValueProperty>();
+        m_BaseProperties = baseProperties ?? throw new ArgumentNullException(nameof(baseProperties));
         fatherProperty = father;
+    }
 
-        Array enumValues = Enum.GetValues(typeof(T));
-
-        for (int i = 0; i < enumValues.Length && i < baseList.Count; i++)
-        {
-            T key = (T)enumValues.GetValue(i);
-            baseDictionary[key] = baseList[i];
-        }
+    public ValueProperty GetBaseProperty(T key)
+    {
+        int index = PropertyEnumCache<T>.IndexOf(key);
+        if (index < 0 || index >= m_BaseProperties.Length)
+            throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown property-tree key.");
+        return m_BaseProperties[index];
     }
 }
 

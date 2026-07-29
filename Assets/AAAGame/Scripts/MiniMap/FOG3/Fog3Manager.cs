@@ -1497,6 +1497,8 @@ namespace AAAGame.MiniMap.FOG3
             int rendererWriteCount = 0;
             int animatorWriteCount = 0;
             int staleCount = 0;
+            long bindTicks = 0L;
+            long stateCreateTicks = 0L;
             long resolveTicks = 0L;
             long eventTicks = 0L;
             long applyTicks = 0L;
@@ -1529,7 +1531,10 @@ namespace AAAGame.MiniMap.FOG3
                         continue;
 
                     enemyEntityCount++;
-                    if (!TryResolveBoundView(logicEntity, out MAEntity entity))
+                    long bindStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    bool hasBoundView = TryResolveBoundView(logicEntity, out MAEntity entity);
+                    bindTicks += System.Diagnostics.Stopwatch.GetTimestamp() - bindStartTicks;
+                    if (!hasBoundView)
                         continue;
 
                     int entityId = entity.Id;
@@ -1538,16 +1543,15 @@ namespace AAAGame.MiniMap.FOG3
                         lv0BuildingCount++;
                         if (enemyVisibilityStates.ContainsKey(entityId))
                             enemyVisibilityStates.Remove(entityId);
-
-                        building.RefreshLv0PhaseVisibility();
-                        HealthBarComp.SetFogVisible(entityId, false);
                         continue;
                     }
 
                     if (!enemyVisibilityStates.TryGetValue(entityId, out Fog3EntityVisibilityState visibilityState) || visibilityState.Entity != entity)
                     {
+                        long stateCreateStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                         visibilityState = new Fog3EntityVisibilityState(entity, entity is BuildingEntity);
                         enemyVisibilityStates[entityId] = visibilityState;
+                        stateCreateTicks += System.Diagnostics.Stopwatch.GetTimestamp() - stateCreateStartTicks;
                         stateCreatedCount++;
                     }
 
@@ -1614,6 +1618,13 @@ namespace AAAGame.MiniMap.FOG3
             {
                 long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - enemyStartTicks;
                 MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyVisibility, elapsedTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyBind, bindTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyStateCreate, stateCreateTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyResolve, resolveTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyEvent, eventTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyApply, applyTicks);
+                MainThreadFrameProfiler.Record(MainThreadPerfScope.Fog3EnemyStale, staleTicks);
+                long healthDiagnosticsStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 HealthBarComp.ConsumeFogVisibilityDiagnostics(
                     out int healthCalls,
                     out int healthCacheHits,
@@ -1621,6 +1632,9 @@ namespace AAAGame.MiniMap.FOG3
                     out int healthNoOps,
                     out int healthCanvasWrites,
                     out long healthInternalTicks);
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.Fog3EnemyHealth,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - healthDiagnosticsStartTicks);
 
                 double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 if (logPerformanceDiagnostics && elapsedMs >= 2.0)

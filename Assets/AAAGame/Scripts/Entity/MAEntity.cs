@@ -13,6 +13,7 @@ public class MAEntity : CompCreature, IEntityContext
     private bool _isViewBound;
     public LogicEntityState LogicState => _logicState;
     protected override bool InterpolateRenderRotation => false;
+    protected virtual bool UsesUnitOutlinePresentation => true;
 
     public CharacterDataDetail CharacterData { get; protected set; }
     public int UnitLevel { get; protected set; } = 1;
@@ -198,7 +199,8 @@ public class MAEntity : CompCreature, IEntityContext
             targetSide = ep.Side;
         }
 
-        if (targetSide == SideType.PlayerSide || targetSide == SideType.EnemySide)
+        if (UsesUnitOutlinePresentation
+            && (targetSide == SideType.PlayerSide || targetSide == SideType.EnemySide))
         {
             var outline = gameObject.GetComponent<AAAGame.Effect.UnitOutline>();
             if (outline == null)

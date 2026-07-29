@@ -55,7 +55,42 @@ namespace UnityGameFramework.Runtime
         EntityShowTotal = 45,
         EntityLogicShow = 46,
         EntitySuccessEvent = 47,
-        Count = 48
+        Fog3EnemyBind = 48,
+        Fog3EnemyStateCreate = 49,
+        Fog3EnemyResolve = 50,
+        Fog3EnemyEvent = 51,
+        Fog3EnemyApply = 52,
+        Fog3EnemyStale = 53,
+        Fog3EnemyHealth = 54,
+        ClusterSpawnLog = 55,
+        ClusterSpawnPositions = 56,
+        ClusterSpawnUnits = 57,
+        SoldierResolvePrefab = 58,
+        SoldierCreateBuffs = 59,
+        SoldierCreateParams = 60,
+        LogicStateCreate = 61,
+        LogicStateConfigure = 62,
+        LogicStateRecord = 63,
+        SoldierViewEnqueue = 64,
+        UnitConfigData = 65,
+        UnitConfigProperties = 66,
+        UnitConfigBrain = 67,
+        UnitConfigState = 68,
+        UnitConfigDefend = 69,
+        UnitConfigMove = 70,
+        UnitConfigAttack = 71,
+        UnitConfigTargeting = 72,
+        UnitConfigSkills = 73,
+        UnitConfigBuffs = 74,
+        CardSetupTotal = 75,
+        CardSetupShutdown = 76,
+        CardSetupController = 77,
+        CardSetupCopyPool = 78,
+        CardSetupSetPool = 79,
+        CardSetupReset = 80,
+        CardSetupBindWorld = 81,
+        CardSetupBindRuntime = 82,
+        Count = 83
     }
 
     public static class MainThreadFrameProfiler
@@ -108,6 +143,12 @@ namespace UnityGameFramework.Runtime
 
         public static bool LoggingEnabled { get; set; }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetForPlaySession()
+        {
+            LoggingEnabled = false;
+        }
+
         public static void PulseFrame()
         {
             EnsureFrame();
@@ -138,13 +179,19 @@ namespace UnityGameFramework.Runtime
         {
             int frame = Time.frameCount;
             long now = Stopwatch.GetTimestamp();
-            if (!_initialized)
+            if (!_initialized || frame < _frame)
             {
+                bool frameRolledBack = _initialized;
                 _initialized = true;
+                Array.Clear(ScopeTicks, 0, ScopeTicks.Length);
+                Array.Clear(ScopeCalls, 0, ScopeCalls.Length);
+                Array.Clear(ScopeAllocatedBytes, 0, ScopeAllocatedBytes.Length);
                 _frame = frame;
                 _frameStartTicks = now;
                 _frameStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
                 _frameStartCollectionCount = GetCollectionCount();
+                if (frameRolledBack)
+                    _lastLogFrame = -100000;
                 return;
             }
 
@@ -181,7 +228,8 @@ namespace UnityGameFramework.Runtime
             bool forceLog = frameTicks >= ForceLogFrameTicks
                             || trackedTicks >= ForceTrackedLogTicks
                             || allocatedBytes >= ForceAllocationLogBytes
-                            || collectionCount > 0;
+                            || collectionCount > 0
+                            || ScopeCalls[(int)MainThreadPerfScope.ClusterSpawnUnits] > 0;
             if (!slowFrame && !enoughTracked && !highAllocation && collectionCount <= 0)
                 return;
             int minLogFrameInterval = highAllocation ? 10 : MinLogFrameInterval;
@@ -200,8 +248,8 @@ namespace UnityGameFramework.Runtime
                 "gf={4:F3}ms/{5} flow={6:F3}ms/{7} flowConfig={8:F3}ms/{9} flowSource={10:F3}ms/{11} " +
                 "fogUpdate={12:F3}ms/{13} fogVisibility={14:F3}ms/{15} fogOverlay={16:F3}ms/{17} fogEnemy={18:F3}ms/{19} " +
                 "interactionTrigger={20:F3}ms/{21} interactionCleanup={22:F3}ms/{23} interactionDetail({24}) entity={25:F3}ms/{26} " +
-                "entityDetail({27}) moveExecDetail({28}) characterMoveDetail({29}) entityShowDetail({30}) env(targetFps={31},vSync={32},screen={33}x{34},focused={35},gcIncremental={36}) markers({37}) " +
-                "alloc(frame={38:F1}KB,gcCollections={39},scopes={40})",
+                "entityDetail({27}) moveExecDetail({28}) characterMoveDetail({29}) entityShowDetail({30}) fogEnemyDetail({31}) spawnDetail({32}) " +
+                "env(targetFps={33},vSync={34},screen={35}x{36},focused={37},gcIncremental={38}) markers({39}) alloc(frame={40:F1}KB,gcCollections={41},scopes={42})",
                 _frame,
                 frameMs,
                 trackedMs,
@@ -222,6 +270,8 @@ namespace UnityGameFramework.Runtime
                 BuildScopeSummary(MainThreadPerfScope.MoveExecutorConstraint, MainThreadPerfScope.MoveExecutorControllerMove),
                 BuildScopeSummary(MainThreadPerfScope.CharacterMoveSteering, MainThreadPerfScope.CharacterMovePrepare),
                 BuildScopeSummary(MainThreadPerfScope.EntityShowRequest, MainThreadPerfScope.EntitySuccessEvent),
+                BuildScopeSummary(MainThreadPerfScope.Fog3EnemyBind, MainThreadPerfScope.Fog3EnemyHealth),
+                BuildScopeSummary(MainThreadPerfScope.ClusterSpawnLog, MainThreadPerfScope.CardSetupBindRuntime),
                 Application.targetFrameRate,
                 QualitySettings.vSyncCount,
                 Screen.width,

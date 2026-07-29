@@ -78,6 +78,7 @@ public static class MAEntityFactory
         System.Action<EntityParams> configureParams = null,
         int unitLevel = 1)
     {
+        long stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         EntityParams entityParams = CreateMAEntityParamsFixed(
             position,
             viewY,
@@ -89,7 +90,14 @@ public static class MAEntityFactory
             unitLevel,
             LogicSkillFactoryKind.None,
             configureParams);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.SoldierCreateParams,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
+        stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         int viewRequestId = LogicEntityViewSpawnQueue.EnqueueSoldier(prefabName, entityGroup, entityParams);
+        MainThreadFrameProfiler.Record(
+            MainThreadPerfScope.SoldierViewEnqueue,
+            System.Diagnostics.Stopwatch.GetTimestamp() - stageStartTicks);
         if (viewRequestId <= 0)
             throw new System.InvalidOperationException($"MAEntityFactory.ShowSoldierFixed failed to request view. logicEntity={entityParams.LogicEntityId.Value}, prefab={prefabName}.");
         return entityParams.LogicEntityId;
