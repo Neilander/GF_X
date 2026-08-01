@@ -13,6 +13,7 @@ public readonly struct LogicAgentCollisionShadowState
         FixVector2 finalResolvedPosition,
         bool staticProjectionAvailable,
         bool staticProjectionSucceeded,
+        FixVector2 firstHitNormal,
         LogicStaticCollisionContactKind staticContactKind,
         int staticContactCellX,
         int staticContactCellY,
@@ -27,6 +28,7 @@ public readonly struct LogicAgentCollisionShadowState
         FinalResolvedPosition = finalResolvedPosition;
         StaticProjectionAvailable = staticProjectionAvailable;
         StaticProjectionSucceeded = staticProjectionSucceeded;
+        FirstHitNormal = firstHitNormal;
         StaticContactKind = staticContactKind;
         StaticContactCellX = staticContactCellX;
         StaticContactCellY = staticContactCellY;
@@ -44,6 +46,7 @@ public readonly struct LogicAgentCollisionShadowState
     public FixVector2 FinalResolvedPosition { get; }
     public bool StaticProjectionAvailable { get; }
     public bool StaticProjectionSucceeded { get; }
+    public FixVector2 FirstHitNormal { get; }
     public LogicStaticCollisionContactKind StaticContactKind { get; }
     public int StaticContactCellX { get; }
     public int StaticContactCellY { get; }
@@ -300,6 +303,7 @@ public static class LogicAgentCollisionShadowService
             FixVector2 staticPosition = pairState.Position;
             bool staticAvailable = false;
             bool staticSucceeded = false;
+            FixVector2 firstHitNormal = FixVector2.Zero;
             LogicStaticCollisionContactKind staticContactKind = LogicStaticCollisionContactKind.None;
             int staticContactCellX = -1;
             int staticContactCellY = -1;
@@ -324,6 +328,7 @@ public static class LogicAgentCollisionShadowService
                 if (recordFinalState)
                     LastStaticProjectionAvailableCount++;
                 staticSucceeded = staticResult.SolveResult.Success;
+                firstHitNormal = staticResult.SolveResult.FirstHitNormal;
                 staticContactKind = staticResult.ContactKind;
                 staticContactCellX = staticResult.ContactCellX;
                 staticContactCellY = staticResult.ContactCellY;
@@ -386,6 +391,7 @@ public static class LogicAgentCollisionShadowService
                     resolvedPosition,
                     staticAvailable,
                     staticSucceeded,
+                    firstHitNormal,
                     staticContactKind,
                     staticContactCellX,
                     staticContactCellY,
@@ -545,6 +551,26 @@ public static class LogicAgentCollisionShadowService
                 $"LogicAgentCollisionShadowService.GetRequiredResolvedPosition failed: entity {entityId.Value} has no resolved position at frame {frameId}.");
         }
         return position;
+    }
+
+    public static LogicAgentCollisionShadowState GetRequiredState(LogicEntityId entityId, ulong frameId)
+    {
+        if (!entityId.IsValid)
+            throw new ArgumentException("Collision state lookup requires a valid entity id.", nameof(entityId));
+        if (LastCompletedFrame != frameId || frameId != LogicFrameRuntime.CurrentFrame)
+        {
+            throw new InvalidOperationException(
+                $"LogicAgentCollisionShadowService.GetRequiredState failed: frame mismatch. requested={frameId}, completed={LastCompletedFrame}, current={LogicFrameRuntime.CurrentFrame}.");
+        }
+
+        for (int i = 0; i < s_States.Count; i++)
+        {
+            if (s_States[i].EntityId == entityId)
+                return s_States[i];
+        }
+
+        throw new InvalidOperationException(
+            $"LogicAgentCollisionShadowService.GetRequiredState failed: entity {entityId.Value} has no collision state at frame {frameId}.");
     }
 
     public static void Clear()

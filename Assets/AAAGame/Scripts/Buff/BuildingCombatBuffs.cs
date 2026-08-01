@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using GameFramework;
 using GameFramework.Event;
 using UnityEngine;
+using AAAGame.Scripts.BuffSystem;
 
 public static class BuildingAbilityIds
 {
@@ -167,8 +168,6 @@ public sealed class BlindChanceBonusBuff : BuffCallback
 
 public sealed class PullOnOutgoingDamageBuff : BuffCallback
 {
-    private const string PullDistancePerLevelKey = "MeatRackPullDistancePerLevel";
-    private const string PullDurationKey = "MeatRackPullDuration";
     private readonly Fix64 _pullLevel;
 
     public PullOnOutgoingDamageBuff(Fix64 pullLevel)
@@ -178,27 +177,30 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (_pullLevel <= Fix64.Zero)
+        if (target is not IEntityContext targetEntity)
             return baseDamage;
+        if (hostEntity == null)
+            throw new InvalidOperationException("Pull buff is not initialized.");
+        if (hostEntity.BuffComp is not CharacterBuffComp buffComp)
+            throw new InvalidOperationException($"Pull source has no CharacterBuffComp. source={hostEntity.LogicEntityId.Value}.");
 
-        if (hostEntity == null || target is not IEntityContext targetEntity || targetEntity.DurationMoveEffectComp == null)
+        Fix64 totalLevel = Fix64.Zero;
+        PullOnOutgoingDamageBuff first = null;
+        foreach (BuffCallback module in buffComp.EnumerateAllModules())
+        {
+            if (module is not PullOnOutgoingDamageBuff pull)
+                continue;
+            first ??= pull;
+            totalLevel += pull._pullLevel;
+        }
+        if (first == null)
+            throw new InvalidOperationException("Pull buff is missing from its host BuffComp.");
+        if (!ReferenceEquals(first, this))
             return baseDamage;
+        if (targetEntity.DurationMoveEffectComp == null)
+            throw new InvalidOperationException($"Pull target has no displacement component. target={targetEntity.LogicEntityId.Value}.");
 
-        FixVector2 direction = LogicEntityFrameSnapshotService.GetRequiredPosition(hostEntity)
-                               - LogicEntityFrameSnapshotService.GetRequiredPosition(targetEntity);
-        if (FixVector2.SqrMagnitude(direction) == Fix64.Zero)
-            return baseDamage;
-        direction = direction.GetNormalized();
-
-        Fix64 distance = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PullDistancePerLevelKey) * _pullLevel;
-        Fix64 duration = Fix64.Max(
-            Fix64.FromRaw(41),
-            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PullDurationKey));
-        Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
-        FixVector2 speedFixed = direction * (worldDistance / duration);
-
-        targetEntity.AtkComp?.InterruptAttack(AttackInterruptReason.Displacement);
-        targetEntity.DurationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
+        targetEntity.DurationMoveEffectComp.TryStartPull(hostEntity.LogicEntityId, totalLevel);
         return baseDamage;
     }
 }

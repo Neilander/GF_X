@@ -129,8 +129,6 @@ public sealed class HealOnOutgoingDamageBuff : BuffCallback
 
 public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
 {
-    private const string PushDistancePerLevelKey = "HydroGunnerPushDistancePerLevel";
-    private const string PushDurationKey = "HydroGunnerPushDuration";
     private readonly Fix64 m_PushLevel;
 
     public KnockbackOnOutgoingDamageBuff(Fix64 pushLevel)
@@ -140,27 +138,35 @@ public sealed class KnockbackOnOutgoingDamageBuff : BuffCallback
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (m_PushLevel <= Fix64.Zero)
+        if (target is not IEntityContext targetEntity)
             return baseDamage;
+        if (hostEntity == null)
+            throw new InvalidOperationException("Knockback buff is not initialized.");
+        if (hostEntity.BuffComp is not CharacterBuffComp buffComp)
+            throw new InvalidOperationException($"Knockback source has no CharacterBuffComp. source={hostEntity.LogicEntityId.Value}.");
 
-        if (hostEntity == null || target is not IEntityContext targetEntity || targetEntity.DurationMoveEffectComp == null)
+        Fix64 totalLevel = Fix64.Zero;
+        KnockbackOnOutgoingDamageBuff first = null;
+        foreach (BuffCallback module in buffComp.EnumerateAllModules())
+        {
+            if (module is not KnockbackOnOutgoingDamageBuff knockback)
+                continue;
+            first ??= knockback;
+            totalLevel += knockback.m_PushLevel;
+        }
+        if (first == null)
+            throw new InvalidOperationException("Knockback buff is missing from its host BuffComp.");
+        if (!ReferenceEquals(first, this))
             return baseDamage;
+        if (targetEntity.DurationMoveEffectComp == null)
+            throw new InvalidOperationException($"Knockback target has no displacement component. target={targetEntity.LogicEntityId.Value}.");
 
         FixVector2 direction = LogicEntityFrameSnapshotService.GetRequiredPosition(targetEntity)
                                - LogicEntityFrameSnapshotService.GetRequiredPosition(hostEntity);
         if (FixVector2.SqrMagnitude(direction) == Fix64.Zero)
             direction = LogicEntityFrameSnapshotService.GetRequiredForward(hostEntity);
         direction = direction.GetNormalized();
-
-        Fix64 distance = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PushDistancePerLevelKey) * m_PushLevel;
-        Fix64 duration = Fix64.Max(
-            Fix64.FromRaw(41),
-            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(PushDurationKey));
-        Fix64 worldDistance = DistanceUnitConverter.ConvertToWorld(distance);
-        FixVector2 speedFixed = direction * (worldDistance / duration);
-
-        targetEntity.AtkComp?.InterruptAttack(AttackInterruptReason.Displacement);
-        targetEntity.DurationMoveEffectComp.StartDurationAdditionalMove(duration, speedFixed);
+        targetEntity.DurationMoveEffectComp.TryApplyKnockback(direction, totalLevel);
         return baseDamage;
     }
 }

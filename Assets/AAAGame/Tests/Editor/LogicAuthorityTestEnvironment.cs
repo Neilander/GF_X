@@ -29,10 +29,15 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
         "LargeUnitCollisionRadius",
         "SuperLargeUnitCollisionRadius",
         "BaseCriticalDamageRate",
-        "HydroGunnerPushDistancePerLevel",
-        "HydroGunnerPushDuration",
-        "MeatRackPullDistancePerLevel",
-        "MeatRackPullDuration",
+        DisplacementForceUtility.KnockbackForceLevelM1Key,
+        DisplacementForceUtility.KnockbackForceLevel0Key,
+        DisplacementForceUtility.KnockbackForceLevel1Key,
+        DisplacementForceUtility.PullForceLevelM1Key,
+        DisplacementForceUtility.PullForceLevel0Key,
+        DisplacementForceUtility.PullForceLevel1Key,
+        DisplacementForceUtility.PullDurationLevelM1Key,
+        DisplacementForceUtility.PullDurationLevel0Key,
+        DisplacementForceUtility.FrictionKey,
         "HeroVisionRadius",
         "UnitVisionRadius",
         "BuildingVisionRadius",
@@ -44,7 +49,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
 
     private static readonly string[] ConfigValues =
     {
-        "0.05", "12", "22", "36", "54", "50", "120", "0.18", "120", "0.18",
+        "0.05", "12", "22", "36", "54", "50", "3", "8", "12", "5", "25", "100", "0.4", "1", "12",
         "1200", "900", "900", "0.8", "500", "1.2", "0.5"
     };
 

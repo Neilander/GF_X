@@ -19,19 +19,16 @@
 	ResourcePointInitialAmount	资源点初始资源量	60
 	BuildingRecycleRefundRate	回收建筑返还资源百分比	50
 	BaseCriticalDamageRate	基础暴击伤害百分比	50
-	HydroGunnerPushDistancePerLevel	水枪兵每级击退距离	120
-	HydroGunnerPushDuration	水枪兵击退持续时间	0.18
-	MeatRackPullDistancePerLevel	肉架每级拉扯距离	120
-	MeatRackPullDuration	肉架拉扯持续时间	0.18
 	MinimumDamagePerHit	单次伤害下限	1
-	KnockbackForceLevel0	0级推力	1
-	KnockbackForceLevel1	1级推力	2
-	KnockbackForceLevel2	2级推力	3
-	KnockbackForceLevel3	3级推力	4
-	PullForceLevel0	0级拉力	1
-	PullForceLevel1	1级拉力	2
-	PullForceLevel2	2级拉力	3
-	PullForceLevel3	3级拉力	4
+	KnockbackForceLevelM1	-1级推力	3
+	KnockbackForceLevel0	0级推力	8
+	KnockbackForceLevel1	1级及以上推力	12
+	PullForceLevelM1	-1级拉力	5
+	PullForceLevel0	0级拉力	25
+	PullForceLevel1	1级及以上拉力	100
+	PullDurationLevelM1	-1级拉力作用时间	0.4
+	PullDurationLevel0	0级及以上拉力作用时间	1
+	Friction	摩擦力	12
 	DefendPhaseEnemyArriveInterval	防御阶段出怪间隔	0.8
 	DefendPhaseEnemyMinSpeed	防御阶段出怪移速最小值	500
 	DefendPhaseEnemyEndlessGrowthRate	防御阶段无尽出怪增长率	1.2

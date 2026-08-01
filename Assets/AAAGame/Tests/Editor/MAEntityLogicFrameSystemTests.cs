@@ -410,6 +410,111 @@ public class MAEntityLogicFrameSystemTests
         Assert.That((float)authoredBlocker.SolveResult.ResolvedDisplacement.y, Is.EqualTo(0f).Within(0.003f));
     }
 
+    [Test]
+    public void 失衡退出当帧恢复单位碰撞并解开与附近敌人的重叠()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            LogicEntityState displaced = CreateDisplacementTestUnit(101, SideType.PlayerSide, FixVector2.Zero);
+            LogicEntityState nearby = CreateDisplacementTestUnit(102, SideType.EnemySide, FixVector2.Zero);
+
+            Assert.IsTrue(displaced.DurationMoveEffectComp.TryApplyKnockback(
+                new FixVector2(Fix64.One, Fix64.Zero),
+                (Fix64)3));
+            displaced.DurationMoveEffectComp.CommitStaticCollision(new FixVector2(-Fix64.One, Fix64.Zero));
+
+            for (ulong frame = 1; frame <= 3; frame++)
+            {
+                LogicFrameRuntime.Tick(frame);
+                Assert.IsTrue(displaced.DurationMoveEffectComp.IsInLossOfBalance);
+                Assert.AreEqual(0u, displaced.AgentCollisionMask);
+                Assert.AreEqual(FixVector2.Zero, displaced.Position);
+                Assert.AreEqual(FixVector2.Zero, nearby.Position);
+            }
+
+            LogicFrameRuntime.Tick(4);
+
+            Assert.IsFalse(displaced.DurationMoveEffectComp.IsInLossOfBalance);
+            Assert.AreNotEqual(0u, displaced.AgentCollisionMask);
+            Assert.Greater(LogicAgentCollisionShadowService.LastPairCorrectedBodyCount, 0);
+            Fix64 minimumSeparation = displaced.CombatShape.Radius + nearby.CombatShape.Radius;
+            Assert.GreaterOrEqual(
+                FixVector2.Distance(displaced.Position, nearby.Position).RawValue,
+                (minimumSeparation - Fix64.FromRaw(2)).RawValue,
+                "恢复碰撞的同一帧应由确定性单位碰撞求解器完成解叠");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void 建筑目标完全忽略物理位移()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn(
+                new LogicEntitySpawnDescriptor(
+                    FixVector2.Zero,
+                    new FixVector2(Fix64.Zero, Fix64.One),
+                    SideType.EnemySide,
+                    "DisplacementBuildingTest"));
+            LogicEntityState building = LogicEntityStateStore.GetRequired(entityId);
+            building.Configure(
+                null,
+                new CreaturePropertyManager(property =>
+                    property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
+                0,
+                true,
+                null,
+                false);
+            new NoMoveFactoryForTest().Configure(building);
+            building.ConfigureBuilding(
+                new BuildingData(
+                    "DisplacementBuildingTest",
+                    BuilType.Def,
+                    Archetype.None,
+                    "Tests/Building",
+                    "Test_Name",
+                    "Test_Desc",
+                    1,
+                    0,
+                    (Fix64)100,
+                    null,
+                    Fix64.Zero,
+                    System.Array.Empty<Fix64>(),
+                    null,
+                    0,
+                    System.Array.Empty<string>()),
+                "displacement-building-test",
+                "test-stronghold",
+                EntitySideHelper.EnemyFactionId,
+                LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+                System.Array.Empty<LogicCombatShape>(),
+                System.Array.Empty<LogicInteractionOptionDescriptor>(),
+                false);
+
+            Assert.IsFalse(building.DurationMoveEffectComp.TryApplyKnockback(
+                new FixVector2(Fix64.One, Fix64.Zero),
+                (Fix64)99));
+            Assert.IsFalse(building.DurationMoveEffectComp.IsInLossOfBalance);
+            Assert.AreEqual(FixVector2.Zero, building.DurationMoveEffectComp.DisplacementVelocity);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
     private static void ProcessWorldBuildQueueUntilReady()
     {
         for (int i = 0; i < 2048
@@ -656,6 +761,38 @@ public class MAEntityLogicFrameSystemTests
         Vector3 current = (Vector3)typeof(EntityBase).GetField("m_CurrentLogicPosition", flags).GetValue(view);
         Assert.AreEqual(expectedPreviousX, previous.x);
         Assert.AreEqual(expectedCurrentX, current.x);
+    }
+
+    private static LogicEntityState CreateDisplacementTestUnit(
+        int stableId,
+        SideType side,
+        FixVector2 position)
+    {
+        LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn(
+            new LogicEntitySpawnDescriptor(
+                position,
+                new FixVector2(Fix64.Zero, Fix64.One),
+                side,
+                $"DisplacementTest_{stableId}"));
+        LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+        state.Configure(
+            null,
+            new CreaturePropertyManager(property => property switch
+            {
+                CreatureMainProperty.Health => (Fix64)100,
+                CreatureMainProperty.CollisionRadius => (Fix64)5,
+                CreatureMainProperty.WeightLevel => (Fix64)2,
+                _ => Fix64.Zero,
+            }),
+            0,
+            false,
+            null,
+            false);
+        new NoMoveFactoryForTest().Configure(state);
+        state.MoveExecutor.SetNavigationConstrained(false);
+        LogicEntityStateStore.CommitSpawn(entityId);
+        EntityRegistry.Register(state);
+        return state;
     }
 
     private sealed class NoMoveFactoryForTest

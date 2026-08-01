@@ -3,11 +3,28 @@ using UnityEngine;
 
 public class DurationMoveEffectTests
 {
+    [SetUp]
+    public void SetUp()
+    {
+        EntityRegistry.Clear();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        EntityRegistry.Clear();
+    }
+
     private SimEntityContext CreateContext()
     {
         var ctx = new SimEntityContext { Position = Vector3.zero };
         var executor = new SimMoveExecutor();
         ctx.MoveExecutor = executor;
+        ctx.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)2);
+        ctx.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)5);
+        var attack = new NoAtkComp();
+        attack.Init(ctx);
+        ctx.AtkComp = attack;
         return ctx;
     }
 
@@ -173,5 +190,281 @@ public class DurationMoveEffectTests
 
         Assert.AreEqual(first.x.RawValue + second.x.RawValue, executor.LastFixedExternal.x.RawValue);
         Assert.AreEqual(first.y.RawValue + second.y.RawValue, executor.LastFixedExternal.y.RawValue);
+    }
+
+    [Test]
+    public void 力度差映射三级配置_小于负一不施力()
+    {
+        Assert.IsTrue(DisplacementForceUtility.TryResolveKnockbackVelocity((Fix64)1, (Fix64)2, out Fix64 levelM1));
+        Assert.IsTrue(DisplacementForceUtility.TryResolveKnockbackVelocity((Fix64)2, (Fix64)2, out Fix64 level0));
+        Assert.IsTrue(DisplacementForceUtility.TryResolveKnockbackVelocity((Fix64)3, (Fix64)2, out Fix64 level1));
+        Assert.IsFalse(DisplacementForceUtility.TryResolveKnockbackVelocity(Fix64.Zero, (Fix64)2, out Fix64 rejected));
+
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)3).RawValue, levelM1.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)8).RawValue, level0.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)12).RawValue, level1.RawValue);
+        Assert.AreEqual(Fix64.Zero, rejected);
+
+        Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)1, (Fix64)2, out Fix64 pullM1, out Fix64 durationM1));
+        Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)2, (Fix64)2, out Fix64 pull0, out Fix64 duration0));
+        Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)3, (Fix64)2, out Fix64 pull1, out Fix64 duration1));
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)5).RawValue, pullM1.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)25).RawValue, pull0.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)100).RawValue, pull1.RawValue);
+        Assert.AreEqual(
+            DistanceUnitConverter.ReadRequiredPositiveFixedConfig(DisplacementForceUtility.PullDurationLevelM1Key).RawValue,
+            durationM1.RawValue);
+        Assert.AreEqual(Fix64.One.RawValue, duration0.RawValue);
+        Assert.AreEqual(Fix64.One.RawValue, duration1.RawValue);
+
+        SimEntityContext ctx = CreateContext();
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(ctx);
+        Assert.IsFalse(effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), Fix64.Zero));
+        Assert.IsFalse(effectComp.IsInLossOfBalance);
+        Assert.IsTrue(ctx.CanRun(ctx.AtkComp));
+    }
+
+    [Test]
+    public void 推力速度可叠加_失衡至少持续零点一秒并锁定攻击()
+    {
+        SimEntityContext ctx = CreateContext();
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(ctx);
+
+        Assert.IsTrue(effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), (Fix64)3));
+        Assert.IsTrue(effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), (Fix64)3));
+        Fix64 oneImpulse = DistanceUnitConverter.ConvertToWorld((Fix64)12);
+        Assert.AreEqual((oneImpulse + oneImpulse).RawValue, effectComp.DisplacementVelocity.x.RawValue);
+        Assert.IsFalse(ctx.CanRun(ctx.AtkComp), "失衡期间攻击组件必须被锁定");
+
+        effectComp.CommitStaticCollision(new FixVector2(-Fix64.One, Fix64.Zero));
+        Assert.AreEqual(FixVector2.Zero, effectComp.DisplacementVelocity);
+        for (int i = 0; i < 3; i++)
+        {
+            effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+            ((SimMoveExecutor)ctx.MoveExecutor).Execute((float)LogicFrameRuntime.FixedDeltaTime);
+            Assert.IsTrue(effectComp.IsInLossOfBalance, $"第 {i + 1} 帧仍未达到最短失衡时间");
+        }
+
+        effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+        ((SimMoveExecutor)ctx.MoveExecutor).Execute((float)LogicFrameRuntime.FixedDeltaTime);
+        Assert.IsFalse(effectComp.IsInLossOfBalance);
+        Assert.IsTrue(ctx.CanRun(ctx.AtkComp), "退出失衡后必须恢复攻击组件");
+    }
+
+    [Test]
+    public void 撞墙仅清除径向速度并保留切向速度()
+    {
+        SimEntityContext ctx = CreateContext();
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(ctx);
+
+        effectComp.TryApplyKnockback(new FixVector2(-Fix64.One, Fix64.One), (Fix64)3);
+        Fix64 tangentBefore = effectComp.DisplacementVelocity.y;
+        effectComp.CommitStaticCollision(new FixVector2(Fix64.One, Fix64.Zero));
+
+        Assert.AreEqual(Fix64.Zero, effectComp.DisplacementVelocity.x);
+        Assert.AreEqual(tangentBefore.RawValue, effectComp.DisplacementVelocity.y.RawValue);
+    }
+
+    [Test]
+    public void 摩擦力持续降速并在低于阈值后清空速度退出失衡()
+    {
+        SimEntityContext ctx = CreateContext();
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(ctx);
+        effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), (Fix64)3);
+
+        Fix64 previousSpeed = FixVector2.Magnitude(effectComp.DisplacementVelocity);
+        int frameCount = 0;
+        while (effectComp.IsInLossOfBalance && frameCount < 100)
+        {
+            effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+            ((SimMoveExecutor)ctx.MoveExecutor).Execute((float)LogicFrameRuntime.FixedDeltaTime);
+            Fix64 currentSpeed = FixVector2.Magnitude(effectComp.DisplacementVelocity);
+            Assert.LessOrEqual(currentSpeed.RawValue, previousSpeed.RawValue);
+            previousSpeed = currentSpeed;
+            frameCount++;
+        }
+
+        Assert.Less(frameCount, 100, "摩擦力应在有限帧内让单位退出失衡");
+        Assert.AreEqual(FixVector2.Zero, effectComp.DisplacementVelocity);
+        Assert.AreEqual(MovementMode.Normal, ((SimMoveExecutor)ctx.MoveExecutor).MovementMode);
+    }
+
+    [Test]
+    public void 单条拉力按当前距离与初始距离四次方衰减()
+    {
+        SimEntityContext source = CreateContext();
+        source.Position = Vector3.zero;
+        SimEntityContext target = CreateContext();
+        target.Position = new Vector3(2f, 0f, 0f);
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(target);
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(target);
+
+        Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        target.Position = new Vector3(1.65f, 0f, 0f);
+        effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+
+        Fix64 sourceRadius = DistanceUnitConverter.ConvertToWorld((Fix64)5);
+        Fix64 initialDistance = (Fix64)2 - sourceRadius;
+        Fix64 currentDistance = (Fix64)1.65f - sourceRadius;
+        Fix64 ratio = currentDistance / initialDistance;
+        Fix64 ratioSquared = ratio * ratio;
+        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)100)
+                             * ratioSquared
+                             * ratioSquared;
+        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)12);
+        Fix64 expectedSpeed = (acceleration - friction) * LogicFrameRuntime.FixedDeltaTime;
+        Assert.That(
+            Fix64.Abs(effectComp.DisplacementVelocity.x).RawValue,
+            Is.EqualTo(expectedSpeed.RawValue).Within(2));
+    }
+
+    [Test]
+    public void 单条拉力进入停止半径后速度归零但保持失衡和钩锁()
+    {
+        SimEntityContext source = CreateContext();
+        source.Position = Vector3.zero;
+        SimEntityContext target = CreateContext();
+        target.Position = new Vector3(2f, 0f, 0f);
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(target);
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(target);
+
+        Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        target.Position = new Vector3(1.3f, 0f, 0f);
+        effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual(FixVector2.Zero, effectComp.DisplacementVelocity);
+        Assert.IsTrue(effectComp.IsInLossOfBalance);
+        var tethers = new System.Collections.Generic.List<DisplacementPullTetherState>();
+        effectComp.CopyActivePullTethers(tethers);
+        Assert.AreEqual(1, tethers.Count);
+        Assert.AreEqual(source.LogicEntityId, tethers[0].SourceEntityId);
+    }
+
+    [Test]
+    public void 拉力叠加并捕获命中时重量_来源离场后保留滑行速度()
+    {
+        SimEntityContext source = CreateContext();
+        source.Position = Vector3.zero;
+        SimEntityContext target = CreateContext();
+        target.Position = new Vector3(2f, 0f, 0f);
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(target);
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(target);
+
+        Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        target.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)4);
+        effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+
+        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)100) * (Fix64)2;
+        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)12);
+        Fix64 expectedSpeed = (acceleration - friction) * LogicFrameRuntime.FixedDeltaTime;
+        Assert.That(
+            Fix64.Abs(effectComp.DisplacementVelocity.x).RawValue,
+            Is.EqualTo(expectedSpeed.RawValue).Within(2));
+        Assert.Less(effectComp.DisplacementVelocity.x.RawValue, Fix64.Zero.RawValue);
+
+        Fix64 beforeSourceLeaves = FixVector2.Magnitude(effectComp.DisplacementVelocity);
+        EntityRegistry.Unregister(source);
+        effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+        Fix64 afterSourceLeaves = FixVector2.Magnitude(effectComp.DisplacementVelocity);
+        Assert.Greater(afterSourceLeaves.RawValue, Fix64.Zero.RawValue);
+        Assert.Less(afterSourceLeaves.RawValue, beforeSourceLeaves.RawValue);
+        var tethers = new System.Collections.Generic.List<DisplacementPullTetherState>();
+        effectComp.CopyActivePullTethers(tethers);
+        Assert.AreEqual(0, tethers.Count);
+    }
+
+    [Test]
+    public void 沉重步伐词条仅给敌方单位增加一级重量并改变受力档位()
+    {
+        var tag = new LevelTagTable();
+        string serialized = string.Join("\t", new[]
+        {
+            string.Empty,
+            "105",
+            "test",
+            "test",
+            "1",
+            "0",
+            "LvTag_HeavyStride",
+            "Tests/Icon",
+            "Tests_Name",
+            "Tests_Desc",
+            string.Empty,
+            string.Empty,
+            "False",
+            "1",
+            "0",
+        });
+        Assert.IsTrue(tag.ParseDataRow(serialized, null));
+
+        var enemyModules = new System.Collections.Generic.List<BuffCallback>();
+        System.Reflection.MethodInfo addUnitModules = typeof(LevelTagRuntime).GetMethod(
+            "AddUnitModules",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(addUnitModules);
+        addUnitModules.Invoke(null, new object[]
+        {
+            tag,
+            new CharacterDataDetail(),
+            UnitType.Unit_Intern,
+            EntitySideHelper.EnemyFactionId,
+            enemyModules,
+        });
+        Assert.AreEqual(1, enemyModules.Count);
+        Assert.IsInstanceOf<MainPropertyAdditiveBuff>(enemyModules[0]);
+
+        var playerModules = new System.Collections.Generic.List<BuffCallback>();
+        addUnitModules.Invoke(null, new object[]
+        {
+            tag,
+            new CharacterDataDetail(),
+            UnitType.Unit_Intern,
+            EntitySideHelper.PlayerFactionId,
+            playerModules,
+        });
+        Assert.AreEqual(0, playerModules.Count);
+
+        SimEntityContext enemy = CreateContext();
+        var properties = new CreaturePropertyManager(property =>
+            property == CreatureMainProperty.WeightLevel ? (Fix64)2 : Fix64.Zero);
+        var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        enemy.CreatureProperties = properties;
+        enemy.BuffComp = buffComp;
+        buffComp.Init(enemy);
+        try
+        {
+            BuffData buff = BuffData.Create(
+                "test_level_tag_heavy_stride",
+                Fix64.Zero,
+                true,
+                1,
+                enemyModules);
+            Assert.IsTrue(buffComp.AddBuff(buff, enemy));
+            Assert.AreEqual(((Fix64)3).RawValue, properties.GetProperty(CreatureMainProperty.WeightLevel).RawValue);
+
+            Assert.IsTrue(DisplacementForceUtility.TryResolveKnockbackVelocity(
+                (Fix64)3,
+                properties.GetProperty(CreatureMainProperty.WeightLevel),
+                out Fix64 heavierVelocity));
+            Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)8).RawValue, heavierVelocity.RawValue);
+
+            Assert.IsTrue(buffComp.RemoveBuff("test_level_tag_heavy_stride"));
+            Assert.AreEqual(((Fix64)2).RawValue, properties.GetProperty(CreatureMainProperty.WeightLevel).RawValue);
+        }
+        finally
+        {
+            properties.Dispose();
+        }
     }
 }

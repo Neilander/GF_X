@@ -43,6 +43,7 @@ public class MAEntity : CompCreature, IEntityContext
     public FixVector2 LogicForward => RequireLogicState().Forward;
     private Transform _modelTransform = null;
     private AnimationRatePresenter _animationRatePresenter;
+    private DisplacementTetherPresenter _displacementTetherPresenter;
     private bool _isLogicActive;
 
     private Vector3 _collisionScaleBase = Vector3.one;
@@ -155,6 +156,9 @@ public class MAEntity : CompCreature, IEntityContext
 
         cController = GetComponent<CharacterController>();
         _moveExecutor = gameObject.AddComponent<MoveExecutor>();
+        _displacementTetherPresenter = gameObject.GetComponent<DisplacementTetherPresenter>();
+        if (_displacementTetherPresenter == null)
+            _displacementTetherPresenter = gameObject.AddComponent<DisplacementTetherPresenter>();
 
         _modelTransform = animator != null ? animator.transform : display;
     }
@@ -339,6 +343,7 @@ public class MAEntity : CompCreature, IEntityContext
 
     protected override void OnHide(bool isShutdown, object userData)
     {
+        _displacementTetherPresenter?.Clear();
         UnsubscribeLogicStatePresentation();
         _invincibleSourceRegistry.Clear();
 
@@ -370,6 +375,8 @@ public class MAEntity : CompCreature, IEntityContext
     {
         base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
         SyncPresenterPoseFromLogicState();
+        if (_logicState != null && _logicState.IsSpawnCommitted)
+            _displacementTetherPresenter.Sync(_logicState, durationMoveEffectComp);
 
         long stageStartTicks;
         if (animator != null)

@@ -277,6 +277,14 @@ public static class SoldierFactory
                     new AlwaysCriticalDamageBuff(),
                     new HealthDrainOverTimeBuff(GetFirstUniqueValue(index) + tech.HealthDrainPerSecondDelta)));
                 break;
+
+            case UnitType.Unit_HydroGunner:
+                buffList.Add(CreateInitialBuff(
+                    "unit_hydro_gunner_knockback",
+                    true,
+                    Fix64.Zero,
+                    new KnockbackOnOutgoingDamageBuff(GetFirstUniqueValue(index) + tech.KnockbackLevel)));
+                break;
         }
 
         AddArmyLevelTechBuffs(buffList, index, tech);
@@ -311,7 +319,7 @@ public static class SoldierFactory
                 new HealOnOutgoingDamageBuff(tech.HealOnHit)));
         }
 
-        if (tech.KnockbackLevel != Fix64.Zero)
+        if (tech.KnockbackLevel != Fix64.Zero && unitType != UnitType.Unit_HydroGunner)
         {
             buffList.Add(CreateInitialBuff(
                 $"army_level_tech_knockback_{unitType}",

@@ -195,7 +195,9 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public ulong PreparedLogicFrame => m_MoveExecutor.PreparedLogicFrame;
     public bool PreparedCollisionMovable => m_MoveExecutor.PreparedCollisionMovable;
     public bool PreparedNavigationConstraintEnabled => m_MoveExecutor.PreparedNavigationConstraintEnabled;
-    public uint AgentCollisionMask => LogicAgentCollisionFilter.ResolveMask(Side, IsGhostState);
+    public uint AgentCollisionMask => m_DurationMoveEffectComp?.IsInLossOfBalance == true
+        ? 0u
+        : LogicAgentCollisionFilter.ResolveMask(Side, IsGhostState);
     public FixVector2 PreparedResolvedHorizontalDisplacement => m_MoveExecutor.PreparedResolvedHorizontalDisplacement;
     public FixVector2 PositionFixed => Position;
     public FixVector2 ForwardFixed => Forward;
@@ -826,6 +828,13 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                 break;
             case MAEntityLogicFramePhase.MoveCommit:
                 FixVector2 resolved = LogicAgentCollisionShadowService.GetRequiredResolvedPosition(EntityId, LogicFrameRuntime.CurrentFrame);
+                if (m_DurationMoveEffectComp.IsInLossOfBalance)
+                {
+                    LogicAgentCollisionShadowState collisionState = LogicAgentCollisionShadowService.GetRequiredState(
+                        EntityId,
+                        LogicFrameRuntime.CurrentFrame);
+                    m_DurationMoveEffectComp.CommitStaticCollision(collisionState.FirstHitNormal);
+                }
                 FixVector2 displacement = resolved - Position;
                 Position = resolved;
                 if (FixVector2.SqrMagnitude(displacement) > Fix64.Zero)
@@ -916,6 +925,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
         }
 
         ClampHealthToZero();
+        m_DurationMoveEffectComp.StopAllMove();
 
         if (m_BuffComp.HasBuff(HeroGhostBuffId))
             return;
@@ -933,6 +943,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     {
         ClampHealthToZero();
         Alive = false;
+        m_DurationMoveEffectComp.StopAllMove();
         LogicProductionConditionState.RecordUnitDeath(this);
         LogicUnitDeathEventService.Publish(this);
         m_BuffComp.OnHostDead();
