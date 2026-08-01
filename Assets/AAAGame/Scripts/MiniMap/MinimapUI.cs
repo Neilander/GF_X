@@ -874,10 +874,10 @@ namespace AAAGame.MiniMap
                 Vector2 orthoMtr = WorldToMinimapPosition(orthoTR);
 
                 Vector2 orthoPosition = (orthoMbl + orthoMbr + orthoMtl + orthoMtr) * 0.25f;
-                float orthoMinX = Mathf.Min(orthoMbl.x, orthoMbr.x, orthoMtl.x, orthoMtr.x);
-                float orthoMaxX = Mathf.Max(orthoMbl.x, orthoMbr.x, orthoMtl.x, orthoMtr.x);
-                float orthoMinY = Mathf.Min(orthoMbl.y, orthoMbr.y, orthoMtl.y, orthoMtr.y);
-                float orthoMaxY = Mathf.Max(orthoMbl.y, orthoMbr.y, orthoMtl.y, orthoMtr.y);
+                float orthoMinX = Mathf.Min(Mathf.Min(orthoMbl.x, orthoMbr.x), Mathf.Min(orthoMtl.x, orthoMtr.x));
+                float orthoMaxX = Mathf.Max(Mathf.Max(orthoMbl.x, orthoMbr.x), Mathf.Max(orthoMtl.x, orthoMtr.x));
+                float orthoMinY = Mathf.Min(Mathf.Min(orthoMbl.y, orthoMbr.y), Mathf.Min(orthoMtl.y, orthoMtr.y));
+                float orthoMaxY = Mathf.Max(Mathf.Max(orthoMbl.y, orthoMbr.y), Mathf.Max(orthoMtl.y, orthoMtr.y));
                 Vector2 orthoSize = new Vector2(Mathf.Abs(orthoMaxX - orthoMinX), Mathf.Abs(orthoMaxY - orthoMinY));
                 orthoSize *= cameraFrameSizeScale * CameraFrameAdditionalScale;
                 orthoSize = ApplyCameraFrameAspect(orthoSize);
@@ -897,10 +897,10 @@ namespace AAAGame.MiniMap
             Vector2 mtr = WorldToMinimapPosition(tr);
 
             Vector2 position = (mbl + mbr + mtl + mtr) * 0.25f;
-            float minX = Mathf.Min(mbl.x, mbr.x, mtl.x, mtr.x);
-            float maxX = Mathf.Max(mbl.x, mbr.x, mtl.x, mtr.x);
-            float minY = Mathf.Min(mbl.y, mbr.y, mtl.y, mtr.y);
-            float maxY = Mathf.Max(mbl.y, mbr.y, mtl.y, mtr.y);
+            float minX = Mathf.Min(Mathf.Min(mbl.x, mbr.x), Mathf.Min(mtl.x, mtr.x));
+            float maxX = Mathf.Max(Mathf.Max(mbl.x, mbr.x), Mathf.Max(mtl.x, mtr.x));
+            float minY = Mathf.Min(Mathf.Min(mbl.y, mbr.y), Mathf.Min(mtl.y, mtr.y));
+            float maxY = Mathf.Max(Mathf.Max(mbl.y, mbr.y), Mathf.Max(mtl.y, mtr.y));
             Vector2 size = new Vector2(Mathf.Abs(maxX - minX), Mathf.Abs(maxY - minY));
             size *= cameraFrameSizeScale * CameraFrameAdditionalScale;
             size = ApplyCameraFrameAspect(size);

@@ -143,6 +143,37 @@ public sealed class LogicStrongholdMapTests
             LogicStrongholdMap.GetStrongholdIdsOrdered());
     }
 
+    [Test]
+    public void CircleClearQuery_RejectsRadiusOverlapAtForeignCellEdgeAndSharedCorner()
+    {
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("enemy", 0, 0, EntitySideHelper.EnemyFactionId),
+                new LogicStrongholdCellDefinition("enemy", 1, 0, EntitySideHelper.EnemyFactionId),
+                new LogicStrongholdCellDefinition("enemy", 0, 1, EntitySideHelper.EnemyFactionId),
+                new LogicStrongholdCellDefinition("enemy", 1, 1, EntitySideHelper.EnemyFactionId),
+            });
+
+        Fix64 radius = (Fix64)0.25f;
+        Assert.IsFalse(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+            new FixVector2((Fix64)(-0.7f), Fix64.Zero),
+            radius,
+            EntitySideHelper.PlayerFactionId));
+        Assert.IsFalse(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+            new FixVector2((Fix64)(-0.65f), (Fix64)(-0.65f)),
+            radius,
+            EntitySideHelper.PlayerFactionId));
+        Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+            new FixVector2((Fix64)(-0.8f), (Fix64)(-0.8f)),
+            radius,
+            EntitySideHelper.PlayerFactionId));
+    }
+
     private static FixVector2 WorldFromLocal(Fix64 localX, Fix64 localZ)
     {
         return new FixVector2((Fix64)10, (Fix64)20)

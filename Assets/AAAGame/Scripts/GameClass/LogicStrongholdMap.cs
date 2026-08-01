@@ -42,6 +42,9 @@ public static class LogicStrongholdMap
 
     private static readonly Dictionary<Cell, string> s_StrongholdIdByCell = new();
     private static readonly Dictionary<string, int> s_OwnerFactionByStrongholdId = new(StringComparer.Ordinal);
+    private static readonly List<Cell> s_DeterministicCells = new List<Cell>();
+    private static readonly List<LogicStaticCollisionObstacle> s_BlockedCellObstacles =
+        new List<LogicStaticCollisionObstacle>();
     private static readonly List<string> s_DeterministicStrongholdIds = new List<string>();
     private static readonly Comparison<string> s_DeterministicStrongholdIdComparison =
         string.CompareOrdinal;
@@ -50,6 +53,13 @@ public static class LogicStrongholdMap
     private static FixVector2 s_LocalZAxis;
     private static Fix64 s_CellSize;
     private static Fix64 s_Determinant;
+    private static FixVector2 s_CollisionXAxis;
+    private static FixVector2 s_CollisionZAxis;
+    private static Fix64 s_CollisionXAxisScale;
+    private static Fix64 s_CollisionZAxisScale;
+    private static int s_OwnerVersion;
+    private static int s_BlockedCellObstacleVersion = -1;
+    private static int s_BlockedCellObstacleAllowedFactionId;
     private static ulong s_AuthorityHash;
 
     public static bool IsInitialized { get; private set; }
@@ -72,6 +82,12 @@ public static class LogicStrongholdMap
         Fix64 determinant = localXAxis.x * localZAxis.y - localXAxis.y * localZAxis.x;
         if (determinant == Fix64.Zero)
             throw new InvalidOperationException("LogicStrongholdMap transform is degenerate.");
+        Fix64 xAxisScale = FixVector2.Magnitude(localXAxis);
+        Fix64 zAxisScale = FixVector2.Magnitude(localZAxis);
+        FixVector2 collisionXAxis = localXAxis / xAxisScale;
+        FixVector2 collisionZAxis = localZAxis / zAxisScale;
+        if (Fix64.Abs(FixVector2.Dot(collisionXAxis, collisionZAxis)) > Fix64.FromRaw(16))
+            throw new InvalidOperationException("LogicStrongholdMap transform axes must be orthogonal for circle collision.");
 
         var ordered = new List<LogicStrongholdCellDefinition>(cells.Count);
         for (int i = 0; i < cells.Count; i++)
@@ -100,8 +116,11 @@ public static class LogicStrongholdMap
         }
 
         s_StrongholdIdByCell.Clear();
+        s_DeterministicCells.Clear();
         foreach (KeyValuePair<Cell, string> pair in strongholdIdByCell)
             s_StrongholdIdByCell.Add(pair.Key, pair.Value);
+        for (int i = 0; i < ordered.Count; i++)
+            s_DeterministicCells.Add(new Cell(ordered[i].X, ordered[i].Y));
         s_OwnerFactionByStrongholdId.Clear();
         foreach (KeyValuePair<string, int> pair in ownerFactionByStrongholdId)
             s_OwnerFactionByStrongholdId.Add(pair.Key, pair.Value);
@@ -110,6 +129,14 @@ public static class LogicStrongholdMap
         s_LocalZAxis = localZAxis;
         s_CellSize = cellSize;
         s_Determinant = determinant;
+        s_CollisionXAxis = collisionXAxis;
+        s_CollisionZAxis = collisionZAxis;
+        s_CollisionXAxisScale = xAxisScale;
+        s_CollisionZAxisScale = zAxisScale;
+        s_OwnerVersion = 1;
+        s_BlockedCellObstacleVersion = -1;
+        s_BlockedCellObstacleAllowedFactionId = 0;
+        s_BlockedCellObstacles.Clear();
         s_AuthorityHash = ComputeAuthorityHash(
             origin,
             localXAxis,
@@ -123,11 +150,20 @@ public static class LogicStrongholdMap
     {
         s_StrongholdIdByCell.Clear();
         s_OwnerFactionByStrongholdId.Clear();
+        s_DeterministicCells.Clear();
+        s_BlockedCellObstacles.Clear();
         s_Origin = FixVector2.Zero;
         s_LocalXAxis = FixVector2.Zero;
         s_LocalZAxis = FixVector2.Zero;
         s_CellSize = Fix64.Zero;
         s_Determinant = Fix64.Zero;
+        s_CollisionXAxis = FixVector2.Zero;
+        s_CollisionZAxis = FixVector2.Zero;
+        s_CollisionXAxisScale = Fix64.Zero;
+        s_CollisionZAxisScale = Fix64.Zero;
+        s_OwnerVersion = 0;
+        s_BlockedCellObstacleVersion = -1;
+        s_BlockedCellObstacleAllowedFactionId = 0;
         s_AuthorityHash = 0;
         IsInitialized = false;
     }
@@ -194,13 +230,134 @@ public static class LogicStrongholdMap
             throw new ArgumentOutOfRangeException(nameof(ownerFactionId));
         if (!s_OwnerFactionByStrongholdId.ContainsKey(strongholdId))
             throw new InvalidOperationException($"LogicStrongholdMap cannot update unknown stronghold '{strongholdId}'.");
+        if (s_OwnerFactionByStrongholdId[strongholdId] == ownerFactionId)
+            return;
         s_OwnerFactionByStrongholdId[strongholdId] = ownerFactionId;
+        s_OwnerVersion = checked(s_OwnerVersion + 1);
+    }
+
+    public static FixVector2 ResolveCircleMotionAvoidingForeignStrongholds(
+        FixVector2 frameStart,
+        FixVector2 candidate,
+        Fix64 radius,
+        int allowedFactionId,
+        out bool constrained)
+    {
+        EnsureInitialized();
+        if (radius < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(radius));
+        if (allowedFactionId < 0)
+            throw new ArgumentOutOfRangeException(nameof(allowedFactionId));
+
+        RefreshBlockedCellObstacles(allowedFactionId);
+        if (s_BlockedCellObstacles.Count == 0 || frameStart == candidate)
+        {
+            constrained = false;
+            return candidate;
+        }
+
+        FixVector2 localStart = WorldToCollisionLocal(frameStart);
+        FixVector2 localCandidate = WorldToCollisionLocal(candidate);
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircleAgainstObstacles(
+            localStart,
+            localCandidate - localStart,
+            radius,
+            s_BlockedCellObstacles);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(
+                $"LogicStrongholdMap circle motion failed. failure={result.Failure}, startRaw=({frameStart.x.RawValue},{frameStart.y.RawValue}), candidateRaw=({candidate.x.RawValue},{candidate.y.RawValue}), radiusRaw={radius.RawValue}.");
+        }
+
+        constrained = result.StartedOverlapping
+                      || result.ResolvedDisplacement != result.DesiredDisplacement;
+        if (!constrained)
+            return candidate;
+
+        return CollisionLocalToWorld(localStart + result.ResolvedDisplacement);
+    }
+
+    public static bool IsCircleClearOfForeignStrongholds(
+        FixVector2 center,
+        Fix64 radius,
+        int allowedFactionId)
+    {
+        EnsureInitialized();
+        if (radius < Fix64.Zero)
+            throw new ArgumentOutOfRangeException(nameof(radius));
+        if (allowedFactionId < 0)
+            throw new ArgumentOutOfRangeException(nameof(allowedFactionId));
+
+        RefreshBlockedCellObstacles(allowedFactionId);
+        if (s_BlockedCellObstacles.Count == 0)
+            return true;
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircleAgainstObstacles(
+            WorldToCollisionLocal(center),
+            FixVector2.Zero,
+            radius,
+            s_BlockedCellObstacles);
+        if (!result.Success && !result.StartedOverlapping)
+        {
+            throw new InvalidOperationException(
+                $"LogicStrongholdMap circle-clear query failed. failure={result.Failure}, centerRaw=({center.x.RawValue},{center.y.RawValue}), radiusRaw={radius.RawValue}.");
+        }
+
+        return !result.StartedOverlapping;
     }
 
     public static void EnsureInitialized()
     {
         if (!IsInitialized)
             throw new InvalidOperationException("LogicStrongholdMap is not initialized.");
+    }
+
+    private static void RefreshBlockedCellObstacles(int allowedFactionId)
+    {
+        if (s_BlockedCellObstacleVersion == s_OwnerVersion
+            && s_BlockedCellObstacleAllowedFactionId == allowedFactionId)
+        {
+            return;
+        }
+
+        s_BlockedCellObstacles.Clear();
+        FixVector2 halfExtents = new FixVector2(
+            s_CellSize * s_CollisionXAxisScale / (Fix64)2,
+            s_CellSize * s_CollisionZAxisScale / (Fix64)2);
+        for (int i = 0; i < s_DeterministicCells.Count; i++)
+        {
+            Cell cell = s_DeterministicCells[i];
+            string strongholdId = s_StrongholdIdByCell[cell];
+            if (s_OwnerFactionByStrongholdId[strongholdId] == allowedFactionId)
+                continue;
+
+            s_BlockedCellObstacles.Add(new LogicStaticCollisionObstacle(
+                i + 1,
+                LogicStaticCollisionObstacleKind.Box,
+                new FixVector2(
+                    (Fix64)cell.X * s_CellSize * s_CollisionXAxisScale,
+                    (Fix64)cell.Y * s_CellSize * s_CollisionZAxisScale),
+                halfExtents,
+                Fix64.Zero));
+        }
+
+        s_BlockedCellObstacleVersion = s_OwnerVersion;
+        s_BlockedCellObstacleAllowedFactionId = allowedFactionId;
+    }
+
+    private static FixVector2 WorldToCollisionLocal(FixVector2 worldPosition)
+    {
+        FixVector2 delta = worldPosition - s_Origin;
+        return new FixVector2(
+            FixVector2.Dot(delta, s_CollisionXAxis),
+            FixVector2.Dot(delta, s_CollisionZAxis));
+    }
+
+    private static FixVector2 CollisionLocalToWorld(FixVector2 localPosition)
+    {
+        return s_Origin
+               + s_CollisionXAxis * localPosition.x
+               + s_CollisionZAxis * localPosition.y;
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)

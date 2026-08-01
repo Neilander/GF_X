@@ -13,6 +13,8 @@ public static class EntityRegistry
     public static IList<IEntityContext> AllEntities => _entities;
     public static IEntityContext Player => _player;
     public static event System.Action Changed;
+    public static event System.Action<IEntityContext> Registered;
+    public static event System.Action<IEntityContext> Unregistered;
 
     public static void Register(IEntityContext entity)
     {
@@ -44,6 +46,7 @@ public static class EntityRegistry
 
         _entities.Insert(low, entity);
         Changed?.Invoke();
+        Registered?.Invoke(entity);
     }
 
     public static void RegisterAsPlayer(IEntityContext entity)
@@ -86,7 +89,10 @@ public static class EntityRegistry
         if (_player == entity)
             _player = null;
         if (removed)
+        {
             Changed?.Invoke();
+            Unregistered?.Invoke(entity);
+        }
     }
 
     /// <summary>

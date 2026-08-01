@@ -10,6 +10,7 @@ public class MAEntityLogicFrameSystemTests
     {
         EntityRegistry.Clear();
         FlowFieldCrowdMovementSystem.ResetAll();
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
         FlowFieldCrowdMovementSystem.ClearEditorTestNavigationSource();
         LogicFrameRuntime.Begin();
         LogicEntityFrameSnapshotService.BeginTimeline();
@@ -431,6 +432,222 @@ public class MAEntityLogicFrameSystemTests
         Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
     }
 
+    [Test]
+    public void MoveCommit_NavigationConstraintBypass_DoesNotBypassEnemyStrongholdBoundary()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.BuildBeforeInvade);
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("enemy", 0, 0, EntitySideHelper.EnemyFactionId),
+            });
+        var entity = new RegionConstraintProbeEntity
+        {
+            LogicEntityId = new LogicEntityId(7001),
+            Side = SideType.PlayerSide,
+            PositionFixed = new FixVector2(-Fix64.One, Fix64.Zero),
+            DesiredDisplacement = new FixVector2((Fix64)2, Fix64.Zero),
+        };
+        Fix64 collisionRadius = Fix64.One / (Fix64)4;
+        entity.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+        EntityRegistry.Register(entity);
+
+        try
+        {
+            LogicFrameRuntime.Tick(1);
+
+            Assert.AreEqual(Fix64.FromRaw(-3072).RawValue, entity.PositionFixed.x.RawValue);
+            Assert.AreEqual(Fix64.Zero, entity.PositionFixed.y);
+            Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+                entity.PositionFixed,
+                collisionRadius,
+                EntitySideHelper.PlayerFactionId));
+            Assert.AreEqual(1, LogicAgentCollisionShadowService.LastRegionConstraintChangedCount);
+        }
+        finally
+        {
+            LogicStrongholdMap.Clear();
+            LogicPhaseCommandService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void MoveCommit_RegionProjectionIntoStaticWall_RejectsTickAtJointlyLegalStart()
+    {
+        const int width = 8;
+        const int height = 8;
+        var walkable = new bool[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+                walkable[x + y * width] = y < 4 || x >= 4;
+        }
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            Vector3.zero,
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        LogicTimeControlService.BeginTimeline();
+        LogicPhaseCommandService.BeginTimeline();
+        LogicPhaseCommandService.SetInitialPhase(GamePhase.BuildBeforeInvade);
+        LogicStrongholdMap.Initialize(
+            new FixVector2(Fix64.FromRaw(19852), Fix64.FromRaw(19852)),
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("enemy", 0, 0, EntitySideHelper.EnemyFactionId),
+            });
+
+        var entity = new RegionConstraintProbeEntity
+        {
+            LogicEntityId = new LogicEntityId(7002),
+            Side = SideType.PlayerSide,
+            NavigationConstraintEnabled = true,
+            NavigationAgentTypeIdOverride = AgentTypeHelper.MediumMovementTypeId,
+        };
+        Fix64 collisionRadius = Fix64.FromRaw(1352);
+        entity.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+
+        try
+        {
+            FindJointConstraintConflict(
+                entity,
+                collisionRadius,
+                out FixVector2 frameStart,
+                out FixVector2 desiredDisplacement,
+                out FixVector2 oldInvalidResult);
+            entity.PositionFixed = frameStart;
+            entity.DesiredDisplacement = desiredDisplacement;
+            EntityRegistry.Register(entity);
+
+            LogicFrameRuntime.Tick(1);
+
+            Assert.AreEqual(frameStart, entity.PositionFixed);
+            Assert.AreNotEqual(oldInvalidResult, entity.PositionFixed);
+            Assert.AreEqual(1, LogicAgentCollisionShadowService.LastJointConstraintRejectedCount);
+            Assert.AreEqual(
+                LogicMovementRegionConstraintFailure.EnemyStronghold,
+                LogicAgentCollisionShadowService.LastStates[0].RegionConstraintFailure);
+            AssertStaticPositionClear(entity, entity.PositionFixed, collisionRadius);
+            Assert.IsTrue(LogicMovementRegionConstraintService.IsPositionAllowed(
+                entity,
+                entity.PositionFixed,
+                out LogicMovementRegionConstraintFailure failure));
+            Assert.AreEqual(LogicMovementRegionConstraintFailure.None, failure);
+        }
+        finally
+        {
+            LogicStrongholdMap.Clear();
+            LogicPhaseCommandService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    private static void FindJointConstraintConflict(
+        RegionConstraintProbeEntity entity,
+        Fix64 collisionRadius,
+        out FixVector2 frameStart,
+        out FixVector2 desiredDisplacement,
+        out FixVector2 invalidResult)
+    {
+        for (long yRaw = 15000; yRaw <= 18000; yRaw += 64)
+        {
+            for (long xRaw = 15000; xRaw <= 18000; xRaw += 64)
+            {
+                var start = new FixVector2(Fix64.FromRaw(xRaw), Fix64.FromRaw(yRaw));
+                if (!IsStaticPositionClear(entity, start, collisionRadius)
+                    || !LogicMovementRegionConstraintService.IsPositionAllowed(entity, start, out _))
+                {
+                    continue;
+                }
+
+                for (int directionIndex = 0; directionIndex < 8; directionIndex++)
+                {
+                    FixVector2 direction = directionIndex switch
+                    {
+                        0 => new FixVector2(Fix64.One, Fix64.Zero),
+                        1 => new FixVector2(-Fix64.One, Fix64.Zero),
+                        2 => new FixVector2(Fix64.Zero, Fix64.One),
+                        3 => new FixVector2(Fix64.Zero, -Fix64.One),
+                        4 => new FixVector2(Fix64.One, Fix64.One),
+                        5 => new FixVector2(-Fix64.One, Fix64.One),
+                        6 => new FixVector2(Fix64.One, -Fix64.One),
+                        _ => new FixVector2(-Fix64.One, -Fix64.One),
+                    };
+                    FixVector2 displacement = direction * Fix64.FromRaw(512);
+                    Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+                        entity.NavigationAgentTypeId,
+                        start,
+                        displacement,
+                        collisionRadius,
+                        out LogicStaticCollisionShadowResult staticSolve));
+                    Assert.IsTrue(staticSolve.SolveResult.Success);
+                    FixVector2 staticPosition = staticSolve.SolveResult.Start
+                                                + staticSolve.SolveResult.ResolvedDisplacement;
+                    FixVector2 regionPosition = LogicMovementRegionConstraintService.ResolvePosition(
+                        entity,
+                        start,
+                        staticPosition,
+                        out LogicMovementRegionConstraintFailure regionFailure);
+                    if (regionFailure == LogicMovementRegionConstraintFailure.None
+                        || regionPosition == staticPosition
+                        || IsStaticPositionClear(entity, regionPosition, collisionRadius))
+                    {
+                        continue;
+                    }
+
+                    frameStart = start;
+                    desiredDisplacement = displacement;
+                    invalidResult = regionPosition;
+                    return;
+                }
+            }
+        }
+
+        throw new System.InvalidOperationException("Failed to construct a deterministic joint static/stronghold constraint conflict.");
+    }
+
+    private static bool IsStaticPositionClear(
+        RegionConstraintProbeEntity entity,
+        FixVector2 position,
+        Fix64 collisionRadius)
+    {
+        Assert.IsTrue(LogicStaticCollisionShadowService.TrySolveFixed(
+            entity.NavigationAgentTypeId,
+            position,
+            FixVector2.Zero,
+            collisionRadius,
+            out LogicStaticCollisionShadowResult solve));
+        Assert.IsTrue(solve.SolveResult.Success);
+        return !solve.SolveResult.StartedOverlapping;
+    }
+
+    private static void AssertStaticPositionClear(
+        RegionConstraintProbeEntity entity,
+        FixVector2 position,
+        Fix64 collisionRadius)
+    {
+        Assert.IsTrue(
+            IsStaticPositionClear(entity, position, collisionRadius),
+            $"Position must be statically clear. raw=({position.x.RawValue},{position.y.RawValue}).");
+    }
+
     private static void AssertPoseCache(EntityBase view, float expectedPreviousX, float expectedCurrentX)
     {
         const System.Reflection.BindingFlags flags =
@@ -496,6 +713,53 @@ public class MAEntityLogicFrameSystemTests
             Assert.IsTrue(m_FrameActive);
             Assert.AreEqual(MAEntityLogicFramePhase.Count, m_NextPhase);
             m_FrameActive = false;
+        }
+    }
+
+    private sealed class RegionConstraintProbeEntity : SimEntityContext, ILogicFrameEntity
+    {
+        private MAEntityLogicFramePhase m_NextPhase;
+
+        public bool IsLogicActive => true;
+        public int NavigationAgentTypeId => NavigationAgentTypeIdOverride;
+        public bool AllowsZeroCollisionRadius => false;
+        public bool HasPreparedLogicMove { get; private set; }
+        public ulong PreparedLogicFrame { get; private set; }
+        public bool PreparedCollisionMovable => true;
+        public bool PreparedNavigationConstraintEnabled => NavigationConstraintEnabled;
+        public uint AgentCollisionMask => uint.MaxValue;
+        public FixVector2 PreparedResolvedHorizontalDisplacement => DesiredDisplacement;
+        public FixVector2 DesiredDisplacement { get; set; }
+        public bool NavigationConstraintEnabled { get; set; }
+        public int NavigationAgentTypeIdOverride { get; set; }
+
+        public void BeginLogicFrame(Fix64 deltaTime)
+        {
+            m_NextPhase = MAEntityLogicFramePhase.BaseAndBuffs;
+        }
+
+        public void ExecuteLogicFramePhase(MAEntityLogicFramePhase phase, Fix64 deltaTime)
+        {
+            Assert.AreEqual(m_NextPhase, phase);
+            if (phase == MAEntityLogicFramePhase.MoveResolve)
+            {
+                PreparedLogicFrame = LogicFrameRuntime.CurrentFrame;
+                HasPreparedLogicMove = true;
+            }
+            else if (phase == MAEntityLogicFramePhase.MoveCommit)
+            {
+                PositionFixed = LogicAgentCollisionShadowService.GetRequiredResolvedPosition(
+                    LogicEntityId,
+                    LogicFrameRuntime.CurrentFrame);
+            }
+
+            m_NextPhase = (MAEntityLogicFramePhase)((int)phase + 1);
+        }
+
+        public void CompleteLogicFrame(Fix64 deltaTime)
+        {
+            Assert.AreEqual(MAEntityLogicFramePhase.Count, m_NextPhase);
+            HasPreparedLogicMove = false;
         }
     }
 

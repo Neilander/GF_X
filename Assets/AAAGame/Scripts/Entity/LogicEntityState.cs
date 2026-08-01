@@ -195,7 +195,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public ulong PreparedLogicFrame => m_MoveExecutor.PreparedLogicFrame;
     public bool PreparedCollisionMovable => m_MoveExecutor.PreparedCollisionMovable;
     public bool PreparedNavigationConstraintEnabled => m_MoveExecutor.PreparedNavigationConstraintEnabled;
-    public uint AgentCollisionMask => IsGhostState ? 0u : 1u;
+    public uint AgentCollisionMask => LogicAgentCollisionFilter.ResolveMask(Side, IsGhostState);
     public FixVector2 PreparedResolvedHorizontalDisplacement => m_MoveExecutor.PreparedResolvedHorizontalDisplacement;
     public FixVector2 PositionFixed => Position;
     public FixVector2 ForwardFixed => Forward;
@@ -628,6 +628,8 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
             LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
         m_SkillComp?.CancelSkills();
         m_BuffComp?.ShutDown();
+        m_CreatureProperties?.Dispose();
+        m_CreatureProperties = null;
         m_RegisteredObstacleIds.Clear();
     }
 
@@ -828,6 +830,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                 Position = resolved;
                 if (FixVector2.SqrMagnitude(displacement) > Fix64.Zero)
                     Forward = displacement.GetNormalized();
+                m_MoveComp.CommitResolvedDisplacement(displacement);
                 m_MoveExecutor.CommitPreparedLogicFrame(LogicFrameRuntime.CurrentFrame);
                 break;
             case MAEntityLogicFramePhase.PostUpdate:
@@ -1062,6 +1065,7 @@ public static class LogicEntityStateStore
     public static void EndTimeline()
     {
         EnsureActive();
+        ShutdownAllStates();
         s_States.Clear();
         IsActive = false;
     }
@@ -1069,7 +1073,14 @@ public static class LogicEntityStateStore
     public static void ResetForWorldTransition()
     {
         EnsureActive();
+        ShutdownAllStates();
         s_States.Clear();
+    }
+
+    private static void ShutdownAllStates()
+    {
+        foreach (LogicEntityState state in s_States.Values)
+            state.ShutdownRuntime();
     }
 
     public static LogicEntityState Create(LogicEntityId entityId, LogicEntitySpawnDescriptor descriptor)

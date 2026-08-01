@@ -49,23 +49,23 @@ public readonly struct LogicDeterminismCorpusResult
 
 public static class LogicDeterminismCorpus
 {
-    public const string CorpusVersion = "v73";
-    public const int GoldenProtocolVersion = 73;
-    public const string GoldenContentVersion = "Avenge-30Hz-v73";
+    public const string CorpusVersion = "v81";
+    public const int GoldenProtocolVersion = 81;
+    public const string GoldenContentVersion = "Avenge-30Hz-v81";
     public const int GoldenEventCount = 6;
     public const uint GoldenInputChecksum = 44622919u;
     public const ulong GoldenInputHash = 2238831199762417194ul;
-    public const ulong GoldenTimeControlHash = 1522784806954703928ul;
-    public const ulong GoldenFullHash = 6256122146117919571ul;
+    public const ulong GoldenTimeControlHash = 4660981641562439902ul;
+    public const ulong GoldenFullHash = 7334454495593281045ul;
 
     private const ulong GameplayPayload = 0x123456789ABCDEF0UL;
 
-    public static LogicDeterminismCorpusResult EvaluateV73()
+    public static LogicDeterminismCorpusResult EvaluateV81()
     {
         if (LogicTimeControlService.IsActive)
         {
             throw new InvalidOperationException(
-                "LogicDeterminismCorpus.EvaluateV73 failed: LogicTimeControlService must be inactive.");
+                "LogicDeterminismCorpus.EvaluateV81 failed: LogicTimeControlService must be inactive.");
         }
 
         LogicInputFrame frame = BuildInputFrame();
@@ -74,7 +74,7 @@ public static class LogicDeterminismCorpus
         LogicTimeControlService.BeginTimeline();
         try
         {
-            LogicTimeControlService.SetBulletTimeScale(10, 2750);
+            LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 2750, 12);
             LogicTimeControlService.AcquirePause(42);
             snapshot = LogicTimeControlService.CaptureSnapshot();
         }
@@ -108,9 +108,9 @@ public static class LogicDeterminismCorpus
             fullHash);
     }
 
-    public static LogicDeterminismCorpusResult ValidateV73()
+    public static LogicDeterminismCorpusResult ValidateV81()
     {
-        LogicDeterminismCorpusResult result = EvaluateV73();
+        LogicDeterminismCorpusResult result = EvaluateV81();
 
         RequireEqual("ProtocolVersion", GoldenProtocolVersion, result.ProtocolVersion);
         RequireEqual("ContentVersion", GoldenContentVersion, result.ContentVersion);

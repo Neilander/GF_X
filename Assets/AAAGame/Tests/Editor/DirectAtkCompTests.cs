@@ -181,6 +181,38 @@ atkComp.Attack((Fix64)999);
     }
 
     [Test]
+    public void 玩家英雄不产生手动攻击意图但有目标时仍会自动攻击()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRangeFixed = (Fix64)10f
+        };
+        targeting.Init(attacker);
+        targeting.CurrentTarget = target;
+        attacker.TargetComp = targeting;
+
+        var brain = new AAAGame.Scripts.Entity.PlayerBrain();
+        attacker.Brain = brain;
+        Assert.IsFalse(brain.Attack, "玩家主指针输入不得成为英雄攻击意图");
+
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+
+        var weapon = MeleeWeapon();
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("TestWeapon"));
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+
+        StartAttack(atkComp);
+
+        Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "玩家英雄应在已有有效目标时自动攻击");
+        Assert.AreEqual(1, atkComp.AttackCount);
+    }
+
+    [Test]
     public void 攻击全流程_前摇_伤害_后摇_冷却()
     {
         var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
@@ -527,6 +559,30 @@ atkComp.Attack((Fix64)999);
         StartAttack(atkComp);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "远程单位应能在射程内攻击");
         Assert.AreEqual(1, atkComp.AttackCount);
+    }
+
+    [Test]
+    public void 切换武器会原子更新权威索引且非法索引明确报错()
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        Weapon firstWeapon = MeleeWeapon(damage: 10f).ToWeapon("FirstWeapon");
+        Weapon secondWeapon = MeleeWeapon(damage: 20f).ToWeapon("SecondWeapon");
+        attacker.WeaponComp = new WeaponComp(firstWeapon);
+
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+        FieldInfo weaponsField = typeof(DirectAtkComp)
+            .GetField("_weapons", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(weaponsField);
+        weaponsField.SetValue(atkComp, new[] { firstWeapon, secondWeapon });
+
+        atkComp.SelectWeapon(1);
+
+        Assert.AreSame(secondWeapon, attacker.WeaponComp.Data);
+        Assert.AreEqual(1, atkComp.CaptureDeterministicState().ActiveWeaponIndex);
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => atkComp.SelectWeapon(2));
+        Assert.AreSame(secondWeapon, attacker.WeaponComp.Data, "失败的切换不得改变当前武器");
+        Assert.AreEqual(1, atkComp.CaptureDeterministicState().ActiveWeaponIndex);
     }
 
     // 转向功能已移除（不需要小兵在攻击时旋转），此测试已废弃

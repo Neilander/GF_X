@@ -497,14 +497,30 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 #endif
 
-        int tickCount = m_LogicFrameClock.Advance(
-            realtime,
-            m_LogicFrameScaleProvider,
-            m_LogicFrameTickCallback,
-            MaxLogicTicksPerRenderFrame);
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long advanceStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        int tickCount;
+        try
+        {
+            tickCount = m_LogicFrameClock.Advance(
+                realtime,
+                m_LogicFrameScaleProvider,
+                m_LogicFrameTickCallback,
+                MaxLogicTicksPerRenderFrame);
+        }
+        finally
+        {
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameAdvance,
+                    Stopwatch.GetTimestamp() - advanceStartTicks);
+            }
+        }
         LogicFrameRuntime.CompleteRenderFrame(
             tickCount,
             m_LogicFrameClock.AccumulatorSeconds,
+            m_LogicFrameClock.DeferredRealtimeSeconds,
             m_LogicFrameClock.Interpolation);
 
         if (tickCount >= 3)
@@ -558,6 +574,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         double cutoffRealtime,
         out LogicInputFrame inputFrame)
     {
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long commandsStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         LogicTimeControlService.BeginFrame(frame);
         inputFrame = logicInputManager.SealLogicInputFrame(frame, cutoffRealtime);
         LogicInteractionHoldService.ProcessFrame(inputFrame);
@@ -582,7 +600,27 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         DefendPhaseRuntime.ApplyScheduledSpawnRequests(frame);
         LogicEntityLifecycleService.ApplyFrame(frame);
         LogicObstacleCommandService.ApplyFrame(frame);
-        LogicFrameRuntime.Tick(frame);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicFrameCommands,
+                Stopwatch.GetTimestamp() - commandsStartTicks);
+        }
+
+        long tickStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+        try
+        {
+            LogicFrameRuntime.Tick(frame);
+        }
+        finally
+        {
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.LogicFrameTick,
+                    Stopwatch.GetTimestamp() - tickStartTicks);
+            }
+        }
         LogicGameEndService.ApplyFrame(frame);
         bool requiresGameplayDigest = LogicReplayRuntime.IsRecording;
 #if UNITY_EDITOR
@@ -610,6 +648,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicFrameRuntime.CompleteRenderFrame(
                 0,
                 m_LogicFrameClock.AccumulatorSeconds,
+                m_LogicFrameClock.DeferredRealtimeSeconds,
                 m_LogicFrameClock.Interpolation);
             return;
         }
@@ -633,6 +672,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicFrameRuntime.CompleteRenderFrame(
                 actualTickCount,
                 m_LogicFrameClock.AccumulatorSeconds,
+                m_LogicFrameClock.DeferredRealtimeSeconds,
                 m_LogicFrameClock.Interpolation);
         }
         catch (Exception exception)
@@ -874,6 +914,10 @@ internal sealed class RuntimeInitPipeline
             {
                 Log.Error("{0} Missing MinimapManager component.", m_LogTag);
             }
+
+            if (cardSetup == null)
+                throw new InvalidOperationException("Runtime initialization requires CardSetup to bind logic fog exploration.");
+            cardSetup.EnsureLogicCardPlacementWorldBound();
         }
 
         if (needCardSystem)

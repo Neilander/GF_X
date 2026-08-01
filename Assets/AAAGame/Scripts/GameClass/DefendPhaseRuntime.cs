@@ -216,10 +216,28 @@ public static class DefendPhaseRuntime
         List<Vector3> pathCorners,
         out string failureReason)
     {
+        return TryGetNavigationPathCorners(
+            unitType,
+            spawnPosition,
+            basePosition,
+            pathCorners,
+            out failureReason,
+            out _);
+    }
+
+    public static bool TryGetNavigationPathCorners(
+        UnitType unitType,
+        Vector3 spawnPosition,
+        Vector3 basePosition,
+        List<Vector3> pathCorners,
+        out string failureReason,
+        out bool navigationUpdatePending)
+    {
         if (pathCorners == null)
             throw new ArgumentNullException(nameof(pathCorners));
 
         pathCorners.Clear();
+        navigationUpdatePending = false;
         int agentTypeId = ResolveAgentTypeId(unitType);
         if (!TryResolveBaseNavigationPoint(basePosition, agentTypeId, out Vector3 navigationBase, out failureReason))
             return false;
@@ -229,7 +247,8 @@ public static class DefendPhaseRuntime
             navigationBase,
             agentTypeId,
             pathCorners,
-            out failureReason);
+            out failureReason,
+            out navigationUpdatePending);
     }
 
     private static void EnsureSubscribedSoldierDead()

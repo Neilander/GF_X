@@ -25,7 +25,7 @@ public enum CreatureCurrentProperty
     HealthCurrent
 }
 
-public class CreaturePropertyManager
+public sealed class CreaturePropertyManager : IDisposable
 {
     private static readonly CreatureMainProperty[] CanonicalMainProperties =
     {
@@ -87,7 +87,7 @@ public class CreaturePropertyManager
 
     public CreaturePropertyManager(string creatureType, int level)
     {
-        propertyManager = new PropertyManager();
+        propertyManager = GameFramework.ReferencePool.Acquire<PropertyManager>();
         _level = Math.Max(1, Math.Min(3, level));
 
         LoadCharacterData(creatureType);
@@ -97,14 +97,14 @@ public class CreaturePropertyManager
     public CreaturePropertyManager(CharacterDataDetail characterData, int level)
     {
         _characterData = characterData ?? throw new ArgumentNullException(nameof(characterData));
-        propertyManager = new PropertyManager();
+        propertyManager = GameFramework.ReferencePool.Acquire<PropertyManager>();
         _level = Math.Max(1, Math.Min(3, level));
         InitializeProperties();
     }
 
     public CreaturePropertyManager(Func<CreatureMainProperty, Fix64> configValueProvider)
     {
-        propertyManager = new PropertyManager();
+        propertyManager = GameFramework.ReferencePool.Acquire<PropertyManager>();
         _configValueProvider = configValueProvider;
         InitializeProperties();
     }
@@ -122,6 +122,15 @@ public class CreaturePropertyManager
 
         //创建临时属性，如血量蓝量
         CreateIrreversibleProperty();
+    }
+
+    public void Dispose()
+    {
+        if (propertyManager == null)
+            throw new InvalidOperationException("CreaturePropertyManager.Dispose failed: manager was already released.");
+
+        GameFramework.ReferencePool.Release(propertyManager);
+        propertyManager = null;
     }
 
     public Fix64 GetProperty(CreatureMainProperty property)

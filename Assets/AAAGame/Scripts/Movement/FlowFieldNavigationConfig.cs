@@ -23,7 +23,7 @@ public class FlowFieldNavigationConfig : ScriptableObject
     public int WorldBuildOperationQuota = 32768;
     [Tooltip("Maximum runtime-dirty rebuild operations processed per logic Tick.")]
     [Min(1)]
-    public int RuntimeRebuildOperationQuota = 4096;
+    public int RuntimeRebuildOperationQuota = 512;
     [Tooltip("Maximum deterministic flow tiles committed per logic Tick before float shadow work.")]
     [Min(1)]
     public int DeterministicFlowTileCommitQuota = 8;

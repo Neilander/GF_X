@@ -34,6 +34,13 @@ namespace AAAGame.Card
         public static bool IsWorldBound => s_MapData != null;
         public static ulong LastAppliedFrame { get; private set; }
 
+        public static bool IsBoundTo(Fog3MapData mapData)
+        {
+            if (mapData == null)
+                throw new ArgumentNullException(nameof(mapData));
+            return ReferenceEquals(s_MapData, mapData);
+        }
+
         public static void BeginTimeline()
         {
             if (IsActive)

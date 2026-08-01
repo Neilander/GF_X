@@ -127,6 +127,9 @@ namespace GiantGrey.TileWorldCreator
 
         private static void HierarchyChanged()
         {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+
             var overlay = new PaintSceneOverlay();
             overlay.CreatePanelContent();
         }

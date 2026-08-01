@@ -37,6 +37,141 @@ public sealed class LogicTimeControlServiceTests
     }
 
     [Test]
+    public void BulletTime_LogicTickDuration_ExpiresBeforeTheExclusiveDeadlineFrame()
+    {
+        LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 2000, 3);
+
+        BeginNextFrame();
+        LogicTimeControlSnapshot active = LogicTimeControlService.CaptureSnapshot();
+        Assert.AreEqual(2000, LogicTimeControlService.BulletTimeScaleUnits);
+        Assert.AreEqual(4ul, active.BulletTimeScales[0].ExpirationFrameExclusive);
+
+        BeginNextFrame();
+        BeginNextFrame();
+        Assert.AreEqual(2000, LogicTimeControlService.BulletTimeScaleUnits);
+
+        BeginNextFrame();
+        Assert.AreEqual(LogicTimeControlService.NormalScaleUnits, LogicTimeControlService.BulletTimeScaleUnits);
+        Assert.AreEqual(0, LogicTimeControlService.CaptureSnapshot().BulletTimeScales.Count);
+    }
+
+    [Test]
+    public void BulletTime_OverlappingTimedSources_ExpireIndependently()
+    {
+        LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 2000, 2);
+        LogicTimeControlService.SetBulletTimeScaleForLogicTicks(20, 5000, 4);
+
+        BeginNextFrame();
+        Assert.AreEqual(2000, LogicTimeControlService.BulletTimeScaleUnits);
+        BeginNextFrame();
+        Assert.AreEqual(2000, LogicTimeControlService.BulletTimeScaleUnits);
+
+        BeginNextFrame();
+        Assert.AreEqual(5000, LogicTimeControlService.BulletTimeScaleUnits);
+        BeginNextFrame();
+        Assert.AreEqual(5000, LogicTimeControlService.BulletTimeScaleUnits);
+
+        BeginNextFrame();
+        Assert.AreEqual(LogicTimeControlService.NormalScaleUnits, LogicTimeControlService.BulletTimeScaleUnits);
+    }
+
+    [Test]
+    public void BulletTime_RenewalOnExpirationFrame_ReplacesTheOldDeadline()
+    {
+        LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+            1,
+            1,
+            TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks,
+            10,
+            2000,
+            2));
+        LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+            3,
+            2,
+            TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks,
+            10,
+            5000,
+            2));
+
+        BeginNextFrame();
+        BeginNextFrame();
+        BeginNextFrame();
+
+        LogicTimeControlSnapshot renewed = LogicTimeControlService.CaptureSnapshot();
+        Assert.AreEqual(5000, LogicTimeControlService.BulletTimeScaleUnits);
+        Assert.AreEqual(5ul, renewed.BulletTimeScales[0].ExpirationFrameExclusive);
+
+        BeginNextFrame();
+        BeginNextFrame();
+        Assert.AreEqual(LogicTimeControlService.NormalScaleUnits, LogicTimeControlService.BulletTimeScaleUnits);
+    }
+
+    [Test]
+    public void BulletTime_ManualRemovalOnExpirationFrame_DoesNotDoubleRemove()
+    {
+        LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+            1,
+            1,
+            TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks,
+            10,
+            2000,
+            2));
+        LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
+            3,
+            2,
+            TimeScaleCommandKind.RemoveBulletTimeScale,
+            10,
+            0));
+
+        BeginNextFrame();
+        BeginNextFrame();
+
+        Assert.DoesNotThrow(BeginNextFrame);
+        Assert.AreEqual(LogicTimeControlService.NormalScaleUnits, LogicTimeControlService.BulletTimeScaleUnits);
+    }
+
+    [Test]
+    public void BulletTime_LogicTickDuration_FreezesWhilePaused()
+    {
+        var clock = new LogicFrameClock();
+        clock.Start(0d);
+        LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 5000, 2);
+
+        int firstTicks = clock.Advance(
+            2d * LogicFrameClock.FrameDurationSeconds,
+            PrepareNextFrameScale,
+            (frame, _) => LogicTimeControlService.BeginFrame(frame));
+        Assert.AreEqual(1, firstTicks);
+        Assert.AreEqual(1ul, LogicTimeControlService.CurrentFrame);
+
+        LogicTimeControlService.AcquirePause(20);
+        Assert.AreEqual(
+            0,
+            clock.Advance(10d, PrepareNextFrameScale, (frame, _) => LogicTimeControlService.BeginFrame(frame)));
+        Assert.AreEqual(1ul, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(3ul, LogicTimeControlService.CaptureSnapshot().BulletTimeScales[0].ExpirationFrameExclusive);
+
+        LogicTimeControlService.ReleasePause(20);
+        Assert.AreEqual(
+            1,
+            clock.Advance(
+                10d + 2d * LogicFrameClock.FrameDurationSeconds,
+                PrepareNextFrameScale,
+                (frame, _) => LogicTimeControlService.BeginFrame(frame)));
+        Assert.AreEqual(2ul, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(5000, LogicTimeControlService.BulletTimeScaleUnits);
+
+        Assert.AreEqual(
+            1,
+            clock.Advance(
+                10d + 3d * LogicFrameClock.FrameDurationSeconds,
+                PrepareNextFrameScale,
+                (frame, _) => LogicTimeControlService.BeginFrame(frame)));
+        Assert.AreEqual(3ul, LogicTimeControlService.CurrentFrame);
+        Assert.AreEqual(LogicTimeControlService.NormalScaleUnits, LogicTimeControlService.BulletTimeScaleUnits);
+    }
+
+    [Test]
     public void Pause_MultipleSources_ResumesOnlyAfterLastRelease()
     {
         LogicTimeControlService.SetBulletTimeScale(10, 2500);
@@ -77,6 +212,8 @@ public sealed class LogicTimeControlServiceTests
         LogicTimeControlService.RemoveBulletTimeScale(10);
         Assert.Throws<InvalidOperationException>(() => LogicTimeControlService.PrepareFrame(1));
         Assert.Throws<ArgumentOutOfRangeException>(() => LogicTimeControlService.SetBulletTimeScale(10, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 2000, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => LogicTimeControlService.AcquirePause(0));
     }
 
@@ -175,6 +312,24 @@ public sealed class LogicTimeControlServiceTests
     }
 
     [Test]
+    public void SnapshotRestore_PreservesActiveLogicTickExpiration()
+    {
+        LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 2000, 5);
+        BeginNextFrame();
+        LogicTimeControlSnapshot snapshot = LogicTimeControlService.CaptureSnapshot();
+
+        BeginNextFrame();
+        LogicTimeControlService.RestoreSnapshot(snapshot);
+
+        LogicTimeControlSnapshot restored = LogicTimeControlService.CaptureSnapshot();
+        Assert.AreEqual(1ul, restored.CurrentFrame);
+        Assert.AreEqual(6ul, restored.BulletTimeScales[0].ExpirationFrameExclusive);
+        Assert.AreEqual(
+            LogicStateHasher.ComputeTimeControlHash(snapshot),
+            LogicStateHasher.ComputeTimeControlHash(restored));
+    }
+
+    [Test]
     public void FrameTimelineReset_ClearsScaleButPreservesExternalPauseOwners()
     {
         LogicTimeControlService.SetBulletTimeScale(10, 2000);
@@ -192,5 +347,11 @@ public sealed class LogicTimeControlServiceTests
     private static void BeginNextFrame()
     {
         LogicTimeControlService.BeginFrame(checked(LogicTimeControlService.CurrentFrame + 1));
+    }
+
+    private static double PrepareNextFrameScale()
+    {
+        LogicTimeControlService.PrepareFrame(checked(LogicTimeControlService.CurrentFrame + 1));
+        return LogicTimeControlService.SchedulerScale;
     }
 }

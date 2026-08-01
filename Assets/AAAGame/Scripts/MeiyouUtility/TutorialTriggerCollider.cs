@@ -1,29 +1,63 @@
-﻿using AAAGame.Scripts.Entity;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityGameFramework.Runtime;
 
 [RequireComponent(typeof(Collider))]
-public class TutorialTriggerCollider : MonoBehaviour
+public class TutorialTriggerCollider : MonoBehaviour, ILogicFrameUpdate, ILogicFrameStableOrder
 {
     [SerializeField] private TutorialType triggerType = TutorialType.MoveHeroByWASD;
     [SerializeField] private bool triggerOnce = true;
 
     private TutorialManager tutorialManager;
     private bool hasTriggered;
+    private bool logicFrameRegistered;
+    private bool fixedBoundsReady;
+    private FixVector2 fixedCenter;
+    private FixVector2 fixedHalfExtents;
 
     public TutorialType TriggerType => triggerType;
     public bool TriggerOnce => triggerOnce;
+    public int LogicFrameOrder => 999;
+    public long LogicFrameStableKey => (long)triggerType;
 
-    private void OnTriggerEnter(Collider other)
+    private void OnEnable()
     {
+        LogicFrameRuntime.Began += HandleLogicRuntimeBegan;
+        LogicFrameRuntime.Ending += HandleLogicRuntimeEnding;
+        if (LogicFrameRuntime.IsActive)
+            RegisterLogicFrame();
+    }
+
+    private void OnDisable()
+    {
+        LogicFrameRuntime.Began -= HandleLogicRuntimeBegan;
+        LogicFrameRuntime.Ending -= HandleLogicRuntimeEnding;
+        if (logicFrameRegistered)
+            UnregisterLogicFrame();
+        fixedBoundsReady = false;
+    }
+
+    public void OnLogicFrameUpdate(Fix64 deltaTime)
+    {
+        if (deltaTime != LogicFrameRuntime.FixedDeltaTime)
+            throw new System.InvalidOperationException("TutorialTriggerCollider received a non-fixed logic delta.");
+        if (LogicFrameRuntime.CurrentFrame == 0)
+            throw new System.InvalidOperationException("TutorialTriggerCollider cannot update on logic frame zero.");
         if (triggerOnce && hasTriggered)
             return;
-
-        if (!IsPlayerHeroCollider(other))
-            return;
-
         if (triggerType == TutorialType.InvadeSH)
             return;
+
+        IEntityContext player = EntityRegistry.Player;
+        if (player == null || !player.Alive)
+            return;
+
+        EnsureFixedBounds();
+        FixVector2 offset = player.PositionFixed - fixedCenter;
+        if (Fix64.Abs(offset.x) > fixedHalfExtents.x
+            || Fix64.Abs(offset.y) > fixedHalfExtents.y)
+        {
+            return;
+        }
 
         TutorialManager manager = ResolveTutorialManager();
         if (manager == null)
@@ -36,6 +70,41 @@ public class TutorialTriggerCollider : MonoBehaviour
             return;
 
         hasTriggered = true;
+    }
+
+    private void EnsureFixedBounds()
+    {
+        if (fixedBoundsReady)
+            return;
+
+        GetFixedHorizontalBounds(out fixedCenter, out fixedHalfExtents);
+        fixedBoundsReady = true;
+    }
+
+    private void HandleLogicRuntimeBegan()
+    {
+        RegisterLogicFrame();
+    }
+
+    private void HandleLogicRuntimeEnding()
+    {
+        if (logicFrameRegistered)
+            UnregisterLogicFrame();
+    }
+
+    private void RegisterLogicFrame()
+    {
+        if (logicFrameRegistered || triggerType == TutorialType.InvadeSH)
+            return;
+
+        LogicFrameRuntime.Register(this);
+        logicFrameRegistered = true;
+    }
+
+    private void UnregisterLogicFrame()
+    {
+        LogicFrameRuntime.Unregister(this);
+        logicFrameRegistered = false;
     }
 
     public void GetFixedHorizontalBounds(out FixVector2 center, out FixVector2 halfExtents)
@@ -64,21 +133,6 @@ public class TutorialTriggerCollider : MonoBehaviour
         }
 
         return tutorialManager;
-    }
-
-    private static bool IsPlayerHeroCollider(Collider other)
-    {
-        if (other == null)
-            return false;
-
-        MAEntity entity = other.GetComponentInParent<MAEntity>();
-        if (entity == null || !entity.Alive)
-            return false;
-
-        if (entity.Brain is PlayerBrain)
-            return true;
-
-        return object.ReferenceEquals(EntityRegistry.Player, entity);
     }
 
 #if UNITY_EDITOR

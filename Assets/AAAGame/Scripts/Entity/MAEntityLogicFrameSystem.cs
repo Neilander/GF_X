@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using UnityGameFramework.Runtime;
 
 public enum MAEntityLogicFramePhase
 {
@@ -109,6 +110,8 @@ public static class MAEntityLogicFrameSystem
                 $"MAEntityLogicFrameSystem.ExecuteFrame failed: frame snapshot mismatch. logicFrame={frame}, snapshot={snapshot?.FrameId ?? 0}.");
         }
 
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long setupStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
         CollectFrameEntities(snapshot);
         CollectCoordinatedViews();
         for (int i = 0; i < s_CoordinatedViews.Count; i++)
@@ -116,12 +119,19 @@ public static class MAEntityLogicFrameSystem
 
         for (int i = 0; i < s_FrameEntities.Count; i++)
             s_FrameEntities[i].BeginLogicFrame(deltaTime);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicEntityFrameSetup,
+                System.Diagnostics.Stopwatch.GetTimestamp() - setupStartTicks);
+        }
 
         int phaseExecutionCount = 0;
         LogicDamageEventService.BeginFrame(frame);
         for (int phaseValue = 0; phaseValue < (int)MAEntityLogicFramePhase.Count; phaseValue++)
         {
             MAEntityLogicFramePhase phase = (MAEntityLogicFramePhase)phaseValue;
+            long phaseStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
             for (int entityIndex = 0; entityIndex < s_FrameEntities.Count; entityIndex++)
             {
                 s_FrameEntities[entityIndex].ExecuteLogicFramePhase(phase, deltaTime);
@@ -133,17 +143,49 @@ public static class MAEntityLogicFrameSystem
                 LogicDamageEventService.ApplyFrame(frame);
             if (phase == MAEntityLogicFramePhase.MoveResolve)
                 LogicAgentCollisionShadowService.SolveFrame(frame, snapshot, s_FrameEntities);
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    ResolvePhasePerfScope(phase),
+                    System.Diagnostics.Stopwatch.GetTimestamp() - phaseStartTicks);
+            }
             LastCompletedPhase = phase;
         }
 
+        long completeStartTicks = profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
         for (int i = 0; i < s_FrameEntities.Count; i++)
             s_FrameEntities[i].CompleteLogicFrame(deltaTime);
         for (int i = 0; i < s_CoordinatedViews.Count; i++)
             s_CoordinatedViews[i].CompleteCoordinatedLogicFrameUpdate();
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.LogicEntityFrameComplete,
+                System.Diagnostics.Stopwatch.GetTimestamp() - completeStartTicks);
+        }
 
         LastFrameEntityCount = s_FrameEntities.Count;
         LastFramePhaseExecutionCount = phaseExecutionCount;
         LastCompletedFrame = frame;
+    }
+
+    private static MainThreadPerfScope ResolvePhasePerfScope(MAEntityLogicFramePhase phase)
+    {
+        return phase switch
+        {
+            MAEntityLogicFramePhase.BaseAndBuffs => MainThreadPerfScope.LogicEntityBaseAndBuffs,
+            MAEntityLogicFramePhase.NavigationSync => MainThreadPerfScope.LogicEntityNavigationSync,
+            MAEntityLogicFramePhase.Brain => MainThreadPerfScope.LogicEntityBrain,
+            MAEntityLogicFramePhase.Targeting => MainThreadPerfScope.LogicEntityTargeting,
+            MAEntityLogicFramePhase.Projectile => MainThreadPerfScope.LogicEntityProjectile,
+            MAEntityLogicFramePhase.Attack => MainThreadPerfScope.LogicEntityAttack,
+            MAEntityLogicFramePhase.DamageResolve => MainThreadPerfScope.LogicEntityDamageResolve,
+            MAEntityLogicFramePhase.MoveIntent => MainThreadPerfScope.LogicEntityMoveIntent,
+            MAEntityLogicFramePhase.MoveResolve => MainThreadPerfScope.LogicEntityMoveResolve,
+            MAEntityLogicFramePhase.MoveCommit => MainThreadPerfScope.LogicEntityMoveCommit,
+            MAEntityLogicFramePhase.PostUpdate => MainThreadPerfScope.LogicEntityPostUpdate,
+            _ => throw new ArgumentOutOfRangeException(nameof(phase), phase, "Unknown logic entity phase."),
+        };
     }
 
     private static void CollectFrameEntities(LogicEntityFrameSnapshot snapshot)

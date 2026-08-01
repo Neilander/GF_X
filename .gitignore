@@ -15,6 +15,8 @@
 /AB/Working
 /BuildApp
 /Build/LogicDeterminismCorpus/
+/Assets/StreamingAssets/
+~$*.xlsx
 /Tools/Jenkins/UnityBuildLog.log
 /Tools/LocalizationTextsScannerOutput.txt
 /HybridCLRData

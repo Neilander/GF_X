@@ -1409,24 +1409,6 @@ namespace AAAGame.Card
             return false;
         }
 
-        public void RedrawCards()
-        {
-            if (m_CardSystemController == null)
-            {
-                return;
-            }
-
-            PlayerHandModel handModel = m_CardSystemController.GetHandModel();
-            if (handModel == null)
-            {
-                return;
-            }
-
-            int cardCount = handModel.CardCount;
-            handModel.Clear();
-            m_CardSystemController.DrawCards(cardCount);
-        }
-
         protected override void OnRecycle()
         {
             base.OnRecycle();

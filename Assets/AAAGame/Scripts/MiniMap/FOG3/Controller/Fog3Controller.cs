@@ -24,14 +24,14 @@ namespace AAAGame.MiniMap.FOG3
             nextRevealerId = 1;
         }
 
-        public int RegisterRevealer(Transform target, float visionRadius, int entityId, bool useLineOfSight, bool allowRevealHidden = true)
+        public int RegisterRevealer(Transform target, float visionRadius, int logicEntityId, bool useLineOfSight, bool allowRevealHidden = true)
         {
             if (MapData == null)
                 return -1;
 
             int id = nextRevealerId++;
             Vector3 fallbackPosition = target != null ? target.position : Vector3.zero;
-            revealers.Add(id, new Fog3RevealerData(id, target, fallbackPosition, visionRadius, entityId, useLineOfSight, allowRevealHidden));
+            revealers.Add(id, new Fog3RevealerData(id, target, fallbackPosition, visionRadius, logicEntityId, useLineOfSight, allowRevealHidden));
             return id;
         }
 
@@ -83,31 +83,16 @@ namespace AAAGame.MiniMap.FOG3
             MapData.ClearCurrentVisibility();
             clearTicks = System.Diagnostics.Stopwatch.GetTimestamp() - clearStartTicks;
 
-            List<int> deadRevealers = null;
             foreach (KeyValuePair<int, Fog3RevealerData> pair in revealers)
             {
                 Fog3RevealerData revealer = pair.Value;
                 if (!revealer.IsActive)
                     continue;
 
-                if (!revealer.HasTarget && revealer.EntityId != 0)
-                {
-                    deadRevealers ??= new List<int>();
-                    deadRevealers.Add(pair.Key);
-                    continue;
-                }
-
                 activeRevealers++;
                 long revealStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 Reveal(revealer, occluderMask, eyeHeight, softEdgeWidth, globalLineOfSight || revealer.UseLineOfSight);
                 revealTicks += System.Diagnostics.Stopwatch.GetTimestamp() - revealStartTicks;
-            }
-
-            if (deadRevealers != null)
-            {
-                deadRevealerCount = deadRevealers.Count;
-                for (int i = 0; i < deadRevealers.Count; i++)
-                    revealers.Remove(deadRevealers[i]);
             }
 
             long eventStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -187,8 +172,8 @@ namespace AAAGame.MiniMap.FOG3
                     continue;
 
                 firstActiveId = revealer.Id;
-                firstActiveEntityId = revealer.EntityId;
-                firstActivePosition = revealer.Position;
+                firstActiveEntityId = revealer.LogicEntityId;
+                firstActivePosition = ResolveRevealerPosition(revealer);
             }
         }
 
@@ -199,7 +184,7 @@ namespace AAAGame.MiniMap.FOG3
 
         private void Reveal(Fog3RevealerData revealer, LayerMask occluderMask, float eyeHeight, float softEdgeWidth, bool useLineOfSight)
         {
-            Vector3 position = revealer.Position;
+            Vector3 position = ResolveRevealerPosition(revealer);
             if (!MapData.WorldToGrid(position, out int centerX, out int centerY))
                 return;
 
@@ -243,6 +228,29 @@ namespace AAAGame.MiniMap.FOG3
                     MapData.AddVisibility(x, y, intensity);
                 }
             }
+        }
+
+        private static Vector3 ResolveRevealerPosition(Fog3RevealerData revealer)
+        {
+            if (revealer == null)
+                throw new ArgumentNullException(nameof(revealer));
+            if (revealer.LogicEntityId == 0)
+                return revealer.Position;
+            if (revealer.LogicEntityId < 0)
+                throw new InvalidOperationException($"Fog3 revealer {revealer.Id} has invalid logic entity id {revealer.LogicEntityId}.");
+
+            var entityId = new LogicEntityId(revealer.LogicEntityId);
+            if (!EntityRegistry.TryGet(entityId, out IEntityContext entity))
+            {
+                throw new InvalidOperationException(
+                    $"Fog3 revealer {revealer.Id} references missing logic entity {revealer.LogicEntityId}.");
+            }
+
+            Vector3 viewPosition = revealer.Position;
+            return new Vector3(
+                (float)entity.PositionFixed.x,
+                viewPosition.y,
+                (float)entity.PositionFixed.y);
         }
 
         private void RefreshEnemyStrongholdMask()

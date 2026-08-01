@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
+using UnityEngine;
 
 [TestFixture]
 public sealed class LogicCardCommandServiceTests
@@ -109,5 +111,56 @@ public sealed class LogicCardCommandServiceTests
         {
             LogicCardCommandService.CardResolved -= resolutions.Add;
         }
+    }
+
+    [Test]
+    public void CardRewardMutation_RejectsOutsideApplyWindow()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            RewardManager.HandleCardDiscardReward(null, 1, null));
+    }
+
+    [Test]
+    public void CardGameplayState_HasNoRenderFrameOrUiMutationBypass()
+    {
+        string legacyManagerPath = Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/Card/Manager/CardGameManager.cs");
+        Assert.IsFalse(
+            File.Exists(legacyManagerPath),
+            "The legacy MonoBehaviour card manager must not drive a second controller from render Update.");
+        string legacyPopulationPath = Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/Card/Manager/PopulationManager.cs");
+        Assert.IsFalse(
+            File.Exists(legacyPopulationPath),
+            "The unused legacy population MonoBehaviour must not retain a second card gameplay state.");
+
+        string cardUiPath = Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/Card/UI/CardUIForm.cs");
+        string cardUiSource = File.ReadAllText(cardUiPath);
+        StringAssert.DoesNotContain("void RedrawCards(", cardUiSource);
+        StringAssert.DoesNotContain("m_CardSystemController.DrawCards(", cardUiSource);
+
+        string launchScenePath = Path.Combine(Application.dataPath, "AAAGame/Scene/Launch.unity");
+        string launchSceneSource = File.ReadAllText(launchScenePath);
+        StringAssert.DoesNotContain(
+            "4328fc49a04274501868e332426a0021",
+            launchSceneSource,
+            "The persistent Launch scene must not expose CardTester gameplay mutation context menus.");
+
+        string cardSetupPath = Path.Combine(Application.dataPath, "AAAGame/Scripts/UTManagers/CardSetup.cs");
+        string cardSetupSource = File.ReadAllText(cardSetupPath);
+        StringAssert.DoesNotContain("public bool AddCardToDeck(CardData", cardSetupSource);
+        StringAssert.DoesNotContain("public bool DrawCard()", cardSetupSource);
+
+        string cardControllerPath = Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/Card/Controller/CardSystemController.cs");
+        string cardControllerSource = File.ReadAllText(cardControllerPath);
+        StringAssert.DoesNotContain("public bool AddCardToDeck(CardData", cardControllerSource);
+        StringAssert.DoesNotContain("public void DrawCards(", cardControllerSource);
+        StringAssert.DoesNotContain("public bool DrawCard()", cardControllerSource);
     }
 }

@@ -1920,7 +1920,7 @@ public class LogicEntityIdentityTests
         state.RestoreFromGhostState();
         Assert.IsFalse(state.IsGhostState);
         Assert.IsTrue(state.Alive);
-        Assert.AreEqual(1u, state.AgentCollisionMask);
+        Assert.AreEqual(LogicAgentCollisionFilter.EnemyCategory, state.AgentCollisionMask);
         Assert.AreEqual((Fix64)100, state.HealthValue);
         Assert.IsTrue(state.CanRun(state.AtkComp));
         Assert.IsTrue(state.CanRun(state.TargetComp));
@@ -2212,10 +2212,10 @@ public class LogicEntityIdentityTests
     {
         var targeting = new CharacterTargetingComp
         {
-            AggroRangeFixed = (Fix64)LogicUnitConfigurator.DefaultAggroRange,
-            ForgetRangeFixed = (Fix64)LogicUnitConfigurator.DefaultForgetRange,
-            FollowSearchRangeFixed = (Fix64)LogicUnitConfigurator.DefaultFollowRange,
-            AlertRadiusFixed = (Fix64)LogicUnitConfigurator.DefaultAlertRadius,
+            AggroRangeFixed = (Fix64)10,
+            ForgetRangeFixed = (Fix64)20,
+            FollowSearchRangeFixed = (Fix64)30,
+            AlertRadiusFixed = (Fix64)5,
         };
         targeting.Init(state);
         return targeting;

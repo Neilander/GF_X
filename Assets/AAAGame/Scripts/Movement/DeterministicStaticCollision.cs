@@ -275,7 +275,9 @@ public readonly struct LogicStaticCollisionSolveResult
         FixVector2 desiredDisplacement,
         FixVector2 resolvedDisplacement,
         bool startedOverlapping,
-        int contactCount)
+        int contactCount,
+        int firstHitStableKey = -1,
+        FixVector2 firstHitNormal = default)
     {
         Success = success;
         Failure = failure;
@@ -285,6 +287,8 @@ public readonly struct LogicStaticCollisionSolveResult
         ResolvedDisplacement = resolvedDisplacement;
         StartedOverlapping = startedOverlapping;
         ContactCount = contactCount;
+        FirstHitStableKey = firstHitStableKey;
+        FirstHitNormal = firstHitNormal;
     }
 
     public bool Success { get; }
@@ -295,6 +299,8 @@ public readonly struct LogicStaticCollisionSolveResult
     public FixVector2 ResolvedDisplacement { get; }
     public bool StartedOverlapping { get; }
     public int ContactCount { get; }
+    public int FirstHitStableKey { get; }
+    public FixVector2 FirstHitNormal { get; }
 }
 
 public static class DeterministicStaticCollisionSolver
@@ -386,6 +392,8 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 recoveredStart = position;
         FixVector2 remaining = desiredDisplacement;
         int contactCount = 0;
+        int firstHitStableKey = -1;
+        FixVector2 firstHitNormal = FixVector2.Zero;
         for (int iteration = 0; iteration < MaxContactIterations; iteration++)
         {
             if (remaining == FixVector2.Zero)
@@ -398,9 +406,117 @@ public static class DeterministicStaticCollisionSolver
                 break;
             }
 
+            if (firstHitStableKey < 0)
+            {
+                firstHitStableKey = hit.StableKey;
+                firstHitNormal = hit.Normal;
+            }
+
             Fix64 travelTime = hit.Time;
             position += remaining * travelTime;
 
+            FixVector2 leftover = remaining * (Fix64.One - hit.Time);
+            Fix64 inwardDistance = FixVector2.Dot(leftover, hit.Normal);
+            if (inwardDistance < Fix64.Zero)
+                leftover -= hit.Normal * inwardDistance;
+
+            contactCount++;
+            if (travelTime == Fix64.Zero && leftover == remaining)
+            {
+                return FailureResult(
+                    LogicStaticCollisionFailure.NoProgress,
+                    start,
+                    position,
+                    desiredDisplacement,
+                    startedOverlapping,
+                    contactCount);
+            }
+
+            remaining = leftover;
+        }
+
+        if (remaining != FixVector2.Zero)
+        {
+            return FailureResult(
+                LogicStaticCollisionFailure.ContactIterationLimit,
+                start,
+                position,
+                desiredDisplacement,
+                startedOverlapping,
+                contactCount);
+        }
+
+        return new LogicStaticCollisionSolveResult(
+            true,
+            LogicStaticCollisionFailure.None,
+            start,
+            recoveredStart,
+            desiredDisplacement,
+            position - start,
+            startedOverlapping,
+            contactCount,
+            firstHitStableKey,
+            firstHitNormal);
+    }
+
+    internal static LogicStaticCollisionSolveResult SolveCircleAgainstObstacles(
+        FixVector2 start,
+        FixVector2 desiredDisplacement,
+        Fix64 radius,
+        IReadOnlyList<LogicStaticCollisionObstacle> obstacles)
+    {
+        if (obstacles == null)
+            throw new ArgumentNullException(nameof(obstacles));
+        if (radius < Fix64.Zero)
+        {
+            return FailureResult(
+                LogicStaticCollisionFailure.InvalidRadius,
+                start,
+                start,
+                desiredDisplacement,
+                false,
+                0);
+        }
+
+        FixVector2 position = start;
+        bool startedOverlapping = false;
+        for (int iteration = 0; iteration < MaxPenetrationIterations; iteration++)
+        {
+            if (!TryFindRuntimeObstaclePenetration(obstacles, position, radius, 0, out Penetration penetration))
+                break;
+
+            startedOverlapping = true;
+            position += penetration.Normal * (penetration.Depth + s_Epsilon);
+        }
+
+        if (TryFindRuntimeObstaclePenetration(obstacles, position, radius, 0, out _))
+        {
+            return FailureResult(
+                LogicStaticCollisionFailure.StartOverlapUnresolved,
+                start,
+                position,
+                desiredDisplacement,
+                startedOverlapping,
+                0);
+        }
+
+        FixVector2 recoveredStart = position;
+        FixVector2 remaining = desiredDisplacement;
+        int contactCount = 0;
+        for (int iteration = 0; iteration < MaxContactIterations; iteration++)
+        {
+            if (remaining == FixVector2.Zero)
+                break;
+
+            if (!TryFindEarliestRuntimeObstacleHit(obstacles, position, remaining, radius, 0, out SweepHit hit))
+            {
+                position += remaining;
+                remaining = FixVector2.Zero;
+                break;
+            }
+
+            Fix64 travelTime = hit.Time;
+            position += remaining * travelTime;
             FixVector2 leftover = remaining * (Fix64.One - hit.Time);
             Fix64 inwardDistance = FixVector2.Dot(leftover, hit.Normal);
             if (inwardDistance < Fix64.Zero)
@@ -713,9 +829,23 @@ public static class DeterministicStaticCollisionSolver
         Fix64 radius,
         out Penetration penetration)
     {
+        return TryFindRuntimeObstaclePenetration(
+            runtimeObstacles,
+            position,
+            radius,
+            GetRuntimeObstacleStableKeyBase(world),
+            out penetration);
+    }
+
+    private static bool TryFindRuntimeObstaclePenetration(
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        FixVector2 position,
+        Fix64 radius,
+        int stableKeyBase,
+        out Penetration penetration)
+    {
         bool found = false;
         penetration = default;
-        int stableKeyBase = GetRuntimeObstacleStableKeyBase(world);
         for (int i = 0; i < runtimeObstacles.Count; i++)
         {
             LogicStaticCollisionObstacle obstacle = runtimeObstacles[i];
@@ -824,7 +954,30 @@ public static class DeterministicStaticCollisionSolver
             }
         }
 
-        int stableKeyBase = GetRuntimeObstacleStableKeyBase(world);
+        if (TryFindEarliestRuntimeObstacleHit(
+                runtimeObstacles,
+                start,
+                displacement,
+                radius,
+                GetRuntimeObstacleStableKeyBase(world),
+                out SweepHit runtimeHit))
+        {
+            SelectHit(runtimeHit, ref found, ref hit);
+        }
+
+        return found;
+    }
+
+    private static bool TryFindEarliestRuntimeObstacleHit(
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        FixVector2 start,
+        FixVector2 displacement,
+        Fix64 radius,
+        int stableKeyBase,
+        out SweepHit hit)
+    {
+        bool found = false;
+        hit = default;
         for (int i = 0; i < runtimeObstacles.Count; i++)
         {
             LogicStaticCollisionObstacle obstacle = runtimeObstacles[i];
@@ -1078,16 +1231,67 @@ public static class DeterministicStaticCollisionSolver
     }
 }
 
+public enum LogicStaticCollisionContactKind
+{
+    None = 0,
+    WorldBoundary = 1,
+    AuthoredGridCell = 2,
+    RuntimeObstacle = 3,
+}
+
 public readonly struct LogicStaticCollisionShadowResult
 {
-    internal LogicStaticCollisionShadowResult(int worldVersion, LogicStaticCollisionSolveResult solveResult)
+    internal LogicStaticCollisionShadowResult(
+        LogicStaticCollisionWorld world,
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        LogicStaticCollisionSolveResult solveResult)
     {
-        WorldVersion = worldVersion;
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+        if (runtimeObstacles == null)
+            throw new ArgumentNullException(nameof(runtimeObstacles));
+
+        WorldVersion = world.WorldVersion;
         SolveResult = solveResult;
+        ContactKind = LogicStaticCollisionContactKind.None;
+        ContactCellX = -1;
+        ContactCellY = -1;
+        RuntimeObstacleStableId = 0;
+        int stableKey = solveResult.FirstHitStableKey;
+        if (stableKey < 0)
+            return;
+        if (stableKey < 4)
+        {
+            ContactKind = LogicStaticCollisionContactKind.WorldBoundary;
+            return;
+        }
+
+        int runtimeObstacleKeyBase = checked(4 + checked(world.Width * world.Height) * 4);
+        if (stableKey < runtimeObstacleKeyBase)
+        {
+            int cellIndex = (stableKey - 4) / 4;
+            ContactKind = LogicStaticCollisionContactKind.AuthoredGridCell;
+            ContactCellX = cellIndex % world.Width;
+            ContactCellY = cellIndex / world.Width;
+            return;
+        }
+
+        int obstacleIndex = (stableKey - runtimeObstacleKeyBase) / 8;
+        if (obstacleIndex < 0 || obstacleIndex >= runtimeObstacles.Count)
+        {
+            throw new InvalidOperationException(
+                $"Static collision hit key {stableKey} resolved invalid runtime obstacle index {obstacleIndex}/{runtimeObstacles.Count}.");
+        }
+        ContactKind = LogicStaticCollisionContactKind.RuntimeObstacle;
+        RuntimeObstacleStableId = runtimeObstacles[obstacleIndex].StableId;
     }
 
     public int WorldVersion { get; }
     public LogicStaticCollisionSolveResult SolveResult { get; }
+    public LogicStaticCollisionContactKind ContactKind { get; }
+    public int ContactCellX { get; }
+    public int ContactCellY { get; }
+    public int RuntimeObstacleStableId { get; }
 
     public Vector3 ResolvedDisplacement => new Vector3(
         (float)SolveResult.ResolvedDisplacement.x,
@@ -1179,7 +1383,7 @@ public static class LogicStaticCollisionShadowService
             desiredDisplacement,
             effectiveRadius,
             source.RuntimeObstacles);
-        result = new LogicStaticCollisionShadowResult(world.WorldVersion, solveResult);
+        result = new LogicStaticCollisionShadowResult(world, source.RuntimeObstacles, solveResult);
         return true;
     }
 

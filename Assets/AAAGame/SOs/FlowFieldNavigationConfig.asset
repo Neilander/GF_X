@@ -18,7 +18,7 @@ MonoBehaviour:
   PortalMaxWindowWidthCells: 6
   FlowTileCacheLimit: 256
   WorldBuildOperationQuota: 32768
-  RuntimeRebuildOperationQuota: 4096
+  RuntimeRebuildOperationQuota: 512
   DeterministicFlowTileCommitQuota: 8
   SharedGoalBuildOperationQuota: 2048
   EnableDeterministicStaticCollisionShadow: 1

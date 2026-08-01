@@ -80,6 +80,7 @@ namespace AAAGame.MiniMap.FOG3
         private Coroutine sceneRebuildCoroutine;
         private bool gfEventsSubscribed;
         private bool unitySceneEventsSubscribed;
+        private bool entityRegistryEventsSubscribed;
         private bool isInitialized;
         private float currentOverlayHeight;
         private float nextInitializeRetryTime;
@@ -543,26 +544,50 @@ namespace AAAGame.MiniMap.FOG3
             UpdateVisibilityImmediately();
         }
 
-        public int RegisterRevealer(Transform target, float visionRadius, int entityId = 0, bool revealerUsesLineOfSight = false, bool allowRevealHidden = true)
+        public int RegisterRevealer(
+            Transform target,
+            float visionRadius,
+            int viewEntityId = 0,
+            bool revealerUsesLineOfSight = false,
+            bool allowRevealHidden = true,
+            int logicEntityId = 0)
         {
             if (!isInitialized || controller == null || target == null)
                 return -1;
+            if ((viewEntityId == 0) != (logicEntityId == 0))
+            {
+                throw new InvalidOperationException(
+                    $"FOG3 entity revealer requires both view and logic entity ids. view={viewEntityId}, logic={logicEntityId}.");
+            }
 
             if (transformRevealers.TryGetValue(target, out int existingId))
             {
+                if (!controller.TryGetRevealer(existingId, out Fog3RevealerData existingRevealer))
+                    throw new InvalidOperationException($"FOG3 revealer mapping references missing revealer {existingId}.");
+                if (existingRevealer.LogicEntityId != logicEntityId)
+                {
+                    throw new InvalidOperationException(
+                        $"FOG3 revealer logic identity mismatch. revealer={existingId}, existing={existingRevealer.LogicEntityId}, requested={logicEntityId}.");
+                }
+
                 SetRevealerVisionRadius(existingId, visionRadius);
                 SetRevealerAllowRevealHidden(existingId, allowRevealHidden);
-                if (entityId != 0)
-                    entityRevealers[entityId] = existingId;
+                if (viewEntityId != 0)
+                    entityRevealers[viewEntityId] = existingId;
                 return existingId;
             }
 
-            int id = controller.RegisterRevealer(target, visionRadius, entityId, revealerUsesLineOfSight, allowRevealHidden);
+            int id = controller.RegisterRevealer(
+                target,
+                visionRadius,
+                logicEntityId,
+                revealerUsesLineOfSight,
+                allowRevealHidden);
             if (id > 0)
             {
                 transformRevealers[target] = id;
-                if (entityId != 0)
-                    entityRevealers[entityId] = id;
+                if (viewEntityId != 0)
+                    entityRevealers[viewEntityId] = id;
             }
 
             return id;
@@ -1160,6 +1185,13 @@ namespace AAAGame.MiniMap.FOG3
 
         private void TrySubscribeEvents()
         {
+            if (!entityRegistryEventsSubscribed)
+            {
+                EntityRegistry.Registered += OnLogicEntityRegistered;
+                EntityRegistry.Unregistered += OnLogicEntityUnregistered;
+                entityRegistryEventsSubscribed = true;
+            }
+
             if (!unitySceneEventsSubscribed)
             {
                 SceneManager.sceneLoaded += OnUnitySceneLoaded;
@@ -1180,6 +1212,13 @@ namespace AAAGame.MiniMap.FOG3
 
         private void UnsubscribeEvents()
         {
+            if (entityRegistryEventsSubscribed)
+            {
+                EntityRegistry.Registered -= OnLogicEntityRegistered;
+                EntityRegistry.Unregistered -= OnLogicEntityUnregistered;
+                entityRegistryEventsSubscribed = false;
+            }
+
             if (unitySceneEventsSubscribed)
             {
                 SceneManager.sceneLoaded -= OnUnitySceneLoaded;
@@ -1248,6 +1287,24 @@ namespace AAAGame.MiniMap.FOG3
 
             if (!autoRegisterPlayerSideEntities || !isInitialized)
                 return;
+
+            if (args.Entity.Logic is not IEntityContext context)
+                return;
+            if (!context.LogicEntityId.IsValid)
+            {
+                throw new InvalidOperationException(
+                    $"FOG3 cannot process shown entity {args.Entity.Id} without a valid logic identity.");
+            }
+            if (!EntityRegistry.TryGet(context.LogicEntityId, out IEntityContext registeredEntity))
+                return;
+            bool identityMatches = context is MAEntity view
+                ? ReferenceEquals(registeredEntity, view.LogicState)
+                : ReferenceEquals(registeredEntity, context);
+            if (!identityMatches)
+            {
+                throw new InvalidOperationException(
+                    $"FOG3 shown entity identity mismatch. view={args.Entity.Id}, logic={context.LogicEntityId.Value}.");
+            }
 
             TryRegisterEntity(args.Entity.Id, args.Entity.Logic);
             RefreshOverlayHeightIfNeeded();
@@ -1347,15 +1404,42 @@ namespace AAAGame.MiniMap.FOG3
             if (!autoRegisterPlayerSideEntities)
                 return;
 
-            EntityLogic[] entityLogics = UnityEngine.Object.FindObjectsOfType<EntityLogic>();
-            for (int i = 0; i < entityLogics.Length; i++)
+            IList<IEntityContext> entities = EntityRegistry.AllEntities;
+            for (int i = 0; i < entities.Count; i++)
             {
-                EntityLogic logic = entityLogics[i];
-                if (logic == null || logic.Entity == null)
+                IEntityContext logicEntity = entities[i]
+                                             ?? throw new InvalidOperationException(
+                                                 $"FOG3 found a null registered logic entity at index {i}.");
+                if (!TryResolveBoundView(logicEntity, out MAEntity view))
                     continue;
 
-                TryRegisterEntity(logic.Entity.Id, logic);
+                TryRegisterEntity(view.Id, view);
             }
+        }
+
+        private void OnLogicEntityRegistered(IEntityContext logicEntity)
+        {
+            if (!autoRegisterPlayerSideEntities || !isInitialized || logicEntity == null)
+                return;
+            if (!TryResolveBoundView(logicEntity, out MAEntity view))
+                return;
+
+            if (TryRegisterEntity(view.Id, view))
+            {
+                RefreshOverlayHeightIfNeeded();
+                RequestVisibilityRefresh();
+            }
+        }
+
+        private void OnLogicEntityUnregistered(IEntityContext logicEntity)
+        {
+            if (logicEntity == null || !TryResolveBoundView(logicEntity, out MAEntity view))
+                return;
+            if (!entityRevealers.TryGetValue(view.Id, out int revealerId))
+                return;
+
+            UnregisterRevealer(revealerId);
+            RequestVisibilityRefresh();
         }
 
         private IEnumerator RegisterEntityRevealerAfterAliveRefresh(int entityId)
@@ -1392,13 +1476,19 @@ namespace AAAGame.MiniMap.FOG3
 
             if (!TryReadEntityVision(logic, out float radius))
                 return false;
+            if (logic is not IEntityContext context || !context.LogicEntityId.IsValid)
+            {
+                throw new InvalidOperationException(
+                    $"FOG3 cannot register entity revealer without a valid logic identity. framework={entityId}, logic={logic.GetType().FullName}.");
+            }
 
             int revealerId = RegisterRevealer(
                 logic.transform,
                 radius,
                 entityId,
                 false,
-                ShouldEntityRevealerAllowRevealHidden(logic));
+                ShouldEntityRevealerAllowRevealHidden(logic),
+                context.LogicEntityId.Value);
             return revealerId > 0;
         }
 
@@ -1739,6 +1829,10 @@ namespace AAAGame.MiniMap.FOG3
 
         private bool ApplyEntityVisibilityState(Fog3EntityVisibilityState state, Fog3CellState cellState, out int rendererWrites, out int animatorWrites)
         {
+            long applyStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            long rendererTicks = 0L;
+            long animatorTicks = 0L;
+            long healthBarTicks = 0L;
             rendererWrites = 0;
             animatorWrites = 0;
 
@@ -1777,15 +1871,46 @@ namespace AAAGame.MiniMap.FOG3
                 return false;
             }
 
+            long stepStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             rendererWrites = SetRenderersEnabled(state.Renderers, shouldRender);
+            rendererTicks = System.Diagnostics.Stopwatch.GetTimestamp() - stepStartTicks;
             if (state.IsBuilding)
+            {
+                stepStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                 animatorWrites = SetAnimatorsEnabled(state.Animators, shouldAnimate);
+                animatorTicks = System.Diagnostics.Stopwatch.GetTimestamp() - stepStartTicks;
+            }
 
+            stepStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             HealthBarComp.SetFogVisible(state.EntityId, shouldShowHealthBar);
+            healthBarTicks = System.Diagnostics.Stopwatch.GetTimestamp() - stepStartTicks;
             state.HasAppliedState = true;
             state.LastShouldRender = shouldRender;
             state.LastShouldAnimate = shouldAnimate;
             state.LastShouldShowHealthBar = shouldShowHealthBar;
+
+            long totalTicks = System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
+            double totalMs = totalTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (totalMs >= 10.0)
+            {
+                UnityEngine.Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    null,
+                    "[FOG3VisibilityStep] entityId={0} characterKey={1} cell={2} total={3:F3}ms renderer={4:F3}ms/{5} animator={6:F3}ms/{7} health={8:F3}ms render={9} animate={10} healthVisible={11}.",
+                    state.EntityId,
+                    state.Entity != null ? state.Entity.CharacterKey : "<null>",
+                    cellState,
+                    totalMs,
+                    rendererTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    rendererWrites,
+                    animatorTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    animatorWrites,
+                    healthBarTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                    shouldRender,
+                    shouldAnimate,
+                    shouldShowHealthBar);
+            }
             return true;
         }
 

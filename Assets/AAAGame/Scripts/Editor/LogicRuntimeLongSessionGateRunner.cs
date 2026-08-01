@@ -654,10 +654,20 @@ public static class LogicRuntimeLongSessionGateRunner
         }
     }
 
-    private static string BuildAllocationReport()
+    internal static string BuildAllocationReport()
+    {
+        return BuildAllocationReport(ProfilerDriver.lastFrameIndex);
+    }
+
+    internal static string BuildAllocationReport(int lastFrame)
     {
         int firstFrame = ProfilerDriver.firstFrameIndex;
-        int lastFrame = ProfilerDriver.lastFrameIndex;
+        int availableLastFrame = ProfilerDriver.lastFrameIndex;
+        if (lastFrame > availableLastFrame)
+        {
+            throw new InvalidOperationException(
+                $"GC allocation diagnostic requested unavailable frame {lastFrame}. availableLast={availableLastFrame}.");
+        }
         if (firstFrame < 0 || lastFrame < firstFrame)
             throw new InvalidOperationException($"GC allocation diagnostic has no recorded frames. first={firstFrame}, last={lastFrame}.");
 

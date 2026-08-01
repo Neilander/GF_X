@@ -6,11 +6,6 @@ using UnityGameFramework.Runtime;
 public static class LogicUnitConfigurator
 {
     public const string DefendSpeedBuffId = "defend_phase_speed_override";
-    public const float DefaultAggroRange = 10f;
-    public const float DefaultForgetRange = 20f;
-    public const float DefaultFollowRange = 30f;
-    public const float DefaultAlertRadius = 5f;
-
     public static void Configure(LogicEntityState state, EntityParams entityParams)
     {
         if (state == null)
@@ -63,29 +58,24 @@ public static class LogicUnitConfigurator
         RecordPerf(MainThreadPerfScope.UnitConfigDefend, stageStartTicks);
 
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        var moveComp = new CharacterMoveComp();
-        state.SetMoveComp(moveComp);
-        moveComp.Init(state, navigationAgentTypeId);
+        FactoryHelper.CreatePreloadedMoveComp(
+            UtilityBuiltin.AssetsPath.GetMoveFactoryPath("CharacterMoveFactory"),
+            state);
         RecordPerf(MainThreadPerfScope.UnitConfigMove, stageStartTicks);
 
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        IAtkComp attackComp = entityParams.BrainType == BrainType.Player
-            ? new MoveAtkComp()
-            : new DirectAtkComp();
-        state.SetAtkComp(attackComp);
-        attackComp.Init(state);
+        string attackFactoryName = entityParams.BrainType == BrainType.Player
+            ? "PlayerAtkFactory"
+            : "CharacterAtkFactory";
+        FactoryHelper.CreatePreloadedAtkComp(
+            UtilityBuiltin.AssetsPath.GetAttackFactoryPath(attackFactoryName),
+            state);
         RecordPerf(MainThreadPerfScope.UnitConfigAttack, stageStartTicks);
 
         stageStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-        ITargetingComp targetingComp = WeaponTargetRules.IsHealingWeapon(state.WeaponComp.Data.Type)
-            ? new HealTargetingComp()
-            : new CharacterTargetingComp();
-        targetingComp.Init(state);
-        targetingComp.AggroRangeFixed = (Fix64)10;
-        targetingComp.ForgetRangeFixed = (Fix64)20;
-        targetingComp.FollowSearchRangeFixed = (Fix64)30;
-        targetingComp.AlertRadiusFixed = (Fix64)5;
-        state.SetTargetingComp(targetingComp);
+        ITargetingComp targetingComp = FactoryHelper.CreatePreloadedTargetingComp(
+            UtilityBuiltin.AssetsPath.GetTargetingFactoryPath("CharacterTargetingFactory"),
+            state);
         ConfigureTargetingModeForSpawn(
             state,
             entityParams,

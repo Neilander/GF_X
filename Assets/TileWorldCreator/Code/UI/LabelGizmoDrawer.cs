@@ -37,6 +37,9 @@ namespace GiantGrey.TileWorldCreator.UI
 
         static void OnSceneGUI(SceneView sceneView)
         {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+
             Event e = Event.current;
             if (e == null) return;
 

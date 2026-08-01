@@ -111,6 +111,49 @@ public class DeterministicAgentCollisionTests
     }
 
     [Test]
+    public void SameSideCollisionFilters_DisableHardCollision()
+    {
+        LogicAgentCollisionBody first = BodyForSide(1, SideType.PlayerSide);
+        LogicAgentCollisionBody second = BodyForSide(2, SideType.PlayerSide);
+
+        LogicAgentCollisionSolveResult result = Solve(first, second);
+
+        Assert.AreEqual(0, result.CandidatePairCount);
+        Assert.AreEqual(FixVector2.Zero, result.States[0].Position);
+        Assert.AreEqual(FixVector2.Zero, result.States[1].Position);
+    }
+
+    [Test]
+    public void OpposingSideCollisionFilters_KeepHardCollision()
+    {
+        LogicAgentCollisionBody player = BodyForSide(1, SideType.PlayerSide);
+        LogicAgentCollisionBody enemy = BodyForSide(2, SideType.EnemySide);
+
+        LogicAgentCollisionSolveResult result = Solve(player, enemy);
+
+        Assert.AreEqual(1, result.CandidatePairCount);
+        Assert.AreNotEqual(FixVector2.Zero, result.States[0].Position);
+        Assert.AreNotEqual(FixVector2.Zero, result.States[1].Position);
+    }
+
+    [Test]
+    public void GhostCollisionFilter_DisablesOpposingSideCollision()
+    {
+        LogicAgentCollisionBody playerGhost = new LogicAgentCollisionBody(
+            new LogicEntityId(1),
+            FixVector2.Zero,
+            Fix64.One,
+            Fix64.One,
+            LogicAgentCollisionFilter.ResolveCategory(SideType.PlayerSide),
+            LogicAgentCollisionFilter.ResolveMask(SideType.PlayerSide, true));
+        LogicAgentCollisionBody enemy = BodyForSide(2, SideType.EnemySide);
+
+        LogicAgentCollisionSolveResult result = Solve(playerGhost, enemy);
+
+        Assert.AreEqual(0, result.CandidatePairCount);
+    }
+
+    [Test]
     public void FarSeparatedBodies_AreExcludedByStableBroadphase()
     {
         LogicAgentCollisionSolveResult result = Solve(
@@ -179,5 +222,16 @@ public class DeterministicAgentCollisionTests
             (Fix64)inverseMass,
             UnitCategory,
             UnitMask);
+    }
+
+    private static LogicAgentCollisionBody BodyForSide(int id, SideType side)
+    {
+        return new LogicAgentCollisionBody(
+            new LogicEntityId(id),
+            FixVector2.Zero,
+            Fix64.One,
+            Fix64.One,
+            LogicAgentCollisionFilter.ResolveCategory(side),
+            LogicAgentCollisionFilter.ResolveMask(side, false));
     }
 }

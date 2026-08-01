@@ -2,6 +2,35 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
+public static class LogicAgentCollisionFilter
+{
+    public const uint PlayerCategory = 1u << 0;
+    public const uint EnemyCategory = 1u << 1;
+
+    public static uint ResolveCategory(SideType side)
+    {
+        return side switch
+        {
+            SideType.PlayerSide => PlayerCategory,
+            SideType.EnemySide => EnemyCategory,
+            _ => throw new InvalidOperationException($"Agent collision requires a combat side. actual={side}."),
+        };
+    }
+
+    public static uint ResolveMask(SideType side, bool isGhostState)
+    {
+        if (isGhostState)
+            return 0u;
+
+        return side switch
+        {
+            SideType.PlayerSide => EnemyCategory,
+            SideType.EnemySide => PlayerCategory,
+            _ => throw new InvalidOperationException($"Agent collision requires a combat side. actual={side}."),
+        };
+    }
+}
+
 public readonly struct LogicAgentCollisionBody
 {
     public LogicAgentCollisionBody(

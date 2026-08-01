@@ -6,6 +6,7 @@ public interface IMoveComp : ICapability
 
     void MoveToFixed(FixVector2 destination);
     void StopMove();
+    void CommitResolvedDisplacement(FixVector2 displacement);
 
     /// <summary>
     /// 只设导航目标点（供 GetNavDirection 算方向），不设路径（Move 不会沿路径走）。

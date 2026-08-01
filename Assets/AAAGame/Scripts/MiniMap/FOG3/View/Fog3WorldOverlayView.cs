@@ -112,7 +112,7 @@ namespace AAAGame.MiniMap.FOG3
             long applyTicks = System.Diagnostics.Stopwatch.GetTimestamp() - applyStartTicks;
             long elapsedTicks = System.Diagnostics.Stopwatch.GetTimestamp() - renderStartTicks;
             double elapsedMs = elapsedTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-            if (logPerformanceDiagnostics && elapsedMs >= 4.0)
+            if (elapsedMs >= 30.0 || (logPerformanceDiagnostics && elapsedMs >= 4.0))
             {
                 Debug.LogFormat(
                     LogType.Log,

@@ -75,6 +75,7 @@ public class PreloadProcedure : ProcedureBase
         if (loadedProgress >= totalProgress && smoothProgress >= 0.99f)
         {
             preloadAllCompleted = true;
+            FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
             InitGameFrameworkSettings();
             if (LevelSelectionService.ShouldShowStartupLevelSwitch)
             {
@@ -172,7 +173,23 @@ public class PreloadProcedure : ProcedureBase
         loadedProgress = 0;
         m_DataTablesCount = -1;
         var appConfig = await AppConfigs.GetInstanceSync();
-        totalProgress = appConfig.DataTables.Length + appConfig.Configs.Length + 4 + AAAGame.Effect.EffectShaderAssetLoader.EssentialShaderCount;//4是多语言、框架扩展和两个逻辑技能工厂
+        totalProgress = appConfig.DataTables.Length + appConfig.Configs.Length + 8 + AAAGame.Effect.EffectShaderAssetLoader.EssentialShaderCount;//8是多语言、框架扩展和六个逻辑组件工厂
+        FactoryHelper.PreloadMoveFactory(
+            UtilityBuiltin.AssetsPath.GetMoveFactoryPath("CharacterMoveFactory"),
+            OnPreloadLogicFactorySuccess,
+            OnPreloadLogicFactoryFailure);
+        FactoryHelper.PreloadAtkFactory(
+            UtilityBuiltin.AssetsPath.GetAttackFactoryPath("PlayerAtkFactory"),
+            OnPreloadLogicFactorySuccess,
+            OnPreloadLogicFactoryFailure);
+        FactoryHelper.PreloadAtkFactory(
+            UtilityBuiltin.AssetsPath.GetAttackFactoryPath("CharacterAtkFactory"),
+            OnPreloadLogicFactorySuccess,
+            OnPreloadLogicFactoryFailure);
+        FactoryHelper.PreloadTargetingFactory(
+            UtilityBuiltin.AssetsPath.GetTargetingFactoryPath("CharacterTargetingFactory"),
+            OnPreloadLogicFactorySuccess,
+            OnPreloadLogicFactoryFailure);
         FactoryHelper.PreloadSkillFactory(
             UtilityBuiltin.AssetsPath.GetSkillFactoryPath("PlayerSkillFactory"),
             OnPreloadLogicFactorySuccess,

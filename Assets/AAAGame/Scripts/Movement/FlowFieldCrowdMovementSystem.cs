@@ -1,10 +1,12 @@
-﻿﻿using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using AAAGame.MiniMap.FOG3;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
+using MainThreadFrameProfiler = UnityGameFramework.Runtime.MainThreadFrameProfiler;
+using MainThreadPerfScope = UnityGameFramework.Runtime.MainThreadPerfScope;
 
 public readonly struct AuthoredNavigationSourceData
 {
@@ -106,6 +108,7 @@ public static partial class FlowFieldCrowdMovementSystem
     private const int MaxHeavySteeringDiagnosticsPerFrame = 1;
     private const int MaxNavigationStuckDiagnosticsPerFrame = 2;
     private const int MaxRuntimeArrayPoolEntriesPerLength = 8;
+    private const int RuntimeDirtyPortalTransitionSourceQuota = 16;
     private const float NavigationConstraintMinDirectionDot = 0.18f;
     private const float AgentSpatialBucketMinWorldSize = 0.75f;
     private const float AgentSpatialBucketMaxWorldSize = 2.0f;
@@ -117,7 +120,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PortalMaxWindowWidthCells = 6;
         public int FlowTileCacheLimit = 256;
         public int WorldBuildOperationQuota = 32768;
-        public int RuntimeRebuildOperationQuota = 4096;
+        public int RuntimeRebuildOperationQuota = 512;
         public int DeterministicFlowTileCommitQuota = 8;
         public int SharedGoalBuildOperationQuota = 2048;
         public bool RequireAuthoredNavigationSource = true;
@@ -168,8 +171,8 @@ public static partial class FlowFieldCrowdMovementSystem
         public SectorData[] Sectors;
         public PortalData[] Portals;
         public Dictionary<int, PortalData> PortalsById;
-        public readonly Dictionary<PortalSignature, int> PortalIdsBySignature = new Dictionary<PortalSignature, int>();
-        public readonly HashSet<int> UsedPortalIds = new HashSet<int>();
+        public Dictionary<PortalSignature, int> PortalIdsBySignature = new Dictionary<PortalSignature, int>();
+        public HashSet<int> UsedPortalIds = new HashSet<int>();
         public int NextPortalId;
 
         public bool IsWalkable(int x, int y)
@@ -395,6 +398,25 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private sealed class SectorData
     {
+        public SectorData()
+        {
+            PortalIds = new List<int>(8);
+            PortalTransitions = new List<PortalTransition>(16);
+            IncomingPortalTransitionsByToPortalId = new Dictionary<int, List<PortalTransition>>(8);
+            OutgoingPortalTransitionsByFromPortalId = new Dictionary<int, List<PortalTransition>>(8);
+        }
+
+        public SectorData(SectorData sharedPortalSource)
+        {
+            if (sharedPortalSource == null)
+                throw new ArgumentNullException(nameof(sharedPortalSource));
+
+            PortalIds = sharedPortalSource.PortalIds;
+            PortalTransitions = sharedPortalSource.PortalTransitions;
+            IncomingPortalTransitionsByToPortalId = sharedPortalSource.IncomingPortalTransitionsByToPortalId;
+            OutgoingPortalTransitionsByFromPortalId = sharedPortalSource.OutgoingPortalTransitionsByFromPortalId;
+        }
+
         public int SectorId;
         public int StartX;
         public int StartY;
@@ -407,10 +429,10 @@ public static partial class FlowFieldCrowdMovementSystem
         public int UniformIslandId;
         public int[] LocalComponentIds;
         public int LocalComponentCount;
-        public readonly List<int> PortalIds = new List<int>(8);
-        public readonly List<PortalTransition> PortalTransitions = new List<PortalTransition>(16);
-        public readonly Dictionary<int, List<PortalTransition>> IncomingPortalTransitionsByToPortalId = new Dictionary<int, List<PortalTransition>>(8);
-        public readonly Dictionary<int, List<PortalTransition>> OutgoingPortalTransitionsByFromPortalId = new Dictionary<int, List<PortalTransition>>(8);
+        public readonly List<int> PortalIds;
+        public readonly List<PortalTransition> PortalTransitions;
+        public readonly Dictionary<int, List<PortalTransition>> IncomingPortalTransitionsByToPortalId;
+        public readonly Dictionary<int, List<PortalTransition>> OutgoingPortalTransitionsByFromPortalId;
     }
 
     private sealed class PortalData
@@ -709,23 +731,26 @@ public static partial class FlowFieldCrowdMovementSystem
         public int LastUsedFrame;
     }
 
-    private readonly struct PendingSectorPortalAccess
+    private sealed class PendingSectorPortalAccess
     {
         public readonly int SectorId;
         public readonly int PortalId;
         public readonly int SectorDirtyVersion;
         public readonly bool IsAnalyticClearSector;
+        public long[] DeterministicIntegration;
 
         public PendingSectorPortalAccess(
             int sectorId,
             int portalId,
             int sectorDirtyVersion,
-            bool isAnalyticClearSector)
+            bool isAnalyticClearSector,
+            long[] deterministicIntegration = null)
         {
             SectorId = sectorId;
             PortalId = portalId;
             SectorDirtyVersion = sectorDirtyVersion;
             IsAnalyticClearSector = isAnalyticClearSector;
+            DeterministicIntegration = deterministicIntegration;
         }
     }
 
@@ -1343,6 +1368,14 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PendingWorldVersion = -1;
         public Vector3 PendingGoalWorld;
         public FixVector2 PendingGoalWorldFixed;
+        public int ReachabilityFrame = -1;
+        public int ReachabilityWorldVersion = -1;
+        public int ReachabilityRawGoalX = -1;
+        public int ReachabilityRawGoalY = -1;
+        public int ReachabilityGoalX = -1;
+        public int ReachabilityGoalY = -1;
+        public int ReachabilityGoalSectorId = -1;
+        public FixVector2 ReachabilityGoalWorldFixed;
         public int LastUsedFrame = -1;
     }
 
@@ -1684,6 +1717,10 @@ public static partial class FlowFieldCrowdMovementSystem
     }
 
     private static readonly RuntimeConfig Config = new RuntimeConfig();
+    private static bool s_RuntimeAgentTypeRadiiPrepared;
+    private static Fix64 s_SmallAgentTypeRadiusFixed;
+    private static Fix64 s_MediumAgentTypeRadiusFixed;
+    private static Fix64 s_LargeAgentTypeRadiusFixed;
     private static readonly Dictionary<int, AgentRuntimeData> Agents = new Dictionary<int, AgentRuntimeData>();
     private static readonly List<int> OrderedAgentIds = new List<int>(128);
     private static readonly List<int> NavigationWorldAgentTypeIdsScratch = new List<int>(8);
@@ -1993,6 +2030,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void ReturnRuntimeDirtyWorkingWorld(RuntimeDirtyRebuildJob job)
     {
+        job?.WorldHashBuildJob?.Dispose();
+        ReturnPendingSectorPortalAccessIntegrations(job?.PendingPortalAccessEntries);
         NavigationWorld working = job?.WorkingWorld;
         if (working == null)
             return;
@@ -2233,7 +2272,6 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PortalGraphAnalyticClearSectorCount;
         public int PortalGraphAnalyticMultiComponentRejectCount;
         public int PortalGraphAnalyticNonClearRejectCount;
-
         public void FreezeAuthorityGridMetadata()
         {
             CellSizeGridRaw = NavigationWorld.FloatToGridRaw(CellSize);
@@ -2278,7 +2316,24 @@ public static partial class FlowFieldCrowdMovementSystem
         IslandField = 6,
         SectorComponents = 7,
         PortalGraph = 8,
-        Commit = 9,
+        PrepareCommit = 9,
+        WorldHash = 10,
+        Commit = 11,
+        Complete = 12
+    }
+
+    private enum RuntimeDirtyCloneShellStage
+    {
+        CreateMetadata = 0,
+        RentWalkableMask = 1,
+        RentCostField = 2,
+        RentNeighborTraversalMask = 3,
+        RentIslandIds = 4,
+        CreateSectorSlots = 5,
+        ClonePortalArray = 6,
+        ClonePortalLookup = 7,
+        ClonePortalSignatures = 8,
+        CloneUsedPortalIds = 9,
         Complete = 10
     }
 
@@ -2305,6 +2360,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public RuntimeDirtyRebuildStage Stage;
         public int CloneCellCursor;
         public int CloneSectorCursor;
+        public RuntimeDirtyCloneShellStage CloneShellStage;
         public bool CloneShellInitialized;
         public int SectorCursor;
         public int ObstacleCursor;
@@ -2328,6 +2384,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PortalTransitionCursor;
         public int PortalTransitionFromCursor;
         public List<PendingSectorPortalAccess> PendingPortalAccessEntries;
+        public NavigationWorldHashBuildJob WorldHashBuildJob;
         public ulong AuthorityInputHash;
         public bool HasAuthorityInputHash;
         public string Reason;
@@ -2345,6 +2402,14 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PortalGraphAnalyticClearSectorCount;
         public int PortalGraphAnalyticMultiComponentRejectCount;
         public int PortalGraphAnalyticNonClearRejectCount;
+        public long CommitSwapTicks;
+        public long CommitCacheInvalidationTicks;
+        public long CommitPortalAccessTicks;
+        public long CommitCostStorageTicks;
+        public long CommitTransitionCostTicks;
+        public long CommitValidationTicks;
+        public long CommitWorldHashTicks;
+        public long CommitAgentInvalidationTicks;
     }
 
     private struct FlowPerfAccumulator
@@ -2368,6 +2433,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PathFirstCrossingCacheHits;
         public int PathFirstCrossingCacheMisses;
         public int StableGoalRaw;
+        public int StableGoalReachabilityReuse;
         public int StableGoalReuse;
         public int StableGoalRefreshInitial;
         public int StableGoalRefreshCellDelta;
@@ -2424,6 +2490,8 @@ public static partial class FlowFieldCrowdMovementSystem
     private static int _flowBuildQueueWorldStartIndex;
     private static int _remainingNavigationWorkOperations;
     private static bool _navigationWorkBudgetActive;
+    private static long _editorSlowestRuntimeDirtyCallTicks;
+    private static string _editorSlowestRuntimeDirtyCallDiagnostics = "none";
     private static int _navigationTopologyVersion;
     private static int _nextWorldVersion = 1;
     private static int _nextPathHandleId = 1;
@@ -2505,6 +2573,8 @@ public static partial class FlowFieldCrowdMovementSystem
         _flowBuildQueueWorldStartIndex = 0;
         _remainingNavigationWorkOperations = 0;
         _navigationWorkBudgetActive = false;
+        _editorSlowestRuntimeDirtyCallTicks = 0;
+        _editorSlowestRuntimeDirtyCallDiagnostics = "none";
         _nextWorldVersion = 1;
         _nextPathHandleId = 1;
         DeterministicWorldHashRefreshCount = 0;
@@ -2899,6 +2969,35 @@ public static partial class FlowFieldCrowdMovementSystem
                ?? throw new InvalidOperationException("Editor test requires a pending runtime-dirty job.");
     }
 
+    public static string GetEditorRuntimeDirtyJobDiagnostics()
+    {
+        var agentTypeIds = new List<int>(WorldStates.Keys);
+        agentTypeIds.Sort();
+        var entries = new List<string>();
+        for (int i = 0; i < agentTypeIds.Count; i++)
+        {
+            WorldRuntimeState state = WorldStates[agentTypeIds[i]];
+            RuntimeDirtyRebuildJob job = state?.RuntimeDirtyJob;
+            if (job == null)
+                continue;
+
+            NavigationWorld world = job.WorkingWorld ?? job.TargetWorld;
+            entries.Add(
+                $"agent={state.AgentTypeId},stage={job.Stage},portalStage={job.PortalStage}," +
+                $"sectorCursor={job.SectorCursor},cloneShellStage={job.CloneShellStage},cloneSectorCursor={job.CloneSectorCursor}," +
+                $"islandScanIndex={job.IslandScanIndex},islandBfs={job.IslandBfsActive}," +
+                $"islandQueue={job.IslandOpenQueue?.Count ?? 0},islandCurrentSize={job.IslandCurrentSize}," +
+                $"portalSectorCursor={job.PortalSectorCursor},portalTransitionCursor={job.PortalTransitionCursor}," +
+                $"dirty={job.DirtySectorIds?.Count ?? 0},costDirty={job.CostDirtySectorIds?.Count ?? 0}," +
+                $"world={(world != null ? world.Width : 0)}x{(world != null ? world.Height : 0)}," +
+                $"sectors={world?.Sectors?.Length ?? 0}," +
+                BuildRuntimeDirtyStageAccumulatedTiming(job));
+        }
+
+        string pending = entries.Count > 0 ? string.Join("|", entries) : "none";
+        return $"pending=[{pending}],slowestCall=[{_editorSlowestRuntimeDirtyCallDiagnostics}]";
+    }
+
     private static PortalData CreateEditorTestPortalProgressProbe()
     {
         return new PortalData
@@ -2942,6 +3041,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void SetAuthoredNavigationSource(int agentTypeId, int width, int height, float cellSize, Vector3 origin, bool[] walkableMask, Vector3[] cellNavAnchors = null, byte[] costField = null, byte[] neighborTraversalMask = null, FlowNavigationGridAsset.DerivedNavigationData derivedNavigationData = null, bool useRuntimeReadOnlyReferences = false)
     {
+        EnsureAuthoredNavigationMutationBoundary(nameof(SetAuthoredNavigationSource));
         TestTerrainOverride source = CreateTerrainOverride(agentTypeId, width, height, cellSize, origin, walkableMask, cellNavAnchors, costField, neighborTraversalMask, derivedNavigationData, useRuntimeReadOnlyReferences);
         _testTerrainOverride = source;
         AuthoredTerrainSources.Clear();
@@ -2966,6 +3066,7 @@ public static partial class FlowFieldCrowdMovementSystem
         FlowNavigationGridAsset.DerivedNavigationData derivedNavigationData,
         bool useRuntimeReadOnlyReferences)
     {
+        EnsureAuthoredNavigationMutationBoundary(nameof(SetAuthoredNavigationSourceFixed));
         TestTerrainOverride source = CreateTerrainOverride(
             agentTypeId,
             width,
@@ -2991,6 +3092,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void SetAuthoredNavigationSources(IReadOnlyList<AuthoredNavigationSourceData> sources)
     {
+        EnsureAuthoredNavigationMutationBoundary(nameof(SetAuthoredNavigationSources));
         if (sources == null)
             throw new InvalidOperationException("SetAuthoredNavigationSources failed: sources is null.");
         if (sources.Count == 0)
@@ -3033,9 +3135,19 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static void ClearAuthoredNavigationSource()
     {
+        EnsureAuthoredNavigationMutationBoundary(nameof(ClearAuthoredNavigationSource));
         _testTerrainOverride = null;
         AuthoredTerrainSources.Clear();
         MarkWorldDirty("authored-navigation-source-cleared");
+    }
+
+    private static void EnsureAuthoredNavigationMutationBoundary(string operation)
+    {
+        if (LogicFrameRuntime.IsTimelineRunning && !IsRuntimeNavigationTransitionActive())
+        {
+            throw new InvalidOperationException(
+                $"{operation} failed: authored navigation source cannot change while the logic timeline is running.");
+        }
     }
 
     public static bool HasAuthoredNavigationSource()
@@ -3748,6 +3860,21 @@ public static partial class FlowFieldCrowdMovementSystem
             MarkWorldDirty();
     }
 
+    public static void PrepareRuntimeDependencies()
+    {
+        Fix64 smallRadius = ResolveConfiguredAgentTypeRadiusFixed("SmallUnitCollisionRadius");
+        Fix64 mediumRadius = ResolveConfiguredAgentTypeRadiusFixed("MediumUnitCollisionRadius");
+        Fix64 largeRadius = ResolveConfiguredAgentTypeRadiusFixed("LargeUnitCollisionRadius");
+
+        s_SmallAgentTypeRadiusFixed = smallRadius;
+        s_MediumAgentTypeRadiusFixed = mediumRadius;
+        s_LargeAgentTypeRadiusFixed = largeRadius;
+        s_RuntimeAgentTypeRadiiPrepared = true;
+        Debug.Log(
+            $"[FlowField] Runtime agent radii prepared. smallRaw={smallRadius.RawValue}, " +
+            $"mediumRaw={mediumRadius.RawValue}, largeRaw={largeRadius.RawValue}.");
+    }
+
     public static void MarkWorldDirty(string reason = null)
     {
         _lastWorldDirtyReason = string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason;
@@ -3974,7 +4101,22 @@ public static partial class FlowFieldCrowdMovementSystem
                 WorldRuntimeState state = RuntimeRebuildQueueScratch[i];
                 if (!EnsureRuntimeDirtyJob(state))
                     continue;
+                RuntimeDirtyRebuildJob job = state.RuntimeDirtyJob;
+                RuntimeDirtyRebuildStage stageBefore = job.Stage;
+                long jobStartTicks = Stopwatch.GetTimestamp();
                 ProcessRuntimeDirtyJob(state, deadlineTicks, forceComplete: false);
+                long jobElapsedTicks = Stopwatch.GetTimestamp() - jobStartTicks;
+                if (jobElapsedTicks > _editorSlowestRuntimeDirtyCallTicks)
+                {
+                    _editorSlowestRuntimeDirtyCallTicks = jobElapsedTicks;
+                    _editorSlowestRuntimeDirtyCallDiagnostics =
+                        $"elapsedMs={TicksToMilliseconds(jobElapsedTicks):F3},agent={state.AgentTypeId}," +
+                        $"stage={stageBefore}->{job.Stage},cloneShellStage={job.CloneShellStage},cloneSectorCursor={job.CloneSectorCursor}," +
+                        $"islandScanIndex={job.IslandScanIndex},islandCurrentSize={job.IslandCurrentSize}," +
+                        $"portalStage={job.PortalStage},portalSectorCursor={job.PortalSectorCursor}," +
+                        BuildRuntimeDirtyStageAccumulatedTiming(job) + "," +
+                        BuildRuntimeDirtyCommitTiming(job);
+                }
                 if (IsNavigationWorkBudgetExhausted())
                     break;
             }
@@ -4133,7 +4275,7 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             if (state == null)
                 throw new InvalidOperationException("CanProcessFlowTileBuildQueue failed: world state is null.");
-            if (state.IsDirty || state.BuildJob != null || state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count > 0)
+            if (state.IsDirty || state.BuildJob != null)
                 return false;
             if (state.World == null)
                 throw new InvalidOperationException($"CanProcessFlowTileBuildQueue failed: ready world is null agentType={state.AgentTypeId}.");
@@ -4148,7 +4290,7 @@ public static partial class FlowFieldCrowdMovementSystem
     {
         if (state == null || state.World == null)
             throw new InvalidOperationException("ActivateFlowBuildQueueWorld failed: state or world is null.");
-        if (state.IsDirty || state.BuildJob != null || state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count > 0)
+        if (state.IsDirty || state.BuildJob != null)
             throw new InvalidOperationException($"ActivateFlowBuildQueueWorld failed: world is not ready agentType={state.AgentTypeId}.");
 
         _activeWorldState = state;
@@ -4549,6 +4691,12 @@ public static partial class FlowFieldCrowdMovementSystem
             node = next;
         }
 
+        if (committedCount > 0)
+        {
+            RefreshFlowTileReferenceCounts();
+            TrimTileCache();
+        }
+
         return committedCount;
     }
 
@@ -4577,8 +4725,6 @@ public static partial class FlowFieldCrowdMovementSystem
         tile.LastUsedFrame = GetFrameCount();
         SetDeterministicFlowTileCacheEntry(key, tile);
         FlowTileCache.Add(key, tile);
-        RefreshFlowTileReferenceCounts();
-        TrimTileCache();
     }
 
     private static void BuildFlowTileDiagnosticShadow(FlowTileCacheEntry tile)
@@ -5239,6 +5385,11 @@ public static partial class FlowFieldCrowdMovementSystem
 
         direction = nav.LastSteeringDesiredDirection.normalized;
         return true;
+    }
+
+    public static int GetEditorTestStableGoalReachabilityReuseCount()
+    {
+        return _perf.StableGoalReachabilityReuse;
     }
 
     public static bool TryGetEditorTestLastSteeringSource(int agentId, out int source, out bool hasLineOfSight)
@@ -5920,7 +6071,24 @@ public static partial class FlowFieldCrowdMovementSystem
 
         if (found == null)
             throw new InvalidOperationException("GetEditorTestPendingRuntimeDirtyProgressSignature failed: no job is pending.");
-        return $"{found.Stage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandScanIndex}:{found.IslandCurrentId}:{found.IslandCurrentSize}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}";
+        return $"{found.Stage}:{found.CloneShellStage}:{found.CloneCellCursor}:{found.CloneSectorCursor}:{found.CloneShellInitialized}:{found.SectorCursor}:{found.ObstacleCursor}:{found.ApplyingCircleObstacles}:{found.IslandScanIndex}:{found.IslandCurrentId}:{found.IslandCurrentSize}:{found.PortalStage}:{found.PortalSectorCursor}:{found.PortalAddCursor}:{found.PortalTransitionCursor}:{found.PortalTransitionFromCursor}";
+    }
+
+    public static int GetEditorTestPendingRuntimeDirtyPortalGraphAccessCount()
+    {
+        return GetRequiredSingleEditorTestRuntimeDirtyJob().PortalGraphAccessCount;
+    }
+
+    public static long GetEditorTestPendingRuntimeDirtyWorldHashProcessedTokenCount()
+    {
+        RuntimeDirtyRebuildJob found = GetRequiredSingleEditorTestRuntimeDirtyJob();
+        if (found.Stage != RuntimeDirtyRebuildStage.WorldHash || found.WorldHashBuildJob == null)
+        {
+            throw new InvalidOperationException(
+                $"GetEditorTestPendingRuntimeDirtyWorldHashProcessedTokenCount failed: current stage is {found.Stage}.");
+        }
+
+        return found.WorldHashBuildJob.ProcessedTokenCount;
     }
 
     public static int GetEditorTestPendingRuntimeDirtyIslandQueueCount()
@@ -6332,6 +6500,11 @@ public static partial class FlowFieldCrowdMovementSystem
     public static int GetEditorTestFrameTileBuildCount()
     {
         return 0;
+    }
+
+    public static int GetEditorTestFlowTileReferenceRefreshCount()
+    {
+        return _perf.FlowTileReferenceRefreshCalls;
     }
 
     public static int GetEditorTestFrameSynchronousSectorIntegrationCount()
@@ -7031,6 +7204,52 @@ public static partial class FlowFieldCrowdMovementSystem
             ? _world.NeighborTraversalMask[index]
             : (byte)0;
         return true;
+    }
+
+    public static string GetEditorNavigationCellDiagnostics(int agentTypeId, int worldX, int worldY)
+    {
+        int resolvedAgentTypeId = ResolvePreferredAgentTypeId(agentTypeId);
+        if (!WorldStates.TryGetValue(resolvedAgentTypeId, out WorldRuntimeState state) || state == null)
+            return $"agent={resolvedAgentTypeId},state=<missing>";
+
+        string committed = BuildNavigationWorldCellDiagnostics(state.World, worldX, worldY);
+        string preview = HasPendingRuntimeDirty(state)
+            ? BuildNavigationWorldCellDiagnostics(ResolveReachabilityQueryWorld(state), worldX, worldY)
+            : committed;
+        string source;
+        if (!TryGetStaticCollisionShadowSource(resolvedAgentTypeId, out LogicStaticCollisionSourceData collisionSource))
+        {
+            source = "<missing>";
+        }
+        else if (worldX < 0
+                 || worldX >= collisionSource.Width
+                 || worldY < 0
+                 || worldY >= collisionSource.Height)
+        {
+            source = $"out,size={collisionSource.Width}x{collisionSource.Height}";
+        }
+        else
+        {
+            int index = checked(worldX + worldY * collisionSource.Width);
+            source = $"base={collisionSource.BaseWalkableMask[index]},version={collisionSource.WorldVersion}," +
+                     $"size={collisionSource.Width}x{collisionSource.Height}," +
+                     $"encodedClearanceRaw={collisionSource.EncodedCenterClearanceFixedRaw}";
+        }
+
+        return $"agent={resolvedAgentTypeId},cell=({worldX},{worldY}),pending={HasPendingRuntimeDirty(state)}," +
+               $"committed=[{committed}],preview=[{preview}],collisionSource=[{source}]";
+    }
+
+    private static string BuildNavigationWorldCellDiagnostics(NavigationWorld world, int worldX, int worldY)
+    {
+        if (world == null)
+            return "<missing>";
+        if (worldX < 0 || worldX >= world.Width || worldY < 0 || worldY >= world.Height)
+            return $"out,size={world.Width}x{world.Height}";
+
+        int index = world.GetIndex(worldX, worldY);
+        return $"walk={world.WalkableMask[index]},base={world.BaseWalkableMask[index]}," +
+               $"version={world.Version},size={world.Width}x{world.Height}";
     }
 
     public static bool TryGetEditorTestSectorUniformIslandId(int worldX, int worldY, out int uniformIslandId)
@@ -7966,7 +8185,8 @@ public static partial class FlowFieldCrowdMovementSystem
             true,
             true,
             pathCorners,
-            out failureReason);
+            out failureReason,
+            out _);
     }
 
     public static bool TryGetNavigationPathCornersNonBlocking(
@@ -7976,6 +8196,23 @@ public static partial class FlowFieldCrowdMovementSystem
         List<Vector3> pathCorners,
         out string failureReason)
     {
+        return TryGetNavigationPathCornersNonBlocking(
+            from,
+            to,
+            agentTypeId,
+            pathCorners,
+            out failureReason,
+            out _);
+    }
+
+    public static bool TryGetNavigationPathCornersNonBlocking(
+        Vector3 from,
+        Vector3 to,
+        int agentTypeId,
+        List<Vector3> pathCorners,
+        out string failureReason,
+        out bool navigationUpdatePending)
+    {
         return TryGetNavigationPathCorners(
             from,
             to,
@@ -7983,7 +8220,8 @@ public static partial class FlowFieldCrowdMovementSystem
             false,
             false,
             pathCorners,
-            out failureReason);
+            out failureReason,
+            out navigationUpdatePending);
     }
 
     private static bool TryGetNavigationPathCorners(
@@ -7993,13 +8231,15 @@ public static partial class FlowFieldCrowdMovementSystem
         bool allowSynchronousBuild,
         bool useAuthorityPathCaches,
         List<Vector3> pathCorners,
-        out string failureReason)
+        out string failureReason,
+        out bool navigationUpdatePending)
     {
         if (pathCorners == null)
             throw new ArgumentNullException(nameof(pathCorners));
 
         pathCorners.Clear();
         failureReason = string.Empty;
+        navigationUpdatePending = false;
         WorldRuntimeState queryWorldState;
         NavigationWorld world;
         bool hasWorld;
@@ -8021,6 +8261,7 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             if (!allowSynchronousBuild)
             {
+                navigationUpdatePending = true;
                 failureReason = $"navigation update pending agentType={agentTypeId}";
                 return false;
             }
@@ -8052,23 +8293,6 @@ public static partial class FlowFieldCrowdMovementSystem
             pathCorners.Add(from);
             pathCorners.Add(to);
             return true;
-        }
-
-        if (useAuthorityPathCaches
-            && ReferenceEquals(world, _world)
-            && world.TryGetSectorId(startX, startY, out int startSectorId)
-            && world.TryGetSectorId(goalX, goalY, out int goalSectorId)
-            && startSectorId != goalSectorId)
-        {
-            PathHandle handle = BuildPathHandle(startSectorId, goalSectorId, startX, startY, goalX, goalY);
-            if (handle != null && handle.PortalIds != null && handle.PortalIds.Length > 0)
-            {
-                pathCorners.Add(from);
-                for (int i = 0; i < handle.PortalIds.Length; i++)
-                    pathCorners.Add(GetPortalById(world, handle.PortalIds[i]).WorldCenter);
-                pathCorners.Add(to);
-                return true;
-            }
         }
 
         if (TryFindGridPath(world, startX, startY, goalX, goalY, pathCorners, from, to, out _))
@@ -9140,6 +9364,8 @@ public static partial class FlowFieldCrowdMovementSystem
         out FixVector2 velocity)
     {
         BeginPerfCall();
+        bool profile = MainThreadFrameProfiler.LoggingEnabled;
+        long setupStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (self == null)
             throw new InvalidOperationException("TryGetSteeringVelocityFixed failed: self is null.");
         if (maxSpeed < Fix64.Zero)
@@ -9161,18 +9387,41 @@ public static partial class FlowFieldCrowdMovementSystem
         agent.Position = ToWorldVector3(agent.PositionFixed);
         agent.RadiusFixed = ResolveCollisionRadiusFixed(self);
         agent.Radius = (float)agent.RadiusFixed;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringSetupAgent,
+                Stopwatch.GetTimestamp() - setupStartTicks);
+        }
+
+        long worldStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryEnsureWorldBuilt(agent.AgentTypeId))
         {
             string message = $"[{self.CharacterKey}] Flow strict fail: world unavailable agentType={agent.AgentTypeId}";
             Debug.LogError(message);
             throw new InvalidOperationException(message);
         }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringSetupWorld,
+                Stopwatch.GetTimestamp() - worldStartTicks);
+        }
 
+        long occupancyStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         bool hasMovingTarget = self.TargetComp?.CurrentTarget != null
                                && !ReferenceEquals(self.TargetComp.CurrentTarget, self)
                                && IsNavigationMovingTarget(self.TargetComp.CurrentTarget);
         FixVector2 occupiedGoalPosition = ResolveNavigationGoalOccupancyFixed(self, agent, goalPosition);
         FixVector2 navigationGoalPosition = hasMovingTarget ? goalPosition : occupiedGoalPosition;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringSetupOccupancy,
+                Stopwatch.GetTimestamp() - occupancyStartTicks);
+        }
+
+        long prepareStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryPrepareNavigationRequestFixedCore(
                 self,
                 navigationGoalPosition,
@@ -9188,7 +9437,45 @@ public static partial class FlowFieldCrowdMovementSystem
             Debug.LogError(message);
             throw new InvalidOperationException(message);
         }
+        long prepareElapsedTicks = profile ? Stopwatch.GetTimestamp() - prepareStartTicks : 0L;
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringSetupPrepare,
+                prepareElapsedTicks);
+            if (prepareElapsedTicks >= Stopwatch.Frequency * 2L / 1000L)
+            {
+                int startIsland = ResolveIslandIdForDiagnostics(
+                    _world,
+                    agent.NavState.CurrentCell.x,
+                    agent.NavState.CurrentCell.y);
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    null,
+                    "[FlowSteeringPrepareSlow] frame={0} elapsed={1:F3}ms entity={2}/{3} agentType={4} world={5} startCell=({6},{7}) startIsland={8} target={9} goalRaw=({10},{11}).",
+                    GetFrameCount(),
+                    prepareElapsedTicks * 1000.0 / Stopwatch.Frequency,
+                    self.LogicEntityId.Value,
+                    self.CharacterKey,
+                    agent.AgentTypeId,
+                    _world.Version,
+                    agent.NavState.CurrentCell.x,
+                    agent.NavState.CurrentCell.y,
+                    startIsland,
+                    agent.NavState.StableGoalTargetId,
+                    goalPosition.x.RawValue,
+                    goalPosition.y.RawValue);
+            }
+        }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringSetup,
+                Stopwatch.GetTimestamp() - setupStartTicks);
+        }
 
+        long pathStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         if (!TryAdvancePathToCurrentSector(agent, agent.NavState.CurrentSectorId))
         {
             PathHandle invalidHandle = agent.NavState.PathHandle;
@@ -9214,13 +9501,33 @@ public static partial class FlowFieldCrowdMovementSystem
                 return false;
             }
         }
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringPath,
+                Stopwatch.GetTimestamp() - pathStartTicks);
+        }
 
         agent.NavState.HasGoal = true;
         agent.NavState.LastGoalWorldFixed = occupiedGoalPosition;
         agent.NavState.LastGoalWorld = ToWorldVector3(occupiedGoalPosition);
+        long portalOwnerStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         EnsureFixedPortalOwnerFrame();
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringPortalOwner,
+                Stopwatch.GetTimestamp() - portalOwnerStartTicks);
+        }
+        long velocityStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
         velocity = ResolveDeterministicFlowVelocityFixed(self, agent, maxSpeed);
         velocity = ApplyFixedPortalOwner(agent, velocity);
+        if (profile)
+        {
+            MainThreadFrameProfiler.Record(
+                MainThreadPerfScope.FlowSteeringVelocity,
+                Stopwatch.GetTimestamp() - velocityStartTicks);
+        }
 
         int frame = GetFrameCount();
         Vector3 velocityView = ToWorldVector3(velocity);
@@ -9285,18 +9592,18 @@ public static partial class FlowFieldCrowdMovementSystem
         Fix64 maxSpeed)
     {
         AgentNavState nav = agent.NavState;
-        nav.LastFixedFlowFrame = GetFrameCount();
+        int flowFrame = GetFrameCount();
+        FixVector2 recentFlowVelocity = nav.LastFixedFlowFrame == flowFrame
+                                        || nav.LastFixedFlowFrame == flowFrame - 1
+            ? nav.LastFixedFlowVelocity
+            : FixVector2.Zero;
+        nav.LastFixedFlowFrame = flowFrame;
         nav.LastFixedFlowVelocity = FixVector2.Zero;
         if (!nav.HasGoal)
             throw new InvalidOperationException("ResolveDeterministicFlowVelocityFixed failed: resolved navigation goal is missing.");
         FixVector2 resolvedNavigationGoal = nav.LastGoalWorldFixed;
         if (_world == null)
             throw new InvalidOperationException("ResolveDeterministicFlowVelocityFixed failed: world is null.");
-        if (HasPendingRuntimeDirty(_activeWorldState))
-        {
-            nav.LastFixedFlowResult = "runtime-dirty-pending";
-            return FixVector2.Zero;
-        }
         PathHandle handle = agent.NavState.PathHandle;
         if (handle == null || handle.SectorIds == null || handle.SectorIds.Length == 0)
         {
@@ -9322,10 +9629,25 @@ public static partial class FlowFieldCrowdMovementSystem
                 $"ResolveDeterministicFlowVelocityFixed failed: position is outside world. entity={self.LogicEntityId.Value}, raw=({position.x.RawValue},{position.y.RawValue}).");
         }
 
+        bool hasCachedTile = DeterministicFlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile);
+        bool hasPendingRuntimeDirty = HasPendingRuntimeDirty(_activeWorldState);
+        if (hasPendingRuntimeDirty
+            && !hasCachedTile
+            && FixVector2.SqrMagnitude(recentFlowVelocity) > Fix64.Zero)
+        {
+            FixVector2 continuedVelocity = ScaleFixedDirectionToSpeed(recentFlowVelocity, maxSpeed);
+            nav.LastFixedFlowVelocity = continuedVelocity;
+            nav.LastFixedFlowResult = $"tile-pending-last-flow key={FormatTileKey(key)}";
+            return continuedVelocity;
+        }
+
         FixVector2 pendingStaticSlide = FixVector2.Zero;
         FixVector2 toNavigationGoal = resolvedNavigationGoal - position;
-        if (FixVector2.SqrMagnitude(toNavigationGoal) > Fix64.Zero)
+        if (FixVector2.SqrMagnitude(toNavigationGoal) > Fix64.Zero
+            && (!hasPendingRuntimeDirty || !hasCachedTile))
         {
+            bool profile = MainThreadFrameProfiler.LoggingEnabled;
+            long directStaticStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
             if (!LogicStaticCollisionShadowService.TrySolveFixed(
                     agent.AgentTypeId,
                     position,
@@ -9342,15 +9664,31 @@ public static partial class FlowFieldCrowdMovementSystem
                     $"ResolveDeterministicFlowVelocityFixed failed: direct path query failed for entity={self.LogicEntityId.Value}, " +
                     $"failure={directPathResult.SolveResult.Failure}.");
             }
+            if (profile)
+            {
+                MainThreadFrameProfiler.Record(
+                    MainThreadPerfScope.FlowSteeringDirectStatic,
+                    Stopwatch.GetTimestamp() - directStaticStartTicks);
+            }
             bool directStaticClear = directPathResult.SolveResult.ResolvedDisplacement == toNavigationGoal;
-            bool directCostClear = !HasPendingRuntimeDirty(_activeWorldState)
-                                   && HasGridLineOfSight(
-                                       _world,
-                                       worldX,
-                                       worldY,
-                                       handle.GoalX,
-                                       handle.GoalY,
-                                       allowTargetSoftCost: goalKind == TileGoalKind.FinalGoal);
+            bool directCostClear = false;
+            if (!hasPendingRuntimeDirty)
+            {
+                long directLineOfSightStartTicks = profile ? Stopwatch.GetTimestamp() : 0L;
+                directCostClear = HasGridLineOfSight(
+                    _world,
+                    worldX,
+                    worldY,
+                    handle.GoalX,
+                    handle.GoalY,
+                    allowTargetSoftCost: goalKind == TileGoalKind.FinalGoal);
+                if (profile)
+                {
+                    MainThreadFrameProfiler.Record(
+                        MainThreadPerfScope.FlowSteeringDirectLineOfSight,
+                        Stopwatch.GetTimestamp() - directLineOfSightStartTicks);
+                }
+            }
             if (directStaticClear && directCostClear)
             {
                 FixVector2 directVelocity = ScaleFixedDirectionToSpeed(toNavigationGoal, maxSpeed);
@@ -9361,7 +9699,7 @@ public static partial class FlowFieldCrowdMovementSystem
             if (!directStaticClear)
                 pendingStaticSlide = directPathResult.SolveResult.ResolvedDisplacement;
         }
-        if (!DeterministicFlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile))
+        if (!hasCachedTile)
         {
             if (FixVector2.SqrMagnitude(pendingStaticSlide) > Fix64.Zero)
             {
@@ -10828,6 +11166,12 @@ public static partial class FlowFieldCrowdMovementSystem
         _navigationWorkBudgetActive = false;
     }
 
+    private static void ExhaustNavigationWorkBudget()
+    {
+        EnsureNavigationWorkBudgetActive();
+        _remainingNavigationWorkOperations = 0;
+    }
+
     private static bool IsBudgetExpired(long deadlineTicks, int workCursor)
     {
         _ = deadlineTicks;
@@ -10958,7 +11302,7 @@ public static partial class FlowFieldCrowdMovementSystem
             $"tileQueueOps(enq={_perf.FlowTileQueueEnqueued},promote={_perf.FlowTileQueuePromoted},prune={_perf.FlowTileQueuePruned}) " +
             $"tileCache(hits={_perf.TileCacheHits},misses={_perf.TileCacheMisses}) " +
             $"pending(sharedGoal={_perf.PathPendingSharedGoal},tile={_perf.TilePendingBuild}) " +
-            $"stableGoal(raw={_perf.StableGoalRaw},reuse={_perf.StableGoalReuse},initial={_perf.StableGoalRefreshInitial},cell={_perf.StableGoalRefreshCellDelta}) " +
+            $"stableGoal(raw={_perf.StableGoalRaw},reachabilityReuse={_perf.StableGoalReachabilityReuse},reuse={_perf.StableGoalReuse},initial={_perf.StableGoalRefreshInitial},cell={_perf.StableGoalRefreshCellDelta}) " +
             $"pathReasons(noHandle={_perf.PathBuildNoHandle},worldMismatch={_perf.PathBuildWorldMismatch},goalSectorMismatch={_perf.PathBuildGoalSectorMismatch},goalCellMismatch={_perf.PathBuildGoalCellMismatch},invalid={_perf.PathBuildInvalidHandle}) " +
             $"runtimeDirty(apply={_perf.RuntimeDirtyApplications},sectors={_perf.RuntimeDirtySectorCount})");
     }
@@ -13354,28 +13698,23 @@ public static partial class FlowFieldCrowdMovementSystem
 
             world.PortalsById.Remove(portalId);
             world.UsedPortalIds.Remove(portalId);
-            RemovePortalSignatureById(world, portalId);
+            PortalSignature signature = BuildPortalSignature(
+                portal.SectorAId,
+                portal.SectorBId,
+                portal.CellsA,
+                portal.IsVerticalBoundary);
+            if (!world.PortalIdsBySignature.TryGetValue(signature, out int signaturePortalId)
+                || signaturePortalId != portalId)
+            {
+                throw new InvalidOperationException(
+                    $"RemovePortalsTouchingSectors failed: portal signature mismatch portal={portalId} signaturePortal={signaturePortalId}.");
+            }
+            world.PortalIdsBySignature.Remove(signature);
             world.Sectors[portal.SectorAId].PortalIds.Remove(portalId);
             world.Sectors[portal.SectorBId].PortalIds.Remove(portalId);
             transitionDirtySectors.Add(portal.SectorAId);
             transitionDirtySectors.Add(portal.SectorBId);
         }
-    }
-
-    private static void RemovePortalSignatureById(NavigationWorld world, int portalId)
-    {
-        PortalSignature? signatureToRemove = null;
-        foreach (KeyValuePair<PortalSignature, int> pair in world.PortalIdsBySignature)
-        {
-            if (pair.Value != portalId)
-                continue;
-
-            signatureToRemove = pair.Key;
-            break;
-        }
-
-        if (signatureToRemove.HasValue)
-            world.PortalIdsBySignature.Remove(signatureToRemove.Value);
     }
 
     private static void RebuildPortalBoundariesForSector(
@@ -13547,7 +13886,21 @@ public static partial class FlowFieldCrowdMovementSystem
                     ProcessRuntimeDirtySectorComponents(job, deadlineTicks, forceComplete);
                     break;
                 case RuntimeDirtyRebuildStage.PortalGraph:
-                    ProcessRuntimeDirtyPortalGraph(job, deadlineTicks, forceComplete);
+                    if (!ProcessRuntimeDirtyPortalGraph(job, deadlineTicks, forceComplete))
+                        return;
+                    break;
+                case RuntimeDirtyRebuildStage.PrepareCommit:
+                    PrepareRuntimeDirtyCommit(job);
+                    job.Stage = RuntimeDirtyRebuildStage.WorldHash;
+                    break;
+                case RuntimeDirtyRebuildStage.WorldHash:
+                    ProcessNavigationWorldHashBuildJob(job.WorldHashBuildJob, deadlineTicks, forceComplete);
+                    if (job.WorldHashBuildJob.Complete)
+                    {
+                        job.WorkingWorld.DeterministicContentHash = job.WorldHashBuildJob.Hash;
+                        job.WorkingWorld.HasDeterministicContentHash = true;
+                        job.Stage = RuntimeDirtyRebuildStage.Commit;
+                    }
                     break;
                 case RuntimeDirtyRebuildStage.Commit:
                     CommitRuntimeDirtyJob(state, job);
@@ -13644,7 +13997,22 @@ public static partial class FlowFieldCrowdMovementSystem
             $"cost={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.CostField]):F3}ms," +
             $"island={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.IslandField]):F3}ms," +
             $"portal={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.PortalGraph]):F3}ms," +
+            $"prepare={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.PrepareCommit]):F3}ms," +
+            $"hash={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.WorldHash]):F3}ms," +
             $"commit={TicksToMilliseconds(job.StageAccumulatedTicks[(int)RuntimeDirtyRebuildStage.Commit]):F3}ms)";
+    }
+
+    private static string BuildRuntimeDirtyCommitTiming(RuntimeDirtyRebuildJob job)
+    {
+        return
+            $"commitDetail(swap={TicksToMilliseconds(job.CommitSwapTicks):F3}ms," +
+            $"cache={TicksToMilliseconds(job.CommitCacheInvalidationTicks):F3}ms," +
+            $"portalAccess={TicksToMilliseconds(job.CommitPortalAccessTicks):F3}ms," +
+            $"costStorage={TicksToMilliseconds(job.CommitCostStorageTicks):F3}ms," +
+            $"transitionCost={TicksToMilliseconds(job.CommitTransitionCostTicks):F3}ms," +
+            $"validation={TicksToMilliseconds(job.CommitValidationTicks):F3}ms," +
+            $"worldHash={TicksToMilliseconds(job.CommitWorldHashTicks):F3}ms," +
+            $"agents={TicksToMilliseconds(job.CommitAgentInvalidationTicks):F3}ms)";
     }
 
     private static void ProcessRuntimeDirtyClone(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
@@ -13653,48 +14021,92 @@ public static partial class FlowFieldCrowdMovementSystem
         if (source == null)
             throw new InvalidOperationException("ProcessRuntimeDirtyClone failed: target world is null.");
 
-        if (!job.CloneShellInitialized)
+        while (!job.CloneShellInitialized)
         {
-            NavigationWorld clone = new NavigationWorld
+            switch (job.CloneShellStage)
             {
-                Version = source.Version,
-                AgentTypeId = source.AgentTypeId,
-                Width = source.Width,
-                Height = source.Height,
-                CellSize = source.CellSize,
-                EncodedCenterClearance = source.EncodedCenterClearance,
-                Origin = source.Origin,
-                BaseWalkableMask = source.BaseWalkableMask,
-                BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
-                SourceCostField = source.SourceCostField,
-                WalkableMask = RentBoolArray(source.Width * source.Height, clear: false),
-                CostField = RentByteArray(source.Width * source.Height, clear: false),
-                SectorCostFields = null,
-                CellNavAnchors = source.CellNavAnchors,
-                CellNavAnchorsFixedXZ = source.CellNavAnchorsFixedXZ,
-                NeighborTraversalMask = RentByteArray(source.Width * source.Height, clear: false),
-                IslandIds = RentIntArray(source.Width * source.Height, clear: false),
-                IslandCount = source.IslandCount,
-                MainIslandId = source.MainIslandId,
-                MainIslandSize = source.MainIslandSize,
-                SectorSizeInCells = source.SectorSizeInCells,
-                SectorCountX = source.SectorCountX,
-                SectorCountY = source.SectorCountY,
-                Sectors = new SectorData[source.Sectors.Length],
-                Portals = source.Portals != null ? (PortalData[])source.Portals.Clone() : Array.Empty<PortalData>(),
-                PortalsById = new Dictionary<int, PortalData>(source.PortalsById),
-                NextPortalId = source.NextPortalId
-            };
-            clone.CopyAuthorityGridMetadataFrom(source);
-            foreach (KeyValuePair<PortalSignature, int> pair in source.PortalIdsBySignature)
-                clone.PortalIdsBySignature.Add(pair.Key, pair.Value);
-            foreach (int portalId in source.UsedPortalIds)
-                clone.UsedPortalIds.Add(portalId);
+                case RuntimeDirtyCloneShellStage.CreateMetadata:
+                    job.WorkingWorld = new NavigationWorld
+                    {
+                        Version = source.Version,
+                        AgentTypeId = source.AgentTypeId,
+                        Width = source.Width,
+                        Height = source.Height,
+                        CellSize = source.CellSize,
+                        EncodedCenterClearance = source.EncodedCenterClearance,
+                        Origin = source.Origin,
+                        BaseWalkableMask = source.BaseWalkableMask,
+                        BaseNeighborTraversalMask = source.BaseNeighborTraversalMask,
+                        SourceCostField = source.SourceCostField,
+                        SectorCostFields = null,
+                        CellNavAnchors = source.CellNavAnchors,
+                        CellNavAnchorsFixedXZ = source.CellNavAnchorsFixedXZ,
+                        IslandCount = source.IslandCount,
+                        MainIslandId = source.MainIslandId,
+                        MainIslandSize = source.MainIslandSize,
+                        SectorSizeInCells = source.SectorSizeInCells,
+                        SectorCountX = source.SectorCountX,
+                        SectorCountY = source.SectorCountY,
+                        NextPortalId = source.NextPortalId
+                    };
+                    job.WorkingWorld.CopyAuthorityGridMetadataFrom(source);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.RentWalkableMask;
+                    break;
+                case RuntimeDirtyCloneShellStage.RentWalkableMask:
+                    job.WorkingWorld.WalkableMask = RentBoolArray(source.Width * source.Height, clear: false);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.RentCostField;
+                    break;
+                case RuntimeDirtyCloneShellStage.RentCostField:
+                    job.WorkingWorld.CostField = RentByteArray(source.Width * source.Height, clear: false);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.RentNeighborTraversalMask;
+                    break;
+                case RuntimeDirtyCloneShellStage.RentNeighborTraversalMask:
+                    job.WorkingWorld.NeighborTraversalMask = RentByteArray(source.Width * source.Height, clear: false);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.RentIslandIds;
+                    break;
+                case RuntimeDirtyCloneShellStage.RentIslandIds:
+                    job.WorkingWorld.IslandIds = RentIntArray(source.Width * source.Height, clear: false);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.CreateSectorSlots;
+                    break;
+                case RuntimeDirtyCloneShellStage.CreateSectorSlots:
+                    job.WorkingWorld.Sectors = new SectorData[source.Sectors.Length];
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.ClonePortalArray;
+                    break;
+                case RuntimeDirtyCloneShellStage.ClonePortalArray:
+                    job.WorkingWorld.Portals = source.Portals != null
+                        ? (PortalData[])source.Portals.Clone()
+                        : Array.Empty<PortalData>();
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.ClonePortalLookup;
+                    break;
+                case RuntimeDirtyCloneShellStage.ClonePortalLookup:
+                    job.WorkingWorld.PortalsById = new Dictionary<int, PortalData>(source.PortalsById);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.ClonePortalSignatures;
+                    break;
+                case RuntimeDirtyCloneShellStage.ClonePortalSignatures:
+                    foreach (KeyValuePair<PortalSignature, int> pair in source.PortalIdsBySignature)
+                        job.WorkingWorld.PortalIdsBySignature.Add(pair.Key, pair.Value);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.CloneUsedPortalIds;
+                    break;
+                case RuntimeDirtyCloneShellStage.CloneUsedPortalIds:
+                    foreach (int portalId in source.UsedPortalIds)
+                        job.WorkingWorld.UsedPortalIds.Add(portalId);
+                    job.CloneShellStage = RuntimeDirtyCloneShellStage.Complete;
+                    break;
+                case RuntimeDirtyCloneShellStage.Complete:
+                    job.CloneCellCursor = 0;
+                    job.CloneSectorCursor = 0;
+                    job.CloneShellInitialized = true;
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"ProcessRuntimeDirtyClone failed: unknown clone shell stage {job.CloneShellStage}.");
+            }
 
-            job.WorkingWorld = clone;
-            job.CloneCellCursor = 0;
-            job.CloneSectorCursor = 0;
-            job.CloneShellInitialized = true;
+            if (!forceComplete)
+            {
+                ExhaustNavigationWorkBudget();
+                return;
+            }
         }
 
         NavigationWorld working = job.WorkingWorld;
@@ -13724,15 +14136,54 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             int sectorIndex = job.CloneSectorCursor++;
             SectorData sourceSector = source.Sectors[sectorIndex];
-            working.Sectors[sectorIndex] = CloneSectorData(sourceSector, job.DirtySectors);
+            working.Sectors[sectorIndex] = CloneSectorData(sourceSector, job.DirtySectors, job.CostDirtySectors);
             if (source.CostField == null)
                 CopyRuntimeDirtySectorCost(source, working, sourceSector);
             if (!forceComplete && IsBudgetExpired(deadlineTicks, 0))
                 return;
         }
 
+        ValidateRuntimeDirtyPortalCloneOwnership(job);
         job.SectorCursor = 0;
         job.Stage = RuntimeDirtyRebuildStage.ResetWalkable;
+    }
+
+    private static void ValidateRuntimeDirtyPortalCloneOwnership(RuntimeDirtyRebuildJob job)
+    {
+        if (job == null || job.TargetWorld == null || job.WorkingWorld == null)
+            throw new InvalidOperationException("ValidateRuntimeDirtyPortalCloneOwnership failed: runtime-dirty world is missing.");
+        if (job.DirtySectors == null || job.CostDirtySectors == null)
+            throw new InvalidOperationException("ValidateRuntimeDirtyPortalCloneOwnership failed: dirty sector sets are missing.");
+        if (job.TargetWorld.Sectors.Length != job.WorkingWorld.Sectors.Length)
+            throw new InvalidOperationException("ValidateRuntimeDirtyPortalCloneOwnership failed: sector count mismatch.");
+
+        for (int i = 0; i < job.TargetWorld.Sectors.Length; i++)
+        {
+            SectorData source = job.TargetWorld.Sectors[i];
+            SectorData working = job.WorkingWorld.Sectors[i];
+            bool mutable = job.CostDirtySectors.Contains(i);
+            bool sharesPortalCollections = ReferenceEquals(source.PortalIds, working.PortalIds)
+                                           && ReferenceEquals(source.PortalTransitions, working.PortalTransitions)
+                                           && ReferenceEquals(source.IncomingPortalTransitionsByToPortalId, working.IncomingPortalTransitionsByToPortalId)
+                                           && ReferenceEquals(source.OutgoingPortalTransitionsByFromPortalId, working.OutgoingPortalTransitionsByFromPortalId);
+            if (mutable == sharesPortalCollections)
+            {
+                throw new InvalidOperationException(
+                    $"ValidateRuntimeDirtyPortalCloneOwnership failed: sector {i} mutable={mutable}, sharesPortalCollections={sharesPortalCollections}.");
+            }
+        }
+
+        foreach (PortalData portal in job.TargetWorld.PortalsById.Values)
+        {
+            if (!job.DirtySectors.Contains(portal.SectorAId) && !job.DirtySectors.Contains(portal.SectorBId))
+                continue;
+            if (!job.CostDirtySectors.Contains(portal.SectorAId) || !job.CostDirtySectors.Contains(portal.SectorBId))
+            {
+                throw new InvalidOperationException(
+                    $"ValidateRuntimeDirtyPortalCloneOwnership failed: portal {portal.PortalId} touches dirty sectors outside mutable coverage. " +
+                    $"sectorA={portal.SectorAId}, sectorB={portal.SectorBId}.");
+            }
+        }
     }
 
     private static void CopyRuntimeDirtySectorCost(NavigationWorld source, NavigationWorld working, SectorData sector)
@@ -14109,7 +14560,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
-    private static void ProcessRuntimeDirtyPortalGraph(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
+    private static bool ProcessRuntimeDirtyPortalGraph(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
     {
         NavigationWorld world = job.WorkingWorld;
         if (!job.PortalInitialized)
@@ -14154,7 +14605,7 @@ public static partial class FlowFieldCrowdMovementSystem
                         job.PortalGraphBoundaryTicks += Stopwatch.GetTimestamp() - boundaryStartTicks;
 
                         if (!forceComplete && IsBudgetExpired(deadlineTicks, 0))
-                            return;
+                            return false;
                     }
 
                     job.PortalStage = RuntimeDirtyPortalStage.AddRebuiltPortals;
@@ -14175,7 +14626,7 @@ public static partial class FlowFieldCrowdMovementSystem
                         job.PortalGraphAddTicks += Stopwatch.GetTimestamp() - addStartTicks;
 
                         if (!forceComplete && IsBudgetExpired(deadlineTicks, 0))
-                            return;
+                            return false;
                     }
 
                     world.Portals = BuildPortalArray(world);
@@ -14187,23 +14638,26 @@ public static partial class FlowFieldCrowdMovementSystem
                     job.PortalStage = RuntimeDirtyPortalStage.RebuildTransitions;
                     break;
                 case RuntimeDirtyPortalStage.RebuildTransitions:
-                    ProcessRuntimeDirtyPortalTransitions(job, deadlineTicks, forceComplete);
+                    if (!ProcessRuntimeDirtyPortalTransitions(job, deadlineTicks, forceComplete))
+                        return false;
                     break;
                 default:
                     throw new InvalidOperationException($"ProcessRuntimeDirtyPortalGraph failed: unknown portal stage {job.PortalStage}.");
             }
 
             if (!forceComplete && IsBudgetExpired(deadlineTicks, 0))
-                return;
+                return false;
         }
 
         LogRuntimeDirtyPortalGraphTiming(job);
-        job.Stage = RuntimeDirtyRebuildStage.Commit;
+        job.Stage = RuntimeDirtyRebuildStage.PrepareCommit;
+        return true;
     }
 
-    private static void ProcessRuntimeDirtyPortalTransitions(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
+    private static bool ProcessRuntimeDirtyPortalTransitions(RuntimeDirtyRebuildJob job, long deadlineTicks, bool forceComplete)
     {
         NavigationWorld world = job.WorkingWorld;
+        int processedSourceCount = 0;
         while (job.PortalTransitionCursor < job.PortalTransitionSectorIds.Count)
         {
             int sectorId = job.PortalTransitionSectorIds[job.PortalTransitionCursor];
@@ -14242,20 +14696,29 @@ public static partial class FlowFieldCrowdMovementSystem
                 else if (analyticDiagnostics.RejectReason == AnalyticPortalAccessRejectReason.NonClearSector)
                     job.PortalGraphAnalyticNonClearRejectCount++;
 
-                if (analytic)
-                    AddPendingAnalyticSectorPortalAccess(job.PendingPortalAccessEntries, sector, fromPortalId);
-                else
-                    AddPendingDeterministicSectorPortalAccess(job.PendingPortalAccessEntries, sector, fromPortalId);
+                PendingSectorPortalAccess pending = analytic
+                    ? AddPendingAnalyticSectorPortalAccess(job.PendingPortalAccessEntries, sector, fromPortalId)
+                    : AddPendingPrebuiltDeterministicSectorPortalAccess(
+                        world,
+                        job.PendingPortalAccessEntries,
+                        sector,
+                        fromPortalId);
 
                 AddDeterministicPortalTransitionTopology(world, sector, fromPortalId);
+                ApplyPendingPortalTransitionCosts(world, sector, pending);
                 job.PortalGraphAccessCount++;
                 job.PortalGraphTransitionCostChecks++;
                 if (analytic)
                     job.PortalGraphAnalyticAccessCount++;
 
                 job.PortalTransitionFromCursor++;
-                if (!forceComplete && IsBudgetExpired(deadlineTicks, job.PortalTransitionFromCursor))
-                    return;
+                processedSourceCount++;
+                if (!forceComplete
+                    && (IsBudgetExpired(deadlineTicks, job.PortalTransitionFromCursor)
+                        || processedSourceCount >= RuntimeDirtyPortalTransitionSourceQuota))
+                {
+                    return false;
+                }
             }
 
             RebuildIncomingPortalTransitionIndex(sector);
@@ -14264,6 +14727,21 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         job.PortalStage = RuntimeDirtyPortalStage.Complete;
+        return true;
+    }
+
+    private static void PrepareRuntimeDirtyCommit(RuntimeDirtyRebuildJob job)
+    {
+        if (job == null)
+            throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: job is null.");
+        if (job.WorkingWorld == null)
+            throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: working world is null.");
+        if (job.WorldHashBuildJob != null)
+            throw new InvalidOperationException("PrepareRuntimeDirtyCommit failed: world hash job already exists.");
+
+        ValidatePendingSectorPortalAccessCoverage(job.WorkingWorld, job.PendingPortalAccessEntries, "runtime-dirty-prepare");
+        FinalizeWorldCostStorage(job.WorkingWorld);
+        job.WorldHashBuildJob = CreateNavigationWorldHashBuildJob(job.WorkingWorld);
     }
 
     private static bool CanUseAnalyticPortalAccess(NavigationWorld world, SectorData sector, int portalId)
@@ -14297,17 +14775,24 @@ public static partial class FlowFieldCrowdMovementSystem
 
     private static void CommitRuntimeDirtyJob(WorldRuntimeState state, RuntimeDirtyRebuildJob job)
     {
+        long stepStartTicks = Stopwatch.GetTimestamp();
         NavigationWorld target = job.TargetWorld;
         NavigationWorld working = job.WorkingWorld;
         if (state.World != target)
             throw new InvalidOperationException("CommitRuntimeDirtyJob failed: target world changed while job was pending.");
+        if (!working.HasDeterministicContentHash || job.WorldHashBuildJob == null || !job.WorldHashBuildJob.Complete)
+            throw new InvalidOperationException("CommitRuntimeDirtyJob failed: working world hash is incomplete.");
 
         bool[] oldWalkableMask = target.WalkableMask;
         byte[] oldNeighborTraversalMask = target.NeighborTraversalMask;
         int[] oldIslandIds = target.IslandIds;
+        List<SectorPortalAccessKey> oldPortalAccessKeys = CreatePortalAccessInvalidationKeys(
+            target,
+            job.PortalTransitionSectorIds);
 
         target.WalkableMask = working.WalkableMask;
         target.CostField = working.CostField;
+        target.SectorCostFields = working.SectorCostFields;
         target.NeighborTraversalMask = working.NeighborTraversalMask;
         target.IslandIds = working.IslandIds;
         target.IslandCount = working.IslandCount;
@@ -14317,24 +14802,30 @@ public static partial class FlowFieldCrowdMovementSystem
         target.Portals = working.Portals;
         target.PortalsById = working.PortalsById;
         target.NextPortalId = working.NextPortalId;
-        target.PortalIdsBySignature.Clear();
-        foreach (KeyValuePair<PortalSignature, int> pair in working.PortalIdsBySignature)
-            target.PortalIdsBySignature.Add(pair.Key, pair.Value);
-        target.UsedPortalIds.Clear();
-        foreach (int portalId in working.UsedPortalIds)
-            target.UsedPortalIds.Add(portalId);
+        target.DeterministicContentHash = working.DeterministicContentHash;
+        target.HasDeterministicContentHash = true;
+        target.PortalIdsBySignature = working.PortalIdsBySignature;
+        target.UsedPortalIds = working.UsedPortalIds;
 
         ReturnWorldArrayIfOwned(oldWalkableMask, target.BaseWalkableMask, target.WalkableMask);
         ReturnWorldArrayIfOwned(oldNeighborTraversalMask, target.BaseNeighborTraversalMask, target.NeighborTraversalMask);
         ReturnWorldArrayIfOwned(oldIslandIds, null, target.IslandIds);
+        job.CommitSwapTicks = Stopwatch.GetTimestamp() - stepStartTicks;
 
-        InvalidateCachesForDirtySectors(target, job.CostDirtySectors);
+        stepStartTicks = Stopwatch.GetTimestamp();
+        InvalidateCachesForDirtySectors(target, job.CostDirtySectors, oldPortalAccessKeys);
+        job.CommitCacheInvalidationTicks = Stopwatch.GetTimestamp() - stepStartTicks;
+
+        stepStartTicks = Stopwatch.GetTimestamp();
         CommitPendingSectorPortalAccessEntries(target, job.PendingPortalAccessEntries);
-        EnsureAllSectorPortalAccessCoverage(target, "runtime-dirty-commit");
-        FinalizeWorldCostStorage(target);
-        RebuildDeterministicPortalTransitionCosts(target);
-        ValidateAllSectorPortalAccessCoverage(target, "runtime-dirty-commit");
-        RefreshNavigationWorldDeterministicHash(target);
+        job.CommitPortalAccessTicks = Stopwatch.GetTimestamp() - stepStartTicks;
+
+        stepStartTicks = Stopwatch.GetTimestamp();
+        DeterministicWorldHashRefreshCount++;
+        RefreshCommittedWorldSetHash();
+        job.CommitWorldHashTicks = Stopwatch.GetTimestamp() - stepStartTicks;
+
+        stepStartTicks = Stopwatch.GetTimestamp();
         MovingTargetAnchors.Clear();
         CombatTargetSlotCache.Clear();
         ClearFixedPortalOwnersForWorld(target.Version);
@@ -14351,6 +14842,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         _world = target;
         _navigationTopologyVersion++;
+        job.CommitAgentInvalidationTicks = Stopwatch.GetTimestamp() - stepStartTicks;
         LogNoStacktrace(
             $"[FlowRuntimeDirtyCommit] worldVersion={target.Version} dirtySectors={job.DirtySectors.Count} costSectors={job.CostDirtySectors.Count} " +
             $"reason={job.Reason}");
@@ -14420,31 +14912,37 @@ public static partial class FlowFieldCrowdMovementSystem
         return clone;
     }
 
-    private static SectorData CloneSectorData(SectorData sector, HashSet<int> dirtySectors)
+    private static SectorData CloneSectorData(
+        SectorData sector,
+        HashSet<int> dirtySectors,
+        HashSet<int> portalMutableSectors = null)
     {
         if (sector == null)
             throw new InvalidOperationException("CloneSectorData failed: sector is null.");
 
-        SectorData copy = new SectorData
+        bool sharePortalCollections = portalMutableSectors != null
+                                      && !portalMutableSectors.Contains(sector.SectorId);
+        SectorData copy = sharePortalCollections ? new SectorData(sector) : new SectorData();
+        copy.SectorId = sector.SectorId;
+        copy.StartX = sector.StartX;
+        copy.StartY = sector.StartY;
+        copy.Width = sector.Width;
+        copy.Height = sector.Height;
+        copy.Center = sector.Center;
+        copy.DirtyVersion = sector.DirtyVersion;
+        copy.IsClearCostField = sector.IsClearCostField;
+        copy.IsClearFlowTile = sector.IsClearFlowTile;
+        copy.UniformIslandId = sector.UniformIslandId;
+        copy.LocalComponentIds = dirtySectors == null || dirtySectors.Contains(sector.SectorId) || sector.LocalComponentIds == null
+            ? new int[sector.Width * sector.Height]
+            : sector.LocalComponentIds;
+        copy.LocalComponentCount = sector.LocalComponentCount;
+        if (!sharePortalCollections)
         {
-            SectorId = sector.SectorId,
-            StartX = sector.StartX,
-            StartY = sector.StartY,
-            Width = sector.Width,
-            Height = sector.Height,
-            Center = sector.Center,
-            DirtyVersion = sector.DirtyVersion,
-            IsClearCostField = sector.IsClearCostField,
-            IsClearFlowTile = sector.IsClearFlowTile,
-            UniformIslandId = sector.UniformIslandId,
-            LocalComponentIds = dirtySectors == null || dirtySectors.Contains(sector.SectorId) || sector.LocalComponentIds == null
-                ? new int[sector.Width * sector.Height]
-                : sector.LocalComponentIds,
-            LocalComponentCount = sector.LocalComponentCount
-        };
-        copy.PortalIds.AddRange(sector.PortalIds);
-        copy.PortalTransitions.AddRange(sector.PortalTransitions);
-        RebuildIncomingPortalTransitionIndex(copy);
+            copy.PortalIds.AddRange(sector.PortalIds);
+            copy.PortalTransitions.AddRange(sector.PortalTransitions);
+            RebuildIncomingPortalTransitionIndex(copy);
+        }
         return copy;
     }
 
@@ -14718,12 +15216,58 @@ public static partial class FlowFieldCrowdMovementSystem
             $"worldVersion={world.Version} size={world.Width}x{world.Height} agentType={world.AgentTypeId}");
     }
 
-    private static void InvalidateCachesForDirtySectors(NavigationWorld world, HashSet<int> dirtySectors)
+    private static List<SectorPortalAccessKey> CreatePortalAccessInvalidationKeys(
+        NavigationWorld world,
+        IReadOnlyList<int> sectorIds)
+    {
+        if (world?.Sectors == null)
+            throw new InvalidOperationException("CreatePortalAccessInvalidationKeys failed: world is unavailable.");
+        if (sectorIds == null)
+            throw new InvalidOperationException("CreatePortalAccessInvalidationKeys failed: sector ids are null.");
+
+        var result = new List<SectorPortalAccessKey>();
+        int previousSectorId = -1;
+        for (int i = 0; i < sectorIds.Count; i++)
+        {
+            int sectorId = sectorIds[i];
+            if (sectorId <= previousSectorId || sectorId < 0 || sectorId >= world.Sectors.Length)
+            {
+                throw new InvalidOperationException(
+                    $"CreatePortalAccessInvalidationKeys failed: sector ids must be sorted, unique and in range previous={previousSectorId} current={sectorId}.");
+            }
+            previousSectorId = sectorId;
+
+            SectorData sector = world.Sectors[sectorId]
+                                ?? throw new InvalidOperationException(
+                                    $"CreatePortalAccessInvalidationKeys failed: sector is null id={sectorId}.");
+            for (int portalIndex = 0; portalIndex < sector.PortalIds.Count; portalIndex++)
+            {
+                int portalId = sector.PortalIds[portalIndex];
+                var key = new SectorPortalAccessKey(world.Version, sectorId, portalId, sector.DirtyVersion);
+                if (!SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry entry)
+                    || !IsValidSectorPortalAccessEntry(entry))
+                {
+                    throw new InvalidOperationException(
+                        $"CreatePortalAccessInvalidationKeys failed: committed portal access is missing sector={sectorId} portal={portalId} dirty={sector.DirtyVersion}.");
+                }
+                result.Add(key);
+            }
+        }
+
+        return result;
+    }
+
+    private static void InvalidateCachesForDirtySectors(
+        NavigationWorld world,
+        HashSet<int> dirtySectors,
+        IReadOnlyList<SectorPortalAccessKey> portalAccessKeysToRemove)
     {
         if (world == null)
             throw new InvalidOperationException("InvalidateCachesForDirtySectors failed: world is null.");
         if (dirtySectors == null || dirtySectors.Count == 0)
             return;
+        if (portalAccessKeysToRemove == null)
+            throw new InvalidOperationException("InvalidateCachesForDirtySectors failed: portal access keys are null.");
 
         List<FlowTileCacheKey> tileKeysToRemove = null;
         foreach (KeyValuePair<FlowTileCacheKey, FlowTileCacheEntry> pair in FlowTileCache)
@@ -14765,27 +15309,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 RemoveSectorPathCacheEntry(pathKeysToRemove[i]);
         }
 
-        List<SectorPortalAccessKey> portalAccessKeysToRemove = null;
-        foreach (KeyValuePair<SectorPortalAccessKey, SectorPortalAccessEntry> pair in SectorPortalAccessCache)
-        {
-            if (pair.Key.WorldVersion != world.Version)
-                continue;
-
-            if (!dirtySectors.Contains(pair.Key.SectorId)
-                && TryGetPortalById(world, pair.Key.PortalId, out _))
-            {
-                continue;
-            }
-
-            portalAccessKeysToRemove ??= new List<SectorPortalAccessKey>();
-            portalAccessKeysToRemove.Add(pair.Key);
-        }
-
-        if (portalAccessKeysToRemove != null)
-        {
-            for (int i = 0; i < portalAccessKeysToRemove.Count; i++)
-                RemoveSectorPortalAccessCacheEntry(portalAccessKeysToRemove[i]);
-        }
+        for (int i = 0; i < portalAccessKeysToRemove.Count; i++)
+            RemoveSectorPortalAccessCacheEntry(portalAccessKeysToRemove[i]);
 
         List<SharedGoalFieldKey> sharedFieldKeysToRemove = null;
         foreach (KeyValuePair<SharedGoalFieldKey, SharedGoalField> pair in SharedGoalFields)
@@ -15799,6 +16324,18 @@ public static partial class FlowFieldCrowdMovementSystem
         if (!SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry entry) || !IsValidSectorPortalAccessEntry(entry))
             throw new InvalidOperationException($"ResolveDeterministicPortalTransitionCostFromAccess failed: access field missing sector={sector.SectorId} portal={fromPortalId}.");
 
+        return ResolveDeterministicPortalTransitionCostFromAccess(world, sector, entry, toPortalId);
+    }
+
+    private static long ResolveDeterministicPortalTransitionCostFromAccess(
+        NavigationWorld world,
+        SectorData sector,
+        SectorPortalAccessEntry entry,
+        int toPortalId)
+    {
+        if (entry == null)
+            throw new InvalidOperationException("ResolveDeterministicPortalTransitionCostFromAccess failed: access entry is null.");
+
         PortalData targetPortal = GetPortalById(world, toPortalId);
         Vector2Int[] targetCells = GetPortalCellsForSector(targetPortal, sector.SectorId);
         long best = long.MaxValue;
@@ -15867,6 +16404,71 @@ public static partial class FlowFieldCrowdMovementSystem
         PortalAccessIntegrationArrayPool.Clear();
     }
 
+    private static void RebuildDeterministicPortalTransitionCosts(
+        NavigationWorld world,
+        List<int> sectorIds)
+    {
+        if (world?.Sectors == null)
+            throw new InvalidOperationException("RebuildDeterministicPortalTransitionCosts failed: world is unavailable.");
+        if (sectorIds == null)
+            throw new InvalidOperationException("RebuildDeterministicPortalTransitionCosts failed: sector ids are null.");
+
+        int previousSectorId = -1;
+        for (int sectorIndex = 0; sectorIndex < sectorIds.Count; sectorIndex++)
+        {
+            int sectorId = sectorIds[sectorIndex];
+            if (sectorId <= previousSectorId || sectorId < 0 || sectorId >= world.Sectors.Length)
+            {
+                throw new InvalidOperationException(
+                    $"RebuildDeterministicPortalTransitionCosts failed: sector ids must be sorted, unique and in range previous={previousSectorId} current={sectorId}.");
+            }
+            previousSectorId = sectorId;
+
+            SectorData sector = world.Sectors[sectorId];
+            for (int portalIndex = 0; portalIndex < sector.PortalIds.Count; portalIndex++)
+            {
+                int portalId = sector.PortalIds[portalIndex];
+                var key = new SectorPortalAccessKey(world.Version, sector.SectorId, portalId, sector.DirtyVersion);
+                if (!SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry entry)
+                    || entry == null
+                    || entry.SectorId != sector.SectorId
+                    || entry.PortalId != portalId
+                    || entry.SectorDirtyVersion != sector.DirtyVersion)
+                {
+                    throw new InvalidOperationException(
+                        $"RebuildDeterministicPortalTransitionCosts failed: access entry missing sector={sector.SectorId} portal={portalId}.");
+                }
+
+                ReturnPortalAccessIntegrationArray(entry.DeterministicIntegration);
+                entry.DeterministicIntegration = entry.IsAnalyticClearSector
+                    ? null
+                    : BuildDeterministicPortalAccessIntegration(world, sector, GetPortalById(world, portalId));
+                RefreshSectorPortalAccessAuthorityContentHash(key, entry);
+            }
+        }
+
+        for (int sectorIndex = 0; sectorIndex < sectorIds.Count; sectorIndex++)
+        {
+            SectorData sector = world.Sectors[sectorIds[sectorIndex]];
+            for (int transitionIndex = 0; transitionIndex < sector.PortalTransitions.Count; transitionIndex++)
+            {
+                PortalTransition transition = sector.PortalTransitions[transitionIndex];
+                transition.DeterministicCost = ResolveDeterministicPortalTransitionCostFromAccess(
+                    world,
+                    sector,
+                    transition.FromPortalId,
+                    transition.ToPortalId);
+                if (transition.DeterministicCost == long.MaxValue)
+                {
+                    throw new InvalidOperationException(
+                        $"RebuildDeterministicPortalTransitionCosts failed: transition is unreachable sector={sector.SectorId} from={transition.FromPortalId} to={transition.ToPortalId}.");
+                }
+            }
+        }
+
+        PortalAccessIntegrationArrayPool.Clear();
+    }
+
     private static SectorPortalAccessEntry GetPrebuiltSectorPortalAccess(SectorData sector, int sectorId, int portalId)
     {
         return GetRequiredSectorPortalAccess(sector, sectorId, portalId);
@@ -15892,21 +16494,26 @@ public static partial class FlowFieldCrowdMovementSystem
             "Portal access integration must be produced by world/runtime portal transition jobs, not synchronously in query/tile build.");
     }
 
-    private static void AddPendingAnalyticSectorPortalAccess(List<PendingSectorPortalAccess> pendingEntries, SectorData sector, int portalId)
+    private static PendingSectorPortalAccess AddPendingAnalyticSectorPortalAccess(
+        List<PendingSectorPortalAccess> pendingEntries,
+        SectorData sector,
+        int portalId)
     {
         if (pendingEntries == null)
             throw new InvalidOperationException("AddPendingAnalyticSectorPortalAccess failed: pendingEntries is null.");
         if (sector == null)
             throw new InvalidOperationException("AddPendingAnalyticSectorPortalAccess failed: sector is null.");
 
-        pendingEntries.Add(new PendingSectorPortalAccess(
+        var pending = new PendingSectorPortalAccess(
             sector.SectorId,
             portalId,
             sector.DirtyVersion,
-            true));
+            true);
+        pendingEntries.Add(pending);
+        return pending;
     }
 
-    private static void AddPendingDeterministicSectorPortalAccess(
+    private static PendingSectorPortalAccess AddPendingDeterministicSectorPortalAccess(
         List<PendingSectorPortalAccess> pendingEntries,
         SectorData sector,
         int portalId)
@@ -15916,11 +16523,80 @@ public static partial class FlowFieldCrowdMovementSystem
         if (sector == null)
             throw new InvalidOperationException("AddPendingDeterministicSectorPortalAccess failed: sector is null.");
 
-        pendingEntries.Add(new PendingSectorPortalAccess(
+        var pending = new PendingSectorPortalAccess(
             sector.SectorId,
             portalId,
             sector.DirtyVersion,
-            false));
+            false);
+        pendingEntries.Add(pending);
+        return pending;
+    }
+
+    private static PendingSectorPortalAccess AddPendingPrebuiltDeterministicSectorPortalAccess(
+        NavigationWorld world,
+        List<PendingSectorPortalAccess> pendingEntries,
+        SectorData sector,
+        int portalId)
+    {
+        if (world == null)
+            throw new InvalidOperationException("AddPendingPrebuiltDeterministicSectorPortalAccess failed: world is null.");
+        if (pendingEntries == null)
+            throw new InvalidOperationException("AddPendingPrebuiltDeterministicSectorPortalAccess failed: pendingEntries is null.");
+        if (sector == null)
+            throw new InvalidOperationException("AddPendingPrebuiltDeterministicSectorPortalAccess failed: sector is null.");
+
+        long[] integration = BuildDeterministicPortalAccessIntegration(
+            world,
+            sector,
+            GetPortalById(world, portalId));
+        var pending = new PendingSectorPortalAccess(
+            sector.SectorId,
+            portalId,
+            sector.DirtyVersion,
+            false,
+            integration);
+        pendingEntries.Add(pending);
+        return pending;
+    }
+
+    private static void ApplyPendingPortalTransitionCosts(
+        NavigationWorld world,
+        SectorData sector,
+        PendingSectorPortalAccess pending)
+    {
+        if (pending == null)
+            throw new InvalidOperationException("ApplyPendingPortalTransitionCosts failed: pending access is null.");
+        if (pending.SectorId != sector.SectorId || pending.SectorDirtyVersion != sector.DirtyVersion)
+        {
+            throw new InvalidOperationException(
+                $"ApplyPendingPortalTransitionCosts failed: pending access identity mismatch sector={sector.SectorId} portal={pending.PortalId}.");
+        }
+
+        var entry = new SectorPortalAccessEntry
+        {
+            DeterministicIntegration = pending.DeterministicIntegration,
+            IsAnalyticClearSector = pending.IsAnalyticClearSector,
+            SectorId = pending.SectorId,
+            PortalId = pending.PortalId,
+            SectorDirtyVersion = pending.SectorDirtyVersion
+        };
+        for (int i = 0; i < sector.PortalTransitions.Count; i++)
+        {
+            PortalTransition transition = sector.PortalTransitions[i];
+            if (transition.FromPortalId != pending.PortalId)
+                continue;
+
+            transition.DeterministicCost = ResolveDeterministicPortalTransitionCostFromAccess(
+                world,
+                sector,
+                entry,
+                transition.ToPortalId);
+            if (transition.DeterministicCost == long.MaxValue)
+            {
+                throw new InvalidOperationException(
+                    $"ApplyPendingPortalTransitionCosts failed: transition is unreachable sector={sector.SectorId} from={pending.PortalId} to={transition.ToPortalId}.");
+            }
+        }
     }
 
     private static void CommitPendingSectorPortalAccessEntries(NavigationWorld world, List<PendingSectorPortalAccess> pendingEntries)
@@ -15932,7 +16608,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         for (int i = 0; i < pendingEntries.Count; i++)
         {
-            PendingSectorPortalAccess pending = pendingEntries[i];
+            PendingSectorPortalAccess pending = pendingEntries[i]
+                ?? throw new InvalidOperationException($"CommitPendingSectorPortalAccessEntries failed: pending entry is null index={i}.");
             SectorPortalAccessKey key = new SectorPortalAccessKey(
                 world.Version,
                 pending.SectorId,
@@ -15940,16 +16617,80 @@ public static partial class FlowFieldCrowdMovementSystem
                 pending.SectorDirtyVersion);
             SetSectorPortalAccessCacheEntry(key, new SectorPortalAccessEntry
             {
-                DeterministicIntegration = null,
+                DeterministicIntegration = pending.DeterministicIntegration,
                 IsAnalyticClearSector = pending.IsAnalyticClearSector,
                 SectorId = pending.SectorId,
                 PortalId = pending.PortalId,
                 SectorDirtyVersion = pending.SectorDirtyVersion,
                 LastUsedFrame = GetFrameCount()
             });
+            pending.DeterministicIntegration = null;
         }
 
         TrimSectorPortalAccessCache();
+    }
+
+    private static void ReturnPendingSectorPortalAccessIntegrations(List<PendingSectorPortalAccess> pendingEntries)
+    {
+        if (pendingEntries == null)
+            return;
+
+        for (int i = 0; i < pendingEntries.Count; i++)
+        {
+            PendingSectorPortalAccess pending = pendingEntries[i];
+            if (pending == null || pending.DeterministicIntegration == null)
+                continue;
+            ReturnPortalAccessIntegrationArray(pending.DeterministicIntegration);
+            pending.DeterministicIntegration = null;
+        }
+    }
+
+    private static void ValidatePendingSectorPortalAccessCoverage(
+        NavigationWorld world,
+        List<PendingSectorPortalAccess> pendingEntries,
+        string stage)
+    {
+        if (world?.Sectors == null)
+            throw new InvalidOperationException($"ValidatePendingSectorPortalAccessCoverage failed: world is unavailable stage={stage}.");
+        if (pendingEntries == null)
+            throw new InvalidOperationException($"ValidatePendingSectorPortalAccessCoverage failed: pending entries are null stage={stage}.");
+
+        var pendingByKey = new Dictionary<SectorPortalAccessKey, PendingSectorPortalAccess>(pendingEntries.Count);
+        for (int i = 0; i < pendingEntries.Count; i++)
+        {
+            PendingSectorPortalAccess pending = pendingEntries[i]
+                ?? throw new InvalidOperationException($"ValidatePendingSectorPortalAccessCoverage failed: null entry stage={stage} index={i}.");
+            if (!pending.IsAnalyticClearSector && pending.DeterministicIntegration == null)
+            {
+                throw new InvalidOperationException(
+                    $"ValidatePendingSectorPortalAccessCoverage failed: deterministic integration is missing stage={stage} sector={pending.SectorId} portal={pending.PortalId}.");
+            }
+
+            var key = new SectorPortalAccessKey(world.Version, pending.SectorId, pending.PortalId, pending.SectorDirtyVersion);
+            if (!pendingByKey.TryAdd(key, pending))
+                throw new InvalidOperationException($"ValidatePendingSectorPortalAccessCoverage failed: duplicate entry stage={stage} sector={pending.SectorId} portal={pending.PortalId}.");
+        }
+
+        for (int sectorId = 0; sectorId < world.Sectors.Length; sectorId++)
+        {
+            SectorData sector = world.Sectors[sectorId]
+                ?? throw new InvalidOperationException($"ValidatePendingSectorPortalAccessCoverage failed: null sector stage={stage} sector={sectorId}.");
+            for (int i = 0; i < sector.PortalIds.Count; i++)
+            {
+                int portalId = sector.PortalIds[i];
+                var key = new SectorPortalAccessKey(world.Version, sectorId, portalId, sector.DirtyVersion);
+                if (pendingByKey.ContainsKey(key))
+                    continue;
+                if (SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry cached)
+                    && IsValidSectorPortalAccessEntry(cached))
+                {
+                    continue;
+                }
+
+                throw new InvalidOperationException(
+                    $"ValidatePendingSectorPortalAccessCoverage failed: future committed coverage is missing stage={stage} sector={sectorId} portal={portalId} dirty={sector.DirtyVersion}.");
+            }
+        }
     }
 
     private static void EnsureAllSectorPortalAccessCoverage(NavigationWorld world, string stage)
@@ -18931,7 +19672,6 @@ public static partial class FlowFieldCrowdMovementSystem
         if (FlowTileCache.Count <= Config.FlowTileCacheLimit)
             return;
 
-        RefreshFlowTileReferenceCounts();
         int threshold = GetFrameCount() - 120;
         List<FlowTileCacheKey> expiredKeys = new List<FlowTileCacheKey>();
         foreach (KeyValuePair<FlowTileCacheKey, FlowTileCacheEntry> pair in FlowTileCache)
@@ -20796,75 +21536,102 @@ public static partial class FlowFieldCrowdMovementSystem
         goalY = 0;
         stableGoalPosition = rawGoalPosition;
         shouldEnqueueSharedGoal = true;
-        if (!TryResolveReachableNavigationPointCellFixed(
-                self,
-                rawGoalPosition,
-                out int rawGoalX,
-                out int rawGoalY,
-                out _,
-                out int startX,
-                out int startY,
-                out int startIsland,
-                out int reachableGoalX,
-                out int reachableGoalY,
-                out FixVector2 reachableGoalWorld,
-                out int reachableGoalSectorId))
+        IEntityContext currentTarget = self?.TargetComp?.CurrentTarget;
+        bool useRawGoal = currentTarget == null || ReferenceEquals(currentTarget, self);
+        FixVector2 currentTargetFramePosition = default;
+        if (!useRawGoal)
+        {
+            currentTargetFramePosition = currentTarget.LogicFramePositionFixed();
+            FixVector2 targetOffset = rawGoalPosition - currentTargetFramePosition;
+            Fix64 currentTargetExtent = ResolveNavigationTargetExtentFixed(currentTarget);
+            Fix64 targetMatchDistance = Fix64.Max(currentTargetExtent * Fix64.FromRaw(3072), Fix64.FromRaw(1434));
+            useRawGoal = !IsNavigationMovingTarget(currentTarget)
+                         && FixVector2.SqrMagnitude(targetOffset) > targetMatchDistance * targetMatchDistance;
+        }
+
+        if (useRawGoal)
+        {
+            if (!TryResolveReachableNavigationPointCellFixed(
+                    self,
+                    rawGoalPosition,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out int reachableGoalX,
+                    out int reachableGoalY,
+                    out FixVector2 reachableGoalWorld,
+                    out _))
+            {
+                return false;
+            }
+
+            _perf.StableGoalRaw++;
+            ClearStableGoal(agent);
+            shouldEnqueueSharedGoal = currentTarget == null || ReferenceEquals(currentTarget, self);
+            goalX = reachableGoalX;
+            goalY = reachableGoalY;
+            stableGoalPosition = reachableGoalWorld;
+            return true;
+        }
+
+        if (!TryResolveGoalCellFixed(_world, currentTargetFramePosition, out int anchorRawGoalX, out int anchorRawGoalY)
+            || !_world.TryGetSectorId(anchorRawGoalX, anchorRawGoalY, out _)
+            || !TryResolveStartCellForReachabilityFixed(self, out int startX, out int startY, out int startIsland))
         {
             return false;
-        }
-
-        IEntityContext currentTarget = self?.TargetComp?.CurrentTarget;
-        if (currentTarget == null || ReferenceEquals(currentTarget, self))
-        {
-            _perf.StableGoalRaw++;
-            ClearStableGoal(agent);
-            goalX = reachableGoalX;
-            goalY = reachableGoalY;
-            stableGoalPosition = reachableGoalWorld;
-            return true;
-        }
-
-        FixVector2 currentTargetFramePosition = currentTarget.LogicFramePositionFixed();
-        FixVector2 targetOffset = rawGoalPosition - currentTargetFramePosition;
-        Fix64 currentTargetExtent = ResolveNavigationTargetExtentFixed(currentTarget);
-        Fix64 targetMatchDistance = Fix64.Max(currentTargetExtent * Fix64.FromRaw(3072), Fix64.FromRaw(1434));
-        bool useMovingTargetAnchor = IsNavigationMovingTarget(currentTarget);
-        if (!useMovingTargetAnchor
-            && FixVector2.SqrMagnitude(targetOffset) > targetMatchDistance * targetMatchDistance)
-        {
-            _perf.StableGoalRaw++;
-            ClearStableGoal(agent);
-            shouldEnqueueSharedGoal = false;
-            goalX = reachableGoalX;
-            goalY = reachableGoalY;
-            stableGoalPosition = reachableGoalWorld;
-            return true;
         }
 
         int targetId = ResolveAgentId(currentTarget);
         int agentTypeId = ResolvePreferredAgentTypeId(agent.AgentTypeId);
-        if (!TryResolveReachableNavigationPointCellFixed(
-                self,
-                currentTargetFramePosition,
-                out int anchorRawGoalX,
-                out int anchorRawGoalY,
-                out _,
-                out _,
-                out _,
-                out _,
-                out int anchorReachableGoalX,
-                out int anchorReachableGoalY,
-                out FixVector2 anchorReachableGoalWorld,
-                out int anchorReachableGoalSectorId))
-        {
-            return false;
-        }
-
         MovingTargetAnchorKey anchorKey = new MovingTargetAnchorKey(targetId, agentTypeId, startIsland);
         if (!MovingTargetAnchors.TryGetValue(anchorKey, out MovingTargetAnchor anchor))
         {
             anchor = new MovingTargetAnchor { Key = anchorKey };
             MovingTargetAnchors.Add(anchorKey, anchor);
+        }
+
+        int currentFrame = GetFrameCount();
+        int anchorReachableGoalX;
+        int anchorReachableGoalY;
+        int anchorReachableGoalSectorId;
+        FixVector2 anchorReachableGoalWorld;
+        if (anchor.ReachabilityFrame == currentFrame
+            && anchor.ReachabilityWorldVersion == _world.Version
+            && anchor.ReachabilityRawGoalX == anchorRawGoalX
+            && anchor.ReachabilityRawGoalY == anchorRawGoalY)
+        {
+            anchorReachableGoalX = anchor.ReachabilityGoalX;
+            anchorReachableGoalY = anchor.ReachabilityGoalY;
+            anchorReachableGoalSectorId = anchor.ReachabilityGoalSectorId;
+            anchorReachableGoalWorld = anchor.ReachabilityGoalWorldFixed;
+            _perf.StableGoalReachabilityReuse++;
+        }
+        else
+        {
+            if (!TryResolveReachableGoalCellFixed(
+                    currentTargetFramePosition,
+                    anchorRawGoalX,
+                    anchorRawGoalY,
+                    startIsland,
+                    out anchorReachableGoalX,
+                    out anchorReachableGoalY,
+                    out anchorReachableGoalWorld,
+                    out anchorReachableGoalSectorId))
+            {
+                return false;
+            }
+
+            anchor.ReachabilityFrame = currentFrame;
+            anchor.ReachabilityWorldVersion = _world.Version;
+            anchor.ReachabilityRawGoalX = anchorRawGoalX;
+            anchor.ReachabilityRawGoalY = anchorRawGoalY;
+            anchor.ReachabilityGoalX = anchorReachableGoalX;
+            anchor.ReachabilityGoalY = anchorReachableGoalY;
+            anchor.ReachabilityGoalSectorId = anchorReachableGoalSectorId;
+            anchor.ReachabilityGoalWorldFixed = anchorReachableGoalWorld;
         }
 
         TryPromoteMovingTargetPendingGoal(anchor, agentTypeId, -1, -1, -1);
@@ -24593,13 +25360,26 @@ public static partial class FlowFieldCrowdMovementSystem
             return Fix64.FromRaw(2048);
 
         if (agentTypeId == AgentTypeHelper.SmallMovementTypeId)
-            return ResolveConfiguredAgentTypeRadiusFixed("SmallUnitCollisionRadius");
+            return GetPreparedAgentTypeRadiusFixed(agentTypeId, s_SmallAgentTypeRadiusFixed);
         if (agentTypeId == AgentTypeHelper.MediumMovementTypeId)
-            return ResolveConfiguredAgentTypeRadiusFixed("MediumUnitCollisionRadius");
+            return GetPreparedAgentTypeRadiusFixed(agentTypeId, s_MediumAgentTypeRadiusFixed);
         if (agentTypeId == AgentTypeHelper.LargeMovementTypeId)
-            return ResolveConfiguredAgentTypeRadiusFixed("LargeUnitCollisionRadius");
+            return GetPreparedAgentTypeRadiusFixed(agentTypeId, s_LargeAgentTypeRadiusFixed);
 
         return Fix64.FromRaw(2048);
+    }
+
+    private static Fix64 GetPreparedAgentTypeRadiusFixed(int agentTypeId, Fix64 radius)
+    {
+        if (!s_RuntimeAgentTypeRadiiPrepared)
+        {
+            throw new InvalidOperationException(
+                $"FlowField runtime agent radii were not prepared before resolving agent type {agentTypeId}.");
+        }
+        if (radius <= Fix64.Zero)
+            throw new InvalidOperationException($"Prepared FlowField agent radius is invalid. agentType={agentTypeId}, raw={radius.RawValue}.");
+
+        return radius;
     }
 
     private static Fix64 ResolveConfiguredAgentTypeRadiusFixed(string configKey)

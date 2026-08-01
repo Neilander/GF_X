@@ -14,6 +14,8 @@ internal static class MainThreadFrameProfilerNextPlayCapture
         EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         if (EditorApplication.isPlaying)
             EditorApplication.delayCall += EnableIfArmed;
+        else
+            MainThreadFrameProfiler.LoggingEnabled = false;
     }
 
     [MenuItem("Tools/Logic Frames/Capture MainPerf Next Play")]
@@ -22,7 +24,7 @@ internal static class MainThreadFrameProfilerNextPlayCapture
         if (EditorApplication.isPlayingOrWillChangePlaymode)
             throw new InvalidOperationException("Stop Play mode before arming the next-play MainPerf capture.");
 
-        SessionState.SetBool(ArmedKey, true);
+        EditorPrefs.SetBool(ArmedKey, true);
         Debug.Log("[MainPerfCapture] Armed for the next Play session.");
     }
 
@@ -30,16 +32,18 @@ internal static class MainThreadFrameProfilerNextPlayCapture
     {
         if (state == PlayModeStateChange.EnteredPlayMode)
             EnableIfArmed();
+        else if (state == PlayModeStateChange.ExitingPlayMode || state == PlayModeStateChange.EnteredEditMode)
+            MainThreadFrameProfiler.LoggingEnabled = false;
     }
 
     private static void EnableIfArmed()
     {
-        if (!SessionState.GetBool(ArmedKey, false))
+        if (!EditorPrefs.GetBool(ArmedKey, false))
             return;
         if (!EditorApplication.isPlaying)
             throw new InvalidOperationException("MainPerf next-play capture was consumed outside Play mode.");
 
-        SessionState.SetBool(ArmedKey, false);
+        EditorPrefs.DeleteKey(ArmedKey);
         MainThreadFrameProfiler.LoggingEnabled = true;
         Debug.Log("[MainPerfCapture] Enabled for this Play session.");
     }

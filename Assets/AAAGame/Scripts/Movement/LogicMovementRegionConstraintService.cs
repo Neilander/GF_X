@@ -1,12 +1,10 @@
 using System;
-using AAAGame.Card;
 
 public enum LogicMovementRegionConstraintFailure
 {
     None = 0,
     EnemyStronghold = 1,
     TutorialStrongholdBoundary = 2,
-    NotVisible = 3,
 }
 
 public static class LogicMovementRegionConstraintService
@@ -143,27 +141,55 @@ public static class LogicMovementRegionConstraintService
         if (entity.Side != SideType.PlayerSide || candidate == frameStart)
             return candidate;
 
-        if (IsEnemyStrongholdBlocked(candidate))
-        {
-            failure = LogicMovementRegionConstraintFailure.EnemyStronghold;
-            return frameStart;
-        }
-
         if (IsTutorialStrongholdBoundaryBlocked(candidate))
         {
             failure = LogicMovementRegionConstraintFailure.TutorialStrongholdBoundary;
             return frameStart;
         }
 
-        if (LogicCardPlacementAuthority.IsActive
-            && LogicCardPlacementAuthority.IsWorldBound
-            && !LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(candidate))
-        {
-            failure = LogicMovementRegionConstraintFailure.NotVisible;
-            return frameStart;
-        }
+        candidate = ResolveEnemyStrongholdCollision(entity, frameStart, candidate, out bool strongholdConstrained);
+        if (strongholdConstrained)
+            failure = LogicMovementRegionConstraintFailure.EnemyStronghold;
 
         return candidate;
+    }
+
+    public static bool IsPositionAllowed(
+        IEntityContext entity,
+        FixVector2 position,
+        out LogicMovementRegionConstraintFailure failure)
+    {
+        if (entity == null)
+            throw new ArgumentNullException(nameof(entity));
+
+        EnsureActive();
+        failure = LogicMovementRegionConstraintFailure.None;
+        if (entity.Side != SideType.PlayerSide)
+            return true;
+
+        if (IsTutorialStrongholdBoundaryBlocked(position))
+        {
+            failure = LogicMovementRegionConstraintFailure.TutorialStrongholdBoundary;
+            return false;
+        }
+
+        if (!LogicStrongholdMap.IsInitialized)
+            return true;
+        EnsureStrongholdPhaseReady();
+        if (LogicPhaseCommandService.CurrentPhase == GamePhase.Invade)
+            return true;
+
+        Fix64 radius = ResolveCollisionRadius(entity);
+        if (LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+                position,
+                radius,
+                EntitySideHelper.PlayerFactionId))
+        {
+            return true;
+        }
+
+        failure = LogicMovementRegionConstraintFailure.EnemyStronghold;
+        return false;
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
@@ -188,22 +214,51 @@ public static class LogicMovementRegionConstraintService
         }
     }
 
-    private static bool IsEnemyStrongholdBlocked(FixVector2 candidate)
+    private static FixVector2 ResolveEnemyStrongholdCollision(
+        IEntityContext entity,
+        FixVector2 frameStart,
+        FixVector2 candidate,
+        out bool constrained)
     {
-        if (!LogicStrongholdMap.IsInitialized
-            || !LogicStrongholdMap.TryResolveStrongholdId(candidate, out string strongholdId))
+        constrained = false;
+        if (!LogicStrongholdMap.IsInitialized)
         {
-            return false;
+            return candidate;
         }
 
+        EnsureStrongholdPhaseReady();
+        if (LogicPhaseCommandService.CurrentPhase == GamePhase.Invade)
+            return candidate;
+
+        Fix64 radius = ResolveCollisionRadius(entity);
+        return LogicStrongholdMap.ResolveCircleMotionAvoidingForeignStrongholds(
+            frameStart,
+            candidate,
+            radius,
+            EntitySideHelper.PlayerFactionId,
+            out constrained);
+    }
+
+    private static Fix64 ResolveCollisionRadius(IEntityContext entity)
+    {
+        Fix64 radius = DistanceUnitConverter.ConvertToWorld(
+            entity.GetProperty(CreatureMainProperty.CollisionRadius));
+        if (radius <= Fix64.Zero)
+        {
+            throw new InvalidOperationException(
+                $"LogicMovementRegionConstraintService requires a positive collision radius for moving player entity {entity.LogicEntityId.Value}.");
+        }
+
+        return radius;
+    }
+
+    private static void EnsureStrongholdPhaseReady()
+    {
         if (!LogicPhaseCommandService.IsActive || !LogicPhaseCommandService.IsInitialized)
         {
             throw new InvalidOperationException(
                 "LogicMovementRegionConstraintService requires initialized logic phase state before resolving a stronghold move.");
         }
-
-        return LogicPhaseCommandService.CurrentPhase != GamePhase.Invade
-               && LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId;
     }
 
     private static bool IsTutorialStrongholdBoundaryBlocked(FixVector2 candidate)

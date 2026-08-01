@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Unity.Profiling;
 using UnityEngine;
@@ -93,7 +94,43 @@ namespace UnityGameFramework.Runtime
         FlowWorldBuildQueue = 83,
         FlowRuntimeRebuildQueue = 84,
         FlowTileBuildQueue = 85,
-        Count = 86
+        LogicFrameAdvance = 86,
+        LogicFrameCommands = 87,
+        LogicFrameTick = 88,
+        LogicFrameListenerCallbacks = 89,
+        LogicFramePhysicsSync = 90,
+        LogicFrameListenerSnapshot = 91,
+        LogicEntityFrameSetup = 92,
+        LogicEntityBaseAndBuffs = 93,
+        LogicEntityNavigationSync = 94,
+        LogicEntityBrain = 95,
+        LogicEntityTargeting = 96,
+        LogicEntityProjectile = 97,
+        LogicEntityAttack = 98,
+        LogicEntityDamageResolve = 99,
+        LogicEntityMoveIntent = 100,
+        LogicEntityMoveResolve = 101,
+        LogicEntityMoveCommit = 102,
+        LogicEntityPostUpdate = 103,
+        LogicEntityFrameComplete = 104,
+        LogicMoveResolvePrepare = 105,
+        LogicMoveResolvePairSolver = 106,
+        LogicMoveResolveProjection = 107,
+        LogicMoveResolveStaticSolver = 108,
+        LogicMoveResolveRegionConstraint = 109,
+        LogicMoveResolveRebuild = 110,
+        LogicMoveResolveBookkeeping = 111,
+        FlowSteeringSetup = 112,
+        FlowSteeringSetupAgent = 113,
+        FlowSteeringSetupWorld = 114,
+        FlowSteeringSetupOccupancy = 115,
+        FlowSteeringSetupPrepare = 116,
+        FlowSteeringPath = 117,
+        FlowSteeringPortalOwner = 118,
+        FlowSteeringVelocity = 119,
+        FlowSteeringDirectStatic = 120,
+        FlowSteeringDirectLineOfSight = 121,
+        Count = 122
     }
 
     public static class MainThreadFrameProfiler
@@ -111,6 +148,8 @@ namespace UnityGameFramework.Runtime
         private static readonly int[] ScopeCalls = new int[(int)MainThreadPerfScope.Count];
         private static readonly long[] ScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
         private static readonly long[] IntervalScopeAllocatedBytes = new long[(int)MainThreadPerfScope.Count];
+        private static readonly Dictionary<Type, LogicListenerSample> LogicListenerSamples = new Dictionary<Type, LogicListenerSample>();
+        private static readonly List<LogicListenerSample> LogicListenerSortBuffer = new List<LogicListenerSample>();
         private static readonly ProfilerMarkerSampler[] MarkerSamplers =
         {
             new ProfilerMarkerSampler(ProfilerCategory.Internal, "PlayerLoop"),
@@ -145,11 +184,21 @@ namespace UnityGameFramework.Runtime
         private static long _intervalAllocatedBytes;
 
         public static bool LoggingEnabled { get; set; }
+        public static int LastCompletedFrame { get; private set; } = -1;
+        public static double LastCompletedFrameMilliseconds { get; private set; }
+        public static double LastCompletedTrackedMilliseconds { get; private set; }
+        public static double LastCompletedUntrackedMilliseconds { get; private set; }
+        public static double LastCompletedLogicFrameMilliseconds { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetForPlaySession()
         {
             LoggingEnabled = false;
+            LastCompletedFrame = -1;
+            LastCompletedFrameMilliseconds = 0.0;
+            LastCompletedTrackedMilliseconds = 0.0;
+            LastCompletedUntrackedMilliseconds = 0.0;
+            LastCompletedLogicFrameMilliseconds = 0.0;
         }
 
         public static void PulseFrame()
@@ -178,6 +227,24 @@ namespace UnityGameFramework.Runtime
                 ScopeAllocatedBytes[index] += allocatedBytes;
         }
 
+        public static void RecordLogicFrameListener(Type listenerType, long ticks)
+        {
+            if (listenerType == null)
+                throw new ArgumentNullException(nameof(listenerType));
+            if (ticks <= 0)
+                return;
+
+            EnsureFrame();
+            if (!LogicListenerSamples.TryGetValue(listenerType, out LogicListenerSample sample))
+            {
+                sample = new LogicListenerSample(listenerType);
+                LogicListenerSamples.Add(listenerType, sample);
+            }
+
+            sample.Ticks += ticks;
+            sample.Calls++;
+        }
+
         private static void EnsureFrame()
         {
             int frame = Time.frameCount;
@@ -190,6 +257,7 @@ namespace UnityGameFramework.Runtime
                 Array.Clear(ScopeCalls, 0, ScopeCalls.Length);
                 Array.Clear(ScopeAllocatedBytes, 0, ScopeAllocatedBytes.Length);
                 Array.Clear(IntervalScopeAllocatedBytes, 0, IntervalScopeAllocatedBytes.Length);
+                ResetLogicListenerSamples();
                 _intervalAllocatedBytes = 0L;
                 _frame = frame;
                 _frameStartTicks = now;
@@ -210,6 +278,7 @@ namespace UnityGameFramework.Runtime
             Array.Clear(ScopeTicks, 0, ScopeTicks.Length);
             Array.Clear(ScopeCalls, 0, ScopeCalls.Length);
             Array.Clear(ScopeAllocatedBytes, 0, ScopeAllocatedBytes.Length);
+            ResetLogicListenerSamples();
             _frame = frame;
             _frameStartTicks = now;
             _frameStartAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
@@ -225,9 +294,22 @@ namespace UnityGameFramework.Runtime
             for (int i = 0; i < ScopeAllocatedBytes.Length; i++)
                 IntervalScopeAllocatedBytes[i] += ScopeAllocatedBytes[i];
 
-            long trackedTicks = 0;
-            for (int i = 0; i <= (int)MainThreadPerfScope.EntityUpdate; i++)
-                trackedTicks += ScopeTicks[i];
+            long trackedTicks = ScopeTicks[(int)MainThreadPerfScope.GameFrameworkUpdate]
+                                + ScopeTicks[(int)MainThreadPerfScope.Fog3Update]
+                                + ScopeTicks[(int)MainThreadPerfScope.InteractionTrigger]
+                                + ScopeTicks[(int)MainThreadPerfScope.InteractionCleanup]
+                                + ScopeTicks[(int)MainThreadPerfScope.InteractionManagerUpdate]
+                                + ScopeTicks[(int)MainThreadPerfScope.EntityUpdate];
+
+            double frameMs = TicksToMs(frameTicks);
+            double trackedMs = TicksToMs(trackedTicks);
+            double untrackedMs = Math.Max(0.0, frameMs - trackedMs);
+            LastCompletedFrame = _frame;
+            LastCompletedFrameMilliseconds = frameMs;
+            LastCompletedTrackedMilliseconds = trackedMs;
+            LastCompletedUntrackedMilliseconds = untrackedMs;
+            long logicFrameTicks = ScopeTicks[(int)MainThreadPerfScope.LogicFrameAdvance];
+            LastCompletedLogicFrameMilliseconds = TicksToMs(logicFrameTicks);
 
             EnsureRecorders();
 
@@ -235,6 +317,7 @@ namespace UnityGameFramework.Runtime
             bool highAllocation = allocatedBytes >= HighAllocationBytes;
             bool forceLog = frameTicks >= ForceLogFrameTicks
                             || trackedTicks >= ForceTrackedLogTicks
+                            || logicFrameTicks >= SlowFrameTicks
                             || allocatedBytes >= ForceAllocationLogBytes
                             || collectionCount > 0
                             || ScopeCalls[(int)MainThreadPerfScope.ClusterSpawnUnits] > 0;
@@ -245,9 +328,6 @@ namespace UnityGameFramework.Runtime
                 return;
             _lastLogFrame = _frame;
 
-            double frameMs = TicksToMs(frameTicks);
-            double trackedMs = TicksToMs(trackedTicks);
-            double untrackedMs = Math.Max(0.0, frameMs - trackedMs);
             UnityEngine.Debug.LogFormat(
                 LogType.Log,
                 LogOption.NoStacktrace,
@@ -259,7 +339,7 @@ namespace UnityGameFramework.Runtime
                 "entityDetail({27}) moveExecDetail({28}) characterMoveDetail({29}) entityShowDetail({30}) fogEnemyDetail({31}) spawnDetail({32}) " +
                 "env(targetFps={33},vSync={34},screen={35}x{36},focused={37},gcIncremental={38}) markers({39}) " +
                 "alloc(frame={40:F1}KB,sinceLastGC={41:F1}KB,gcCollections={42},scopes={43},sinceLastGCScopes={44}) " +
-                "flowQueues({45})",
+                "flowQueues({45}) logicDetail({46}) logicListeners({47})",
                 _frame,
                 frameMs,
                 trackedMs,
@@ -294,7 +374,9 @@ namespace UnityGameFramework.Runtime
                 collectionCount,
                 BuildAllocationScopeSummary(ScopeAllocatedBytes),
                 BuildAllocationScopeSummary(IntervalScopeAllocatedBytes),
-                BuildScopeSummary(MainThreadPerfScope.FlowWorldBuildQueue, MainThreadPerfScope.FlowTileBuildQueue));
+                BuildScopeSummary(MainThreadPerfScope.FlowWorldBuildQueue, MainThreadPerfScope.FlowTileBuildQueue),
+                BuildScopeSummary(MainThreadPerfScope.LogicFrameAdvance, MainThreadPerfScope.FlowSteeringDirectLineOfSight),
+                BuildLogicListenerSummary());
 
             if (collectionCount > 0)
             {
@@ -374,6 +456,58 @@ namespace UnityGameFramework.Runtime
             }
 
             return result.Length > 0 ? result : "none";
+        }
+
+        private static string BuildLogicListenerSummary()
+        {
+            LogicListenerSortBuffer.Clear();
+            foreach (LogicListenerSample sample in LogicListenerSamples.Values)
+            {
+                if (sample.Calls > 0)
+                    LogicListenerSortBuffer.Add(sample);
+            }
+            LogicListenerSortBuffer.Sort(CompareLogicListenerSamples);
+
+            string result = string.Empty;
+            int count = Math.Min(8, LogicListenerSortBuffer.Count);
+            for (int i = 0; i < count; i++)
+            {
+                LogicListenerSample sample = LogicListenerSortBuffer[i];
+                if (result.Length > 0)
+                    result += ",";
+                result += sample.ListenerType.FullName + "=" + TicksToMs(sample.Ticks).ToString("F3") + "ms/" + sample.Calls;
+            }
+
+            return result.Length > 0 ? result : "none";
+        }
+
+        private static int CompareLogicListenerSamples(LogicListenerSample left, LogicListenerSample right)
+        {
+            int ticksComparison = right.Ticks.CompareTo(left.Ticks);
+            return ticksComparison != 0
+                ? ticksComparison
+                : string.CompareOrdinal(left.ListenerType.FullName, right.ListenerType.FullName);
+        }
+
+        private static void ResetLogicListenerSamples()
+        {
+            foreach (LogicListenerSample sample in LogicListenerSamples.Values)
+            {
+                sample.Ticks = 0L;
+                sample.Calls = 0;
+            }
+        }
+
+        private sealed class LogicListenerSample
+        {
+            public LogicListenerSample(Type listenerType)
+            {
+                ListenerType = listenerType;
+            }
+
+            public Type ListenerType { get; }
+            public long Ticks;
+            public int Calls;
         }
 
         private struct ProfilerMarkerSampler

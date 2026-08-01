@@ -923,12 +923,16 @@ public partial class InGameUIForm
             spawnPosition,
             basePosition,
             cached.Corners,
-            out string failureReason);
+            out string failureReason,
+            out bool navigationUpdatePending);
+        pathCorners = cached.Corners;
+        if (navigationUpdatePending)
+            return false;
+
         cached.HasPath = hasPath;
         cached.NavigationVersion = DefendPhaseRuntime.NavigationPathVersion;
         m_DefendPathCache[cacheKey] = cached;
 
-        pathCorners = cached.Corners;
         if (hasPath)
             return true;
 

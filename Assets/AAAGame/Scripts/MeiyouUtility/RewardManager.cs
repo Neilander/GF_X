@@ -109,21 +109,13 @@ public class RewardManager : GameFrameworkComponent
 		m_KillRewardConfigInvalidLogged = false;
 	}
 
-	public static void HandleCardDiscardReward(CardModel cardModel)
-	{
-		RewardManager manager = GetRuntimeManager();
-		if (manager == null)
-			return;
-
-		manager.GrantDiscardCardReward(cardModel, -1, null);
-	}
-
 	public static void HandleCardDiscardReward(CardModel cardModel, int gainedCoin, Vector2? discardScreenPosition)
 	{
-		RewardManager manager = GetRuntimeManager();
-		if (manager == null)
-			return;
+		if (!LogicCardCommandService.IsApplyingFrame)
+			throw new InvalidOperationException("Card discard rewards may only be applied by LogicCardCommandService.");
 
+		RewardManager manager = GetRuntimeManager()
+			?? throw new InvalidOperationException("Card discard reward requires RewardManager.");
 		manager.GrantDiscardCardReward(cardModel, gainedCoin, discardScreenPosition);
 	}
 
@@ -134,13 +126,11 @@ public class RewardManager : GameFrameworkComponent
 			return;
 		}
 
-		RewardManager manager = GetRuntimeManager();
-		if (manager == null)
-		{
-			Debug.LogError("[RewardManager] GetRuntimeManager returned null!");
-			return;
-		}
+		if (!LogicPhaseCommandService.IsApplyingFrame)
+			throw new InvalidOperationException("Build phase rewards may only be applied by LogicPhaseCommandService.");
 
+		RewardManager manager = GetRuntimeManager()
+			?? throw new InvalidOperationException("Build phase reward requires RewardManager.");
 		manager.GrantBattlePhaseIncomeOnEnterBuild(previousPhase);
 		manager.GrantBuildPhaseIncomeFromPlayerProdBuildings();
 	}
@@ -150,10 +140,11 @@ public class RewardManager : GameFrameworkComponent
 		if (gainedCoin <= 0)
 			return;
 
-		RewardManager manager = GetRuntimeManager();
-		if (manager == null)
-			return;
+		if (!LogicInteractionCommandService.IsApplyingFrame)
+			throw new InvalidOperationException("Building recycle rewards may only be applied by LogicInteractionCommandService.");
 
+		RewardManager manager = GetRuntimeManager()
+			?? throw new InvalidOperationException("Building recycle reward requires RewardManager.");
 		manager.GrantCoinAfterFly(sourceWorldPos, gainedCoin, "building_recycle");
 	}
 

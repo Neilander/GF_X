@@ -301,24 +301,19 @@ public sealed class LogicFrameClockTests
             LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
                 12,
                 2,
-                TimeScaleCommandKind.SetBulletTimeScale,
+                TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks,
                 10,
-                2000));
-            LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
-                18,
-                3,
-                TimeScaleCommandKind.RemoveBulletTimeScale,
-                10,
-                0));
+                2000,
+                6));
             LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
                 25,
-                4,
+                3,
                 TimeScaleCommandKind.SetBasePlaybackScale,
                 0,
                 15000));
             LogicTimeControlService.SubmitTimeScaleCommand(new TimeScaleCommand(
                 35,
-                5,
+                4,
                 TimeScaleCommandKind.SetBasePlaybackScale,
                 0,
                 LogicTimeControlService.NormalScaleUnits));

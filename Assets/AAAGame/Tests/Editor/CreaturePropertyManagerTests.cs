@@ -38,8 +38,8 @@ public sealed class CreaturePropertyManagerTests
                     false);
             }
 
-            first.propertyManager.Clear();
-            second.propertyManager.Clear();
+            first.Dispose();
+            second.Dispose();
         }
     }
 
@@ -48,7 +48,7 @@ public sealed class CreaturePropertyManagerTests
     {
         CreaturePropertyManager first = CreateManager();
         Assert.AreEqual((Fix64)100, first.GetProperty(CreatureMainProperty.Health));
-        first.propertyManager.Clear();
+        first.Dispose();
 
         CreaturePropertyManager reused = CreateManager();
         PropertyDirectAdditiveModifier modifier =
@@ -76,8 +76,21 @@ public sealed class CreaturePropertyManagerTests
                     false);
             }
 
-            reused.propertyManager.Clear();
+            reused.Dispose();
         }
+    }
+
+    [Test]
+    public void Dispose_ReleasesPropertyGraphAndRejectsDoubleRelease()
+    {
+        CreaturePropertyManager manager = CreateManager();
+        PropertyManager propertyManager = manager.propertyManager;
+
+        manager.Dispose();
+
+        Assert.IsNull(manager.propertyManager);
+        Assert.IsNull(propertyManager.GetProperty(nameof(CreatureMainProperty.Health)));
+        Assert.Throws<System.InvalidOperationException>(() => manager.Dispose());
     }
 
     private static CreaturePropertyManager CreateManager()

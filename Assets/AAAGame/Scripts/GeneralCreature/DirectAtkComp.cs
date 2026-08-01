@@ -350,11 +350,12 @@ public class DirectAtkComp : IAtkComp
 
     public void SelectWeapon(int weaponIndex)
     {
-        if (_weapons == null || _weapons.Length == 0 || weaponIndex < 0 || weaponIndex >= _weapons.Length)
-        {
-            GF.LogError($"请求的武器索引 {weaponIndex} 超出范围，返回默认武器");
-            weaponIndex = 0;
-        }
+        if (_weapons == null || _weapons.Length == 0)
+            throw new InvalidOperationException("DirectAtkComp.SelectWeapon failed: component has no initialized weapons.");
+        if (weaponIndex < 0 || weaponIndex >= _weapons.Length)
+            throw new ArgumentOutOfRangeException(nameof(weaponIndex), weaponIndex, "Weapon index is outside the initialized weapon set.");
+
+        _activeWeaponIndex = weaponIndex;
         _weapon = _weapons[weaponIndex];
         _ctx.WeaponComp.SwapWeapon(_weapon);
     }

@@ -6,6 +6,7 @@ using UnityEngine;
 public sealed class FlowNavigationGridSource : MonoBehaviour
 {
     private static int s_AppliedSourceInstanceId;
+    private static int s_PendingClearSourceInstanceId;
 
     [SerializeField] private FlowNavigationGridAsset _grid;
     [SerializeField] private FlowNavigationGridAsset[] _movementTypeGrids = Array.Empty<FlowNavigationGridAsset>();
@@ -38,6 +39,7 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
 
     private void OnEnable()
     {
+        CancelPendingClearIfOwned();
         if (_applyOnEnable && (Application.isPlaying || _applyInEditMode))
             ApplyToFlowField();
     }
@@ -151,9 +153,51 @@ public sealed class FlowNavigationGridSource : MonoBehaviour
             return;
         }
 
-        s_AppliedSourceInstanceId = 0;
+        if (LogicFrameRuntime.IsTimelineRunning)
+        {
+            if (s_PendingClearSourceInstanceId != 0 && s_PendingClearSourceInstanceId != s_AppliedSourceInstanceId)
+            {
+                throw new InvalidOperationException(
+                    $"FlowNavigationGridSource deferred clear owner conflict. applied={s_AppliedSourceInstanceId}, pending={s_PendingClearSourceInstanceId}.");
+            }
+
+            s_PendingClearSourceInstanceId = s_AppliedSourceInstanceId;
+            LogicFrameRuntime.Ended -= HandleLogicRuntimeEnded;
+            LogicFrameRuntime.Ended += HandleLogicRuntimeEnded;
+            LogSourceLifecycle("defer-clear-until-runtime-ended", CollectConfiguredGrids());
+            return;
+        }
+
         FlowFieldCrowdMovementSystem.ClearAuthoredNavigationSource();
+        s_AppliedSourceInstanceId = 0;
         LogSourceLifecycle("clear-owned", CollectConfiguredGrids());
+    }
+
+    private void CancelPendingClearIfOwned()
+    {
+        int instanceId = GetInstanceID();
+        if (s_PendingClearSourceInstanceId != instanceId)
+            return;
+
+        s_PendingClearSourceInstanceId = 0;
+        LogicFrameRuntime.Ended -= HandleLogicRuntimeEnded;
+    }
+
+    private static void HandleLogicRuntimeEnded()
+    {
+        LogicFrameRuntime.Ended -= HandleLogicRuntimeEnded;
+        int pendingOwner = s_PendingClearSourceInstanceId;
+        s_PendingClearSourceInstanceId = 0;
+        if (pendingOwner == 0)
+            throw new InvalidOperationException("FlowNavigationGridSource runtime-ended clear has no pending owner.");
+        if (s_AppliedSourceInstanceId != pendingOwner)
+        {
+            throw new InvalidOperationException(
+                $"FlowNavigationGridSource runtime-ended clear owner changed. applied={s_AppliedSourceInstanceId}, pending={pendingOwner}.");
+        }
+
+        FlowFieldCrowdMovementSystem.ClearAuthoredNavigationSource();
+        s_AppliedSourceInstanceId = 0;
     }
 
     private void LogSourceLifecycle(string action, IReadOnlyList<FlowNavigationGridAsset> grids)

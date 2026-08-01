@@ -19,6 +19,10 @@ public class NoMoveComp : IMoveComp
     {
     }
 
+    public void CommitResolvedDisplacement(FixVector2 displacement)
+    {
+    }
+
     public void SetNavTargetFixed(FixVector2 destination) { }
     public FixVector2 NavDirectionFixed => FixVector2.Zero;
     public void ShutDown() { }

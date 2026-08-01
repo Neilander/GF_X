@@ -66,6 +66,24 @@ public class LogicFrameRuntimeTests
     }
 
     [Test]
+    public void CompleteRenderFrame_PublishesDeferredRealtimeDebt()
+    {
+        LogicFrameRuntime.CompleteRenderFrame(4, 0.02d, 1.75d, 0.6d);
+
+        Assert.AreEqual(4, LogicFrameRuntime.LastRenderFrameTickCount);
+        Assert.That(LogicFrameRuntime.BacklogSeconds, Is.EqualTo(0.02d).Within(1e-9d));
+        Assert.That(LogicFrameRuntime.DeferredRealtimeSeconds, Is.EqualTo(1.75d).Within(1e-9d));
+        Assert.That(LogicFrameRuntime.Interpolation, Is.EqualTo(0.6d).Within(1e-9d));
+    }
+
+    [Test]
+    public void CompleteRenderFrame_RejectsInvalidDeferredRealtimeDebt()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => LogicFrameRuntime.CompleteRenderFrame(0, 0d, double.NaN, 0d));
+    }
+
+    [Test]
     public void LegacyListeners_PreserveRegistrationOrder()
     {
         var ticks = new List<long>();
@@ -111,6 +129,42 @@ public class LogicFrameRuntimeTests
             LogicFrameRuntime.StartTimeline();
             if (unexpectedlyRegistered)
                 LogicFrameRuntime.Unregister(listener);
+        }
+    }
+
+    [Test]
+    public void AuthoredNavigationSourceMutation_RejectsDuringTimeline()
+    {
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            FlowFieldCrowdMovementSystem.ClearAuthoredNavigationSource);
+
+        StringAssert.Contains("logic timeline", exception.Message);
+    }
+
+    [Test]
+    public void Ended事件必须在Runtime和Timeline完全关闭后触发()
+    {
+        bool invoked = false;
+        Action handler = () =>
+        {
+            invoked = true;
+            Assert.IsFalse(LogicFrameRuntime.IsActive);
+            Assert.IsFalse(LogicFrameRuntime.IsTimelineRunning);
+        };
+        LogicFrameRuntime.Ended += handler;
+        try
+        {
+            LogicFrameRuntime.End();
+            Assert.IsTrue(invoked);
+        }
+        finally
+        {
+            LogicFrameRuntime.Ended -= handler;
+            if (!LogicFrameRuntime.IsActive)
+            {
+                LogicFrameRuntime.Begin();
+                LogicFrameRuntime.StartTimeline();
+            }
         }
     }
 
@@ -285,6 +339,24 @@ public class LogicFrameRuntimeTests
             techManagerSource,
             Does.Not.Contain("globalBuffManager?."),
             "Tech rollback must reject a missing GlobalBuffManager before reducing persistent tech stacks.");
+    }
+
+    [Test]
+    public void RuntimeTick_DoesNotSimulateUnityPhysics_AndTutorialTriggerUsesLogicPosition()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");
+        string runtimeSource = File.ReadAllText(
+            Path.Combine(scriptsRoot, "GameClass", "LogicFrameRuntime.cs"));
+        Assert.That(
+            runtimeSource,
+            Does.Not.Contain("Physics.Simulate("),
+            "Unity Physics is presentation-only and must not be advanced by the authoritative logic tick.");
+
+        string tutorialTriggerSource = File.ReadAllText(
+            Path.Combine(scriptsRoot, "MeiyouUtility", "TutorialTriggerCollider.cs"));
+        Assert.That(tutorialTriggerSource, Does.Not.Contain("OnTriggerEnter("));
+        Assert.That(tutorialTriggerSource, Does.Contain("ILogicFrameUpdate"));
+        Assert.That(tutorialTriggerSource, Does.Contain("player.PositionFixed"));
     }
 
     private void Register(ILogicFrameUpdate listener)

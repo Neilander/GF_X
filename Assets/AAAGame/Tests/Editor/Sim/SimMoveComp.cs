@@ -7,11 +7,13 @@ public class SimMoveComp : IMoveComp
 {
     private IEntityContext _ctx;
     private FixVector2? _targetPosFixed;
+    private bool _isMoving;
 
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
         _targetPosFixed = null;
+        _isMoving = false;
     }
 
     public void MoveToFixed(FixVector2 destination)
@@ -22,6 +24,11 @@ public class SimMoveComp : IMoveComp
     public void StopMove()
     {
         _targetPosFixed = null;
+    }
+
+    public void CommitResolvedDisplacement(FixVector2 displacement)
+    {
+        _isMoving = FixVector2.SqrMagnitude(displacement) > Fix64.Zero;
     }
 
     public void Move(Fix64 deltaTime)
@@ -76,12 +83,7 @@ public class SimMoveComp : IMoveComp
 
     public bool IsMoving
     {
-        get
-        {
-            if (_ctx == null) return false;
-            FixVector2 manualMove = _ctx.Brain?.MoveFixed ?? FixVector2.Zero;
-            return _targetPosFixed.HasValue || FixVector2.SqrMagnitude(manualMove) > (Fix64)0.001f;
-        }
+        get { return _isMoving; }
     }
 
     public void ShutDown() { StopMove(); }

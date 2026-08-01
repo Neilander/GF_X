@@ -79,6 +79,71 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
+    public void BuildPhaseExploration_DoesNotDependOnCardSystemInitialization()
+    {
+        var controller = new Fog3Controller();
+        controller.Initialize(new Fog3TerrainInfo(
+            3,
+            1,
+            1f,
+            Vector3.zero,
+            new[] { true, true, true },
+            "BuildPhaseExplorationTest"));
+        Fog3MapData map = controller.MapData;
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.FromRaw(2007));
+        var revealer = new SimEntityContext
+        {
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(revealer);
+        GameObject view = new GameObject("BuildPhaseFogRevealer");
+        try
+        {
+            Assert.IsTrue(LogicCardPlacementAuthority.IsBoundTo(map));
+            controller.RegisterRevealer(view.transform, 0.49f, revealer.LogicEntityId.Value, false);
+
+            LogicTimeControlService.BeginFrame(1);
+            LogicCardPlacementAuthority.ApplyFrame(1);
+            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(0, 0));
+
+            revealer.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
+            LogicTimeControlService.BeginFrame(2);
+            LogicCardPlacementAuthority.ApplyFrame(2);
+            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+
+            Assert.AreEqual(Fog3CellState.Explored, map.GetCellState(0, 0));
+            Assert.AreEqual(Fog3CellState.Visible, map.GetCellState(1, 0));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(view);
+        }
+    }
+
+    [Test]
+    public void CardSystemShutdown_DoesNotUnbindLogicFogExploration()
+    {
+        Fog3MapData map = CreateMap(3, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        GameObject setupObject = new GameObject("CardSetupFogBindingTest");
+        try
+        {
+            CardSetup cardSetup = setupObject.AddComponent<CardSetup>();
+
+            cardSetup.CardSystemShutdown(false);
+
+            Assert.IsTrue(LogicCardPlacementAuthority.IsWorldBound);
+            Assert.IsTrue(LogicCardPlacementAuthority.IsBoundTo(map));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(setupObject);
+        }
+    }
+
+    [Test]
     public void BindWorld_MidTimelineSynchronizesBindingFrameAndContinuesOnNextFrame()
     {
         Fog3MapData map = CreateMap(5, 5);

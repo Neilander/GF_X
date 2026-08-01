@@ -97,9 +97,6 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
             LogPhasePerf("card-shutdown.controller", controllerShutdownWatch.ElapsedMilliseconds);
         }
 
-        if (LogicCardPlacementAuthority.IsActive && LogicCardPlacementAuthority.IsWorldBound)
-            LogicCardPlacementAuthority.UnbindWorld();
-
         m_AutoDrawClock.Reset();
         totalWatch.Stop();
         LogPhasePerf("card-shutdown.total", totalWatch.ElapsedMilliseconds);
@@ -210,7 +207,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
         stageStartTicks = Stopwatch.GetTimestamp();
         stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
-        BindLogicCardPlacementWorld();
+        EnsureLogicCardPlacementWorldBound();
         RecordPerf(MainThreadPerfScope.CardSetupBindWorld, stageStartTicks, stageStartBytes);
 
         Log.Info("[CardGame] Card system initialized.");
@@ -248,11 +245,21 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
             watch.ElapsedMilliseconds);
     }
 
-    private static void BindLogicCardPlacementWorld()
+    public void EnsureLogicCardPlacementWorldBound()
     {
         Fog3Manager fogManager = Fog3Manager.Instance;
         if (fogManager == null || !fogManager.IsInitialized || fogManager.MapData == null)
             throw new System.InvalidOperationException("CardSetup requires initialized Fog3MapData before binding card placement.");
+
+        if (LogicCardPlacementAuthority.IsWorldBound)
+        {
+            if (!LogicCardPlacementAuthority.IsBoundTo(fogManager.MapData))
+            {
+                throw new System.InvalidOperationException(
+                    "CardSetup found logic fog exploration bound to a stale Fog3MapData instance.");
+            }
+            return;
+        }
 
         LogicCardPlacementAuthority.BindRuntimeWorld(
             fogManager.MapData,
@@ -310,15 +317,5 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     public bool GenerateCardToDeck(IBuildingLogicContext sourceBuilding)
     {
         return m_CardSystemController != null && m_CardSystemController.AddCardToDeck(sourceBuilding);
-    }
-
-    public bool AddCardToDeck(CardData cardData)
-    {
-        return m_CardSystemController != null && m_CardSystemController.AddCardToDeck(cardData);
-    }
-
-    public bool DrawCard()
-    {
-        return m_CardSystemController != null && m_CardSystemController.DrawCard();
     }
 }

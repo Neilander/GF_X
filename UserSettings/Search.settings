@@ -1,4 +1,6 @@
 trackSelection = true
+refreshSearchWindowsInPlayMode = false
+pickerAdvancedUI = false
 fetchPreview = true
 defaultFlags = 0
 keepOpen = false
@@ -16,6 +18,9 @@ scopes = {
 	"last_search.10697386" = ""
 	"OpenInspectorPreview.10697386" = "0"
 	"currentGroup.10697386" = "all"
+	"last_search.66F56946" = "RunLVInteractiveHitchCapture"
+	"OpenInspectorPreview.66F56946" = "0"
+	"currentGroup.66F56946" = "all"
 }
 providers = {
 	adb = {
@@ -58,18 +63,28 @@ providers = {
 		priority = 50
 		defaultAction = null
 	}
+	profilermarkers = {
+		active = false
+		priority = 100
+		defaultAction = null
+	}
 }
 objectSelectors = {
 }
 recentSearches = [
+	"RunLVInteractiveHitchCapture"
+	"RunLVInteractive"
 ]
 searchItemFavorites = [
 ]
 savedSearchesSortOrder = 0
 showSavedSearchPanel = false
+hideTabs = false
 expandedQueries = [
 ]
 queryBuilder = false
 ignoredProperties = "id;name;classname;imagecontentshash"
 helperWidgetCurrentArea = "all"
 disabledIndexers = ""
+minIndexVariations = 2
+findProviderIndexHelper = true

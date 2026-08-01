@@ -171,24 +171,6 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 直接按 CardData 向卡组加入一张卡，主要供调试和 Inspector 测试使用。
-        /// </summary>
-        public bool AddCardToDeck(CardData cardData)
-        {
-            if (cardData == null)
-            {
-                Debug.LogWarning("[Card] CardData is null, cannot add to deck.");
-                return false;
-            }
-
-            var provider = new CardDataAdapter(cardData);
-            m_DeckCards.Add(new Card(provider, null));
-            RememberOwnedPlaceableCard(provider);
-            Log.Info($"[CardGame] 调试卡牌入组: cardId={provider.CardId}, soldierIndex={provider.SoldierIndex}");
-            return true;
-        }
-
-        /// <summary>
         /// 若手牌未满且卡组非空，自动抽一张。
         /// </summary>
         public bool TryAutoDrawOneCardFromDeck()
@@ -316,20 +298,9 @@ namespace AAAGame.Card
         }
 
         /// <summary>
-        /// 抽取卡牌
-        /// </summary>
-        public void DrawCards(int count)
-        {
-            for (int i = 0; i < count; i++)
-            {
-                DrawCard();
-            }
-        }
-
-        /// <summary>
         /// 抽取单张卡牌
         /// </summary>
-        public bool DrawCard()
+        private bool DrawCard()
         {
             if (m_HandModel.IsFull)
             {

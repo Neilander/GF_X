@@ -76,8 +76,10 @@ public class BuildingOutlineFeature : ScriptableRendererFeature
     {
         if (_maskPass == null || _outlinePass == null) return;
         if (s_Renderers.Count == 0) return; // 没建筑就不跑这两个 pass，省开销
+        if (renderingData.cameraData.renderType == CameraRenderType.Overlay) return;
         var camType = renderingData.cameraData.cameraType;
         if (camType != CameraType.Game && camType != CameraType.SceneView) return;
+        if (camType == CameraType.SceneView && Application.isPlaying) return;
 
         renderer.EnqueuePass(_maskPass);
         renderer.EnqueuePass(_outlinePass);

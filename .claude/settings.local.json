@@ -30,7 +30,14 @@
       "mcp__UnityMCP__run_tests",
       "mcp__UnityMCP__get_test_job",
       "mcp__UnityMCP__manage_scriptable_object",
-      "mcp__UnityMCP__batch_execute"
+      "mcp__UnityMCP__batch_execute",
+      "Bash(awk -F'\\\\t' 'NR>4 && $12==\"False\"' LevelTagTable.txt)",
+      "Bash(awk -F'\\\\t' 'NR>4 && NF>3' LevelTagTable.txt)",
+      "Bash(awk -F'\\\\t' 'NR>4 && $12==\"True\"' LevelTagTable.txt)",
+      "Bash(ls -la \"/e/26开拓芯/\" 2>/dev/null | head -20)",
+      "Read(//e/26开拓芯//**)",
+      "Bash(cd /tmp)",
+      "Bash(/c/Users/M/AppData/Local/Microsoft/WindowsApps/python.exe -c \"print\\('ok'\\)\")"
     ]
   }
 }

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -63,6 +63,24 @@ public sealed class LogicMoveExecutorTests
         executor.PrepareLogicFrame(1, LogicFrameRuntime.FixedDeltaTime, true);
 
         Assert.AreEqual(FixVector2.Zero, executor.PreparedResolvedHorizontalDisplacement);
+    }
+
+    [Test]
+    public void MoveComponents_UseCommittedResolvedDisplacementForMovingState()
+    {
+        var characterMove = new CharacterMoveComp();
+        var playerMove = new PlayerMoveComp();
+        var actualDisplacement = new FixVector2(Fix64.FromRaw(128), Fix64.Zero);
+
+        characterMove.CommitResolvedDisplacement(actualDisplacement);
+        playerMove.CommitResolvedDisplacement(actualDisplacement);
+        Assert.IsTrue(characterMove.IsMoving);
+        Assert.IsTrue(playerMove.IsMoving);
+
+        characterMove.CommitResolvedDisplacement(FixVector2.Zero);
+        playerMove.CommitResolvedDisplacement(FixVector2.Zero);
+        Assert.IsFalse(characterMove.IsMoving, "碰撞截断为零位移后不得保留计划移动状态");
+        Assert.IsFalse(playerMove.IsMoving, "英雄撞墙被截断后不得保留计划移动状态");
     }
 
     [Test]

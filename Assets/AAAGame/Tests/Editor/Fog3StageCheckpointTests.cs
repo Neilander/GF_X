@@ -62,6 +62,82 @@ public sealed class Fog3StageCheckpointTests
     }
 
     [Test]
+    public void EntityRevealer_UsesLogicPositionAndLeavesExploredStateBehind()
+    {
+        GameObject targetObject = new GameObject("Fog3EntityRevealerView");
+        EntityRegistry.Clear();
+        try
+        {
+            var entity = new SimEntityContext
+            {
+                PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+                Side = SideType.PlayerSide,
+            };
+            EntityRegistry.Register(entity);
+            targetObject.transform.position = new Vector3(2.5f, 0f, 0.5f);
+
+            var controller = new Fog3Controller();
+            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            controller.RegisterRevealer(targetObject.transform, 0.49f, entity.LogicEntityId.Value, false);
+            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+
+            Assert.AreEqual(Fog3CellState.Visible, controller.MapData.GetCellState(0, 0));
+            Assert.AreEqual(Fog3CellState.Hidden, controller.MapData.GetCellState(2, 0));
+
+            controller.MapData.MarkExplored(0, 0);
+            entity.PositionFixed = new FixVector2((Fix64)1.5f, (Fix64)0.5f);
+            controller.UpdateVisibility(0, 0f, 0f, false, false, false);
+
+            Assert.AreEqual(Fog3CellState.Explored, controller.MapData.GetCellState(0, 0));
+            Assert.AreEqual(Fog3CellState.Visible, controller.MapData.GetCellState(1, 0));
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            Object.DestroyImmediate(targetObject);
+        }
+    }
+
+    [Test]
+    public void ManagerEntityRevealer_KeepsViewAndLogicEntityIdsInSeparateDomains()
+    {
+        const int viewEntityId = 404;
+        const int logicEntityId = 17;
+        GameObject managerObject = new GameObject("Fog3EntityIdDomainManager");
+        GameObject targetObject = new GameObject("Fog3EntityIdDomainTarget");
+        try
+        {
+            var controller = new Fog3Controller();
+            controller.Initialize(CreateTerrainInfo(new[] { true, true, true, true, true, true }));
+            Fog3Manager manager = managerObject.AddComponent<Fog3Manager>();
+            typeof(Fog3Manager).GetField("controller", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(manager, controller);
+            typeof(Fog3Manager).GetField("isInitialized", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(manager, true);
+
+            int revealerId = manager.RegisterRevealer(
+                targetObject.transform,
+                1f,
+                viewEntityId,
+                false,
+                true,
+                logicEntityId);
+
+            Assert.IsTrue(controller.TryGetRevealer(revealerId, out Fog3RevealerData revealer));
+            Assert.AreEqual(logicEntityId, revealer.LogicEntityId);
+
+            var entityRevealers = (System.Collections.Generic.Dictionary<int, int>)typeof(Fog3Manager)
+                .GetField("entityRevealers", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(manager);
+            Assert.AreEqual(revealerId, entityRevealers[viewEntityId]);
+            Assert.IsFalse(entityRevealers.ContainsKey(logicEntityId));
+        }
+        finally
+        {
+            Object.DestroyImmediate(targetObject);
+            Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    [Test]
     public void ExplorationCheckpoint_RejectsDifferentTerrainTopology()
     {
         Fog3ExplorationCheckpoint checkpoint = CreateMap(
@@ -192,12 +268,17 @@ public sealed class Fog3StageCheckpointTests
 
     private static Fog3MapData CreateMap(bool[] walkable)
     {
-        return new Fog3MapData(new Fog3TerrainInfo(
+        return new Fog3MapData(CreateTerrainInfo(walkable));
+    }
+
+    private static Fog3TerrainInfo CreateTerrainInfo(bool[] walkable)
+    {
+        return new Fog3TerrainInfo(
             3,
             2,
             1f,
             Vector3.zero,
             walkable,
-            "StageCheckpointTest"));
+            "StageCheckpointTest");
     }
 }

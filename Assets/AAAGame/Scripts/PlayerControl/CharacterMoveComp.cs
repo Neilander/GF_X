@@ -154,6 +154,11 @@ public class CharacterMoveComp : IMoveComp, ILogicDeterministicStateContributor
     public bool IsMoving => _isMoving;
     public bool HasNavigationTarget => _targetPosFixed.HasValue;
 
+    public void CommitResolvedDisplacement(FixVector2 displacement)
+    {
+        _isMoving = FixVector2.SqrMagnitude(displacement) > s_MovingThresholdSquared;
+    }
+
     public bool TryGetNavigationTargetFixed(out FixVector2 target)
     {
         target = _targetPosFixed.GetValueOrDefault();

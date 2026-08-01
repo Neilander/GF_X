@@ -556,6 +556,41 @@ public class SteeringMovementTests
         Assert.IsTrue(brain.Attack, "已经在武器射程内时应直接进入攻击态，而不是继续等到站位点");
     }
 
+    [Test]
+    public void Combat状态_RuntimeDirty期间当Tick提交临时追击目标()
+    {
+        var soldier = MakeSoldier(new Vector3(-5f, 0f, 0f));
+        var enemy = MakeSoldier(new Vector3(5f, 0f, 0f), SideType.EnemySide);
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(enemy);
+
+        var targeting = new SimTargetingComp(soldier, new List<IEntityContext> { soldier, enemy });
+        targeting.Init(soldier);
+        targeting.CurrentTarget = enemy;
+        soldier.TargetComp = targeting;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+            soldier,
+            enemy.PositionFixed,
+            Fix64.One,
+            out _));
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacleFixed(
+            9104,
+            new FixVector2(Fix64.Zero, (Fix64)8),
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f));
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+
+        var brain = new SoldierAIBrain();
+        soldier.Brain = brain;
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(2, 0.2f);
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
+        Assert.AreNotEqual(FixVector2.Zero, soldier.MoveComp.NavDirectionFixed,
+            "runtime dirty 不应让已锁定敌人的小兵等待完整导航重建");
+    }
+
     #endregion
 
 }

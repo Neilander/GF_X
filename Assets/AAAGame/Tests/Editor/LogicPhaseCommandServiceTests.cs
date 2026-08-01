@@ -115,4 +115,11 @@ public sealed class LogicPhaseCommandServiceTests
         Assert.AreEqual(GamePhase.BuildBeforeDefend, LogicPhaseCommandService.CurrentPhase);
         LogicTimeControlService.ReleasePause(pauseSource);
     }
+
+    [Test]
+    public void BuildPhaseRewardMutation_RejectsOutsideApplyWindow()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            RewardManager.HandleEnterBuildPhaseReward(false, GamePhase.Defend));
+    }
 }

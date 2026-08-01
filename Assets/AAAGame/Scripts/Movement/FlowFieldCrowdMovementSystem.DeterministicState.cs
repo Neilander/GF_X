@@ -4,6 +4,92 @@ using UnityEngine;
 
 public static partial class FlowFieldCrowdMovementSystem
 {
+    private const int NavigationWorldHashTokensPerOperation = 64;
+
+    private enum NavigationWorldHashTokenKind : byte
+    {
+        Bool = 0,
+        Byte = 1,
+        Int = 2,
+        Long = 3,
+        ULong = 4
+    }
+
+    private readonly struct NavigationWorldHashToken
+    {
+        private readonly NavigationWorldHashTokenKind _kind;
+        private readonly long _signedValue;
+        private readonly ulong _unsignedValue;
+
+        private NavigationWorldHashToken(NavigationWorldHashTokenKind kind, long signedValue, ulong unsignedValue)
+        {
+            _kind = kind;
+            _signedValue = signedValue;
+            _unsignedValue = unsignedValue;
+        }
+
+        public static NavigationWorldHashToken FromBool(bool value) =>
+            new NavigationWorldHashToken(NavigationWorldHashTokenKind.Bool, value ? 1L : 0L, 0UL);
+
+        public static NavigationWorldHashToken FromByte(byte value) =>
+            new NavigationWorldHashToken(NavigationWorldHashTokenKind.Byte, value, 0UL);
+
+        public static NavigationWorldHashToken FromInt(int value) =>
+            new NavigationWorldHashToken(NavigationWorldHashTokenKind.Int, value, 0UL);
+
+        public static NavigationWorldHashToken FromLong(long value) =>
+            new NavigationWorldHashToken(NavigationWorldHashTokenKind.Long, value, 0UL);
+
+        public static NavigationWorldHashToken FromULong(ulong value) =>
+            new NavigationWorldHashToken(NavigationWorldHashTokenKind.ULong, 0L, value);
+
+        public void AddTo(LogicStateHasher hasher)
+        {
+            switch (_kind)
+            {
+                case NavigationWorldHashTokenKind.Bool:
+                    hasher.Add(_signedValue != 0L);
+                    break;
+                case NavigationWorldHashTokenKind.Byte:
+                    hasher.Add((byte)_signedValue);
+                    break;
+                case NavigationWorldHashTokenKind.Int:
+                    hasher.Add((int)_signedValue);
+                    break;
+                case NavigationWorldHashTokenKind.Long:
+                    hasher.Add(_signedValue);
+                    break;
+                case NavigationWorldHashTokenKind.ULong:
+                    hasher.Add(_unsignedValue);
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unknown navigation world hash token kind {_kind}.");
+            }
+        }
+    }
+
+    private sealed class NavigationWorldHashBuildJob : IDisposable
+    {
+        public readonly NavigationWorld World;
+        public readonly LogicStateHasher Hasher = new LogicStateHasher();
+        public IEnumerator<NavigationWorldHashToken> Enumerator;
+        public long ProcessedTokenCount;
+        public bool Complete;
+        public ulong Hash;
+
+        public NavigationWorldHashBuildJob(NavigationWorld world)
+        {
+            World = world ?? throw new ArgumentNullException(nameof(world));
+            Enumerator = EnumerateNavigationWorldHashTokens(world).GetEnumerator();
+        }
+
+        public void Dispose()
+        {
+            Enumerator?.Dispose();
+            Enumerator = null;
+        }
+    }
+
     public readonly struct RuntimeMemoryCensus
     {
         public RuntimeMemoryCensus(
@@ -741,6 +827,20 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    private static void RefreshSectorPortalAccessAuthorityContentHash(
+        SectorPortalAccessKey key,
+        SectorPortalAccessEntry entry)
+    {
+        if (entry == null)
+            throw new InvalidOperationException("Cannot refresh a null sector portal access entry.");
+        if (entry.HasAuthorityContentHash)
+            _sectorPortalAccessAuthorityContentHash ^= entry.AuthorityContentHash;
+
+        entry.AuthorityContentHash = ComputeSectorPortalAccessAuthorityContentHash(key, entry);
+        entry.HasAuthorityContentHash = true;
+        _sectorPortalAccessAuthorityContentHash ^= entry.AuthorityContentHash;
+    }
+
     private static void RemoveSectorPortalAccessCacheEntry(SectorPortalAccessKey key)
     {
         if (!SectorPortalAccessCache.TryGetValue(key, out SectorPortalAccessEntry entry))
@@ -1350,6 +1450,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add((int)job.Stage);
         hasher.Add(job.CloneCellCursor);
         hasher.Add(job.CloneSectorCursor);
+        hasher.Add((int)job.CloneShellStage);
         hasher.Add(job.CloneShellInitialized);
         hasher.Add(job.SectorCursor);
         hasher.Add(job.ObstacleCursor);
@@ -1368,6 +1469,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.PortalAddCursor);
         hasher.Add(job.PortalTransitionCursor);
         hasher.Add(job.PortalTransitionFromCursor);
+        AddAuthorityNavigationWorldHashProgress(hasher, job.WorldHashBuildJob);
         AddAuthorityLongSetProgress(hasher, job.PortalProcessedBoundaries);
         AddAuthorityPortalBuildProgress(hasher, job.PortalRebuiltPortals);
         AddAuthorityPendingPortalAccessProgress(hasher, job.PendingPortalAccessEntries);
@@ -1455,11 +1557,29 @@ public static partial class FlowFieldCrowdMovementSystem
         for (int i = 0; i < entries.Count; i++)
         {
             PendingSectorPortalAccess entry = entries[i];
+            if (entry == null)
+                throw new InvalidOperationException($"Navigation authority digest encountered a null pending portal access entry. index={i}.");
             hasher.Add(entry.SectorId);
             hasher.Add(entry.PortalId);
             hasher.Add(entry.SectorDirtyVersion);
             hasher.Add(entry.IsAnalyticClearSector);
+            AddLongArray(hasher, entry.DeterministicIntegration);
         }
+    }
+
+    private static void AddAuthorityNavigationWorldHashProgress(
+        LogicStateHasher hasher,
+        NavigationWorldHashBuildJob job)
+    {
+        hasher.Add(job != null);
+        if (job == null)
+            return;
+
+        hasher.Add(job.ProcessedTokenCount);
+        hasher.Add(job.Hasher.Hash);
+        hasher.Add(job.Complete);
+        if (job.Complete)
+            hasher.Add(job.Hash);
     }
 
     private static void AddAuthorityLongSetProgress(LogicStateHasher hasher, ICollection<long> values)
@@ -2099,6 +2219,22 @@ public static partial class FlowFieldCrowdMovementSystem
         RefreshCommittedWorldSetHash();
     }
 
+    public static ulong GetEditorTestCommittedWorldContentHash()
+    {
+        if (_world == null || !_world.HasDeterministicContentHash)
+            throw new InvalidOperationException("GetEditorTestCommittedWorldContentHash failed: committed world hash is unavailable.");
+        return _world.DeterministicContentHash;
+    }
+
+    public static ulong GetEditorTestSynchronousWorldContentHash()
+    {
+        if (_world == null)
+            throw new InvalidOperationException("GetEditorTestSynchronousWorldContentHash failed: committed world is unavailable.");
+        var hasher = new LogicStateHasher();
+        AddNavigationWorldContents(hasher, _world);
+        return hasher.Hash;
+    }
+
     private static void RefreshCommittedWorldSetHash()
     {
         var keys = new List<int>(WorldStates.Keys);
@@ -2146,6 +2282,247 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(world.SectorCountX);
         hasher.Add(world.SectorCountY);
         hasher.Add(world.NextPortalId);
+    }
+
+    private static NavigationWorldHashBuildJob CreateNavigationWorldHashBuildJob(NavigationWorld world)
+    {
+        if (world == null)
+            throw new ArgumentNullException(nameof(world));
+        if (world.CellNavAnchorsFixedXZ == null || world.CellNavAnchorsFixedXZ.Length != world.Width * world.Height)
+            throw new InvalidOperationException("Cannot build a navigation world hash with incomplete fixed navigation anchors.");
+        world.ValidateAuthorityGridMetadata("CreateNavigationWorldHashBuildJob");
+        return new NavigationWorldHashBuildJob(world);
+    }
+
+    private static void ProcessNavigationWorldHashBuildJob(
+        NavigationWorldHashBuildJob job,
+        long deadlineTicks,
+        bool forceComplete)
+    {
+        if (job == null)
+            throw new InvalidOperationException("ProcessNavigationWorldHashBuildJob failed: job is null.");
+        if (job.Complete)
+            return;
+        if (job.Enumerator == null)
+            throw new InvalidOperationException("ProcessNavigationWorldHashBuildJob failed: token enumerator is null before completion.");
+
+        while (!job.Complete)
+        {
+            int processed = 0;
+            while (processed < NavigationWorldHashTokensPerOperation)
+            {
+                if (!job.Enumerator.MoveNext())
+                {
+                    job.Hash = job.Hasher.Hash;
+                    job.Complete = true;
+                    job.Dispose();
+                    return;
+                }
+
+                job.Enumerator.Current.AddTo(job.Hasher);
+                job.ProcessedTokenCount++;
+                processed++;
+            }
+
+            if (!forceComplete && IsBudgetExpired(deadlineTicks, processed))
+                return;
+        }
+    }
+
+    private static IEnumerable<NavigationWorldHashToken> EnumerateNavigationWorldHashTokens(NavigationWorld world)
+    {
+        yield return NavigationWorldHashToken.FromULong(0x4E4156574F524C44UL);
+        yield return NavigationWorldHashToken.FromInt(world.Version);
+        yield return NavigationWorldHashToken.FromInt(world.AgentTypeId);
+        yield return NavigationWorldHashToken.FromInt(world.Width);
+        yield return NavigationWorldHashToken.FromInt(world.Height);
+        world.ValidateAuthorityGridMetadata("EnumerateNavigationWorldHashTokens");
+        yield return NavigationWorldHashToken.FromLong(world.CellSizeGridRaw);
+        yield return NavigationWorldHashToken.FromLong(world.EncodedCenterClearanceFixedRaw);
+        yield return NavigationWorldHashToken.FromLong(world.AgentRadiusFixedRaw);
+        yield return NavigationWorldHashToken.FromLong(world.OriginXGridRaw);
+        yield return NavigationWorldHashToken.FromLong(world.OriginZGridRaw);
+        yield return NavigationWorldHashToken.FromInt(world.IslandCount);
+        yield return NavigationWorldHashToken.FromInt(world.MainIslandId);
+        yield return NavigationWorldHashToken.FromInt(world.MainIslandSize);
+        yield return NavigationWorldHashToken.FromInt(world.SectorSizeInCells);
+        yield return NavigationWorldHashToken.FromInt(world.SectorCountX);
+        yield return NavigationWorldHashToken.FromInt(world.SectorCountY);
+        yield return NavigationWorldHashToken.FromInt(world.NextPortalId);
+
+        foreach (NavigationWorldHashToken token in EnumerateBoolArrayHashTokens(world.BaseWalkableMask))
+            yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateByteArrayHashTokens(world.BaseNeighborTraversalMask))
+            yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateByteArrayHashTokens(world.SourceCostField))
+            yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateBoolArrayHashTokens(world.WalkableMask))
+            yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateByteArrayHashTokens(world.CostField))
+            yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateByteArrayHashTokens(world.NeighborTraversalMask))
+            yield return token;
+        foreach (NavigationWorldHashToken token in EnumerateIntArrayHashTokens(world.IslandIds))
+            yield return token;
+
+        int sectorCostCount = world.SectorCostFields?.Length ?? 0;
+        yield return NavigationWorldHashToken.FromInt(sectorCostCount);
+        for (int i = 0; i < sectorCostCount; i++)
+        {
+            foreach (NavigationWorldHashToken token in EnumerateByteArrayHashTokens(world.SectorCostFields[i]))
+                yield return token;
+        }
+
+        int anchorCount = world.CellNavAnchorsFixedXZ?.Length ?? 0;
+        yield return NavigationWorldHashToken.FromInt(anchorCount);
+        for (int i = 0; i < anchorCount; i++)
+        {
+            yield return NavigationWorldHashToken.FromLong(world.CellNavAnchorsFixedXZ[i].x.RawValue);
+            yield return NavigationWorldHashToken.FromLong(world.CellNavAnchorsFixedXZ[i].y.RawValue);
+        }
+
+        int sectorCount = world.Sectors?.Length ?? 0;
+        yield return NavigationWorldHashToken.FromInt(sectorCount);
+        for (int i = 0; i < sectorCount; i++)
+        {
+            SectorData sector = world.Sectors[i]
+                ?? throw new InvalidOperationException($"Flow sector is null. world={world.Version}, index={i}.");
+            yield return NavigationWorldHashToken.FromInt(sector.SectorId);
+            yield return NavigationWorldHashToken.FromInt(sector.StartX);
+            yield return NavigationWorldHashToken.FromInt(sector.StartY);
+            yield return NavigationWorldHashToken.FromInt(sector.Width);
+            yield return NavigationWorldHashToken.FromInt(sector.Height);
+            yield return NavigationWorldHashToken.FromInt(sector.DirtyVersion);
+            yield return NavigationWorldHashToken.FromBool(sector.IsClearCostField);
+            yield return NavigationWorldHashToken.FromBool(sector.IsClearFlowTile);
+            yield return NavigationWorldHashToken.FromInt(sector.UniformIslandId);
+            yield return NavigationWorldHashToken.FromInt(sector.LocalComponentCount);
+            foreach (NavigationWorldHashToken token in EnumerateIntArrayHashTokens(sector.LocalComponentIds))
+                yield return token;
+
+            int portalIdCount = sector.PortalIds?.Count ?? 0;
+            yield return NavigationWorldHashToken.FromInt(portalIdCount);
+            for (int portalIndex = 0; portalIndex < portalIdCount; portalIndex++)
+                yield return NavigationWorldHashToken.FromInt(sector.PortalIds[portalIndex]);
+
+            int transitionCount = sector.PortalTransitions?.Count ?? 0;
+            yield return NavigationWorldHashToken.FromInt(transitionCount);
+            for (int transitionIndex = 0; transitionIndex < transitionCount; transitionIndex++)
+            {
+                PortalTransition transition = sector.PortalTransitions[transitionIndex];
+                yield return NavigationWorldHashToken.FromInt(transition.FromPortalId);
+                yield return NavigationWorldHashToken.FromInt(transition.ToPortalId);
+                yield return NavigationWorldHashToken.FromLong(transition.DeterministicCost);
+            }
+        }
+
+        var portals = world.Portals != null ? new List<PortalData>(world.Portals) : new List<PortalData>();
+        portals.Sort((left, right) => left.PortalId.CompareTo(right.PortalId));
+        yield return NavigationWorldHashToken.FromInt(portals.Count);
+        for (int i = 0; i < portals.Count; i++)
+        {
+            PortalData portal = portals[i]
+                ?? throw new InvalidOperationException($"Flow portal is null. world={world.Version}, index={i}.");
+            yield return NavigationWorldHashToken.FromInt(portal.PortalId);
+            yield return NavigationWorldHashToken.FromInt(portal.SectorAId);
+            yield return NavigationWorldHashToken.FromInt(portal.SectorBId);
+            yield return NavigationWorldHashToken.FromInt(portal.WidthCells);
+            yield return NavigationWorldHashToken.FromBool(portal.IsNarrow);
+            yield return NavigationWorldHashToken.FromBool(portal.IsVerticalBoundary);
+            foreach (NavigationWorldHashToken token in EnumerateVector2IntArrayHashTokens(portal.CellsA))
+                yield return token;
+            foreach (NavigationWorldHashToken token in EnumerateVector2IntArrayHashTokens(portal.CellsB))
+                yield return token;
+        }
+
+        if (world.PortalIdsBySignature == null)
+        {
+            yield return NavigationWorldHashToken.FromInt(-1);
+        }
+        else
+        {
+            var signatures = new List<KeyValuePair<PortalSignature, int>>(world.PortalIdsBySignature);
+            signatures.Sort(ComparePortalSignatureEntries);
+            yield return NavigationWorldHashToken.FromInt(signatures.Count);
+            for (int i = 0; i < signatures.Count; i++)
+            {
+                PortalSignature signature = signatures[i].Key;
+                yield return NavigationWorldHashToken.FromInt(signature.MinSectorId);
+                yield return NavigationWorldHashToken.FromInt(signature.MaxSectorId);
+                yield return NavigationWorldHashToken.FromBool(signature.IsVerticalBoundary);
+                yield return NavigationWorldHashToken.FromInt(signature.Boundary);
+                yield return NavigationWorldHashToken.FromInt(signature.FirstAxis);
+                yield return NavigationWorldHashToken.FromInt(signature.LastAxis);
+                yield return NavigationWorldHashToken.FromInt(signature.WidthCells);
+                yield return NavigationWorldHashToken.FromInt(signatures[i].Value);
+            }
+        }
+
+        if (world.UsedPortalIds == null)
+        {
+            yield return NavigationWorldHashToken.FromInt(-1);
+        }
+        else
+        {
+            var usedPortalIds = new List<int>(world.UsedPortalIds);
+            usedPortalIds.Sort();
+            yield return NavigationWorldHashToken.FromInt(usedPortalIds.Count);
+            for (int i = 0; i < usedPortalIds.Count; i++)
+                yield return NavigationWorldHashToken.FromInt(usedPortalIds[i]);
+        }
+    }
+
+    private static IEnumerable<NavigationWorldHashToken> EnumerateBoolArrayHashTokens(bool[] values)
+    {
+        int count = values?.Length ?? 0;
+        yield return NavigationWorldHashToken.FromInt(count);
+        for (int i = 0; i < count; i++)
+            yield return NavigationWorldHashToken.FromBool(values[i]);
+    }
+
+    private static IEnumerable<NavigationWorldHashToken> EnumerateByteArrayHashTokens(byte[] values)
+    {
+        int count = values?.Length ?? 0;
+        yield return NavigationWorldHashToken.FromInt(count);
+        for (int i = 0; i < count; i++)
+            yield return NavigationWorldHashToken.FromByte(values[i]);
+    }
+
+    private static IEnumerable<NavigationWorldHashToken> EnumerateIntArrayHashTokens(int[] values)
+    {
+        int count = values?.Length ?? 0;
+        yield return NavigationWorldHashToken.FromInt(count);
+        for (int i = 0; i < count; i++)
+            yield return NavigationWorldHashToken.FromInt(values[i]);
+    }
+
+    private static IEnumerable<NavigationWorldHashToken> EnumerateVector2IntArrayHashTokens(Vector2Int[] values)
+    {
+        int count = values?.Length ?? 0;
+        yield return NavigationWorldHashToken.FromInt(count);
+        for (int i = 0; i < count; i++)
+        {
+            yield return NavigationWorldHashToken.FromInt(values[i].x);
+            yield return NavigationWorldHashToken.FromInt(values[i].y);
+        }
+    }
+
+    private static int ComparePortalSignatureEntries(
+        KeyValuePair<PortalSignature, int> left,
+        KeyValuePair<PortalSignature, int> right)
+    {
+        int result = left.Key.MinSectorId.CompareTo(right.Key.MinSectorId);
+        if (result != 0) return result;
+        result = left.Key.MaxSectorId.CompareTo(right.Key.MaxSectorId);
+        if (result != 0) return result;
+        result = left.Key.IsVerticalBoundary.CompareTo(right.Key.IsVerticalBoundary);
+        if (result != 0) return result;
+        result = left.Key.Boundary.CompareTo(right.Key.Boundary);
+        if (result != 0) return result;
+        result = left.Key.FirstAxis.CompareTo(right.Key.FirstAxis);
+        if (result != 0) return result;
+        result = left.Key.LastAxis.CompareTo(right.Key.LastAxis);
+        return result != 0 ? result : left.Key.WidthCells.CompareTo(right.Key.WidthCells);
     }
 
     private static void AddNavigationWorldContents(LogicStateHasher hasher, NavigationWorld world)
@@ -2270,6 +2647,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add((int)job.Stage);
         hasher.Add(job.CloneCellCursor);
         hasher.Add(job.CloneSectorCursor);
+        hasher.Add((int)job.CloneShellStage);
         hasher.Add(job.CloneShellInitialized);
         hasher.Add(job.SectorCursor);
         hasher.Add(job.ObstacleCursor);
@@ -2287,6 +2665,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(job.PortalAddCursor);
         hasher.Add(job.PortalTransitionCursor);
         hasher.Add(job.PortalTransitionFromCursor);
+        AddAuthorityNavigationWorldHashProgress(hasher, job.WorldHashBuildJob);
         hasher.Add(job.HasAuthorityInputHash);
         if (job.HasAuthorityInputHash)
             hasher.Add(job.AuthorityInputHash);

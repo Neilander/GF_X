@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
+using UnityEngine;
 
 [TestFixture]
 public sealed class LogicInteractionCommandServiceTests
@@ -94,6 +96,26 @@ public sealed class LogicInteractionCommandServiceTests
 
         Assert.AreNotEqual(pendingHash, appliedHash);
         Assert.AreEqual(appliedHash, CaptureHash());
+    }
+
+    [Test]
+    public void RuntimeBuildingCreation_HasNoDirectVector3Bypass()
+    {
+        string buildManagerPath = Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/Build/BuildManager.cs");
+        string source = File.ReadAllText(buildManagerPath);
+
+        StringAssert.DoesNotContain(
+            "public bool BuildBuilding(string buildingId, Vector3 position",
+            source);
+    }
+
+    [Test]
+    public void RecycleRewardMutation_RejectsOutsideApplyWindow()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            RewardManager.HandleBuildingRecycleReward(Vector3.zero, 1));
     }
 
     private static ulong CaptureHash()

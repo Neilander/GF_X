@@ -4,6 +4,8 @@ using UnityEngine;
 
 public class PlayerMoveComp : IMoveComp
 {
+    private static readonly Fix64 s_MovingThresholdSquared = Fix64.FromRaw(1);
+
     private InputModel _inputModel;
     private IEntityContext _ctx;
     private bool _isMoving = false;
@@ -52,6 +54,11 @@ public class PlayerMoveComp : IMoveComp
     public void SetNavTargetFixed(FixVector2 destination) { }
 
     public FixVector2 NavDirectionFixed => _moveDirection;
+
+    public void CommitResolvedDisplacement(FixVector2 displacement)
+    {
+        _isMoving = FixVector2.SqrMagnitude(displacement) > s_MovingThresholdSquared;
+    }
 
     /// <summary>
     /// 是否正在移动

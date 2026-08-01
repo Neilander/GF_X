@@ -313,19 +313,6 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    public bool BuildBuilding(string buildingId, Vector3 position, string buildingInstanceId = null)
-    {
-        bool ok = BuildBuildingInternal(
-            buildingId,
-            position,
-            buildingInstanceId,
-            checkCondition: true,
-            consumeCoins: true).IsValid;
-        if (ok && AudioManager.Instance != null)
-            AudioManager.Instance.Play("buildNormal");
-        return ok;
-    }
-
     public bool BuildBuildingForTechUpgrade(string buildingId, FixVector2 position, string buildingInstanceId)
     {
         bool ok = BuildBuildingInternalFixed(

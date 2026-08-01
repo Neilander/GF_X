@@ -120,6 +120,7 @@ public sealed class LogicStateHasher
             BulletTimeScaleSnapshot entry = snapshot.BulletTimeScales[i];
             hasher.Add(entry.SourceId);
             hasher.Add(entry.ScaleUnits);
+            hasher.Add(entry.ExpirationFrameExclusive);
         }
 
         hasher.Add(snapshot.PauseSources.Count);
@@ -174,6 +175,7 @@ public sealed class LogicStateHasher
         hasher.Add((int)command.Kind);
         hasher.Add(command.SourceId);
         hasher.Add(command.ScaleUnits);
+        hasher.Add(command.DurationTicks);
     }
 }
 
@@ -211,8 +213,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 73;
-    public const string CurrentContentVersion = "Avenge-30Hz-v73";
+    public const int CurrentProtocolVersion = 81;
+    public const string CurrentContentVersion = "Avenge-30Hz-v81";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,

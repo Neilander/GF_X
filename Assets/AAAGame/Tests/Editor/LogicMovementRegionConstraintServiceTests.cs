@@ -35,7 +35,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
     }
 
     [Test]
-    public void Build_PlayerMoveIntoEnemyStronghold_IsRejected()
+    public void Build_PlayerMoveIntoEnemyStronghold_IsClippedAtBoundary()
     {
         SimEntityContext player = CreateEntity(SideType.PlayerSide);
         FixVector2 start = StrongholdPoint(0);
@@ -46,7 +46,8 @@ public sealed class LogicMovementRegionConstraintServiceTests
             StrongholdPoint(1),
             out LogicMovementRegionConstraintFailure failure);
 
-        Assert.AreEqual(start, resolved);
+        Assert.Greater(resolved.x.RawValue, start.x.RawValue);
+        Assert.Less(resolved.x.RawValue, StrongholdPoint(1).x.RawValue);
         Assert.AreEqual(LogicMovementRegionConstraintFailure.EnemyStronghold, failure);
     }
 
@@ -64,6 +65,173 @@ public sealed class LogicMovementRegionConstraintServiceTests
 
         Assert.AreEqual(candidate, resolved);
         Assert.AreEqual(LogicMovementRegionConstraintFailure.None, failure);
+    }
+
+    [Test]
+    public void Build_CircleOverlapsEnemyStrongholdBeforeCenterCrossesBoundary_IsClipped()
+    {
+        SimEntityContext player = CreateEntity(SideType.PlayerSide);
+        FixVector2 start = new FixVector2((Fix64)0.2f, Fix64.Zero);
+        FixVector2 candidate = new FixVector2((Fix64)0.3f, Fix64.Zero);
+
+        FixVector2 resolved = LogicMovementRegionConstraintService.ResolvePosition(
+            player,
+            start,
+            candidate,
+            out LogicMovementRegionConstraintFailure failure);
+
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.EnemyStronghold, failure);
+        Assert.Greater(resolved.x.RawValue, start.x.RawValue);
+        Assert.Less(resolved.x.RawValue, candidate.x.RawValue);
+        Assert.AreEqual(Fix64.Zero, resolved.y);
+    }
+
+    [Test]
+    public void Build_HighSpeedMoveAcrossEnemyStronghold_IsSweptAndClipped()
+    {
+        SimEntityContext player = CreateEntity(SideType.PlayerSide);
+        FixVector2 start = StrongholdPoint(0);
+        FixVector2 candidate = StrongholdPoint(2);
+
+        FixVector2 resolved = LogicMovementRegionConstraintService.ResolvePosition(
+            player,
+            start,
+            candidate,
+            out LogicMovementRegionConstraintFailure failure);
+
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.EnemyStronghold, failure);
+        Assert.Greater(resolved.x.RawValue, start.x.RawValue);
+        Assert.Less(resolved.x.RawValue, ((Fix64)0.5f).RawValue);
+    }
+
+    [Test]
+    public void Build_DiagonalMoveAtEnemyStrongholdEdge_PreservesTangentialMotion()
+    {
+        SimEntityContext player = CreateEntity(SideType.PlayerSide);
+        FixVector2 start = new FixVector2((Fix64)0.25f, (Fix64)(-1f));
+        FixVector2 candidate = new FixVector2((Fix64)0.45f, (Fix64)(-0.5f));
+
+        FixVector2 resolved = LogicMovementRegionConstraintService.ResolvePosition(
+            player,
+            start,
+            candidate,
+            out LogicMovementRegionConstraintFailure failure);
+
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.EnemyStronghold, failure);
+        Assert.AreEqual(candidate.x.RawValue, resolved.x.RawValue);
+        Assert.Greater(resolved.y.RawValue, start.y.RawValue);
+        Assert.Less(resolved.y.RawValue, candidate.y.RawValue);
+    }
+
+    [Test]
+    public void Build_Lv3EnemyStrongholdCorner_UsesUnitCollisionRadiusWithoutWallPadding()
+    {
+        LogicStrongholdMap.Clear();
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.FromRaw(5735),
+            new[]
+            {
+                new LogicStrongholdCellDefinition("enemy", 46, 8, EntitySideHelper.EnemyFactionId),
+            });
+        SimEntityContext player = CreateEntity(SideType.PlayerSide);
+        player.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(Fix64.FromRaw(1352)));
+        FixVector2 start = new FixVector2(Fix64.FromRaw(259590), Fix64.FromRaw(42835));
+        Fix64 collisionRadius = DistanceUnitConverter.ConvertToWorld(
+            player.GetProperty(CreatureMainProperty.CollisionRadius));
+
+        Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+            start,
+            collisionRadius,
+            EntitySideHelper.PlayerFactionId));
+
+        FixVector2 resolved = LogicMovementRegionConstraintService.ResolvePosition(
+            player,
+            start,
+            start + new FixVector2(Fix64.FromRaw(128), Fix64.Zero),
+            out LogicMovementRegionConstraintFailure failure);
+
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.EnemyStronghold, failure);
+        Assert.Greater(resolved.x.RawValue, start.x.RawValue);
+        Assert.Less(resolved.x.RawValue, start.x.RawValue + 128);
+        Assert.AreEqual(start.y.RawValue, resolved.y.RawValue);
+        Assert.IsTrue(LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+            resolved,
+            collisionRadius,
+            EntitySideHelper.PlayerFactionId));
+    }
+
+    [TestCase(512)]
+    [TestCase(1352)]
+    [TestCase(2867)]
+    public void Build_DifferentUnitRadii_AreBlockedOutsideEveryEdgeAndCorner(long collisionRadiusRaw)
+    {
+        LogicStrongholdMap.Clear();
+        LogicStrongholdMap.Initialize(
+            FixVector2.Zero,
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            Fix64.One,
+            new[]
+            {
+                new LogicStrongholdCellDefinition("enemy", 0, 0, EntitySideHelper.EnemyFactionId),
+            });
+        SimEntityContext player = CreateEntity(SideType.PlayerSide);
+        Fix64 collisionRadius = Fix64.FromRaw(collisionRadiusRaw);
+        player.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+        Fix64 boundary = Fix64.One / (Fix64)2 + collisionRadius;
+        Fix64 approachDistance = Fix64.FromRaw(256);
+        var directions = new[]
+        {
+            new FixVector2(-Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.One, Fix64.Zero),
+            new FixVector2(Fix64.Zero, -Fix64.One),
+            new FixVector2(Fix64.Zero, Fix64.One),
+            new FixVector2(-Fix64.One, -Fix64.One),
+            new FixVector2(-Fix64.One, Fix64.One),
+            new FixVector2(Fix64.One, -Fix64.One),
+            new FixVector2(Fix64.One, Fix64.One),
+        };
+
+        for (int i = 0; i < directions.Length; i++)
+        {
+            FixVector2 direction = directions[i];
+            FixVector2 start = direction * (boundary + approachDistance);
+            FixVector2 candidate = direction * (boundary - approachDistance);
+            Assert.IsTrue(
+                LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+                    start,
+                    collisionRadius,
+                    EntitySideHelper.PlayerFactionId),
+                $"Start must be outside. radiusRaw={collisionRadiusRaw}, direction={direction}.");
+
+            FixVector2 resolved = LogicMovementRegionConstraintService.ResolvePosition(
+                player,
+                start,
+                candidate,
+                out LogicMovementRegionConstraintFailure failure);
+
+            Assert.AreEqual(
+                LogicMovementRegionConstraintFailure.EnemyStronghold,
+                failure,
+                $"Move must hit the enemy stronghold. radiusRaw={collisionRadiusRaw}, direction={direction}.");
+            Assert.AreNotEqual(
+                candidate,
+                resolved,
+                $"Move must be clipped. radiusRaw={collisionRadiusRaw}, direction={direction}.");
+            Assert.IsTrue(
+                LogicStrongholdMap.IsCircleClearOfForeignStrongholds(
+                    resolved,
+                    collisionRadius,
+                    EntitySideHelper.PlayerFactionId),
+                $"Resolved unit volume must remain outside. radiusRaw={collisionRadiusRaw}, direction={direction}, resolved={resolved}.");
+        }
     }
 
     [Test]
@@ -125,7 +293,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
         FixVector2 resolved = LogicMovementRegionConstraintService.ResolvePosition(
             player,
             start,
-            StrongholdPoint(2),
+            StrongholdPoint(-1),
             out LogicMovementRegionConstraintFailure failure);
 
         Assert.AreNotEqual(before.Hash, after.Hash);
@@ -134,7 +302,7 @@ public sealed class LogicMovementRegionConstraintServiceTests
     }
 
     [Test]
-    public void VisibilityBoundary_UsesCurrentFixedLogicRevealers()
+    public void Invade_PlayerMoveIntoUnexploredArea_IsAllowed()
     {
         LogicStrongholdMap.Clear();
         LogicCardPlacementAuthority.BeginTimeline();
@@ -148,25 +316,19 @@ public sealed class LogicMovementRegionConstraintServiceTests
         player.PositionFixed = CellCenter(0);
         EntityRegistry.RegisterAsPlayer(player);
 
-        FixVector2 visible = CellCenter(1);
-        Assert.AreEqual(
-            visible,
-            LogicMovementRegionConstraintService.ResolvePosition(
-                player,
-                player.PositionFixed,
-                visible,
-                out LogicMovementRegionConstraintFailure visibleFailure));
-        Assert.AreEqual(LogicMovementRegionConstraintFailure.None, visibleFailure);
+        LogicPhaseCommandService.ScheduleForNextFrame(GamePhase.Invade);
+        LogicTimeControlService.BeginFrame(1);
+        LogicPhaseCommandService.ApplyFrameForTests(1, _ => { });
 
         FixVector2 hidden = CellCenter(2);
         Assert.AreEqual(
-            player.PositionFixed,
+            hidden,
             LogicMovementRegionConstraintService.ResolvePosition(
                 player,
                 player.PositionFixed,
                 hidden,
                 out LogicMovementRegionConstraintFailure hiddenFailure));
-        Assert.AreEqual(LogicMovementRegionConstraintFailure.NotVisible, hiddenFailure);
+        Assert.AreEqual(LogicMovementRegionConstraintFailure.None, hiddenFailure);
     }
 
     [Test]

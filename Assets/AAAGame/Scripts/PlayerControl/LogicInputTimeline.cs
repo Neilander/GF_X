@@ -315,6 +315,20 @@ public sealed class LogicInputTimeline
         Enqueue(timestamp, RawInputEventKind.WorldMoveChanged, default, worldMove);
     }
 
+#if UNITY_EDITOR
+    public void EnqueueEditorWorldMoveForNextFrame(FixVector2 worldMove)
+    {
+        if (!m_IsStarted)
+            throw new InvalidOperationException("LogicInputTimeline cannot inject editor movement before the timeline starts.");
+
+        Enqueue(
+            m_LastCutoff + TimestampBoundaryEpsilonSeconds * 2d,
+            RawInputEventKind.WorldMoveChanged,
+            default,
+            worldMove);
+    }
+#endif
+
     public void EnqueueButtonPressed(double timestamp, LogicInputButton button)
     {
         ValidateButton(button);

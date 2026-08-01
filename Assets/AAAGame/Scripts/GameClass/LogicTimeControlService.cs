@@ -7,6 +7,7 @@ public enum TimeScaleCommandKind
     SetBasePlaybackScale = 0,
     SetBulletTimeScale = 1,
     RemoveBulletTimeScale = 2,
+    SetBulletTimeScaleForLogicTicks = 3,
 }
 
 public readonly struct TimeScaleCommand
@@ -16,13 +17,15 @@ public readonly struct TimeScaleCommand
         ulong sequence,
         TimeScaleCommandKind kind,
         int sourceId,
-        int scaleUnits)
+        int scaleUnits,
+        ulong durationTicks = 0)
     {
         EffectiveFrame = effectiveFrame;
         Sequence = sequence;
         Kind = kind;
         SourceId = sourceId;
         ScaleUnits = scaleUnits;
+        DurationTicks = durationTicks;
     }
 
     public ulong EffectiveFrame { get; }
@@ -30,6 +33,7 @@ public readonly struct TimeScaleCommand
     public TimeScaleCommandKind Kind { get; }
     public int SourceId { get; }
     public int ScaleUnits { get; }
+    public ulong DurationTicks { get; }
 }
 
 public enum PauseControlCommandKind
@@ -60,14 +64,16 @@ public readonly struct PauseControlCommand
 
 public readonly struct BulletTimeScaleSnapshot
 {
-    public BulletTimeScaleSnapshot(int sourceId, int scaleUnits)
+    public BulletTimeScaleSnapshot(int sourceId, int scaleUnits, ulong expirationFrameExclusive = 0)
     {
         SourceId = sourceId;
         ScaleUnits = scaleUnits;
+        ExpirationFrameExclusive = expirationFrameExclusive;
     }
 
     public int SourceId { get; }
     public int ScaleUnits { get; }
+    public ulong ExpirationFrameExclusive { get; }
 }
 
 public sealed class LogicTimeControlSnapshot
@@ -101,13 +107,25 @@ public sealed class LogicTimeControlSnapshot
 
 public static class LogicTimeControlService
 {
+    private readonly struct BulletTimeScaleState
+    {
+        public BulletTimeScaleState(int scaleUnits, ulong expirationFrameExclusive)
+        {
+            ScaleUnits = scaleUnits;
+            ExpirationFrameExclusive = expirationFrameExclusive;
+        }
+
+        public int ScaleUnits { get; }
+        public ulong ExpirationFrameExclusive { get; }
+    }
+
     public const int ScaleUnitsPerOne = 10000;
     public const int NormalScaleUnits = ScaleUnitsPerOne;
     public const int MinBulletTimeScaleUnits = 1;
     public const int MaxBasePlaybackScaleUnits = ScaleUnitsPerOne * 8;
 
-    private static readonly SortedDictionary<int, int> s_BulletTimeScales =
-        new SortedDictionary<int, int>();
+    private static readonly SortedDictionary<int, BulletTimeScaleState> s_BulletTimeScales =
+        new SortedDictionary<int, BulletTimeScaleState>();
     private static readonly SortedSet<int> s_PauseSources = new SortedSet<int>();
     private static readonly List<TimeScaleCommand> s_PendingTimeScaleCommands =
         new List<TimeScaleCommand>();
@@ -191,6 +209,20 @@ public static class LogicTimeControlService
             TimeScaleCommandKind.SetBulletTimeScale,
             sourceId,
             scaleUnits));
+    }
+
+    public static void SetBulletTimeScaleForLogicTicks(int sourceId, int scaleUnits, ulong durationTicks)
+    {
+        ValidatePositiveSourceId(sourceId, "Bullet-time source id must be positive.");
+        ValidateBulletTimeScale(scaleUnits);
+        ValidateDurationTicks(durationTicks);
+        SubmitTimeScaleCommand(new TimeScaleCommand(
+            NextEffectiveFrame,
+            NextSequence,
+            TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks,
+            sourceId,
+            scaleUnits,
+            durationTicks));
     }
 
     public static void RemoveBulletTimeScale(int sourceId)
@@ -303,6 +335,8 @@ public static class LogicTimeControlService
             ApplyTimeScaleCommand(command);
             s_PendingTimeScaleCommands.RemoveAt(0);
         }
+
+        ExpireBulletTimeSources(frameId);
     }
 
     public static void BeginFrame(ulong frameId)
@@ -328,8 +362,13 @@ public static class LogicTimeControlService
 
         var bulletScales = new BulletTimeScaleSnapshot[s_BulletTimeScales.Count];
         int bulletIndex = 0;
-        foreach (KeyValuePair<int, int> pair in s_BulletTimeScales)
-            bulletScales[bulletIndex++] = new BulletTimeScaleSnapshot(pair.Key, pair.Value);
+        foreach (KeyValuePair<int, BulletTimeScaleState> pair in s_BulletTimeScales)
+        {
+            bulletScales[bulletIndex++] = new BulletTimeScaleSnapshot(
+                pair.Key,
+                pair.Value.ScaleUnits,
+                pair.Value.ExpirationFrameExclusive);
+        }
 
         var pauseSources = new int[s_PauseSources.Count];
         s_PauseSources.CopyTo(pauseSources);
@@ -357,7 +396,9 @@ public static class LogicTimeControlService
         for (int i = 0; i < snapshot.BulletTimeScales.Count; i++)
         {
             BulletTimeScaleSnapshot entry = snapshot.BulletTimeScales[i];
-            s_BulletTimeScales.Add(entry.SourceId, entry.ScaleUnits);
+            s_BulletTimeScales.Add(
+                entry.SourceId,
+                new BulletTimeScaleState(entry.ScaleUnits, entry.ExpirationFrameExclusive));
         }
 
         s_PauseSources.Clear();
@@ -418,15 +459,12 @@ public static class LogicTimeControlService
                 }
                 return;
             case TimeScaleCommandKind.SetBulletTimeScale:
-                if (s_BulletTimeScales.TryGetValue(command.SourceId, out int current)
-                    && current == command.ScaleUnits)
-                {
-                    return;
-                }
-
-                s_BulletTimeScales[command.SourceId] = command.ScaleUnits;
-                RecalculateBulletTimeScale();
-                MarkChanged();
+                SetBulletTimeScaleState(command, 0);
+                return;
+            case TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks:
+                SetBulletTimeScaleState(
+                    command,
+                    checked(command.EffectiveFrame + command.DurationTicks));
                 return;
             case TimeScaleCommandKind.RemoveBulletTimeScale:
                 if (!s_BulletTimeScales.Remove(command.SourceId))
@@ -444,13 +482,63 @@ public static class LogicTimeControlService
         }
     }
 
+    private static void SetBulletTimeScaleState(TimeScaleCommand command, ulong expirationFrameExclusive)
+    {
+        var next = new BulletTimeScaleState(command.ScaleUnits, expirationFrameExclusive);
+        if (s_BulletTimeScales.TryGetValue(command.SourceId, out BulletTimeScaleState current)
+            && current.ScaleUnits == next.ScaleUnits
+            && current.ExpirationFrameExclusive == next.ExpirationFrameExclusive)
+        {
+            return;
+        }
+
+        s_BulletTimeScales[command.SourceId] = next;
+        RecalculateBulletTimeScale();
+        MarkChanged();
+    }
+
+    private static void ExpireBulletTimeSources(ulong frameId)
+    {
+        bool changed = false;
+        while (true)
+        {
+            int expiredSourceId = 0;
+            foreach (KeyValuePair<int, BulletTimeScaleState> pair in s_BulletTimeScales)
+            {
+                ulong expirationFrame = pair.Value.ExpirationFrameExclusive;
+                if (expirationFrame == 0 || expirationFrame > frameId)
+                    continue;
+                if (expirationFrame < frameId)
+                {
+                    throw new InvalidOperationException(
+                        $"LogicTimeControlService.PrepareFrame failed: bullet-time source missed its expiration frame. sourceId={pair.Key}, expiration={expirationFrame}, frame={frameId}.");
+                }
+
+                expiredSourceId = pair.Key;
+                break;
+            }
+
+            if (expiredSourceId == 0)
+                break;
+
+            s_BulletTimeScales.Remove(expiredSourceId);
+            changed = true;
+        }
+
+        if (!changed)
+            return;
+
+        RecalculateBulletTimeScale();
+        MarkChanged();
+    }
+
     private static void RecalculateBulletTimeScale()
     {
         int result = NormalScaleUnits;
-        foreach (KeyValuePair<int, int> pair in s_BulletTimeScales)
+        foreach (KeyValuePair<int, BulletTimeScaleState> pair in s_BulletTimeScales)
         {
-            if (pair.Value < result)
-                result = pair.Value;
+            if (pair.Value.ScaleUnits < result)
+                result = pair.Value.ScaleUnits;
         }
 
         s_BulletTimeScaleUnits = result;
@@ -469,15 +557,27 @@ public static class LogicTimeControlService
                 if (command.SourceId != 0)
                     throw new ArgumentOutOfRangeException(nameof(command), "Base playback command source id must be zero.");
                 ValidateBasePlaybackScale(command.ScaleUnits);
+                if (command.DurationTicks != 0)
+                    throw new ArgumentOutOfRangeException(nameof(command), "Base playback command duration must be zero.");
                 return;
             case TimeScaleCommandKind.SetBulletTimeScale:
                 ValidatePositiveSourceId(command.SourceId, "Bullet-time source id must be positive.");
                 ValidateBulletTimeScale(command.ScaleUnits);
+                if (command.DurationTicks != 0)
+                    throw new ArgumentOutOfRangeException(nameof(command), "Indefinite bullet-time command duration must be zero.");
+                return;
+            case TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks:
+                ValidatePositiveSourceId(command.SourceId, "Bullet-time source id must be positive.");
+                ValidateBulletTimeScale(command.ScaleUnits);
+                ValidateDurationTicks(command.DurationTicks);
+                _ = checked(command.EffectiveFrame + command.DurationTicks);
                 return;
             case TimeScaleCommandKind.RemoveBulletTimeScale:
                 ValidatePositiveSourceId(command.SourceId, "Bullet-time source id must be positive.");
                 if (command.ScaleUnits != 0)
                     throw new ArgumentOutOfRangeException(nameof(command), "Remove bullet-time command scale must be zero.");
+                if (command.DurationTicks != 0)
+                    throw new ArgumentOutOfRangeException(nameof(command), "Remove bullet-time command duration must be zero.");
                 return;
             default:
                 throw new ArgumentOutOfRangeException(nameof(command), command.Kind, "Unsupported time-scale command kind.");
@@ -506,6 +606,12 @@ public static class LogicTimeControlService
             BulletTimeScaleSnapshot entry = snapshot.BulletTimeScales[i];
             ValidatePositiveSourceId(entry.SourceId, "Snapshot bullet-time source id must be positive.");
             ValidateBulletTimeScale(entry.ScaleUnits);
+            if (entry.ExpirationFrameExclusive != 0
+                && entry.ExpirationFrameExclusive <= snapshot.CurrentFrame)
+            {
+                throw new InvalidOperationException(
+                    "Snapshot bullet-time expiration must be later than the current frame.");
+            }
             if (entry.SourceId <= previousSourceId)
                 throw new InvalidOperationException("Snapshot bullet-time sources must be strictly ordered.");
             previousSourceId = entry.SourceId;
@@ -552,6 +658,12 @@ public static class LogicTimeControlService
             throw new ArgumentOutOfRangeException(nameof(scaleUnits), scaleUnits,
                 $"Bullet-time scale must be in [{MinBulletTimeScaleUnits}, {NormalScaleUnits}].");
         }
+    }
+
+    private static void ValidateDurationTicks(ulong durationTicks)
+    {
+        if (durationTicks == 0)
+            throw new ArgumentOutOfRangeException(nameof(durationTicks), "Bullet-time duration must be positive.");
     }
 
     private static void ValidatePositiveSourceId(int sourceId, string message)

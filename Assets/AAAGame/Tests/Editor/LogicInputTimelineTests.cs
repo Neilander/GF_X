@@ -75,6 +75,55 @@ public sealed class LogicInputTimelineTests
     }
 
     [Test]
+    public void ResetGameplayState_ReleasesHeldButtonsAndStopsMovementOnItsTick()
+    {
+        var timeline = CreateTimeline();
+        var movement = new FixVector2((Fix64)0.75f, (Fix64)(-0.25f));
+        timeline.EnqueueButtonPressed(0.010d, LogicInputButton.Skill1);
+        timeline.EnqueueWorldMove(0.010d, movement);
+
+        LogicInputFrame beforePause = timeline.Seal(1, 1d / 30d);
+        Assert.IsTrue(beforePause.IsHeld(LogicInputButton.Skill1));
+        Assert.AreEqual(movement, beforePause.WorldMove);
+
+        timeline.EnqueueResetGameplayState(0.040d);
+        LogicInputFrame paused = timeline.Seal(2, 2d / 30d);
+
+        Assert.IsFalse(paused.IsHeld(LogicInputButton.Skill1));
+        Assert.IsTrue(paused.WasReleased(LogicInputButton.Skill1));
+        Assert.IsFalse(paused.WasPressed(LogicInputButton.Skill1));
+        Assert.AreEqual(FixVector2.Zero, paused.WorldMove);
+        Assert.AreEqual(1, paused.Events.Count);
+        Assert.AreEqual(RawInputEventKind.ResetGameplayState, paused.Events[0].Kind);
+    }
+
+    [Test]
+    public void ResumeSynchronization_RestoresHeldAndMovementWithoutPressedEdge()
+    {
+        var timeline = CreateTimeline();
+        timeline.EnqueueButtonPressed(0.010d, LogicInputButton.Skill1);
+        timeline.Seal(1, 1d / 30d);
+
+        var resumedMovement = new FixVector2((Fix64)(-0.5f), (Fix64)0.25f);
+        timeline.EnqueueResetGameplayState(0.040d);
+        timeline.EnqueueWorldMove(0.040d, resumedMovement);
+        timeline.EnqueueButtonHeldState(0.040d, LogicInputButton.Skill1, true);
+
+        LogicInputFrame resumed = timeline.Seal(2, 2d / 30d);
+        LogicInputFrame following = timeline.Seal(3, 3d / 30d);
+
+        Assert.IsTrue(resumed.IsHeld(LogicInputButton.Skill1));
+        Assert.IsTrue(resumed.WasReleased(LogicInputButton.Skill1));
+        Assert.IsFalse(resumed.WasPressed(LogicInputButton.Skill1));
+        Assert.AreEqual(0, resumed.GetPressCount(LogicInputButton.Skill1));
+        Assert.AreEqual(resumedMovement, resumed.WorldMove);
+        Assert.IsTrue(following.IsHeld(LogicInputButton.Skill1));
+        Assert.IsFalse(following.WasPressed(LogicInputButton.Skill1));
+        Assert.IsFalse(following.WasReleased(LogicInputButton.Skill1));
+        Assert.AreEqual(resumedMovement, following.WorldMove);
+    }
+
+    [Test]
     public void LateEvent_IsAssignedToNextUnsealedFrame()
     {
         var timeline = CreateTimeline();

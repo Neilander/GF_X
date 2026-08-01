@@ -61,17 +61,21 @@ public sealed class LogicReplayTests
         var recorder = new LogicReplayRecorder();
         recorder.Begin();
 
-        LogicTimeControlService.SetBulletTimeScale(10, 2000);
+        LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 2000, 15);
         LogicTimeControlService.BeginFrame(1);
         timeline.EnqueueButtonPulse(0.01d, LogicInputButton.Skill1);
         LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
         LogicReplayFrameRecord record = recorder.RecordFrame(inputFrame, 123ul);
+        LogicTimeControlService.RemoveBulletTimeScale(10);
         LogicTimeControlService.AcquirePause(20);
         LogicTimeControlService.ReleasePause(20);
         LogicReplayLog log = recorder.End();
 
         Assert.AreEqual(1, log.Frames.Count);
-        Assert.AreEqual(1, log.TimeScaleCommands.Count);
+        Assert.AreEqual(2, log.TimeScaleCommands.Count);
+        Assert.AreEqual(15ul, log.TimeScaleCommands[0].DurationTicks);
+        Assert.AreEqual(TimeScaleCommandKind.RemoveBulletTimeScale, log.TimeScaleCommands[1].Kind);
+        Assert.AreEqual(0ul, log.TimeScaleCommands[1].DurationTicks);
         Assert.AreEqual(2, log.PauseControlCommands.Count);
         Assert.AreEqual(LogicReplayLog.CurrentProtocolVersion, log.ProtocolVersion);
         Assert.AreEqual(LogicReplayLog.CurrentContentVersion, log.ContentVersion);
@@ -185,20 +189,43 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void ProtocolV73_CrossPlatformDeterminismCorpus_IsStable()
+    public void TimeScaleCommandHash_TracksLogicTickDuration()
+    {
+        var shortCommand = new TimeScaleCommand(
+            1,
+            1,
+            TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks,
+            10,
+            2000,
+            5);
+        var longCommand = new TimeScaleCommand(
+            1,
+            1,
+            TimeScaleCommandKind.SetBulletTimeScaleForLogicTicks,
+            10,
+            2000,
+            6);
+
+        Assert.AreNotEqual(
+            LogicStateHasher.ComputeTimeScaleCommandHash(shortCommand),
+            LogicStateHasher.ComputeTimeScaleCommandHash(longCommand));
+    }
+
+    [Test]
+    public void ProtocolV81_CrossPlatformDeterminismCorpus_IsStable()
     {
         LogicTimeControlService.EndTimeline();
-        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV73();
+        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV81();
         LogicTimeControlService.BeginTimeline();
 
-        Assert.AreEqual(73, result.ProtocolVersion);
-        Assert.AreEqual(6256122146117919571ul, result.FullHash);
+        Assert.AreEqual(81, result.ProtocolVersion);
+        Assert.AreEqual(7334454495593281045ul, result.FullHash);
     }
 
     [Test]
     public void CrossPlatformDeterminismCorpus_RejectsActiveTimeline()
     {
-        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV73());
+        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV81());
     }
 
     [Test]
