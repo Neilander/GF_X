@@ -5567,6 +5567,51 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 移动目标中心不可走但同岛存在可达接近点时仍能建Anchor()
+    {
+        const int width = 20;
+        const int height = 15;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        for (int y = 1; y <= 13; y++)
+        {
+            for (int x = 8; x < width; x++)
+                walkable[y * width + x] = false;
+        }
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+
+        SimEntityContext chaser = CreateEntity(new Vector3(1.5f, 0f, 7.5f));
+        SimEntityContext target = CreateEntity(new Vector3(14.5f, 0f, 7.5f));
+        chaser.TargetComp = new SimTargetingComp(chaser, new System.Collections.Generic.List<IEntityContext> { target })
+        {
+            CurrentTarget = target
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, target.Position, 2f, out Vector3 velocity));
+        Assert.Greater(velocity.x, 0.1f, $"追击者应使用同岛可达接近点继续朝目标侧移动 velocity={velocity}");
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
+            chaser.LogicEntityId.Value,
+            out int targetId,
+            out int rawX,
+            out int rawY,
+            out int stableX,
+            out int stableY,
+            out _));
+        Assert.AreEqual(target.LogicEntityId.Value, targetId);
+        string rawDiagnostics = FlowFieldCrowdMovementSystem.GetEditorNavigationCellDiagnostics(0, rawX, rawY);
+        string targetDiagnostics = FlowFieldCrowdMovementSystem.GetEditorNavigationCellDiagnostics(0, 14, 7);
+        string stableDiagnostics = FlowFieldCrowdMovementSystem.GetEditorNavigationCellDiagnostics(0, stableX, stableY);
+        Assert.AreEqual(14, rawX, rawDiagnostics);
+        Assert.AreEqual(7, rawY, rawDiagnostics);
+        Assert.IsFalse(stableX == rawX && stableY == rawY, $"stable goal must not keep the blocked target cell. targetCell={targetDiagnostics}");
+        StringAssert.Contains("walk=True", stableDiagnostics);
+    }
+
+    [Test]
     public void 移动目标Anchor被StableGoal引用时不会被定时回收()
     {
         const int width = 16;

@@ -36,6 +36,23 @@ atkComp.Attack(Fix64.Zero);
         }
     }
 
+    private sealed class LogicFrameActionListener : ILogicFrameUpdate
+    {
+        private readonly System.Action<Fix64> m_Action;
+
+        public LogicFrameActionListener(System.Action<Fix64> action)
+        {
+            m_Action = action ?? throw new System.ArgumentNullException(nameof(action));
+        }
+
+        public int LogicFrameOrder => 0;
+
+        public void OnLogicFrameUpdate(Fix64 deltaTime)
+        {
+            m_Action(deltaTime);
+        }
+    }
+
     private static void SetupCombatPhaseForTests()
     {
         var dataModelField = typeof(GF).GetField("<DataModel>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic);
@@ -559,6 +576,149 @@ atkComp.Attack((Fix64)999);
         StartAttack(atkComp);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "远程单位应能在射程内攻击");
         Assert.AreEqual(1, atkComp.AttackCount);
+    }
+
+    [Test]
+    public void 已射出的远程弹道不受近身锁攻影响且仍会命中()
+    {
+        EntityRegistry.Clear();
+        LogicFrameActionListener listener = null;
+        ulong projectileId = 0;
+        bool projectileViewBound = false;
+
+        try
+        {
+            LogicEntityFrameSnapshotService.BeginTimeline();
+            LogicDamageEventService.BeginTimeline();
+            LogicProjectileService.BeginTimeline();
+
+            Fix64 nearbyRadius = DistanceUnitConverter.ConvertToWorld((Fix64)225);
+            Fix64 attackRange = DistanceUnitConverter.ConvertToWorld((Fix64)650);
+            Fix64 initialDistance = nearbyRadius + (attackRange - nearbyRadius) / (Fix64)16;
+            var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+            var target = CreateUnit(new Vector3((float)initialDistance, 0f, 0f), SideType.EnemySide);
+
+            var allEntities = new List<IEntityContext> { attacker, target };
+            var targeting = new SimTargetingComp(attacker, allEntities) { AggroRangeFixed = (Fix64)40f };
+            targeting.Init(attacker);
+            targeting.CurrentTarget = target;
+            attacker.TargetComp = targeting;
+            attacker.Brain = new ScriptedBrain { Attack = true };
+
+            var moveComp = new SimMoveComp();
+            moveComp.Init(attacker);
+            attacker.MoveComp = moveComp;
+
+            var weapon = new WeaponData(
+                WeaponType.Projectile,
+                (Fix64)10f,
+                (Fix64)0.8f,
+                (Fix64)650f,
+                (Fix64)700f,
+                (Fix64)0.2f,
+                (Fix64)0.3f,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                Fix64.Zero,
+                new Fix64[0]);
+            attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("ProjectileLockRegressionWeapon"));
+            var atkComp = new DirectAtkComp();
+            atkComp.Init(attacker);
+            atkComp.SetWeaponSO(null);
+            attacker.AtkComp = atkComp;
+
+            var lockBuff = new NearbyEnemyAttackLockBuff((Fix64)225f);
+            var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+            attacker.BuffComp = buffComp;
+            buffComp.Init(attacker);
+            Assert.IsTrue(buffComp.AddBuff(
+                BuffData.Create(
+                    "nearby_projectile_lock_regression",
+                    Fix64.Zero,
+                    true,
+                    1,
+                    new List<BuffCallback> { lockBuff }),
+                attacker));
+
+            EntityRegistry.Register(attacker);
+            EntityRegistry.Register(target);
+
+            listener = new LogicFrameActionListener(deltaTime =>
+            {
+                ulong frame = LogicFrameRuntime.CurrentFrame;
+                LogicDamageEventService.BeginFrame(frame);
+                buffComp.UpdateBuff(deltaTime);
+                targeting.UpdateTargeting(deltaTime);
+                LogicProjectileService.AdvanceFrame(frame, deltaTime);
+                if (attacker.CanRun(atkComp))
+                    atkComp.Attack(Fix64.Zero);
+                LogicDamageEventService.ApplyFrame(frame);
+            });
+            LogicFrameRuntime.Register(listener);
+
+            for (int i = 0; i < 30 && LogicProjectileService.ActiveCount == 0; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(1, atkComp.AttackCount, "熊孩子应在目标进入近身范围前完成起手");
+            Assert.AreEqual(1, LogicProjectileService.ActiveCount, "移动目标前必须已经提交逻辑弹道");
+            Assert.IsTrue(attacker.CanRun(atkComp), "目标位于225配表距离之外时不应锁攻");
+
+            projectileId = LogicProjectileService.LastId;
+            LogicProjectileService.BindView(projectileId);
+            projectileViewBound = true;
+            target.Position = new Vector3((float)(nearbyRadius * (Fix64)0.9f), 0f, 0f);
+
+            for (int i = 0; i < 30 && attacker.CanRun(atkComp); i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.IsFalse(attacker.CanRun(atkComp), "敌人进入225配表距离后应锁定 Brat 攻击组件");
+            Assert.AreEqual(1, LogicProjectileService.ActiveCount, "近身锁攻成立时，已射出的逻辑弹道必须仍然存在");
+            Assert.IsFalse(
+                LogicProjectileService.GetRequiredViewState(projectileId).Completed,
+                "测试必须证明近身锁攻发生在弹道命中前");
+
+            LogicProjectileViewState completedState = default;
+            int hitFrameSubmittedCount = 0;
+            int hitFrameAppliedCount = 0;
+            for (int i = 0; i < 30; i++)
+            {
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+                completedState = LogicProjectileService.GetRequiredViewState(projectileId);
+                if (!completedState.Completed)
+                    continue;
+
+                hitFrameSubmittedCount = LogicDamageEventService.LastSubmittedCount;
+                hitFrameAppliedCount = LogicDamageEventService.LastAppliedCount;
+                break;
+            }
+
+            Assert.IsTrue(completedState.Completed, "目标贴近后弹道应在测试预算内完成");
+            Assert.IsTrue(completedState.Hit, "目标贴近不应把已提交弹道判为未命中");
+            Assert.AreEqual(1, hitFrameSubmittedCount, "弹道命中帧应提交一条伤害事件");
+            Assert.AreEqual(1, hitFrameAppliedCount, "弹道命中帧应应用一条伤害事件");
+            Assert.AreEqual(1, atkComp.AttackCount, "锁攻期间不应开始第二次攻击");
+            Assert.AreEqual((Fix64)90f, target.Health.currentHealth, "已起手的远程攻击应继续发射弹道并造成伤害");
+            Assert.AreEqual(0, LogicProjectileService.ActiveCount, "弹道命中后应从活动列表移除");
+
+            LogicProjectileService.ReleaseView(projectileId);
+            projectileViewBound = false;
+        }
+        finally
+        {
+            if (listener != null && LogicFrameRuntime.IsActive)
+                LogicFrameRuntime.Unregister(listener);
+            if (projectileViewBound && LogicProjectileService.IsActive)
+                LogicProjectileService.ReleaseView(projectileId);
+            if (LogicProjectileService.IsActive)
+                LogicProjectileService.EndTimeline();
+            if (LogicDamageEventService.IsActive)
+                LogicDamageEventService.EndTimeline();
+            if (LogicEntityFrameSnapshotService.IsActive)
+                LogicEntityFrameSnapshotService.EndTimeline();
+            EntityRegistry.Clear();
+        }
     }
 
     [Test]

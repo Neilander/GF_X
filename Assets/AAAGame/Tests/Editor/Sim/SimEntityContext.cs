@@ -4,8 +4,12 @@ using UnityEngine;
 using AAAGame.Scripts.BuffSystem;
 
 /// <summary>
-/// 纯数据实体上下文：不依赖 Unity MonoBehaviour，用于测试。
+/// 最小逻辑测试替身：仅用于不依赖真实实体帧管线的组件级单元测试。
 /// </summary>
+/// <remarks>
+/// 此类型不经过 LogicEntityState、MAEntityLogicFrameSystem、实体生命周期或表现绑定。
+/// 使用此类型通过的测试，不得单独作为运行时问题已修复的依据；运行时回归必须另用真实 LogicEntityState 链路验证。
+/// </remarks>
 public class SimEntityContext : IEntityContext, ITargetable
 {
     private static int s_NextTestEntityId;

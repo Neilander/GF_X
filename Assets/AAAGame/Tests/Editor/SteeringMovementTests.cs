@@ -21,6 +21,16 @@ public class SteeringMovementTests
         for (int i = 0; i < walkable.Length; i++)
             walkable[i] = true;
         FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(64, 64, 1f, new Vector3(-32f, 0f, -32f), walkable);
+        FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
+        FlowFieldNavigationConfig config = ScriptableObject.CreateInstance<FlowFieldNavigationConfig>();
+        config.SectorSizeInCells = 4;
+        config.PortalNarrowWidthCells = 1;
+        config.FlowTileCacheLimit = 32;
+        config.WorldBuildOperationQuota = 1_000_000;
+        config.RuntimeRebuildOperationQuota = 1_000_000;
+        config.DeterministicFlowTileCommitQuota = 1_000_000;
+        config.SharedGoalBuildOperationQuota = 1_000_000;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
         SetupCombatPhaseForTests();
     }
 
@@ -557,7 +567,7 @@ public class SteeringMovementTests
     }
 
     [Test]
-    public void Combat状态_RuntimeDirty期间当Tick提交临时追击目标()
+    public void Combat状态_RuntimeDirty期间等待导航重建后再提交接近目标()
     {
         var soldier = MakeSoldier(new Vector3(-5f, 0f, 0f));
         var enemy = MakeSoldier(new Vector3(5f, 0f, 0f), SideType.EnemySide);
@@ -587,8 +597,19 @@ public class SteeringMovementTests
         brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
 
         Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
+        Assert.AreEqual(FixVector2.Zero, soldier.MoveComp.NavDirectionFixed,
+            "runtime dirty 期间不得把不可走的敌人中心作为临时追击目标");
+
+        for (int i = 0; i < 64 && FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(); i++)
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(),
+            "runtime dirty 导航重建应在测试预算内完成");
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(3, 0.3f);
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+
         Assert.AreNotEqual(FixVector2.Zero, soldier.MoveComp.NavDirectionFixed,
-            "runtime dirty 不应让已锁定敌人的小兵等待完整导航重建");
+            "导航重建完成后下一次 Combat Tick 应提交合法接近目标");
     }
 
     #endregion

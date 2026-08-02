@@ -21589,7 +21589,7 @@ public static partial class FlowFieldCrowdMovementSystem
             return true;
         }
 
-        if (!TryResolveGoalCellFixed(_world, currentTargetFramePosition, out int anchorRawGoalX, out int anchorRawGoalY)
+        if (!_world.WorldToGridFixed(currentTargetFramePosition, out int anchorRawGoalX, out int anchorRawGoalY)
             || !_world.TryGetSectorId(anchorRawGoalX, anchorRawGoalY, out _)
             || !TryResolveStartCellForReachabilityFixed(self, out int startX, out int startY, out int startIsland))
         {
@@ -22030,7 +22030,7 @@ public static partial class FlowFieldCrowdMovementSystem
         goalSectorId = -1;
 
         int rawGoalIsland = ResolveIslandIdForDiagnostics(_world, rawGoalX, rawGoalY);
-        if (rawGoalIsland == startIsland)
+        if (_world.IsWalkable(rawGoalX, rawGoalY) && rawGoalIsland == startIsland)
         {
             goalWorld = _world.GridToWorldCenterFixed(rawGoalX, rawGoalY);
             return _world.TryGetSectorId(goalX, goalY, out goalSectorId);

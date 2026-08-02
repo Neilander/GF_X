@@ -75,6 +75,211 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void Brat弹道提交后敌人近身_真实逻辑实体仍会受到伤害()
+    {
+        EnsureInGameDataModelForCombatTest();
+        GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        InGameDataModel.SetPhase(GamePhase.Defend, false);
+        Assert.AreEqual(GamePhase.Defend, (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase), "测试必须进入可攻击阶段");
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        ulong projectileId = 0;
+        bool projectileViewBound = false;
+        try
+        {
+            var attackerBrain = new ScriptedBrain { Attack = true };
+            LogicEntityState attacker = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "Unit_Brat",
+                attackerBrain,
+                new NoMoveComp(),
+                CreateBratProjectileWeaponData(),
+                out ITargetingComp attackerTargeting,
+                out IAtkComp attackerAttack);
+
+            var approachMove = new ProjectileRegressionApproachMoveComp(
+                new FixVector2(-DistanceUnitConverter.ConvertToWorld((Fix64)290), Fix64.Zero));
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(CreateBratRegressionInitialSurfaceDistance(), Fix64.Zero),
+                SideType.EnemySide,
+                "ProjectileRegressionTarget",
+                new ScriptedBrain(),
+                approachMove,
+                null,
+                out _,
+                out _);
+
+            attackerTargeting.CurrentTarget = target;
+
+            var lockBuff = new NearbyEnemyAttackLockBuff((Fix64)225);
+            Assert.IsTrue(attacker.BuffComp.AddBuff(
+                BuffData.Create(
+                    "brat_projectile_nearby_lock_regression",
+                    Fix64.Zero,
+                    true,
+                    1,
+                    new System.Collections.Generic.List<BuffCallback> { lockBuff }),
+                attacker));
+
+            Assert.IsTrue(target.IsRegisteredInLogicWorld(), "目标必须以同一 LogicEntityState 引用注册到逻辑世界");
+            Assert.IsTrue(
+                target.IsAttackTargetable(),
+                $"目标初始必须可被攻击: alive={target.Alive}, destroyed={target.IsDestroyed()}, " +
+                $"invincible={target.HasInvincibleBuff()}, ghost={target.IsGhostState}, " +
+                $"phase={InGameDataModel.GetValue(IngameValueType.Phase)}");
+            Assert.IsTrue(EntityCombatTeamHelper.IsEnemy(attacker, target), "测试双方必须属于敌对阵营");
+            Assert.AreSame(target, attackerTargeting.CurrentTarget, "Brat 首帧前必须持有目标");
+            Assert.IsTrue(attacker.CanRun(attackerAttack), "Brat 首帧前攻击组件必须可运行");
+
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+            Assert.AreEqual(1, ((DirectAtkComp)attackerAttack).AttackCount, "Brat 首帧必须开始一次真实攻击");
+
+            for (int i = 0; i < 29 && LogicProjectileService.ActiveCount == 0; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(1, LogicProjectileService.ActiveCount, "目标靠近前必须已经提交 Brat 逻辑弹道");
+            Assert.IsTrue(attacker.CanRun(attackerAttack), "目标初始位于225配表距离之外，不应锁攻");
+
+            projectileId = LogicProjectileService.LastId;
+            LogicProjectileService.BindView(projectileId);
+            projectileViewBound = true;
+            approachMove.Enabled = true;
+
+            for (int i = 0; i < 30 && attacker.CanRun(attackerAttack); i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.IsFalse(attacker.CanRun(attackerAttack), "敌人移动进入225配表距离后必须锁定 Brat 攻击组件");
+            Assert.AreEqual(1, LogicProjectileService.ActiveCount, "锁攻成立时已射出的逻辑弹道必须仍然存在");
+            Assert.IsFalse(
+                LogicProjectileService.GetRequiredViewState(projectileId).Completed,
+                "测试必须证明锁攻发生在弹道命中前");
+
+            LogicProjectileViewState completedState = default;
+            int submittedCount = 0;
+            int appliedCount = 0;
+            for (int i = 0; i < 30; i++)
+            {
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+                completedState = LogicProjectileService.GetRequiredViewState(projectileId);
+                if (!completedState.Completed)
+                    continue;
+
+                submittedCount = LogicDamageEventService.LastSubmittedCount;
+                appliedCount = LogicDamageEventService.LastAppliedCount;
+                break;
+            }
+
+            Assert.IsTrue(completedState.Completed, "Brat 弹道应在测试帧预算内完成");
+            Assert.IsTrue(completedState.Hit, "近身锁攻不应让已射出的 Brat 弹道丢失命中");
+            Assert.AreEqual(1, submittedCount, "弹道命中帧必须提交一条伤害事件");
+            Assert.AreEqual(1, appliedCount, "弹道命中帧必须应用一条伤害事件");
+            Assert.AreEqual((Fix64)92, target.HealthValue, "真实 LogicEntityState 必须受到 Brat 配表的8点伤害");
+
+            LogicProjectileService.ReleaseView(projectileId);
+            projectileViewBound = false;
+        }
+        finally
+        {
+            if (projectileViewBound && LogicProjectileService.IsActive)
+                LogicProjectileService.ReleaseView(projectileId);
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+            InGameDataModel.SetPhase(previousPhase, false);
+        }
+    }
+
+    [Test]
+    public void Brat抬手阶段敌人近身_真实逻辑实体会打断抬手且不发射弹道()
+    {
+        EnsureInGameDataModelForCombatTest();
+        GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        InGameDataModel.SetPhase(GamePhase.Defend, false);
+        Assert.AreEqual(GamePhase.Defend, (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase), "测试必须进入可攻击阶段");
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            var attackerBrain = new ScriptedBrain { Attack = true };
+            LogicEntityState attacker = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "Unit_Brat",
+                attackerBrain,
+                new NoMoveComp(),
+                CreateBratProjectileWeaponData(),
+                out ITargetingComp attackerTargeting,
+                out IAtkComp attackerAttack);
+            var directAttack = (DirectAtkComp)attackerAttack;
+
+            var approachMove = new ProjectileRegressionApproachMoveComp(
+                new FixVector2(-DistanceUnitConverter.ConvertToWorld((Fix64)290), Fix64.Zero))
+            {
+                Enabled = true,
+            };
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(CreateBratRegressionInitialSurfaceDistance(), Fix64.Zero),
+                SideType.EnemySide,
+                "WindUpInterruptTarget",
+                new ScriptedBrain(),
+                approachMove,
+                null,
+                out _,
+                out _);
+
+            attackerTargeting.CurrentTarget = target;
+
+            Assert.IsTrue(attacker.BuffComp.AddBuff(
+                BuffData.Create(
+                    "brat_windup_nearby_lock_regression",
+                    Fix64.Zero,
+                    true,
+                    1,
+                    new System.Collections.Generic.List<BuffCallback>
+                    {
+                        new NearbyEnemyAttackLockBuff((Fix64)225),
+                    }),
+                attacker));
+
+            Assert.IsTrue(target.IsRegisteredInLogicWorld(), "目标必须以同一 LogicEntityState 引用注册到逻辑世界");
+            Assert.IsTrue(
+                target.IsAttackTargetable(),
+                $"目标初始必须可被攻击: alive={target.Alive}, destroyed={target.IsDestroyed()}, " +
+                $"invincible={target.HasInvincibleBuff()}, ghost={target.IsGhostState}, " +
+                $"phase={InGameDataModel.GetValue(IngameValueType.Phase)}");
+            Assert.IsTrue(EntityCombatTeamHelper.IsEnemy(attacker, target), "测试双方必须属于敌对阵营");
+            Assert.AreSame(target, attackerTargeting.CurrentTarget, "Brat 首帧前必须持有目标");
+            Assert.IsTrue(attacker.CanRun(attackerAttack), "Brat 首帧前攻击组件必须可运行");
+
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(DirectAtkComp.AtkState.WindUp, directAttack.State, "敌人尚未进入近身范围时 Brat 应开始抬手");
+            Assert.AreEqual(1, directAttack.AttackCount, "测试必须先观察到一次真实攻击起手");
+            Assert.AreEqual(0, LogicProjectileService.ActiveCount, "抬手阶段不应提前提交弹道");
+
+            for (int i = 0; i < 8 && attacker.CanRun(attackerAttack); i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.IsFalse(attacker.CanRun(attackerAttack), "敌人进入225配表距离后必须锁定 Brat 攻击组件");
+            Assert.AreEqual(DirectAtkComp.AtkState.Idle, directAttack.State, "近身锁攻必须打断正在进行的抬手");
+
+            for (int i = 0; i < 8; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(0, LogicProjectileService.ActiveCount, "被打断的抬手不得在原命中帧补发弹道");
+            Assert.AreEqual((Fix64)100, target.HealthValue, "被打断的抬手不得造成伤害");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+            InGameDataModel.SetPhase(previousPhase, false);
+        }
+    }
+
+    [Test]
     public void PureLogicFrameEntity_ExecutesAllPhasesWithoutMAEntityView()
     {
         var entity = new PureLogicFrameEntity
@@ -793,6 +998,161 @@ public class MAEntityLogicFrameSystemTests
         LogicEntityStateStore.CommitSpawn(entityId);
         EntityRegistry.Register(state);
         return state;
+    }
+
+    private static LogicEntityState CreateProjectileRegressionUnit(
+        FixVector2 position,
+        SideType side,
+        string characterKey,
+        IControlBrain brain,
+        IMoveComp move,
+        WeaponData weaponData,
+        out ITargetingComp targeting,
+        out IAtkComp attack)
+    {
+        LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn(
+            new LogicEntitySpawnDescriptor(
+                position,
+                new FixVector2(Fix64.One, Fix64.Zero),
+                side,
+                characterKey));
+        LogicEntityState state = LogicEntityStateStore.GetRequired(entityId);
+        state.Configure(
+            null,
+            new CreaturePropertyManager(property => property switch
+            {
+                CreatureMainProperty.Health => (Fix64)100,
+                CreatureMainProperty.Speed => (Fix64)290,
+                _ => Fix64.Zero,
+            }),
+            0,
+            true,
+            brain,
+            false);
+        if (weaponData != null)
+            state.SetWeaponComp(new WeaponComp(weaponData.ToWeapon($"{characterKey}_Weapon1")));
+        state.SetMoveComp(move);
+        move.Init(state);
+        state.MoveExecutor.SetNavigationConstrained(false);
+
+        if (characterKey == "Unit_Brat")
+        {
+            targeting = new CharacterTargetingComp
+            {
+                AggroRangeFixed = (Fix64)40,
+                ForgetRangeFixed = (Fix64)40,
+            };
+            attack = new DirectAtkComp();
+        }
+        else
+        {
+            targeting = new NoTargetingComp();
+            attack = new NoAtkComp();
+        }
+
+        state.SetTargetingComp(targeting);
+        targeting.Init(state);
+        state.SetAtkComp(attack);
+        attack.Init(state);
+        if (attack is DirectAtkComp directAttack)
+            directAttack.SetWeaponSO(null);
+        LogicEntityStateStore.CommitSpawn(entityId);
+        EntityRegistry.Register(state);
+        return state;
+    }
+
+    private static void EnsureInGameDataModelForCombatTest()
+    {
+        var dataModelField = typeof(GF).GetField(
+            "<DataModel>k__BackingField",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        var current = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
+        if (current == null)
+        {
+            var gameObject = new GameObject("MAEntityLogicFrameSystemTests_DataModel");
+            current = gameObject.AddComponent<GameFramework.DataModelComponent>();
+            dataModelField?.SetValue(null, current);
+        }
+
+        var dataModelsField = typeof(GameFramework.DataModelComponent).GetField(
+            "m_DataModels",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(dataModelsField, "DataModelComponent.m_DataModels was not found.");
+        object dataModels = dataModelsField.GetValue(current);
+        if (dataModels == null || dataModels.GetType() != dataModelsField.FieldType)
+        {
+            dataModels = System.Activator.CreateInstance(dataModelsField.FieldType);
+            dataModelsField.SetValue(current, dataModels);
+        }
+
+        if (current.GetDataModel<InGameDataModel>() != null)
+            return;
+
+        var model = (InGameDataModel)System.Activator.CreateInstance(typeof(InGameDataModel), true);
+        System.Type typeIdPairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
+        Assert.NotNull(typeIdPairType, "TypeIdPair was not found.");
+        object pair = System.Activator.CreateInstance(
+            typeIdPairType,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
+            null,
+            new object[] { typeof(InGameDataModel), 0 },
+            null);
+        dataModels.GetType().GetMethod("Add")?.Invoke(dataModels, new[] { pair, model });
+    }
+
+    private static WeaponData CreateBratProjectileWeaponData()
+    {
+        return new WeaponData(
+            WeaponType.Projectile,
+            (Fix64)8,
+            (Fix64)0.8f,
+            (Fix64)650,
+            (Fix64)700,
+            (Fix64)0.2f,
+            (Fix64)0.3f,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            new Fix64[0]);
+    }
+
+    private static Fix64 CreateBratRegressionInitialSurfaceDistance()
+    {
+        Fix64 nearbyRadius = DistanceUnitConverter.ConvertToWorld((Fix64)225);
+        Fix64 attackRange = DistanceUnitConverter.ConvertToWorld((Fix64)650);
+        if (attackRange <= nearbyRadius)
+            throw new System.InvalidOperationException("Brat regression requires attack range greater than nearby lock radius.");
+        return nearbyRadius + (attackRange - nearbyRadius) / (Fix64)16;
+    }
+
+    private sealed class ProjectileRegressionApproachMoveComp : IMoveComp
+    {
+        private readonly FixVector2 m_Velocity;
+        private IEntityContext m_Context;
+
+        public ProjectileRegressionApproachMoveComp(FixVector2 velocity)
+        {
+            m_Velocity = velocity;
+        }
+
+        public bool Enabled { get; set; }
+        public bool IsMoving { get; private set; }
+        public FixVector2 NavDirectionFixed => Enabled ? m_Velocity.GetNormalized() : FixVector2.Zero;
+
+        public void Init(IEntityContext ctx) => m_Context = ctx;
+        public void Move(Fix64 deltaTime)
+        {
+            m_Context.MoveExecutor.SetInputFixed(Enabled ? m_Velocity : FixVector2.Zero);
+        }
+        public void MoveToFixed(FixVector2 destination) { }
+        public void StopMove() => Enabled = false;
+        public void CommitResolvedDisplacement(FixVector2 displacement) =>
+            IsMoving = FixVector2.SqrMagnitude(displacement) > Fix64.Zero;
+        public void SetNavTargetFixed(FixVector2 destination) { }
+        public void ShutDown() => StopMove();
+        public void Resume() { }
     }
 
     private sealed class NoMoveFactoryForTest
