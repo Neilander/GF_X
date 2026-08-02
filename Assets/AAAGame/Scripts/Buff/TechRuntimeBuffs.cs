@@ -824,6 +824,7 @@ public sealed class TimedBuffOnSpawnModule : BuffCallback
             duration: m_Duration,
             isForever: false,
             maxStack: 1,
-            modules: m_ModuleFactory()), hostEntity);
+            modules: m_ModuleFactory(),
+            startDurationOnFirstCombat: true), hostEntity);
     }
 }

@@ -13,6 +13,8 @@ namespace AAAGame.Scripts.BuffSystem
             bool isForever,
             int currentStack,
             int maxStack,
+            bool startDurationOnFirstCombat,
+            bool hasStartedDuration,
             string[] moduleTypeNames,
             long blindProgressRaw)
         {
@@ -22,6 +24,8 @@ namespace AAAGame.Scripts.BuffSystem
             IsForever = isForever;
             CurrentStack = currentStack;
             MaxStack = maxStack;
+            StartDurationOnFirstCombat = startDurationOnFirstCombat;
+            HasStartedDuration = hasStartedDuration;
             ModuleTypeNames = moduleTypeNames;
             BlindProgressRaw = blindProgressRaw;
         }
@@ -32,6 +36,8 @@ namespace AAAGame.Scripts.BuffSystem
         public bool IsForever { get; }
         public int CurrentStack { get; }
         public int MaxStack { get; }
+        public bool StartDurationOnFirstCombat { get; }
+        public bool HasStartedDuration { get; }
         public string[] ModuleTypeNames { get; }
         public long BlindProgressRaw { get; }
     }
@@ -205,7 +211,7 @@ namespace AAAGame.Scripts.BuffSystem
                     }
 
                     // 永久Buff不更新时间
-                    if (!buffData.isForever && buffData.AdvanceLogicTime(deltaTime))
+                    if (!buffData.isForever && buffData.AdvanceLogicTime(deltaTime, _hostEntity.IsOutOfCombat))
                     {
                         _expiredBuffIds.Add(buffId);
                         continue;
@@ -373,6 +379,8 @@ namespace AAAGame.Scripts.BuffSystem
                     data.isForever,
                     data.currentStack,
                     data.maxStack,
+                    data.startDurationOnFirstCombat,
+                    data.hasStartedDuration,
                     moduleTypeNames,
                     blindProgressRaw);
             }
@@ -420,6 +428,8 @@ namespace AAAGame.Scripts.BuffSystem
                 hasher.Add(data.isForever);
                 hasher.Add(data.currentStack);
                 hasher.Add(data.maxStack);
+                hasher.Add(data.startDurationOnFirstCombat);
+                hasher.Add(data.hasStartedDuration);
                 hasher.Add(data.modules.Count);
                 long blindProgressRaw = 0;
                 for (int moduleIndex = 0; moduleIndex < data.modules.Count; moduleIndex++)

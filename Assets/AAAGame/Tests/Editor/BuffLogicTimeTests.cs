@@ -14,9 +14,9 @@ public sealed class BuffLogicTimeTests
         try
         {
             for (int i = 0; i < 30; i++)
-                Assert.IsFalse(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime));
+                Assert.IsFalse(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime, false));
 
-            Assert.IsTrue(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime));
+            Assert.IsTrue(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime, false));
         }
         finally
         {
@@ -31,13 +31,74 @@ public sealed class BuffLogicTimeTests
         try
         {
             Fix64 before = buff.remainingTime;
-            Assert.IsFalse(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime));
+            Assert.IsFalse(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime, true));
             Assert.AreEqual(before, buff.remainingTime);
         }
         finally
         {
             ReferencePool.Release(buff);
         }
+    }
+
+    [Test]
+    public void SpawnTimedBuff_StartsOnFirstCombatAndDoesNotPauseAfterward()
+    {
+        BuffData buff = BuffData.Create(
+            "test_spawn_combat_duration",
+            Fix64.One,
+            false,
+            1,
+            new List<BuffCallback>(),
+            startDurationOnFirstCombat: true);
+        try
+        {
+            for (int i = 0; i < 60; i++)
+                Assert.IsFalse(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime, true));
+            Assert.AreEqual(Fix64.One.RawValue, buff.remainingTime.RawValue);
+
+            Assert.IsFalse(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime, false));
+            Assert.IsTrue(buff.hasStartedDuration);
+
+            for (int i = 0; i < 29; i++)
+                Assert.IsFalse(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime, true));
+            Assert.IsTrue(buff.AdvanceLogicTime(LogicFrameRuntime.FixedDeltaTime, true));
+        }
+        finally
+        {
+            ReferencePool.Release(buff);
+        }
+    }
+
+    [Test]
+    public void HealthDrain_DoesNotAccumulateWhileHostIsOutOfCombat()
+    {
+        var context = new SimEntityContext
+        {
+            Brain = new ScriptedBrain { Attack = true },
+        };
+        context.Health.Init((Fix64)100);
+        var attack = new SimAtkComp();
+        attack.Init(context);
+        context.AtkComp = attack;
+        var callback = new HealthDrainOverTimeBuff((Fix64)5);
+        callback.Initialize(null, context);
+
+        Fix64 initialHealth = context.HealthValue;
+        for (int i = 0; i < 60; i++)
+            callback.OnUpdate(LogicFrameRuntime.FixedDeltaTime);
+        Assert.AreEqual(initialHealth.RawValue, context.HealthValue.RawValue);
+
+        attack.Attack(Fix64.Zero);
+        context.TickOutOfCombatState(0f);
+        for (int i = 0; i < 31; i++)
+            callback.OnUpdate(LogicFrameRuntime.FixedDeltaTime);
+        Assert.AreEqual((initialHealth - (Fix64)5).RawValue, context.HealthValue.RawValue);
+
+        attack.InterruptAttack();
+        context.TickOutOfCombatState(0f);
+        for (int i = 0; i < 60; i++)
+            callback.OnUpdate(LogicFrameRuntime.FixedDeltaTime);
+        Assert.AreEqual((initialHealth - (Fix64)5).RawValue, context.HealthValue.RawValue);
     }
 
     [Test]

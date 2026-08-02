@@ -374,6 +374,91 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void CombatState_GatesSpawnTimerAndHealthDrainAcrossRealLogicFrames()
+    {
+        EnsureInGameDataModelForCombatTest();
+        GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        InGameDataModel.SetPhase(GamePhase.Defend, false);
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            LogicEntityState host = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "CombatGatedBuffHost",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out ITargetingComp targeting,
+                out _);
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(Fix64.One, Fix64.Zero),
+                SideType.EnemySide,
+                "CombatGatedBuffTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+
+            const string timedBuffId = "real_logic_combat_gated_spawn_buff";
+            Assert.IsTrue(host.BuffComp.AddBuff(
+                BuffData.Create(
+                    timedBuffId,
+                    (Fix64)2,
+                    false,
+                    1,
+                    new System.Collections.Generic.List<BuffCallback>(),
+                    startDurationOnFirstCombat: true),
+                host));
+            Assert.IsTrue(host.BuffComp.AddBuff(
+                BuffData.Create(
+                    "real_logic_combat_health_drain",
+                    Fix64.Zero,
+                    true,
+                    1,
+                    new System.Collections.Generic.List<BuffCallback>
+                    {
+                        new HealthDrainOverTimeBuff((Fix64)5),
+                    }),
+                host));
+
+            for (int i = 0; i < 90; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.IsTrue(host.IsOutOfCombat);
+            Assert.IsTrue(host.BuffComp.HasBuff(timedBuffId));
+            Assert.AreEqual((Fix64)100, host.HealthValue);
+
+            targeting.CurrentTarget = target;
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+            Assert.IsFalse(host.IsOutOfCombat);
+
+            for (int i = 0; i < 31; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+            Assert.AreEqual((Fix64)95, host.HealthValue);
+            Assert.IsTrue(host.BuffComp.HasBuff(timedBuffId));
+
+            targeting.CurrentTarget = null;
+            LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+            Assert.IsTrue(host.IsOutOfCombat);
+            for (int i = 0; i < 30; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.IsFalse(host.BuffComp.HasBuff(timedBuffId));
+            Assert.AreEqual((Fix64)95, host.HealthValue);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+            InGameDataModel.SetPhase(previousPhase, false);
+        }
+    }
+
+    [Test]
     public void BoundMAEntityView_CapturesPoseAfterCompleteLogicFrame()
     {
         LogicTimeControlService.BeginTimeline();

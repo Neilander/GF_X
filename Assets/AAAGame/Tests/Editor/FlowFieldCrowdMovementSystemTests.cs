@@ -5073,6 +5073,79 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void 战斗槽位饱和时两个近战单位的本Tick预约不得被通用占位二次改写()
+    {
+        const int width = 10;
+        const int height = 7;
+        bool[] walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        SimEntityContext target = CreateEntity(new Vector3(7.5f, 0f, 3.5f), true, 0, 0.18f);
+        target.Side = SideType.EnemySide;
+        SimEntityContext blockingCompanion = CreateEntity(target.Position, false, 0, 0.8f);
+        blockingCompanion.Side = SideType.PlayerSide;
+        SimEntityContext[] pursuers =
+        {
+            CreateEntity(new Vector3(1.5f, 0f, 2.5f), false, 0, 0.54f),
+            CreateEntity(new Vector3(1.5f, 0f, 4.5f), false, 0, 0.54f),
+        };
+
+        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
+        for (int i = 0; i < pursuers.Length; i++)
+        {
+            SimEntityContext pursuer = pursuers[i];
+            pursuer.Side = SideType.PlayerSide;
+            pursuer.TargetComp = new SimTargetingComp(pursuer, new List<IEntityContext> { target })
+            {
+                CurrentTarget = target
+            };
+
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryResolveCombatApproachPointFixed(
+                    pursuer,
+                    target,
+                    target.PositionFixed,
+                    (Fix64)1.1f,
+                    (Fix64)0.59f,
+                    (Fix64)0.55f,
+                    3,
+                    16,
+                    (Fix64)1.3f,
+                    out FixVector2 approach,
+                    out string failureReason,
+                    out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind),
+                $"第 {i} 个近战单位必须取得饱和攻击环中的接敌点。failureKind={failureKind} reason={failureReason}");
+            Assert.IsFalse(
+                FlowFieldCrowdMovementSystem.TryReserveNavigationGoalIfAvailableFixed(
+                    pursuer.LogicEntityId.Value,
+                    target.LogicEntityId.Value,
+                    approach,
+                    (Fix64)1.3f,
+                    out int blockingAgentId),
+                "测试前提要求接敌点确实已被同伴占用。");
+            Assert.AreNotEqual(0, blockingAgentId);
+
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryGetSteeringVelocityFixed(
+                    pursuer,
+                    approach,
+                    (Fix64)3.75f,
+                    out FixVector2 velocity));
+            Assert.AreNotEqual(FixVector2.Zero, velocity);
+            Assert.IsTrue(
+                FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringGoal(
+                    pursuer.LogicEntityId.Value,
+                    out Vector3 steeringGoal));
+            Assert.AreEqual(approach.x.RawValue, ((Fix64)steeringGoal.x).RawValue, "通用占位不得把战斗预约改到左右候选点。");
+            Assert.AreEqual(approach.y.RawValue, ((Fix64)steeringGoal.z).RawValue, "通用占位不得把战斗预约改到左右候选点。");
+        }
+    }
+
+    [Test]
     public void Lv2真实导航英雄靠近阻挡区时多个远程兵仍能取得攻击范围内接近点()
     {
         FlowNavigationGridAsset grid = UnityEditor.AssetDatabase.LoadAssetAtPath<FlowNavigationGridAsset>(

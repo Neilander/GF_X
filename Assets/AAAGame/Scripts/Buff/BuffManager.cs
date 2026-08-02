@@ -168,7 +168,7 @@ public class BuffManager : MonoBehaviour
             if (!buffData.isForever)
             {
                 // 添加调试日志
-                if (buffData.AdvanceLogicTime(deltaTime))
+                if (buffData.AdvanceLogicTime(deltaTime, _hostEntity.IsOutOfCombat))
                 {
                     expiredBuffs.Add(kvp.Key);
                     continue;

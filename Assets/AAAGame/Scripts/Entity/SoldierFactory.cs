@@ -166,6 +166,20 @@ public static class SoldierFactory
             modules: new List<BuffCallback>(modules));
     }
 
+    private static BuffData CreateInitialCombatTimedBuff(string id, Fix64 duration, params BuffCallback[] modules)
+    {
+        if (modules == null || modules.Length == 0)
+            throw new InvalidOperationException($"SoldierFactory.CreateInitialCombatTimedBuff failed: modules is empty. BuffId={id}.");
+
+        return BuffData.Create(
+            id: id,
+            duration: duration,
+            isForever: false,
+            maxStack: 1,
+            modules: new List<BuffCallback>(modules),
+            startDurationOnFirstCombat: true);
+    }
+
     /// <summary>
     /// Add initial buffs to list.
     /// </summary>
@@ -258,9 +272,8 @@ public static class SoldierFactory
             case UnitType.Unit_Sprinter:
             {
                 Fix64[] values = GetUniqueValues(index, 5);
-                buffList.Add(CreateInitialBuff(
+                buffList.Add(CreateInitialCombatTimedBuff(
                     "unit_sprinter_deploy_boost",
-                    false,
                     values[0] + tech.SprinterDurationDelta,
                     new PercentAttackBonusBuff(values[1] + tech.SprinterAttackPercentDelta),
                     new AttackSpeedBonusBuff(values[2] + tech.SprinterAttackSpeedPercentDelta),

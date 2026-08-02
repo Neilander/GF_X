@@ -377,6 +377,8 @@ public sealed class HealthDrainOverTimeBuff : BuffCallback, ILogicDeterministicS
         base.OnUpdate(deltaTime);
         if (hostEntity == null || !hostEntity.Alive || m_DamagePerSecond <= Fix64.Zero || deltaTime <= Fix64.Zero)
             return;
+        if (hostEntity.IsOutOfCombat)
+            return;
 
         m_ElapsedSeconds += (Fix64)deltaTime;
         while (m_ElapsedSeconds >= Fix64.One && hostEntity != null && hostEntity.Alive)

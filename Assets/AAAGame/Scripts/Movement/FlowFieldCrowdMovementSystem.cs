@@ -22242,6 +22242,9 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FixVector2 selfFramePosition = self.LogicFramePositionFixed();
         int selfId = ResolveAgentId(self);
+        if (HasExactNavigationGoalReservationFixed(selfId, goalPosition))
+            return goalPosition;
+
         Fix64 selfRadius = Fix64.Max(ResolveCollisionRadiusFixed(self), agent.RadiusFixed);
         Fix64 requiredDistance = Fix64.Max(
             selfRadius * (Fix64)2 + (Fix64)NavigationGoalOccupancyPadding,
@@ -22408,6 +22411,22 @@ public static partial class FlowFieldCrowdMovementSystem
                 NavigationGoalReservations.RemoveAt(i);
         }
         NavigationGoalReservations.Add(new NavigationGoalReservation(selfId, point, requiredDistance));
+    }
+
+    private static bool HasExactNavigationGoalReservationFixed(int selfId, FixVector2 point)
+    {
+        for (int i = 0; i < NavigationGoalReservations.Count; i++)
+        {
+            NavigationGoalReservation reservation = NavigationGoalReservations[i];
+            if (reservation.SelfId == selfId
+                && reservation.Point.x.RawValue == point.x.RawValue
+                && reservation.Point.y.RawValue == point.y.RawValue)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsNavigationGoalOccupiedByOtherFixed(

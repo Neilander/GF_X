@@ -43,12 +43,29 @@ public class BuffData : IReference
     /// </summary>
     public Fix64 remainingTime;
 
-    public bool AdvanceLogicTime(Fix64 deltaTime)
+    /// <summary>
+    /// 是否等待宿主首次进入战斗后才开始计时。
+    /// </summary>
+    public bool startDurationOnFirstCombat;
+
+    /// <summary>
+    /// 持续时间是否已经开始推进。开始后不再因脱战暂停。
+    /// </summary>
+    public bool hasStartedDuration;
+
+    public bool AdvanceLogicTime(Fix64 deltaTime, bool isHostOutOfCombat)
     {
         if (deltaTime <= Fix64.Zero)
             throw new ArgumentOutOfRangeException(nameof(deltaTime), "Buff logic delta must be positive.");
         if (isForever)
             return false;
+
+        if (startDurationOnFirstCombat && !hasStartedDuration)
+        {
+            if (isHostOutOfCombat)
+                return false;
+            hasStartedDuration = true;
+        }
 
         remainingTime -= deltaTime;
         return remainingTime <= Fix64.Zero;
@@ -64,6 +81,8 @@ public class BuffData : IReference
         modules?.Clear();
         modules = null;
         remainingTime = Fix64.Zero;
+        startDurationOnFirstCombat = false;
+        hasStartedDuration = false;
     }
 
     public static BuffData Create()
@@ -71,7 +90,13 @@ public class BuffData : IReference
         return ReferencePool.Acquire<BuffData>();
     }
 
-    public static BuffData Create(string id, Fix64 duration, bool isForever, int maxStack, List<BuffCallback> modules)
+    public static BuffData Create(
+        string id,
+        Fix64 duration,
+        bool isForever,
+        int maxStack,
+        List<BuffCallback> modules,
+        bool startDurationOnFirstCombat = false)
     {
         BuffData buffData = Create();
         buffData.id = id;
@@ -81,6 +106,8 @@ public class BuffData : IReference
         buffData.currentStack = 1;
         buffData.modules = modules;
         buffData.remainingTime = duration;
+        buffData.startDurationOnFirstCombat = startDurationOnFirstCombat;
+        buffData.hasStartedDuration = !startDurationOnFirstCombat;
         return buffData;
     }
 }
