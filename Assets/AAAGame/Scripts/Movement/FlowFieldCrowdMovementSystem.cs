@@ -2274,13 +2274,20 @@ public static partial class FlowFieldCrowdMovementSystem
         public int PortalGraphAnalyticNonClearRejectCount;
         public void FreezeAuthorityGridMetadata()
         {
+            FreezeAuthorityGridMetadata(ResolveAgentTypeRadiusFixed(AgentTypeId).RawValue);
+        }
+
+        public void FreezeAuthorityGridMetadata(long agentRadiusFixedRaw)
+        {
             CellSizeGridRaw = NavigationWorld.FloatToGridRaw(CellSize);
             if (CellSizeGridRaw <= 0)
                 throw new InvalidOperationException("WorldBuildJob authority cell size must be positive.");
+            if (agentRadiusFixedRaw <= 0)
+                throw new InvalidOperationException("WorldBuildJob authority agent radius must be positive.");
             EncodedCenterClearanceFixedRaw = ((Fix64)EncodedCenterClearance).RawValue;
             OriginXGridRaw = NavigationWorld.FloatToGridRaw(Origin.x);
             OriginZGridRaw = NavigationWorld.FloatToGridRaw(Origin.z);
-            AgentRadiusFixedRaw = ResolveAgentTypeRadiusFixed(AgentTypeId).RawValue;
+            AgentRadiusFixedRaw = agentRadiusFixedRaw;
             HasAuthorityGridMetadata = true;
         }
 
@@ -3157,6 +3164,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
     public static FlowNavigationGridAsset.DerivedNavigationData BuildDerivedNavigationDataForAsset(
         int agentTypeId,
+        Fix64 agentRadiusFixed,
         int width,
         int height,
         float cellSize,
@@ -3175,7 +3183,8 @@ public static partial class FlowFieldCrowdMovementSystem
             walkableMask,
             cellNavAnchors,
             costField,
-            neighborTraversalMask);
+            neighborTraversalMask,
+            agentRadiusOverrideFixed: agentRadiusFixed);
         WorldBuildJob job = new WorldBuildJob
         {
             AgentTypeId = source.AgentTypeId,
@@ -3195,7 +3204,7 @@ public static partial class FlowFieldCrowdMovementSystem
             Reason = "editor-derived-navigation-bake"
         };
         job.CellNavAnchorsFixedXZ = CreateNavigationAnchorFixedXZSnapshot(job.CellNavAnchors);
-        job.FreezeAuthorityGridMetadata();
+        job.FreezeAuthorityGridMetadata(source.AgentRadiusFixedRaw);
 
         CreateWorldBuildShell(job);
         ProcessWorldBuildObstacles(job, long.MaxValue, forceComplete: true);
@@ -3228,7 +3237,8 @@ public static partial class FlowFieldCrowdMovementSystem
         long originXGridRaw = 0,
         long originZGridRaw = 0,
         FixVector2[] cellNavAnchorsFixedXZ = null,
-        bool hasFixedAuthorityPayload = false)
+        bool hasFixedAuthorityPayload = false,
+        Fix64? agentRadiusOverrideFixed = null)
     {
         if (agentTypeId == MAEntity.UnknownNavAgentTypeId)
             throw new InvalidOperationException("CreateTerrainOverride failed: explicit agentTypeId is Unknown.");
@@ -3278,7 +3288,9 @@ public static partial class FlowFieldCrowdMovementSystem
         }
 
         bool hasAgentTypeEncodedClearance = derivedNavigationData != null || agentTypeId != AnyAgentTypeId;
-        Fix64 agentRadiusFixed = ResolveAgentTypeRadiusFixed(agentTypeId);
+        Fix64 agentRadiusFixed = agentRadiusOverrideFixed ?? ResolveAgentTypeRadiusFixed(agentTypeId);
+        if (agentRadiusFixed <= Fix64.Zero)
+            throw new InvalidOperationException($"CreateTerrainOverride failed: agent radius must be positive. agentType={agentTypeId}, raw={agentRadiusFixed.RawValue}.");
         Fix64 encodedCenterClearanceFixed = hasAgentTypeEncodedClearance
             ? Fix64.Max(
                 Fix64.Zero,
@@ -3289,7 +3301,7 @@ public static partial class FlowFieldCrowdMovementSystem
         float encodedCenterClearance = hasFixedAuthorityPayload
             ? (float)encodedCenterClearanceFixed
             : hasAgentTypeEncodedClearance
-                ? Mathf.Max(0f, ResolveAgentTypeRadius(agentTypeId) - cellSize * 0.2f)
+                ? Mathf.Max(0f, (float)agentRadiusFixed - cellSize * 0.2f)
                 : 0f;
 
         return new TestTerrainOverride

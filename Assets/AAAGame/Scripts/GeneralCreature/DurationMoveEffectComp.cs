@@ -14,6 +14,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
     private readonly List<int> _sortedPullKeys = new List<int>();
     private Dictionary<int, PullEffect> _pullEffects;
     private int _pullIndex;
+    private int _activeOutgoingPullTetherCount;
     private FixVector2 _displacementVelocity;
     private Fix64 _lossOfBalanceElapsed;
     private Fix64 _worldFriction;
@@ -26,6 +27,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
 
     public bool IsInLossOfBalance => _isInLossOfBalance;
     public FixVector2 DisplacementVelocity => _displacementVelocity;
+    public bool HasActiveOutgoingPullTether => _activeOutgoingPullTetherCount > 0;
 
     public void Init(IEntityContext ctx)
     {
@@ -36,6 +38,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         _timedOverrideEffects = new Dictionary<int, TimedMoveEffect>();
         _pullEffects = new Dictionary<int, PullEffect>();
         _pullIndex = 0;
+        _activeOutgoingPullTetherCount = 0;
         _displacementVelocity = FixVector2.Zero;
         _lossOfBalanceElapsed = Fix64.Zero;
         _worldFriction = Fix64.Zero;
@@ -77,7 +80,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
     {
         _timedAdditionalEffects.Clear();
         _timedOverrideEffects.Clear();
-        _pullEffects.Clear();
+        ClearPullEffects();
         ExitLossOfBalance();
         _ctx?.MoveExecutor?.SetMovementMode(MovementMode.Normal);
     }
@@ -114,6 +117,8 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
             return false;
         if (!EntityRegistry.TryGet(sourceEntityId, out IEntityContext source) || !source.Alive)
             throw new InvalidOperationException($"Pull source entity {sourceEntityId.Value} is not active.");
+        if (source.DurationMoveEffectComp == null)
+            throw new InvalidOperationException($"Pull source entity {sourceEntityId.Value} has no displacement component.");
 
         if (!DisplacementForceUtility.TryResolvePull(
                 strengthLevel,
@@ -135,8 +140,28 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         _pullIndex = checked(_pullIndex + 1);
         _pullEffects.Add(
             _pullIndex,
-            new PullEffect(sourceEntityId, duration, acceleration, initialDistance));
+            new PullEffect(
+                sourceEntityId,
+                source.DurationMoveEffectComp,
+                duration,
+                acceleration,
+                initialDistance));
+        source.DurationMoveEffectComp.RegisterOutgoingPullTether();
         return true;
+    }
+
+    public void RegisterOutgoingPullTether()
+    {
+        RequireInitialized();
+        _activeOutgoingPullTetherCount = checked(_activeOutgoingPullTetherCount + 1);
+    }
+
+    public void ReleaseOutgoingPullTether()
+    {
+        RequireInitialized();
+        if (_activeOutgoingPullTetherCount <= 0)
+            throw new InvalidOperationException("Outgoing pull tether count is already zero.");
+        _activeOutgoingPullTetherCount--;
     }
 
     public void CommitStaticCollision(FixVector2 firstHitNormal)
@@ -254,6 +279,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         hasher.Add(_overrideIndex);
         WriteEffects(hasher, _timedOverrideEffects);
         hasher.Add(_pullIndex);
+        hasher.Add(_activeOutgoingPullTetherCount);
         hasher.Add(_displacementVelocity.x.RawValue);
         hasher.Add(_displacementVelocity.y.RawValue);
         hasher.Add(_lossOfBalanceElapsed.RawValue);
@@ -311,7 +337,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
             PullEffect effect = _pullEffects[effectId];
             if (!EntityRegistry.TryGet(effect.SourceEntityId, out IEntityContext source) || !source.Alive)
             {
-                _pullEffects.Remove(effectId);
+                RemovePullEffect(effectId);
                 continue;
             }
 
@@ -330,7 +356,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
             activePullCount++;
             effect.RemainingDuration -= deltaTime;
             if (effect.RemainingDuration <= Fix64.Zero)
-                _pullEffects.Remove(effectId);
+                RemovePullEffect(effectId);
         }
 
         _displacementVelocity += pullAcceleration * deltaTime;
@@ -393,7 +419,7 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
 
     private void ExitLossOfBalance()
     {
-        _pullEffects?.Clear();
+        ClearPullEffects();
         _displacementVelocity = FixVector2.Zero;
         _lossOfBalanceElapsed = Fix64.Zero;
         _worldFriction = Fix64.Zero;
@@ -421,6 +447,22 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         _sortedPullKeys.Clear();
         _sortedPullKeys.AddRange(_pullEffects.Keys);
         _sortedPullKeys.Sort();
+    }
+
+    private void ClearPullEffects()
+    {
+        FillSortedPullKeys();
+        for (int i = 0; i < _sortedPullKeys.Count; i++)
+            RemovePullEffect(_sortedPullKeys[i]);
+    }
+
+    private void RemovePullEffect(int effectId)
+    {
+        if (!_pullEffects.TryGetValue(effectId, out PullEffect effect))
+            throw new InvalidOperationException($"Pull effect {effectId} is not active.");
+
+        _pullEffects.Remove(effectId);
+        effect.SourceDisplacement.ReleaseOutgoingPullTether();
     }
 
     private static FixVector2 GetFramePosition(IEntityContext entity)
@@ -451,17 +493,21 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
     {
         public PullEffect(
             LogicEntityId sourceEntityId,
+            IDurationMoveEffectComp sourceDisplacement,
             Fix64 remainingDuration,
             Fix64 baseAcceleration,
             Fix64 initialDistance)
         {
             SourceEntityId = sourceEntityId;
+            SourceDisplacement = sourceDisplacement
+                                 ?? throw new ArgumentNullException(nameof(sourceDisplacement));
             RemainingDuration = remainingDuration;
             BaseAcceleration = baseAcceleration;
             InitialDistance = initialDistance;
         }
 
         public LogicEntityId SourceEntityId { get; }
+        public IDurationMoveEffectComp SourceDisplacement { get; }
         public Fix64 RemainingDuration;
         public Fix64 BaseAcceleration { get; }
         public Fix64 InitialDistance { get; }

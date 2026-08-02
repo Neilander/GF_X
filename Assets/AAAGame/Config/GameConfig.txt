@@ -20,15 +20,15 @@
 	BuildingRecycleRefundRate	回收建筑返还资源百分比	50
 	BaseCriticalDamageRate	基础暴击伤害百分比	50
 	MinimumDamagePerHit	单次伤害下限	1
-	KnockbackForceLevelM1	-1级推力	3
-	KnockbackForceLevel0	0级推力	8
-	KnockbackForceLevel1	1级及以上推力	12
-	PullForceLevelM1	-1级拉力	5
-	PullForceLevel0	0级拉力	25
-	PullForceLevel1	1级及以上拉力	100
+	KnockbackForceLevelM1	-1级推力	100
+	KnockbackForceLevel0	0级推力	300
+	KnockbackForceLevel1	1级及以上推力	450
+	PullForceLevelM1	-1级拉力	200
+	PullForceLevel0	0级拉力	800
+	PullForceLevel1	1级及以上拉力	3000
 	PullDurationLevelM1	-1级拉力作用时间	0.4
 	PullDurationLevel0	0级及以上拉力作用时间	1
-	Friction	摩擦力	12
+	Friction	摩擦力	400
 	DefendPhaseEnemyArriveInterval	防御阶段出怪间隔	0.8
 	DefendPhaseEnemyMinSpeed	防御阶段出怪移速最小值	500
 	DefendPhaseEnemyEndlessGrowthRate	防御阶段无尽出怪增长率	1.2

@@ -28,6 +28,14 @@ public class DurationMoveEffectTests
         return ctx;
     }
 
+    private static DurationMoveEffectComp AttachDisplacement(SimEntityContext ctx)
+    {
+        var displacement = new DurationMoveEffectComp();
+        displacement.Init(ctx);
+        ctx.DurationMoveEffectComp = displacement;
+        return displacement;
+    }
+
     [Test]
     public void 持续击飞效果覆盖正常移动()
     {
@@ -200,17 +208,17 @@ public class DurationMoveEffectTests
         Assert.IsTrue(DisplacementForceUtility.TryResolveKnockbackVelocity((Fix64)3, (Fix64)2, out Fix64 level1));
         Assert.IsFalse(DisplacementForceUtility.TryResolveKnockbackVelocity(Fix64.Zero, (Fix64)2, out Fix64 rejected));
 
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)3).RawValue, levelM1.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)8).RawValue, level0.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)12).RawValue, level1.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)300).RawValue, levelM1.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)800).RawValue, level0.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)1200).RawValue, level1.RawValue);
         Assert.AreEqual(Fix64.Zero, rejected);
 
         Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)1, (Fix64)2, out Fix64 pullM1, out Fix64 durationM1));
         Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)2, (Fix64)2, out Fix64 pull0, out Fix64 duration0));
         Assert.IsTrue(DisplacementForceUtility.TryResolvePull((Fix64)3, (Fix64)2, out Fix64 pull1, out Fix64 duration1));
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)5).RawValue, pullM1.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)25).RawValue, pull0.RawValue);
-        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)100).RawValue, pull1.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)500).RawValue, pullM1.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)2500).RawValue, pull0.RawValue);
+        Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)10000).RawValue, pull1.RawValue);
         Assert.AreEqual(
             DistanceUnitConverter.ReadRequiredPositiveFixedConfig(DisplacementForceUtility.PullDurationLevelM1Key).RawValue,
             durationM1.RawValue);
@@ -234,7 +242,7 @@ public class DurationMoveEffectTests
 
         Assert.IsTrue(effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), (Fix64)3));
         Assert.IsTrue(effectComp.TryApplyKnockback(new FixVector2(Fix64.One, Fix64.Zero), (Fix64)3));
-        Fix64 oneImpulse = DistanceUnitConverter.ConvertToWorld((Fix64)12);
+        Fix64 oneImpulse = DistanceUnitConverter.ConvertToWorld((Fix64)1200);
         Assert.AreEqual((oneImpulse + oneImpulse).RawValue, effectComp.DisplacementVelocity.x.RawValue);
         Assert.IsFalse(ctx.CanRun(ctx.AtkComp), "失衡期间攻击组件必须被锁定");
 
@@ -294,10 +302,43 @@ public class DurationMoveEffectTests
     }
 
     [Test]
+    public void 高压水枪手一级推力对中型单位产生可见位移()
+    {
+        SimEntityContext target = CreateContext();
+        var effectComp = new DurationMoveEffectComp();
+        effectComp.Init(target);
+        var executor = (SimMoveExecutor)target.MoveExecutor;
+
+        Assert.IsTrue(effectComp.TryApplyKnockback(
+            new FixVector2(Fix64.One, Fix64.Zero),
+            Fix64.One));
+        Fix64 initialVelocity = effectComp.DisplacementVelocity.x;
+        Fix64 friction = DisplacementForceUtility.ReadWorldFriction();
+        int frameCount = 0;
+        while (effectComp.IsInLossOfBalance && frameCount < 1000)
+        {
+            effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+            executor.Execute((float)LogicFrameRuntime.FixedDeltaTime);
+            frameCount++;
+        }
+
+        Fix64 mediumUnitRadius = DistanceUnitConverter.ConvertToWorld((Fix64)22);
+        Assert.IsFalse(effectComp.IsInLossOfBalance, "推力应在摩擦作用下结束");
+        Assert.GreaterOrEqual(
+            executor.Position.x,
+            (float)mediumUnitRadius,
+            $"一级推力命中二级重量单位后应产生可见位移。" +
+            $" initialVelocity={(float)initialVelocity:F6}, friction={(float)friction:F6}," +
+            $" frames={frameCount}, displacement={executor.Position.x:F6}," +
+            $" mediumRadius={(float)mediumUnitRadius:F6}");
+    }
+
+    [Test]
     public void 单条拉力按当前距离与初始距离四次方衰减()
     {
         SimEntityContext source = CreateContext();
         source.Position = Vector3.zero;
+        DurationMoveEffectComp sourceEffectComp = AttachDisplacement(source);
         SimEntityContext target = CreateContext();
         target.Position = new Vector3(2f, 0f, 0f);
         var effectComp = new DurationMoveEffectComp();
@@ -306,6 +347,7 @@ public class DurationMoveEffectTests
         EntityRegistry.Register(target);
 
         Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        Assert.IsTrue(sourceEffectComp.HasActiveOutgoingPullTether);
         target.Position = new Vector3(1.65f, 0f, 0f);
         effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
 
@@ -314,10 +356,10 @@ public class DurationMoveEffectTests
         Fix64 currentDistance = (Fix64)1.65f - sourceRadius;
         Fix64 ratio = currentDistance / initialDistance;
         Fix64 ratioSquared = ratio * ratio;
-        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)100)
+        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)10000)
                              * ratioSquared
                              * ratioSquared;
-        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)12);
+        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)1200);
         Fix64 expectedSpeed = (acceleration - friction) * LogicFrameRuntime.FixedDeltaTime;
         Assert.That(
             Fix64.Abs(effectComp.DisplacementVelocity.x).RawValue,
@@ -329,6 +371,7 @@ public class DurationMoveEffectTests
     {
         SimEntityContext source = CreateContext();
         source.Position = Vector3.zero;
+        DurationMoveEffectComp sourceEffectComp = AttachDisplacement(source);
         SimEntityContext target = CreateContext();
         target.Position = new Vector3(2f, 0f, 0f);
         var effectComp = new DurationMoveEffectComp();
@@ -337,6 +380,7 @@ public class DurationMoveEffectTests
         EntityRegistry.Register(target);
 
         Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        Assert.IsTrue(sourceEffectComp.HasActiveOutgoingPullTether);
         target.Position = new Vector3(1.3f, 0f, 0f);
         effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
 
@@ -353,6 +397,7 @@ public class DurationMoveEffectTests
     {
         SimEntityContext source = CreateContext();
         source.Position = Vector3.zero;
+        DurationMoveEffectComp sourceEffectComp = AttachDisplacement(source);
         SimEntityContext target = CreateContext();
         target.Position = new Vector3(2f, 0f, 0f);
         var effectComp = new DurationMoveEffectComp();
@@ -362,11 +407,12 @@ public class DurationMoveEffectTests
 
         Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
         Assert.IsTrue(effectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        Assert.IsTrue(sourceEffectComp.HasActiveOutgoingPullTether);
         target.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)4);
         effectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
 
-        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)100) * (Fix64)2;
-        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)12);
+        Fix64 acceleration = DistanceUnitConverter.ConvertToWorld((Fix64)10000) * (Fix64)2;
+        Fix64 friction = DistanceUnitConverter.ConvertToWorld((Fix64)1200);
         Fix64 expectedSpeed = (acceleration - friction) * LogicFrameRuntime.FixedDeltaTime;
         Assert.That(
             Fix64.Abs(effectComp.DisplacementVelocity.x).RawValue,
@@ -382,6 +428,47 @@ public class DurationMoveEffectTests
         var tethers = new System.Collections.Generic.List<DisplacementPullTetherState>();
         effectComp.CopyActivePullTethers(tethers);
         Assert.AreEqual(0, tethers.Count);
+        Assert.IsFalse(sourceEffectComp.HasActiveOutgoingPullTether);
+    }
+
+    [Test]
+    public void 多条拉力弹道分别结束_最后一条消失后才释放来源门控()
+    {
+        SimEntityContext source = CreateContext();
+        source.Position = Vector3.zero;
+        DurationMoveEffectComp sourceEffectComp = AttachDisplacement(source);
+        SimEntityContext target = CreateContext();
+        target.Position = new Vector3(2f, 0f, 0f);
+        var targetEffectComp = new DurationMoveEffectComp();
+        targetEffectComp.Init(target);
+        EntityRegistry.Register(source);
+        EntityRegistry.Register(target);
+
+        Assert.IsTrue(targetEffectComp.TryStartPull(source.LogicEntityId, (Fix64)1));
+        Assert.IsTrue(targetEffectComp.TryStartPull(source.LogicEntityId, (Fix64)3));
+        Assert.IsTrue(sourceEffectComp.HasActiveOutgoingPullTether);
+
+        for (int i = 0; i < 13; i++)
+            targetEffectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+
+        var tethers = new System.Collections.Generic.List<DisplacementPullTetherState>();
+        targetEffectComp.CopyActivePullTethers(tethers);
+        Assert.AreEqual(1, tethers.Count, "短持续时间弹道应先结束");
+        Assert.IsTrue(
+            sourceEffectComp.HasActiveOutgoingPullTether,
+            "仍有长持续时间弹道时必须保持来源攻击门控");
+
+        int remainingFrames = 0;
+        while (sourceEffectComp.HasActiveOutgoingPullTether && remainingFrames < 30)
+        {
+            targetEffectComp.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+            remainingFrames++;
+        }
+
+        Assert.Less(remainingFrames, 30);
+        Assert.IsFalse(
+            sourceEffectComp.HasActiveOutgoingPullTether,
+            "最后一条拉力弹道结束后必须释放来源攻击门控");
     }
 
     [Test]
@@ -457,7 +544,7 @@ public class DurationMoveEffectTests
                 (Fix64)3,
                 properties.GetProperty(CreatureMainProperty.WeightLevel),
                 out Fix64 heavierVelocity));
-            Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)8).RawValue, heavierVelocity.RawValue);
+            Assert.AreEqual(DistanceUnitConverter.ConvertToWorld((Fix64)800).RawValue, heavierVelocity.RawValue);
 
             Assert.IsTrue(buffComp.RemoveBuff("test_level_tag_heavy_stride"));
             Assert.AreEqual(((Fix64)2).RawValue, properties.GetProperty(CreatureMainProperty.WeightLevel).RawValue);

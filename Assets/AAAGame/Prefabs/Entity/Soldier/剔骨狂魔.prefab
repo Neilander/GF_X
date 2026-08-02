@@ -1,5 +1,102 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &301753037064204501
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2038600484185535079}
+  - component: {fileID: 7400340762089296749}
+  - component: {fileID: 3291541709204683302}
+  m_Layer: 9
+  m_Name: HurtBox
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2038600484185535079
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 301753037064204501}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3403938224521359879}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &7400340762089296749
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 301753037064204501}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.9, y: 1.94, z: 0.9}
+  m_Center: {x: 0, y: 0.95, z: 0}
+--- !u!114 &3291541709204683302
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 301753037064204501}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab604c6ec8a0c435cb15ae12cd8c5dac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!1 &3651698041881830791
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6080456458166887484}
+  m_Layer: 0
+  m_Name: ProjectileOrigin
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6080456458166887484
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3651698041881830791}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.096345305, y: 0.9139188, z: 0.17450604}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 8301343033645319953}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7058847922487200557
 GameObject:
   m_ObjectHideFlags: 0
@@ -32,6 +129,38 @@ Transform:
   - {fileID: 5232299819797320001}
   m_Father: {fileID: 3403938224521359879}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &7191367243506596549
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8301343033645319953}
+  m_Layer: 0
+  m_Name: PresentationSockets
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8301343033645319953
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7191367243506596549}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 6080456458166887484}
+  m_Father: {fileID: 3403938224521359879}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &8295926571250896707
 GameObject:
   m_ObjectHideFlags: 0
@@ -45,6 +174,7 @@ GameObject:
   - component: {fileID: -1701285708358209356}
   - component: {fileID: 3880993171114316422}
   - component: {fileID: 2566636958249431468}
+  - component: {fileID: 2462324096320400643}
   m_Layer: 14
   m_Name: "\u5254\u9AA8\u72C2\u9B54"
   m_TagString: Untagged
@@ -66,6 +196,8 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1364757851595237837}
+  - {fileID: 8301343033645319953}
+  - {fileID: 2038600484185535079}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!95 &-7543852311272609006
@@ -128,20 +260,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   onlyPlayerSide: 1
-  allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
   alwaysEmitTrail: 0
   clearTrailWhenAlwaysEmitStarts: 1
   clearTrailBeforeAttack: 1
   restartAlwaysTrailOnAttack: 1
-  weaponAnchor: {fileID: 2092293645222156367}
-  trailPoint: {fileID: 2092293645222156367}
-  autoCreateTrailPoint: 1
-  handLocalOffset: {x: 0, y: 0.38, z: 0}
-  fallbackLocalCenter: {x: 0.35, y: 1.15, z: 0.45}
-  useProceduralFallback: 1
-  fallbackSwingWidth: 0.9
-  fallbackSwingHeight: 0.42
   trailTime: 0.18
   startWidth: 0.43
   endWidth: 0.08
@@ -190,6 +313,25 @@ MonoBehaviour:
   sparkParticleCount: 26
   sparkColor: {r: 1, g: 0.46, b: 0.12, a: 0.9}
   sparkSpeed: 2.1
+--- !u!114 &2462324096320400643
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8295926571250896707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7d4bd18e9e6b8e4bb6453d7fca619e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  displayRoot: {fileID: 1364757851595237837}
+  sizeReferenceRenderer: {fileID: 8761888731144788439}
+  animator: {fileID: -7543852311272609006}
+  projectileOrigin: {fileID: 6080456458166887484}
+  weaponAnchor: {fileID: 2092293645222156367}
+  trailPoint: {fileID: 2092293645222156367}
+  placeholder: 0
 --- !u!1001 &5698854029042480810
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -307,7 +449,7 @@ TrailRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.18
+        value: 0.62350005
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -316,7 +458,7 @@ TrailRenderer:
         outWeight: 0
       - serializedVersion: 3
         time: 1
-        value: 0.02
+        value: 0.116000004
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -328,8 +470,8 @@ TrailRenderer:
       m_RotationOrder: 4
     colorGradient:
       serializedVersion: 2
-      key0: {r: 0.040850822, g: 0.9622642, b: 0.16222121, a: 0.95}
-      key1: {r: 1, g: 0.0047169924, b: 0.1286561, a: 1}
+      key0: {r: 1, g: 0.003921569, b: 0.12941177, a: 0.95}
+      key1: {r: 0.039215688, g: 0.9607843, b: 0.16078432, a: 1}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -353,7 +495,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: 0
+      m_ColorSpace: -1
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2
@@ -363,10 +505,10 @@ TrailRenderer:
     textureScale: {x: 1, y: 1}
     shadowBias: 0.5
     generateLightingData: 0
-  m_MinVertexDistance: 0.02
+  m_MinVertexDistance: 0.11
   m_MaskInteraction: 0
   m_Autodestruct: 0
-  m_Emitting: 1
+  m_Emitting: 0
   m_ApplyActiveColorSpace: 1
 --- !u!4 &2092293645222156367 stripped
 Transform:
@@ -376,5 +518,10 @@ Transform:
 --- !u!4 &5232299819797320001 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 4d1148b8100c96c4bbb8da58451fe7d1, type: 3}
+  m_PrefabInstance: {fileID: 5698854029042480810}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &8761888731144788439 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 3931113520724406141, guid: 4d1148b8100c96c4bbb8da58451fe7d1, type: 3}
   m_PrefabInstance: {fileID: 5698854029042480810}
   m_PrefabAsset: {fileID: 0}

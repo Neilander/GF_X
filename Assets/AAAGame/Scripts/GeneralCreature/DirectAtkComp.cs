@@ -497,6 +497,8 @@ public void Attack(Fix64 deltaTime)
     {
         if (_hasAttackStartFrame && _lastAttackStartFrame == currentFrame)
             return;
+        if (!CanStartAttackFromBuffs())
+            return;
 
         if (_ctx.Brain == null)
         {
@@ -578,6 +580,17 @@ public void Attack(Fix64 deltaTime)
                 $"[{_ctx.CharacterKey}] → WindUp 第{AttackCount}次攻击 目标={target.CharacterKey} dist={(float)dist:F2} range={(float)range:F2} " +
                 $"frames={_schedule.StartFrame}/{_schedule.HitFrame}/{_schedule.RecoveryEndFrame}/{_schedule.ReadyFrame}");
         }
+    }
+
+    private bool CanStartAttackFromBuffs()
+    {
+        foreach (BuffCallback module in GetBuffModuleSnapshot())
+        {
+            if (!module.CanStartAttack())
+                return false;
+        }
+
+        return true;
     }
 
     private void DealDamage()

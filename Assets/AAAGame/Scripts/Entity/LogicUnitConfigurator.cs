@@ -176,6 +176,24 @@ public static class LogicUnitConfigurator
             throw new InvalidOperationException($"LogicUnitConfigurator.ConfigureDefendEnemySpawnSpeed failed: speed buff was rejected. entity={state.EntityId.Value}.");
     }
 
+    public static bool ReleaseDefendEnemySpawnSpeed(LogicEntityState state)
+    {
+        if (state == null)
+            throw new ArgumentNullException(nameof(state));
+        if (state.BuffComp == null)
+            throw new InvalidOperationException($"LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed failed: entity {state.EntityId.Value} has no BuffComp.");
+        if (!state.BuffComp.HasBuff(DefendSpeedBuffId))
+            return false;
+        if (state.Side != SideType.EnemySide)
+        {
+            throw new InvalidOperationException(
+                $"LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed failed: speed override exists on non-enemy entity {state.EntityId.Value}.");
+        }
+        if (!state.BuffComp.RemoveBuff(DefendSpeedBuffId))
+            throw new InvalidOperationException($"LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed failed: removal was rejected. entity={state.EntityId.Value}.");
+        return true;
+    }
+
     public static void ConfigureTargetingModeForSpawn(
         LogicEntityState state,
         EntityParams entityParams,

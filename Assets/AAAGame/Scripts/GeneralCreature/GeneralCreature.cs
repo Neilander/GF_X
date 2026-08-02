@@ -6,6 +6,7 @@ using UnityGameFramework.Runtime;
 public class GeneralCreature : EntityBase, ITargetable
 {
     protected virtual bool InitializeDefaultTauntLevelOnShow => true;
+    protected virtual bool RequireUnitPresentationRuntime => true;
     public SideType Side { get; protected set; }
     public bool Alive { get; set; }
     //public ITargetable Instigator { get; set; }
@@ -15,6 +16,7 @@ public class GeneralCreature : EntityBase, ITargetable
 
     public Transform display { get; protected set; }
     public Animator animator { get; protected set; }
+    public EntityPresentationBindings PresentationBindings { get; private set; }
 
     /// <summary>
     /// 嘲讽等级：目标选择时优先攻击等级高的。可被 Buff 加减。
@@ -26,54 +28,21 @@ public class GeneralCreature : EntityBase, ITargetable
 
     private HurtBox hurtBox;
 
-    private static Animator ResolveAnimator(Transform root, Transform display)
-    {
-        // 优先根节点（实体壳）上有控制器的 Animator
-        var rootAnimator = root != null ? root.GetComponent<Animator>() : null;
-        if (rootAnimator != null && rootAnimator.runtimeAnimatorController != null)
-            return rootAnimator;
-
-        // 其次 Display 子树中有控制器的 Animator（通常是模型本体）
-        if (display != null)
-        {
-            var displayAnimators = display.GetComponentsInChildren<Animator>(true);
-            for (int i = 0; i < displayAnimators.Length; i++)
-            {
-                var a = displayAnimators[i];
-                if (a != null && a.runtimeAnimatorController != null)
-                    return a;
-            }
-        }
-
-        // 最后兜底任意 Animator（但不再自动 AddComponent，避免制造空 Animator）
-        var any = root != null ? root.GetComponentsInChildren<Animator>(true) : null;
-        if (any != null && any.Length > 0)
-            return any[0];
-
-        return null;
-    }
-
     protected override void OnInit(object userData)
     {
         base.OnInit(userData);
 
         Gmo = gameObject;
-        display = transform.Find("Display");
-
-        if (display == null)
-        {
-            // 创建Display子对象
-            GameObject displayObj = new GameObject("Display");
-            displayObj.transform.SetParent(transform);
-            displayObj.transform.localPosition = Vector3.zero;
-            displayObj.transform.localRotation = Quaternion.identity;
-            displayObj.transform.localScale = Vector3.one;
-            display = displayObj.transform;
-        }
+        PresentationBindings = GetComponent<EntityPresentationBindings>();
+        if (PresentationBindings == null)
+            throw new System.InvalidOperationException($"Entity is missing EntityPresentationBindings. entity={name}.");
+        PresentationBindings.ValidateOrThrow(RequireUnitPresentationRuntime);
+        if (RequireUnitPresentationRuntime)
+            PresentationBindings.ValidateRuntimeAnimatorContractOrThrow();
+        display = PresentationBindings.DisplayRoot;
+        animator = PresentationBindings.Animator;
 
         SetUpHurtBox();
-
-        animator = ResolveAnimator(transform, display);
         //CharacterKey = "Knight";
     }
 
@@ -110,51 +79,20 @@ public class GeneralCreature : EntityBase, ITargetable
 
     protected virtual void SetUpHurtBox()
     {
-        BoxCollider hurtBoxCollider = null;
-
         Transform hurtBoxTransform = transform.Find("HurtBox");
         if (hurtBoxTransform == null)
-        {
-            // 创建HurtBox
-            GameObject hurtBoxObj = new GameObject("HurtBox");
-            hurtBoxObj.transform.SetParent(transform);
-            hurtBoxObj.transform.localPosition = Vector3.zero;
-            hurtBoxObj.transform.localRotation = Quaternion.identity;
-            hurtBoxObj.transform.localScale = Vector3.one;
+            throw new System.InvalidOperationException($"Unit is missing direct-child HurtBox. entity={name}.");
 
-            // 添加BoxCollider作为触发器
-            hurtBoxCollider = hurtBoxObj.AddComponent<BoxCollider>();
-            hurtBoxCollider.isTrigger = true;
-            hurtBoxCollider.size = new Vector3(0.5f, 1.5f, 0.5f);
+        hurtBox = hurtBoxTransform.GetComponent<HurtBox>();
+        BoxCollider hurtBoxCollider = hurtBoxTransform.GetComponent<BoxCollider>();
+        if (hurtBox == null || hurtBoxCollider == null)
+            throw new System.InvalidOperationException($"Unit HurtBox requires HurtBox and BoxCollider components. entity={name}.");
+        if (!hurtBoxCollider.isTrigger)
+            throw new System.InvalidOperationException($"Unit HurtBox collider must be a trigger. entity={name}.");
 
-            // 添加HurtBox组件
-            hurtBox = hurtBoxObj.AddComponent<HurtBox>();
-        }
-        else
-        {
-            hurtBox = hurtBoxTransform.GetComponent<HurtBox>();
-            if (hurtBox == null)
-            {
-                hurtBox = hurtBoxTransform.gameObject.AddComponent<HurtBox>();
-            }
-
-            hurtBoxCollider = hurtBoxTransform.GetComponent<BoxCollider>();
-            if (hurtBoxCollider == null)
-            {
-                hurtBoxCollider = hurtBoxTransform.gameObject.AddComponent<BoxCollider>();
-                hurtBoxCollider.isTrigger = true;
-                hurtBoxCollider.size = new Vector3(0.5f, 1.5f, 0.5f);
-            }
-        }
-
-        if (hurtBoxCollider != null)
-        {
-            CharacterController characterController = GetComponent<CharacterController>();
-            if (characterController != null)
-            {
-                hurtBoxCollider.center = characterController.center;
-            }
-        }
+        int hurtLayer = LayerMask.NameToLayer("Hurt");
+        if (hurtLayer < 0 || hurtBoxTransform.gameObject.layer != hurtLayer)
+            throw new System.InvalidOperationException($"Unit HurtBox must use the Hurt layer. entity={name}.");
 
         hurtBox.Activate(this);
     }

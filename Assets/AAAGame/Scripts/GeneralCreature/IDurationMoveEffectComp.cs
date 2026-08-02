@@ -16,11 +16,14 @@ public interface IDurationMoveEffectComp : ICapability
 {
     bool IsInLossOfBalance { get; }
     FixVector2 DisplacementVelocity { get; }
+    bool HasActiveOutgoingPullTether { get; }
     void Init(IEntityContext ctx);
     int StartDurationAdditionalMove(Fix64 duration, FixVector2 speed);
     int StartDurationOverrideMove(Fix64 duration, FixVector2 speed);
     bool TryApplyKnockback(FixVector2 direction, Fix64 strengthLevel);
     bool TryStartPull(LogicEntityId sourceEntityId, Fix64 strengthLevel);
+    void RegisterOutgoingPullTether();
+    void ReleaseOutgoingPullTether();
     void CommitStaticCollision(FixVector2 firstHitNormal);
     void CopyActivePullTethers(System.Collections.Generic.List<DisplacementPullTetherState> results);
     

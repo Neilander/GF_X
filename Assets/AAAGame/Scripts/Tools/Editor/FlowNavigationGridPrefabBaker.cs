@@ -654,6 +654,7 @@ namespace AAAGame.Tools.Editor
             ApplyFlowGraphConfigForDerivedBake(stopwatch);
             FlowNavigationGridAsset.DerivedNavigationData derivedData = FlowFieldCrowdMovementSystem.BuildDerivedNavigationDataForAsset(
                 agentTypeId,
+                (Fix64)hardClearanceRadius,
                 raster.Width,
                 raster.Height,
                 raster.CellSize,

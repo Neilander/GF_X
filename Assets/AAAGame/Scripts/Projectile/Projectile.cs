@@ -5,6 +5,8 @@ public class Projectile : EntityBase
     private ulong _logicProjectileId;
     private RangedWeaponSO _weaponSO;
     private bool _completionPresented;
+    private FixVector2 _previousLogicPosition;
+    private Vector2 _presentationOffset;
 
     protected override bool ShouldRunLogicFrameUpdate => false;
 
@@ -20,7 +22,12 @@ public class Projectile : EntityBase
         _weaponSO = entityParams.WeaponSO as RangedWeaponSO;
         _completionPresented = false;
         LogicProjectileService.BindView(_logicProjectileId);
-        ApplyViewState(LogicProjectileService.GetRequiredViewState(_logicProjectileId));
+        LogicProjectileViewState initialState = LogicProjectileService.GetRequiredViewState(_logicProjectileId);
+        _previousLogicPosition = initialState.Position;
+        _presentationOffset = new Vector2(
+            transform.position.x - (float)initialState.Position.x,
+            transform.position.z - (float)initialState.Position.y);
+        ApplyViewState(initialState, true);
     }
 
     protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
@@ -30,7 +37,7 @@ public class Projectile : EntityBase
             return;
 
         LogicProjectileViewState state = LogicProjectileService.GetRequiredViewState(_logicProjectileId);
-        ApplyViewState(state);
+        ApplyViewState(state, false);
         if (!state.Completed)
             return;
 
@@ -47,17 +54,40 @@ public class Projectile : EntityBase
         _logicProjectileId = 0;
         _weaponSO = null;
         _completionPresented = true;
+        _previousLogicPosition = default;
+        _presentationOffset = Vector2.zero;
         base.OnHide(isShutdown, userData);
     }
 
-    private void ApplyViewState(LogicProjectileViewState state)
+    private void ApplyViewState(LogicProjectileViewState state, bool initializing)
     {
+        if (!initializing)
+            _presentationOffset = AdvancePresentationOffset(_presentationOffset, _previousLogicPosition, state.Position, state.Completed);
+
         Vector3 previous = transform.position;
-        Vector3 next = new Vector3((float)state.Position.x, previous.y, (float)state.Position.y);
+        Vector3 next = new Vector3(
+            (float)state.Position.x + _presentationOffset.x,
+            previous.y,
+            (float)state.Position.y + _presentationOffset.y);
         Vector3 direction = next - previous;
         transform.position = next;
+        _previousLogicPosition = state.Position;
         if (direction.sqrMagnitude > 0.000001f)
             transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+    }
+
+    public static Vector2 AdvancePresentationOffset(
+        Vector2 currentOffset,
+        FixVector2 previousLogicPosition,
+        FixVector2 currentLogicPosition,
+        bool completed)
+    {
+        if (completed)
+            return Vector2.zero;
+
+        FixVector2 logicDelta = currentLogicPosition - previousLogicPosition;
+        float traveledDistance = (float)FixVector2.Magnitude(logicDelta);
+        return Vector2.MoveTowards(currentOffset, Vector2.zero, traveledDistance);
     }
 
     private void PresentHit(FixVector2 hitPosition)

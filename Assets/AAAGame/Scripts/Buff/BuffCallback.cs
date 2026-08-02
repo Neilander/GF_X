@@ -38,6 +38,7 @@ public abstract class BuffCallback
     public virtual void OnAttackStarted(IEntityContext target) { }
     public virtual void OnAttackCompleted(IEntityContext target) { }
     public virtual void OnAttackInterrupted(AttackInterruptReason reason, IEntityContext target) { }
+    public virtual bool CanStartAttack() => true;
 
     /// <summary>
     /// 宿主对 target 造成伤害前的钩子，允许调整最终伤害值。

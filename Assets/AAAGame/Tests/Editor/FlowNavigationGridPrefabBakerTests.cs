@@ -78,6 +78,41 @@ public sealed class FlowNavigationGridPrefabBakerTests
     }
 
     [Test]
+    public void BakeWithRuntimeAgentTypeDoesNotRequireRuntimeDependencyPreparation()
+    {
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        Assert.GreaterOrEqual(groundLayer, 0, "Project must define Ground layer.");
+        CreateRaisedGroundPrefab(groundLayer, 0f);
+
+        FieldInfo preparedField = typeof(FlowFieldCrowdMovementSystem).GetField(
+            "s_RuntimeAgentTypeRadiiPrepared",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.IsNotNull(preparedField);
+        bool wasPrepared = (bool)preparedField.GetValue(null);
+        preparedField.SetValue(null, false);
+        try
+        {
+            object result = InvokeBakeFromTerrainPrefab(
+                TempPrefabPath,
+                TempAssetPath,
+                AgentTypeHelper.MediumMovementTypeId,
+                hardClearanceRadius: 0.1f,
+                width: 2,
+                height: 2,
+                cellSize: 1f,
+                gridOrigin: Vector3.zero);
+
+            FlowNavigationGridAsset asset = (FlowNavigationGridAsset)result.GetType().GetField("Asset").GetValue(result);
+            Assert.IsNotNull(asset);
+            Assert.IsTrue(asset.HasDerivedNavigationData);
+        }
+        finally
+        {
+            preparedField.SetValue(null, wasPrepared);
+        }
+    }
+
+    [Test]
     public void BakeFindsWalkableAnchorInsideIrregularCellInsteadOfUsingOnlyCenter()
     {
         int groundLayer = LayerMask.NameToLayer("Ground");

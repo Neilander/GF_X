@@ -576,7 +576,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             {
                 if (failureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate)
                 {
-                    self.MoveComp.MoveToFixed(enemy.LogicFramePositionFixed());
+                    self.MoveComp.StopMove();
                     return;
                 }
 

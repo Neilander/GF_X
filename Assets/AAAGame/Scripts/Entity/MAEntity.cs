@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using GameFramework.Resource;
@@ -46,11 +46,6 @@ public class MAEntity : CompCreature, IEntityContext
     private DisplacementTetherPresenter _displacementTetherPresenter;
     private bool _isLogicActive;
 
-    private Vector3 _collisionScaleBase = Vector3.one;
-    private float _collisionRadiusBaseWorld;
-    private bool _collisionScaleBaseReady;
-    private bool _hasAppliedCollisionScale;
-    private Fix64 _lastAppliedCollisionRadius;
     public IControlBrain Brain { get; private set; }
     public bool IsLogicActive => _isLogicActive;
     public void SetBrain(IControlBrain brain) => Brain = brain;
@@ -227,13 +222,10 @@ public class MAEntity : CompCreature, IEntityContext
             }
         }
 
+        SyncCharacterControllerRadiusFromLogic();
         _moveExecutor.Init(cController, navAgentTypeID);
 
         ResetPresentationMovementForShow();
-
-        InitializeCollisionScaleBase();
-
-        SyncScaleFromCollisionRadius(true);
 
         LogicEntityLifecycleService.BindView(LogicEntityId, Entity.Id, this);
         _isViewBound = true;
@@ -364,10 +356,6 @@ public class MAEntity : CompCreature, IEntityContext
         LogicEntityId = default;
         _logicState = null;
 
-        _collisionScaleBaseReady = false;
-        _hasAppliedCollisionScale = false;
-        _collisionRadiusBaseWorld = 0f;
-        _collisionScaleBase = Vector3.one;
         base.OnHide(isShutdown, userData);
     }
 
@@ -638,51 +626,27 @@ public class MAEntity : CompCreature, IEntityContext
         }
     }
 
-    private void InitializeCollisionScaleBase()
-    {
-        _collisionScaleBase = transform.localScale;
-        _collisionRadiusBaseWorld = ResolveCurrentCollisionRadiusWorld();
-        _collisionScaleBaseReady = _collisionRadiusBaseWorld > 0.0001f;
-    }
-
-    private float ResolveCurrentCollisionRadiusWorld()
+    private void SyncCharacterControllerRadiusFromLogic()
     {
         if (cController == null)
-            return 0f;
-
-        float scaleXZ = Mathf.Max(Mathf.Abs(transform.lossyScale.x), Mathf.Abs(transform.lossyScale.z));
-        return cController.radius * scaleXZ;
-    }
-
-    private void SyncScaleFromCollisionRadius(bool force = false)
-    {
-        if (CreaturePropertyManager == null)
             return;
+        if (CreaturePropertyManager == null)
+            throw new InvalidOperationException($"MAEntity cannot sync CharacterController radius without creature properties. entity={LogicEntityId.Value}.");
 
         Fix64 collisionRadius = CreaturePropertyManager.GetProperty(CreatureMainProperty.CollisionRadius);
         if (collisionRadius <= Fix64.Zero)
-            return;
-
-        if (!force && _hasAppliedCollisionScale && collisionRadius == _lastAppliedCollisionRadius)
-            return;
-
-        if (!_collisionScaleBaseReady)
-            InitializeCollisionScaleBase();
-
-        if (!_collisionScaleBaseReady)
-            return;
+            throw new InvalidOperationException($"MAEntity requires a positive logic collision radius. entity={LogicEntityId.Value}, raw={collisionRadius.RawValue}.");
 
         float targetWorldRadius = DistanceUnitConverter.ConvertToWorldFloat(collisionRadius);
         if (targetWorldRadius <= 0.0001f)
-            return;
+            throw new InvalidOperationException($"MAEntity converted collision radius is invalid. entity={LogicEntityId.Value}, world={targetWorldRadius}.");
 
-        float scaleRatio = targetWorldRadius / _collisionRadiusBaseWorld;
-        if (scaleRatio <= 0.0001f)
-            return;
+        Vector3 worldScale = transform.lossyScale;
+        float scaleXZ = Mathf.Max(Mathf.Abs(worldScale.x), Mathf.Abs(worldScale.z));
+        if (scaleXZ <= 0.0001f)
+            throw new InvalidOperationException($"MAEntity cannot sync CharacterController radius with zero XZ scale. entity={LogicEntityId.Value}, scale={worldScale}.");
 
-        transform.localScale = _collisionScaleBase * scaleRatio;
-        _hasAppliedCollisionScale = true;
-        _lastAppliedCollisionRadius = collisionRadius;
+        cController.radius = targetWorldRadius / scaleXZ;
     }
 
     #region Move and Attack

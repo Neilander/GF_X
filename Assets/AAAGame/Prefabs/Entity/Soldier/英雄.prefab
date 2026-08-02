@@ -1,5 +1,68 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &612198877638349033
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7871666096269341179}
+  m_Layer: 0
+  m_Name: PresentationSockets
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7871666096269341179
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 612198877638349033}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 2424644038114176078}
+  m_Father: {fileID: 4871106885075792713}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &3288348928724701992
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2424644038114176078}
+  m_Layer: 0
+  m_Name: ProjectileOrigin
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2424644038114176078
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3288348928724701992}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.254462, y: 0.7801932, z: 0.33330423}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7871666096269341179}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &3908604912598156533
 GameObject:
   m_ObjectHideFlags: 0
@@ -15,6 +78,7 @@ GameObject:
   - component: {fileID: 2913555062493020147}
   - component: {fileID: -1983763457457297900}
   - component: {fileID: -7194023843157902148}
+  - component: {fileID: 2602533220908625569}
   m_Layer: 14
   m_Name: "\u82F1\u96C4"
   m_TagString: Untagged
@@ -36,6 +100,8 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 872643873113444592}
+  - {fileID: 7871666096269341179}
+  - {fileID: 7796814091661880015}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!95 &3003162454319747506
@@ -113,20 +179,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   onlyPlayerSide: 1
-  allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
   alwaysEmitTrail: 1
   clearTrailWhenAlwaysEmitStarts: 1
   clearTrailBeforeAttack: 1
   restartAlwaysTrailOnAttack: 1
-  weaponAnchor: {fileID: 3065430857182694010}
-  trailPoint: {fileID: 3065430857182694010}
-  autoCreateTrailPoint: 1
-  handLocalOffset: {x: 0, y: 0.38, z: 0}
-  fallbackLocalCenter: {x: 0.35, y: 1.15, z: 0.45}
-  useProceduralFallback: 1
-  fallbackSwingWidth: 0.9
-  fallbackSwingHeight: 0.42
   trailTime: 0.15
   startWidth: 0.18
   endWidth: 0.02
@@ -190,6 +247,91 @@ MonoBehaviour:
   moveSound: {fileID: 11400000, guid: a36fd86486c72834f9971f2ddea2f01c, type: 2}
   moveThreshold: 0.438
   enableDebugLog: 0
+--- !u!114 &2602533220908625569
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3908604912598156533}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7d4bd18e9e6b8e4bb6453d7fca619e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  displayRoot: {fileID: 872643873113444592}
+  sizeReferenceRenderer: {fileID: 5455550156463246249}
+  animator: {fileID: 3003162454319747506}
+  projectileOrigin: {fileID: 2424644038114176078}
+  weaponAnchor: {fileID: 3065430857182694010}
+  trailPoint: {fileID: 3065430857182694010}
+  placeholder: 0
+--- !u!1 &4572374728177858307
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7796814091661880015}
+  - component: {fileID: 8365719531208969144}
+  - component: {fileID: 7407281374636392302}
+  m_Layer: 9
+  m_Name: HurtBox
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7796814091661880015
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4572374728177858307}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4871106885075792713}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &8365719531208969144
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4572374728177858307}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.6, y: 1.6, z: 0.6}
+  m_Center: {x: 0, y: 0.8, z: 0}
+--- !u!114 &7407281374636392302
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4572374728177858307}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab604c6ec8a0c435cb15ae12cd8c5dac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &4779818598053146821
 GameObject:
   m_ObjectHideFlags: 0
@@ -296,7 +438,7 @@ TrailRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Time: 0.34
+  m_Time: 0.15
   m_PreviewTimeScale: 1
   m_Parameters:
     serializedVersion: 3
@@ -352,7 +494,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: 0
+      m_ColorSpace: -1
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2
@@ -435,6 +577,11 @@ PrefabInstance:
       addedObject: {fileID: 3065430857182694010}
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
+--- !u!23 &5455550156463246249 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: -9211170011657478144, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}
+  m_PrefabInstance: {fileID: 5448608272242011049}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &5483098626643201090 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0c8cc2c6e930fed4692055e94c6d95d9, type: 3}

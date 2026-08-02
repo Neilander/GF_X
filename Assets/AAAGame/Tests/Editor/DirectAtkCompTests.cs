@@ -562,6 +562,119 @@ atkComp.Attack((Fix64)999);
     }
 
     [Test]
+    public void 拉力弹道存在时即使攻击间隔结束也不能开始下一次攻击()
+    {
+        EntityRegistry.Clear();
+        DurationMoveEffectComp targetDisplacement = null;
+        try
+        {
+            SimEntityContext attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+            SimEntityContext target = CreateUnit(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+            attacker.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)5);
+            attacker.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)2);
+            target.SetProperty(CreatureMainProperty.CollisionRadius, (Fix64)5);
+            target.SetProperty(CreatureMainProperty.WeightLevel, (Fix64)2);
+
+            var sourceDisplacement = new DurationMoveEffectComp();
+            sourceDisplacement.Init(attacker);
+            attacker.DurationMoveEffectComp = sourceDisplacement;
+            targetDisplacement = new DurationMoveEffectComp();
+            targetDisplacement.Init(target);
+            target.DurationMoveEffectComp = targetDisplacement;
+
+            var targetAttack = new NoAtkComp();
+            targetAttack.Init(target);
+            target.AtkComp = targetAttack;
+
+            var targeting = new SimTargetingComp(
+                attacker,
+                new List<IEntityContext> { attacker, target })
+            {
+                AggroRangeFixed = (Fix64)10,
+            };
+            targeting.Init(attacker);
+            attacker.TargetComp = targeting;
+            attacker.Brain = new ScriptedBrain { Attack = true };
+
+            var moveComp = new SimMoveComp();
+            moveComp.Init(attacker);
+            attacker.MoveComp = moveComp;
+
+            WeaponData weapon = MeleeWeapon(
+                damage: 1f,
+                windUp: 0f,
+                windDown: 0f,
+                interval: 0.1f);
+            attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("PullAttackGateWeapon"));
+            var atkComp = new DirectAtkComp();
+            atkComp.Init(attacker);
+            attacker.AtkComp = atkComp;
+
+            var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+            attacker.BuffComp = buffComp;
+            buffComp.Init(attacker);
+            Assert.IsTrue(buffComp.AddBuff(
+                BuffData.Create(
+                    "pull_attack_gate_test",
+                    Fix64.Zero,
+                    true,
+                    1,
+                    new List<BuffCallback> { new PullOnOutgoingDamageBuff((Fix64)3) }),
+                attacker));
+
+            EntityRegistry.Register(attacker);
+            EntityRegistry.Register(target);
+            targeting.UpdateTargeting(Fix64.One);
+
+            StartAttack(atkComp);
+
+            Assert.AreEqual(1, atkComp.AttackCount);
+            Assert.AreEqual(
+                DirectAtkComp.AtkState.Cooldown,
+                atkComp.State,
+                "拉力命中后本次攻击应正常完成，而不是被攻击锁打断");
+            Assert.IsTrue(sourceDisplacement.HasActiveOutgoingPullTether);
+
+            for (int i = 0; i < 5; i++)
+            {
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+                targetDisplacement.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+                atkComp.Attack(Fix64.Zero);
+            }
+
+            Assert.GreaterOrEqual(LogicFrameRuntime.CurrentFrame, 3);
+            Assert.AreEqual(
+                1,
+                atkComp.AttackCount,
+                "攻击间隔已结束，但上一条拉力弹道仍在时不得开始下一次攻击");
+
+            int remainingFrames = 0;
+            while (sourceDisplacement.HasActiveOutgoingPullTether && remainingFrames < 60)
+            {
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+                targetDisplacement.ApplyEffect(LogicFrameRuntime.FixedDeltaTime);
+                if (sourceDisplacement.HasActiveOutgoingPullTether)
+                    atkComp.Attack(Fix64.Zero);
+                remainingFrames++;
+            }
+
+            Assert.Less(remainingFrames, 60, "拉力弹道应在配置时长内自然结束");
+            Assert.IsFalse(sourceDisplacement.HasActiveOutgoingPullTether);
+            Assert.AreEqual(1, atkComp.AttackCount);
+
+            atkComp.Attack(Fix64.Zero);
+
+            Assert.AreEqual(2, atkComp.AttackCount, "最后一条拉力弹道消失后应立即允许下一次攻击");
+            targetDisplacement.StopAllMove();
+            Assert.IsFalse(sourceDisplacement.HasActiveOutgoingPullTether);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+        }
+    }
+
+    [Test]
     public void 切换武器会原子更新权威索引且非法索引明确报错()
     {
         var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);

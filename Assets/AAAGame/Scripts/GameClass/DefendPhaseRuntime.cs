@@ -1,5 +1,6 @@
-﻿using System;
+﻿﻿﻿using System;
 using System.Collections.Generic;
+using AAAGame.Card;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using UnityEngine;
 using UnityGameFramework.Runtime;
@@ -19,6 +20,8 @@ public static class DefendPhaseRuntime
     private static readonly List<DefendWaveDefinition> s_DefendWaves = new();
     private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
     private static readonly List<int> s_DeterministicAliveEnemyIds = new();
+    private static readonly HashSet<int> s_AcceleratedEnemyLogicEntityIds = new();
+    private static readonly List<int> s_DeterministicAcceleratedEnemyIds = new();
     private static readonly Comparison<int> s_DeterministicEnemyIdComparison =
         (left, right) => left.CompareTo(right);
 
@@ -114,6 +117,7 @@ public static class DefendPhaseRuntime
             throw new InvalidOperationException(
                 $"DefendPhaseRuntime.ApplyScheduledSpawnRequests failed: frame mismatch. requested={frame}, logic={LogicTimeControlService.CurrentFrame}.");
         }
+        ReleaseAuthoritativelyVisibleEnemySpawnSpeeds(frame);
         if (s_SpawnScheduleCompleted || s_PlannedSpawnEvents.Count == 0)
             return;
         if (PhaseManager.CurrentPhase != GamePhase.Defend)
@@ -163,6 +167,8 @@ public static class DefendPhaseRuntime
         LogDefendSpawnEvent(evt, entityId);
         if (!s_AliveEnemyLogicEntityIds.Add(entityId.Value))
             throw new InvalidOperationException($"DefendPhaseRuntime produced duplicate enemy logic entity id {entityId.Value}.");
+        if (!s_AcceleratedEnemyLogicEntityIds.Add(entityId.Value))
+            throw new InvalidOperationException($"DefendPhaseRuntime produced duplicate accelerated enemy logic entity id {entityId.Value}.");
     }
 
     public static bool TryGetNextDefendPreviewSpawnEntries(List<DefendPreviewSpawnEntry> results)
@@ -260,6 +266,45 @@ public static class DefendPhaseRuntime
         s_SubscribedLogicUnitDead = true;
     }
 
+    private static void ReleaseAuthoritativelyVisibleEnemySpawnSpeeds(ulong frame)
+    {
+        if (s_AcceleratedEnemyLogicEntityIds.Count == 0)
+            return;
+        if (!LogicCardPlacementAuthority.IsWorldBound)
+            throw new InvalidOperationException("DefendPhaseRuntime cannot evaluate enemy visibility without a bound logic visibility world.");
+
+        s_DeterministicAcceleratedEnemyIds.Clear();
+        foreach (int entityId in s_AcceleratedEnemyLogicEntityIds)
+            s_DeterministicAcceleratedEnemyIds.Add(entityId);
+        s_DeterministicAcceleratedEnemyIds.Sort(s_DeterministicEnemyIdComparison);
+
+        for (int i = 0; i < s_DeterministicAcceleratedEnemyIds.Count; i++)
+        {
+            int entityId = s_DeterministicAcceleratedEnemyIds[i];
+            if (!s_AliveEnemyLogicEntityIds.Contains(entityId))
+                throw new InvalidOperationException($"DefendPhaseRuntime tracks spawn acceleration for non-alive defend enemy {entityId}.");
+
+            LogicEntityState state = LogicEntityStateStore.GetRequired(new LogicEntityId(entityId));
+            if (!state.BuffComp.HasBuff(LogicUnitConfigurator.DefendSpeedBuffId))
+                throw new InvalidOperationException($"DefendPhaseRuntime accelerated enemy {entityId} is missing its speed override buff.");
+            if (!LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(state.Position))
+                continue;
+
+            Fix64 speedBefore = state.GetProperty(CreatureMainProperty.Speed);
+            if (!LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed(state))
+                throw new InvalidOperationException($"DefendPhaseRuntime failed to release spawn acceleration for visible enemy {entityId}.");
+            Fix64 speedAfter = state.GetProperty(CreatureMainProperty.Speed);
+            s_AcceleratedEnemyLogicEntityIds.Remove(entityId);
+            Log.Info(
+                "[DefendPhase] Released spawn speed on authoritative visibility. logicEntityId={0} frame={1} speedBeforeRaw={2} speedAfterRaw={3}",
+                entityId,
+                frame,
+                speedBefore.RawValue,
+                speedAfter.RawValue);
+        }
+        s_DeterministicAcceleratedEnemyIds.Clear();
+    }
+
     private static void OnLogicUnitDied(IEntityContext victim)
     {
         if (PhaseManager.CurrentPhase != GamePhase.Defend)
@@ -272,6 +317,7 @@ public static class DefendPhaseRuntime
 
         if (!s_AliveEnemyLogicEntityIds.Remove(victim.LogicEntityId.Value))
             return;
+        s_AcceleratedEnemyLogicEntityIds.Remove(victim.LogicEntityId.Value);
 
         TryCompleteDefendPhase();
     }
@@ -981,6 +1027,7 @@ public static class DefendPhaseRuntime
     private static void ResetDefendPhaseState(bool keepRoundIndex)
     {
         s_AliveEnemyLogicEntityIds.Clear();
+        s_AcceleratedEnemyLogicEntityIds.Clear();
         s_PlannedSpawnEvents.Clear();
         s_NextPlannedSpawnIndex = 0;
         s_SpawnRequestStartFrame = 0;
@@ -1021,6 +1068,14 @@ public static class DefendPhaseRuntime
         hasher.Add(s_DeterministicAliveEnemyIds.Count);
         for (int i = 0; i < s_DeterministicAliveEnemyIds.Count; i++)
             hasher.Add(s_DeterministicAliveEnemyIds[i]);
+
+        s_DeterministicAcceleratedEnemyIds.Clear();
+        foreach (int entityId in s_AcceleratedEnemyLogicEntityIds)
+            s_DeterministicAcceleratedEnemyIds.Add(entityId);
+        s_DeterministicAcceleratedEnemyIds.Sort(s_DeterministicEnemyIdComparison);
+        hasher.Add(s_DeterministicAcceleratedEnemyIds.Count);
+        for (int i = 0; i < s_DeterministicAcceleratedEnemyIds.Count; i++)
+            hasher.Add(s_DeterministicAcceleratedEnemyIds[i]);
     }
 
 #if UNITY_EDITOR

@@ -268,6 +268,7 @@ public class FlowFieldCrowdMovementSystemTests
             asset.Overwrite(0, width, height, cellSize, origin, walkable, costs, anchors, neighbors);
             FlowNavigationGridAsset.DerivedNavigationData derivedData = FlowFieldCrowdMovementSystem.BuildDerivedNavigationDataForAsset(
                 0,
+                DistanceUnitConverter.ConvertToWorld(DistanceUnitConverter.ReadRequiredPositiveFixedConfig("MediumUnitCollisionRadius")),
                 width,
                 height,
                 cellSize,
@@ -2240,6 +2241,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowNavigationGridAsset.DerivedNavigationData derivedData = FlowFieldCrowdMovementSystem.BuildDerivedNavigationDataForAsset(
             0,
+            (Fix64)firstRadius,
             width,
             height,
             1f,

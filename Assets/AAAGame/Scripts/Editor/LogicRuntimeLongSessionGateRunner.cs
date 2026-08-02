@@ -104,6 +104,11 @@ public static class LogicRuntimeLongSessionGateRunner
         StartRun(3000, 2000, true, physicsComparisonSchedule: true);
     }
 
+    public static void RunSystemValidationGate()
+    {
+        StartRun(3000, 2000, true);
+    }
+
     [MenuItem("Tools/Logic Frames/Run Lv2 3k Tick Prototype Without FullHash")]
     public static void RunPrototypeWithoutFullHash()
     {

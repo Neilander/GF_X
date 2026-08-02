@@ -1,5 +1,134 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &21153405166994134
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4953227292140921869}
+  - component: {fileID: 5688447071711253763}
+  - component: {fileID: 4019728004116127658}
+  m_Layer: 9
+  m_Name: HurtBox
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4953227292140921869
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 21153405166994134}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 282874367510649349}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &5688447071711253763
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 21153405166994134}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.26, y: 1, z: 0.26}
+  m_Center: {x: 0, y: 0.5, z: 0}
+--- !u!114 &4019728004116127658
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 21153405166994134}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab604c6ec8a0c435cb15ae12cd8c5dac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!1 &1327442767217097644
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5723921473712958419}
+  m_Layer: 0
+  m_Name: ProjectileOrigin
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5723921473712958419
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1327442767217097644}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.03451377, y: 0.4940995, z: 0.00019286573}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1789624974289567886}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2995543458482992284
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1789624974289567886}
+  m_Layer: 0
+  m_Name: PresentationSockets
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1789624974289567886
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2995543458482992284}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 5723921473712958419}
+  m_Father: {fileID: 282874367510649349}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5667059355416220249
 GameObject:
   m_ObjectHideFlags: 0
@@ -13,6 +142,7 @@ GameObject:
   - component: {fileID: -5409559855405245601}
   - component: {fileID: 8254947112388829342}
   - component: {fileID: 4676256745257274438}
+  - component: {fileID: 8776709231657357370}
   m_Layer: 14
   m_Name: "\u80CC\u9505\u4FA0"
   m_TagString: Untagged
@@ -34,6 +164,8 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 396936102932272974}
+  - {fileID: 1789624974289567886}
+  - {fileID: 4953227292140921869}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!95 &1932797867958151653
@@ -96,20 +228,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   onlyPlayerSide: 1
-  allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
   alwaysEmitTrail: 0
   clearTrailWhenAlwaysEmitStarts: 1
   clearTrailBeforeAttack: 1
   restartAlwaysTrailOnAttack: 1
-  weaponAnchor: {fileID: 6500967793888820772}
-  trailPoint: {fileID: 6500967793888820772}
-  autoCreateTrailPoint: 1
-  handLocalOffset: {x: 0, y: 0.38, z: 0}
-  fallbackLocalCenter: {x: 0.35, y: 1.15, z: 0.45}
-  useProceduralFallback: 1
-  fallbackSwingWidth: 0.9
-  fallbackSwingHeight: 0.42
   trailTime: 0.18
   startWidth: 0.18
   endWidth: 0.02
@@ -158,6 +281,25 @@ MonoBehaviour:
   sparkParticleCount: 26
   sparkColor: {r: 1, g: 1, b: 1, a: 0.9}
   sparkSpeed: 2.1
+--- !u!114 &8776709231657357370
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5667059355416220249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7d4bd18e9e6b8e4bb6453d7fca619e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  displayRoot: {fileID: 396936102932272974}
+  sizeReferenceRenderer: {fileID: 6503485628266082162}
+  animator: {fileID: 1932797867958151653}
+  projectileOrigin: {fileID: 5723921473712958419}
+  weaponAnchor: {fileID: 6500967793888820772}
+  trailPoint: {fileID: 6500967793888820772}
+  placeholder: 0
 --- !u!1 &8185178394744858697
 GameObject:
   m_ObjectHideFlags: 0
@@ -274,7 +416,7 @@ TrailRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.18
+        value: 0.261
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -283,7 +425,7 @@ TrailRenderer:
         outWeight: 0
       - serializedVersion: 3
         time: 1
-        value: 0.02
+        value: 0.029000001
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -320,7 +462,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: 0
+      m_ColorSpace: -1
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2
@@ -333,7 +475,7 @@ TrailRenderer:
   m_MinVertexDistance: 0.02
   m_MaskInteraction: 0
   m_Autodestruct: 0
-  m_Emitting: 1
+  m_Emitting: 0
   m_ApplyActiveColorSpace: 1
 --- !u!1001 &7659186289534129107
 PrefabInstance:
@@ -398,6 +540,11 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 1382654245192174759}
   m_SourcePrefab: {fileID: 100100000, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+--- !u!23 &6503485628266082162 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: -5761264039261815647, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}
+  m_PrefabInstance: {fileID: 7659186289534129107}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &6975121289920134609 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8464939349181633022, guid: 3412ce36bfca0424285eb0470a8b7f31, type: 3}

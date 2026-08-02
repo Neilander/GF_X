@@ -1,9 +1,13 @@
 ﻿using System.Collections.Generic;
+using System;
 using UnityEngine;
 using UnityEditor;
 
 public class FbxToPrefab : EditorWindow
 {
+    public const string BuildingOutputFolder = "Assets/AAAGame/Prefabs/Entity/Building";
+    public const string UnitOutputFolder = "Assets/AAAGame/Prefabs/Entity/Soldier";
+
     private enum PrefabType
     {
         Building,
@@ -17,6 +21,13 @@ public class FbxToPrefab : EditorWindow
     private bool _replaceSameName = true;
     private PrefabType _prefabType = PrefabType.Building;
     private int _boxGrid = 6; // Box 近似粒度（等于 AutoBoxColliderFromMesh 的 XZResolution）
+    private RuntimeAnimatorController _unitAnimatorController;
+    private UnitSize _unitSize = UnitSize.Medium;
+    private string[] _unitSizeReferencePaths = Array.Empty<string>();
+    private int _unitSizeReferenceIndex = -1;
+    private bool _createTrailBinding;
+    private string _weaponAnchorPath = string.Empty;
+    private Vector3 _trailPointOffset = new(0f, 0.38f, 0f);
 
     private GameObject _preview;
     private Editor _previewEditor;
@@ -31,7 +42,10 @@ public class FbxToPrefab : EditorWindow
         EditorGUI.BeginChangeCheck();
         _sourceFbx = (GameObject)EditorGUILayout.ObjectField("FBX", _sourceFbx, typeof(GameObject), false);
         if (EditorGUI.EndChangeCheck())
+        {
+            RefreshUnitSizeReferenceCandidates();
             RebuildPreview();
+        }
 
         EditorGUI.BeginChangeCheck();
         _rotation = EditorGUILayout.Vector3Field("Rotation", _rotation);
@@ -39,14 +53,21 @@ public class FbxToPrefab : EditorWindow
             RebuildPreview();
 
         EditorGUI.BeginChangeCheck();
-        _diameter = EditorGUILayout.FloatField("Diameter", _diameter);
+        _prefabType = (PrefabType)EditorGUILayout.EnumPopup("Type", _prefabType);
+        if (EditorGUI.EndChangeCheck())
+        {
+            RefreshUnitSizeReferenceCandidates();
+            RebuildPreview();
+        }
+
+        EditorGUI.BeginChangeCheck();
+        if (_prefabType == PrefabType.Building)
+            _diameter = EditorGUILayout.FloatField("Diameter", _diameter);
+        else
+            _unitSize = (UnitSize)EditorGUILayout.EnumPopup("Unit Size", _unitSize);
         if (EditorGUI.EndChangeCheck())
             RebuildPreview();
 
-        EditorGUI.BeginChangeCheck();
-        _prefabType = (PrefabType)EditorGUILayout.EnumPopup("Type", _prefabType);
-        if (EditorGUI.EndChangeCheck())
-            RebuildBoxPreview();
         _parentObjectName = EditorGUILayout.TextField(new GUIContent("Prefab Name", "可选。不填则用 FBX 文件名。"), _parentObjectName);
         _replaceSameName = EditorGUILayout.Toggle("Replace Same Name", _replaceSameName);
 
@@ -57,6 +78,37 @@ public class FbxToPrefab : EditorWindow
             if (EditorGUI.EndChangeCheck())
                 RebuildBoxPreview();
         }
+        else
+        {
+            if (_unitSizeReferencePaths.Length == 0)
+            {
+                EditorGUILayout.HelpBox("选择 FBX 后必须确认用于尺寸校准的身体 Mesh。", MessageType.Info);
+            }
+            else
+            {
+                EditorGUI.BeginChangeCheck();
+                _unitSizeReferenceIndex = EditorGUILayout.Popup(
+                    new GUIContent("Size Reference", "用于匹配配置半径的身体 Mesh；武器和特效不应选入。"),
+                    _unitSizeReferenceIndex,
+                    _unitSizeReferencePaths);
+                if (EditorGUI.EndChangeCheck())
+                    RebuildPreview();
+            }
+
+            _unitAnimatorController = (RuntimeAnimatorController)EditorGUILayout.ObjectField(
+                "Animator Controller",
+                _unitAnimatorController,
+                typeof(RuntimeAnimatorController),
+                false);
+            _createTrailBinding = EditorGUILayout.Toggle("Create Trail Binding", _createTrailBinding);
+            if (_createTrailBinding)
+            {
+                _weaponAnchorPath = EditorGUILayout.TextField(
+                    new GUIContent("Weapon Anchor Path", "FBX 根节点下的相对路径；留空时只接受 Humanoid 右手骨。"),
+                    _weaponAnchorPath);
+                _trailPointOffset = EditorGUILayout.Vector3Field("Trail Point Offset", _trailPointOffset);
+            }
+        }
 
         // 3D 预览
         if (_preview != null)
@@ -66,6 +118,8 @@ public class FbxToPrefab : EditorWindow
                 _previewEditor = Editor.CreateEditor(_preview);
             _previewEditor.OnInteractivePreviewGUI(
                 GUILayoutUtility.GetRect(256, 256), GUIStyle.none);
+            if (_prefabType == PrefabType.Unit)
+                DrawUnitSizeMetrics();
         }
 
         // Box 近似俯视图
@@ -142,7 +196,7 @@ public class FbxToPrefab : EditorWindow
         _preview.transform.rotation = Quaternion.Euler(_rotation);
         _preview.hideFlags = HideFlags.HideAndDontSave;
 
-        if (!TryApplyDiameter(_preview.transform, _diameter, out var previewScaleError))
+        if (!TryApplyConfiguredSize(_preview.transform, out var previewScaleError))
         {
             Debug.LogError(previewScaleError);
             return;
@@ -197,73 +251,176 @@ public class FbxToPrefab : EditorWindow
     {
         string savePath = GetSavePath(_prefabType);
         if (!AssetDatabase.IsValidFolder(savePath))
-        {
-            Debug.LogError($"路径不存在: {savePath}");
-            return;
-        }
+            throw new InvalidOperationException($"Prefab output folder does not exist. path={savePath}.");
+        if (_prefabType == PrefabType.Unit && _unitAnimatorController == null)
+            throw new InvalidOperationException("Unit prefab generation requires an explicit Animator Controller.");
 
         var rootName = string.IsNullOrWhiteSpace(_parentObjectName)
             ? _sourceFbx.name
             : _parentObjectName.Trim();
 
-        // 全部在场景里做，算和生成用同一个对象，不会有偏差
         var root = new GameObject(rootName);
-        var child = (GameObject)PrefabUtility.InstantiatePrefab(_sourceFbx, root.transform);
-        child.transform.localRotation = Quaternion.Euler(_rotation);
-        child.transform.localPosition = Vector3.zero;
-
-        if (!TryApplyDiameter(child.transform, _diameter, out var scaleError))
+        try
         {
-            Debug.LogError(scaleError);
-            DestroyImmediate(root);
-            return;
-        }
+            var displayObject = new GameObject(EntityPresentationBindings.DisplayObjectName);
+            Transform display = displayObject.transform;
+            display.SetParent(root.transform, false);
+            var child = (GameObject)PrefabUtility.InstantiatePrefab(_sourceFbx, display);
+            if (child == null)
+                child = Instantiate(_sourceFbx, display);
+            child.transform.localRotation = Quaternion.Euler(_rotation);
+            child.transform.localPosition = Vector3.zero;
 
-        if (!TryAlignToBottomAndCenter(root.transform, child.transform, out var alignError))
-        {
-            Debug.LogError(alignError);
-            DestroyImmediate(root);
-            return;
-        }
+            if (!TryApplyConfiguredSize(child.transform, out var scaleError))
+                throw new InvalidOperationException(scaleError);
+            Renderer sizeReferenceRenderer = _prefabType == PrefabType.Unit
+                ? ResolveSelectedUnitSizeReferenceRenderer(child.transform)
+                : null;
+            if (!TryAlignToBottomAndCenter(root.transform, child.transform, out var alignError))
+                throw new InvalidOperationException(alignError);
 
-        int groundLayer = LayerMask.NameToLayer("Ground");
-        if (groundLayer < 0)
-        {
-            Debug.LogError("未找到 Layer: Ground，请先在项目里创建该 Layer。");
-            DestroyImmediate(root);
-            return;
-        }
-        SetLayerRecursively(child.transform, groundLayer);
+            Transform projectileOrigin = CreateProjectileOrigin(root, display);
+            Transform weaponAnchor = null;
+            Transform trailPoint = null;
+            Animator animator;
 
-        if (_prefabType == PrefabType.Building)
-        {
-            // 用体素化多 BoxCollider 代替 Convex MeshCollider（Convex MeshCollider 参与 NavMesh 烘焙在部分平台/版本下无效）
-            var boxes = AutoBoxColliderFromMesh.ComputeApproximation(root, _boxGrid, AutoBoxColliderFromMesh.DefaultYLayers);
-            if (boxes.Count == 0)
+            if (_prefabType == PrefabType.Building)
             {
-                Debug.LogError("建筑类型要求生成 BoxCollider，但未找到可用 Mesh 或近似结果为空。");
-                DestroyImmediate(root);
-                return;
+                SetLayerRecursively(child.transform, RequireLayer("Ground"));
+                var boxes = AutoBoxColliderFromMesh.ComputeApproximation(root, _boxGrid, AutoBoxColliderFromMesh.DefaultYLayers);
+                if (boxes.Count == 0)
+                    throw new InvalidOperationException("Building prefab generation produced no BoxCollider approximation.");
+                AutoBoxColliderFromMesh.Apply(root, boxes, recordUndo: false);
+                animator = child.GetComponentInChildren<Animator>(true);
             }
-            AutoBoxColliderFromMesh.Apply(root, boxes, recordUndo: false);
+            else
+            {
+                animator = ConfigureUnitRuntime(root, child, _unitAnimatorController);
+                if (_createTrailBinding)
+                {
+                    weaponAnchor = ResolveUnitWeaponAnchor(child.transform, animator, _weaponAnchorPath);
+                    var trailPointObject = new GameObject("TrailPoint");
+                    trailPoint = trailPointObject.transform;
+                    trailPoint.SetParent(weaponAnchor, false);
+                    trailPoint.localPosition = _trailPointOffset;
+                    root.AddComponent<WeaponAttackTrailEffect>();
+                }
+            }
+
+            EntityPresentationBindings bindings = root.AddComponent<EntityPresentationBindings>();
+            bindings.Configure(display, sizeReferenceRenderer, animator, projectileOrigin, weaponAnchor, trailPoint, false);
+
+            string path = $"{savePath}/{rootName}.prefab";
+            if (!_replaceSameName)
+                path = AssetDatabase.GenerateUniqueAssetPath(path);
+            EntityPresentationPrefabTools.ValidateBindingsOrThrow(
+                bindings,
+                _prefabType == PrefabType.Unit,
+                path);
+            PrefabUtility.SaveAsPrefabAsset(root, path);
+
+            Debug.Log($"Prefab 已生成: {path}");
+            EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<GameObject>(path));
         }
-
-        // 保存 prefab
-        string path = $"{savePath}/{rootName}.prefab";
-        if (!_replaceSameName)
-            path = AssetDatabase.GenerateUniqueAssetPath(path);
-        PrefabUtility.SaveAsPrefabAsset(root, path);
-        DestroyImmediate(root);
-
-        Debug.Log($"Prefab 已生成: {path}");
-        EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<GameObject>(path));
+        finally
+        {
+            DestroyImmediate(root);
+        }
     }
 
     static string GetSavePath(PrefabType prefabType)
     {
         return prefabType == PrefabType.Building
-            ? "Assets/AAAGame/Prefabs/Entity/Building"
-            : "Assets/AAAGame/Prefabs/Entity/Unit";
+            ? BuildingOutputFolder
+            : UnitOutputFolder;
+    }
+
+    private static int RequireLayer(string layerName)
+    {
+        int layer = LayerMask.NameToLayer(layerName);
+        if (layer < 0)
+            throw new InvalidOperationException($"Project is missing required layer '{layerName}'.");
+        return layer;
+    }
+
+    private static Transform CreateProjectileOrigin(GameObject root, Transform display)
+    {
+        Bounds bounds = GetBounds(display.gameObject);
+        if (bounds.size == Vector3.zero)
+            throw new InvalidOperationException("Cannot create ProjectileOrigin because Display has no valid mesh bounds.");
+
+        var socketsObject = new GameObject(EntityPresentationBindings.SocketsObjectName);
+        socketsObject.transform.SetParent(root.transform, false);
+        var originObject = new GameObject(EntityPresentationBindings.ProjectileOriginObjectName);
+        originObject.transform.SetParent(socketsObject.transform, false);
+        originObject.transform.position = bounds.center;
+        return originObject.transform;
+    }
+
+    private static Animator ConfigureUnitRuntime(
+        GameObject root,
+        GameObject modelRoot,
+        RuntimeAnimatorController animatorController)
+    {
+        Animator sourceAnimator = modelRoot.GetComponentInChildren<Animator>(true);
+        if (sourceAnimator == null || sourceAnimator.avatar == null || !sourceAnimator.avatar.isValid)
+            throw new InvalidOperationException("Unit FBX requires a valid imported Avatar.");
+
+        Avatar avatar = sourceAnimator.avatar;
+        if (PrefabUtility.IsPartOfPrefabInstance(modelRoot))
+            PrefabUtility.UnpackPrefabInstance(modelRoot, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+        Animator[] modelAnimators = modelRoot.GetComponentsInChildren<Animator>(true);
+        for (int i = 0; i < modelAnimators.Length; i++)
+            DestroyImmediate(modelAnimators[i]);
+
+        Animator animator = root.AddComponent<Animator>();
+        animator.avatar = avatar;
+        animator.runtimeAnimatorController = animatorController;
+        animator.applyRootMotion = false;
+
+        Bounds bounds = GetBounds(modelRoot);
+        float height = bounds.size.y;
+        float radius = Mathf.Max(bounds.size.x, bounds.size.z) * 0.5f;
+        if (height <= Mathf.Epsilon || radius <= Mathf.Epsilon)
+            throw new InvalidOperationException("Unit FBX has invalid bounds for CharacterController generation.");
+
+        root.layer = RequireLayer("character");
+        CharacterController characterController = root.AddComponent<CharacterController>();
+        characterController.height = height;
+        characterController.radius = Mathf.Min(radius, height * 0.5f);
+        characterController.center = root.transform.InverseTransformPoint(bounds.center);
+
+        var hurtBoxObject = new GameObject("HurtBox");
+        hurtBoxObject.layer = RequireLayer("Hurt");
+        hurtBoxObject.transform.SetParent(root.transform, false);
+        BoxCollider hurtCollider = hurtBoxObject.AddComponent<BoxCollider>();
+        hurtCollider.isTrigger = true;
+        hurtCollider.center = characterController.center;
+        hurtCollider.size = new Vector3(
+            characterController.radius * 2f,
+            characterController.height,
+            characterController.radius * 2f);
+        hurtBoxObject.AddComponent<HurtBox>();
+        return animator;
+    }
+
+    private static Transform ResolveUnitWeaponAnchor(Transform modelRoot, Animator animator, string relativePath)
+    {
+        if (!string.IsNullOrWhiteSpace(relativePath))
+        {
+            Transform explicitAnchor = modelRoot.Find(relativePath.Trim());
+            if (explicitAnchor == null)
+                throw new InvalidOperationException($"Weapon Anchor Path does not exist below the FBX root. path={relativePath}.");
+            return explicitAnchor;
+        }
+
+        if (animator.avatar == null || !animator.avatar.isHuman)
+            throw new InvalidOperationException("Empty Weapon Anchor Path requires a Humanoid Avatar.");
+        animator.Rebind();
+        Transform rightHand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+        if (rightHand == null)
+            throw new InvalidOperationException("Humanoid Avatar does not expose a RightHand transform.");
+        return rightHand;
     }
 
     static bool TryApplyDiameter(Transform targetRoot, float targetDiameter, out string error)
@@ -286,6 +443,82 @@ public class FbxToPrefab : EditorWindow
         targetRoot.localScale *= scaleFactor;
         error = null;
         return true;
+    }
+
+    private bool TryApplyConfiguredSize(Transform targetRoot, out string error)
+    {
+        if (_prefabType == PrefabType.Building)
+            return TryApplyDiameter(targetRoot, _diameter, out error);
+
+        Renderer sizeReferenceRenderer;
+        try
+        {
+            sizeReferenceRenderer = ResolveSelectedUnitSizeReferenceRenderer(targetRoot);
+        }
+        catch (InvalidOperationException exception)
+        {
+            error = exception.Message;
+            return false;
+        }
+
+        float targetRadius = EntityPresentationPrefabTools.GetUnitVisualRadius(_unitSize);
+        Bounds bounds = EntityPresentationPrefabTools.GetUnitSizeReferenceBounds(sizeReferenceRenderer);
+        float currentDiameter = Mathf.Max(bounds.size.x, bounds.size.z);
+        targetRoot.localScale *= targetRadius * 2f / currentDiameter;
+        error = null;
+        return true;
+    }
+
+    private void RefreshUnitSizeReferenceCandidates()
+    {
+        _unitSizeReferencePaths = Array.Empty<string>();
+        _unitSizeReferenceIndex = -1;
+        if (_sourceFbx == null || _prefabType != PrefabType.Unit)
+            return;
+
+        Renderer[] renderers = _sourceFbx.GetComponentsInChildren<Renderer>(true);
+        Renderer defaultRenderer = EntityPresentationPrefabTools.FindDefaultUnitSizeReferenceRenderer(_sourceFbx.transform);
+        var paths = new List<string>();
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer is not MeshRenderer && renderer is not SkinnedMeshRenderer)
+                continue;
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform, _sourceFbx.transform);
+            if (paths.Contains(path))
+                throw new InvalidOperationException($"FBX has multiple mesh renderers on the same transform. path={path}.");
+            paths.Add(path);
+            if (renderer == defaultRenderer)
+                _unitSizeReferenceIndex = paths.Count - 1;
+        }
+
+        if (paths.Count == 0 || _unitSizeReferenceIndex < 0)
+            throw new InvalidOperationException($"Unit FBX has no valid MeshRenderer or SkinnedMeshRenderer. asset={_sourceFbx.name}.");
+        _unitSizeReferencePaths = paths.ToArray();
+    }
+
+    private Renderer ResolveSelectedUnitSizeReferenceRenderer(Transform modelRoot)
+    {
+        if (_unitSizeReferenceIndex < 0 || _unitSizeReferenceIndex >= _unitSizeReferencePaths.Length)
+            throw new InvalidOperationException("Unit generation requires an explicit Size Reference selection.");
+        string path = _unitSizeReferencePaths[_unitSizeReferenceIndex];
+        Transform target = string.IsNullOrEmpty(path) ? modelRoot : modelRoot.Find(path);
+        if (target == null)
+            throw new InvalidOperationException($"Size Reference path does not exist below the FBX root. path={path}.");
+        Renderer renderer = target.GetComponent<Renderer>();
+        if (renderer is not MeshRenderer && renderer is not SkinnedMeshRenderer)
+            throw new InvalidOperationException($"Size Reference is not a mesh renderer. path={path}.");
+        return renderer;
+    }
+
+    private void DrawUnitSizeMetrics()
+    {
+        Renderer renderer = ResolveSelectedUnitSizeReferenceRenderer(_preview.transform);
+        Bounds referenceBounds = EntityPresentationPrefabTools.GetUnitSizeReferenceBounds(renderer);
+        float actualRadius = Mathf.Max(referenceBounds.size.x, referenceBounds.size.z) * 0.5f;
+        float targetRadius = EntityPresentationPrefabTools.GetUnitVisualRadius(_unitSize);
+        EditorGUILayout.LabelField("Body Radius", $"{actualRadius:F4} (target {targetRadius:F4})");
+        EditorGUILayout.LabelField("Body Height", referenceBounds.size.y.ToString("F4"));
     }
 
     static bool TryAlignToBottomAndCenter(Transform boundsRoot, Transform childRoot, out string error)

@@ -49,7 +49,7 @@ public sealed class LogicAuthorityConfigTestScope : System.IDisposable
 
     private static readonly string[] ConfigValues =
     {
-        "0.05", "12", "22", "36", "54", "50", "3", "8", "12", "5", "25", "100", "0.4", "1", "12",
+        "0.05", "12", "22", "36", "54", "50", "300", "800", "1200", "500", "2500", "10000", "0.4", "1", "1200",
         "1200", "900", "900", "0.8", "500", "1.2", "0.5"
     };
 

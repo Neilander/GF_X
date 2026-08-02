@@ -175,6 +175,15 @@ public sealed class PullOnOutgoingDamageBuff : BuffCallback
         _pullLevel = pullLevel;
     }
 
+    public override bool CanStartAttack()
+    {
+        if (hostEntity == null)
+            throw new InvalidOperationException("Pull buff is not initialized.");
+        if (hostEntity.DurationMoveEffectComp == null)
+            throw new InvalidOperationException($"Pull source has no displacement component. source={hostEntity.LogicEntityId.Value}.");
+        return !hostEntity.DurationMoveEffectComp.HasActiveOutgoingPullTether;
+    }
+
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
         if (target is not IEntityContext targetEntity)

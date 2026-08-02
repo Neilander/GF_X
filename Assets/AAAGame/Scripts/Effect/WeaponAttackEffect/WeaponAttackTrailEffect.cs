@@ -5,11 +5,8 @@ using UnityEngine.Rendering;
 [DisallowMultipleComponent]
 public class WeaponAttackTrailEffect : MonoBehaviour
 {
-    private const string RuntimeTrailPointName = "WeaponAttackTrail_Tip";
-
     [Header("触发规则")]
     [SerializeField] private bool onlyPlayerSide = true;
-    [SerializeField] private bool allowRuntimeAutoFallback = false;
     [SerializeField, Min(0.02f)] private float defaultDuration = 0.28f;
 
     [Header("拖尾播放模式")]
@@ -17,18 +14,6 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     [SerializeField, InspectorName("常态拖尾启动时清空旧轨迹")] private bool clearTrailWhenAlwaysEmitStarts = true;
     [SerializeField, InspectorName("每次攻击前清空拖尾")] private bool clearTrailBeforeAttack = true;
     [SerializeField, InspectorName("常态拖尾攻击时重启轨迹")] private bool restartAlwaysTrailOnAttack = true;
-
-    [Header("拖尾挂点")]
-    [SerializeField] private Transform weaponAnchor;
-    [SerializeField] private Transform trailPoint;
-    [SerializeField] private bool autoCreateTrailPoint = true;
-    [SerializeField] private Vector3 handLocalOffset = new Vector3(0f, 0.38f, 0f);
-    [SerializeField] private Vector3 fallbackLocalCenter = new Vector3(0.35f, 1.15f, 0.45f);
-
-    [Header("兜底挥动")]
-    [SerializeField] private bool useProceduralFallback = true;
-    [SerializeField, Min(0.05f)] private float fallbackSwingWidth = 0.9f;
-    [SerializeField, Min(0.05f)] private float fallbackSwingHeight = 0.42f;
 
     [Header("拖尾形态")]
     [SerializeField, Min(0.01f)] private float trailTime = 0.18f;
@@ -49,9 +34,10 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     [SerializeField, InspectorName("忽略材质底色使用脚本颜色")] private bool ignoreMaterialTint = true;
 
     private TrailRenderer m_TrailRenderer;
+    private Transform weaponAnchor;
+    private Transform trailPoint;
     private Coroutine m_PlayCoroutine;
     private Coroutine m_EnableAlwaysTrailCoroutine;
-    private bool m_UsingFallbackPoint;
     private Material m_RuntimeTrailMaterialInstance;
     private Material m_RuntimeTrailMaterialSource;
     private MaterialPropertyBlock m_TrailPropertyBlock;
@@ -59,12 +45,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
     private void Awake()
     {
-        if (!IsConfiguredForStartup())
-        {
-            StopTrail(true);
-            return;
-        }
-
+        BindPresentationOrThrow();
         EnsureTrailRenderer();
         ApplySettings();
         ApplyTrailMode(true);
@@ -72,12 +53,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
     private void OnEnable()
     {
-        if (!IsConfiguredForStartup())
-        {
-            StopTrail(true);
-            return;
-        }
-
+        BindPresentationOrThrow();
         EnsureTrailRenderer();
         ApplySettings();
         ApplyTrailMode(true);
@@ -86,9 +62,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     public static void Play(IEntityContext context, float duration = 0f)
     {
         if (context is not Component component)
-        {
-            return;
-        }
+            throw new System.InvalidOperationException("Weapon trail playback requires a Component entity context.");
 
         var effect = ResolveEffect(component);
         if (effect == null)
@@ -102,9 +76,7 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     public static void Stop(IEntityContext context, bool clearTrail = false)
     {
         if (context is not Component component)
-        {
-            return;
-        }
+            throw new System.InvalidOperationException("Weapon trail stop requires a Component entity context.");
 
         var effect = ResolveEffect(component);
         if (effect == null)
@@ -118,41 +90,12 @@ public class WeaponAttackTrailEffect : MonoBehaviour
     private static WeaponAttackTrailEffect ResolveEffect(Component owner)
     {
         var effects = owner.GetComponentsInChildren<WeaponAttackTrailEffect>(true);
-        if (effects == null || effects.Length == 0)
-        {
+        if (effects.Length == 0)
             return null;
-        }
-
-        WeaponAttackTrailEffect first = null;
-        WeaponAttackTrailEffect firstManual = null;
-
-        for (int i = 0; i < effects.Length; i++)
-        {
-            WeaponAttackTrailEffect effect = effects[i];
-            if (effect == null)
-            {
-                continue;
-            }
-
-            if (!effect.IsConfiguredForPlayback(owner.transform))
-            {
-                continue;
-            }
-
-            first ??= effect;
-
-            if (effect.HasManualBinding)
-            {
-                firstManual ??= effect;
-                if (effect.gameObject != owner.gameObject)
-                {
-                    return effect;
-                }
-            }
-        }
-        
-
-        return firstManual != null ? firstManual : first;
+        if (effects.Length > 1)
+            throw new System.InvalidOperationException($"Entity has multiple WeaponAttackTrailEffect components. entity={owner.name}, count={effects.Length}.");
+        effects[0].BindPresentationOrThrow();
+        return effects[0];
     }
 
     public void Play(float duration = 0f)
@@ -280,11 +223,6 @@ public class WeaponAttackTrailEffect : MonoBehaviour
         {
             elapsed += Time.deltaTime;
 
-            if (m_UsingFallbackPoint && useProceduralFallback)
-            {
-                UpdateProceduralTrailPoint(Mathf.Clamp01(elapsed / duration));
-            }
-
             yield return null;
         }
 
@@ -404,149 +342,24 @@ public class WeaponAttackTrailEffect : MonoBehaviour
 
     private void EnsureTrailRenderer()
     {
-        EnsureTrailPoint();
-
-        if (trailPoint == null)
-        {
-            return;
-        }
+        BindPresentationOrThrow();
 
         if (!trailPoint.TryGetComponent(out m_TrailRenderer))
-        {
             m_TrailRenderer = trailPoint.gameObject.AddComponent<TrailRenderer>();
-        }
     }
 
-    private void EnsureTrailPoint()
+    private void BindPresentationOrThrow()
     {
-        if (trailPoint != null)
+        EntityPresentationBindings bindings = null;
+        Transform current = transform;
+        while (current != null && bindings == null)
         {
-            m_UsingFallbackPoint = false;
-            return;
+            bindings = current.GetComponent<EntityPresentationBindings>();
+            current = current.parent;
         }
-
-        if (weaponAnchor == null && !allowRuntimeAutoFallback)
-        {
-            trailPoint = transform;
-            m_UsingFallbackPoint = false;
-            return;
-        }
-
-        if (!autoCreateTrailPoint)
-        {
-            return;
-        }
-
-        Transform anchor = ResolveWeaponAnchor();
-        if (anchor == null)
-        {
-            anchor = transform;
-        }
-
-        Transform existing = anchor.Find(RuntimeTrailPointName);
-        GameObject pointObject;
-        if (existing != null)
-        {
-            pointObject = existing.gameObject;
-        }
-        else
-        {
-            pointObject = new GameObject(RuntimeTrailPointName);
-            pointObject.transform.SetParent(anchor, false);
-        }
-
-        trailPoint = pointObject.transform;
-        m_UsingFallbackPoint = IsFallbackParent(anchor);
-        trailPoint.localRotation = Quaternion.identity;
-        trailPoint.localScale = Vector3.one;
-        trailPoint.localPosition = m_UsingFallbackPoint ? fallbackLocalCenter : handLocalOffset;
-    }
-
-    private Transform ResolveWeaponAnchor()
-    {
-        if (weaponAnchor != null)
-        {
-            return weaponAnchor;
-        }
-
-        var creature = GetComponent<GeneralCreature>();
-        Animator animator = creature != null ? creature.animator : GetComponentInChildren<Animator>(true);
-
-        if (animator != null && animator.isHuman)
-        {
-            Transform rightHand = animator.GetBoneTransform(HumanBodyBones.RightHand);
-            if (rightHand != null)
-            {
-                return rightHand;
-            }
-        }
-
-        Transform namedAnchor = FindNamedAnchor(transform);
-        if (namedAnchor != null)
-        {
-            return namedAnchor;
-        }
-
-        return creature != null && creature.display != null ? creature.display : transform;
-    }
-
-    private Transform FindNamedAnchor(Transform root)
-    {
-        Transform bestHand = null;
-        Transform[] children = root.GetComponentsInChildren<Transform>(true);
-        for (int i = 0; i < children.Length; i++)
-        {
-            Transform child = children[i];
-            string lower = child.name.ToLowerInvariant();
-
-            if (lower.Contains("weapon") || lower.Contains("sword") || lower.Contains("blade") || lower.Contains("knife")
-                || child.name.Contains("武器") || child.name.Contains("刀") || child.name.Contains("剑"))
-            {
-                return child;
-            }
-
-            if (bestHand == null
-                && (lower.Contains("righthand") || lower.Contains("right_hand") || lower.Contains("r hand")
-                    || lower.Contains("hand_r") || lower.Contains("mixamorig:righthand") || child.name.Contains("右手")))
-            {
-                bestHand = child;
-            }
-        }
-
-        return bestHand;
-    }
-
-    private bool IsFallbackParent(Transform parent)
-    {
-        return parent == null || parent == transform || parent.name == "Display";
-    }
-
-    private bool IsConfiguredForPlayback(Transform ownerRoot)
-    {
-        if (weaponAnchor != null || HasExplicitTrailPoint || allowRuntimeAutoFallback)
-        {
-            return true;
-        }
-
-        return transform != ownerRoot;
-    }
-
-    private bool IsConfiguredForStartup()
-    {
-        return weaponAnchor != null || HasExplicitTrailPoint || allowRuntimeAutoFallback;
-    }
-
-    private bool HasManualBinding => weaponAnchor != null || HasExplicitTrailPoint || !autoCreateTrailPoint || allowRuntimeAutoFallback;
-
-    private bool HasExplicitTrailPoint => trailPoint != null && trailPoint.name != RuntimeTrailPointName;
-
-    private void UpdateProceduralTrailPoint(float normalizedTime)
-    {
-        float angle = Mathf.Lerp(-80f, 100f, normalizedTime) * Mathf.Deg2Rad;
-        float x = Mathf.Cos(angle) * fallbackSwingWidth * 0.5f;
-        float y = Mathf.Sin(angle) * fallbackSwingHeight;
-        float z = Mathf.Lerp(0.36f, 0.72f, normalizedTime);
-        trailPoint.localPosition = fallbackLocalCenter + new Vector3(x, y, z);
+        if (bindings == null)
+            throw new System.InvalidOperationException($"Weapon trail is outside an entity presentation hierarchy. effect={name}.");
+        bindings.RequireTrailBinding(out weaponAnchor, out trailPoint);
     }
 
     private void ApplySettings()

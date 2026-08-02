@@ -405,8 +405,9 @@ public class LogicEntityIdentityTests
             Assert.IsTrue(state.IsSpawnCommitted);
             Assert.AreEqual(assignedSpeed.RawValue, state.CreatureProperties.GetProperty(CreatureMainProperty.Speed).RawValue);
 
-            Assert.IsTrue(state.BuffComp.RemoveBuff(LogicUnitConfigurator.DefendSpeedBuffId));
+            Assert.IsTrue(LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed(state));
             Assert.AreEqual(((Fix64)390).RawValue, state.CreatureProperties.GetProperty(CreatureMainProperty.Speed).RawValue);
+            Assert.IsFalse(LogicUnitConfigurator.ReleaseDefendEnemySpawnSpeed(state));
         }
         finally
         {

@@ -1,5 +1,134 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1037178308751748682
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7309413215543794823}
+  - component: {fileID: 2136161629733816175}
+  - component: {fileID: 6055385895598837697}
+  m_Layer: 9
+  m_Name: HurtBox
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7309413215543794823
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1037178308751748682}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 282874367510649349}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &2136161629733816175
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1037178308751748682}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.26, y: 1, z: 0.26}
+  m_Center: {x: 0, y: 0.5, z: 0}
+--- !u!114 &6055385895598837697
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1037178308751748682}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab604c6ec8a0c435cb15ae12cd8c5dac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!1 &3470096745813215213
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6429116212042113143}
+  m_Layer: 0
+  m_Name: PresentationSockets
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6429116212042113143
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3470096745813215213}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 692211881916127318}
+  m_Father: {fileID: 282874367510649349}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &3798529758401507108
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 692211881916127318}
+  m_Layer: 0
+  m_Name: ProjectileOrigin
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &692211881916127318
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3798529758401507108}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.049502283, y: 0.49992433, z: 0.08413136}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6429116212042113143}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5566450224255434639
 GameObject:
   m_ObjectHideFlags: 0
@@ -84,7 +213,7 @@ TrailRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 0.18
+        value: 0.261
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -93,7 +222,7 @@ TrailRenderer:
         outWeight: 0
       - serializedVersion: 3
         time: 1
-        value: 0.02
+        value: 0.029000001
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -130,7 +259,7 @@ TrailRenderer:
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: 0
+      m_ColorSpace: -1
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 2
@@ -143,7 +272,7 @@ TrailRenderer:
   m_MinVertexDistance: 0.02
   m_MaskInteraction: 0
   m_Autodestruct: 0
-  m_Emitting: 1
+  m_Emitting: 0
   m_ApplyActiveColorSpace: 1
 --- !u!1 &5667059355416220249
 GameObject:
@@ -158,6 +287,7 @@ GameObject:
   - component: {fileID: -5409559855405245601}
   - component: {fileID: 8254947112388829342}
   - component: {fileID: -6343579605612965739}
+  - component: {fileID: 7155256098176950987}
   m_Layer: 14
   m_Name: "\u5B9E\u4E60\u751F"
   m_TagString: Untagged
@@ -179,6 +309,8 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 396936102932272974}
+  - {fileID: 6429116212042113143}
+  - {fileID: 7309413215543794823}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!95 &1932797867958151653
@@ -241,20 +373,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   onlyPlayerSide: 1
-  allowRuntimeAutoFallback: 0
   defaultDuration: 0.28
   alwaysEmitTrail: 0
   clearTrailWhenAlwaysEmitStarts: 1
   clearTrailBeforeAttack: 1
   restartAlwaysTrailOnAttack: 1
-  weaponAnchor: {fileID: 7398009331757278200}
-  trailPoint: {fileID: 7398009331757278200}
-  autoCreateTrailPoint: 1
-  handLocalOffset: {x: 0, y: 0.38, z: 0}
-  fallbackLocalCenter: {x: 0.35, y: 1.15, z: 0.45}
-  useProceduralFallback: 1
-  fallbackSwingWidth: 0.9
-  fallbackSwingHeight: 0.42
   trailTime: 0.18
   startWidth: 0.18
   endWidth: 0.02
@@ -303,6 +426,25 @@ MonoBehaviour:
   sparkParticleCount: 26
   sparkColor: {r: 1, g: 1, b: 1, a: 0.9}
   sparkSpeed: 2.1
+--- !u!114 &7155256098176950987
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5667059355416220249}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7d4bd18e9e6b8e4bb6453d7fca619e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  displayRoot: {fileID: 396936102932272974}
+  sizeReferenceRenderer: {fileID: 3805897496918002867}
+  animator: {fileID: 1932797867958151653}
+  projectileOrigin: {fileID: 692211881916127318}
+  weaponAnchor: {fileID: 7398009331757278200}
+  trailPoint: {fileID: 7398009331757278200}
+  placeholder: 0
 --- !u!1 &8185178394744858697
 GameObject:
   m_ObjectHideFlags: 0
@@ -395,6 +537,11 @@ PrefabInstance:
       addedObject: {fileID: 7398009331757278200}
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
+--- !u!23 &3805897496918002867 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 6681527119915300395, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}
+  m_PrefabInstance: {fileID: 7523489780146387608}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &4037260231493048492 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5796120429355360820, guid: c05a8e0743a03344c9f3370f0f5ba44e, type: 3}

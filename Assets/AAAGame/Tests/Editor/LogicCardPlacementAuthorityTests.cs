@@ -79,6 +79,24 @@ public sealed class LogicCardPlacementAuthorityTests
     }
 
     [Test]
+    public void CurrentLogicRevealers_UseFixedVisibilityRadius()
+    {
+        Fog3MapData map = CreateMap(5, 1);
+        Bind(map, Array.Empty<LogicCombatShape>(), Fix64.One);
+        LogicEntityState player = CreateUnit(
+            1,
+            new FixVector2((Fix64)0.5f, (Fix64)0.5f),
+            SideType.PlayerSide,
+            false);
+        EntityRegistry.RegisterAsPlayer(player);
+
+        Assert.IsTrue(LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(
+            new FixVector2((Fix64)1.5f, (Fix64)0.5f)));
+        Assert.IsFalse(LogicCardPlacementAuthority.IsVisibleFromCurrentLogicRevealers(
+            new FixVector2((Fix64)2.5f, (Fix64)0.5f)));
+    }
+
+    [Test]
     public void BuildPhaseExploration_DoesNotDependOnCardSystemInitialization()
     {
         var controller = new Fog3Controller();

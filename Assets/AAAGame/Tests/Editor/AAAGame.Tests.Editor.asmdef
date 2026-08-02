@@ -5,7 +5,8 @@
         "Hotfix",
         "GameFramework",
         "UnityGameFramework.Runtime",
-        "Builtin.Runtime"
+        "Builtin.Runtime",
+        "AAAGame.Tools.Editor"
     ],
     "includePlatforms": [
         "Editor"

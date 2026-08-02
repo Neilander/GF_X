@@ -1,5 +1,7 @@
 ﻿using NUnit.Framework;
 using UnityEngine;
+using System.Collections.Generic;
+using UnityEditor;
 
 public class LogicCombatShapeTests
 {
@@ -22,7 +24,7 @@ public class LogicCombatShapeTests
     {
         BuildingCombatShapeCatalog catalog = BuildingCombatShapeCatalog.LoadRequired();
 
-        Assert.AreEqual(56, catalog.Entries.Count);
+        CollectionAssert.AreEquivalent(GetBuildingPrefabPaths(), GetCombatCatalogPaths(catalog));
         for (int i = 0; i < catalog.Entries.Count; i++)
         {
             BuildingCombatShapeCatalog.Entry entry = catalog.Entries[i];
@@ -65,15 +67,11 @@ public class LogicCombatShapeTests
     public void AuthoredObstacleCatalog_PreservesAllBlockingBoxes()
     {
         BuildingLogicObstacleShapeCatalog catalog = BuildingLogicObstacleShapeCatalog.LoadRequired();
-        int boxCount = 0;
-        int emptyPrefabCount = 0;
+        CollectionAssert.AreEquivalent(GetBuildingPrefabPaths(), GetObstacleCatalogPaths(catalog));
         for (int i = 0; i < catalog.Entries.Count; i++)
         {
             BuildingLogicObstacleShapeCatalog.PrefabEntry entry = catalog.Entries[i];
             var boxes = catalog.ResolveRequired(entry.PrefabPath, Vector3.zero, 0f);
-            boxCount += boxes.Count;
-            if (boxes.Count == 0)
-                emptyPrefabCount++;
             for (int boxIndex = 0; boxIndex < boxes.Count; boxIndex++)
             {
                 Assert.AreEqual(LogicCombatShapeKind.AxisAlignedBox, boxes[boxIndex].Kind, entry.PrefabPath);
@@ -82,8 +80,34 @@ public class LogicCombatShapeTests
             }
         }
 
-        Assert.AreEqual(56, catalog.Entries.Count);
-        Assert.AreEqual(160, boxCount);
-        Assert.AreEqual(4, emptyPrefabCount);
+    }
+
+    private static List<string> GetBuildingPrefabPaths()
+    {
+        string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { FbxToPrefab.BuildingOutputFolder });
+        var paths = new List<string>(guids.Length);
+        for (int i = 0; i < guids.Length; i++)
+        {
+            string assetPath = AssetDatabase.GUIDToAssetPath(guids[i]);
+            const string Prefix = "Assets/AAAGame/Prefabs/Entity/";
+            paths.Add(assetPath.Substring(Prefix.Length, assetPath.Length - Prefix.Length - ".prefab".Length));
+        }
+        return paths;
+    }
+
+    private static List<string> GetCombatCatalogPaths(BuildingCombatShapeCatalog catalog)
+    {
+        var paths = new List<string>(catalog.Entries.Count);
+        for (int i = 0; i < catalog.Entries.Count; i++)
+            paths.Add(catalog.Entries[i].PrefabPath);
+        return paths;
+    }
+
+    private static List<string> GetObstacleCatalogPaths(BuildingLogicObstacleShapeCatalog catalog)
+    {
+        var paths = new List<string>(catalog.Entries.Count);
+        for (int i = 0; i < catalog.Entries.Count; i++)
+            paths.Add(catalog.Entries[i].PrefabPath);
+        return paths;
     }
 }

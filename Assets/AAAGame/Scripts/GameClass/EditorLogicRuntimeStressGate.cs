@@ -141,6 +141,7 @@ public static class EditorLogicRuntimeStressGate
     private static int s_ProcessedTicks;
     private static int s_CombatBaselineAuthorityCount;
     private static int s_InitialObstacleCount;
+    private static int s_InitialStaticBakedObstacleShapeCount;
     private static int s_FlowTileCacheLimit;
     private static int s_InjectedInputCount;
     private static bool s_InjectedThisFrame;
@@ -330,6 +331,7 @@ public static class EditorLogicRuntimeStressGate
         s_DamageTraceHasher.Add(0x44414D4147455452UL);
         s_InitialStaticProjectionFailureCount = LogicAgentCollisionShadowService.TotalStaticProjectionFailureCount;
         s_InitialObstacleCount = LogicObstacleCommandService.ActiveObstacleCount;
+        s_InitialStaticBakedObstacleShapeCount = CountStaticBakedBlockingObstacleShapes();
         s_FlowTileCacheLimit = FlowFieldCrowdMovementSystem.GetEditorTestFlowTileCacheLimit();
         s_GameEndManager = GameEntry.GetComponent<GameEndManager>()
                            ?? throw new InvalidOperationException("Editor logic stress gate requires GameEndManager.");
@@ -338,17 +340,18 @@ public static class EditorLogicRuntimeStressGate
         s_ProtectedPlayerBuildingCount = RestorePlayerBuildingsToFullHealth();
         if (s_ProtectedPlayerBuildingCount <= 0)
             throw new InvalidOperationException("Editor logic stress gate requires at least one active player building.");
-        if (s_InitialObstacleCount <= 0)
-            throw new InvalidOperationException("Editor logic stress gate requires authored runtime obstacles.");
+        if (s_InitialObstacleCount + s_InitialStaticBakedObstacleShapeCount <= 0)
+            throw new InvalidOperationException("Editor logic stress gate requires authored dynamic or static-baked obstacle shapes.");
         if (s_FlowTileCacheLimit < 16)
             throw new InvalidOperationException($"Editor logic stress gate received invalid flow cache limit {s_FlowTileCacheLimit}.");
 
         s_MeasurementInitialized = true;
         Log.Info(
-            "[LogicLongSessionGate] Measurement initialized. startFrame={0}, authority={1}, obstacles={2}, flowLimit={3}.",
+            "[LogicLongSessionGate] Measurement initialized. startFrame={0}, authority={1}, dynamicObstacles={2}, staticBakedObstacleShapes={3}, flowLimit={4}.",
             startFrame,
             LogicEntityLifecycleService.AuthorityEntityCount,
             s_InitialObstacleCount,
+            s_InitialStaticBakedObstacleShapeCount,
             s_FlowTileCacheLimit);
     }
 
@@ -567,6 +570,7 @@ public static class EditorLogicRuntimeStressGate
             $"damageSubmitted={s_DamageSubmittedCount}, damageApplied={s_DamageAppliedCount}, damageSkippedDead={s_DamageSkippedDeadTargetCount}, " +
             $"combatObserved={s_CombatAuthorityObserved}, damageObserved={s_DamageObserved}, navigationChanged={s_NavigationHashChanged}, " +
             $"combatWindows={s_CombatWindowsValidated}, protectedBuildings={s_ProtectedPlayerBuildingCount}, " +
+            $"dynamicObstacles={s_InitialObstacleCount}, staticBakedObstacleShapes={s_InitialStaticBakedObstacleShapeCount}, " +
             $"enemyUnits={s_CurrentEnemyUnitCount}, enemyUnitPeak={s_MaxEnemyUnitCount}, enemyViewsBound={s_EnemyUnitBoundViewCount}, " +
             $"enemyViewsFogTracked={s_EnemyUnitFogTrackedViewCount}, gameEnded={s_GameEndManager?.IsGameEnded.ToString() ?? "<unavailable>"}, " +
             $"checkpoints={StageCheckpointService.History.Count}, checkpointGrowth={StageCheckpointService.History.Count - s_CheckpointBaselineCount}, " +
@@ -626,11 +630,13 @@ public static class EditorLogicRuntimeStressGate
             throw new InvalidOperationException($"Injected movement input was not applied on frame {inputFrame.FrameId}.");
 
         ValidateWorldClosure(requireBoundViews: false);
+        int staticBakedObstacleShapeCount = CountStaticBakedBlockingObstacleShapes();
         if (LogicObstacleCommandService.PendingCount != 0
-            || LogicObstacleCommandService.ActiveObstacleCount != s_InitialObstacleCount)
+            || LogicObstacleCommandService.ActiveObstacleCount != s_InitialObstacleCount
+            || staticBakedObstacleShapeCount != s_InitialStaticBakedObstacleShapeCount)
         {
             throw new InvalidOperationException(
-                $"Obstacle state drifted. pending={LogicObstacleCommandService.PendingCount}, active={LogicObstacleCommandService.ActiveObstacleCount}, expectedActive={s_InitialObstacleCount}.");
+                $"Obstacle state drifted. pending={LogicObstacleCommandService.PendingCount}, dynamic={LogicObstacleCommandService.ActiveObstacleCount}, expectedDynamic={s_InitialObstacleCount}, staticBakedShapes={staticBakedObstacleShapeCount}, expectedStaticBakedShapes={s_InitialStaticBakedObstacleShapeCount}.");
         }
         if (LogicAgentCollisionShadowService.TotalStaticProjectionFailureCount != s_InitialStaticProjectionFailureCount)
             throw new InvalidOperationException("A deterministic static projection failed during the editor logic stress gate.");
@@ -1026,6 +1032,24 @@ public static class EditorLogicRuntimeStressGate
             throw new InvalidOperationException($"Editor logic stress gate status mismatch. expected={expected}, actual={Status}.");
     }
 
+    private static int CountStaticBakedBlockingObstacleShapes()
+    {
+        int shapeCount = 0;
+        var entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is LogicEntityState state
+                && state.IsBuildingEntity
+                && state.IsNavigationStaticBaked
+                && state.BlocksLogicMovement)
+            {
+                shapeCount = checked(shapeCount + state.LogicObstacleShapes.Count);
+            }
+        }
+
+        return shapeCount;
+    }
+
     private static void ResetMetrics()
     {
         Status = EditorLogicRuntimeStressGateStatus.Idle;
@@ -1035,6 +1059,7 @@ public static class EditorLogicRuntimeStressGate
         s_ProcessedTicks = 0;
         s_CombatBaselineAuthorityCount = 0;
         s_InitialObstacleCount = 0;
+        s_InitialStaticBakedObstacleShapeCount = 0;
         s_FlowTileCacheLimit = 0;
         s_InjectedInputCount = 0;
         s_InjectedThisFrame = false;

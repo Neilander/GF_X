@@ -15,6 +15,6 @@ MonoBehaviour:
   Type: 1
   _attackVfxName: 
   _attackSfx: {fileID: 0}
-  _projectileName: TestProjectile
+  _projectileName: Projectile
   _projectileSpeed: 10
   _hitVfxName: 

@@ -50,13 +50,16 @@ public class RangedWeaponSO : BaseWeaponSO
         if (logicProjectileId == 0)
             throw new System.ArgumentOutOfRangeException(nameof(logicProjectileId));
 
-        FixVector2 logicStart = LogicEntityFrameSnapshotService.GetRequiredPosition(attacker);
+        if (!LogicEntityLifecycleService.TryGetBoundView(attacker.LogicEntityId, out MAEntity attackerView))
+        {
+            throw new System.InvalidOperationException(
+                $"Ranged projectile presentation requires a bound attacker view. attacker={attacker.LogicEntityId.Value}.");
+        }
+
+        Transform projectileOrigin = attackerView.PresentationBindings.RequireProjectileOrigin();
 
         // 创建弹道参数
-        EntityParams projectileParams = EntityParams.Create(new Vector3(
-            (float)logicStart.x,
-            attacker.Position.y + 0.5f,
-            (float)logicStart.y));
+        EntityParams projectileParams = EntityParams.Create(projectileOrigin.position);
         projectileParams.Attacker = attacker;
         projectileParams.Target = target;
         projectileParams.WeaponData = weaponData;
@@ -73,7 +76,7 @@ public class RangedWeaponSO : BaseWeaponSO
         // 播放攻击特效
         if (!string.IsNullOrEmpty(AttackVfxName))
         {
-            var vfxParams = EntityParams.Create(attacker.Position + Vector3.up * 0.5f);
+            var vfxParams = EntityParams.Create(projectileOrigin.position);
             GF.Entity.ShowEffect(AttackVfxName, vfxParams, 2f);
         }
 
