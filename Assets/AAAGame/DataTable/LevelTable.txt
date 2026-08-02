@@ -7,4 +7,4 @@
 	3		Lv_3	Level/Level_3	Lv_Name_3	Lv_Desc_3	9	GamePhase.BuildBeforeInvade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings		[Unit_BoneButcher_Lv2,1],[Unit_Intern,5]									
 	4		Lv_4	Level/Level_2	Lv_Name_4	Lv_Desc_4	6	GamePhase.BuildBeforeInvade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings											
 	5		Lv_5	Level/Level_2	Lv_Name_5	Lv_Desc_5	6	GamePhase.BuildBeforeDefend	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings											
-	6	测试关	LvTest	Level/LvTest	Lv_Name_Test	Lv_Desc_Test	200	GamePhase.BuildBeforeInvade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings		[Unit_BoneButcher,1],[Unit_RiotGuard_Lv3,2]									
+	6	测试关	LvTest	Level/LvTest	Lv_Name_Test	Lv_Desc_Test	200	GamePhase.BuildBeforeInvade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings		[Unit_BoneButcher,1],[Unit_Poacher_Lv3,2]									

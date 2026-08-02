@@ -341,6 +341,11 @@ public class GroupMoveManager : MonoBehaviour, ILogicFrameUpdate
         FlowFieldCrowdMovementSystem.PrewarmNavigationWorlds();
     }
 
+    public int CompleteRuntimeRebuildQueue()
+    {
+        return FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue();
+    }
+
     public bool HasActiveNavigationAgents()
     {
         return FlowFieldCrowdMovementSystem.HasActiveNavigationAgents();

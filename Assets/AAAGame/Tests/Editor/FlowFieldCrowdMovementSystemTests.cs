@@ -2463,6 +2463,53 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
+    public void CompleteRuntimeRebuildQueue_导航World缺失时必须显式报错()
+    {
+        FlowFieldCrowdMovementSystem.SetConfig(CreateConfig());
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue());
+
+        StringAssert.Contains("no navigation worlds are registered", exception.Message);
+    }
+
+    [Test]
+    public void CompleteRuntimeRebuildQueue_低配额Pending也必须立即提交最新障碍World()
+    {
+        FlowFieldNavigationConfig config = CreateConfig();
+        SetNavigationWorkQuotas(config, 1);
+        config.SectorSizeInCells = 4;
+        FlowFieldCrowdMovementSystem.SetConfig(config);
+        bool[] walkable = new bool[32 * 8];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(32, 8, 1f, Vector3.zero, walkable);
+        ProcessWorldBuildQueueUntilReady();
+        FlowFieldCrowdMovementSystem.RegisterBoxObstacle(
+            9001,
+            new Vector3(2.5f, 0f, 1.5f),
+            new Vector3(0.49f, 0f, 0.49f));
+        FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(), "测试前提要求低配额重建仍处于 pending。");
+
+        int completedWorldCount = FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue();
+
+        Assert.AreEqual(1, completedWorldCount);
+        Assert.IsFalse(FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty());
+        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestRuntimeCellDiagnostics(
+            2,
+            1,
+            out bool committedWalkable,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _));
+        Assert.IsFalse(committedWalkable, "同步完成后 committed world 必须立即包含最新建筑障碍。");
+    }
+
+    [Test]
     public void 重叠CostStamp反向注册仍按StableId得到相同World和Digest()
     {
         FlowFieldNavigationConfig config = CreateConfig();

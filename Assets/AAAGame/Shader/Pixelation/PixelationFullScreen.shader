@@ -32,6 +32,13 @@ Shader "AAAGame/Pixelation/FullScreen"
         }
         LOD 100
 
+        Stencil
+        {
+            Ref 128
+            Comp NotEqual
+            ReadMask 128
+        }
+
         Pass
         {
             Name "Pixelation"

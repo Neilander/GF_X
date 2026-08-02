@@ -65,9 +65,9 @@
 					"defUid": 12,
 					"px": [1032,440],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_FireHQ_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_SecurityOffice_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_FireHQ_Lv1"]
+							"params": ["Buil_SecurityOffice_Lv1"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",
@@ -232,9 +232,9 @@
 					"defUid": 12,
 					"px": [648,488],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_GuardBooth_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_Trap_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_GuardBooth_Lv1"]
+							"params": ["Buil_Trap_Lv1"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
@@ -620,9 +620,9 @@
 					"defUid": 16,
 					"px": [584,392],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Unit_LateRider", "__tile": null, "defUid": 17, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Unit_JavelinThrower", "__tile": null, "defUid": 17, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Unit_LateRider"]
+							"params": ["Unit_JavelinThrower"]
 						}] },
 						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
 					],
@@ -642,9 +642,9 @@
 					"defUid": 16,
 					"px": [616,440],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Unit_Brat", "__tile": null, "defUid": 17, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Unit_Sprinter", "__tile": null, "defUid": 17, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Unit_Brat"]
+							"params": ["Unit_Sprinter"]
 						}] },
 						{ "__identifier": "Count", "__type": "Int", "__value": 2, "__tile": null, "defUid": 18, "realEditorValues": [{ "id": "V_Int", "params": [2] }] }
 					],
@@ -863,9 +863,9 @@
 					"defUid": 12,
 					"px": [648,360],
 					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_SecurityOffice_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
+						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_WildernessCamp_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
 							"id": "V_String",
-							"params": ["Buil_SecurityOffice_Lv1"]
+							"params": ["Buil_WildernessCamp_Lv1"]
 						}] },
 						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
 							"id": "V_Bool",

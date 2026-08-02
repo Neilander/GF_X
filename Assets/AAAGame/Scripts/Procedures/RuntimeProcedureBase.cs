@@ -7,6 +7,9 @@ using GameFramework.Fsm;
 using GameFramework.Procedure;
 using UnityEngine;
 using UnityGameFramework.Runtime;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [Flags]
 public enum RuntimeInitSystemFlags
@@ -39,6 +42,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private double m_EditorStressCutoffRealtime;
     private Func<double> m_EditorStressScaleProvider;
     private Action<ulong, double> m_EditorStressTickCallback;
+    private bool m_EditorPauseNeedsClockRebase;
 #endif
 
     protected virtual string RuntimeLevelIdentifier =>
@@ -83,6 +87,9 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 #if UNITY_EDITOR
         m_EditorStressScaleProvider ??= PrepareNextEditorStressLogicFrame;
         m_EditorStressTickCallback ??= ExecuteScheduledEditorStressLogicFrame;
+        m_EditorPauseNeedsClockRebase = false;
+        EditorApplication.pauseStateChanged -= OnEditorPauseStateChanged;
+        EditorApplication.pauseStateChanged += OnEditorPauseStateChanged;
 #endif
         m_LogicInputManager = null;
         m_LogicFrameClockStarted = false;
@@ -121,6 +128,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
     protected override void OnLeave(IFsm<IProcedureManager> procedureOwner, bool isShutdown)
     {
+#if UNITY_EDITOR
+        EditorApplication.pauseStateChanged -= OnEditorPauseStateChanged;
+        m_EditorPauseNeedsClockRebase = false;
+#endif
         FlowFieldCrowdMovementSystem.ForceEndRuntimeNavigationTransition();
         if (StageCheckpointRuntimeCoordinator.IsActive)
             StageCheckpointRuntimeCoordinator.EndSession();
@@ -490,6 +501,13 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: logic InputManager is null.");
 
 #if UNITY_EDITOR
+        if (m_EditorPauseNeedsClockRebase)
+        {
+            m_LogicFrameClock.RebaseRealtimePreservingAccumulator(realtime);
+            m_EditorPauseNeedsClockRebase = false;
+            Log.Info("[LogicFrame] Editor pause ended. Rebased realtime without catch-up. runtime={0}, realtime={1:R}.", GetType().Name, realtime);
+        }
+
         if (EditorLogicRuntimeStressGate.OwnsLogicClock)
         {
             UpdateEditorStressLogicFrames(realtime);
@@ -550,6 +568,14 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 
     }
+
+#if UNITY_EDITOR
+    private void OnEditorPauseStateChanged(PauseState state)
+    {
+        if (state == PauseState.Unpaused && m_LogicFrameClockStarted)
+            m_EditorPauseNeedsClockRebase = true;
+    }
+#endif
 
     private double PrepareNextLogicFrame()
     {

@@ -202,5 +202,5 @@ MonoBehaviour:
   requirements: 0
   passMaterial: {fileID: 2100000, guid: 8cdf0fa6afefe4d08bd43f6aebb58291, type: 2}
   passIndex: 0
-  bindDepthStencilAttachment: 0
+  bindDepthStencilAttachment: 1
   skipOverlayCameras: 1

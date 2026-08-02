@@ -1012,6 +1012,7 @@ MonoBehaviour:
   terrainRetryInterval: 0.05
   sceneRebuildFrameDelay: 2
   sceneRebuildDelay: 0.25
+  logPerformanceDiagnostics: 0
 --- !u!1 &613283499
 GameObject:
   m_ObjectHideFlags: 0
@@ -3848,7 +3849,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetDebug: 0
   atkDebug: 0
-  moveDebug: 0
+  moveDebug: 1
   brainDebug: 0
   groupMoveDebug: 0
   runtimeResourceModifyEnabled: 1

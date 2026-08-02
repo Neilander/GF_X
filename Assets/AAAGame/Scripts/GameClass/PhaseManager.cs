@@ -236,6 +236,8 @@ public class PhaseManager : GameFrameworkComponent
         DefendPhaseRuntime.CancelRuntime();
         var totalWatch = Stopwatch.StartNew();
 
+        CompleteNavigationForBattlePhase("invade");
+
         PrepareBattlePhaseCards("invade");
 
         var spawnEnemyWatch = Stopwatch.StartNew();
@@ -250,8 +252,24 @@ public class PhaseManager : GameFrameworkComponent
     private static void HandleEnterDefendPhase()
     {
         PlayPhaseEnterSound("enterBattle");
+        CompleteNavigationForBattlePhase("defend");
         PrepareBattlePhaseCards("defend");
         DefendPhaseRuntime.EnterDefendPhase();
+    }
+
+    private static void CompleteNavigationForBattlePhase(string phaseTag)
+    {
+        GroupMoveManager groupMoveManager = GroupMoveManager.Instance
+                                            ?? throw new InvalidOperationException(
+                                                $"PhaseManager cannot enter {phaseTag}: GroupMoveManager is unavailable.");
+        var watch = Stopwatch.StartNew();
+        int completedWorldCount = groupMoveManager.CompleteRuntimeRebuildQueue();
+        watch.Stop();
+        Log.Info(
+            "[PhaseNavigation] {0}.navigation-ready worlds={1}, elapsedMs={2}",
+            phaseTag,
+            completedWorldCount,
+            watch.ElapsedMilliseconds);
     }
 
     private static void PrepareBattlePhaseCards(string phaseTag)

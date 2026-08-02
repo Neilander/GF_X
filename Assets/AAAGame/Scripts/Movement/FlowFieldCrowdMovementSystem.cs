@@ -4140,6 +4140,50 @@ public static partial class FlowFieldCrowdMovementSystem
         }
     }
 
+    public static int CompleteRuntimeRebuildQueue()
+    {
+        if (_navigationWorkBudgetActive)
+            throw new InvalidOperationException("CompleteRuntimeRebuildQueue failed: navigation work budget is already active.");
+        if (WorldStates.Count == 0)
+            throw new InvalidOperationException("CompleteRuntimeRebuildQueue failed: no navigation worlds are registered.");
+
+        RuntimeRebuildQueueScratch.Clear();
+        foreach (WorldRuntimeState state in WorldStates.Values)
+        {
+            if (state == null)
+                throw new InvalidOperationException("CompleteRuntimeRebuildQueue failed: navigation world state is null.");
+            if (state.IsDirty || state.World == null)
+            {
+                throw new InvalidOperationException(
+                    $"CompleteRuntimeRebuildQueue failed: navigation world is not ready. agentType={state.AgentTypeId}, isDirty={state.IsDirty}, hasWorld={state.World != null}.");
+            }
+            if (state.DirtyRuntimeObstacleSectors.Count == 0 && state.RuntimeDirtyJob == null)
+                continue;
+
+            RuntimeRebuildQueueScratch.Add(state);
+        }
+
+        RuntimeRebuildQueueScratch.Sort((left, right) => left.AgentTypeId.CompareTo(right.AgentTypeId));
+        int completedCount = 0;
+        for (int i = 0; i < RuntimeRebuildQueueScratch.Count; i++)
+        {
+            WorldRuntimeState state = RuntimeRebuildQueueScratch[i];
+            if (!EnsureRuntimeDirtyJob(state))
+                throw new InvalidOperationException($"CompleteRuntimeRebuildQueue failed: pending state has no rebuild job. agentType={state.AgentTypeId}.");
+
+            ProcessRuntimeDirtyJob(state, long.MaxValue, forceComplete: true);
+            if (state.RuntimeDirtyJob != null || state.DirtyRuntimeObstacleSectors.Count != 0)
+            {
+                throw new InvalidOperationException(
+                    $"CompleteRuntimeRebuildQueue failed: rebuild remains pending. agentType={state.AgentTypeId}, diagnostics={GetEditorRuntimeDirtyJobDiagnostics()}.");
+            }
+
+            completedCount++;
+        }
+
+        return completedCount;
+    }
+
     public static void ProcessWorldBuildQueue()
     {
         BeginPerfCall();

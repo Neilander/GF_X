@@ -21,6 +21,11 @@ internal static class LvTestBuildInteractionDiagnosticRunner
     private const string StartedUtcKey = SessionPrefix + "StartedUtc";
     private const double RuntimeIssueTimeoutSeconds = 90.0;
     private const double ViewBindingTimeoutSeconds = 5.0;
+    private const double EditorPauseDurationSeconds = 3.0;
+    private const double EditorPauseResumeTimeoutSeconds = 5.0;
+    private const int DiagnosticObstacleIdBase = 1800000000;
+    private const int DiagnosticObstacleCount = 32;
+    private const int ExpectedNavigationWorldCount = 3;
 
     private static readonly Dictionary<int, int> s_InitialEnemyAttackCounts = new();
     private static readonly Dictionary<int, double> s_UnboundEnemyViewFirstSeen = new();
@@ -29,13 +34,24 @@ internal static class LvTestBuildInteractionDiagnosticRunner
     private static bool s_DefendSpawnObserved;
     private static bool s_SpawnSpeedReleaseObserved;
     private static bool s_EnemyAttackObserved;
+    private static bool s_NavigationReadyObserved;
+    private static int s_NavigationReadyWorldCount;
     private static int s_RuntimeEnemyViewCount;
+    private static double s_EditorPauseReleaseTime;
+    private static ulong s_EditorPauseStartFrame;
+    private static ulong s_EditorPauseResumeRequestFrame;
+    private static ulong s_EditorPauseRebaseLogFrame;
+    private static bool s_EditorPauseResumeRequested;
+    private static bool s_EditorPauseRebaseObserved;
+    private static bool s_EditorPauseFirstFrameValidated;
+    private static int s_EditorPauseCatchUpCount;
 
     private enum RunnerState
     {
         WaitingForPlay,
         WaitingForStartupProcedure,
         WaitingForRuntime,
+        WaitingForEditorPauseResume,
         WaitingForRuntimeIssues,
         Finishing,
     }
@@ -111,6 +127,9 @@ internal static class LvTestBuildInteractionDiagnosticRunner
                 case RunnerState.WaitingForRuntime:
                     DiagnoseWhenRuntimeReady();
                     break;
+                case RunnerState.WaitingForEditorPauseResume:
+                    DiagnoseEditorPauseResume();
+                    break;
                 case RunnerState.WaitingForRuntimeIssues:
                     DiagnoseRuntimeIssues();
                     break;
@@ -123,6 +142,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         catch (Exception exception)
         {
             StopRuntimeLogCapture();
+            EditorApplication.isPaused = false;
             WriteResult(
                 "RESULT=FAIL" + Environment.NewLine
                 + "startedUtc=" + SessionState.GetString(StartedUtcKey, string.Empty) + Environment.NewLine
@@ -255,9 +275,60 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         CaptureEnemyAttackBaselines();
         Application.logMessageReceived -= OnRuntimeLog;
         Application.logMessageReceived += OnRuntimeLog;
+        WriteResult(report.ToString());
+        BeginEditorPauseDiagnostic();
+    }
+
+    private static void BeginEditorPauseDiagnostic()
+    {
+        s_EditorPauseStartFrame = LogicFrameRuntime.CurrentFrame;
+        s_EditorPauseReleaseTime = EditorApplication.timeSinceStartup + EditorPauseDurationSeconds;
+        SessionState.SetInt(StateKey, (int)RunnerState.WaitingForEditorPauseResume);
+        EditorApplication.isPaused = true;
+    }
+
+    private static void DiagnoseEditorPauseResume()
+    {
+        if (!s_EditorPauseResumeRequested)
+        {
+            if (!EditorApplication.isPaused)
+                throw new InvalidOperationException("LvTest diagnostic expected Unity Editor to remain paused.");
+            if (EditorApplication.timeSinceStartup < s_EditorPauseReleaseTime)
+                return;
+            if (LogicFrameRuntime.CurrentFrame != s_EditorPauseStartFrame)
+            {
+                throw new InvalidOperationException(
+                    $"Logic frame advanced while Unity Editor was paused. before={s_EditorPauseStartFrame}, current={LogicFrameRuntime.CurrentFrame}.");
+            }
+
+            s_EditorPauseResumeRequestFrame = LogicFrameRuntime.CurrentFrame;
+            s_EditorPauseResumeRequested = true;
+            EditorApplication.isPaused = false;
+            return;
+        }
+
+        if (!s_EditorPauseRebaseObserved)
+        {
+            if (EditorApplication.timeSinceStartup < s_EditorPauseReleaseTime + EditorPauseResumeTimeoutSeconds)
+                return;
+            throw new TimeoutException("Logic clock did not report an Editor pause realtime rebase after resume.");
+        }
+        if (s_EditorPauseCatchUpCount != 0)
+        {
+            throw new InvalidOperationException(
+                $"Logic clock executed {s_EditorPauseCatchUpCount} catch-up batches on the first frame after Editor resume.");
+        }
+
+        s_EditorPauseFirstFrameValidated = true;
+        s_Report.Append("PAUSE beforeFrame=").Append(s_EditorPauseStartFrame)
+            .Append(" resumeRequestFrame=").Append(s_EditorPauseResumeRequestFrame)
+            .Append(" rebaseLogFrame=").Append(s_EditorPauseRebaseLogFrame)
+            .Append(" catchUps=").Append(s_EditorPauseCatchUpCount)
+            .AppendLine();
+        PreparePendingNavigationRebuild();
         s_RuntimeIssueDeadline = EditorApplication.timeSinceStartup + RuntimeIssueTimeoutSeconds;
         PhaseManager.SwitchToPhase(GamePhase.Defend);
-        WriteResult(report.ToString());
+        WriteResult(s_Report.ToString());
         SessionState.SetInt(StateKey, (int)RunnerState.WaitingForRuntimeIssues);
     }
 
@@ -271,7 +342,14 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         }
 
         ObserveEnemyAttacksAndViewScales();
-        if (!s_DefendSpawnObserved
+        if (s_NavigationReadyObserved && s_NavigationReadyWorldCount != ExpectedNavigationWorldCount)
+        {
+            throw new InvalidOperationException(
+                $"Defend navigation completion rebuilt {s_NavigationReadyWorldCount} worlds; expected {ExpectedNavigationWorldCount}.");
+        }
+
+        if (!s_NavigationReadyObserved
+            || !s_DefendSpawnObserved
             || !s_SpawnSpeedReleaseObserved
             || !s_EnemyAttackObserved
             || s_UnboundEnemyViewFirstSeen.Count != 0)
@@ -279,13 +357,15 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             if (EditorApplication.timeSinceStartup < s_RuntimeIssueDeadline)
                 return;
             throw new TimeoutException(
-                $"LvTest runtime issue diagnostic timed out. spawn={s_DefendSpawnObserved}, "
+                $"LvTest runtime issue diagnostic timed out. navigationReady={s_NavigationReadyObserved}, "
+                + $"navigationWorlds={s_NavigationReadyWorldCount}, spawn={s_DefendSpawnObserved}, "
                 + $"speedRelease={s_SpawnSpeedReleaseObserved}, attack={s_EnemyAttackObserved}, "
                 + $"enemyViews={s_RuntimeEnemyViewCount}.");
         }
 
         StopRuntimeLogCapture();
-        s_Report.Append("RUNTIME defendSpawnObserved=").Append(s_DefendSpawnObserved)
+        s_Report.Append("RUNTIME navigationReadyWorlds=").Append(s_NavigationReadyWorldCount)
+            .Append(" defendSpawnObserved=").Append(s_DefendSpawnObserved)
             .Append(" speedReleaseObserved=").Append(s_SpawnSpeedReleaseObserved)
             .Append(" enemyAttackObserved=").Append(s_EnemyAttackObserved)
             .Append(" unitRootScaleValidated=").Append(s_RuntimeEnemyViewCount)
@@ -310,6 +390,20 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             if (entity.AtkComp is DirectAtkComp attack)
                 s_InitialEnemyAttackCounts[entity.LogicEntityId.Value] = attack.AttackCount;
         }
+    }
+
+    private static void PreparePendingNavigationRebuild()
+    {
+        Vector3 center = new Vector3(10.35f, 0f, 5.35f);
+        Vector3 halfExtents = new Vector3(0.04f, 0f, 0.04f);
+        for (int i = 0; i < DiagnosticObstacleCount; i++)
+        {
+            FlowFieldCrowdMovementSystem.RegisterBoxObstacle(DiagnosticObstacleIdBase + i, center, halfExtents);
+            FlowFieldCrowdMovementSystem.ProcessRuntimeRebuildQueue();
+        }
+
+        if (!FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty())
+            throw new InvalidOperationException("LvTest diagnostic failed to create a pending runtime navigation rebuild before Defend.");
     }
 
     private static void ObserveEnemyAttacksAndViewScales()
@@ -354,6 +448,30 @@ internal static class LvTestBuildInteractionDiagnosticRunner
 
     private static void OnRuntimeLog(string condition, string stackTrace, LogType type)
     {
+        if (s_EditorPauseResumeRequested && !s_EditorPauseFirstFrameValidated)
+        {
+            if (condition.Contains("[LogicFrame] Editor pause ended. Rebased realtime without catch-up", StringComparison.Ordinal))
+            {
+                s_EditorPauseRebaseObserved = true;
+                s_EditorPauseRebaseLogFrame = LogicFrameRuntime.CurrentFrame;
+            }
+            else if (condition.Contains("[LogicFrame] Catch-up executed", StringComparison.Ordinal))
+            {
+                s_EditorPauseCatchUpCount++;
+            }
+        }
+
+        const string navigationPrefix = "[PhaseNavigation] defend.navigation-ready worlds=";
+        if (condition.StartsWith(navigationPrefix, StringComparison.Ordinal))
+        {
+            int valueEnd = condition.IndexOf(',', navigationPrefix.Length);
+            string value = valueEnd >= 0
+                ? condition.Substring(navigationPrefix.Length, valueEnd - navigationPrefix.Length)
+                : condition.Substring(navigationPrefix.Length);
+            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out s_NavigationReadyWorldCount))
+                throw new FormatException($"Cannot parse navigation world count from log: {condition}");
+            s_NavigationReadyObserved = true;
+        }
         if (condition.Contains("[DefendPhase] SpawnEvent", StringComparison.Ordinal))
             s_DefendSpawnObserved = true;
         if (condition.Contains("[DefendPhase] Released spawn speed on authoritative visibility", StringComparison.Ordinal))
@@ -370,7 +488,17 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         s_DefendSpawnObserved = false;
         s_SpawnSpeedReleaseObserved = false;
         s_EnemyAttackObserved = false;
+        s_NavigationReadyObserved = false;
+        s_NavigationReadyWorldCount = 0;
         s_RuntimeEnemyViewCount = 0;
+        s_EditorPauseReleaseTime = 0.0;
+        s_EditorPauseStartFrame = 0;
+        s_EditorPauseResumeRequestFrame = 0;
+        s_EditorPauseRebaseLogFrame = 0;
+        s_EditorPauseResumeRequested = false;
+        s_EditorPauseRebaseObserved = false;
+        s_EditorPauseFirstFrameValidated = false;
+        s_EditorPauseCatchUpCount = 0;
     }
 
     private static void StopRuntimeLogCapture()
