@@ -318,6 +318,10 @@ public class SteeringMovementTests
         atkComp.Init(ctx);
         ctx.AtkComp = atkComp;
 
+        var targetingComp = new NoTargetingComp();
+        targetingComp.Init(ctx);
+        ctx.TargetComp = targetingComp;
+
         return ctx;
     }
 
@@ -468,6 +472,132 @@ public class SteeringMovementTests
             () => brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime));
 
         StringAssert.Contains("has no birth position", exception.Message);
+    }
+
+    [Test]
+    public void 敌兵被拉离出生点后丢失目标_立即触发强制返航效果()
+    {
+        var soldier = MakeSoldier(new Vector3(5f, 0f, 0f), SideType.EnemySide);
+        var target = MakeSoldier(new Vector3(5.5f, 0f, 0f));
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(target);
+
+        var targeting = new SimTargetingComp(soldier, new List<IEntityContext> { soldier, target });
+        targeting.Init(soldier);
+        targeting.CurrentTarget = target;
+        soldier.TargetComp = targeting;
+
+        var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        buffComp.Init(soldier);
+        soldier.BuffComp = buffComp;
+
+        var brain = new SoldierAIBrain
+        {
+            ChaseRange = (Fix64)10,
+            HomeArrivedRadius = (Fix64)1,
+        };
+        brain.SetBirthPositionFixed(FixVector2.Zero);
+        soldier.Brain = brain;
+
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
+
+        targeting.CurrentTarget = null;
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Returning, brain.State,
+            "敌兵未超 ChaseRange，但被拉离出生点后丢失目标，也应进入不可打断的强制返航");
+        Assert.IsTrue(buffComp.HasBuff("soldier_returning"),
+            "目标丢失返航必须复用超距返航入口并挂上同一个加速/回血 Buff");
+
+        soldier.PositionFixed = FixVector2.Zero;
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Idle, brain.State);
+        Assert.IsTrue(soldier.CanRun(targeting), "敌兵到家后必须恢复 Targeting");
+        Assert.IsFalse(buffComp.HasBuff("soldier_returning"), "敌兵到家后必须移除返航 Buff");
+    }
+
+    [Test]
+    public void 敌兵当前目标死亡且附近有替代目标时继续战斗()
+    {
+        var soldier = MakeSoldier(new Vector3(5f, 0f, 0f), SideType.EnemySide);
+        var deadTarget = MakeSoldier(new Vector3(5.5f, 0f, 0f));
+        var replacement = MakeSoldier(new Vector3(6f, 0f, 0f));
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(deadTarget);
+        EntityRegistry.Register(replacement);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)3f };
+        targeting.Init(soldier);
+        soldier.TargetComp = targeting;
+        targeting.UpdateTargeting((Fix64)0.2f);
+        Assert.AreSame(deadTarget, targeting.CurrentTarget, "测试前提：先锁定距离更近的旧目标");
+
+        var brain = new SoldierAIBrain
+        {
+            ChaseRange = (Fix64)10,
+            HomeArrivedRadius = (Fix64)1,
+        };
+        brain.SetBirthPositionFixed(FixVector2.Zero);
+        soldier.Brain = brain;
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
+        var beforeLoss = new LogicStateHasher();
+        brain.WriteDeterministicState(beforeLoss);
+
+        deadTarget.Alive = false;
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+        var awaitingReplacement = new LogicStateHasher();
+        brain.WriteDeterministicState(awaitingReplacement);
+        Assert.AreNotEqual(beforeLoss.Hash, awaitingReplacement.Hash,
+            "等待 Targeting 替换的跨阶段状态必须进入确定性哈希");
+        if (soldier.CanRun(targeting))
+            targeting.UpdateTargeting(LogicFrameRuntime.FixedDeltaTime);
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreSame(replacement, targeting.CurrentTarget,
+            "旧目标死亡后的 Targeting 阶段应立即选中附近替代目标");
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State,
+            "存在合法替代目标时不能进入不可打断的返航状态");
+        Assert.IsTrue(soldier.CanRun(targeting), "切换目标时不能锁死 Targeting");
+    }
+
+    [Test]
+    public void 敌兵当前目标死亡且没有替代目标时在Targeting确认后返航()
+    {
+        var soldier = MakeSoldier(new Vector3(5f, 0f, 0f), SideType.EnemySide);
+        var deadTarget = MakeSoldier(new Vector3(5.5f, 0f, 0f));
+        EntityRegistry.Register(soldier);
+        EntityRegistry.Register(deadTarget);
+
+        var targeting = new CharacterTargetingComp { AggroRangeFixed = (Fix64)3f };
+        targeting.Init(soldier);
+        soldier.TargetComp = targeting;
+        targeting.UpdateTargeting((Fix64)0.2f);
+        Assert.AreSame(deadTarget, targeting.CurrentTarget);
+
+        var brain = new SoldierAIBrain
+        {
+            ChaseRange = (Fix64)10,
+            HomeArrivedRadius = (Fix64)1,
+        };
+        brain.SetBirthPositionFixed(FixVector2.Zero);
+        soldier.Brain = brain;
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+
+        deadTarget.Alive = false;
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State,
+            "Brain 阶段不能在 Targeting 检查替代目标前抢先返航");
+        targeting.UpdateTargeting(LogicFrameRuntime.FixedDeltaTime);
+        Assert.IsNull(targeting.CurrentTarget);
+
+        brain.Tick(soldier, LogicFrameRuntime.FixedDeltaTime);
+
+        Assert.AreEqual(SoldierAIBrain.SoldierState.Returning, brain.State,
+            "Targeting 确认没有替代目标后必须进入返航");
+        Assert.IsFalse(soldier.CanRun(targeting), "正式返航后仍必须锁住 Targeting");
     }
 
     [Test]

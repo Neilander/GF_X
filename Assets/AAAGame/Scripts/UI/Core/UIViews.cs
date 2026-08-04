@@ -26,5 +26,6 @@ public enum UIViews : int
 	InteractOptionTips = 12,
 	BuildingBuildTips = 24,
 	BuildingUpgradeTips = 25,
-	BuildingInfoTips = 26
+	BuildingInfoTips = 26,
+	StoryUIForm = 29
 }

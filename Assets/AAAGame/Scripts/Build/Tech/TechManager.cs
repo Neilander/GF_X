@@ -148,7 +148,7 @@ public class TechManager : GameFrameworkComponent
         bool built = buildManager.BuildBuildingForTechUpgrade(
             upgradeBuildingId,
             owner.LogicFramePositionFixed(),
-            owner.BuildingInstanceId);
+            owner);
         if (!built)
             return false;
 

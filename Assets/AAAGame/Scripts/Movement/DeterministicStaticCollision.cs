@@ -265,6 +265,12 @@ public enum LogicStaticCollisionFailure
     NoProgress = 4,
 }
 
+public enum LogicStaticCollisionSlideMode
+{
+    PreserveTangentialComponent = 0,
+    PreserveRemainingDistance = 1,
+}
+
 public readonly struct LogicStaticCollisionSolveResult
 {
     internal LogicStaticCollisionSolveResult(
@@ -349,7 +355,24 @@ public static class DeterministicStaticCollisionSolver
             start,
             desiredDisplacement,
             radius,
-            Array.Empty<LogicStaticCollisionObstacle>());
+            Array.Empty<LogicStaticCollisionObstacle>(),
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent);
+    }
+
+    public static LogicStaticCollisionSolveResult SolveCircle(
+        LogicStaticCollisionWorld world,
+        FixVector2 start,
+        FixVector2 desiredDisplacement,
+        Fix64 radius,
+        LogicStaticCollisionSlideMode slideMode)
+    {
+        return SolveCircle(
+            world,
+            start,
+            desiredDisplacement,
+            radius,
+            Array.Empty<LogicStaticCollisionObstacle>(),
+            slideMode);
     }
 
     internal static LogicStaticCollisionSolveResult SolveCircle(
@@ -357,12 +380,18 @@ public static class DeterministicStaticCollisionSolver
         FixVector2 start,
         FixVector2 desiredDisplacement,
         Fix64 radius,
-        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles)
+        IReadOnlyList<LogicStaticCollisionObstacle> runtimeObstacles,
+        LogicStaticCollisionSlideMode slideMode = LogicStaticCollisionSlideMode.PreserveTangentialComponent)
     {
         if (world == null)
             throw new ArgumentNullException(nameof(world));
         if (runtimeObstacles == null)
             throw new ArgumentNullException(nameof(runtimeObstacles));
+        if (slideMode != LogicStaticCollisionSlideMode.PreserveTangentialComponent
+            && slideMode != LogicStaticCollisionSlideMode.PreserveRemainingDistance)
+        {
+            throw new ArgumentOutOfRangeException(nameof(slideMode), slideMode, "Unsupported static collision slide mode.");
+        }
         if (radius < Fix64.Zero
             || radius * (Fix64)2 > world.MaxWorldX - world.Origin.x
             || radius * (Fix64)2 > world.MaxWorldY - world.Origin.y)
@@ -416,9 +445,17 @@ public static class DeterministicStaticCollisionSolver
             position += remaining * travelTime;
 
             FixVector2 leftover = remaining * (Fix64.One - hit.Time);
+            Fix64 remainingDistance = FixVector2.Magnitude(leftover);
             Fix64 inwardDistance = FixVector2.Dot(leftover, hit.Normal);
             if (inwardDistance < Fix64.Zero)
+            {
                 leftover -= hit.Normal * inwardDistance;
+                if (slideMode == LogicStaticCollisionSlideMode.PreserveRemainingDistance
+                    && leftover != FixVector2.Zero)
+                {
+                    leftover *= remainingDistance / FixVector2.Magnitude(leftover);
+                }
+            }
 
             contactCount++;
             if (travelTime == Fix64.Zero && leftover == remaining)
@@ -1365,6 +1402,23 @@ public static class LogicStaticCollisionShadowService
         Fix64 radius,
         out LogicStaticCollisionShadowResult result)
     {
+        return TrySolveFixed(
+            agentTypeId,
+            start,
+            desiredDisplacement,
+            radius,
+            LogicStaticCollisionSlideMode.PreserveTangentialComponent,
+            out result);
+    }
+
+    public static bool TrySolveFixed(
+        int agentTypeId,
+        FixVector2 start,
+        FixVector2 desiredDisplacement,
+        Fix64 radius,
+        LogicStaticCollisionSlideMode slideMode,
+        out LogicStaticCollisionShadowResult result)
+    {
         result = default;
         if (!Enabled)
             return false;
@@ -1382,7 +1436,8 @@ public static class LogicStaticCollisionShadowService
             start,
             desiredDisplacement,
             effectiveRadius,
-            source.RuntimeObstacles);
+            source.RuntimeObstacles,
+            slideMode);
         result = new LogicStaticCollisionShadowResult(world, source.RuntimeObstacles, solveResult);
         return true;
     }

@@ -316,10 +316,10 @@ public sealed class FirstHitPerTargetCriticalBuff : BuffCallback, ILogicDetermin
 
     public override Fix64 ModifyOutgoingDamage(ITargetable target, Fix64 baseDamage)
     {
-        if (!(target is EntityBase targetEntity))
-            throw new InvalidOperationException($"FirstHitPerTargetCriticalBuff failed: target has no entity id. host={hostEntity?.CharacterKey}, target={target?.CharacterKey}.");
+        if (!(target is IEntityContext targetEntity) || !targetEntity.LogicEntityId.IsValid)
+            throw new InvalidOperationException($"FirstHitPerTargetCriticalBuff failed: target has no valid logic entity id. host={hostEntity?.CharacterKey}, target={target?.CharacterKey}.");
 
-        if (!m_HitTargetIds.Add(targetEntity.Id))
+        if (!m_HitTargetIds.Add(targetEntity.LogicEntityId.Value))
             return baseDamage;
 
         return CriticalDamageUtility.ApplyCriticalDamage(hostEntity, baseDamage);

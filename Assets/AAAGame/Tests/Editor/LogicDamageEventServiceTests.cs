@@ -131,6 +131,49 @@ public class LogicDamageEventServiceTests
         Assert.AreEqual(1, LogicDamageEventService.LastOrderedEvents[1].HitIndex);
     }
 
+    [Test]
+    public void FirstHitPerTargetCritical_UsesLogicEntityIdentityAcrossQueuedDamageFrames()
+    {
+        var attacker = CreateEntity(1, 100);
+        var firstTarget = CreateEntity(2, 100);
+        var secondTarget = CreateEntity(3, 100);
+        var buffComp = new AAAGame.Scripts.BuffSystem.CharacterBuffComp();
+        attacker.BuffComp = buffComp;
+        buffComp.Init(attacker);
+        Assert.IsTrue(buffComp.AddBuff(
+            BuffData.Create(
+                "first_hit_logic_identity_test",
+                Fix64.Zero,
+                true,
+                1,
+                new System.Collections.Generic.List<BuffCallback>
+                {
+                    new FirstHitPerTargetCriticalBuff(),
+                }),
+            attacker));
+
+        m_FrameAction.Action = () =>
+        {
+            LogicDamageEventService.BeginFrame(LogicFrameRuntime.CurrentFrame);
+            DamageHelper.DoDamage(firstTarget, new Damage(attacker, (Fix64)10, HealthModifyType.reduce), attacker);
+            LogicDamageEventService.ApplyFrame(LogicFrameRuntime.CurrentFrame);
+        };
+        LogicFrameRuntime.Tick(1);
+
+        m_FrameAction.Action = () =>
+        {
+            LogicDamageEventService.BeginFrame(LogicFrameRuntime.CurrentFrame);
+            DamageHelper.DoDamage(firstTarget, new Damage(attacker, (Fix64)10, HealthModifyType.reduce), attacker);
+            DamageHelper.DoDamage(secondTarget, new Damage(attacker, (Fix64)10, HealthModifyType.reduce), attacker);
+            LogicDamageEventService.ApplyFrame(LogicFrameRuntime.CurrentFrame);
+        };
+        LogicFrameRuntime.Tick(2);
+
+        Assert.AreEqual((Fix64)75, firstTarget.HealthValue);
+        Assert.AreEqual((Fix64)85, secondTarget.HealthValue);
+        buffComp.ShutDown();
+    }
+
     private static SimEntityContext CreateEntity(int logicId, int health)
     {
         var entity = new SimEntityContext

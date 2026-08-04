@@ -31,7 +31,7 @@ public class PlayerMoveComp : IMoveComp
         _moveDirection = _isMoving ? direction : FixVector2.Zero;
 
         Fix64 speed = DistanceUnitConverter.ConvertToWorld(_ctx.GetProperty(CreatureMainProperty.Speed));
-        _ctx.MoveExecutor.SetInputFixed(direction * speed);
+        _ctx.MoveExecutor.SetInputFixed(direction * speed, preserveSpeedOnStaticSlide: true);
 
         // 动画控制由MAEntity统一处理
     }

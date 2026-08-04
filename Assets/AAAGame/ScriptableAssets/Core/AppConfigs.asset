@@ -35,6 +35,8 @@ MonoBehaviour:
   - Text/LocalizationTextTable_Old
   - Text/LocalizationTextTable_Tips
   - Text/LocalizationTextTable_Tutorial
+  - Story/StoryScriptTable
+  - Story/StoryTriggerTable
   mConfigs:
   - GameConfig
   mLanguages:

@@ -107,10 +107,76 @@ public sealed class LogicInteractionHoldServiceTests
         Assert.AreEqual(Fix64.Zero.RawValue, LogicInteractionHoldService.GetPanelProgress().RawValue);
     }
 
+    [TestCase(1, 1f)]
+    [TestCase(2, 1f)]
+    [TestCase(3, 1f)]
+    [TestCase(4, 1.2f)]
+    [TestCase(7, 2f)]
+    [TestCase(8, 2f)]
+    [TestCase(16, 2f)]
+    [TestCase(22, 2.1f)]
+    public void BuildingHoldPresentation_ClampsPerStarSpeedAndTotalDuration(int starCount, float expectedSeconds)
+    {
+        Assert.AreEqual(expectedSeconds, ResolveHoldDuration(typeof(BuildingBuildTips), starCount), 1e-4f);
+        Assert.AreEqual(expectedSeconds, ResolveHoldDuration(typeof(BuildingUpgradeTips), starCount), 1e-4f);
+    }
+
+    [TestCase(LogicInteractionOptionKind.ConstructBuilding)]
+    [TestCase(LogicInteractionOptionKind.UpgradeBuilding)]
+    [TestCase(LogicInteractionOptionKind.ResearchTech)]
+    public void DedicatedBuildingPanelOption_DoesNotExposeLogicInputKey(LogicInteractionOptionKind kind)
+    {
+        var descriptors = new System.Collections.Generic.List<LogicInteractionOptionDescriptor>();
+        var method = typeof(LogicInteractionOptionDescriptorFactory).GetMethod(
+            "AddDescriptor",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(method);
+
+        method.Invoke(null, new object[]
+        {
+            descriptors,
+            new LogicEntityId(71002),
+            "building-panel-option",
+            kind,
+            "primary-id",
+            "secondary-id",
+        });
+
+        Assert.AreEqual(1, descriptors.Count);
+        Assert.IsFalse(descriptors[0].HasInputKey);
+    }
+
+    [Test]
+    public void CoinPreview_ClearRestoresRealCoinDisplay()
+    {
+        const int ownerId = 71001;
+        try
+        {
+            IngameCoinPreviewState.SetPreviewDeduction(ownerId, 3);
+            Assert.AreEqual(7, IngameCoinPreviewState.GetDisplayCoinValue(10));
+
+            IngameCoinPreviewState.ClearPreviewDeduction(ownerId);
+            Assert.AreEqual(10, IngameCoinPreviewState.GetDisplayCoinValue(10));
+        }
+        finally
+        {
+            IngameCoinPreviewState.ClearPreviewDeduction(ownerId);
+        }
+    }
+
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();
         timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
         return timeline;
+    }
+
+    private static float ResolveHoldDuration(System.Type panelType, int starCount)
+    {
+        var method = panelType.GetMethod(
+            "ResolveHoldDurationSeconds",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(method, $"{panelType.Name} is missing ResolveHoldDurationSeconds.");
+        return (float)method.Invoke(null, new object[] { starCount });
     }
 }

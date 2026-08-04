@@ -1043,6 +1043,7 @@ public static partial class FlowFieldCrowdMovementSystem
         public byte[] FlowFieldValues;
         public int[] DeterministicIntegrationCosts;
         public byte[] DeterministicFlowDirectionIndices;
+        public ushort[] DeterministicPortalTargetSlotIndices;
         public Vector2Int[] GoalCells;
         public int LastUsedFrame;
         public int LastReferencedFrame;
@@ -4776,7 +4777,7 @@ public static partial class FlowFieldCrowdMovementSystem
             GoalCells = goalCells,
             UsesClearFlowDescriptor = sector.IsClearFlowTile
         };
-        BuildDeterministicFlowDirections(tile);
+        BuildDeterministicFlowDirections(tile, job);
         BuildFlowTileDiagnosticShadow(tile);
         tile.LastUsedFrame = GetFrameCount();
         SetDeterministicFlowTileCacheEntry(key, tile);
@@ -4832,7 +4833,7 @@ public static partial class FlowFieldCrowdMovementSystem
         return !expectedKey.Equals(job.BuildKey.CacheKey);
     }
 
-    private static void BuildDeterministicFlowDirections(FlowTileCacheEntry tile)
+    private static void BuildDeterministicFlowDirections(FlowTileCacheEntry tile, FlowTileBuildJob job)
     {
         if (tile == null)
             throw new InvalidOperationException("BuildDeterministicFlowDirections failed: tile is null.");
@@ -4847,15 +4848,19 @@ public static partial class FlowFieldCrowdMovementSystem
         for (int i = 0; i < count; i++)
             costs[i] = int.MaxValue;
 
+        int[] goalSeedCosts = ResolveDeterministicFlowGoalSeedCosts(tile, job);
         var open = new SortedSet<DeterministicFlowNode>();
         for (int i = 0; i < tile.GoalCells.Length; i++)
         {
             Vector2Int goal = tile.GoalCells[i];
             if (!IsInsideSector(tile, goal.x, goal.y) || !_world.IsWalkable(goal.x, goal.y))
                 continue;
+            int seedCost = goalSeedCosts[i];
+            if (seedCost == int.MaxValue)
+                continue;
             int index = tile.GetLocalIndex(goal.x, goal.y);
-            costs[index] = 0;
-            open.Add(new DeterministicFlowNode(0, index));
+            costs[index] = seedCost;
+            open.Add(new DeterministicFlowNode(seedCost, index));
         }
         if (open.Count == 0)
             throw new InvalidOperationException($"BuildDeterministicFlowDirections failed: tile has no walkable goals key={FormatTileKey(tile.Key)}.");
@@ -4901,7 +4906,8 @@ public static partial class FlowFieldCrowdMovementSystem
                 continue;
             int worldX = tile.StartX + localIndex % tile.Width;
             int worldY = tile.StartY + localIndex / tile.Width;
-            if (costs[localIndex] == 0)
+            int goalCellIndex = IndexOfGoalCell(tile.GoalCells, worldX, worldY);
+            if (goalCellIndex >= 0)
             {
                 if (tile.Key.GoalKind == TileGoalKind.Portal)
                     directions[localIndex] = ResolveDeterministicPortalHandoffDirectionIndex(tile, worldX, worldY);
@@ -4933,6 +4939,209 @@ public static partial class FlowFieldCrowdMovementSystem
 
         tile.DeterministicIntegrationCosts = costs;
         tile.DeterministicFlowDirectionIndices = directions;
+        tile.DeterministicPortalTargetSlotIndices = tile.Key.GoalKind == TileGoalKind.Portal
+            ? BuildDeterministicPortalTargetSlotIndices(tile, costs, directions)
+            : null;
+    }
+
+    private static int[] ResolveDeterministicFlowGoalSeedCosts(FlowTileCacheEntry tile, FlowTileBuildJob job)
+    {
+        var seedCosts = new int[tile.GoalCells.Length];
+        if (tile.Key.GoalKind == TileGoalKind.FinalGoal)
+            return seedCosts;
+        for (int i = 0; i < seedCosts.Length; i++)
+            seedCosts[i] = int.MaxValue;
+
+        PathHandle handle = job?.HandleSnapshot;
+        int sectorPathIndex = job?.BuildKey.SectorPathIndex ?? -1;
+        if (handle?.SectorIds == null || handle.PortalIds == null)
+            throw new InvalidOperationException($"ResolveDeterministicFlowGoalSeedCosts failed: portal tile has no path handle key={FormatTileKey(tile.Key)}.");
+        if (sectorPathIndex < 0 || sectorPathIndex >= handle.SectorIds.Length - 1)
+            throw new InvalidOperationException($"ResolveDeterministicFlowGoalSeedCosts failed: portal tile path index is invalid index={sectorPathIndex}, key={FormatTileKey(tile.Key)}.");
+
+        PortalData portal = GetPortalById(_world, tile.Key.GoalId);
+        int downstreamSectorId = handle.SectorIds[sectorPathIndex + 1];
+        Vector2Int[] downstreamCells = GetPortalCellsForSector(portal, downstreamSectorId);
+        if (tile.GoalCells.Length != downstreamCells.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolveDeterministicFlowGoalSeedCosts failed: portal side count mismatch current={tile.GoalCells.Length}, downstream={downstreamCells.Length}, key={FormatTileKey(tile.Key)}.");
+        }
+
+        bool downstreamIsFinalSector = sectorPathIndex + 1 == handle.SectorIds.Length - 1;
+        FlowTileCacheEntry downstreamFinalTile = null;
+        SectorPortalAccessEntry downstreamPortalAccess = null;
+        SectorData downstreamSector = _world.Sectors[downstreamSectorId];
+        if (downstreamIsFinalSector)
+        {
+            FlowTileCacheKey downstreamKey = CreateTileCacheKeyForPathSegment(
+                handle,
+                sectorPathIndex + 1,
+                job.BuildKey.GoalX,
+                job.BuildKey.GoalY,
+                job.BuildKey.AgentTypeId,
+                out TileGoalKind downstreamGoalKind,
+                out _);
+            if (downstreamGoalKind != TileGoalKind.FinalGoal
+                || !DeterministicFlowTileCache.TryGetValue(downstreamKey, out downstreamFinalTile))
+            {
+                throw new InvalidOperationException(
+                    $"ResolveDeterministicFlowGoalSeedCosts failed: downstream final tile is not committed before adjacent portal tile downstream={FormatTileKey(downstreamKey)}, key={FormatTileKey(tile.Key)}.");
+            }
+        }
+        else
+        {
+            int nextPortalId = handle.PortalIds[sectorPathIndex + 1];
+            downstreamPortalAccess = GetPrebuiltSectorPortalAccess(
+                downstreamSector,
+                downstreamSectorId,
+                nextPortalId);
+        }
+
+        for (int i = 0; i < downstreamCells.Length; i++)
+        {
+            Vector2Int downstreamCell = downstreamCells[i];
+            int downstreamCost;
+            if (downstreamIsFinalSector)
+            {
+                if (!IsInsideSector(downstreamFinalTile, downstreamCell.x, downstreamCell.y))
+                    continue;
+                downstreamCost = downstreamFinalTile.DeterministicIntegrationCosts[
+                    downstreamFinalTile.GetLocalIndex(downstreamCell.x, downstreamCell.y)];
+            }
+            else
+            {
+                long portalAccessCost = ResolveDeterministicPortalAccessIntegrationCost(
+                    _world,
+                    downstreamSector,
+                    downstreamPortalAccess,
+                    downstreamCell.x,
+                    downstreamCell.y);
+                downstreamCost = ConvertPortalAccessCostToFlowCost(portalAccessCost);
+            }
+            if (downstreamCost == int.MaxValue)
+                continue;
+
+            seedCosts[i] = downstreamCost > int.MaxValue - 1024
+                ? int.MaxValue
+                : downstreamCost + 1024;
+        }
+
+        return seedCosts;
+    }
+
+    private static int ConvertPortalAccessCostToFlowCost(long portalAccessCost)
+    {
+        if (portalAccessCost == long.MaxValue)
+            return int.MaxValue;
+        long converted = checked((portalAccessCost + 2L) / 4L);
+        return converted >= int.MaxValue ? int.MaxValue : checked((int)converted);
+    }
+
+    private static int IndexOfGoalCell(Vector2Int[] goalCells, int worldX, int worldY)
+    {
+        for (int i = 0; i < goalCells.Length; i++)
+        {
+            if (goalCells[i].x == worldX && goalCells[i].y == worldY)
+                return i;
+        }
+        return -1;
+    }
+
+    private static ushort[] BuildDeterministicPortalTargetSlotIndices(
+        FlowTileCacheEntry tile,
+        int[] integrationCosts,
+        byte[] directionIndices)
+    {
+        if (tile.GoalCells.Length > ushort.MaxValue - 1)
+        {
+            throw new InvalidOperationException(
+                $"BuildDeterministicPortalTargetSlotIndices failed: portal has too many slots count={tile.GoalCells.Length}, key={FormatTileKey(tile.Key)}.");
+        }
+
+        int count = tile.Width * tile.Height;
+        var slotIndices = new ushort[count];
+        for (int i = 0; i < tile.GoalCells.Length; i++)
+        {
+            Vector2Int goal = tile.GoalCells[i];
+            if (!IsInsideSector(tile, goal.x, goal.y))
+                throw new InvalidOperationException($"BuildDeterministicPortalTargetSlotIndices failed: portal goal is outside tile goal={goal}, key={FormatTileKey(tile.Key)}.");
+            slotIndices[tile.GetLocalIndex(goal.x, goal.y)] = checked((ushort)(i + 1));
+        }
+
+        for (int localIndex = 0; localIndex < count; localIndex++)
+        {
+            if (integrationCosts[localIndex] == int.MaxValue || slotIndices[localIndex] != 0)
+                continue;
+
+            ushort resolvedSlot = ResolveDeterministicPortalTargetSlotIndex(
+                tile,
+                integrationCosts,
+                directionIndices,
+                slotIndices,
+                localIndex);
+            int cursor = localIndex;
+            int guard = count + 1;
+            while (slotIndices[cursor] == 0 && guard-- > 0)
+            {
+                slotIndices[cursor] = resolvedSlot;
+                int offsetIndex = directionIndices[cursor] - 1;
+                int worldX = tile.StartX + cursor % tile.Width;
+                int worldY = tile.StartY + cursor / tile.Width;
+                cursor = tile.GetLocalIndex(
+                    worldX + NeighborOffsetX[offsetIndex],
+                    worldY + NeighborOffsetY[offsetIndex]);
+            }
+            if (guard <= 0)
+                throw new InvalidOperationException($"BuildDeterministicPortalTargetSlotIndices failed: flow path fill exceeded tile size key={FormatTileKey(tile.Key)}.");
+        }
+
+        return slotIndices;
+    }
+
+    private static ushort ResolveDeterministicPortalTargetSlotIndex(
+        FlowTileCacheEntry tile,
+        int[] integrationCosts,
+        byte[] directionIndices,
+        ushort[] slotIndices,
+        int startLocalIndex)
+    {
+        int cursor = startLocalIndex;
+        int guard = tile.Width * tile.Height + 1;
+        while (guard-- > 0)
+        {
+            ushort slotIndex = slotIndices[cursor];
+            if (slotIndex != 0)
+                return slotIndex;
+
+            byte directionIndex = directionIndices[cursor];
+            if (directionIndex == 0)
+            {
+                throw new InvalidOperationException(
+                    $"ResolveDeterministicPortalTargetSlotIndex failed: reachable portal flow has no direction localIndex={cursor}, key={FormatTileKey(tile.Key)}.");
+            }
+
+            int offsetIndex = directionIndex - 1;
+            int worldX = tile.StartX + cursor % tile.Width;
+            int worldY = tile.StartY + cursor / tile.Width;
+            int nextX = worldX + NeighborOffsetX[offsetIndex];
+            int nextY = worldY + NeighborOffsetY[offsetIndex];
+            if (!IsInsideSector(tile, nextX, nextY))
+            {
+                throw new InvalidOperationException(
+                    $"ResolveDeterministicPortalTargetSlotIndex failed: flow leaves tile before reaching portal cell=({worldX},{worldY}), key={FormatTileKey(tile.Key)}.");
+            }
+
+            int nextLocalIndex = tile.GetLocalIndex(nextX, nextY);
+            if (integrationCosts[nextLocalIndex] >= integrationCosts[cursor])
+            {
+                throw new InvalidOperationException(
+                    $"ResolveDeterministicPortalTargetSlotIndex failed: flow does not descend current={integrationCosts[cursor]}, next={integrationCosts[nextLocalIndex]}, key={FormatTileKey(tile.Key)}.");
+            }
+            cursor = nextLocalIndex;
+        }
+
+        throw new InvalidOperationException($"ResolveDeterministicPortalTargetSlotIndex failed: flow path contains a cycle key={FormatTileKey(tile.Key)}.");
     }
 
     private static byte ResolveDeterministicPortalHandoffDirectionIndex(
@@ -6608,6 +6817,40 @@ public static partial class FlowFieldCrowdMovementSystem
             return false;
 
         sectorIds = (int[])handle.SectorIds.Clone();
+        return true;
+    }
+
+    public static bool TryGetEditorTestCurrentPathSegment(
+        int entityId,
+        out int sectorPathIndex,
+        out int downstreamPortalId,
+        out bool isOnPortalCell)
+    {
+        sectorPathIndex = -1;
+        downstreamPortalId = -1;
+        isOnPortalCell = false;
+        if (!Agents.TryGetValue(entityId, out AgentRuntimeData agent))
+            return false;
+
+        PathHandle handle = agent.NavState.PathHandle;
+        if (handle?.SectorIds == null || handle.CurrentSectorIndex < 0 || handle.CurrentSectorIndex >= handle.SectorIds.Length)
+            return false;
+
+        sectorPathIndex = handle.CurrentSectorIndex;
+        downstreamPortalId = ResolveCurrentDownstreamPortalId(handle);
+        if (downstreamPortalId < 0)
+            return true;
+
+        PortalData portal = GetPortalById(_world, downstreamPortalId);
+        Vector2Int[] portalCells = GetPortalCellsForSector(portal, agent.NavState.CurrentSectorId);
+        for (int i = 0; i < portalCells.Length; i++)
+        {
+            if (portalCells[i] == agent.NavState.CurrentCell)
+            {
+                isOnPortalCell = true;
+                break;
+            }
+        }
         return true;
     }
 
@@ -9699,7 +9942,8 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FixVector2 pendingStaticSlide = FixVector2.Zero;
         FixVector2 toNavigationGoal = resolvedNavigationGoal - position;
-        if (FixVector2.SqrMagnitude(toNavigationGoal) > Fix64.Zero
+        if (goalKind == TileGoalKind.FinalGoal
+            && FixVector2.SqrMagnitude(toNavigationGoal) > Fix64.Zero
             && (!hasPendingRuntimeDirty || !hasCachedTile))
         {
             bool profile = MainThreadFrameProfiler.LoggingEnabled;
@@ -9757,6 +10001,23 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (!hasCachedTile)
         {
+            if (goalKind == TileGoalKind.Portal)
+            {
+                FixVector2 pendingPortalVelocity = ResolvePendingPortalVelocityFixed(
+                    agent,
+                    key,
+                    position,
+                    worldX,
+                    worldY,
+                    maxSpeed,
+                    out long portalAccessCost,
+                    out int portalDirectionIndex,
+                    out int portalSlotIndex);
+                nav.LastFixedFlowVelocity = pendingPortalVelocity;
+                nav.LastFixedFlowResult =
+                    $"tile-pending-portal-access cost={portalAccessCost} direction={portalDirectionIndex} slot={portalSlotIndex} key={FormatTileKey(key)}";
+                return pendingPortalVelocity;
+            }
             if (FixVector2.SqrMagnitude(pendingStaticSlide) > Fix64.Zero)
             {
                 FixVector2 slideVelocity = ScaleFixedDirectionToSpeed(pendingStaticSlide, maxSpeed);
@@ -9786,6 +10047,35 @@ public static partial class FlowFieldCrowdMovementSystem
         {
             nav.LastFixedFlowResult = $"unreachable cell=({worldX},{worldY}) key={FormatTileKey(key)}";
             return FixVector2.Zero;
+        }
+        if (goalKind == TileGoalKind.Portal)
+        {
+            if (tile.DeterministicPortalTargetSlotIndices == null
+                || tile.DeterministicPortalTargetSlotIndices.Length != tile.Width * tile.Height)
+            {
+                throw new InvalidOperationException(
+                    $"ResolveDeterministicFlowVelocityFixed failed: portal target slots are invalid key={FormatTileKey(key)}.");
+            }
+
+            int portalSlotIndex = tile.DeterministicPortalTargetSlotIndices[localIndex] - 1;
+            PortalData portal = GetPortalById(_world, key.GoalId);
+            Vector2Int[] oppositeCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, key.SectorId));
+            if (portalSlotIndex < 0 || portalSlotIndex >= oppositeCells.Length)
+            {
+                throw new InvalidOperationException(
+                    $"ResolveDeterministicFlowVelocityFixed failed: portal target slot is invalid slot={portalSlotIndex}, key={FormatTileKey(key)}.");
+            }
+
+            Vector2Int oppositeCell = oppositeCells[portalSlotIndex];
+            if (HasGridLineOfSight(_world, worldX, worldY, oppositeCell.x, oppositeCell.y))
+            {
+                FixVector2 portalTarget = _world.GridToWorldCenterFixed(oppositeCell.x, oppositeCell.y);
+                FixVector2 portalLosVelocity = ScaleFixedDirectionToSpeed(portalTarget - position, maxSpeed);
+                nav.LastFixedFlowVelocity = portalLosVelocity;
+                nav.LastFixedFlowResult =
+                    $"portal-los slot={portalSlotIndex} cell=({worldX},{worldY}) key={FormatTileKey(key)}";
+                return portalLosVelocity;
+            }
         }
         byte directionIndex = tile.DeterministicFlowDirectionIndices[localIndex];
         if (directionIndex == 0)
@@ -9819,6 +10109,191 @@ public static partial class FlowFieldCrowdMovementSystem
         nav.LastFixedFlowVelocity = result;
         nav.LastFixedFlowResult = $"direction={directionIndex}/cell=({worldX},{worldY})/cost={tile.DeterministicIntegrationCosts[localIndex]}";
         return result;
+    }
+
+    private static FixVector2 ResolvePendingPortalVelocityFixed(
+        AgentRuntimeData agent,
+        FlowTileCacheKey key,
+        FixVector2 position,
+        int worldX,
+        int worldY,
+        Fix64 maxSpeed,
+        out long portalAccessCost,
+        out int directionIndex,
+        out int portalSlotIndex)
+    {
+        portalAccessCost = long.MaxValue;
+        directionIndex = 0;
+        portalSlotIndex = -1;
+        if (agent == null)
+            throw new InvalidOperationException("ResolvePendingPortalVelocityFixed failed: agent is null.");
+        if (key.GoalKind != TileGoalKind.Portal)
+            throw new InvalidOperationException($"ResolvePendingPortalVelocityFixed failed: key is not a portal goal key={FormatTileKey(key)}.");
+        if (key.SectorId != agent.NavState.CurrentSectorId)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePendingPortalVelocityFixed failed: current sector mismatch key={key.SectorId}, nav={agent.NavState.CurrentSectorId}.");
+        }
+
+        PortalData portal = GetPortalById(_world, key.GoalId);
+        Vector2Int[] currentCells = GetPortalCellsForSector(portal, key.SectorId);
+        Vector2Int[] oppositeCells = GetPortalCellsForSector(portal, GetOppositeSectorId(portal, key.SectorId));
+        if (currentCells.Length == 0 || currentCells.Length != oppositeCells.Length)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePendingPortalVelocityFixed failed: portal side cells are invalid portal={portal.PortalId}, current={currentCells.Length}, opposite={oppositeCells.Length}.");
+        }
+
+        for (int i = 0; i < currentCells.Length; i++)
+        {
+            if (currentCells[i].x != worldX || currentCells[i].y != worldY)
+                continue;
+
+            portalSlotIndex = i;
+            FixVector2 target = _world.GridToWorldCenterFixed(
+                oppositeCells[i].x,
+                oppositeCells[i].y);
+            return ScaleFixedDirectionToSpeed(target - position, maxSpeed);
+        }
+
+        SectorData sector = _world.Sectors[key.SectorId];
+        if (!IsInsideSector(sector, worldX, worldY))
+            throw new InvalidOperationException(
+                $"ResolvePendingPortalVelocityFixed failed: current cell is outside sector cell=({worldX},{worldY}) sector={key.SectorId}.");
+
+        SectorPortalAccessEntry access = GetPrebuiltSectorPortalAccess(sector, key.SectorId, portal.PortalId);
+        portalAccessCost = ResolveDeterministicPortalAccessIntegrationCost(
+            _world,
+            sector,
+            access,
+            worldX,
+            worldY);
+        if (portalAccessCost == long.MaxValue)
+        {
+            throw new InvalidOperationException(
+                $"ResolvePendingPortalVelocityFixed failed: current cell cannot reach portal agent={agent.Id}, " +
+                $"cell=({worldX},{worldY}), portal={portal.PortalId}, sector={key.SectorId}.");
+        }
+
+        portalSlotIndex = ResolvePendingPortalTargetSlotIndex(
+            sector,
+            access,
+            currentCells,
+            worldX,
+            worldY,
+            portalAccessCost);
+        Vector2Int selectedOppositeCell = oppositeCells[portalSlotIndex];
+        if (HasGridLineOfSight(_world, worldX, worldY, selectedOppositeCell.x, selectedOppositeCell.y))
+        {
+            FixVector2 target = _world.GridToWorldCenterFixed(selectedOppositeCell.x, selectedOppositeCell.y);
+            return ScaleFixedDirectionToSpeed(target - position, maxSpeed);
+        }
+
+        if (!TryResolveLowestPortalAccessNeighbor(
+                sector,
+                access,
+                worldX,
+                worldY,
+                portalAccessCost,
+                out int bestDirectionIndex,
+                out _))
+        {
+            throw new InvalidOperationException(
+                $"ResolvePendingPortalVelocityFixed failed: portal access field has no descending neighbor agent={agent.Id}, " +
+                $"cell=({worldX},{worldY}), cost={portalAccessCost}, portal={portal.PortalId}, sector={key.SectorId}.");
+        }
+
+        directionIndex = bestDirectionIndex + 1;
+        FixVector2 direction = new FixVector2(
+            NeighborOffsetX[bestDirectionIndex],
+            NeighborOffsetY[bestDirectionIndex]);
+        return ScaleFixedDirectionToSpeed(direction, maxSpeed);
+    }
+
+    private static int ResolvePendingPortalTargetSlotIndex(
+        SectorData sector,
+        SectorPortalAccessEntry access,
+        Vector2Int[] portalCells,
+        int startX,
+        int startY,
+        long startCost)
+    {
+        int worldX = startX;
+        int worldY = startY;
+        long currentCost = startCost;
+        int guard = sector.Width * sector.Height + 1;
+        while (guard-- > 0)
+        {
+            for (int i = 0; i < portalCells.Length; i++)
+            {
+                if (portalCells[i].x == worldX && portalCells[i].y == worldY)
+                    return i;
+            }
+
+            if (!TryResolveLowestPortalAccessNeighbor(
+                    sector,
+                    access,
+                    worldX,
+                    worldY,
+                    currentCost,
+                    out int directionIndex,
+                    out long nextCost))
+            {
+                throw new InvalidOperationException(
+                    $"ResolvePendingPortalTargetSlotIndex failed: portal access field has no descending neighbor " +
+                    $"cell=({worldX},{worldY}), cost={currentCost}, portal={access.PortalId}, sector={sector.SectorId}.");
+            }
+
+            worldX += NeighborOffsetX[directionIndex];
+            worldY += NeighborOffsetY[directionIndex];
+            currentCost = nextCost;
+        }
+
+        throw new InvalidOperationException(
+            $"ResolvePendingPortalTargetSlotIndex failed: portal access path contains a cycle portal={access.PortalId}, sector={sector.SectorId}.");
+    }
+
+    private static bool TryResolveLowestPortalAccessNeighbor(
+        SectorData sector,
+        SectorPortalAccessEntry access,
+        int worldX,
+        int worldY,
+        long currentCost,
+        out int bestDirectionIndex,
+        out long bestCost)
+    {
+        bestDirectionIndex = -1;
+        bestCost = currentCost;
+        for (int i = 0; i < NeighborOffsetX.Length; i++)
+        {
+            int nextX = worldX + NeighborOffsetX[i];
+            int nextY = worldY + NeighborOffsetY[i];
+            if (!IsInsideSector(sector, nextX, nextY)
+                || !CanTraverseNeighborCells(_world, worldX, worldY, nextX, nextY))
+            {
+                continue;
+            }
+            if (NeighborOffsetX[i] != 0
+                && NeighborOffsetY[i] != 0
+                && !IsDiagonalPassable(_world, worldX, worldY, nextX, nextY))
+            {
+                continue;
+            }
+
+            long nextCost = ResolveDeterministicPortalAccessIntegrationCost(
+                _world,
+                sector,
+                access,
+                nextX,
+                nextY);
+            if (nextCost >= bestCost)
+                continue;
+
+            bestCost = nextCost;
+            bestDirectionIndex = i;
+        }
+
+        return bestDirectionIndex >= 0;
     }
 
     private static FixVector2 ResolvePortalGoalCellVelocityFixed(
@@ -11872,6 +12347,8 @@ public static partial class FlowFieldCrowdMovementSystem
         nav.ResolvedVelocity = Vector3.zero;
         nav.ResolvedVelocityFrame = -1;
         nav.CurrentFlowDirection = Vector3.zero;
+        nav.LastFixedFlowFrame = -1;
+        nav.LastFixedFlowVelocity = FixVector2.Zero;
         ClearStableGoal(agent);
     }
 
@@ -19583,11 +20060,11 @@ public static partial class FlowFieldCrowdMovementSystem
                                     && RequiresNewFlowTileBuildJob(handle, finalAdjacentIndex, goalX, goalY, agentTypeId))
                                 || (sectorPathIndex != finalIndex
                                     && sectorPathIndex != finalAdjacentIndex
-                                    && RequiresNewFlowTileBuildJob(handle, sectorPathIndex, goalX, goalY, agentTypeId));
+                                     && RequiresNewFlowTileBuildJob(handle, sectorPathIndex, goalX, goalY, agentTypeId));
         PathHandle snapshot = requiresSnapshot ? ClonePathHandle(handle) : handle;
-        EnqueueFlowTileBuildJob(snapshot, finalIndex, goalX, goalY, agentTypeId, prependToFront: true);
         if (finalAdjacentIndex >= sectorPathIndex)
             EnqueueFlowTileBuildJob(snapshot, finalAdjacentIndex, goalX, goalY, agentTypeId, prependToFront: true);
+        EnqueueFlowTileBuildJob(snapshot, finalIndex, goalX, goalY, agentTypeId, prependToFront: true);
         if (sectorPathIndex != finalIndex && sectorPathIndex != finalAdjacentIndex)
             EnqueueFlowTileBuildJob(snapshot, sectorPathIndex, goalX, goalY, agentTypeId, prependToFront: true);
     }

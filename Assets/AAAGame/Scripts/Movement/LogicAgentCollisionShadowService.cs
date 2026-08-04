@@ -316,6 +316,10 @@ public static class LogicAgentCollisionShadowService
                     frameStart,
                     s_PairAdjustedDisplacements[i],
                     body.Radius,
+                    entity.PreparedPreserveSpeedOnStaticSlide
+                    && s_PairCorrections[i] == FixVector2.Zero
+                        ? LogicStaticCollisionSlideMode.PreserveRemainingDistance
+                        : LogicStaticCollisionSlideMode.PreserveTangentialComponent,
                     out LogicStaticCollisionShadowResult staticResult);
                 if (profile)
                     staticSolverTicks += System.Diagnostics.Stopwatch.GetTimestamp() - staticStartTicks;

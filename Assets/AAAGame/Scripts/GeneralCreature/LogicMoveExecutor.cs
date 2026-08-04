@@ -3,6 +3,7 @@
 public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateContributor
 {
     private FixVector2 m_InputVelocity;
+    private bool m_PreserveInputSpeedOnStaticSlide;
     private FixVector2 m_ExternalVelocity;
     private FixVector2 m_OverrideVelocity;
     private bool m_HasOverride;
@@ -16,11 +17,13 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
     public ulong PreparedLogicFrame { get; private set; }
     public bool PreparedCollisionMovable { get; private set; }
     public bool PreparedNavigationConstraintEnabled { get; private set; }
+    public bool PreparedPreserveSpeedOnStaticSlide { get; private set; }
     public FixVector2 PreparedResolvedHorizontalDisplacement { get; private set; }
 
-    public void SetInputFixed(FixVector2 velocity)
+    public void SetInputFixed(FixVector2 velocity, bool preserveSpeedOnStaticSlide = false)
     {
         m_InputVelocity = velocity;
+        m_PreserveInputSpeedOnStaticSlide = preserveSpeedOnStaticSlide;
     }
 
     public void AddExternalFixed(FixVector2 velocity)
@@ -94,6 +97,12 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
                                              && m_NavigationConstrained
                                              && !m_BypassConstraintForNextFrame
                                              && !m_NavigationConstraintBypass;
+        PreparedPreserveSpeedOnStaticSlide = PreparedNavigationConstraintEnabled
+                                              && !m_HasOverride
+                                              && m_MovementMode == MovementMode.Normal
+                                              && m_PreserveInputSpeedOnStaticSlide
+                                              && m_InputVelocity != FixVector2.Zero
+                                              && m_ExternalVelocity == FixVector2.Zero;
         HasPreparedLogicMove = true;
     }
 
@@ -109,8 +118,10 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
         PreparedLogicFrame = 0;
         PreparedCollisionMovable = false;
         PreparedNavigationConstraintEnabled = false;
+        PreparedPreserveSpeedOnStaticSlide = false;
         PreparedResolvedHorizontalDisplacement = FixVector2.Zero;
         m_InputVelocity = FixVector2.Zero;
+        m_PreserveInputSpeedOnStaticSlide = false;
         m_ExternalVelocity = FixVector2.Zero;
         m_OverrideVelocity = FixVector2.Zero;
         m_HasOverride = false;
@@ -124,6 +135,7 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
 
         hasher.Add(m_InputVelocity.x.RawValue);
         hasher.Add(m_InputVelocity.y.RawValue);
+        hasher.Add(m_PreserveInputSpeedOnStaticSlide);
         hasher.Add(m_ExternalVelocity.x.RawValue);
         hasher.Add(m_ExternalVelocity.y.RawValue);
         hasher.Add(m_OverrideVelocity.x.RawValue);
@@ -137,6 +149,7 @@ public sealed class LogicMoveExecutor : IMoveExecutor, ILogicDeterministicStateC
         hasher.Add(PreparedLogicFrame);
         hasher.Add(PreparedCollisionMovable);
         hasher.Add(PreparedNavigationConstraintEnabled);
+        hasher.Add(PreparedPreserveSpeedOnStaticSlide);
         hasher.Add(PreparedResolvedHorizontalDisplacement.x.RawValue);
         hasher.Add(PreparedResolvedHorizontalDisplacement.y.RawValue);
     }

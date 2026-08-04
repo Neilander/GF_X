@@ -36,7 +36,7 @@ public class SimMoveExecutor : IMoveExecutor
         HasFixedInput = false;
     }
 
-    public void SetInputFixed(FixVector2 velocity)
+    public void SetInputFixed(FixVector2 velocity, bool preserveSpeedOnStaticSlide = false)
     {
         LastFixedInput = velocity;
         HasFixedInput = true;

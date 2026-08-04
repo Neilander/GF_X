@@ -90,6 +90,10 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     private FixVector2? _birthPosition;         // 出生点（敌方专属，未设置则不启用脱战返航）
     private bool _softReturning;             // 软返航中：触发后一直走到 HomeArrivedRadius 才停
     private bool _allowEnemyReturnToBirth = true;
+    private static readonly ICapability ReturningTargetingLocker = new ReturningTargetingCapabilityLocker();
+    private IEntityContext _returningTargetingOwner;
+    private ITargetingComp _returningTargetingComp;
+    private bool _awaitingTargetReplacement;
     private FixVector2 _combatApproachPoint;
     private FixVector2 _combatApproachTargetPoint;
     private int _combatApproachTargetId = int.MinValue;
@@ -114,16 +118,27 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
         _birthPosition = null;
         _softReturning = false;
+        _awaitingTargetReplacement = false;
         if (State == SoldierState.Returning)
+        {
+            IEntityContext returningOwner = _returningTargetingOwner
+                ?? throw new System.InvalidOperationException(
+                    "SoldierAIBrain returning state has no targeting lock owner.");
+            ReleaseReturningTargetingLock(returningOwner);
+            returningOwner.BuffComp?.RemoveBuff(ReturningBuffId);
+            returningOwner.MoveComp?.StopMove();
             State = SoldierState.Idle;
+        }
     }
 
     public void OnSideChanged(IEntityContext self, SideType oldSide, SideType newSide)
     {
+        ReleaseReturningTargetingLock(self);
         _leader = null;
         _inDeadZone = false;
         _deadZoneTarget = null;
         _softReturning = false;
+        _awaitingTargetReplacement = false;
         _combatApproachTargetId = int.MinValue;
         _combatApproachRefreshFrame = -1;
         _combatApproachTargetPoint = FixVector2.Zero;
@@ -159,6 +174,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         AddOptionalPosition(hasher, _birthPosition);
         hasher.Add(_softReturning);
         hasher.Add(_allowEnemyReturnToBirth);
+        hasher.Add(_awaitingTargetReplacement);
         hasher.Add(_combatApproachPoint.x.RawValue);
         hasher.Add(_combatApproachPoint.y.RawValue);
         hasher.Add(_combatApproachTargetPoint.x.RawValue);
@@ -275,25 +291,48 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 break;
 
             case SoldierState.Combat:
-                // 敌人死亡、不可被攻击或丢失后回 Idle，避免继续追踪幽灵/无效目标。
+                // 敌人死亡、不可被攻击或丢失后，离家的敌兵进入强制返航，其余单位回 Idle。
                 var enemy = self.TargetComp?.CurrentTarget;
-                if (!IsValidAttackTarget(self, enemy))
+                if (IsValidAttackTarget(self, enemy))
                 {
-                    // 立即清掉旧导航目标，防止继续走向已死敌人
+                    _awaitingTargetReplacement = false;
+                    break;
+                }
+
+                // Brain 先于 Targeting 执行。仍引用着失效目标时，先让紧随其后的
+                // Targeting 阶段完成一次事件驱动重扫，再决定是否真的失去目标。
+                if (_birthPosition.HasValue && !_awaitingTargetReplacement && enemy != null)
+                {
+                    _awaitingTargetReplacement = true;
                     self.MoveComp.StopMove();
-                    if (self.TargetComp != null)
-                    {
-                        self.TargetComp.CurrentTarget = null;
-                        self.TargetComp.ClearAggro();
-                    }
                     if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
                     {
                         GameDebugSettings.Log(DebugCategory.Brain,
-                            $"[{self.CharacterKey}] Combat→Idle: enemy={(enemy == null ? "null" : "invalid")}" +
-                            $", leader={(_leader != null ? _leader.CharacterKey : "null")}");
+                            $"[{self.CharacterKey}] Combat target invalid, awaiting Targeting replacement: enemy={enemy.CharacterKey}");
                     }
-                    State = SoldierState.Idle;
+                    break;
                 }
+
+                _awaitingTargetReplacement = false;
+                // 立即清掉旧导航目标，防止继续走向已死敌人
+                self.MoveComp.StopMove();
+                if (self.TargetComp != null)
+                {
+                    self.TargetComp.CurrentTarget = null;
+                    self.TargetComp.ClearAggro();
+                }
+                bool shouldReturnHome = _birthPosition.HasValue
+                                        && FixVector2.Distance(selfPositionFixed, _birthPosition.Value) > HomeArrivedRadius;
+                if (GameDebugSettings.IsEnabled(DebugCategory.Brain))
+                {
+                    GameDebugSettings.Log(DebugCategory.Brain,
+                        $"[{self.CharacterKey}] Combat target lost: enemy={(enemy == null ? "null" : "invalid")}" +
+                        $", returnHome={shouldReturnHome}, leader={(_leader != null ? _leader.CharacterKey : "null")}");
+                }
+                if (shouldReturnHome)
+                    EnterReturning(self);
+                else
+                    State = SoldierState.Idle;
                 break;
         }
     }
@@ -302,12 +341,20 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
     {
         // 清掉攻击意图和路径，避免返航过程中残留目标干扰
         Attack = false;
+        _awaitingTargetReplacement = false;
         if (self.TargetComp != null)
         {
             self.TargetComp.CurrentTarget = null;
             self.TargetComp.ClearAggro();
         }
         self.MoveComp?.StopMove();
+
+        if (self.TargetComp == null)
+            throw new System.InvalidOperationException(
+                $"SoldierAIBrain cannot enter returning without a targeting component. entity={self.LogicEntityId.Value}.");
+        self.LockComp(self.TargetComp, ReturningTargetingLocker);
+        _returningTargetingOwner = self;
+        _returningTargetingComp = self.TargetComp;
 
         // 挂复合 buff：百分比移速 + 持续回血
         if (self.BuffComp != null)
@@ -339,6 +386,7 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
 
     private void ExitReturning(IEntityContext self)
     {
+        ReleaseReturningTargetingLock(self);
         self.BuffComp?.RemoveBuff(ReturningBuffId);
 
         self.MoveComp?.StopMove();
@@ -354,6 +402,19 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             GameDebugSettings.Log(DebugCategory.Brain,
                 $"[{self.CharacterKey}] 到家, 退出 Returning");
         }
+    }
+
+    private void ReleaseReturningTargetingLock(IEntityContext self)
+    {
+        if (_returningTargetingComp == null)
+            return;
+        if (!ReferenceEquals(_returningTargetingOwner, self))
+            throw new System.InvalidOperationException(
+                "SoldierAIBrain returning targeting lock owner does not match the current entity.");
+
+        self.ResumeComp(_returningTargetingComp, ReturningTargetingLocker);
+        _returningTargetingOwner = null;
+        _returningTargetingComp = null;
     }
 
     private static bool IsValidAttackTarget(IEntityContext self, IEntityContext target)
@@ -869,6 +930,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
                 $"[{self.CharacterKey}] Returning MoveTo birth={_birthPosition.Value} from={self.LogicFramePositionFixed()}");
         }
         self.MoveComp.MoveToFixed(_birthPosition.Value);
+    }
+
+    private sealed class ReturningTargetingCapabilityLocker : ICapability
+    {
+        public void ShutDown() { }
+        public void Resume() { }
     }
 
     private static FixVector2 PickStableDeadZonePointFixed(

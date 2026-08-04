@@ -160,11 +160,16 @@ public class GameEndManager : GameFrameworkComponent
     private void HandleGameEndPresentation(bool isWin)
     {
         CloseAllOpenedUIForms();
-        OpenGameOverUI(isWin);
         DisablePlayerMoveInputOnGameEnd();
 
         if (AudioManager.Instance != null)
             AudioManager.Instance.Play(isWin ? "levelSuccess" : "levelFail");
+
+        StoryTiming timing = isWin ? StoryTiming.AfterLevelWin : StoryTiming.AfterLevelFail;
+        StoryManager.TryPlayTriggeredStory(
+            LogicGameEndService.CurrentLevelIdentifier,
+            timing,
+            () => OpenGameOverUI(isWin));
     }
 
     private void CloseAllOpenedUIForms()

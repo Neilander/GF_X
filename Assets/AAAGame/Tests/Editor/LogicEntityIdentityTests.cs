@@ -349,7 +349,7 @@ public class LogicEntityIdentityTests
 
         var fixedUpgrade = typeof(BuildManager).GetMethod(
             "BuildBuildingForTechUpgrade",
-            new[] { typeof(string), typeof(FixVector2), typeof(string) });
+            new[] { typeof(string), typeof(FixVector2), typeof(IBuildingLogicContext) });
         Assert.IsNotNull(fixedUpgrade, "逻辑帧内的建筑升级必须原样接收 FixVector2，不能经过 Vector3 往返量化。");
     }
 

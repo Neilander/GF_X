@@ -655,6 +655,57 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void PlayerInputDiagonalAgainstWall_CommitsFullSpeedTangentialMovement()
+    {
+        const int width = 5;
+        const int height = 5;
+        var walkable = new bool[width * height];
+        for (int i = 0; i < walkable.Length; i++)
+            walkable[i] = true;
+        for (int y = 0; y < height; y++)
+            walkable[2 + y * width] = false;
+
+        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(
+            width,
+            height,
+            1f,
+            Vector3.zero,
+            walkable);
+        ProcessWorldBuildQueueUntilReady();
+
+        Fix64 collisionRadius = (Fix64)0.25f;
+        FixVector2 start = new FixVector2((Fix64)1.75f, (Fix64)1.5f);
+        FixVector2 desired = new FixVector2(Fix64.One, Fix64.One).GetNormalized();
+        var entity = new RegionConstraintProbeEntity
+        {
+            LogicEntityId = new LogicEntityId(7003),
+            Side = SideType.PlayerSide,
+            PositionFixed = start,
+            DesiredDisplacement = desired,
+            NavigationConstraintEnabled = true,
+            PreserveSpeedOnStaticSlide = true,
+            NavigationAgentTypeIdOverride = 0,
+        };
+        entity.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+        EntityRegistry.Register(entity);
+
+        LogicFrameRuntime.Tick(1);
+
+        FixVector2 committed = entity.PositionFixed - start;
+        Assert.That((float)committed.x, Is.EqualTo(0f).Within(0.003f));
+        Assert.That((float)committed.y, Is.EqualTo(1f).Within(0.003f));
+        Assert.That(
+            (float)FixVector2.Magnitude(committed),
+            Is.EqualTo((float)FixVector2.Magnitude(desired)).Within(0.003f));
+        Assert.IsTrue(DeterministicStaticCollisionSolver.IsCircleClear(
+            new LogicStaticCollisionWorld(0, 1, width, height, (Fix64)1, FixVector2.Zero, walkable),
+            entity.PositionFixed,
+            collisionRadius));
+    }
+
+    [Test]
     public void RuntimeObstacleRemove_PreservesAuthoredBaseBlockerBeforeFlowRebuildCompletes()
     {
         const int width = 8;
@@ -740,6 +791,76 @@ public class MAEntityLogicFrameSystemTests
             EntityRegistry.Clear();
             LogicEntityLifecycleService.EndTimeline();
             LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void 敌兵被勾离出生点后丢失目标_真实逻辑帧立即进入强制返航()
+    {
+        EnsureInGameDataModelForCombatTest();
+        GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        InGameDataModel.SetPhase(GamePhase.Defend, false);
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            var brain = new SoldierAIBrain
+            {
+                ChaseRange = (Fix64)10,
+                HomeArrivedRadius = (Fix64)1,
+            };
+            brain.SetBirthPositionFixed(FixVector2.Zero);
+            LogicEntityState soldier = CreateProjectileRegressionUnit(
+                new FixVector2((Fix64)5, Fix64.Zero),
+                SideType.EnemySide,
+                "PulledEnemySoldier",
+                brain,
+                new NoMoveComp(),
+                null,
+                out ITargetingComp targeting,
+                out _);
+            var runtimeTargeting = new CharacterTargetingComp
+            {
+                AggroRangeFixed = (Fix64)10,
+                ForgetRangeFixed = (Fix64)10,
+            };
+            soldier.SetTargetingComp(runtimeTargeting);
+            runtimeTargeting.Init(soldier);
+            targeting = runtimeTargeting;
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(Fix64.FromRaw(22528), Fix64.Zero),
+                SideType.PlayerSide,
+                "PullTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+            targeting.CurrentTarget = target;
+
+            LogicFrameRuntime.Tick(1);
+            Assert.AreEqual(SoldierAIBrain.SoldierState.Combat, brain.State);
+
+            targeting.CurrentTarget = null;
+            LogicFrameRuntime.Tick(2);
+
+            Assert.AreEqual(SoldierAIBrain.SoldierState.Returning, brain.State);
+            Assert.IsTrue(soldier.BuffComp.HasBuff("soldier_returning"),
+                "真实逻辑帧中目标丢失必须挂上与超距返航相同的加速/回血 Buff");
+            Assert.IsFalse(soldier.CanRun(targeting), "强制返航期间必须暂停索敌，避免污染返航导航目标");
+
+            for (ulong frame = 3; frame <= 20; frame++)
+                LogicFrameRuntime.Tick(frame);
+
+            Assert.IsNull(targeting.CurrentTarget,
+                "附近仍有玩家时，返航敌兵也不能在 Targeting 阶段重新锁敌并导致朝向往返抖动");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+            InGameDataModel.SetPhase(previousPhase, false);
         }
     }
 
@@ -1268,6 +1389,7 @@ public class MAEntityLogicFrameSystemTests
         public ulong PreparedLogicFrame { get; private set; }
         public bool PreparedCollisionMovable => false;
         public bool PreparedNavigationConstraintEnabled => false;
+        public bool PreparedPreserveSpeedOnStaticSlide => false;
         public uint AgentCollisionMask => 1u;
         public FixVector2 PreparedResolvedHorizontalDisplacement => FixVector2.Zero;
         public int ExecutedPhaseCount { get; private set; }
@@ -1309,10 +1431,12 @@ public class MAEntityLogicFrameSystemTests
         public ulong PreparedLogicFrame { get; private set; }
         public bool PreparedCollisionMovable => true;
         public bool PreparedNavigationConstraintEnabled => NavigationConstraintEnabled;
+        public bool PreparedPreserveSpeedOnStaticSlide => PreserveSpeedOnStaticSlide;
         public uint AgentCollisionMask => uint.MaxValue;
         public FixVector2 PreparedResolvedHorizontalDisplacement => DesiredDisplacement;
         public FixVector2 DesiredDisplacement { get; set; }
         public bool NavigationConstraintEnabled { get; set; }
+        public bool PreserveSpeedOnStaticSlide { get; set; }
         public int NavigationAgentTypeIdOverride { get; set; }
 
         public void BeginLogicFrame(Fix64 deltaTime)

@@ -66,6 +66,24 @@ public sealed class LogicMoveExecutorTests
     }
 
     [Test]
+    public void PlayerInputSlideMode_IsPreparedOnlyForNormalInputMovement()
+    {
+        var executor = new LogicMoveExecutor();
+        executor.SetInputFixed(new FixVector2(Fix64.One, Fix64.One), preserveSpeedOnStaticSlide: true);
+
+        executor.PrepareLogicFrame(1, LogicFrameRuntime.FixedDeltaTime, true);
+
+        Assert.IsTrue(executor.PreparedPreserveSpeedOnStaticSlide);
+        executor.CommitPreparedLogicFrame(1);
+
+        executor.SetInputFixed(new FixVector2(Fix64.One, Fix64.One), preserveSpeedOnStaticSlide: true);
+        executor.SetExternalFixed(new FixVector2(Fix64.One, Fix64.Zero));
+        executor.PrepareLogicFrame(2, LogicFrameRuntime.FixedDeltaTime, true);
+
+        Assert.IsFalse(executor.PreparedPreserveSpeedOnStaticSlide);
+    }
+
+    [Test]
     public void MoveComponents_UseCommittedResolvedDisplacementForMovingState()
     {
         var characterMove = new CharacterMoveComp();

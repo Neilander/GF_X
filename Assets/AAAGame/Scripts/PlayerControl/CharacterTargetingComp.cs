@@ -147,6 +147,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
         Fix64 currentTargetDist = Fix64.FromRaw(long.MaxValue);
         int currentTargetTaunt = -1;
+        bool lostCurrentTarget = false;
 
         // 1. 维护当前敌人目标
         if (CurrentTarget != null)
@@ -158,6 +159,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                 GameDebugSettings.Log(DebugCategory.Targeting,
                     $"{_ctx} 丢失敌人目标 {CurrentTarget} | active={CurrentTarget.IsRegisteredInLogicWorld()} alive={CurrentTarget.Alive}");
                 CurrentTarget = null;
+                lostCurrentTarget = true;
                 currentTargetDist = Fix64.FromRaw(long.MaxValue);
                 currentTargetTaunt = -1;
                 if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
@@ -177,6 +179,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
                     GameDebugSettings.Log(DebugCategory.Targeting,
                         $"{_ctx} 丢失敌人目标 {CurrentTarget} | dist={dist:F1} retentionRange={targetRetentionRange:F1} alive={CurrentTarget.Alive}");
                     CurrentTarget = null;
+                    lostCurrentTarget = true;
                     currentTargetDist = Fix64.FromRaw(long.MaxValue);
                     currentTargetTaunt = -1;
                     if (useAttackRangeOnlyForThisUnit && _lastAttacker != null)
@@ -206,7 +209,7 @@ public class CharacterTargetingComp : ITargetingComp, ILogicDeterministicStateCo
 
         // 3. 降频扫描新目标（仅真实实体使用 SimpleTargeting）
         _scanTimer += deltaTime;
-        if (_scanTimer >= SCAN_INTERVAL)
+        if (lostCurrentTarget || _scanTimer >= SCAN_INTERVAL)
         {
             _scanTimer = Fix64.Zero;
 

@@ -1,0 +1,15 @@
+#	剧情脚本表									i18n	i18n			
+#	ID		ScriptID	Order	BgSpritePath	PortraitLeft	PortraitCenter	PortraitRight	PortraitEmotion	SpeakerKey	TextKey	Style	Effect	DynamicRef
+#	int		string	int	string	string	string	string	string	string	string	enum	string	enum
+#	唯一编号	备注	剧情段落标识，同一段使用相同值	段落内播放顺序，从1开始	背景图路径，留空沿用上一屏	左侧立绘路径，留空或-清除	中间立绘路径，留空或-清除	右侧立绘路径，留空或-清除	立绘差分标识（预留）	说话人名称（多语言），留空为旁白	剧情正文（多语言）	剧情显示样式	入场或转场特效，可留空	动态文本引用，默认None
+	1	L1 mission header	Story_L1	1						Story.Speaker.System	Story.L1.01	StoryStyle.Terminal	Glitch	StoryDynamicRef.None
+	2	L1 mission objectives	Story_L1	2						Story.Speaker.System	Story.L1.02	StoryStyle.Terminal		StoryDynamicRef.None
+	3	L1 personal objective	Story_L1	3						Story.Speaker.Protagonist	Story.L1.03	StoryStyle.Normal		StoryDynamicRef.None
+	4	L1 resolve	Story_L1	4						Story.Speaker.Protagonist	Story.L1.04	StoryStyle.Normal	FadeOut	StoryDynamicRef.None
+	5	L2 room detail	Story_L2	1							Story.L2.01	StoryStyle.Document		StoryDynamicRef.None
+	6	L2 orderly departure	Story_L2	2							Story.L2.02	StoryStyle.Document		StoryDynamicRef.None
+	7	L2 inference	Story_L2	3						Story.Speaker.Protagonist	Story.L2.03	StoryStyle.Normal		StoryDynamicRef.None
+	8	L2 new objective	Story_L2	4						Story.Speaker.Protagonist	Story.L2.04	StoryStyle.Normal	FadeOut	StoryDynamicRef.None
+	9	LTest1	Story_LTest	1						Story.Speaker.Protagonist	Story.LTest.01	StoryStyle.Normal		StoryDynamicRef.None
+	10	LTest2	Story_LTest	2						Story.Speaker.Protagonist	Story.LTest.02	StoryStyle.Normal		StoryDynamicRef.None
+	11	LTest3	Story_LTest	3						Story.Speaker.Protagonist	Story.LTest.03	StoryStyle.Normal		StoryDynamicRef.None

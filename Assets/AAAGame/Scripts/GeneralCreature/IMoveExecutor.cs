@@ -13,7 +13,7 @@ public enum MovementMode
 public interface IMoveExecutor
 {
     MovementMode MovementMode { get; }
-    void SetInputFixed(FixVector2 velocity);
+    void SetInputFixed(FixVector2 velocity, bool preserveSpeedOnStaticSlide = false);
     void AddExternalFixed(FixVector2 velocity);
     void SetOverrideFixed(FixVector2 velocity);
     void ClearOverride();

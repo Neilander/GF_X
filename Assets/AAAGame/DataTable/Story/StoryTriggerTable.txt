@@ -1,0 +1,7 @@
+#	剧情触发表					
+#	ID		LevelIdentifier	Timing	ScriptID	OnceOnly
+#	int		string	enum	string	bool
+#	唯一编号	备注	关卡标识	触发时机	对应剧情段落标识	是否只播放一次
+	1	L1 clear	Lv_1	StoryTiming.AfterLevelWin	Story_L1	True
+	2	L2 clear	Lv_2	StoryTiming.AfterLevelWin	Story_L2	True
+	3	LTest clear	Lv_Test	StoryTiming.AfterLevelWin	Story_LTest	False

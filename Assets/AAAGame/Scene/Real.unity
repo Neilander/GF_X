@@ -609,7 +609,7 @@ MonoBehaviour:
   legacyOrthographicSize: 12
   enableScreenEdgePan: 1
   edgeThresholdRatio: 0.15
-  edgeExitThresholdRatio: 0.2
+  edgeExitThresholdRatio: 0.25
   edgeHoldDuration: 0.8
   panDistanceRatio: 0.2
   panSmoothTime: 0.2

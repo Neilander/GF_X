@@ -54,13 +54,6 @@ public readonly struct LogicInteractionOptionDescriptor
 
 public static class LogicInteractionOptionDescriptorFactory
 {
-    private static readonly InputKey[] s_OptionalKeys =
-    {
-        InputKey.InteractionPrimary,
-        InputKey.InteractionSecondary,
-        InputKey.InteractionTertiary,
-    };
-
     public static LogicInteractionOptionDescriptor[] Create(
         LogicEntityId targetEntityId,
         string buildingInstanceId,
@@ -104,7 +97,6 @@ public static class LogicInteractionOptionDescriptorFactory
                 targetEntityId,
                 buildingInstanceId,
                 LogicInteractionOptionKind.ConstructBuilding,
-                i,
                 candidates[i].Identifier,
                 null);
         }
@@ -141,7 +133,6 @@ public static class LogicInteractionOptionDescriptorFactory
         }
 
         var seenTechIds = new HashSet<string>(StringComparer.Ordinal);
-        int optionIndex = 0;
         for (int i = 0; i < ownerData.UpgradeTechIDs.Length; i++)
         {
             string techId = ownerData.UpgradeTechIDs[i];
@@ -158,10 +149,8 @@ public static class LogicInteractionOptionDescriptorFactory
                 targetEntityId,
                 buildingInstanceId,
                 kind,
-                optionIndex,
                 kind == LogicInteractionOptionKind.UpgradeBuilding ? upgradeBuildingId : techId,
                 kind == LogicInteractionOptionKind.UpgradeBuilding ? techId : null);
-            optionIndex++;
         }
     }
 
@@ -170,17 +159,15 @@ public static class LogicInteractionOptionDescriptorFactory
         LogicEntityId targetEntityId,
         string buildingInstanceId,
         LogicInteractionOptionKind kind,
-        int optionIndex,
         string primaryId,
         string secondaryId)
     {
-        bool hasKey = optionIndex >= 0 && optionIndex < s_OptionalKeys.Length;
         descriptors.Add(new LogicInteractionOptionDescriptor(
             targetEntityId,
             buildingInstanceId,
             kind,
-            hasKey,
-            hasKey ? s_OptionalKeys[optionIndex] : default,
+            false,
+            default,
             primaryId,
             secondaryId));
     }

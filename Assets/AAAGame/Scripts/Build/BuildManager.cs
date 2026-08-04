@@ -294,6 +294,8 @@ public class BuildManager : GameFrameworkComponent
             buildingInstanceId,
             checkCondition: false,
             consumeCoins: false,
+            isGameEndConditionBuilding: owner.IsGameEndConditionBuilding,
+            isNavigationStaticBaked: owner.IsNavigationStaticBaked,
             currentInteractionFrameLifecycle: true);
         if (!entityId.IsValid)
             return false;
@@ -313,15 +315,23 @@ public class BuildManager : GameFrameworkComponent
         return true;
     }
 
-    public bool BuildBuildingForTechUpgrade(string buildingId, FixVector2 position, string buildingInstanceId)
+    public bool BuildBuildingForTechUpgrade(
+        string buildingId,
+        FixVector2 position,
+        IBuildingLogicContext owner)
     {
+        if (owner == null)
+            throw new ArgumentNullException(nameof(owner));
+
         bool ok = BuildBuildingInternalFixed(
             buildingId,
             position,
             0f,
-            buildingInstanceId,
+            owner.BuildingInstanceId,
             checkCondition: true,
             consumeCoins: false,
+            isGameEndConditionBuilding: owner.IsGameEndConditionBuilding,
+            isNavigationStaticBaked: owner.IsNavigationStaticBaked,
             currentInteractionFrameLifecycle: true).IsValid;
         if (ok && AudioManager.Instance != null)
             AudioManager.Instance.Play("buildImportant");

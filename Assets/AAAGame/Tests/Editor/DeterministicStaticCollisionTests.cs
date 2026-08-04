@@ -43,6 +43,52 @@ public sealed class DeterministicStaticCollisionTests
     }
 
     [Test]
+    public void PlayerInputAtWall_PreservesRemainingMoveDistanceAlongTangent()
+    {
+        LogicStaticCollisionWorld world = CreateWorld(5, 5, (2, 0), (2, 1), (2, 2), (2, 3), (2, 4));
+        FixVector2 desired = new FixVector2((Fix64)1, (Fix64)1).GetNormalized();
+
+        LogicStaticCollisionSolveResult result = DeterministicStaticCollisionSolver.SolveCircle(
+            world,
+            new FixVector2((Fix64)1.75f, (Fix64)1.5f),
+            desired,
+            (Fix64)0.25f,
+            LogicStaticCollisionSlideMode.PreserveRemainingDistance);
+
+        Assert.IsTrue(result.Success);
+        AssertVector(result.ResolvedDisplacement, 0f, 1f, 0.003f);
+        Assert.That(
+            (float)FixVector2.Magnitude(result.ResolvedDisplacement),
+            Is.EqualTo((float)FixVector2.Magnitude(desired)).Within(0.003f));
+    }
+
+    [Test]
+    public void PlayerInputHeadOnAndIntoCorner_DoesNotCreateTangentialMovement()
+    {
+        LogicStaticCollisionWorld wall = CreateWorld(5, 5, (2, 0), (2, 1), (2, 2), (2, 3), (2, 4));
+        LogicStaticCollisionSolveResult headOn = DeterministicStaticCollisionSolver.SolveCircle(
+            wall,
+            new FixVector2((Fix64)1.75f, (Fix64)1.5f),
+            new FixVector2(Fix64.One, Fix64.Zero),
+            (Fix64)0.25f,
+            LogicStaticCollisionSlideMode.PreserveRemainingDistance);
+
+        LogicStaticCollisionWorld corner = CreateWorld(5, 5, (2, 2));
+        LogicStaticCollisionSolveResult cornerHit = DeterministicStaticCollisionSolver.SolveCircle(
+            corner,
+            new FixVector2((Fix64)1.75f, (Fix64)1.75f),
+            new FixVector2(Fix64.One, Fix64.One),
+            (Fix64)0.25f,
+            LogicStaticCollisionSlideMode.PreserveRemainingDistance);
+
+        Assert.IsTrue(headOn.Success);
+        AssertVector(headOn.ResolvedDisplacement, 0f, 0f);
+        Assert.IsTrue(cornerHit.Success);
+        AssertVector(cornerHit.ResolvedDisplacement, 0f, 0f);
+        Assert.AreEqual(2, cornerHit.ContactCount);
+    }
+
+    [Test]
     public void BlockedCorner_UsesStableAxisTieBreakAndStopsBothAxes()
     {
         LogicStaticCollisionWorld world = CreateWorld(5, 5, (2, 2));

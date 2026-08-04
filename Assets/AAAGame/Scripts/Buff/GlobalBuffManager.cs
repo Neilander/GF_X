@@ -326,9 +326,22 @@ public class GlobalBuffManager : GameFrameworkComponent
             throw new InvalidOperationException($"GlobalBuffManager cannot find TechData for '{command.TechId}'.");
         }
 
-        if (IsProductionBuildingLevelTech(techData))
+        BuildingLevelTechRoute levelTechRoute = BuildingLevelTechRouting.Resolve(techData);
+        if (levelTechRoute == BuildingLevelTechRoute.ProductionSystem)
         {
             DebugLog($"忽略 Prod 建筑等级科技事件，效果由逻辑生产事务按等级读取。techId={command.TechId}");
+            return;
+        }
+
+        if (levelTechRoute == BuildingLevelTechRoute.ArmyUnitLevelSystem)
+        {
+            DebugLog($"忽略 Army 建筑等级科技事件，效果由单位等级系统按建筑等级读取。techId={command.TechId}");
+            return;
+        }
+
+        if (levelTechRoute == BuildingLevelTechRoute.BuildingData)
+        {
+            DebugLog($"忽略纯等级数据科技事件，效果已由升级后的 BuildingData 生效。techId={command.TechId}");
             return;
         }
 
@@ -884,23 +897,6 @@ public class GlobalBuffManager : GameFrameworkComponent
             m_BuildingTechRuntimeEffect = ScriptableObject.CreateInstance<BuildingTechRuntimeEffectSO>();
 
         return m_BuildingTechRuntimeEffect;
-    }
-
-    private static bool IsProductionBuildingLevelTech(TechData techData)
-    {
-        if (techData == null || string.IsNullOrWhiteSpace(techData.Identifier))
-            return false;
-
-        var table = GF.DataTable?.GetDataTable<BuildingTable>();
-        if (table == null)
-            return false;
-
-        BuildingTable row = table.GetDataRow(r =>
-            r.Type == BuilType.Prod
-            && (string.Equals(r.Tech1ID, techData.Identifier, StringComparison.Ordinal)
-                || string.Equals(r.Tech2ID, techData.Identifier, StringComparison.Ordinal)));
-
-        return row != null;
     }
 
     private static bool IsSyntheticRuntimeTechId(string techId)

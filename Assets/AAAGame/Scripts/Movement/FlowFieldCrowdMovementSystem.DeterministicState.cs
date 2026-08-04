@@ -243,6 +243,7 @@ public static partial class FlowFieldCrowdMovementSystem
                 + GetArrayPayloadBytes(tile.FlowFieldValues, sizeof(byte))
                 + GetArrayPayloadBytes(tile.DeterministicIntegrationCosts, sizeof(int))
                 + GetArrayPayloadBytes(tile.DeterministicFlowDirectionIndices, sizeof(byte))
+                + GetArrayPayloadBytes(tile.DeterministicPortalTargetSlotIndices, sizeof(ushort))
                 + GetArrayPayloadBytes(tile.GoalCells, sizeof(int) * 2)
                 + GetArrayPayloadBytes(tile.DebugIntegrationPayload?.Values, sizeof(float)));
         }
@@ -1310,6 +1311,7 @@ public static partial class FlowFieldCrowdMovementSystem
         hasher.Add(tile.Height);
         AddIntArray(hasher, tile.DeterministicIntegrationCosts);
         AddByteArray(hasher, tile.DeterministicFlowDirectionIndices);
+        AddUShortArray(hasher, tile.DeterministicPortalTargetSlotIndices);
         AddVector2IntArray(hasher, tile.GoalCells);
         hasher.Add(tile.UsesClearFlowDescriptor);
         return hasher.Hash;

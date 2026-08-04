@@ -195,6 +195,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public ulong PreparedLogicFrame => m_MoveExecutor.PreparedLogicFrame;
     public bool PreparedCollisionMovable => m_MoveExecutor.PreparedCollisionMovable;
     public bool PreparedNavigationConstraintEnabled => m_MoveExecutor.PreparedNavigationConstraintEnabled;
+    public bool PreparedPreserveSpeedOnStaticSlide => m_MoveExecutor.PreparedPreserveSpeedOnStaticSlide;
     public uint AgentCollisionMask => m_DurationMoveEffectComp?.IsInLossOfBalance == true
         ? 0u
         : LogicAgentCollisionFilter.ResolveMask(Side, IsGhostState);

@@ -28,3 +28,4 @@
 	24	建筑建造面板	2	BuildingBuildTips	True	3	False	False
 	25	建筑升级面板	2	BuildingUpgradeTips	True	3	False	False
 	26	建筑信息面板	2	BuildingInfoTips	True	3	False	False
+	29	Story AVG	6	StoryUIForm	True	2	False	True

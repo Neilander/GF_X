@@ -23,7 +23,7 @@ public class CameraController : MonoBehaviour
     [Header("Screen Edge Pan")]
     [SerializeField] bool enableScreenEdgePan = true;
     [SerializeField, Range(0f, 0.45f)] float edgeThresholdRatio = 0.1f;
-    [SerializeField, Range(0f, 0.45f)] float edgeExitThresholdRatio = 0.2f;
+    [SerializeField, Range(0f, 0.45f)] float edgeExitThresholdRatio = 0.25f;
     [SerializeField, Min(0f)] float edgeHoldDuration = 1f;
     [SerializeField, Range(0f, 1f)] float panDistanceRatio = 0.3f;
     [SerializeField, Min(0.01f)] float panSmoothTime = 0.2f;
@@ -302,11 +302,19 @@ public class CameraController : MonoBehaviour
             return Vector3.zero;
         }
 
-        dir.Normalize();
+        dir = CalculateEightWayDirection(dir);
         Vector3 offset = rightDirXZ * (dir.x * worldWidth * panDistanceRatio)
                          + upDirXZ * (dir.y * worldHeight * panDistanceRatio);
         offset.y = 0f;
         return offset;
+    }
+
+    private static Vector2 CalculateEightWayDirection(Vector2 direction)
+    {
+        const float SectorAngle = 45f;
+        float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+        float snappedAngle = Mathf.Round(angle / SectorAngle) * SectorAngle * Mathf.Deg2Rad;
+        return new Vector2(Mathf.Cos(snappedAngle), Mathf.Sin(snappedAngle));
     }
 
     private bool TryGetGroundFrame(out Vector3 rightDirXZ, out Vector3 upDirXZ, out float worldWidth, out float worldHeight)
