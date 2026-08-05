@@ -26,8 +26,7 @@ namespace AAAGame.Card
         public bool DrawCard(
             ulong runtimeId,
             ICardDataProvider cardData,
-            string sourceBuildingInstanceId = null,
-            BuildingEntity sourceBuilding = null)
+            string sourceBuildingInstanceId = null)
         {
             if (runtimeId == 0)
                 throw new ArgumentOutOfRangeException(nameof(runtimeId));
@@ -44,7 +43,7 @@ namespace AAAGame.Card
             }
 
             // 创建卡牌模型
-            CardModel cardModel = new CardModel(runtimeId, cardData, sourceBuildingInstanceId, sourceBuilding);
+            CardModel cardModel = new CardModel(runtimeId, cardData, sourceBuildingInstanceId);
 
             // 添加到手牌
             if (!m_HandModel.AddCard(cardModel))

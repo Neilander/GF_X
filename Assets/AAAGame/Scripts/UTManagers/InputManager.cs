@@ -19,7 +19,6 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _interactAction;
     private InputAction _interact2Action;
     private InputAction _interact3Action;
-    private InputAction _openTechTreeAction;
     private InputAction _attackAction;
     private InputAction _skill1Action;
     private InputAction _skill2Action;
@@ -30,9 +29,6 @@ public partial class InputManager : GameFrameworkComponent
     private InputAction _uiCancelAction;
     private InputAction _selectPositionAction;
     private InputAction _skillConfirmAction;
-    private InputAction _build1Action;
-    private InputAction _build2Action;
-    private InputAction _build3Action;
     private bool _gameplayCallbacksBound;
     private bool _inputTimestampCalibrated;
     private double _inputTimeToLogicRealtimeOffset;
@@ -56,7 +52,6 @@ public partial class InputManager : GameFrameworkComponent
         _interactAction = actions.FindAction("Player/Interact");
         _interact2Action = actions.FindAction("Player/Interact2");
         _interact3Action = actions.FindAction("Player/Interact3");
-        _openTechTreeAction = actions.FindAction("Player/OpenTechTree");
         _attackAction = actions.FindAction("Player/Attack");
         _skill1Action = actions.FindAction("Player/Skill1");
         _skill2Action = actions.FindAction("Player/Skill2");
@@ -67,9 +62,6 @@ public partial class InputManager : GameFrameworkComponent
         _uiCancelAction = actions.FindAction("UI/Cancel");
         _selectPositionAction = actions.FindAction("Player/SelectPosition");
         _skillConfirmAction = actions.FindAction("Player/SkillConfirm");
-        _build1Action = actions.FindAction("Player/Build1");
-        _build2Action = actions.FindAction("Player/Build2");
-        _build3Action = actions.FindAction("Player/Build3");
 
         if (_moveAction == null)
             throw new InvalidOperationException("InputManager.Start failed: Player/Move action is required.");
@@ -86,6 +78,7 @@ public partial class InputManager : GameFrameworkComponent
 
     private void OnDestroy()
     {
+        SkillCastPresentationService.Cancel();
         _inputTimestampCalibrated = false;
         LogicTimeControlService.Changed -= OnLogicTimeControlChanged;
         UnbindGameplayCallbacks();
@@ -95,6 +88,12 @@ public partial class InputManager : GameFrameworkComponent
     private void Update()
     {
         selfStateMachine.UpdateState();
+        if (SkillCastPresentationService.IsAiming && WasCancelPressedThisFrame())
+        {
+            SkillCastPresentationService.Cancel();
+            return;
+        }
+        SkillCastPresentationService.UpdateActiveAim(this);
     }
 
     public void ChangeState(InputState newState)
@@ -139,16 +138,10 @@ public partial class InputManager : GameFrameworkComponent
             ? CaptureWorldMove(_moveAction.ReadValue<Vector2>())
             : FixVector2.Zero;
         ulong initialHeldBits = CurState == InputState.Game ? CaptureHeldBits() : 0;
-        Vector2 initialScreenPosition = GetPointerScreenPosition();
-        bool hasInitialWorldPosition = TryCaptureSelectWorldPosition(initialScreenPosition, out FixVector2 initialWorldPosition);
-
         _model.LogicTimeline.Begin(
             realtime,
             initialMove,
-            initialHeldBits,
-            QuantizeScreenPosition(initialScreenPosition),
-            hasInitialWorldPosition,
-            initialWorldPosition);
+            initialHeldBits);
         _model.ClearCompatibilityState();
     }
 
@@ -214,12 +207,9 @@ public partial class InputManager : GameFrameworkComponent
         return _selectPositionAction.ReadValue<Vector2>();
     }
 
-    public void RequestSelectPosition(Vector2 screenPosition)
+    public bool TryGetSelectionWorldPosition(Vector2 screenPosition, out FixVector2 worldPosition)
     {
-        if (!CanCaptureGameplayInput())
-            return;
-
-        EnqueueSelectPositionSample(Time.realtimeSinceStartupAsDouble, screenPosition);
+        return TryCaptureSelectWorldPosition(screenPosition, out worldPosition);
     }
 
     private void BindGameplayCallbacks()
@@ -231,7 +221,6 @@ public partial class InputManager : GameFrameworkComponent
         BindAction(_interactAction);
         BindAction(_interact2Action);
         BindAction(_interact3Action);
-        BindAction(_openTechTreeAction);
         BindAction(_attackAction);
         BindAction(_skill1Action);
         BindAction(_skill2Action);
@@ -240,9 +229,6 @@ public partial class InputManager : GameFrameworkComponent
         BindAction(_skill5Action);
         BindAction(_selectPositionAction);
         BindAction(_skillConfirmAction);
-        BindAction(_build1Action);
-        BindAction(_build2Action);
-        BindAction(_build3Action);
         _gameplayCallbacksBound = true;
     }
 
@@ -255,7 +241,6 @@ public partial class InputManager : GameFrameworkComponent
         UnbindAction(_interactAction);
         UnbindAction(_interact2Action);
         UnbindAction(_interact3Action);
-        UnbindAction(_openTechTreeAction);
         UnbindAction(_attackAction);
         UnbindAction(_skill1Action);
         UnbindAction(_skill2Action);
@@ -264,9 +249,6 @@ public partial class InputManager : GameFrameworkComponent
         UnbindAction(_skill5Action);
         UnbindAction(_selectPositionAction);
         UnbindAction(_skillConfirmAction);
-        UnbindAction(_build1Action);
-        UnbindAction(_build2Action);
-        UnbindAction(_build3Action);
         _gameplayCallbacksBound = false;
     }
 
@@ -299,6 +281,19 @@ public partial class InputManager : GameFrameworkComponent
         if (!CanCaptureGameplayInput())
             return;
 
+        if (TryResolveSkillSlot(context.action, out int slotIndex))
+        {
+            Vector2 screenPosition = GetPointerScreenPosition();
+            if (!SkillCastPresentationService.TryBeginAim(slotIndex, this, screenPosition))
+                SkillCastPresentationService.RequestCastAtScreen(slotIndex, this, screenPosition);
+            return;
+        }
+        if (context.action == _skillConfirmAction)
+        {
+            SkillCastPresentationService.CommitAim();
+            return;
+        }
+
         if (TryResolveButton(context.action, out LogicInputButton button))
             _model.LogicTimeline.EnqueueButtonPressed(GetInputEventRealtime(context), button);
     }
@@ -319,7 +314,7 @@ public partial class InputManager : GameFrameworkComponent
 
         if (context.action == _selectPositionAction)
         {
-            EnqueueSelectPositionSample(timestamp, context.ReadValue<Vector2>());
+            SkillCastPresentationService.UpdateAim(this, context.ReadValue<Vector2>());
             return;
         }
 
@@ -338,6 +333,9 @@ public partial class InputManager : GameFrameworkComponent
                 CaptureWorldMove(context.ReadValue<Vector2>()));
             return;
         }
+
+        if (TryResolveSkillSlot(context.action, out _) || context.action == _skillConfirmAction)
+            return;
 
         if (TryResolveButton(context.action, out LogicInputButton button))
             _model.LogicTimeline.EnqueueButtonReleased(timestamp, button);
@@ -378,18 +376,6 @@ public partial class InputManager : GameFrameworkComponent
         return InputDirTranslator.TranslateAndQuantize(deviceMove, Camera.main);
     }
 
-    private void EnqueueSelectPositionSample(double timestamp, Vector2 screenPosition)
-    {
-        _model.LogicTimeline.EnqueueSelectScreenPosition(timestamp, QuantizeScreenPosition(screenPosition));
-        if (TryCaptureSelectWorldPosition(screenPosition, out FixVector2 worldPosition))
-            _model.LogicTimeline.EnqueueSelectWorldPosition(timestamp, worldPosition);
-    }
-
-    private static FixVector2 QuantizeScreenPosition(Vector2 screenPosition)
-    {
-        return new FixVector2((Fix64)screenPosition.x, (Fix64)screenPosition.y);
-    }
-
     private static bool TryCaptureSelectWorldPosition(Vector2 screenPosition, out FixVector2 worldPosition)
     {
         Camera camera = Camera.main;
@@ -418,17 +404,7 @@ public partial class InputManager : GameFrameworkComponent
         AddHeldBit(_interactAction, LogicInputButton.InteractionPrimary, ref heldBits);
         AddHeldBit(_interact2Action, LogicInputButton.InteractionSecondary, ref heldBits);
         AddHeldBit(_interact3Action, LogicInputButton.InteractionTertiary, ref heldBits);
-        AddHeldBit(_openTechTreeAction, LogicInputButton.OpenTechTree, ref heldBits);
         AddHeldBit(_attackAction, LogicInputButton.PlayerAttack, ref heldBits);
-        AddHeldBit(_skill1Action, LogicInputButton.Skill1, ref heldBits);
-        AddHeldBit(_skill2Action, LogicInputButton.Skill2, ref heldBits);
-        AddHeldBit(_skill3Action, LogicInputButton.Skill3, ref heldBits);
-        AddHeldBit(_skill4Action, LogicInputButton.Skill4, ref heldBits);
-        AddHeldBit(_skill5Action, LogicInputButton.Skill5, ref heldBits);
-        AddHeldBit(_skillConfirmAction, LogicInputButton.SkillConfirm, ref heldBits);
-        AddHeldBit(_build1Action, LogicInputButton.Build1, ref heldBits);
-        AddHeldBit(_build2Action, LogicInputButton.Build2, ref heldBits);
-        AddHeldBit(_build3Action, LogicInputButton.Build3, ref heldBits);
         return heldBits;
     }
 
@@ -443,23 +419,28 @@ public partial class InputManager : GameFrameworkComponent
         if (action == _interactAction) button = LogicInputButton.InteractionPrimary;
         else if (action == _interact2Action) button = LogicInputButton.InteractionSecondary;
         else if (action == _interact3Action) button = LogicInputButton.InteractionTertiary;
-        else if (action == _openTechTreeAction) button = LogicInputButton.OpenTechTree;
         else if (action == _attackAction) button = LogicInputButton.PlayerAttack;
-        else if (action == _skill1Action) button = LogicInputButton.Skill1;
-        else if (action == _skill2Action) button = LogicInputButton.Skill2;
-        else if (action == _skill3Action) button = LogicInputButton.Skill3;
-        else if (action == _skill4Action) button = LogicInputButton.Skill4;
-        else if (action == _skill5Action) button = LogicInputButton.Skill5;
-        else if (action == _skillConfirmAction) button = LogicInputButton.SkillConfirm;
-        else if (action == _build1Action) button = LogicInputButton.Build1;
-        else if (action == _build2Action) button = LogicInputButton.Build2;
-        else if (action == _build3Action) button = LogicInputButton.Build3;
         else
         {
             button = default;
             return false;
         }
 
+        return true;
+    }
+
+    private bool TryResolveSkillSlot(InputAction action, out int slotIndex)
+    {
+        if (action == _skill1Action) slotIndex = 0;
+        else if (action == _skill2Action) slotIndex = 1;
+        else if (action == _skill3Action) slotIndex = 2;
+        else if (action == _skill4Action) slotIndex = 3;
+        else if (action == _skill5Action) slotIndex = 4;
+        else
+        {
+            slotIndex = -1;
+            return false;
+        }
         return true;
     }
 
@@ -495,6 +476,8 @@ public partial class InputManager : GameFrameworkComponent
             return;
 
         _wasLogicPaused = isPaused;
+        if (isPaused)
+            SkillCastPresentationService.Cancel();
         if (_model == null || !_model.LogicTimeline.IsStarted)
             return;
 
@@ -526,6 +509,7 @@ public partial class InputManager : GameFrameworkComponent
             base.SwitchWhenEnd(lastState);
             if (lastState == InputState.Game)
             {
+                SkillCastPresentationService.Cancel();
                 father._model?.ClearCompatibilityState();
                 if (father._model != null && father._model.LogicTimeline.IsStarted)
                 {

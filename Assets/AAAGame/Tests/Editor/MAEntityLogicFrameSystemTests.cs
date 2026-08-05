@@ -74,6 +74,26 @@ public class MAEntityLogicFrameSystemTests
         Assert.AreEqual(0UL, LogicProjectileService.LastCompletedFrame);
     }
 
+	[Test]
+	public void EntityPresentationEventsAndViewRetirementRunOnRenderFrames()
+	{
+		string entityViewSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+			Application.dataPath,
+			"AAAGame/Scripts/Entity/MAEntity.cs"));
+		string lifecycleSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+			Application.dataPath,
+			"AAAGame/Scripts/Entity/LogicEntityLifecycleService.cs"));
+		string viewQueueSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+			Application.dataPath,
+			"AAAGame/Scripts/Entity/LogicEntityViewSpawnQueue.cs"));
+
+		StringAssert.Contains("_pendingLogicPresentationEvents.Enqueue", entityViewSource);
+		StringAssert.Contains("FlushLogicPresentationEvents", entityViewSource);
+		StringAssert.DoesNotContain("GF.Entity.HideEntity", lifecycleSource);
+		StringAssert.Contains("LogicEntityViewSpawnQueue.EnqueueHide", lifecycleSource);
+		StringAssert.Contains("DispatchPendingHides", viewQueueSource);
+	}
+
     [Test]
     public void Brat弹道提交后敌人近身_真实逻辑实体仍会受到伤害()
     {
@@ -183,6 +203,69 @@ public class MAEntityLogicFrameSystemTests
         {
             if (projectileViewBound && LogicProjectileService.IsActive)
                 LogicProjectileService.ReleaseView(projectileId);
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+            InGameDataModel.SetPhase(previousPhase, false);
+        }
+    }
+
+    [Test]
+    public void ProjectileWithoutAttackerView_DoesNotBreakLogicAndDropsPendingPresentationAfterCompletion()
+    {
+        EnsureInGameDataModelForCombatTest();
+        GamePhase previousPhase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
+        InGameDataModel.SetPhase(GamePhase.Defend, false);
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        ProjectilePresentationService.BeginTimelineForTests();
+        try
+        {
+            var attackerBrain = new ScriptedBrain { Attack = true };
+            LogicEntityState attacker = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "Unit_Brat",
+                attackerBrain,
+                new NoMoveComp(),
+                CreateBratProjectileWeaponData(),
+                out ITargetingComp targeting,
+                out IAtkComp attack);
+            ((DirectAtkComp)attack).SetWeaponSO(null);
+
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(CreateBratRegressionInitialSurfaceDistance(), Fix64.Zero),
+                SideType.EnemySide,
+                "ViewlessProjectileTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+            targeting.CurrentTarget = target;
+
+            for (int i = 0; i < 30 && ProjectilePresentationService.PendingCount == 0; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(1, LogicProjectileService.ActiveCount);
+            Assert.AreEqual(1, ProjectilePresentationService.PendingCount);
+            attackerBrain.Attack = false;
+            ulong projectileId = LogicProjectileService.LastId;
+
+            for (int i = 0; i < 60 && LogicProjectileService.ActiveCount > 0; i++)
+                LogicFrameRuntime.Tick(LogicFrameRuntime.CurrentFrame + 1);
+
+            Assert.AreEqual(0, LogicProjectileService.ActiveCount);
+            Assert.AreEqual(0, LogicProjectileService.RetainedViewStateCount);
+            Assert.IsFalse(LogicProjectileService.TryGetPresentationState(projectileId, out _));
+
+            ProjectilePresentationService.PruneCompletedForTests();
+            Assert.AreEqual(0, ProjectilePresentationService.PendingCount);
+        }
+        finally
+        {
+            if (ProjectilePresentationService.IsActive)
+                ProjectilePresentationService.EndTimelineForTests();
             EntityRegistry.Clear();
             LogicEntityLifecycleService.EndTimeline();
             LogicTimeControlService.EndTimeline();
@@ -459,7 +542,7 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
-    public void BoundMAEntityView_CapturesPoseAfterCompleteLogicFrame()
+    public void BoundMAEntityView_IsNotSampledByLogicFrameAndBuildsInterpolationFromLogicStateOnRender()
     {
         LogicTimeControlService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
@@ -505,6 +588,10 @@ public class MAEntityLogicFrameSystemTests
             typeof(EntityBase).GetProperty(nameof(EntityBase.Id)).SetValue(view, 404);
             typeof(MAEntity).GetProperty(nameof(MAEntity.LogicEntityId)).SetValue(view, entityId);
             typeof(MAEntity).GetField(
+                    "_logicState",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(view, state);
+            typeof(MAEntity).GetField(
                     "_isLogicActive",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                 .SetValue(view, true);
@@ -517,9 +604,16 @@ public class MAEntityLogicFrameSystemTests
 
             AssertPoseCache(view, 1f, 1f);
             LogicFrameRuntime.Tick(1);
-            AssertPoseCache(view, 1f, 2f);
+            AssertPoseCache(view, 1f, 1f);
             LogicFrameRuntime.Tick(2);
-            AssertPoseCache(view, 2f, 3f);
+            AssertPoseCache(view, 1f, 1f);
+            Assert.AreEqual(1, view.PoseSampleCount);
+
+            typeof(MAEntity).GetMethod(
+                    "SyncRenderInterpolationFromLogicState",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(view, null);
+            AssertPoseCache(view, 0f, 0f);
         }
         finally
         {
@@ -706,6 +800,46 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void MoveCommit_MovingUnitCannotPassThroughStationaryUnit()
+    {
+        Fix64 collisionRadius = (Fix64)0.18f;
+        var mover = new RegionConstraintProbeEntity
+        {
+            LogicEntityId = new LogicEntityId(7010),
+            Side = SideType.PlayerSide,
+            PositionFixed = new FixVector2((Fix64)0.5f, (Fix64)1.5f),
+            DesiredDisplacement = new FixVector2((Fix64)0.5f, Fix64.Zero),
+        };
+        var blocker = new RegionConstraintProbeEntity
+        {
+            LogicEntityId = new LogicEntityId(7011),
+            Side = SideType.PlayerSide,
+            PositionFixed = new FixVector2((Fix64)1.1f, (Fix64)1.5f),
+            DesiredDisplacement = FixVector2.Zero,
+        };
+        mover.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+        blocker.SetProperty(
+            CreatureMainProperty.CollisionRadius,
+            DistanceUnitConverter.ConvertFromWorld(collisionRadius));
+        FixVector2 moverStart = mover.PositionFixed;
+        EntityRegistry.Register(mover);
+        EntityRegistry.Register(blocker);
+
+        LogicFrameRuntime.Tick(1);
+
+        Assert.Greater(LogicAgentCollisionShadowService.LastPairCorrectedBodyCount, 0);
+        Assert.Less(
+            (mover.PositionFixed - moverStart).x.RawValue,
+            mover.DesiredDisplacement.x.RawValue,
+            "MoveCommit must resolve the stationary unit before applying the full requested displacement.");
+        Assert.GreaterOrEqual(
+            FixVector2.Distance(mover.PositionFixed, blocker.PositionFixed).RawValue,
+            (collisionRadius * (Fix64)2 - Fix64.FromRaw(2)).RawValue);
+    }
+
+    [Test]
     public void RuntimeObstacleRemove_PreservesAuthoredBaseBlockerBeforeFlowRebuildCompletes()
     {
         const int width = 8;
@@ -861,6 +995,121 @@ public class MAEntityLogicFrameSystemTests
             LogicEntityLifecycleService.EndTimeline();
             LogicTimeControlService.EndTimeline();
             InGameDataModel.SetPhase(previousPhase, false);
+        }
+    }
+
+    [Test]
+    public void MoveCommit_StationaryTargetSwitchFacesFrameStartTarget()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            LogicEntityState source = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "ForwardStationarySource",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+            var targeting = new FixedTargetingComp();
+            source.SetTargetingComp(targeting);
+            targeting.Init(source);
+
+            LogicEntityState firstTarget = CreateProjectileRegressionUnit(
+                new FixVector2(Fix64.Zero, (Fix64)10),
+                SideType.EnemySide,
+                "ForwardFirstTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+            LogicEntityState secondTarget = CreateProjectileRegressionUnit(
+                new FixVector2(Fix64.Zero, (Fix64)(-10)),
+                SideType.EnemySide,
+                "ForwardSecondTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+
+            targeting.CurrentTarget = firstTarget;
+            LogicFrameRuntime.Tick(1);
+            Assert.AreEqual(
+                (firstTarget.Position - FixVector2.Zero).GetNormalized(),
+                source.Forward);
+
+            targeting.CurrentTarget = secondTarget;
+            LogicFrameRuntime.Tick(2);
+
+            Assert.AreEqual(
+                (secondTarget.Position - FixVector2.Zero).GetNormalized(),
+                source.Forward);
+            Assert.AreEqual(FixVector2.Zero, source.Position);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void MoveCommit_AttackingMoverFacesFrameStartTargetInsteadOfDisplacement()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            var move = new ProjectileRegressionApproachMoveComp(
+                new FixVector2((Fix64)3, Fix64.Zero))
+            {
+                Enabled = true,
+            };
+            LogicEntityState source = CreateProjectileRegressionUnit(
+                FixVector2.Zero,
+                SideType.PlayerSide,
+                "ForwardAttackingSource",
+                new ScriptedBrain(),
+                move,
+                null,
+                out _,
+                out _);
+            var targeting = new FixedTargetingComp();
+            source.SetTargetingComp(targeting);
+            targeting.Init(source);
+            var attack = new AlwaysAttackingComp();
+            source.SetAtkComp(attack);
+            attack.Init(source);
+
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(Fix64.Zero, (Fix64)10),
+                SideType.EnemySide,
+                "ForwardAttackTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+            targeting.CurrentTarget = target;
+
+            LogicFrameRuntime.Tick(1);
+
+            Assert.Greater(source.Position.x.RawValue, Fix64.Zero.RawValue);
+            Assert.AreEqual(
+                (target.Position - FixVector2.Zero).GetNormalized(),
+                source.Forward);
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
         }
     }
 
@@ -1361,6 +1610,33 @@ public class MAEntityLogicFrameSystemTests
         public void Resume() { }
     }
 
+    private sealed class AlwaysAttackingComp : IAtkComp
+    {
+        public bool IsAttacking => true;
+        public void Init(IEntityContext ctx) { }
+        public void Attack(Fix64 deltaTime) { }
+        public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced) { }
+        public void ShutDown() { }
+        public void Resume() { }
+    }
+
+    private sealed class FixedTargetingComp : ITargetingComp
+    {
+        public IEntityContext CurrentTarget { get; set; }
+        public IEntityContext FollowTarget => null;
+        public Fix64 AggroRangeFixed { get; set; }
+        public Fix64 ForgetRangeFixed { get; set; }
+        public Fix64 FollowSearchRangeFixed { get; set; }
+        public Fix64 AlertRadiusFixed { get; set; }
+        public void Init(IEntityContext ctx) { }
+        public void UpdateTargeting(Fix64 deltaTime) { }
+        public void NotifyDamageTaken(IEntityContext attacker) { }
+        public void NotifyAllyFoundEnemy(IEntityContext enemy) { }
+        public void ClearAggro() { }
+        public void ShutDown() { }
+        public void Resume() { }
+    }
+
     private sealed class NoMoveFactoryForTest
     {
         public void Configure(LogicEntityState state)
@@ -1491,6 +1767,7 @@ public class MAEntityLogicFrameSystemTests
 public sealed class CoordinatedPoseTestView : MAEntity
 {
     private int m_PoseSampleCount;
+    public int PoseSampleCount => m_PoseSampleCount;
 
     protected override void GetAuthoritativeLogicPose(out Vector3 position, out Quaternion rotation)
     {

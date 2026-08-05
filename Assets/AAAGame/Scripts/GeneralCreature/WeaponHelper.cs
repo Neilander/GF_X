@@ -64,6 +64,12 @@ public static class WeaponHelper
             },
             (assetName, status, errorMessage, userData) =>
             {
+                if (userData is not DirectAtkComp comp)
+                    throw new InvalidOperationException(
+                        $"WeaponHelper load failure has invalid user data. path={path}, asset={assetName}, status={status}.");
+
+                comp.SetWeaponLoadFailure(
+                    $"Weapon asset failed to load. path={path}, asset={assetName}, status={status}, error={errorMessage}");
             }
         );
     }

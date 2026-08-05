@@ -7,20 +7,24 @@ using UnityEngine.UI;
 
 public partial class InGameUIForm
 {
+    private bool m_LastSkillCasting;
+
     private void InitializeSkills()
     {
         BindSkillInputProxies();
         GF.Event.Subscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         GF.Event.Subscribe(IngamePhaseChangedEventArgs.EventId, OnSkillPhaseChanged);
-        SkillCastState.Changed += OnSkillCastStateChanged;
+        SkillCastPresentationService.Changed += OnSkillCastStateChanged;
+        m_LastSkillCasting = SkillCastState.IsCasting;
         RefreshSkills();
     }
 
     private void ShutdownSkills()
     {
+        SkillCastPresentationService.Cancel();
         GF.Event.Unsubscribe(SkillChangedEventArgs.EventId, OnSkillChanged);
         GF.Event.Unsubscribe(IngamePhaseChangedEventArgs.EventId, OnSkillPhaseChanged);
-        SkillCastState.Changed -= OnSkillCastStateChanged;
+        SkillCastPresentationService.Changed -= OnSkillCastStateChanged;
         HideAllSkillSlots();
     }
 
@@ -31,11 +35,21 @@ public partial class InGameUIForm
 
     private void OnSkillPhaseChanged(object sender, GameEventArgs e)
     {
+        SkillCastPresentationService.Cancel();
         RefreshSkills();
     }
 
     private void OnSkillCastStateChanged()
     {
+        RefreshSkills();
+    }
+
+    private void TickSkillPresentation()
+    {
+        bool isCasting = SkillCastState.IsCasting;
+        if (isCasting == m_LastSkillCasting)
+            return;
+        m_LastSkillCasting = isCasting;
         RefreshSkills();
     }
 
@@ -69,7 +83,9 @@ public partial class InGameUIForm
                             && i < PlayerSkillComp.SKILL_NUM
                             && skills[i].RemainingUsageCount > 0
                             && SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
-                            && !SkillCastState.IsCasting;
+                            && !SkillCastState.IsCasting
+                            && !SkillCastPresentationService.IsAiming
+                            && SkillCastPresentationService.CanRequestSkillCast(i);
             button.interactable = canClick;
         }
     }
@@ -132,7 +148,9 @@ public partial class InGameUIForm
         if (slotIndex < 0 || slotIndex >= skills.Count)
             return -1;
 
-        if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase() || SkillCastState.IsCasting)
+        if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
+            || SkillCastState.IsCasting
+            || SkillCastPresentationService.IsAiming)
             return -1;
 
         return skills[slotIndex].Data.Type == SkillType.Active && skills[slotIndex].RemainingUsageCount > 0 ? slotIndex : -1;

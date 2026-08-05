@@ -48,4 +48,19 @@ public class LogicProjectileServiceTests
         Assert.AreEqual(0, LogicProjectileService.RetainedViewStateCount);
         Assert.AreEqual(0UL, LogicProjectileService.LastCompletedFrame);
     }
+
+    [Test]
+    public void ProjectileSubmissionSource_DoesNotRequireBoundViewInsideLogicTick()
+    {
+        string root = UnityEngine.Application.dataPath;
+        string rangedWeaponSource = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(root, "AAAGame/Scripts/GeneralCreature/RangedWeaponSO.cs"));
+        string directAttackSource = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(root, "AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs"));
+
+        StringAssert.DoesNotContain("TryGetBoundView", rangedWeaponSource);
+        StringAssert.DoesNotContain("RequireProjectileOrigin", rangedWeaponSource);
+        StringAssert.Contains("ProjectilePresentationService.Publish", rangedWeaponSource);
+        StringAssert.Contains("ProjectilePresentationService.Publish", directAttackSource);
+    }
 }

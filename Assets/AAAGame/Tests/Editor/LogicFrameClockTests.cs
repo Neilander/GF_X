@@ -40,8 +40,8 @@ public sealed class LogicFrameClockTests
         var timeline = new LogicInputTimeline();
         var cutoffs = new List<double>();
         var pressedFrames = new List<ulong>();
-        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
-        timeline.EnqueueButtonPulse(0.2d, LogicInputButton.Skill1);
+        timeline.Begin(0d, FixVector2.Zero, 0);
+        timeline.EnqueueButtonPulse(0.2d, LogicInputButton.InteractionPrimary);
         clock.Start(0d);
 
         int totalTicks = clock.Advance(
@@ -50,7 +50,7 @@ public sealed class LogicFrameClockTests
             (frame, cutoff) =>
             {
                 cutoffs.Add(cutoff);
-                if (timeline.Seal(frame, cutoff).WasPressed(LogicInputButton.Skill1))
+                if (timeline.Seal(frame, cutoff).WasPressed(LogicInputButton.InteractionPrimary))
                     pressedFrames.Add(frame);
             },
             4);
@@ -67,7 +67,7 @@ public sealed class LogicFrameClockTests
                 (frame, cutoff) =>
                 {
                     cutoffs.Add(cutoff);
-                    if (timeline.Seal(frame, cutoff).WasPressed(LogicInputButton.Skill1))
+                    if (timeline.Seal(frame, cutoff).WasPressed(LogicInputButton.InteractionPrimary))
                         pressedFrames.Add(frame);
                 },
                 4);
@@ -319,16 +319,13 @@ public sealed class LogicFrameClockTests
                 LogicTimeControlService.NormalScaleUnits));
 
             var timeline = new LogicInputTimeline();
-            timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
-            timeline.EnqueueButtonPressed(0.010d, LogicInputButton.Skill1);
-            timeline.EnqueueButtonReleased(0.020d, LogicInputButton.Skill1);
-            timeline.EnqueueButtonPulse(LogicFrameClock.FrameDurationSeconds, LogicInputButton.Skill2);
+            timeline.Begin(0d, FixVector2.Zero, 0);
+            timeline.EnqueueButtonPressed(0.010d, LogicInputButton.InteractionPrimary);
+            timeline.EnqueueButtonReleased(0.020d, LogicInputButton.InteractionPrimary);
+            timeline.EnqueueButtonPulse(LogicFrameClock.FrameDurationSeconds, LogicInputButton.InteractionSecondary);
             timeline.EnqueueWorldMove(
                 0.700d,
                 new FixVector2(Fix64.FromRaw(12345), Fix64.FromRaw(-67890)));
-            timeline.EnqueueSelectWorldPosition(
-                1.300d,
-                new FixVector2(Fix64.FromRaw(333), Fix64.FromRaw(444)));
             timeline.EnqueueButtonPressed(4.125d, LogicInputButton.InteractionPrimary);
             timeline.EnqueueButtonReleased(4.126d, LogicInputButton.InteractionPrimary);
 

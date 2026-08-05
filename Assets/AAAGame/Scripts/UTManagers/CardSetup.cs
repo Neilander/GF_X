@@ -9,11 +9,27 @@ using AAAGame.MiniMap.FOG3;
 
 public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateContributor
 {
+	private readonly struct CardUiPresentationRequest
+	{
+		public CardUiPresentationRequest(bool open, bool playCloseAnimation, CardSystemController controller)
+		{
+			Open = open;
+			PlayCloseAnimation = playCloseAnimation;
+			Controller = controller;
+		}
+
+		public bool Open { get; }
+		public bool PlayCloseAnimation { get; }
+		public CardSystemController Controller { get; }
+	}
+
     private const long CardPhasePerfWarnMs = 30;
     private CardSystemController m_CardSystemController;
     private int m_CardUIFormId = -1;
     private readonly LogicCardAutoDrawClock m_AutoDrawClock = new LogicCardAutoDrawClock();
     private List<ICardDataProvider> m_PreloadedCardPool;
+	private readonly Queue<CardUiPresentationRequest> m_PendingUiPresentation = new();
+	private readonly Queue<CardSystemController> m_PendingPresentationShutdown = new();
 
     private void OnEnable()
     {
@@ -60,6 +76,17 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
     public void CardSystemUpdate()
     {
+		while (m_PendingUiPresentation.Count > 0)
+		{
+			CardUiPresentationRequest request = m_PendingUiPresentation.Dequeue();
+			if (request.Open)
+				OpenCardUIImmediate(request.Controller);
+			else
+				CloseCardUI(request.PlayCloseAnimation);
+		}
+		while (m_PendingPresentationShutdown.Count > 0)
+			m_PendingPresentationShutdown.Dequeue().ShutdownPresentation();
+
         if (m_CardSystemController != null)
             m_CardSystemController.UpdatePlacement();
     }
@@ -80,10 +107,18 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     {
         var totalWatch = Stopwatch.StartNew();
 
-        var closeUiWatch = Stopwatch.StartNew();
-        CloseCardUI(playCloseAnimation);
-        closeUiWatch.Stop();
-        LogPhasePerf("card-shutdown.close-ui", closeUiWatch.ElapsedMilliseconds);
+		if (LogicFrameRuntime.IsTicking)
+		{
+			m_PendingUiPresentation.Enqueue(
+				new CardUiPresentationRequest(false, playCloseAnimation, null));
+		}
+		else
+		{
+			var closeUiWatch = Stopwatch.StartNew();
+			CloseCardUI(playCloseAnimation);
+			closeUiWatch.Stop();
+			LogPhasePerf("card-shutdown.close-ui", closeUiWatch.ElapsedMilliseconds);
+		}
 
         // Shutdown card system controller.
         if (m_CardSystemController != null)
@@ -91,7 +126,12 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
             LogicCardRuntimeState.Unbind(this);
             LogicCardCommandService.CommandApplying -= m_CardSystemController.ApplyLogicCardCommand;
             var controllerShutdownWatch = Stopwatch.StartNew();
-            m_CardSystemController.Shutdown();
+            CardSystemController shutdownController = m_CardSystemController;
+            shutdownController.ShutdownRuntime();
+            if (LogicFrameRuntime.IsTicking)
+                m_PendingPresentationShutdown.Enqueue(shutdownController);
+            else
+                shutdownController.ShutdownPresentation();
             m_CardSystemController = null;
             controllerShutdownWatch.Stop();
             LogPhasePerf("card-shutdown.controller", controllerShutdownWatch.ElapsedMilliseconds);
@@ -269,6 +309,22 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
     public void OpenCardUI()
     {
+		if (m_CardSystemController == null)
+			throw new System.InvalidOperationException("CardSetup.OpenCardUI failed: card system is not initialized.");
+		if (LogicFrameRuntime.IsTicking)
+		{
+			m_PendingUiPresentation.Enqueue(
+				new CardUiPresentationRequest(true, false, m_CardSystemController));
+			return;
+		}
+
+		OpenCardUIImmediate(m_CardSystemController);
+	}
+
+	private void OpenCardUIImmediate(CardSystemController controller)
+	{
+		if (controller == null)
+			throw new System.ArgumentNullException(nameof(controller));
         var watch = Stopwatch.StartNew();
         if (GF.UI.IsLoadingUIForm(UIViews.CardUIForm) || GF.UI.HasUIForm(UIViews.CardUIForm))
         {
@@ -279,7 +335,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
         }
 
         UIParams uiParams = UIParams.Create();
-        uiParams.Set("CardSystemController", m_CardSystemController);
+		uiParams.Set("CardSystemController", controller);
 
         m_CardUIFormId = GF.UI.OpenUIForm(UIViews.CardUIForm, uiParams);
         if (m_CardUIFormId == -1)

@@ -14,6 +14,7 @@ public class BuildManager : GameFrameworkComponent
     private bool m_IsSubscribedLogicTechApplied;
     private bool m_IsSubscribedBuildingOwnership;
     private bool m_IsSubscribedInteractionCommands;
+    private readonly Queue<string> m_PendingPresentationAudio = new Queue<string>();
 
     public bool HasConstructOption(IBuildingLogicContext owner)
     {
@@ -132,8 +133,8 @@ public class BuildManager : GameFrameworkComponent
             checkCondition: true,
             consumeCoins: true,
             currentInteractionFrameLifecycle: true).IsValid;
-        if (built && AudioManager.Instance != null)
-            AudioManager.Instance.Play("buildNormal");
+        if (built)
+            m_PendingPresentationAudio.Enqueue("buildNormal");
         if (built)
             LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
 
@@ -306,11 +307,9 @@ public class BuildManager : GameFrameworkComponent
         InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
         LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
         RewardManager.HandleBuildingRecycleReward(
-            new Vector3((float)position.x, 0f, (float)position.y),
+            position,
             refund);
-
-        if (AudioManager.Instance != null)
-            AudioManager.Instance.Play("buildNormal");
+        m_PendingPresentationAudio.Enqueue("buildNormal");
 
         return true;
     }
@@ -333,8 +332,8 @@ public class BuildManager : GameFrameworkComponent
             isGameEndConditionBuilding: owner.IsGameEndConditionBuilding,
             isNavigationStaticBaked: owner.IsNavigationStaticBaked,
             currentInteractionFrameLifecycle: true).IsValid;
-        if (ok && AudioManager.Instance != null)
-            AudioManager.Instance.Play("buildImportant");
+        if (ok)
+            m_PendingPresentationAudio.Enqueue("buildImportant");
         return ok;
     }
 
@@ -726,6 +725,15 @@ public class BuildManager : GameFrameworkComponent
         TrySubscribeBuildingOwnershipEvent();
     }
 
+    private void Update()
+    {
+        if (m_PendingPresentationAudio.Count == 0 || AudioManager.Instance == null)
+            return;
+
+        while (m_PendingPresentationAudio.Count > 0)
+            AudioManager.Instance.Play(m_PendingPresentationAudio.Dequeue());
+    }
+
     public void PrepareRuntimeDependencies()
     {
         TrySubscribeInteractionCommands();
@@ -745,6 +753,7 @@ public class BuildManager : GameFrameworkComponent
         m_IsSubscribedInteractionCommands = false;
         m_IsSubscribedLogicTechApplied = false;
         m_IsSubscribedBuildingOwnership = false;
+        m_PendingPresentationAudio.Clear();
     }
 
     private void TrySubscribeInteractionCommands()

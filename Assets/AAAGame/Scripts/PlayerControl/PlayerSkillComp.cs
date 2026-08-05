@@ -1,13 +1,15 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using GameFramework.Event;
 using UnityEngine;
 using System.Linq;
 
-public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
+public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor,
+    ILogicSkillCastCommandConsumer, ISkillCastPreviewProvider, ISkillActionPresentationProvider
 {
     private IEntityContext _entity;
-    private InputModel _inputModel;
+    private bool m_HasPendingCast;
+    private LogicSkillCastCommand m_PendingCast;
 
     public const int SKILL_NUM = SkillInputRuntime.MaxSkillCount;
 
@@ -68,7 +70,6 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
             });
         }
 
-        _inputModel = GF.DataModel.GetDataModel<InputModel>();
         OnSkillChanged();
     }
 
@@ -87,21 +88,18 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
         CoolDown(deltaTime);
         UpdateSkillRuntime();
 
-        //检测输入
-        int curSkillPressed = CheckInput();
-
-        //if(curSkillPressed != -1)
-
-
-        //如果冷却好了，就触发技能
-        if (curSkillPressed == -1)
+        if (!m_HasPendingCast)
             return;
-        GF.Log("使用技能："+(curSkillPressed+1));
-        SkillSlot curSlot = _skillSlots[curSkillPressed];
-        SyncSlotSkill(curSlot, curSkillPressed, true);
 
-        //触发技能逻辑（恢复其他技能还没做好）
-        StartASkill(curSlot, curSkillPressed);
+        LogicSkillCastCommand command = m_PendingCast;
+        m_HasPendingCast = false;
+        m_PendingCast = default;
+        if (!CanExecuteSkillCast(command.SlotIndex))
+            return;
+
+        SkillSlot curSlot = _skillSlots[command.SlotIndex];
+        GF.Log("使用技能：" + (command.SlotIndex + 1));
+        StartASkill(curSlot, command.SlotIndex, command.RequestedWorldPosition);
 
     }
 
@@ -117,6 +115,8 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
 
     public void ShutDown()
     {
+        m_HasPendingCast = false;
+        m_PendingCast = default;
         RemoveAllPassiveSkills();
     }
 
@@ -126,6 +126,8 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
 
     public void CancelSkills()
     {
+        m_HasPendingCast = false;
+        m_PendingCast = default;
         if (_skillSlots == null)
             return;
 
@@ -171,12 +173,12 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
         }
     }
 
-    private void StartASkill(SkillSlot curSlot, int slotIndex)
+    private void StartASkill(SkillSlot curSlot, int slotIndex, FixVector2 requestedWorldPosition)
     {
         //技能进入冷却
         //后续要是想要什么持续技能，切换技能，再加上逻辑就可以，想过是可以实现的
         //切换+冷却本质是技能替换，然后新技能开局有个cd
-        curSlot.skill.StartSkill(_entity, out SkillInfo runInfo);
+        curSlot.skill.StartSkill(_entity, requestedWorldPosition, out SkillInfo runInfo);
         curSlot.cooldown.Reset();
         //触发其开始函数
         curSlot.runInfo = runInfo;
@@ -227,48 +229,97 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
         }
     }
 
-    private int CheckInput()
+    public void AcceptSkillCastCommand(LogicSkillCastCommand command)
     {
-        int curSkillPressed = -1;
-        if (_inputModel == null)
+        if (_entity == null || command.CasterId != _entity.LogicEntityId)
         {
-            _inputModel = GF.DataModel.GetDataModel<InputModel>();
-            if (_inputModel == null)
-                return curSkillPressed;
+            throw new System.InvalidOperationException(
+                $"PlayerSkillComp received a cast for another caster. expected={_entity?.LogicEntityId.Value ?? 0}, actual={command.CasterId.Value}.");
         }
-
-        if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase())
-            return curSkillPressed;
-
-        //GF.Log( _inputModel.Skill1Pressed.ToString());
-        for (int i = 0; i < _skillSlots.Count; i++)
-        {
-            if (!SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(i))
-                continue;
-
-            if (!SkillRuntimeDataModel.HasRemainingUsageAt(i))
-                continue;
-
-            if (!IsSkillPressed(i))
-                continue;
-
-            if (_skillSlots[i].canCast)
-                return i;
-        }
-        return curSkillPressed;
+        if (m_HasPendingCast)
+            throw new System.InvalidOperationException($"PlayerSkillComp already has a pending cast. caster={command.CasterId.Value}.");
+        m_PendingCast = command;
+        m_HasPendingCast = true;
     }
 
-    private bool IsSkillPressed(int slotIndex)
+    public bool CanRequestSkillCast(int slotIndex)
     {
-        return slotIndex switch
+        if (slotIndex < 0 || slotIndex >= SKILL_NUM)
+            return false;
+        return !m_HasPendingCast
+               && SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
+               && SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(slotIndex)
+               && SkillRuntimeDataModel.HasRemainingUsageAt(slotIndex)
+               && _skillSlots[slotIndex].canCast;
+    }
+
+    public SkillCastPreviewDescriptor GetRequiredSkillCastPreview(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= SKILL_NUM)
+            throw new System.ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Invalid skill slot index.");
+        if (!SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(slotIndex))
+            throw new System.InvalidOperationException($"Skill slot is not unlocked. slot={slotIndex}.");
+
+        SkillRuntimeInfo runtime = SkillRuntimeDataModel.GetUnlockedSkillAt(slotIndex);
+        if (!_skillsById.TryGetValue(runtime.Data.Identifier, out ActiveSkillSO skill) || skill == null)
+            throw new System.InvalidOperationException($"ActiveSkillSO asset not configured for skillId={runtime.Data.Identifier}.");
+        return skill.TryGetPositionSelectionDescriptor(out SkillCastPreviewDescriptor descriptor)
+            ? descriptor
+            : SkillCastPreviewDescriptor.Instant;
+    }
+
+    public int SkillPresentationSlotCount => SKILL_NUM;
+
+    public bool TryGetActiveSkillActionPresentation(
+        int slotIndex,
+        out SkillInfo skillInfo,
+        out string triggerName)
+    {
+        if (slotIndex < 0 || slotIndex >= SKILL_NUM)
+            throw new System.ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Invalid skill slot index.");
+        if (_skillSlots == null || _skillSlots.Count != SKILL_NUM)
+            throw new System.InvalidOperationException("PlayerSkillComp presentation state is unavailable before initialization.");
+
+        SkillSlot slot = _skillSlots[slotIndex]
+            ?? throw new System.InvalidOperationException($"Player skill slot is null. slot={slotIndex}.");
+        if (!slot.isTicking)
         {
-            0 => _inputModel.Skill1Pressed,
-            1 => _inputModel.Skill2Pressed,
-            2 => _inputModel.Skill3Pressed,
-            3 => _inputModel.Skill4Pressed,
-            4 => _inputModel.Skill5Pressed,
-            _ => throw new System.ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Unknown active skill slot."),
-        };
+            skillInfo = null;
+            triggerName = null;
+            return false;
+        }
+        if (slot.skill == null || slot.runInfo == null)
+            throw new System.InvalidOperationException($"Running player skill has incomplete state. slot={slotIndex}.");
+        if (slot.skill.actions == null
+            || slot.runInfo.currentIndex < 0
+            || slot.runInfo.currentIndex >= slot.skill.actions.Count)
+        {
+            throw new System.InvalidOperationException(
+                $"Running player skill action index is invalid. slot={slotIndex}, action={slot.runInfo.currentIndex}.");
+        }
+
+        BasicAction action = slot.skill.actions[slot.runInfo.currentIndex]
+            ?? throw new System.InvalidOperationException(
+                $"Running player skill action is null. slot={slotIndex}, action={slot.runInfo.currentIndex}.");
+        skillInfo = slot.runInfo;
+        triggerName = action.relatedTriggerString;
+        return true;
+    }
+
+    private bool CanExecuteSkillCast(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= _skillSlots.Count)
+            throw new System.ArgumentOutOfRangeException(nameof(slotIndex), slotIndex, "Invalid skill slot index.");
+        if (!SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
+            || !SkillRuntimeDataModel.IsUnlockedActiveSkillSlot(slotIndex)
+            || !SkillRuntimeDataModel.HasRemainingUsageAt(slotIndex))
+        {
+            return false;
+        }
+
+        SkillSlot slot = _skillSlots[slotIndex];
+        SyncSlotSkill(slot, slotIndex, true);
+        return slot.canCast;
     }
 
     private void SyncSlotSkill(SkillSlot slot, int slotIndex, bool requireAsset)
@@ -351,6 +402,16 @@ public class PlayerSkillComp : ISkillComp, ILogicDeterministicStateContributor
     public void WriteDeterministicState(LogicStateHasher hasher)
     {
         SkillCompDeterministicStateUtility.Write(hasher, _entity, _skillSlots, _cooldownsBySkillId, _appliedPassiveSkillIds);
+        hasher.Add(m_HasPendingCast);
+        if (m_HasPendingCast)
+        {
+            hasher.Add(m_PendingCast.EffectiveFrame);
+            hasher.Add(m_PendingCast.Sequence);
+            hasher.Add(m_PendingCast.CasterId.Value);
+            hasher.Add(m_PendingCast.SlotIndex);
+            hasher.Add(m_PendingCast.RequestedWorldPosition.x.RawValue);
+            hasher.Add(m_PendingCast.RequestedWorldPosition.y.RawValue);
+        }
     }
 }
 public class SkillSlot: ISkillLocker

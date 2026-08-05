@@ -16,16 +16,19 @@ public partial class BuildingInfoTips : UIFormBase
     private const string ForceIconPath = "UI/Icon/Force.png";
     private const string SupplyIconPath = "UI/Icon/Supply.png";
     private const string CoinReservesPrefix = "剩余";
+    private const float RecycleHoldDurationSeconds = 2f;
     private const string RecycleTextFormat = "回收  <sprite name=\"Coin\"> {0}";
 
     // 用 Unicode 转义避免文件编码导致的 αβγδ 乱码。
     private static readonly char[] s_OptionMarks = { '\u03B1', '\u03B2', '\u03B3', '\u03B4' };
 
+    private InputManager m_InputManager;
     private InteractionHost m_TargetHost;
     private BuildingEntity m_TargetBuilding;
     private BuildingInfoItem m_ItemTemplate;
     private GameObject m_IconNumTemplate;
     private float m_RecycleHoldProgress;
+    private bool m_RecycleTriggered;
 
     private sealed class SelectedUpgradeInfo
     {
@@ -51,10 +54,6 @@ public partial class BuildingInfoTips : UIFormBase
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
         GF.Event.Subscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyPropertyChanged);
         GF.Event.Subscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        LogicInteractionHoldService.RegisterPanelConsumer(
-            ResolveLogicHoldButton,
-            ResolveLogicHoldThresholdFrames,
-            ExecuteLogicHold);
     }
 
     protected override void OnClose(bool isShutdown, object userData)
@@ -63,14 +62,8 @@ public partial class BuildingInfoTips : UIFormBase
         GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
         GF.Event.Unsubscribe(ArmyBuildingCardPropertyChangedEventArgs.EventId, OnArmyPropertyChanged);
         GF.Event.Unsubscribe(EntityFactionChangedEventArgs.EventId, OnEntityFactionChanged);
-        if (LogicInteractionHoldService.IsActive)
-        {
-            LogicInteractionHoldService.UnregisterPanelConsumer(
-                ResolveLogicHoldButton,
-                ResolveLogicHoldThresholdFrames,
-                ExecuteLogicHold);
-        }
 
+        m_InputManager = null;
         m_TargetHost = null;
         m_TargetBuilding = null;
         ResetRecycleHoldState();
@@ -418,36 +411,23 @@ public partial class BuildingInfoTips : UIFormBase
             return;
         }
 
-        Fix64 progress = LogicInteractionHoldService.IsActive
-            ? LogicInteractionHoldService.GetPanelProgress()
-            : Fix64.Zero;
-        m_RecycleHoldProgress = (float)progress;
+        bool holding = IsPointerHoldingOnRecycleButton();
+        m_RecycleHoldProgress = AdvanceRecycleHoldProgress(
+            m_RecycleHoldProgress,
+            holding,
+            Time.deltaTime);
 
         if (varRecycleFill != null)
             varRecycleFill.fillAmount = m_RecycleHoldProgress;
-    }
 
-    private LogicInputButton? ResolveLogicHoldButton(LogicInputFrame frame)
-    {
-        if (frame == null)
-            throw new ArgumentNullException(nameof(frame));
-        if (!CanShowRecycle() || !frame.IsHeld(LogicInputButton.PlayerAttack))
-            return null;
+        if (!m_RecycleTriggered && holding && m_RecycleHoldProgress >= 1f)
+        {
+            m_RecycleTriggered = true;
+            TryRecycleBuilding();
+        }
 
-        RectTransform rect = varRecycleBtn != null ? varRecycleBtn.transform as RectTransform : null;
-        return IsScreenPointInside(rect, frame.SelectScreenPosition)
-            ? LogicInputButton.PlayerAttack
-            : null;
-    }
-
-    private static int ResolveLogicHoldThresholdFrames()
-    {
-        return 60;
-    }
-
-    private bool ExecuteLogicHold()
-    {
-        return TryRecycleBuilding();
+        if (!holding && m_RecycleHoldProgress <= 1e-4f)
+            m_RecycleTriggered = false;
     }
 
     private bool CanShowRecycle()
@@ -462,20 +442,35 @@ public partial class BuildingInfoTips : UIFormBase
         return buildManager != null ? buildManager.CalculateRecycleRefund(m_TargetBuilding) : 0;
     }
 
-    private static bool IsScreenPointInside(RectTransform itemRect, FixVector2 screenPosition)
+    private bool IsPointerHoldingOnRecycleButton()
     {
-        if (itemRect == null)
+        RectTransform itemRect = varRecycleBtn != null ? varRecycleBtn.transform as RectTransform : null;
+        InputManager inputManager = EnsureInputManager();
+        if (itemRect == null || inputManager == null || !inputManager.IsPrimaryPointerPressed())
             return false;
 
+        Vector2 screenPosition = inputManager.GetPointerScreenPosition();
         Canvas canvas = itemRect.GetComponentInParent<Canvas>();
         Camera uiCamera = null;
         if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
             uiCamera = canvas.worldCamera != null ? canvas.worldCamera : GF.UICamera;
 
-        return RectTransformUtility.RectangleContainsScreenPoint(
-            itemRect,
-            new Vector2((float)screenPosition.x, (float)screenPosition.y),
-            uiCamera);
+        return RectTransformUtility.RectangleContainsScreenPoint(itemRect, screenPosition, uiCamera);
+    }
+
+    private InputManager EnsureInputManager()
+    {
+        if (m_InputManager == null)
+            m_InputManager = GameEntry.GetComponent<InputManager>();
+        return m_InputManager;
+    }
+
+    private static float AdvanceRecycleHoldProgress(float current, bool holding, float deltaTime)
+    {
+        float delta = Mathf.Max(0f, deltaTime) / RecycleHoldDurationSeconds;
+        return holding
+            ? Mathf.Min(1f, current + delta)
+            : Mathf.Max(0f, current - delta);
     }
 
     private bool TryRecycleBuilding()
@@ -496,6 +491,7 @@ public partial class BuildingInfoTips : UIFormBase
     private void ResetRecycleHoldState()
     {
         m_RecycleHoldProgress = 0f;
+        m_RecycleTriggered = false;
         if (varRecycleFill != null)
             varRecycleFill.fillAmount = 0f;
     }

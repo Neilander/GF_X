@@ -763,6 +763,7 @@ public class LogicGameplayStateHasherTests
         LogicCardPlacementAuthority.BeginTimeline();
         LogicInGameValueCommandService.BeginTimeline();
         LogicSkillSlotCommandService.BeginTimeline();
+        LogicSkillCastCommandService.BeginTimeline();
         Assert.IsTrue(LogicInteractionHoldService.IsActive, "Interaction hold service must be active after BeginTimeline.");
         LogicPhaseCommandService.BeginTimeline();
         LogicPhaseCommandService.SetInitialPhase(GamePhase.Defend);
@@ -778,12 +779,13 @@ public class LogicGameplayStateHasherTests
 
         LogicTimeControlService.BeginFrame(1);
         var inputTimeline = new LogicInputTimeline();
-        inputTimeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
+        inputTimeline.Begin(0d, FixVector2.Zero, 0);
         LogicInteractionHoldService.ProcessFrame(inputTimeline.Seal(1, 1d / 30d));
         Assert.IsTrue(LogicInteractionHoldService.IsActive, "Interaction hold service became inactive while sealing input.");
         LogicCardCommandService.ApplyFrameForTests(1, _ => { });
         LogicInGameValueCommandService.ApplyFrameForTests(1, _ => { });
         LogicSkillSlotCommandService.ApplyFrameForTests(1, _ => { });
+        LogicSkillCastCommandService.ApplyFrameForTests(1, _ => { });
         LogicPhaseCommandService.ApplyFrameForTests(1, _ => { });
         LogicInteractionCommandService.ApplyFrameForTests(1, _ => { });
         LogicTechEffectCommandService.ApplyFrameForTests(1, _ => { });
@@ -837,6 +839,8 @@ public class LogicGameplayStateHasherTests
             LogicTechEffectCommandService.EndTimeline();
         if (LogicCardPlacementAuthority.IsActive)
             LogicCardPlacementAuthority.EndTimeline();
+        if (LogicSkillCastCommandService.IsActive)
+            LogicSkillCastCommandService.EndTimeline();
         if (LogicSkillSlotCommandService.IsActive)
             LogicSkillSlotCommandService.EndTimeline();
         if (LogicInGameValueCommandService.IsActive)

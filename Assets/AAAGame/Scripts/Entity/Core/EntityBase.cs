@@ -25,7 +25,6 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
     private Vector3 m_CurrentLogicPosition;
     private Quaternion m_PreviousLogicRotation;
     private Quaternion m_CurrentLogicRotation;
-    private bool m_CoordinatedLogicFrameActive;
 
     public int Id { get; private set; }
     public EntityParams Params { get; private set; }
@@ -101,8 +100,6 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
         {
             if (m_LogicFrameRegistered)
                 throw new GameFrameworkException($"EntityBase.OnHide failed: coordinated entity has a standalone listener. entityId={Id}, type={GetType().FullName}.");
-            if (m_CoordinatedLogicFrameActive)
-                throw new GameFrameworkException($"EntityBase.OnHide failed: coordinated logic frame is still active. entityId={Id}, type={GetType().FullName}.");
         }
         else if (ShouldRunLogicFrameUpdate)
         {
@@ -148,30 +145,6 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
         m_PreviousLogicRotation = m_CurrentLogicRotation;
         OnLogicFrameUpdate(deltaTime);
         CaptureCurrentLogicPose();
-    }
-
-    internal void BeginCoordinatedLogicFrameUpdate()
-    {
-        if (!UsesCoordinatedLogicFrameUpdate)
-            throw new GameFrameworkException($"EntityBase.BeginCoordinatedLogicFrameUpdate failed: entity does not use coordinated updates. entityId={Id}, type={GetType().FullName}.");
-        if (m_CoordinatedLogicFrameActive)
-            throw new GameFrameworkException($"EntityBase.BeginCoordinatedLogicFrameUpdate failed: a coordinated frame is already active. entityId={Id}, type={GetType().FullName}.");
-        if (!ShouldRunLogicFrameUpdate)
-            throw new GameFrameworkException($"EntityBase.BeginCoordinatedLogicFrameUpdate failed: entity is not logic-active. entityId={Id}, type={GetType().FullName}.");
-
-        RestoreRenderTransform();
-        m_PreviousLogicPosition = m_CurrentLogicPosition;
-        m_PreviousLogicRotation = m_CurrentLogicRotation;
-        m_CoordinatedLogicFrameActive = true;
-    }
-
-    internal void CompleteCoordinatedLogicFrameUpdate()
-    {
-        if (!m_CoordinatedLogicFrameActive)
-            throw new GameFrameworkException($"EntityBase.CompleteCoordinatedLogicFrameUpdate failed: no coordinated frame is active. entityId={Id}, type={GetType().FullName}.");
-
-        CaptureCurrentLogicPose();
-        m_CoordinatedLogicFrameActive = false;
     }
 
     protected virtual void OnLogicFrameUpdate(Fix64 deltaTime)
@@ -225,6 +198,20 @@ public class EntityBase : EntityLogic, ILogicFrameUpdate
     private void CaptureCurrentLogicPose()
     {
         GetAuthoritativeLogicPose(out m_CurrentLogicPosition, out m_CurrentLogicRotation);
+    }
+
+    protected void SetRenderInterpolationLogicPoses(
+        Vector3 previousPosition,
+        Quaternion previousRotation,
+        Vector3 currentPosition,
+        Quaternion currentRotation)
+    {
+        if (LogicFrameRuntime.IsTicking)
+            throw new GameFrameworkException($"EntityBase render interpolation pose cannot update during a logic frame. entityId={Id}, type={GetType().FullName}.");
+        m_PreviousLogicPosition = previousPosition;
+        m_PreviousLogicRotation = previousRotation;
+        m_CurrentLogicPosition = currentPosition;
+        m_CurrentLogicRotation = currentRotation;
     }
 
     private void RestoreRenderTransform()

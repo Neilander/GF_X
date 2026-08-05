@@ -1870,8 +1870,10 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback, ILogicDete
         Fix64 delayed = baseDamage * m_DelayPercent / (Fix64)100;
         if (delayed <= Fix64.Zero)
             return baseDamage;
+        if (attacker == null || !attacker.LogicEntityId.IsValid)
+            throw new InvalidOperationException("Delayed incoming damage requires an attacker with a valid logic entity id.");
 
-        m_DeferredDamages.Add(new DeferredDamage(delayed, m_Duration));
+        m_DeferredDamages.Add(new DeferredDamage(attacker, delayed, m_Duration));
         return baseDamage - delayed;
     }
 
@@ -1899,21 +1901,31 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback, ILogicDete
             if (tick > Fix64.Zero)
             {
                 m_ApplyingDeferred = true;
-                DamageHelper.DoDirectDamage(hostEntity, tick, HealthModifyType.reduce);
-                m_ApplyingDeferred = false;
+                try
+                {
+                    DamageHelper.DoDirectDamage(hostEntity, tick, HealthModifyType.reduce, item.Attacker);
+                }
+                finally
+                {
+                    m_ApplyingDeferred = false;
+                }
             }
         }
     }
 
     private struct DeferredDamage
     {
+        public IEntityContext Attacker;
+        public LogicEntityId AttackerId;
         public Fix64 TotalDamage;
         public Fix64 RemainingDamage;
         public Fix64 TotalDuration;
         public Fix64 RemainingDuration;
 
-        public DeferredDamage(Fix64 damage, Fix64 duration)
+        public DeferredDamage(IEntityContext attacker, Fix64 damage, Fix64 duration)
         {
+            Attacker = attacker ?? throw new ArgumentNullException(nameof(attacker));
+            AttackerId = attacker.LogicEntityId;
             TotalDamage = damage;
             RemainingDamage = damage;
             TotalDuration = duration;
@@ -1928,6 +1940,7 @@ public sealed class DelayedIncomingDamageReceiverBuff : BuffCallback, ILogicDete
         for (int i = 0; i < m_DeferredDamages.Count; i++)
         {
             DeferredDamage item = m_DeferredDamages[i];
+            hasher.Add(item.AttackerId.Value);
             hasher.Add(item.TotalDamage.RawValue);
             hasher.Add(item.RemainingDamage.RawValue);
             hasher.Add(item.TotalDuration.RawValue);

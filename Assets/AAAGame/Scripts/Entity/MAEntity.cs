@@ -8,6 +8,37 @@ using AAAGame.Scripts.BuffSystem;
 
 public class MAEntity : CompCreature, IEntityContext
 {
+	private enum LogicPresentationEventKind
+	{
+		HealthChanged,
+		UnitDied,
+		BuildingDisabledChanged,
+		GhostStateChanged,
+		CollisionBlockingChanged,
+		PermanentStealthChanged,
+		PhaseProtectionChanged,
+	}
+
+	private readonly struct LogicPresentationEvent
+	{
+		public LogicPresentationEvent(
+			LogicPresentationEventKind kind,
+			LogicEntityHealthChange healthChange = default,
+			bool enabled = false,
+			IEntityContext attacker = null)
+		{
+			Kind = kind;
+			HealthChange = healthChange;
+			Enabled = enabled;
+			Attacker = attacker;
+		}
+
+		public LogicPresentationEventKind Kind { get; }
+		public LogicEntityHealthChange HealthChange { get; }
+		public bool Enabled { get; }
+		public IEntityContext Attacker { get; }
+	}
+
     public LogicEntityId LogicEntityId { get; private set; }
     private LogicEntityState _logicState;
     private bool _isViewBound;
@@ -45,6 +76,12 @@ public class MAEntity : CompCreature, IEntityContext
     private AnimationRatePresenter _animationRatePresenter;
     private DisplacementTetherPresenter _displacementTetherPresenter;
     private bool _isLogicActive;
+    private int _lastPresentedAttackCount = -1;
+    private int _lastPresentedInterruptedAttackCount;
+    private int _lastPresentedMeleeImpactAttackCount;
+    private readonly SkillInfo[] _presentedSkillInfos = new SkillInfo[SkillInputRuntime.MaxSkillCount];
+    private readonly int[] _presentedSkillActionIndices = new int[SkillInputRuntime.MaxSkillCount];
+	private readonly Queue<LogicPresentationEvent> _pendingLogicPresentationEvents = new();
 
     public IControlBrain Brain { get; private set; }
     public bool IsLogicActive => _isLogicActive;
@@ -177,9 +214,12 @@ public class MAEntity : CompCreature, IEntityContext
             throw new InvalidOperationException($"MAEntity.OnShow failed: logic state identity mismatch. entity={LogicEntityId.Value}.");
         RefreshCharacterData(userData);
         BindLogicStateComponents();
+		if (_pendingLogicPresentationEvents.Count != 0)
+			throw new InvalidOperationException("MAEntity.OnShow failed: pooled view retained logic presentation events.");
 
         base.OnShow(userData);
         SubscribeLogicStatePresentation();
+        ResetActionPresentationTracking();
         Alive = _logicState.Alive;
         InitializePresentationPoseFromLogicState();
 
@@ -346,6 +386,8 @@ public class MAEntity : CompCreature, IEntityContext
         }
 
         _buffComp = null;
+        ResetActionPresentationTracking();
+		_pendingLogicPresentationEvents.Clear();
 
         DeactivateLogicParticipation();
         if (_isViewBound)
@@ -362,7 +404,10 @@ public class MAEntity : CompCreature, IEntityContext
     protected override void OnRenderFrameUpdate(float elapseSeconds, float realElapseSeconds)
     {
         base.OnRenderFrameUpdate(elapseSeconds, realElapseSeconds);
+        SyncRenderInterpolationFromLogicState();
         SyncPresenterPoseFromLogicState();
+		FlushLogicPresentationEvents();
+        SyncActionPresentation();
         if (_logicState != null && _logicState.IsSpawnCommitted)
             _displacementTetherPresenter.Sync(_logicState, durationMoveEffectComp);
 
@@ -456,6 +501,38 @@ public class MAEntity : CompCreature, IEntityContext
             transform.rotation = Quaternion.LookRotation(new Vector3((float)forward.x, 0f, (float)forward.y));
     }
 
+    private void SyncRenderInterpolationFromLogicState()
+    {
+        if (_logicState == null || !_logicState.IsSpawnCommitted)
+            return;
+        if (LogicFrameRuntime.IsTicking)
+            throw new InvalidOperationException("MAEntity cannot synchronize render interpolation during a logic frame.");
+
+        FixVector2 previousPosition = _logicState.Position;
+        FixVector2 previousForward = _logicState.Forward;
+        if (LogicEntityFrameSnapshotService.IsActive
+            && LogicEntityFrameSnapshotService.CapturedFrame == LogicFrameRuntime.CurrentFrame
+            && LogicEntityFrameSnapshotService.Current.TryGet(LogicEntityId, out LogicEntityFrameState frameStart))
+        {
+            previousPosition = frameStart.Position;
+            previousForward = frameStart.Forward;
+        }
+
+        FixVector2 currentForward = _logicState.Forward;
+        if (FixVector2.SqrMagnitude(previousForward) == Fix64.Zero
+            || FixVector2.SqrMagnitude(currentForward) == Fix64.Zero)
+        {
+            throw new InvalidOperationException($"MAEntity render interpolation encountered zero forward. entity={LogicEntityId.Value}.");
+        }
+
+        float y = CachedTransform.position.y;
+        SetRenderInterpolationLogicPoses(
+            new Vector3((float)previousPosition.x, y, (float)previousPosition.y),
+            Quaternion.LookRotation(new Vector3((float)previousForward.x, 0f, (float)previousForward.y)),
+            new Vector3((float)_logicState.Position.x, y, (float)_logicState.Position.y),
+            Quaternion.LookRotation(new Vector3((float)currentForward.x, 0f, (float)currentForward.y)));
+    }
+
     private LogicEntityState RequireLogicState()
     {
         if (_logicState == null)
@@ -493,11 +570,6 @@ public class MAEntity : CompCreature, IEntityContext
         state.CollisionBlockingChanged += OnLogicCollisionBlockingChanged;
         state.PermanentStealthChanged += OnLogicPermanentStealthChanged;
         state.PhaseProtectionChanged += OnLogicPhaseProtectionChanged;
-        if (state.AtkComp is DirectAtkComp directAttack)
-        {
-            directAttack.AttackPresentationStarted += OnAttackPresentationStarted;
-            directAttack.AttackPresentationInterrupted += OnAttackPresentationInterrupted;
-        }
     }
 
     private void UnsubscribeLogicStatePresentation()
@@ -511,15 +583,17 @@ public class MAEntity : CompCreature, IEntityContext
         _logicState.CollisionBlockingChanged -= OnLogicCollisionBlockingChanged;
         _logicState.PermanentStealthChanged -= OnLogicPermanentStealthChanged;
         _logicState.PhaseProtectionChanged -= OnLogicPhaseProtectionChanged;
-        if (_logicState.AtkComp is DirectAtkComp directAttack)
-        {
-            directAttack.AttackPresentationStarted -= OnAttackPresentationStarted;
-            directAttack.AttackPresentationInterrupted -= OnAttackPresentationInterrupted;
-        }
     }
 
     private void OnLogicHealthChanged(LogicEntityHealthChange change)
     {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.HealthChanged,
+			change));
+	}
+
+	private void PresentLogicHealthChanged(LogicEntityHealthChange change)
+	{
         Alive = RequireLogicState().Alive;
         if (change.Delta < Fix64.Zero)
             TriggerPresenterHitAnimation();
@@ -537,6 +611,13 @@ public class MAEntity : CompCreature, IEntityContext
 
     private void OnLogicUnitDied(IEntityContext attacker)
     {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.UnitDied,
+			attacker: attacker));
+	}
+
+	private void PresentLogicUnitDied(IEntityContext attacker)
+	{
         Alive = false;
         if (this is SoldierEntity victim)
             GF.Event.Fire(victim, SoldierDeadEventArgs.Create(victim));
@@ -546,21 +627,211 @@ public class MAEntity : CompCreature, IEntityContext
 
     private void OnLogicBuildingDisabledChanged(bool disabled, IEntityContext attacker)
     {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.BuildingDisabledChanged,
+			enabled: disabled,
+			attacker: attacker));
+	}
+
+	private void PresentLogicBuildingDisabledChanged(bool disabled, IEntityContext attacker)
+	{
         Alive = RequireLogicState().Alive;
         OnLogicBuildingDisabledPresentation(disabled, attacker);
     }
 
     private void OnLogicGhostStateChanged(bool enabled)
     {
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.GhostStateChanged,
+			enabled: enabled));
+	}
+
+	private void PresentLogicGhostStateChanged(bool enabled)
+	{
         Alive = RequireLogicState().Alive;
         OnLogicGhostStatePresentation(enabled);
     }
 
-    private void OnLogicCollisionBlockingChanged(bool enabled) => OnLogicCollisionBlockingPresentation(enabled);
-    private void OnLogicPermanentStealthChanged(bool enabled) => OnLogicPermanentStealthPresentation(enabled);
-    private void OnLogicPhaseProtectionChanged(bool enabled) => OnLogicPhaseProtectionPresentation(enabled);
+	private void OnLogicCollisionBlockingChanged(bool enabled) =>
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.CollisionBlockingChanged,
+			enabled: enabled));
 
-    private void OnAttackPresentationStarted(Fix64 windUp, bool playTrail)
+	private void OnLogicPermanentStealthChanged(bool enabled) =>
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.PermanentStealthChanged,
+			enabled: enabled));
+
+	private void OnLogicPhaseProtectionChanged(bool enabled) =>
+		_pendingLogicPresentationEvents.Enqueue(new LogicPresentationEvent(
+			LogicPresentationEventKind.PhaseProtectionChanged,
+			enabled: enabled));
+
+	private void FlushLogicPresentationEvents()
+	{
+		while (_pendingLogicPresentationEvents.Count > 0)
+		{
+			LogicPresentationEvent presentationEvent = _pendingLogicPresentationEvents.Dequeue();
+			switch (presentationEvent.Kind)
+			{
+				case LogicPresentationEventKind.HealthChanged:
+					PresentLogicHealthChanged(presentationEvent.HealthChange);
+					break;
+				case LogicPresentationEventKind.UnitDied:
+					PresentLogicUnitDied(presentationEvent.Attacker);
+					break;
+				case LogicPresentationEventKind.BuildingDisabledChanged:
+					PresentLogicBuildingDisabledChanged(
+						presentationEvent.Enabled,
+						presentationEvent.Attacker);
+					break;
+				case LogicPresentationEventKind.GhostStateChanged:
+					PresentLogicGhostStateChanged(presentationEvent.Enabled);
+					break;
+				case LogicPresentationEventKind.CollisionBlockingChanged:
+					OnLogicCollisionBlockingPresentation(presentationEvent.Enabled);
+					break;
+				case LogicPresentationEventKind.PermanentStealthChanged:
+					OnLogicPermanentStealthPresentation(presentationEvent.Enabled);
+					break;
+				case LogicPresentationEventKind.PhaseProtectionChanged:
+					OnLogicPhaseProtectionPresentation(presentationEvent.Enabled);
+					break;
+				default:
+					throw new ArgumentOutOfRangeException();
+			}
+		}
+	}
+
+    private void ResetActionPresentationTracking()
+    {
+        _lastPresentedAttackCount = -1;
+        _lastPresentedInterruptedAttackCount = 0;
+        _lastPresentedMeleeImpactAttackCount = 0;
+        for (int i = 0; i < _presentedSkillInfos.Length; i++)
+        {
+            _presentedSkillInfos[i] = null;
+            _presentedSkillActionIndices[i] = -1;
+        }
+    }
+
+    private void SyncActionPresentation()
+    {
+        SyncAttackPresentation();
+        SyncSkillActionPresentation();
+    }
+
+    private void SyncAttackPresentation()
+    {
+        if (atkComp is not DirectAtkComp directAttack)
+        {
+            _lastPresentedAttackCount = -1;
+            _lastPresentedInterruptedAttackCount = 0;
+            _lastPresentedMeleeImpactAttackCount = 0;
+            return;
+        }
+
+        if (_lastPresentedAttackCount < 0)
+        {
+            _lastPresentedInterruptedAttackCount = directAttack.LastInterruptedAttackCount;
+            _lastPresentedMeleeImpactAttackCount = directAttack.LastSuccessfulMeleeImpactAttackCount;
+            if (!directAttack.IsAttacking)
+            {
+                _lastPresentedAttackCount = directAttack.AttackCount;
+                return;
+            }
+        }
+
+        if (directAttack.IsAttacking && directAttack.AttackCount != _lastPresentedAttackCount)
+        {
+            PresentAttackStarted(directAttack.CurrentWindUp, directAttack.CurrentAttackUsesTrail);
+            _lastPresentedAttackCount = directAttack.AttackCount;
+        }
+        else if (!directAttack.IsAttacking)
+        {
+            _lastPresentedAttackCount = directAttack.AttackCount;
+        }
+
+        if (directAttack.LastInterruptedAttackCount != _lastPresentedInterruptedAttackCount)
+        {
+            if (directAttack.LastInterruptedAttackCount > 0
+                && directAttack.LastInterruptedAttackCount == directAttack.AttackCount)
+            {
+                PresentAttackInterrupted();
+            }
+            _lastPresentedInterruptedAttackCount = directAttack.LastInterruptedAttackCount;
+        }
+
+        if (directAttack.LastSuccessfulMeleeImpactAttackCount != _lastPresentedMeleeImpactAttackCount)
+        {
+            if (directAttack.IsAttacking
+                && directAttack.LastSuccessfulMeleeImpactAttackCount == directAttack.AttackCount
+                && AudioManager.Instance != null)
+            {
+                AudioManager.Instance.Play("basicAttack");
+            }
+            _lastPresentedMeleeImpactAttackCount = directAttack.LastSuccessfulMeleeImpactAttackCount;
+        }
+    }
+
+    private void SyncSkillActionPresentation()
+    {
+        if (_logicState?.SkillComp is not ISkillActionPresentationProvider provider)
+        {
+            for (int i = 0; i < _presentedSkillInfos.Length; i++)
+            {
+                _presentedSkillInfos[i] = null;
+                _presentedSkillActionIndices[i] = -1;
+            }
+            return;
+        }
+        if (provider.SkillPresentationSlotCount < 0
+            || provider.SkillPresentationSlotCount > _presentedSkillInfos.Length)
+        {
+            throw new InvalidOperationException(
+                $"MAEntity skill presentation slot count is invalid. entity={LogicEntityId.Value}, count={provider.SkillPresentationSlotCount}.");
+        }
+
+        int slotIndex = 0;
+        for (; slotIndex < provider.SkillPresentationSlotCount; slotIndex++)
+        {
+            if (!provider.TryGetActiveSkillActionPresentation(
+                    slotIndex,
+                    out SkillInfo skillInfo,
+                    out string triggerName))
+            {
+                _presentedSkillInfos[slotIndex] = null;
+                _presentedSkillActionIndices[slotIndex] = -1;
+                continue;
+            }
+
+            if (ReferenceEquals(_presentedSkillInfos[slotIndex], skillInfo)
+                && _presentedSkillActionIndices[slotIndex] == skillInfo.currentIndex)
+            {
+                continue;
+            }
+            if (!string.IsNullOrWhiteSpace(triggerName))
+            {
+                if (animator == null)
+                {
+                    throw new InvalidOperationException(
+                        $"MAEntity cannot present skill action without an Animator. entity={LogicEntityId.Value}, slot={slotIndex}, action={skillInfo.currentIndex}.");
+                }
+                animator.SetTrigger(triggerName);
+            }
+
+            _presentedSkillInfos[slotIndex] = skillInfo;
+            _presentedSkillActionIndices[slotIndex] = skillInfo.currentIndex;
+        }
+
+        for (; slotIndex < _presentedSkillInfos.Length; slotIndex++)
+        {
+            _presentedSkillInfos[slotIndex] = null;
+            _presentedSkillActionIndices[slotIndex] = -1;
+        }
+    }
+
+    private void PresentAttackStarted(Fix64 windUp, bool playTrail)
     {
         if (animator != null)
             animator.SetTrigger("Attack");
@@ -568,7 +839,7 @@ public class MAEntity : CompCreature, IEntityContext
             WeaponAttackTrailEffect.Play(this, Mathf.Max(0.08f, (float)windUp + 0.08f));
     }
 
-    private void OnAttackPresentationInterrupted()
+    private void PresentAttackInterrupted()
     {
         WeaponAttackTrailEffect.Stop(this, true);
         if (animator == null)

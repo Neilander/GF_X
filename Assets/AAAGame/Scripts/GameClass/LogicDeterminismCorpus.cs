@@ -9,10 +9,6 @@ public readonly struct LogicDeterminismCorpusResult
         uint inputChecksum,
         long worldMoveXRaw,
         long worldMoveYRaw,
-        long selectScreenXRaw,
-        long selectScreenYRaw,
-        long selectWorldXRaw,
-        long selectWorldYRaw,
         ulong inputHash,
         ulong timeControlHash,
         ulong fullHash)
@@ -23,10 +19,6 @@ public readonly struct LogicDeterminismCorpusResult
         InputChecksum = inputChecksum;
         WorldMoveXRaw = worldMoveXRaw;
         WorldMoveYRaw = worldMoveYRaw;
-        SelectScreenXRaw = selectScreenXRaw;
-        SelectScreenYRaw = selectScreenYRaw;
-        SelectWorldXRaw = selectWorldXRaw;
-        SelectWorldYRaw = selectWorldYRaw;
         InputHash = inputHash;
         TimeControlHash = timeControlHash;
         FullHash = fullHash;
@@ -38,10 +30,6 @@ public readonly struct LogicDeterminismCorpusResult
     public uint InputChecksum { get; }
     public long WorldMoveXRaw { get; }
     public long WorldMoveYRaw { get; }
-    public long SelectScreenXRaw { get; }
-    public long SelectScreenYRaw { get; }
-    public long SelectWorldXRaw { get; }
-    public long SelectWorldYRaw { get; }
     public ulong InputHash { get; }
     public ulong TimeControlHash { get; }
     public ulong FullHash { get; }
@@ -49,23 +37,23 @@ public readonly struct LogicDeterminismCorpusResult
 
 public static class LogicDeterminismCorpus
 {
-    public const string CorpusVersion = "v81";
-    public const int GoldenProtocolVersion = 81;
-    public const string GoldenContentVersion = "Avenge-30Hz-v81";
-    public const int GoldenEventCount = 6;
-    public const uint GoldenInputChecksum = 44622919u;
-    public const ulong GoldenInputHash = 2238831199762417194ul;
+    public const string CorpusVersion = "v82";
+    public const int GoldenProtocolVersion = 82;
+    public const string GoldenContentVersion = "Avenge-30Hz-v82";
+    public const int GoldenEventCount = 4;
+    public const uint GoldenInputChecksum = 565150261u;
+    public const ulong GoldenInputHash = 13863065662157724554ul;
     public const ulong GoldenTimeControlHash = 4660981641562439902ul;
-    public const ulong GoldenFullHash = 7334454495593281045ul;
+    public const ulong GoldenFullHash = 1464893562985008626ul;
 
     private const ulong GameplayPayload = 0x123456789ABCDEF0UL;
 
-    public static LogicDeterminismCorpusResult EvaluateV81()
+    public static LogicDeterminismCorpusResult EvaluateV82()
     {
         if (LogicTimeControlService.IsActive)
         {
             throw new InvalidOperationException(
-                "LogicDeterminismCorpus.EvaluateV81 failed: LogicTimeControlService must be inactive.");
+                "LogicDeterminismCorpus.EvaluateV82 failed: LogicTimeControlService must be inactive.");
         }
 
         LogicInputFrame frame = BuildInputFrame();
@@ -99,18 +87,14 @@ public static class LogicDeterminismCorpus
             frame.Checksum,
             frame.WorldMove.x.RawValue,
             frame.WorldMove.y.RawValue,
-            frame.SelectScreenPosition.x.RawValue,
-            frame.SelectScreenPosition.y.RawValue,
-            frame.SelectWorldPosition.x.RawValue,
-            frame.SelectWorldPosition.y.RawValue,
             inputHash,
             timeControlHash,
             fullHash);
     }
 
-    public static LogicDeterminismCorpusResult ValidateV81()
+    public static LogicDeterminismCorpusResult ValidateV82()
     {
-        LogicDeterminismCorpusResult result = EvaluateV81();
+        LogicDeterminismCorpusResult result = EvaluateV82();
 
         RequireEqual("ProtocolVersion", GoldenProtocolVersion, result.ProtocolVersion);
         RequireEqual("ContentVersion", GoldenContentVersion, result.ContentVersion);
@@ -118,10 +102,6 @@ public static class LogicDeterminismCorpus
         RequireEqual("InputChecksum", GoldenInputChecksum, result.InputChecksum);
         RequireEqual("WorldMove.X.RawValue", 777L, result.WorldMoveXRaw);
         RequireEqual("WorldMove.Y.RawValue", -888L, result.WorldMoveYRaw);
-        RequireEqual("SelectScreenPosition.X.RawValue", 999L, result.SelectScreenXRaw);
-        RequireEqual("SelectScreenPosition.Y.RawValue", 1111L, result.SelectScreenYRaw);
-        RequireEqual("SelectWorldPosition.X.RawValue", -2222L, result.SelectWorldXRaw);
-        RequireEqual("SelectWorldPosition.Y.RawValue", 3333L, result.SelectWorldYRaw);
         RequireEqual("InputHash", GoldenInputHash, result.InputHash);
         RequireEqual("TimeControlHash", GoldenTimeControlHash, result.TimeControlHash);
         RequireEqual("FullHash", GoldenFullHash, result.FullHash);
@@ -135,16 +115,11 @@ public static class LogicDeterminismCorpus
         timeline.Begin(
             100d,
             new FixVector2(Fix64.FromRaw(111), Fix64.FromRaw(-222)),
-            LogicInputTimeline.GetButtonBit(LogicInputButton.InteractionPrimary),
-            new FixVector2(Fix64.FromRaw(333), Fix64.FromRaw(444)),
-            true,
-            new FixVector2(Fix64.FromRaw(555), Fix64.FromRaw(-666)));
+            LogicInputTimeline.GetButtonBit(LogicInputButton.InteractionPrimary));
         timeline.EnqueueWorldMove(100.01d, new FixVector2(Fix64.FromRaw(777), Fix64.FromRaw(-888)));
-        timeline.EnqueueSelectScreenPosition(100.011d, new FixVector2(Fix64.FromRaw(999), Fix64.FromRaw(1111)));
-        timeline.EnqueueSelectWorldPosition(100.011d, new FixVector2(Fix64.FromRaw(-2222), Fix64.FromRaw(3333)));
-        timeline.EnqueueButtonPulse(100.012d, LogicInputButton.Skill3);
-        timeline.EnqueueButtonPressed(100.013d, LogicInputButton.SkillConfirm);
-        timeline.EnqueueButtonReleased(100.014d, LogicInputButton.SkillConfirm);
+        timeline.EnqueueButtonPulse(100.012d, LogicInputButton.InteractionSecondary);
+        timeline.EnqueueButtonPressed(100.013d, LogicInputButton.PlayerAttack);
+        timeline.EnqueueButtonReleased(100.014d, LogicInputButton.PlayerAttack);
         return timeline.Seal(1, 100d + 1d / LogicFrameRuntime.FrameRate);
     }
 

@@ -77,17 +77,28 @@ public class ActiveSkillSO : SkillEffectSO
 
     public virtual void StartSkill(IEntityContext body, out SkillInfo info)
     {
+        StartSkillInternal(body, false, FixVector2.Zero, out info);
+    }
+
+    public virtual void StartSkill(IEntityContext body, FixVector2 requestedWorldPosition, out SkillInfo info)
+    {
+        StartSkillInternal(body, true, requestedWorldPosition, out info);
+    }
+
+    private void StartSkillInternal(
+        IEntityContext body,
+        bool hasRequestedWorldPosition,
+        FixVector2 requestedWorldPosition,
+        out SkillInfo info)
+    {
         info = CreateSkillInfo(body);
         info.tempInfoRecords = new Dictionary<ActionInfo, Type>();
+        info.hasRequestedWorldPosition = hasRequestedWorldPosition;
+        info.requestedWorldPosition = requestedWorldPosition;
         if (actions == null || actions.Count == 0)
             throw new InvalidOperationException($"ActiveSkillSO has no actions. skillId={skillId}, asset={name}");
 
         SetupNewAction(info, 0);
-        /*
-        actions[0].StartAction(body, out info.currentInfo);
-        info.currentInfo.damageInfo = new Damage(body, 1);
-
-        body.animator.SetTrigger(actions[0].relatedTriggerString);*/
     }
 
     public virtual void TickSkill(SkillInfo info, Fix64 deltaTime)
@@ -112,10 +123,6 @@ public class ActiveSkillSO : SkillEffectSO
     {
         info.currentIndex += 1;
         SetupNewAction(info, info.currentIndex);
-        /*
-        actions[info.currentIndex].StartAction(info.entity, out info.currentInfo);
-        info.currentInfo.damageInfo = new Damage(info.entity, 1);
-        info.entity.animator.SetTrigger(actions[info.currentIndex].relatedTriggerString);*/
     }
 
     protected virtual void SetupNewAction(SkillInfo info, int actionIndex)
@@ -139,21 +146,21 @@ public class ActiveSkillSO : SkillEffectSO
 
         //更新信息
         var action = actions[actionIndex];
-        action.StartAction(info.entity, out info.currentInfo);
-        info.currentInfo.executeIndex = actionIndex;
-        info.currentInfo.damageInfo = new Damage(info.entity, Fix64.One);
-        if (!string.IsNullOrWhiteSpace(action.relatedTriggerString)
-            && info.entity.LogicEntityId.IsValid
-            && LogicEntityLifecycleService.TryGetBoundView(info.entity.LogicEntityId, out MAEntity view)
-            && view.animator != null)
-        {
-            view.animator.SetTrigger(action.relatedTriggerString);
-        }
-        info.currentInfo.fatherInfo = info;
+        action.StartAction(
+            info.entity,
+            info,
+            actionInfo => ConfigureActionInfo(info, actionInfo, actionIndex),
+            out info.currentInfo);
+    }
+
+    private void ConfigureActionInfo(SkillInfo skillInfo, ActionInfo actionInfo, int actionIndex)
+    {
+        actionInfo.executeIndex = actionIndex;
+        actionInfo.damageInfo = new Damage(skillInfo.entity, Fix64.One);
 
         //根据新的信息容器类型来注入
         //只注入固定的设置信息
-        switch (info.currentInfo)
+        switch (actionInfo)
         {
             case PositionSelectActionInfo posSelectInfo:
                 posSelectInfo.radius = GetCastDistanceWorldFixedOrFallback();
@@ -165,6 +172,33 @@ public class ActiveSkillSO : SkillEffectSO
                 break;
 
         }
+    }
+
+    public bool TryGetPositionSelectionDescriptor(out SkillCastPreviewDescriptor descriptor)
+    {
+        if (actions != null)
+        {
+            for (int i = 0; i < actions.Count; i++)
+            {
+                if (actions[i] is not PositionSelectAction positionAction)
+                    continue;
+
+                Fix64 selectionRadius = GetAreaRangeWorldFixed();
+                Vector3 selectionScale = GetSelectionScaleOrFallback();
+                if (selectionRadius <= Fix64.Zero)
+                    selectionRadius = (Fix64)selectionScale.x;
+                descriptor = new SkillCastPreviewDescriptor(
+                    true,
+                    GetCastDistanceWorldFixedOrFallback(),
+                    selectionRadius,
+                    selectionScale,
+                    positionAction.SelectorPrefabName);
+                return true;
+            }
+        }
+
+        descriptor = SkillCastPreviewDescriptor.Instant;
+        return false;
     }
 
     public virtual void InterruptSkill(SkillInfo info)
@@ -192,6 +226,8 @@ public class SkillInfo
     public IEntityContext entity;
     public ActionInfo currentInfo;
     public Dictionary<ActionInfo, Type> tempInfoRecords;
+    public bool hasRequestedWorldPosition;
+    public FixVector2 requestedWorldPosition;
 }
 
 

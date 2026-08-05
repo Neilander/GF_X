@@ -117,7 +117,7 @@ public sealed class LogicCardCommandServiceTests
     public void CardRewardMutation_RejectsOutsideApplyWindow()
     {
         Assert.Throws<InvalidOperationException>(() =>
-            RewardManager.HandleCardDiscardReward(null, 1, null));
+            RewardManager.HandleCardDiscardReward(null, 1));
     }
 
     [Test]
@@ -162,5 +162,16 @@ public sealed class LogicCardCommandServiceTests
         StringAssert.DoesNotContain("public bool AddCardToDeck(CardData", cardControllerSource);
         StringAssert.DoesNotContain("public void DrawCards(", cardControllerSource);
         StringAssert.DoesNotContain("public bool DrawCard()", cardControllerSource);
+        StringAssert.DoesNotContain("GF.Event.FireNow", cardControllerSource);
+        StringAssert.DoesNotContain("AudioManager", cardControllerSource);
+        StringAssert.DoesNotContain("NotifyPlacementApplied", cardControllerSource);
+        StringAssert.DoesNotContain("discardScreenPosition", cardControllerSource);
+        StringAssert.DoesNotContain("BuildingEntity SourceBuilding", cardControllerSource);
+        StringAssert.DoesNotContain("TryGetBoundView", cardControllerSource);
+        StringAssert.Contains("EnsurePresentationInitialized", cardControllerSource);
+        StringAssert.Contains("LogicFrameRuntime.IsTicking", cardControllerSource);
+        StringAssert.Contains("m_PendingPresentationShutdown.Enqueue", cardSetupSource);
+        StringAssert.Contains("GF.Event.Fire(this, CardPlayedEventArgs.Create", cardControllerSource);
+        StringAssert.Contains("GF.Event.Fire(this, CardDiscardedEventArgs.Create", cardControllerSource);
     }
 }

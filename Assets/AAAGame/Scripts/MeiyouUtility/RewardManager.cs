@@ -60,6 +60,18 @@ public static class LogicRewardStateService
 
 public class RewardManager : GameFrameworkComponent
 {
+	private readonly struct CoinFlyPresentationRequest
+	{
+		public CoinFlyPresentationRequest(FixVector2 sourcePosition, int coinAmount)
+		{
+			SourcePosition = sourcePosition;
+			CoinAmount = coinAmount;
+		}
+
+		public FixVector2 SourcePosition { get; }
+		public int CoinAmount { get; }
+	}
+
 	private const string DiscardResourceConversionRateConfigKey = "DiscardResourceConversionRate";
 	private const string KillRewardSupplyRatioConfigKey = "KillRewardSupplyRatio";
 	private const string BaseResourceIncomeDailyGrowthConfigKey = "BaseResourceIncomeDailyGrowth";
@@ -74,6 +86,7 @@ public class RewardManager : GameFrameworkComponent
 
 	private bool m_LogicEventsSubscribed;
 	private bool m_KillRewardConfigInvalidLogged;
+	private readonly Queue<CoinFlyPresentationRequest> m_PendingCoinFlyPresentation = new();
 
 	protected override void Awake()
 	{
@@ -91,6 +104,34 @@ public class RewardManager : GameFrameworkComponent
 		TrySubscribeEvents();
 	}
 
+	private void Update()
+	{
+		if (m_PendingCoinFlyPresentation.Count == 0 || GF.UI == null)
+			return;
+		if (!TryGetPlayerPresentationPosition(out Vector3 playerPosition))
+			return;
+
+		while (m_PendingCoinFlyPresentation.Count > 0)
+		{
+			CoinFlyPresentationRequest request = m_PendingCoinFlyPresentation.Dequeue();
+			Vector3 spawnPosition = new Vector3(
+				(float)request.SourcePosition.x,
+				0f,
+				(float)request.SourcePosition.y) + CoinSpawnOffset;
+			Vector3 targetPosition = playerPosition + CoinTargetOffset;
+			GF.UI.ShowCoinFlyEffectToDynamicTarget(
+				spawnPosition,
+				() => TryGetPlayerPresentationPosition(out Vector3 dynamicPlayerPosition)
+					? dynamicPlayerPosition + CoinTargetOffset
+					: targetPosition,
+				0f,
+				null,
+				request.CoinAmount,
+				null,
+				CoinFlySpawnIntervalSeconds);
+		}
+	}
+
 	private void OnDisable()
 	{
 		TryUnsubscribeEvents();
@@ -99,6 +140,7 @@ public class RewardManager : GameFrameworkComponent
 	private void OnDestroy()
 	{
 		TryUnsubscribeEvents();
+		m_PendingCoinFlyPresentation.Clear();
 		if (s_CachedManager == this)
 			s_CachedManager = null;
 	}
@@ -107,16 +149,17 @@ public class RewardManager : GameFrameworkComponent
 	{
 		LogicRewardStateService.Reset();
 		m_KillRewardConfigInvalidLogged = false;
+		m_PendingCoinFlyPresentation.Clear();
 	}
 
-	public static void HandleCardDiscardReward(CardModel cardModel, int gainedCoin, Vector2? discardScreenPosition)
+	public static void HandleCardDiscardReward(CardModel cardModel, int gainedCoin)
 	{
 		if (!LogicCardCommandService.IsApplyingFrame)
 			throw new InvalidOperationException("Card discard rewards may only be applied by LogicCardCommandService.");
 
 		RewardManager manager = GetRuntimeManager()
 			?? throw new InvalidOperationException("Card discard reward requires RewardManager.");
-		manager.GrantDiscardCardReward(cardModel, gainedCoin, discardScreenPosition);
+		manager.GrantDiscardCardReward(cardModel, gainedCoin);
 	}
 
 	public static void HandleEnterBuildPhaseReward(bool isFirstPhase, GamePhase previousPhase)
@@ -135,7 +178,7 @@ public class RewardManager : GameFrameworkComponent
 		manager.GrantBuildPhaseIncomeFromPlayerProdBuildings();
 	}
 
-	public static void HandleBuildingRecycleReward(Vector3 sourceWorldPos, int gainedCoin)
+	public static void HandleBuildingRecycleReward(FixVector2 sourceWorldPosition, int gainedCoin)
 	{
 		if (gainedCoin <= 0)
 			return;
@@ -145,7 +188,7 @@ public class RewardManager : GameFrameworkComponent
 
 		RewardManager manager = GetRuntimeManager()
 			?? throw new InvalidOperationException("Building recycle reward requires RewardManager.");
-		manager.GrantCoinAfterFly(sourceWorldPos, gainedCoin, "building_recycle");
+		manager.GrantCoin(sourceWorldPosition, gainedCoin, "building_recycle");
 	}
 
 	private void TrySubscribeEvents()
@@ -225,8 +268,7 @@ public class RewardManager : GameFrameworkComponent
 		if (coinAmount <= 0)
 			return;
 
-		Vector3 sourcePosition = TryGetPlayerPosition(out Vector3 playerPos) ? playerPos : Vector3.zero;
-		GrantCoinAfterFly(sourcePosition, coinAmount, "battle_to_build_income");
+		GrantCoin(GetRequiredPlayerLogicPosition(), coinAmount, "battle_to_build_income");
 	}
 
 	private static int RoundFixedAwayFromZero(Fix64 value)
@@ -278,14 +320,10 @@ public class RewardManager : GameFrameworkComponent
 		if (gainedCoin <= 0)
 			return;
 
-		FixVector2 deathPosition = victim.PositionFixed;
-		GrantCoinAfterFly(
-			new Vector3((float)deathPosition.x, 0f, (float)deathPosition.y),
-			gainedCoin,
-			"kill_supply");
+		GrantCoin(victim.PositionFixed, gainedCoin, "kill_supply");
 	}
 
-	private void GrantDiscardCardReward(CardModel cardModel, int gainedCoin, Vector2? discardScreenPosition)
+	private void GrantDiscardCardReward(CardModel cardModel, int gainedCoin)
 	{
 		if (cardModel == null)
 			return;
@@ -308,8 +346,11 @@ public class RewardManager : GameFrameworkComponent
 		if (resolvedCoin <= 0)
 			return;
 
-		Vector3 sourcePos = ResolveDiscardRewardSourcePosition(cardModel, discardScreenPosition);
-		GrantCoinAfterFly(sourcePos, resolvedCoin, "discard_card");
+		string sourceBuildingInstanceId = cardModel.GetSourceBuildingInstanceId();
+		FixVector2 sourcePosition = string.IsNullOrWhiteSpace(sourceBuildingInstanceId)
+			? GetRequiredPlayerLogicPosition()
+			: LogicBuildingQueryService.GetRequiredByInstanceId(sourceBuildingInstanceId).PositionFixed;
+		GrantCoin(sourcePosition, resolvedCoin, "discard_card");
 	}
 
 	private static int CountPlayerOwnedStrongholds()
@@ -345,35 +386,18 @@ public class RewardManager : GameFrameworkComponent
 				continue;
 
 			totalProduction += actualProduction;
-			Vector3 sourcePosition = new Vector3(
-				(float)building.PositionFixed.x,
-				0f,
-				(float)building.PositionFixed.y);
-			GrantCoinAfterFly(sourcePosition, actualProduction, "build_phase_income");
+			GrantCoin(building.PositionFixed, actualProduction, "build_phase_income");
 		}
 	}
 
-	private void GrantCoinAfterFly(Vector3 sourceWorldPos, int coinAmount, string reason)
+	private void GrantCoin(FixVector2 sourceWorldPosition, int coinAmount, string reason)
 	{
 		if (coinAmount <= 0)
 			return;
 
-		// Economy is committed in the phase transaction; the fly effect is presentation only.
 		ApplyCoinDirectly(coinAmount, reason);
-		if (GF.UI == null || !TryGetPlayerPosition(out Vector3 playerPos))
-			return;
-
-		Vector3 spawnPos = sourceWorldPos + CoinSpawnOffset;
-		Vector3 targetPos = playerPos + CoinTargetOffset;
-
-		GF.UI.ShowCoinFlyEffectToDynamicTarget(
-			spawnPos,
-			() => TryGetPlayerPosition(out Vector3 dynamicPlayerPos) ? dynamicPlayerPos + CoinTargetOffset : targetPos,
-			0f,
-			null,
-			coinAmount,
-			null,
-			CoinFlySpawnIntervalSeconds);
+		m_PendingCoinFlyPresentation.Enqueue(
+			new CoinFlyPresentationRequest(sourceWorldPosition, coinAmount));
 	}
 
 	private static void ApplyCoinDirectly(int coinAmount, string reason)
@@ -393,45 +417,14 @@ public class RewardManager : GameFrameworkComponent
 			GF.Event.Fire(null, IngameValueChangedEventArgs.Create(IngameValueType.Coin, oldValue, newValue));
 	}
 
-	private static Vector3 ResolveDiscardRewardSourcePosition(CardModel cardModel, Vector2? discardScreenPosition)
+	private static FixVector2 GetRequiredPlayerLogicPosition()
 	{
-		if (discardScreenPosition.HasValue && TryResolveWorldPositionFromScreen(discardScreenPosition.Value, out Vector3 screenWorldPos))
-			return screenWorldPos;
-
-		if (cardModel.SourceBuilding != null)
-			return cardModel.SourceBuilding.transform.position;
-
-		if (TryGetPlayerPosition(out Vector3 playerPos))
-			return playerPos;
-
-		return Vector3.zero;
+		IEntityContext player = EntityRegistry.Player
+			?? throw new InvalidOperationException("RewardManager requires a registered player for reward presentation origin.");
+		return player.PositionFixed;
 	}
 
-	private static bool TryResolveWorldPositionFromScreen(Vector2 screenPosition, out Vector3 worldPosition)
-	{
-		worldPosition = Vector3.zero;
-		Camera cam = Camera.main;
-		if (cam == null)
-			return false;
-
-		Ray ray = cam.ScreenPointToRay(screenPosition);
-		if (Physics.Raycast(ray, out RaycastHit hit, 1000f, ~0, QueryTriggerInteraction.Ignore))
-		{
-			worldPosition = hit.point;
-			return true;
-		}
-
-		Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
-		if (groundPlane.Raycast(ray, out float distance))
-		{
-			worldPosition = ray.GetPoint(distance);
-			return true;
-		}
-
-		return false;
-	}
-
-	private static bool TryGetPlayerPosition(out Vector3 position)
+	private static bool TryGetPlayerPresentationPosition(out Vector3 position)
 	{
 		IEntityContext player = EntityRegistry.Player;
 		if (player != null

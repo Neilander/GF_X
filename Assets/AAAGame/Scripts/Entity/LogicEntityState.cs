@@ -836,10 +836,10 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                         LogicFrameRuntime.CurrentFrame);
                     m_DurationMoveEffectComp.CommitStaticCollision(collisionState.FirstHitNormal);
                 }
-                FixVector2 displacement = resolved - Position;
+                FixVector2 frameStartPosition = Position;
+                FixVector2 displacement = resolved - frameStartPosition;
+                UpdateForwardForMoveCommit(frameStartPosition, displacement);
                 Position = resolved;
-                if (FixVector2.SqrMagnitude(displacement) > Fix64.Zero)
-                    Forward = displacement.GetNormalized();
                 m_MoveComp.CommitResolvedDisplacement(displacement);
                 m_MoveExecutor.CommitPreparedLogicFrame(LogicFrameRuntime.CurrentFrame);
                 break;
@@ -851,6 +851,33 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
         RefreshOutOfCombat();
         m_NextPhase = (MAEntityLogicFramePhase)((int)phase + 1);
+    }
+
+    private void UpdateForwardForMoveCommit(FixVector2 frameStartPosition, FixVector2 displacement)
+    {
+        IEntityContext target = m_TargetingComp?.CurrentTarget;
+        if (m_AtkComp?.IsAttacking == true && target?.Alive == true)
+        {
+            FixVector2 toTarget = LogicEntityFrameSnapshotService.GetRequiredPosition(target) - frameStartPosition;
+            if (FixVector2.SqrMagnitude(toTarget) > Fix64.Zero)
+            {
+                Forward = toTarget.GetNormalized();
+                return;
+            }
+        }
+
+        if (FixVector2.SqrMagnitude(displacement) > Fix64.Zero)
+        {
+            Forward = displacement.GetNormalized();
+            return;
+        }
+
+        if (target?.Alive == true)
+        {
+            FixVector2 toTarget = LogicEntityFrameSnapshotService.GetRequiredPosition(target) - frameStartPosition;
+            if (FixVector2.SqrMagnitude(toTarget) > Fix64.Zero)
+                Forward = toTarget.GetNormalized();
+        }
     }
 
     public void CompleteLogicFrame(Fix64 deltaTime)

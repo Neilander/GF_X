@@ -52,13 +52,21 @@ public sealed class LogicBuildingProductionTests
         m_RewardManagerObject = new GameObject("LogicBuildingProductionTests_RewardManager");
         RewardManager manager = m_RewardManagerObject.AddComponent<RewardManager>();
         MethodInfo grant = typeof(RewardManager).GetMethod(
-            "GrantCoinAfterFly",
+            "GrantCoin",
             BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(grant);
 
-        grant.Invoke(manager, new object[] { Vector3.zero, 5, "production-test" });
+        grant.Invoke(manager, new object[] { FixVector2.Zero, 5, "production-test" });
 
         Assert.AreEqual(5, InGameDataModel.GetValue(IngameValueType.Coin));
+
+        string source = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            Application.dataPath,
+            "AAAGame/Scripts/MeiyouUtility/RewardManager.cs"));
+        StringAssert.DoesNotContain("discardScreenPosition", source);
+        StringAssert.DoesNotContain("ScreenPointToRay", source);
+        StringAssert.DoesNotContain("Physics.Raycast", source);
+        StringAssert.Contains("m_PendingCoinFlyPresentation.Enqueue", source);
     }
 
     [Test]

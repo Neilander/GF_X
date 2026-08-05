@@ -103,15 +103,31 @@ public class DirectAtkComp : IAtkComp
     private Weapon[] _weapons;
     private int _activeWeaponIndex;
     private BaseWeaponSO _weaponSO;
+    private string _weaponLoadFailure;
     public BaseWeaponSO WeaponSO => _weaponSO;
-    public event Action<Fix64, bool> AttackPresentationStarted;
-    public event Action AttackPresentationInterrupted;
+    public string WeaponLoadFailure => _weaponLoadFailure;
 
-    public void SetWeaponSO(BaseWeaponSO so) => _weaponSO = so;
+    public void SetWeaponSO(BaseWeaponSO so)
+    {
+        _weaponSO = so;
+        _weaponLoadFailure = null;
+    }
+
+    public void SetWeaponLoadFailure(string failure)
+    {
+        if (string.IsNullOrWhiteSpace(failure))
+            throw new ArgumentException("Weapon load failure is empty.", nameof(failure));
+        _weaponSO = null;
+        _weaponLoadFailure = failure;
+    }
 
     public AtkState State { get; private set; } = AtkState.Idle;
     public int AttackCount { get; private set; }
     public bool IsAttacking => State == AtkState.WindUp || State == AtkState.WindDown;
+    public Fix64 CurrentWindUp => GetCurrentWindUp();
+    public bool CurrentAttackUsesTrail => !WeaponTargetRules.UsesProjectileSimulation(GetActiveWeapon().Type);
+    public int LastInterruptedAttackCount { get; private set; }
+    public int LastSuccessfulMeleeImpactAttackCount { get; private set; }
 
     private AttackSchedule _schedule;
     private bool _hasSchedule;
@@ -239,6 +255,8 @@ public class DirectAtkComp : IAtkComp
         _lockedTarget = primaryTarget;
         _lockedTargets.Clear();
         _lockedTargets.AddRange(restoredTargets);
+        LastInterruptedAttackCount = 0;
+        LastSuccessfulMeleeImpactAttackCount = 0;
     }
 
     private string GetWeaponSOAddress(WeaponType index)
@@ -278,6 +296,8 @@ public class DirectAtkComp : IAtkComp
         State = AtkState.Idle;
         ResetSchedule();
         AttackCount = 0;
+        LastInterruptedAttackCount = 0;
+        LastSuccessfulMeleeImpactAttackCount = 0;
         _hasAttackStartFrame = false;
         _lastAttackStartFrame = 0;
         _lockedTarget = null;
@@ -638,10 +658,10 @@ public void Attack(Fix64 deltaTime)
             }
         }
 
-        // 普通攻击造成伤害的音效；远程武器在这里只是创建子弹（命中是子弹的事），跳过
-        bool isRanged = _weaponSO is RangedWeaponSO;
-        if (!isRanged && AudioManager.Instance != null)
-            AudioManager.Instance.Play("basicAttack");
+        // 记录近战命中事实，表现层在渲染帧消费；远程命中反馈由弹道 View 负责。
+        bool isRanged = WeaponTargetRules.UsesProjectileSimulation(activeWeapon.Type);
+        if (!isRanged)
+            LastSuccessfulMeleeImpactAttackCount = AttackCount;
     }
 
     private void ExecuteWeaponEffect(Weapon activeWeapon, IEntityContext target, WeaponData snapshot)
@@ -664,7 +684,7 @@ public void Attack(Fix64 deltaTime)
         {
             MonitorWeaponEffect.Execute(_ctx, target, snapshot);
         }
-        else if (WeaponTargetRules.IsProjectileLikeWeapon(activeWeapon.Type))
+        else if (WeaponTargetRules.UsesProjectileSimulation(activeWeapon.Type))
         {
             if (!LogicProjectileService.IsActive || !LogicDamageEventService.IsCollecting)
             {
@@ -673,8 +693,12 @@ public void Attack(Fix64 deltaTime)
             }
 
             ulong logicProjectileId = LogicProjectileService.Submit(_ctx, target, snapshot);
-            if (_weaponSO is RangedWeaponSO rangedWeaponPresenter)
-                rangedWeaponPresenter.Present(_ctx, target, snapshot, logicProjectileId);
+            ProjectilePresentationService.Publish(
+                logicProjectileId,
+                _ctx,
+                target,
+                snapshot,
+                this);
         }
         else
         {
@@ -769,11 +793,6 @@ public void Attack(Fix64 deltaTime)
         GameDebugSettings.Log(DebugCategory.Attack,
             $"[{_ctx.CharacterKey}] 状态 {State} → {newState}");
         State = newState;
-
-        if (newState == AtkState.WindUp)
-            AttackPresentationStarted?.Invoke(
-                GetCurrentWindUp(),
-                !WeaponTargetRules.IsProjectileLikeWeapon(GetActiveWeapon().Type));
     }
 
     public void InterruptAttack(AttackInterruptReason reason = AttackInterruptReason.Forced)
@@ -787,7 +806,7 @@ public void Attack(Fix64 deltaTime)
         if (wasAttacking)
         {
             NotifyAttackInterrupted(reason, interruptedTarget);
-            AttackPresentationInterrupted?.Invoke();
+            LastInterruptedAttackCount = AttackCount;
         }
 
         _movementLockedByThisAttack = false;

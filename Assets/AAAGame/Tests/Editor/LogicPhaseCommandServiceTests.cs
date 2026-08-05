@@ -122,4 +122,24 @@ public sealed class LogicPhaseCommandServiceTests
         Assert.Throws<InvalidOperationException>(() =>
             RewardManager.HandleEnterBuildPhaseReward(false, GamePhase.Defend));
     }
+
+    [Test]
+    public void PhaseAudioAndCardUiAreDeferredToRenderUpdates()
+    {
+        string phaseSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            UnityEngine.Application.dataPath,
+            "AAAGame/Scripts/GameClass/PhaseManager.cs"));
+        string cardSetupSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            UnityEngine.Application.dataPath,
+            "AAAGame/Scripts/UTManagers/CardSetup.cs"));
+
+        StringAssert.Contains("s_PendingPhaseSounds.Enqueue", phaseSource);
+        StringAssert.DoesNotContain("PlayPhaseEnterSoundWhenUnpausedAsync", phaseSource);
+        StringAssert.Contains("private void Update()", phaseSource);
+        StringAssert.DoesNotContain("GameObject.FindObjectsOfType<EntityPresetPoint>", phaseSource);
+        StringAssert.Contains("s_InvadeSpawnPointsConfigured", phaseSource);
+        StringAssert.Contains("m_PendingUiPresentation.Enqueue", cardSetupSource);
+        StringAssert.Contains("LogicFrameRuntime.IsTicking", cardSetupSource);
+        StringAssert.Contains("OpenCardUIImmediate", cardSetupSource);
+    }
 }

@@ -16,39 +16,28 @@ namespace AAAGame.Card
         private sealed class Card
         {
             public ICardDataProvider CardData { get; }
-            public BuildingEntity SourceBuilding { get; }
             public string SourceBuildingInstanceId { get; }
 
             public Card(ICardDataProvider cardData, IBuildingLogicContext sourceBuilding)
             {
-                CardData = cardData;
-                SourceBuilding = ResolveBuildingView(sourceBuilding);
-                SourceBuildingInstanceId = sourceBuilding != null
-                    ? sourceBuilding.BuildingInstanceId
-                    : string.Empty;
-            }
-
-            private static BuildingEntity ResolveBuildingView(IBuildingLogicContext sourceBuilding)
-            {
                 if (sourceBuilding == null)
-                    return null;
-                if (sourceBuilding is BuildingEntity view)
-                    return view;
-                if (LogicEntityLifecycleService.TryGetBoundView(sourceBuilding.LogicEntityId, out MAEntity boundView))
-                    return boundView as BuildingEntity;
-                return null;
+                    throw new ArgumentNullException(nameof(sourceBuilding));
+                CardData = cardData ?? throw new ArgumentNullException(nameof(cardData));
+                SourceBuildingInstanceId = sourceBuilding.BuildingInstanceId;
+                if (string.IsNullOrWhiteSpace(SourceBuildingInstanceId))
+                    throw new InvalidOperationException("Card source building instance id is empty.");
             }
         }
 
         public sealed class DeckPreviewCard
         {
             public ICardDataProvider CardData { get; }
-            public BuildingEntity SourceBuilding { get; }
+            public string SourceBuildingInstanceId { get; }
 
-            internal DeckPreviewCard(ICardDataProvider cardData, BuildingEntity sourceBuilding)
+            internal DeckPreviewCard(ICardDataProvider cardData, string sourceBuildingInstanceId)
             {
                 CardData = cardData;
-                SourceBuilding = sourceBuilding;
+                SourceBuildingInstanceId = sourceBuildingInstanceId;
             }
         }
 
@@ -64,12 +53,6 @@ namespace AAAGame.Card
         private readonly HashSet<string> m_OwnedPlaceableCardProviderKeys = new HashSet<string>();
         private ulong m_LastCardRuntimeId;
 
-        // 事件回调
-        public event Action<int, int> OnHandChanged; // (cardCount, maxCards)
-        public event Action<CardModel> OnCardDrawn;
-        public event Action<CardModel> OnCardPlayed;
-        public event Action<CardModel> OnCardDiscarded;
-
         /// <summary>
         /// 初始化
         /// </summary>
@@ -78,23 +61,18 @@ namespace AAAGame.Card
             // 初始化模型
             m_HandModel = new PlayerHandModel(LevelTagRuntime.ModifyMaxHandCards(CardConst.MaxHandCards));
 
-            // 初始化控制器
+            // 初始化权威卡牌运行时；相机、射线和禁区可视对象由渲染帧按需创建。
             m_HandCardController = new HandCardController(m_HandModel);
-            m_PlacementController = new CardPlacementController();
-            m_EnemyBuildingForbiddenZoneController = new EnemyBuildingForbiddenZoneController();
 
             // 订阅子控制器事件
             m_HandCardController.OnCardDrawn += (card) =>
             {
-                OnCardDrawn?.Invoke(card);
-
                 if (card != null)
                 {
                     GameFramework.Event.GameEventArgs cardEvent = CardDrawnEventArgs.Create(card);
                     GF.Event.Fire(this, cardEvent);
                 }
             };
-            m_HandCardController.OnCardRemoved += (card) => OnHandChanged?.Invoke(m_HandModel.CardCount, m_HandModel.MaxCards);
 
             // 初始化卡牌池
             m_CardPool = new List<ICardDataProvider>();
@@ -130,7 +108,6 @@ namespace AAAGame.Card
             m_OwnedPlaceableCardProviders.Clear();
             m_OwnedPlaceableCardProviderKeys.Clear();
             m_HandModel?.Clear();
-            OnHandChanged?.Invoke(m_HandModel != null ? m_HandModel.CardCount : 0, m_HandModel != null ? m_HandModel.MaxCards : CardConst.MaxHandCards);
         }
 
         /// <summary>
@@ -223,7 +200,7 @@ namespace AAAGame.Card
                     continue;
                 }
 
-                result.Add(new DeckPreviewCard(entry.CardData, entry.SourceBuilding));
+                result.Add(new DeckPreviewCard(entry.CardData, entry.SourceBuildingInstanceId));
             }
 
             return result;
@@ -327,12 +304,10 @@ namespace AAAGame.Card
             bool success = m_HandCardController.DrawCard(
                 runtimeId,
                 entry.CardData,
-                entry.SourceBuildingInstanceId,
-                entry.SourceBuilding);
+                entry.SourceBuildingInstanceId);
             if (success)
             {
                 m_LastCardRuntimeId = runtimeId;
-                OnHandChanged?.Invoke(m_HandModel.CardCount, m_HandModel.MaxCards);
             }
             else
             {
@@ -484,6 +459,7 @@ namespace AAAGame.Card
         /// </summary>
         public void StartPlacement(CardModel cardModel)
         {
+            EnsurePresentationInitialized();
             if (cardModel == null)
             {
                 Debug.LogError("[Card] CardModel is null.");
@@ -502,6 +478,7 @@ namespace AAAGame.Card
         /// </summary>
         public void UpdatePlacement()
         {
+            EnsurePresentationInitialized();
             m_EnemyBuildingForbiddenZoneController?.RefreshZones();
             m_PlacementController.UpdatePlacement();
         }
@@ -511,6 +488,7 @@ namespace AAAGame.Card
         /// </summary>
         public bool ConfirmPlacement(CardModel cardModel, Vector2? releaseScreenPosition = null)
         {
+            EnsurePresentationInitialized();
             if (cardModel == null)
             {
                 Debug.LogError("[Card] Cannot confirm placement: CardModel is null.");
@@ -548,6 +526,7 @@ namespace AAAGame.Card
         /// </summary>
         public void CancelPlacement()
         {
+            EnsurePresentationInitialized();
             m_PlacementController.CancelPlacement();
             m_EnemyBuildingForbiddenZoneController?.EndPlacement();
         }
@@ -555,7 +534,7 @@ namespace AAAGame.Card
         /// <summary>
         /// 丢弃卡牌
         /// </summary>
-        public bool DiscardCard(CardModel cardModel, Vector2? discardScreenPosition = null)
+        public bool DiscardCard(CardModel cardModel)
         {
             if (cardModel == null)
             {
@@ -650,15 +629,11 @@ namespace AAAGame.Card
             if (!m_HandCardController.RemoveCard(cardModel))
                 throw new InvalidOperationException($"Card {cardModel.RuntimeId} disappeared during play commit.");
 
-            m_PlacementController.NotifyPlacementApplied(cardModel, selectedPosition);
             LogicCardCommandService.PublishResolvedCard(
                 LogicCardCommandKind.Play,
                 cardModel.RuntimeId,
                 sourceBuildingInstanceId);
-            OnCardPlayed?.Invoke(cardModel);
-            GF.Event.FireNow(this, CardPlayedEventArgs.Create(cardModel));
-            if (AudioManager.Instance != null)
-                AudioManager.Instance.Play("createUnit");
+            GF.Event.Fire(this, CardPlayedEventArgs.Create(cardModel));
             Debug.Log($"[Card] Card played on logic frame: {cardModel.GetCardName()}, frame={LogicTimeControlService.CurrentFrame}");
         }
 
@@ -666,19 +641,16 @@ namespace AAAGame.Card
         {
             if (!m_HandCardController.RemoveCard(cardModel))
                 throw new InvalidOperationException($"Card {cardModel.RuntimeId} disappeared during discard commit.");
-            ApplyDiscardResourceReward(cardModel, null);
+            ApplyDiscardResourceReward(cardModel);
             LogicCardCommandService.PublishResolvedCard(
                 LogicCardCommandKind.Discard,
                 cardModel.RuntimeId,
                 cardModel.GetSourceBuildingInstanceId());
-            OnCardDiscarded?.Invoke(cardModel);
             GF.Event.Fire(this, CardDiscardedEventArgs.Create(cardModel));
-            if (AudioManager.Instance != null)
-                AudioManager.Instance.Play("discardCard");
             Debug.Log($"[Card] Card discarded on logic frame: {cardModel.GetCardName()}, frame={LogicTimeControlService.CurrentFrame}");
         }
 
-        private void ApplyDiscardResourceReward(CardModel cardModel, Vector2? discardScreenPosition)
+        private void ApplyDiscardResourceReward(CardModel cardModel)
         {
             if (GF.Config == null)
             {
@@ -702,7 +674,7 @@ namespace AAAGame.Card
             if (gainedCoin <= 0)
                 return;
 
-            RewardManager.HandleCardDiscardReward(cardModel, gainedCoin, discardScreenPosition);
+            RewardManager.HandleCardDiscardReward(cardModel, gainedCoin);
         }
 
 
@@ -752,6 +724,7 @@ namespace AAAGame.Card
         /// </summary>
         public CardPlacementController GetPlacementController()
         {
+            EnsurePresentationInitialized();
             return m_PlacementController;
         }
 
@@ -768,6 +741,7 @@ namespace AAAGame.Card
         /// </summary>
         public bool TryGetPlacementPreview(Vector2 screenPosition, out Vector3 worldPosition, out bool isValid, List<Vector3> previewSpawnPositions)
         {
+            EnsurePresentationInitialized();
             worldPosition = Vector3.zero;
             isValid = false;
             previewSpawnPositions?.Clear();
@@ -802,10 +776,8 @@ namespace AAAGame.Card
         /// <summary>
         /// 清理
         /// </summary>
-        public void Shutdown()
+        public void ShutdownRuntime()
         {
-            m_PlacementController?.Shutdown();
-            m_EnemyBuildingForbiddenZoneController?.Shutdown();
             m_HandModel?.Clear();
             m_CardPool?.Clear();
             m_DeckCards.Clear();
@@ -814,6 +786,22 @@ namespace AAAGame.Card
             m_OwnedPlaceableCardProviderKeys.Clear();
 
             Debug.Log("[Card] CardSystemController shutdown.");
+        }
+
+        public void ShutdownPresentation()
+        {
+            m_PlacementController?.Shutdown();
+            m_EnemyBuildingForbiddenZoneController?.Shutdown();
+            m_PlacementController = null;
+            m_EnemyBuildingForbiddenZoneController = null;
+        }
+
+        private void EnsurePresentationInitialized()
+        {
+            if (LogicFrameRuntime.IsTicking)
+                throw new InvalidOperationException("Card presentation cannot initialize during a logic frame.");
+            m_PlacementController ??= new CardPlacementController();
+            m_EnemyBuildingForbiddenZoneController ??= new EnemyBuildingForbiddenZoneController();
         }
 
 

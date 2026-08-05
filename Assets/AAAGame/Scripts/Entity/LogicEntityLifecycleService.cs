@@ -402,11 +402,9 @@ public static class LogicEntityLifecycleService
             if (s_BoundViewsByEntityId.TryGetValue(entityId, out MAEntity view) && view != null)
             {
                 view.DeactivateLogicParticipation();
-                if (GF.Entity == null)
-                    throw new InvalidOperationException("LogicEntityLifecycleService.ApplyFrame failed: GF.Entity is null while applying despawn commands.");
                 if (view.Entity == null)
                     throw new InvalidOperationException($"LogicEntityLifecycleService.ApplyFrame failed: despawn view has no framework entity. entity={entityId}.");
-                GF.Entity.HideEntity(view.Entity);
+				LogicEntityViewSpawnQueue.EnqueueHide(view.Entity.Id);
             }
             else
                 RemoveDespawnedEntity(logicEntityId);

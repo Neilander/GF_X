@@ -9,6 +9,7 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
     private Func<int> m_ResolveActiveSkillIndex;
     private Func<int> m_ResolveSkillSlotIndex;
     private bool m_DragStartedSkill;
+    private bool m_DragUsesAim;
     private bool m_DragStartedSwap;
     private bool m_SuppressNextClick;
 
@@ -33,7 +34,7 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
         if (eventData != null && eventData.button != PointerEventData.InputButton.Left)
             return;
 
-        RequestSkillPress();
+        RequestSkillCast(eventData);
     }
 
     public void OnBeginDrag(PointerEventData eventData)
@@ -50,10 +51,15 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
             return;
         }
 
-        if (eventData.button == PointerEventData.InputButton.Left && CanAcceptSkillInput())
+        int activeSkillIndex = ResolveActiveSkillIndex();
+        if (eventData.button == PointerEventData.InputButton.Left && CanAcceptSkillInput(activeSkillIndex))
         {
-            m_DragStartedSkill = RequestSkillPress();
-            RequestSelectPosition(eventData);
+            InputManager inputManager = GetRequiredInputManager();
+            m_DragStartedSkill = true;
+            m_DragUsesAim = SkillCastPresentationService.TryBeginAim(
+                activeSkillIndex,
+                inputManager,
+                eventData.position);
         }
     }
 
@@ -62,7 +68,8 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
         if (!m_DragStartedSkill)
             return;
 
-        RequestSelectPosition(eventData);
+        if (m_DragUsesAim && eventData != null)
+            SkillCastPresentationService.UpdateAim(GetRequiredInputManager(), eventData.position);
     }
 
     public void OnEndDrag(PointerEventData eventData)
@@ -78,32 +85,40 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
         if (!m_DragStartedSkill)
             return;
 
-        RequestSelectPosition(eventData);
-
-        InputModel inputModel = GF.DataModel.GetDataModel<InputModel>();
-        if (inputModel == null)
-            throw new InvalidOperationException("InputModel is required for skill drag.");
-
-        inputModel.RequestSkillConfirm();
+        if (m_DragUsesAim)
+        {
+            if (eventData != null)
+                SkillCastPresentationService.UpdateAim(GetRequiredInputManager(), eventData.position);
+            SkillCastPresentationService.CommitAim();
+        }
+        else
+        {
+            RequestSkillCast(eventData);
+        }
         m_DragStartedSkill = false;
+        m_DragUsesAim = false;
         m_SuppressNextClick = true;
     }
 
-    private bool RequestSkillPress()
+    private bool RequestSkillCast(PointerEventData eventData)
     {
-        if (!CanAcceptSkillInput())
+        int activeSkillIndex = ResolveActiveSkillIndex();
+        if (!CanAcceptSkillInput(activeSkillIndex))
             return false;
 
-        int activeSkillIndex = m_ResolveActiveSkillIndex != null ? m_ResolveActiveSkillIndex.Invoke() : -1;
-        if (activeSkillIndex < 0 || activeSkillIndex >= PlayerSkillComp.SKILL_NUM)
-            return false;
+        InputManager inputManager = GetRequiredInputManager();
+        Vector2 screenPosition = eventData != null
+            ? eventData.position
+            : inputManager.GetPointerScreenPosition();
+        return SkillCastPresentationService.RequestCastAtScreen(
+            activeSkillIndex,
+            inputManager,
+            screenPosition);
+    }
 
-        InputModel inputModel = GF.DataModel.GetDataModel<InputModel>();
-        if (inputModel == null)
-            throw new InvalidOperationException("InputModel is required for skill press.");
-
-        inputModel.RequestSkillPress(activeSkillIndex);
-        return true;
+    private int ResolveActiveSkillIndex()
+    {
+        return m_ResolveActiveSkillIndex != null ? m_ResolveActiveSkillIndex.Invoke() : -1;
     }
 
     private int ResolveSkillSlotIndex()
@@ -136,20 +151,21 @@ public sealed class SkillSlotInputProxy : MonoBehaviour, IPointerClickHandler, I
         return eventData.pointerCurrentRaycast.gameObject.GetComponentInParent<SkillSlotInputProxy>();
     }
 
-    private static bool CanAcceptSkillInput()
+    private static bool CanAcceptSkillInput(int activeSkillIndex)
     {
-        return SkillInputRuntime.CanUseActiveSkillsInCurrentPhase() && !SkillCastState.IsCasting;
+        return activeSkillIndex >= 0
+               && activeSkillIndex < PlayerSkillComp.SKILL_NUM
+               && SkillInputRuntime.CanUseActiveSkillsInCurrentPhase()
+               && !SkillCastState.IsCasting
+               && !SkillCastPresentationService.IsAiming
+               && SkillCastPresentationService.CanRequestSkillCast(activeSkillIndex);
     }
 
-    private static void RequestSelectPosition(PointerEventData eventData)
+    private static InputManager GetRequiredInputManager()
     {
-        if (eventData == null)
-            return;
-
         InputManager inputManager = GameEntry.GetComponent<InputManager>();
         if (inputManager == null)
-            throw new InvalidOperationException("InputManager is required for skill drag position.");
-
-        inputManager.RequestSelectPosition(eventData.position);
+            throw new InvalidOperationException("InputManager is required for skill input.");
+        return inputManager;
     }
 }

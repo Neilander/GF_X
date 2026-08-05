@@ -356,7 +356,7 @@ atkComp.Attack((Fix64)999);
     }
 
     [Test]
-    public void 攻击表现通知只在起手和实际打断时各触发一次()
+    public void 攻击表现状态由权威阶段采样且重复打断不改变中断序号()
     {
         var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
         var target = CreateUnit(new Vector3(1, 0, 0), SideType.EnemySide);
@@ -376,26 +376,19 @@ atkComp.Attack((Fix64)999);
         atkComp.Init(attacker);
         targeting.CurrentTarget = target;
 
-        int startedCount = 0;
-        int interruptedCount = 0;
-        Fix64 presentedWindUp = Fix64.Zero;
-        bool presentedTrail = false;
-        atkComp.AttackPresentationStarted += (windUp, playTrail) =>
-        {
-            startedCount++;
-            presentedWindUp = windUp;
-            presentedTrail = playTrail;
-        };
-        atkComp.AttackPresentationInterrupted += () => interruptedCount++;
-
         StartAttack(atkComp);
+        Assert.AreEqual(1, atkComp.AttackCount);
+        Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State);
+        Assert.AreEqual((Fix64)0.3f, atkComp.CurrentWindUp);
+        Assert.IsTrue(atkComp.CurrentAttackUsesTrail);
+        Assert.AreEqual(0, atkComp.LastInterruptedAttackCount);
+
         atkComp.InterruptAttack(AttackInterruptReason.Forced);
+        Assert.AreEqual(1, atkComp.LastInterruptedAttackCount);
         atkComp.InterruptAttack(AttackInterruptReason.Forced);
 
-        Assert.AreEqual(1, startedCount);
-        Assert.AreEqual((Fix64)0.3f, presentedWindUp);
-        Assert.IsTrue(presentedTrail);
-        Assert.AreEqual(1, interruptedCount);
+        Assert.AreEqual(DirectAtkComp.AtkState.Idle, atkComp.State);
+        Assert.AreEqual(1, atkComp.LastInterruptedAttackCount);
     }
 
     [Test]
@@ -576,6 +569,50 @@ atkComp.Attack((Fix64)999);
         StartAttack(atkComp);
         Assert.AreEqual(DirectAtkComp.AtkState.WindUp, atkComp.State, "远程单位应能在射程内攻击");
         Assert.AreEqual(1, atkComp.AttackCount);
+    }
+
+    [TestCase(WeaponType.InstantRanged)]
+    [TestCase(WeaponType.Special)]
+    public void 非弹道远程类型保持即时结算且不依赖投射物服务(WeaponType weaponType)
+    {
+        var attacker = CreateUnit(Vector3.zero, SideType.PlayerSide);
+        var target = CreateUnit(new Vector3(1f, 0f, 0f), SideType.EnemySide);
+        var targeting = new SimTargetingComp(attacker, new List<IEntityContext> { attacker, target })
+        {
+            AggroRangeFixed = (Fix64)10,
+        };
+        targeting.Init(attacker);
+        targeting.CurrentTarget = target;
+        attacker.TargetComp = targeting;
+        attacker.Brain = new ScriptedBrain { Attack = true };
+        var moveComp = new SimMoveComp();
+        moveComp.Init(attacker);
+        attacker.MoveComp = moveComp;
+        var weapon = new WeaponData(
+            weaponType,
+            (Fix64)17,
+            Fix64.One,
+            (Fix64)300,
+            Fix64.Zero,
+            (Fix64)0.1f,
+            (Fix64)0.1f,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.Zero,
+            Fix64.One,
+            Fix64.Zero,
+            System.Array.Empty<Fix64>());
+        attacker.WeaponComp = new WeaponComp(weapon.ToWeapon("ImmediateRangedRegression"));
+        var atkComp = new DirectAtkComp();
+        atkComp.Init(attacker);
+        atkComp.SetWeaponSO(null);
+        attacker.AtkComp = atkComp;
+
+        StartAttack(atkComp);
+        AdvanceFrames(atkComp, 4);
+
+        Assert.AreEqual((Fix64)83, target.HealthValue);
+        Assert.IsFalse(LogicProjectileService.IsActive);
     }
 
     [Test]

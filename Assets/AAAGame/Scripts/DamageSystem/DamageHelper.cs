@@ -438,6 +438,12 @@ public static class WeaponTargetRules
                || weaponType == WeaponType.Special;
     }
 
+    public static bool UsesProjectileSimulation(WeaponType weaponType)
+    {
+        return weaponType == WeaponType.Projectile
+               || weaponType == WeaponType.HealProjectile;
+    }
+
     public static bool IsValidTargetForCurrentWeapon(IEntityContext attacker, IEntityContext target)
     {
         WeaponType weaponType = attacker?.WeaponComp?.Data != null ? attacker.WeaponComp.Data.Type : WeaponType.None;

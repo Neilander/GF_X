@@ -136,6 +136,50 @@ public sealed class SkillRuntimeDeterminismTests
         StringAssert.DoesNotContain("inGameData.Buildings", source);
     }
 
+    [Test]
+    public void SkillAimAndUiStayOnRenderFramesAndOnlySubmitFinalCastCommand()
+    {
+        string projectRoot = Directory.GetParent(Application.dataPath).FullName;
+        string inputModel = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/DataModel/InputModel.cs"));
+        string positionAction = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/ActionSystem/PositionSelectAction.cs"));
+        string presentation = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/UI/SkillCastPresentationService.cs"));
+        string inGameUi = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/UI/InGameUIForm.cs"));
+        string activeSkill = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/SkillSystem/ActiveSkillSO.cs"));
+        string directAttack = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/GeneralCreature/DirectAtkComp.cs"));
+        string entityView = File.ReadAllText(Path.Combine(
+            projectRoot,
+            "Assets/AAAGame/Scripts/Entity/MAEntity.cs"));
+
+        StringAssert.DoesNotContain("Skill1Pressed", inputModel);
+        StringAssert.DoesNotContain("SkillConfirm", inputModel);
+        StringAssert.DoesNotContain("SelectScreenPosition", inputModel);
+        StringAssert.DoesNotContain("Physics.Raycast", positionAction);
+        StringAssert.DoesNotContain("CylinderTargetSelector", positionAction);
+        StringAssert.DoesNotContain("ICastRangePresenter", positionAction);
+        StringAssert.Contains("LogicSkillCastCommandService.ScheduleForNextFrame", presentation);
+        StringAssert.DoesNotContain("LogicInputFrame", presentation);
+        StringAssert.DoesNotContain("CurrentLogicFrame", presentation);
+        StringAssert.DoesNotContain("CancelRunningSkills", inGameUi);
+        StringAssert.Contains("TickSkillPresentation", inGameUi);
+        StringAssert.DoesNotContain("TryGetBoundView", activeSkill);
+        StringAssert.DoesNotContain("animator", activeSkill);
+        StringAssert.DoesNotContain("AttackPresentationStarted", directAttack);
+        StringAssert.DoesNotContain("AudioManager", directAttack);
+        StringAssert.Contains("SyncActionPresentation", entityView);
+    }
+
     private ulong ComputeHash()
     {
         var hasher = new LogicStateHasher();

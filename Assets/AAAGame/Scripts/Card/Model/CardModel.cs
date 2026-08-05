@@ -7,7 +7,6 @@
     public class CardModel
     {
         private ICardDataProvider m_DataProvider;
-        private BuildingEntity m_SourceBuilding;
         private readonly string m_SourceBuildingInstanceId;
 
         /// <summary>
@@ -15,46 +14,21 @@
         /// </summary>
         public ICardDataProvider DataProvider => m_DataProvider;
 
-        /// <summary>
-        /// 卡牌来源建筑
-        /// </summary>
-        public BuildingEntity SourceBuilding => m_SourceBuilding;
         public ulong RuntimeId { get; }
 
-        public CardModel(ICardDataProvider dataProvider, BuildingEntity sourceBuilding = null)
-            : this(0, dataProvider, sourceBuilding != null ? sourceBuilding.BuildingInstanceId : null, sourceBuilding)
-        {
-        }
-
-        public CardModel(ulong runtimeId, ICardDataProvider dataProvider, BuildingEntity sourceBuilding = null)
-            : this(
-                runtimeId,
-                dataProvider,
-                sourceBuilding != null ? sourceBuilding.BuildingInstanceId : null,
-                sourceBuilding)
+        public CardModel(ICardDataProvider dataProvider)
+            : this(0, dataProvider, null)
         {
         }
 
         public CardModel(
             ulong runtimeId,
             ICardDataProvider dataProvider,
-            string sourceBuildingInstanceId,
-            BuildingEntity sourceBuilding = null)
+            string sourceBuildingInstanceId)
         {
             if (dataProvider == null)
                 throw new System.ArgumentNullException(nameof(dataProvider));
-            if (sourceBuilding != null
-                && !string.Equals(
-                    sourceBuilding.BuildingInstanceId,
-                    sourceBuildingInstanceId,
-                    System.StringComparison.Ordinal))
-            {
-                throw new System.ArgumentException(
-                    "Source building view does not match source building instance id.",
-                    nameof(sourceBuilding));
-            }
             m_DataProvider = dataProvider;
-            m_SourceBuilding = sourceBuilding;
             m_SourceBuildingInstanceId = string.IsNullOrWhiteSpace(sourceBuildingInstanceId)
                 ? string.Empty
                 : sourceBuildingInstanceId;

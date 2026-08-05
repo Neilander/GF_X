@@ -15,6 +15,8 @@ public sealed class LogicReplayTests
             LogicCardCommandService.EndTimeline();
         if (LogicSkillSlotCommandService.IsActive)
             LogicSkillSlotCommandService.EndTimeline();
+        if (LogicSkillCastCommandService.IsActive)
+            LogicSkillCastCommandService.EndTimeline();
         if (LogicInGameValueCommandService.IsActive)
             LogicInGameValueCommandService.EndTimeline();
         if (LogicInteractionCommandService.IsActive)
@@ -42,6 +44,8 @@ public sealed class LogicReplayTests
             LogicCardCommandService.EndTimeline();
         if (LogicSkillSlotCommandService.IsActive)
             LogicSkillSlotCommandService.EndTimeline();
+        if (LogicSkillCastCommandService.IsActive)
+            LogicSkillCastCommandService.EndTimeline();
         if (LogicInGameValueCommandService.IsActive)
             LogicInGameValueCommandService.EndTimeline();
         if (LogicInteractionCommandService.IsActive)
@@ -63,7 +67,7 @@ public sealed class LogicReplayTests
 
         LogicTimeControlService.SetBulletTimeScaleForLogicTicks(10, 2000, 15);
         LogicTimeControlService.BeginFrame(1);
-        timeline.EnqueueButtonPulse(0.01d, LogicInputButton.Skill1);
+        timeline.EnqueueButtonPulse(0.01d, LogicInputButton.InteractionPrimary);
         LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
         LogicReplayFrameRecord record = recorder.RecordFrame(inputFrame, 123ul);
         LogicTimeControlService.RemoveBulletTimeScale(10);
@@ -102,11 +106,11 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void InputHash_TracksFrozenWorldSelection()
+    public void InputHash_TracksWorldMove()
     {
-        LogicInputFrame first = CreateWorldSelectionFrame(
+        LogicInputFrame first = CreateWorldMoveFrame(
             new FixVector2(Fix64.FromRaw(1001), Fix64.FromRaw(2002)));
-        LogicInputFrame second = CreateWorldSelectionFrame(
+        LogicInputFrame second = CreateWorldMoveFrame(
             new FixVector2(Fix64.FromRaw(1001), Fix64.FromRaw(2003)));
 
         Assert.AreNotEqual(
@@ -131,21 +135,18 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void Comparer_ReportsExactFrozenWorldSelectionDivergence()
+    public void Comparer_ReportsSkillCastWorldPositionDivergence()
     {
-        LogicReplayLog expected = RecordSingleWorldSelectionFrame(
+        LogicReplayLog expected = RecordSingleSkillCastCommand(
             new FixVector2(Fix64.FromRaw(10), Fix64.FromRaw(20)));
-
-        LogicTimeControlService.EndTimeline();
-        LogicTimeControlService.BeginTimeline();
-        LogicReplayLog actual = RecordSingleWorldSelectionFrame(
+        LogicReplayLog actual = RecordSingleSkillCastCommand(
             new FixVector2(Fix64.FromRaw(10), Fix64.FromRaw(21)));
 
         LogicReplayDivergence divergence = LogicReplayComparer.FindFirstDivergence(expected, actual);
 
         Assert.IsTrue(divergence.HasDivergence);
         Assert.AreEqual(1ul, divergence.FrameId);
-        Assert.AreEqual("Input.SelectWorldPosition.Y", divergence.Field);
+        Assert.AreEqual("SkillCastCommand", divergence.Field);
     }
 
     [Test]
@@ -212,20 +213,20 @@ public sealed class LogicReplayTests
     }
 
     [Test]
-    public void ProtocolV81_CrossPlatformDeterminismCorpus_IsStable()
+    public void ProtocolV82_CrossPlatformDeterminismCorpus_IsStable()
     {
         LogicTimeControlService.EndTimeline();
-        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV81();
+        LogicDeterminismCorpusResult result = LogicDeterminismCorpus.ValidateV82();
         LogicTimeControlService.BeginTimeline();
 
-        Assert.AreEqual(81, result.ProtocolVersion);
-        Assert.AreEqual(7334454495593281045ul, result.FullHash);
+        Assert.AreEqual(82, result.ProtocolVersion);
+        Assert.AreEqual(LogicDeterminismCorpus.GoldenFullHash, result.FullHash);
     }
 
     [Test]
     public void CrossPlatformDeterminismCorpus_RejectsActiveTimeline()
     {
-        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV81());
+        Assert.Throws<System.InvalidOperationException>(() => LogicDeterminismCorpus.EvaluateV82());
     }
 
     [Test]
@@ -236,6 +237,7 @@ public sealed class LogicReplayTests
         LogicInteractionCommandService.BeginTimeline();
         LogicCardCommandService.BeginTimeline();
         LogicSkillSlotCommandService.BeginTimeline();
+        LogicSkillCastCommandService.BeginTimeline();
         LogicInGameValueCommandService.BeginTimeline();
         LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
@@ -252,6 +254,10 @@ public sealed class LogicReplayTests
             17,
             new FixVector2(Fix64.FromRaw(321), Fix64.FromRaw(-654)));
         LogicSkillSlotCommand skillSlotCommand = LogicSkillSlotCommandService.ScheduleForNextFrame(0, 1);
+        LogicSkillCastCommand skillCastCommand = LogicSkillCastCommandService.ScheduleForNextFrame(
+            new LogicEntityId(55),
+            2,
+            new FixVector2(Fix64.FromRaw(765), Fix64.FromRaw(-432)));
         LogicInGameValueCommand valueCommand = LogicInGameValueCommandService.ScheduleDeltaForNextFrame(IngameValueType.Coin, 3);
         LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn();
         LogicEntityLifecycleService.BindView(entityId, 404);
@@ -282,6 +288,12 @@ public sealed class LogicReplayTests
         Assert.AreEqual(skillSlotCommand.Sequence, log.SkillSlotCommands[0].Sequence);
         Assert.AreEqual(0, log.SkillSlotCommands[0].FromIndex);
         Assert.AreEqual(1, log.SkillSlotCommands[0].ToIndex);
+        Assert.AreEqual(1, log.SkillCastCommands.Count);
+        Assert.AreEqual(skillCastCommand.Sequence, log.SkillCastCommands[0].Sequence);
+        Assert.AreEqual(new LogicEntityId(55), log.SkillCastCommands[0].CasterId);
+        Assert.AreEqual(2, log.SkillCastCommands[0].SlotIndex);
+        Assert.AreEqual(765L, log.SkillCastCommands[0].RequestedWorldPosition.x.RawValue);
+        Assert.AreEqual(-432L, log.SkillCastCommands[0].RequestedWorldPosition.y.RawValue);
         Assert.AreEqual(1, log.InGameValueCommands.Count);
         Assert.AreEqual(valueCommand.Sequence, log.InGameValueCommands[0].Sequence);
         Assert.AreEqual(IngameValueType.Coin, log.InGameValueCommands[0].ValueType);
@@ -377,17 +389,15 @@ public sealed class LogicReplayTests
             gameplayStateHash);
     }
 
-    private static LogicReplayLog RecordSingleWorldSelectionFrame(FixVector2 worldPosition)
+    private static LogicReplayLog RecordSingleSkillCastCommand(FixVector2 worldPosition)
     {
+        LogicSkillCastCommandService.BeginTimeline();
         var recorder = new LogicReplayRecorder();
         recorder.Begin();
-        LogicTimeControlService.BeginFrame(1);
-
-        var timeline = CreateTimeline();
-        timeline.EnqueueSelectWorldPosition(0.01d, worldPosition);
-        LogicInputFrame inputFrame = timeline.Seal(1, 1d / 30d);
-        recorder.RecordFrame(inputFrame);
-        return recorder.End();
+        LogicSkillCastCommandService.ScheduleForNextFrame(new LogicEntityId(90), 1, worldPosition);
+        LogicReplayLog log = recorder.End();
+        LogicSkillCastCommandService.EndTimeline();
+        return log;
     }
 
     private static LogicReplayLog RecordSingleSkillSlotCommand(int toIndex)
@@ -415,21 +425,21 @@ public sealed class LogicReplayTests
     private static LogicInputFrame CreatePulseFrame(double timestamp)
     {
         var timeline = CreateTimeline();
-        timeline.EnqueueButtonPulse(timestamp, LogicInputButton.Skill2);
+        timeline.EnqueueButtonPulse(timestamp, LogicInputButton.InteractionSecondary);
         return timeline.Seal(1, 1d / 30d);
     }
 
-    private static LogicInputFrame CreateWorldSelectionFrame(FixVector2 worldPosition)
+    private static LogicInputFrame CreateWorldMoveFrame(FixVector2 worldMove)
     {
         var timeline = CreateTimeline();
-        timeline.EnqueueSelectWorldPosition(0.01d, worldPosition);
+        timeline.EnqueueWorldMove(0.01d, worldMove);
         return timeline.Seal(1, 1d / 30d);
     }
 
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();
-        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
+        timeline.Begin(0d, FixVector2.Zero, 0);
         return timeline;
     }
 }

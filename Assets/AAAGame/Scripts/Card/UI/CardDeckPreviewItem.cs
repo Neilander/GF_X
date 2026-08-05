@@ -14,7 +14,7 @@ namespace AAAGame.Card
         [SerializeField] private TextMeshProUGUI soldierCountText;
         [SerializeField] private TextMeshProUGUI soldierNameText;
 
-        public void SetData(ICardDataProvider cardData, BuildingEntity sourceBuilding)
+        public void SetData(ICardDataProvider cardData, string sourceBuildingInstanceId)
         {
             if (cardData == null)
             {
@@ -22,6 +22,9 @@ namespace AAAGame.Card
                 return;
             }
 
+            IBuildingLogicContext sourceBuilding = string.IsNullOrWhiteSpace(sourceBuildingInstanceId)
+                ? null
+                : LogicBuildingQueryService.GetRequiredByInstanceId(sourceBuildingInstanceId);
             ApplyData(
                 cardData.CardSprite,
                 cardData.CardName,

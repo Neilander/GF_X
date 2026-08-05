@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
@@ -14,15 +13,73 @@ public class PhaseManager : GameFrameworkComponent
     private const float EnemyPresetClusterMinDistance = 1.2f;
     private const long PhaseStepWarnMs = 30;
     private const string EnemyProductionBuildingDailyResourceCostConfigKey = "EnemyProductionBuildingDailyResourceCost";
-    private static int s_PhaseSoundToken;
+	private static readonly Queue<string> s_PendingPhaseSounds = new Queue<string>();
+    private static readonly List<InvadeSpawnPointDefinition> s_InvadeSpawnPoints = new List<InvadeSpawnPointDefinition>();
+    private static bool s_InvadeSpawnPointsConfigured;
 
     public static GamePhase CurrentPhase => (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
 
     public static void CancelRuntimePhaseFlows()
     {
-        s_PhaseSoundToken++;
+		s_PendingPhaseSounds.Clear();
         DefendPhaseRuntime.CancelRuntime();
     }
+
+    internal static void ConfigureInvadeSpawnPoints(IReadOnlyList<EntityPresetPoint> presetPoints)
+    {
+        if (presetPoints == null)
+            throw new ArgumentNullException(nameof(presetPoints));
+        if (s_InvadeSpawnPointsConfigured)
+            throw new InvalidOperationException("PhaseManager invade spawn points are already configured.");
+
+        s_InvadeSpawnPoints.Clear();
+        for (int i = 0; i < presetPoints.Count; i++)
+        {
+            EntityPresetPoint point = presetPoints[i];
+            if (point == null)
+                throw new InvalidOperationException($"PhaseManager found a null preset point at level index {i}.");
+            if (point.PointType != EntityPresetPointType.Unit)
+                continue;
+            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out UnitType unitType, out int unitLevel))
+            {
+                throw new InvalidOperationException(
+                    $"PhaseManager invade spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
+            }
+            if (point.UnitSpawnCount <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"PhaseManager invade authored spawn count is not positive. point={point.name} count={point.UnitSpawnCount}.");
+            }
+
+            Vector3 authoredPosition = point.Position;
+            s_InvadeSpawnPoints.Add(new InvadeSpawnPointDefinition(
+                new FixVector2((Fix64)authoredPosition.x, (Fix64)authoredPosition.z),
+                unitType,
+                unitLevel,
+                point.UnitSpawnCount,
+                string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name));
+        }
+        s_InvadeSpawnPoints.Sort(CompareInvadeSpawnPointDefinitions);
+        s_InvadeSpawnPointsConfigured = true;
+    }
+
+    internal static void ClearInvadeSpawnPoints()
+    {
+        s_InvadeSpawnPoints.Clear();
+        s_InvadeSpawnPointsConfigured = false;
+    }
+
+	private void Update()
+	{
+		if (s_PendingPhaseSounds.Count == 0
+			|| LogicTimeControlService.IsPaused
+			|| AudioManager.Instance == null)
+		{
+			return;
+		}
+
+		AudioManager.Instance.Play(s_PendingPhaseSounds.Dequeue());
+	}
 
     public static void EnterCurrentPhaseOnGameStart()
     {
@@ -164,7 +221,7 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void HandleEnterBuildPhase()
     {
-        PlayPhaseEnterSound("enterManage");
+		RequestPhaseEnterSound("enterManage");
 
         DefendPhaseRuntime.CancelRuntime();
 
@@ -174,10 +231,6 @@ public class PhaseManager : GameFrameworkComponent
         RemoveAllSoldiers();
         removeSoldiersWatch.Stop();
         LogPhaseStep("build.remove-soldiers", removeSoldiersWatch.ElapsedMilliseconds);
-
-        InputModel inputModel = GF.DataModel?.GetDataModel<InputModel>()
-                                ?? throw new InvalidOperationException("PhaseManager.HandleEnterBuildPhase failed: InputModel is unavailable.");
-        inputModel.ClearSkillRequests();
 
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
         if (cardSetup != null)
@@ -231,7 +284,7 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void HandleEnterInvadePhase()
     {
-        PlayPhaseEnterSound("enterBattle");
+		RequestPhaseEnterSound("enterBattle");
 
         DefendPhaseRuntime.CancelRuntime();
         var totalWatch = Stopwatch.StartNew();
@@ -251,7 +304,7 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void HandleEnterDefendPhase()
     {
-        PlayPhaseEnterSound("enterBattle");
+		RequestPhaseEnterSound("enterBattle");
         CompleteNavigationForBattlePhase("defend");
         PrepareBattlePhaseCards("defend");
         DefendPhaseRuntime.EnterDefendPhase();
@@ -301,28 +354,12 @@ public class PhaseManager : GameFrameworkComponent
         }
     }
 
-    /// <summary>阶段进入时的统一音效播放入口（cue key 在 AudioCueLibrary 配映射）。</summary>
-    private static void PlayPhaseEnterSound(string cueKey)
+	private static void RequestPhaseEnterSound(string cueKey)
     {
-        if (AudioManager.Instance == null) return;
-        int token = ++s_PhaseSoundToken;
-        if (LogicTimeControlService.IsPaused)
-        {
-            PlayPhaseEnterSoundWhenUnpausedAsync(cueKey, token).Forget();
-            return;
-        }
-
-        AudioManager.Instance.Play(cueKey);
-    }
-
-    private static async UniTaskVoid PlayPhaseEnterSoundWhenUnpausedAsync(string cueKey, int token)
-    {
-        await UniTask.WaitUntil(() => !LogicTimeControlService.IsPaused, PlayerLoopTiming.Update);
-
-        if (token == s_PhaseSoundToken && AudioManager.Instance != null)
-        {
-            AudioManager.Instance.Play(cueKey);
-        }
+		if (string.IsNullOrWhiteSpace(cueKey))
+			throw new ArgumentException("Phase presentation cue key is empty.", nameof(cueKey));
+		s_PendingPhaseSounds.Clear();
+		s_PendingPhaseSounds.Enqueue(cueKey);
     }
 
     private static void RemoveAllSoldiers()
@@ -368,47 +405,35 @@ public class PhaseManager : GameFrameworkComponent
         var totalWatch = Stopwatch.StartNew();
         LogCreatureEntityPoolState("before-spawn");
 
-        var findWatch = Stopwatch.StartNew();
-        var presetPoints = GameObject.FindObjectsOfType<EntityPresetPoint>();
-        findWatch.Stop();
-        LogPhaseStep($"spawn-enemy.find-preset-points count={presetPoints.Length}", findWatch.ElapsedMilliseconds);
+        if (!s_InvadeSpawnPointsConfigured)
+            throw new InvalidOperationException("PhaseManager cannot spawn invade enemies before level spawn points are configured.");
 
         var spawnPlans = new List<InvadeSpawnPlan>();
-        for (int i = 0; i < presetPoints.Length; i++)
+        for (int i = 0; i < s_InvadeSpawnPoints.Count; i++)
         {
-            EntityPresetPoint point = presetPoints[i];
-            if (point == null || point.PointType != EntityPresetPointType.Unit)
-                continue;
-
-            Vector3 authoredPosition = point.Position;
-            var position = new FixVector2((Fix64)authoredPosition.x, (Fix64)authoredPosition.z);
+            InvadeSpawnPointDefinition point = s_InvadeSpawnPoints[i];
+            FixVector2 position = point.Position;
             if (!LogicStrongholdMap.TryResolveStrongholdId(position, out string strongholdId))
             {
                 throw new InvalidOperationException(
-                    $"PhaseManager invade spawn point is outside the logic stronghold map. point={point.name} raw=({position.x.RawValue},{position.y.RawValue}).");
+                    $"PhaseManager invade spawn point is outside the logic stronghold map. point={point.Name} raw=({position.x.RawValue},{position.y.RawValue}).");
             }
             if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(strongholdId, out int ownerFactionId)
                 || ownerFactionId == EntitySideHelper.PlayerFactionId)
             {
                 continue;
             }
-            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out UnitType unitType, out int unitLevel))
-            {
-                throw new InvalidOperationException(
-                    $"PhaseManager invade spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
-            }
-
-            int count = EnemyArmyForceModifierService.CalculateSpawnCount(point.UnitSpawnCount);
+            int count = EnemyArmyForceModifierService.CalculateSpawnCount(point.AuthoredCount);
             if (count <= 0)
-                throw new InvalidOperationException($"PhaseManager invade spawn count is not positive. point={point.name} count={count}.");
+                throw new InvalidOperationException($"PhaseManager invade spawn count is not positive. point={point.Name} count={count}.");
 
             spawnPlans.Add(new InvadeSpawnPlan(
                 position,
-                unitType,
-                unitLevel,
+                point.UnitType,
+                point.UnitLevel,
                 count,
                 strongholdId,
-                string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name));
+                point.Name));
         }
         spawnPlans.Sort(CompareInvadeSpawnPlans);
 
@@ -473,6 +498,46 @@ public class PhaseManager : GameFrameworkComponent
             return x;
         int y = left.Position.y.RawValue.CompareTo(right.Position.y.RawValue);
         return y != 0 ? y : string.CompareOrdinal(left.Name, right.Name);
+    }
+
+    private static int CompareInvadeSpawnPointDefinitions(
+        InvadeSpawnPointDefinition left,
+        InvadeSpawnPointDefinition right)
+    {
+        int unitType = left.UnitType.CompareTo(right.UnitType);
+        if (unitType != 0)
+            return unitType;
+        int level = left.UnitLevel.CompareTo(right.UnitLevel);
+        if (level != 0)
+            return level;
+        int x = left.Position.x.RawValue.CompareTo(right.Position.x.RawValue);
+        if (x != 0)
+            return x;
+        int y = left.Position.y.RawValue.CompareTo(right.Position.y.RawValue);
+        return y != 0 ? y : string.CompareOrdinal(left.Name, right.Name);
+    }
+
+    private readonly struct InvadeSpawnPointDefinition
+    {
+        public InvadeSpawnPointDefinition(
+            FixVector2 position,
+            UnitType unitType,
+            int unitLevel,
+            int authoredCount,
+            string name)
+        {
+            Position = position;
+            UnitType = unitType;
+            UnitLevel = unitLevel;
+            AuthoredCount = authoredCount;
+            Name = name;
+        }
+
+        public FixVector2 Position { get; }
+        public UnitType UnitType { get; }
+        public int UnitLevel { get; }
+        public int AuthoredCount { get; }
+        public string Name { get; }
     }
 
     private readonly struct InvadeSpawnPlan

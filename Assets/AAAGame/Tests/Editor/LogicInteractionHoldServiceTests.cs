@@ -73,40 +73,6 @@ public sealed class LogicInteractionHoldServiceTests
             LogicInteractionHoldService.GetProgress(InputKey.InteractionSecondary));
     }
 
-    [Test]
-    public void PanelHold_UsesSealedBuildButtonFramesAndDynamicThreshold()
-    {
-        int executionCount = 0;
-        bool available = true;
-        LogicInteractionHoldService.RegisterPanelConsumer(
-            frame => available && frame.IsHeld(LogicInputButton.Build1) ? LogicInputButton.Build1 : null,
-            () => 3,
-            () =>
-            {
-                executionCount++;
-                return true;
-            });
-        LogicInputTimeline timeline = CreateTimeline();
-        timeline.EnqueueButtonPressed(0.001d, LogicInputButton.Build1);
-
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(1, 1d / 30d));
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(2, 2d / 30d));
-        Assert.AreEqual(0, executionCount);
-        Assert.AreEqual(((Fix64)2 / 3).RawValue, LogicInteractionHoldService.GetPanelProgress().RawValue);
-
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(3, 3d / 30d));
-        available = false;
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(4, 4d / 30d));
-        Assert.AreEqual(1, executionCount);
-        available = true;
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(5, 5d / 30d));
-        Assert.AreEqual(1, executionCount);
-
-        timeline.EnqueueButtonReleased(5.5d / 30d, LogicInputButton.Build1);
-        LogicInteractionHoldService.ProcessFrame(timeline.Seal(6, 6d / 30d));
-        Assert.AreEqual(Fix64.Zero.RawValue, LogicInteractionHoldService.GetPanelProgress().RawValue);
-    }
-
     [TestCase(1, 1f)]
     [TestCase(2, 1f)]
     [TestCase(3, 1f)]
@@ -119,6 +85,83 @@ public sealed class LogicInteractionHoldServiceTests
     {
         Assert.AreEqual(expectedSeconds, ResolveHoldDuration(typeof(BuildingBuildTips), starCount), 1e-4f);
         Assert.AreEqual(expectedSeconds, ResolveHoldDuration(typeof(BuildingUpgradeTips), starCount), 1e-4f);
+    }
+
+    [TestCase(1f / 30f, 60)]
+    [TestCase(1f / 60f, 120)]
+    [TestCase(1f / 120f, 240)]
+    public void BuildingInfoRecycleHold_UsesRenderDeltaInsteadOfLogicFrames(float deltaTime, int frameCount)
+    {
+        var method = typeof(BuildingInfoTips).GetMethod(
+            "AdvanceRecycleHoldProgress",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(method);
+
+        float progress = 0f;
+        for (int i = 0; i < frameCount; i++)
+            progress = (float)method.Invoke(null, new object[] { progress, true, deltaTime });
+
+        Assert.AreEqual(1f, progress, 1e-5f);
+        progress = (float)method.Invoke(null, new object[] { progress, false, 1f });
+        Assert.AreEqual(0.5f, progress, 1e-5f);
+    }
+
+    [Test]
+    public void BuildingInfoRecycleHold_DoesNotConsumeLogicInputOrPanelHoldService()
+    {
+        string source = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(
+                UnityEngine.Application.dataPath,
+                "AAAGame/Scripts/UI/BuildingInfoTips.cs"));
+
+        StringAssert.DoesNotContain("LogicInteractionHoldService", source);
+        StringAssert.DoesNotContain("LogicInputFrame", source);
+        StringAssert.Contains("Time.deltaTime", source);
+        StringAssert.Contains("IsPrimaryPointerPressed", source);
+    }
+
+    [Test]
+    public void InteractionHoldService_DoesNotOwnPanelPresentationState()
+    {
+        string source = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(
+                UnityEngine.Application.dataPath,
+                "AAAGame/Scripts/GameClass/LogicInteractionHoldService.cs"));
+
+        StringAssert.DoesNotContain("Panel", source);
+        Assert.IsNull(typeof(LogicInteractionHoldService).GetMethod("RegisterPanelConsumer"));
+        Assert.IsNull(typeof(LogicInteractionHoldService).GetMethod("GetPanelProgress"));
+    }
+
+    [Test]
+    public void BuildingPanelsKeepHoldPresentationOnRenderFramesAndSubmitFinalCommandsOnly()
+    {
+        string assetsPath = UnityEngine.Application.dataPath;
+        string buildTips = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/UI/BuildingBuildTips.cs"));
+        string upgradeTips = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/UI/BuildingUpgradeTips.cs"));
+        string infoTips = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/UI/BuildingInfoTips.cs"));
+        string buildManager = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/Build/BuildManager.cs"));
+        string techManager = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            assetsPath,
+            "AAAGame/Scripts/Build/Tech/TechManager.cs"));
+
+        AssertRenderFramePanelBoundary(buildTips);
+        AssertRenderFramePanelBoundary(upgradeTips);
+        AssertRenderFramePanelBoundary(infoTips);
+        StringAssert.Contains("LogicInteractionCommandService.ScheduleForNextFrame", buildManager);
+        StringAssert.Contains("LogicInteractionActionKind.ConstructBuilding", buildManager);
+        StringAssert.Contains("LogicInteractionActionKind.RecycleBuilding", buildManager);
+        StringAssert.Contains("LogicInteractionCommandService.ScheduleForNextFrame", techManager);
+        StringAssert.Contains("LogicInteractionActionKind.UpgradeBuilding", techManager);
+        StringAssert.Contains("LogicInteractionActionKind.ResearchTech", techManager);
     }
 
     [TestCase(LogicInteractionOptionKind.ConstructBuilding)]
@@ -167,7 +210,7 @@ public sealed class LogicInteractionHoldServiceTests
     private static LogicInputTimeline CreateTimeline()
     {
         var timeline = new LogicInputTimeline();
-        timeline.Begin(0d, FixVector2.Zero, 0, FixVector2.Zero, false, FixVector2.Zero);
+        timeline.Begin(0d, FixVector2.Zero, 0);
         return timeline;
     }
 
@@ -178,5 +221,12 @@ public sealed class LogicInteractionHoldServiceTests
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
         Assert.IsNotNull(method, $"{panelType.Name} is missing ResolveHoldDurationSeconds.");
         return (float)method.Invoke(null, new object[] { starCount });
+    }
+
+    private static void AssertRenderFramePanelBoundary(string source)
+    {
+        StringAssert.Contains("Time.deltaTime", source);
+        StringAssert.DoesNotContain("LogicInputFrame", source);
+        StringAssert.DoesNotContain("LogicInteractionHoldService", source);
     }
 }

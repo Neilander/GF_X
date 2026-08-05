@@ -567,7 +567,7 @@ namespace AAAGame.Card
                 CardDeckPreviewItem previewItem = Instantiate(deckPreviewItemTemplate, deckPreviewContent);
                 previewItem.name = Utility.Text.Format("DeckPreviewCardItem_{0}", i);
                 CardSystemController.DeckPreviewCard previewCard = m_DeckPreviewCards[i];
-                previewItem.SetData(previewCard.CardData, previewCard.SourceBuilding);
+                previewItem.SetData(previewCard.CardData, previewCard.SourceBuildingInstanceId);
             }
 
             Canvas.ForceUpdateCanvases();
@@ -606,9 +606,14 @@ namespace AAAGame.Card
                 {
                     CardSystemController.DeckPreviewCard previewCard = m_DeckPreviewCards[i];
                     ICardDataProvider cardData = previewCard != null ? previewCard.CardData : null;
-                    BuildingEntity sourceBuilding = previewCard != null ? previewCard.SourceBuilding : null;
+                    string sourceBuildingInstanceId = previewCard != null
+                        ? previewCard.SourceBuildingInstanceId
+                        : string.Empty;
+                    IBuildingLogicContext sourceBuilding = string.IsNullOrWhiteSpace(sourceBuildingInstanceId)
+                        ? null
+                        : LogicBuildingQueryService.GetRequiredByInstanceId(sourceBuildingInstanceId);
                     string cardKey = GetDeckPreviewProviderKey(cardData);
-                    string sourceKey = sourceBuilding != null ? sourceBuilding.BuildingInstanceId : string.Empty;
+                    string sourceKey = sourceBuildingInstanceId;
 
                     hash = hash * 31 + (cardKey != null ? cardKey.GetHashCode() : 0);
                     hash = hash * 31 + (sourceKey != null ? sourceKey.GetHashCode() : 0);
@@ -1046,14 +1051,12 @@ namespace AAAGame.Card
             if (isInTrash)
             {
                 CardModel discardedCardModel = cardItem.GetCardModel();
-                Vector2 discardScreenPosition = screenPosition;
-
                 m_CardSystemController.CancelPlacement();
                 cardItem.OnDiscardSuccess(() =>
                 {
                     RemoveHandCardItemDirect(discardedCardModel);
 
-                    bool discarded = m_CardSystemController.DiscardCard(discardedCardModel, discardScreenPosition);
+                    bool discarded = m_CardSystemController.DiscardCard(discardedCardModel);
                     if (!discarded)
                     {
                         Log.Error("[CardUI] Failed to discard card in controller.");
@@ -1324,6 +1327,8 @@ namespace AAAGame.Card
 
             CardPlayedEventArgs args = (CardPlayedEventArgs)e;
             RemoveHandCardItem(args.CardModel);
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.Play("createUnit");
         }
 
         private void OnCardDiscarded(object sender, GameEventArgs e)
@@ -1335,6 +1340,8 @@ namespace AAAGame.Card
 
             CardDiscardedEventArgs args = (CardDiscardedEventArgs)e;
             RemoveHandCardItem(args.CardModel);
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.Play("discardCard");
         }
 
         private void OnIngameValueChanged(object sender, GameEventArgs e)

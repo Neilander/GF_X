@@ -30,13 +30,26 @@ public abstract class BasicAction : ScriptableObject
             isRunning = false,
             isInterrupted = false,
             isFinished = false,
-            inputs = GF.DataModel.GetDataModel<InputModel>()
         };
     }
 
     // ===== executor API =====
 
     public virtual void StartAction(IEntityContext body, out ActionInfo info)
+    {
+        StartAction(body, null, out info);
+    }
+
+    public virtual void StartAction(IEntityContext body, SkillInfo fatherInfo, out ActionInfo info)
+    {
+        StartAction(body, fatherInfo, null, out info);
+    }
+
+    public virtual void StartAction(
+        IEntityContext body,
+        SkillInfo fatherInfo,
+        Action<ActionInfo> configure,
+        out ActionInfo info)
     {
         info = CreateInfo(body);
 
@@ -45,6 +58,8 @@ public abstract class BasicAction : ScriptableObject
         info.isRunning = true;
         info.isInterrupted = false;
         info.isFinished = false;
+        info.fatherInfo = fatherInfo;
+        configure?.Invoke(info);
 
         info.RaiseStarted();
         OnStart(info);
@@ -97,7 +112,6 @@ public abstract class BasicAction : ScriptableObject
 
 public class ActionInfo
 {
-    public InputModel inputs;
     public int executeIndex;
     public SkillInfo fatherInfo;
     public bool injectInfoAlready = false;

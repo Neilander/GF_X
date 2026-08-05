@@ -9930,6 +9930,11 @@ public static partial class FlowFieldCrowdMovementSystem
 
         bool hasCachedTile = DeterministicFlowTileCache.TryGetValue(key, out FlowTileCacheEntry tile);
         bool hasPendingRuntimeDirty = HasPendingRuntimeDirty(_activeWorldState);
+        if (hasPendingRuntimeDirty && FixVector2.SqrMagnitude(recentFlowVelocity) == Fix64.Zero)
+        {
+            nav.LastFixedFlowResult = $"runtime-dirty-no-committed-flow key={FormatTileKey(key)}";
+            return FixVector2.Zero;
+        }
         if (hasPendingRuntimeDirty
             && !hasCachedTile
             && FixVector2.SqrMagnitude(recentFlowVelocity) > Fix64.Zero)
@@ -9942,8 +9947,7 @@ public static partial class FlowFieldCrowdMovementSystem
 
         FixVector2 pendingStaticSlide = FixVector2.Zero;
         FixVector2 toNavigationGoal = resolvedNavigationGoal - position;
-        if (goalKind == TileGoalKind.FinalGoal
-            && FixVector2.SqrMagnitude(toNavigationGoal) > Fix64.Zero
+        if (FixVector2.SqrMagnitude(toNavigationGoal) > Fix64.Zero
             && (!hasPendingRuntimeDirty || !hasCachedTile))
         {
             bool profile = MainThreadFrameProfiler.LoggingEnabled;
@@ -10001,7 +10005,7 @@ public static partial class FlowFieldCrowdMovementSystem
         }
         if (!hasCachedTile)
         {
-            if (goalKind == TileGoalKind.Portal)
+            if (goalKind == TileGoalKind.Portal && !hasPendingRuntimeDirty)
             {
                 FixVector2 pendingPortalVelocity = ResolvePendingPortalVelocityFixed(
                     agent,

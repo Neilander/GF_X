@@ -67,6 +67,7 @@ internal readonly struct LogicProjectileSnapshotEntry
         WeaponData weaponData,
         FixVector2 position,
         Fix64 speed,
+        bool viewReserved,
         bool viewBound,
         bool completed,
         bool hit)
@@ -77,6 +78,7 @@ internal readonly struct LogicProjectileSnapshotEntry
         WeaponData = weaponData;
         Position = position;
         Speed = speed;
+        ViewReserved = viewReserved;
         ViewBound = viewBound;
         Completed = completed;
         Hit = hit;
@@ -88,6 +90,7 @@ internal readonly struct LogicProjectileSnapshotEntry
     public WeaponData WeaponData { get; }
     public FixVector2 Position { get; }
     public Fix64 Speed { get; }
+    public bool ViewReserved { get; }
     public bool ViewBound { get; }
     public bool Completed { get; }
     public bool Hit { get; }
@@ -103,6 +106,7 @@ public static class LogicProjectileService
         public WeaponData WeaponData;
         public FixVector2 Position;
         public Fix64 Speed;
+        public bool ViewReserved;
         public bool ViewBound;
         public bool Completed;
         public bool Hit;
@@ -173,6 +177,7 @@ public static class LogicProjectileService
                 CloneWeaponData(state.WeaponData),
                 state.Position,
                 state.Speed,
+                state.ViewReserved,
                 state.ViewBound,
                 state.Completed,
                 state.Hit);
@@ -218,6 +223,7 @@ public static class LogicProjectileService
                 WeaponData = CloneWeaponData(entry.WeaponData),
                 Position = entry.Position,
                 Speed = entry.Speed,
+                ViewReserved = entry.ViewReserved,
                 ViewBound = entry.ViewBound,
                 Completed = entry.Completed,
                 Hit = entry.Hit,
@@ -369,7 +375,43 @@ public static class LogicProjectileService
         ProjectileState state = GetRequired(projectileId);
         if (state.ViewBound)
             throw new InvalidOperationException($"LogicProjectileService.BindView failed: projectile {projectileId} already has a view.");
+        state.ViewReserved = false;
         state.ViewBound = true;
+    }
+
+    public static void ReserveView(ulong projectileId)
+    {
+        EnsureActive();
+        ProjectileState state = GetRequired(projectileId);
+        if (state.ViewReserved || state.ViewBound)
+            throw new InvalidOperationException($"LogicProjectileService.ReserveView failed: projectile {projectileId} already has a view request.");
+        state.ViewReserved = true;
+    }
+
+    public static void CancelViewReservation(ulong projectileId)
+    {
+        EnsureActive();
+        ProjectileState state = GetRequired(projectileId);
+        if (!state.ViewReserved || state.ViewBound)
+            throw new InvalidOperationException($"LogicProjectileService.CancelViewReservation failed: projectile {projectileId} has no pending view reservation.");
+        state.ViewReserved = false;
+        if (state.Completed)
+            s_States.Remove(projectileId);
+    }
+
+    public static bool TryGetPresentationState(ulong projectileId, out LogicProjectileViewState viewState)
+    {
+        EnsureActive();
+        if (projectileId == 0)
+            throw new ArgumentOutOfRangeException(nameof(projectileId));
+        if (!s_States.TryGetValue(projectileId, out ProjectileState state))
+        {
+            viewState = default;
+            return false;
+        }
+
+        viewState = new LogicProjectileViewState(state.Position, state.Completed, state.Hit);
+        return true;
     }
 
     public static LogicProjectileViewState GetRequiredViewState(ulong projectileId)
@@ -414,8 +456,8 @@ public static class LogicProjectileService
     {
         state.Completed = true;
         state.Hit = hit;
-        if (!state.ViewBound)
-            return;
+        if (!state.ViewReserved && !state.ViewBound)
+            s_States.Remove(state.Id);
     }
 
     private static ProjectileState GetRequired(ulong projectileId)

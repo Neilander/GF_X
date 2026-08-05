@@ -46,7 +46,6 @@ namespace AAAGame.Card
         public event Action<CardModel> OnPlacementStarted;
         public event Action<Vector3, bool> OnPositionUpdated;
         public event Action<bool> OnValidityChanged;
-        public event Action<CardModel, Vector3> OnPlacementConfirmed;
         public event Action OnPlacementCancelled;
 
         public CardPlacementInvalidReason LastInvalidReason { get; private set; } = CardPlacementInvalidReason.None;
@@ -227,15 +226,6 @@ namespace AAAGame.Card
                 (Fix64)m_CurrentPlacementPosition.z);
             EndPlacement();
             return true;
-        }
-
-        public void NotifyPlacementApplied(CardModel cardModel, FixVector2 selectedPosition)
-        {
-            if (cardModel == null)
-                throw new ArgumentNullException(nameof(cardModel));
-            OnPlacementConfirmed?.Invoke(
-                cardModel,
-                new Vector3((float)selectedPosition.x, 0f, (float)selectedPosition.y));
         }
 
         /// <summary>

@@ -62,6 +62,7 @@ public static class LogicGameplayStateHasher
         TutorialManager.WriteDeterministicState(hasher);
         LogicCardRuntimeState.WriteDeterministicState(hasher);
         LogicSkillSlotCommandService.WriteDeterministicState(hasher);
+        LogicSkillCastCommandService.WriteDeterministicState(hasher);
         LogicPhaseCommandService.WriteDeterministicState(hasher);
         LogicTechEffectCommandService.WriteDeterministicState(hasher);
         ulong commandsHash = hasher.Hash;

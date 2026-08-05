@@ -18,6 +18,7 @@ public partial class LevelEntity : EntityBase
     private TileWorldCreatorManager tileWorldCreatorManager;
     private int m_RuntimeInitializationVersion;
     private bool m_HiddenDuringRuntimeInitialization;
+    private EntityPresetPoint[] m_RuntimePresetPoints;
 
     public event Action<LevelEntity> RuntimeInitializationCompleted;
     public bool IsRuntimeInitializationCompleted { get; private set; }
@@ -71,6 +72,8 @@ public partial class LevelEntity : EntityBase
         int initVersion = ++m_RuntimeInitializationVersion;
 
         CollectStrongholds();
+        m_RuntimePresetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
+        PhaseManager.ConfigureInvadeSpawnPoints(m_RuntimePresetPoints);
         SubscribeRuntimeLayerRules();
         if (m_HiddenDuringRuntimeInitialization)
         {
@@ -93,11 +96,13 @@ public partial class LevelEntity : EntityBase
 
         if (wasActiveLevel)
         {
+            PhaseManager.ClearInvadeSpawnPoints();
             LogicStrongholdMap.Clear();
             InGameDataModel.ClearStrongholdRuntimeData();
         }
         ClearEnemyStrongholdFogEffects();
         tileWorldCreatorManager = null;
+        m_RuntimePresetPoints = null;
         IsRuntimeInitializationCompleted = false;
         m_HiddenDuringRuntimeInitialization = false;
         RuntimeInitializationCompleted = null;
@@ -336,7 +341,8 @@ public partial class LevelEntity : EntityBase
         var buildManager = GameEntry.GetComponent<BuildManager>();
         var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         // 只使用当前关卡实体层级下的预设点，避免 launch 等并存场景中的同名点干扰出生位置。
-        var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
+        EntityPresetPoint[] presetPoints = m_RuntimePresetPoints
+                                           ?? throw new InvalidOperationException("LevelEntity preset points were not captured during OnShow.");
         var testSlotConfig = TechTestSlotConfig.LoadOrNull();
         if (testSlotConfig == null)
         {
@@ -432,7 +438,8 @@ public partial class LevelEntity : EntityBase
         var gameEndManager = GameEntry.GetComponent<GameEndManager>();
         string levelId = ChangeSceneProcedure.SelectedLevelIdentifier;
         StageCheckpoint restoreCheckpoint = StageCheckpointRuntimeCoordinator.GetPendingRestoreForLevelSpawn(levelId);
-        var presetPoints = GetComponentsInChildren<EntityPresetPoint>(true);
+        EntityPresetPoint[] presetPoints = m_RuntimePresetPoints
+                                           ?? throw new InvalidOperationException("LevelEntity preset points were not captured during OnShow.");
         var testSlotConfig = TechTestSlotConfig.LoadOrNull();
         if (testSlotConfig == null)
         {

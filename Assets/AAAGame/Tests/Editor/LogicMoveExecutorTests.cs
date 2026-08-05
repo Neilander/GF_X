@@ -185,7 +185,8 @@ public sealed class LogicMoveExecutorTests
                     StringAssert.Contains("AddLifecycle(hasher, frame)", hasherSource);
                     break;
                 case "LogicEntityViewSpawnQueue":
-                    StringAssert.DoesNotContain("LogicEntityViewSpawnQueue", hasherSource);
+                case "ProjectilePresentationService":
+                    StringAssert.DoesNotContain(service, hasherSource);
                     break;
                 case "LogicEntityFrameSnapshotService":
                     StringAssert.Contains("LogicEntityFrameSnapshotService.Current", hasherSource);

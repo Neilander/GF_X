@@ -74,6 +74,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicCardPlacementAuthority.BeginTimeline();
         LogicMovementRegionConstraintService.BeginTimeline();
         LogicSkillSlotCommandService.BeginTimeline();
+        LogicSkillCastCommandService.BeginTimeline();
         LogicPhaseCommandService.BeginTimeline();
         LogicTechEffectCommandService.BeginTimeline();
         LogicEntityLifecycleService.BeginTimeline();
@@ -82,6 +83,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicEntityFrameSnapshotService.BeginTimeline();
         LogicInteractionAuthorityService.BeginTimeline();
         MAEntityLogicFrameSystem.BeginTimeline();
+        ProjectilePresentationService.BeginTimeline();
         m_LogicFrameScaleProvider ??= PrepareNextLogicFrame;
         m_LogicFrameTickCallback ??= ExecuteScheduledLogicFrame;
 #if UNITY_EDITOR
@@ -123,6 +125,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 
         UpdateLogicFrames();
+        ProjectilePresentationService.UpdateRenderFrame();
         OnRuntimeUpdate(elapseSeconds, realElapseSeconds);
     }
 
@@ -147,6 +150,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         {
             LogicReplayRuntime.EndRecording();
         }
+        ProjectilePresentationService.EndTimeline();
         LogicEntityViewSpawnQueue.EndTimeline();
         LogicEntityLifecycleService.DeactivateAllForShutdown();
         GF.Entity.HideAllLoadingEntities();
@@ -154,6 +158,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicObstacleCommandService.EndTimeline();
         LogicEntityLifecycleService.EndTimeline();
         LogicTechEffectCommandService.EndTimeline();
+        LogicSkillCastCommandService.EndTimeline();
         LogicSkillSlotCommandService.EndTimeline();
         LogicMovementRegionConstraintService.EndTimeline();
         LogicCardPlacementAuthority.EndTimeline();
@@ -359,6 +364,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             m_RuntimeInitPipeline = null;
             m_LogicFrameClockStarted = false;
             LogicEntityViewSpawnQueue.ResetForWorldTransition();
+            ProjectilePresentationService.ResetForWorldTransition();
 
             Log.Info(
                 "[LogicEntityWorldTransition] Begin. level={0}, frame={1}, requested={2}, bound={3}, active={4}, lastAllocated={5}.",
@@ -379,6 +385,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicCardPlacementAuthority.ResetForWorldTransition();
             LogicMovementRegionConstraintService.ResetForWorldTransition();
             LogicSkillSlotCommandService.ResetForWorldTransition();
+            LogicSkillCastCommandService.ResetForWorldTransition();
             LogicPhaseCommandService.ResetForWorldTransition();
             LogicTechEffectCommandService.ResetForWorldTransition();
             LogicObstacleCommandService.ResetForWorldTransition();
@@ -406,6 +413,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             LogicCardPlacementAuthority.ResetFrameTimeline();
             LogicInGameValueCommandService.ResetFrameTimeline();
             LogicSkillSlotCommandService.ResetFrameTimeline();
+            LogicSkillCastCommandService.ResetFrameTimeline();
             LogicTechEffectCommandService.ResetFrameTimeline();
             LogicEntityLifecycleService.ResetFrameTimelinePreservingEntities();
             LogicObstacleCommandService.ResetFrameTimelinePreservingCommands();
@@ -617,6 +625,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicCardCommandService.ApplyFrame(frame);
         LogicSkillSlotCommandService.ApplyFrame(frame);
         LogicPhaseCommandService.ApplyFrame(frame);
+        LogicSkillCastCommandService.ApplyFrame(frame);
         LogicMovementRegionConstraintService.ApplyFrame(frame);
         CardSetup cardSetup = GameEntry.GetComponent<CardSetup>()
                               ?? throw new InvalidOperationException("RuntimeProcedureBase requires CardSetup for logic-frame card updates.");

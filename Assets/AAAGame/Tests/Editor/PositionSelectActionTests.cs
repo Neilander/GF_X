@@ -4,6 +4,13 @@ using UnityEngine;
 
 public sealed class PositionSelectActionTests
 {
+    private sealed class FrameAction : ILogicFrameUpdate
+    {
+        public System.Action Action;
+        public int LogicFrameOrder => 0;
+        public void OnLogicFrameUpdate(Fix64 deltaTime) => Action();
+    }
+
     [Test]
     public void SelectorContract_DoesNotExposeGameObjectValidation()
     {
@@ -38,9 +45,8 @@ public sealed class PositionSelectActionTests
             PositionSelectAction.ClampToRadius(center, inside, -Fix64.One));
     }
     [Test]
-    public void StartAction_ViewlessCasterUsesFixedLogicPosition()
+    public void StartAction_OutsideLogicFrameIsRejected()
     {
-        EnsureInputModel();
         var caster = new SimEntityContext
         {
             PositionFixed = new FixVector2(Fix64.FromRaw(1234), Fix64.FromRaw(-5678)),
@@ -49,13 +55,8 @@ public sealed class PositionSelectActionTests
         var action = ScriptableObject.CreateInstance<PositionSelectAction>();
         try
         {
-            action.StartAction(caster, out ActionInfo rawInfo);
-
-            var info = (PositionSelectActionInfo)rawInfo;
-            Assert.AreSame(caster, info.selfBody);
-            Assert.AreEqual(caster.PositionFixed, info.lastSelectPos);
-            Assert.AreEqual(caster.PositionFixed, info.confirmedSelectPos);
-            Assert.IsTrue(info.isRunning);
+            Assert.Throws<System.InvalidOperationException>(() =>
+                action.StartAction(caster, out _));
         }
         finally
         {
@@ -63,48 +64,80 @@ public sealed class PositionSelectActionTests
         }
     }
 
-    private static void EnsureInputModel()
+    [Test]
+    public void PositionSelectionSourceDoesNotReadLogicInputOrOwnPresentation()
     {
-        System.Reflection.FieldInfo dataModelField = typeof(GF).GetField(
-            "<DataModel>k__BackingField",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(dataModelField, "GF.DataModel backing field was not found.");
-        var component = dataModelField?.GetValue(null) as GameFramework.DataModelComponent;
-        if (component == null)
+        string source = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(
+                Application.dataPath,
+                "AAAGame/Scripts/ActionSystem/PositionSelectAction.cs"));
+
+        StringAssert.DoesNotContain("CurrentLogicFrame", source);
+        StringAssert.DoesNotContain("SkillConfirm", source);
+        StringAssert.DoesNotContain("ShowEntity", source);
+        StringAssert.DoesNotContain("ICastRangePresenter", source);
+        StringAssert.Contains("LogicEntityFrameSnapshotService.GetRequiredPosition", source);
+    }
+
+    [Test]
+    public void FinalWorldPositionIsClampedFromCasterFrameStartSnapshot()
+    {
+        EntityRegistry.Clear();
+        var caster = new SimEntityContext
         {
-            var gameObject = new GameObject("PositionSelectActionTests_DataModel");
-            component = gameObject.AddComponent<GameFramework.DataModelComponent>();
-            dataModelField?.SetValue(null, component);
-        }
-
-        System.Reflection.FieldInfo dataModelsField = typeof(GameFramework.DataModelComponent).GetField(
-            "m_DataModels",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(dataModelsField, "DataModelComponent.m_DataModels was not found.");
-        object dataModels = dataModelsField?.GetValue(component);
-        if (dataModels == null)
+            PositionFixed = new FixVector2((Fix64)2, (Fix64)3),
+            Side = SideType.PlayerSide,
+        };
+        EntityRegistry.Register(caster);
+        var action = ScriptableObject.CreateInstance<PositionSelectAction>();
+        var listener = new FrameAction();
+        PositionSelectActionInfo result = null;
+        try
         {
-            dataModels = System.Activator.CreateInstance(dataModelsField.FieldType);
-            dataModelsField.SetValue(component, dataModels);
+            LogicFrameRuntime.Begin();
+            LogicEntityFrameSnapshotService.BeginTimeline();
+            listener.Action = () =>
+            {
+                var skillInfo = new SkillInfo
+                {
+                    entity = caster,
+                    hasRequestedWorldPosition = true,
+                    requestedWorldPosition = new FixVector2((Fix64)20, (Fix64)3),
+                };
+                action.StartAction(
+                    caster,
+                    skillInfo,
+                    raw =>
+                    {
+                        var positionInfo = (PositionSelectActionInfo)raw;
+                        positionInfo.radius = (Fix64)5;
+                        positionInfo.selectionRadius = Fix64.Zero;
+                    },
+                    out ActionInfo rawInfo);
+                result = (PositionSelectActionInfo)rawInfo;
+            };
+            LogicFrameRuntime.Register(listener);
+            LogicFrameRuntime.StartTimeline();
+
+            LogicFrameRuntime.Tick(1);
+
+            FixVector2 expected = caster.PositionFixed
+                                  + (new FixVector2((Fix64)20, (Fix64)3) - caster.PositionFixed).GetNormalized()
+                                  * (Fix64)5;
+            Assert.AreEqual(expected, result.confirmedSelectPos);
+            Assert.IsTrue(result.isFinished);
         }
-
-        if (component.GetDataModel<InputModel>() != null)
-            return;
-
-        var model = (InputModel)System.Activator.CreateInstance(typeof(InputModel), true);
-        System.Type pairType = typeof(GameFramework.DataModelComponent).Assembly.GetType("TypeIdPair");
-        Assert.NotNull(pairType, "TypeIdPair was not found.");
-        object pair = System.Activator.CreateInstance(
-            pairType,
-            System.Reflection.BindingFlags.Instance
-            | System.Reflection.BindingFlags.Public
-            | System.Reflection.BindingFlags.NonPublic,
-            null,
-            new object[] { typeof(InputModel), 0 },
-            null);
-        System.Reflection.MethodInfo addMethod = dataModels.GetType().GetMethod("Add");
-        Assert.NotNull(addMethod, "Data model collection Add method was not found.");
-        addMethod.Invoke(dataModels, new[] { pair, model });
-        Assert.AreSame(model, component.GetDataModel<InputModel>());
+        finally
+        {
+            if (LogicFrameRuntime.IsActive)
+            {
+                LogicFrameRuntime.Unregister(listener);
+                if (LogicEntityFrameSnapshotService.IsActive)
+                    LogicEntityFrameSnapshotService.EndTimeline();
+                LogicFrameRuntime.End();
+            }
+            EntityRegistry.Clear();
+            Object.DestroyImmediate(action);
+        }
     }
 }

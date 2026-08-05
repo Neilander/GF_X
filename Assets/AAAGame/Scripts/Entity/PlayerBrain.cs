@@ -16,10 +16,10 @@ namespace AAAGame.Scripts.Entity
         public Vector2 Move => CurrentInput.WorldMove;
         public FixVector2 MoveFixed => CurrentInput.WorldMove;
         public bool Attack => false;
-        public bool Skill1 => CurrentInput.WasPressed(LogicInputButton.Skill1);
-        public bool Skill2 => CurrentInput.WasPressed(LogicInputButton.Skill2);
-        public bool Skill3 => CurrentInput.WasPressed(LogicInputButton.Skill3);
-        public bool Skill4 => CurrentInput.WasPressed(LogicInputButton.Skill4);
-        public bool Skill5 => CurrentInput.WasPressed(LogicInputButton.Skill5);
+        public bool Skill1 => false;
+        public bool Skill2 => false;
+        public bool Skill3 => false;
+        public bool Skill4 => false;
+        public bool Skill5 => false;
     }
 }

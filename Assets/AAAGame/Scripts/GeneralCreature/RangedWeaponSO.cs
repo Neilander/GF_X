@@ -32,14 +32,15 @@ public class RangedWeaponSO : BaseWeaponSO
             throw new System.InvalidOperationException("RangedWeaponSO.Execute failed: no logic projectile collection window is active.");
 
         ulong logicProjectileId = LogicProjectileService.Submit(attacker, target, weaponData);
-        Present(attacker, target, weaponData, logicProjectileId);
+        ProjectilePresentationService.Publish(logicProjectileId, attacker, target, weaponData, this);
     }
 
-    public void Present(
+    internal EntityParams CreateProjectilePresentationParams(
         IEntityContext attacker,
         IEntityContext target,
         WeaponData weaponData,
-        ulong logicProjectileId)
+        ulong logicProjectileId,
+        Vector3 projectileOrigin)
     {
         if (attacker == null)
             throw new System.ArgumentNullException(nameof(attacker));
@@ -50,25 +51,19 @@ public class RangedWeaponSO : BaseWeaponSO
         if (logicProjectileId == 0)
             throw new System.ArgumentOutOfRangeException(nameof(logicProjectileId));
 
-        if (!LogicEntityLifecycleService.TryGetBoundView(attacker.LogicEntityId, out MAEntity attackerView))
-        {
-            throw new System.InvalidOperationException(
-                $"Ranged projectile presentation requires a bound attacker view. attacker={attacker.LogicEntityId.Value}.");
-        }
-
-        Transform projectileOrigin = attackerView.PresentationBindings.RequireProjectileOrigin();
-
-        // 创建弹道参数
-        EntityParams projectileParams = EntityParams.Create(projectileOrigin.position);
+        EntityParams projectileParams = EntityParams.Create(projectileOrigin);
         projectileParams.Attacker = attacker;
         projectileParams.Target = target;
         projectileParams.WeaponData = weaponData;
         projectileParams.WeaponSO = this;
         projectileParams.LogicProjectileId = logicProjectileId;
+        return projectileParams;
+    }
 
-        // 使用对象池显示弹道
-        GF.Entity.ShowEntity<Projectile>(_projectileName, Const.EntityGroup.Bullet, projectileParams);
-
+    internal void PresentLaunchFeedback(IEntityContext attacker, Vector3 projectileOrigin)
+    {
+        if (attacker == null)
+            throw new System.ArgumentNullException(nameof(attacker));
         // 远程攻击发射音效（命中音由 Projectile.HitTarget 单独播 basicAttack）
         if (AudioManager.Instance != null)
             AudioManager.Instance.Play("rangeAttack");
@@ -76,7 +71,7 @@ public class RangedWeaponSO : BaseWeaponSO
         // 播放攻击特效
         if (!string.IsNullOrEmpty(AttackVfxName))
         {
-            var vfxParams = EntityParams.Create(projectileOrigin.position);
+            var vfxParams = EntityParams.Create(projectileOrigin);
             GF.Entity.ShowEffect(AttackVfxName, vfxParams, 2f);
         }
 

@@ -1577,7 +1577,7 @@ public class LogicEntityIdentityTests
             building.BuildingInstanceId);
 
         Assert.IsFalse(building.HasBoundView);
-        Assert.IsNull(card.SourceBuilding);
+        Assert.AreEqual(building.BuildingInstanceId, card.GetSourceBuildingInstanceId());
         Assert.AreEqual(9, building.GetArmyForceWithoutRuntimeRules());
         Assert.AreEqual(9, card.GetTroopCount());
         Assert.AreEqual(3, building.GetArmySupplyPerUnit());
@@ -1808,6 +1808,61 @@ public class LogicEntityIdentityTests
         Assert.AreSame(attacker, publishedAttacker);
         Assert.IsTrue(state.IsDisabled);
         Assert.IsFalse(state.HasBoundView);
+    }
+
+    [Test]
+    public void DelayedIncomingDamage_DisableEventPreservesOriginalAttacker()
+    {
+        LogicEntityState state = CreateConfiguredState("Building_DelayedDisabledEvent", false);
+        state.ConfigureBuilding(
+            CreateTestBuildingData("Building_DelayedDisabledEvent"),
+            "building-delayed-disabled-event",
+            "stronghold-delayed-disabled-event",
+            EntitySideHelper.EnemyFactionId,
+            LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+            Array.Empty<LogicCombatShape>(),
+            Array.Empty<LogicInteractionOptionDescriptor>(),
+            false);
+        ActivateRequestedState(state.EntityId, 1);
+        LogicEntityState attacker = CreateConfiguredStateForSide(
+            "Unit_DelayedDisabledEvent_Attacker",
+            SideType.PlayerSide);
+        ActivateRequestedState(attacker.EntityId, 2);
+        var delayed = new DelayedIncomingDamageReceiverBuff((Fix64)50, (Fix64)2);
+        Assert.IsTrue(state.BuffComp.AddBuff(
+            BuffData.Create(
+                "delayed-disabled-event",
+                Fix64.Zero,
+                true,
+                1,
+                new List<BuffCallback> { delayed }),
+            state));
+        IEntityContext publishedAttacker = null;
+        void OnDisabled(IBuildingLogicContext building, IEntityContext eventAttacker)
+        {
+            if (ReferenceEquals(building, state))
+                publishedAttacker = eventAttacker;
+        }
+
+        LogicBuildingDisabledEventService.BuildingDisabled += OnDisabled;
+        try
+        {
+            DamageHelper.DoDamage(
+                state,
+                new Damage(attacker, (Fix64)150, HealthModifyType.reduce),
+                attacker);
+            Assert.IsFalse(state.IsDisabled);
+            Assert.AreEqual((Fix64)25, state.HealthValue);
+
+            state.BuffComp.UpdateBuff(Fix64.One);
+        }
+        finally
+        {
+            LogicBuildingDisabledEventService.BuildingDisabled -= OnDisabled;
+        }
+
+        Assert.IsTrue(state.IsDisabled);
+        Assert.AreSame(attacker, publishedAttacker);
     }
 
     [Test]

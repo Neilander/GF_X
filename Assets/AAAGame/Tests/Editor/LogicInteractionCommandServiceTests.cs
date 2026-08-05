@@ -115,7 +115,7 @@ public sealed class LogicInteractionCommandServiceTests
     public void RecycleRewardMutation_RejectsOutsideApplyWindow()
     {
         Assert.Throws<InvalidOperationException>(() =>
-            RewardManager.HandleBuildingRecycleReward(Vector3.zero, 1));
+            RewardManager.HandleBuildingRecycleReward(FixVector2.Zero, 1));
     }
 
     private static ulong CaptureHash()

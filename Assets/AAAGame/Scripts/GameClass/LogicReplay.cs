@@ -73,11 +73,6 @@ public sealed class LogicStateHasher
         hasher.Add(frame.PlayerId);
         hasher.Add(frame.WorldMove.x.RawValue);
         hasher.Add(frame.WorldMove.y.RawValue);
-        hasher.Add(frame.SelectScreenPosition.x.RawValue);
-        hasher.Add(frame.SelectScreenPosition.y.RawValue);
-        hasher.Add(frame.HasSelectWorldPosition);
-        hasher.Add(frame.SelectWorldPosition.x.RawValue);
-        hasher.Add(frame.SelectWorldPosition.y.RawValue);
         hasher.Add(frame.HeldBits);
         hasher.Add(frame.PressedBits);
         hasher.Add(frame.ReleasedBits);
@@ -213,8 +208,8 @@ public sealed class LogicReplayFrameRecord
 
 public sealed class LogicReplayLog
 {
-    public const int CurrentProtocolVersion = 81;
-    public const string CurrentContentVersion = "Avenge-30Hz-v81";
+    public const int CurrentProtocolVersion = 82;
+    public const string CurrentContentVersion = "Avenge-30Hz-v82";
 
     internal LogicReplayLog(
         LogicTimeControlSnapshot initialTimeControlSnapshot,
@@ -226,6 +221,7 @@ public sealed class LogicReplayLog
         LogicInteractionCommand[] interactionCommands,
         LogicCardCommand[] cardCommands,
         LogicSkillSlotCommand[] skillSlotCommands,
+        LogicSkillCastCommand[] skillCastCommands,
         LogicInGameValueCommand[] inGameValueCommands,
         LogicEntityLifecycleCommand[] lifecycleCommands,
         LogicObstacleCommand[] obstacleCommands)
@@ -243,6 +239,7 @@ public sealed class LogicReplayLog
         InteractionCommands = Array.AsReadOnly((LogicInteractionCommand[])interactionCommands.Clone());
         CardCommands = Array.AsReadOnly((LogicCardCommand[])cardCommands.Clone());
         SkillSlotCommands = Array.AsReadOnly((LogicSkillSlotCommand[])skillSlotCommands.Clone());
+        SkillCastCommands = Array.AsReadOnly((LogicSkillCastCommand[])skillCastCommands.Clone());
         InGameValueCommands = Array.AsReadOnly((LogicInGameValueCommand[])inGameValueCommands.Clone());
         LifecycleCommands = Array.AsReadOnly((LogicEntityLifecycleCommand[])lifecycleCommands.Clone());
         ObstacleCommands = Array.AsReadOnly((LogicObstacleCommand[])obstacleCommands.Clone());
@@ -261,6 +258,7 @@ public sealed class LogicReplayLog
     public ReadOnlyCollection<LogicInteractionCommand> InteractionCommands { get; }
     public ReadOnlyCollection<LogicCardCommand> CardCommands { get; }
     public ReadOnlyCollection<LogicSkillSlotCommand> SkillSlotCommands { get; }
+    public ReadOnlyCollection<LogicSkillCastCommand> SkillCastCommands { get; }
     public ReadOnlyCollection<LogicInGameValueCommand> InGameValueCommands { get; }
     public ReadOnlyCollection<LogicEntityLifecycleCommand> LifecycleCommands { get; }
     public ReadOnlyCollection<LogicObstacleCommand> ObstacleCommands { get; }
@@ -276,6 +274,7 @@ public sealed class LogicReplayRecorder
     private readonly List<LogicInteractionCommand> m_InteractionCommands = new List<LogicInteractionCommand>();
     private readonly List<LogicCardCommand> m_CardCommands = new List<LogicCardCommand>();
     private readonly List<LogicSkillSlotCommand> m_SkillSlotCommands = new List<LogicSkillSlotCommand>();
+    private readonly List<LogicSkillCastCommand> m_SkillCastCommands = new List<LogicSkillCastCommand>();
     private readonly List<LogicInGameValueCommand> m_InGameValueCommands = new List<LogicInGameValueCommand>();
     private readonly List<LogicEntityLifecycleCommand> m_LifecycleCommands = new List<LogicEntityLifecycleCommand>();
     private readonly List<LogicObstacleCommand> m_ObstacleCommands = new List<LogicObstacleCommand>();
@@ -287,6 +286,7 @@ public sealed class LogicReplayRecorder
     private bool m_TracksInteractions;
     private bool m_TracksCards;
     private bool m_TracksSkillSlots;
+    private bool m_TracksSkillCasts;
     private bool m_TracksInGameValues;
     private bool m_TracksLifecycle;
     private bool m_TracksObstacles;
@@ -308,6 +308,7 @@ public sealed class LogicReplayRecorder
         m_InteractionCommands.Clear();
         m_CardCommands.Clear();
         m_SkillSlotCommands.Clear();
+        m_SkillCastCommands.Clear();
         m_InGameValueCommands.Clear();
         m_LifecycleCommands.Clear();
         m_ObstacleCommands.Clear();
@@ -320,6 +321,7 @@ public sealed class LogicReplayRecorder
         m_TracksInteractions = LogicInteractionCommandService.IsActive;
         m_TracksCards = LogicCardCommandService.IsActive;
         m_TracksSkillSlots = LogicSkillSlotCommandService.IsActive;
+        m_TracksSkillCasts = LogicSkillCastCommandService.IsActive;
         m_TracksInGameValues = LogicInGameValueCommandService.IsActive;
         m_TracksLifecycle = LogicEntityLifecycleService.IsActive;
         m_TracksObstacles = LogicObstacleCommandService.IsActive;
@@ -352,6 +354,12 @@ public sealed class LogicReplayRecorder
             for (int i = 0; i < LogicSkillSlotCommandService.History.Count; i++)
                 m_SkillSlotCommands.Add(LogicSkillSlotCommandService.History[i]);
             LogicSkillSlotCommandService.CommandRecorded += OnSkillSlotCommandRecorded;
+        }
+        if (m_TracksSkillCasts)
+        {
+            for (int i = 0; i < LogicSkillCastCommandService.History.Count; i++)
+                m_SkillCastCommands.Add(LogicSkillCastCommandService.History[i]);
+            LogicSkillCastCommandService.CommandRecorded += OnSkillCastCommandRecorded;
         }
         if (m_TracksInGameValues)
         {
@@ -436,6 +444,8 @@ public sealed class LogicReplayRecorder
             LogicCardCommandService.CommandRecorded -= OnCardCommandRecorded;
         if (m_TracksSkillSlots)
             LogicSkillSlotCommandService.CommandRecorded -= OnSkillSlotCommandRecorded;
+        if (m_TracksSkillCasts)
+            LogicSkillCastCommandService.CommandRecorded -= OnSkillCastCommandRecorded;
         if (m_TracksInGameValues)
             LogicInGameValueCommandService.CommandRecorded -= OnInGameValueCommandRecorded;
         if (m_TracksLifecycle)
@@ -447,6 +457,7 @@ public sealed class LogicReplayRecorder
         m_TracksInteractions = false;
         m_TracksCards = false;
         m_TracksSkillSlots = false;
+        m_TracksSkillCasts = false;
         m_TracksInGameValues = false;
         m_TracksLifecycle = false;
         m_TracksObstacles = false;
@@ -461,6 +472,7 @@ public sealed class LogicReplayRecorder
             m_InteractionCommands.ToArray(),
             m_CardCommands.ToArray(),
             m_SkillSlotCommands.ToArray(),
+            m_SkillCastCommands.ToArray(),
             m_InGameValueCommands.ToArray(),
             m_LifecycleCommands.ToArray(),
             m_ObstacleCommands.ToArray());
@@ -499,6 +511,11 @@ public sealed class LogicReplayRecorder
     private void OnSkillSlotCommandRecorded(LogicSkillSlotCommand command)
     {
         m_SkillSlotCommands.Add(command);
+    }
+
+    private void OnSkillCastCommandRecorded(LogicSkillCastCommand command)
+    {
+        m_SkillCastCommands.Add(command);
     }
 
     private void OnInGameValueCommandRecorded(LogicInGameValueCommand command)
@@ -703,11 +720,6 @@ public static class LogicReplayComparer
         if (expected.PlayerId != actual.PlayerId) return "Input.PlayerId";
         if (expected.WorldMove.x != actual.WorldMove.x) return "Input.WorldMove.X";
         if (expected.WorldMove.y != actual.WorldMove.y) return "Input.WorldMove.Y";
-        if (expected.SelectScreenPosition.x != actual.SelectScreenPosition.x) return "Input.SelectScreenPosition.X";
-        if (expected.SelectScreenPosition.y != actual.SelectScreenPosition.y) return "Input.SelectScreenPosition.Y";
-        if (expected.HasSelectWorldPosition != actual.HasSelectWorldPosition) return "Input.HasSelectWorldPosition";
-        if (expected.SelectWorldPosition.x != actual.SelectWorldPosition.x) return "Input.SelectWorldPosition.X";
-        if (expected.SelectWorldPosition.y != actual.SelectWorldPosition.y) return "Input.SelectWorldPosition.Y";
         if (expected.HeldBits != actual.HeldBits) return "Input.HeldBits";
         if (expected.PressedBits != actual.PressedBits) return "Input.PressedBits";
         if (expected.ReleasedBits != actual.ReleasedBits) return "Input.ReleasedBits";
@@ -901,6 +913,25 @@ public static class LogicReplayComparer
                     true,
                     Math.Min(left.EffectiveFrame, right.EffectiveFrame),
                     "SkillSlotCommand");
+            }
+        }
+
+        if (expected.SkillCastCommands.Count != actual.SkillCastCommands.Count)
+            return new LogicReplayDivergence(true, 0, "SkillCastCommandCount");
+        for (int i = 0; i < expected.SkillCastCommands.Count; i++)
+        {
+            LogicSkillCastCommand left = expected.SkillCastCommands[i];
+            LogicSkillCastCommand right = actual.SkillCastCommands[i];
+            if (left.EffectiveFrame != right.EffectiveFrame
+                || left.Sequence != right.Sequence
+                || left.CasterId != right.CasterId
+                || left.SlotIndex != right.SlotIndex
+                || left.RequestedWorldPosition != right.RequestedWorldPosition)
+            {
+                return new LogicReplayDivergence(
+                    true,
+                    Math.Min(left.EffectiveFrame, right.EffectiveFrame),
+                    "SkillCastCommand");
             }
         }
 

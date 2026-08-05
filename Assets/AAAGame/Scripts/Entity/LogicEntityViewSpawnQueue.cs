@@ -24,9 +24,23 @@ public static class LogicEntityViewSpawnQueue
         }
     }
 
+    private readonly struct PendingHide
+    {
+        public PendingHide(int viewId, int earliestRenderFrame)
+        {
+            ViewId = viewId;
+            EarliestRenderFrame = earliestRenderFrame;
+        }
+
+        public int ViewId { get; }
+        public int EarliestRenderFrame { get; }
+    }
+
     private static readonly Queue<PendingView> s_Pending = new Queue<PendingView>();
     private static readonly Dictionary<int, PendingView> s_InFlight = new Dictionary<int, PendingView>();
     private static readonly List<int> s_CancelViewIds = new List<int>();
+    private static readonly Queue<PendingHide> s_PendingHides = new Queue<PendingHide>();
+    private static readonly HashSet<int> s_PendingHideViewIds = new HashSet<int>();
 
     private static string s_Failure;
     private static int s_BatchStartRenderFrame;
@@ -40,6 +54,7 @@ public static class LogicEntityViewSpawnQueue
     public static bool IsActive { get; private set; }
     public static int PendingCount => s_Pending.Count;
     public static int InFlightCount => s_InFlight.Count;
+	public static int PendingHideCount => s_PendingHides.Count;
 
     public static void BeginTimeline()
     {
@@ -91,12 +106,24 @@ public static class LogicEntityViewSpawnQueue
         return entityParams.Id;
     }
 
+	public static void EnqueueHide(int viewId)
+	{
+		EnsureActive();
+		if (viewId <= 0)
+			throw new ArgumentOutOfRangeException(nameof(viewId));
+		if (!s_PendingHideViewIds.Add(viewId))
+			throw new InvalidOperationException($"LogicEntityViewSpawnQueue view {viewId} is already pending hide.");
+
+		s_PendingHides.Enqueue(new PendingHide(viewId, checked(Time.frameCount + 2)));
+	}
+
     public static void UpdateRenderFrame()
     {
         EnsureActive();
         if (s_Failure != null)
             throw new InvalidOperationException(s_Failure);
 
+		DispatchPendingHides();
         CancelDespawnedRequests();
 
         int dispatched = 0;
@@ -143,6 +170,18 @@ public static class LogicEntityViewSpawnQueue
         TryCompleteBatch();
     }
 
+	private static void DispatchPendingHides()
+	{
+		while (s_PendingHides.Count > 0
+		       && s_PendingHides.Peek().EarliestRenderFrame <= Time.frameCount)
+		{
+			PendingHide request = s_PendingHides.Dequeue();
+			if (!s_PendingHideViewIds.Remove(request.ViewId))
+				throw new InvalidOperationException($"LogicEntityViewSpawnQueue lost pending hide identity. view={request.ViewId}.");
+			GF.Entity.HideEntity(request.ViewId);
+		}
+	}
+
     private static void CancelDespawnedRequests()
     {
         s_CancelViewIds.Clear();
@@ -184,6 +223,13 @@ public static class LogicEntityViewSpawnQueue
         }
         s_InFlight.Clear();
         s_CancelViewIds.Clear();
+
+		while (s_PendingHides.Count > 0)
+		{
+			PendingHide request = s_PendingHides.Dequeue();
+			GF.Entity.HideEntity(request.ViewId);
+		}
+		s_PendingHideViewIds.Clear();
 
         if (pendingCount > 0 || inFlightCount > 0)
         {

@@ -3996,7 +3996,7 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.2f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 pendingVelocity));
-        Assert.AreEqual(Vector3.zero, pendingVelocity, "cost dirty 尚未提交时必须停住，不能沿旧直线路径穿过高成本带。");
+        Assert.Greater(pendingVelocity.magnitude, 0.2f, "cost dirty 提交前可沿已提交导航继续推进，不应人为停帧。");
         ProcessRuntimeDirtyQueueUntilReady(2);
         Vector3 velocity = ResolveDeterministicFlowVelocityAfterQueue(ctx, goal, 2f, 512, out string fixedDiagnostic);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
@@ -4945,7 +4945,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void RuntimeDirty期间首次寻路仍在已提交World构建Tile()
+    public void RuntimeDirty期间首次寻路会等待提交后使用新World()
     {
         const int width = 9;
         const int height = 5;
@@ -4969,39 +4969,21 @@ public class FlowFieldCrowdMovementSystemTests
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(
             FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out Vector3 velocity),
-            "RuntimeDirty 期间首次寻路请求应正常建立旧 world 路径。");
+            "RuntimeDirty 期间首次寻路请求应返回确定性等待结果。");
         Assert.IsTrue(
             FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
                 ctx.LogicEntityId.Value,
                 out string diagnostic),
             "首次寻路后应生成定点流场诊断。");
-        StringAssert.Contains("tile-pending", diagnostic, $"首次寻路应进入 flow tile 构建等待态，diagnostic={diagnostic}");
+        Assert.AreEqual(Vector3.zero, velocity);
+        StringAssert.Contains(
+            "runtime-dirty-no-committed-flow",
+            diagnostic,
+            $"首次请求没有已提交 flow 可延续时必须明确等待 dirty world，diagnostic={diagnostic}");
 
-        bool cached = false;
-        for (int frame = 2; frame < 256; frame++)
-        {
-            FlowFieldCrowdMovementSystem.SetEditorTestClock(frame, frame * 0.1f);
-            FlowFieldCrowdMovementSystem.ProcessFlowTileBuildQueue();
-            Assert.IsTrue(
-                FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(ctx, goal, 2f, out velocity),
-                $"第 {frame} 帧旧 world 寻路请求不应失败。");
-            Assert.IsTrue(
-                FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
-                    ctx.LogicEntityId.Value,
-                    out diagnostic),
-                $"第 {frame} 帧应保留定点流场诊断。");
-            if (!diagnostic.Contains("/cached=True/"))
-                continue;
-
-            cached = true;
-            break;
-        }
-
-        Assert.IsTrue(
-            FlowFieldCrowdMovementSystem.HasEditorTestPendingRuntimeDirty(),
-            "测试未处理 RuntimeDirty 队列，必须证明 tile 来自仍有效的已提交 world。");
-        Assert.IsTrue(cached, $"RuntimeDirty 期间首次请求的 flow tile 应能完成构建，diagnostic={diagnostic}");
-        Assert.Greater(velocity.magnitude, 0.2f, $"首次寻路不应因 RuntimeDirty 长时间停住，velocity={velocity}, diagnostic={diagnostic}");
+        ProcessRuntimeDirtyQueueUntilReady(2);
+        velocity = ResolveDeterministicFlowVelocityAfterQueue(ctx, goal, 2f, 512, out diagnostic);
+        Assert.Greater(velocity.magnitude, 0.2f, $"dirty world 提交后必须恢复导航，velocity={velocity}, diagnostic={diagnostic}");
     }
 
     [Test]
@@ -5563,28 +5545,6 @@ public class FlowFieldCrowdMovementSystemTests
 
         Assert.AreEqual(3.5f, reachableGoal.x, 0.001f, $"应选择当前 island 上离不可达目标最近的可达点 reachable={reachableGoal}");
         Assert.AreEqual(1.5f, reachableGoal.z, 0.001f, $"应保持最近可达走廊中心 reachable={reachableGoal}");
-    }
-
-    [Test]
-    public void 静止单位仍会作为动态避让障碍()
-    {
-        const int width = 8;
-        const int height = 3;
-        bool[] walkable = new bool[width * height];
-        for (int x = 0; x < width; x++)
-            SetWalkable(walkable, width, x, 1);
-
-        FlowFieldCrowdMovementSystem.SetEditorTestNavigationSource(width, height, 1f, Vector3.zero, walkable);
-
-        SimEntityContext mover = CreateEntity(new Vector3(0.5f, 0f, 1.5f));
-        SimEntityContext idleBlocker = CreateEntity(new Vector3(1.1f, 0f, 1.5f));
-
-        FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
-        Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(mover, new Vector3(7.5f, 0f, 1.5f), 2f, out Vector3 velocity));
-
-        Assert.GreaterOrEqual(velocity.x, 0f, $"单格窄路中的移动单位应朝目标保持非负前进速度，blocker={idleBlocker.Position} velocity={velocity}");
-        Assert.Less(velocity.x, 1f, $"单格窄路没有侧移空间时应对静止单位刹车，blocker={idleBlocker.Position} velocity={velocity}");
-        Assert.Less(Mathf.Abs(velocity.z), 0.05f, $"单格窄路不可强行生成不可走的侧移速度，blocker={idleBlocker.Position} velocity={velocity}");
     }
 
     public void 同一移动目标换格时会立即刷新导航目标()
@@ -6269,7 +6229,7 @@ public class FlowFieldCrowdMovementSystemTests
     }
 
     [Test]
-    public void 长路径PendingTile时不应直奔最终目标()
+    public void 长路径PendingTile且最终目标LOS清晰时允许直接推进()
     {
         FlowFieldNavigationConfig config = CreateConfig();
         config.SectorSizeInCells = 8;
@@ -6289,14 +6249,15 @@ public class FlowFieldCrowdMovementSystemTests
 
         FlowFieldCrowdMovementSystem.SetEditorTestClock(1, 0.1f);
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetSteeringVelocity(chaser, goal, 2f, out Vector3 velocity));
-        Assert.Greater(velocity.x, 0.5f, $"长路径 pending 阶段仍应朝下游 portal 前进，velocity={velocity}");
+        Assert.Greater(velocity.x, 0.5f, $"长路径 pending 阶段应朝可直达的最终目标推进，velocity={velocity}");
+        Assert.Greater(velocity.z, 0.05f, $"合法 LOS shortcut 应直接包含最终目标方向分量，velocity={velocity}");
 
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestLastSteeringSource(chaser.LogicEntityId.Value, out _, out bool hasLineOfSight));
-        Assert.IsFalse(hasLineOfSight, "跨 Sector 的 pending 阶段不能因为最终目标 LOS 畅通就跳过 PathHandle 的下一 Portal。");
+        Assert.IsTrue(hasLineOfSight, "跨 Sector 不能成为拒绝已验证 LOS shortcut 的理由。");
         Assert.IsTrue(FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
             chaser.LogicEntityId.Value,
             out string diagnostic));
-        StringAssert.Contains("tile-pending-portal-access", diagnostic);
+        StringAssert.Contains("direct-static-clear", diagnostic);
     }
 
     [Test]

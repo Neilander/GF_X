@@ -59,6 +59,7 @@ public partial class InGameUIForm : UIFormBase
         }
 
         TickDefendEnemySketch();
+        TickSkillPresentation();
     }
 
     protected override void OnButtonClick(object sender, Button btSelf)
@@ -172,9 +173,7 @@ public partial class InGameUIForm : UIFormBase
 
     private static void ClearSkillInputRequests()
     {
-        GF.DataModel.GetDataModel<InputModel>()?.ClearSkillRequests();
-        if (EntityRegistry.Player is ISkillCompHost skillHost)
-            skillHost.CancelRunningSkills();
+        SkillCastPresentationService.Cancel();
     }
 
     private void OnPhaseSwitchButtonGuideChanged()

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 public interface ISkillComp : ICapability
 {
@@ -6,6 +6,15 @@ public interface ISkillComp : ICapability
     void Skill(Fix64 deltaTime);
     void CancelSkills();
     void OnSkillChanged();
+}
+
+public interface ISkillActionPresentationProvider
+{
+    int SkillPresentationSlotCount { get; }
+    bool TryGetActiveSkillActionPresentation(
+        int slotIndex,
+        out SkillInfo skillInfo,
+        out string triggerName);
 }
 
 public static class LogicSkillStateService
@@ -75,6 +84,8 @@ public static class SkillCompDeterministicStateUtility
         hasher.Add(info.currentIndex);
         hasher.Add(info.isFinished);
         hasher.Add(info.entity?.LogicEntityId.Value ?? 0);
+        hasher.Add(info.hasRequestedWorldPosition);
+        AddFixedWorldPosition(hasher, info.requestedWorldPosition);
         WriteSelectableList(hasher, info is TargetPositionSkillInfo targetInfo ? targetInfo.selectTargets : info.currentInfo?.selectTargets);
         FixVector2 selectedPosition = info is TargetPositionSkillInfo targetPositionInfo
             ? targetPositionInfo.selectPos
