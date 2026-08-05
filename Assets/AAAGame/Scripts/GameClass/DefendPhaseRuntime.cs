@@ -1,4 +1,4 @@
-﻿﻿﻿using System;
+﻿using System;
 using System.Collections.Generic;
 using AAAGame.Card;
 using Stopwatch = System.Diagnostics.Stopwatch;
@@ -16,6 +16,7 @@ public static class DefendPhaseRuntime
 
     private static readonly ArchetypeUnitTypeMapper s_ArchetypeUnitTypeMapper = new();
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
+    private static readonly Dictionary<UnitType, int> s_AgentTypeIdByUnitType = new();
     private static readonly List<DefendSpawnPointRuntime> s_DefendSpawnPoints = new();
     private static readonly List<DefendWaveDefinition> s_DefendWaves = new();
     private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
@@ -26,6 +27,9 @@ public static class DefendPhaseRuntime
         (left, right) => left.CompareTo(right);
 
     private static bool s_SubscribedLogicUnitDead;
+    private static bool s_ArchetypeCacheConfigured;
+    private static bool s_SpawnPointCacheConfigured;
+    private static bool s_WaveConfigConfigured;
     private static int s_CachedLevelEntityId;
     private static int s_DefendRoundIndex;
     private static bool s_SpawnScheduleCompleted;
@@ -33,6 +37,10 @@ public static class DefendPhaseRuntime
     private static readonly List<PlannedSpawnEvent> s_PlannedSpawnEvents = new();
     private static int s_NextPlannedSpawnIndex;
     private static ulong s_SpawnRequestStartFrame;
+    private static Fix64 s_ArriveInterval;
+    private static Fix64 s_MinSpeedWorld;
+    private static Fix64 s_EndlessGrowthRate;
+    private static decimal s_DistanceConversionRate;
 
     public readonly struct DefendPreviewSpawnEntry
     {
@@ -57,31 +65,49 @@ public static class DefendPhaseRuntime
         ResetDefendPhaseState(keepRoundIndex: true);
     }
 
+    public static void ClearPreparedRuntime()
+    {
+        ResetDefendPhaseState(keepRoundIndex: false);
+        s_ArchetypeByUnitType.Clear();
+        s_AgentTypeIdByUnitType.Clear();
+        s_DefendSpawnPoints.Clear();
+        s_DefendWaves.Clear();
+        s_ArchetypeCacheConfigured = false;
+        s_SpawnPointCacheConfigured = false;
+        s_WaveConfigConfigured = false;
+        s_CachedLevelEntityId = 0;
+        s_WaveConfigLevelIdentifier = string.Empty;
+        s_ArriveInterval = Fix64.Zero;
+        s_MinSpeedWorld = Fix64.Zero;
+        s_EndlessGrowthRate = Fix64.Zero;
+        s_DistanceConversionRate = decimal.Zero;
+    }
+
     public static void PrepareForCurrentLevelIfNeeded()
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         EnsureSubscribedSoldierDead();
         double subscribeMs = stopwatch.Elapsed.TotalMilliseconds;
-        EnsureArchetypeCache();
+        ConfigureArchetypeCacheIfNeeded();
         double archetypeMs = stopwatch.Elapsed.TotalMilliseconds;
-        EnsureSpawnPointCache();
+        ConfigureSpawnPointCacheIfNeeded();
         double spawnPointMs = stopwatch.Elapsed.TotalMilliseconds;
-        EnsureWaveConfigLoaded();
+        ConfigureWaveRuntimeIfNeeded();
+        double waveMs = stopwatch.Elapsed.TotalMilliseconds;
+        if (s_DistanceConversionRate <= decimal.Zero)
+            s_DistanceConversionRate = DistanceUnitConverter.ReadDistanceConversionRateDecimal();
         Log.Info(
             "[DefendPhaseTiming] stage=prepare totalMs={0:F3} subscribeMs={1:F3} archetypeMs={2:F3} spawnPointMs={3:F3} waveMs={4:F3}",
             stopwatch.Elapsed.TotalMilliseconds,
             subscribeMs,
             archetypeMs - subscribeMs,
             spawnPointMs - archetypeMs,
-            stopwatch.Elapsed.TotalMilliseconds - spawnPointMs);
+            waveMs - spawnPointMs);
     }
 
     public static void EnterDefendPhase()
     {
-        EnsureSubscribedSoldierDead();
-        EnsureArchetypeCache();
-        EnsureSpawnPointCache();
-        EnsureWaveConfigLoaded();
+        RequirePreparedRuntime();
 
         ResetDefendPhaseState(keepRoundIndex: true);
         s_DefendRoundIndex++;
@@ -177,9 +203,7 @@ public static class DefendPhaseRuntime
             return false;
 
         results.Clear();
-        EnsureArchetypeCache();
-        EnsureSpawnPointCache();
-        EnsureWaveConfigLoaded();
+        PrepareForCurrentLevelIfNeeded();
 
         DefendWaveDefinition wave = ResolveWaveForRound(Mathf.Max(1, s_DefendRoundIndex + 1));
         if (wave == null || wave.Entries.Count == 0)
@@ -241,6 +265,8 @@ public static class DefendPhaseRuntime
     {
         if (pathCorners == null)
             throw new ArgumentNullException(nameof(pathCorners));
+
+        PrepareForCurrentLevelIfNeeded();
 
         pathCorners.Clear();
         navigationUpdatePending = false;
@@ -337,16 +363,13 @@ public static class DefendPhaseRuntime
         PhaseManager.SwitchToPhase(GamePhase.BuildBeforeInvade);
     }
 
-    private static void EnsureArchetypeCache()
+    private static void ConfigureArchetypeCacheIfNeeded()
     {
-        if (s_ArchetypeByUnitType.Count > 0)
+        if (s_ArchetypeCacheConfigured)
             return;
 
         foreach (Archetype archetype in Enum.GetValues(typeof(Archetype)))
         {
-            if (archetype == Archetype.None)
-                continue;
-
             var unitTypes = s_ArchetypeUnitTypeMapper.GetUnitTypes(archetype);
             foreach (UnitType unitType in unitTypes)
             {
@@ -354,22 +377,24 @@ public static class DefendPhaseRuntime
                     s_ArchetypeByUnitType[unitType] = archetype;
             }
         }
+        s_ArchetypeCacheConfigured = true;
     }
 
-    private static void EnsureSpawnPointCache()
+    private static void ConfigureSpawnPointCacheIfNeeded()
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         LevelEntity levelEntity = LevelEntity.ActiveLevelEntity;
         if (levelEntity == null)
-            return;
+            throw new InvalidOperationException("DefendPhaseRuntime cannot prepare spawn points without an active level entity.");
 
         int levelEntityId = levelEntity.Id;
-        if (s_CachedLevelEntityId == levelEntityId && s_DefendSpawnPoints.Count > 0)
+        if (s_SpawnPointCacheConfigured && s_CachedLevelEntityId == levelEntityId)
             return;
 
         s_CachedLevelEntityId = levelEntityId;
         s_DefendRoundIndex = 0;
         s_WaveConfigLevelIdentifier = string.Empty;
+        s_WaveConfigConfigured = false;
         s_DefendWaves.Clear();
         s_DefendSpawnPoints.Clear();
 
@@ -410,6 +435,7 @@ public static class DefendPhaseRuntime
         }
 
         s_DefendSpawnPoints.Sort(CompareDefendSpawnPoints);
+        s_SpawnPointCacheConfigured = true;
 
         Log.Info(
             "[DefendPhaseTiming] stage=spawn-point-cache totalMs={0:F3} presetPoints={1} defendPoints={2} cached={3} diagnosticsMs={4:F3}",
@@ -530,7 +556,7 @@ public static class DefendPhaseRuntime
         Vector3 position = point.Position;
         Stronghold stronghold = LevelEntity.GetStrongholdAtWorldPosition(position);
 
-        int smallAgentTypeId = ResolveAgentTypeId(UnitSize.Small);
+        int smallAgentTypeId = AgentTypeHelper.ResolveNavAgentTypeId(UnitSize.Small);
         bool flowSmall = FlowFieldCrowdMovementSystem.TryResolveLegalNavigationPoint(
             position,
             smallAgentTypeId,
@@ -577,31 +603,21 @@ public static class DefendPhaseRuntime
             agentTypeId);
     }
 
-    private static int ResolveAgentTypeId(UnitSize unitSize)
-    {
-        AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
-        if (helper == null)
-            throw new InvalidOperationException("DefendPhaseRuntime.ResolveAgentTypeId failed: AgentTypeHelper is not available.");
-
-        return helper.GetNavAgentTypeID(unitSize);
-    }
-
     private static int ResolveAgentTypeId(UnitType unitType)
     {
-        AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
-        if (helper == null)
-            throw new InvalidOperationException("DefendPhaseRuntime.ResolveAgentTypeId failed: AgentTypeHelper is not available.");
-
-        return helper.GetNavAgentTypeID(unitType);
+        return s_AgentTypeIdByUnitType.TryGetValue(unitType, out int agentTypeId)
+            ? agentTypeId
+            : throw new InvalidOperationException($"DefendPhaseRuntime has no prepared agent type for UnitType={unitType}.");
     }
 
-    private static void EnsureWaveConfigLoaded()
+    private static void ConfigureWaveRuntimeIfNeeded()
     {
         string levelIdentifier = ResolveCurrentLevelIdentifier();
         if (string.IsNullOrWhiteSpace(levelIdentifier))
-            return;
+            throw new InvalidOperationException("DefendPhaseRuntime cannot prepare waves without a level identifier.");
 
-        if (string.Equals(s_WaveConfigLevelIdentifier, levelIdentifier, StringComparison.Ordinal) && s_DefendWaves.Count > 0)
+        if (s_WaveConfigConfigured
+            && string.Equals(s_WaveConfigLevelIdentifier, levelIdentifier, StringComparison.Ordinal))
             return;
 
         s_WaveConfigLevelIdentifier = levelIdentifier;
@@ -609,8 +625,8 @@ public static class DefendPhaseRuntime
 
         if (!LevelSelectionService.TryGetLevelRow(levelIdentifier, out LevelTable levelRow, out string errorMessage) || levelRow == null)
         {
-            Log.Warning("[DefendPhase] 读取 LevelTable 行失败。level={0}, error={1}", levelIdentifier, errorMessage);
-            return;
+            throw new InvalidOperationException(
+                $"DefendPhaseRuntime failed to load LevelTable row. level={levelIdentifier}, error={errorMessage}");
         }
 
         AppendWaveFromPairs(levelRow.Def1Enemies);
@@ -624,13 +640,33 @@ public static class DefendPhaseRuntime
         AppendWaveFromPairs(levelRow.Def9Enemies);
         AppendWaveFromPairs(levelRow.Def10Enemies);
 
+        s_AgentTypeIdByUnitType.Clear();
+        for (int waveIndex = 0; waveIndex < s_DefendWaves.Count; waveIndex++)
+        {
+            DefendWaveDefinition wave = s_DefendWaves[waveIndex];
+            for (int entryIndex = 0; entryIndex < wave.Entries.Count; entryIndex++)
+            {
+                UnitType unitType = wave.Entries[entryIndex].UnitType;
+                s_AgentTypeIdByUnitType[unitType] = AgentTypeHelper.ResolveNavAgentTypeId(unitType);
+            }
+        }
+        s_ArriveInterval = ResolveFiniteConfigFixed(
+            DefendEnemyArriveIntervalConfigKey,
+            (Fix64)MinArriveIntervalSeconds);
+        Fix64 minSpeedProperty = ResolveFiniteConfigFixed(DefendEnemyMinSpeedConfigKey, Fix64.One);
+        s_MinSpeedWorld = Fix64.Max(
+            (Fix64)MinWorldSpeed,
+            DistanceUnitConverter.ConvertToWorld(minSpeedProperty));
+        s_EndlessGrowthRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(
+            DefendEndlessGrowthRateConfigKey);
+        s_WaveConfigConfigured = true;
+
         Log.Info("[DefendPhase] 防御波次配置加载完成。level={0}, waves={1}", levelIdentifier, s_DefendWaves.Count);
     }
 
     private static string ResolveCurrentLevelIdentifier()
     {
-        var inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-        return inGameData?.lvData?.Identifier;
+        return LevelSelectionService.SelectedLevelIdentifier;
     }
 
     private static void AppendWaveFromPairs(StringIntPair[] wavePairs)
@@ -644,9 +680,9 @@ public static class DefendPhaseRuntime
             string unitId = wavePairs[i].str;
             int count = wavePairs[i].num;
             if (!UnitTypeHelper.TryParseUnitTypeAndLevel(unitId, out UnitType unitType, out int unitLevel))
-                continue;
+                throw new InvalidOperationException($"DefendPhaseRuntime found an invalid wave unit identifier '{unitId}'.");
             if (count <= 0)
-                continue;
+                throw new InvalidOperationException($"DefendPhaseRuntime found a non-positive wave count. unit={unitId}, count={count}.");
 
             wave.Entries.Add(new DefendWaveEntry
             {
@@ -674,8 +710,7 @@ public static class DefendPhaseRuntime
             return CloneWave(s_DefendWaves[Mathf.Max(0, roundIndex - 1)], Fix64.One);
 
         int overflowRounds = roundIndex - s_DefendWaves.Count;
-        Fix64 growthRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(DefendEndlessGrowthRateConfigKey);
-        Fix64 scale = Fix64.Pow(growthRate, overflowRounds);
+        Fix64 scale = Fix64.Pow(s_EndlessGrowthRate, overflowRounds);
         return CloneWave(s_DefendWaves[s_DefendWaves.Count - 1], scale);
     }
 
@@ -721,16 +756,8 @@ public static class DefendPhaseRuntime
         if (wave == null || wave.Entries.Count == 0 || s_DefendSpawnPoints.Count == 0)
             return events;
 
-        Fix64 arriveInterval = ResolveFiniteConfigFixed(
-            DefendEnemyArriveIntervalConfigKey,
-            (Fix64)MinArriveIntervalSeconds);
-        ulong arriveIntervalTicks = SecondsToTicksCeiling(arriveInterval);
-        Fix64 minSpeedProperty = ResolveFiniteConfigFixed(
-            DefendEnemyMinSpeedConfigKey,
-            Fix64.One);
-        Fix64 minSpeedWorld = Fix64.Max(
-            (Fix64)MinWorldSpeed,
-            DistanceUnitConverter.ConvertToWorld(minSpeedProperty));
+        ulong arriveIntervalTicks = SecondsToTicksCeiling(s_ArriveInterval);
+        Fix64 minSpeedWorld = s_MinSpeedWorld;
         FixVector2 basePosition = ResolvePlayerBasePositionFixed();
 
         for (int i = 0; i < wave.Entries.Count; i++)
@@ -793,7 +820,7 @@ public static class DefendPhaseRuntime
                     }
                 }
 
-                Fix64 pointSpeedProperty = DistanceUnitConverter.ConvertFromWorld(pointSpeedWorld);
+                Fix64 pointSpeedProperty = DistanceUnitConverter.ConvertFromWorld(pointSpeedWorld, s_DistanceConversionRate);
                 ulong pointLastArrivalTicks = checked(
                     targetFirstArrivalTicks + checked((ulong)(spawnCount - 1) * arriveIntervalTicks));
                 previousLastArrivalTicks = pointLastArrivalTicks;
@@ -882,7 +909,14 @@ public static class DefendPhaseRuntime
         if (totalCount <= 0 || s_DefendSpawnPoints.Count == 0)
             return result;
 
-        bool hasArchetype = s_ArchetypeByUnitType.TryGetValue(unitType, out Archetype unitArchetype);
+        if (!s_ArchetypeByUnitType.TryGetValue(unitType, out Archetype unitArchetype))
+        {
+            Log.Info(
+                "[DefendPhase] no archetype mapping for unit; no spawn will be scheduled. unit={0}.",
+                unitType);
+            return result;
+        }
+
         var eligiblePoints = new List<DefendSpawnPointRuntime>();
         int totalWeightAllSides = 0;
 
@@ -895,11 +929,10 @@ public static class DefendPhaseRuntime
                 continue;
             }
 
-            bool archMatched = !hasArchetype
-                               || LogicBuildingQueryService.HasBuildingArchetype(
-                                   runtimePoint.StrongholdId,
-                                   ownerFactionId,
-                                   unitArchetype);
+            bool archMatched = LogicBuildingQueryService.HasBuildingArchetype(
+                runtimePoint.StrongholdId,
+                ownerFactionId,
+                unitArchetype);
             if (!archMatched)
                 continue;
 
@@ -913,26 +946,12 @@ public static class DefendPhaseRuntime
 
         if (eligiblePoints.Count == 0 || totalWeightAllSides <= 0)
         {
-            for (int i = 0; i < s_DefendSpawnPoints.Count; i++)
-            {
-                var runtimePoint = s_DefendSpawnPoints[i];
-                if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(runtimePoint.StrongholdId, out int ownerFactionId)
-                    || ownerFactionId == EntitySideHelper.PlayerFactionId)
-                {
-                    continue;
-                }
-
-                int weight = runtimePoint.Weight;
-                if (weight <= 0)
-                    continue;
-
-                eligiblePoints.Add(runtimePoint);
-                totalWeightAllSides += weight;
-            }
-        }
-
-        if (eligiblePoints.Count == 0 || totalWeightAllSides <= 0)
+            Log.Info(
+                "[DefendPhase] no eligible enemy stronghold for unit archetype; no spawn will be scheduled. unit={0} archetype={1}.",
+                unitType,
+                unitArchetype);
             return result;
+        }
 
         int allocatedTotal = 0;
         for (int i = 0; i < eligiblePoints.Count; i++)
@@ -1022,6 +1041,24 @@ public static class DefendPhaseRuntime
             return point.Identifier;
 
         return string.IsNullOrWhiteSpace(point.name) ? string.Empty : point.name;
+    }
+
+    private static void RequirePreparedRuntime()
+    {
+        if (!s_SubscribedLogicUnitDead
+            || !s_ArchetypeCacheConfigured
+            || !s_SpawnPointCacheConfigured
+            || !s_WaveConfigConfigured)
+        {
+            throw new InvalidOperationException(
+                "DefendPhaseRuntime was not prepared before entering the logic Defend phase.");
+        }
+        if (s_ArriveInterval <= Fix64.Zero
+            || s_MinSpeedWorld <= Fix64.Zero
+            || s_EndlessGrowthRate <= Fix64.Zero)
+        {
+            throw new InvalidOperationException("DefendPhaseRuntime prepared config contains a non-positive value.");
+        }
     }
 
     private static void ResetDefendPhaseState(bool keepRoundIndex)

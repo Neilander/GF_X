@@ -32,6 +32,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     private bool m_InPlaceLevelSwitchInProgress;
     private readonly LogicFrameClock m_LogicFrameClock = new LogicFrameClock();
     private InputManager m_LogicInputManager;
+    private CardSetup m_LogicCardSetup;
     private Func<double> m_LogicFrameScaleProvider;
     private Action<ulong, double> m_LogicFrameTickCallback;
     private bool m_LogicFrameClockStarted;
@@ -94,6 +95,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         EditorApplication.pauseStateChanged += OnEditorPauseStateChanged;
 #endif
         m_LogicInputManager = null;
+        m_LogicCardSetup = null;
         m_LogicFrameClockStarted = false;
         m_NextLogicFrameStatusLogFrame = 300;
 
@@ -125,6 +127,19 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         }
 
         UpdateLogicFrames();
+        LogicInteractionCommandService.UpdatePresentationEvents();
+        InGameDataModel.UpdatePresentationEvents();
+        SkillRuntimeDataModel.UpdatePresentationEvents();
+        LogicTechEffectCommandService.UpdatePresentationEvents();
+        BuildManager buildManager = GameEntry.GetComponent<BuildManager>();
+        if (buildManager != null)
+            buildManager.UpdatePresentation();
+        RewardManager rewardManager = GameEntry.GetComponent<RewardManager>();
+        if (rewardManager != null)
+            rewardManager.UpdatePresentation();
+        TutorialManager tutorialManager = GameEntry.GetComponent<TutorialManager>();
+        if (tutorialManager != null)
+            tutorialManager.UpdatePresentation();
         ProjectilePresentationService.UpdateRenderFrame();
         OnRuntimeUpdate(elapseSeconds, realElapseSeconds);
     }
@@ -145,6 +160,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         m_ProcedureOwner = null;
         m_InPlaceLevelSwitchInProgress = false;
         m_LogicInputManager = null;
+        m_LogicCardSetup = null;
         m_LogicFrameClockStarted = false;
         if (LogicReplayRuntime.IsRecording)
         {
@@ -494,6 +510,10 @@ public abstract class RuntimeProcedureBase : ProcedureBase
             if (inputManager == null)
                 throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: InputManager is null.");
             m_LogicInputManager = inputManager;
+            CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
+            if (cardSetup == null)
+                throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: CardSetup is null.");
+            m_LogicCardSetup = cardSetup;
             inputManager.BeginLogicInputTimeline(realtime);
             LogicFrameRuntime.StartTimeline();
             if (LogicReplayRuntime.ShouldRecordRuntimeSession && !LogicReplayRuntime.IsRecording)
@@ -507,6 +527,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
         if (m_LogicInputManager == null)
             throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: logic InputManager is null.");
+        if (m_LogicCardSetup == null)
+            throw new InvalidOperationException("RuntimeProcedureBase.UpdateLogicFrames failed: logic CardSetup is null.");
 
 #if UNITY_EDITOR
         if (m_EditorPauseNeedsClockRebase)
@@ -595,6 +617,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
     {
         LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
             m_LogicInputManager,
+            m_LogicCardSetup,
             frame,
             cutoffRealtime,
             out LogicInputFrame inputFrame);
@@ -604,6 +627,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
 
     private static LogicGameplayStateDigest ExecuteLogicFrame(
         InputManager logicInputManager,
+        CardSetup cardSetup,
         ulong frame,
         double cutoffRealtime,
         out LogicInputFrame inputFrame)
@@ -627,8 +651,8 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         LogicPhaseCommandService.ApplyFrame(frame);
         LogicSkillCastCommandService.ApplyFrame(frame);
         LogicMovementRegionConstraintService.ApplyFrame(frame);
-        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>()
-                              ?? throw new InvalidOperationException("RuntimeProcedureBase requires CardSetup for logic-frame card updates.");
+        if (cardSetup == null)
+            throw new ArgumentNullException(nameof(cardSetup));
         cardSetup.ApplyLogicFrame(frame);
         LogicInteractionCommandService.ApplyFrame(frame);
         LogicTechEffectCommandService.ApplyFrame(frame);
@@ -734,6 +758,7 @@ public abstract class RuntimeProcedureBase : ProcedureBase
         EditorLogicRuntimeStressGate.PrepareInputFrame(frame, cutoffRealtime);
         LogicGameplayStateDigest gameplayDigest = ExecuteLogicFrame(
             m_LogicInputManager,
+            m_LogicCardSetup,
             frame,
             cutoffRealtime,
             out LogicInputFrame inputFrame);

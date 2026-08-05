@@ -513,13 +513,12 @@ public partial class BuildingUpgradeTips : UIFormBase
             return;
 
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
-        float duration = ResolveHoldDurationSeconds(starCount);
-        float delta = (starCount / Mathf.Max(0.01f, duration)) * Time.deltaTime;
-
         bool pressing = IsBindingPressed(m_HoldBinding);
-        m_HoldProgressStars = pressing
-            ? Mathf.Min(starCount, m_HoldProgressStars + delta)
-            : Mathf.Max(0f, m_HoldProgressStars - delta);
+        m_HoldProgressStars = AdvanceHoldProgressStars(
+            m_HoldProgressStars,
+            pressing,
+            starCount,
+            Time.deltaTime);
 
         int highlightCount;
         if (pressing)
@@ -560,6 +559,19 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         if (!pressing && m_HoldProgressStars <= 1e-4f)
             ResetHoldState();
+    }
+
+    private static float AdvanceHoldProgressStars(
+        float current,
+        bool pressing,
+        int starCount,
+        float deltaTime)
+    {
+        float duration = ResolveHoldDurationSeconds(starCount);
+        float delta = (starCount / Mathf.Max(0.01f, duration)) * deltaTime;
+        return pressing
+            ? Mathf.Min(starCount, current + delta)
+            : Mathf.Max(0f, current - delta);
     }
 
     private UpgradeOptionBinding ResolvePressedBinding()
@@ -603,7 +615,14 @@ public partial class BuildingUpgradeTips : UIFormBase
             success = techManager.UpgradeBuilding(m_TargetBuilding, m_SelectedBinding.UpgradeBuildingId, m_SelectedBinding.TechId);
 
         if (success)
-            ClearCoinPreviewDeduction();
+        {
+            IngameCoinPreviewState.CommitPreviewDeduction(
+                GetInstanceID(),
+                m_TargetBuilding.LogicEntityId,
+                isResearch
+                    ? LogicInteractionActionKind.ResearchTech
+                    : LogicInteractionActionKind.UpgradeBuilding);
+        }
         else
             RefreshView();
     }
@@ -1009,10 +1028,10 @@ public partial class BuildingUpgradeTips : UIFormBase
         }
 
         bool holding = IsPointerHoldingOnRecycleButton();
-        float delta = Time.deltaTime / Mathf.Max(0.01f, RecycleHoldDurationSeconds);
-        m_RecycleHoldProgress = holding
-            ? Mathf.Min(1f, m_RecycleHoldProgress + delta)
-            : Mathf.Max(0f, m_RecycleHoldProgress - delta);
+        m_RecycleHoldProgress = AdvanceRecycleHoldProgress(
+            m_RecycleHoldProgress,
+            holding,
+            Time.deltaTime);
 
         if (varRecycleFill != null)
             varRecycleFill.fillAmount = m_RecycleHoldProgress;
@@ -1025,6 +1044,14 @@ public partial class BuildingUpgradeTips : UIFormBase
 
         if (!holding && m_RecycleHoldProgress <= 1e-4f)
             m_RecycleTriggered = false;
+    }
+
+    private static float AdvanceRecycleHoldProgress(float current, bool holding, float deltaTime)
+    {
+        float delta = deltaTime / Mathf.Max(0.01f, RecycleHoldDurationSeconds);
+        return holding
+            ? Mathf.Min(1f, current + delta)
+            : Mathf.Max(0f, current - delta);
     }
 
     private bool CanShowRecycle()

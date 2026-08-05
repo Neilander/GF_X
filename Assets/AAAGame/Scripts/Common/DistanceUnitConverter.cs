@@ -45,6 +45,20 @@ public static class DistanceUnitConverter
         return QuantizeRawOutward(DistanceConversionRateKey, scaledRaw);
     }
 
+    public static Fix64 ConvertFromWorld(Fix64 worldValue, decimal conversionRate)
+    {
+        if (conversionRate <= decimal.Zero)
+            throw new System.ArgumentOutOfRangeException(nameof(conversionRate), conversionRate, "Distance conversion rate must be positive.");
+
+        decimal scaledRaw = worldValue.RawValue / conversionRate;
+        return QuantizeRawOutward(DistanceConversionRateKey, scaledRaw);
+    }
+
+    public static decimal ReadDistanceConversionRateDecimal()
+    {
+        return ResolveDistanceConversionRateDecimal();
+    }
+
     public static float ConvertToWorldFloat(Fix64 tableValue)
     {
         return (float)ConvertToWorld(tableValue);

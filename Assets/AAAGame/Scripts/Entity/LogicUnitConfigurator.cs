@@ -247,7 +247,7 @@ public static class LogicUnitConfigurator
         if (entityParams.BrainType != BrainType.DefendEnemyAI)
             return null;
 
-        GameEndManager gameEndManager = GameEntry.GetComponent<GameEndManager>();
+        GameEndManager gameEndManager = GameEndManager.Current;
         if (gameEndManager == null)
             throw new InvalidOperationException("LogicUnitConfigurator.ResolveDefendFallbackTarget failed: GameEndManager is missing.");
 

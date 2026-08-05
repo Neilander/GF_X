@@ -70,6 +70,13 @@ public class GlobalBuffManager : GameFrameworkComponent
     private BuildingTechRuntimeEffectSO m_BuildingTechRuntimeEffect;
 
     public TechScopeResolver ScopeResolver => m_TechScopeResolver;
+    public static GlobalBuffManager Current => s_Current;
+
+    public static GlobalBuffManager RequireCurrent()
+    {
+        return s_Current
+               ?? throw new InvalidOperationException("GlobalBuffManager is required before logic runtime effects are applied.");
+    }
 
     public static void WriteCurrentDeterministicState(LogicStateHasher hasher)
     {

@@ -14,6 +14,9 @@ public class BuildManager : GameFrameworkComponent
     private bool m_IsSubscribedLogicTechApplied;
     private bool m_IsSubscribedBuildingOwnership;
     private bool m_IsSubscribedInteractionCommands;
+    private TechManager m_TechManager;
+    private GlobalBuffManager m_GlobalBuffManager;
+    private int m_BuildingRecycleRefundRate;
     private readonly Queue<string> m_PendingPresentationAudio = new Queue<string>();
 
     public bool HasConstructOption(IBuildingLogicContext owner)
@@ -248,7 +251,7 @@ public class BuildManager : GameFrameworkComponent
         if (spent <= 0)
             return 0;
 
-        int refundRate = GF.Config != null ? GF.Config.GetInt(BuildingRecycleRefundRateConfigKey, 0) : 0;
+        int refundRate = m_BuildingRecycleRefundRate;
         refundRate = LevelTagRuntime.ModifyRecycleRefundRate(refundRate);
         if (refundRate <= 0)
             return 0;
@@ -283,11 +286,6 @@ public class BuildManager : GameFrameworkComponent
         FixVector2 position = owner.PositionFixed;
         string buildingInstanceId = owner.BuildingInstanceId;
         int refund = CalculateRecycleRefund(owner);
-        TechManager techManager = GameEntry.GetComponent<TechManager>()
-                                  ?? throw new InvalidOperationException("Building recycle requires TechManager.");
-        GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
-                                                ?? throw new InvalidOperationException("Building recycle requires GlobalBuffManager.");
-
         LogicEntityId entityId = BuildBuildingInternalFixed(
             lv0BuildingId,
             position,
@@ -301,8 +299,8 @@ public class BuildManager : GameFrameworkComponent
         if (!entityId.IsValid)
             return false;
 
-        techManager.RollbackTechsForBuilding(owner);
-        globalBuffManager.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionId);
+        m_TechManager.RollbackTechsForBuilding(owner);
+        m_GlobalBuffManager.ClearBuildingRuntimeTechState(buildingInstanceId, owner.OwnerFactionId);
         OnBuildingDemolished(owner);
         InGameDataModel.ResetBuildingCostSpent(buildingInstanceId);
         LogicEntityLifecycleService.RequestDespawnForCurrentInteractionFrame(owner.LogicEntityId);
@@ -344,9 +342,10 @@ public class BuildManager : GameFrameworkComponent
         string buildingInstanceId = null,
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
-        bool isNavigationStaticBaked = false)
+        bool isNavigationStaticBaked = false,
+        int defaultOwnerFactionId = EntitySideHelper.EnemyFactionId)
     {
-        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId, isGameEndConditionBuilding, initialCoinReserves, isNavigationStaticBaked);
+        return TryBuildBuildingForLevelInit(buildingId, position, out _, buildingInstanceId, isGameEndConditionBuilding, initialCoinReserves, isNavigationStaticBaked, defaultOwnerFactionId);
     }
 
     // 关卡初始化专用：忽略建造条件与金币消耗，并返回稳定 BuildingInstanceId。
@@ -357,7 +356,8 @@ public class BuildManager : GameFrameworkComponent
         string buildingInstanceId = null,
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
-        bool isNavigationStaticBaked = false)
+        bool isNavigationStaticBaked = false,
+        int defaultOwnerFactionId = EntitySideHelper.EnemyFactionId)
     {
         resolvedBuildingInstanceId = string.IsNullOrWhiteSpace(buildingInstanceId)
             ? LogicPersistentIdAllocator.AllocateBuildingInstanceId()
@@ -371,7 +371,8 @@ public class BuildManager : GameFrameworkComponent
             consumeCoins: false,
             isGameEndConditionBuilding: isGameEndConditionBuilding,
             initialCoinReserves: initialCoinReserves,
-            isNavigationStaticBaked: isNavigationStaticBaked);
+            isNavigationStaticBaked: isNavigationStaticBaked,
+            defaultOwnerFactionId: defaultOwnerFactionId);
         if (!entityId.IsValid)
         {
             resolvedBuildingInstanceId = null;
@@ -453,7 +454,8 @@ public class BuildManager : GameFrameworkComponent
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
         bool isNavigationStaticBaked = false,
-        bool currentInteractionFrameLifecycle = false)
+        bool currentInteractionFrameLifecycle = false,
+        int defaultOwnerFactionId = EntitySideHelper.PlayerFactionId)
     {
         return BuildBuildingInternalFixed(
             buildingId,
@@ -465,7 +467,8 @@ public class BuildManager : GameFrameworkComponent
             isGameEndConditionBuilding,
             initialCoinReserves,
             isNavigationStaticBaked,
-            currentInteractionFrameLifecycle);
+            currentInteractionFrameLifecycle,
+            defaultOwnerFactionId);
     }
 
     private LogicEntityId BuildBuildingInternalFixed(
@@ -478,18 +481,27 @@ public class BuildManager : GameFrameworkComponent
         bool isGameEndConditionBuilding = false,
         int? initialCoinReserves = null,
         bool isNavigationStaticBaked = false,
-        bool currentInteractionFrameLifecycle = false)
+        bool currentInteractionFrameLifecycle = false,
+        int defaultOwnerFactionId = EntitySideHelper.PlayerFactionId)
     {
         BuildingData buildingData = BuildingDataModel.GetBuildingData(buildingId);
         if (buildingData == null)
             return default;
 
         string strongholdId = null;
-        int ownerFactionId = EntitySideHelper.PlayerFactionId;
+        int ownerFactionId = defaultOwnerFactionId;
         if (LogicStrongholdMap.TryResolveStrongholdId(position, out string resolvedStrongholdId))
         {
             strongholdId = resolvedStrongholdId;
             ownerFactionId = LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId);
+        }
+        else if (defaultOwnerFactionId == EntitySideHelper.EnemyFactionId)
+        {
+            Log.Info(
+                "BuildManager level-init building is outside every stronghold; defaulting to enemy. building={0} raw=({1},{2}).",
+                buildingId,
+                position.x.RawValue,
+                position.y.RawValue);
         }
 
         if (checkCondition && !SatisfyBuildCondition(buildingData, ownerFactionId))
@@ -562,6 +574,9 @@ public class BuildManager : GameFrameworkComponent
     private int GetRequiredBaseLevel(BuildingData buildingData)
     {
         if (buildingData == null || buildingData.Type == BuilType.Base)
+            return 0;
+
+        if (buildingData.Arche == Archetype.None)
             return 0;
 
         return LevelTagRuntime.ModifyRequiredBaseLevel(Mathf.Clamp(buildingData.Lv, 1, 3));
@@ -725,7 +740,7 @@ public class BuildManager : GameFrameworkComponent
         TrySubscribeBuildingOwnershipEvent();
     }
 
-    private void Update()
+    public void UpdatePresentation()
     {
         if (m_PendingPresentationAudio.Count == 0 || AudioManager.Instance == null)
             return;
@@ -736,6 +751,13 @@ public class BuildManager : GameFrameworkComponent
 
     public void PrepareRuntimeDependencies()
     {
+        m_TechManager = GameEntry.GetComponent<TechManager>()
+                        ?? throw new InvalidOperationException("BuildManager requires TechManager during preload.");
+        m_GlobalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
+                              ?? throw new InvalidOperationException("BuildManager requires GlobalBuffManager during preload.");
+        if (GF.Config == null)
+            throw new InvalidOperationException("BuildManager requires initialized game config during preload.");
+        m_BuildingRecycleRefundRate = GF.Config.GetInt(BuildingRecycleRefundRateConfigKey, 0);
         TrySubscribeInteractionCommands();
         SubscribeLogicTechAppliedEvent();
         TrySubscribeBuildingOwnershipEvent();
@@ -793,16 +815,12 @@ public class BuildManager : GameFrameworkComponent
                 break;
             case LogicInteractionActionKind.UpgradeBuilding:
             {
-                TechManager techManager = GameEntry.GetComponent<TechManager>()
-                                          ?? throw new InvalidOperationException("TechManager is unavailable while applying an upgrade interaction.");
-                applied = techManager.ApplyScheduledUpgradeBuilding(owner, command.PrimaryId, command.SecondaryId);
+                applied = m_TechManager.ApplyScheduledUpgradeBuilding(owner, command.PrimaryId, command.SecondaryId);
                 break;
             }
             case LogicInteractionActionKind.ResearchTech:
             {
-                TechManager techManager = GameEntry.GetComponent<TechManager>()
-                                          ?? throw new InvalidOperationException("TechManager is unavailable while applying a research interaction.");
-                applied = techManager.ApplyScheduledResearchTech(owner, command.PrimaryId);
+                applied = m_TechManager.ApplyScheduledResearchTech(owner, command.PrimaryId);
                 break;
             }
             case LogicInteractionActionKind.RecycleBuilding:

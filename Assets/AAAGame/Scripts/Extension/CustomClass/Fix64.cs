@@ -963,6 +963,10 @@ public struct FixVector2
 
     public static Fix64 Magnitude(FixVector2 a)
     {
+        if (a.x == Fix64.Zero)
+            return Fix64.Abs(a.y);
+        if (a.y == Fix64.Zero)
+            return Fix64.Abs(a.x);
         return Fix64.Sqrt(FixVector2.SqrMagnitude(a));
     }
 

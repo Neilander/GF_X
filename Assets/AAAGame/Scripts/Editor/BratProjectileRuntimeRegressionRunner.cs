@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.IO;
 using System.Collections.Generic;
@@ -21,7 +21,7 @@ internal static class BratProjectileRuntimeRegressionRunner
     private const string StartedUtcKey = SessionPrefix + "StartedUtc";
     private const double StateTimeoutSeconds = 20.0;
     private static Fix64 NearbyRadius => DistanceUnitConverter.ConvertToWorld((Fix64)225);
-    private static Fix64 NearbySurfaceDistance => NearbyRadius - (Fix64)0.5f;
+    private static Fix64 NearbySurfaceDistance => NearbyRadius - Fix64.FromRaw(2048);
     private static readonly TestCapability TargetAttackLocker = new TestCapability();
     private static readonly TestCapability AttackerSetupLocker = new TestCapability();
     private static readonly FieldInfo ProjectileIdField = typeof(Projectile).GetField(
@@ -222,8 +222,8 @@ internal static class BratProjectileRuntimeRegressionRunner
         bool projectileScenario = string.Equals(name, "projectile", StringComparison.Ordinal);
         Fix64 attackRange = DistanceUnitConverter.ConvertToWorld((Fix64)650);
         Fix64 targetOffset = projectileScenario
-            ? (NearbyRadius + attackRange) / (Fix64)2 + (Fix64)0.5f
-            : NearbyRadius + (Fix64)2.5f;
+            ? (NearbyRadius + attackRange) / Fix64.FromRaw(8192) + Fix64.FromRaw(2048)
+            : NearbyRadius + Fix64.FromRaw(10240);
         FixVector2 targetPosition = attackerPosition + new FixVector2(targetOffset, Fix64.Zero);
         LogicEntityId attackerId = SoldierFactory.ShowSoldierFixed(
             UnitType.Unit_Brat,
@@ -242,7 +242,7 @@ internal static class BratProjectileRuntimeRegressionRunner
         if (projectileScenario)
         {
             FixVector2 nearbyTriggerPosition = attackerPosition
-                                               + new FixVector2(Fix64.Zero, NearbyRadius + (Fix64)2.5f);
+                                               + new FixVector2(Fix64.Zero, NearbyRadius + Fix64.FromRaw(10240));
             nearbyTriggerId = SoldierFactory.ShowSoldierFixed(
                 UnitType.Unit_HiredBodyguard,
                 nearbyTriggerPosition,

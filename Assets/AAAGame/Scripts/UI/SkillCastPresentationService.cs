@@ -67,19 +67,7 @@ public static class SkillCastPresentationService
                 $"Skill aim caster view does not implement ICastRangePresenter. caster={caster.LogicEntityId.Value}, view={view.GetType().FullName}.");
         }
 
-        s_Generation = checked(s_Generation + 1);
-        s_SlotIndex = slotIndex;
-        s_Caster = caster;
-        s_CasterView = view;
-        s_RangePresenter = presenter;
-        s_Descriptor = descriptor;
-        s_Selector = null;
-        s_LastWorldPosition = caster.PositionFixed;
-        s_HasWorldPosition = false;
-        IsAiming = true;
-        Changed?.Invoke();
-
-        presenter.ShowCastRange((float)descriptor.CastRadius);
+        BeginAimPresentation(slotIndex, caster, view, presenter, descriptor);
         UpdateAim(inputManager, screenPosition);
         ShowSelector(s_Generation);
         return true;
@@ -108,6 +96,32 @@ public static class SkillCastPresentationService
         if (!inputManager.TryGetSelectionWorldPosition(screenPosition, out FixVector2 requested))
             return;
 
+        SetAimWorldPosition(requested);
+    }
+
+    private static void BeginAimPresentation(
+        int slotIndex,
+        IEntityContext caster,
+        MAEntity view,
+        ICastRangePresenter presenter,
+        SkillCastPreviewDescriptor descriptor)
+    {
+        s_Generation = checked(s_Generation + 1);
+        s_SlotIndex = slotIndex;
+        s_Caster = caster;
+        s_CasterView = view;
+        s_RangePresenter = presenter;
+        s_Descriptor = descriptor;
+        s_Selector = null;
+        s_LastWorldPosition = caster.PositionFixed;
+        s_HasWorldPosition = false;
+        IsAiming = true;
+        Changed?.Invoke();
+        presenter.ShowCastRange((float)descriptor.CastRadius);
+    }
+
+    private static void SetAimWorldPosition(FixVector2 requested)
+    {
         s_LastWorldPosition = requested;
         s_HasWorldPosition = true;
         FixVector2 previewPosition = PositionSelectAction.ClampToRadius(

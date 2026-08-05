@@ -341,7 +341,7 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
     public int GetArmyForce()
     {
         Fix64 baseValue = (Fix64)GetArmyForceWithoutRuntimeRules();
-        GlobalBuffManager manager = GameEntry.GetComponent<GlobalBuffManager>();
+        GlobalBuffManager manager = GlobalBuffManager.Current;
         Fix64 runtimeBonus = manager != null
             ? manager.CalculateRuntimeArmyForceBonus(this)
             : LevelTagRuntime.CalculateArmyForceBonus(this);
@@ -838,7 +838,15 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
                 }
                 FixVector2 frameStartPosition = Position;
                 FixVector2 displacement = resolved - frameStartPosition;
-                UpdateForwardForMoveCommit(frameStartPosition, displacement);
+                FixVector2 facingDisplacement = displacement;
+                if (Alive && !IsBuildingEntity && CombatShape.Radius > Fix64.Zero)
+                {
+                    LogicAgentCollisionShadowState collisionState = LogicAgentCollisionShadowService.GetRequiredState(
+                        EntityId,
+                        LogicFrameRuntime.CurrentFrame);
+                    facingDisplacement -= collisionState.PairCorrection;
+                }
+                UpdateForwardForMoveCommit(frameStartPosition, facingDisplacement);
                 Position = resolved;
                 m_MoveComp.CommitResolvedDisplacement(displacement);
                 m_MoveExecutor.CommitPreparedLogicFrame(LogicFrameRuntime.CurrentFrame);
@@ -855,6 +863,9 @@ public sealed class LogicEntityState : ILogicFrameEntity, ISkillCompHost, IBuild
 
     private void UpdateForwardForMoveCommit(FixVector2 frameStartPosition, FixVector2 displacement)
     {
+        if (IsBuildingEntity)
+            return;
+
         IEntityContext target = m_TargetingComp?.CurrentTarget;
         if (m_AtkComp?.IsAttacking == true && target?.Alive == true)
         {

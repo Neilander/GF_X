@@ -83,6 +83,9 @@ atkComp.Attack(Fix64.Zero);
             dict.GetType().GetMethod("Add").Invoke(dict, new[] { pair, model });
         }
 
+        if (current.GetDataModel<InputModel>() == null)
+            current.CreateDataModel<InputModel>();
+
         var phaseField = typeof(InGameDataModel).GetField("m_IngameValue", BindingFlags.Instance | BindingFlags.NonPublic);
         var values = new Dictionary<IngameValueType, int>
         {

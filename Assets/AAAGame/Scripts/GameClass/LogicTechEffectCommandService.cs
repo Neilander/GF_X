@@ -36,6 +36,7 @@ public static class LogicTechEffectCommandService
     private static readonly ReadOnlyCollection<LogicTechEffectCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicTechEffectCommand> s_Pending = new List<LogicTechEffectCommand>();
     private static readonly List<LogicTechEffectCommand> s_Due = new List<LogicTechEffectCommand>();
+    private static readonly Queue<LogicTechEffectCommand> s_PendingPresentation = new Queue<LogicTechEffectCommand>();
     private static ulong s_LastSequence;
     private static ulong s_AppliedHistoryHash;
     private static int s_AppliedCount;
@@ -69,6 +70,21 @@ public static class LogicTechEffectCommandService
 
         IsActive = false;
         ClearState();
+    }
+
+    public static void UpdatePresentationEvents()
+    {
+        if (s_PendingPresentation.Count == 0)
+            return;
+        if (GF.Event == null)
+            throw new InvalidOperationException("LogicTechEffectCommandService cannot publish presentation events before GF.Event is initialized.");
+        while (s_PendingPresentation.Count > 0)
+        {
+            LogicTechEffectCommand command = s_PendingPresentation.Dequeue();
+            GF.Event.Fire(
+                typeof(InGameDataModel),
+                TechUnlockedEventArgs.Create(command.TechId, command.OwnerFactionId, command.SourceBuildingInstanceId));
+        }
     }
 
     public static LogicTechEffectCommand ScheduleForNextFrame(
@@ -274,9 +290,6 @@ public static class LogicTechEffectCommandService
 
     private static void PublishEffectApplying(LogicTechEffectCommand command)
     {
-        if (GF.Event == null)
-            throw new InvalidOperationException("LogicTechEffectCommandService.ApplyFrame failed: GF.Event is unavailable.");
-
         InGameDataModel.ApplyScheduledTechUnlock(command);
 
         Action<LogicTechEffectCommand> handler = EffectApplying;
@@ -286,9 +299,7 @@ public static class LogicTechEffectCommandService
             throw new InvalidOperationException("LogicTechEffectCommandService.ApplyFrame failed: exactly one runtime tech-effect consumer is required.");
 
         handler(command);
-        GF.Event.Fire(
-            typeof(InGameDataModel),
-            TechUnlockedEventArgs.Create(command.TechId, command.OwnerFactionId, command.SourceBuildingInstanceId));
+        s_PendingPresentation.Enqueue(command);
     }
 
     private static void RecordApplied(LogicTechEffectCommand command)
@@ -339,5 +350,6 @@ public static class LogicTechEffectCommandService
         s_History.Clear();
         s_Pending.Clear();
         s_Due.Clear();
+        s_PendingPresentation.Clear();
     }
 }

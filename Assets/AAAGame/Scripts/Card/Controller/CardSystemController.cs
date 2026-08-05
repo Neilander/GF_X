@@ -13,6 +13,25 @@ namespace AAAGame.Card
     {
         private const string DiscardResourceConversionRateConfigKey = "DiscardResourceConversionRate";
 
+        private enum CardPresentationEventKind
+        {
+            Drawn,
+            Played,
+            Discarded,
+        }
+
+        private readonly struct CardPresentationEvent
+        {
+            public CardPresentationEvent(CardPresentationEventKind kind, CardModel cardModel)
+            {
+                Kind = kind;
+                CardModel = cardModel ?? throw new ArgumentNullException(nameof(cardModel));
+            }
+
+            public CardPresentationEventKind Kind { get; }
+            public CardModel CardModel { get; }
+        }
+
         private sealed class Card
         {
             public ICardDataProvider CardData { get; }
@@ -52,12 +71,18 @@ namespace AAAGame.Card
         private readonly List<ICardDataProvider> m_OwnedPlaceableCardProviders = new List<ICardDataProvider>();
         private readonly HashSet<string> m_OwnedPlaceableCardProviderKeys = new HashSet<string>();
         private ulong m_LastCardRuntimeId;
+        private int m_DiscardResourceConversionRate;
+        private readonly Queue<CardPresentationEvent> m_PendingPresentationEvents = new Queue<CardPresentationEvent>();
 
         /// <summary>
         /// 初始化
         /// </summary>
-        public void Initialize()
+        public void Initialize(int discardResourceConversionRate)
         {
+            if (discardResourceConversionRate <= 0)
+                throw new ArgumentOutOfRangeException(nameof(discardResourceConversionRate));
+            m_DiscardResourceConversionRate = discardResourceConversionRate;
+            m_PendingPresentationEvents.Clear();
             // 初始化模型
             m_HandModel = new PlayerHandModel(LevelTagRuntime.ModifyMaxHandCards(CardConst.MaxHandCards));
 
@@ -69,8 +94,8 @@ namespace AAAGame.Card
             {
                 if (card != null)
                 {
-                    GameFramework.Event.GameEventArgs cardEvent = CardDrawnEventArgs.Create(card);
-                    GF.Event.Fire(this, cardEvent);
+                    m_PendingPresentationEvents.Enqueue(
+                        new CardPresentationEvent(CardPresentationEventKind.Drawn, card));
                 }
             };
 
@@ -483,6 +508,33 @@ namespace AAAGame.Card
             m_PlacementController.UpdatePlacement();
         }
 
+        public void UpdatePresentationEvents()
+        {
+            if (m_PendingPresentationEvents.Count == 0)
+                return;
+            if (GF.Event == null)
+                throw new InvalidOperationException("CardSystemController cannot publish presentation events before GF.Event is initialized.");
+
+            while (m_PendingPresentationEvents.Count > 0)
+            {
+                CardPresentationEvent pending = m_PendingPresentationEvents.Dequeue();
+                switch (pending.Kind)
+                {
+                    case CardPresentationEventKind.Drawn:
+                        GF.Event.Fire(this, CardDrawnEventArgs.Create(pending.CardModel));
+                        break;
+                    case CardPresentationEventKind.Played:
+                        GF.Event.Fire(this, CardPlayedEventArgs.Create(pending.CardModel));
+                        break;
+                    case CardPresentationEventKind.Discarded:
+                        GF.Event.Fire(this, CardDiscardedEventArgs.Create(pending.CardModel));
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(pending.Kind), pending.Kind, "Unknown card presentation event kind.");
+                }
+            }
+        }
+
         /// <summary>
         /// 确认放置
         /// </summary>
@@ -633,7 +685,8 @@ namespace AAAGame.Card
                 LogicCardCommandKind.Play,
                 cardModel.RuntimeId,
                 sourceBuildingInstanceId);
-            GF.Event.Fire(this, CardPlayedEventArgs.Create(cardModel));
+            m_PendingPresentationEvents.Enqueue(
+                new CardPresentationEvent(CardPresentationEventKind.Played, cardModel));
             Debug.Log($"[Card] Card played on logic frame: {cardModel.GetCardName()}, frame={LogicTimeControlService.CurrentFrame}");
         }
 
@@ -646,27 +699,15 @@ namespace AAAGame.Card
                 LogicCardCommandKind.Discard,
                 cardModel.RuntimeId,
                 cardModel.GetSourceBuildingInstanceId());
-            GF.Event.Fire(this, CardDiscardedEventArgs.Create(cardModel));
+            m_PendingPresentationEvents.Enqueue(
+                new CardPresentationEvent(CardPresentationEventKind.Discarded, cardModel));
             Debug.Log($"[Card] Card discarded on logic frame: {cardModel.GetCardName()}, frame={LogicTimeControlService.CurrentFrame}");
         }
 
         private void ApplyDiscardResourceReward(CardModel cardModel)
         {
-            if (GF.Config == null)
-            {
-                Log.Error("[Card] Discard reward skipped: GF.Config is not ready.");
-                return;
-            }
-
             int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-            int baseConversionRate = GF.Config.GetInt(DiscardResourceConversionRateConfigKey);
-            if (baseConversionRate <= 0)
-            {
-                Log.Error("[Card] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, baseConversionRate);
-                return;
-            }
-
-            int conversionRate = DiscardRewardModifierService.CalculateConversionRate(baseConversionRate);
+            int conversionRate = DiscardRewardModifierService.CalculateConversionRate(m_DiscardResourceConversionRate);
             int gainedCoin = occupiedSupply / conversionRate;
             Log.Info("[Card] Discard reward calc. card={0}, occupiedSupply={1}, rate={2}, gainedCoin={3}",
                 cardModel.GetCardName(), occupiedSupply, conversionRate, gainedCoin);
@@ -790,6 +831,7 @@ namespace AAAGame.Card
 
         public void ShutdownPresentation()
         {
+            m_PendingPresentationEvents.Clear();
             m_PlacementController?.Shutdown();
             m_EnemyBuildingForbiddenZoneController?.Shutdown();
             m_PlacementController = null;

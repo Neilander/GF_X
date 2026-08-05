@@ -84,7 +84,7 @@ public static class LogicBuildingQueryService
         int ownerFactionId,
         Archetype archetype)
     {
-        if (string.IsNullOrWhiteSpace(strongholdId) || archetype == Archetype.None)
+        if (string.IsNullOrWhiteSpace(strongholdId))
             return false;
 
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
@@ -103,6 +103,9 @@ public static class LogicBuildingQueryService
                 throw new InvalidOperationException(
                     $"Logic building {building.LogicEntityId.Value} has no BuildingData.");
             }
+
+            if (building.BuildingData.Lv == 0)
+                continue;
 
             if (building.BuildingData.Arche == archetype)
                 return true;

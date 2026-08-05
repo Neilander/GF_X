@@ -18,6 +18,7 @@ public class LogicDamageEventServiceTests
     [SetUp]
     public void SetUp()
     {
+        CriticalDamageUtility.PrepareRuntimeDependencies();
         if (LogicFrameRuntime.IsActive)
             LogicFrameRuntime.End();
         LogicFrameRuntime.Begin();

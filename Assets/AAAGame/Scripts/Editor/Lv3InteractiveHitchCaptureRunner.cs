@@ -797,6 +797,7 @@ internal static class Lv3InteractiveHitchCaptureRunner
         private FixVector2 _lastPairCorrection;
         private FixVector2 _lastStaticCorrection;
         private FixVector2 _lastRegionCorrection;
+        private FixVector2 _previousPursuitForward;
         private Fix64 _lastSpeed;
         private string _lastFlowDiagnostic = "unavailable";
         private readonly string _sourceStrongholdId;
@@ -842,6 +843,9 @@ internal static class Lv3InteractiveHitchCaptureRunner
         public Fix64 MaximumDistanceReduction { get; private set; }
         public int PairCorrectionFrameCount { get; private set; }
         public Fix64 MaxPairCorrection { get; private set; }
+        public int PairDrivenFacingMismatchFrameCount { get; private set; }
+        public int NonPairFacingMismatchFrameCount { get; private set; }
+        public int PursuitForwardAbruptTurnFrameCount { get; private set; }
         public Fix64 MinimumHeroDistance { get; private set; } = Fix64.FromRaw(long.MaxValue);
 
         public bool IsVerified => ProximityFrame > 0
@@ -934,29 +938,68 @@ internal static class Lv3InteractiveHitchCaptureRunner
             FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(
                 _soldierId.Value,
                 out _lastFlowDiagnostic);
-            _previousPosition = soldier.PositionFixed;
-            _previousHeroPosition = _hero.PositionFixed;
 
             if (LogicAgentCollisionShadowService.LastCompletedFrame != frame)
-                return;
+                throw new InvalidOperationException($"Lv3 chase probe has no collision commit for frame {frame}.");
             IReadOnlyList<LogicAgentCollisionShadowState> states = LogicAgentCollisionShadowService.LastStates;
+            bool foundCollisionState = false;
             for (int i = 0; i < states.Count; i++)
             {
                 if (states[i].EntityId != _soldierId)
                     continue;
+                foundCollisionState = true;
                 _lastProposedPosition = states[i].ProposedPosition;
                 _lastFinalPosition = states[i].FinalResolvedPosition;
                 _lastPairCorrection = states[i].PairCorrection;
                 _lastStaticCorrection = states[i].StaticCorrection;
                 _lastRegionCorrection = states[i].RegionCorrection;
+                bool pursuingHero = brain.State == SoldierAIBrain.SoldierState.Combat
+                                    && ReferenceEquals(soldier.TargetComp?.CurrentTarget, _hero)
+                                    && !(soldier.AtkComp?.IsAttacking ?? false)
+                                    && soldier.PositionFixed != _previousPosition;
+                if (pursuingHero)
+                {
+                    FixVector2 facingDisplacement = states[i].FinalResolvedPosition
+                                                    - _previousPosition
+                                                    - states[i].PairCorrection;
+                    if (FixVector2.SqrMagnitude(facingDisplacement) > Fix64.Zero)
+                    {
+                        FixVector2 expectedForward = facingDisplacement.GetNormalized();
+                        if (soldier.ForwardFixed != expectedForward)
+                        {
+                            if (states[i].PairCorrection != FixVector2.Zero)
+                                PairDrivenFacingMismatchFrameCount++;
+                            else
+                                NonPairFacingMismatchFrameCount++;
+                        }
+                    }
+
+                    if (_previousPursuitForward != FixVector2.Zero
+                        && FixVector2.Dot(_previousPursuitForward, soldier.ForwardFixed) < Fix64.FromRaw(2048))
+                    {
+                        PursuitForwardAbruptTurnFrameCount++;
+                    }
+                    _previousPursuitForward = soldier.ForwardFixed;
+                }
+                else
+                {
+                    _previousPursuitForward = FixVector2.Zero;
+                }
+
                 Fix64 correction = FixVector2.Magnitude(states[i].PairCorrection);
-                if (correction <= Fix64.Zero)
-                    break;
-                PairCorrectionFrameCount++;
-                if (correction > MaxPairCorrection)
-                    MaxPairCorrection = correction;
+                if (correction > Fix64.Zero)
+                {
+                    PairCorrectionFrameCount++;
+                    if (correction > MaxPairCorrection)
+                        MaxPairCorrection = correction;
+                }
                 break;
             }
+            if (!foundCollisionState)
+                throw new InvalidOperationException($"Lv3 chase probe found no collision body for soldier {_soldierId.Value} at frame {frame}.");
+
+            _previousPosition = soldier.PositionFixed;
+            _previousHeroPosition = _hero.PositionFixed;
         }
 
         public void Validate()
@@ -979,6 +1022,16 @@ internal static class Lv3InteractiveHitchCaptureRunner
                 throw new InvalidOperationException($"Lv3 chase action exceeded 30 ticks. combat={CombatFrame}, action={actionFrame}.");
             if (MovementFrame == 0 && AttackFrame == 0)
                 throw new InvalidOperationException("Lv3 chase produced neither committed movement nor an attack.");
+            if (PairDrivenFacingMismatchFrameCount != 0 || NonPairFacingMismatchFrameCount != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Lv3 chase authority Forward diverged from constrained movement. pairDriven={PairDrivenFacingMismatchFrameCount}, nonPair={NonPairFacingMismatchFrameCount}. {BuildSummary()}");
+            }
+            if (PursuitForwardAbruptTurnFrameCount != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Lv3 chase authority Forward made {PursuitForwardAbruptTurnFrameCount} pursuit turns over 60 degrees. {BuildSummary()}");
+            }
             if (AttackFrame > 0)
                 return;
             if (ObservationStartFrame == 0 || StationaryHeroFrameCount < ChaseObservationFrames)
@@ -1058,7 +1111,10 @@ internal static class Lv3InteractiveHitchCaptureRunner
                    + "chaseLastRegionCorrection=" + _lastRegionCorrection + Environment.NewLine
                    + "chaseLastFlowDiagnostic=" + _lastFlowDiagnostic + Environment.NewLine
                    + "chasePairCorrectionFrames=" + PairCorrectionFrameCount + Environment.NewLine
-                   + "chaseMaxPairCorrectionRaw=" + MaxPairCorrection.RawValue + Environment.NewLine;
+                   + "chaseMaxPairCorrectionRaw=" + MaxPairCorrection.RawValue + Environment.NewLine
+                   + "chasePairDrivenFacingMismatchFrames=" + PairDrivenFacingMismatchFrameCount + Environment.NewLine
+                   + "chaseNonPairFacingMismatchFrames=" + NonPairFacingMismatchFrameCount + Environment.NewLine
+                   + "chasePursuitForwardAbruptTurnFrames=" + PursuitForwardAbruptTurnFrameCount + Environment.NewLine;
         }
 
         private static string FrameDelta(ulong start, ulong end)

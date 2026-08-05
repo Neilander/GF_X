@@ -77,12 +77,25 @@ public interface ISourceBuildingUnitBuffProvider
 public static class CriticalDamageUtility
 {
     private const string BaseCriticalDamageRateKey = "BaseCriticalDamageRate";
+    private static Fix64 s_BaseCriticalDamageRate;
+    private static bool s_Prepared;
+
+    public static void PrepareRuntimeDependencies()
+    {
+        if (s_Prepared)
+            return;
+        s_BaseCriticalDamageRate = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseCriticalDamageRateKey);
+        s_Prepared = true;
+    }
+
     public static Fix64 ApplyCriticalDamage(IEntityContext attacker, Fix64 baseDamage)
     {
         if (attacker == null)
             throw new InvalidOperationException("CriticalDamageUtility.ApplyCriticalDamage failed: attacker is null.");
 
-        Fix64 criticalPercent = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseCriticalDamageRateKey);
+        if (!s_Prepared)
+            throw new InvalidOperationException("CriticalDamageUtility runtime dependencies were not prepared.");
+        Fix64 criticalPercent = s_BaseCriticalDamageRate;
 
         if (attacker.BuffComp is CharacterBuffComp buffComp)
         {

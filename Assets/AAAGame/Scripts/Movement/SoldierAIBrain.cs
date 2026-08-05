@@ -690,30 +690,48 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         int frame = FlowFieldCrowdMovementSystem.GetCurrentNavigationFrame();
         Fix64 minRefreshDistance = Fix64.Max(Fix64.FromRaw(1024), selfRadius * Fix64.FromRaw(6144));
         Fix64 targetPointMoveDistance = FixVector2.Distance(_combatApproachTargetPoint, targetPoint);
-        Fix64 targetPointRefreshDistance = Fix64.Max(Fix64.FromRaw(492), selfRadius * Fix64.FromRaw(2048));
         bool targetMatchesCache = _combatApproachTargetId == targetId;
-        bool cacheFresh = frame - _combatApproachRefreshFrame < 10;
-        bool targetStable = targetPointMoveDistance <= targetPointRefreshDistance;
-        Fix64 cachedApproachToEnemy = ResolveCombatApproachDistanceToTargetSurface(enemy, _combatApproachPoint);
+        FixVector2 cachedApproachPoint = targetMatchesCache && !useSurfacePoint
+            ? targetPoint + (_combatApproachPoint - _combatApproachTargetPoint)
+            : _combatApproachPoint;
+        Fix64 cachedApproachToEnemy = ResolveCombatApproachDistanceToTargetSurface(enemy, cachedApproachPoint);
         bool cachedApproachInRange = cachedApproachToEnemy <= effectiveRange;
-        Fix64 selfToCachedApproach = FixVector2.Distance(self.LogicFramePositionFixed(), _combatApproachPoint);
+        Fix64 selfToCachedApproach = FixVector2.Distance(self.LogicFramePositionFixed(), cachedApproachPoint);
         bool selfNeedsCachedApproach = selfToCachedApproach > minRefreshDistance;
-        bool cachedPointClear = IsCombatApproachPointNavigationClear(self, _combatApproachPoint, selfRadius);
         bool canReuseCachedApproach = targetMatchesCache
-            && cacheFresh
-            && targetStable
             && cachedApproachInRange
-            && selfNeedsCachedApproach
-            && cachedPointClear;
+            && selfNeedsCachedApproach;
         bool cachedReserved = false;
         int cachedBlockingAgentId = 0;
+        string cachedFailureReason = string.Empty;
+        FlowFieldCrowdMovementSystem.NavigationQueryFailureKind cachedFailureKind =
+            FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.None;
         if (canReuseCachedApproach)
-            cachedReserved = TryReserveCombatApproachPoint(self, targetId, _combatApproachPoint, selfRadius, out cachedBlockingAgentId);
+        {
+            cachedReserved = TryReserveCombatApproachPoint(
+                self,
+                targetId,
+                cachedApproachPoint,
+                selfRadius,
+                out cachedBlockingAgentId,
+                out cachedFailureReason,
+                out cachedFailureKind);
+        }
 
         if (canReuseCachedApproach && cachedReserved)
         {
-            approachPoint = _combatApproachPoint;
+            _combatApproachPoint = cachedApproachPoint;
+            _combatApproachTargetPoint = targetPoint;
+            _combatApproachRefreshFrame = frame;
+            approachPoint = cachedApproachPoint;
             return true;
+        }
+
+        if (cachedFailureKind == FlowFieldCrowdMovementSystem.NavigationQueryFailureKind.PendingRuntimeUpdate)
+        {
+            failureReason = cachedFailureReason;
+            failureKind = cachedFailureKind;
+            return false;
         }
 
         LogCombatApproachCacheMiss(
@@ -723,19 +741,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
             targetId,
             targetPoint,
             targetPointMoveDistance,
-            targetPointRefreshDistance,
             targetMatchesCache,
-            cacheFresh,
-            targetStable,
+            cachedApproachPoint,
             cachedApproachToEnemy,
             cachedApproachInRange,
             selfToCachedApproach,
             minRefreshDistance,
             selfNeedsCachedApproach,
-            cachedPointClear,
             canReuseCachedApproach,
             cachedReserved,
-            cachedBlockingAgentId);
+            cachedBlockingAgentId,
+            cachedFailureReason,
+            cachedFailureKind);
 
         if (!FlowFieldCrowdMovementSystem.TryResolveCombatApproachPointFixed(
                 self,
@@ -775,19 +792,18 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         int targetId,
         FixVector2 targetPoint,
         Fix64 targetPointMoveDistance,
-        Fix64 targetPointRefreshDistance,
         bool targetMatchesCache,
-        bool cacheFresh,
-        bool targetStable,
+        FixVector2 cachedApproachPoint,
         Fix64 cachedApproachToEnemy,
         bool cachedApproachInRange,
         Fix64 selfToCachedApproach,
         Fix64 minRefreshDistance,
         bool selfNeedsCachedApproach,
-        bool cachedPointClear,
         bool canReuseCachedApproach,
         bool cachedReserved,
-        int cachedBlockingAgentId)
+        int cachedBlockingAgentId,
+        string cachedFailureReason,
+        FlowFieldCrowdMovementSystem.NavigationQueryFailureKind cachedFailureKind)
     {
         if (!GameDebugSettings.IsEnabled(DebugCategory.Brain) && !GameDebugSettings.IsEnabled(DebugCategory.Move))
             return;
@@ -798,11 +814,12 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         int selfId = ResolveCombatEntityId(self);
         Debug.LogWarning(
             $"[FlowCombatApproachCacheMiss] frame={frame} self={self.CharacterKey} selfId={selfId} target={enemy.CharacterKey} targetId={targetId} " +
-            $"selfPos={self.LogicFramePosition()} targetPos={enemy.LogicFramePosition()} targetPoint={targetPoint} cachedApproach={_combatApproachPoint} " +
-            $"cacheTargetId={_combatApproachTargetId} cacheFrame={_combatApproachRefreshFrame} targetMatches={targetMatchesCache} cacheFresh={cacheFresh} " +
-            $"targetMove={targetPointMoveDistance:F3}/{targetPointRefreshDistance:F3} targetStable={targetStable} " +
+            $"selfPos={self.LogicFramePosition()} targetPos={enemy.LogicFramePosition()} targetPoint={targetPoint} cachedApproach={_combatApproachPoint} translatedApproach={cachedApproachPoint} " +
+            $"cacheTargetId={_combatApproachTargetId} cacheFrame={_combatApproachRefreshFrame} targetMatches={targetMatchesCache} " +
+            $"targetMove={targetPointMoveDistance:F3} " +
             $"approachToEnemy={cachedApproachToEnemy:F3} inRange={cachedApproachInRange} selfToApproach={selfToCachedApproach:F3}/{minRefreshDistance:F3} " +
-            $"needsMove={selfNeedsCachedApproach} pointClear={cachedPointClear} canReuse={canReuseCachedApproach} reserved={cachedReserved} blockingId={cachedBlockingAgentId}");
+            $"needsMove={selfNeedsCachedApproach} canReuse={canReuseCachedApproach} reserved={cachedReserved} blockingId={cachedBlockingAgentId} " +
+            $"validationKind={cachedFailureKind} validationReason={cachedFailureReason}");
     }
 
     private static bool TryReserveCombatApproachPoint(
@@ -810,36 +827,22 @@ public class SoldierAIBrain : IControlBrain, ITickBrain, IBrainSideChangeHandler
         int targetId,
         FixVector2 approachPoint,
         Fix64 selfRadius,
-        out int blockingAgentId)
+        out int blockingAgentId,
+        out string failureReason,
+        out FlowFieldCrowdMovementSystem.NavigationQueryFailureKind failureKind)
     {
         Fix64 requiredClearance = Fix64.Max(
             selfRadius * (Fix64)2 + CombatApproachOccupancyPaddingFixed,
             Fix64.FromRaw(1844));
-        return FlowFieldCrowdMovementSystem.TryReserveNavigationGoalIfAvailableFixed(
-            ResolveCombatEntityId(self),
+        return FlowFieldCrowdMovementSystem.TryReserveReachableNavigationGoalFixed(
+            self,
             targetId,
             approachPoint,
+            selfRadius,
             requiredClearance,
-            out blockingAgentId);
-    }
-
-    private static bool IsCombatApproachPointNavigationClear(
-        IEntityContext self,
-        FixVector2 approachPoint,
-        Fix64 selfRadius)
-    {
-        int agentTypeId = self is ILogicFrameEntity logicEntity
-            ? logicEntity.NavigationAgentTypeId
-            : 0;
-        return FlowFieldCrowdMovementSystem.TryGetNavigationPointClearanceFixed(
-                   approachPoint,
-                   agentTypeId,
-                   Fix64.Max(selfRadius, Fix64.FromRaw(41)),
-                   out bool isClear,
-                   out _,
-                   out _,
-                   out _)
-               && isClear;
+            out blockingAgentId,
+            out failureReason,
+            out failureKind);
     }
 
     private static Fix64 ResolveCombatTargetRadius(IEntityContext entity)

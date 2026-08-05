@@ -14,10 +14,7 @@ public class PlayerMoveComp : IMoveComp
     public void Move(Fix64 deltaTime)
     {
         if (_inputModel == null)
-        {
-            _inputModel = GF.DataModel.GetDataModel<InputModel>();
-            return;
-        }
+            throw new System.InvalidOperationException("PlayerMoveComp input model was not bound during initialization.");
 
 
         FixVector2 translated = _inputModel.CurrentLogicFrame.WorldMove;
@@ -49,6 +46,7 @@ public class PlayerMoveComp : IMoveComp
     public void Init(IEntityContext ctx)
     {
         _ctx = ctx;
+        _inputModel = InputModel.RequireActive();
     }
 
     public void SetNavTargetFixed(FixVector2 destination) { }

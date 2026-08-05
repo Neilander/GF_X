@@ -1114,6 +1114,132 @@ public class MAEntityLogicFrameSystemTests
     }
 
     [Test]
+    public void MoveCommit_HighSpeedPairSeparationDoesNotDriveFacing()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            var move = new ProjectileRegressionApproachMoveComp(
+                new FixVector2((Fix64)6, Fix64.Zero))
+            {
+                Enabled = true,
+            };
+            LogicEntityState soldier = CreateDisplacementTestUnit(
+                1,
+                SideType.EnemySide,
+                FixVector2.Zero);
+            soldier.SetMoveComp(move);
+            move.Init(soldier);
+            CreateDisplacementTestUnit(
+                2,
+                SideType.PlayerSide,
+                new FixVector2(Fix64.FromRaw(1024), Fix64.FromRaw(614)));
+
+            FixVector2 frameStart = soldier.Position;
+            LogicFrameRuntime.Tick(1);
+
+            LogicAgentCollisionShadowState collision =
+                LogicAgentCollisionShadowService.GetRequiredState(soldier.LogicEntityId, 1);
+            FixVector2 committedDisplacement = collision.FinalResolvedPosition - frameStart;
+            FixVector2 facingDisplacement = committedDisplacement - collision.PairCorrection;
+            Assert.AreNotEqual(FixVector2.Zero, collision.PairCorrection,
+                "用例必须实际经过单位碰撞解叠");
+            Assert.AreNotEqual(Fix64.Zero, collision.PairCorrection.y,
+                "用例必须产生会扭转模型的横向解叠量");
+            Assert.Greater(facingDisplacement.x.RawValue, 0,
+                "剔除单位解叠后，主动移动意图必须仍然向前");
+            Assert.AreEqual(facingDisplacement.GetNormalized(), soldier.Forward,
+                "单位解叠是位置约束，不得成为角色主动朝向");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
+    public void MoveCommit_BuildingWithTargetPreservesPlacementForward()
+    {
+        LogicTimeControlService.BeginTimeline();
+        LogicEntityLifecycleService.BeginTimeline();
+        try
+        {
+            var placementForward = new FixVector2(Fix64.One, Fix64.Zero);
+            LogicEntityId entityId = LogicEntityLifecycleService.RequestSpawn(
+                new LogicEntitySpawnDescriptor(
+                    FixVector2.Zero,
+                    placementForward,
+                    SideType.PlayerSide,
+                    "ForwardBuildingSource"));
+            LogicEntityState building = LogicEntityStateStore.GetRequired(entityId);
+            building.Configure(
+                null,
+                new CreaturePropertyManager(property =>
+                    property == CreatureMainProperty.Health ? (Fix64)100 : Fix64.Zero),
+                0,
+                true,
+                null,
+                false);
+            new NoMoveFactoryForTest().Configure(building);
+            building.ConfigureBuilding(
+                new BuildingData(
+                    "ForwardBuildingSource",
+                    BuilType.Def,
+                    Archetype.None,
+                    "Tests/Building",
+                    "Test_Name",
+                    "Test_Desc",
+                    1,
+                    0,
+                    (Fix64)100,
+                    null,
+                    Fix64.Zero,
+                    System.Array.Empty<Fix64>(),
+                    null,
+                    0,
+                    System.Array.Empty<string>()),
+                "forward-building-source",
+                "test-stronghold",
+                EntitySideHelper.PlayerFactionId,
+                LogicCombatShape.AxisAlignedBox(FixVector2.Zero, new FixVector2(Fix64.One, Fix64.One)),
+                System.Array.Empty<LogicCombatShape>(),
+                System.Array.Empty<LogicInteractionOptionDescriptor>(),
+                false);
+
+            var targeting = new FixedTargetingComp();
+            building.SetTargetingComp(targeting);
+            targeting.Init(building);
+            LogicEntityState target = CreateProjectileRegressionUnit(
+                new FixVector2(Fix64.Zero, (Fix64)10),
+                SideType.EnemySide,
+                "ForwardBuildingTarget",
+                new ScriptedBrain(),
+                new NoMoveComp(),
+                null,
+                out _,
+                out _);
+            targeting.CurrentTarget = target;
+            LogicEntityStateStore.CommitSpawn(entityId);
+            EntityRegistry.Register(building);
+
+            LogicFrameRuntime.Tick(1);
+
+            Assert.AreEqual(FixVector2.Zero, building.Position);
+            Assert.AreEqual(placementForward, building.Forward,
+                "建筑整体朝向属于关卡/建造布置状态，索敌和攻击不能改写它");
+        }
+        finally
+        {
+            EntityRegistry.Clear();
+            LogicEntityLifecycleService.EndTimeline();
+            LogicTimeControlService.EndTimeline();
+        }
+    }
+
+    [Test]
     public void 建筑目标完全忽略物理位移()
     {
         LogicTimeControlService.BeginTimeline();

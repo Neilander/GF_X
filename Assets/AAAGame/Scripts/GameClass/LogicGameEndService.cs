@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using GameFramework;
 
@@ -314,7 +314,7 @@ public static class LogicGameEndService
 
     private static int GetCurrentDayRequired()
     {
-        if (GF.DataModel == null || GF.DataModel.GetDataModel<InGameDataModel>() == null)
+        if (!InGameDataModel.HasActiveModel)
             throw new InvalidOperationException("LogicGameEndService requires an active InGameDataModel.");
         return InGameDataModel.GetValue(IngameValueType.Day);
     }

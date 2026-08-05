@@ -365,6 +365,8 @@ public static class LogicEntityLifecycleService
         s_DueDespawnEntityIds.Clear();
         foreach (KeyValuePair<int, ulong> pair in s_DespawnFramesByEntityId)
         {
+            if (s_DespawnCommittedEntityIds.Contains(pair.Key))
+                continue;
             if (pair.Value < frameId)
             {
                 throw new InvalidOperationException(

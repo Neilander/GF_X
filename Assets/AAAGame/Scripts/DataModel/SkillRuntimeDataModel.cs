@@ -1,4 +1,4 @@
-using GameFramework;
+﻿using GameFramework;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -9,6 +9,20 @@ using UnityGameFramework.Runtime;
 /// </summary>
 public class SkillRuntimeDataModel : DataModelBase
 {
+    private readonly struct PendingSkillPresentation
+    {
+        public PendingSkillPresentation(string skillId, int level)
+        {
+            SkillId = skillId;
+            Level = level;
+        }
+
+        public string SkillId { get; }
+        public int Level { get; }
+    }
+
+    private static SkillRuntimeDataModel s_ActiveModel;
+    private readonly Queue<PendingSkillPresentation> m_PendingPresentation = new Queue<PendingSkillPresentation>();
     private readonly Dictionary<string, int> m_SkillLevels = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> m_SkillRemainingUsageCounts = new(StringComparer.Ordinal);
     private readonly List<string> m_UnlockOrder = new();
@@ -18,12 +32,22 @@ public class SkillRuntimeDataModel : DataModelBase
 
     public SkillRuntimeDataModel()
     {
+        if (s_ActiveModel != null
+            && !ReferenceEquals(s_ActiveModel, this)
+            && GF.DataModel != null
+            && ReferenceEquals(GF.DataModel.GetDataModel<SkillRuntimeDataModel>(), s_ActiveModel))
+            throw new InvalidOperationException("SkillRuntimeDataModel active runtime model is already bound.");
+        s_ActiveModel = this;
         m_ReadOnlyUnlockedSkills = m_UnlockedSkills.AsReadOnly();
     }
 
     protected override void OnCreate(RefParams userdata)
     {
         base.OnCreate(userdata);
+        if (s_ActiveModel != null && !ReferenceEquals(s_ActiveModel, this))
+            throw new InvalidOperationException("SkillRuntimeDataModel active runtime model is already bound.");
+        s_ActiveModel = this;
+        m_PendingPresentation.Clear();
         LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
         ResetSkills();
     }
@@ -32,7 +56,28 @@ public class SkillRuntimeDataModel : DataModelBase
     {
         LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
         ResetSkills();
+        if (!ReferenceEquals(s_ActiveModel, this))
+            throw new InvalidOperationException("SkillRuntimeDataModel release does not match the active runtime model.");
+        s_ActiveModel = null;
+        m_PendingPresentation.Clear();
         base.OnRelease();
+    }
+
+    public static void UpdatePresentationEvents()
+    {
+        if (s_ActiveModel == null)
+            return;
+        if (s_ActiveModel.m_PendingPresentation.Count == 0)
+            return;
+        if (GF.Event == null)
+            throw new InvalidOperationException("SkillRuntimeDataModel cannot publish presentation events before GF.Event is initialized.");
+        while (s_ActiveModel.m_PendingPresentation.Count > 0)
+        {
+            PendingSkillPresentation pending = s_ActiveModel.m_PendingPresentation.Dequeue();
+            GF.Event.Fire(
+                s_ActiveModel,
+                SkillChangedEventArgs.Create(pending.SkillId, pending.Level));
+        }
     }
 
     public static bool LearnOrUpgradeFromTech(TechData techData)
@@ -380,7 +425,7 @@ public class SkillRuntimeDataModel : DataModelBase
     private void PublishSkillChanged(string skillId, int level)
     {
         LogicSkillStateService.RefreshActiveSkillComponents();
-        GF.Event.Fire(this, SkillChangedEventArgs.Create(skillId, level));
+        m_PendingPresentation.Enqueue(new PendingSkillPresentation(skillId, level));
     }
 
     private void ResetSkills()
@@ -394,7 +439,7 @@ public class SkillRuntimeDataModel : DataModelBase
 
     private static SkillRuntimeDataModel GetModel()
     {
-        return GF.DataModel != null ? GF.DataModel.GetDataModel<SkillRuntimeDataModel>() : null;
+        return s_ActiveModel;
     }
 
     private static SkillRuntimeDataModel GetRequiredModel()

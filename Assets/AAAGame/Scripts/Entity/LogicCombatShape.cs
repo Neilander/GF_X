@@ -61,6 +61,22 @@ public readonly struct LogicCombatShape
         {
             case LogicCombatShapeKind.Circle:
                 FixVector2 offset = point - Center;
+                if (offset.y == Fix64.Zero)
+                {
+                    if (offset.x == Fix64.Zero || Fix64.Abs(offset.x) <= Radius)
+                        return point;
+                    return new FixVector2(
+                        Center.x + (offset.x < Fix64.Zero ? -Radius : Radius),
+                        Center.y);
+                }
+                if (offset.x == Fix64.Zero)
+                {
+                    if (Fix64.Abs(offset.y) <= Radius)
+                        return point;
+                    return new FixVector2(
+                        Center.x,
+                        Center.y + (offset.y < Fix64.Zero ? -Radius : Radius));
+                }
                 Fix64 magnitude = FixVector2.Magnitude(offset);
                 if (magnitude <= Radius)
                     return point;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 
@@ -141,5 +141,67 @@ public sealed class LogicPhaseCommandServiceTests
         StringAssert.Contains("m_PendingUiPresentation.Enqueue", cardSetupSource);
         StringAssert.Contains("LogicFrameRuntime.IsTicking", cardSetupSource);
         StringAssert.Contains("OpenCardUIImmediate", cardSetupSource);
+    }
+
+    [Test]
+    public void PhaseApplyPath_DoesNotDiscoverUnityRuntimeDependencies()
+    {
+        string scriptsRoot = System.IO.Path.Combine(UnityEngine.Application.dataPath, "AAAGame/Scripts");
+        string runtimeProcedureSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "Procedures/RuntimeProcedureBase.cs"));
+        string phaseSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "GameClass/PhaseManager.cs"));
+        string defendSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "GameClass/DefendPhaseRuntime.cs"));
+        string checkpointSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "GameClass/StageCheckpointService.cs"));
+        string dataModelSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "DataModel/InGameDataModel.cs"));
+        string cardControllerSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "Card/Controller/CardSystemController.cs"));
+        string tutorialSource = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            scriptsRoot,
+            "MeiyouUtility/TutorialManager.cs"));
+
+        string executeLogicFrame = ExtractMethod(runtimeProcedureSource, "private static LogicGameplayStateDigest ExecuteLogicFrame", "#if UNITY_EDITOR");
+        StringAssert.DoesNotContain("GameEntry.GetComponent", executeLogicFrame);
+
+        string enterDefendPhase = ExtractMethod(defendSource, "public static void EnterDefendPhase()", "public static void ApplyScheduledSpawnRequests");
+        StringAssert.DoesNotContain("EnsureSpawnPointCache", enterDefendPhase);
+        StringAssert.DoesNotContain("EnsureWaveConfigLoaded", enterDefendPhase);
+        StringAssert.Contains("RequirePreparedRuntime", enterDefendPhase);
+
+        string persistentCommit = ExtractMethod(checkpointSource, "private static void OnPersistentStageCommitted", "private static Fog3MapData BindFogMap");
+        StringAssert.DoesNotContain("BindFogMap", persistentCommit);
+        StringAssert.Contains("RequireBoundFogMap", persistentCommit);
+
+        string navigationBarrier = ExtractMethod(phaseSource, "private static void CompleteNavigationForBattlePhase", "private static void PrepareBattlePhaseCards");
+        StringAssert.DoesNotContain("GroupMoveManager.Instance", navigationBarrier);
+        StringAssert.Contains("FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue", navigationBarrier);
+
+        string setValue = ExtractMethod(dataModelSource, "public static void SetValue", "public static bool TryModifyValue");
+        StringAssert.DoesNotContain("GF.Event.Fire", setValue);
+        StringAssert.Contains("QueueValuePresentation", setValue);
+
+        string cardDiscard = ExtractMethod(cardControllerSource, "private void ApplyDiscardCommand", "private void ApplyDiscardResourceReward");
+        StringAssert.DoesNotContain("GF.Event.Fire", cardDiscard);
+        string tutorialTick = ExtractMethod(tutorialSource, "public void OnLogicFrameUpdate", "public bool NotifyTriggerEntered");
+        StringAssert.DoesNotContain("GF.DataModel", tutorialTick);
+        StringAssert.DoesNotContain("SideTipsManager", tutorialTick);
+    }
+
+    private static string ExtractMethod(string source, string startMarker, string endMarker)
+    {
+        int start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.GreaterOrEqual(start, 0, $"Missing source marker '{startMarker}'.");
+        int end = source.IndexOf(endMarker, start, StringComparison.Ordinal);
+        Assert.Greater(end, start, $"Missing source marker '{endMarker}' after '{startMarker}'.");
+        return source.Substring(start, end - start);
     }
 }

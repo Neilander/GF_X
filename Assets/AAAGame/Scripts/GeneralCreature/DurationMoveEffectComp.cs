@@ -395,6 +395,28 @@ public class DurationMoveEffectComp : IDurationMoveEffectComp, ILogicDeterminist
         if (speed <= Fix64.Zero)
             return;
         Fix64 nextSpeed = Fix64.Max(Fix64.Zero, speed - _worldFriction * deltaTime);
+        if (_displacementVelocity.x == Fix64.Zero || _displacementVelocity.y == Fix64.Zero)
+        {
+            if (nextSpeed == Fix64.Zero)
+            {
+                _displacementVelocity = FixVector2.Zero;
+                return;
+            }
+
+            if (_displacementVelocity.y == Fix64.Zero)
+            {
+                _displacementVelocity = new FixVector2(
+                    _displacementVelocity.x < Fix64.Zero ? -nextSpeed : nextSpeed,
+                    Fix64.Zero);
+                return;
+            }
+
+            _displacementVelocity = new FixVector2(
+                Fix64.Zero,
+                _displacementVelocity.y < Fix64.Zero ? -nextSpeed : nextSpeed);
+            return;
+        }
+
         _displacementVelocity = nextSpeed == Fix64.Zero
             ? FixVector2.Zero
             : _displacementVelocity * (nextSpeed / speed);

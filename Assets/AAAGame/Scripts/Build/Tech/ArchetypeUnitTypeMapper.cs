@@ -16,9 +16,6 @@ public class ArchetypeUnitTypeMapper
 
     public IReadOnlyCollection<UnitType> GetUnitTypes(Archetype archetype)
     {
-        if (archetype == Archetype.None)
-            return Array.Empty<UnitType>();
-
         return m_UnitTypesByArchetype.TryGetValue(archetype, out var unitTypes)
             ? unitTypes
             : Array.Empty<UnitType>();
@@ -33,7 +30,6 @@ public class ArchetypeUnitTypeMapper
         foreach (CharacterDataDetail row in table.GetAllDataRows())
         {
             if (row == null
-                || row.Archetype == Archetype.None
                 || string.IsNullOrWhiteSpace(row.CharacterKey))
             {
                 continue;

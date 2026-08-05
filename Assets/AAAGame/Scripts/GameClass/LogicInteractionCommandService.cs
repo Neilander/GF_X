@@ -47,6 +47,8 @@ public static class LogicInteractionCommandService
     private static readonly ReadOnlyCollection<LogicInteractionCommand> s_ReadOnlyHistory = s_History.AsReadOnly();
     private static readonly List<LogicInteractionCommand> s_Pending = new List<LogicInteractionCommand>();
     private static readonly List<LogicInteractionCommand> s_Due = new List<LogicInteractionCommand>();
+    private static readonly Queue<LogicInteractionCommand> s_PendingAppliedPresentation =
+        new Queue<LogicInteractionCommand>();
     private static ulong s_LastSequence;
     private static ulong s_AppliedHistoryHash;
     private static int s_AppliedCount;
@@ -55,10 +57,12 @@ public static class LogicInteractionCommandService
     public static bool IsApplyingFrame { get; private set; }
     public static ulong LastAppliedFrame { get; private set; }
     public static int PendingCount => s_Pending.Count;
+    public static int PendingAppliedPresentationCount => s_PendingAppliedPresentation.Count;
     public static int AppliedCount => s_AppliedCount;
     public static IReadOnlyList<LogicInteractionCommand> History => s_ReadOnlyHistory;
     public static event Action<LogicInteractionCommand> CommandRecorded;
     public static event Action<LogicInteractionCommand> CommandApplying;
+    public static event Action<LogicInteractionCommand> CommandAppliedPresentation;
 
     public static void BeginTimeline()
     {
@@ -172,6 +176,7 @@ public static class LogicInteractionCommandService
                 LogicInteractionCommand command = s_Due[i];
                 sink(command);
                 RecordApplied(command);
+                s_PendingAppliedPresentation.Enqueue(command);
             }
 
             for (int i = s_Pending.Count - 1; i >= 0; i--)
@@ -185,6 +190,19 @@ public static class LogicInteractionCommandService
         {
             IsApplyingFrame = false;
             s_Due.Clear();
+        }
+    }
+
+    public static void UpdatePresentationEvents()
+    {
+        EnsureActive();
+        if (LogicFrameRuntime.IsTicking)
+            throw new InvalidOperationException("LogicInteractionCommandService presentation events cannot run inside a logic tick.");
+
+        while (s_PendingAppliedPresentation.Count > 0)
+        {
+            LogicInteractionCommand command = s_PendingAppliedPresentation.Dequeue();
+            CommandAppliedPresentation?.Invoke(command);
         }
     }
 
@@ -302,5 +320,6 @@ public static class LogicInteractionCommandService
         s_History.Clear();
         s_Pending.Clear();
         s_Due.Clear();
+        s_PendingAppliedPresentation.Clear();
     }
 }

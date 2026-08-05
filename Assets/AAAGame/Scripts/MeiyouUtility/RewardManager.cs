@@ -85,7 +85,12 @@ public class RewardManager : GameFrameworkComponent
 	private static RewardManager s_CachedManager;
 
 	private bool m_LogicEventsSubscribed;
-	private bool m_KillRewardConfigInvalidLogged;
+	private bool m_RuntimeDependenciesPrepared;
+	private Fix64 m_BaseResourceIncomeDailyGrowth;
+	private int m_DefendPhaseBaseResourceIncome;
+	private int m_InvadePhaseIncomePerCapturedOutpost;
+	private int m_KillRewardSupplyRatio;
+	private int m_DiscardResourceConversionRate;
 	private readonly Queue<CoinFlyPresentationRequest> m_PendingCoinFlyPresentation = new();
 
 	protected override void Awake()
@@ -104,7 +109,7 @@ public class RewardManager : GameFrameworkComponent
 		TrySubscribeEvents();
 	}
 
-	private void Update()
+	public void UpdatePresentation()
 	{
 		if (m_PendingCoinFlyPresentation.Count == 0 || GF.UI == null)
 			return;
@@ -148,8 +153,32 @@ public class RewardManager : GameFrameworkComponent
 	public void ResetLevelCounters()
 	{
 		LogicRewardStateService.Reset();
-		m_KillRewardConfigInvalidLogged = false;
 		m_PendingCoinFlyPresentation.Clear();
+	}
+
+	public void PrepareRuntimeDependencies()
+	{
+		if (m_RuntimeDependenciesPrepared)
+			return;
+		if (GF.Config == null)
+			throw new InvalidOperationException("RewardManager requires initialized game config.");
+
+		m_BaseResourceIncomeDailyGrowth = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseResourceIncomeDailyGrowthConfigKey);
+		m_DefendPhaseBaseResourceIncome = GF.Config.GetInt(DefendPhaseBaseResourceIncomeConfigKey, 0);
+		m_InvadePhaseIncomePerCapturedOutpost = GF.Config.GetInt(InvadePhaseIncomePerCapturedOutpostConfigKey, 0);
+		m_KillRewardSupplyRatio = GF.Config.GetInt(KillRewardSupplyRatioConfigKey, 0);
+		m_DiscardResourceConversionRate = GF.Config.GetInt(DiscardResourceConversionRateConfigKey, 0);
+		if (m_DefendPhaseBaseResourceIncome < 0
+			|| m_InvadePhaseIncomePerCapturedOutpost < 0
+			|| m_KillRewardSupplyRatio <= 0
+			|| m_DiscardResourceConversionRate <= 0)
+		{
+			throw new InvalidOperationException(
+				$"RewardManager runtime config is invalid. defend={m_DefendPhaseBaseResourceIncome}, " +
+				$"invade={m_InvadePhaseIncomePerCapturedOutpost}, killRatio={m_KillRewardSupplyRatio}, " +
+				$"discardRate={m_DiscardResourceConversionRate}.");
+		}
+		m_RuntimeDependenciesPrepared = true;
 	}
 
 	public static void HandleCardDiscardReward(CardModel cardModel, int gainedCoin)
@@ -198,7 +227,7 @@ public class RewardManager : GameFrameworkComponent
 
 		LogicUnitDeathEventService.UnitDied += OnLogicUnitDied;
 		LogicBuildingOwnershipEventService.OwnerFactionChanged += OnLogicBuildingOwnerFactionChanged;
-		PhaseManager.OnPhaseChanged += OnPhaseChanged;
+		LogicPhaseCommandService.PhaseApplied += OnPhaseChanged;
 		m_LogicEventsSubscribed = true;
 	}
 
@@ -209,7 +238,7 @@ public class RewardManager : GameFrameworkComponent
 
 		LogicUnitDeathEventService.UnitDied -= OnLogicUnitDied;
 		LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
-		PhaseManager.OnPhaseChanged -= OnPhaseChanged;
+		LogicPhaseCommandService.PhaseApplied -= OnPhaseChanged;
 
 		m_LogicEventsSubscribed = false;
 	}
@@ -244,17 +273,18 @@ public class RewardManager : GameFrameworkComponent
 		if (previousPhase != GamePhase.Defend && previousPhase != GamePhase.Invade)
 			return;
 
-		Fix64 dailyGrowth = DistanceUnitConverter.ReadRequiredPositiveFixedConfig(BaseResourceIncomeDailyGrowthConfigKey);
+		RequireRuntimeDependencies();
+		Fix64 dailyGrowth = m_BaseResourceIncomeDailyGrowth;
 		int currentDay = Mathf.Max(0, InGameDataModel.GetValue(IngameValueType.Day));
 
 		long phaseBaseIncome = 0;
 		if (previousPhase == GamePhase.Defend)
 		{
-			phaseBaseIncome = GF.Config != null ? GF.Config.GetInt(DefendPhaseBaseResourceIncomeConfigKey, 0) : 0;
+			phaseBaseIncome = m_DefendPhaseBaseResourceIncome;
 		}
 		else
 		{
-			int incomePerCapturedOutpost = GF.Config != null ? GF.Config.GetInt(InvadePhaseIncomePerCapturedOutpostConfigKey, 0) : 0;
+			int incomePerCapturedOutpost = m_InvadePhaseIncomePerCapturedOutpost;
 			incomePerCapturedOutpost += LevelTagRuntime.GetCapturedOutpostIncomeDelta();
 			phaseBaseIncome = (long)incomePerCapturedOutpost * LogicRewardStateService.PlayerCapturedStrongholdCount;
 			LogicRewardStateService.ClearCapturedStrongholds();
@@ -300,19 +330,8 @@ public class RewardManager : GameFrameworkComponent
 		if (deadSupply <= 0)
 			return;
 
-		int ratio = GF.Config != null ? GF.Config.GetInt(KillRewardSupplyRatioConfigKey, 0) : 0;
-		if (ratio <= 0)
-		{
-			if (!m_KillRewardConfigInvalidLogged)
-			{
-				m_KillRewardConfigInvalidLogged = true;
-				Log.Error("[RewardManager] Kill reward config invalid. key={0}, value={1}", KillRewardSupplyRatioConfigKey, ratio);
-			}
-
-			return;
-		}
-
-		m_KillRewardConfigInvalidLogged = false;
+		RequireRuntimeDependencies();
+		int ratio = m_KillRewardSupplyRatio;
 		ratio = LevelTagRuntime.ModifyKillRewardConversionRate(ratio);
 		if (ratio <= 0)
 			throw new InvalidOperationException($"RewardManager kill reward ratio became non-positive after logic modifiers. value={ratio}.");
@@ -326,21 +345,12 @@ public class RewardManager : GameFrameworkComponent
 	private void GrantDiscardCardReward(CardModel cardModel, int gainedCoin)
 	{
 		if (cardModel == null)
-			return;
+			throw new ArgumentNullException(nameof(cardModel));
 
 		int resolvedCoin = gainedCoin;
 		if (resolvedCoin < 0)
 		{
-			int occupiedSupply = Mathf.Max(0, cardModel.GetOccupiedSupply());
-			int conversionRate = GF.Config != null ? GF.Config.GetInt(DiscardResourceConversionRateConfigKey, 0) : 0;
-			if (conversionRate <= 0)
-			{
-				Log.Error("[RewardManager] Discard reward config invalid. key={0}, value={1}", DiscardResourceConversionRateConfigKey, conversionRate);
-				return;
-			}
-
-			conversionRate = DiscardRewardModifierService.CalculateConversionRate(conversionRate);
-			resolvedCoin = occupiedSupply / conversionRate;
+			throw new ArgumentOutOfRangeException(nameof(gainedCoin), gainedCoin, "Discard reward amount must be resolved before commit.");
 		}
 
 		if (resolvedCoin <= 0)
@@ -360,13 +370,6 @@ public class RewardManager : GameFrameworkComponent
 
 	private void GrantBuildPhaseIncomeFromPlayerProdBuildings()
 	{
-		InGameDataModel inGameData = GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
-		if (inGameData == null)
-		{
-			Log.Error("[RewardManager] Build phase income skipped: InGameDataModel not ready.");
-			return;
-		}
-		
 		int totalProduction = 0;
 
 		IList<IEntityContext> entities = EntityRegistry.AllEntities;
@@ -406,15 +409,14 @@ public class RewardManager : GameFrameworkComponent
 			return;
 
 		int oldValue = InGameDataModel.GetValue(IngameValueType.Coin);
-		if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, coinAmount, false))
+		if (!InGameDataModel.TryModifyValue(IngameValueType.Coin, coinAmount, true))
 		{
 			Log.Error("[RewardManager] Apply coin failed. deltaCoin={0}, reason={1}", coinAmount, reason);
 			return;
 		}
 
 		int newValue = InGameDataModel.GetValue(IngameValueType.Coin);
-		if (GF.Event != null && oldValue != newValue)
-			GF.Event.Fire(null, IngameValueChangedEventArgs.Create(IngameValueType.Coin, oldValue, newValue));
+		Log.Info("[RewardManager] Coin committed. old={0}, new={1}, reason={2}.", oldValue, newValue, reason);
 	}
 
 	private static FixVector2 GetRequiredPlayerLogicPosition()
@@ -446,22 +448,13 @@ public class RewardManager : GameFrameworkComponent
 
 	private static RewardManager GetRuntimeManager()
 	{
-		if (s_CachedManager != null)
-			return s_CachedManager;
+		return s_CachedManager
+			?? throw new InvalidOperationException("RewardManager runtime component is not bound during initialization.");
+	}
 
-		s_CachedManager = GameEntry.GetComponent<RewardManager>();
-		if (s_CachedManager == null)
-		{
-			GeneralSetup generalSetup = GameEntry.GetComponent<GeneralSetup>();
-			if (generalSetup != null)
-				s_CachedManager = generalSetup.gameObject.AddComponent<RewardManager>();
-		}
-
-		if (s_CachedManager == null)
-		{
-			Debug.LogError("[RewardManager] GetRuntimeManager: Runtime component not found on GameEntry.");
-		}
-
-		return s_CachedManager;
+	private void RequireRuntimeDependencies()
+	{
+		if (!m_RuntimeDependenciesPrepared)
+			throw new InvalidOperationException("RewardManager runtime dependencies were not prepared before a logic reward.");
 	}
 }

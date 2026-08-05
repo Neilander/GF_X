@@ -5,6 +5,17 @@ using UnityGameFramework.Runtime;
 
 public class TechManager : GameFrameworkComponent
 {
+    private BuildManager m_BuildManager;
+    private GlobalBuffManager m_GlobalBuffManager;
+
+    public void PrepareRuntimeDependencies()
+    {
+        m_BuildManager = GameEntry.GetComponent<BuildManager>()
+                         ?? throw new InvalidOperationException("TechManager requires BuildManager during preload.");
+        m_GlobalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
+                              ?? throw new InvalidOperationException("TechManager requires GlobalBuffManager during preload.");
+    }
+
     public bool HasTechInteraction(IBuildingLogicContext owner)
     {
         if (owner == null || owner.BuildingData == null || owner.BuildingData.Lv == 0)
@@ -245,8 +256,7 @@ public class TechManager : GameFrameworkComponent
             return 0;
 
         int rolledBack = 0;
-        GlobalBuffManager globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>()
-                                                ?? throw new InvalidOperationException("Tech rollback requires GlobalBuffManager.");
+        GlobalBuffManager globalBuffManager = RequireGlobalBuffManager();
         for (int i = 0; i < techIds.Count; i++)
         {
             string techId = techIds[i];
@@ -398,17 +408,21 @@ public class TechManager : GameFrameworkComponent
         if (owner == null || owner.BuildingData == null || owner.OwnerFactionId != 0)
             return false;
 
-        var inGameData = GF.DataModel.GetDataModel<InGameDataModel>();
-        return inGameData != null && InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
+        if (!InGameDataModel.HasActiveModel)
+            throw new InvalidOperationException("TechManager requires an active InGameDataModel.");
+        return InGameDataModel.IsBuildPhase((GamePhase)InGameDataModel.GetValue(IngameValueType.Phase));
     }
 
-    private static BuildManager RequireBuildManager()
+    private BuildManager RequireBuildManager()
     {
-        var buildManager = GameEntry.GetComponent<BuildManager>();
-        if (buildManager == null)
-            throw new InvalidOperationException("BuildManager is required for TechManager.");
+        return m_BuildManager
+               ?? throw new InvalidOperationException("TechManager runtime dependencies were not prepared.");
+    }
 
-        return buildManager;
+    private GlobalBuffManager RequireGlobalBuffManager()
+    {
+        return m_GlobalBuffManager
+               ?? throw new InvalidOperationException("TechManager runtime dependencies were not prepared.");
     }
 
 }

@@ -1954,6 +1954,45 @@ public class LogicEntityIdentityTests
     }
 
     [Test]
+    public void CommittedDespawnAwaitingViewUnbind_IsNotTreatedAsMissedOnCatchUpTick()
+    {
+        const int entityId = 900001;
+        const ulong committedFrame = 2;
+        const System.Reflection.BindingFlags flags =
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        var despawnFrames = (Dictionary<int, ulong>)typeof(LogicEntityLifecycleService)
+            .GetField("s_DespawnFramesByEntityId", flags)
+            ?.GetValue(null);
+        var committedIds = (HashSet<int>)typeof(LogicEntityLifecycleService)
+            .GetField("s_DespawnCommittedEntityIds", flags)
+            ?.GetValue(null);
+        Assert.NotNull(despawnFrames);
+        Assert.NotNull(committedIds);
+
+        try
+        {
+            LogicTimeControlService.BeginFrame(1);
+            LogicEntityLifecycleService.ApplyFrame(1);
+            LogicTimeControlService.BeginFrame(2);
+            LogicEntityLifecycleService.ApplyFrame(2);
+
+            despawnFrames.Add(entityId, committedFrame);
+            committedIds.Add(entityId);
+            LogicTimeControlService.BeginFrame(3);
+
+            Assert.DoesNotThrow(() => LogicEntityLifecycleService.ApplyFrame(3),
+                "A committed despawn remains tracked until its bound View unbinds and must not be re-applied on a catch-up Tick.");
+            Assert.AreEqual(committedFrame, despawnFrames[entityId]);
+            Assert.IsTrue(committedIds.Contains(entityId));
+        }
+        finally
+        {
+            despawnFrames.Remove(entityId);
+            committedIds.Remove(entityId);
+        }
+    }
+
+    [Test]
     public void HeroGhostState_LocksCombatAndInvincibilitySourceBlocksDirectDamage()
     {
         LogicEntityState state = CreateConfiguredState("Hero_Ghost", true);

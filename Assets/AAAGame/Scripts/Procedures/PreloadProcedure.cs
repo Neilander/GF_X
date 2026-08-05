@@ -75,6 +75,8 @@ public class PreloadProcedure : ProcedureBase
         if (loadedProgress >= totalProgress && smoothProgress >= 0.99f)
         {
             preloadAllCompleted = true;
+            AgentTypeHelper.PrepareRuntimeMappings();
+            CriticalDamageUtility.PrepareRuntimeDependencies();
             FlowFieldCrowdMovementSystem.PrepareRuntimeDependencies();
             InitGameFrameworkSettings();
             if (LevelSelectionService.ShouldShowStartupLevelSwitch)
@@ -331,6 +333,10 @@ public class PreloadProcedure : ProcedureBase
                                                   ?? throw new GameFrameworkException(
                                                       "PreloadProcedure requires GlobalBuffManager to initialize deterministic tech dependencies.");
             globalBuffManager.PrepareRuntimeDependencies();
+            TechManager techManager = GameEntry.GetComponent<TechManager>()
+                                      ?? throw new GameFrameworkException(
+                                          "PreloadProcedure requires TechManager to initialize deterministic building dependencies.");
+            techManager.PrepareRuntimeDependencies();
             BuildManager buildManager = GameEntry.GetComponent<BuildManager>()
                                         ?? throw new GameFrameworkException(
                                             "PreloadProcedure requires BuildManager to initialize deterministic building dependencies.");

@@ -43,6 +43,7 @@ public partial class InGameUIForm : UIFormBase
         ShutdownMiniMap();
         ShutdownDefendEnemySketch();
         StopPhaseSwitchBlink();
+        IngameCoinPreviewState.Reset();
         base.OnClose(isShutdown, userData);
     }
 
@@ -406,10 +407,14 @@ public static class IngameCoinPreviewState
 {
     private static int s_OwnerId;
     private static int s_PreviewDeduction;
+    private static bool s_IsCommitted;
+    private static LogicEntityId s_CommittedTargetEntityId;
+    private static LogicInteractionActionKind s_CommittedActionKind;
 
     public static event System.Action PreviewChanged;
 
     public static int PreviewDeduction => Mathf.Max(0, s_PreviewDeduction);
+    public static bool IsCommitted => s_IsCommitted;
 
     public static int GetDisplayCoinValue(int realCoinValue)
     {
@@ -420,6 +425,13 @@ public static class IngameCoinPreviewState
     {
         if (ownerId == 0)
             return;
+
+        if (s_IsCommitted)
+        {
+            if (s_OwnerId != ownerId)
+                throw new System.InvalidOperationException("A committed coin preview cannot be replaced by another owner.");
+            return;
+        }
 
         deduction = Mathf.Max(0, deduction);
 
@@ -441,15 +453,67 @@ public static class IngameCoinPreviewState
     {
         if (ownerId == 0 || s_OwnerId != ownerId)
             return;
+        if (s_IsCommitted)
+            return;
 
-        if (s_PreviewDeduction == 0)
+        ClearState();
+    }
+
+    public static void CommitPreviewDeduction(
+        int ownerId,
+        LogicEntityId targetEntityId,
+        LogicInteractionActionKind actionKind)
+    {
+        if (ownerId == 0 || s_OwnerId != ownerId || s_PreviewDeduction <= 0)
+            throw new System.InvalidOperationException("Coin preview commit requires an active deduction owned by the submitting panel.");
+        if (!targetEntityId.IsValid)
+            throw new System.ArgumentException("Coin preview commit requires a valid interaction target.", nameof(targetEntityId));
+        if (actionKind != LogicInteractionActionKind.ConstructBuilding
+            && actionKind != LogicInteractionActionKind.UpgradeBuilding
+            && actionKind != LogicInteractionActionKind.ResearchTech)
         {
-            s_OwnerId = 0;
+            throw new System.ArgumentOutOfRangeException(nameof(actionKind), actionKind, "Interaction action does not spend previewed coin.");
+        }
+        if (s_IsCommitted)
+            throw new System.InvalidOperationException("Coin preview is already committed.");
+        if (!LogicInteractionCommandService.IsActive)
+            throw new System.InvalidOperationException("Coin preview cannot be committed without an active interaction timeline.");
+
+        s_IsCommitted = true;
+        s_CommittedTargetEntityId = targetEntityId;
+        s_CommittedActionKind = actionKind;
+        LogicInteractionCommandService.CommandAppliedPresentation += OnCommandAppliedPresentation;
+    }
+
+    public static void Reset()
+    {
+        ClearState();
+    }
+
+    private static void OnCommandAppliedPresentation(LogicInteractionCommand command)
+    {
+        if (!s_IsCommitted
+            || command.TargetEntityId != s_CommittedTargetEntityId
+            || command.ActionKind != s_CommittedActionKind)
+        {
             return;
         }
 
+        ClearState();
+    }
+
+    private static void ClearState()
+    {
+        bool changed = s_PreviewDeduction != 0;
+        if (s_IsCommitted)
+            LogicInteractionCommandService.CommandAppliedPresentation -= OnCommandAppliedPresentation;
+
         s_OwnerId = 0;
         s_PreviewDeduction = 0;
-        PreviewChanged?.Invoke();
+        s_IsCommitted = false;
+        s_CommittedTargetEntityId = default;
+        s_CommittedActionKind = default;
+        if (changed)
+            PreviewChanged?.Invoke();
     }
 }

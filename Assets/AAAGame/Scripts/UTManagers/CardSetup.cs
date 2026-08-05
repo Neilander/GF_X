@@ -28,6 +28,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     private int m_CardUIFormId = -1;
     private readonly LogicCardAutoDrawClock m_AutoDrawClock = new LogicCardAutoDrawClock();
     private List<ICardDataProvider> m_PreloadedCardPool;
+	private int m_DiscardResourceConversionRate;
 	private readonly Queue<CardUiPresentationRequest> m_PendingUiPresentation = new();
 	private readonly Queue<CardSystemController> m_PendingPresentationShutdown = new();
 
@@ -88,7 +89,10 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 			m_PendingPresentationShutdown.Dequeue().ShutdownPresentation();
 
         if (m_CardSystemController != null)
+        {
+            m_CardSystemController.UpdatePresentationEvents();
             m_CardSystemController.UpdatePlacement();
+        }
     }
 
     public void ApplyLogicFrame(ulong frameId)
@@ -219,7 +223,7 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
         long stageStartTicks = Stopwatch.GetTimestamp();
         long stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
         m_CardSystemController = new CardSystemController();
-        m_CardSystemController.Initialize();
+        m_CardSystemController.Initialize(m_DiscardResourceConversionRate);
         RecordPerf(MainThreadPerfScope.CardSetupController, stageStartTicks, stageStartBytes);
 
         if (m_PreloadedCardPool == null)
@@ -247,7 +251,15 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
 
         stageStartTicks = Stopwatch.GetTimestamp();
         stageStartBytes = System.GC.GetAllocatedBytesForCurrentThread();
-        EnsureLogicCardPlacementWorldBound();
+        if (LogicFrameRuntime.IsTicking)
+        {
+            if (!LogicCardPlacementAuthority.IsWorldBound)
+                throw new System.InvalidOperationException("CardSetup cannot initialize card runtime in a logic frame before card placement world binding.");
+        }
+        else
+        {
+            EnsureLogicCardPlacementWorldBound();
+        }
         RecordPerf(MainThreadPerfScope.CardSetupBindWorld, stageStartTicks, stageStartBytes);
 
         Log.Info("[CardGame] Card system initialized.");
@@ -275,6 +287,15 @@ public partial class CardSetup : GameFrameworkComponent, ILogicCardRuntimeStateC
     {
         if (m_PreloadedCardPool != null)
             return;
+
+        if (GF.Config == null)
+            throw new System.InvalidOperationException("CardSetup cannot preload card runtime config before GF.Config is initialized.");
+        m_DiscardResourceConversionRate = GF.Config.GetInt("DiscardResourceConversionRate");
+        if (m_DiscardResourceConversionRate <= 0)
+        {
+            throw new System.InvalidOperationException(
+                $"CardSetup discard conversion rate must be positive. value={m_DiscardResourceConversionRate}.");
+        }
 
         var watch = Stopwatch.StartNew();
         m_PreloadedCardPool = LoadCardPool();

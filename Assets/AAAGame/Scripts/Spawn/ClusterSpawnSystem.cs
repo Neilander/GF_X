@@ -21,11 +21,7 @@ public static class ClusterSpawnSystem
 
     public static int ResolveAgentTypeId(UnitType unitType)
     {
-        AgentTypeHelper helper = GameEntry.GetComponent<AgentTypeHelper>();
-        if (helper == null)
-            throw new System.InvalidOperationException("ClusterSpawnSystem.ResolveAgentTypeId failed: AgentTypeHelper is not available.");
-
-        return helper.GetNavAgentTypeID(unitType);
+        return AgentTypeHelper.ResolveNavAgentTypeId(unitType);
     }
 
     /// <summary>

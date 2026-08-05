@@ -130,9 +130,13 @@ public partial class GeneralSetup : GameFrameworkComponent
         }
 
         rewardManager.ResetLevelCounters();
+        rewardManager.PrepareRuntimeDependencies();
 
         GF.DataModel.CreateDataModel<SkillRuntimeDataModel>();
         GF.DataModel.CreateDataModel<InputModel>();
+        TutorialManager tutorialManager = GameEntry.GetComponent<TutorialManager>();
+        if (tutorialManager != null)
+            tutorialManager.PrepareRuntimeDependencies(GF.DataModel.GetDataModel<InputModel>());
     }
 
     private void DataModelShutDown()

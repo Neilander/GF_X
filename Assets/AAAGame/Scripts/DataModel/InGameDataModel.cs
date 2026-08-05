@@ -30,9 +30,25 @@ public enum IngameValueType
 /// </summary>
 public partial class InGameDataModel : DataModelBase
 {
+    private readonly struct PendingValuePresentation
+    {
+        public PendingValuePresentation(IngameValueType type, int oldValue, int newValue)
+        {
+            Type = type;
+            OldValue = oldValue;
+            NewValue = newValue;
+        }
+
+        public IngameValueType Type { get; }
+        public int OldValue { get; }
+        public int NewValue { get; }
+    }
+
     private static readonly List<string> s_DeterministicPrimaryIds = new List<string>();
     private static readonly List<string> s_DeterministicSecondaryIds = new List<string>();
     private static readonly Comparison<string> s_DeterministicIdComparison = string.CompareOrdinal;
+    private static readonly Queue<PendingValuePresentation> s_PendingValuePresentation = new Queue<PendingValuePresentation>();
+    private static InGameDataModel s_ActiveModel;
 
     private const string InitMaxSupplyConfigKey = "InitMaxSupply";
     private const string BaseProvideSupplyConfigKey = "BaseProvideSupply";
@@ -47,6 +63,8 @@ public partial class InGameDataModel : DataModelBase
     private Dictionary<string, int> m_ProductionBuildingCoinReservesByInstanceId = new(StringComparer.Ordinal);
     // 建筑实际建造/升级花费：key=BuildingInstanceId。回收按历史实际花费返钱。
     private Dictionary<string, int> m_BuildingCostSpentByInstanceId = new(StringComparer.Ordinal);
+    private int m_ResourcePointInitialAmount;
+    private int m_BaseProvideSupplyPerLevel;
     private bool m_SupplyEventsSubscribed;
     // techId -> 已拥有该科技的建筑实例集合。
     // 全局层数 = 集合 Count；单建筑是否拥有 = 集合 Contains(buildingInstanceId)。
@@ -56,9 +74,25 @@ public partial class InGameDataModel : DataModelBase
     public Dictionary<int, Faction> Factions { get; private set; }
     public IReadOnlyList<Stronghold> Strongholds => m_Strongholds;
     public IReadOnlyCollection<BuildingEntity> Buildings => m_Buildings;
+    public static bool HasActiveModel => s_ActiveModel != null;
+
+    public InGameDataModel()
+    {
+        if (s_ActiveModel != null
+            && !ReferenceEquals(s_ActiveModel, this)
+            && GF.DataModel != null
+            && ReferenceEquals(GF.DataModel.GetDataModel<InGameDataModel>(), s_ActiveModel))
+            throw new InvalidOperationException("InGameDataModel active runtime model is already bound.");
+        s_ActiveModel = this;
+    }
+
     protected override void OnCreate(RefParams userdata)
     {
         base.OnCreate(userdata);
+        if (s_ActiveModel != null && !ReferenceEquals(s_ActiveModel, this))
+            throw new InvalidOperationException("InGameDataModel active runtime model is already bound.");
+        s_ActiveModel = this;
+        s_PendingValuePresentation.Clear();
         ResetData();
         SubscribeSupplyTrackingEvents();
 
@@ -74,6 +108,10 @@ public partial class InGameDataModel : DataModelBase
     {
         UnsubscribeSupplyTrackingEvents();
         ResetData();
+        if (!ReferenceEquals(s_ActiveModel, this))
+            throw new InvalidOperationException("InGameDataModel release does not match the active runtime model.");
+        s_ActiveModel = null;
+        s_PendingValuePresentation.Clear();
         base.OnRelease();
     }
 
@@ -81,6 +119,8 @@ public partial class InGameDataModel : DataModelBase
     {
         lvData = null;
         int initMaxSupply = GF.Config.GetInt(InitMaxSupplyConfigKey, 0) + LevelTagRuntime.GetInitialMaxSupplyDelta();
+        m_ResourcePointInitialAmount = GF.Config.GetInt(ResourcePointInitialAmountConfigKey, 0);
+        m_BaseProvideSupplyPerLevel = GF.Config.GetInt(BaseProvideSupplyConfigKey, 0);
         m_IngameValue = new Dictionary<IngameValueType, int>
         {
             [IngameValueType.Phase] = (int)GamePhase.BuildBeforeInvade,
@@ -110,7 +150,7 @@ public partial class InGameDataModel : DataModelBase
 
     private static InGameDataModel GetModel()
     {
-        return GF.DataModel != null ? GF.DataModel.GetDataModel<InGameDataModel>() : null;
+        return s_ActiveModel;
     }
 
     public static int GetValue(IngameValueType type)
@@ -135,16 +175,7 @@ public partial class InGameDataModel : DataModelBase
         dataModel.m_IngameValue[type] = value;
 
         if (triggerEvent && oldValue != value)
-        {
-            if (type == IngameValueType.Phase)
-            {
-                GF.Event.Fire(
-                    dataModel,
-                    IngamePhaseChangedEventArgs.Create((GamePhase)oldValue, (GamePhase)value));
-            }
-
-            GF.Event.Fire(dataModel, IngameValueChangedEventArgs.Create(type, oldValue, value));
-        }
+            QueueValuePresentation(type, oldValue, value);
     }
 
     public static bool TryModifyValue(IngameValueType type, int delta, bool triggerEvent = true)
@@ -174,6 +205,42 @@ public partial class InGameDataModel : DataModelBase
         return phase == GamePhase.BuildBeforeInvade || phase == GamePhase.BuildBeforeDefend;
     }
 
+    public static void UpdatePresentationEvents()
+    {
+        if (s_PendingValuePresentation.Count == 0)
+            return;
+        if (s_ActiveModel == null)
+            throw new InvalidOperationException("InGameDataModel has pending presentation events without an active model.");
+        if (GF.Event == null)
+            throw new InvalidOperationException("InGameDataModel cannot publish presentation events before GF.Event is initialized.");
+
+        while (s_PendingValuePresentation.Count > 0)
+        {
+            PendingValuePresentation pending = s_PendingValuePresentation.Dequeue();
+            if (pending.Type == IngameValueType.Phase)
+            {
+                GF.Event.Fire(
+                    s_ActiveModel,
+                    IngamePhaseChangedEventArgs.Create(
+                        (GamePhase)pending.OldValue,
+                        (GamePhase)pending.NewValue));
+            }
+            GF.Event.Fire(
+                s_ActiveModel,
+                IngameValueChangedEventArgs.Create(
+                    pending.Type,
+                    pending.OldValue,
+                    pending.NewValue));
+        }
+    }
+
+    private static void QueueValuePresentation(IngameValueType type, int oldValue, int newValue)
+    {
+        if (oldValue == newValue)
+            return;
+        s_PendingValuePresentation.Enqueue(new PendingValuePresentation(type, oldValue, newValue));
+    }
+
     public static int EnsureProductionBuildingCoinReserves(string buildingInstanceId, int? initialAmount = null)
     {
         if (string.IsNullOrWhiteSpace(buildingInstanceId))
@@ -186,7 +253,7 @@ public partial class InGameDataModel : DataModelBase
         if (dataModel.m_ProductionBuildingCoinReservesByInstanceId.TryGetValue(buildingInstanceId, out int current))
             return current;
 
-        int defaultValue = GF.Config != null ? GF.Config.GetInt(ResourcePointInitialAmountConfigKey, 0) : 0;
+        int defaultValue = dataModel.m_ResourcePointInitialAmount;
         int resolved = initialAmount.HasValue ? initialAmount.Value : defaultValue;
         resolved = LevelTagRuntime.ModifyResourcePointInitialAmount(resolved);
         resolved = Mathf.Max(0, resolved);
@@ -346,7 +413,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(techId))
             return false;
 
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        var dataModel = GetModel() ?? throw new InvalidOperationException("InGameDataModel is required for tech queries.");
         return dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) && owners != null && owners.Count > 0;
     }
 
@@ -360,7 +427,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(techId) || string.IsNullOrWhiteSpace(buildingContextKey))
             return false;
 
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        var dataModel = GetModel() ?? throw new InvalidOperationException("InGameDataModel is required for tech queries.");
         return dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) && owners.Contains(buildingContextKey);
     }
 
@@ -423,7 +490,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(techId) || string.IsNullOrWhiteSpace(buildingContextKey))
             return false;
 
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        var dataModel = GetModel() ?? throw new InvalidOperationException("InGameDataModel is required for tech scheduling.");
         dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners);
 
         if (owners != null && owners.Contains(buildingContextKey))
@@ -459,7 +526,7 @@ public partial class InGameDataModel : DataModelBase
         if (!LogicTechEffectCommandService.IsApplyingFrame)
             throw new InvalidOperationException("InGameDataModel.ApplyScheduledTechUnlock requires the logic tech command apply window.");
 
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        var dataModel = GetModel() ?? throw new InvalidOperationException("InGameDataModel is required for tech application.");
         if (!dataModel.m_TechOwnerContextsById.TryGetValue(command.TechId, out var owners) || owners == null)
         {
             owners = new HashSet<string>();
@@ -480,7 +547,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(techId) || string.IsNullOrWhiteSpace(buildingContextKey) || amount <= 0)
             return false;
 
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        var dataModel = GetModel() ?? throw new InvalidOperationException("InGameDataModel is required for tech reduction.");
         if (!dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) || owners == null || owners.Count == 0)
             return false;
 
@@ -500,7 +567,7 @@ public partial class InGameDataModel : DataModelBase
         if (string.IsNullOrWhiteSpace(techId))
             return 0;
 
-        var dataModel = GF.DataModel.GetDataModel<InGameDataModel>();
+        var dataModel = GetModel() ?? throw new InvalidOperationException("InGameDataModel is required for tech stack queries.");
         return dataModel.m_TechOwnerContextsById.TryGetValue(techId, out var owners) && owners != null ? owners.Count : 0;
     }
 
@@ -787,7 +854,9 @@ public partial class InGameDataModel : DataModelBase
 
     public static int GetBaseProvideSupplyPerLevel()
     {
-        return Mathf.Max(0, GF.Config.GetInt(BaseProvideSupplyConfigKey, 0) + LevelTagRuntime.GetBaseProvideSupplyPerLevelDelta());
+        InGameDataModel model = GetModel()
+                                ?? throw new InvalidOperationException("InGameDataModel is required for base supply configuration.");
+        return Mathf.Max(0, model.m_BaseProvideSupplyPerLevel + LevelTagRuntime.GetBaseProvideSupplyPerLevelDelta());
     }
 
     public static string GetResourceSprite(IngameValueType resourceType)

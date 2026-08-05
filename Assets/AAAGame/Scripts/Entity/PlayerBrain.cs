@@ -8,7 +8,7 @@ namespace AAAGame.Scripts.Entity
 
         public PlayerBrain()
         {
-            _input = GF.DataModel.GetDataModel<InputModel>();
+            _input = InputModel.RequireActive();
         }
 
         private LogicInputFrame CurrentInput => _input.CurrentLogicFrame;

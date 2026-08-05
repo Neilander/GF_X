@@ -9,6 +9,7 @@ public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, Consume
 
 public class GameEndManager : GameFrameworkComponent
 {
+    private static GameEndManager s_Current;
     private const string ObjectiveOccupyBeforeDayTextId = "GameEnd_Cond_OccupyBeforeDay";
     private const string ObjectiveOccupyTextId = "GameEnd_Cond_Occupy";
     private const string ObjectiveSurviveToDayTextId = "GameEnd_Cond_SurviveToDay";
@@ -19,9 +20,21 @@ public class GameEndManager : GameFrameworkComponent
     public bool IsGameEnded => LogicGameEndService.IsGameEnded;
     public bool IsWin => LogicGameEndService.IsWin;
 
+    public static GameEndManager Current => s_Current;
+
+    protected override void Awake()
+    {
+        base.Awake();
+        if (s_Current != null && !ReferenceEquals(s_Current, this))
+            throw new InvalidOperationException("GameEndManager active runtime component is already bound.");
+        s_Current = this;
+    }
+
     private void OnDestroy()
     {
         UnsubscribeEndEvent();
+        if (ReferenceEquals(s_Current, this))
+            s_Current = null;
     }
 
     public void Init(LevelData levelData)

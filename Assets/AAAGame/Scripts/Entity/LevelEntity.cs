@@ -376,6 +376,13 @@ public partial class LevelEntity : EntityBase
                 effectiveIdentifier = slotId;
             }
 
+            if (point.PointType == EntityPresetPointType.Building
+                && !BuildingDataModel.TryResolvePresetIdentifier(effectiveIdentifier, out effectiveIdentifier))
+            {
+                Log.Error("LevelEntity.SpawnPresetEntities failed: invalid building identifier '{0}' at point '{1}'.", point.Identifier, point.name);
+                continue;
+            }
+
             switch (point.PointType)
             {
                 case EntityPresetPointType.Hero:
@@ -483,6 +490,14 @@ public partial class LevelEntity : EntityBase
                 }
 
                 effectiveIdentifier = slotId;
+            }
+
+            if (point.PointType == EntityPresetPointType.Building
+                && !BuildingDataModel.TryResolvePresetIdentifier(effectiveIdentifier, out effectiveIdentifier))
+            {
+                Log.Error("LevelEntity.SpawnPresetEntities failed: invalid building identifier '{0}' at point '{1}'.", point.Identifier, point.name);
+                skippedCount++;
+                continue;
             }
 
             switch (point.PointType)
@@ -596,7 +611,7 @@ public partial class LevelEntity : EntityBase
         var positionFixed = new FixVector2((Fix64)position.x, (Fix64)position.z);
         return LogicStrongholdMap.TryResolveStrongholdId(positionFixed, out string strongholdId)
             ? LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId)
-            : EntitySideHelper.PlayerFactionId;
+            : EntitySideHelper.EnemyFactionId;
     }
 
 

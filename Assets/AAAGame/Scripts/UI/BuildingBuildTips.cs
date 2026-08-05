@@ -553,14 +553,12 @@ public partial class BuildingBuildTips : UIFormBase
             return;
 
         int starCount = Mathf.Max(1, m_HoldBinding.Stars.Count);
-        float duration = ResolveHoldDurationSeconds(starCount);
-        float starsPerSecond = starCount / Mathf.Max(0.01f, duration);
-        float delta = starsPerSecond * Time.deltaTime;
-
         bool pressing = IsBuildBindingPressed(m_HoldBinding);
-        m_HoldProgressStars = pressing
-            ? Mathf.Min(starCount, m_HoldProgressStars + delta)
-            : Mathf.Max(0f, m_HoldProgressStars - delta);
+        m_HoldProgressStars = AdvanceHoldProgressStars(
+            m_HoldProgressStars,
+            pressing,
+            starCount,
+            Time.deltaTime);
 
         int highlightCount;
         if (pressing)
@@ -607,6 +605,19 @@ public partial class BuildingBuildTips : UIFormBase
             ResetHoldState();
     }
 
+    private static float AdvanceHoldProgressStars(
+        float current,
+        bool pressing,
+        int starCount,
+        float deltaTime)
+    {
+        float duration = ResolveHoldDurationSeconds(starCount);
+        float delta = (starCount / Mathf.Max(0.01f, duration)) * deltaTime;
+        return pressing
+            ? Mathf.Min(starCount, current + delta)
+            : Mathf.Max(0f, current - delta);
+    }
+
     private BuildOptionBinding ResolvePressedBuildBinding()
     {
         for (int i = 0; i < m_BuildOptionBindings.Count; i++)
@@ -641,7 +652,12 @@ public partial class BuildingBuildTips : UIFormBase
 
         bool success = buildManager.ConstructBuilding(m_TargetBuilding, m_HoldBinding.BuildingData.Identifier);
         if (success)
-            ClearCoinPreviewDeduction();
+        {
+            IngameCoinPreviewState.CommitPreviewDeduction(
+                GetInstanceID(),
+                m_TargetBuilding.LogicEntityId,
+                LogicInteractionActionKind.ConstructBuilding);
+        }
         else
             RefreshView();
     }

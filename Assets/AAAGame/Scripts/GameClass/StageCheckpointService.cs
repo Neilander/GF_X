@@ -372,6 +372,7 @@ public static class StageCheckpointRuntimeCoordinator
 {
     private static StageCheckpointRestoreRequest s_PendingRestore;
     private static bool s_PersistentDataRestored;
+    private static Fog3MapData s_BoundFogMap;
 
     public static bool IsActive { get; private set; }
     public static bool HasPendingRestore => s_PendingRestore != null;
@@ -382,7 +383,7 @@ public static class StageCheckpointRuntimeCoordinator
             throw new InvalidOperationException("Cannot restore a stage checkpoint without an active session.");
         if (s_PendingRestore != null)
             throw new InvalidOperationException("A stage checkpoint restore is already pending.");
-        s_PendingRestore = StageCheckpointService.PrepareRestore(phaseEpoch, RequireFogMap());
+        s_PendingRestore = StageCheckpointService.PrepareRestore(phaseEpoch, RequireBoundFogMap());
         s_PersistentDataRestored = false;
         Log.Info(
             "[StageCheckpoint] Restore prepared. level={0}, stage={1}, epoch={2}, phase={3}, hash={4}.",
@@ -476,7 +477,7 @@ public static class StageCheckpointRuntimeCoordinator
             throw new InvalidOperationException("Stage checkpoint persistent data has not been restored.");
 
         StageCheckpoint checkpoint = s_PendingRestore.Checkpoint;
-        Fog3MapData fogMap = RequireFogMap();
+        Fog3MapData fogMap = BindFogMap();
         fogMap.RestoreExplorationCheckpoint(checkpoint.FogExploration);
         StageCheckpointService.BeginSession(levelId, s_PendingRestore.RetainedHistory);
         PhaseManager.PersistentStageCommitted += OnPersistentStageCommitted;
@@ -506,7 +507,7 @@ public static class StageCheckpointRuntimeCoordinator
 
         if (s_PendingRestore != null)
             throw new InvalidOperationException("Use BeginRestoredSession while a stage checkpoint restore is pending.");
-        RequireFogMap();
+        BindFogMap();
         StageCheckpointService.BeginSession(levelId);
         PhaseManager.PersistentStageCommitted += OnPersistentStageCommitted;
         IsActive = true;
@@ -520,6 +521,7 @@ public static class StageCheckpointRuntimeCoordinator
         PhaseManager.PersistentStageCommitted -= OnPersistentStageCommitted;
         StageCheckpointService.EndSession();
         IsActive = false;
+        s_BoundFogMap = null;
     }
 
     private static void RequirePendingLevel(string levelId)
@@ -535,7 +537,7 @@ public static class StageCheckpointRuntimeCoordinator
 
     private static void OnPersistentStageCommitted(GamePhase phase)
     {
-        Fog3MapData fogMap = RequireFogMap();
+        Fog3MapData fogMap = RequireBoundFogMap();
         StageCheckpoint checkpoint = StageCheckpointService.CaptureStageStart(phase.ToString(), fogMap);
         Log.Info(
             "[StageCheckpoint] Captured. level={0}, stage={1}, epoch={2}, phase={3}, buildings={4}, " +
@@ -552,14 +554,23 @@ public static class StageCheckpointRuntimeCoordinator
             checkpoint.ContentHash);
     }
 
-    private static Fog3MapData RequireFogMap()
+    private static Fog3MapData BindFogMap()
     {
+        if (s_BoundFogMap != null)
+            throw new InvalidOperationException("Stage checkpoint Fog3 map is already bound.");
         Fog3Manager manager = Fog3Manager.Instance ?? GameEntry.GetComponent<Fog3Manager>();
         if (manager == null)
             throw new InvalidOperationException("Stage checkpoint requires Fog3Manager.");
         if (!manager.IsInitialized || manager.Controller?.MapData == null)
             manager.Initialize();
-        return manager.Controller?.MapData
-               ?? throw new InvalidOperationException("Stage checkpoint requires initialized Fog3 map data.");
+        s_BoundFogMap = manager.Controller?.MapData
+                        ?? throw new InvalidOperationException("Stage checkpoint requires initialized Fog3 map data.");
+        return s_BoundFogMap;
+    }
+
+    private static Fog3MapData RequireBoundFogMap()
+    {
+        return s_BoundFogMap
+               ?? throw new InvalidOperationException("Stage checkpoint Fog3 map was not bound before the runtime session began.");
     }
 }

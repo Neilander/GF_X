@@ -13,16 +13,25 @@ public class PhaseManager : GameFrameworkComponent
     private const float EnemyPresetClusterMinDistance = 1.2f;
     private const long PhaseStepWarnMs = 30;
     private const string EnemyProductionBuildingDailyResourceCostConfigKey = "EnemyProductionBuildingDailyResourceCost";
-	private static readonly Queue<string> s_PendingPhaseSounds = new Queue<string>();
+    private static readonly Queue<string> s_PendingPhaseSounds = new Queue<string>();
+    private static readonly Queue<PhasePresentationEvent> s_PendingPhaseEvents = new Queue<PhasePresentationEvent>();
     private static readonly List<InvadeSpawnPointDefinition> s_InvadeSpawnPoints = new List<InvadeSpawnPointDefinition>();
     private static bool s_InvadeSpawnPointsConfigured;
+    private static bool s_RuntimeDependenciesPrepared;
+    private static CardSetup s_CardSetup;
+    private static int s_EnemyProductionBuildingDailyResourceCost;
 
     public static GamePhase CurrentPhase => (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
 
     public static void CancelRuntimePhaseFlows()
     {
-		s_PendingPhaseSounds.Clear();
+        s_PendingPhaseSounds.Clear();
+        s_PendingPhaseEvents.Clear();
         DefendPhaseRuntime.CancelRuntime();
+        DefendPhaseRuntime.ClearPreparedRuntime();
+        s_CardSetup = null;
+        s_EnemyProductionBuildingDailyResourceCost = 0;
+        s_RuntimeDependenciesPrepared = false;
     }
 
     internal static void ConfigureInvadeSpawnPoints(IReadOnlyList<EntityPresetPoint> presetPoints)
@@ -71,6 +80,12 @@ public class PhaseManager : GameFrameworkComponent
 
 	private void Update()
 	{
+		while (s_PendingPhaseEvents.Count > 0)
+        {
+            PhasePresentationEvent evt = s_PendingPhaseEvents.Dequeue();
+            OnPhaseChanged?.Invoke(evt.OldPhase, evt.NewPhase);
+        }
+
 		if (s_PendingPhaseSounds.Count == 0
 			|| LogicTimeControlService.IsPaused
 			|| AudioManager.Instance == null)
@@ -83,7 +98,7 @@ public class PhaseManager : GameFrameworkComponent
 
     public static void EnterCurrentPhaseOnGameStart()
     {
-        DefendPhaseRuntime.PrepareForCurrentLevelIfNeeded();
+        PrepareRuntimeDependencies();
         GamePhase currentPhase = CurrentPhase;
         LogicPhaseCommandService.SetInitialPhase(currentPhase);
         switch (currentPhase)
@@ -110,7 +125,7 @@ public class PhaseManager : GameFrameworkComponent
 
     public static void EnterRestoredPhaseOnGameStart(GamePhase restoredPhase)
     {
-        DefendPhaseRuntime.PrepareForCurrentLevelIfNeeded();
+        PrepareRuntimeDependencies();
         if (CurrentPhase != restoredPhase)
             throw new InvalidOperationException(
                 $"Restored phase mismatch. checkpoint={restoredPhase}, dataModel={CurrentPhase}.");
@@ -156,6 +171,8 @@ public class PhaseManager : GameFrameworkComponent
         if (!LogicPhaseCommandService.IsApplyingFrame)
             throw new InvalidOperationException("PhaseManager.ApplyScheduledPhase is only valid while applying a logic phase command.");
 
+        RequireRuntimeDependencies();
+
         GamePhase oldPhase = CurrentPhase;
         if (oldPhase == phase)
         {
@@ -180,7 +197,7 @@ public class PhaseManager : GameFrameworkComponent
         LogPhaseStep($"transition {oldPhase}->{phase}", transitionWatch.ElapsedMilliseconds);
 
         var eventWatch = Stopwatch.StartNew();
-        OnPhaseChanged?.Invoke(oldPhase, phase);
+        s_PendingPhaseEvents.Enqueue(new PhasePresentationEvent(oldPhase, phase));
         eventWatch.Stop();
         LogPhaseStep($"phase-event {oldPhase}->{phase}", eventWatch.ElapsedMilliseconds);
 
@@ -232,14 +249,10 @@ public class PhaseManager : GameFrameworkComponent
         removeSoldiersWatch.Stop();
         LogPhaseStep("build.remove-soldiers", removeSoldiersWatch.ElapsedMilliseconds);
 
-        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
-        if (cardSetup != null)
-        {
-            var shutdownWatch = Stopwatch.StartNew();
-            cardSetup.CardSystemShutdown();
-            shutdownWatch.Stop();
-            LogPhaseStep("build.card-shutdown", shutdownWatch.ElapsedMilliseconds);
-        }
+        var shutdownWatch = Stopwatch.StartNew();
+        s_CardSetup.CardSystemShutdown();
+        shutdownWatch.Stop();
+        LogPhaseStep("build.card-shutdown", shutdownWatch.ElapsedMilliseconds);
 
         totalWatch.Stop();
         LogPhaseStep("build.total", totalWatch.ElapsedMilliseconds);
@@ -261,7 +274,7 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void ConsumeEnemyProductionBuildingCoinReservesOnBuildPhaseEnter()
     {
-        int consumeCost = GF.Config != null ? GF.Config.GetInt(EnemyProductionBuildingDailyResourceCostConfigKey, 0) : 0;
+        int consumeCost = s_EnemyProductionBuildingDailyResourceCost;
         consumeCost = LevelTagRuntime.ModifyEnemyProductionDailyResourceCost(consumeCost);
         if (consumeCost <= 0)
             return;
@@ -312,11 +325,8 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void CompleteNavigationForBattlePhase(string phaseTag)
     {
-        GroupMoveManager groupMoveManager = GroupMoveManager.Instance
-                                            ?? throw new InvalidOperationException(
-                                                $"PhaseManager cannot enter {phaseTag}: GroupMoveManager is unavailable.");
         var watch = Stopwatch.StartNew();
-        int completedWorldCount = groupMoveManager.CompleteRuntimeRebuildQueue();
+        int completedWorldCount = FlowFieldCrowdMovementSystem.CompleteRuntimeRebuildQueue();
         watch.Stop();
         Log.Info(
             "[PhaseNavigation] {0}.navigation-ready worlds={1}, elapsedMs={2}",
@@ -327,12 +337,8 @@ public class PhaseManager : GameFrameworkComponent
 
     private static void PrepareBattlePhaseCards(string phaseTag)
     {
-        CardSetup cardSetup = GameEntry.GetComponent<CardSetup>();
-        if (cardSetup == null)
-            return;
-
         var setupWatch = Stopwatch.StartNew();
-        cardSetup.CardSystemSetup();
+        s_CardSetup.CardSystemSetup();
         setupWatch.Stop();
         LogPhaseStep($"{phaseTag}.card-setup", setupWatch.ElapsedMilliseconds);
 
@@ -344,7 +350,7 @@ public class PhaseManager : GameFrameworkComponent
         if (generatedCardCount > 0)
         {
             var openUiWatch = Stopwatch.StartNew();
-            cardSetup.OpenCardUI();
+            s_CardSetup.OpenCardUI();
             openUiWatch.Stop();
             LogPhaseStep($"{phaseTag}.open-card-ui", openUiWatch.ElapsedMilliseconds);
         }
@@ -371,28 +377,24 @@ public class PhaseManager : GameFrameworkComponent
     {
         var watch = Stopwatch.StartNew();
 
-        var cardSetup = GameEntry.GetComponent<CardSetup>();
         int scanBuildingCount = 0;
         int generatedCardCount = 0;
 
-        if (cardSetup != null)
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
         {
-            IList<IEntityContext> entities = EntityRegistry.AllEntities;
-            for (int i = 0; i < entities.Count; i++)
-            {
-                if (entities[i] is not IBuildingLogicContext building)
-                    continue;
-                scanBuildingCount++;
-                if (!building.Alive
-                    || building.IsDisabled
-                    || building.BuildingData == null
-                    || building.BuildingData.Type != BuilType.Army
-                    || building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
-                    continue;
+            if (entities[i] is not IBuildingLogicContext building)
+                continue;
+            scanBuildingCount++;
+            if (!building.Alive
+                || building.IsDisabled
+                || building.BuildingData == null
+                || building.BuildingData.Type != BuilType.Army
+                || building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
+                continue;
 
-                if (cardSetup.GenerateCardToDeck(building))
-                    generatedCardCount++;
-            }
+            if (s_CardSetup.GenerateCardToDeck(building))
+                generatedCardCount++;
         }
 
         watch.Stop();
@@ -403,7 +405,6 @@ public class PhaseManager : GameFrameworkComponent
     private static void SpawnEnemySoldiers()
     {
         var totalWatch = Stopwatch.StartNew();
-        LogCreatureEntityPoolState("before-spawn");
 
         if (!s_InvadeSpawnPointsConfigured)
             throw new InvalidOperationException("PhaseManager cannot spawn invade enemies before level spawn points are configured.");
@@ -413,13 +414,21 @@ public class PhaseManager : GameFrameworkComponent
         {
             InvadeSpawnPointDefinition point = s_InvadeSpawnPoints[i];
             FixVector2 position = point.Position;
-            if (!LogicStrongholdMap.TryResolveStrongholdId(position, out string strongholdId))
+            string strongholdId = null;
+            if (!LogicStrongholdMap.TryResolveStrongholdId(position, out strongholdId))
+            {
+                Log.Warning(
+                    "PhaseManager invade spawn point is outside every stronghold; defaulting to enemy. point={0} raw=({1},{2}).",
+                    point.Name,
+                    position.x.RawValue,
+                    position.y.RawValue);
+            }
+            else if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(strongholdId, out int ownerFactionId))
             {
                 throw new InvalidOperationException(
-                    $"PhaseManager invade spawn point is outside the logic stronghold map. point={point.Name} raw=({position.x.RawValue},{position.y.RawValue}).");
+                    $"PhaseManager invade spawn point stronghold has no owner. point={point.Name} stronghold={strongholdId}.");
             }
-            if (!LogicBuildingQueryService.TryResolveStrongholdOwnerFaction(strongholdId, out int ownerFactionId)
-                || ownerFactionId == EntitySideHelper.PlayerFactionId)
+            else if (ownerFactionId == EntitySideHelper.PlayerFactionId)
             {
                 continue;
             }
@@ -474,7 +483,6 @@ public class PhaseManager : GameFrameworkComponent
         }
 
         totalWatch.Stop();
-        LogCreatureEntityPoolState("after-spawn");
         LogPhaseStep(
             $"spawn-enemy.detail clusters={spawnPlans.Count},units={spawnedCount},clusterTotalMs={totalSpawnClusterMs},clusterMaxMs={maxSingleSpawnClusterMs}",
             totalWatch.ElapsedMilliseconds);
@@ -574,27 +582,36 @@ public class PhaseManager : GameFrameworkComponent
         }
     }
 
-    private static void LogCreatureEntityPoolState(string step)
+    private static void PrepareRuntimeDependencies()
     {
-        if (GF.ObjectPool == null)
-        {
+        if (s_RuntimeDependenciesPrepared)
             return;
+        s_CardSetup = GameEntry.GetComponent<CardSetup>()
+                      ?? throw new InvalidOperationException("PhaseManager requires CardSetup before entering the initial phase.");
+        if (GF.Config == null)
+            throw new InvalidOperationException("PhaseManager requires initialized game config before entering the initial phase.");
+        s_EnemyProductionBuildingDailyResourceCost = GF.Config.GetInt(
+            EnemyProductionBuildingDailyResourceCostConfigKey,
+            0);
+        DefendPhaseRuntime.PrepareForCurrentLevelIfNeeded();
+        s_RuntimeDependenciesPrepared = true;
+    }
+
+    private static void RequireRuntimeDependencies()
+    {
+        if (!s_RuntimeDependenciesPrepared || s_CardSetup == null)
+            throw new InvalidOperationException("PhaseManager runtime dependencies were not prepared before logic phase apply.");
+    }
+
+    private readonly struct PhasePresentationEvent
+    {
+        public PhasePresentationEvent(GamePhase oldPhase, GamePhase newPhase)
+        {
+            OldPhase = oldPhase;
+            NewPhase = newPhase;
         }
 
-        var pool = GF.ObjectPool.GetObjectPool(p => p != null && p.FullName.Contains("Entity Instance Pool (Creature)"));
-        if (pool == null)
-        {
-            Log.Warning("[PhasePerf] creature-pool.{0}: not found", step);
-        }
-        else if (pool.Count >= pool.Capacity)
-        {
-            Log.Warning(
-                "[PhasePerf] creature-pool.{0}: count={1},canRelease={2},capacity={3},expire={4}",
-                step,
-                pool.Count,
-                pool.CanReleaseCount,
-                pool.Capacity,
-                pool.ExpireTime);
-        }
+        public GamePhase OldPhase { get; }
+        public GamePhase NewPhase { get; }
     }
 }

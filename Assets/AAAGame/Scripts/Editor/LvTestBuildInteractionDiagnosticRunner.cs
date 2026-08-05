@@ -29,6 +29,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
 
     private static readonly Dictionary<int, int> s_InitialEnemyAttackCounts = new();
     private static readonly Dictionary<int, double> s_UnboundEnemyViewFirstSeen = new();
+    private static readonly Dictionary<int, FixVector2> s_InitialBuildingForwards = new();
     private static StringBuilder s_Report;
     private static double s_RuntimeIssueDeadline;
     private static bool s_DefendSpawnObserved;
@@ -272,6 +273,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             .AppendLine();
 
         s_Report = report;
+        CaptureBuildingForwardBaselines();
         CaptureEnemyAttackBaselines();
         Application.logMessageReceived -= OnRuntimeLog;
         Application.logMessageReceived += OnRuntimeLog;
@@ -342,6 +344,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         }
 
         ObserveEnemyAttacksAndViewScales();
+        int validatedBuildingCount = ValidateBuildingForwards(out int validatedLv0BuildingCount);
         if (s_NavigationReadyObserved && s_NavigationReadyWorldCount != ExpectedNavigationWorldCount)
         {
             throw new InvalidOperationException(
@@ -369,6 +372,8 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             .Append(" speedReleaseObserved=").Append(s_SpawnSpeedReleaseObserved)
             .Append(" enemyAttackObserved=").Append(s_EnemyAttackObserved)
             .Append(" unitRootScaleValidated=").Append(s_RuntimeEnemyViewCount)
+            .Append(" buildingForwardValidated=").Append(validatedBuildingCount)
+            .Append(" lv0ForwardValidated=").Append(validatedLv0BuildingCount)
             .AppendLine();
         s_Report.Append("finishedUtc=").AppendLine(DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
         s_Report.Replace("RESULT=RUNNING", "RESULT=PASS");
@@ -390,6 +395,57 @@ internal static class LvTestBuildInteractionDiagnosticRunner
             if (entity.AtkComp is DirectAtkComp attack)
                 s_InitialEnemyAttackCounts[entity.LogicEntityId.Value] = attack.AttackCount;
         }
+    }
+
+    private static void CaptureBuildingForwardBaselines()
+    {
+        s_InitialBuildingForwards.Clear();
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i] is not LogicEntityState building || !building.IsBuildingEntity)
+                continue;
+            s_InitialBuildingForwards.Add(building.LogicEntityId.Value, building.ForwardFixed);
+        }
+
+        if (s_InitialBuildingForwards.Count == 0)
+            throw new InvalidOperationException("LvTest diagnostic found no building Forward baselines before Defend.");
+    }
+
+    private static int ValidateBuildingForwards(out int lv0Count)
+    {
+        int count = 0;
+        lv0Count = 0;
+        foreach (KeyValuePair<int, FixVector2> pair in s_InitialBuildingForwards)
+        {
+            var entityId = new LogicEntityId(pair.Key);
+            if (!EntityRegistry.TryGet(entityId, out IEntityContext context)
+                || context is not LogicEntityState building
+                || !building.IsBuildingEntity)
+            {
+                throw new InvalidOperationException($"LvTest building {pair.Key} disappeared while validating Defend Forward.");
+            }
+            if (building.ForwardFixed != pair.Value)
+            {
+                throw new InvalidOperationException(
+                    $"LvTest building Forward changed in Defend. entity={pair.Key}, building={building.BuildingData.Identifier}, before={pair.Value}, after={building.ForwardFixed}.");
+            }
+            if (!LogicEntityLifecycleService.TryGetBoundView(entityId, out MAEntity view) || view == null)
+                throw new InvalidOperationException($"LvTest building {pair.Key} has no bound View while validating Defend Forward.");
+
+            Vector3 expected = new Vector3((float)pair.Value.x, 0f, (float)pair.Value.y).normalized;
+            Vector3 actual = Vector3.ProjectOnPlane(view.transform.forward, Vector3.up).normalized;
+            if (Vector3.Dot(expected, actual) < 0.999f)
+            {
+                throw new InvalidOperationException(
+                    $"LvTest building View rotation diverged from authority. entity={pair.Key}, building={building.BuildingData.Identifier}, expected={expected}, actual={actual}.");
+            }
+
+            count++;
+            if (building.BuildingData.Lv == 0)
+                lv0Count++;
+        }
+        return count;
     }
 
     private static void PreparePendingNavigationRebuild()
@@ -483,6 +539,7 @@ internal static class LvTestBuildInteractionDiagnosticRunner
         StopRuntimeLogCapture();
         s_InitialEnemyAttackCounts.Clear();
         s_UnboundEnemyViewFirstSeen.Clear();
+        s_InitialBuildingForwards.Clear();
         s_Report = null;
         s_RuntimeIssueDeadline = 0.0;
         s_DefendSpawnObserved = false;

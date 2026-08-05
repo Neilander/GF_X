@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityGameFramework.Runtime;
 
@@ -16,6 +16,34 @@ public class AgentTypeHelper : GameFrameworkComponent
         { UnitSize.Large, LargeMovementTypeId },
         { UnitSize.SuperLarge, LargeMovementTypeId }
     };
+    private static readonly Dictionary<UnitType, int> s_UnitAgentTypeIds = new Dictionary<UnitType, int>();
+    private static bool s_RuntimeMappingsPrepared;
+
+    public static void PrepareRuntimeMappings()
+    {
+        if (GF.DataTable == null)
+            throw new InvalidOperationException("AgentTypeHelper cannot prepare runtime mappings before DataTable is initialized.");
+
+        var table = GF.DataTable.GetDataTable<CharacterDataDetail>()
+                    ?? throw new InvalidOperationException("AgentTypeHelper requires CharacterDataDetail.");
+        s_UnitAgentTypeIds.Clear();
+        CharacterDataDetail[] rows = table.GetAllDataRows();
+        for (int i = 0; i < rows.Length; i++)
+        {
+            CharacterDataDetail row = rows[i]
+                                      ?? throw new InvalidOperationException($"AgentTypeHelper found a null CharacterDataDetail row at index {i}.");
+            if (!Enum.TryParse(row.CharacterKey, false, out UnitType unitType))
+                throw new InvalidOperationException($"AgentTypeHelper cannot parse CharacterKey '{row.CharacterKey}' as UnitType.");
+            int agentTypeId = ResolveNavAgentTypeId(row.Size);
+            if (s_UnitAgentTypeIds.TryGetValue(unitType, out int existing) && existing != agentTypeId)
+            {
+                throw new InvalidOperationException(
+                    $"AgentTypeHelper found inconsistent movement types for UnitType={unitType}. first={existing}, current={agentTypeId}.");
+            }
+            s_UnitAgentTypeIds[unitType] = agentTypeId;
+        }
+        s_RuntimeMappingsPrepared = true;
+    }
 
     public int GetNavAgentTypeID(UnitSize unitSize)
     {
@@ -31,14 +59,15 @@ public class AgentTypeHelper : GameFrameworkComponent
 
     public int GetNavAgentTypeID(UnitType unitType)
     {
-        if (GF.DataTable == null)
-            throw new InvalidOperationException($"无法解析 UnitType={unitType} 的 Flow movement type：DataTable 未初始化。");
+        return ResolveNavAgentTypeId(unitType);
+    }
 
-        CharacterDataDetail row = GF.DataTable.GetDataTable<CharacterDataDetail>()?.GetDataRow(
-            candidate => candidate.CharacterKey == unitType.ToString());
-        if (row == null)
-            throw new InvalidOperationException($"无法解析 UnitType={unitType} 的 Flow movement type：CharacterDataDetail 行不存在。");
-
-        return GetNavAgentTypeID(row.Size);
+    public static int ResolveNavAgentTypeId(UnitType unitType)
+    {
+        if (!s_RuntimeMappingsPrepared)
+            throw new InvalidOperationException("AgentTypeHelper runtime mappings have not been prepared.");
+        return s_UnitAgentTypeIds.TryGetValue(unitType, out int agentTypeId)
+            ? agentTypeId
+            : throw new InvalidOperationException($"UnitType={unitType} has no prepared Flow movement type.");
     }
 }

@@ -342,6 +342,26 @@ public class LogicFrameRuntimeTests
     }
 
     [Test]
+    public void DefendPhase_RebuildsWaveCacheAfterSpawnPointLevelInvalidation()
+    {
+        string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");
+        string source = File.ReadAllText(
+            Path.Combine(scriptsRoot, "GameClass", "DefendPhaseRuntime.cs"));
+        int prepareStart = source.IndexOf("public static void PrepareForCurrentLevelIfNeeded()", StringComparison.Ordinal);
+        int spawnPointPrepare = source.IndexOf("ConfigureSpawnPointCacheIfNeeded();", prepareStart, StringComparison.Ordinal);
+        int wavePrepare = source.IndexOf("ConfigureWaveRuntimeIfNeeded();", prepareStart, StringComparison.Ordinal);
+
+        Assert.That(prepareStart, Is.GreaterThanOrEqualTo(0));
+        Assert.That(spawnPointPrepare, Is.GreaterThan(prepareStart));
+        Assert.That(wavePrepare, Is.GreaterThan(spawnPointPrepare),
+            "A new level entity invalidates the wave cache while configuring spawn points, so waves must be rebuilt last.");
+        Assert.That(
+            source,
+            Does.Contain("int smallAgentTypeId = AgentTypeHelper.ResolveNavAgentTypeId(UnitSize.Small);"),
+            "Spawn-point diagnostics must resolve their own agent type instead of depending on the wave cache.");
+    }
+
+    [Test]
     public void RuntimeTick_DoesNotSimulateUnityPhysics_AndTutorialTriggerUsesLogicPosition()
     {
         string scriptsRoot = Path.Combine(Application.dataPath, "AAAGame", "Scripts");

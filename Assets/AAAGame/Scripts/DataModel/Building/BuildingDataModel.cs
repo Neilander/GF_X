@@ -34,6 +34,36 @@ public class BuildingDataModel : DataModelBase
         return null;
     }
 
+    public static bool TryResolvePresetIdentifier(string identifier, out string resolvedIdentifier)
+    {
+        resolvedIdentifier = null;
+        if (string.IsNullOrWhiteSpace(identifier))
+            return false;
+
+        identifier = identifier.Trim();
+        if (GetBuildingData(identifier) != null)
+        {
+            resolvedIdentifier = identifier;
+            return true;
+        }
+
+        string levelOneIdentifier = identifier + "_Lv1";
+        if (GetBuildingData(levelOneIdentifier) != null)
+        {
+            resolvedIdentifier = levelOneIdentifier;
+            return true;
+        }
+
+        string levelZeroIdentifier = identifier + "_Lv0";
+        if (GetBuildingData(levelZeroIdentifier) != null)
+        {
+            resolvedIdentifier = levelZeroIdentifier;
+            return true;
+        }
+
+        return false;
+    }
+
     public static IEnumerable<BuildingData> GetAllBuildingData()
     {
         var buildingDataModel = GF.DataModel.GetDataModel<BuildingDataModel>();

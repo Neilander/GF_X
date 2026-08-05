@@ -150,9 +150,7 @@ public partial class InGameDataModel
             int newValue = checkpoint.Values[i];
             if (oldValue == newValue)
                 continue;
-            if (type == IngameValueType.Phase)
-                GF.Event.Fire(model, IngamePhaseChangedEventArgs.Create((GamePhase)oldValue, (GamePhase)newValue));
-            GF.Event.Fire(model, IngameValueChangedEventArgs.Create(type, oldValue, newValue));
+            QueueValuePresentation(type, oldValue, newValue);
         }
     }
 

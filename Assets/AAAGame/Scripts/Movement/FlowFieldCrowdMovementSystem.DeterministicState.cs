@@ -2052,6 +2052,11 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(nav.LastFixedFlowFrame);
             hasher.Add(nav.LastFixedFlowVelocity.x.RawValue);
             hasher.Add(nav.LastFixedFlowVelocity.y.RawValue);
+            hasher.Add(nav.PortalTraversalWorldVersion);
+            hasher.Add(nav.PortalTraversalSectorId);
+            hasher.Add(nav.PortalTraversalId);
+            hasher.Add(nav.PortalTraversalSlotIndex);
+            hasher.Add(nav.PortalTraversalHasCommittedTileSlot);
         }
     }
 
@@ -2753,6 +2758,11 @@ public static partial class FlowFieldCrowdMovementSystem
             hasher.Add(nav.StableGoalRawY);
             AddVector3(hasher, nav.StableGoalWorld);
             hasher.Add(nav.StableGoalTargetId);
+            hasher.Add(nav.PortalTraversalWorldVersion);
+            hasher.Add(nav.PortalTraversalSectorId);
+            hasher.Add(nav.PortalTraversalId);
+            hasher.Add(nav.PortalTraversalSlotIndex);
+            hasher.Add(nav.PortalTraversalHasCommittedTileSlot);
         }
     }
 

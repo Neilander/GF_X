@@ -106,6 +106,51 @@ public sealed class LogicInteractionHoldServiceTests
         Assert.AreEqual(0.5f, progress, 1e-5f);
     }
 
+    [TestCase(30)]
+    [TestCase(60)]
+    [TestCase(120)]
+    public void BuildingAndUpgradeHolds_CompleteByRenderTimeAtAnyRenderRate(int renderRate)
+    {
+        const int starCount = 4;
+        float duration = ResolveHoldDuration(typeof(BuildingBuildTips), starCount);
+        int frameCount = UnityEngine.Mathf.RoundToInt(duration * renderRate);
+        float deltaTime = 1f / renderRate;
+
+        AssertPanelHoldCompletesAndReleases(
+            typeof(BuildingBuildTips),
+            starCount,
+            deltaTime,
+            frameCount);
+        AssertPanelHoldCompletesAndReleases(
+            typeof(BuildingUpgradeTips),
+            starCount,
+            deltaTime,
+            frameCount);
+        Assert.AreEqual(Fix64.Zero,
+            LogicInteractionHoldService.GetProgress(InputKey.InteractionPrimary));
+    }
+
+    [TestCase(30)]
+    [TestCase(60)]
+    [TestCase(120)]
+    public void BuildingRecycleHolds_CompleteByRenderTimeAtAnyRenderRate(int renderRate)
+    {
+        const float durationSeconds = 2f;
+        int frameCount = UnityEngine.Mathf.RoundToInt(durationSeconds * renderRate);
+        float deltaTime = 1f / renderRate;
+
+        AssertRecycleHoldCompletesAndReleases(
+            typeof(BuildingInfoTips),
+            deltaTime,
+            frameCount);
+        AssertRecycleHoldCompletesAndReleases(
+            typeof(BuildingUpgradeTips),
+            deltaTime,
+            frameCount);
+        Assert.AreEqual(Fix64.Zero,
+            LogicInteractionHoldService.GetProgress(InputKey.InteractionPrimary));
+    }
+
     [Test]
     public void BuildingInfoRecycleHold_DoesNotConsumeLogicInputOrPanelHoldService()
     {
@@ -221,6 +266,47 @@ public sealed class LogicInteractionHoldServiceTests
             System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
         Assert.IsNotNull(method, $"{panelType.Name} is missing ResolveHoldDurationSeconds.");
         return (float)method.Invoke(null, new object[] { starCount });
+    }
+
+    private static void AssertPanelHoldCompletesAndReleases(
+        System.Type panelType,
+        int starCount,
+        float deltaTime,
+        int frameCount)
+    {
+        var method = panelType.GetMethod(
+            "AdvanceHoldProgressStars",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(method, $"{panelType.Name} is missing AdvanceHoldProgressStars.");
+
+        float progress = 0f;
+        for (int i = 0; i < frameCount; i++)
+            progress = (float)method.Invoke(null, new object[] { progress, true, starCount, deltaTime });
+        Assert.AreEqual(starCount, progress, 1e-4f, panelType.Name);
+
+        for (int i = 0; i < frameCount; i++)
+            progress = (float)method.Invoke(null, new object[] { progress, false, starCount, deltaTime });
+        Assert.AreEqual(0f, progress, 1e-4f, panelType.Name);
+    }
+
+    private static void AssertRecycleHoldCompletesAndReleases(
+        System.Type panelType,
+        float deltaTime,
+        int frameCount)
+    {
+        var method = panelType.GetMethod(
+            "AdvanceRecycleHoldProgress",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(method, $"{panelType.Name} is missing AdvanceRecycleHoldProgress.");
+
+        float progress = 0f;
+        for (int i = 0; i < frameCount; i++)
+            progress = (float)method.Invoke(null, new object[] { progress, true, deltaTime });
+        Assert.AreEqual(1f, progress, 1e-4f, panelType.Name);
+
+        for (int i = 0; i < frameCount; i++)
+            progress = (float)method.Invoke(null, new object[] { progress, false, deltaTime });
+        Assert.AreEqual(0f, progress, 1e-4f, panelType.Name);
     }
 
     private static void AssertRenderFramePanelBoundary(string source)

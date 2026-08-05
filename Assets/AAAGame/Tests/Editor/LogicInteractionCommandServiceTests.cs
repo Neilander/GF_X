@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using NUnit.Framework;
@@ -96,6 +96,77 @@ public sealed class LogicInteractionCommandServiceTests
 
         Assert.AreNotEqual(pendingHash, appliedHash);
         Assert.AreEqual(appliedHash, CaptureHash());
+    }
+
+    [Test]
+    public void ConsecutiveCommittedCoinPreviewsHandOffWithoutRestoringPreUpgradeValue()
+    {
+        const int ownerId = 71003;
+        LogicEntityId target = new LogicEntityId(30);
+        int authoritativeCoin = 10;
+        bool presentationReceiptObserved = false;
+        Action<LogicInteractionCommand> observeReceipt = _ => presentationReceiptObserved = true;
+        LogicInteractionCommandService.CommandAppliedPresentation += observeReceipt;
+        try
+        {
+            IngameCoinPreviewState.SetPreviewDeduction(ownerId, 3);
+            LogicInteractionCommand command = LogicInteractionCommandService.ScheduleForNextFrame(
+                LogicInteractionActionKind.UpgradeBuilding,
+                target,
+                "building-c",
+                "Building_Barracks_Lv2",
+                "Tech_C");
+            IngameCoinPreviewState.CommitPreviewDeduction(ownerId, target, command.ActionKind);
+
+            Assert.AreEqual(7, IngameCoinPreviewState.GetDisplayCoinValue(authoritativeCoin));
+            IngameCoinPreviewState.ClearPreviewDeduction(ownerId);
+            Assert.AreEqual(7, IngameCoinPreviewState.GetDisplayCoinValue(authoritativeCoin),
+                "提交后松手或旧建筑面板关闭不得恢复提交前金币");
+
+            LogicTimeControlService.BeginFrame(1);
+            LogicInteractionCommandService.ApplyFrameForTests(1, _ => authoritativeCoin -= 3);
+
+            Assert.IsFalse(presentationReceiptObserved,
+                "逻辑帧内只能排队成交回执，不能直接驱动 UI");
+            Assert.IsTrue(IngameCoinPreviewState.IsCommitted);
+            Assert.AreEqual(1, LogicInteractionCommandService.PendingAppliedPresentationCount);
+
+            LogicInteractionCommandService.UpdatePresentationEvents();
+
+            Assert.IsTrue(presentationReceiptObserved);
+            Assert.IsFalse(IngameCoinPreviewState.IsCommitted);
+            Assert.AreEqual(0, IngameCoinPreviewState.PreviewDeduction);
+            Assert.AreEqual(7, IngameCoinPreviewState.GetDisplayCoinValue(authoritativeCoin));
+
+            const int secondOwnerId = 71004;
+            LogicEntityId upgradedTarget = new LogicEntityId(31);
+            IngameCoinPreviewState.SetPreviewDeduction(secondOwnerId, 2);
+            LogicInteractionCommand secondCommand = LogicInteractionCommandService.ScheduleForNextFrame(
+                LogicInteractionActionKind.UpgradeBuilding,
+                upgradedTarget,
+                "building-c",
+                "Building_Barracks_Lv3",
+                "Tech_D");
+            IngameCoinPreviewState.CommitPreviewDeduction(secondOwnerId, upgradedTarget, secondCommand.ActionKind);
+
+            Assert.AreEqual(5, IngameCoinPreviewState.GetDisplayCoinValue(authoritativeCoin));
+            IngameCoinPreviewState.ClearPreviewDeduction(secondOwnerId);
+            Assert.AreEqual(5, IngameCoinPreviewState.GetDisplayCoinValue(authoritativeCoin),
+                "连续第二次提交也不得在权威扣款前恢复金额");
+
+            LogicTimeControlService.BeginFrame(2);
+            LogicInteractionCommandService.ApplyFrameForTests(2, _ => authoritativeCoin -= 2);
+            LogicInteractionCommandService.UpdatePresentationEvents();
+
+            Assert.IsFalse(IngameCoinPreviewState.IsCommitted);
+            Assert.AreEqual(0, IngameCoinPreviewState.PreviewDeduction);
+            Assert.AreEqual(5, IngameCoinPreviewState.GetDisplayCoinValue(authoritativeCoin));
+        }
+        finally
+        {
+            LogicInteractionCommandService.CommandAppliedPresentation -= observeReceipt;
+            IngameCoinPreviewState.Reset();
+        }
     }
 
     [Test]

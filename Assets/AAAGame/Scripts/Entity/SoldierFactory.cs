@@ -496,9 +496,7 @@ public static class SoldierFactory
 
     private static void AddGlobalBuffs(System.Collections.Generic.List<BuffData> buffList, UnitType unitType, SideType side)
     {
-        var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
-        if (globalBuffManager == null)
-            return;
+        GlobalBuffManager globalBuffManager = GlobalBuffManager.RequireCurrent();
 
         int factionId = EntitySideHelper.ToFactionId(side);
         var globalBuffs = globalBuffManager.GetBuffs(unitType, factionId);
@@ -513,9 +511,7 @@ public static class SoldierFactory
         if (string.IsNullOrWhiteSpace(sourceBuildingInstanceId))
             return;
 
-        var globalBuffManager = GameEntry.GetComponent<GlobalBuffManager>();
-        if (globalBuffManager == null)
-            return;
+        GlobalBuffManager globalBuffManager = GlobalBuffManager.RequireCurrent();
 
         int factionId = EntitySideHelper.ToFactionId(side);
         var buildingBuffs = globalBuffManager.GetBuffsForBuilding(sourceBuildingInstanceId, factionId);

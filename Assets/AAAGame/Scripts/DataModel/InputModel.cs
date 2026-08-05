@@ -3,6 +3,24 @@ using GameFramework;
 
 public class InputModel : DataModelBase
 {
+    private static InputModel s_ActiveModel;
+
+    public InputModel()
+    {
+        if (s_ActiveModel != null
+            && !ReferenceEquals(s_ActiveModel, this)
+            && GF.DataModel != null
+            && ReferenceEquals(GF.DataModel.GetDataModel<InputModel>(), s_ActiveModel))
+            throw new InvalidOperationException("InputModel active runtime model is already bound.");
+        s_ActiveModel = this;
+    }
+
+    public static InputModel RequireActive()
+    {
+        return s_ActiveModel
+               ?? throw new InvalidOperationException("InputModel is required before logic input consumers are created.");
+    }
+
     public LogicInputTimeline LogicTimeline { get; } = new LogicInputTimeline();
     public LogicInputFrame CurrentLogicFrame { get; private set; } = LogicInputFrame.Empty;
 
@@ -51,11 +69,17 @@ public class InputModel : DataModelBase
     protected override void OnCreate(RefParams userdata)
     {
         base.OnCreate(userdata);
+        if (s_ActiveModel != null && !ReferenceEquals(s_ActiveModel, this))
+            throw new InvalidOperationException("InputModel active runtime model is already bound.");
+        s_ActiveModel = this;
         Reset();
     }
 
     protected override void OnRelease()
     {
+        if (!ReferenceEquals(s_ActiveModel, this))
+            throw new InvalidOperationException("InputModel release does not match the active runtime model.");
+        s_ActiveModel = null;
         base.OnRelease();
         Reset();
     }

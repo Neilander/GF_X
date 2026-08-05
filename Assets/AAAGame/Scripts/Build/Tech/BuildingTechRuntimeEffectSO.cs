@@ -664,9 +664,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
 
     private void ApplyDiscardBuff(DiscardBuffSpec spec)
     {
-        var manager = GameEntry.GetComponent<GlobalBuffManager>();
-        if (manager == null)
-            throw new InvalidOperationException("Building tech discard resolution requires GlobalBuffManager.");
+        GlobalBuffManager manager = GlobalBuffManager.RequireCurrent();
 
         string uniqueTechId = $"{DiscardFutureBuffPrefix}{spec.TechId}_{m_DiscardCounter++}";
         TechData techData = TechDataModel.GetTechData(spec.TechId);
@@ -717,9 +715,7 @@ public sealed class BuildingTechRuntimeEffectSO : TechEffectSO
         GrantPendingBuildPhaseCoins();
         GrantFireHqDeathSupplyCoins();
 
-        var manager = GameEntry.GetComponent<GlobalBuffManager>();
-        if (m_DiscardBuffs.Count > 0 && manager == null)
-            throw new InvalidOperationException("Building tech phase transition requires GlobalBuffManager for discard buffs.");
+        GlobalBuffManager manager = GlobalBuffManager.RequireCurrent();
         foreach (DiscardBuffSpec spec in m_DiscardBuffs.Values)
         {
             manager.UnregisterUnitBuffByTechPrefix(spec.OwnerFactionId, DiscardFutureBuffPrefix);
