@@ -4,7 +4,7 @@ using UnityGameFramework.Runtime;
 [RequireComponent(typeof(Collider))]
 public class TutorialTriggerCollider : MonoBehaviour, ILogicFrameUpdate, ILogicFrameStableOrder
 {
-    [SerializeField] private TutorialType triggerType = TutorialType.MoveHeroByWASD;
+    [SerializeField] private TutorialType triggerType = TutorialType.FriendlyStronghold;
     [SerializeField] private bool triggerOnce = true;
 
     private TutorialManager tutorialManager;
@@ -44,7 +44,7 @@ public class TutorialTriggerCollider : MonoBehaviour, ILogicFrameUpdate, ILogicF
             throw new System.InvalidOperationException("TutorialTriggerCollider cannot update on logic frame zero.");
         if (triggerOnce && hasTriggered)
             return;
-        if (triggerType == TutorialType.InvadeSH)
+        if (triggerType == TutorialType.EnemyStronghold)
             return;
 
         IEntityContext player = EntityRegistry.Player;
@@ -94,7 +94,7 @@ public class TutorialTriggerCollider : MonoBehaviour, ILogicFrameUpdate, ILogicF
 
     private void RegisterLogicFrame()
     {
-        if (logicFrameRegistered || triggerType == TutorialType.InvadeSH)
+        if (logicFrameRegistered || triggerType == TutorialType.EnemyStronghold)
             return;
 
         LogicFrameRuntime.Register(this);

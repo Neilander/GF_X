@@ -27,8 +27,9 @@ public partial class TipsItem : UIItemBase
         KillTweens();
     }
 
-    public void SetData(string title, string content)
+    public void SetData(string title, string content, string icon = null)
     {
+        string iconMarkup = GetIconMarkup(icon);
         bool hasTitle = !string.IsNullOrEmpty(title);
         varTitle.gameObject.SetActive(hasTitle);
         varContent.gameObject.SetActive(hasTitle);
@@ -40,18 +41,18 @@ public partial class TipsItem : UIItemBase
 
         if (hasTitle)
         {
-            varTitle.text = title;
+            varTitle.text = iconMarkup + title;
             varContent.text = content;
         }
         else if (varNoTitleContent != null)
         {
-            varNoTitleContent.text = content;
+            varNoTitleContent.text = iconMarkup + content;
         }
     }
 
-    public void Play(string title, string content, float duration, Action<TipsItem> onComplete)
+    public void Play(string title, string content, string icon, float duration, Action<TipsItem> onComplete)
     {
-        SetData(title, content);
+        SetData(title, content, icon);
         KillTweens();
         m_OnComplete = onComplete;
         m_IsClosing = false;
@@ -64,6 +65,22 @@ public partial class TipsItem : UIItemBase
         else
         {
             StartCloseDelay(duration);
+        }
+    }
+
+    private static string GetIconMarkup(string icon)
+    {
+        string resolvedIcon = string.IsNullOrWhiteSpace(icon) ? TipsDataModel.DefaultIcon : icon;
+        switch (resolvedIcon)
+        {
+            case "Narrator":
+                return "<color=#F4A261>◆</color> ";
+            case "Director":
+                return "<color=#55D6BE>▣</color> ";
+            case "Terminal":
+                return "<color=#76A9FF>⌘</color> ";
+            default:
+                throw new ArgumentOutOfRangeException(nameof(icon), icon, "Unknown tip speaker icon.");
         }
     }
 

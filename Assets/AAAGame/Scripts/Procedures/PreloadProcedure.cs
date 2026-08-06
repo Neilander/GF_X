@@ -254,6 +254,7 @@ public class PreloadProcedure : ProcedureBase
         dataModel.GetOrCreate<TechDataModel>();
         dataModel.GetOrCreate<SkillDataModel>();
         dataModel.GetOrCreate<LocalizationTextDataModel>();
+        dataModel.GetOrCreate<TipsDataModel>();
     }
     private void CreateGFExtension()
     {

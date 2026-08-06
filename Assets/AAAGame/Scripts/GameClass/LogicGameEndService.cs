@@ -44,6 +44,7 @@ public static class LogicGameEndService
     private static string s_CurrentLevelIdentifier;
     private static VictoryConditionType s_VictoryCondition;
     private static FailConditionType s_FailCondition;
+    private const string TutorialLevelIdentifier = "Lv_1";
 
     public static event Action<LogicGameEndResult> GameEnded;
 
@@ -100,9 +101,13 @@ public static class LogicGameEndService
             throw new InvalidOperationException("LogicGameEndService.Initialize requires a stable level identifier.");
 
         ClearState();
-        s_EnableOccupySpecificBuildings = ContainsVictoryCondition(
-            levelData.VictoryConditions,
-            VictoryConditionType.OccupySpecificBuildings);
+        s_EnableOccupySpecificBuildings = !string.Equals(
+                                               levelData.Identifier,
+                                               TutorialLevelIdentifier,
+                                               StringComparison.Ordinal)
+                                           && ContainsVictoryCondition(
+                                               levelData.VictoryConditions,
+                                               VictoryConditionType.OccupySpecificBuildings);
         s_EnableSurviveAmountDays = ContainsVictoryCondition(
             levelData.VictoryConditions,
             VictoryConditionType.SurviveAmountDays);
@@ -152,6 +157,32 @@ public static class LogicGameEndService
             s_PlayerTargetBuildingInstanceIds,
             origin,
             out building);
+    }
+
+    public static void PromoteCapturedConditionBuildingToPlayerTarget(string buildingInstanceId)
+    {
+        EnsureInitialized();
+        if (string.IsNullOrWhiteSpace(buildingInstanceId))
+            throw new ArgumentException("Building instance id is required.", nameof(buildingInstanceId));
+        if (!s_EnemyTargetBuildingInstanceIds.Contains(buildingInstanceId))
+        {
+            throw new InvalidOperationException(
+                $"Captured condition building '{buildingInstanceId}' was not registered as an enemy target.");
+        }
+        if (!s_PlayerTargetBuildingInstanceIds.Add(buildingInstanceId))
+            throw new InvalidOperationException($"Captured condition building '{buildingInstanceId}' is already a player target.");
+    }
+
+    public static void CompleteScriptedWin(VictoryConditionType condition)
+    {
+        EnsureInitialized();
+        if (!string.Equals(s_CurrentLevelIdentifier, TutorialLevelIdentifier, StringComparison.Ordinal))
+            throw new InvalidOperationException("Scripted tutorial victory is only valid in Level_1.");
+        if (condition != VictoryConditionType.CompleteTutorial)
+            throw new ArgumentOutOfRangeException(nameof(condition), condition, "Unexpected scripted victory condition.");
+        if (IsGameEnded)
+            throw new InvalidOperationException("Cannot complete a scripted victory after the game has ended.");
+        CompleteWin(condition);
     }
 
     public static void ApplyFrame(ulong frame)

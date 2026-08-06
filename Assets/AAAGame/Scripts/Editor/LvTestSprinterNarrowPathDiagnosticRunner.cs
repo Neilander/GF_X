@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -530,6 +530,35 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                 sample.PreviousNavigationTarget = navigationTarget;
 
                 FlowFieldCrowdMovementSystem.TryGetEditorTestDeterministicFlowDiagnostic(sample.EntityId.Value, out string flow);
+                string stableGoal = FlowFieldCrowdMovementSystem.TryGetEditorTestStableGoal(
+                    sample.EntityId.Value,
+                    out int stableTargetId,
+                    out int stableRawX,
+                    out int stableRawY,
+                    out int stableX,
+                    out int stableY,
+                    out _)
+                    ? $"target={stableTargetId},raw=({stableRawX},{stableRawY}),active=({stableX},{stableY})"
+                    : "unavailable";
+                string pathGoal = FlowFieldCrowdMovementSystem.TryGetEditorTestPathGoalCell(
+                    sample.EntityId.Value,
+                    out int pathGoalX,
+                    out int pathGoalY)
+                    ? $"({pathGoalX},{pathGoalY})"
+                    : "unavailable";
+                string pathSource = FlowFieldCrowdMovementSystem.TryGetEditorTestPathBuildSource(
+                    sample.EntityId.Value,
+                    out string resolvedPathSource)
+                    ? resolvedPathSource
+                    : "unavailable";
+                string pathRoute = FlowFieldCrowdMovementSystem.TryGetEditorTestPathSectorIds(
+                                       sample.EntityId.Value,
+                                       out int[] pathSectorIds)
+                                   && FlowFieldCrowdMovementSystem.TryGetEditorTestPathPortalIds(
+                                       sample.EntityId.Value,
+                                       out int[] pathPortalIds)
+                    ? $"sectors=[{string.Join(",", pathSectorIds)}],portals=[{string.Join(",", pathPortalIds)}]"
+                    : "unavailable";
                 bool directDecisionMismatch = flow != null
                                               && (flow.Contains("directStaticClear=True", StringComparison.Ordinal)
                                                   ^ flow.Contains("directCostClear=True", StringComparison.Ordinal));
@@ -552,6 +581,10 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                         .Append(" forwardRaw=").Append(Format(authorityForward))
                         .Append(" toHeroRaw=").Append(Format(toHero))
                         .Append(" navTargetRaw=").Append(hasNavigationTarget ? Format(navigationTarget) : "none")
+                        .Append(" stableGoal={").Append(stableGoal).Append('}')
+                        .Append(" pathGoal=").Append(pathGoal)
+                        .Append(" pathSource=").Append(pathSource)
+                        .Append(" pathRoute={").Append(pathRoute).Append('}')
                         .Append(" flow=").Append(flow)
                         .Append(directDecision == null ? string.Empty : " losDecision=" + directDecision)
                         .AppendLine();
@@ -578,7 +611,18 @@ internal static class LvTestSprinterNarrowPathDiagnosticRunner
                     Fix64 cross = Cross(sample.PreviousModelForward, modelForward);
                     int sign = SignBeyondThreshold(cross, s_LateralThreshold);
                     if (sign != 0 && sample.LastModelTurnSign != 0 && sign != sample.LastModelTurnSign)
+                    {
                         sample.ModelTurnAlternations++;
+                        _frameLog.Append("MODEL_TURN_ALTERNATION logicFrame=")
+                            .Append(LogicFrameRuntime.CurrentFrame)
+                            .Append(" renderFrame=").Append(Time.frameCount)
+                            .Append(" entity=").Append(sample.EntityId.Value)
+                            .Append(" previousModelForwardRaw=").Append(Format(sample.PreviousModelForward))
+                            .Append(" modelForwardRaw=").Append(Format(modelForward))
+                            .Append(" authorityForwardRaw=").Append(Format(sample.PreviousAuthorityForward))
+                            .Append(" crossRaw=").Append(cross.RawValue)
+                            .AppendLine();
+                    }
                     if (sign != 0)
                         sample.LastModelTurnSign = sign;
                 }

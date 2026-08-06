@@ -2,7 +2,7 @@
 #	ID		Identifier	PrefabPath	NameKey	DescKey	InitResource	StartPhase	VictoryConditions	VictoryValue	LoseConditions	LoseValue	Def1Enemies	Def2Enemies	Def3Enemies	Def4Enemies	Def5Enemies	Def6Enemies	Def7Enemies	Def8Enemies	Def9Enemies	Def10Enemies
 #	int		string	string	string	string	int	enum	enum[]	int	enum[]	int	StringIntPair[]	StringIntPair[]	StringIntPair[]	StringIntPair[]	StringIntPair[]	StringIntPair[]	StringIntPair[]	StringIntPair[]	StringIntPair[]	StringIntPair[]
 #		备注	代码内标识符	关卡prefab路径	关卡名(多语言)	关卡简介(多语言)	初始资源	初始阶段	胜利条件	胜利条件设定数值	失败条件	失败条件设定数值	防御阶段1出怪	防御阶段2出怪	防御阶段3出怪	防御阶段4出怪	防御阶段5出怪	防御阶段6出怪	防御阶段7出怪	防御阶段8出怪	防御阶段9出怪	防御阶段10出怪
-	1	教程关	Lv_1	Level/Level_1	Lv_Name_1	Lv_Desc_1	9	GamePhase.Invade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings											
+	1	教程关	Lv_1	Level/Level_1	Lv_Name_1	Lv_Desc_1	9	GamePhase.Defend	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings			[Unit_HiredBodyguard,4]	[Unit_HiredBodyguard,6]	[Unit_HiredBodyguard,8]						
 	2		Lv_2	Level/Level_2	Lv_Name_2	Lv_Desc_2	8	GamePhase.BuildBeforeInvade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings		[Unit_BoneButcher,1],[Unit_CanMaker_Lv3,2]									
 	3		Lv_3	Level/Level_3	Lv_Name_3	Lv_Desc_3	9	GamePhase.BuildBeforeInvade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings		[Unit_BoneButcher_Lv2,1],[Unit_Intern,5]									
 	4		Lv_4	Level/Level_2	Lv_Name_4	Lv_Desc_4	6	GamePhase.BuildBeforeInvade	VictoryConditionType.OccupySpecificBuildings		FailConditionType.LoseSpecificBuildings											

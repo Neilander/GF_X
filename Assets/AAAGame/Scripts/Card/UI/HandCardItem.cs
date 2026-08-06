@@ -27,7 +27,9 @@ namespace AAAGame.Card
         [Header("动画设置")]
         [SerializeField] private float dragScale = 1.2f;
         [SerializeField] private float animationDuration = 0.2f;
-        [SerializeField] [InspectorName("抽牌起始缩放")] [Range(0.05f, 1f)] private float drawStartScale = 0.18f;
+        [SerializeField] [InspectorName("抽牌起始缩放")] [Range(0.5f, 1f)] private float drawStartScale = 0.72f;
+        [SerializeField] [InspectorName("抽牌弧线高度")] private float drawArcHeight = 72f;
+        [SerializeField] [InspectorName("抽牌起始倾斜角度")] private float drawStartRotation = 7f;
         [SerializeField] [InspectorName("丢弃放大倍率")] private float discardPeakScale = 1.25f;
         [SerializeField] [InspectorName("丢弃放大时长")] private float discardPopDuration = 0.08f;
         [SerializeField] [InspectorName("丢弃缩小时长")] private float discardShrinkDuration = 0.18f;
@@ -56,6 +58,7 @@ namespace AAAGame.Card
         private bool m_IsSelected;
         private bool m_IsTargetingMode;
         private bool m_IsPointerInside;
+        private bool m_IsDrawing;
 
         private Sprite m_DefaultCardBackSprite;
         private Color m_DefaultCardBackColor;
@@ -70,9 +73,16 @@ namespace AAAGame.Card
         private Tween m_FadeTween;
         private bool m_HoverLiftActive;
         private Vector2 m_HoverLiftBaseAnchoredPosition;
+        private Vector3 m_DrawStartPosition;
+        private Vector3 m_DrawTargetPosition;
+        private Vector3 m_DrawControlPosition;
+        private Vector3 m_DrawRetargetOffset;
+        private float m_DrawProgress;
+        private float m_DrawRetargetStartProgress;
 
         private const int NormalSortingOrder = 0;
         private const int HoverSortingOrder = 20;
+        private const int DrawSortingOrder = 30;
         private const int DragSortingOrder = 40;
         private const float DisabledCardAlpha = 0.5f;
 
@@ -154,11 +164,13 @@ namespace AAAGame.Card
             m_IsSelected = false;
             m_IsTargetingMode = false;
             m_IsPointerInside = false;
+            m_IsDrawing = false;
 
             if (m_RectTransform != null)
             {
                 ResetHoverLiftImmediate();
                 m_RectTransform.localScale = Vector3.one;
+                m_RectTransform.localRotation = Quaternion.identity;
             }
 
             if (canvasGroup != null)
@@ -307,7 +319,8 @@ namespace AAAGame.Card
             }
 
             bool suppressHover = m_ParentForm != null && m_ParentForm.HasActiveHandCardDrag(this);
-            bool shouldPromote = m_IsDragging || m_IsTargetingMode || m_IsSelected || (!suppressHover && m_IsPointerInside && m_CanPlay);
+            bool shouldPromote = m_IsDrawing || m_IsDragging || m_IsTargetingMode || m_IsSelected
+                || (!suppressHover && m_IsPointerInside && m_CanPlay);
             if (!shouldPromote)
             {
                 m_SortingCanvas.overrideSorting = false;
@@ -327,7 +340,9 @@ namespace AAAGame.Card
 
             m_SortingCanvas.sortingOrder = m_IsDragging || m_IsTargetingMode
                 ? baseSortingOrder + DragSortingOrder
-                : baseSortingOrder + HoverSortingOrder;
+                : m_IsDrawing
+                    ? baseSortingOrder + DrawSortingOrder
+                    : baseSortingOrder + HoverSortingOrder;
         }
 
         private void RefreshParentCanvas()
@@ -726,36 +741,74 @@ namespace AAAGame.Card
         /// <summary>
         /// 从屏幕位置移动到手牌区
         /// </summary>
-        public void MoveToHandFromScreenPosition(Vector2 startScreenPosition, float duration = 0.5f, Action onComplete = null)
+        public void MoveToHandFromScreenPosition(Vector3 startScreenPosition, float duration = 0.5f, Action onComplete = null)
         {
+            if (m_CardModel == null)
+            {
+                throw new InvalidOperationException("Cannot animate a hand card before it is initialized.");
+            }
+
             canvasGroup.blocksRaycasts = false;
             RefreshOwningLayout();
 
-            Vector3 targetPosition = m_RectTransform.position;
-            m_RectTransform.position = startScreenPosition;
-            transform.localScale = Vector3.one * Mathf.Clamp(drawStartScale, 0.05f, 1f);
+            float safeDuration = Mathf.Max(0.01f, duration);
+            m_DrawStartPosition = startScreenPosition;
+            m_DrawTargetPosition = m_RectTransform.position;
+            m_DrawControlPosition = CalculateDrawControlPosition(m_DrawStartPosition, m_DrawTargetPosition);
+            m_DrawRetargetOffset = Vector3.zero;
+            m_DrawProgress = 0f;
+            m_DrawRetargetStartProgress = 0f;
+            m_RectTransform.position = m_DrawStartPosition;
+            transform.localScale = Vector3.one * drawStartScale;
+            float signedStartRotation = Mathf.Sign(m_DrawTargetPosition.x - m_DrawStartPosition.x) * -drawStartRotation;
+            transform.localRotation = Quaternion.Euler(0f, 0f, signedStartRotation);
 
             m_OnMoveToHandComplete = onComplete;
+            m_IsDrawing = true;
+            UpdateRenderPriority();
+
             m_MoveTween?.Kill();
-            m_MoveTween = m_RectTransform.DOMove(targetPosition, duration)
-                .SetEase(Ease.OutCubic)
-                .SetLink(gameObject)
-                .OnComplete(() =>
+            m_MoveTween = DOVirtual.Float(0f, 1f, safeDuration, progress =>
                 {
-                    transform.localScale = Vector3.one;
-                    canvasGroup.blocksRaycasts = true;
-                    if (m_OnMoveToHandComplete != null)
+                    m_DrawProgress = progress;
+                    Vector3 position = EvaluateDrawCurve(progress);
+                    if (m_DrawRetargetOffset != Vector3.zero && progress < 1f)
                     {
-                        m_OnMoveToHandComplete.Invoke();
-                        m_OnMoveToHandComplete = null;
+                        float offsetWeight = (1f - progress) / (1f - m_DrawRetargetStartProgress);
+                        position += m_DrawRetargetOffset * offsetWeight;
                     }
-                    RefreshOwningLayout();
-                });
+
+                    m_RectTransform.position = position;
+                })
+                .SetEase(Ease.OutSine)
+                .SetLink(gameObject)
+                .OnComplete(CompleteDrawAnimation);
 
             m_ScaleTween?.Kill();
-            m_ScaleTween = transform.DOScale(Vector3.one, duration)
-                .SetEase(Ease.OutBack)
+            Sequence visualSequence = DOTween.Sequence();
+            visualSequence.AppendInterval(safeDuration * 0.08f);
+            visualSequence.Append(transform.DOScale(Vector3.one * 1.04f, safeDuration * 0.68f)
+                .SetEase(Ease.OutCubic));
+            visualSequence.Append(transform.DOScale(Vector3.one, safeDuration * 0.24f)
+                .SetEase(Ease.OutSine));
+            visualSequence.Insert(0f, transform.DOLocalRotate(
+                    new Vector3(0f, 0f, signedStartRotation * -0.18f),
+                    safeDuration * 0.72f)
+                .SetEase(Ease.OutCubic));
+            visualSequence.Insert(safeDuration * 0.72f, transform.DOLocalRotate(
+                    Vector3.zero,
+                    safeDuration * 0.28f)
+                .SetEase(Ease.OutSine));
+            m_ScaleTween = visualSequence
                 .SetLink(gameObject);
+
+            Log.Info(
+                "[CardDraw] Animation started runtimeId={0}, start={1}, control={2}, target={3}, duration={4:F3}.",
+                m_CardModel.RuntimeId,
+                m_DrawStartPosition,
+                m_DrawControlPosition,
+                m_DrawTargetPosition,
+                safeDuration);
         }
 
         public void SyncMoveTargetToCurrentLayout()
@@ -767,25 +820,45 @@ namespace AAAGame.Card
 
             Vector3 newTargetPosition = m_RectTransform.position;
             m_RectTransform.position = m_SavedTweenPosition;
+            m_DrawTargetPosition = newTargetPosition;
+            m_DrawControlPosition = CalculateDrawControlPosition(m_DrawStartPosition, m_DrawTargetPosition);
+            m_DrawRetargetOffset = m_SavedTweenPosition - EvaluateDrawCurve(m_DrawProgress);
+            m_DrawRetargetStartProgress = m_DrawProgress;
+        }
 
-            float remainTime = m_MoveTween.Duration() - m_MoveTween.Elapsed();
-            remainTime = Mathf.Max(0.05f, remainTime);
+        private Vector3 CalculateDrawControlPosition(Vector3 startPosition, Vector3 targetPosition)
+        {
+            Vector3 midpoint = (startPosition + targetPosition) * 0.5f;
+            midpoint.y += drawArcHeight;
+            return midpoint;
+        }
 
-            m_MoveTween.Kill();
-            m_MoveTween = m_RectTransform.DOMove(newTargetPosition, remainTime)
-                .SetEase(Ease.OutCubic)
-                .SetLink(gameObject)
-                .OnComplete(() =>
-                {
-                    transform.localScale = Vector3.one;
-                    canvasGroup.blocksRaycasts = true;
-                    if (m_OnMoveToHandComplete != null)
-                    {
-                        m_OnMoveToHandComplete.Invoke();
-                        m_OnMoveToHandComplete = null;
-                    }
-                    RefreshOwningLayout();
-                });
+        private Vector3 EvaluateDrawCurve(float progress)
+        {
+            float inverse = 1f - progress;
+            return inverse * inverse * m_DrawStartPosition
+                + 2f * inverse * progress * m_DrawControlPosition
+                + progress * progress * m_DrawTargetPosition;
+        }
+
+        private void CompleteDrawAnimation()
+        {
+            m_RectTransform.position = m_DrawTargetPosition;
+            transform.localScale = Vector3.one;
+            transform.localRotation = Quaternion.identity;
+            canvasGroup.blocksRaycasts = true;
+            m_IsDrawing = false;
+            UpdateRenderPriority();
+
+            Log.Info(
+                "[CardDraw] Animation completed runtimeId={0}, target={1}.",
+                m_CardModel.RuntimeId,
+                m_DrawTargetPosition);
+
+            Action onComplete = m_OnMoveToHandComplete;
+            m_OnMoveToHandComplete = null;
+            onComplete?.Invoke();
+            RefreshOwningLayout();
         }
 
         private Vector3 m_SavedTweenPosition;
@@ -890,6 +963,13 @@ namespace AAAGame.Card
             m_LayoutPlaceholder.SetActive(false);
             Destroy(m_LayoutPlaceholder);
             m_LayoutPlaceholder = null;
+        }
+
+        public GameObject DetachLayoutPlaceholderForReplacement()
+        {
+            GameObject placeholder = m_LayoutPlaceholder;
+            m_LayoutPlaceholder = null;
+            return placeholder;
         }
 
         private int GetRestoreSiblingIndex()
@@ -1090,6 +1170,7 @@ namespace AAAGame.Card
             m_MoveTween?.Kill();
             m_HoverLiftTween?.Kill();
             m_FadeTween?.Kill();
+            m_IsDrawing = false;
             ClearLayoutPlaceholder();
             ApplyHoverGlow(false);
         }

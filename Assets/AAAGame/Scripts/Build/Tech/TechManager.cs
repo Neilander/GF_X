@@ -35,6 +35,9 @@ public class TechManager : GameFrameworkComponent
         if (!CanPlayerOperateInBuildPhase(owner))
             return false;
 
+        if (!TutorialManager.IsUpgradeOptionAllowed(owner))
+            return false;
+
         if (string.IsNullOrWhiteSpace(upgradeBuildingId) || BuildingDataModel.GetBuildingData(upgradeBuildingId) == null)
             return false;
 

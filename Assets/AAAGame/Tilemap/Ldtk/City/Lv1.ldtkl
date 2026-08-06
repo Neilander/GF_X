@@ -85,7 +85,10 @@
 							"id": "V_String",
 							"params": ["Buil_SouthernMoon_Lv1"]
 						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [null] },
+						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": true, "__tile": null, "defUid": 24, "realEditorValues": [{
+							"id": "V_Bool",
+							"params": [ true ]
+						}] },
 						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
 					],
 					"__worldX": 488,
@@ -294,29 +297,6 @@
 					],
 					"__worldX": 728,
 					"__worldY": 456
-				},
-				{
-					"__identifier": "Building",
-					"__grid": [32,51],
-					"__pivot": [0.5,0.5],
-					"__tags": [],
-					"__tile": null,
-					"__smartColor": "#D77643",
-					"iid": "ba5ed550-6fc0-11f1-ba80-e379ffb27b6d",
-					"width": 16,
-					"height": 16,
-					"defUid": 12,
-					"px": [520,824],
-					"fieldInstances": [
-						{ "__identifier": "Identifier", "__type": "String", "__value": "Buil_BodyguardAgency_Lv1", "__tile": null, "defUid": 13, "realEditorValues": [{
-							"id": "V_String",
-							"params": ["Buil_BodyguardAgency_Lv1"]
-						}] },
-						{ "__identifier": "IsGameEndCondition", "__type": "Bool", "__value": false, "__tile": null, "defUid": 24, "realEditorValues": [null] },
-						{ "__identifier": "CoinReserves", "__type": "Int", "__value": null, "__tile": null, "defUid": 29, "realEditorValues": [] }
-					],
-					"__worldX": 520,
-					"__worldY": 824
 				},
 				{
 					"__identifier": "Building",
@@ -867,6 +847,25 @@
 					"fieldInstances": [{ "__identifier": "Weight", "__type": "Float", "__value": 8, "__tile": null, "defUid": 28, "realEditorValues": [{ "id": "V_Float", "params": [8] }] }],
 					"__worldX": 840,
 					"__worldY": 488
+				},
+				{
+					"__identifier": "Destination",
+					"__grid": [29,50],
+					"__pivot": [0.5,0.5],
+					"__tags": [],
+					"__tile": null,
+					"__smartColor": "#32FF05",
+					"iid": "352cec90-6fc0-11f1-aad0-b146e7c7f007",
+					"width": 16,
+					"height": 16,
+					"defUid": 35,
+					"px": [472,808],
+					"fieldInstances": [
+						{ "__identifier": "ID", "__type": "Float", "__value": 0, "__tile": null, "defUid": 36, "realEditorValues": [] },
+						{ "__identifier": "Radius", "__type": "Float", "__value": 250, "__tile": null, "defUid": 37, "realEditorValues": [] }
+					],
+					"__worldX": 472,
+					"__worldY": 808
 				}
 			]
 		},

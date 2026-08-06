@@ -1,0 +1,30 @@
+#	侧边提示表						i18n
+#	ID		Identifier	TitleKey	ContentKey	Icon	Duration
+#	int		string	string	string	string	float
+#		备注	代码内唯一标识	标题本地化键	内容本地化键	讲话人图标，空值默认为Narrator	存在时间，-1表示条件结束
+	1	切换阶段失败	PhaseSwitchBlocked	Tips.PhaseSwitchBlocked.Title	Tips.PhaseSwitchBlocked.Content	Narrator	2
+	2	禁止区域部署	CardPlayBlockedForbiddenArea	Tips.CardPlayBlocked.Title	Tips.CardPlayBlocked.ForbiddenArea	Narrator	2
+	3	频段不足	CardPlayBlockedInsufficientSupply	Tips.CardPlayBlocked.Title	Tips.CardPlayBlocked.InsufficientSupply	Narrator	2
+	4	发现敌方单位	EnemyUnitDiscovered			Narrator	2
+	10	前往我方据点	TutorialGoFriendlyStronghold	Tutorial.Speaker.Director	Tutorial.GoFriendlyStronghold	Director	-1
+	11	移动与小地图	TutorialMovement	Tutorial.Speaker.Terminal	Tutorial.Movement	Terminal	-1
+	12	敌兵来犯	TutorialEnemyAttack	Tutorial.Speaker.Director	Tutorial.EnemyAttack	Director	-1
+	13	首次防御完成	TutorialFirstDefenseComplete	Tutorial.Speaker.Director	Tutorial.FirstDefenseComplete	Director	-1
+	14	切换到整备阶段	TutorialSwitchToBuild	Tutorial.Speaker.Narrator	Tutorial.SwitchToBuild	Narrator	-1
+	15	建造操作	TutorialBuildControls	Tutorial.Speaker.Narrator	Tutorial.BuildControls	Narrator	-1
+	16	通用势力与建筑	TutorialMercenaryBackground	Tutorial.Speaker.Director	Tutorial.MercenaryBackground	Director	-1
+	17	进攻敌方据点	TutorialGoInvade	Tutorial.Speaker.Director	Tutorial.GoInvade	Director	-1
+	18	切换到进攻阶段	TutorialSwitchToInvade	Tutorial.Speaker.Narrator	Tutorial.SwitchToInvade	Narrator	-1
+	19	卡牌系统	TutorialCardSystem	Tutorial.Speaker.Narrator	Tutorial.CardSystem	Narrator	-1
+	20	编程行业	TutorialCodingIndustry	Tutorial.Speaker.Director	Tutorial.CodingIndustry	Director	-1
+	21	占领条件	TutorialCaptureRule	Tutorial.Speaker.Narrator	Tutorial.CaptureRule	Narrator	-1
+	22	占领成功	TutorialOccupied	Tutorial.Speaker.Director	Tutorial.Occupied	Director	-1
+	23	切换到整备阶段	TutorialSwitchToDevelopment	Tutorial.Speaker.Narrator	Tutorial.SwitchToDevelopment	Narrator	-1
+	24	生产科研介绍	TutorialProductionResearch	Tutorial.Speaker.Director	Tutorial.ProductionResearch	Director	-1
+	25	行业与研发操作	TutorialResearchControls	Tutorial.Speaker.Narrator	Tutorial.ResearchControls	Narrator	-1
+	26	敌军预警	TutorialEnemyWarning	Tutorial.Speaker.Director	Tutorial.EnemyWarning	Director	-1
+	27	切换到防御阶段	TutorialSwitchToDefend	Tutorial.Speaker.Narrator	Tutorial.SwitchToDefend	Narrator	-1
+	28	升级核心建筑	TutorialUpgradeMission	Tutorial.Speaker.Director	Tutorial.UpgradeMission	Director	-1
+	29	大地图	TutorialWorldMap	Tutorial.Speaker.Narrator	Tutorial.WorldMap	Narrator	-1
+	30	升级操作	TutorialUpgradeControls	Tutorial.Speaker.Narrator	Tutorial.UpgradeControls	Narrator	-1
+	31	自由行动	TutorialFreePlay	Tutorial.Speaker.Director	Tutorial.FreePlay	Director	-1

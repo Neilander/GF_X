@@ -13,6 +13,7 @@ public partial class SideTipsUIForm : UIFormBase
         public string TipId;
         public string Title;
         public string Content;
+        public string Icon;
         public float Duration;
     }
 
@@ -44,7 +45,7 @@ public partial class SideTipsUIForm : UIFormBase
         return (title ?? string.Empty) + "\n" + (content ?? string.Empty);
     }
 
-    public static void EnqueuePendingTips(string title, string content, float duration, string tipId = null)
+    public static void EnqueuePendingTips(string title, string content, float duration, string tipId = null, string icon = null)
     {
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
         {
@@ -70,6 +71,7 @@ public partial class SideTipsUIForm : UIFormBase
             TipId = tipId,
             Title = title,
             Content = content,
+            Icon = icon,
             Duration = duration,
         });
     }
@@ -125,7 +127,7 @@ public partial class SideTipsUIForm : UIFormBase
         base.OnClose(isShutdown, userData);
     }
 
-    public void ShowTips(string title, string content, float duration = 2f, string tipId = null)
+    public void ShowTips(string title, string content, float duration = 2f, string tipId = null, string icon = null)
     {
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
         {
@@ -168,10 +170,10 @@ public partial class SideTipsUIForm : UIFormBase
             Key = key,
         });
         m_ActiveTipKeys.Add(key);
-        tipsItem.SetData(title, content);
+        tipsItem.SetData(title, content, icon);
         tipsItem.MoveTo(GetTipPos(newIndex), 0f);
 
-        tipsItem.Play(title, content, duration, OnTipsItemComplete);
+        tipsItem.Play(title, content, icon, duration, OnTipsItemComplete);
     }
 
     public bool CloseTipById(string tipId)
@@ -248,7 +250,7 @@ public partial class SideTipsUIForm : UIFormBase
                 s_PendingTipKeys.Remove(tip.Key);
             }
 
-            ShowTips(tip.Title, tip.Content, tip.Duration, tip.TipId);
+            ShowTips(tip.Title, tip.Content, tip.Duration, tip.TipId, tip.Icon);
         }
     }
 

@@ -115,7 +115,9 @@ MonoBehaviour:
   cardNameText: {fileID: 8149500767624109142}
   dragScale: 1.2
   animationDuration: 0.2
-  drawStartScale: 0.18
+  drawStartScale: 0.72
+  drawArcHeight: 72
+  drawStartRotation: 7
   discardPeakScale: 1.25
   discardPopDuration: 0.08
   discardShrinkDuration: 0.18

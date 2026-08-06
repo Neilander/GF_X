@@ -7,92 +7,100 @@ using UnityGameFramework.Runtime;
 public enum TutorialType
 {
     None = 0,
-    MoveHeroByWASD = 1,
-    InvadeSH = 2,
-    SwitchPhase = 3,
-    Build = 4,
-    SwitchPhase2 = 5,
-    PlayCard = 6,
+    FriendlyStronghold = 1,
+    EnemyStronghold = 2,
+}
+
+public enum TutorialStage
+{
+    Inactive = 0,
+    ReachFriendlyStronghold = 1,
+    FirstDefense = 2,
+    AwaitFirstBuildPhase = 3,
+    BuildMilitaryAndDefense = 4,
+    AwaitInvadePhase = 5,
+    CaptureEnemyStronghold = 6,
+    AwaitCapturedBuildPhase = 7,
+    BuildProductionAndResearch = 8,
+    AwaitDefensePhase = 9,
+    DefendBase = 10,
+    UpgradeCore = 11,
+    Completed = 12,
 }
 
 public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogicFrameStableOrder
 {
     public static event Action PhaseSwitchButtonGuideChanged;
 
-    private const string Lv1Identifier = "Lv_1";
-    private const string MoveHeroTipId = "tutorial.move.hero.wasd";
-    private const string InvadeSHTipId = "tutorial.invade.sh";
-    private const string SwitchPhaseTipId = "tutorial.switch.phase";
-    private const string BuildTipId = "tutorial.build";
-    private const string SwitchPhase2TipId = "tutorial.switch.phase2";
-    private const string PlayCardTipId = "tutorial.play.card";
+    private const string LevelIdentifier = "Lv_1";
+    private const string GoalReach = "reach-friendly";
+    private const string GoalProtect = "protect-stronghold";
+    private const string GoalArmy = "build-army";
+    private const string GoalDefense = "build-defense";
+    private const string GoalCapture = "capture-stronghold";
+    private const string GoalProduction = "build-production";
+    private const string GoalResearchBuilding = "build-research";
+    private const string GoalResearchTech = "research-tech";
+    private const string GoalDefendBase = "defend-base";
+    private const string GoalUpgradeCore = "upgrade-core";
 
-    private const string MoveHeroTextId = "Tutorial_MoveHero";
-    private const string InvadeSHTextId = "Tutorial_InvadeSH";
-    private const string SwitchPhaseTextId = "Tutorial_SwitchPhase";
-    private const string BuildTextId = "Tutorial_Build";
-    private const string SwitchPhase2TextId = "Tutorial_SwitchPhase2";
-    private const string PlayCardTextId = "Tutorial_PlayCard";
+    private static TutorialManager s_Current;
 
-    private const float MoveInputThreshold = 0.1f;
-
-    private static TutorialManager s_CachedManager;
-
-    private enum TutorialPresentationKind
+    private enum PresentationKind
     {
         ShowTip,
         CloseTip,
-        GuideChanged,
+        PhaseGuideChanged,
     }
 
-    private readonly struct TutorialPresentationRequest
+    private readonly struct PresentationRequest
     {
-        public TutorialPresentationRequest(TutorialPresentationKind kind, TutorialType type, string tipId, string textId)
+        public PresentationRequest(PresentationKind kind, string identifier)
         {
             Kind = kind;
-            Type = type;
-            TipId = tipId;
-            TextId = textId;
+            Identifier = identifier;
         }
 
-        public TutorialPresentationKind Kind { get; }
-        public TutorialType Type { get; }
-        public string TipId { get; }
-        public string TextId { get; }
+        public PresentationKind Kind { get; }
+        public string Identifier { get; }
     }
 
-    private InputModel inputModel;
-    private readonly HashSet<TutorialType> activeTutorials = new HashSet<TutorialType>();
-    private readonly List<TutorialType> activeTutorialsBuffer = new List<TutorialType>(8);
-    private readonly HashSet<TutorialType> completedTutorials = new HashSet<TutorialType>();
-    private bool m_EventSubscribed;
+    private readonly Queue<PresentationRequest> m_PresentationRequests = new Queue<PresentationRequest>();
+    private readonly HashSet<string> m_ActiveTipIds = new HashSet<string>(StringComparer.Ordinal);
+    private InputModel m_InputModel;
+    private bool m_EventsSubscribed;
     private bool m_LogicFrameRegistered;
+    private bool m_EnemyStrongholdIntroShown;
+    private bool m_UpgradeControlsShown;
+    private bool m_CoreFirstUpgradeCompleted;
+    private int m_ArmyBaseline;
+    private int m_DefenseBaseline;
+    private int m_ProductionBaseline;
+    private int m_ResearchBuildingBaseline;
+    private int m_ResearchCommandBaseline;
+    private int m_CoreStartLevel;
+    private string m_CapturedStrongholdId;
+    private string m_CapturedCoreBuildingInstanceId;
     private ulong m_LastLogicFrame;
-    private int m_BuildTutorialStartBuiltCount;
-    private string m_InvadeTutorialStrongholdId;
-    private readonly Queue<TutorialPresentationRequest> m_PendingPresentation = new Queue<TutorialPresentationRequest>();
 
     public int LogicFrameOrder => 1000;
     public long LogicFrameStableKey => 0;
+    public TutorialStage Stage { get; private set; }
 
     protected override void Awake()
     {
         base.Awake();
-        s_CachedManager = this;
-    }
-
-    private void Start()
-    {
-        TrySubscribeEvents();
+        if (s_Current != null && !ReferenceEquals(s_Current, this))
+            throw new InvalidOperationException("Only one TutorialManager can be active.");
+        s_Current = this;
     }
 
     private void OnEnable()
     {
         LevelSelectionService.LevelLoadStarted += OnLevelLoadStarted;
-        LogicMovementRegionConstraintService.TutorialStrongholdBoundaryActivated += OnTutorialStrongholdBoundaryActivated;
         LogicFrameRuntime.Began += OnLogicFrameRuntimeBegan;
         LogicFrameRuntime.Ending += OnLogicFrameRuntimeEnding;
-        TrySubscribeEvents();
+        SubscribeEvents();
         if (LogicFrameRuntime.IsActive)
             RegisterLogicFrame();
     }
@@ -100,46 +108,46 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
     private void OnDisable()
     {
         LevelSelectionService.LevelLoadStarted -= OnLevelLoadStarted;
-        LogicMovementRegionConstraintService.TutorialStrongholdBoundaryActivated -= OnTutorialStrongholdBoundaryActivated;
         LogicFrameRuntime.Began -= OnLogicFrameRuntimeBegan;
         LogicFrameRuntime.Ending -= OnLogicFrameRuntimeEnding;
         if (m_LogicFrameRegistered)
             UnregisterLogicFrame();
-        TryUnsubscribeEvents();
+        UnsubscribeEvents();
     }
 
     private void OnDestroy()
     {
-        TryUnsubscribeEvents();
-        if (s_CachedManager == this)
-            s_CachedManager = null;
+        if (ReferenceEquals(s_Current, this))
+            s_Current = null;
     }
 
-    public void PrepareRuntimeDependencies(InputModel model)
+    public void PrepareRuntimeDependencies(InputModel inputModel)
     {
-        inputModel = model ?? throw new ArgumentNullException(nameof(model));
+        m_InputModel = inputModel ?? throw new ArgumentNullException(nameof(inputModel));
     }
 
     public void UpdatePresentation()
     {
-        while (m_PendingPresentation.Count > 0)
+        while (m_PresentationRequests.Count > 0)
         {
-            TutorialPresentationRequest request = m_PendingPresentation.Dequeue();
+            PresentationRequest request = m_PresentationRequests.Dequeue();
             switch (request.Kind)
             {
-                case TutorialPresentationKind.ShowTip:
-                    ShowTutorialPresentationImmediate(request.Type, request.TipId, request.TextId);
+                case PresentationKind.ShowTip:
+                    RequireSideTipsManager().ShowTip(request.Identifier, conditionTipId: request.Identifier);
                     break;
-                case TutorialPresentationKind.CloseTip:
-                    CloseTutorialPresentationImmediate(request.TipId);
+                case PresentationKind.CloseTip:
+                    RequireSideTipsManager().CloseTip(request.Identifier);
                     break;
-                case TutorialPresentationKind.GuideChanged:
+                case PresentationKind.PhaseGuideChanged:
                     PhaseSwitchButtonGuideChanged?.Invoke();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(request.Kind), request.Kind, "Unknown tutorial presentation request.");
             }
         }
+
+        TutorialObjectiveService.PublishPendingPresentation(this);
     }
 
     public void OnLogicFrameUpdate(Fix64 deltaTime)
@@ -150,44 +158,155 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             throw new InvalidOperationException("TutorialManager cannot update on logic frame zero.");
 
         m_LastLogicFrame = LogicFrameRuntime.CurrentFrame;
-
-        if (activeTutorials.Count <= 0)
+        if (!IsCurrentLevelTutorial())
             return;
 
-        activeTutorialsBuffer.Clear();
-        activeTutorialsBuffer.AddRange(activeTutorials);
-        activeTutorialsBuffer.Sort();
-
-        for (int i = 0; i < activeTutorialsBuffer.Count; i++)
+        if (Stage == TutorialStage.Inactive)
         {
-            TickTutorial(activeTutorialsBuffer[i]);
+            InitializeTutorial();
+            return;
+        }
+
+        switch (Stage)
+        {
+            case TutorialStage.ReachFriendlyStronghold:
+                TickReachFriendlyStronghold();
+                break;
+            case TutorialStage.BuildMilitaryAndDefense:
+                TickFirstBuildGoals();
+                break;
+            case TutorialStage.CaptureEnemyStronghold:
+                TickEnemyStrongholdEntry();
+                break;
+            case TutorialStage.BuildProductionAndResearch:
+                TickDevelopmentGoals();
+                break;
+            case TutorialStage.UpgradeCore:
+                TickCoreUpgrade();
+                break;
         }
     }
 
     public bool NotifyTriggerEntered(TutorialType triggerType, Component triggerSource = null)
     {
+        if (!IsCurrentLevelTutorial())
+            return false;
+
         switch (triggerType)
         {
-            case TutorialType.MoveHeroByWASD:
-            case TutorialType.InvadeSH:
-                return TryStartTutorial(triggerType, triggerSource, startedByChain: false);
-            default:
-                Log.Warning("[Tutorial] Unsupported trigger type: {0}.", triggerType);
+            case TutorialType.FriendlyStronghold:
+            case TutorialType.EnemyStronghold:
                 return false;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(triggerType), triggerType, "Unknown tutorial trigger type.");
         }
+    }
+
+    public static bool IsCurrentLevelTutorial()
+    {
+        return string.Equals(LevelSelectionService.SelectedLevelIdentifier, LevelIdentifier, StringComparison.Ordinal);
+    }
+
+    public static bool IsManualDefendPhaseSwitchAllowed()
+    {
+        return IsCurrentLevelTutorial()
+               && s_Current != null
+               && s_Current.Stage == TutorialStage.AwaitFirstBuildPhase;
     }
 
     public static bool TryGetPhaseSwitchButtonGuide(out bool interactable, out bool shouldBlink)
     {
         interactable = true;
         shouldBlink = false;
+        if (!IsCurrentLevelTutorial())
+            return false;
 
-        return GameEntry.GetComponent<TutorialManager>().TryGetPhaseSwitchButtonGuideInternal(out interactable, out shouldBlink);
+        TutorialManager manager = RequireCurrent();
+        bool guided = IsPhaseSwitchGuidedStage(manager.Stage);
+        interactable = guided;
+        shouldBlink = guided;
+        return true;
     }
 
-    public static bool IsCurrentLevelTutorial()
+    public static bool IsConstructOptionAllowed(BuildingData target)
     {
-        return IsCurrentLevelLv1();
+        if (!IsCurrentLevelTutorial())
+            return true;
+        if (target == null)
+            throw new ArgumentNullException(nameof(target));
+
+        return IsConstructTypeAllowed(RequireCurrent().Stage, target.Type);
+    }
+
+    public static bool IsUpgradeOptionAllowed(IBuildingLogicContext owner)
+    {
+        if (!IsCurrentLevelTutorial())
+            return true;
+        if (owner == null)
+            throw new ArgumentNullException(nameof(owner));
+
+        TutorialManager manager = RequireCurrent();
+        if (manager.Stage != TutorialStage.UpgradeCore)
+            return false;
+        if (manager.m_CoreFirstUpgradeCompleted)
+            return true;
+        return string.Equals(
+            owner.BuildingInstanceId,
+            manager.m_CapturedCoreBuildingInstanceId,
+            StringComparison.Ordinal);
+    }
+
+    public static bool AreDefendPreviewArrowsAllowed()
+    {
+        return !IsCurrentLevelTutorial() || IsDefendPreviewAllowedStage(RequireCurrent().Stage);
+    }
+
+    public static bool IsPhaseSwitchGuidedStage(TutorialStage stage)
+    {
+        return stage == TutorialStage.AwaitFirstBuildPhase
+               || stage == TutorialStage.AwaitInvadePhase
+               || stage == TutorialStage.AwaitCapturedBuildPhase
+               || stage == TutorialStage.AwaitDefensePhase;
+    }
+
+    public static bool IsConstructTypeAllowed(TutorialStage stage, BuilType type)
+    {
+        if (stage == TutorialStage.BuildMilitaryAndDefense)
+            return type == BuilType.Army || type == BuilType.Def;
+        if (stage == TutorialStage.BuildProductionAndResearch)
+            return type == BuilType.Prod || type == BuilType.Tech;
+        return false;
+    }
+
+    public static bool IsDefendPreviewAllowedStage(TutorialStage stage)
+    {
+        return stage == TutorialStage.AwaitDefensePhase;
+    }
+
+    public static TutorialStage GetCurrentStageForTests()
+    {
+        return s_Current != null ? s_Current.Stage : TutorialStage.Inactive;
+    }
+
+    public void ResetAllTutorialsForDebug()
+    {
+        CloseAllTips();
+        TutorialObjectiveService.Reset();
+        Stage = TutorialStage.Inactive;
+        m_InputModel = null;
+        m_EnemyStrongholdIntroShown = false;
+        m_UpgradeControlsShown = false;
+        m_CoreFirstUpgradeCompleted = false;
+        m_ArmyBaseline = 0;
+        m_DefenseBaseline = 0;
+        m_ProductionBaseline = 0;
+        m_ResearchBuildingBaseline = 0;
+        m_ResearchCommandBaseline = 0;
+        m_CoreStartLevel = 0;
+        m_CapturedStrongholdId = null;
+        m_CapturedCoreBuildingInstanceId = null;
+        m_LastLogicFrame = 0;
+        QueuePhaseGuideChanged();
     }
 
     public void ResetMoveTutorialForDebug()
@@ -195,168 +314,244 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         ResetAllTutorialsForDebug();
     }
 
-    public void ResetAllTutorialsForDebug()
+    private void InitializeTutorial()
     {
-        activeTutorialsBuffer.Clear();
-        foreach (var triggerType in activeTutorials)
+        if (m_InputModel == null)
+            throw new InvalidOperationException("TutorialManager InputModel was not bound before logic frames began.");
+        if (PhaseManager.CurrentPhase != GamePhase.Defend)
         {
-            if (TryGetTutorialTipConfig(triggerType, out string tipId, out _))
-                RequestCloseSideTip(tipId);
+            throw new InvalidOperationException(
+                $"Level_1 tutorial must begin in Defend phase, actual={PhaseManager.CurrentPhase}.");
+        }
+        if (!DefendPhaseRuntime.IsTutorialTriggeredFirstDefenseWaiting)
+            throw new InvalidOperationException("Level_1 tutorial began before DefendPhaseRuntime entered its triggered waiting state.");
+        if (EntityRegistry.Player == null || !EntityRegistry.Player.Alive)
+            throw new InvalidOperationException("Level_1 tutorial requires a live player before its first logic frame.");
+
+        Stage = TutorialStage.ReachFriendlyStronghold;
+        TutorialObjectiveService.Replace(
+            Objective(GoalReach, "Tutorial.Goal.ReachFriendlyStronghold"));
+        ShowTip("TutorialGoFriendlyStronghold");
+        ShowTip("TutorialMovement");
+        QueuePhaseGuideChanged();
+        Log.Info("[Tutorial] Initialized Level_1 tutorial. stage={0}.", Stage);
+    }
+
+    private void StartFirstDefense(Component triggerSource)
+    {
+        TutorialObjectiveService.SetStatus(GoalReach, TutorialObjectiveStatus.Completed);
+        CloseAllTips();
+        Stage = TutorialStage.FirstDefense;
+        TutorialObjectiveService.Replace(
+            Objective(GoalProtect, "Tutorial.Goal.ProtectStronghold"));
+        ShowTip("TutorialEnemyAttack");
+        DefendPhaseRuntime.StartTutorialTriggeredFirstDefense();
+        QueuePhaseGuideChanged();
+        Log.Info(
+            "[Tutorial] Friendly stronghold reached; triggered first defense. source={0}.",
+            triggerSource != null ? triggerSource.name : "<logic>");
+    }
+
+    private void TickReachFriendlyStronghold()
+    {
+        IEntityContext player = EntityRegistry.Player;
+        if (player == null)
+            return;
+        if (!player.Alive || player.Side != SideType.PlayerSide)
+            throw new InvalidOperationException("Tutorial friendly-stronghold detection requires a live player-side entity.");
+        if (!LogicStrongholdMap.TryResolveStrongholdId(player.PositionFixed, out string strongholdId))
+            return;
+        if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId)
+            return;
+
+        StartFirstDefense(null);
+    }
+
+    private void TickEnemyStrongholdEntry()
+    {
+        if (m_EnemyStrongholdIntroShown)
+            return;
+
+        IEntityContext player = EntityRegistry.Player;
+        if (player == null)
+            return;
+        if (!player.Alive || player.Side != SideType.PlayerSide)
+            throw new InvalidOperationException("Tutorial enemy-stronghold detection requires a live player-side entity.");
+        if (!LogicStrongholdMap.TryResolveStrongholdId(player.PositionFixed, out string strongholdId))
+            return;
+        if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) == EntitySideHelper.PlayerFactionId)
+            return;
+
+        LogicMovementRegionConstraintService.SetTutorialStrongholdBoundary(strongholdId);
+        OnTutorialStrongholdBoundaryActivated(strongholdId);
+    }
+
+    private void OnTutorialTriggeredDefenseCleared()
+    {
+        if (!IsCurrentLevelTutorial())
+            return;
+        if (Stage != TutorialStage.FirstDefense)
+            throw new InvalidOperationException($"Tutorial defense cleared in unexpected stage {Stage}.");
+
+        TutorialObjectiveService.SetStatus(GoalProtect, TutorialObjectiveStatus.Completed);
+        CloseAllTips();
+        Stage = TutorialStage.AwaitFirstBuildPhase;
+        m_ArmyBaseline = CountPlayerBuildings(BuilType.Army);
+        m_DefenseBaseline = CountPlayerBuildings(BuilType.Def);
+        TutorialObjectiveService.Replace(
+            Objective(GoalArmy, "Tutorial.Goal.BuildArmy"),
+            Objective(GoalDefense, "Tutorial.Goal.BuildDefense"));
+        ShowTip("TutorialFirstDefenseComplete");
+        ShowTip("TutorialSwitchToBuild");
+        QueuePhaseGuideChanged();
+    }
+
+    private void TickFirstBuildGoals()
+    {
+        bool armyComplete = CountPlayerBuildings(BuilType.Army) > m_ArmyBaseline;
+        bool defenseComplete = CountPlayerBuildings(BuilType.Def) > m_DefenseBaseline;
+        SetObjectiveCompletion(GoalArmy, armyComplete);
+        SetObjectiveCompletion(GoalDefense, defenseComplete);
+        if (!armyComplete || !defenseComplete)
+            return;
+
+        CloseAllTips();
+        Stage = TutorialStage.AwaitInvadePhase;
+        TutorialObjectiveService.Replace(
+            Objective(GoalCapture, "Tutorial.Goal.OccupyStronghold"));
+        ShowTip("TutorialGoInvade");
+        ShowTip("TutorialSwitchToInvade");
+        QueuePhaseGuideChanged();
+    }
+
+    private void TickDevelopmentGoals()
+    {
+        bool productionComplete = CountPlayerBuildings(BuilType.Prod) > m_ProductionBaseline;
+        bool researchBuildingComplete = CountPlayerBuildings(BuilType.Tech) > m_ResearchBuildingBaseline;
+        bool techComplete = CountAppliedResearchCommands() > m_ResearchCommandBaseline;
+        SetObjectiveCompletion(GoalProduction, productionComplete);
+        SetObjectiveCompletion(GoalResearchBuilding, researchBuildingComplete);
+        SetObjectiveCompletion(GoalResearchTech, techComplete);
+        if (!productionComplete || !researchBuildingComplete || !techComplete)
+            return;
+
+        CloseAllTips();
+        Stage = TutorialStage.AwaitDefensePhase;
+        TutorialObjectiveService.Replace(
+            Objective(GoalDefendBase, "Tutorial.Goal.DefendBase"));
+        ShowTip("TutorialEnemyWarning");
+        ShowTip("TutorialSwitchToDefend");
+        QueuePhaseGuideChanged();
+    }
+
+    private void TickCoreUpgrade()
+    {
+        IBuildingLogicContext core = FindCapturedCoreRequired();
+        int coreLevel = core.BuildingData?.Lv
+            ?? throw new InvalidOperationException("Captured tutorial core has no BuildingData.");
+
+        if (!m_UpgradeControlsShown && EntityRegistry.Player != null)
+        {
+            FixVector2 offset = EntityRegistry.Player.PositionFixed - core.PositionFixed;
+            Fix64 distanceSquared = FixVector2.SqrMagnitude(offset);
+            Fix64 tipDistance = (Fix64)5;
+            if (distanceSquared <= tipDistance * tipDistance)
+            {
+                m_UpgradeControlsShown = true;
+                ShowTip("TutorialUpgradeControls");
+            }
         }
 
-        activeTutorials.Clear();
-        completedTutorials.Clear();
-        inputModel = null;
-        m_LastLogicFrame = 0;
-        m_BuildTutorialStartBuiltCount = 0;
-        m_InvadeTutorialStrongholdId = null;
-        NotifyPhaseSwitchButtonGuideChanged();
-    }
-
-    private void OnLevelLoadStarted()
-    {
-        ResetAllTutorialsForDebug();
-    }
-
-    private void TickTutorial(TutorialType triggerType)
-    {
-        switch (triggerType)
+        if (!m_CoreFirstUpgradeCompleted && coreLevel > m_CoreStartLevel)
         {
-            case TutorialType.MoveHeroByWASD:
-                TickMoveHeroTutorial();
+            m_CoreFirstUpgradeCompleted = true;
+            CloseAllTips();
+            ShowTip("TutorialFreePlay");
+            Log.Info("[Tutorial] Core upgraded once; all building upgrade options unlocked.");
+        }
+
+        if (coreLevel < 3)
+            return;
+
+        TutorialObjectiveService.SetStatus(GoalUpgradeCore, TutorialObjectiveStatus.Completed);
+        CloseAllTips();
+        Stage = TutorialStage.Completed;
+        QueuePhaseGuideChanged();
+        LogicGameEndService.CompleteScriptedWin(VictoryConditionType.CompleteTutorial);
+    }
+
+    private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
+    {
+        if (!IsCurrentLevelTutorial())
+            return;
+
+        switch (Stage)
+        {
+            case TutorialStage.AwaitFirstBuildPhase when newPhase == GamePhase.BuildBeforeInvade:
+                CloseAllTips();
+                Stage = TutorialStage.BuildMilitaryAndDefense;
+                ShowTip("TutorialBuildControls");
+                ShowTip("TutorialMercenaryBackground");
+                QueuePhaseGuideChanged();
                 break;
-            case TutorialType.Build:
-                TickBuildTutorial();
+            case TutorialStage.AwaitInvadePhase when newPhase == GamePhase.Invade:
+                CloseAllTips();
+                Stage = TutorialStage.CaptureEnemyStronghold;
+                ShowTip("TutorialCardSystem");
+                QueuePhaseGuideChanged();
                 break;
-            case TutorialType.InvadeSH:
-                TickInvadeTutorial();
+            case TutorialStage.AwaitCapturedBuildPhase when InGameDataModel.IsBuildPhase(newPhase):
+                CloseAllTips();
+                Stage = TutorialStage.BuildProductionAndResearch;
+                m_ProductionBaseline = CountPlayerBuildings(BuilType.Prod);
+                m_ResearchBuildingBaseline = CountPlayerBuildings(BuilType.Tech);
+                m_ResearchCommandBaseline = CountAppliedResearchCommands();
+                ShowTip("TutorialProductionResearch");
+                ShowTip("TutorialResearchControls");
+                QueuePhaseGuideChanged();
                 break;
-            case TutorialType.SwitchPhase:
-            case TutorialType.SwitchPhase2:
+            case TutorialStage.AwaitDefensePhase when newPhase == GamePhase.Defend:
+                CloseAllTips();
+                Stage = TutorialStage.DefendBase;
+                QueuePhaseGuideChanged();
                 break;
-            case TutorialType.PlayCard:
-                TickPlayCardTutorial();
-                break;
-            default:
-                Log.Warning("[Tutorial] Unknown active tutorial trigger: {0}.", triggerType);
-                activeTutorials.Remove(triggerType);
+            case TutorialStage.DefendBase when InGameDataModel.IsBuildPhase(newPhase):
+                TutorialObjectiveService.SetStatus(GoalDefendBase, TutorialObjectiveStatus.Completed);
+                EnterCoreUpgradeStage();
                 break;
         }
     }
 
-    private bool TryStartTutorial(TutorialType triggerType, Component triggerSource, bool startedByChain)
+    private void EnterCoreUpgradeStage()
     {
-        if (completedTutorials.Contains(triggerType))
-            return false;
-
-        if (activeTutorials.Contains(triggerType))
-            return false;
-
-        if (IsLv1FlowTutorial(triggerType) && !IsCurrentLevelLv1())
-            return false;
-
-        if (!TryGetTutorialTipConfig(triggerType, out string tipId, out string textId))
-        {
-            Log.Warning("[Tutorial] Start tutorial failed: unsupported type={0}.", triggerType);
-            return false;
-        }
-
-        activeTutorials.Add(triggerType);
-
-        if (triggerType == TutorialType.Build)
-            m_BuildTutorialStartBuiltCount = CountPlayerBuiltBuildings();
-
-        if (triggerType == TutorialType.InvadeSH)
-            TryBindInvadeTutorialStronghold();
-
-        m_PendingPresentation.Enqueue(new TutorialPresentationRequest(
-            TutorialPresentationKind.ShowTip,
-            triggerType,
-            tipId,
-            textId));
-
-        string sourceName = triggerSource != null ? triggerSource.name : "Auto";
-        Log.Info("[Tutorial] Tutorial started. type={0}, trigger={1}, chain={2}.", triggerType, sourceName, startedByChain);
-        NotifyPhaseSwitchButtonGuideChanged();
-        return true;
+        CloseAllTips();
+        Stage = TutorialStage.UpgradeCore;
+        IBuildingLogicContext core = FindCapturedCoreRequired();
+        m_CoreStartLevel = core.BuildingData?.Lv
+            ?? throw new InvalidOperationException("Captured tutorial core has no BuildingData.");
+        TutorialObjectiveService.Replace(
+            Objective(GoalUpgradeCore, "Tutorial.Goal.UpgradeCore"));
+        ShowTip("TutorialUpgradeMission");
+        ShowTip("TutorialWorldMap");
+        QueuePhaseGuideChanged();
     }
 
-    private void TickMoveHeroTutorial()
+    private void OnTutorialStrongholdBoundaryActivated(string strongholdId)
     {
-        if (!TryGetInputModel(out InputModel model))
+        if (!IsCurrentLevelTutorial())
             return;
+        if (Stage != TutorialStage.CaptureEnemyStronghold)
+            throw new InvalidOperationException($"Enemy stronghold trigger activated in unexpected tutorial stage {Stage}.");
+        if (string.IsNullOrWhiteSpace(strongholdId))
+            throw new InvalidOperationException("Enemy stronghold trigger returned an empty stronghold id.");
+        if (m_EnemyStrongholdIntroShown)
+            throw new InvalidOperationException("Enemy stronghold tutorial intro was triggered twice.");
 
-        Fix64 inputThreshold = (Fix64)Mathf.Max(0f, MoveInputThreshold);
-        bool hasMovementInput = Fix64.Abs(model.MoveX) > inputThreshold || Fix64.Abs(model.MoveY) > inputThreshold;
-        if (!hasMovementInput)
-            return;
-
-        CompleteTutorial(TutorialType.MoveHeroByWASD, autoChain: false);
-    }
-
-    private void TickInvadeTutorial()
-    {
-        if (!string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
-            return;
-
-        TryBindInvadeTutorialStronghold();
-    }
-
-    private void TickBuildTutorial()
-    {
-        int currentBuiltCount = CountPlayerBuiltBuildings();
-        if (currentBuiltCount < m_BuildTutorialStartBuiltCount + 2)
-            return;
-
-        CompleteTutorial(TutorialType.Build, autoChain: true);
-    }
-
-    private void TickPlayCardTutorial()
-    {
-        if (EntityRegistry.Player is not IHeroLogicContext player || !player.IsGhostState)
-            return;
-
-        CompleteTutorial(TutorialType.PlayCard, autoChain: false);
-    }
-
-    private void CompleteTutorial(TutorialType triggerType, bool autoChain)
-    {
-        if (!activeTutorials.Remove(triggerType))
-            return;
-
-        completedTutorials.Add(triggerType);
-
-        if (TryGetTutorialTipConfig(triggerType, out string tipId, out _))
-            RequestCloseSideTip(tipId);
-
-        if (triggerType == TutorialType.SwitchPhase)
-            m_InvadeTutorialStrongholdId = null;
-
-        Log.Info("[Tutorial] Tutorial completed. type={0}.", triggerType);
-
-        if (autoChain)
-            TryStartNextTutorial(triggerType);
-
-        NotifyPhaseSwitchButtonGuideChanged();
-    }
-
-    private void TryStartNextTutorial(TutorialType completedType)
-    {
-        switch (completedType)
-        {
-            case TutorialType.InvadeSH:
-                TryStartTutorial(TutorialType.SwitchPhase, null, startedByChain: true);
-                break;
-            case TutorialType.SwitchPhase:
-                TryStartTutorial(TutorialType.Build, null, startedByChain: true);
-                break;
-            case TutorialType.Build:
-                TryStartTutorial(TutorialType.SwitchPhase2, null, startedByChain: true);
-                break;
-            case TutorialType.SwitchPhase2:
-                TryStartTutorial(TutorialType.PlayCard, null, startedByChain: true);
-                break;
-        }
+        m_EnemyStrongholdIntroShown = true;
+        m_CapturedStrongholdId = strongholdId;
+        CloseAllTips();
+        ShowTip("TutorialCodingIndustry");
+        ShowTip("TutorialCaptureRule");
     }
 
     private void OnLogicBuildingOwnerFactionChanged(
@@ -364,176 +559,174 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         int oldFactionId,
         int newFactionId)
     {
-        if (!activeTutorials.Contains(TutorialType.InvadeSH))
+        if (!IsCurrentLevelTutorial() || Stage != TutorialStage.CaptureEnemyStronghold)
             return;
         if (building == null)
             throw new ArgumentNullException(nameof(building));
-        if (newFactionId != EntitySideHelper.PlayerFactionId)
-            return;
-        if (oldFactionId == EntitySideHelper.PlayerFactionId)
-            return;
-
-        CompleteTutorial(TutorialType.InvadeSH, autoChain: true);
-    }
-
-    private void OnLogicPhaseApplied(GamePhase oldPhase, GamePhase newPhase)
-    {
-        if (activeTutorials.Contains(TutorialType.SwitchPhase))
+        if (oldFactionId == EntitySideHelper.PlayerFactionId
+            || newFactionId != EntitySideHelper.PlayerFactionId
+            || !building.IsGameEndConditionBuilding)
         {
-            CompleteTutorial(TutorialType.SwitchPhase, autoChain: true);
             return;
         }
+        if (!m_EnemyStrongholdIntroShown)
+            throw new InvalidOperationException("Tutorial captured a stronghold before its authored enemy-stronghold trigger.");
+        if (!string.Equals(building.StrongholdId, m_CapturedStrongholdId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Tutorial captured a different stronghold than the one introduced by its trigger.");
 
-        if (activeTutorials.Contains(TutorialType.SwitchPhase2))
-        {
-            CompleteTutorial(TutorialType.SwitchPhase2, autoChain: true);
-        }
+        m_CapturedCoreBuildingInstanceId = building.BuildingInstanceId;
+        TutorialObjectiveService.SetStatus(GoalCapture, TutorialObjectiveStatus.Completed);
+        CloseAllTips();
+        Stage = TutorialStage.AwaitCapturedBuildPhase;
+        TutorialObjectiveService.Replace(
+            Objective(GoalProduction, "Tutorial.Goal.BuildProduction"),
+            Objective(GoalResearchBuilding, "Tutorial.Goal.BuildResearch"),
+            Objective(GoalResearchTech, "Tutorial.Goal.ResearchTech"));
+        ShowTip("TutorialOccupied");
+        ShowTip("TutorialSwitchToDevelopment");
+        QueuePhaseGuideChanged();
     }
 
     private void OnLogicGameEnded(LogicGameEndResult result)
     {
-        if (!activeTutorials.Contains(TutorialType.PlayCard))
+        if (!IsCurrentLevelTutorial())
             return;
-
-        CompleteTutorial(TutorialType.PlayCard, autoChain: false);
+        if (!result.IsWin)
+            TutorialObjectiveService.FailActiveObjectives();
     }
 
-    private void TrySubscribeEvents()
+    private void OnLevelLoadStarted()
     {
-        if (m_EventSubscribed)
-            return;
+        ResetAllTutorialsForDebug();
+    }
 
+    private void SubscribeEvents()
+    {
+        if (m_EventsSubscribed)
+            return;
         LogicBuildingOwnershipEventService.OwnerFactionChanged += OnLogicBuildingOwnerFactionChanged;
         LogicPhaseCommandService.PhaseApplied += OnLogicPhaseApplied;
         LogicGameEndService.GameEnded += OnLogicGameEnded;
-        m_EventSubscribed = true;
+        DefendPhaseRuntime.TutorialTriggeredDefenseCleared += OnTutorialTriggeredDefenseCleared;
+        m_EventsSubscribed = true;
     }
 
-    private void TryUnsubscribeEvents()
+    private void UnsubscribeEvents()
     {
-        if (!m_EventSubscribed)
+        if (!m_EventsSubscribed)
             return;
-
         LogicBuildingOwnershipEventService.OwnerFactionChanged -= OnLogicBuildingOwnerFactionChanged;
         LogicPhaseCommandService.PhaseApplied -= OnLogicPhaseApplied;
         LogicGameEndService.GameEnded -= OnLogicGameEnded;
-        m_EventSubscribed = false;
+        DefendPhaseRuntime.TutorialTriggeredDefenseCleared -= OnTutorialTriggeredDefenseCleared;
+        m_EventsSubscribed = false;
     }
 
-    private bool TryGetPhaseSwitchButtonGuideInternal(out bool interactable, out bool shouldBlink)
+    private void ShowTip(string identifier)
     {
-        interactable = true;
-        shouldBlink = false;
-
-        if (!IsCurrentLevelLv1())
-            return false;
-
-        if (completedTutorials.Contains(TutorialType.PlayCard))
-            return false;
-
-        bool isSwitchPhaseTutorialActive = activeTutorials.Contains(TutorialType.SwitchPhase)
-            || activeTutorials.Contains(TutorialType.SwitchPhase2);
-
-        interactable = isSwitchPhaseTutorialActive;
-        shouldBlink = isSwitchPhaseTutorialActive;
-        return true;
+        if (string.IsNullOrWhiteSpace(identifier))
+            throw new ArgumentException("Tutorial tip identifier is empty.", nameof(identifier));
+        if (!m_ActiveTipIds.Add(identifier))
+            throw new InvalidOperationException($"Tutorial tip '{identifier}' is already active.");
+        m_PresentationRequests.Enqueue(new PresentationRequest(PresentationKind.ShowTip, identifier));
     }
 
-    private void NotifyPhaseSwitchButtonGuideChanged()
+    private void CloseAllTips()
     {
-        m_PendingPresentation.Enqueue(new TutorialPresentationRequest(
-            TutorialPresentationKind.GuideChanged,
-            TutorialType.None,
-            null,
-            null));
-    }
-
-    private static bool TryGetTutorialTipConfig(TutorialType triggerType, out string tipId, out string textId)
-    {
-        tipId = null;
-        textId = null;
-
-        switch (triggerType)
-        {
-            case TutorialType.MoveHeroByWASD:
-                tipId = MoveHeroTipId;
-                textId = MoveHeroTextId;
-                return true;
-            case TutorialType.InvadeSH:
-                tipId = InvadeSHTipId;
-                textId = InvadeSHTextId;
-                return true;
-            case TutorialType.SwitchPhase:
-                tipId = SwitchPhaseTipId;
-                textId = SwitchPhaseTextId;
-                return true;
-            case TutorialType.Build:
-                tipId = BuildTipId;
-                textId = BuildTextId;
-                return true;
-            case TutorialType.SwitchPhase2:
-                tipId = SwitchPhase2TipId;
-                textId = SwitchPhase2TextId;
-                return true;
-            case TutorialType.PlayCard:
-                tipId = PlayCardTipId;
-                textId = PlayCardTextId;
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static bool IsLv1FlowTutorial(TutorialType triggerType)
-    {
-        return triggerType == TutorialType.InvadeSH
-            || triggerType == TutorialType.SwitchPhase
-            || triggerType == TutorialType.Build
-            || triggerType == TutorialType.SwitchPhase2
-            || triggerType == TutorialType.PlayCard;
-    }
-
-    private void TryBindInvadeTutorialStronghold()
-    {
-        if (!string.IsNullOrEmpty(m_InvadeTutorialStrongholdId))
+        if (m_ActiveTipIds.Count == 0)
             return;
 
-        if (!LogicMovementRegionConstraintService.HasTutorialStrongholdBoundary)
-            return;
-
-        m_InvadeTutorialStrongholdId = LogicMovementRegionConstraintService.TutorialStrongholdId;
-        Log.Info("[Tutorial] Invade tutorial stronghold locked. id={0}, source=LogicTrigger.", m_InvadeTutorialStrongholdId);
+        var identifiers = new List<string>(m_ActiveTipIds);
+        identifiers.Sort(StringComparer.Ordinal);
+        m_ActiveTipIds.Clear();
+        for (int i = 0; i < identifiers.Count; i++)
+            m_PresentationRequests.Enqueue(new PresentationRequest(PresentationKind.CloseTip, identifiers[i]));
     }
 
-    private void OnTutorialStrongholdBoundaryActivated(string strongholdId)
+    private void QueuePhaseGuideChanged()
     {
-        if (string.IsNullOrWhiteSpace(strongholdId))
-            throw new InvalidOperationException("Tutorial stronghold activation event has an empty stronghold id.");
-        TryStartTutorial(TutorialType.InvadeSH, null, startedByChain: false);
+        m_PresentationRequests.Enqueue(new PresentationRequest(PresentationKind.PhaseGuideChanged, null));
     }
 
-    private static bool IsCurrentLevelLv1()
+    private static TutorialObjective Objective(string id, string textKey)
     {
-        return string.Equals(LevelSelectionService.SelectedLevelIdentifier, Lv1Identifier, StringComparison.Ordinal);
+        return new TutorialObjective(id, textKey, TutorialObjectiveStatus.Active);
     }
 
-    private static int CountPlayerBuiltBuildings()
+    private static void SetObjectiveCompletion(string id, bool completed)
+    {
+        TutorialObjectiveStatus desired = completed
+            ? TutorialObjectiveStatus.Completed
+            : TutorialObjectiveStatus.Active;
+        if (TutorialObjectiveService.GetStatus(id) != desired)
+            TutorialObjectiveService.SetStatus(id, desired);
+    }
+
+    private static int CountPlayerBuildings(BuilType type)
     {
         int count = 0;
         IList<IEntityContext> entities = EntityRegistry.AllEntities;
         for (int i = 0; i < entities.Count; i++)
         {
             if (!entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
-                || building.BuildingData == null)
+                || building.BuildingData == null
+                || building.BuildingData.Lv <= 0
+                || building.OwnerFactionId != EntitySideHelper.PlayerFactionId
+                || building.BuildingData.Type != type)
+            {
                 continue;
-            if (building.OwnerFactionId != EntitySideHelper.PlayerFactionId)
-                continue;
-            if (building.BuildingData.Lv <= 0)
-                continue;
+            }
             count++;
         }
-
         return count;
+    }
+
+    private static int CountAppliedResearchCommands()
+    {
+        int count = 0;
+        IReadOnlyList<LogicInteractionCommand> history = LogicInteractionCommandService.History;
+        for (int i = 0; i < history.Count; i++)
+        {
+            LogicInteractionCommand command = history[i];
+            if (command.ActionKind == LogicInteractionActionKind.ResearchTech
+                && command.EffectiveFrame <= LogicInteractionCommandService.LastAppliedFrame)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private IBuildingLogicContext FindCapturedCoreRequired()
+    {
+        if (string.IsNullOrWhiteSpace(m_CapturedCoreBuildingInstanceId))
+            throw new InvalidOperationException("Tutorial captured core building id is missing.");
+
+        IList<IEntityContext> entities = EntityRegistry.AllEntities;
+        for (int i = 0; i < entities.Count; i++)
+        {
+            if (entities[i].TryGetLogicBuilding(out IBuildingLogicContext building)
+                && string.Equals(
+                    building.BuildingInstanceId,
+                    m_CapturedCoreBuildingInstanceId,
+                    StringComparison.Ordinal))
+            {
+                return building;
+            }
+        }
+        throw new InvalidOperationException(
+            $"Tutorial cannot resolve captured core '{m_CapturedCoreBuildingInstanceId}'.");
+    }
+
+    private static TutorialManager RequireCurrent()
+    {
+        return s_Current ?? throw new InvalidOperationException("TutorialManager is not active.");
+    }
+
+    private static SideTipsManager RequireSideTipsManager()
+    {
+        return GameEntry.GetComponent<SideTipsManager>()
+               ?? throw new InvalidOperationException("Tutorial presentation requires SideTipsManager.");
     }
 
     public static void WriteDeterministicState(LogicStateHasher hasher)
@@ -541,36 +734,24 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
         if (hasher == null)
             throw new ArgumentNullException(nameof(hasher));
 
-        TutorialManager manager = s_CachedManager;
         hasher.Add(0x5455544F5249414CUL);
-        hasher.Add(manager != null);
-        if (manager == null)
+        hasher.Add(s_Current != null);
+        if (s_Current == null)
             return;
 
-        for (int value = (int)TutorialType.InvadeSH; value <= (int)TutorialType.PlayCard; value++)
-        {
-            TutorialType type = (TutorialType)value;
-            hasher.Add(manager.activeTutorials.Contains(type));
-            hasher.Add(manager.completedTutorials.Contains(type));
-        }
-        hasher.Add(manager.m_BuildTutorialStartBuiltCount);
-        hasher.Add(manager.m_InvadeTutorialStrongholdId);
-        hasher.Add(manager.m_LastLogicFrame);
-    }
-
-    private void ShowTutorialPresentationImmediate(TutorialType triggerType, string tipId, string textId)
-    {
-        SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>();
-        if (sideTipsManager == null)
-        {
-            Log.Error("[Tutorial] SideTipsManager is missing. type={0}.", triggerType);
-            return;
-        }
-
-        string tipContent = LocalizationTextDataModel.GetText(textId);
-        if (string.Equals(tipContent, textId, StringComparison.Ordinal))
-            tipContent = string.Empty;
-        sideTipsManager.ShowConditionalTip(tipId, string.Empty, tipContent);
+        hasher.Add((int)s_Current.Stage);
+        hasher.Add(s_Current.m_EnemyStrongholdIntroShown);
+        hasher.Add(s_Current.m_UpgradeControlsShown);
+        hasher.Add(s_Current.m_CoreFirstUpgradeCompleted);
+        hasher.Add(s_Current.m_ArmyBaseline);
+        hasher.Add(s_Current.m_DefenseBaseline);
+        hasher.Add(s_Current.m_ProductionBaseline);
+        hasher.Add(s_Current.m_ResearchBuildingBaseline);
+        hasher.Add(s_Current.m_ResearchCommandBaseline);
+        hasher.Add(s_Current.m_CoreStartLevel);
+        hasher.Add(s_Current.m_CapturedStrongholdId);
+        hasher.Add(s_Current.m_CapturedCoreBuildingInstanceId);
+        hasher.Add(s_Current.m_LastLogicFrame);
     }
 
     private void OnLogicFrameRuntimeBegan()
@@ -580,7 +761,8 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
 
     private void OnLogicFrameRuntimeEnding()
     {
-        UnregisterLogicFrame();
+        if (m_LogicFrameRegistered)
+            UnregisterLogicFrame();
     }
 
     private void RegisterLogicFrame()
@@ -597,34 +779,5 @@ public class TutorialManager : GameFrameworkComponent, ILogicFrameUpdate, ILogic
             throw new InvalidOperationException("TutorialManager logic-frame listener is not registered.");
         LogicFrameRuntime.Unregister(this);
         m_LogicFrameRegistered = false;
-    }
-
-    private void RequestCloseSideTip(string tipId)
-    {
-        if (string.IsNullOrWhiteSpace(tipId))
-            throw new ArgumentException("Tutorial close tip id is empty.", nameof(tipId));
-        m_PendingPresentation.Enqueue(new TutorialPresentationRequest(
-            TutorialPresentationKind.CloseTip,
-            TutorialType.None,
-            tipId,
-            null));
-    }
-
-    private void CloseTutorialPresentationImmediate(string tipId)
-    {
-        if (GF.Event == null)
-            throw new InvalidOperationException("Tutorial presentation requires GF.Event.");
-        GF.Event.Fire(this, CloseSideTipEventArgs.Create(tipId));
-    }
-
-    private bool TryGetInputModel(out InputModel model)
-    {
-        if (inputModel == null)
-        {
-            throw new InvalidOperationException("TutorialManager InputModel was not bound before logic frames began.");
-        }
-
-        model = inputModel;
-        return true;
     }
 }

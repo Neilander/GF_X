@@ -52,6 +52,9 @@ public class BuildManager : GameFrameworkComponent
         if (target == null)
             return false;
 
+        if (!TutorialManager.IsConstructOptionAllowed(target))
+            return false;
+
         if (target.Lv != 1 || target.Type != owner.BuildingData.Type)
             return false;
 

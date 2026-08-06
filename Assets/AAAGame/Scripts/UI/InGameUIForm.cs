@@ -7,21 +7,20 @@ using UnityGameFramework.Runtime;
 [Obfuz.ObfuzIgnore(Obfuz.ObfuzScope.TypeName)]
 public partial class InGameUIForm : UIFormBase
 {
-    private const string BlockedSwitchTipTitleId = "Tips_PhaseSwitchBlocked_Title";
-    private const string BlockedSwitchTipContentId = "Tips_PhaseSwitchBlocked_Content";
     private const string BuildPhaseTextId = "Phase_Build";
     private const string InvadePhaseTextId = "Phase_Invade";
     private const string DefendPhaseTextId = "Phase_Defend";
-    private const float BlockedSwitchTipDuration = 2f;
     private const float PhaseSwitchBlinkMinAlpha = 0.35f;
     private const float PhaseSwitchBlinkDuration = 0.45f;
 
     private Tween m_PhaseSwitchBlinkTween;
+    private PhaseSwitchHoldTrigger m_PhaseSwitchHoldTrigger;
 
     protected override void OnOpen(object userData)
     {
         base.OnOpen(userData);
         BindButtons();
+        InitializePhaseSwitchHold();
         GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
         IngameCoinPreviewState.PreviewChanged += OnCoinPreviewChanged;
         TutorialManager.PhaseSwitchButtonGuideChanged += OnPhaseSwitchButtonGuideChanged;
@@ -39,6 +38,7 @@ public partial class InGameUIForm : UIFormBase
         TutorialManager.PhaseSwitchButtonGuideChanged -= OnPhaseSwitchButtonGuideChanged;
         GameDebugSettings.RuntimeResourceModifyEnabledChanged -= OnRuntimeResourceModifyEnabledChanged;
         UnbindButtons();
+        ShutdownPhaseSwitchHold();
         ShutdownSkills();
         ShutdownMiniMap();
         ShutdownDefendEnemySketch();
@@ -73,12 +73,6 @@ public partial class InGameUIForm : UIFormBase
             return;
         }
 
-        if (btSelf == varPhaseBg)
-        {
-            SwitchPhase();
-            return;
-        }
-
         if (!GameDebugSettings.IsRuntimeResourceModifyEnabled())
         {
             return;
@@ -99,7 +93,6 @@ public partial class InGameUIForm : UIFormBase
     private void BindButtons()
     {
         BindButton(varReturnBtn, OnReturnClicked);
-        BindButton(varPhaseBg, OnPhaseBgClicked);
         BindButton(varCoinIcon, OnCoinIconClicked);
         BindButton(varSupplyIcon, OnSupplyIconClicked);
     }
@@ -107,7 +100,6 @@ public partial class InGameUIForm : UIFormBase
     private void UnbindButtons()
     {
         UnbindButton(varReturnBtn, OnReturnClicked);
-        UnbindButton(varPhaseBg, OnPhaseBgClicked);
         UnbindButton(varCoinIcon, OnCoinIconClicked);
         UnbindButton(varSupplyIcon, OnSupplyIconClicked);
     }
@@ -131,12 +123,6 @@ public partial class InGameUIForm : UIFormBase
         }
 
         button.onClick.RemoveListener(action);
-    }
-
-    private void OnPhaseBgClicked()
-    {
-        ClearSkillInputRequests();
-        ClickUIButton(varPhaseBg);
     }
 
     private void OnReturnClicked()
@@ -296,13 +282,9 @@ public partial class InGameUIForm : UIFormBase
 
         if (!TryGetCurrentFriendlyStronghold(out Stronghold stronghold))
         {
-            if (GF.UI != null)
-            {
-                GF.UI.ShowSideTips(
-                    LocalizationTextDataModel.GetText(BlockedSwitchTipTitleId),
-                    LocalizationTextDataModel.GetText(BlockedSwitchTipContentId),
-                    BlockedSwitchTipDuration);
-            }
+            SideTipsManager sideTipsManager = GameEntry.GetComponent<SideTipsManager>()
+                ?? throw new System.InvalidOperationException("Phase switch requires SideTipsManager.");
+            sideTipsManager.ShowTip("PhaseSwitchBlocked");
 
             string strongholdId = stronghold?.strongholdData != null ? stronghold.strongholdData.StrongholdId : "none";
             int ownerFactionId = stronghold != null ? stronghold.OwnerFactionId : -1;
@@ -316,7 +298,26 @@ public partial class InGameUIForm : UIFormBase
     private static bool IsPhaseSwitchAllowedByPhase()
     {
         GamePhase phase = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase);
-        return phase != GamePhase.Defend;
+        return phase != GamePhase.Defend || TutorialManager.IsManualDefendPhaseSwitchAllowed();
+    }
+
+    private void InitializePhaseSwitchHold()
+    {
+        if (varPhaseBg == null)
+            throw new System.InvalidOperationException("InGameUIForm requires the phase button.");
+
+        m_PhaseSwitchHoldTrigger = varPhaseBg.GetComponent<PhaseSwitchHoldTrigger>();
+        if (m_PhaseSwitchHoldTrigger == null)
+            m_PhaseSwitchHoldTrigger = varPhaseBg.gameObject.AddComponent<PhaseSwitchHoldTrigger>();
+        m_PhaseSwitchHoldTrigger.Configure(varPhaseBg, SwitchPhase, IsPhaseSwitchAllowedByPhase);
+    }
+
+    private void ShutdownPhaseSwitchHold()
+    {
+        if (m_PhaseSwitchHoldTrigger == null)
+            return;
+        m_PhaseSwitchHoldTrigger.Release();
+        m_PhaseSwitchHoldTrigger = null;
     }
 
     private static bool TryGetCurrentFriendlyStronghold(out Stronghold stronghold)

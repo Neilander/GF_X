@@ -85,7 +85,9 @@ public static class ClusterSpawnSystem
         string sourceBuildingInstanceId = null,
         string sourceStrongholdId = null,
         bool avoidExistingAgents = false,
-        int unitLevel = 1)
+        int unitLevel = 1,
+        Action<LogicEntityId> spawned = null,
+        Action<EntityParams> configureParams = null)
     {
         return SpawnClusterFixed(
             ToFixed(center),
@@ -98,7 +100,9 @@ public static class ClusterSpawnSystem
             sourceBuildingInstanceId,
             sourceStrongholdId,
             avoidExistingAgents,
-            unitLevel);
+            unitLevel,
+            spawned,
+            configureParams);
     }
 
     public static bool SpawnClusterFixed(
@@ -112,7 +116,9 @@ public static class ClusterSpawnSystem
         string sourceBuildingInstanceId = null,
         string sourceStrongholdId = null,
         bool avoidExistingAgents = false,
-        int unitLevel = 1)
+        int unitLevel = 1,
+        Action<LogicEntityId> spawned = null,
+        Action<EntityParams> configureParams = null)
     {
         if (count <= 0 || radius <= Fix64.Zero || minDistance <= Fix64.Zero)
             return false;
@@ -149,10 +155,11 @@ public static class ClusterSpawnSystem
                 brainType,
                 sourceBuildingInstanceId,
                 sourceStrongholdId,
-                null,
+                configureParams,
                 unitLevel);
             if (!entityId.IsValid)
                 throw new InvalidOperationException($"ClusterSpawnSystem failed to request unit {i}. unit={unitIndex}.");
+            spawned?.Invoke(entityId);
         }
         MainThreadFrameProfiler.Record(
             MainThreadPerfScope.ClusterSpawnUnits,

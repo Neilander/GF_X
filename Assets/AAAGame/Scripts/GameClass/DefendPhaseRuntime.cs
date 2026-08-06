@@ -13,12 +13,16 @@ public static class DefendPhaseRuntime
     private const float MinArriveIntervalSeconds = 0.01f;
     private const float MinWorldSpeed = 0.001f;
     private const float NavigationPointProbeRadius = 2.5f;
+    private const string TutorialLevelIdentifier = "Lv_1";
+    private const float TutorialEnemyClusterRadius = 3f;
+    private const float TutorialEnemyClusterMinDistance = 1.2f;
 
     private static readonly ArchetypeUnitTypeMapper s_ArchetypeUnitTypeMapper = new();
     private static readonly Dictionary<UnitType, Archetype> s_ArchetypeByUnitType = new();
     private static readonly Dictionary<UnitType, int> s_AgentTypeIdByUnitType = new();
     private static readonly List<DefendSpawnPointRuntime> s_DefendSpawnPoints = new();
     private static readonly List<DefendWaveDefinition> s_DefendWaves = new();
+    private static readonly List<TutorialTriggeredSpawnPoint> s_TutorialTriggeredSpawnPoints = new();
     private static readonly HashSet<int> s_AliveEnemyLogicEntityIds = new();
     private static readonly List<int> s_DeterministicAliveEnemyIds = new();
     private static readonly HashSet<int> s_AcceleratedEnemyLogicEntityIds = new();
@@ -41,6 +45,57 @@ public static class DefendPhaseRuntime
     private static Fix64 s_MinSpeedWorld;
     private static Fix64 s_EndlessGrowthRate;
     private static decimal s_DistanceConversionRate;
+    private static bool s_TutorialFirstDefenseConsumed;
+    private static bool s_TutorialFirstDefenseWaiting;
+    private static bool s_TutorialFirstDefenseActive;
+
+    public static event Action TutorialTriggeredDefenseCleared;
+    public static bool IsTutorialTriggeredFirstDefenseWaiting => s_TutorialFirstDefenseWaiting;
+    public static bool IsTutorialTriggeredFirstDefenseActive => s_TutorialFirstDefenseActive;
+
+    internal static void ConfigureTutorialTriggeredSpawnPoints(IReadOnlyList<EntityPresetPoint> presetPoints)
+    {
+        if (presetPoints == null)
+            throw new ArgumentNullException(nameof(presetPoints));
+        if (s_TutorialTriggeredSpawnPoints.Count > 0)
+            throw new InvalidOperationException("Tutorial triggered spawn points are already configured.");
+
+        for (int i = 0; i < presetPoints.Count; i++)
+        {
+            EntityPresetPoint point = presetPoints[i]
+                ?? throw new InvalidOperationException($"Tutorial spawn preset {i} is null.");
+            if (point.PointType != EntityPresetPointType.Unit)
+                continue;
+            if (!UnitTypeHelper.TryParseUnitTypeAndLevel(point.Identifier, out UnitType unitType, out int unitLevel))
+            {
+                throw new InvalidOperationException(
+                    $"Tutorial spawn point has invalid unit identifier. point={point.name} identifier={point.Identifier}.");
+            }
+            if (point.UnitSpawnCount <= 0)
+                throw new InvalidOperationException($"Tutorial spawn point '{point.name}' has a non-positive count.");
+
+            Vector3 position = point.Position;
+            s_TutorialTriggeredSpawnPoints.Add(new TutorialTriggeredSpawnPoint(
+                new FixVector2((Fix64)position.x, (Fix64)position.z),
+                unitType,
+                unitLevel,
+                point.UnitSpawnCount,
+                string.IsNullOrWhiteSpace(point.name) ? "<unnamed>" : point.name));
+        }
+        s_TutorialTriggeredSpawnPoints.Sort((left, right) =>
+        {
+            int x = left.Position.x.RawValue.CompareTo(right.Position.x.RawValue);
+            if (x != 0)
+                return x;
+            int y = left.Position.y.RawValue.CompareTo(right.Position.y.RawValue);
+            return y != 0 ? y : string.CompareOrdinal(left.Name, right.Name);
+        });
+    }
+
+    internal static void ClearTutorialTriggeredSpawnPoints()
+    {
+        s_TutorialTriggeredSpawnPoints.Clear();
+    }
 
     public readonly struct DefendPreviewSpawnEntry
     {
@@ -110,6 +165,15 @@ public static class DefendPhaseRuntime
         RequirePreparedRuntime();
 
         ResetDefendPhaseState(keepRoundIndex: true);
+        if (!s_TutorialFirstDefenseConsumed
+            && string.Equals(ResolveCurrentLevelIdentifier(), TutorialLevelIdentifier, StringComparison.Ordinal))
+        {
+            s_TutorialFirstDefenseConsumed = true;
+            s_TutorialFirstDefenseWaiting = true;
+            Log.Info("[DefendPhase] Tutorial first defense is waiting for the friendly-stronghold trigger.");
+            return;
+        }
+
         s_DefendRoundIndex++;
 
         DefendWaveDefinition wave = ResolveWaveForCurrentRound();
@@ -134,6 +198,60 @@ public static class DefendPhaseRuntime
         s_SpawnRequestStartFrame = LogicTimeControlService.CurrentFrame > 0
             ? LogicTimeControlService.CurrentFrame
             : 1UL;
+    }
+
+    public static void StartTutorialTriggeredFirstDefense()
+    {
+        if (!s_TutorialFirstDefenseWaiting || s_TutorialFirstDefenseActive)
+            throw new InvalidOperationException("Tutorial first defense is not waiting for its trigger.");
+        if (PhaseManager.CurrentPhase != GamePhase.Defend)
+            throw new InvalidOperationException("Tutorial first defense can only start during the Defend phase.");
+        if (EntityRegistry.Player == null || !EntityRegistry.Player.Alive)
+            throw new InvalidOperationException("Tutorial first defense requires a live player.");
+        if (!LogicStrongholdMap.TryResolveStrongholdId(EntityRegistry.Player.PositionFixed, out string strongholdId))
+            throw new InvalidOperationException("Tutorial first defense trigger is outside every stronghold.");
+        if (LogicStrongholdMap.GetOwnerFactionIdRequired(strongholdId) != EntitySideHelper.PlayerFactionId)
+            throw new InvalidOperationException($"Tutorial first defense trigger stronghold '{strongholdId}' is not player owned.");
+
+        Fix64 assignedSpeed = DistanceUnitConverter.ConvertFromWorld(s_MinSpeedWorld, s_DistanceConversionRate);
+        if (assignedSpeed <= Fix64.Zero)
+            throw new InvalidOperationException("Tutorial first defense resolved a non-positive assigned speed.");
+
+        int spawnedCount = 0;
+        for (int i = 0; i < s_TutorialTriggeredSpawnPoints.Count; i++)
+        {
+            TutorialTriggeredSpawnPoint point = s_TutorialTriggeredSpawnPoints[i];
+            if (LogicStrongholdMap.TryResolveStrongholdId(point.Position, out _))
+                continue;
+
+            bool spawned = ClusterSpawnSystem.SpawnClusterFixed(
+                point.Position,
+                point.Count,
+                (Fix64)TutorialEnemyClusterRadius,
+                (Fix64)TutorialEnemyClusterMinDistance,
+                point.UnitType,
+                SideType.EnemySide,
+                BrainType.DefendEnemyAI,
+                sourceStrongholdId: strongholdId,
+                unitLevel: point.UnitLevel,
+                spawned: entityId =>
+                {
+                    if (!s_AliveEnemyLogicEntityIds.Add(entityId.Value))
+                        throw new InvalidOperationException($"Tutorial first defense produced duplicate entity id {entityId.Value}.");
+                    spawnedCount++;
+                },
+                configureParams: entityParams => entityParams.DefendAssignedSpeed = assignedSpeed);
+            if (!spawned)
+                throw new InvalidOperationException($"Tutorial first defense failed to spawn point '{point.Name}'.");
+        }
+
+        if (spawnedCount == 0)
+            throw new InvalidOperationException("Tutorial first defense found no Unit presets outside authored strongholds.");
+
+        s_TutorialFirstDefenseWaiting = false;
+        s_TutorialFirstDefenseActive = true;
+        s_SpawnScheduleCompleted = true;
+        Log.Info("[DefendPhase] Tutorial first defense started. stronghold={0}, enemies={1}.", strongholdId, spawnedCount);
     }
 
     public static void ApplyScheduledSpawnRequests(ulong frame)
@@ -358,6 +476,14 @@ public static class DefendPhaseRuntime
 
         if (s_AliveEnemyLogicEntityIds.Count > 0)
             return;
+
+        if (s_TutorialFirstDefenseActive)
+        {
+            s_TutorialFirstDefenseActive = false;
+            Log.Info("[DefendPhase] Tutorial first defense cleared; awaiting manual phase switch.");
+            TutorialTriggeredDefenseCleared?.Invoke();
+            return;
+        }
 
         Log.Info("[DefendPhase] 防御阶段结束：敌兵已全部清空。round={0}", s_DefendRoundIndex);
         PhaseManager.SwitchToPhase(GamePhase.BuildBeforeInvade);
@@ -1069,6 +1195,10 @@ public static class DefendPhaseRuntime
         s_NextPlannedSpawnIndex = 0;
         s_SpawnRequestStartFrame = 0;
         s_SpawnScheduleCompleted = false;
+        s_TutorialFirstDefenseWaiting = false;
+        s_TutorialFirstDefenseActive = false;
+        if (!keepRoundIndex)
+            s_TutorialFirstDefenseConsumed = false;
         if (!keepRoundIndex)
             s_DefendRoundIndex = 0;
     }
@@ -1162,5 +1292,23 @@ public static class DefendPhaseRuntime
         public string SourceStrongholdId;
         public string SpawnPointName;
         public ulong TheoreticalArrivalFrameOffset;
+    }
+
+    private sealed class TutorialTriggeredSpawnPoint
+    {
+        public TutorialTriggeredSpawnPoint(FixVector2 position, UnitType unitType, int unitLevel, int count, string name)
+        {
+            Position = position;
+            UnitType = unitType;
+            UnitLevel = unitLevel;
+            Count = count;
+            Name = name;
+        }
+
+        public FixVector2 Position { get; }
+        public UnitType UnitType { get; }
+        public int UnitLevel { get; }
+        public int Count { get; }
+        public string Name { get; }
     }
 }

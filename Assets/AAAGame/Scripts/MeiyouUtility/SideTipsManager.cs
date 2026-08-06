@@ -8,7 +8,6 @@ using UnityGameFramework.Runtime;
 
 public class SideTipsManager : GameFrameworkComponent
 {
-    [SerializeField] private float tipDuration = 2f;
     [SerializeField] private float tipSpacing = 10f;
 
     private readonly HashSet<UnitType> shownEnemyUnitTypes = new HashSet<UnitType>();
@@ -90,7 +89,7 @@ public class SideTipsManager : GameFrameworkComponent
     private void OnCloseSideTipRequested(object sender, GameEventArgs e)
     {
         CloseSideTipEventArgs args = (CloseSideTipEventArgs)e;
-        CloseConditionalTip(args.TipId);
+        CloseTip(args.TipId);
     }
 
     private void OnEnemyUnitVisibilityChanged(object sender, GameEventArgs e)
@@ -114,13 +113,10 @@ public class SideTipsManager : GameFrameworkComponent
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
             return;
 
-        if (GF.UI == null)
-            return;
-
         if (!shownEnemyUnitTypes.Add(unitType))
             return;
 
-        GF.UI.ShowSideTips(title, content, tipDuration);
+        ShowDynamicTip("EnemyUnitDiscovered", title, content);
         Log.Info("[SideTips] First visible enemy unit type shown. unitType={0}, entityId={1}.", unitType, args.EntityId);
     }
 
@@ -139,28 +135,75 @@ public class SideTipsManager : GameFrameworkComponent
         return true;
     }
 
-    public void ShowRuntimeTip(string title, string content, float duration)
+    public void ShowTip(
+        string identifier,
+        float? durationOverride = null,
+        string conditionTipId = null,
+        params object[] contentFormatArgs)
     {
         if (GF.UI == null)
-            return;
+            throw new InvalidOperationException("SideTipsManager requires GF.UI before showing a tip.");
 
-        GF.UI.ShowSideTips(title, content, duration);
+        TipPresentation presentation = TipsDataModel.GetPresentation(
+            identifier,
+            contentFormatArgs: contentFormatArgs);
+        ShowResolvedTip(identifier, presentation, durationOverride, conditionTipId);
     }
 
-    public void ShowConditionalTip(string tipId, string title, string content)
+    public void ShowDynamicTip(
+        string identifier,
+        string title,
+        string content,
+        float? durationOverride = null,
+        string conditionTipId = null)
     {
         if (GF.UI == null)
-            return;
+            throw new InvalidOperationException("SideTipsManager requires GF.UI before showing a tip.");
 
-        GF.UI.ShowConditionalSideTip(tipId, title, content);
+        TipPresentation presentation = TipsDataModel.GetPresentation(identifier, title, content);
+        ShowResolvedTip(identifier, presentation, durationOverride, conditionTipId);
     }
 
-    public void CloseConditionalTip(string tipId)
+    public void CloseTip(string tipId)
     {
         if (GF.UI == null)
-            return;
+            throw new InvalidOperationException("SideTipsManager requires GF.UI before closing a tip.");
 
         GF.UI.CloseConditionalSideTip(tipId);
+    }
+
+    private static void ShowResolvedTip(
+        string identifier,
+        TipPresentation presentation,
+        float? durationOverride,
+        string conditionTipId)
+    {
+        float duration = presentation.ResolveDuration(durationOverride);
+        string resolvedTipId = ResolveConditionalTipId(identifier, duration, conditionTipId);
+
+        if (!string.IsNullOrWhiteSpace(resolvedTipId))
+        {
+            GF.UI.ShowConditionalSideTip(
+                resolvedTipId,
+                presentation.Title,
+                presentation.Content,
+                duration,
+                presentation.Icon);
+            return;
+        }
+
+        GF.UI.ShowSideTips(
+            presentation.Title,
+            presentation.Content,
+            duration,
+            presentation.Icon);
+    }
+
+    public static string ResolveConditionalTipId(string identifier, float duration, string conditionTipId)
+    {
+        if (!string.IsNullOrWhiteSpace(conditionTipId))
+            return conditionTipId;
+        return duration < 0f ? identifier : null;
     }
 
     public void ResetShownUnitTypes()

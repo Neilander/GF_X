@@ -21,14 +21,21 @@ public partial class GoalUIForm : UIFormBase
 		RefreshGoalList();
 		ApplyExpandedState();
 		GF.Event.Subscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+		GF.Event.Subscribe(TutorialObjectivesChangedEventArgs.EventId, OnTutorialObjectivesChanged);
 	}
 
 	protected override void OnClose(bool isShutdown, object userData)
 	{
 		GF.Event.Unsubscribe(IngameValueChangedEventArgs.EventId, OnIngameValueChanged);
+		GF.Event.Unsubscribe(TutorialObjectivesChangedEventArgs.EventId, OnTutorialObjectivesChanged);
 		UnbindButtons();
 		UnspawnAllItem<UIItemObject>(varGoalConditionItem);
 		base.OnClose(isShutdown, userData);
+	}
+
+	private void OnTutorialObjectivesChanged(object sender, GameEventArgs e)
+	{
+		RefreshGoalList();
 	}
 
 	private void OnIngameValueChanged(object sender, GameEventArgs e)
@@ -60,6 +67,23 @@ public partial class GoalUIForm : UIFormBase
 		}
 
 		UnspawnAllItem<UIItemObject>(varGoalConditionItem);
+
+		if (TutorialObjectiveService.HasObjectives)
+		{
+			IReadOnlyList<TutorialObjective> objectives = TutorialObjectiveService.GetSnapshot();
+			for (int i = 0; i < objectives.Count; i++)
+			{
+				TutorialObjective objective = objectives[i];
+				var itemObject = SpawnItem<UIItemObject>(varGoalConditionItem, varTextPanel.transform);
+				if (itemObject?.itemLogic is GoalConditionItem goalConditionItem)
+				{
+					goalConditionItem.SetTutorialObjective(
+						LocalizationTextDataModel.GetText(objective.TextKey),
+						objective.Status);
+				}
+			}
+			return;
+		}
 
 		var gameEndManager = GameEntry.GetComponent<GameEndManager>();
 		if (gameEndManager == null)

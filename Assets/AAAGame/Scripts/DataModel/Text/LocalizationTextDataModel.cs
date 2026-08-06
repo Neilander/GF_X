@@ -23,8 +23,6 @@ public class LocalizationTextDataModel : DataModelBase
             GF.DataTable.GetDataTable<LocalizationTextTable>("InteractionOption"),
             GF.DataTable.GetDataTable<LocalizationTextTable>("Archetype"),
             GF.DataTable.GetDataTable<LocalizationTextTable>("Misc"),
-            GF.DataTable.GetDataTable<LocalizationTextTable>("Tips"),
-            GF.DataTable.GetDataTable<LocalizationTextTable>("Tutorial"),
             GF.DataTable.GetDataTable<LocalizationTextTable>("Old")
         };
         foreach (var table in tables)
@@ -38,7 +36,7 @@ public class LocalizationTextDataModel : DataModelBase
     protected override void OnRelease() { }
 
     /// <summary>
-    /// LocalizationTextTable 入口（如 Archetype_* / Tips_* / Tutorial_*）统一走这里。
+    /// LocalizationTextTable 入口（如 Archetype_*）统一走这里。
     /// 不要直接用 LocalizationTextManager.GetLocalizedText 读取这些 identifier。
     /// </summary>
     public static string GetText(string identifier, bool applyRichText = true)

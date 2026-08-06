@@ -70,12 +70,14 @@ public class PhaseManager : GameFrameworkComponent
         }
         s_InvadeSpawnPoints.Sort(CompareInvadeSpawnPointDefinitions);
         s_InvadeSpawnPointsConfigured = true;
+        DefendPhaseRuntime.ConfigureTutorialTriggeredSpawnPoints(presetPoints);
     }
 
     internal static void ClearInvadeSpawnPoints()
     {
         s_InvadeSpawnPoints.Clear();
         s_InvadeSpawnPointsConfigured = false;
+        DefendPhaseRuntime.ClearTutorialTriggeredSpawnPoints();
     }
 
 	private void Update()

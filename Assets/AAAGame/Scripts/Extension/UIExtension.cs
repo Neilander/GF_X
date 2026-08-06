@@ -268,9 +268,9 @@ public static class UIExtension
     /// <param name="ui"></param>
     /// <param name="content"></param>
     /// <param name="duration"></param>
-    public static void ShowSideTips(this UIComponent ui, string content, float duration = 2)
+    public static void ShowSideTips(this UIComponent ui, string content, float duration = 2, string icon = null)
     {
-        ShowSideTips(ui, string.Empty, content, duration);
+        ShowSideTips(ui, string.Empty, content, duration, icon);
     }
 
     /// <summary>
@@ -280,7 +280,7 @@ public static class UIExtension
     /// <param name="title"></param>
     /// <param name="content"></param>
     /// <param name="duration"></param>
-    public static void ShowSideTips(this UIComponent ui, string title, string content, float duration = 2)
+    public static void ShowSideTips(this UIComponent ui, string title, string content, float duration = 2, string icon = null)
     {
         if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(content))
         {
@@ -289,11 +289,11 @@ public static class UIExtension
 
         if (SideTipsUIForm.Instance != null)
         {
-            SideTipsUIForm.Instance.ShowTips(title, content, duration);
+            SideTipsUIForm.Instance.ShowTips(title, content, duration, icon: icon);
             return;
         }
 
-        SideTipsUIForm.EnqueuePendingTips(title, content, duration);
+        SideTipsUIForm.EnqueuePendingTips(title, content, duration, icon: icon);
 
         if (ui.IsLoadingUIForm(UIViews.SideTipsUIForm) || ui.HasUIForm(UIViews.SideTipsUIForm))
         {
@@ -310,9 +310,9 @@ public static class UIExtension
     /// <param name="tipId">业务侧唯一ID，用于后续关闭该提示。</param>
     /// <param name="title"></param>
     /// <param name="content"></param>
-    public static void ShowConditionalSideTip(this UIComponent ui, string tipId, string title, string content)
+    public static void ShowConditionalSideTip(this UIComponent ui, string tipId, string title, string content, string icon = null)
     {
-        ShowConditionalSideTip(ui, tipId, title, content, PersistentSideTipDuration);
+        ShowConditionalSideTip(ui, tipId, title, content, PersistentSideTipDuration, icon);
     }
 
     /// <summary>
@@ -323,7 +323,7 @@ public static class UIExtension
     /// <param name="title"></param>
     /// <param name="content"></param>
     /// <param name="duration">小于0表示不自动关闭。</param>
-    public static void ShowConditionalSideTip(this UIComponent ui, string tipId, string title, string content, float duration)
+    public static void ShowConditionalSideTip(this UIComponent ui, string tipId, string title, string content, float duration, string icon = null)
     {
         if (string.IsNullOrEmpty(tipId))
         {
@@ -338,11 +338,11 @@ public static class UIExtension
 
         if (SideTipsUIForm.Instance != null)
         {
-            SideTipsUIForm.Instance.ShowTips(title, content, duration, tipId);
+            SideTipsUIForm.Instance.ShowTips(title, content, duration, tipId, icon);
             return;
         }
 
-        SideTipsUIForm.EnqueuePendingTips(title, content, duration, tipId);
+        SideTipsUIForm.EnqueuePendingTips(title, content, duration, tipId, icon);
 
         if (ui.IsLoadingUIForm(UIViews.SideTipsUIForm) || ui.HasUIForm(UIViews.SideTipsUIForm))
         {

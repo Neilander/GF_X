@@ -52,7 +52,8 @@ public partial class InGameUIForm
 
     private void RefreshDefendEnemySketch()
     {
-        bool shouldShow = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) == GamePhase.BuildBeforeDefend;
+        bool shouldShow = (GamePhase)InGameDataModel.GetValue(IngameValueType.Phase) == GamePhase.BuildBeforeDefend
+                          && TutorialManager.AreDefendPreviewArrowsAllowed();
         if (!shouldShow)
         {
             ClearDefendEnemySketchItems();

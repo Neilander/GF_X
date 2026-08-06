@@ -4,7 +4,7 @@ using GameFramework;
 using UnityEngine;
 using UnityGameFramework.Runtime;
 
-public enum VictoryConditionType { OccupySpecificBuildings, SurviveAmountDays, CollectAmountResources, KillSpecificUnits }
+public enum VictoryConditionType { OccupySpecificBuildings, SurviveAmountDays, CollectAmountResources, KillSpecificUnits, CompleteTutorial }
 public enum FailConditionType { LoseSpecificBuildings, ArriveAmountDays, ConsumeAmountResources, LoseHero }
 
 public class GameEndManager : GameFrameworkComponent

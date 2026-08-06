@@ -66,6 +66,7 @@ namespace AAAGame.Card
 
         private readonly List<UIItemObject> m_HandCardItemObjects = new List<UIItemObject>();
         private readonly List<Vector3> m_PreviewSpawnPositions = new List<Vector3>();
+        private readonly Queue<GameObject> m_PlayedCardSlotPlaceholders = new Queue<GameObject>();
 
         private CardSystemController m_CardSystemController;
         private HandCardItem m_DraggingCard;
@@ -371,26 +372,43 @@ namespace AAAGame.Card
             StartClosePanelAnimation();
         }
 
-        private void CreateHandCardItem(CardModel cardModel, bool playAnimation = true)
+        private bool CreateHandCardItem(
+            CardModel cardModel,
+            bool playAnimation = true,
+            GameObject targetSlotPlaceholder = null)
         {
             if (handCardItemPrefab == null || handCardContainer == null)
             {
                 Log.Error("HandCardItemPrefab or HandCardContainer is null.");
-                return;
+                return false;
+            }
+
+            int insertionIndex = 0;
+            int siblingIndex = 0;
+            if (targetSlotPlaceholder != null)
+            {
+                if (targetSlotPlaceholder.transform.parent != handCardContainer)
+                {
+                    throw new InvalidOperationException(
+                        $"Played card slot '{targetSlotPlaceholder.name}' is no longer under the hand card container.");
+                }
+
+                siblingIndex = targetSlotPlaceholder.transform.GetSiblingIndex();
+                insertionIndex = CountCardItemsBeforeSibling(siblingIndex);
             }
 
             UIItemObject itemObject = SpawnItem<UIItemObject>(handCardItemPrefab, handCardContainer);
             if (itemObject == null)
             {
                 Log.Error("Failed to spawn HandCardItem from object pool.");
-                return;
+                return false;
             }
 
             HandCardItem cardItem = itemObject.gameObject.GetComponent<HandCardItem>();
             if (cardItem == null)
             {
                 Log.Error("HandCardItem component not found on spawned object.");
-                return;
+                return false;
             }
 
             cardItem.ApplyRenderLayer(gameObject.layer);
@@ -400,11 +418,15 @@ namespace AAAGame.Card
             {
                 itemRectTransform.SetParent(handCardContainer, false);
                 itemRectTransform.localScale = Vector3.one;
-                itemRectTransform.SetSiblingIndex(0);
+                itemRectTransform.SetSiblingIndex(siblingIndex);
             }
 
             cardItem.Initialize(cardModel, this);
-            m_HandCardItemObjects.Insert(0, itemObject);
+            m_HandCardItemObjects.Insert(insertionIndex, itemObject);
+            if (targetSlotPlaceholder != null)
+            {
+                ReleasePlayedCardSlot(targetSlotPlaceholder);
+            }
             RefreshHandCardLayout();
 
             if (playAnimation && cardDeckTransform != null)
@@ -414,6 +436,119 @@ namespace AAAGame.Card
                 {
                     m_ActiveDrawAnimations = Mathf.Max(0, m_ActiveDrawAnimations - 1);
                 });
+            }
+
+            Log.Info(
+                "[CardDraw] Created card runtimeId={0}, insertionIndex={1}, siblingIndex={2}, reusedPlayedSlot={3}.",
+                cardModel.RuntimeId,
+                insertionIndex,
+                siblingIndex,
+                targetSlotPlaceholder != null);
+            return true;
+        }
+
+        private int CountCardItemsBeforeSibling(int siblingIndex)
+        {
+            int count = 0;
+            for (int i = 0; i < m_HandCardItemObjects.Count; i++)
+            {
+                UIItemObject itemObject = m_HandCardItemObjects[i];
+                if (itemObject == null || itemObject.gameObject == null)
+                {
+                    throw new InvalidOperationException($"Hand card item {i} is null while resolving a played card slot.");
+                }
+
+                if (itemObject.gameObject.transform.GetSiblingIndex() < siblingIndex)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private GameObject ReservePlayedCardSlot(HandCardItem cardItem)
+        {
+            if (cardItem == null)
+            {
+                throw new ArgumentNullException(nameof(cardItem));
+            }
+
+            GameObject placeholder = cardItem.DetachLayoutPlaceholderForReplacement();
+            if (placeholder == null)
+            {
+                RectTransform cardRect = cardItem.transform as RectTransform;
+                if (cardRect == null || cardRect.parent != handCardContainer)
+                {
+                    throw new InvalidOperationException(
+                        $"Card '{cardItem.name}' has neither a drag placeholder nor a hand-container transform.");
+                }
+
+                placeholder = CreatePlayedCardSlotPlaceholder(cardRect);
+            }
+
+            placeholder.name = $"{cardItem.name}_PlayedCardSlot";
+            m_PlayedCardSlotPlaceholders.Enqueue(placeholder);
+            Log.Info(
+                "[CardDraw] Reserved played slot runtimeId={0}, siblingIndex={1}, worldPosition={2}.",
+                cardItem.GetCardModel().RuntimeId,
+                placeholder.transform.GetSiblingIndex(),
+                placeholder.transform.position);
+            return placeholder;
+        }
+
+        private GameObject CreatePlayedCardSlotPlaceholder(RectTransform cardRect)
+        {
+            GameObject placeholder = new GameObject("PlayedCardSlot", typeof(RectTransform), typeof(LayoutElement));
+            placeholder.hideFlags = HideFlags.DontSave;
+            placeholder.transform.SetParent(handCardContainer, false);
+            placeholder.transform.SetSiblingIndex(cardRect.GetSiblingIndex());
+
+            RectTransform placeholderRect = (RectTransform)placeholder.transform;
+            placeholderRect.anchorMin = cardRect.anchorMin;
+            placeholderRect.anchorMax = cardRect.anchorMax;
+            placeholderRect.pivot = cardRect.pivot;
+            placeholderRect.localScale = Vector3.one;
+
+            Vector2 cardSize = cardRect.rect.size;
+            if (cardSize.x <= 0f || cardSize.y <= 0f)
+            {
+                cardSize = cardRect.sizeDelta;
+            }
+
+            placeholderRect.sizeDelta = cardSize;
+
+            LayoutElement layoutElement = placeholder.GetComponent<LayoutElement>();
+            layoutElement.minWidth = Mathf.Max(1f, cardSize.x);
+            layoutElement.minHeight = Mathf.Max(1f, cardSize.y);
+            layoutElement.preferredWidth = layoutElement.minWidth;
+            layoutElement.preferredHeight = layoutElement.minHeight;
+            layoutElement.flexibleWidth = 0f;
+            layoutElement.flexibleHeight = 0f;
+            return placeholder;
+        }
+
+        private static void ReleasePlayedCardSlot(GameObject placeholder)
+        {
+            LayoutElement layoutElement = placeholder.GetComponent<LayoutElement>();
+            if (layoutElement != null)
+            {
+                layoutElement.ignoreLayout = true;
+            }
+
+            placeholder.SetActive(false);
+            Destroy(placeholder);
+        }
+
+        private void ClearPlayedCardSlots()
+        {
+            while (m_PlayedCardSlotPlaceholders.Count > 0)
+            {
+                GameObject placeholder = m_PlayedCardSlotPlaceholders.Dequeue();
+                if (placeholder != null)
+                {
+                    ReleasePlayedCardSlot(placeholder);
+                }
             }
         }
 
@@ -973,7 +1108,7 @@ namespace AAAGame.Card
             }
         }
 
-        private void RemoveHandCardItem(CardModel cardModel)
+        private void RemoveHandCardItem(CardModel cardModel, bool reservePlayedSlot)
         {
             UIItemObject itemToRemove = null;
             foreach (UIItemObject itemObject in m_HandCardItemObjects)
@@ -991,6 +1126,11 @@ namespace AAAGame.Card
                 HandCardItem cardItem = itemToRemove.gameObject.GetComponent<HandCardItem>();
                 if (cardItem != null)
                 {
+                    if (reservePlayedSlot)
+                    {
+                        ReservePlayedCardSlot(cardItem);
+                    }
+
                     cardItem.PrepareForRecycle();
                 }
 
@@ -1013,6 +1153,7 @@ namespace AAAGame.Card
 
             UnspawnAllItem<UIItemObject>(handCardItemPrefab);
             m_HandCardItemObjects.Clear();
+            ClearPlayedCardSlots();
             RefreshHandCardLayout();
         }
 
@@ -1315,7 +1456,13 @@ namespace AAAGame.Card
                 return;
             }
 
-            CreateHandCardItem(args.CardModel, true);
+            GameObject targetSlot = m_PlayedCardSlotPlaceholders.Count > 0
+                ? m_PlayedCardSlotPlaceholders.Peek()
+                : null;
+            if (CreateHandCardItem(args.CardModel, true, targetSlot) && targetSlot != null)
+            {
+                m_PlayedCardSlotPlaceholders.Dequeue();
+            }
         }
 
         private void OnCardPlayed(object sender, GameEventArgs e)
@@ -1326,7 +1473,7 @@ namespace AAAGame.Card
             }
 
             CardPlayedEventArgs args = (CardPlayedEventArgs)e;
-            RemoveHandCardItem(args.CardModel);
+            RemoveHandCardItem(args.CardModel, true);
             if (AudioManager.Instance != null)
                 AudioManager.Instance.Play("createUnit");
         }
@@ -1339,7 +1486,7 @@ namespace AAAGame.Card
             }
 
             CardDiscardedEventArgs args = (CardDiscardedEventArgs)e;
-            RemoveHandCardItem(args.CardModel);
+            RemoveHandCardItem(args.CardModel, false);
             if (AudioManager.Instance != null)
                 AudioManager.Instance.Play("discardCard");
         }
